@@ -945,7 +945,7 @@ pub struct NarrativeFact {
     /// Epistemic frame id (registry key in `AtomicStore.frames`). Exactly
     /// one — a believed-fact and the corresponding ground-truth fact are
     /// distinct facts, never one fact with two frames.
-    pub frame: String,
+    pub frame: crate::FrameId,
     /// World-line branch id (Round 433, design sec 7.9 axis 2). Frames are
     /// sparse epistemic axes; branches are divergent quest-path/playthrough
     /// worlds. Conflict scoping and in-frame succession are both

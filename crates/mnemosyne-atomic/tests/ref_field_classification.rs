@@ -120,7 +120,13 @@ const SOURCES: &[(&str, &str)] = &[
 ///
 /// This list grows by one line per migration round; the endgame is that it
 /// replaces the `String` scan entirely and `NotARef` disappears.
-const REF_ID_TYPES: &[&str] = &["UnitId", "ParameterId", "PredicateId", "EntityKindId"];
+const REF_ID_TYPES: &[&str] = &[
+    "UnitId",
+    "ParameterId",
+    "PredicateId",
+    "EntityKindId",
+    "FrameId",
+];
 
 /// Container names that are never a type to walk into.
 const CONTAINERS: &[&str] = &[
@@ -360,7 +366,7 @@ const CLASSIFIED: &[(&str, &str, Coverage, &str)] = &[
     ("NarrativeFact", "canon_to", Coverage::Detector, "section ref - fact_registry_refs CanonTo facet"),
     ("NarrativeFact", "claim", Coverage::NotARef, "the authored assertion itself"),
     ("NarrativeFact", "entities", Coverage::Detector, "entity refs - fact_registry_refs Entity facet"),
-    ("NarrativeFact", "frame", Coverage::Detector, "frame ref - fact_registry_refs Frame facet"),
+    ("NarrativeFact", "frame", Coverage::Detector, "FrameId (R843) - fact_registry_refs Frame facet"),
     ("NarrativeFact", "pays_off", Coverage::Continuity, "fact refs - PayoffTargetMissing"),
     ("NarrativeFact", "quote", Coverage::NotARef, "authored prose"),
     ("NarrativeFact", "supersedes_in_frame", Coverage::Continuity, "fact ref - SuccessionTargetMissing"),

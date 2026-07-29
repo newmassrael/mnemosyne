@@ -162,6 +162,17 @@ ref_id! {
     EntityKindId
 }
 
+ref_id! {
+    /// A key of the frames registry ([`crate::Frame`]) — the epistemic axis a
+    /// fact is believed on.
+    ///
+    /// Note what this type does NOT cover: `NarrativeFact::supersedes_in_frame`
+    /// holds a FACT id despite its name, so it stays outside this type and
+    /// arrives with `FactId`. The name said "frame" and the value never was
+    /// one — which is the drift a type removes.
+    FrameId
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

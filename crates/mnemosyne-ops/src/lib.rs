@@ -934,8 +934,11 @@ pub fn continuity_frame_view(
     let store = load_atomic_store(workspace_root, sidecar)?;
     let order = compose_canon_order(&decl, &store)?;
     let branch = branch.unwrap_or(mnemosyne_core::MAIN_BRANCH);
+    // Entry into the store vocabulary: `frame` arrives as a raw CLI/MCP
+    // argument and becomes a registry id here, once, for both wires.
+    let frame = mnemosyne_core::FrameId::from(frame);
     let view =
-        mnemosyne_validate::continuity::frame_view(&store, &order, frame, branch, entity, at)
+        mnemosyne_validate::continuity::frame_view(&store, &order, &frame, branch, entity, at)
             .map_err(OpError::Other)?;
     Ok(FrameViewReport {
         frame: view.frame,
@@ -1240,7 +1243,11 @@ pub fn disclosure_leak_report(
             "world `{world}` not present in the branch registry (fail-loud)"
         )));
     }
-    if !authored.frames.contains_key(truth_frame) {
+    // Entry into the store vocabulary: `truth_frame` arrives as a raw CLI/MCP
+    // argument and becomes a registry id here, once, for both wires — before
+    // the registry check, so the check reads the same typed id the gate does.
+    let truth_frame = mnemosyne_core::FrameId::from(truth_frame);
+    if !authored.frames.contains_key(&truth_frame) {
         return Err(OpError::Other(format!(
             "truth_frame `{truth_frame}` not present in the frame registry (fail-loud)"
         )));
@@ -1252,7 +1259,7 @@ pub fn disclosure_leak_report(
         &order,
         telling,
         world,
-        truth_frame,
+        &truth_frame,
     )
     .map_err(OpError::Other)
 }
@@ -1535,7 +1542,7 @@ pub fn entity_dossier(
         .filter(|(_, f)| f.entities.iter().any(|e| e == id))
         .map(|(fid, f)| EntityFactRow {
             fact_id: fid.clone(),
-            frame: f.frame.clone(),
+            frame: f.frame.to_string(),
             branch: f.branch.clone(),
             claim: f.claim.clone(),
             canon_from: f.canon_from.clone(),

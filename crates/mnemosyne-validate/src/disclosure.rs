@@ -221,7 +221,7 @@ pub fn disclosure_leak(
     order: &CanonOrder,
     telling: &str,
     world: &str,
-    truth_frame: &str,
+    truth_frame: &mnemosyne_core::FrameId,
 ) -> Result<DisclosureLeakReport, String> {
     let plan = authored.disclosure_plans.get(telling).ok_or_else(|| {
         format!("telling `{telling}` not present in the disclosure_plans registry (fail-loud)")
@@ -235,7 +235,7 @@ pub fn disclosure_leak(
     let mut truth_frame_typed_facts = 0usize;
     let mut vocabulary_shared = 0usize;
     for g in reextracted.narrative_facts.values() {
-        if g.frame != truth_frame {
+        if &g.frame != truth_frame {
             continue;
         }
         let Some(t) = g.typed.as_ref() else {
@@ -282,7 +282,7 @@ pub fn disclosure_leak(
         let matches: Vec<(&String, &str)> = reextracted
             .narrative_facts
             .iter()
-            .filter(|(_, g)| g.frame == truth_frame && g.typed.as_ref() == Some(typed))
+            .filter(|(_, g)| &g.frame == truth_frame && g.typed.as_ref() == Some(typed))
             .map(|(gid, g)| (gid, g.canon_from.as_str()))
             .collect();
         if is_withhold {
@@ -457,7 +457,7 @@ mod tests {
 
     fn nf(frame: &str, canon_from: &str, typed: Option<TypedClaim>) -> NarrativeFact {
         NarrativeFact {
-            frame: frame.to_string(),
+            frame: frame.into(),
             branch: MAIN_BRANCH.to_string(),
             entities: vec![],
             claim: "c".to_string(),
@@ -586,7 +586,7 @@ mod tests {
         clean
             .narrative_facts
             .insert("x".into(), nf("gt", "ch-3", Some(typed("pike", "fell"))));
-        let r = disclosure_leak(&authored, &clean, &order, "t", "main", "gt").unwrap();
+        let r = disclosure_leak(&authored, &clean, &order, "t", "main", &"gt".into()).unwrap();
         assert_eq!(r.targeted, 2);
         assert!(r.leaks.is_empty(), "{:?}", r.leaks);
 
@@ -598,7 +598,7 @@ mod tests {
         leaky
             .narrative_facts
             .insert("b".into(), nf("gt", "ch-1", Some(typed("pike", "fell"))));
-        let r = disclosure_leak(&authored, &leaky, &order, "t", "main", "gt").unwrap();
+        let r = disclosure_leak(&authored, &leaky, &order, "t", "main", &"gt".into()).unwrap();
         assert_eq!(r.leaks.len(), 2);
         assert!(r
             .leaks
@@ -615,7 +615,7 @@ mod tests {
             "c".into(),
             nf("hale", "ch-1", Some(typed("pike", "climbed"))),
         );
-        let r = disclosure_leak(&authored, &belief, &order, "t", "main", "gt").unwrap();
+        let r = disclosure_leak(&authored, &belief, &order, "t", "main", &"gt".into()).unwrap();
         assert!(
             r.leaks.is_empty(),
             "belief-frame is not the reader's established truth"
@@ -663,7 +663,15 @@ mod tests {
 
         // FIRST-REACHED (k=1): the effective pin is x-2 (the canon-EARLIEST).
         let authored = build(None);
-        let r = disclosure_leak(&authored, &match_at("r-1"), &order, "t", "main", "gt").unwrap();
+        let r = disclosure_leak(
+            &authored,
+            &match_at("r-1"),
+            &order,
+            "t",
+            "main",
+            &"gt".into(),
+        )
+        .unwrap();
         assert_eq!(
             r.leaks.len(),
             1,
@@ -675,7 +683,15 @@ mod tests {
             Some("x-2"),
             "the resolved pin is the canon-earliest of the set, not the lexical-first"
         );
-        let r = disclosure_leak(&authored, &match_at("m-3"), &order, "t", "main", "gt").unwrap();
+        let r = disclosure_leak(
+            &authored,
+            &match_at("m-3"),
+            &order,
+            "t",
+            "main",
+            &"gt".into(),
+        )
+        .unwrap();
         assert!(
             r.leaks.is_empty(),
             "a match AFTER the first-reached trigger (between x-2 and b-4) is on time: {:?}",
@@ -684,7 +700,15 @@ mod tests {
 
         // THRESHOLD 2 (k=2): the effective pin is b-4 (the 2nd-earliest = last).
         let authored = build(Some(2));
-        let r = disclosure_leak(&authored, &match_at("m-3"), &order, "t", "main", "gt").unwrap();
+        let r = disclosure_leak(
+            &authored,
+            &match_at("m-3"),
+            &order,
+            "t",
+            "main",
+            &"gt".into(),
+        )
+        .unwrap();
         assert_eq!(
             r.leaks.len(),
             1,
@@ -719,7 +743,7 @@ mod tests {
             "g".into(),
             nf("gt", "ch-2", Some(typed("STRANGER", "climbed"))),
         );
-        let r = disclosure_leak(&authored, &foreign, &order, "t", "main", "gt").unwrap();
+        let r = disclosure_leak(&authored, &foreign, &order, "t", "main", &"gt".into()).unwrap();
         assert_eq!(r.targeted, 1);
         assert!(r.leaks.is_empty());
         assert_eq!(r.truth_frame_typed_facts, 1);
@@ -731,7 +755,7 @@ mod tests {
         shared
             .narrative_facts
             .insert("g".into(), nf("gt", "ch-2", Some(typed("pike", "spoke"))));
-        let r = disclosure_leak(&authored, &shared, &order, "t", "main", "gt").unwrap();
+        let r = disclosure_leak(&authored, &shared, &order, "t", "main", &"gt".into()).unwrap();
         assert!(r.leaks.is_empty());
         assert_eq!(r.vocabulary_shared, 1, "shared vocab ⇒ a real clean pass");
     }

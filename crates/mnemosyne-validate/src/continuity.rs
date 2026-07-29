@@ -915,7 +915,7 @@ fn contains_comparable(
     ctx: &WorldCtx<'_>,
     facts: &BTreeMap<String, NarrativeFact>,
     p: &str,
-    frame: &str,
+    frame: &mnemosyne_core::FrameId,
 ) -> bool {
     if a == b {
         return true; // one value restated — trivially comparable
@@ -931,7 +931,7 @@ fn contains_comparable(
         let Some(t) = f.typed.as_ref() else {
             continue;
         };
-        if t.predicate != containment_pred || f.frame != frame || !ctx.holds_at(fid, f, p) {
+        if t.predicate != containment_pred || &f.frame != frame || !ctx.holds_at(fid, f, p) {
             continue;
         }
         parent
@@ -2443,7 +2443,7 @@ enum Operand<'a> {
 fn resolve_operand<'a>(
     facts: &'a BTreeMap<String, NarrativeFact>,
     ctx: &WorldCtx<'_>,
-    frame: &str,
+    frame: &mnemosyne_core::FrameId,
     subject: &str,
     predicate: &str,
     at: &str,
@@ -2451,7 +2451,7 @@ fn resolve_operand<'a>(
     let mut resolved: Option<(f64, Option<String>, String, &'a str)> = None;
     for (gid, g) in facts {
         let Some(gt) = g.typed.as_ref() else { continue };
-        if g.frame != frame || gt.subject != subject || gt.predicate != predicate {
+        if &g.frame != frame || gt.subject != subject || gt.predicate != predicate {
             continue;
         }
         if !ctx.holds_at(gid, g, at) {
@@ -2540,7 +2540,7 @@ pub enum IntervalVerdict {
 fn interval_verdict(
     facts: &BTreeMap<String, NarrativeFact>,
     ctx: &WorldCtx<'_>,
-    frame: &str,
+    frame: &mnemosyne_core::FrameId,
     subject: &str,
     left_object: &mnemosyne_core::TypedObject,
     right_pred: &str,
@@ -2678,7 +2678,7 @@ fn scan_interval_rule(
                 predicate: left_pred.to_string(),
                 right: right_pred.to_string(),
                 op: op.symbol().to_string(),
-                frame: lf.frame.clone(),
+                frame: lf.frame.to_string(),
                 world: ctx.world.to_string(),
                 subject: lt.subject.clone(),
                 left_fact: lid.clone(),
@@ -2991,8 +2991,8 @@ pub fn scan_continuity(
                         .push(ContinuityViolation::SuccessionCrossFrame {
                             successor: sid.clone(),
                             predecessor: t_id.clone(),
-                            successor_frame: s.frame.clone(),
-                            predecessor_frame: t.frame.clone(),
+                            successor_frame: s.frame.to_string(),
+                            predecessor_frame: t.frame.to_string(),
                         })
                 }
                 Some(t)
@@ -3018,7 +3018,7 @@ pub fn scan_continuity(
                             report
                                 .violations
                                 .push(ContinuityViolation::SuccessionContradiction {
-                                    frame: s.frame.clone(),
+                                    frame: s.frame.to_string(),
                                     predecessor: t_id.clone(),
                                     successor: sid.clone(),
                                     stored_to: stored_to.clone(),
@@ -3355,7 +3355,7 @@ pub fn scan_continuity(
             Some(p) => report
                 .violations
                 .push(ContinuityViolation::FrameConflictOverlap {
-                    frame: a.frame.clone(),
+                    frame: a.frame.to_string(),
                     branch: world.clone(),
                     fact_a: aid.clone(),
                     fact_b: bid.clone(),
@@ -3464,7 +3464,7 @@ pub fn scan_continuity(
                                     .push(ContinuityViolation::RuleExclusiveOverlap {
                                         rule: rule.id.clone(),
                                         predicate: rule.predicate.clone(),
-                                        frame: a.frame.clone(),
+                                        frame: a.frame.to_string(),
                                         branch: ctx.world.to_string(),
                                         fact_a: aid.to_string(),
                                         fact_b: bid.to_string(),
@@ -3623,7 +3623,7 @@ pub fn scan_continuity(
                             .push(ContinuityViolation::RuleTransitionInvalid {
                                 rule: rule.id.clone(),
                                 predicate: rule.predicate.clone(),
-                                frame: s.frame.clone(),
+                                frame: s.frame.to_string(),
                                 subject: st.subject.clone(),
                                 predecessor: pid.clone(),
                                 successor: (*sid).clone(),
@@ -3906,12 +3906,12 @@ fn containment_frames<'a>(
     ctx: &WorldCtx<'_>,
     store: &'a AtomicStore,
     pred: &str,
-) -> BTreeSet<&'a str> {
-    let mut frames: BTreeSet<&str> = BTreeSet::new();
+) -> BTreeSet<&'a mnemosyne_core::FrameId> {
+    let mut frames: BTreeSet<&mnemosyne_core::FrameId> = BTreeSet::new();
     for f in store.narrative_facts.values() {
         if let Some(t) = f.typed.as_ref() {
             if t.predicate == pred && ctx.visibility(f) == Vis::In {
-                frames.insert(f.frame.as_str());
+                frames.insert(&f.frame);
             }
         }
     }
@@ -3928,7 +3928,7 @@ fn containment_snapshot(
     ctx: &WorldCtx<'_>,
     store: &AtomicStore,
     cont_pred: &str,
-    frame: &str,
+    frame: &mnemosyne_core::FrameId,
     p: &str,
 ) -> BTreeMap<String, BTreeSet<String>> {
     let mut snap: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
@@ -3936,7 +3936,7 @@ fn containment_snapshot(
         let Some(t) = f.typed.as_ref() else {
             continue;
         };
-        if t.predicate != cont_pred || f.frame != frame || !ctx.holds_at(fid, f, p) {
+        if t.predicate != cont_pred || &f.frame != frame || !ctx.holds_at(fid, f, p) {
             continue;
         }
         snap.entry(typed_object_display(&t.object))
@@ -4044,7 +4044,7 @@ fn scan_spatial_map(
                     let Some(t) = f.typed.as_ref() else {
                         continue;
                     };
-                    if t.predicate != adjacency || f.frame != frame || !ctx.holds_at(fid, f, p) {
+                    if t.predicate != adjacency || &f.frame != frame || !ctx.holds_at(fid, f, p) {
                         continue;
                     }
                     let a = t.subject.as_str();
@@ -4099,7 +4099,7 @@ fn scan_spatial_map(
                         let Some(t) = f.typed.as_ref() else {
                             continue;
                         };
-                        if t.predicate != cont_pred || f.frame != frame || !ctx.holds_at(fid, f, p)
+                        if t.predicate != cont_pred || &f.frame != frame || !ctx.holds_at(fid, f, p)
                         {
                             continue;
                         }
@@ -4254,6 +4254,7 @@ pub struct FrameViewEntry {
 /// to one world-line (`branch`, Round 433) — a view never mixes branches.
 #[derive(Debug, Clone, Default, Serialize)]
 pub struct FrameView {
+    /// OUTPUT BOUNDARY (Round 843) — see [`ManuscriptFactEvent::frame`].
     pub frame: String,
     pub branch: String,
     pub at: String,
@@ -4286,7 +4287,7 @@ pub struct FrameView {
 pub fn frame_view(
     store: &AtomicStore,
     order: &CanonOrder,
-    frame: &str,
+    frame: &mnemosyne_core::FrameId,
     branch: &str,
     entity: Option<&str>,
     at: &str,
@@ -4326,6 +4327,8 @@ pub fn frame_view(
         successors: &successors,
     };
     let mut view = FrameView {
+        // Report row: the projection's envelope is read by humans and wires,
+        // so the id leaves the store vocabulary here.
         frame: frame.to_string(),
         branch: branch.to_string(),
         at: at.to_string(),
@@ -4336,7 +4339,7 @@ pub fn frame_view(
         ..Default::default()
     };
     for (id, fact) in facts {
-        if fact.frame != frame {
+        if &fact.frame != frame {
             continue;
         }
         if let Some(e) = entity {
@@ -4892,8 +4895,8 @@ pub fn irony_intervals(
             out.windows.push(IronyWindow {
                 fact_a: (*aid).to_string(),
                 fact_b: (*bid).to_string(),
-                frame_a: a.frame.clone(),
-                frame_b: b.frame.clone(),
+                frame_a: a.frame.to_string(),
+                frame_b: b.frame.to_string(),
                 nodes,
                 starts,
                 open,
@@ -4935,6 +4938,9 @@ pub struct FactDisclosure {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct ManuscriptFactEvent {
     pub fact_id: String,
+    /// OUTPUT BOUNDARY (Round 843): the store holds this as a
+    /// [`mnemosyne_core::FrameId`]; a baked projection row is read by the
+    /// engine and by wires, so the id leaves the store vocabulary here.
     pub frame: String,
     pub claim: String,
     pub entities: Vec<String>,
@@ -5216,7 +5222,7 @@ pub fn playthrough_manuscript(
                 if fact.canon_from == *node {
                     scene.begins.push(ManuscriptFactEvent {
                         fact_id: id.clone(),
-                        frame: fact.frame.clone(),
+                        frame: fact.frame.to_string(),
                         claim: fact.claim.clone(),
                         entities: fact.entities.clone(),
                         canon_from: fact.canon_from.clone(),
@@ -5231,7 +5237,7 @@ pub fn playthrough_manuscript(
                 if fact.canon_to.as_deref() == Some(node.as_str()) {
                     scene.ends.push(ManuscriptEndEvent {
                         fact_id: id.clone(),
-                        frame: fact.frame.clone(),
+                        frame: fact.frame.to_string(),
                         kind: ManuscriptEndKind::Expired,
                         by: None,
                     });
@@ -5240,7 +5246,7 @@ pub fn playthrough_manuscript(
                     if ctx.visibility(s) == Vis::In && s.canon_from == *node {
                         scene.ends.push(ManuscriptEndEvent {
                             fact_id: id.clone(),
-                            frame: fact.frame.clone(),
+                            frame: fact.frame.to_string(),
                             kind: ManuscriptEndKind::Superseded,
                             by: Some((*sid).to_string()),
                         });
@@ -6235,7 +6241,7 @@ pub fn typing_candidates(store: &AtomicStore) -> Result<TypingCandidatesReport, 
         .filter(|(_, f)| f.typed.is_none())
         .map(|(id, f)| TypingCandidate {
             fact_id: id.clone(),
-            frame: f.frame.clone(),
+            frame: f.frame.to_string(),
             branch: f.branch.clone(),
             claim: f.claim.clone(),
             claim_sha256: claim_sha256_hex(&f.claim),
@@ -6379,7 +6385,7 @@ pub fn edge_candidates(
         .iter()
         .map(|(id, f)| EdgeCandidateFact {
             fact_id: id.clone(),
-            frame: f.frame.clone(),
+            frame: f.frame.to_string(),
             branch: f.branch.clone(),
             entities: f.entities.clone(),
             claim: f.claim.clone(),
@@ -6928,7 +6934,15 @@ mod tests {
         new.supersedes_in_frame = Some("f-old".to_string());
         let store = store_with(vec![old, new]);
         let order = chain(&["ch-1", "ch-2", "ch-3", "ch-4"]);
-        let at2 = frame_view(&store, &order, "jonathan", MAIN_BRANCH, None, "ch-2").unwrap();
+        let at2 = frame_view(
+            &store,
+            &order,
+            &"jonathan".into(),
+            MAIN_BRANCH,
+            None,
+            "ch-2",
+        )
+        .unwrap();
         assert_eq!(
             at2.holding
                 .iter()
@@ -6937,7 +6951,15 @@ mod tests {
             vec!["f-old"]
         );
         assert_eq!(at2.not_holding, 1);
-        let at3 = frame_view(&store, &order, "jonathan", MAIN_BRANCH, None, "ch-3").unwrap();
+        let at3 = frame_view(
+            &store,
+            &order,
+            &"jonathan".into(),
+            MAIN_BRANCH,
+            None,
+            "ch-3",
+        )
+        .unwrap();
         assert_eq!(
             at3.holding
                 .iter()
@@ -6955,11 +6977,11 @@ mod tests {
         let other = fact("f-x", "jonathan", "ch-1", None);
         let store = store_with(vec![bounded, other]);
         let order = chain(&["ch-1", "ch-2", "ch-3", "ch-4"]);
-        let at3 = frame_view(&store, &order, "seward", MAIN_BRANCH, None, "ch-3").unwrap();
+        let at3 = frame_view(&store, &order, &"seward".into(), MAIN_BRANCH, None, "ch-3").unwrap();
         assert!(at3.holding.is_empty());
         assert_eq!(at3.not_holding, 1);
         // jonathan's fact never appears in seward's view.
-        let at1 = frame_view(&store, &order, "seward", MAIN_BRANCH, None, "ch-1").unwrap();
+        let at1 = frame_view(&store, &order, &"seward".into(), MAIN_BRANCH, None, "ch-1").unwrap();
         assert_eq!(at1.holding.len(), 1);
         assert_eq!(at1.holding[0].fact_id, "f-b");
     }
@@ -6974,7 +6996,7 @@ mod tests {
         ])
         .unwrap();
         let store = store_with(vec![fact("f-arm", "seward", "ch-2", None)]);
-        let view = frame_view(&store, &order, "seward", MAIN_BRANCH, None, "ch-3").unwrap();
+        let view = frame_view(&store, &order, &"seward".into(), MAIN_BRANCH, None, "ch-3").unwrap();
         assert!(view.holding.is_empty());
         assert_eq!(view.unknown, vec!["f-arm".to_string()]);
         assert_eq!(view.not_holding, 0);
@@ -6991,7 +7013,7 @@ mod tests {
         store.fact_counts.insert("f-hold".to_string(), 5);
         let order = chain(&["ch-1", "ch-2"]);
         let count_of = |store: &AtomicStore, id: &str| -> Option<i64> {
-            frame_view(store, &order, "seward", MAIN_BRANCH, None, "ch-1")
+            frame_view(store, &order, &"seward".into(), MAIN_BRANCH, None, "ch-1")
                 .unwrap()
                 .holding
                 .into_iter()
@@ -7024,9 +7046,11 @@ mod tests {
     fn frame_view_fail_loud_boundaries() {
         let store = store_with(vec![fact("f1", "seward", "ch-1", None)]);
         let order = chain(&["ch-1", "ch-2"]);
-        let err = frame_view(&store, &order, "nobody", MAIN_BRANCH, None, "ch-1").unwrap_err();
+        let err =
+            frame_view(&store, &order, &"nobody".into(), MAIN_BRANCH, None, "ch-1").unwrap_err();
         assert!(err.contains("frames registry"), "{err}");
-        let err = frame_view(&store, &order, "seward", MAIN_BRANCH, None, "ch-99").unwrap_err();
+        let err =
+            frame_view(&store, &order, &"seward".into(), MAIN_BRANCH, None, "ch-99").unwrap_err();
         assert!(err.contains("ch-99"), "{err}");
     }
 
@@ -7039,15 +7063,39 @@ mod tests {
         on_route.branch = Some("sea-route".to_string());
         let store = store_with(vec![on_main, on_route]);
         let order = chain(&["ch-1", "ch-2"]);
-        let main_view = frame_view(&store, &order, "jonathan", MAIN_BRANCH, None, "ch-2").unwrap();
+        let main_view = frame_view(
+            &store,
+            &order,
+            &"jonathan".into(),
+            MAIN_BRANCH,
+            None,
+            "ch-2",
+        )
+        .unwrap();
         assert_eq!(main_view.holding.len(), 1);
         assert_eq!(main_view.holding[0].fact_id, "f-main");
         assert_eq!(main_view.branch, MAIN_BRANCH);
-        let route_view = frame_view(&store, &order, "jonathan", "sea-route", None, "ch-2").unwrap();
+        let route_view = frame_view(
+            &store,
+            &order,
+            &"jonathan".into(),
+            "sea-route",
+            None,
+            "ch-2",
+        )
+        .unwrap();
         assert_eq!(route_view.holding.len(), 1);
         assert_eq!(route_view.holding[0].fact_id, "f-route");
         // Unknown branch fails loud — a typo must not read as an empty world.
-        let err = frame_view(&store, &order, "jonathan", "sea-rotue", None, "ch-2").unwrap_err();
+        let err = frame_view(
+            &store,
+            &order,
+            &"jonathan".into(),
+            "sea-rotue",
+            None,
+            "ch-2",
+        )
+        .unwrap_err();
         assert!(err.contains("branch registry"), "{err}");
     }
 
@@ -7068,7 +7116,8 @@ mod tests {
         let store = store_with(vec![fact("f1", "seward", "ch-1", None)]);
         let err = scan_continuity(&store, &order, &[]).unwrap_err();
         assert!(err.contains("sea-rotue"), "{err}");
-        let err = frame_view(&store, &order, "seward", MAIN_BRANCH, None, "ch-1").unwrap_err();
+        let err =
+            frame_view(&store, &order, &"seward".into(), MAIN_BRANCH, None, "ch-1").unwrap_err();
         assert!(err.contains("sea-rotue"), "{err}");
     }
 
@@ -7130,17 +7179,31 @@ mod tests {
             st
         };
         let order = chain(&["ch-1", "ch-2"]);
-        let all = frame_view(&store, &order, "seward", MAIN_BRANCH, None, "ch-2").unwrap();
+        let all = frame_view(&store, &order, &"seward".into(), MAIN_BRANCH, None, "ch-2").unwrap();
         assert_eq!(all.holding.len(), 2);
-        let filtered =
-            frame_view(&store, &order, "seward", MAIN_BRANCH, Some("lucy"), "ch-2").unwrap();
+        let filtered = frame_view(
+            &store,
+            &order,
+            &"seward".into(),
+            MAIN_BRANCH,
+            Some("lucy"),
+            "ch-2",
+        )
+        .unwrap();
         assert_eq!(filtered.holding.len(), 1);
         assert_eq!(filtered.holding[0].fact_id, "f-lucy");
         assert_eq!(filtered.holding[0].entities, vec!["lucy".to_string()]);
         assert_eq!(filtered.entity.as_deref(), Some("lucy"));
         // Typo'd entity fails loud, never an empty dossier.
-        let err =
-            frame_view(&store, &order, "seward", MAIN_BRANCH, Some("lucyy"), "ch-2").unwrap_err();
+        let err = frame_view(
+            &store,
+            &order,
+            &"seward".into(),
+            MAIN_BRANCH,
+            Some("lucyy"),
+            "ch-2",
+        )
+        .unwrap_err();
         assert!(err.contains("entity registry"), "{err}");
     }
 
@@ -7242,11 +7305,12 @@ mod tests {
         let late = fact("f-late", "gt", "ch-3", None);
         let store = store_with_forks(vec![early, late], &[("route", MAIN_BRANCH, "ch-2")]);
         let order = chain(&["ch-1", "ch-2", "ch-3", "ch-4"]);
-        let view = frame_view(&store, &order, "gt", "route", None, "ch-3").unwrap();
+        let view = frame_view(&store, &order, &"gt".into(), "route", None, "ch-3").unwrap();
         let held: Vec<&str> = view.holding.iter().map(|e| e.fact_id.as_str()).collect();
         assert_eq!(held, vec!["f-early"], "unknown={:?}", view.unknown);
         // Main's own view still sees both.
-        let main_view = frame_view(&store, &order, "gt", MAIN_BRANCH, None, "ch-3").unwrap();
+        let main_view =
+            frame_view(&store, &order, &"gt".into(), MAIN_BRANCH, None, "ch-3").unwrap();
         assert_eq!(main_view.holding.len(), 2);
     }
 
@@ -7297,11 +7361,19 @@ mod tests {
         let report = scan_continuity(&store, &order, &[]).unwrap();
         assert!(report.violations.is_empty(), "{:?}", report.violations);
         // Route at ch-3: revised belief holds, inherited one derived-closed.
-        let route = frame_view(&store, &order, "jonathan", "route", None, "ch-3").unwrap();
+        let route = frame_view(&store, &order, &"jonathan".into(), "route", None, "ch-3").unwrap();
         let held: Vec<&str> = route.holding.iter().map(|e| e.fact_id.as_str()).collect();
         assert_eq!(held, vec!["f-new"]);
         // Main at ch-3: the original belief STILL holds — no leak-back.
-        let main_view = frame_view(&store, &order, "jonathan", MAIN_BRANCH, None, "ch-3").unwrap();
+        let main_view = frame_view(
+            &store,
+            &order,
+            &"jonathan".into(),
+            MAIN_BRANCH,
+            None,
+            "ch-3",
+        )
+        .unwrap();
         let held: Vec<&str> = main_view
             .holding
             .iter()
@@ -7316,7 +7388,15 @@ mod tests {
         // the inherited fact surfaces as unknown (B-1), never silently out.
         let early = fact("f-early", "gt", "ch-1", None);
         let store = store_with_forks(vec![early], &[("route", MAIN_BRANCH, "ch-2")]);
-        let view = frame_view(&store, &CanonOrder::empty(), "gt", "route", None, "ch-2").unwrap();
+        let view = frame_view(
+            &store,
+            &CanonOrder::empty(),
+            &"gt".into(),
+            "route",
+            None,
+            "ch-2",
+        )
+        .unwrap();
         assert!(view.holding.is_empty());
         assert_eq!(view.unknown, vec!["f-early".to_string()]);
     }
@@ -7351,7 +7431,7 @@ mod tests {
         // ch-2 -> ch-3 was declared on `route`; `deep` inherits it.
         assert!(order.le("deep", "ch-2", "ch-3"));
         assert!(!order.le(MAIN_BRANCH, "ch-2", "ch-3"));
-        let view = frame_view(&store, &order, "gt", "deep", None, "ch-4").unwrap();
+        let view = frame_view(&store, &order, &"gt".into(), "deep", None, "ch-4").unwrap();
         // f-deep starts at ch-3; ch-3 vs ch-4 undeclared everywhere -> not
         // holding at ch-4 is undecidable => unknown (honesty).
         assert_eq!(view.unknown, vec!["f-deep".to_string()]);
@@ -7372,7 +7452,7 @@ mod tests {
         }
         store
             .frames
-            .insert("seward".to_string(), mnemosyne_core::Frame::default());
+            .insert("seward".into(), mnemosyne_core::Frame::default());
         let target = fact("f-target", "seward", "ch-1", None);
         let mut owner = fact("f-owner", "seward", "ch-2", None);
         owner.conflicts_with = vec!["f-target".to_string()];
@@ -8112,11 +8192,12 @@ mod tests {
         store.narrative_facts.get_mut("f1").unwrap().branch = "ghost".to_string();
         let err = scan_continuity(&store, &order, &[]).unwrap_err();
         assert!(err.contains("branch registry"), "{err}");
-        let err = frame_view(&store, &order, "seward", MAIN_BRANCH, None, "ch-1").unwrap_err();
+        let err =
+            frame_view(&store, &order, &"seward".into(), MAIN_BRANCH, None, "ch-1").unwrap_err();
         assert!(err.contains("branch registry"), "{err}");
         // Unregistered frame.
         let mut store = store_with(vec![fact("f1", "seward", "ch-1", None)]);
-        store.narrative_facts.get_mut("f1").unwrap().frame = "nobody".to_string();
+        store.narrative_facts.get_mut("f1").unwrap().frame = "nobody".into();
         let err = scan_continuity(&store, &order, &[]).unwrap_err();
         assert!(err.contains("frames registry"), "{err}");
         // Evidence emptied out-of-band.
@@ -8152,7 +8233,7 @@ mod tests {
         else {
             panic!("expected overlap");
         };
-        let view = frame_view(&store, &order, frame, branch, None, at).unwrap();
+        let view = frame_view(&store, &order, &frame.as_str().into(), branch, None, at).unwrap();
         let held: Vec<&str> = view.holding.iter().map(|e| e.fact_id.as_str()).collect();
         assert!(held.contains(&fact_a.as_str()) && held.contains(&fact_b.as_str()));
     }
@@ -10549,7 +10630,7 @@ mod tests {
                 _ => None,
             })
             .expect("overlap expected");
-        let view = frame_view(&store, &order, "gt", MAIN_BRANCH, None, &at_point).unwrap();
+        let view = frame_view(&store, &order, &"gt".into(), MAIN_BRANCH, None, &at_point).unwrap();
         let held: BTreeSet<&str> = view.holding.iter().map(|e| e.fact_id.as_str()).collect();
         assert!(held.contains("l2") && held.contains("bad"), "{held:?}");
     }
@@ -12449,17 +12530,17 @@ mod tests {
         assert!(!mnemosyne_core::is_confluence(&store.branches, "ghost"));
 
         // (2) FRAME-VIEW — the R741-named residual, a NEW derivation via the predicate.
-        let fv_conf = frame_view(&store, &order, "gt", "dawn", None, "ch-2").unwrap();
+        let fv_conf = frame_view(&store, &order, &"gt".into(), "dawn", None, "ch-2").unwrap();
         assert!(
             fv_conf.confluence_fragment,
             "a --branch <confluence> view is a fragment"
         );
-        let fv_fork = frame_view(&store, &order, "gt", "sluice", None, "ch-2").unwrap();
+        let fv_fork = frame_view(&store, &order, &"gt".into(), "sluice", None, "ch-2").unwrap();
         assert!(
             !fv_fork.confluence_fragment,
             "a fork playthrough is not a fragment"
         );
-        let fv_main = frame_view(&store, &order, "gt", MAIN_BRANCH, None, "ch-2").unwrap();
+        let fv_main = frame_view(&store, &order, &"gt".into(), MAIN_BRANCH, None, "ch-2").unwrap();
         assert!(!fv_main.confluence_fragment);
 
         // (3) PLAYABLE-WORLD — rides the manuscript flag verbatim (no re-derivation).
@@ -12734,7 +12815,7 @@ mod tests {
         let store = diamond_store(vec![]);
         let order = diamond_order(&store);
         let holding = |branch: &str, at: &str| -> Vec<String> {
-            frame_view(&store, &order, "gt", branch, None, at)
+            frame_view(&store, &order, &"gt".into(), branch, None, at)
                 .unwrap()
                 .holding
                 .into_iter()
@@ -13073,7 +13154,7 @@ mod tests {
         // frame_view: main HOLDS the suffix fact at rv, and does NOT see braid's
         // exclusive middle (scoping intact).
         let holding = |at: &str| -> Vec<String> {
-            frame_view(&store, &order, "gt", MAIN_BRANCH, None, at)
+            frame_view(&store, &order, &"gt".into(), MAIN_BRANCH, None, at)
                 .unwrap()
                 .holding
                 .into_iter()
@@ -13232,7 +13313,7 @@ mod tests {
         );
 
         let holding = |world: &str, at: &str| -> Vec<String> {
-            frame_view(&store, &order, "gt", world, None, at)
+            frame_view(&store, &order, &"gt".into(), world, None, at)
                 .unwrap()
                 .holding
                 .into_iter()
@@ -13248,7 +13329,7 @@ mod tests {
         // BOUNDED regression: the shared tail PAST the fork is NOT stolen, and it
         // is DEFINITIVELY excluded (Out, not Unknown) — the order-composition leg
         // makes s4 comparable to the fork point s3.
-        let at_s4 = frame_view(&store, &order, "gt", "ending", None, "s4").unwrap();
+        let at_s4 = frame_view(&store, &order, &"gt".into(), "ending", None, "s4").unwrap();
         assert!(
             !at_s4.holding.iter().any(|e| e.fact_id == "f-tail"),
             "ending does not steal the shared tail past its fork"
@@ -13427,7 +13508,7 @@ mod tests {
         );
 
         let held = |at: &str| -> Vec<String> {
-            frame_view(&store, &order, "gt", "ending", None, at)
+            frame_view(&store, &order, &"gt".into(), "ending", None, at)
                 .unwrap()
                 .holding
                 .into_iter()
@@ -13446,7 +13527,7 @@ mod tests {
         }
         // BOUNDED still: the shared tail past the fork is not stolen, and neither
         // braid's exclusive middle ever crosses into the divergent world.
-        let at_end = frame_view(&store, &order, "gt", "ending", None, "s6").unwrap();
+        let at_end = frame_view(&store, &order, &"gt".into(), "ending", None, "s6").unwrap();
         let holding: Vec<&str> = at_end.holding.iter().map(|e| e.fact_id.as_str()).collect();
         assert!(holding.contains(&"f-end-beat"));
         for f in ["f-tail", "f-alt1", "f-alt2"] {
@@ -13546,7 +13627,7 @@ mod tests {
         };
         let order = CanonOrder::from_declaration(&decl, &store.branches).unwrap();
         let holding = |world: &str, at: &str| -> Vec<String> {
-            frame_view(&store, &order, "gt", world, None, at)
+            frame_view(&store, &order, &"gt".into(), world, None, at)
                 .unwrap()
                 .holding
                 .into_iter()

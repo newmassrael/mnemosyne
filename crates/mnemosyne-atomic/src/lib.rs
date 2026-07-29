@@ -782,7 +782,7 @@ pub struct AtomicStore {
     /// `NarrativeFact.frame` must reference a key here (fail-loud at the
     /// mutate primitives). Empty on pre-v12 stores via `#[serde(default)]`.
     #[serde(default)]
-    pub frames: BTreeMap<String, Frame>,
+    pub frames: BTreeMap<mnemosyne_core::FrameId, Frame>,
     /// World-line branch registry (Round 436) — keyed by branch id. Every
     /// non-default `NarrativeFact.branch` must reference a key here
     /// (fail-loud at the mutate primitives, symmetric with `frames` — a
@@ -5439,7 +5439,9 @@ fn build_candidate_fact(
     Ok((
         fact_id.to_string(),
         NarrativeFact {
-            frame: frame.to_string(),
+            // Entry into the store vocabulary: `FactImport` is a wire DTO and
+            // stays `String`; the id becomes typed exactly here, once.
+            frame: frame.into(),
             branch,
             entities,
             claim: claim.to_string(),
@@ -5667,7 +5669,7 @@ fn build_typed_claim(
 /// would not); the candidate edge itself is overlaid internally.
 fn check_succession_edge(
     fact_id: &str,
-    frame: &str,
+    frame: &mnemosyne_core::FrameId,
     branch: &str,
     target: &str,
     visible: &BTreeMap<String, NarrativeFact>,
@@ -5681,7 +5683,7 @@ fn check_succession_edge(
                  (succession needs an existing predecessor; fail-loud)"
             ));
         }
-        Some(t) if t.frame != frame => {
+        Some(t) if &t.frame != frame => {
             return Err(format!(
                 "fact `{fact_id}` (frame `{frame}`): supersedes_in_frame `{target}` lives in \
                  frame `{}` — in-frame succession only (cross-frame disagreement is \
@@ -10416,7 +10418,7 @@ mod tests {
         let mut store = AtomicStore::default();
         seed_section(&mut store, "d01-bam");
         seed_section(&mut store, "d02-nat");
-        store.frames.insert("jiun".to_string(), Frame::default());
+        store.frames.insert("jiun".into(), Frame::default());
         let text = "이판수가 대답하지 말라고 일렀다.";
         import_content_excerpts(
             &mut store,
@@ -10516,7 +10518,7 @@ mod tests {
         let sidecar = dir.path().join("store.json");
         let mut store = AtomicStore::default();
         seed_section(&mut store, "d01-bam");
-        store.frames.insert("jiun".to_string(), Frame::default());
+        store.frames.insert("jiun".into(), Frame::default());
         add_fact(
             &mut store,
             &sidecar,
@@ -10743,7 +10745,7 @@ mod tests {
         store
             .entities
             .insert("ent-ledger".to_string(), Entity::default());
-        store.frames.insert("gt".to_string(), Frame::default());
+        store.frames.insert("gt".into(), Frame::default());
         // Real facts through the real write path, so the import's presence check
         // is exercised against facts the store actually declares.
         for id in ["f-tide", "f-name"] {
@@ -13253,7 +13255,7 @@ mod tests {
         let path = tmp.path().join(".atomic/workspace.atomic.json");
         let mut store = AtomicStore::new();
         seed_chapters(&mut store);
-        store.frames.insert("gt".to_string(), Frame::default());
+        store.frames.insert("gt".into(), Frame::default());
         store.entities.insert("pike".to_string(), Entity::default());
         add_predicate(
             &mut store,
@@ -15337,7 +15339,7 @@ mod tests {
         let path = tmp.path().join("s.json");
         let mut store = AtomicStore::new();
         seed_chapters(&mut store);
-        store.frames.insert("gt".to_string(), Frame::default());
+        store.frames.insert("gt".into(), Frame::default());
         store.entities.insert("pike".to_string(), Entity::default());
         add_branch(
             &mut store,
@@ -15619,7 +15621,7 @@ mod tests {
         let path = tmp.path().join("s.json");
         let mut store = AtomicStore::new();
         seed_chapters(&mut store);
-        store.frames.insert("gt".to_string(), Frame::default());
+        store.frames.insert("gt".into(), Frame::default());
         store.entities.insert("pike".to_string(), Entity::default());
         add_predicate(
             &mut store,
@@ -16722,7 +16724,7 @@ mod tests {
             let mut store_b = AtomicStore::new();
             for s in [&mut store_a, &mut store_b] {
                 seed_chapters(s);
-                s.frames.insert("gt".to_string(), Frame::default());
+                s.frames.insert("gt".into(), Frame::default());
             }
             let add_ok = add_fact(&mut store_a, &path_a, &entry).is_ok();
             let import_ok = import_facts(
@@ -16757,7 +16759,7 @@ mod tests {
         let path = tmp.path().join("s.json");
         let mut store = AtomicStore::new();
         seed_chapters(&mut store);
-        store.frames.insert("gt".to_string(), Frame::default());
+        store.frames.insert("gt".into(), Frame::default());
         add_fact(
             &mut store,
             &path,
@@ -16878,7 +16880,7 @@ mod tests {
             let mut store_b = AtomicStore::new();
             for s in [&mut store_a, &mut store_b] {
                 seed_chapters(s);
-                s.frames.insert("gt".to_string(), Frame::default());
+                s.frames.insert("gt".into(), Frame::default());
                 s.entities.insert("kara".to_string(), Entity::default());
                 s.entities.insert("todd-gun".to_string(), Entity::default());
                 s.predicates.insert(
@@ -16939,7 +16941,7 @@ mod tests {
             let path = tmp.path().join("s.json");
             let mut store = AtomicStore::new();
             seed_chapters(&mut store);
-            store.frames.insert("gt".to_string(), Frame::default());
+            store.frames.insert("gt".into(), Frame::default());
             add_entity_kind(&mut store, &path, "place", &[], "").unwrap();
             add_entity_kind(&mut store, &path, "thing", &[], "").unwrap();
             add_entity(&mut store, &path, "cove", "place", "").unwrap();
@@ -17003,7 +17005,7 @@ mod tests {
         let path = tmp.path().join("s.json");
         let mut store = AtomicStore::new();
         seed_chapters(&mut store);
-        store.frames.insert("gt".to_string(), Frame::default());
+        store.frames.insert("gt".into(), Frame::default());
         add_entity_kind(&mut store, &path, "place", &[], "").unwrap();
         add_entity_kind(&mut store, &path, "thing", &[], "").unwrap();
         add_entity(&mut store, &path, "cove", "place", "").unwrap();
@@ -17055,7 +17057,7 @@ mod tests {
         let path = tmp.path().join("s.json");
         let mut store = AtomicStore::new();
         seed_chapters(&mut store);
-        store.frames.insert("gt".to_string(), Frame::default());
+        store.frames.insert("gt".into(), Frame::default());
         store.entities.insert("lucy".to_string(), Entity::default());
         add_predicate(
             &mut store,
@@ -17145,7 +17147,7 @@ mod tests {
         let path = tmp.path().join("s.json");
         let mut store = AtomicStore::new();
         seed_chapters(&mut store);
-        store.frames.insert("gt".to_string(), Frame::default());
+        store.frames.insert("gt".into(), Frame::default());
         store.entities.insert("lucy".to_string(), Entity::default());
         add_predicate(
             &mut store,
@@ -17218,7 +17220,7 @@ mod tests {
         let path = tmp.path().join("s.json");
         let mut store = AtomicStore::new();
         seed_chapters(&mut store);
-        store.frames.insert("gt".to_string(), Frame::default());
+        store.frames.insert("gt".into(), Frame::default());
         store
             .entities
             .insert("codicil".to_string(), Entity::default());
@@ -17289,7 +17291,7 @@ mod tests {
         let path = tmp.path().join("s.json");
         let mut store = AtomicStore::new();
         seed_chapters(&mut store);
-        store.frames.insert("gt".to_string(), Frame::default());
+        store.frames.insert("gt".into(), Frame::default());
         add_unit(&mut store, &path, "minute", "").unwrap();
         add_fact(&mut store, &path, &sample_fact("f-edge", "gt")).unwrap();
         // Valid: fact exists, n>0, unit registered.
@@ -17332,7 +17334,7 @@ mod tests {
         let path = tmp.path().join("s.json");
         let mut store = AtomicStore::new();
         seed_chapters(&mut store);
-        store.frames.insert("gt".to_string(), Frame::default());
+        store.frames.insert("gt".into(), Frame::default());
         add_unit(&mut store, &path, "minute", "").unwrap();
         add_fact(&mut store, &path, &sample_fact("f-edge", "gt")).unwrap();
         add_edge_cost(&mut store, &path, "f-edge", 4, "minute").unwrap();
@@ -17389,7 +17391,7 @@ mod tests {
         let path = tmp.path().join("s.json");
         let mut store = AtomicStore::new();
         seed_chapters(&mut store);
-        store.frames.insert("gt".to_string(), Frame::default());
+        store.frames.insert("gt".into(), Frame::default());
         add_fact(&mut store, &path, &sample_fact("f-edge", "gt")).unwrap();
         add_fact(&mut store, &path, &sample_fact("f-key", "gt")).unwrap();
         // Valid: both facts exist. The value is a SET (Round 722).
@@ -17429,7 +17431,7 @@ mod tests {
         let path = tmp.path().join("s.json");
         let mut store = AtomicStore::new();
         seed_chapters(&mut store);
-        store.frames.insert("gt".to_string(), Frame::default());
+        store.frames.insert("gt".into(), Frame::default());
         add_fact(&mut store, &path, &sample_fact("f-edge", "gt")).unwrap();
         add_fact(&mut store, &path, &sample_fact("f-key", "gt")).unwrap();
         add_edge_guard(&mut store, &path, "f-edge", "f-key").unwrap();
@@ -17482,7 +17484,7 @@ mod tests {
         let path = tmp.path().join("s.json");
         let mut store = AtomicStore::new();
         seed_chapters(&mut store);
-        store.frames.insert("gt".to_string(), Frame::default());
+        store.frames.insert("gt".into(), Frame::default());
         for f in ["f-edge", "f-key", "f-tide"] {
             add_fact(&mut store, &path, &sample_fact(f, "gt")).unwrap();
         }
@@ -17543,7 +17545,7 @@ mod tests {
         let path = tmp.path().join("s.json");
         let mut store = AtomicStore::new();
         seed_chapters(&mut store);
-        store.frames.insert("gt".to_string(), Frame::default());
+        store.frames.insert("gt".into(), Frame::default());
         for f in ["e-1", "e-2", "f-shared"] {
             add_fact(&mut store, &path, &sample_fact(f, "gt")).unwrap();
         }
@@ -17579,7 +17581,7 @@ mod tests {
         let path = tmp.path().join("s.json");
         let mut store = AtomicStore::new();
         seed_chapters(&mut store);
-        store.frames.insert("gt".to_string(), Frame::default());
+        store.frames.insert("gt".into(), Frame::default());
         for f in ["f-edge", "c1", "c2", "c3"] {
             add_fact(&mut store, &path, &sample_fact(f, "gt")).unwrap();
         }
@@ -17625,7 +17627,7 @@ mod tests {
         let path = tmp.path().join("s.json");
         let mut store = AtomicStore::new();
         seed_chapters(&mut store);
-        store.frames.insert("gt".to_string(), Frame::default());
+        store.frames.insert("gt".into(), Frame::default());
         for f in ["f-edge", "c1", "c2", "c3", "c4", "c5"] {
             add_fact(&mut store, &path, &sample_fact(f, "gt")).unwrap();
         }
@@ -17659,7 +17661,7 @@ mod tests {
         let path = tmp.path().join("s.json");
         let mut store = AtomicStore::new();
         seed_chapters(&mut store);
-        store.frames.insert("gt".to_string(), Frame::default());
+        store.frames.insert("gt".into(), Frame::default());
         for f in ["f-edge", "c1", "c2", "c3"] {
             add_fact(&mut store, &path, &sample_fact(f, "gt")).unwrap();
         }
@@ -17699,7 +17701,7 @@ mod tests {
         let path = tmp.path().join("s.json");
         let mut store = AtomicStore::new();
         seed_chapters(&mut store);
-        store.frames.insert("gt".to_string(), Frame::default());
+        store.frames.insert("gt".into(), Frame::default());
         for f in ["f-edge", "c1", "c2", "c3", "c4"] {
             add_fact(&mut store, &path, &sample_fact(f, "gt")).unwrap();
         }
@@ -17740,7 +17742,7 @@ mod tests {
         let path = tmp.path().join("s.json");
         let mut store = AtomicStore::new();
         seed_chapters(&mut store);
-        store.frames.insert("gt".to_string(), Frame::default());
+        store.frames.insert("gt".into(), Frame::default());
         add_unit(&mut store, &path, "minute", "").unwrap();
         add_fact(&mut store, &path, &sample_fact("f-edge", "gt")).unwrap();
         add_edge_cost(&mut store, &path, "f-edge", 4, "minute").unwrap();
@@ -17802,7 +17804,7 @@ mod tests {
         let path = tmp.path().join("s.json");
         let mut store = AtomicStore::new();
         seed_chapters(&mut store);
-        store.frames.insert("gt".to_string(), Frame::default());
+        store.frames.insert("gt".into(), Frame::default());
         add_fact(&mut store, &path, &sample_fact("f-beat", "gt")).unwrap();
 
         // Empty registry: a parameter is not registered until add_parameter, and a
@@ -17860,7 +17862,7 @@ mod tests {
         let path = tmp.path().join("s.json");
         let mut store = AtomicStore::new();
         seed_chapters(&mut store);
-        store.frames.insert("gt".to_string(), Frame::default());
+        store.frames.insert("gt".into(), Frame::default());
         add_fact(&mut store, &path, &sample_fact("f-gift", "gt")).unwrap();
         add_parameter(&mut store, &path, "affection", "").unwrap();
         add_parameter(&mut store, &path, "trust", "").unwrap();
@@ -17902,7 +17904,7 @@ mod tests {
         let path = tmp.path().join("s.json");
         let mut store = AtomicStore::new();
         seed_chapters(&mut store);
-        store.frames.insert("gt".to_string(), Frame::default());
+        store.frames.insert("gt".into(), Frame::default());
         add_fact(&mut store, &path, &sample_fact("f-beat", "gt")).unwrap();
         add_parameter(&mut store, &path, "affection", "").unwrap();
         add_parameter_delta(&mut store, &path, "f-beat", "affection", 2).unwrap();
@@ -17957,7 +17959,7 @@ mod tests {
         let path = tmp.path().join("s.json");
         let mut store = AtomicStore::new();
         seed_chapters(&mut store);
-        store.frames.insert("gt".to_string(), Frame::default());
+        store.frames.insert("gt".into(), Frame::default());
         add_fact(&mut store, &path, &sample_fact("f-beat", "gt")).unwrap();
         add_parameter(&mut store, &path, "affection", "").unwrap();
         add_parameter_delta(&mut store, &path, "f-beat", "affection", 2).unwrap();
@@ -17999,7 +18001,7 @@ mod tests {
         let path = tmp.path().join("s.json");
         let mut store = AtomicStore::new();
         seed_chapters(&mut store);
-        store.frames.insert("gt".to_string(), Frame::default());
+        store.frames.insert("gt".into(), Frame::default());
         add_fact(&mut store, &path, &sample_fact("f-choice", "gt")).unwrap();
         add_parameter(&mut store, &path, "affection", "").unwrap();
         add_parameter_gate(
@@ -18070,7 +18072,7 @@ mod tests {
         let path = tmp.path().join("s.json");
         let mut store = AtomicStore::new();
         seed_chapters(&mut store);
-        store.frames.insert("gt".to_string(), Frame::default());
+        store.frames.insert("gt".into(), Frame::default());
         add_fact(&mut store, &path, &sample_fact("f-choice", "gt")).unwrap();
         add_parameter(&mut store, &path, "affection", "").unwrap();
         add_parameter_gate(
@@ -18120,7 +18122,7 @@ mod tests {
         let path = tmp.path().join("s.json");
         let mut store = AtomicStore::new();
         seed_chapters(&mut store);
-        store.frames.insert("gt".to_string(), Frame::default());
+        store.frames.insert("gt".into(), Frame::default());
         add_fact(&mut store, &path, &sample_fact("f-choice", "gt")).unwrap();
         add_parameter(&mut store, &path, "affection", "").unwrap();
         add_parameter_gate(
@@ -18191,7 +18193,7 @@ mod tests {
         let path = tmp.path().join("s.json");
         let mut store = AtomicStore::new();
         seed_chapters(&mut store);
-        store.frames.insert("gt".to_string(), Frame::default());
+        store.frames.insert("gt".into(), Frame::default());
         add_fact(&mut store, &path, &sample_fact("f-hold", "gt")).unwrap();
         add_fact_count(&mut store, &path, "f-hold", 5).unwrap();
         assert_eq!(store.fact_counts["f-hold"], 5);
@@ -18243,7 +18245,7 @@ mod tests {
         let path = tmp.path().join("s.json");
         let mut store = AtomicStore::new();
         seed_chapters(&mut store);
-        store.frames.insert("gt".to_string(), Frame::default());
+        store.frames.insert("gt".into(), Frame::default());
         add_fact(&mut store, &path, &sample_fact("f-hold", "gt")).unwrap();
         add_fact_count(&mut store, &path, "f-hold", 5).unwrap();
         assert!(
@@ -18277,7 +18279,7 @@ mod tests {
         let path = tmp.path().join("s.json");
         let mut store = AtomicStore::new();
         seed_chapters(&mut store);
-        store.frames.insert("gt".to_string(), Frame::default());
+        store.frames.insert("gt".into(), Frame::default());
         add_fact(&mut store, &path, &sample_fact("f-hold", "gt")).unwrap();
         add_fact_count(&mut store, &path, "f-hold", 5).unwrap();
 
@@ -18877,7 +18879,7 @@ mod tests {
         let path = tmp.path().join("s.json");
         let mut store = AtomicStore::new();
         seed_chapters(&mut store); // ch-1, ch-2, ch-3
-        store.frames.insert("gt".to_string(), Frame::default());
+        store.frames.insert("gt".into(), Frame::default());
         store.entities.insert("pike".to_string(), Entity::default());
         add_predicate(
             &mut store,
@@ -19178,7 +19180,7 @@ mod tests {
         let path = tmp.path().join("s.json");
         let mut store = AtomicStore::new();
         seed_chapters(&mut store); // ch-1, ch-2, ch-3
-        store.frames.insert("gt".to_string(), Frame::default());
+        store.frames.insert("gt".into(), Frame::default());
         store.entities.insert("pike".to_string(), Entity::default());
         add_predicate(
             &mut store,
@@ -19291,7 +19293,7 @@ mod tests {
         let path = tmp.path().join("s.json");
         let mut store = AtomicStore::new();
         seed_chapters(&mut store); // ch-1, ch-2, ch-3
-        store.frames.insert("gt".to_string(), Frame::default());
+        store.frames.insert("gt".into(), Frame::default());
         store.entities.insert("pike".to_string(), Entity::default());
         add_predicate(
             &mut store,
@@ -19551,7 +19553,7 @@ mod tests {
         let path = tmp.path().join("s.json");
         let mut store = AtomicStore::new();
         seed_chapters(&mut store);
-        store.frames.insert("gt".to_string(), Frame::default());
+        store.frames.insert("gt".into(), Frame::default());
         add_entity_kind(&mut store, &path, "thing", &[], "").unwrap();
         add_entity_kind(&mut store, &path, "weapon", &["thing"], "").unwrap();
         add_entity_kind(&mut store, &path, "character", &[], "").unwrap();
@@ -19647,7 +19649,7 @@ mod tests {
         let path = tmp.path().join("s.json");
         let mut store = AtomicStore::new();
         seed_chapters(&mut store);
-        store.frames.insert("gt".to_string(), Frame::default());
+        store.frames.insert("gt".into(), Frame::default());
         store.entities.insert("mina".to_string(), Entity::default());
         add_predicate(&mut store, &path, "opened-by", "fact", None, None, &[], "").unwrap();
         let fact_ref = |id: &str, target: &str| FactImport {
@@ -19737,7 +19739,7 @@ mod tests {
         let path = tmp.path().join("s.json");
         let mut store = AtomicStore::new();
         seed_chapters(&mut store);
-        store.frames.insert("gt".to_string(), Frame::default());
+        store.frames.insert("gt".into(), Frame::default());
         store.entities.insert("mina".to_string(), Entity::default());
         add_predicate(&mut store, &path, "opened-by", "fact", None, None, &[], "").unwrap();
         add_fact(&mut store, &path, &sample_fact("f-sluice", "gt")).unwrap();
@@ -19863,7 +19865,7 @@ mod tests {
             let path = tmp.path().join("s.json");
             let mut store = AtomicStore::new();
             seed_chapters(&mut store);
-            store.frames.insert("gt".to_string(), Frame::default());
+            store.frames.insert("gt".into(), Frame::default());
             add_entity_kind(&mut store, &path, "place", &[], "").unwrap();
             add_entity_kind(&mut store, &path, "thing", &[], "").unwrap();
             add_entity(&mut store, &path, "cove", "place", "").unwrap();
@@ -19955,7 +19957,7 @@ mod tests {
             let mut store_b = AtomicStore::new();
             for (s, p) in [(&mut store_a, &path_a), (&mut store_b, &path_b)] {
                 seed_chapters(s);
-                s.frames.insert("gt".to_string(), Frame::default());
+                s.frames.insert("gt".into(), Frame::default());
                 s.entities.insert("kara".to_string(), Entity::default());
                 s.predicates.insert(
                     "alive".into(),
@@ -20063,7 +20065,7 @@ mod tests {
         let path = tmp.path().join("s.json");
         let mut store = AtomicStore::new();
         seed_chapters(&mut store);
-        store.frames.insert("gt".to_string(), Frame::default());
+        store.frames.insert("gt".into(), Frame::default());
         store.entities.insert("kara".to_string(), Entity::default());
         // Unknown object_kind tag rejects (no silent default).
         let err =
@@ -20155,7 +20157,7 @@ mod tests {
         let path = tmp.path().join("s.json");
         let mut store = AtomicStore::new();
         seed_chapters(&mut store);
-        store.frames.insert("gt".to_string(), Frame::default());
+        store.frames.insert("gt".into(), Frame::default());
         store.entities.insert("kara".to_string(), Entity::default());
 
         // The typo: meant scalar, wrote entity. NOTHING could reach it before.
@@ -20232,7 +20234,7 @@ mod tests {
         let path = tmp.path().join("s.json");
         let mut store = AtomicStore::new();
         seed_chapters(&mut store);
-        store.frames.insert("gt".to_string(), Frame::default());
+        store.frames.insert("gt".into(), Frame::default());
         store.entities.insert("kara".to_string(), Entity::default());
         add_predicate(
             &mut store,
@@ -20502,7 +20504,7 @@ mod tests {
         let path = tmp.path().join("s.json");
         let mut store = AtomicStore::new();
         seed_chapters(&mut store);
-        store.frames.insert("gt".to_string(), Frame::default());
+        store.frames.insert("gt".into(), Frame::default());
         import_facts(
             &mut store,
             &path,
@@ -20544,7 +20546,7 @@ mod tests {
         let path = tmp.path().join("s.json");
         let mut store = AtomicStore::new();
         seed_chapters(&mut store);
-        store.frames.insert("gt".to_string(), Frame::default());
+        store.frames.insert("gt".into(), Frame::default());
         store
             .branches
             .insert("vampire-route".to_string(), Branch::default());
@@ -20592,7 +20594,7 @@ mod tests {
         let mut store_b = AtomicStore::new();
         for s in [&mut store_a, &mut store_b] {
             seed_chapters(s);
-            s.frames.insert("gt".to_string(), Frame::default());
+            s.frames.insert("gt".into(), Frame::default());
             s.branches
                 .insert("vampire-route".to_string(), Branch::default());
         }
@@ -20632,7 +20634,7 @@ mod tests {
         let path = tmp.path().join("s.json");
         let mut store = AtomicStore::new();
         seed_chapters(&mut store);
-        store.frames.insert("gt".to_string(), Frame::default());
+        store.frames.insert("gt".into(), Frame::default());
         add_fact(&mut store, &path, &sample_fact("f-typo", "gt")).unwrap();
         add_fact(&mut store, &path, &sample_fact("f-kept", "gt")).unwrap();
         // Reason is mandatory (audit-trail safeguard).
@@ -20662,8 +20664,8 @@ mod tests {
         let path = tmp.path().join("s.json");
         let mut store = AtomicStore::new();
         seed_chapters(&mut store);
-        store.frames.insert("gt".to_string(), Frame::default());
-        store.frames.insert("mina".to_string(), Frame::default());
+        store.frames.insert("gt".into(), Frame::default());
+        store.frames.insert("mina".into(), Frame::default());
         add_fact(&mut store, &path, &sample_fact("f1", "gt")).unwrap();
         // Amend a missing fact = NotFound (creation is add_fact).
         let err = amend_fact(&mut store, &path, &sample_fact("f-absent", "gt"), "fix").unwrap_err();
@@ -20731,7 +20733,7 @@ mod tests {
         let path = tmp.path().join("s.json");
         let mut store = AtomicStore::new();
         seed_chapters(&mut store);
-        store.frames.insert("gt".to_string(), Frame::default());
+        store.frames.insert("gt".into(), Frame::default());
         // The default world-line is known by construction, never registered.
         let err = add_branch(
             &mut store,
@@ -20792,7 +20794,7 @@ mod tests {
         let path = tmp.path().join("s.json");
         let mut store = AtomicStore::new();
         seed_chapters(&mut store);
-        store.frames.insert("gt".to_string(), Frame::default());
+        store.frames.insert("gt".into(), Frame::default());
         // Round 448 — blank id fails with the precise cause even when a
         // fork declaration is present (not a blank-named fork message).
         let err = add_branch(&mut store, &path, "  ", "", Some(("main", "ch-2")), &[]).unwrap_err();
@@ -20847,7 +20849,7 @@ mod tests {
         let path = tmp.path().join("s.json");
         let mut store = AtomicStore::new();
         seed_chapters(&mut store);
-        store.frames.insert("gt".to_string(), Frame::default());
+        store.frames.insert("gt".into(), Frame::default());
         // Two parent world-lines to converge.
         add_branch(&mut store, &path, "sluice", "", Some(("main", "ch-2")), &[]).unwrap();
         add_branch(&mut store, &path, "ride", "", Some(("main", "ch-2")), &[]).unwrap();
@@ -20978,7 +20980,7 @@ mod tests {
         let path = tmp.path().join("s.json");
         let mut store = AtomicStore::new();
         seed_chapters(&mut store);
-        store.frames.insert("gt".to_string(), Frame::default());
+        store.frames.insert("gt".into(), Frame::default());
         let target = sample_fact("f-target", "gt");
         let mut owner = FactImport {
             conflicts_with: vec!["f-target".to_string()],
@@ -21012,7 +21014,7 @@ mod tests {
         let path = tmp.path().join("s.json");
         let mut store = AtomicStore::new();
         seed_chapters(&mut store);
-        store.frames.insert("gt".to_string(), Frame::default());
+        store.frames.insert("gt".into(), Frame::default());
         let about_count = FactImport {
             entities: vec!["dracula".to_string()],
             ..sample_fact("f-about", "gt")
@@ -21156,7 +21158,7 @@ mod tests {
         let path = tmp.path().join("s.json");
         let mut base = AtomicStore::new();
         seed_chapters(&mut base); // ch-1, ch-2, ch-3 sections
-        base.frames.insert("gt".to_string(), Frame::default());
+        base.frames.insert("gt".into(), Frame::default());
         add_entity(&mut base, &path, "a", "", "").unwrap();
         add_entity(&mut base, &path, "b", "", "").unwrap();
         add_predicate(&mut base, &path, "rel", "entity", None, None, &[], "").unwrap();
@@ -21303,7 +21305,7 @@ mod tests {
         let base = {
             let mut s = AtomicStore::new();
             seed_chapters(&mut s); // ch-1, ch-2, ch-3
-            s.frames.insert("gt".to_string(), Frame::default());
+            s.frames.insert("gt".into(), Frame::default());
             add_entity(&mut s, &path, "a", "", "").unwrap();
             add_entity(&mut s, &path, "b", "", "").unwrap();
             add_predicate(&mut s, &path, "rel", "entity", None, None, &[], "").unwrap();
@@ -21450,7 +21452,7 @@ mod tests {
     #[test]
     fn fact_registry_refs_enumerates_every_facet() {
         let base = |object: TypedObject| NarrativeFact {
-            frame: "gt".to_string(),
+            frame: "gt".into(),
             branch: mnemosyne_core::MAIN_BRANCH.to_string(),
             entities: vec!["a".to_string()],
             claim: "c".to_string(),
@@ -21512,8 +21514,8 @@ mod tests {
         let path = tmp.path().join(".atomic/workspace.atomic.json");
         let mut store = AtomicStore::new();
         seed_chapters(&mut store);
-        store.frames.insert("gt".to_string(), Frame::default());
-        store.frames.insert("seward".to_string(), Frame::default());
+        store.frames.insert("gt".into(), Frame::default());
+        store.frames.insert("seward".into(), Frame::default());
         add_fact(&mut store, &path, &sample_fact("f1", "gt")).unwrap();
         add_fact(&mut store, &path, &sample_fact("f2", "seward")).unwrap();
         // Unknown target fail-loud.
