@@ -66,6 +66,16 @@ macro_rules! ref_id {
             pub fn into_inner(self) -> String {
                 self.0
             }
+
+            /// An UNSET id. Several fields spell "no kind declared" as the empty
+            /// string and skip it on the wire, so this keeps
+            /// `skip_serializing_if` working after the type change — a missing
+            /// `is_empty` would otherwise force those fields back to `String`
+            /// and reopen exactly the hole this migration closes.
+            #[must_use]
+            pub fn is_empty(&self) -> bool {
+                self.0.is_empty()
+            }
         }
 
         /// So `map.contains_key("literal")` and `map.get(s: &str)` keep working
@@ -140,6 +150,16 @@ ref_id! {
     /// A key of the predicates registry ([`crate::Predicate`]) — the rule a
     /// typed claim keys off, so a typo here silently escapes its rule.
     PredicateId
+}
+
+ref_id! {
+    /// A key of the entity-kinds registry ([`crate::EntityKind`]).
+    ///
+    /// The first id to appear in FOUR fields across three registries —
+    /// `Entity::kind`, `EntityKind::parents`, `Predicate::subject_kind` and
+    /// `Predicate::object_entity_kind`. Before this, nothing in the types said
+    /// those four hold the same vocabulary.
+    EntityKindId
 }
 
 #[cfg(test)]

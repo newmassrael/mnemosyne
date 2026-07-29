@@ -487,8 +487,8 @@ pub struct Entity {
     /// kinds over 109 entities, every one filled, zero typos — the set was
     /// already closed in practice, so registration costs the author nothing
     /// and buys the spatial gate a question it can actually ask.
-    #[serde(default, skip_serializing_if = "String::is_empty")]
-    pub kind: String,
+    #[serde(default, skip_serializing_if = "crate::EntityKindId::is_empty")]
+    pub kind: crate::EntityKindId,
     /// Free-form description. Optional prose, not load-bearing.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub description: String,
@@ -526,7 +526,7 @@ pub struct EntityKind {
     /// whole graph acyclic) — the registry-symmetry parity. `BTreeSet` dedups
     /// and orders deterministically (a byte-stable on-disk shape).
     #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
-    pub parents: BTreeSet<String>,
+    pub parents: BTreeSet<crate::EntityKindId>,
     /// Free-form description. Optional prose, not load-bearing.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub description: String,
@@ -750,14 +750,14 @@ pub struct Predicate {
     /// here (an `adjacent` predicate declares `subject_kind = place`), enforced
     /// at write time rather than by a scan.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub subject_kind: Option<String>,
+    pub subject_kind: Option<crate::EntityKindId>,
     /// Round 701 — required entity-KIND for an ENTITY-shaped OBJECT leg (a
     /// registered `entity_kinds` ref; `None` = any). Only meaningful when
     /// `object_kind = Entity`; the builder REJECTS `Some` under any non-entity
     /// kind (a token / quantity / fact object has no entity kind), so the
     /// nonsensical pairing is unreachable through the mutate API.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub object_entity_kind: Option<String>,
+    pub object_entity_kind: Option<crate::EntityKindId>,
     /// Round 705 — the CLOSED object vocabulary, meaningful ONLY when
     /// `object_kind = Token`. Every [`TypedObject::Token`] under this predicate
     /// must be a member (the write path rejects a token outside the set — the

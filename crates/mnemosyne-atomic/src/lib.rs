@@ -810,7 +810,7 @@ pub struct AtomicStore {
     /// kinds must register them (measured migration cost on the live corpus:
     /// 5 kinds over 109 entities).
     #[serde(default)]
-    pub entity_kinds: BTreeMap<String, EntityKind>,
+    pub entity_kinds: BTreeMap<mnemosyne_core::EntityKindId, EntityKind>,
     /// Unit registry (Round 706) — keyed by unit id. Every
     /// `TypedObject::Quantity.unit` must name a key here (fail-loud at the
     /// mutate primitives AND at the scan boundary; the entity_kinds symmetry —
@@ -5518,12 +5518,12 @@ fn build_typed_claim(
     // enforced here, not by a scan). 0 parent links ⇒ subtree = singleton ⇒
     // exact-match, the R701 behaviour unchanged.
     if let Some(req) = &decl.subject_kind {
-        if !is_kind_or_subkind(store, entity_kind(store, &subject), req) {
+        if !is_kind_or_subkind(store, entity_kind(store, subject.as_str()), req) {
             return Err(format!(
                 "fact `{fact_id}`: predicate `{predicate}` requires subject kind `{req}` \
                  (or a subkind), but entity `{subject}` is kind `{}` (declare the entity's \
                  kind via add_entity, or use a subject of the required kind)",
-                entity_kind(store, &subject).unwrap_or("<unspecified>")
+                entity_kind(store, subject.as_str()).map_or("<unspecified>", |k| k.as_str())
             ));
         }
     }
@@ -5533,12 +5533,12 @@ fn build_typed_claim(
             // Round 701 — endpoint-kind gate (object leg), entity objects only;
             // subtree-aware (Round 732), like the subject leg above.
             if let Some(req) = &decl.object_entity_kind {
-                if !is_kind_or_subkind(store, entity_kind(store, &id), req) {
+                if !is_kind_or_subkind(store, entity_kind(store, id.as_str()), req) {
                     return Err(format!(
                         "fact `{fact_id}`: predicate `{predicate}` requires object kind `{req}` \
                          (or a subkind), but entity `{id}` is kind `{}` (declare the entity's \
                          kind, or use an object of the required kind)",
-                        entity_kind(store, &id).unwrap_or("<unspecified>")
+                        entity_kind(store, id.as_str()).map_or("<unspecified>", |k| k.as_str())
                     ));
                 }
             }
@@ -6212,20 +6212,20 @@ pub fn add_entity_kind(
     // never close a multi-node cycle — the only cycle a write can make is a
     // self-parent (rejected below); a multi-node cycle needs a parent-mutation
     // setter (a later round) and would be caught there + at the scan boundary.
-    let parents: BTreeSet<String> = parents
+    let parents: BTreeSet<mnemosyne_core::EntityKindId> = parents
         .iter()
         .map(|p| p.trim())
         .filter(|p| !p.is_empty())
-        .map(str::to_string)
+        .map(mnemosyne_core::EntityKindId::from)
         .collect();
     for p in &parents {
-        if p == &id {
+        if p.as_str() == id {
             return Err(AtomicMutateError::Validation(format!(
                 "add_entity_kind: kind `{id}` cannot be its own parent (a kind \
                  inheritance graph has no self-loop)"
             )));
         }
-        if !store.entity_kinds.contains_key(p) {
+        if !store.entity_kinds.contains_key(p.as_str()) {
             let known = store
                 .entity_kinds
                 .keys()
@@ -6288,27 +6288,30 @@ pub fn set_entity_kind_parents(
     parents: &[&str],
 ) -> Result<AtomicMutateReceipt, AtomicMutateError> {
     let id = kind_id.trim().to_string();
-    if !store.entity_kinds.contains_key(&id) {
+    if !store.entity_kinds.contains_key(id.as_str()) {
         return Err(AtomicMutateError::Validation(format!(
             "set_entity_kind_parents: kind `{id}` not present in the registry — \
              add_entity_kind creates, set_entity_kind_parents mutates (fail-loud; a \
              silent create would put two creators on one registry)"
         )));
     }
-    let new_parents: BTreeSet<String> = parents
+    let new_parents: BTreeSet<mnemosyne_core::EntityKindId> = parents
         .iter()
         .map(|p| p.trim())
         .filter(|p| !p.is_empty())
-        .map(str::to_string)
+        .map(mnemosyne_core::EntityKindId::from)
         .collect();
+    // Typed once, outside the loop: the reachability check takes an id, not a
+    // string, and rebuilding it per iteration would allocate for nothing.
+    let kind_id_typed = mnemosyne_core::EntityKindId::from(id.as_str());
     for p in &new_parents {
-        if p == &id {
+        if p.as_str() == id {
             return Err(AtomicMutateError::Validation(format!(
                 "set_entity_kind_parents: kind `{id}` cannot be its own parent (a \
                  kind inheritance graph has no self-loop)"
             )));
         }
-        if !store.entity_kinds.contains_key(p) {
+        if !store.entity_kinds.contains_key(p.as_str()) {
             return Err(AtomicMutateError::Validation(format!(
                 "set_entity_kind_parents: kind `{id}` names parent `{p}`, which is not \
                  a registered entity kind — register it first or fix the spelling"
@@ -6319,14 +6322,18 @@ pub fn set_entity_kind_parents(
         // making p a super-kind of id would loop. Checked on the CURRENT graph —
         // sound because any new cycle must use one of id's new outgoing edges and
         // therefore pass through id (reaching id IS the detection).
-        if is_kind_or_subkind(store, Some(p.as_str()), &id) {
+        if is_kind_or_subkind(store, Some(p), &kind_id_typed) {
             return Err(AtomicMutateError::Validation(format!(
                 "set_entity_kind_parents: making `{p}` a parent of `{id}` would create \
                  a cycle (`{p}` is already a subkind of `{id}`)"
             )));
         }
     }
-    if store.entity_kinds[&id].parents == new_parents {
+    if store
+        .entity_kinds
+        .get(id.as_str())
+        .is_some_and(|k| k.parents == new_parents)
+    {
         return registry_receipt(
             store,
             sidecar_path,
@@ -6336,7 +6343,7 @@ pub fn set_entity_kind_parents(
             false,
         );
     }
-    store.entity_kinds.get_mut(&id).unwrap().parents = new_parents;
+    store.entity_kinds.get_mut(id.as_str()).unwrap().parents = new_parents;
     registry_receipt(
         store,
         sidecar_path,
@@ -6372,7 +6379,7 @@ pub fn remove_entity_kind(
             "remove_entity_kind: kind_id mandatory (non-empty after trim)".to_string(),
         ));
     }
-    if !store.entity_kinds.contains_key(&id) {
+    if !store.entity_kinds.contains_key(id.as_str()) {
         return Err(AtomicMutateError::Validation(format!(
             "remove_entity_kind: kind `{id}` not present in the registry (fail-loud)"
         )));
@@ -6397,7 +6404,7 @@ pub fn remove_entity_kind(
         let children: Vec<&str> = store
             .entity_kinds
             .iter()
-            .filter(|(kid, k)| kid.as_str() != id && k.parents.contains(&id))
+            .filter(|(kid, k)| kid.as_str() != id && k.parents.iter().any(|p| p.as_str() == id))
             .map(|(kid, _)| kid.as_str())
             .collect();
         if !children.is_empty() {
@@ -6411,8 +6418,8 @@ pub fn remove_entity_kind(
             .predicates
             .iter()
             .filter(|(_, p)| {
-                p.subject_kind.as_deref() == Some(id.as_str())
-                    || p.object_entity_kind.as_deref() == Some(id.as_str())
+                p.subject_kind.as_ref().map(|k| k.as_str()) == Some(id.as_str())
+                    || p.object_entity_kind.as_ref().map(|k| k.as_str()) == Some(id.as_str())
             })
             .map(|(pid, _)| pid.as_str())
             .collect();
@@ -6433,7 +6440,7 @@ pub fn remove_entity_kind(
             offenders.join("; ")
         )));
     }
-    store.entity_kinds.remove(&id);
+    store.entity_kinds.remove(id.as_str());
     registry_receipt(
         store,
         sidecar_path,
@@ -6475,11 +6482,15 @@ pub fn entity_kind_registered(store: &AtomicStore, kind: &str) -> bool {
 /// collapses a diamond (a super-kind reached by two paths is expanded once). An
 /// empty `parents` set ⇒ the walk finds only the start node ⇒ exact-match
 /// (backward-compat: a flat registry is the DAG with no edges).
-pub fn is_kind_or_subkind(store: &AtomicStore, kind: Option<&str>, required: &str) -> bool {
-    let Some(start) = kind.map(str::trim).filter(|s| !s.is_empty()) else {
+pub fn is_kind_or_subkind(
+    store: &AtomicStore,
+    kind: Option<&mnemosyne_core::EntityKindId>,
+    required: &mnemosyne_core::EntityKindId,
+) -> bool {
+    let Some(start) = kind.map(|k| k.as_str().trim()).filter(|s| !s.is_empty()) else {
         return false;
     };
-    let required = required.trim();
+    let required = required.as_str().trim();
     if required.is_empty() {
         return false;
     }
@@ -6516,8 +6527,8 @@ pub fn unregistered_entity_kinds(store: &AtomicStore) -> Vec<(String, String)> {
     store
         .entities
         .iter()
-        .filter(|(_, e)| !entity_kind_registered(store, &e.kind))
-        .map(|(id, e)| (id.clone(), e.kind.clone()))
+        .filter(|(_, e)| !entity_kind_registered(store, e.kind.as_str()))
+        .map(|(id, e)| (id.clone(), e.kind.to_string()))
         .collect()
 }
 
@@ -6545,13 +6556,13 @@ pub fn entity_kind_parent_violations(store: &AtomicStore) -> Vec<(String, String
     // (1) Dangling: every direct parent ref must resolve in the registry.
     for (id, ek) in &store.entity_kinds {
         for parent in &ek.parents {
-            let parent = parent.trim();
+            let parent = parent.as_str().trim();
             if parent.is_empty() {
                 continue;
             }
             if !store.entity_kinds.contains_key(parent) {
                 out.push((
-                    id.clone(),
+                    id.to_string(),
                     format!(
                         "entity kind `{id}` names parent `{parent}`, which is not in the \
                          entity-kind registry (out-of-band edit — register the parent, or \
@@ -6585,7 +6596,7 @@ pub fn entity_kind_parent_violations(store: &AtomicStore) -> Vec<(String, String
                     if ek
                         .parents
                         .iter()
-                        .any(|p| bad.contains(p.trim()) && !p.trim().is_empty())
+                        .any(|p| bad.contains(p.as_str().trim()) && !p.as_str().trim().is_empty())
                     {
                         bad.insert(node);
                     }
@@ -6599,7 +6610,7 @@ pub fn entity_kind_parent_violations(store: &AtomicStore) -> Vec<(String, String
             stack.push((node, true));
             if let Some(ek) = store.entity_kinds.get(node) {
                 for parent in &ek.parents {
-                    let parent = parent.trim();
+                    let parent = parent.as_str().trim();
                     if parent.is_empty() || !store.entity_kinds.contains_key(parent) {
                         continue; // dangling / empty — a dead end, not a cycle edge
                     }
@@ -6618,7 +6629,7 @@ pub fn entity_kind_parent_violations(store: &AtomicStore) -> Vec<(String, String
     for id in store.entity_kinds.keys() {
         if bad.contains(id.as_str()) {
             out.push((
-                id.clone(),
+                id.to_string(),
                 format!(
                     "entity kind `{id}` has a cyclic parent chain (a kind inheritance \
                      graph has no loop — an out-of-band edit)"
@@ -7759,7 +7770,7 @@ pub fn add_entity(
         )));
     }
     let candidate = Entity {
-        kind: kind.to_string(),
+        kind: kind.into(),
         description: description.trim().to_string(),
     };
     let created = stage_registry_entry(&mut store.entities, "add_entity", "entity", &id, candidate)
@@ -7843,8 +7854,8 @@ fn build_predicate(
     }
     Ok(Predicate {
         object_kind,
-        subject_kind,
-        object_entity_kind,
+        subject_kind: subject_kind.map(Into::into),
+        object_entity_kind: object_entity_kind.map(Into::into),
         object_tokens: tokens,
         description: description.trim().to_string(),
     })
@@ -7906,11 +7917,11 @@ pub fn add_predicate(
 /// absent or its kind is unspecified (empty). A predicate's endpoint-kind
 /// constraint is matched against this: the leg satisfies iff `Some(k)` equals
 /// the required kind — an unspecified kind never satisfies a `Some` constraint.
-fn entity_kind<'a>(store: &'a AtomicStore, id: &str) -> Option<&'a str> {
+fn entity_kind<'a>(store: &'a AtomicStore, id: &str) -> Option<&'a mnemosyne_core::EntityKindId> {
     store
         .entities
         .get(id)
-        .map(|e| e.kind.as_str())
+        .map(|e| &e.kind)
         .filter(|k| !k.is_empty())
 }
 
@@ -7966,8 +7977,11 @@ fn use_satisfies_declaration(store: &AtomicStore, t: &TypedClaim, decl: &Predica
 /// the sibling of `fact_registry_refs`).
 fn predicate_kind_refs(p: &Predicate) -> [(&'static str, Option<&str>); 2] {
     [
-        ("subject_kind", p.subject_kind.as_deref()),
-        ("object_entity_kind", p.object_entity_kind.as_deref()),
+        ("subject_kind", p.subject_kind.as_ref().map(|k| k.as_str())),
+        (
+            "object_entity_kind",
+            p.object_entity_kind.as_ref().map(|k| k.as_str()),
+        ),
     ]
 }
 
@@ -9139,7 +9153,7 @@ pub fn apply_facts_manifest(
         // EARLIER in the array (parent-declared-first) and not the kind itself —
         // the same invariant `add_entity_kind` enforces. A new leaf naming
         // already-registered parents cannot close a cycle.
-        let mut parents: BTreeSet<String> = BTreeSet::new();
+        let mut parents: BTreeSet<mnemosyne_core::EntityKindId> = BTreeSet::new();
         for p in &k.parents {
             let p = p.trim();
             if p.is_empty() {
@@ -9158,7 +9172,7 @@ pub fn apply_facts_manifest(
                      in the entity_kinds array, or register it with add_entity_kind"
                 )));
             }
-            parents.insert(p.to_string());
+            parents.insert(p.into());
         }
         let candidate = EntityKind {
             parents,
@@ -9213,7 +9227,7 @@ pub fn apply_facts_manifest(
             )));
         }
         let candidate = Entity {
-            kind: kind.to_string(),
+            kind: kind.into(),
             description: e.description.trim().to_string(),
         };
         let created = stage_registry_entry(
@@ -18300,17 +18314,49 @@ mod tests {
         add_entity_kind(&mut store, &path, "blade", &["weapon"], "").unwrap();
         add_entity_kind(&mut store, &path, "potion", &["thing"], "").unwrap();
         // Exact + ancestor accept.
-        assert!(is_kind_or_subkind(&store, Some("thing"), "thing"));
-        assert!(is_kind_or_subkind(&store, Some("weapon"), "thing"));
-        assert!(is_kind_or_subkind(&store, Some("blade"), "thing")); // 2 hops
-        assert!(is_kind_or_subkind(&store, Some("blade"), "weapon"));
+        assert!(is_kind_or_subkind(
+            &store,
+            Some(&"thing".into()),
+            &"thing".into()
+        ));
+        assert!(is_kind_or_subkind(
+            &store,
+            Some(&"weapon".into()),
+            &"thing".into()
+        ));
+        assert!(is_kind_or_subkind(
+            &store,
+            Some(&"blade".into()),
+            &"thing".into()
+        )); // 2 hops
+        assert!(is_kind_or_subkind(
+            &store,
+            Some(&"blade".into()),
+            &"weapon".into()
+        ));
         // Directional: a PARENT is NOT a subkind of its child; siblings disjoint.
-        assert!(!is_kind_or_subkind(&store, Some("thing"), "weapon"));
-        assert!(!is_kind_or_subkind(&store, Some("potion"), "weapon"));
+        assert!(!is_kind_or_subkind(
+            &store,
+            Some(&"thing".into()),
+            &"weapon".into()
+        ));
+        assert!(!is_kind_or_subkind(
+            &store,
+            Some(&"potion".into()),
+            &"weapon".into()
+        ));
         // Unspecified / empty / unknown kind resolves to nothing.
-        assert!(!is_kind_or_subkind(&store, None, "thing"));
-        assert!(!is_kind_or_subkind(&store, Some(""), "thing"));
-        assert!(!is_kind_or_subkind(&store, Some("ghost"), "thing"));
+        assert!(!is_kind_or_subkind(&store, None, &"thing".into()));
+        assert!(!is_kind_or_subkind(
+            &store,
+            Some(&"".into()),
+            &"thing".into()
+        ));
+        assert!(!is_kind_or_subkind(
+            &store,
+            Some(&"ghost".into()),
+            &"thing".into()
+        ));
 
         // MULTIPLE INHERITANCE (the R738 gap): magic-item is a second root; a
         // magic-sword is BOTH a blade (⊂ weapon ⊂ thing) AND a magic-item.
@@ -18323,22 +18369,38 @@ mod tests {
             "",
         )
         .unwrap();
-        assert!(is_kind_or_subkind(&store, Some("magic-sword"), "blade"));
-        assert!(is_kind_or_subkind(&store, Some("magic-sword"), "weapon"));
-        assert!(is_kind_or_subkind(&store, Some("magic-sword"), "thing")); // via blade
         assert!(is_kind_or_subkind(
             &store,
-            Some("magic-sword"),
-            "magic-item"
+            Some(&"magic-sword".into()),
+            &"blade".into()
+        ));
+        assert!(is_kind_or_subkind(
+            &store,
+            Some(&"magic-sword".into()),
+            &"weapon".into()
+        ));
+        assert!(is_kind_or_subkind(
+            &store,
+            Some(&"magic-sword".into()),
+            &"thing".into()
+        )); // via blade
+        assert!(is_kind_or_subkind(
+            &store,
+            Some(&"magic-sword".into()),
+            &"magic-item".into()
         )); // 2nd parent
         assert!(is_kind_or_subkind(
             &store,
-            Some("magic-sword"),
-            "magic-sword"
+            Some(&"magic-sword".into()),
+            &"magic-sword".into()
         ));
         // A single-parent tree CANNOT reach both: this is the capability flat +
         // single-parent lacked. It stays directional — magic-item is not a weapon.
-        assert!(!is_kind_or_subkind(&store, Some("magic-item"), "weapon"));
+        assert!(!is_kind_or_subkind(
+            &store,
+            Some(&"magic-item".into()),
+            &"weapon".into()
+        ));
 
         // DIAMOND: gem ⊂ {shiny, valuable}; both shiny and valuable ⊂ thing2 —
         // thing2 is an ancestor by two paths, resolved once (no hang, no dup).
@@ -18346,34 +18408,58 @@ mod tests {
         add_entity_kind(&mut store, &path, "shiny", &["thing2"], "").unwrap();
         add_entity_kind(&mut store, &path, "valuable", &["thing2"], "").unwrap();
         add_entity_kind(&mut store, &path, "gem", &["shiny", "valuable"], "").unwrap();
-        assert!(is_kind_or_subkind(&store, Some("gem"), "thing2"));
-        assert!(is_kind_or_subkind(&store, Some("gem"), "shiny"));
-        assert!(is_kind_or_subkind(&store, Some("gem"), "valuable"));
+        assert!(is_kind_or_subkind(
+            &store,
+            Some(&"gem".into()),
+            &"thing2".into()
+        ));
+        assert!(is_kind_or_subkind(
+            &store,
+            Some(&"gem".into()),
+            &"shiny".into()
+        ));
+        assert!(is_kind_or_subkind(
+            &store,
+            Some(&"gem".into()),
+            &"valuable".into()
+        ));
 
         // 0 parent links ⇒ exact-match only (the backward-compat line).
         let mut flat = AtomicStore::new();
         add_entity_kind(&mut flat, &path, "thing", &[], "").unwrap();
         add_entity_kind(&mut flat, &path, "weapon", &[], "").unwrap();
-        assert!(is_kind_or_subkind(&flat, Some("weapon"), "weapon"));
-        assert!(!is_kind_or_subkind(&flat, Some("weapon"), "thing"));
+        assert!(is_kind_or_subkind(
+            &flat,
+            Some(&"weapon".into()),
+            &"weapon".into()
+        ));
+        assert!(!is_kind_or_subkind(
+            &flat,
+            Some(&"weapon".into()),
+            &"thing".into()
+        ));
 
         // A hand-edited parent CYCLE terminates (does not hang) and returns false.
         let mut cyclic = AtomicStore::new();
         cyclic.entity_kinds.insert(
-            "a".to_string(),
+            "a".into(),
             EntityKind {
-                parents: BTreeSet::from(["b".to_string()]),
+                parents: BTreeSet::from(["b".into()]),
                 description: String::new(),
             },
         );
         cyclic.entity_kinds.insert(
-            "b".to_string(),
+            "b".into(),
             EntityKind {
-                parents: BTreeSet::from(["a".to_string()]),
+                parents: BTreeSet::from(["a".into()]),
                 description: String::new(),
             },
         );
-        assert!(!is_kind_or_subkind(&cyclic, Some("a"), "thing"));
+        assert!(!is_kind_or_subkind(
+            &cyclic,
+            Some(&"a".into()),
+            &"thing".into()
+        ));
     }
 
     /// Round 738 (DAG) — the parent-link invariant is enforced IDENTICALLY at the
@@ -18394,7 +18480,7 @@ mod tests {
         add_entity_kind(&mut store, &path, "magic-sword", &["weapon", "magic"], "").unwrap();
         assert_eq!(
             store.entity_kinds["magic-sword"].parents,
-            BTreeSet::from(["weapon".to_string(), "magic".to_string()])
+            BTreeSet::from(["weapon".into(), "magic".into()])
         );
         assert!(
             store_registry_violations(&store).is_empty(),
@@ -18416,9 +18502,9 @@ mod tests {
 
         // SCAN BOUNDARY flags an out-of-band DANGLING parent (write↔scan parity).
         store.entity_kinds.insert(
-            "widget".to_string(),
+            "widget".into(),
             EntityKind {
-                parents: BTreeSet::from(["gone".to_string()]),
+                parents: BTreeSet::from(["gone".into()]),
                 description: String::new(),
             },
         );
@@ -18437,7 +18523,7 @@ mod tests {
             .get_mut("thing")
             .unwrap()
             .parents
-            .insert("weapon".to_string());
+            .insert("weapon".into());
         let v = store_registry_violations(&store);
         assert!(
             v.iter().any(|m| m.contains("cyclic parent chain")),
@@ -18524,8 +18610,8 @@ mod tests {
             "rogue".into(),
             Predicate {
                 object_kind: PredicateObjectKind::Entity,
-                subject_kind: Some("gone-subj".to_string()),
-                object_entity_kind: Some("gone-obj".to_string()),
+                subject_kind: Some("gone-subj".into()),
+                object_entity_kind: Some("gone-obj".into()),
                 object_tokens: BTreeSet::new(),
                 description: String::new(),
             },
@@ -18950,18 +19036,18 @@ mod tests {
         // A tail (t) leading INTO a 2-cycle (a↔b): all three never reach a root.
         for (k, p) in [("a", "b"), ("b", "a"), ("t", "a")] {
             store.entity_kinds.insert(
-                k.to_string(),
+                k.into(),
                 EntityKind {
-                    parents: BTreeSet::from([p.to_string()]),
+                    parents: BTreeSet::from([p.into()]),
                     description: String::new(),
                 },
             );
         }
         // A SELF-LOOP (1-cycle), out-of-band.
         store.entity_kinds.insert(
-            "z".to_string(),
+            "z".into(),
             EntityKind {
-                parents: BTreeSet::from(["z".to_string()]),
+                parents: BTreeSet::from(["z".into()]),
                 description: String::new(),
             },
         );
@@ -19003,7 +19089,7 @@ mod tests {
         let store = AtomicStore::load(&path).unwrap();
         assert_eq!(
             store.entity_kinds["weapon"].parents,
-            BTreeSet::from(["thing".to_string()]),
+            BTreeSet::from(["thing".into()]),
             "legacy `parent` migrates to a one-element `parents` set"
         );
         assert!(
@@ -19015,7 +19101,11 @@ mod tests {
             "an explicit null parent stays a root (no phantom parent)"
         );
         // The resolver works on the migrated store.
-        assert!(is_kind_or_subkind(&store, Some("weapon"), "thing"));
+        assert!(is_kind_or_subkind(
+            &store,
+            Some(&"weapon".into()),
+            &"thing".into()
+        ));
 
         // NON-VACUITY control: the SAME raw shape parsed WITHOUT the migration
         // drops the legacy `parent` (the retyped struct has no such field), so
@@ -19328,14 +19418,18 @@ mod tests {
         set_entity_kind_parents(&mut store, &path, "weapon", &["thing", "magic"]).unwrap();
         assert_eq!(
             store.entity_kinds["weapon"].parents,
-            BTreeSet::from(["thing".to_string(), "magic".to_string()])
+            BTreeSet::from(["thing".into(), "magic".into()])
         );
-        assert!(is_kind_or_subkind(&store, Some("weapon"), "magic"));
+        assert!(is_kind_or_subkind(
+            &store,
+            Some(&"weapon".into()),
+            &"magic".into()
+        ));
         // Full replace, not a merge: setting just [thing] drops magic.
         set_entity_kind_parents(&mut store, &path, "weapon", &["thing"]).unwrap();
         assert_eq!(
             store.entity_kinds["weapon"].parents,
-            BTreeSet::from(["thing".to_string()])
+            BTreeSet::from(["thing".into()])
         );
 
         // Rejects self and an unregistered parent.
@@ -19362,12 +19456,16 @@ mod tests {
         set_entity_kind_parents(&mut store, &path, "weapon", &["thing"]).unwrap();
         assert_eq!(
             store.entity_kinds["weapon"].parents,
-            BTreeSet::from(["thing".to_string()])
+            BTreeSet::from(["thing".into()])
         );
         // Empty roots the kind.
         set_entity_kind_parents(&mut store, &path, "weapon", &[]).unwrap();
         assert!(store.entity_kinds["weapon"].parents.is_empty());
-        assert!(!is_kind_or_subkind(&store, Some("weapon"), "thing"));
+        assert!(!is_kind_or_subkind(
+            &store,
+            Some(&"weapon".into()),
+            &"thing".into()
+        ));
     }
 
     /// Round 740 — remove_entity_kind: fail-loud on an absent kind; REFUSES while
@@ -19431,9 +19529,9 @@ mod tests {
         // A SELF-PARENT (out-of-band) does NOT block its own removal — the ref
         // leaves with the node.
         store.entity_kinds.insert(
-            "selfy".to_string(),
+            "selfy".into(),
             EntityKind {
-                parents: BTreeSet::from(["selfy".to_string()]),
+                parents: BTreeSet::from(["selfy".into()]),
                 description: String::new(),
             },
         );
@@ -21001,18 +21099,18 @@ mod tests {
         let mut store = AtomicStore::new();
         store
             .entity_kinds
-            .insert("place".to_string(), EntityKind::default());
+            .insert("place".into(), EntityKind::default());
         store.entities.insert(
             "ent-b".to_string(),
             Entity {
-                kind: "place".to_string(),
+                kind: "place".into(),
                 description: String::new(),
             },
         );
         store.entities.insert(
             "ent-nameless".to_string(),
             Entity {
-                kind: String::new(),
+                kind: mnemosyne_core::EntityKindId::default(),
                 description: String::new(),
             },
         );
@@ -21023,14 +21121,14 @@ mod tests {
         store.entities.insert(
             "ent-a".to_string(),
             Entity {
-                kind: "island".to_string(),
+                kind: "island".into(),
                 description: String::new(),
             },
         );
         store.entities.insert(
             "ent-c".to_string(),
             Entity {
-                kind: "flat".to_string(),
+                kind: "flat".into(),
                 description: String::new(),
             },
         );

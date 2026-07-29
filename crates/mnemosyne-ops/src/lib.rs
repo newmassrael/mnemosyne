@@ -209,7 +209,8 @@ pub fn entity_kinds(
     Ok(store
         .entities
         .iter()
-        .map(|(id, e)| (id.clone(), e.kind.clone()))
+        // A report map of TEXT — the id becomes a string at this output edge.
+        .map(|(id, e)| (id.clone(), e.kind.to_string()))
         .collect())
 }
 
@@ -1547,7 +1548,7 @@ pub fn entity_dossier(
         .collect();
     Ok(EntityDossier {
         entity_id: id.to_string(),
-        kind: entity.kind.clone(),
+        kind: entity.kind.to_string(),
         description: entity.description.clone(),
         fact_count: facts.len(),
         facts,

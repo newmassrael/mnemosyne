@@ -3985,11 +3985,10 @@ fn scan_spatial_map(
 ) {
     // The place kind (R701): core never hardcodes "place" (invariant 4). Read
     // either leg (R699 half-enforced trap). Inert (completeness off) when neither.
-    let place_kind = store.predicates.get(adjacency).and_then(|p| {
-        p.subject_kind
-            .as_deref()
-            .or(p.object_entity_kind.as_deref())
-    });
+    let place_kind = store
+        .predicates
+        .get(adjacency)
+        .and_then(|p| p.subject_kind.as_ref().or(p.object_entity_kind.as_ref()));
     for world in worlds {
         let ctx = WorldCtx {
             world,
@@ -4181,7 +4180,7 @@ fn scan_spatial_map(
             // singleton ⇒ the exact-match this replaced.
             if let Some(pk) = place_kind {
                 for (eid, ent) in &store.entities {
-                    if mnemosyne_atomic::is_kind_or_subkind(store, Some(ent.kind.as_str()), pk)
+                    if mnemosyne_atomic::is_kind_or_subkind(store, Some(&ent.kind), pk)
                         && !union_nodes.contains(eid.as_str())
                         && !union_containers.contains(eid.as_str())
                     {
@@ -9832,19 +9831,19 @@ mod tests {
         let mut store = store_with(all);
         store
             .entity_kinds
-            .insert("place".to_string(), mnemosyne_core::EntityKind::default());
+            .insert("place".into(), mnemosyne_core::EntityKind::default());
         for p in place_entities {
             store
                 .entities
                 .get_mut(*p)
                 .expect("place entity present in the store")
-                .kind = "place".to_string();
+                .kind = "place".into();
         }
         for p in floating {
             store.entities.insert(
                 p.to_string(),
                 mnemosyne_core::Entity {
-                    kind: "place".to_string(),
+                    kind: "place".into(),
                     description: String::new(),
                 },
             );
@@ -9854,7 +9853,7 @@ mod tests {
                 .predicates
                 .get_mut("adjacent")
                 .expect("adjacent predicate present")
-                .subject_kind = Some(sk.to_string());
+                .subject_kind = Some(sk.into());
         }
         store
     }
@@ -9927,7 +9926,7 @@ mod tests {
             .predicates
             .get_mut("adjacent")
             .expect("adjacent predicate present")
-            .object_entity_kind = Some("place".to_string());
+            .object_entity_kind = Some("place".into());
         let report = scan_continuity(&store, &order, &rule).unwrap();
         assert_eq!(
             invented(&report.violations),
@@ -12577,11 +12576,11 @@ mod tests {
         let mut store = AtomicStore::new();
         store
             .entity_kinds
-            .insert("place".to_string(), mnemosyne_core::EntityKind::default());
+            .insert("place".into(), mnemosyne_core::EntityKind::default());
         store.entities.insert(
             "ent-village".to_string(),
             mnemosyne_core::Entity {
-                kind: "place".to_string(),
+                kind: "place".into(),
                 description: String::new(),
             },
         );
@@ -12625,7 +12624,7 @@ mod tests {
             b.entities.insert(
                 "ent-x".to_string(),
                 mnemosyne_core::Entity {
-                    kind: kind.to_string(),
+                    kind: kind.into(),
                     description: String::new(),
                 },
             );
