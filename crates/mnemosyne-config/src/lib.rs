@@ -1206,8 +1206,18 @@ impl std::fmt::Display for PinRefusal {
                 f,
                 "this build carries no revision (built without git), so the pin cannot be checked"
             ),
-            Self::Different { stamp, pin } => {
-                write!(f, "this build is `{stamp}`, and the workspace pins `{pin}`")
+            // Round 840 — the pin is NOT restated here. The one caller
+            // (`enforce_tool_pin`) already opens with "<config> pins Mnemosyne
+            // `<pin>`", so naming it again produced "pins `X`, and this build is
+            // `Y`, and the workspace pins `X`" — one sentence saying the same
+            // thing twice, joined by a second "and". Reported from the field as
+            // reading like two fragments concatenated, which is what it was.
+            // The other three variants do not overlap the opener and are unchanged.
+            //
+            // `pin` stays in the struct: `check_tool_pin` is public and its
+            // Err value must carry both sides for a caller that has neither.
+            Self::Different { stamp, pin: _ } => {
+                write!(f, "this build is `{stamp}`")
             }
         }
     }
@@ -1404,8 +1414,21 @@ fn enforce_tool_pin(cfg: &WorkspaceConfig, config_path: &Path) -> Result<()> {
     let bin = running_binary_name();
     let root =
         pinned_root(pin).map_or_else(|| format!("~/.local/mn/{pin}"), |p| p.display().to_string());
+    // Round 840 — say HOW the two are compared. A stamp is
+    // `git describe --abbrev=8` while a pin is legal at seven characters, so the
+    // two printed side by side can differ in width and never be string-equal
+    // even when they match. Reported from the field as a papercut; the fix is to
+    // state the rule rather than to truncate the stamp, which would misreport
+    // what the build actually is.
+    let widths_differ =
+        matches!(&refusal, PinRefusal::Different { stamp, .. } if stamp.len() != pin.len());
+    let how = if widths_differ {
+        "\n  (a pin is matched against the build's revision by PREFIX, on the shorter of the two)"
+    } else {
+        ""
+    };
     Err(anyhow::anyhow!(
-        "{} pins Mnemosyne `{pin}`, and {refusal}.\n  \
+        "{} pins Mnemosyne `{pin}`, and {refusal}.{how}\n  \
          install the pinned revision beside the others — it is then used automatically:\n    \
          cargo install --git https://github.com/newmassrael/mnemosyne --rev {pin} --locked \\\n      \
          {bin} --root {root}\n  \

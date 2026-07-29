@@ -854,6 +854,12 @@ pub struct ScanCoverage {
     pub unscanned: Vec<PathBuf>,
     /// Declared exclusions that match no file under `root`.
     pub stale_exclusions: Vec<String>,
+    /// The files an exclusion actually removed (Round 840) — carried so
+    /// [`swallowed_citations`] reads exactly the set this walk excluded, rather
+    /// than re-deriving it and being free to disagree (the Round 777 rule).
+    pub excluded_files: BTreeSet<PathBuf>,
+    /// The files the configured paths cover, carried for the same reason.
+    pub scanned_files: BTreeSet<PathBuf>,
 }
 
 /// Compute [`ScanCoverage`] for `root` under the configured `paths` and
@@ -905,7 +911,118 @@ pub fn scan_coverage(
         scanned: scanned.len(),
         unscanned,
         stale_exclusions,
+        excluded_files: excluded,
+        scanned_files: scanned,
     })
+}
+
+/// A citation that exists ONLY inside an excluded tree (Round 840).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct SwallowedCitation {
+    /// The cited section id, exactly as written.
+    pub section_id: String,
+    /// An excluded file citing it — the first in path order, so the message is
+    /// deterministic and points somewhere to start.
+    pub file: PathBuf,
+    pub line: usize,
+    /// How many excluded files cite it, so a reader can tell one stray comment
+    /// from a whole tree that was un-gated.
+    pub occurrences: usize,
+}
+
+/// Citations that a `scan_exclusions` entry SWALLOWED (Round 840) — cited inside
+/// an excluded tree and cited nowhere the gate reads.
+///
+/// # Why
+///
+/// A `scan_exclusions` entry asserts "no citation this ledger gates lives here",
+/// and until now nothing checked that assertion. Reported from the field by the
+/// external spec consumer, who followed our own advice to add four exclusion
+/// globs, then checked the trees BY HAND before declaring them and found 55
+/// hand-authored citations that the exclusions would have silently un-gated. The
+/// advice produced a green gate and would have cost real coverage.
+///
+/// # Why "only" is the axis, and not "any"
+///
+/// The same consumer's other exclusions are HONEST and must stay silent: their
+/// codegen output cites the same section ids as the templates that generate it,
+/// and the templates remain scanned, so excluding the output re-checks one string
+/// twice. A detector that fired on any citation inside an excluded tree would
+/// reject that and teach people to stop declaring exclusions at all.
+///
+/// The distinction that separates the two cases is whether the gate still SEES
+/// the id somewhere: a citation also present in a scanned file loses nothing when
+/// a copy is excluded, and a citation present only in excluded trees is gone from
+/// the gate entirely. So the axis is set difference, not membership.
+///
+/// This is the vacuity Round 783 already refuses, one level up: that round made a
+/// configured-but-empty scan set loud, and this makes a scan set emptied BY
+/// DECLARATION loud.
+///
+/// # Errors
+///
+/// Whatever reading an excluded or scanned file fails with.
+pub fn swallowed_citations(
+    coverage: &ScanCoverage,
+    known_sections: &BTreeSet<String>,
+    external_prefixes_numeric: &[String],
+    external_prefixes_bare: &[String],
+    comment_only: bool,
+) -> std::io::Result<Vec<SwallowedCitation>> {
+    let cites = |path: &PathBuf| -> std::io::Result<Vec<(usize, String)>> {
+        let raw = std::fs::read_to_string(path)?;
+        // The SAME comment-only treatment the citation gate applies, or the two
+        // would disagree about what counts as a citation — and a detector that
+        // sees more than the gate reports losses that were never coverage.
+        let content = if comment_only {
+            strip_to_comments(&raw, comment_syntax_for(path))
+        } else {
+            raw
+        };
+        Ok(extract_section_citations(
+            &content,
+            external_prefixes_numeric,
+            external_prefixes_bare,
+        ))
+    };
+
+    let mut still_seen: BTreeSet<String> = BTreeSet::new();
+    for path in &coverage.scanned_files {
+        for (_, id) in cites(path)? {
+            still_seen.insert(id);
+        }
+    }
+    // First site in path order + a count, so the message is deterministic.
+    let mut found: BTreeMap<String, (PathBuf, usize, usize)> = BTreeMap::new();
+    for path in &coverage.excluded_files {
+        for (line, id) in cites(path)? {
+            // SCOPED TO THIS LEDGER. An exclusion asserts that no citation
+            // THIS ledger gates lives in the tree — a citation of some other
+            // ledger's namespace is not this one's coverage to lose, and
+            // reporting it would make a correct config loud. Found by running
+            // the first version against a real consumer: on their WIRE ledger it
+            // named fifteen `§10.2`-shaped SCXML citations that the SCXML ledger
+            // gates and this one never could.
+            if !known_sections.contains(&id) || still_seen.contains(&id) {
+                continue;
+            }
+            found
+                .entry(id)
+                .and_modify(|e| e.2 += 1)
+                .or_insert((path.clone(), line, 1));
+        }
+    }
+    Ok(found
+        .into_iter()
+        .map(
+            |(section_id, (file, line, occurrences))| SwallowedCitation {
+                section_id,
+                file,
+                line,
+                occurrences,
+            },
+        )
+        .collect())
 }
 
 /// One store id cited in code that the store does not hold (Round 819) — an

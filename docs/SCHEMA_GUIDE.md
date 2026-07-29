@@ -571,6 +571,16 @@ and only then add the section. If you pin an older revision on purpose,
 do not declare it here — keep using the `MN`-style resolution above,
 which needs no cooperation from the binary.
 
+**And the floor is not `[tool]` — it is the newest key in your file
+(Round 840).** Field-tested by a consumer: their pre-`[tool]` binary never
+reached the pin at all, because it died on `scan_exclusions`, a key from an
+*earlier* round sitting further up the same config. Any key newer than the
+running binary poisons config parsing first, so a pin can only ever protect
+against revisions NEWER than the newest key beside it; nothing inside the
+config can protect against an older binary. Covering that direction is the
+`--version` assertion in the `MN`-style recipe above, which is why that
+recipe is not superseded by `[tool]` — the two guard opposite directions.
+
 The rules, so nothing is surprising:
 
 - **Opt-in.** No `[tool]` section means no check, which is every

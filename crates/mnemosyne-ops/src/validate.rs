@@ -44,6 +44,8 @@ pub struct ValidateWorkspaceReport {
     pub scan_scanned: usize,
     pub scan_unscanned: Vec<String>,
     pub scan_stale_exclusions: Vec<String>,
+    /// Round 840 — citations an exclusion removed from the gate entirely.
+    pub scan_swallowed_citations: Vec<String>,
     pub failed: bool,
     pub failure_reasons: Vec<String>,
 }
@@ -269,6 +271,44 @@ pub fn validate_workspace(workspace_root: &Path) -> Result<ValidateWorkspaceRepo
     let rel = |p: &std::path::Path| p.strip_prefix(code_root).unwrap_or(p).display().to_string();
     let scan_unscanned: Vec<String> = scan.unscanned.iter().map(|p| rel(p)).collect();
 
+    // Round 840 — an exclusion is a CLAIM ("no citation this ledger gates lives
+    // here") and nothing checked it. Reported from the field: the external spec
+    // consumer followed our own four-line exclusion advice, checked the trees by
+    // hand first, and found 55 hand-authored citations that would have been
+    // silently un-gated. Only citations found NOWHERE the gate reads count — a
+    // copy inside an excluded tree loses nothing, which is what keeps their
+    // honest codegen-output exclusions silent.
+    let swallowed: Vec<String> = {
+        let cfg = loaded
+            .config
+            .plugins
+            .as_ref()
+            .and_then(|p| p.set_equality_validator.as_ref());
+        match cfg {
+            None => Vec::new(),
+            Some(c) => mnemosyne_validate::code_refs::swallowed_citations(
+                &scan,
+                &id_set,
+                &c.external_section_prefixes,
+                &c.external_section_prefixes_bare,
+                c.comment_only,
+            )
+            .map_err(|e| OpError::from(anyhow::anyhow!("exclusion integrity: {e}")))?
+            .into_iter()
+            .map(|s| {
+                format!(
+                    "`{}` is cited only inside an excluded tree ({}:{}, {} file(s)) — \
+                     the exclusion removed it from the gate entirely",
+                    s.section_id,
+                    rel(&s.file),
+                    s.line,
+                    s.occurrences
+                )
+            })
+            .collect(),
+        }
+    };
+
     // Failure aggregation.
     let mut failure_reasons: Vec<String> = Vec::new();
     if !scan_unscanned.is_empty() {
@@ -282,6 +322,14 @@ pub fn validate_workspace(workspace_root: &Path) -> Result<ValidateWorkspaceRepo
         failure_reasons.push(format!(
             "{} scan_exclusions entry(ies) match no file — delete them",
             scan.stale_exclusions.len()
+        ));
+    }
+    // A REJECT, like its Round 783 sibling: an exclusion that removes the only
+    // copy of a citation is a gate reporting clean over coverage it gave away.
+    if !swallowed.is_empty() {
+        failure_reasons.push(format!(
+            "{} citation(s) exist only inside an excluded tree — scan the tree or              bind the citation; an exclusion asserts the gate loses nothing",
+            swallowed.len()
         ));
     }
     if !registry_violations.is_empty() {
@@ -369,6 +417,7 @@ pub fn validate_workspace(workspace_root: &Path) -> Result<ValidateWorkspaceRepo
         scan_scanned: scan.scanned,
         scan_unscanned,
         scan_stale_exclusions: scan.stale_exclusions,
+        scan_swallowed_citations: swallowed,
         failed,
         failure_reasons,
     })
@@ -457,6 +506,14 @@ impl ValidateWorkspaceReport {
         }
         for e in &self.scan_stale_exclusions {
             let _ = writeln!(out, "  stale exclusion: {}", e);
+        }
+        let _ = writeln!(
+            out,
+            "exclusion integrity: {} citation(s) swallowed by an exclusion (Round 840)",
+            self.scan_swallowed_citations.len()
+        );
+        for e in &self.scan_swallowed_citations {
+            let _ = writeln!(out, "  swallowed: {}", e);
         }
         let _ = writeln!(
             out,
@@ -587,6 +644,124 @@ mod tests {
             "the two gates disagree about which files the SAME configured paths \
              cover — the exact symptom the field report diagnosed by running \
              both commands"
+        );
+    }
+
+    /// Round 840 — an exclusion that removes the ONLY copy of a citation is a
+    /// gate giving away coverage while reporting clean.
+    ///
+    /// Reported from the field. The external spec consumer followed our own
+    /// four-line exclusion advice, checked the trees by hand BEFORE declaring
+    /// them, and found 55 hand-authored citations the exclusions would have
+    /// silently un-gated. The advice produced exit 0 and would have cost real
+    /// coverage; nothing in the tool could tell the difference.
+    ///
+    /// Both directions are asserted in one test on ONE fixture, because the
+    /// distinction is the whole design: a citation ALSO present in a scanned
+    /// file loses nothing when a copy is excluded (their honest codegen-output
+    /// case, which must stay silent), and a citation present only in an excluded
+    /// tree is gone (their wire case, which must be loud). A detector that fired
+    /// on either alone would be useless in the opposite direction.
+    #[test]
+    fn an_exclusion_that_swallows_the_only_copy_of_a_citation_fails() {
+        let (tmp, toml_dir) = nested_ledger_workspace();
+        let repo = tmp.path();
+        // The store must actually HOLD the cited sections: the detector is
+        // scoped to this ledger's own section space, so a citation of some other
+        // ledger's namespace is not this one's coverage to lose. Found by
+        // running the unscoped first version against a real consumer, where it
+        // named fifteen foreign citations on a correctly configured workspace.
+        fs::write(
+            toml_dir.join(".atomic/store.json"),
+            format!(
+                "{{\"schema_version\":{},\"sections\":{{\"1.1\":{{}},\"9.9\":{{}}}}}}",
+                mnemosyne_atomic::CURRENT_SCHEMA_VERSION
+            ),
+        )
+        .expect("store with the cited sections");
+        let excluded = repo.join("crates/generated/src");
+        fs::create_dir_all(&excluded).expect("excluded dir");
+        // Cited in a SCANNED file too — excluding this copy loses nothing.
+        fs::write(
+            repo.join("crates/alpha/src/lib.rs"),
+            "// Round 835\n// see §1.1\npub fn f() {}\n",
+        )
+        .expect("scanned source");
+        // The `4.4` citation in the fixture below is cited ONLY here and this
+        // store does not hold it — a foreign
+        // ledger's citation, which this workspace never gated and cannot lose.
+        // It stays in the fixture for every phase below, so the scoping filter
+        // is load-bearing rather than incidentally satisfied.
+        fs::write(
+            excluded.join("out.rs"),
+            "// generated — see §1.1 and §4.4\npub fn g() {}\n",
+        )
+        .expect("excluded copy");
+        let config = |exclusions: &str| {
+            format!(
+                "[workspace]\nroot = \"../..\"\n\n\
+                 [atomic]\nsidecar_path = \"docs/spec/.atomic/store.json\"\n\n\
+                 [plugins.set_equality_validator]\npaths = [\"crates/alpha/src/\"]\n\
+                 scan_exclusions = [{exclusions}]\n"
+            )
+        };
+        fs::write(
+            toml_dir.join("mnemosyne.toml"),
+            config("\"crates/generated/\""),
+        )
+        .expect("config");
+
+        // A DUPLICATED citation is silent — this is the honest-exclusion case,
+        // and asserting it first means the failure below cannot be satisfied by
+        // a detector that simply flags every excluded tree.
+        let report = validate_workspace(&toml_dir).expect("a duplicated citation is no loss");
+        assert!(
+            report.scan_swallowed_citations.is_empty(),
+            "an excluded copy of a citation the gate still reads is not a loss: {:?}",
+            report.scan_swallowed_citations
+        );
+
+        // A citation-shaped token in CODE is not a citation. The detector
+        // inherits `comment_only` from the gate, and one that saw more than the
+        // gate reads would report losses that were never coverage — the Round
+        // 820 finding, where counting full text turned one real case into ten.
+        fs::write(
+            excluded.join("out.rs"),
+            "// generated — see §1.1 and §4.4\npub fn g() -> &'static str { \"§7.7\" }\n",
+        )
+        .expect("excluded source with a code-position token");
+        let report = validate_workspace(&toml_dir).expect("report still builds");
+        assert!(
+            report.scan_swallowed_citations.is_empty(),
+            "a citation-shaped token in CODE is not a citation the gate reads: {:?}",
+            report.scan_swallowed_citations
+        );
+
+        // Now the SAME excluded file is the only place `9.9` is cited.
+        fs::write(
+            excluded.join("out.rs"),
+            "// generated — see §1.1 and §4.4 and §9.9\npub fn g() {}\n",
+        )
+        .expect("excluded source with a unique citation");
+        let report = validate_workspace(&toml_dir).expect("report still builds");
+        assert_eq!(
+            report.scan_swallowed_citations.len(),
+            1,
+            "expected exactly the unique citation, got {:?}",
+            report.scan_swallowed_citations
+        );
+        let msg = &report.scan_swallowed_citations[0];
+        assert!(
+            msg.contains("9.9"),
+            "the message must name the citation: {msg}"
+        );
+        assert!(
+            msg.contains("out.rs"),
+            "the message must name a file to start from: {msg}"
+        );
+        assert!(
+            report.failed,
+            "a swallowed citation must FAIL the gate, like its Round 783 sibling"
         );
     }
 
