@@ -260,7 +260,9 @@ impl Line {
             typed_predicate: begin
                 .typed
                 .as_ref()
-                .map(|t| Cow::Owned(t.predicate.clone())),
+                // The baked projection carries TEXT — ids become strings at
+                // this render boundary, like every other engine output.
+                .map(|t| Cow::Owned(t.predicate.to_string())),
             typed_quantity: begin.typed.as_ref().and_then(|t| match &t.object {
                 mnemosyne_core::TypedObject::Quantity { n, unit } => {
                     // The baked projection carries TEXT, not store ids — the

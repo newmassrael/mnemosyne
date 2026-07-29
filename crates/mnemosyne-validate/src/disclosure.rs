@@ -429,7 +429,7 @@ mod tests {
     fn register_vocab(store: &mut AtomicStore) {
         store.entities.insert("pike".to_string(), Entity::default());
         store.predicates.insert(
-            "did".to_string(),
+            "did".into(),
             Predicate {
                 // Round 708 — the free-text scalar shape was removed; `did` is a
                 // token predicate whose vocabulary is the states the fixtures use.
@@ -448,7 +448,7 @@ mod tests {
     fn typed(subject: &str, value: &str) -> TypedClaim {
         TypedClaim {
             subject: subject.to_string(),
-            predicate: "did".to_string(),
+            predicate: "did".into(),
             object: TypedObject::Token {
                 token: value.to_string(),
             },

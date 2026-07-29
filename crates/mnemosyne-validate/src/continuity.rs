@@ -3736,14 +3736,16 @@ pub fn scan_continuity(
             };
             let found = fact.typed.as_ref().map(|t| t.predicate.clone());
             let is_edge = found
-                .as_deref()
-                .is_some_and(|p| adjacency_predicates.contains(p));
+                .as_ref()
+                .is_some_and(|p| adjacency_predicates.contains(p.as_str()));
             if !is_edge {
                 report
                     .violations
                     .push(ContinuityViolation::EdgeCostNotAnEdge {
                         fact: fid.clone(),
-                        found,
+                        // Violation payloads are report text — an id becomes a
+                        // string at the output boundary.
+                        found: found.map(mnemosyne_core::PredicateId::into_inner),
                         expected: adjacency_predicates.iter().map(|p| p.to_string()).collect(),
                     });
             }
@@ -3759,14 +3761,14 @@ pub fn scan_continuity(
             };
             let found = fact.typed.as_ref().map(|t| t.predicate.clone());
             let is_edge = found
-                .as_deref()
-                .is_some_and(|p| adjacency_predicates.contains(p));
+                .as_ref()
+                .is_some_and(|p| adjacency_predicates.contains(p.as_str()));
             if !is_edge {
                 report
                     .violations
                     .push(ContinuityViolation::EdgeGuardNotAnEdge {
                         fact: edge_fid.clone(),
-                        found,
+                        found: found.map(mnemosyne_core::PredicateId::into_inner),
                         expected: adjacency_predicates.iter().map(|p| p.to_string()).collect(),
                     });
             }
@@ -6213,7 +6215,9 @@ pub struct TypingCandidatesReport {
     /// Already-typed count (context, not work).
     pub typed: usize,
     /// The 4th registry verbatim — the ONLY predicates a proposal may name.
-    pub predicates: BTreeMap<String, mnemosyne_core::Predicate>,
+    /// Round 841 — keyed by the id TYPE. This is the registry verbatim, not a
+    /// report ROW, so it keeps the store's own key type; the JSON is identical.
+    pub predicates: BTreeMap<mnemosyne_core::PredicateId, mnemosyne_core::Predicate>,
     /// The entity registry verbatim — typed subjects/objects must be
     /// registered AND members of the fact's entities list (R446).
     pub entities: BTreeMap<String, mnemosyne_core::Entity>,
@@ -6356,7 +6360,7 @@ pub fn edge_candidates(
             SuccessionGap {
                 fact_a: aid.to_string(),
                 fact_b: bid.to_string(),
-                predicate: t.predicate.clone(),
+                predicate: t.predicate.to_string(),
                 subject: t.subject.clone(),
             }
         })
@@ -6546,7 +6550,8 @@ mod tests {
         // Round 708 — a token object needs its value in the predicate's declared
         // vocabulary (build_predicate rejects an empty token vocab), so gather
         // the tokens in use per predicate, mirroring the units above.
-        let mut token_vocab: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
+        let mut token_vocab: BTreeMap<mnemosyne_core::PredicateId, BTreeSet<String>> =
+            BTreeMap::new();
         for t in facts.iter().filter_map(|f| f.typed.as_ref()) {
             if let mnemosyne_core::TypedObject::Token { token } = &t.object {
                 token_vocab
@@ -6577,7 +6582,8 @@ mod tests {
                         .get(&predicate_id)
                         .map(|s| s.iter().cloned().collect())
                         .unwrap_or_default(),
-                    predicate_id,
+                    // PredicateImport is a wire/import DTO — id becomes text here.
+                    predicate_id: predicate_id.into_inner(),
                     object_kind: object_kind.to_string(),
                     subject_kind: None,
                     object_entity_kind: None,
@@ -8276,7 +8282,7 @@ mod tests {
         f.entities = vec![subject.to_string()];
         f.typed = Some(mnemosyne_core::TypedClaim {
             subject: subject.to_string(),
-            predicate: predicate.to_string(),
+            predicate: predicate.into(),
             object: mnemosyne_core::TypedObject::Token {
                 token: value.to_string(),
             },
@@ -8654,7 +8660,7 @@ mod tests {
             entities,
             typed: Some(TypedClaim {
                 subject: subject.to_string(),
-                predicate: predicate.to_string(),
+                predicate: predicate.into(),
                 object,
             }),
             ..fact(id, frame, from, None)
@@ -11648,7 +11654,7 @@ mod tests {
     fn ent_claim(subject: &str, predicate: &str, object: &str) -> mnemosyne_core::TypedClaim {
         mnemosyne_core::TypedClaim {
             subject: subject.to_string(),
-            predicate: predicate.to_string(),
+            predicate: predicate.into(),
             object: mnemosyne_core::TypedObject::Entity {
                 id: object.to_string(),
             },
@@ -11973,7 +11979,7 @@ mod tests {
         fn token_claim(subject: &str, predicate: &str, value: &str) -> mnemosyne_core::TypedClaim {
             mnemosyne_core::TypedClaim {
                 subject: subject.to_string(),
-                predicate: predicate.to_string(),
+                predicate: predicate.into(),
                 object: mnemosyne_core::TypedObject::Token {
                     token: value.to_string(),
                 },

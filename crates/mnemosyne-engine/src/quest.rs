@@ -534,7 +534,7 @@ fn read_preconditions(
         mnemosyne_ops::load_atomic_store(workspace_root, None).map_err(|e| e.to_string())?;
     for fact in store.narrative_facts.values() {
         let Some(claim) = &fact.typed else { continue };
-        if !predicates.contains(&claim.predicate) {
+        if !predicates.iter().any(|p| claim.predicate == *p) {
             continue;
         }
         // A completion-precondition object is a typed FACT bridge (R707/R708

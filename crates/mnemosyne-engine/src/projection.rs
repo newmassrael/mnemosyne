@@ -233,7 +233,7 @@ impl PlayableProjection {
                 // what the audience can KNOW must not read a stream that answers
                 // what the audience is SHOWN.
                 if let Some(typed) = &begin.typed {
-                    if journal.contains(&typed.predicate) {
+                    if journal.iter().any(|p| typed.predicate == *p) {
                         routed
                             .entry(Cow::Owned(locator.scene.clone()))
                             .or_default()

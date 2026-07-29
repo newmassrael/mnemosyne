@@ -879,7 +879,7 @@ pub struct TypedClaim {
     /// key).
     pub subject: String,
     /// Registered predicate id (`AtomicStore.predicates` key).
-    pub predicate: String,
+    pub predicate: crate::PredicateId,
     /// Object leg; its shape must match the predicate's declared
     /// [`PredicateObjectKind`].
     pub object: TypedObject,

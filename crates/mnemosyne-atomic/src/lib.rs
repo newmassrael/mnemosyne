@@ -826,7 +826,7 @@ pub struct AtomicStore {
     /// (narrative rules key off them), hence registry, not free-form.
     /// Empty on pre-v19 stores via `#[serde(default)]`.
     #[serde(default)]
-    pub predicates: BTreeMap<String, Predicate>,
+    pub predicates: BTreeMap<mnemosyne_core::PredicateId, Predicate>,
     /// Multi-axis narrative facts (Round 430) — append-only perspectival
     /// claims, keyed by fact id. Top-level (the confirmation_events
     /// placement pattern): never nested on a section, no frozen-ledger
@@ -5498,7 +5498,7 @@ fn build_typed_claim(
         Ok(id.to_string())
     };
     let subject = check_entity_leg("subject", &t.subject)?;
-    let predicate = t.predicate.trim();
+    let predicate = t.predicate.as_str().trim();
     if predicate.is_empty() {
         return Err(format!(
             "fact `{fact_id}`: typed predicate mandatory (non-empty)"
@@ -5641,7 +5641,7 @@ fn build_typed_claim(
     };
     Ok(TypedClaim {
         subject,
-        predicate: predicate.to_string(),
+        predicate: predicate.into(),
         object,
     })
 }
@@ -8133,7 +8133,7 @@ pub fn set_predicate(
     .map_err(AtomicMutateError::Validation)?;
     validate_predicate_kind_refs(store, "set_predicate", &candidate)
         .map_err(AtomicMutateError::Validation)?;
-    let Some(existing) = store.predicates.get(&id) else {
+    let Some(existing) = store.predicates.get(id.as_str()) else {
         return Err(AtomicMutateError::Validation(format!(
             "set_predicate: predicate `{id}` not present in the registry — \
              add_predicate creates, set_predicate mutates (fail-loud; a silent \
@@ -8177,7 +8177,7 @@ pub fn set_predicate(
             sample_ids(&offenders)
         )));
     }
-    store.predicates.insert(id.clone(), candidate);
+    store.predicates.insert(id.clone().into(), candidate);
     registry_receipt(store, sidecar_path, "set_predicate", "predicate", &id, true)
 }
 
@@ -8205,7 +8205,7 @@ pub fn remove_predicate(
             "remove_predicate: predicate_id mandatory (non-empty after trim)".to_string(),
         ));
     }
-    if !store.predicates.contains_key(&id) {
+    if !store.predicates.contains_key(id.as_str()) {
         return Err(AtomicMutateError::Validation(format!(
             "remove_predicate: predicate `{id}` not present in the registry (fail-loud)"
         )));
@@ -8219,7 +8219,7 @@ pub fn remove_predicate(
             sample_ids(&uses)
         )));
     }
-    store.predicates.remove(&id);
+    store.predicates.remove(id.as_str());
     registry_receipt(
         store,
         sidecar_path,
@@ -13257,7 +13257,7 @@ mod tests {
             entities: vec!["pike".to_string()],
             typed: Some(TypedClaim {
                 subject: "pike".to_string(),
-                predicate: "did".to_string(),
+                predicate: "did".into(),
                 object: TypedObject::Token {
                     token: "climbed".to_string(),
                 },
@@ -15350,7 +15350,7 @@ mod tests {
             entities: vec!["pike".to_string()],
             typed: Some(TypedClaim {
                 subject: "pike".to_string(),
-                predicate: "did".to_string(),
+                predicate: "did".into(),
                 object: TypedObject::Token {
                     token: "climbed".to_string(),
                 },
@@ -15573,7 +15573,7 @@ mod tests {
             fact: fact.to_string(),
             typed: TypedClaim {
                 subject: "kara".to_string(),
-                predicate: "alive".to_string(),
+                predicate: "alive".into(),
                 object: TypedObject::Token {
                     token: "alive".to_string(),
                 },
@@ -15620,7 +15620,7 @@ mod tests {
         .unwrap();
         let typed_leg = Some(TypedClaim {
             subject: "pike".to_string(),
-            predicate: "did".to_string(),
+            predicate: "did".into(),
             object: TypedObject::Token {
                 token: "climbed".to_string(),
             },
@@ -15801,7 +15801,7 @@ mod tests {
                 .applied
         );
         let mut unregistered = proposal("f-2", "kara is alive", "r");
-        unregistered.typed.predicate = "deviancy".to_string();
+        unregistered.typed.predicate = "deviancy".into();
         let mut no_rationale = proposal("f-2", "kara is alive", "");
         no_rationale.fact = "f-2".to_string();
         let file = proposals_file(vec![
@@ -15843,7 +15843,7 @@ mod tests {
                 fact: fact.to_string(),
                 typed: TypedClaim {
                     subject: "kara".to_string(),
-                    predicate: "opened-by".to_string(),
+                    predicate: "opened-by".into(),
                     object: TypedObject::Fact {
                         id: target.to_string(),
                     },
@@ -16793,7 +16793,7 @@ mod tests {
         let typed = |subject: &str, predicate: &str, object: TypedObject| {
             Some(TypedClaim {
                 subject: subject.to_string(),
-                predicate: predicate.to_string(),
+                predicate: predicate.into(),
                 object,
             })
         };
@@ -16868,7 +16868,7 @@ mod tests {
                 s.entities.insert("kara".to_string(), Entity::default());
                 s.entities.insert("todd-gun".to_string(), Entity::default());
                 s.predicates.insert(
-                    "alive".to_string(),
+                    "alive".into(),
                     Predicate {
                         object_kind: PredicateObjectKind::Token,
                         subject_kind: None,
@@ -16878,7 +16878,7 @@ mod tests {
                     },
                 );
                 s.predicates.insert(
-                    "holds".to_string(),
+                    "holds".into(),
                     Predicate {
                         object_kind: PredicateObjectKind::Entity,
                         subject_kind: None,
@@ -16948,7 +16948,7 @@ mod tests {
             entities: vec![subject.to_string(), object.to_string()],
             typed: Some(TypedClaim {
                 subject: subject.to_string(),
-                predicate: "adjacent".to_string(),
+                predicate: "adjacent".into(),
                 object: TypedObject::Entity {
                     id: object.to_string(),
                 },
@@ -17003,7 +17003,7 @@ mod tests {
                 entities: vec!["cove".to_string(), "stake".to_string()],
                 typed: Some(TypedClaim {
                     subject: "cove".to_string(),
-                    predicate: "near".to_string(),
+                    predicate: "near".into(),
                     object: TypedObject::Entity {
                         id: "stake".to_string(),
                     },
@@ -17058,7 +17058,7 @@ mod tests {
             entities: vec!["lucy".to_string()],
             typed: Some(TypedClaim {
                 subject: "lucy".to_string(),
-                predicate: "life".to_string(),
+                predicate: "life".into(),
                 object: TypedObject::Token {
                     token: token.to_string(),
                 },
@@ -17151,7 +17151,7 @@ mod tests {
                 entities: vec!["lucy".to_string()],
                 typed: Some(TypedClaim {
                     subject: "lucy".to_string(),
-                    predicate: "life".to_string(),
+                    predicate: "life".into(),
                     object: TypedObject::Token {
                         token: "dead".to_string(),
                     },
@@ -17224,7 +17224,7 @@ mod tests {
             entities: vec!["codicil".to_string()],
             typed: Some(TypedClaim {
                 subject: "codicil".to_string(),
-                predicate: "signed-on-day".to_string(),
+                predicate: "signed-on-day".into(),
                 object: TypedObject::Quantity {
                     n,
                     unit: unit.into(),
@@ -17252,7 +17252,7 @@ mod tests {
             entities: vec!["codicil".to_string()],
             typed: Some(TypedClaim {
                 subject: "codicil".to_string(),
-                predicate: "signed-on-day".to_string(),
+                predicate: "signed-on-day".into(),
                 object: TypedObject::Entity {
                     id: "codicil".to_string(),
                 },
@@ -18521,7 +18521,7 @@ mod tests {
         // SCAN BOUNDARY flags an out-of-band phantom endpoint kind on BOTH legs
         // (unreachable via any write path — the parity the R740 review named).
         store.predicates.insert(
-            "rogue".to_string(),
+            "rogue".into(),
             Predicate {
                 object_kind: PredicateObjectKind::Entity,
                 subject_kind: Some("gone-subj".to_string()),
@@ -18808,7 +18808,7 @@ mod tests {
             entities: vec!["pike".to_string()],
             typed: Some(TypedClaim {
                 subject: "pike".to_string(),
-                predicate: "did".to_string(),
+                predicate: "did".into(),
                 object: TypedObject::Token {
                     token: "climbed".to_string(),
                 },
@@ -19108,7 +19108,7 @@ mod tests {
                 entities: vec!["pike".to_string()],
                 typed: Some(TypedClaim {
                     subject: "pike".to_string(),
-                    predicate: "did".to_string(),
+                    predicate: "did".into(),
                     object: TypedObject::Token {
                         token: "climbed".to_string(),
                     },
@@ -19221,7 +19221,7 @@ mod tests {
                 entities: vec!["pike".to_string()],
                 typed: Some(TypedClaim {
                     subject: "pike".to_string(),
-                    predicate: "did".to_string(),
+                    predicate: "did".into(),
                     object: TypedObject::Token {
                         token: "climbed".to_string(),
                     },
@@ -19487,7 +19487,7 @@ mod tests {
             entities: vec!["hero".to_string(), obj.to_string()],
             typed: Some(TypedClaim {
                 subject: "hero".to_string(),
-                predicate: pred.to_string(),
+                predicate: pred.into(),
                 object: TypedObject::Entity {
                     id: obj.to_string(),
                 },
@@ -19556,7 +19556,7 @@ mod tests {
             entities: vec!["mina".to_string()],
             typed: Some(TypedClaim {
                 subject: "mina".to_string(),
-                predicate: "opened-by".to_string(),
+                predicate: "opened-by".into(),
                 object: TypedObject::Fact {
                     id: target.to_string(),
                 },
@@ -19650,7 +19650,7 @@ mod tests {
                 entities: vec!["mina".to_string()],
                 typed: Some(TypedClaim {
                     subject: "mina".to_string(),
-                    predicate: "opened-by".to_string(),
+                    predicate: "opened-by".into(),
                     object: TypedObject::Fact {
                         id: "f-sluice".to_string(),
                     },
@@ -19784,7 +19784,7 @@ mod tests {
             .unwrap();
             let claim = TypedClaim {
                 subject: subject.to_string(),
-                predicate: "adjacent".to_string(),
+                predicate: "adjacent".into(),
                 object: TypedObject::Entity {
                     id: object.to_string(),
                 },
@@ -19860,7 +19860,7 @@ mod tests {
                 s.frames.insert("gt".to_string(), Frame::default());
                 s.entities.insert("kara".to_string(), Entity::default());
                 s.predicates.insert(
-                    "alive".to_string(),
+                    "alive".into(),
                     Predicate {
                         object_kind: PredicateObjectKind::Token,
                         subject_kind: None,
@@ -19876,7 +19876,7 @@ mod tests {
                         entities: vec!["kara".to_string()],
                         typed: Some(TypedClaim {
                             subject: "kara".to_string(),
-                            predicate: "alive".to_string(),
+                            predicate: "alive".into(),
                             object: TypedObject::Token {
                                 token: "operational".to_string(),
                             },
@@ -20015,7 +20015,7 @@ mod tests {
                 entities: vec!["kara".to_string()],
                 typed: Some(TypedClaim {
                     subject: "kara".to_string(),
-                    predicate: "alive".to_string(),
+                    predicate: "alive".into(),
                     object: TypedObject::Token {
                         token: "operational".to_string(),
                     },
@@ -20109,7 +20109,7 @@ mod tests {
                 entities: vec!["kara".to_string()],
                 typed: Some(TypedClaim {
                     subject: "kara".to_string(),
-                    predicate: "alive".to_string(),
+                    predicate: "alive".into(),
                     object: TypedObject::Token {
                         token: "operational".to_string(),
                     },
@@ -20154,7 +20154,7 @@ mod tests {
                 entities: vec!["kara".to_string()],
                 typed: Some(TypedClaim {
                     subject: "kara".to_string(),
-                    predicate: "alive".to_string(),
+                    predicate: "alive".into(),
                     object: TypedObject::Token {
                         token: "operational".to_string(),
                     },
@@ -20353,7 +20353,7 @@ mod tests {
                     entities: vec!["kara".to_string()],
                     typed: Some(TypedClaim {
                         subject: "kara".to_string(),
-                        predicate: "alive".to_string(),
+                        predicate: "alive".into(),
                         object: TypedObject::Token {
                             token: "operational".to_string(),
                         },
@@ -20381,7 +20381,7 @@ mod tests {
                 entities: vec!["kara".to_string()],
                 typed: Some(TypedClaim {
                     subject: "kara".to_string(),
-                    predicate: "alive".to_string(),
+                    predicate: "alive".into(),
                     object: TypedObject::Token {
                         token: "destroyed".to_string(),
                     },
@@ -21070,7 +21070,7 @@ mod tests {
         valid.entities = vec!["a".to_string(), "b".to_string()];
         valid.typed = Some(TypedClaim {
             subject: "a".to_string(),
-            predicate: "rel".to_string(),
+            predicate: "rel".into(),
             object: TypedObject::Entity {
                 id: "b".to_string(),
             },
@@ -21228,7 +21228,7 @@ mod tests {
             pays_off: vec![],
             typed: Some(TypedClaim {
                 subject: "a".to_string(),
-                predicate: "rel".to_string(),
+                predicate: "rel".into(),
                 object: TypedObject::Entity {
                     id: "b".to_string(),
                 },
@@ -21365,7 +21365,7 @@ mod tests {
             pays_off: vec![],
             typed: Some(TypedClaim {
                 subject: "a".to_string(),
-                predicate: "rel".to_string(),
+                predicate: "rel".into(),
                 object,
             }),
             quote: None,

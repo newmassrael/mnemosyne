@@ -120,7 +120,7 @@ const SOURCES: &[(&str, &str)] = &[
 ///
 /// This list grows by one line per migration round; the endgame is that it
 /// replaces the `String` scan entirely and `NotARef` disappears.
-const REF_ID_TYPES: &[&str] = &["UnitId", "ParameterId"];
+const REF_ID_TYPES: &[&str] = &["UnitId", "ParameterId", "PredicateId"];
 
 /// Container names that are never a type to walk into.
 const CONTAINERS: &[&str] = &[

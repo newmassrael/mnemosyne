@@ -2239,7 +2239,8 @@ fn parse_fact_verb_args(args: &[String], accept_reason: bool) -> Result<FactVerb
             .map_err(|e| anyhow!("{e}"))?;
             Some(mnemosyne_core::TypedClaim {
                 subject,
-                predicate,
+                // CLI args are `String`; they become ids at the store boundary.
+                predicate: predicate.into(),
                 object,
             })
         }

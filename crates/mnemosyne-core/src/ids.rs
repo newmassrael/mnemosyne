@@ -114,6 +114,15 @@ macro_rules! ref_id {
                 self.0 == *other
             }
         }
+
+        /// And against an owned `String` — a configured rule or a wire DTO
+        /// holds one, and comparing it should not need a conversion at the
+        /// comparison site (Round 841).
+        impl PartialEq<String> for $name {
+            fn eq(&self, other: &String) -> bool {
+                self.0 == *other
+            }
+        }
     };
 }
 
@@ -125,6 +134,12 @@ ref_id! {
 ref_id! {
     /// A key of the parameters registry ([`crate::Parameter`]).
     ParameterId
+}
+
+ref_id! {
+    /// A key of the predicates registry ([`crate::Predicate`]) — the rule a
+    /// typed claim keys off, so a typo here silently escapes its rule.
+    PredicateId
 }
 
 #[cfg(test)]
