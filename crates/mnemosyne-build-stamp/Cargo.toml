@@ -10,3 +10,6 @@ keywords = ["build", "provenance", "version"]
 categories = ["development-tools::build-utils"]
 
 [dependencies]
+
+[dev-dependencies]
+tempfile = { workspace = true }

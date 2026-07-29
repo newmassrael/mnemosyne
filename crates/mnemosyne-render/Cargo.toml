@@ -14,6 +14,7 @@ name = "mnemosyne-render"
 path = "src/main.rs"
 
 [dependencies]
+mnemosyne-config = { path = "../mnemosyne-config" }
 mnemosyne-engine = { path = "../mnemosyne-engine" }
 
 [dev-dependencies]
@@ -22,3 +23,6 @@ mnemosyne-validate = { path = "../mnemosyne-validate" }
 
 [lints]
 workspace = true
+
+[build-dependencies]
+mnemosyne-build-stamp = { path = "../mnemosyne-build-stamp" }

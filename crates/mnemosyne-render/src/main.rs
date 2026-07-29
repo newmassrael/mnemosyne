@@ -36,6 +36,12 @@ fn run(workspace: &str, telling: &str, overrides_path: Option<&str>) -> Result<S
 }
 
 fn main() -> ExitCode {
+    // Round 827 — this binary opens a workspace (its first argument is one), so
+    // it owes the tool pin like every other. It was MISSED by Round 826 because
+    // the test enumerated the binaries by hand; fail-closed meant it refused
+    // every pinned workspace instead of doing something unsafe, which is the
+    // design working and still a bug for this binary.
+    mnemosyne_config::register_tool_stamp(env!("BUILD_GIT_HASH"));
     let args: Vec<String> = std::env::args().collect();
     let result = match args.as_slice() {
         [_, workspace, telling] => run(workspace, telling, None),

@@ -1009,6 +1009,9 @@ dependencies = [
 [[package]]
 name = "mnemosyne-build-stamp"
 version = "0.1.0"
+dependencies = [
+ "tempfile",
+]
 
 [[package]]
 name = "mnemosyne-cascade"
@@ -1190,6 +1193,8 @@ dependencies = [
 name = "mnemosyne-render"
 version = "0.1.0"
 dependencies = [
+ "mnemosyne-build-stamp",
+ "mnemosyne-config",
  "mnemosyne-core",
  "mnemosyne-engine",
  "mnemosyne-validate",
