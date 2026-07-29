@@ -1,0 +1,109 @@
+#!/usr/bin/env bash
+# gc — reclaim target/ without guessing which artifacts matter.
+#
+# TWO MODES, because there are two different jobs and one answer for both would
+# be wrong for one of them.
+#
+#   (default)  --installed : keep every artifact any INSTALLED toolchain made.
+#              Removes the debris of toolchains you have since uninstalled and
+#              nothing else, so the REBUILD COST IS ZERO — the artifacts the
+#              current toolchain built are all kept. This is the one to run
+#              routinely. Its yield is a function of toolchain churn: if no
+#              toolchain has been uninstalled, it reclaims nothing, and that is
+#              the correct answer rather than a failure.
+#
+#   --deep     stamp/build/sweep: keep exactly what a full build of this
+#              workspace touches, delete everything else. Reclaims far more and
+#              COSTS A REBUILD — measured here at 32G to 11G durable, with the
+#              next `cargo test --workspace` paying for the test binaries again.
+#              Run it when space actually matters, not on a schedule.
+#
+# NEITHER MODE GUESSES BY AGE. `cargo sweep --time <days>` deletes artifacts
+# older than a window, which is a guess about which files matter wearing a
+# policy's clothes: it keeps stale artifacts that happen to be recent and
+# deletes live ones that happen not to be, and it reads as safe. Both modes here
+# ask something that KNOWS — the toolchain set, or the build itself. Same reason
+# `scripts/mn` asks cargo whether a binary is current instead of comparing
+# mtimes: freshness is the build system's question and a second answer to it is
+# free to be wrong.
+#
+# WHAT --deep KEEPS is whatever it builds, so that is the whole policy: a debug
+# build of every target in the workspace — the profile the hooks, `scripts/mn`
+# and `cargo test` all use. RELEASE ARTIFACTS ARE NOT KEPT, deliberately: since
+# Round 823 nothing in this repository's flow produces or reads them (the
+# `cargo install --path` step that once did was removed, and `scripts/mn` is
+# debug), so they are dead weight a build-aware sweep is entitled to remove.
+# `--release` keeps them, at the price of a full release build inside the gc.
+#
+# Usage:
+#   scripts/gc [--deep] [--release] [--dry-run]
+#
+# --dry-run reports and deletes nothing. In --deep it still BUILDS, because
+# there is no honest way to say what a build would keep without doing it.
+set -euo pipefail
+
+cd "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
+deep=0
+dry=0
+release=0
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --deep) deep=1; shift ;;
+    --dry-run) dry=1; shift ;;
+    --release) release=1; shift ;;
+    -h|--help) sed -n '2,41p' "${BASH_SOURCE[0]}"; exit 0 ;;
+    *) echo "gc: unknown flag $1" >&2; exit 2 ;;
+  esac
+done
+
+if [[ $release == 1 && $deep == 0 ]]; then
+  echo "gc: --release only means anything with --deep (the default mode keeps" >&2
+  echo "    every installed toolchain's artifacts, release included)" >&2
+  exit 2
+fi
+
+command -v cargo-sweep >/dev/null 2>&1 || {
+  echo "gc: cargo-sweep is not installed — this script is a wrapper around it," >&2
+  echo "    not a reimplementation, because deciding which artifacts are live is" >&2
+  echo "    cargo's knowledge and not something to hand-roll." >&2
+  echo "    install:  cargo install cargo-sweep" >&2
+  exit 1
+}
+
+# The SAME lock scripts/verify.sh takes. Not politeness: in --deep a cargo run
+# that starts after the stamp leaves its artifacts unmarked and loses them, and
+# in either mode a build running during the sweep can have files deleted out
+# from under it. Round 743 is this repository's evidence that overlapping cargo
+# on one target/ corrupts the fingerprint cache and runs a stale binary.
+mkdir -p target
+exec 9>"target/.verify.lock"
+echo "[gc] acquiring build lock (target/.verify.lock) ..."
+flock 9
+echo "[gc] lock held."
+
+before="$(du -sb target 2>/dev/null | cut -f1)"
+sweep=(cargo sweep)
+[[ $dry == 1 ]] && sweep+=(--dry-run)
+
+if [[ $deep == 1 ]]; then
+  # `--stamp` writes `sweep.timestamp` into the CURRENT directory, so it lands
+  # in the working tree; it is scaffolding between the stamp and the sweep and
+  # is removed on every exit path rather than left for `git status` to find.
+  trap 'rm -f sweep.timestamp' EXIT
+  echo "[gc] deep: stamp"
+  cargo sweep --stamp >/dev/null
+  echo "[gc] deep: build (debug, all targets)$([[ $release == 1 ]] && echo ' + release')"
+  cargo build --workspace --all-targets
+  [[ $release == 1 ]] && cargo build --workspace --all-targets --release
+  echo "[gc] deep: sweep"
+  "${sweep[@]}" --file
+else
+  echo "[gc] installed-toolchain sweep"
+  "${sweep[@]}" --installed
+fi
+
+after="$(du -sb target 2>/dev/null | cut -f1)"
+printf '[gc] target: %s -> %s%s\n' \
+  "$(numfmt --to=iec "$before")" "$(numfmt --to=iec "$after")" \
+  "$([[ $dry == 1 ]] && echo '  (dry run — nothing deleted)')"
