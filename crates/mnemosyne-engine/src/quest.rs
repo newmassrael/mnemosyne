@@ -546,7 +546,7 @@ fn read_preconditions(
         if let TypedObject::Fact { id } = &claim.object {
             map.entry(claim.subject.to_string())
                 .or_default()
-                .push(id.clone());
+                .push(id.to_string());
         }
     }
     Ok(map)

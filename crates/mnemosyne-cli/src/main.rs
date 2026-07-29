@@ -5791,7 +5791,11 @@ fn cmd_validate_code_refs(args: &[String]) -> Result<()> {
             &root,
             &cfg.paths,
             cfg.comment_only,
-            &store.narrative_facts.keys().cloned().collect(),
+            &store
+                .narrative_facts
+                .keys()
+                .map(ToString::to_string)
+                .collect(),
             &store.entities.keys().map(ToString::to_string).collect(),
         )?;
         if ids.namespaces.is_empty() {

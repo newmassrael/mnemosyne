@@ -401,12 +401,12 @@ pub struct LadderRung {
     /// present at import (a rung gated on a fact that does not exist is a gate
     /// that never opens).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub needs: Vec<String>,
+    pub needs: Vec<mnemosyne_core::FactId>,
     /// Facts this rung discloses when taken. Each is a `narrative_facts` key,
     /// checked present at import. Empty is legitimate: a rung may carry story
     /// without disclosing a declared fact.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub reveals: Vec<String>,
+    pub reveals: Vec<mnemosyne_core::FactId>,
     /// The object entity an OBSERVATION rung hangs on — examining it is what
     /// takes the hold. `None` for a spoken rung (the carrier's mouth takes it).
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -832,7 +832,7 @@ pub struct AtomicStore {
     /// placement pattern): never nested on a section, no frozen-ledger
     /// contact. Empty on pre-v12 stores via `#[serde(default)]`.
     #[serde(default)]
-    pub narrative_facts: BTreeMap<String, NarrativeFact>,
+    pub narrative_facts: BTreeMap<mnemosyne_core::FactId, NarrativeFact>,
     /// Disclosure (discourse) plans (Round 506, design sec 7.24) — keyed by
     /// telling id. Each plan is a named telling over the fact base: a default
     /// disclosure mode + sparse per-fact overrides selecting which facts the
@@ -852,7 +852,7 @@ pub struct AtomicStore {
     /// boundary); `retract_fact` CASCADE-DROPS the entry when its fact goes, so
     /// the store can never hold a dangling cost. Empty on pre-v30 stores.
     #[serde(default)]
-    pub edge_costs: BTreeMap<String, EdgeCost>,
+    pub edge_costs: BTreeMap<mnemosyne_core::FactId, EdgeCost>,
     /// Map edge-GUARD side-table (Round 717 design → Round 720 build; the value
     /// became a SET in Round 721 design → Round 722 build) — keyed by the ADJACENT
     /// FACT ID (the R698 `adjacent(a,b)` edge), value = the SET of CONDITION FACT
@@ -874,7 +874,7 @@ pub struct AtomicStore {
     /// `Some(k)` = at least k. Empty on pre-v31 stores; a v31 single-`String` and a
     /// v32 bare-set value predate any populated store (object-form only from v33).
     #[serde(default)]
-    pub edge_guards: BTreeMap<String, EdgeGuard>,
+    pub edge_guards: BTreeMap<mnemosyne_core::FactId, EdgeGuard>,
     /// Numeric-PARAMETER registry (Round 728 design → Round 729 build, DEBT-K) —
     /// keyed by parameter id. The consumer's accumulating meters (`affection`,
     /// `karma`, `gold`); every `parameter_deltas` reference (and `parameter_gates`,
@@ -900,7 +900,8 @@ pub struct AtomicStore {
     /// the authored delta; it NEVER computes a running sum along a playthrough
     /// (the consumer's job — the R712 layering line). Empty on pre-v34 stores.
     #[serde(default)]
-    pub parameter_deltas: BTreeMap<String, BTreeMap<mnemosyne_core::ParameterId, i64>>,
+    pub parameter_deltas:
+        BTreeMap<mnemosyne_core::FactId, BTreeMap<mnemosyne_core::ParameterId, i64>>,
     /// Per-CHOICE numeric-threshold GATES side-table (Round 728 design → Round 730
     /// build, DEBT-K) — keyed by the CHOICE EDGE fact id, value = a
     /// [`ParameterGate`] (`{parameter, op, threshold}`). The thing K-of-N
@@ -922,7 +923,7 @@ pub struct AtomicStore {
     /// evaluates whether the gate holds now (the consumer's job — the R712 layering
     /// line; NO reachability verdict, R728 review F1). Empty on pre-v35 stores.
     #[serde(default)]
-    pub parameter_gates: BTreeMap<String, ParameterGate>,
+    pub parameter_gates: BTreeMap<mnemosyne_core::FactId, ParameterGate>,
     /// Per-fact multiset COUNT side-table (Round 731, DEBT-L) — keyed by a FACT
     /// id, value = a POSITIVE count (the multiset multiplicity: `holds(A, potion)`
     /// with count 5 = A holds FIVE potions). The thing singular `holds` custody
@@ -964,7 +965,7 @@ pub struct AtomicStore {
     /// singular-custody stays the per:object Exclusive rule's, unchanged). Empty on
     /// pre-v36 stores.
     #[serde(default)]
-    pub fact_counts: BTreeMap<String, i64>,
+    pub fact_counts: BTreeMap<mnemosyne_core::FactId, i64>,
     /// Schema version — bump on breaking shape change.
     #[serde(default = "default_schema_version")]
     pub schema_version: u32,
@@ -990,7 +991,7 @@ fn default_schema_version() -> u32 {
 pub struct EdgeGuard {
     /// The condition fact ids the edge requires (each a per-member dangling-ref
     /// check). An emptied set drops the whole `edge_guards` key.
-    pub conditions: BTreeSet<String>,
+    pub conditions: BTreeSet<mnemosyne_core::FactId>,
     /// K-of-N threshold: `None` = require ALL (AND); `Some(k)` = at least k
     /// (`1 <= k < len`). Omitted from the wire form when `None`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -3851,7 +3852,8 @@ pub fn import_evidence_reviews(
     // Validate EVERY entry before mutating anything (fail-before-save, the
     // import_content_excerpts rule): a rejected batch leaves no partial record of
     // reviews that were never affirmed.
-    let mut staged: Vec<(String, usize, String)> = Vec::with_capacity(reviews.len());
+    let mut staged: Vec<(mnemosyne_core::FactId, usize, String)> =
+        Vec::with_capacity(reviews.len());
     for r in reviews {
         let fact_id = r.fact_id.trim();
         let section_id = r.section_id.trim();
@@ -3895,7 +3897,7 @@ pub fn import_evidence_reviews(
                 excerpt.text_sha256, excerpt.text_sha256
             )));
         }
-        staged.push((fact_id.to_string(), pos, sha.to_string()));
+        staged.push((fact_id.into(), pos, sha.to_string()));
     }
     let mut applied = 0usize;
     for (fact_id, pos, sha) in staged {
@@ -4164,7 +4166,7 @@ pub fn import_ladders(
                 )));
             }
             for fact in rung.needs.iter().chain(rung.reveals.iter()) {
-                if fact.trim().is_empty() {
+                if fact.as_str().trim().is_empty() {
                     return Err(AtomicMutateError::Validation(format!(
                         "import_ladders: {where_} has a rung naming a blank fact"
                     )));
@@ -5267,7 +5269,7 @@ pub const FACTS_MANIFEST_SHAPE: &str = "a JSON object with frames / branches / \
 fn build_candidate_fact(
     store: &AtomicStore,
     entry: &FactImport,
-) -> Result<(String, NarrativeFact), String> {
+) -> Result<(mnemosyne_core::FactId, NarrativeFact), String> {
     let fact_id = entry.fact_id.trim();
     if fact_id.is_empty() {
         return Err("fact_id mandatory (non-empty after trim)".to_string());
@@ -5386,7 +5388,7 @@ fn build_candidate_fact(
         // Stamped by `validate_and_stamp_fact_refs` once the target is
         // known to exist; never caller-supplied (R404).
         conflicts_with.push(ConflictAssertion {
-            target: c.to_string(),
+            target: c.into(),
             target_claim_sha256: String::new(),
         });
     }
@@ -5402,7 +5404,7 @@ fn build_candidate_fact(
                 "fact `{fact_id}`: supersedes_in_frame itself — succession needs a predecessor"
             ));
         }
-        Some(s) => Some(s.to_string()),
+        Some(s) => Some(s.into()),
     };
     let payoff_expectation = match entry.payoff_expectation.as_deref().map(str::trim) {
         None => PayoffExpectation::default(),
@@ -5413,7 +5415,7 @@ fn build_candidate_fact(
             )
         })?,
     };
-    let mut pays_off = Vec::with_capacity(entry.pays_off.len());
+    let mut pays_off: Vec<mnemosyne_core::FactId> = Vec::with_capacity(entry.pays_off.len());
     for t in &entry.pays_off {
         let t = t.trim();
         if t.is_empty() {
@@ -5427,7 +5429,7 @@ fn build_candidate_fact(
         if pays_off.iter().any(|x| x == t) {
             return Err(format!("fact `{fact_id}`: duplicate pays_off ref `{t}`"));
         }
-        pays_off.push(t.to_string());
+        pays_off.push(t.into());
     }
     let (quote, quote_sha256) = match entry.quote.as_deref().map(str::trim) {
         None => (None, None),
@@ -5440,10 +5442,11 @@ fn build_candidate_fact(
     };
     let typed = match &entry.typed {
         None => None,
-        Some(t) => Some(build_typed_claim(store, fact_id, t, &entities)?),
+        Some(t) => Some(build_typed_claim(store, &fact_id.into(), t, &entities)?),
     };
     Ok((
-        fact_id.to_string(),
+        // Entry into the store vocabulary: `FactImport` is a wire DTO.
+        fact_id.into(),
         NarrativeFact {
             // Entry into the store vocabulary: `FactImport` is a wire DTO and
             // stays `String`; the id becomes typed exactly here, once.
@@ -5480,7 +5483,7 @@ fn build_candidate_fact(
 ///   a fact ref is resolved in phase 2 (Round 708 removed the free-text shape).
 fn build_typed_claim(
     store: &AtomicStore,
-    fact_id: &str,
+    fact_id: &mnemosyne_core::FactId,
     t: &TypedClaim,
     fact_entities: &[mnemosyne_core::EntityId],
 ) -> Result<TypedClaim, String> {
@@ -5612,13 +5615,13 @@ fn build_typed_claim(
             // PHASE 2 (`validate_and_stamp_fact_refs` against store ∪ staged),
             // beside conflicts_with / pays_off — NOT via the phase-1 registry
             // facets (R659: the entity-leg analogy is FALSE for fact refs).
-            let id = id.trim();
+            let id = id.as_str().trim();
             if id.is_empty() {
                 return Err(format!(
                     "fact `{fact_id}`: typed object fact id mandatory (non-empty)"
                 ));
             }
-            TypedObject::Fact { id: id.to_string() }
+            TypedObject::Fact { id: id.into() }
         }
         // Every cross pair is a shape mismatch — enumerated explicitly (no
         // wildcard, the R624/R658 discipline) so a new object OR object_kind
@@ -5675,13 +5678,13 @@ fn build_typed_claim(
 /// import validates jointly — two proposals must not close what each alone
 /// would not); the candidate edge itself is overlaid internally.
 fn check_succession_edge(
-    fact_id: &str,
+    fact_id: &mnemosyne_core::FactId,
     frame: &mnemosyne_core::FrameId,
     branch: &mnemosyne_core::BranchId,
-    target: &str,
-    visible: &BTreeMap<String, NarrativeFact>,
+    target: &mnemosyne_core::FactId,
+    visible: &BTreeMap<mnemosyne_core::FactId, NarrativeFact>,
     branches: &BTreeMap<mnemosyne_core::BranchId, Branch>,
-    staged_edges: &BTreeMap<String, String>,
+    staged_edges: &BTreeMap<mnemosyne_core::FactId, mnemosyne_core::FactId>,
 ) -> Result<(), String> {
     match visible.get(target) {
         None => {
@@ -5717,17 +5720,18 @@ fn check_succession_edge(
     // fact carries at most one outbound pointer, so the walk is linear; a
     // revisit means the candidate closes (or runs into) a loop — reject
     // loud either way (a pre-existing loop is out-of-band corruption).
-    let outbound = |id: &str| -> Option<String> {
+    let outbound = |id: &mnemosyne_core::FactId| -> Option<mnemosyne_core::FactId> {
         if id == fact_id {
-            Some(target.to_string())
+            Some(target.clone())
         } else if let Some(staged) = staged_edges.get(id) {
             Some(staged.clone())
         } else {
             visible.get(id).and_then(|f| f.supersedes_in_frame.clone())
         }
     };
-    let mut visited: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
-    visited.insert(fact_id.to_string());
+    let mut visited: std::collections::BTreeSet<mnemosyne_core::FactId> =
+        std::collections::BTreeSet::new();
+    visited.insert(fact_id.clone());
     let mut cur = outbound(fact_id);
     while let Some(next) = cur {
         if !visited.insert(next.clone()) {
@@ -5745,13 +5749,17 @@ fn check_succession_edge(
 /// Whether a conflict edge between `a` and `b` is already recorded on
 /// EITHER side (edges are read symmetrically — the Round 463 shared
 /// predicate both conflict write paths consult).
-fn conflict_edge_recorded(facts: &BTreeMap<String, NarrativeFact>, a: &str, b: &str) -> bool {
+fn conflict_edge_recorded(
+    facts: &BTreeMap<mnemosyne_core::FactId, NarrativeFact>,
+    a: &mnemosyne_core::FactId,
+    b: &mnemosyne_core::FactId,
+) -> bool {
     facts
         .get(a)
-        .is_some_and(|f| f.conflicts_with.iter().any(|c| c.target == b))
+        .is_some_and(|f| f.conflicts_with.iter().any(|c| &c.target == b))
         || facts
             .get(b)
-            .is_some_and(|f| f.conflicts_with.iter().any(|c| c.target == a))
+            .is_some_and(|f| f.conflicts_with.iter().any(|c| &c.target == a))
 }
 
 /// Cross-fact ref check + judgment stamping for one fact against a
@@ -5764,9 +5772,9 @@ fn conflict_edge_recorded(facts: &BTreeMap<String, NarrativeFact>, a: &str, b: &
 /// set ([`check_succession_edge`]): in-frame, fork-lineage branch, and
 /// acyclic chain.
 fn validate_and_stamp_fact_refs(
-    fact_id: &str,
+    fact_id: &mnemosyne_core::FactId,
     fact: &mut NarrativeFact,
-    visible: &BTreeMap<String, NarrativeFact>,
+    visible: &BTreeMap<mnemosyne_core::FactId, NarrativeFact>,
     branches: &BTreeMap<mnemosyne_core::BranchId, Branch>,
 ) -> Result<(), String> {
     for c in &mut fact.conflicts_with {
@@ -5813,14 +5821,13 @@ fn validate_and_stamp_fact_refs(
 /// so the fourth write path is guarded by the same verdict — the R659 gap the
 /// design named. A no-op for every non-`Fact` object.
 fn check_typed_fact_ref(
-    fact_id: &str,
+    fact_id: &mnemosyne_core::FactId,
     typed: Option<&TypedClaim>,
-    visible: &BTreeMap<String, NarrativeFact>,
+    visible: &BTreeMap<mnemosyne_core::FactId, NarrativeFact>,
 ) -> Result<(), String> {
     let Some(TypedObject::Fact { id }) = typed.map(|t| &t.object) else {
         return Ok(());
     };
-    let id = id.trim();
     if id == fact_id {
         return Err(format!(
             "fact `{fact_id}`: typed object fact references itself — a fact cannot be its \
@@ -6717,7 +6724,7 @@ pub fn add_edge_cost(
     n: i64,
     unit: &str,
 ) -> Result<AtomicMutateReceipt, AtomicMutateError> {
-    let id = fact_id.trim().to_string();
+    let id = mnemosyne_core::FactId::from(fact_id.trim());
     let unit = unit.trim();
     if !store.narrative_facts.contains_key(&id) {
         return Err(AtomicMutateError::Validation(format!(
@@ -6745,7 +6752,7 @@ pub fn add_edge_cost(
         &mut store.edge_costs,
         "add_edge_cost",
         "edge_cost",
-        &id,
+        id.as_str(),
         candidate,
     )
     .map_err(AtomicMutateError::Validation)?;
@@ -6754,7 +6761,7 @@ pub fn add_edge_cost(
         sidecar_path,
         "add_edge_cost",
         "edge_cost",
-        &id,
+        id.as_str(),
         created,
     )
 }
@@ -6774,14 +6781,20 @@ pub fn remove_edge_cost(
     sidecar_path: &Path,
     fact_id: &str,
 ) -> Result<AtomicMutateReceipt, AtomicMutateError> {
-    let id = fact_id.trim().to_string();
+    let id = mnemosyne_core::FactId::from(fact_id.trim());
     if store.edge_costs.remove(&id).is_none() {
         return Err(AtomicMutateError::Validation(format!(
             "remove_edge_cost: no edge cost on fact `{id}` to remove (a cost is added by \
              add_edge_cost and cascade-dropped by retract_fact)"
         )));
     }
-    save_with_receipt(store, sidecar_path, "remove_edge_cost", "edge_cost", &id)
+    save_with_receipt(
+        store,
+        sidecar_path,
+        "remove_edge_cost",
+        "edge_cost",
+        id.as_str(),
+    )
 }
 
 /// Every out-of-band `edge_costs` violation (Round 709 → DEBT-J): a key whose
@@ -6827,8 +6840,8 @@ pub fn add_edge_guard(
     edge_fact_id: &str,
     condition_fact_id: &str,
 ) -> Result<AtomicMutateReceipt, AtomicMutateError> {
-    let edge = edge_fact_id.trim().to_string();
-    let condition = condition_fact_id.trim().to_string();
+    let edge = mnemosyne_core::FactId::from(edge_fact_id.trim());
+    let condition = mnemosyne_core::FactId::from(condition_fact_id.trim());
     if !store.narrative_facts.contains_key(&edge) {
         return Err(AtomicMutateError::Validation(format!(
             "add_edge_guard: edge fact `{edge}` not present (a guard attaches to an existing \
@@ -6864,7 +6877,7 @@ pub fn add_edge_guard(
         sidecar_path,
         "add_edge_guard",
         "edge_guard",
-        &edge,
+        edge.as_str(),
         created,
     )
 }
@@ -6879,8 +6892,8 @@ pub fn remove_edge_guard_condition(
     edge_fact_id: &str,
     condition_fact_id: &str,
 ) -> Result<AtomicMutateReceipt, AtomicMutateError> {
-    let edge = edge_fact_id.trim().to_string();
-    let condition = condition_fact_id.trim().to_string();
+    let edge = mnemosyne_core::FactId::from(edge_fact_id.trim());
+    let condition = mnemosyne_core::FactId::from(condition_fact_id.trim());
     let guard = match store.edge_guards.get_mut(&edge) {
         Some(g) if g.conditions.contains(&condition) => g,
         _ => {
@@ -6925,7 +6938,7 @@ pub fn remove_edge_guard_condition(
         sidecar_path,
         "remove_edge_guard_condition",
         "edge_guard",
-        &edge,
+        edge.as_str(),
     )
 }
 
@@ -6944,7 +6957,7 @@ pub fn set_edge_guard_threshold(
     edge_fact_id: &str,
     threshold: Option<usize>,
 ) -> Result<AtomicMutateReceipt, AtomicMutateError> {
-    let edge = edge_fact_id.trim().to_string();
+    let edge = mnemosyne_core::FactId::from(edge_fact_id.trim());
     let guard = store.edge_guards.get_mut(&edge).ok_or_else(|| {
         AtomicMutateError::Validation(format!(
             "set_edge_guard_threshold: edge `{edge}` has no guard (add a condition with \
@@ -6976,7 +6989,7 @@ pub fn set_edge_guard_threshold(
         sidecar_path,
         "set_edge_guard_threshold",
         "edge_guard",
-        &edge,
+        edge.as_str(),
     )
 }
 
@@ -6994,7 +7007,7 @@ pub fn remove_edge_guard(
     sidecar_path: &Path,
     edge_fact_id: &str,
 ) -> Result<AtomicMutateReceipt, AtomicMutateError> {
-    let edge = edge_fact_id.trim().to_string();
+    let edge = mnemosyne_core::FactId::from(edge_fact_id.trim());
     if store.edge_guards.remove(&edge).is_none() {
         return Err(AtomicMutateError::Validation(format!(
             "remove_edge_guard: no edge guard on fact `{edge}` to remove (a guard is added by \
@@ -7006,7 +7019,7 @@ pub fn remove_edge_guard(
         sidecar_path,
         "remove_edge_guard",
         "edge_guard",
-        &edge,
+        edge.as_str(),
     )
 }
 
@@ -7127,7 +7140,7 @@ pub fn add_parameter_delta(
     parameter: &str,
     delta: i64,
 ) -> Result<AtomicMutateReceipt, AtomicMutateError> {
-    let fact = fact_id.trim().to_string();
+    let fact = mnemosyne_core::FactId::from(fact_id.trim());
     let param = parameter.trim().to_string();
     if !store.narrative_facts.contains_key(&fact) {
         return Err(AtomicMutateError::Validation(format!(
@@ -7176,7 +7189,7 @@ pub fn add_parameter_delta(
         sidecar_path,
         "add_parameter_delta",
         "parameter_delta",
-        &fact,
+        fact.as_str(),
         created,
     )
 }
@@ -7192,7 +7205,7 @@ pub fn remove_parameter_delta(
     fact_id: &str,
     parameter: &str,
 ) -> Result<AtomicMutateReceipt, AtomicMutateError> {
-    let fact = fact_id.trim().to_string();
+    let fact = mnemosyne_core::FactId::from(fact_id.trim());
     let param = parameter.trim().to_string();
     match store.parameter_deltas.get_mut(&fact) {
         Some(m) if m.contains_key(param.as_str()) => {
@@ -7217,7 +7230,7 @@ pub fn remove_parameter_delta(
         sidecar_path,
         "remove_parameter_delta",
         "parameter_delta",
-        &fact,
+        fact.as_str(),
     )
 }
 
@@ -7291,7 +7304,7 @@ pub fn add_parameter_gate(
     op: IntervalOp,
     threshold: i64,
 ) -> Result<AtomicMutateReceipt, AtomicMutateError> {
-    let fact = edge_fact_id.trim().to_string();
+    let fact = mnemosyne_core::FactId::from(edge_fact_id.trim());
     let param = parameter.trim().to_string();
     if !store.narrative_facts.contains_key(&fact) {
         return Err(AtomicMutateError::Validation(format!(
@@ -7314,7 +7327,7 @@ pub fn add_parameter_gate(
         &mut store.parameter_gates,
         "add_parameter_gate",
         "parameter_gate",
-        &fact,
+        fact.as_str(),
         candidate,
     )
     .map_err(AtomicMutateError::Validation)?;
@@ -7323,7 +7336,7 @@ pub fn add_parameter_gate(
         sidecar_path,
         "add_parameter_gate",
         "parameter_gate",
-        &fact,
+        fact.as_str(),
         created,
     )
 }
@@ -7341,7 +7354,7 @@ pub fn remove_parameter_gate(
     sidecar_path: &Path,
     fact_id: &str,
 ) -> Result<AtomicMutateReceipt, AtomicMutateError> {
-    let id = fact_id.trim().to_string();
+    let id = mnemosyne_core::FactId::from(fact_id.trim());
     if store.parameter_gates.remove(&id).is_none() {
         return Err(AtomicMutateError::Validation(format!(
             "remove_parameter_gate: no parameter gate on fact `{id}` to remove (a gate is added by \
@@ -7353,7 +7366,7 @@ pub fn remove_parameter_gate(
         sidecar_path,
         "remove_parameter_gate",
         "parameter_gate",
-        &id,
+        id.as_str(),
     )
 }
 
@@ -7407,7 +7420,7 @@ pub fn add_fact_count(
     fact_id: &str,
     count: i64,
 ) -> Result<AtomicMutateReceipt, AtomicMutateError> {
-    let id = fact_id.trim().to_string();
+    let id = mnemosyne_core::FactId::from(fact_id.trim());
     if !store.narrative_facts.contains_key(&id) {
         return Err(AtomicMutateError::Validation(format!(
             "add_fact_count: fact `{id}` not present (a count attaches to an existing fact; \
@@ -7424,7 +7437,7 @@ pub fn add_fact_count(
         &mut store.fact_counts,
         "add_fact_count",
         "fact_count",
-        &id,
+        id.as_str(),
         count,
     )
     .map_err(AtomicMutateError::Validation)?;
@@ -7433,7 +7446,7 @@ pub fn add_fact_count(
         sidecar_path,
         "add_fact_count",
         "fact_count",
-        &id,
+        id.as_str(),
         created,
     )
 }
@@ -7451,14 +7464,20 @@ pub fn remove_fact_count(
     sidecar_path: &Path,
     fact_id: &str,
 ) -> Result<AtomicMutateReceipt, AtomicMutateError> {
-    let id = fact_id.trim().to_string();
+    let id = mnemosyne_core::FactId::from(fact_id.trim());
     if store.fact_counts.remove(&id).is_none() {
         return Err(AtomicMutateError::Validation(format!(
             "remove_fact_count: no fact count on fact `{id}` to remove (a count is added by \
              add_fact_count and cascade-dropped by retract_fact)"
         )));
     }
-    save_with_receipt(store, sidecar_path, "remove_fact_count", "fact_count", &id)
+    save_with_receipt(
+        store,
+        sidecar_path,
+        "remove_fact_count",
+        "fact_count",
+        id.as_str(),
+    )
 }
 
 /// Every out-of-band `fact_counts` violation (Round 731, DEBT-L): a key whose
@@ -7594,7 +7613,11 @@ pub fn resolve_predicate<'a>(store: &'a AtomicStore, id: &str) -> Option<&'a Pre
 
 /// The out-of-band detector's message for one unresolved ref — kept byte-stable
 /// with the pre-Round-688 inline messages (moved, not re-worded).
-fn store_registry_ref_message(id: &str, facet: FactRefFacet, value: &str) -> String {
+fn store_registry_ref_message(
+    id: &mnemosyne_core::FactId,
+    facet: FactRefFacet,
+    value: &str,
+) -> String {
     match facet {
         FactRefFacet::Frame => format!(
             "fact `{id}`: frame `{value}` not in the frames registry (out-of-band edit; \
@@ -8574,7 +8597,7 @@ pub(crate) fn apply_disclosure_override(
     // decision is a no-op, so a manifest re-import stays byte-stable (the
     // standalone `set_disclosure` persists unconditionally, its own contract).
     let changed = plan.overrides.get(fact) != Some(&new_override);
-    plan.overrides.insert(fact.to_string(), new_override);
+    plan.overrides.insert(fact.into(), new_override);
     Ok(changed)
 }
 
@@ -8733,7 +8756,7 @@ pub fn ladder_ref_violations(store: &AtomicStore) -> Vec<String> {
                 .map(|f| ("needs", f))
                 .chain(rung.reveals.iter().map(|f| ("reveals", f)))
             {
-                if fact.trim().is_empty() {
+                if fact.as_str().trim().is_empty() {
                     out.push(format!(
                         "{rctx}: {leg} names a blank fact (out-of-band edit)"
                     ));
@@ -8770,7 +8793,7 @@ fn disclosure_override_mut<'a>(
     store: &'a mut AtomicStore,
     primitive: &str,
     telling: &str,
-    fact: &str,
+    fact: &mnemosyne_core::FactId,
 ) -> Result<&'a mut DisclosureOverride, AtomicMutateError> {
     let plan = store.disclosure_plans.get_mut(telling).ok_or_else(|| {
         AtomicMutateError::Validation(format!(
@@ -8804,7 +8827,7 @@ pub fn add_disclosure_reveal_coord(
     coord: &str,
 ) -> Result<AtomicMutateReceipt, AtomicMutateError> {
     let telling = telling_id.trim().to_string();
-    let fact = fact_id.trim().to_string();
+    let fact = mnemosyne_core::FactId::from(fact_id.trim());
     let branch = mnemosyne_core::BranchId::from(branch.trim());
     let coord = coord.trim().to_string();
     if branch.is_empty() || coord.is_empty() {
@@ -8842,7 +8865,7 @@ pub fn add_disclosure_reveal_coord(
         candidate.mode,
         !candidate.first_at.is_empty(),
         "add_disclosure_reveal_coord",
-        &fact,
+        fact.as_str(),
     )?;
     if let Some(msg) =
         disclosure_override_ref_violations(store, "add_disclosure_reveal_coord", &candidate)
@@ -8880,7 +8903,7 @@ pub fn remove_disclosure_reveal_coord(
     coord: &str,
 ) -> Result<AtomicMutateReceipt, AtomicMutateError> {
     let telling = telling_id.trim().to_string();
-    let fact = fact_id.trim().to_string();
+    let fact = mnemosyne_core::FactId::from(fact_id.trim());
     let branch = mnemosyne_core::BranchId::from(branch.trim());
     let coord = coord.trim().to_string();
     let ov = disclosure_override_mut(store, "remove_disclosure_reveal_coord", &telling, &fact)?;
@@ -8937,7 +8960,7 @@ pub fn set_disclosure_reveal_threshold(
     threshold: Option<usize>,
 ) -> Result<AtomicMutateReceipt, AtomicMutateError> {
     let telling = telling_id.trim().to_string();
-    let fact = fact_id.trim().to_string();
+    let fact = mnemosyne_core::FactId::from(fact_id.trim());
     let branch = mnemosyne_core::BranchId::from(branch.trim());
     let ov = disclosure_override_mut(store, "set_disclosure_reveal_threshold", &telling, &fact)?;
     let reveal = ov.first_at.get_mut(&branch).ok_or_else(|| {
@@ -9079,11 +9102,20 @@ pub fn add_fact(
             written_bytes: 0,
         }),
         Some(existing) => Err(AtomicMutateError::Validation(divergent_fact_message(
-            "add_fact", &fact_id, existing, &candidate,
+            "add_fact",
+            fact_id.as_str(),
+            existing,
+            &candidate,
         ))),
         None => {
             store.narrative_facts.insert(fact_id.clone(), candidate);
-            save_with_receipt(store, sidecar_path, "add_fact", "narrative_fact", &fact_id)
+            save_with_receipt(
+                store,
+                sidecar_path,
+                "add_fact",
+                "narrative_fact",
+                fact_id.as_str(),
+            )
         }
     }
 }
@@ -9318,7 +9350,8 @@ pub fn apply_facts_manifest(
             no_op += 1;
         }
     }
-    let mut staged: Vec<(String, NarrativeFact)> = Vec::with_capacity(manifest.facts.len());
+    let mut staged: Vec<(mnemosyne_core::FactId, NarrativeFact)> =
+        Vec::with_capacity(manifest.facts.len());
     for (idx, entry) in manifest.facts.iter().enumerate() {
         let (fact_id, candidate) = build_candidate_fact(store, entry).map_err(|e| {
             AtomicMutateError::Validation(format!("import_facts: manifest fact {idx}: {e}"))
@@ -9354,7 +9387,7 @@ pub fn apply_facts_manifest(
             Some(existing) => {
                 return Err(AtomicMutateError::Validation(divergent_fact_message(
                     "import_facts",
-                    &fact_id,
+                    fact_id.as_str(),
                     existing,
                     &candidate,
                 )));
@@ -9467,8 +9500,8 @@ pub fn add_fact_conflict(
     fact_id: &str,
     conflicts_with: &str,
 ) -> Result<AtomicMutateReceipt, AtomicMutateError> {
-    let id = fact_id.trim();
-    let other = conflicts_with.trim();
+    let id = &mnemosyne_core::FactId::from(fact_id.trim());
+    let other = &mnemosyne_core::FactId::from(conflicts_with.trim());
     if id.is_empty() || other.is_empty() {
         return Err(AtomicMutateError::Validation(
             "add_fact_conflict: fact_id and conflicts_with both mandatory".to_string(),
@@ -9501,7 +9534,7 @@ pub fn add_fact_conflict(
         .expect("checked above")
         .conflicts_with
         .push(ConflictAssertion {
-            target: other.to_string(),
+            target: other.clone(),
             target_claim_sha256: stamp,
         });
     save_with_receipt(
@@ -9522,18 +9555,18 @@ pub fn add_fact_conflict(
 /// because a disclosure referrer is a `(telling, override)`, not a fact, and
 /// forcing one tuple over both shapes would buy nothing.
 fn inbound_fact_refs<'a>(
-    facts: &'a BTreeMap<String, NarrativeFact>,
-    fact_id: &str,
-) -> Vec<(&'a String, &'a NarrativeFact, &'static str)> {
+    facts: &'a BTreeMap<mnemosyne_core::FactId, NarrativeFact>,
+    fact_id: &mnemosyne_core::FactId,
+) -> Vec<(&'a mnemosyne_core::FactId, &'a NarrativeFact, &'static str)> {
     let mut refs = Vec::new();
     for (other_id, other) in facts {
         if other_id == fact_id {
             continue;
         }
-        if other.conflicts_with.iter().any(|c| c.target == fact_id) {
+        if other.conflicts_with.iter().any(|c| &c.target == fact_id) {
             refs.push((other_id, other, "conflicts_with"));
         }
-        if other.supersedes_in_frame.as_deref() == Some(fact_id) {
+        if other.supersedes_in_frame.as_ref() == Some(fact_id) {
             refs.push((other_id, other, "supersedes_in_frame"));
         }
         if other.pays_off.iter().any(|t| t == fact_id) {
@@ -9643,7 +9676,7 @@ pub fn retract_fact(
             "retract_fact: --reason mandatory (audit-trail safeguard)".to_string(),
         ));
     }
-    let id = fact_id.trim();
+    let id = &mnemosyne_core::FactId::from(fact_id.trim());
     if !store.narrative_facts.contains_key(id) {
         return Err(AtomicMutateError::NotFound(format!(
             "fact_id `{id}` not present in atomic store"
@@ -9666,7 +9699,7 @@ pub fn retract_fact(
         .iter()
         .map(|(rid, _, via)| format!("`{rid}` (via {via})"))
         .collect::<Vec<_>>();
-    let disclosure_referrers = inbound_disclosure_refs(&store.disclosure_plans, id)
+    let disclosure_referrers = inbound_disclosure_refs(&store.disclosure_plans, id.as_str())
         .iter()
         .map(|(telling, _)| format!("`{telling}`"))
         .collect::<Vec<_>>();
@@ -9744,7 +9777,13 @@ pub fn retract_fact(
     // story for the count side-table. This makes the R731-measured orphaned-count
     // silent hole (a count surviving its custody retract) unrepresentable.
     store.fact_counts.remove(id);
-    save_with_receipt(store, sidecar_path, "retract_fact", "narrative_fact", id)
+    save_with_receipt(
+        store,
+        sidecar_path,
+        "retract_fact",
+        "narrative_fact",
+        id.as_str(),
+    )
 }
 
 /// Round 434 — authorial amend (design sec 7.9 axis 4): replace a fact's
@@ -9808,7 +9847,7 @@ pub fn amend_fact(
     // facts are guaranteed typed by the R507 set_disclosure invariant" — and
     // only re-checks it defensively in the gate; the guarantee was not true.
     if candidate.typed.is_none() {
-        for (telling, ov) in inbound_disclosure_refs(&store.disclosure_plans, &fact_id) {
+        for (telling, ov) in inbound_disclosure_refs(&store.disclosure_plans, fact_id.as_str()) {
             if disclosure_needs_typed_target(ov.mode, !ov.first_at.is_empty()) {
                 return Err(AtomicMutateError::Validation(format!(
                     "amend_fact: fact `{fact_id}` carries a withhold/first_at disclosure \
@@ -9835,7 +9874,7 @@ pub fn amend_fact(
         sidecar_path,
         "amend_fact",
         "narrative_fact",
-        &fact_id,
+        fact_id.as_str(),
     )
 }
 
@@ -9939,22 +9978,25 @@ pub fn import_typing_proposals(
     file_sha256: &str,
     dry_run: bool,
 ) -> Result<TypingImportReport, AtomicMutateError> {
-    let mut seen: std::collections::BTreeSet<&str> = std::collections::BTreeSet::new();
+    // Owned: the proposal's id is constructed per iteration now, so a borrowed
+    // set would tie the seen-set's lifetime to one loop pass.
+    let mut seen: std::collections::BTreeSet<mnemosyne_core::FactId> =
+        std::collections::BTreeSet::new();
     let mut verdicts: Vec<TypingProposalVerdict> = Vec::new();
-    let mut built: Vec<(String, TypedClaim)> = Vec::new();
+    let mut built: Vec<(mnemosyne_core::FactId, TypedClaim)> = Vec::new();
     for p in &file.proposals {
-        let fact_id = p.fact.trim();
+        let fact_id = mnemosyne_core::FactId::from(p.fact.trim());
         let verdict = (|| -> Result<TypedClaim, String> {
             if fact_id.is_empty() {
                 return Err("fact id mandatory (non-empty)".to_string());
             }
-            if !seen.insert(fact_id) {
+            if !seen.insert(fact_id.clone()) {
                 return Err(format!(
                     "duplicate proposal for fact `{fact_id}` in one file — ambiguous, \
                      keep exactly one"
                 ));
             }
-            let Some(fact) = store.narrative_facts.get(fact_id) else {
+            let Some(fact) = store.narrative_facts.get(&fact_id) else {
                 return Err(format!(
                     "fact `{fact_id}` not present in atomic store (proposals target \
                      existing facts; add_fact creates)"
@@ -9966,19 +10008,19 @@ pub fn import_typing_proposals(
                      (overwrite is manual author territory: amend-fact)"
                 ));
             }
-            check_claim_pin(&store.narrative_facts, fact_id, &p.claim_sha256, "fact")?;
+            check_claim_pin(&store.narrative_facts, &fact_id, &p.claim_sha256, "fact")?;
             if p.rationale.trim().is_empty() {
                 return Err(format!(
                     "fact `{fact_id}`: rationale mandatory (the reviewable substance)"
                 ));
             }
-            let leg = build_typed_claim(store, fact_id, &p.typed, &fact.entities)?;
+            let leg = build_typed_claim(store, &fact_id, &p.typed, &fact.entities)?;
             // Round 707 — the fourth write path: build_typed_claim does NOT
             // check a Fact-ref (that is PHASE 2), and this path skips the rest of
             // phase 2, so run the SHARED referential check here or a Fact{id}
             // object escapes unguarded (the R659 gap). Targets are existing facts
             // (proposals fill existing facts), so `visible = store`.
-            check_typed_fact_ref(fact_id, Some(&leg), &store.narrative_facts)?;
+            check_typed_fact_ref(&fact_id, Some(&leg), &store.narrative_facts)?;
             Ok(leg)
         })();
         match verdict {
@@ -9987,7 +10029,7 @@ pub fn import_typing_proposals(
                     fact: fact_id.to_string(),
                     verdict: "accepted".to_string(),
                 });
-                built.push((fact_id.to_string(), leg));
+                built.push((fact_id.clone(), leg));
             }
             Err(reason) => verdicts.push(TypingProposalVerdict {
                 fact: fact_id.to_string(),
@@ -10146,8 +10188,8 @@ pub struct EdgeImportReport {
 /// and this unifies the re-check itself). `side` names the endpoint for
 /// the message (`fact` / `successor` / `predecessor` / `target`).
 fn check_claim_pin(
-    facts: &BTreeMap<String, NarrativeFact>,
-    fact_id: &str,
+    facts: &BTreeMap<mnemosyne_core::FactId, NarrativeFact>,
+    fact_id: &mnemosyne_core::FactId,
     stamped: &str,
     side: &str,
 ) -> Result<(), String> {
@@ -10182,18 +10224,20 @@ pub fn import_edge_proposals(
     let mut verdicts: Vec<EdgeProposalVerdict> = Vec::new();
     // Every successor seen, ACCEPTED OR NOT (the R459 rule: a duplicate is
     // ambiguous regardless of either verdict).
-    let mut seen_successors: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+    let mut seen_successors: std::collections::BTreeSet<mnemosyne_core::FactId> =
+        std::collections::BTreeSet::new();
     // Accepted succession edges, successor -> predecessor (the joint-
     // validation overlay AND the apply list).
-    let mut staged_succession: BTreeMap<String, String> = BTreeMap::new();
+    let mut staged_succession: BTreeMap<mnemosyne_core::FactId, mnemosyne_core::FactId> =
+        BTreeMap::new();
     for p in &file.succession {
-        let successor = p.successor.trim();
-        let predecessor = p.predecessor.trim();
+        let successor = &mnemosyne_core::FactId::from(p.successor.trim());
+        let predecessor = &mnemosyne_core::FactId::from(p.predecessor.trim());
         let verdict = (|| -> Result<(), String> {
             if successor.is_empty() || predecessor.is_empty() {
                 return Err("successor and predecessor both mandatory (non-empty)".to_string());
             }
-            if !seen_successors.insert(successor.to_string()) {
+            if !seen_successors.insert(successor.clone()) {
                 return Err(format!(
                     "duplicate proposal for successor `{successor}` in one file — \
                      ambiguous, keep exactly one"
@@ -10236,7 +10280,7 @@ pub fn import_edge_proposals(
                 &store.branches,
                 &staged_succession,
             )?;
-            staged_succession.insert(successor.to_string(), predecessor.to_string());
+            staged_succession.insert(successor.clone(), predecessor.clone());
             Ok(())
         })();
         verdicts.push(EdgeProposalVerdict {
@@ -10249,10 +10293,10 @@ pub fn import_edge_proposals(
     // Accepted conflict pairs, canonical order (dedup within the file).
     let mut staged_conflicts: std::collections::BTreeSet<(String, String)> =
         std::collections::BTreeSet::new();
-    let mut conflict_applies: Vec<(String, String)> = Vec::new();
+    let mut conflict_applies: Vec<(mnemosyne_core::FactId, mnemosyne_core::FactId)> = Vec::new();
     for p in &file.conflicts {
-        let fact_id = p.fact.trim();
-        let target = p.target.trim();
+        let fact_id = &mnemosyne_core::FactId::from(p.fact.trim());
+        let target = &mnemosyne_core::FactId::from(p.target.trim());
         let verdict = (|| -> Result<(), String> {
             if fact_id.is_empty() || target.is_empty() {
                 return Err("fact and target both mandatory (non-empty)".to_string());
@@ -10288,7 +10332,7 @@ pub fn import_edge_proposals(
             if p.rationale.trim().is_empty() {
                 return Err("rationale mandatory (the reviewable substance)".to_string());
             }
-            conflict_applies.push((fact_id.to_string(), target.to_string()));
+            conflict_applies.push((fact_id.clone(), target.clone()));
             Ok(())
         })();
         verdicts.push(EdgeProposalVerdict {
@@ -10312,7 +10356,7 @@ pub fn import_edge_proposals(
                 .narrative_facts
                 .get_mut(&successor)
                 .unwrap()
-                .supersedes_in_frame = Some(predecessor);
+                .supersedes_in_frame = Some(predecessor.clone());
         }
         for (fact_id, target) in conflict_applies {
             // The write-time stamp equals the verified pin by construction
@@ -10816,8 +10860,8 @@ mod tests {
         let mut store = AtomicStore::default();
         seed_ladder_referents(&mut store, &sidecar);
         let mut good = rung("셈은");
-        good.needs = vec!["f-tide".to_string()];
-        good.reveals = vec!["f-name".to_string()];
+        good.needs = vec!["f-tide".into()];
+        good.reveals = vec!["f-name".into()];
         good.object = Some("ent-ledger".into());
         import_ladders(
             &mut store,
@@ -10875,15 +10919,15 @@ mod tests {
             arm(
                 "needs naming an absent fact",
                 "needs fact `f-ghost` is not in narrative_facts",
-                |s| ladder_mut(s).rungs[0].needs = vec!["f-ghost".to_string()],
+                |s| ladder_mut(s).rungs[0].needs = vec!["f-ghost".into()],
             ),
             arm(
                 "reveals naming an absent fact",
                 "reveals fact `f-ghost` is not in narrative_facts",
-                |s| ladder_mut(s).rungs[0].reveals = vec!["f-ghost".to_string()],
+                |s| ladder_mut(s).rungs[0].reveals = vec!["f-ghost".into()],
             ),
             arm("a blanked fact", "needs names a blank fact", |s| {
-                ladder_mut(s).rungs[0].needs = vec![String::new()]
+                ladder_mut(s).rungs[0].needs = vec![Default::default()]
             }),
             arm(
                 "object naming an absent entity",
@@ -11050,8 +11094,8 @@ mod tests {
         seed_ladder_referents(&mut store, &sidecar);
 
         let mut second = rung("물때는");
-        second.needs = vec!["f-tide".to_string()];
-        second.reveals = vec!["f-name".to_string()];
+        second.needs = vec!["f-tide".into()];
+        second.reveals = vec!["f-name".into()];
         second.object = Some("ent-ledger".into());
         let imports = vec![
             LadderImport {
@@ -11119,9 +11163,9 @@ mod tests {
             }]
         };
         let mut unknown_fact = rung("물때는");
-        unknown_fact.reveals = vec!["f-ghost".to_string()];
+        unknown_fact.reveals = vec!["f-ghost".into()];
         let mut unknown_need = rung("물때는");
-        unknown_need.needs = vec!["f-ghost".to_string()];
+        unknown_need.needs = vec!["f-ghost".into()];
         let mut unknown_object = rung("물때는");
         unknown_object.object = Some("ent-ghost".into());
         let cfi = LadderRung {
@@ -11194,7 +11238,7 @@ mod tests {
         );
 
         let mut rung = rung("셈은");
-        rung.reveals = vec!["f-tide".to_string()];
+        rung.reveals = vec!["f-tide".into()];
         let imports = vec![LadderImport {
             section_id: "d02-nat".to_string(),
             carrier: Some("ent-jongdeuk".into()),
@@ -15904,9 +15948,7 @@ mod tests {
                 typed: TypedClaim {
                     subject: "kara".into(),
                     predicate: "opened-by".into(),
-                    object: TypedObject::Fact {
-                        id: target.to_string(),
-                    },
+                    object: TypedObject::Fact { id: target.into() },
                 },
                 claim_sha256: sha256_hex(f1_claim.as_bytes()),
                 rationale: "state claim".to_string(),
@@ -16274,7 +16316,10 @@ mod tests {
         assert!(real.applied);
         assert!(real.written_bytes > 0);
         assert_eq!(
-            store.narrative_facts["f-2"].supersedes_in_frame.as_deref(),
+            store.narrative_facts["f-2"]
+                .supersedes_in_frame
+                .as_ref()
+                .map(mnemosyne_core::FactId::as_str),
             Some("f-1")
         );
         let edge = &store.narrative_facts["f-3"].conflicts_with[0];
@@ -16472,7 +16517,7 @@ mod tests {
         assert_eq!(reloaded.schema_version, CURRENT_SCHEMA_VERSION);
         assert_eq!(reloaded.frames.len(), 2);
         let new = &reloaded.narrative_facts["f-new"];
-        assert_eq!(new.supersedes_in_frame.as_deref(), Some("f-old"));
+        assert_eq!(new.supersedes_in_frame, Some("f-old".into()));
         // quote_sha256 computed by the primitive, never caller-supplied.
         assert_eq!(
             new.quote_sha256.as_deref(),
@@ -17407,7 +17452,7 @@ mod tests {
         // An out-of-band ORPHAN cost (its fact gone) is removable without
         // re-adding the fact.
         store.edge_costs.insert(
-            "f-orphan".to_string(),
+            "f-orphan".into(),
             EdgeCost {
                 n: 3,
                 unit: "minute".into(),
@@ -17498,9 +17543,9 @@ mod tests {
 
         // An out-of-band orphan guard is removable without re-adding the fact.
         store.edge_guards.insert(
-            "f-orphan".to_string(),
+            "f-orphan".into(),
             EdgeGuard {
-                conditions: std::iter::once("f-key2".to_string()).collect(),
+                conditions: std::iter::once("f-key2".into()).collect(),
                 threshold: None,
             },
         );
@@ -17598,9 +17643,7 @@ mod tests {
             "the refusal names both referring edges: {err}"
         );
         // The F1 belt-and-suspenders: an out-of-band empty set is flagged.
-        store
-            .edge_guards
-            .insert("e-3".to_string(), EdgeGuard::default());
+        store.edge_guards.insert("e-3".into(), EdgeGuard::default());
         add_fact(&mut store, &path, &sample_fact("e-3", "gt")).unwrap();
         let v = store_registry_violations(&store);
         assert!(
@@ -17707,9 +17750,12 @@ mod tests {
         // stand-in for the k>=len an edit could leave; removing a member would drop
         // the set below k.
         store.edge_guards.insert(
-            "f-edge".to_string(),
+            "f-edge".into(),
             EdgeGuard {
-                conditions: ["c1", "c2", "c3"].into_iter().map(String::from).collect(),
+                conditions: ["c1", "c2", "c3"]
+                    .into_iter()
+                    .map(mnemosyne_core::FactId::from)
+                    .collect(),
                 threshold: Some(3),
             },
         );
@@ -17797,7 +17843,7 @@ mod tests {
         // Out-of-band: an edge_cost whose fact is gone (re-inserted directly,
         // bypassing add_edge_cost) is named by the detector.
         store.edge_costs.insert(
-            "f-orphan".to_string(),
+            "f-orphan".into(),
             EdgeCost {
                 n: 3,
                 unit: "minute".into(),
@@ -17815,7 +17861,7 @@ mod tests {
         // this assertion fails).
         add_fact(&mut store, &path, &sample_fact("f-live", "gt")).unwrap();
         store.edge_costs.insert(
-            "f-live".to_string(),
+            "f-live".into(),
             EdgeCost {
                 n: 3,
                 unit: "fortnight".into(),
@@ -18015,9 +18061,7 @@ mod tests {
         // Out-of-band: a delta map whose beat fact is gone is named.
         let mut orphan = BTreeMap::new();
         orphan.insert(mnemosyne_core::ParameterId::from("affection"), 2i64);
-        store
-            .parameter_deltas
-            .insert("f-orphan".to_string(), orphan);
+        store.parameter_deltas.insert("f-orphan".into(), orphan);
         let v = store_registry_violations(&store);
         assert!(
             v.iter()
@@ -18069,7 +18113,7 @@ mod tests {
 
         // SCAN BOUNDARY flags an out-of-band unregistered-parameter gate.
         store.parameter_gates.insert(
-            "f-choice".to_string(),
+            "f-choice".into(),
             ParameterGate {
                 parameter: "karma".into(),
                 op: IntervalOp::Ge,
@@ -18085,7 +18129,7 @@ mod tests {
         );
         // A gate keyed by a gone fact is flagged too.
         store.parameter_gates.insert(
-            "f-orphan".to_string(),
+            "f-orphan".into(),
             ParameterGate {
                 parameter: "affection".into(),
                 op: IntervalOp::Ge,
@@ -18135,7 +18179,7 @@ mod tests {
 
         // Out-of-band: a gate whose fact is gone is named.
         store.parameter_gates.insert(
-            "f-orphan".to_string(),
+            "f-orphan".into(),
             ParameterGate {
                 parameter: "affection".into(),
                 op: IntervalOp::Ge,
@@ -18255,15 +18299,15 @@ mod tests {
 
         // SCAN BOUNDARY flags an out-of-band non-positive count (write↔scan parity)
         // and an orphan whose fact is gone.
-        store.fact_counts.insert("f-hold".to_string(), -2);
+        store.fact_counts.insert("f-hold".into(), -2);
         let v = store_registry_violations(&store);
         assert!(
             v.iter()
                 .any(|m| m.contains("f-hold") && m.contains("not positive")),
             "out-of-band non-positive count must be flagged (parity): {v:?}"
         );
-        store.fact_counts.insert("f-hold".to_string(), 5); // restore
-        store.fact_counts.insert("f-orphan".to_string(), 2);
+        store.fact_counts.insert("f-hold".into(), 5); // restore
+        store.fact_counts.insert("f-orphan".into(), 2);
         let v = store_registry_violations(&store);
         assert!(
             v.iter()
@@ -18298,7 +18342,7 @@ mod tests {
         );
 
         // Out-of-band: a count whose fact is gone is named.
-        store.fact_counts.insert("f-orphan".to_string(), 3);
+        store.fact_counts.insert("f-orphan".into(), 3);
         let v = store_registry_violations(&store);
         assert!(
             v.iter()
@@ -19016,7 +19060,7 @@ mod tests {
         // dangling first_at branch + coord, and a dangling surface scene + object.
         let plan = store.disclosure_plans.get_mut("telling").unwrap();
         plan.overrides.insert(
-            "gone-fact".to_string(),
+            "gone-fact".into(),
             DisclosureOverride {
                 mode: DisclosureMode::State,
                 first_at: BTreeMap::from([(
@@ -19693,9 +19737,7 @@ mod tests {
             typed: Some(TypedClaim {
                 subject: "mina".into(),
                 predicate: "opened-by".into(),
-                object: TypedObject::Fact {
-                    id: target.to_string(),
-                },
+                object: TypedObject::Fact { id: target.into() },
             }),
             ..sample_fact(id, "gt")
         };
@@ -19788,7 +19830,7 @@ mod tests {
                     subject: "mina".into(),
                     predicate: "opened-by".into(),
                     object: TypedObject::Fact {
-                        id: "f-sluice".to_string(),
+                        id: "f-sluice".into(),
                     },
                 }),
                 ..sample_fact("f-open", "gt")

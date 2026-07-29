@@ -331,8 +331,8 @@ pub fn store_interactivity(workspace_root: &std::path::Path) -> Result<Interacti
                         // rather than as an invented sentence.
                         question: String::new(),
                         question_anchor: Some(declared.anchor.clone()),
-                        reveals: fact.clone(),
-                        needs: declared.needs.clone(),
+                        reveals: fact.to_string(),
+                        needs: declared.needs.iter().map(ToString::to_string).collect(),
                     })
                 })
                 .collect();

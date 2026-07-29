@@ -117,7 +117,7 @@ pub fn disclosure_coverage(
         // carrier on the override-vs-default rule.
         match plan.effective_mode(id) {
             (DisclosureMode::Withhold, true) => hidden_by_design += 1,
-            (DisclosureMode::Withhold, false) => never_planned.push(id.clone()),
+            (DisclosureMode::Withhold, false) => never_planned.push(id.to_string()),
             (_, _) => disclosed += 1,
         }
     }
@@ -279,7 +279,7 @@ pub fn disclosure_leak(
                 ));
             }
         };
-        let matches: Vec<(&String, &str)> = reextracted
+        let matches: Vec<(&mnemosyne_core::FactId, &str)> = reextracted
             .narrative_facts
             .iter()
             .filter(|(_, g)| &g.frame == truth_frame && g.typed.as_ref() == Some(typed))
@@ -288,9 +288,9 @@ pub fn disclosure_leak(
         if is_withhold {
             for (gid, coord) in matches {
                 report.leaks.push(DisclosureLeak {
-                    fact_id: fact_id.clone(),
+                    fact_id: fact_id.to_string(),
                     kind: LeakKind::Withhold,
-                    reextracted_id: gid.clone(),
+                    reextracted_id: gid.to_string(),
                     coord: coord.to_string(),
                     first_at: None,
                 });
@@ -305,14 +305,14 @@ pub fn disclosure_leak(
         // honesty (never a false early-leak), not compared against a guessed pin.
         let pin = resolve_reveal_pin(reveal, world, order);
         if matches.is_empty() {
-            report.unmatched.push(fact_id.clone());
+            report.unmatched.push(fact_id.to_string());
         }
         for (gid, coord) in matches {
             let Some(pin) = pin.as_deref() else {
                 report.unordered.push(DisclosureLeak {
-                    fact_id: fact_id.clone(),
+                    fact_id: fact_id.to_string(),
                     kind: LeakKind::Unordered,
-                    reextracted_id: gid.clone(),
+                    reextracted_id: gid.to_string(),
                     coord: coord.to_string(),
                     first_at: None,
                 });
@@ -324,18 +324,18 @@ pub fn disclosure_leak(
             if order.le(world, coord, pin) {
                 // coord <= pin and coord != pin => strictly before => leak.
                 report.leaks.push(DisclosureLeak {
-                    fact_id: fact_id.clone(),
+                    fact_id: fact_id.to_string(),
                     kind: LeakKind::Early,
-                    reextracted_id: gid.clone(),
+                    reextracted_id: gid.to_string(),
                     coord: coord.to_string(),
                     first_at: Some(pin.to_string()),
                 });
             } else if !order.le(world, pin, coord) {
                 // neither direction => incomparable honesty surface (B-1).
                 report.unordered.push(DisclosureLeak {
-                    fact_id: fact_id.clone(),
+                    fact_id: fact_id.to_string(),
                     kind: LeakKind::Unordered,
-                    reextracted_id: gid.clone(),
+                    reextracted_id: gid.to_string(),
                     coord: coord.to_string(),
                     first_at: Some(pin.to_string()),
                 });
@@ -401,12 +401,12 @@ pub fn render_fidelity(
             }
         } else if nodes.contains(coord) {
             report.off_path.push(RenderPathFact {
-                fact_id: id.clone(),
+                fact_id: id.to_string(),
                 coord: coord.to_string(),
             });
         } else {
             report.unplaced.push(RenderPathFact {
-                fact_id: id.clone(),
+                fact_id: id.to_string(),
                 coord: coord.to_string(),
             });
         }
@@ -519,7 +519,7 @@ mod tests {
 
     fn plan(
         default_mode: DisclosureMode,
-        overrides: BTreeMap<String, DisclosureOverride>,
+        overrides: BTreeMap<mnemosyne_core::FactId, DisclosureOverride>,
     ) -> DisclosurePlan {
         DisclosurePlan {
             description: String::new(),
@@ -542,9 +542,9 @@ mod tests {
         store
             .narrative_facts
             .insert("f-bare".into(), nf("gt", "ch-1", None));
-        let mut overrides = BTreeMap::new();
-        overrides.insert("f-state".to_string(), ov(DisclosureMode::State, &[]));
-        overrides.insert("f-hide".to_string(), ov(DisclosureMode::Withhold, &[]));
+        let mut overrides: BTreeMap<mnemosyne_core::FactId, DisclosureOverride> = BTreeMap::new();
+        overrides.insert("f-state".into(), ov(DisclosureMode::State, &[]));
+        overrides.insert("f-hide".into(), ov(DisclosureMode::Withhold, &[]));
         store
             .disclosure_plans
             .insert("t".into(), plan(DisclosureMode::Withhold, overrides));
@@ -566,12 +566,9 @@ mod tests {
         authored
             .narrative_facts
             .insert("e".into(), nf("gt", "ch-1", Some(typed("pike", "fell"))));
-        let mut overrides = BTreeMap::new();
-        overrides.insert("w".to_string(), ov(DisclosureMode::Withhold, &[]));
-        overrides.insert(
-            "e".to_string(),
-            ov(DisclosureMode::State, &[("main", "ch-3")]),
-        );
+        let mut overrides: BTreeMap<mnemosyne_core::FactId, DisclosureOverride> = BTreeMap::new();
+        overrides.insert("w".into(), ov(DisclosureMode::Withhold, &[]));
+        overrides.insert("e".into(), ov(DisclosureMode::State, &[("main", "ch-3")]));
         authored
             .disclosure_plans
             .insert("t".into(), plan(DisclosureMode::Withhold, overrides));
@@ -653,9 +650,10 @@ mod tests {
             authored
                 .narrative_facts
                 .insert("e".into(), nf("gt", "x-2", Some(typed("pike", "climbed"))));
-            let mut overrides = BTreeMap::new();
+            let mut overrides: BTreeMap<mnemosyne_core::FactId, DisclosureOverride> =
+                BTreeMap::new();
             overrides.insert(
-                "e".to_string(),
+                "e".into(),
                 reveal_ov(DisclosureMode::State, "main", &["x-2", "b-4"], threshold),
             );
             authored
@@ -739,8 +737,8 @@ mod tests {
         authored
             .narrative_facts
             .insert("w".into(), nf("gt", "ch-1", Some(typed("pike", "climbed"))));
-        let mut overrides = BTreeMap::new();
-        overrides.insert("w".to_string(), ov(DisclosureMode::Withhold, &[]));
+        let mut overrides: BTreeMap<mnemosyne_core::FactId, DisclosureOverride> = BTreeMap::new();
+        overrides.insert("w".into(), ov(DisclosureMode::Withhold, &[]));
         authored
             .disclosure_plans
             .insert("t".into(), plan(DisclosureMode::Withhold, overrides));

@@ -875,7 +875,7 @@ fn typed_object_key(o: &mnemosyne_core::TypedObject) -> &str {
         // A `Fact` object's key is the referenced fact id (a single string,
         // unlike Quantity) — reachable only via a map/keying rule mis-declared
         // on a fact-kind predicate (garbage-in, as above).
-        mnemosyne_core::TypedObject::Fact { id } => id,
+        mnemosyne_core::TypedObject::Fact { id } => id.as_str(),
     }
 }
 
@@ -890,7 +890,7 @@ fn typed_object_display(o: &mnemosyne_core::TypedObject) -> String {
         mnemosyne_core::TypedObject::Entity { id } => id.to_string(),
         mnemosyne_core::TypedObject::Token { token } => token.clone(),
         mnemosyne_core::TypedObject::Quantity { n, unit } => format!("{n} {unit}"),
-        mnemosyne_core::TypedObject::Fact { id } => id.clone(),
+        mnemosyne_core::TypedObject::Fact { id } => id.to_string(),
     }
 }
 
@@ -913,7 +913,7 @@ fn contains_comparable(
     a: &str,
     b: &str,
     ctx: &WorldCtx<'_>,
-    facts: &BTreeMap<String, NarrativeFact>,
+    facts: &BTreeMap<mnemosyne_core::FactId, NarrativeFact>,
     p: &str,
     frame: &mnemosyne_core::FrameId,
 ) -> bool {
@@ -968,7 +968,7 @@ fn typed_object_scalar(o: &mnemosyne_core::TypedObject) -> Option<f64> {
         mnemosyne_core::TypedObject::Token { token } => parse_scalar(token),
         // A fact id (`f-*`) is not a number → non-numeric operand (Unverifiable),
         // never a silent skip.
-        mnemosyne_core::TypedObject::Fact { id } => parse_scalar(id),
+        mnemosyne_core::TypedObject::Fact { id } => parse_scalar(id.as_str()),
     }
 }
 
@@ -2164,7 +2164,10 @@ struct WorldCtx<'a> {
     world: &'a mnemosyne_core::BranchId,
     membership: &'a mnemosyne_core::WorldMembership,
     order: &'a CanonOrder,
-    successors: &'a BTreeMap<&'a str, Vec<(&'a str, &'a NarrativeFact)>>,
+    successors: &'a BTreeMap<
+        &'a mnemosyne_core::FactId,
+        Vec<(&'a mnemosyne_core::FactId, &'a NarrativeFact)>,
+    >,
 }
 
 impl WorldCtx<'_> {
@@ -2182,7 +2185,7 @@ impl WorldCtx<'_> {
     /// THE single holds-semantics — shared by the continuity gate and the
     /// frame-at-T projection ([`frame_view`]) so the two can never drift
     /// (the R390 single-predicate discipline).
-    fn holds_at(&self, fact_id: &str, fact: &NarrativeFact, p: &str) -> bool {
+    fn holds_at(&self, fact_id: &mnemosyne_core::FactId, fact: &NarrativeFact, p: &str) -> bool {
         if self.visibility(fact) != Vis::In {
             return false;
         }
@@ -2321,9 +2324,18 @@ fn for_each_world_pair<'a>(
     worlds: &'a [mnemosyne_core::BranchId],
     lineages: &'a BTreeMap<mnemosyne_core::BranchId, mnemosyne_core::WorldMembership>,
     order: &'a CanonOrder,
-    successors: &'a BTreeMap<&'a str, Vec<(&'a str, &'a NarrativeFact)>>,
-    typed: &[(&'a String, &'a NarrativeFact)],
-    mut visit: impl FnMut(&WorldCtx<'_>, &'a str, &'a NarrativeFact, &'a str, &'a NarrativeFact),
+    successors: &'a BTreeMap<
+        &'a mnemosyne_core::FactId,
+        Vec<(&'a mnemosyne_core::FactId, &'a NarrativeFact)>,
+    >,
+    typed: &[(&'a mnemosyne_core::FactId, &'a NarrativeFact)],
+    mut visit: impl FnMut(
+        &WorldCtx<'_>,
+        &'a mnemosyne_core::FactId,
+        &'a NarrativeFact,
+        &'a mnemosyne_core::FactId,
+        &'a NarrativeFact,
+    ),
 ) {
     for world in worlds {
         let ctx = WorldCtx {
@@ -2332,7 +2344,7 @@ fn for_each_world_pair<'a>(
             order,
             successors,
         };
-        let vis: Vec<&(&'a String, &'a NarrativeFact)> = typed
+        let vis: Vec<&(&'a mnemosyne_core::FactId, &'a NarrativeFact)> = typed
             .iter()
             .filter(|(_, f)| ctx.visibility(f) == Vis::In)
             .collect();
@@ -2341,7 +2353,7 @@ fn for_each_world_pair<'a>(
                 if a.frame != b.frame {
                     continue;
                 }
-                visit(&ctx, aid.as_str(), a, bid.as_str(), b);
+                visit(&ctx, aid, a, bid, b);
             }
         }
     }
@@ -2363,15 +2375,15 @@ fn claim_sha256_hex(claim: &str) -> String {
 /// id rides along since Round 466 — the manuscript names the cutting
 /// successor in its end events).
 fn successors_index(
-    facts: &BTreeMap<String, NarrativeFact>,
-) -> BTreeMap<&str, Vec<(&str, &NarrativeFact)>> {
-    let mut successors: BTreeMap<&str, Vec<(&str, &NarrativeFact)>> = BTreeMap::new();
+    facts: &BTreeMap<mnemosyne_core::FactId, NarrativeFact>,
+) -> BTreeMap<&mnemosyne_core::FactId, Vec<(&mnemosyne_core::FactId, &NarrativeFact)>> {
+    let mut successors: BTreeMap<
+        &mnemosyne_core::FactId,
+        Vec<(&mnemosyne_core::FactId, &NarrativeFact)>,
+    > = BTreeMap::new();
     for (sid, fact) in facts {
         if let Some(t) = &fact.supersedes_in_frame {
-            successors
-                .entry(t.as_str())
-                .or_default()
-                .push((sid.as_str(), fact));
+            successors.entry(t).or_default().push((sid, fact));
         }
     }
     successors
@@ -2383,16 +2395,16 @@ fn successors_index(
 /// cycles, but the scan re-reads out-of-band-edited stores (the Round 440
 /// boundary doctrine), so the walk must terminate regardless.
 fn succession_ancestors<'a>(
-    facts: &'a BTreeMap<String, NarrativeFact>,
-    id: &str,
-) -> BTreeSet<&'a str> {
+    facts: &'a BTreeMap<mnemosyne_core::FactId, NarrativeFact>,
+    id: &mnemosyne_core::FactId,
+) -> BTreeSet<&'a mnemosyne_core::FactId> {
     let mut out = BTreeSet::new();
-    let mut cur = facts.get(id).and_then(|f| f.supersedes_in_frame.as_deref());
+    let mut cur = facts.get(id).and_then(|f| f.supersedes_in_frame.as_ref());
     while let Some(p) = cur {
         if !out.insert(p) {
             break;
         }
-        cur = facts.get(p).and_then(|f| f.supersedes_in_frame.as_deref());
+        cur = facts.get(p).and_then(|f| f.supersedes_in_frame.as_ref());
     }
     out
 }
@@ -2445,7 +2457,7 @@ enum Operand<'a> {
 /// [`WorldCtx::holds_at`] — the interval evaluator owns no time semantics of
 /// its own (the R441 reader-reuse rule).
 fn resolve_operand<'a>(
-    facts: &'a BTreeMap<String, NarrativeFact>,
+    facts: &'a BTreeMap<mnemosyne_core::FactId, NarrativeFact>,
     ctx: &WorldCtx<'_>,
     frame: &mnemosyne_core::FrameId,
     subject: &mnemosyne_core::EntityId,
@@ -2542,7 +2554,7 @@ pub enum IntervalVerdict {
 /// ambiguous operand is `Unverifiable` with a reason, never silently skipped.
 #[allow(clippy::too_many_arguments)]
 fn interval_verdict(
-    facts: &BTreeMap<String, NarrativeFact>,
+    facts: &BTreeMap<mnemosyne_core::FactId, NarrativeFact>,
     ctx: &WorldCtx<'_>,
     frame: &mnemosyne_core::FrameId,
     subject: &mnemosyne_core::EntityId,
@@ -2642,11 +2654,11 @@ fn scan_interval_rule(
     right_pred: &str,
     op: IntervalOp,
     bound: &IntervalBound,
-    facts: &BTreeMap<String, NarrativeFact>,
+    facts: &BTreeMap<mnemosyne_core::FactId, NarrativeFact>,
     worlds: &[mnemosyne_core::BranchId],
     lineages: &BTreeMap<mnemosyne_core::BranchId, mnemosyne_core::WorldMembership>,
     order: &CanonOrder,
-    successors: &BTreeMap<&str, Vec<(&str, &NarrativeFact)>>,
+    successors: &BTreeMap<&mnemosyne_core::FactId, Vec<(&mnemosyne_core::FactId, &NarrativeFact)>>,
 ) -> Vec<IntervalOutcome> {
     let mut outcomes = Vec::new();
     for world in worlds {
@@ -2685,7 +2697,7 @@ fn scan_interval_rule(
                 frame: lf.frame.to_string(),
                 world: ctx.world.to_string(),
                 subject: lt.subject.to_string(),
-                left_fact: lid.clone(),
+                left_fact: lid.to_string(),
                 left_value: typed_object_display(&lt.object),
                 at: lf.canon_from.clone(),
                 verdict,
@@ -2884,7 +2896,7 @@ pub fn scan_continuity(
                 report
                     .violations
                     .push(ContinuityViolation::FactCanonOffBranch {
-                        fact: id.clone(),
+                        fact: id.to_string(),
                         branch: fact.branch.to_string(),
                         coord: coord.clone(),
                     });
@@ -2955,7 +2967,7 @@ pub fn scan_continuity(
                         report
                             .violations
                             .push(ContinuityViolation::EvidenceUnreachable {
-                                fact: id.clone(),
+                                fact: id.to_string(),
                                 branch: fact.branch.to_string(),
                                 evidence: e.to_string(),
                                 canon_from: fact.canon_from.clone(),
@@ -2967,7 +2979,7 @@ pub fn scan_continuity(
                         if !could_have_seen(&parent.branch) {
                             report.violations.push(
                                 ContinuityViolation::ConfluenceEvidenceUnreconciled {
-                                    fact: id.clone(),
+                                    fact: id.to_string(),
                                     confluence: fact.branch.to_string(),
                                     parent: parent.branch.to_string(),
                                     evidence: e.to_string(),
@@ -2987,15 +2999,15 @@ pub fn scan_continuity(
                 None => report
                     .violations
                     .push(ContinuityViolation::SuccessionTargetMissing {
-                        fact_id: sid.clone(),
-                        target: t_id.clone(),
+                        fact_id: sid.to_string(),
+                        target: t_id.to_string(),
                     }),
                 Some(t) if t.frame != s.frame => {
                     report
                         .violations
                         .push(ContinuityViolation::SuccessionCrossFrame {
-                            successor: sid.clone(),
-                            predecessor: t_id.clone(),
+                            successor: sid.to_string(),
+                            predecessor: t_id.to_string(),
                             successor_frame: s.frame.to_string(),
                             predecessor_frame: t.frame.to_string(),
                         })
@@ -3011,8 +3023,8 @@ pub fn scan_continuity(
                     report
                         .violations
                         .push(ContinuityViolation::SuccessionCrossBranch {
-                            successor: sid.clone(),
-                            predecessor: t_id.clone(),
+                            successor: sid.to_string(),
+                            predecessor: t_id.to_string(),
                             successor_branch: s.branch.to_string(),
                             predecessor_branch: t.branch.to_string(),
                         })
@@ -3024,8 +3036,8 @@ pub fn scan_continuity(
                                 .violations
                                 .push(ContinuityViolation::SuccessionContradiction {
                                     frame: s.frame.to_string(),
-                                    predecessor: t_id.clone(),
-                                    successor: sid.clone(),
+                                    predecessor: t_id.to_string(),
+                                    successor: sid.to_string(),
                                     stored_to: stored_to.clone(),
                                     successor_from: s.canon_from.clone(),
                                 });
@@ -3045,19 +3057,17 @@ pub fn scan_continuity(
         // A fact is ON a cycle exactly when it appears among its own
         // transitive predecessors — THE existing cycle-guarded walk
         // (`succession_ancestors`), not a second hand-rolled one.
-        if s.supersedes_in_frame.is_none()
-            || !succession_ancestors(facts, sid).contains(sid.as_str())
-        {
+        if s.supersedes_in_frame.is_none() || !succession_ancestors(facts, sid).contains(sid) {
             continue;
         }
-        let mut cycle = vec![sid.clone()];
-        let mut cur = s.supersedes_in_frame.as_deref().expect("checked above");
+        let mut cycle = vec![sid.to_string()];
+        let mut cur = s.supersedes_in_frame.as_ref().expect("checked above");
         while cur != sid {
             cycle.push(cur.to_string());
             // Total: the membership test above walked these exact edges.
-            cur = facts[cur].supersedes_in_frame.as_deref().expect("walked");
+            cur = facts[cur].supersedes_in_frame.as_ref().expect("walked");
         }
-        if cycle.iter().min().map(String::as_str) == Some(sid.as_str()) {
+        if cycle.iter().map(String::as_str).min() == Some(sid.as_str()) {
             report
                 .violations
                 .push(ContinuityViolation::SuccessionCycle { cycle });
@@ -3071,14 +3081,14 @@ pub fn scan_continuity(
                 report
                     .violations
                     .push(ContinuityViolation::PayoffTargetMissing {
-                        fact_id: aid.clone(),
-                        target: target.clone(),
+                        fact_id: aid.to_string(),
+                        target: target.to_string(),
                     });
             }
         }
     }
     // Distinct recorded conflict pairs (edges are read symmetrically).
-    let mut pairs: BTreeSet<(String, String)> = BTreeSet::new();
+    let mut pairs: BTreeSet<(mnemosyne_core::FactId, mnemosyne_core::FactId)> = BTreeSet::new();
     for (aid, a) in facts {
         for assertion in &a.conflicts_with {
             let target = &assertion.target;
@@ -3086,8 +3096,8 @@ pub fn scan_continuity(
                 report
                     .violations
                     .push(ContinuityViolation::ConflictTargetMissing {
-                        fact_id: aid.clone(),
-                        target: target.clone(),
+                        fact_id: aid.to_string(),
+                        target: target.to_string(),
                     });
                 continue;
             };
@@ -3098,8 +3108,8 @@ pub fn scan_continuity(
                 report
                     .violations
                     .push(ContinuityViolation::ConflictEdgeStale {
-                        fact_id: aid.clone(),
-                        target: target.clone(),
+                        fact_id: aid.to_string(),
+                        target: target.to_string(),
                         stamped_sha256: assertion.target_claim_sha256.clone(),
                         current_sha256: current,
                     });
@@ -3134,13 +3144,13 @@ pub fn scan_continuity(
                     report
                         .violations
                         .push(ContinuityViolation::EvidenceReviewUnanchored {
-                            fact_id: fid.clone(),
+                            fact_id: fid.to_string(),
                             section: e.section.clone(),
                         });
                 }
                 (reviewed, Some(x)) if reviewed != x.text_sha256 => {
                     report.violations.push(ContinuityViolation::EvidenceStale {
-                        fact_id: fid.clone(),
+                        fact_id: fid.to_string(),
                         section: e.section.clone(),
                         reviewed_sha256: reviewed.to_string(),
                         current_sha256: x.text_sha256.clone(),
@@ -3192,7 +3202,7 @@ pub fn scan_continuity(
             report
                 .violations
                 .push(ContinuityViolation::FactQuoteAbsentFromEvidence {
-                    fact_id: fid.clone(),
+                    fact_id: fid.to_string(),
                     quote: quote.to_string(),
                 });
         }
@@ -3362,8 +3372,8 @@ pub fn scan_continuity(
                 .push(ContinuityViolation::FrameConflictOverlap {
                     frame: a.frame.to_string(),
                     branch: world.to_string(),
-                    fact_a: aid.clone(),
-                    fact_b: bid.clone(),
+                    fact_a: aid.to_string(),
+                    fact_b: bid.to_string(),
                     at: p.clone(),
                 }),
             None => {
@@ -3400,7 +3410,7 @@ pub fn scan_continuity(
     // predicates name a map edge (the union across maps, not any single rule).
     let mut adjacency_predicates: BTreeSet<&str> = BTreeSet::new();
     for rule in rules {
-        let typed: Vec<(&String, &NarrativeFact)> = facts
+        let typed: Vec<(&mnemosyne_core::FactId, &NarrativeFact)> = facts
             .iter()
             .filter(|(_, f)| {
                 f.typed
@@ -3489,7 +3499,7 @@ pub fn scan_continuity(
                                 if !co_held
                                     && !order.comparable(ctx.world, &a.canon_from, &b.canon_from)
                                 {
-                                    unordered.insert((aid, bid));
+                                    unordered.insert((aid.as_str(), bid.as_str()));
                                 }
                             }
                         }
@@ -3630,8 +3640,8 @@ pub fn scan_continuity(
                                 predicate: rule.predicate.clone(),
                                 frame: s.frame.to_string(),
                                 subject: st.subject.to_string(),
-                                predecessor: pid.clone(),
-                                successor: (*sid).clone(),
+                                predecessor: pid.to_string(),
+                                successor: sid.to_string(),
                                 from: from.to_string(),
                                 to: to.to_string(),
                             });
@@ -3648,9 +3658,12 @@ pub fn scan_continuity(
                 // (falsified live: a chained 4-step arc reported 3).
                 // World-scoped via visibility (the R441 probe finding) and
                 // deduplicated across worlds.
-                let ancestors: BTreeMap<&str, BTreeSet<&str>> = typed
+                let ancestors: BTreeMap<
+                    &mnemosyne_core::FactId,
+                    BTreeSet<&mnemosyne_core::FactId>,
+                > = typed
                     .iter()
-                    .map(|(id, _)| (id.as_str(), succession_ancestors(facts, id)))
+                    .map(|(id, _)| (*id, succession_ancestors(facts, id)))
                     .collect();
                 let mut seen: BTreeSet<(&str, &str)> = BTreeSet::new();
                 for_each_world_pair(
@@ -3666,7 +3679,7 @@ pub fn scan_continuity(
                         if ancestors[aid].contains(bid) || ancestors[bid].contains(aid) {
                             return; // connected through the succession chain
                         }
-                        seen.insert((aid, bid));
+                        seen.insert((aid.as_str(), bid.as_str()));
                     },
                 );
                 report.unchained_state_pairs += seen.len();
@@ -3747,7 +3760,7 @@ pub fn scan_continuity(
                 report
                     .violations
                     .push(ContinuityViolation::EdgeCostNotAnEdge {
-                        fact: fid.clone(),
+                        fact: fid.to_string(),
                         // Violation payloads are report text — an id becomes a
                         // string at the output boundary.
                         found: found.map(mnemosyne_core::PredicateId::into_inner),
@@ -3772,7 +3785,7 @@ pub fn scan_continuity(
                 report
                     .violations
                     .push(ContinuityViolation::EdgeGuardNotAnEdge {
-                        fact: edge_fid.clone(),
+                        fact: edge_fid.to_string(),
                         found: found.map(mnemosyne_core::PredicateId::into_inner),
                         expected: adjacency_predicates.iter().map(|p| p.to_string()).collect(),
                     });
@@ -3831,7 +3844,7 @@ fn scan_containment_tree(
     worlds: &[mnemosyne_core::BranchId],
     lineages: &BTreeMap<mnemosyne_core::BranchId, mnemosyne_core::WorldMembership>,
     order: &CanonOrder,
-    successors: &BTreeMap<&str, Vec<(&str, &NarrativeFact)>>,
+    successors: &BTreeMap<&mnemosyne_core::FactId, Vec<(&mnemosyne_core::FactId, &NarrativeFact)>>,
     report: &mut ContinuityReport,
 ) {
     for world in worlds {
@@ -3985,7 +3998,7 @@ fn scan_spatial_map(
     worlds: &[mnemosyne_core::BranchId],
     lineages: &BTreeMap<mnemosyne_core::BranchId, mnemosyne_core::WorldMembership>,
     order: &CanonOrder,
-    successors: &BTreeMap<&str, Vec<(&str, &NarrativeFact)>>,
+    successors: &BTreeMap<&mnemosyne_core::FactId, Vec<(&mnemosyne_core::FactId, &NarrativeFact)>>,
     report: &mut ContinuityReport,
 ) {
     // The place kind (R701): core never hardcodes "place" (invariant 4). Read
@@ -4108,7 +4121,7 @@ fn scan_spatial_map(
                         {
                             continue;
                         }
-                        offmap_candidates.entry(fid.clone()).or_insert_with(|| {
+                        offmap_candidates.entry(fid.to_string()).or_insert_with(|| {
                             (
                                 t.subject.to_string(),
                                 typed_object_key(&t.object).to_string(),
@@ -4363,12 +4376,12 @@ pub fn frame_view(
             continue;
         }
         if vis == Vis::Unknown {
-            view.unknown.push(id.clone());
+            view.unknown.push(id.to_string());
             continue;
         }
         if ctx.holds_at(id, fact, at) {
             view.holding.push(FrameViewEntry {
-                fact_id: id.clone(),
+                fact_id: id.to_string(),
                 claim: fact.claim.clone(),
                 entities: fact.entities.iter().map(ToString::to_string).collect(),
                 canon_from: fact.canon_from.clone(),
@@ -4390,12 +4403,12 @@ pub fn frame_view(
                 .as_ref()
                 .is_some_and(|to| !order.comparable(branch, at, to));
         let succ_cut = successors
-            .get(id.as_str())
+            .get(id)
             .into_iter()
             .flatten()
             .any(|(_, s)| ctx.visibility(s) == Vis::In && order.le(branch, &s.canon_from, at));
         if from_unknown || (to_unknown && !succ_cut) {
-            view.unknown.push(id.clone());
+            view.unknown.push(id.to_string());
         } else {
             view.not_holding += 1;
         }
@@ -4510,7 +4523,7 @@ pub fn payoff_coverage(
     // world credits them; what remains either surfaces as definitively
     // dead or, when a could-credit world was undecidable, as undecidable
     // (Rounds 443 + 447).
-    let mut never_credited: BTreeSet<(String, String)> = facts
+    let mut never_credited: BTreeSet<(mnemosyne_core::FactId, mnemosyne_core::FactId)> = facts
         .iter()
         .flat_map(|(pid, p)| {
             p.pays_off
@@ -4519,7 +4532,8 @@ pub fn payoff_coverage(
                 .map(|t| (pid.clone(), t.clone()))
         })
         .collect();
-    let mut undecidable: BTreeSet<(String, String)> = BTreeSet::new();
+    let mut undecidable: BTreeSet<(mnemosyne_core::FactId, mnemosyne_core::FactId)> =
+        BTreeSet::new();
     let worlds: Vec<mnemosyne_core::BranchId> = query_worlds(store);
     for world in worlds {
         let lineage = lineage_of(&store.branches, &world)?;
@@ -4533,7 +4547,7 @@ pub fn payoff_coverage(
                 Vis::In => {
                     visible.insert(id.as_str(), fact);
                 }
-                Vis::Unknown => unknown.push(id.clone()),
+                Vis::Unknown => unknown.push(id.to_string()),
                 Vis::Out => {}
             }
         }
@@ -4553,13 +4567,13 @@ pub fn payoff_coverage(
                 // is the honest default here.
                 let endpoint = |id: &str| vis_by_id.get(id).copied().unwrap_or(Vis::Out);
                 let could_credit_undecided = matches!(
-                    (endpoint(pid), endpoint(target.as_str())),
+                    (endpoint(pid.as_str()), endpoint(target.as_str())),
                     (Vis::In, Vis::Unknown)
                         | (Vis::Unknown, Vis::In)
                         | (Vis::Unknown, Vis::Unknown)
                 );
                 if could_credit_undecided {
-                    undecidable.insert((pid.clone(), target.clone()));
+                    undecidable.insert(((*pid).clone(), target.clone()));
                 }
             }
         }
@@ -4580,17 +4594,17 @@ pub fn payoff_coverage(
                     .entry(target.as_str())
                     .or_default()
                     .push((*pid).to_string());
-                never_credited.remove(&((*pid).to_string(), target.clone()));
+                never_credited.remove(&((*pid).into(), target.clone()));
                 if t.payoff_expectation != mnemosyne_core::PayoffExpectation::Expected {
                     cov.payoffs_to_unmarked.push(PayoffEdgeRef {
                         payoff: (*pid).to_string(),
-                        setup: target.clone(),
+                        setup: target.to_string(),
                     });
                 }
                 if p.canon_from != t.canon_from && order.le(&world, &p.canon_from, &t.canon_from) {
                     cov.payoff_before_setup.push(PayoffEdgeRef {
                         payoff: (*pid).to_string(),
-                        setup: target.clone(),
+                        setup: target.to_string(),
                     });
                 }
             }
@@ -4615,11 +4629,17 @@ pub fn payoff_coverage(
         .partition(|e| undecidable.contains(e));
     report.uncredited_edges = dead
         .into_iter()
-        .map(|(payoff, setup)| PayoffEdgeRef { payoff, setup })
+        .map(|(payoff, setup)| PayoffEdgeRef {
+            payoff: payoff.to_string(),
+            setup: setup.to_string(),
+        })
         .collect();
     report.undecidable_edges = undecided
         .into_iter()
-        .map(|(payoff, setup)| PayoffEdgeRef { payoff, setup })
+        .map(|(payoff, setup)| PayoffEdgeRef {
+            payoff: payoff.to_string(),
+            setup: setup.to_string(),
+        })
         .collect();
     Ok(report)
 }
@@ -4665,7 +4685,7 @@ pub struct PayoffSubstantiationReport {
 /// Does any crediting payoff fact carry a typed leg that discharges the setup's
 /// typed state — same subject and predicate, different value? Deterministic.
 fn discharging_payoffs(
-    facts: &BTreeMap<String, NarrativeFact>,
+    facts: &BTreeMap<mnemosyne_core::FactId, NarrativeFact>,
     setup_typed: &mnemosyne_core::TypedClaim,
     payoffs: &[String],
 ) -> Vec<String> {
@@ -4676,7 +4696,7 @@ fn discharging_payoffs(
         .iter()
         .filter(|pid| {
             facts
-                .get(*pid)
+                .get(pid.as_str())
                 .and_then(|f| f.typed.as_ref())
                 .is_some_and(|t| {
                     t.subject == setup_typed.subject
@@ -4705,7 +4725,9 @@ pub fn payoff_substantiation(
         let mut w = WorldPayoffSubstantiation::default();
         for paid in &cov.paid {
             // The setup is present (it was just credited by payoff_coverage).
-            let setup_typed = facts.get(&paid.setup).and_then(|f| f.typed.as_ref());
+            let setup_typed = facts
+                .get(paid.setup.as_str())
+                .and_then(|f| f.typed.as_ref());
             match setup_typed {
                 // Setup carries no typed state -> a discharge is undefinable.
                 None => w.unverifiable.push(paid.clone()),
@@ -4713,7 +4735,7 @@ pub fn payoff_substantiation(
                     let any_typed_payoff = paid
                         .payoffs
                         .iter()
-                        .any(|pid| facts.get(pid).is_some_and(|f| f.typed.is_some()));
+                        .any(|pid| facts.get(pid.as_str()).is_some_and(|f| f.typed.is_some()));
                     if !any_typed_payoff {
                         // Setup typed, but every crediting payoff is prose-only:
                         // the discharge cannot be checked deterministically.
@@ -4822,17 +4844,17 @@ pub fn irony_intervals(
     let successors = successors_index(facts);
     // Distinct recorded pairs with existing endpoints, id-ordered (the
     // gate's pair key), split by frame locus.
-    let mut cross: BTreeSet<(&str, &str)> = BTreeSet::new();
-    let mut same: BTreeSet<(&str, &str)> = BTreeSet::new();
+    let mut cross: BTreeSet<(&mnemosyne_core::FactId, &mnemosyne_core::FactId)> = BTreeSet::new();
+    let mut same: BTreeSet<(&mnemosyne_core::FactId, &mnemosyne_core::FactId)> = BTreeSet::new();
     for (aid, a) in facts {
         for assertion in &a.conflicts_with {
             let Some(t) = facts.get(&assertion.target) else {
                 continue;
             };
-            let key = if aid.as_str() < assertion.target.as_str() {
-                (aid.as_str(), assertion.target.as_str())
+            let key = if aid < &assertion.target {
+                (aid, &assertion.target)
             } else {
-                (assertion.target.as_str(), aid.as_str())
+                (&assertion.target, aid)
             };
             if a.frame == t.frame {
                 same.insert(key);
@@ -5157,14 +5179,14 @@ pub fn playthrough_manuscript(
             match ctx.visibility(fact) {
                 Vis::Out => continue,
                 Vis::Unknown => {
-                    out.undecidable.push(id.clone());
+                    out.undecidable.push(id.to_string());
                     continue;
                 }
                 Vis::In => {}
             }
             if !node_set.contains(fact.canon_from.as_str()) {
                 out.unplaced_facts.push(ManuscriptUnplacedFact {
-                    fact_id: id.clone(),
+                    fact_id: id.to_string(),
                     field: "canon_from".to_string(),
                     coordinate: fact.canon_from.clone(),
                     successor: None,
@@ -5173,17 +5195,17 @@ pub fn playthrough_manuscript(
             if let Some(to) = &fact.canon_to {
                 if !node_set.contains(to.as_str()) {
                     out.unplaced_facts.push(ManuscriptUnplacedFact {
-                        fact_id: id.clone(),
+                        fact_id: id.to_string(),
                         field: "canon_to".to_string(),
                         coordinate: to.clone(),
                         successor: None,
                     });
                 }
             }
-            for (sid, s) in successors.get(id.as_str()).into_iter().flatten() {
+            for (sid, s) in successors.get(id).into_iter().flatten() {
                 if ctx.visibility(s) == Vis::In && !node_set.contains(s.canon_from.as_str()) {
                     out.unplaced_facts.push(ManuscriptUnplacedFact {
-                        fact_id: id.clone(),
+                        fact_id: id.to_string(),
                         field: "successor_canon_from".to_string(),
                         coordinate: s.canon_from.clone(),
                         successor: Some((*sid).to_string()),
@@ -5220,7 +5242,7 @@ pub fn playthrough_manuscript(
                 }
                 if fact.canon_from == *node {
                     scene.begins.push(ManuscriptFactEvent {
-                        fact_id: id.clone(),
+                        fact_id: id.to_string(),
                         frame: fact.frame.to_string(),
                         claim: fact.claim.clone(),
                         entities: fact.entities.iter().map(ToString::to_string).collect(),
@@ -5235,16 +5257,16 @@ pub fn playthrough_manuscript(
                 }
                 if fact.canon_to.as_deref() == Some(node.as_str()) {
                     scene.ends.push(ManuscriptEndEvent {
-                        fact_id: id.clone(),
+                        fact_id: id.to_string(),
                         frame: fact.frame.to_string(),
                         kind: ManuscriptEndKind::Expired,
                         by: None,
                     });
                 }
-                for (sid, s) in successors.get(id.as_str()).into_iter().flatten() {
+                for (sid, s) in successors.get(id).into_iter().flatten() {
                     if ctx.visibility(s) == Vis::In && s.canon_from == *node {
                         scene.ends.push(ManuscriptEndEvent {
-                            fact_id: id.clone(),
+                            fact_id: id.to_string(),
                             frame: fact.frame.to_string(),
                             kind: ManuscriptEndKind::Superseded,
                             by: Some((*sid).to_string()),
@@ -5270,7 +5292,7 @@ pub fn playthrough_manuscript(
 fn resolve_fact_disclosure(
     plan: &mnemosyne_core::DisclosurePlan,
     world: &mnemosyne_core::BranchId,
-    fact_id: &str,
+    fact_id: &mnemosyne_core::FactId,
 ) -> FactDisclosure {
     let effective = plan.effective(fact_id, world);
     FactDisclosure {
@@ -5777,7 +5799,7 @@ fn quest_giving_setups(
             for fact in completions_of.get(quest_id.as_str()).into_iter().flatten() {
                 for target in &fact.pays_off {
                     if expected.contains(target.as_str()) {
-                        givings.insert(target.clone());
+                        givings.insert(target.to_string());
                     }
                 }
             }
@@ -5826,7 +5848,7 @@ pub fn structural_fact_ids(store: &AtomicStore) -> Result<BTreeSet<String>, Stri
             });
             typed_quest || give_setups.contains(fid.as_str())
         })
-        .map(|(fid, _)| fid.clone())
+        .map(|(fid, _)| fid.to_string())
         .collect())
 }
 
@@ -6063,7 +6085,7 @@ pub fn quest_graph(
                     mnemosyne_core::TypedObject::Quantity { n, unit } => {
                         Some(format!("{n} {unit}"))
                     }
-                    mnemosyne_core::TypedObject::Fact { id } => Some(id.clone()),
+                    mnemosyne_core::TypedObject::Fact { id } => Some(id.to_string()),
                 };
                 completions_of
                     .entry(claim.subject.as_str())
@@ -6244,7 +6266,7 @@ pub fn typing_candidates(store: &AtomicStore) -> Result<TypingCandidatesReport, 
         .iter()
         .filter(|(_, f)| f.typed.is_none())
         .map(|(id, f)| TypingCandidate {
-            fact_id: id.clone(),
+            fact_id: id.to_string(),
             frame: f.frame.to_string(),
             branch: f.branch.to_string(),
             claim: f.claim.clone(),
@@ -6334,11 +6356,11 @@ pub fn edge_candidates(
     let successors = successors_index(facts);
     let lineages = query_world_lineages(store)?;
     let worlds = query_worlds(store);
-    let typed: Vec<(&String, &NarrativeFact)> =
+    let typed: Vec<(&mnemosyne_core::FactId, &NarrativeFact)> =
         facts.iter().filter(|(_, f)| f.typed.is_some()).collect();
-    let ancestors: BTreeMap<&str, BTreeSet<&str>> = typed
+    let ancestors: BTreeMap<&mnemosyne_core::FactId, BTreeSet<&mnemosyne_core::FactId>> = typed
         .iter()
-        .map(|(id, _)| (id.as_str(), succession_ancestors(facts, id)))
+        .map(|(id, _)| (*id, succession_ancestors(facts, id)))
         .collect();
     // Same-(predicate, subject) pairs no succession path connects — the
     // scan's unchained computation (path not edge, Round 452) swept over
@@ -6359,7 +6381,7 @@ pub fn edge_candidates(
             if ancestors[aid].contains(bid) || ancestors[bid].contains(aid) {
                 return; // connected through the succession chain
             }
-            gaps.insert((aid, bid));
+            gaps.insert((aid.as_str(), bid.as_str()));
         },
     );
     let succession_gaps: Vec<SuccessionGap> = gaps
@@ -6388,7 +6410,7 @@ pub fn edge_candidates(
     let rows: Vec<EdgeCandidateFact> = facts
         .iter()
         .map(|(id, f)| EdgeCandidateFact {
-            fact_id: id.clone(),
+            fact_id: id.to_string(),
             frame: f.frame.to_string(),
             branch: f.branch.to_string(),
             entities: f.entities.iter().map(ToString::to_string).collect(),
@@ -6397,9 +6419,13 @@ pub fn edge_candidates(
             canon_from: f.canon_from.clone(),
             canon_to: f.canon_to.clone(),
             typed: f.typed.clone(),
-            supersedes_in_frame: f.supersedes_in_frame.clone(),
-            conflicts_with: f.conflicts_with.iter().map(|c| c.target.clone()).collect(),
-            pays_off: f.pays_off.clone(),
+            supersedes_in_frame: f.supersedes_in_frame.as_ref().map(ToString::to_string),
+            conflicts_with: f
+                .conflicts_with
+                .iter()
+                .map(|c| c.target.to_string())
+                .collect(),
+            pays_off: f.pays_off.iter().map(ToString::to_string).collect(),
         })
         .collect();
     Ok(EdgeCandidatesReport {
@@ -7038,7 +7064,7 @@ mod tests {
         let counted = fact("f-hold", "seward", "ch-1", None);
         let plain = fact("f-plain", "seward", "ch-1", None);
         let mut store = store_with(vec![counted, plain]);
-        store.fact_counts.insert("f-hold".to_string(), 5);
+        store.fact_counts.insert("f-hold".into(), 5);
         let order = chain(&["ch-1", "ch-2"]);
         let count_of = |store: &AtomicStore, id: &str| -> Option<i64> {
             frame_view(
@@ -11212,7 +11238,7 @@ mod tests {
             .narrative_facts
             .get_mut("fa")
             .unwrap()
-            .supersedes_in_frame = Some("fb".to_string());
+            .supersedes_in_frame = Some("fb".into());
         let report = scan_continuity(&store, &chain(&["ch-1", "ch-2"]), &[]).unwrap();
         let cycles: Vec<_> = report
             .violations
@@ -11331,7 +11357,7 @@ mod tests {
         let counted = fact("f-hold", "gt", "ch-1", None);
         let plain = fact("f-plain", "gt", "ch-1", None);
         let mut store = store_with(vec![counted, plain]);
-        store.fact_counts.insert("f-hold".to_string(), 5);
+        store.fact_counts.insert("f-hold".into(), 5);
         let order = chain(&["ch-1", "ch-2"]);
         let report = playthrough_manuscript(&store, &order, None, None).unwrap();
         let begins = &report.worlds[MAIN_BRANCH].scenes[0].begins;
@@ -11458,9 +11484,10 @@ mod tests {
                 threshold: None,
             },
         );
-        let mut overrides = BTreeMap::new();
+        let mut overrides: BTreeMap<mnemosyne_core::FactId, mnemosyne_core::DisclosureOverride> =
+            BTreeMap::new();
         overrides.insert(
-            "f-main".to_string(),
+            "f-main".into(),
             mnemosyne_core::DisclosureOverride {
                 mode: mnemosyne_core::DisclosureMode::State,
                 first_at,
@@ -11570,9 +11597,10 @@ mod tests {
                 threshold: None,
             },
         );
-        let mut overrides = BTreeMap::new();
+        let mut overrides: BTreeMap<mnemosyne_core::FactId, mnemosyne_core::DisclosureOverride> =
+            BTreeMap::new();
         overrides.insert(
-            "f-main".to_string(),
+            "f-main".into(),
             mnemosyne_core::DisclosureOverride {
                 mode: mnemosyne_core::DisclosureMode::State,
                 first_at,
@@ -11691,9 +11719,10 @@ mod tests {
         store
             .sections
             .insert("ch-off".to_string(), AtomicSection::default());
-        let mut overrides = BTreeMap::new();
+        let mut overrides: BTreeMap<mnemosyne_core::FactId, mnemosyne_core::DisclosureOverride> =
+            BTreeMap::new();
         overrides.insert(
-            "f-x".to_string(),
+            "f-x".into(),
             mnemosyne_core::DisclosureOverride {
                 mode: mnemosyne_core::DisclosureMode::Hint,
                 first_at: BTreeMap::new(),
@@ -11725,9 +11754,10 @@ mod tests {
         mode: mnemosyne_core::DisclosureMode,
         surface: Option<mnemosyne_core::DisclosureSurface>,
     ) -> mnemosyne_core::DisclosurePlan {
-        let mut overrides = BTreeMap::new();
+        let mut overrides: BTreeMap<mnemosyne_core::FactId, mnemosyne_core::DisclosureOverride> =
+            BTreeMap::new();
         overrides.insert(
-            "f-x".to_string(),
+            "f-x".into(),
             mnemosyne_core::DisclosureOverride {
                 mode,
                 first_at: BTreeMap::new(),
@@ -11956,9 +11986,10 @@ mod tests {
         ] {
             store.entities.get_mut(id).unwrap().description = desc.to_string();
         }
-        let mut overrides = BTreeMap::new();
+        let mut overrides: BTreeMap<mnemosyne_core::FactId, mnemosyne_core::DisclosureOverride> =
+            BTreeMap::new();
         overrides.insert(
-            "f-give-main".to_string(),
+            "f-give-main".into(),
             mnemosyne_core::DisclosureOverride {
                 mode: mnemosyne_core::DisclosureMode::State,
                 first_at: BTreeMap::new(),

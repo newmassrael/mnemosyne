@@ -786,7 +786,7 @@ pub fn authoring_frontier_report(
         if let Some(c) = counts.get_mut(&fact.canon_from) {
             *c += 1;
         }
-        if structural_ids.contains(fid) {
+        if structural_ids.contains(fid.as_str()) {
             if let Some(c) = structural_counts.get_mut(&fact.canon_from) {
                 *c += 1;
             }
@@ -1449,7 +1449,7 @@ pub fn parameter_economy_report(
                 .iter()
                 .filter(|(_, g)| &g.parameter == param)
                 .map(|(fact, g)| ParameterEconomyGateRow {
-                    fact: fact.clone(),
+                    fact: fact.to_string(),
                     op: g.op.symbol().to_string(),
                     threshold: g.threshold,
                 })
@@ -1558,7 +1558,7 @@ pub fn entity_dossier(
         .iter()
         .filter(|(_, f)| f.entities.contains(&id))
         .map(|(fid, f)| EntityFactRow {
-            fact_id: fid.clone(),
+            fact_id: fid.to_string(),
             frame: f.frame.to_string(),
             branch: f.branch.to_string(),
             claim: f.claim.clone(),

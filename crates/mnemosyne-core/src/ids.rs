@@ -194,6 +194,15 @@ ref_id! {
     BranchId
 }
 
+ref_id! {
+    /// A key of the narrative-facts registry ([`crate::NarrativeFact`]).
+    ///
+    /// The id `NarrativeFact::supersedes_in_frame` has held since Round 434
+    /// despite its name saying "frame" — Round 843 documented that on
+    /// [`FrameId`] and left the field untyped until this type existed.
+    FactId
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -57,7 +57,9 @@ mod scene;
 pub use scene::Modality;
 
 mod ids;
-pub use ids::{BranchId, EntityId, EntityKindId, FrameId, ParameterId, PredicateId, UnitId};
+pub use ids::{
+    BranchId, EntityId, EntityKindId, FactId, FrameId, ParameterId, PredicateId, UnitId,
+};
 
 pub trait SymbolResolver: Send + Sync {
     fn version_surface(&self) -> VersionSurface;

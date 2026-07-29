@@ -418,7 +418,7 @@ pub fn succession_branch_inherits(
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ConflictAssertion {
     /// The fact this claim was judged to contradict.
-    pub target: String,
+    pub target: crate::FactId,
     /// sha256 of the target's `claim` when the judgment was recorded.
     pub target_claim_sha256: String,
 }
@@ -815,7 +815,7 @@ pub enum TypedObject {
     /// the delete path refuses to orphan it — symmetric with
     /// `conflicts_with` / `pays_off`, NOT the phase-1 registry facets. A fact
     /// may not reference itself.
-    Fact { id: String },
+    Fact { id: crate::FactId },
 }
 
 impl TypedObject {
@@ -849,7 +849,7 @@ impl TypedObject {
                 n,
                 unit: unit.into(),
             }),
-            fact.map(|id| TypedObject::Fact { id }),
+            fact.map(|id| TypedObject::Fact { id: id.into() }),
         ]
         .into_iter()
         .flatten()
@@ -996,7 +996,7 @@ pub struct NarrativeFact {
     /// In-frame predecessor this claim replaces (same frame enforced at the
     /// mutate primitive). The mechanism for time-indexed belief change.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub supersedes_in_frame: Option<String>,
+    pub supersedes_in_frame: Option<crate::FactId>,
     /// Setup marking (Round 442). `Expected` declares this fact a setup
     /// whose payoff coverage the read-side report classifies per world;
     /// the default `Unmarked` serializes to nothing (pre-payoff stores
@@ -1019,7 +1019,7 @@ pub struct NarrativeFact {
     /// must exist (fail-loud at the mutate primitive; the scan re-checks
     /// out-of-band edits).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub pays_off: Vec<String>,
+    pub pays_off: Vec<crate::FactId>,
     /// Optional verbatim quote backing the claim (a derived cache of medium
     /// content, EPUB-SSOT symmetric).
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -1176,7 +1176,7 @@ pub struct DisclosurePlan {
     /// Sparse per-fact overrides, keyed by fact id (an `AtomicStore.
     /// narrative_facts` key).
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
-    pub overrides: BTreeMap<String, DisclosureOverride>,
+    pub overrides: BTreeMap<crate::FactId, DisclosureOverride>,
 }
 
 /// The effective disclosure of one fact under a telling, for one world-line
@@ -1209,7 +1209,7 @@ impl DisclosurePlan {
     /// mode is one decision per (fact x telling), not per world). Returns the
     /// override's mode and `true`, else the plan default and `false`. The ONE
     /// place the override-vs-default rule lives.
-    pub fn effective_mode(&self, fact_id: &str) -> (DisclosureMode, bool) {
+    pub fn effective_mode(&self, fact_id: &crate::FactId) -> (DisclosureMode, bool) {
         match self.overrides.get(fact_id) {
             Some(ov) => (ov.mode, true),
             None => (self.default_mode, false),
@@ -1219,7 +1219,11 @@ impl DisclosurePlan {
     /// The full effective disclosure of a fact for one world-line — the mode
     /// ([`Self::effective_mode`]) plus the world's `first_at` pin and the
     /// surface (both override-only). The single resolver the carrier consumes.
-    pub fn effective(&self, fact_id: &str, world: &crate::BranchId) -> EffectiveDisclosure {
+    pub fn effective(
+        &self,
+        fact_id: &crate::FactId,
+        world: &crate::BranchId,
+    ) -> EffectiveDisclosure {
         let (mode, is_override) = self.effective_mode(fact_id);
         let ov = self.overrides.get(fact_id);
         EffectiveDisclosure {
@@ -1417,7 +1421,7 @@ mod tests {
     /// reader (carrier, coverage) routes here, so they cannot drift.
     #[test]
     fn disclosure_plan_effective_resolver() {
-        let mut overrides = BTreeMap::new();
+        let mut overrides: BTreeMap<crate::FactId, DisclosureOverride> = BTreeMap::new();
         let mut first_at: BTreeMap<crate::BranchId, DisclosureReveal> = BTreeMap::new();
         first_at.insert(
             "w1".into(),
@@ -1427,7 +1431,7 @@ mod tests {
             },
         );
         overrides.insert(
-            "shown".to_string(),
+            "shown".into(),
             DisclosureOverride {
                 mode: DisclosureMode::State,
                 first_at,
@@ -1444,8 +1448,11 @@ mod tests {
         };
 
         // Override wins; first_at is per world-line; is_override = true.
-        assert_eq!(plan.effective_mode("shown"), (DisclosureMode::State, true));
-        let e_w1 = plan.effective("shown", &"w1".into());
+        assert_eq!(
+            plan.effective_mode(&"shown".into()),
+            (DisclosureMode::State, true)
+        );
+        let e_w1 = plan.effective(&"shown".into(), &"w1".into());
         assert_eq!(e_w1.mode, DisclosureMode::State);
         assert!(e_w1.is_override);
         assert_eq!(
@@ -1458,14 +1465,14 @@ mod tests {
         );
         assert!(e_w1.surface.is_some());
         // No pin for another world-line.
-        assert_eq!(plan.effective("shown", &"w2".into()).first_at, None);
+        assert_eq!(plan.effective(&"shown".into(), &"w2".into()).first_at, None);
 
         // Defaulted fact: the plan default, no override data.
         assert_eq!(
-            plan.effective_mode("absent"),
+            plan.effective_mode(&"absent".into()),
             (DisclosureMode::Withhold, false)
         );
-        let e_def = plan.effective("absent", &"w1".into());
+        let e_def = plan.effective(&"absent".into(), &"w1".into());
         assert_eq!(e_def.mode, DisclosureMode::Withhold);
         assert!(!e_def.is_override);
         assert_eq!(e_def.first_at, None);
@@ -1474,8 +1481,8 @@ mod tests {
         // Parity: effective().mode is exactly effective_mode().0 (one source).
         for fact in ["shown", "absent"] {
             assert_eq!(
-                plan.effective(fact, &"w1".into()).mode,
-                plan.effective_mode(fact).0
+                plan.effective(&fact.into(), &"w1".into()).mode,
+                plan.effective_mode(&fact.into()).0
             );
         }
     }
