@@ -210,7 +210,7 @@ pub fn entity_kinds(
         .entities
         .iter()
         // A report map of TEXT — the id becomes a string at this output edge.
-        .map(|(id, e)| (id.clone(), e.kind.to_string()))
+        .map(|(id, e)| (id.to_string(), e.kind.to_string()))
         .collect())
 }
 
@@ -1529,8 +1529,10 @@ pub fn entity_dossier(
     entity_id: &str,
 ) -> Result<EntityDossier, OpError> {
     let store = load_atomic_store(workspace_root, sidecar)?;
-    let id = entity_id.trim();
-    let Some(entity) = store.entities.get(id) else {
+    // Entry into the store vocabulary: a raw CLI/MCP argument becomes a registry
+    // id here, once, for both wires.
+    let id = mnemosyne_core::EntityId::from(entity_id.trim());
+    let Some(entity) = store.entities.get(&id) else {
         return Err(OpError::Other(format!(
             "entity `{id}` not present in the entity registry (fail-loud — a typo'd \
              entity must not read as an empty dossier)"
@@ -1539,7 +1541,7 @@ pub fn entity_dossier(
     let facts: Vec<EntityFactRow> = store
         .narrative_facts
         .iter()
-        .filter(|(_, f)| f.entities.iter().any(|e| e == id))
+        .filter(|(_, f)| f.entities.contains(&id))
         .map(|(fid, f)| EntityFactRow {
             fact_id: fid.clone(),
             frame: f.frame.to_string(),

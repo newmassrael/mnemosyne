@@ -173,6 +173,16 @@ ref_id! {
     FrameId
 }
 
+ref_id! {
+    /// A key of the entities registry ([`crate::Entity`]) — the id every claim
+    /// about a character, place or object is retrieved by.
+    ///
+    /// The widest reach of the arc so far: seven fields across five types hold
+    /// one, and two of them (`TypedClaim::subject`, `TypedObject::Entity`) sit
+    /// beside a predicate id and an entity-kind id in the same struct.
+    EntityId
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

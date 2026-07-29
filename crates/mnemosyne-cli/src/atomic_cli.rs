@@ -2238,8 +2238,8 @@ fn parse_fact_verb_args(args: &[String], accept_reason: bool) -> Result<FactVerb
             )
             .map_err(|e| anyhow!("{e}"))?;
             Some(mnemosyne_core::TypedClaim {
-                subject,
                 // CLI args are `String`; they become ids at the store boundary.
+                subject: subject.into(),
                 predicate: predicate.into(),
                 object,
             })
@@ -2716,7 +2716,8 @@ pub fn cmd_import_ladders(workspace_root: &Path, args: &[String]) -> Result<(), 
         .into_iter()
         .map(|l| mnemosyne_atomic::LadderImport {
             section_id: l.section_id,
-            carrier: l.carrier,
+            // CLI/manifest arg enters the store vocabulary here.
+            carrier: l.carrier.map(Into::into),
             rungs: l.rungs,
         })
         .collect();

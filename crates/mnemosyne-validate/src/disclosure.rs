@@ -427,7 +427,7 @@ mod tests {
     /// Register the `pike`/`did` vocabulary the leak fixtures type against, so
     /// the F5 vocabulary-overlap signal is meaningful (Round 510).
     fn register_vocab(store: &mut AtomicStore) {
-        store.entities.insert("pike".to_string(), Entity::default());
+        store.entities.insert("pike".into(), Entity::default());
         store.predicates.insert(
             "did".into(),
             Predicate {
@@ -447,7 +447,7 @@ mod tests {
 
     fn typed(subject: &str, value: &str) -> TypedClaim {
         TypedClaim {
-            subject: subject.to_string(),
+            subject: subject.into(),
             predicate: "did".into(),
             object: TypedObject::Token {
                 token: value.to_string(),

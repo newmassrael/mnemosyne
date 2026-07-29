@@ -346,7 +346,7 @@ impl CastMember {
     /// who is present.
     pub(crate) fn from_presence(p: &ScenePresence) -> Self {
         Self {
-            entity: Cow::Owned(p.entity.clone()),
+            entity: Cow::Owned(p.entity.to_string()),
             modality: p.modality,
             can_answer: p.can_answer,
             quote: Cow::Owned(p.excerpt.text.clone()),

@@ -356,7 +356,7 @@ impl ContentExcerpt {
 pub struct ScenePresence {
     /// The store entity id present in the scene (the consumer resolves a
     /// manuscript form → id via its alias map at ingest and supplies the id).
-    pub entity: String,
+    pub entity: mnemosyne_core::EntityId,
     /// The authored evidentiary stance behind the presence (world-truth, stored).
     pub modality: mnemosyne_core::Modality,
     /// Authored judgment: whether this presence can answer the reckoner's
@@ -410,7 +410,7 @@ pub struct LadderRung {
     /// The object entity an OBSERVATION rung hangs on — examining it is what
     /// takes the hold. `None` for a spoken rung (the carrier's mouth takes it).
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub object: Option<String>,
+    pub object: Option<mnemosyne_core::EntityId>,
 }
 
 /// The interactive ladder dug at one scene (Round 765) — [`AtomicSection::ladder`].
@@ -427,7 +427,7 @@ pub struct SectionLadder {
     /// marks an OBSERVATION ladder: no one speaks it, the scene is looked at
     /// rather than asked, and its rungs are taken by examining their `object`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub carrier: Option<String>,
+    pub carrier: Option<mnemosyne_core::EntityId>,
     /// The holds, in the order the author declares them. Order is meaningful and
     /// is preserved verbatim; whether it must agree with the prose order is a
     /// RESOLUTION rule (the engine slices the excerpt at these anchors), not a
@@ -797,7 +797,7 @@ pub struct AtomicStore {
     /// entity-scoped verification and the convergence-B `entity_id` seat.
     /// Empty on pre-v15 stores via `#[serde(default)]`.
     #[serde(default)]
-    pub entities: BTreeMap<String, Entity>,
+    pub entities: BTreeMap<mnemosyne_core::EntityId, Entity>,
     /// Entity-kind registry — keyed by kind id. Every non-empty
     /// `Entity.kind` must name a key here (fail-loud at the mutate
     /// primitives AND at the scan boundary; the frames/branches/entities/
@@ -3967,7 +3967,7 @@ pub fn import_scene_cast(
             .entry(p.section_id.clone())
             .or_default()
             .push(ScenePresence {
-                entity: p.entity.clone(),
+                entity: p.entity.clone().into(),
                 modality: p.modality,
                 can_answer: p.can_answer,
                 excerpt: ContentExcerpt {
@@ -4010,7 +4010,10 @@ pub fn import_scene_cast(
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LadderImport {
     pub section_id: String,
-    pub carrier: Option<String>,
+    /// Typed, unlike a flat wire DTO's fields: this struct already carries
+    /// store-typed `rungs`, so a bare `String` here made one struct disagree
+    /// with itself about what a ladder holds.
+    pub carrier: Option<mnemosyne_core::EntityId>,
     pub rungs: Vec<LadderRung>,
 }
 
@@ -4060,7 +4063,7 @@ pub fn import_ladders(
             )));
         }
         if let Some(carrier) = &l.carrier {
-            if carrier.trim().is_empty() {
+            if carrier.as_str().trim().is_empty() {
                 return Err(AtomicMutateError::Validation(format!(
                     "import_ladders: {where_} has a blank carrier (omit it for an observation ladder)"
                 )));
@@ -4174,7 +4177,7 @@ pub fn import_ladders(
                 }
             }
             if let Some(object) = &rung.object {
-                if object.trim().is_empty() {
+                if object.as_str().trim().is_empty() {
                     return Err(AtomicMutateError::Validation(format!(
                         "import_ladders: {where_} has a rung with a blank object"
                     )));
@@ -5298,7 +5301,9 @@ fn build_candidate_fact(
             b.to_string()
         }
     };
-    let mut entities = Vec::with_capacity(entry.entities.len());
+    // Entry into the store vocabulary: `FactImport.entities` is a wire DTO list
+    // and stays `String`; the ids become typed here, once, as they are validated.
+    let mut entities: Vec<mnemosyne_core::EntityId> = Vec::with_capacity(entry.entities.len());
     for e in &entry.entities {
         let e = e.trim();
         if e.is_empty() {
@@ -5313,7 +5318,7 @@ fn build_candidate_fact(
         if entities.iter().any(|x| x == e) {
             return Err(format!("fact `{fact_id}`: duplicate entity ref `{e}`"));
         }
-        entities.push(e.to_string());
+        entities.push(e.into());
     }
     let claim = entry.claim.trim();
     if claim.is_empty() {
@@ -5476,29 +5481,30 @@ fn build_typed_claim(
     store: &AtomicStore,
     fact_id: &str,
     t: &TypedClaim,
-    fact_entities: &[String],
+    fact_entities: &[mnemosyne_core::EntityId],
 ) -> Result<TypedClaim, String> {
-    let check_entity_leg = |leg: &str, id: &str| -> Result<String, String> {
-        let id = id.trim();
-        if id.is_empty() {
-            return Err(format!(
-                "fact `{fact_id}`: typed {leg} mandatory (non-empty)"
-            ));
-        }
-        if !fact_ref_resolves(store, FactRefFacet::Entity, id) {
-            return Err(format!(
-                "fact `{fact_id}`: typed {leg} `{id}` not present in the entity registry \
+    let check_entity_leg =
+        |leg: &str, id: &mnemosyne_core::EntityId| -> Result<mnemosyne_core::EntityId, String> {
+            let id = id.as_str().trim();
+            if id.is_empty() {
+                return Err(format!(
+                    "fact `{fact_id}`: typed {leg} mandatory (non-empty)"
+                ));
+            }
+            if !fact_ref_resolves(store, FactRefFacet::Entity, id) {
+                return Err(format!(
+                    "fact `{fact_id}`: typed {leg} `{id}` not present in the entity registry \
                  (add_entity / manifest entities[] first; fail-loud)"
-            ));
-        }
-        if !fact_entities.iter().any(|e| e == id) {
-            return Err(format!(
-                "fact `{fact_id}`: typed {leg} `{id}` is not a member of the fact's \
+                ));
+            }
+            if !fact_entities.iter().any(|e| e == id) {
+                return Err(format!(
+                    "fact `{fact_id}`: typed {leg} `{id}` is not a member of the fact's \
                  entities list — the entities list stays THE retrieval key; list it there too"
-            ));
-        }
-        Ok(id.to_string())
-    };
+                ));
+            }
+            Ok(id.into())
+        };
     let subject = check_entity_leg("subject", &t.subject)?;
     let predicate = t.predicate.as_str().trim();
     if predicate.is_empty() {
@@ -5520,12 +5526,12 @@ fn build_typed_claim(
     // enforced here, not by a scan). 0 parent links ⇒ subtree = singleton ⇒
     // exact-match, the R701 behaviour unchanged.
     if let Some(req) = &decl.subject_kind {
-        if !is_kind_or_subkind(store, entity_kind(store, subject.as_str()), req) {
+        if !is_kind_or_subkind(store, entity_kind(store, &subject), req) {
             return Err(format!(
                 "fact `{fact_id}`: predicate `{predicate}` requires subject kind `{req}` \
                  (or a subkind), but entity `{subject}` is kind `{}` (declare the entity's \
                  kind via add_entity, or use a subject of the required kind)",
-                entity_kind(store, subject.as_str()).map_or("<unspecified>", |k| k.as_str())
+                entity_kind(store, &subject).map_or("<unspecified>", |k| k.as_str())
             ));
         }
     }
@@ -5535,12 +5541,12 @@ fn build_typed_claim(
             // Round 701 — endpoint-kind gate (object leg), entity objects only;
             // subtree-aware (Round 732), like the subject leg above.
             if let Some(req) = &decl.object_entity_kind {
-                if !is_kind_or_subkind(store, entity_kind(store, id.as_str()), req) {
+                if !is_kind_or_subkind(store, entity_kind(store, &id), req) {
                     return Err(format!(
                         "fact `{fact_id}`: predicate `{predicate}` requires object kind `{req}` \
                          (or a subkind), but entity `{id}` is kind `{}` (declare the entity's \
                          kind, or use an object of the required kind)",
-                        entity_kind(store, id.as_str()).map_or("<unspecified>", |k| k.as_str())
+                        entity_kind(store, &id).map_or("<unspecified>", |k| k.as_str())
                     ));
                 }
             }
@@ -6530,7 +6536,7 @@ pub fn unregistered_entity_kinds(store: &AtomicStore) -> Vec<(String, String)> {
         .entities
         .iter()
         .filter(|(_, e)| !entity_kind_registered(store, e.kind.as_str()))
-        .map(|(id, e)| (id.clone(), e.kind.to_string()))
+        .map(|(id, e)| (id.to_string(), e.kind.to_string()))
         .collect()
 }
 
@@ -7919,7 +7925,10 @@ pub fn add_predicate(
 /// absent or its kind is unspecified (empty). A predicate's endpoint-kind
 /// constraint is matched against this: the leg satisfies iff `Some(k)` equals
 /// the required kind — an unspecified kind never satisfies a `Some` constraint.
-fn entity_kind<'a>(store: &'a AtomicStore, id: &str) -> Option<&'a mnemosyne_core::EntityKindId> {
+fn entity_kind<'a>(
+    store: &'a AtomicStore,
+    id: &mnemosyne_core::EntityId,
+) -> Option<&'a mnemosyne_core::EntityKindId> {
     store
         .entities
         .get(id)
@@ -8505,7 +8514,9 @@ pub(crate) fn apply_disclosure_override(
             // Scene-as-section and object-as-entity resolution is enforced by the
             // shared `disclosure_override_ref_violations` on the candidate below.
             let object = match object {
-                Some(o) if !o.trim().is_empty() => Some(o.trim().to_string()),
+                // Entry into the store vocabulary: the surface object arrives as
+                // a raw argument and becomes a registry id here.
+                Some(o) if !o.trim().is_empty() => Some(o.trim().into()),
                 _ => None,
             };
             Some(DisclosureSurface {
@@ -8676,8 +8687,8 @@ pub fn ladder_ref_violations(store: &AtomicStore) -> Vec<String> {
         // something absent (the Round 817 rule — one message for two failures
         // lies about which to fix). A blank would resolve as unregistered too,
         // so the order here is what keeps them distinguishable.
-        match ladder.carrier.as_deref() {
-            Some(carrier) if carrier.trim().is_empty() => out.push(format!(
+        match ladder.carrier.as_ref() {
+            Some(carrier) if carrier.as_str().trim().is_empty() => out.push(format!(
                 "{ctx}: carrier blanked out-of-band (omit it for an observation ladder)"
             )),
             Some(carrier) if !store.entities.contains_key(carrier) => out.push(format!(
@@ -8708,8 +8719,8 @@ pub fn ladder_ref_violations(store: &AtomicStore) -> Vec<String> {
                     ));
                 }
             }
-            match rung.object.as_deref() {
-                Some(object) if object.trim().is_empty() => out.push(format!(
+            match rung.object.as_ref() {
+                Some(object) if object.as_str().trim().is_empty() => out.push(format!(
                     "{rctx}: object blanked out-of-band (omit it for a spoken rung)"
                 )),
                 Some(object) if !store.entities.contains_key(object) => out.push(format!(
@@ -10741,10 +10752,10 @@ mod tests {
         seed_chapters(store);
         store
             .entities
-            .insert("ent-jongdeuk".to_string(), Entity::default());
+            .insert("ent-jongdeuk".into(), Entity::default());
         store
             .entities
-            .insert("ent-ledger".to_string(), Entity::default());
+            .insert("ent-ledger".into(), Entity::default());
         store.frames.insert("gt".into(), Frame::default());
         // Real facts through the real write path, so the import's presence check
         // is exercised against facts the store actually declares.
@@ -10774,13 +10785,13 @@ mod tests {
         let mut good = rung("셈은");
         good.needs = vec!["f-tide".to_string()];
         good.reveals = vec!["f-name".to_string()];
-        good.object = Some("ent-ledger".to_string());
+        good.object = Some("ent-ledger".into());
         import_ladders(
             &mut store,
             &sidecar,
             &[LadderImport {
                 section_id: "d02-nat".to_string(),
-                carrier: Some("ent-jongdeuk".to_string()),
+                carrier: Some("ent-jongdeuk".into()),
                 rungs: vec![good],
             }],
         )
@@ -10823,10 +10834,10 @@ mod tests {
             arm(
                 "carrier naming an absent entity",
                 "carrier `ent-ghost` is not in the entity registry",
-                |s| ladder_mut(s).carrier = Some("ent-ghost".to_string()),
+                |s| ladder_mut(s).carrier = Some("ent-ghost".into()),
             ),
             arm("carrier emptied", "carrier blanked out-of-band", |s| {
-                ladder_mut(s).carrier = Some("  ".to_string())
+                ladder_mut(s).carrier = Some("  ".into())
             }),
             arm(
                 "needs naming an absent fact",
@@ -10844,10 +10855,10 @@ mod tests {
             arm(
                 "object naming an absent entity",
                 "object `ent-ghost` is not in the entity registry",
-                |s| ladder_mut(s).rungs[0].object = Some("ent-ghost".to_string()),
+                |s| ladder_mut(s).rungs[0].object = Some("ent-ghost".into()),
             ),
             arm("object emptied", "object blanked out-of-band", |s| {
-                ladder_mut(s).rungs[0].object = Some(" ".to_string())
+                ladder_mut(s).rungs[0].object = Some(" ".into())
             }),
             arm("every rung removed", "declares no rungs", |s| {
                 ladder_mut(s).rungs.clear()
@@ -10893,7 +10904,7 @@ mod tests {
             &sidecar,
             &[LadderImport {
                 section_id: "d02-nat".to_string(),
-                carrier: Some("ent-jongdeuk".to_string()),
+                carrier: Some("ent-jongdeuk".into()),
                 rungs: vec![rung("셈은")],
             }],
         )
@@ -10909,7 +10920,7 @@ mod tests {
             .ladder
             .as_mut()
             .unwrap()
-            .carrier = Some("ent-ghost".to_string());
+            .carrier = Some("ent-ghost".into());
         assert!(
             store_registry_violations(&store)
                 .iter()
@@ -11008,11 +11019,11 @@ mod tests {
         let mut second = rung("물때는");
         second.needs = vec!["f-tide".to_string()];
         second.reveals = vec!["f-name".to_string()];
-        second.object = Some("ent-ledger".to_string());
+        second.object = Some("ent-ledger".into());
         let imports = vec![
             LadderImport {
                 section_id: "d02-nat".to_string(),
-                carrier: Some("ent-jongdeuk".to_string()),
+                carrier: Some("ent-jongdeuk".into()),
                 rungs: vec![rung("셈은"), second],
             },
             LadderImport {
@@ -11025,7 +11036,7 @@ mod tests {
         assert_eq!(unmatched, vec!["nope".to_string()]);
 
         let ladder = store.sections["d02-nat"].ladder.as_ref().unwrap();
-        assert_eq!(ladder.carrier.as_deref(), Some("ent-jongdeuk"));
+        assert_eq!(ladder.carrier, Some("ent-jongdeuk".into()));
         assert_eq!(ladder.rungs.len(), 2);
         assert_eq!(
             ladder.rungs[0].anchor.locator,
@@ -11033,7 +11044,7 @@ mod tests {
         );
         assert_eq!(ladder.rungs[1].needs, vec!["f-tide".to_string()]);
         assert_eq!(ladder.rungs[1].reveals, vec!["f-name".to_string()]);
-        assert_eq!(ladder.rungs[1].object.as_deref(), Some("ent-ledger"));
+        assert_eq!(ladder.rungs[1].object, Some("ent-ledger".into()));
 
         // Re-import REPLACES the whole ladder (idempotent), never appends.
         let shorter = vec![LadderImport {
@@ -11062,7 +11073,7 @@ mod tests {
         seed_ladder_referents(&mut store, &sidecar);
         let good = vec![LadderImport {
             section_id: "d02-nat".to_string(),
-            carrier: Some("ent-jongdeuk".to_string()),
+            carrier: Some("ent-jongdeuk".into()),
             rungs: vec![rung("셈은")],
         }];
         import_ladders(&mut store, &sidecar, &good).unwrap();
@@ -11070,7 +11081,7 @@ mod tests {
         let one = |carrier: Option<&str>, rungs: Vec<LadderRung>| {
             vec![LadderImport {
                 section_id: "d02-nat".to_string(),
-                carrier: carrier.map(str::to_string),
+                carrier: carrier.map(Into::into),
                 rungs,
             }]
         };
@@ -11079,7 +11090,7 @@ mod tests {
         let mut unknown_need = rung("물때는");
         unknown_need.needs = vec!["f-ghost".to_string()];
         let mut unknown_object = rung("물때는");
-        unknown_object.object = Some("ent-ghost".to_string());
+        unknown_object.object = Some("ent-ghost".into());
         let cfi = LadderRung {
             anchor: mnemosyne_core::ContentAnchor {
                 source: "MANUSCRIPT.md".to_string(),
@@ -11124,8 +11135,8 @@ mod tests {
             let ladder = store.sections["d02-nat"].ladder.as_ref().unwrap();
             assert_eq!(ladder.rungs.len(), 1, "{why}: the store was mutated anyway");
             assert_eq!(
-                ladder.carrier.as_deref(),
-                Some("ent-jongdeuk"),
+                ladder.carrier,
+                Some("ent-jongdeuk".into()),
                 "{why}: the store was mutated anyway"
             );
         }
@@ -11153,7 +11164,7 @@ mod tests {
         rung.reveals = vec!["f-tide".to_string()];
         let imports = vec![LadderImport {
             section_id: "d02-nat".to_string(),
-            carrier: Some("ent-jongdeuk".to_string()),
+            carrier: Some("ent-jongdeuk".into()),
             rungs: vec![rung],
         }];
         import_ladders(&mut store, &sidecar, &imports).unwrap();
@@ -13256,7 +13267,7 @@ mod tests {
         let mut store = AtomicStore::new();
         seed_chapters(&mut store);
         store.frames.insert("gt".into(), Frame::default());
-        store.entities.insert("pike".to_string(), Entity::default());
+        store.entities.insert("pike".into(), Entity::default());
         add_predicate(
             &mut store,
             &path,
@@ -13272,7 +13283,7 @@ mod tests {
         let typed = |id: &str, canon: &str| FactImport {
             entities: vec!["pike".to_string()],
             typed: Some(TypedClaim {
-                subject: "pike".to_string(),
+                subject: "pike".into(),
                 predicate: "did".into(),
                 object: TypedObject::Token {
                     token: "climbed".to_string(),
@@ -15340,7 +15351,7 @@ mod tests {
         let mut store = AtomicStore::new();
         seed_chapters(&mut store);
         store.frames.insert("gt".into(), Frame::default());
-        store.entities.insert("pike".to_string(), Entity::default());
+        store.entities.insert("pike".into(), Entity::default());
         add_branch(
             &mut store,
             &path,
@@ -15365,7 +15376,7 @@ mod tests {
         let typed_fact = FactImport {
             entities: vec!["pike".to_string()],
             typed: Some(TypedClaim {
-                subject: "pike".to_string(),
+                subject: "pike".into(),
                 predicate: "did".into(),
                 object: TypedObject::Token {
                     token: "climbed".to_string(),
@@ -15453,7 +15464,7 @@ mod tests {
         );
         let surface = ov.surface.as_ref().unwrap();
         assert_eq!(surface.scene, "ch-2");
-        assert_eq!(surface.object.as_deref(), Some("pike"));
+        assert_eq!(surface.object, Some("pike".into()));
 
         // Fail-loud refs.
         let err =
@@ -15588,7 +15599,7 @@ mod tests {
         TypingProposal {
             fact: fact.to_string(),
             typed: TypedClaim {
-                subject: "kara".to_string(),
+                subject: "kara".into(),
                 predicate: "alive".into(),
                 object: TypedObject::Token {
                     token: "alive".to_string(),
@@ -15622,7 +15633,7 @@ mod tests {
         let mut store = AtomicStore::new();
         seed_chapters(&mut store);
         store.frames.insert("gt".into(), Frame::default());
-        store.entities.insert("pike".to_string(), Entity::default());
+        store.entities.insert("pike".into(), Entity::default());
         add_predicate(
             &mut store,
             &path,
@@ -15635,7 +15646,7 @@ mod tests {
         )
         .unwrap();
         let typed_leg = Some(TypedClaim {
-            subject: "pike".to_string(),
+            subject: "pike".into(),
             predicate: "did".into(),
             object: TypedObject::Token {
                 token: "climbed".to_string(),
@@ -15858,7 +15869,7 @@ mod tests {
             proposals_file(vec![TypingProposal {
                 fact: fact.to_string(),
                 typed: TypedClaim {
-                    subject: "kara".to_string(),
+                    subject: "kara".into(),
                     predicate: "opened-by".into(),
                     object: TypedObject::Fact {
                         id: target.to_string(),
@@ -16808,7 +16819,7 @@ mod tests {
     fn typed_claim_write_path_parity_add_vs_import() {
         let typed = |subject: &str, predicate: &str, object: TypedObject| {
             Some(TypedClaim {
-                subject: subject.to_string(),
+                subject: subject.into(),
                 predicate: predicate.into(),
                 object,
             })
@@ -16816,7 +16827,7 @@ mod tests {
         let tok = |v: &str| TypedObject::Token {
             token: v.to_string(),
         };
-        let ent = |id: &str| TypedObject::Entity { id: id.to_string() };
+        let ent = |id: &str| TypedObject::Entity { id: id.into() };
         let with_entities = |fact_id: &str, ents: &[&str], t| FactImport {
             entities: ents.iter().map(|s| s.to_string()).collect(),
             typed: t,
@@ -16881,8 +16892,8 @@ mod tests {
             for s in [&mut store_a, &mut store_b] {
                 seed_chapters(s);
                 s.frames.insert("gt".into(), Frame::default());
-                s.entities.insert("kara".to_string(), Entity::default());
-                s.entities.insert("todd-gun".to_string(), Entity::default());
+                s.entities.insert("kara".into(), Entity::default());
+                s.entities.insert("todd-gun".into(), Entity::default());
                 s.predicates.insert(
                     "alive".into(),
                     Predicate {
@@ -16963,11 +16974,9 @@ mod tests {
         let adjacent = |subject: &str, object: &str, id: &str| FactImport {
             entities: vec![subject.to_string(), object.to_string()],
             typed: Some(TypedClaim {
-                subject: subject.to_string(),
+                subject: subject.into(),
                 predicate: "adjacent".into(),
-                object: TypedObject::Entity {
-                    id: object.to_string(),
-                },
+                object: TypedObject::Entity { id: object.into() },
             }),
             ..sample_fact(id, "gt")
         };
@@ -17018,11 +17027,9 @@ mod tests {
             &FactImport {
                 entities: vec!["cove".to_string(), "stake".to_string()],
                 typed: Some(TypedClaim {
-                    subject: "cove".to_string(),
+                    subject: "cove".into(),
                     predicate: "near".into(),
-                    object: TypedObject::Entity {
-                        id: "stake".to_string(),
-                    },
+                    object: TypedObject::Entity { id: "stake".into() },
                 }),
                 ..sample_fact("u1", "gt")
             },
@@ -17058,7 +17065,7 @@ mod tests {
         let mut store = AtomicStore::new();
         seed_chapters(&mut store);
         store.frames.insert("gt".into(), Frame::default());
-        store.entities.insert("lucy".to_string(), Entity::default());
+        store.entities.insert("lucy".into(), Entity::default());
         add_predicate(
             &mut store,
             &path,
@@ -17073,7 +17080,7 @@ mod tests {
         let tok = |token: &str, id: &str| FactImport {
             entities: vec!["lucy".to_string()],
             typed: Some(TypedClaim {
-                subject: "lucy".to_string(),
+                subject: "lucy".into(),
                 predicate: "life".into(),
                 object: TypedObject::Token {
                     token: token.to_string(),
@@ -17148,7 +17155,7 @@ mod tests {
         let mut store = AtomicStore::new();
         seed_chapters(&mut store);
         store.frames.insert("gt".into(), Frame::default());
-        store.entities.insert("lucy".to_string(), Entity::default());
+        store.entities.insert("lucy".into(), Entity::default());
         add_predicate(
             &mut store,
             &path,
@@ -17166,7 +17173,7 @@ mod tests {
             &FactImport {
                 entities: vec!["lucy".to_string()],
                 typed: Some(TypedClaim {
-                    subject: "lucy".to_string(),
+                    subject: "lucy".into(),
                     predicate: "life".into(),
                     object: TypedObject::Token {
                         token: "dead".to_string(),
@@ -17221,9 +17228,7 @@ mod tests {
         let mut store = AtomicStore::new();
         seed_chapters(&mut store);
         store.frames.insert("gt".into(), Frame::default());
-        store
-            .entities
-            .insert("codicil".to_string(), Entity::default());
+        store.entities.insert("codicil".into(), Entity::default());
         add_unit(&mut store, &path, "day", "").unwrap();
         add_predicate(
             &mut store,
@@ -17239,7 +17244,7 @@ mod tests {
         let qty = |n: i64, unit: &str, id: &str| FactImport {
             entities: vec!["codicil".to_string()],
             typed: Some(TypedClaim {
-                subject: "codicil".to_string(),
+                subject: "codicil".into(),
                 predicate: "signed-on-day".into(),
                 object: TypedObject::Quantity {
                     n,
@@ -17267,10 +17272,10 @@ mod tests {
         let mismatch = FactImport {
             entities: vec!["codicil".to_string()],
             typed: Some(TypedClaim {
-                subject: "codicil".to_string(),
+                subject: "codicil".into(),
                 predicate: "signed-on-day".into(),
                 object: TypedObject::Entity {
-                    id: "codicil".to_string(),
+                    id: "codicil".into(),
                 },
             }),
             ..sample_fact("f3", "gt")
@@ -18880,7 +18885,7 @@ mod tests {
         let mut store = AtomicStore::new();
         seed_chapters(&mut store); // ch-1, ch-2, ch-3
         store.frames.insert("gt".into(), Frame::default());
-        store.entities.insert("pike".to_string(), Entity::default());
+        store.entities.insert("pike".into(), Entity::default());
         add_predicate(
             &mut store,
             &path,
@@ -18895,7 +18900,7 @@ mod tests {
         let typed_fact = FactImport {
             entities: vec!["pike".to_string()],
             typed: Some(TypedClaim {
-                subject: "pike".to_string(),
+                subject: "pike".into(),
                 predicate: "did".into(),
                 object: TypedObject::Token {
                     token: "climbed".to_string(),
@@ -18990,7 +18995,7 @@ mod tests {
                 )]),
                 surface: Some(DisclosureSurface {
                     scene: "gone-scene".to_string(),
-                    object: Some("gone-obj".to_string()),
+                    object: Some("gone-obj".into()),
                 }),
             },
         );
@@ -19181,7 +19186,7 @@ mod tests {
         let mut store = AtomicStore::new();
         seed_chapters(&mut store); // ch-1, ch-2, ch-3
         store.frames.insert("gt".into(), Frame::default());
-        store.entities.insert("pike".to_string(), Entity::default());
+        store.entities.insert("pike".into(), Entity::default());
         add_predicate(
             &mut store,
             &path,
@@ -19199,7 +19204,7 @@ mod tests {
             &FactImport {
                 entities: vec!["pike".to_string()],
                 typed: Some(TypedClaim {
-                    subject: "pike".to_string(),
+                    subject: "pike".into(),
                     predicate: "did".into(),
                     object: TypedObject::Token {
                         token: "climbed".to_string(),
@@ -19294,7 +19299,7 @@ mod tests {
         let mut store = AtomicStore::new();
         seed_chapters(&mut store); // ch-1, ch-2, ch-3
         store.frames.insert("gt".into(), Frame::default());
-        store.entities.insert("pike".to_string(), Entity::default());
+        store.entities.insert("pike".into(), Entity::default());
         add_predicate(
             &mut store,
             &path,
@@ -19312,7 +19317,7 @@ mod tests {
             &FactImport {
                 entities: vec!["pike".to_string()],
                 typed: Some(TypedClaim {
-                    subject: "pike".to_string(),
+                    subject: "pike".into(),
                     predicate: "did".into(),
                     object: TypedObject::Token {
                         token: "climbed".to_string(),
@@ -19586,11 +19591,9 @@ mod tests {
         let fact = |pred: &str, obj: &str, id: &str| FactImport {
             entities: vec!["hero".to_string(), obj.to_string()],
             typed: Some(TypedClaim {
-                subject: "hero".to_string(),
+                subject: "hero".into(),
                 predicate: pred.into(),
-                object: TypedObject::Entity {
-                    id: obj.to_string(),
-                },
+                object: TypedObject::Entity { id: obj.into() },
             }),
             ..sample_fact(id, "gt")
         };
@@ -19650,12 +19653,12 @@ mod tests {
         let mut store = AtomicStore::new();
         seed_chapters(&mut store);
         store.frames.insert("gt".into(), Frame::default());
-        store.entities.insert("mina".to_string(), Entity::default());
+        store.entities.insert("mina".into(), Entity::default());
         add_predicate(&mut store, &path, "opened-by", "fact", None, None, &[], "").unwrap();
         let fact_ref = |id: &str, target: &str| FactImport {
             entities: vec!["mina".to_string()],
             typed: Some(TypedClaim {
-                subject: "mina".to_string(),
+                subject: "mina".into(),
                 predicate: "opened-by".into(),
                 object: TypedObject::Fact {
                     id: target.to_string(),
@@ -19740,7 +19743,7 @@ mod tests {
         let mut store = AtomicStore::new();
         seed_chapters(&mut store);
         store.frames.insert("gt".into(), Frame::default());
-        store.entities.insert("mina".to_string(), Entity::default());
+        store.entities.insert("mina".into(), Entity::default());
         add_predicate(&mut store, &path, "opened-by", "fact", None, None, &[], "").unwrap();
         add_fact(&mut store, &path, &sample_fact("f-sluice", "gt")).unwrap();
         add_fact(
@@ -19749,7 +19752,7 @@ mod tests {
             &FactImport {
                 entities: vec!["mina".to_string()],
                 typed: Some(TypedClaim {
-                    subject: "mina".to_string(),
+                    subject: "mina".into(),
                     predicate: "opened-by".into(),
                     object: TypedObject::Fact {
                         id: "f-sluice".to_string(),
@@ -19883,11 +19886,9 @@ mod tests {
             )
             .unwrap();
             let claim = TypedClaim {
-                subject: subject.to_string(),
+                subject: subject.into(),
                 predicate: "adjacent".into(),
-                object: TypedObject::Entity {
-                    id: object.to_string(),
-                },
+                object: TypedObject::Entity { id: object.into() },
             };
             let decl = resolve_predicate(&store, "adjacent").unwrap().clone();
             // Read-side twin, computed on the pristine store before the write.
@@ -19958,7 +19959,7 @@ mod tests {
             for (s, p) in [(&mut store_a, &path_a), (&mut store_b, &path_b)] {
                 seed_chapters(s);
                 s.frames.insert("gt".into(), Frame::default());
-                s.entities.insert("kara".to_string(), Entity::default());
+                s.entities.insert("kara".into(), Entity::default());
                 s.predicates.insert(
                     "alive".into(),
                     Predicate {
@@ -19975,7 +19976,7 @@ mod tests {
                     &FactImport {
                         entities: vec!["kara".to_string()],
                         typed: Some(TypedClaim {
-                            subject: "kara".to_string(),
+                            subject: "kara".into(),
                             predicate: "alive".into(),
                             object: TypedObject::Token {
                                 token: "operational".to_string(),
@@ -20066,7 +20067,7 @@ mod tests {
         let mut store = AtomicStore::new();
         seed_chapters(&mut store);
         store.frames.insert("gt".into(), Frame::default());
-        store.entities.insert("kara".to_string(), Entity::default());
+        store.entities.insert("kara".into(), Entity::default());
         // Unknown object_kind tag rejects (no silent default).
         let err =
             add_predicate(&mut store, &path, "alive", "boolean", None, None, &[], "").unwrap_err();
@@ -20114,7 +20115,7 @@ mod tests {
             &FactImport {
                 entities: vec!["kara".to_string()],
                 typed: Some(TypedClaim {
-                    subject: "kara".to_string(),
+                    subject: "kara".into(),
                     predicate: "alive".into(),
                     object: TypedObject::Token {
                         token: "operational".to_string(),
@@ -20158,7 +20159,7 @@ mod tests {
         let mut store = AtomicStore::new();
         seed_chapters(&mut store);
         store.frames.insert("gt".into(), Frame::default());
-        store.entities.insert("kara".to_string(), Entity::default());
+        store.entities.insert("kara".into(), Entity::default());
 
         // The typo: meant scalar, wrote entity. NOTHING could reach it before.
         add_predicate(
@@ -20208,7 +20209,7 @@ mod tests {
             &FactImport {
                 entities: vec!["kara".to_string()],
                 typed: Some(TypedClaim {
-                    subject: "kara".to_string(),
+                    subject: "kara".into(),
                     predicate: "alive".into(),
                     object: TypedObject::Token {
                         token: "operational".to_string(),
@@ -20235,7 +20236,7 @@ mod tests {
         let mut store = AtomicStore::new();
         seed_chapters(&mut store);
         store.frames.insert("gt".into(), Frame::default());
-        store.entities.insert("kara".to_string(), Entity::default());
+        store.entities.insert("kara".into(), Entity::default());
         add_predicate(
             &mut store,
             &path,
@@ -20253,7 +20254,7 @@ mod tests {
             &FactImport {
                 entities: vec!["kara".to_string()],
                 typed: Some(TypedClaim {
-                    subject: "kara".to_string(),
+                    subject: "kara".into(),
                     predicate: "alive".into(),
                     object: TypedObject::Token {
                         token: "operational".to_string(),
@@ -20452,7 +20453,7 @@ mod tests {
                 facts: vec![FactImport {
                     entities: vec!["kara".to_string()],
                     typed: Some(TypedClaim {
-                        subject: "kara".to_string(),
+                        subject: "kara".into(),
                         predicate: "alive".into(),
                         object: TypedObject::Token {
                             token: "operational".to_string(),
@@ -20480,7 +20481,7 @@ mod tests {
             &FactImport {
                 entities: vec!["kara".to_string()],
                 typed: Some(TypedClaim {
-                    subject: "kara".to_string(),
+                    subject: "kara".into(),
                     predicate: "alive".into(),
                     object: TypedObject::Token {
                         token: "destroyed".to_string(),
@@ -21103,14 +21104,14 @@ mod tests {
             .entity_kinds
             .insert("place".into(), EntityKind::default());
         store.entities.insert(
-            "ent-b".to_string(),
+            "ent-b".into(),
             Entity {
                 kind: "place".into(),
                 description: String::new(),
             },
         );
         store.entities.insert(
-            "ent-nameless".to_string(),
+            "ent-nameless".into(),
             Entity {
                 kind: mnemosyne_core::EntityKindId::default(),
                 description: String::new(),
@@ -21121,14 +21122,14 @@ mod tests {
 
         // Out-of-band inserts naming kinds nobody registered.
         store.entities.insert(
-            "ent-a".to_string(),
+            "ent-a".into(),
             Entity {
                 kind: "island".into(),
                 description: String::new(),
             },
         );
         store.entities.insert(
-            "ent-c".to_string(),
+            "ent-c".into(),
             Entity {
                 kind: "flat".into(),
                 description: String::new(),
@@ -21169,11 +21170,9 @@ mod tests {
         let mut valid = sample_fact("f1", "gt");
         valid.entities = vec!["a".to_string(), "b".to_string()];
         valid.typed = Some(TypedClaim {
-            subject: "a".to_string(),
+            subject: "a".into(),
             predicate: "rel".into(),
-            object: TypedObject::Entity {
-                id: "b".to_string(),
-            },
+            object: TypedObject::Entity { id: "b".into() },
         });
         add_fact(&mut base, &path, &valid).unwrap();
         assert!(
@@ -21327,11 +21326,9 @@ mod tests {
             payoff_expectation: None,
             pays_off: vec![],
             typed: Some(TypedClaim {
-                subject: "a".to_string(),
+                subject: "a".into(),
                 predicate: "rel".into(),
-                object: TypedObject::Entity {
-                    id: "b".to_string(),
-                },
+                object: TypedObject::Entity { id: "b".into() },
             }),
             quote: None,
         };
@@ -21454,7 +21451,7 @@ mod tests {
         let base = |object: TypedObject| NarrativeFact {
             frame: "gt".into(),
             branch: mnemosyne_core::MAIN_BRANCH.to_string(),
-            entities: vec!["a".to_string()],
+            entities: vec!["a".into()],
             claim: "c".to_string(),
             canon_from: "ch-1".to_string(),
             canon_to: Some("ch-2".to_string()),
@@ -21464,16 +21461,14 @@ mod tests {
             payoff_expectation: PayoffExpectation::default(),
             pays_off: vec![],
             typed: Some(TypedClaim {
-                subject: "a".to_string(),
+                subject: "a".into(),
                 predicate: "rel".into(),
                 object,
             }),
             quote: None,
             quote_sha256: None,
         };
-        let with_entity = base(TypedObject::Entity {
-            id: "b".to_string(),
-        });
+        let with_entity = base(TypedObject::Entity { id: "b".into() });
         let with_quantity = base(TypedObject::Quantity {
             n: 1,
             unit: "day".into(),

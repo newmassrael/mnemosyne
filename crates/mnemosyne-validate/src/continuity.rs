@@ -847,7 +847,7 @@ impl ExclusiveKey {
 /// shape.
 fn claim_leg(t: &mnemosyne_core::TypedClaim, leg: ExclusiveKey) -> String {
     match leg {
-        ExclusiveKey::Subject => t.subject.clone(),
+        ExclusiveKey::Subject => t.subject.to_string(),
         // The COLLISION-FREE identity (Round 706): a `Quantity` object needs both
         // `n` and `unit` to compare equal, so the exclusive rule uses the display
         // form, not the `unit`-only borrow.
@@ -869,7 +869,7 @@ fn claim_leg(t: &mnemosyne_core::TypedClaim, leg: ExclusiveKey) -> String {
 /// [`typed_object_display`] / [`typed_object_scalar`] / structural equality.
 fn typed_object_key(o: &mnemosyne_core::TypedObject) -> &str {
     match o {
-        mnemosyne_core::TypedObject::Entity { id } => id,
+        mnemosyne_core::TypedObject::Entity { id } => id.as_str(),
         mnemosyne_core::TypedObject::Token { token } => token,
         mnemosyne_core::TypedObject::Quantity { unit, .. } => unit.as_str(),
         // A `Fact` object's key is the referenced fact id (a single string,
@@ -887,7 +887,7 @@ fn typed_object_key(o: &mnemosyne_core::TypedObject) -> &str {
 /// full identity: the exclusive-rule leg key and the interval report value.
 fn typed_object_display(o: &mnemosyne_core::TypedObject) -> String {
     match o {
-        mnemosyne_core::TypedObject::Entity { id } => id.clone(),
+        mnemosyne_core::TypedObject::Entity { id } => id.to_string(),
         mnemosyne_core::TypedObject::Token { token } => token.clone(),
         mnemosyne_core::TypedObject::Quantity { n, unit } => format!("{n} {unit}"),
         mnemosyne_core::TypedObject::Fact { id } => id.clone(),
@@ -936,7 +936,7 @@ fn contains_comparable(
         }
         parent
             .entry(typed_object_display(&t.object))
-            .or_insert_with(|| t.subject.clone());
+            .or_insert_with(|| t.subject.to_string());
     }
     let reaches = |from: &str, to: &str| -> bool {
         let mut cur = from;
@@ -964,7 +964,7 @@ fn contains_comparable(
 fn typed_object_scalar(o: &mnemosyne_core::TypedObject) -> Option<f64> {
     match o {
         mnemosyne_core::TypedObject::Quantity { n, .. } => Some(*n as f64),
-        mnemosyne_core::TypedObject::Entity { id } => parse_scalar(id),
+        mnemosyne_core::TypedObject::Entity { id } => parse_scalar(id.as_str()),
         mnemosyne_core::TypedObject::Token { token } => parse_scalar(token),
         // A fact id (`f-*`) is not a number → non-numeric operand (Unverifiable),
         // never a silent skip.
@@ -2444,14 +2444,14 @@ fn resolve_operand<'a>(
     facts: &'a BTreeMap<String, NarrativeFact>,
     ctx: &WorldCtx<'_>,
     frame: &mnemosyne_core::FrameId,
-    subject: &str,
+    subject: &mnemosyne_core::EntityId,
     predicate: &str,
     at: &str,
 ) -> Operand<'a> {
     let mut resolved: Option<(f64, Option<String>, String, &'a str)> = None;
     for (gid, g) in facts {
         let Some(gt) = g.typed.as_ref() else { continue };
-        if &g.frame != frame || gt.subject != subject || gt.predicate != predicate {
+        if &g.frame != frame || &gt.subject != subject || gt.predicate != predicate {
             continue;
         }
         if !ctx.holds_at(gid, g, at) {
@@ -2541,7 +2541,7 @@ fn interval_verdict(
     facts: &BTreeMap<String, NarrativeFact>,
     ctx: &WorldCtx<'_>,
     frame: &mnemosyne_core::FrameId,
-    subject: &str,
+    subject: &mnemosyne_core::EntityId,
     left_object: &mnemosyne_core::TypedObject,
     right_pred: &str,
     op: IntervalOp,
@@ -2680,7 +2680,7 @@ fn scan_interval_rule(
                 op: op.symbol().to_string(),
                 frame: lf.frame.to_string(),
                 world: ctx.world.to_string(),
-                subject: lt.subject.clone(),
+                subject: lt.subject.to_string(),
                 left_fact: lid.clone(),
                 left_value: typed_object_display(&lt.object),
                 at: lf.canon_from.clone(),
@@ -3624,7 +3624,7 @@ pub fn scan_continuity(
                                 rule: rule.id.clone(),
                                 predicate: rule.predicate.clone(),
                                 frame: s.frame.to_string(),
-                                subject: st.subject.clone(),
+                                subject: st.subject.to_string(),
                                 predecessor: pid.clone(),
                                 successor: (*sid).clone(),
                                 from: from.to_string(),
@@ -3941,7 +3941,7 @@ fn containment_snapshot(
         }
         snap.entry(typed_object_display(&t.object))
             .or_default()
-            .insert(t.subject.clone());
+            .insert(t.subject.to_string());
     }
     snap
 }
@@ -4104,7 +4104,10 @@ fn scan_spatial_map(
                             continue;
                         }
                         offmap_candidates.entry(fid.clone()).or_insert_with(|| {
-                            (t.subject.clone(), typed_object_key(&t.object).to_string())
+                            (
+                                t.subject.to_string(),
+                                typed_object_key(&t.object).to_string(),
+                            )
                         });
                     }
                 }
@@ -4190,7 +4193,7 @@ fn scan_spatial_map(
                                 rule: rule.id.clone(),
                                 predicate: adjacency.to_string(),
                                 place_kind: pk.to_string(),
-                                place: eid.clone(),
+                                place: eid.to_string(),
                                 frame: frame.to_string(),
                                 branch: world.to_string(),
                             });
@@ -4362,7 +4365,7 @@ pub fn frame_view(
             view.holding.push(FrameViewEntry {
                 fact_id: id.clone(),
                 claim: fact.claim.clone(),
-                entities: fact.entities.clone(),
+                entities: fact.entities.iter().map(ToString::to_string).collect(),
                 canon_from: fact.canon_from.clone(),
                 canon_to: fact.canon_to.clone(),
                 evidence: evidence_sections(fact),
@@ -5224,7 +5227,7 @@ pub fn playthrough_manuscript(
                         fact_id: id.clone(),
                         frame: fact.frame.to_string(),
                         claim: fact.claim.clone(),
-                        entities: fact.entities.clone(),
+                        entities: fact.entities.iter().map(ToString::to_string).collect(),
                         canon_from: fact.canon_from.clone(),
                         canon_to: fact.canon_to.clone(),
                         evidence: evidence_sections(fact),
@@ -5643,7 +5646,9 @@ pub fn playable_world(
                     fact_id: event.fact_id.clone(),
                     scene: seat.to_string(),
                     scene_ordinal: ordinal.get(seat).copied(),
-                    object,
+                    // Projection row: the locator is read by the engine, so the
+                    // entity id leaves the store vocabulary here.
+                    object: object.map(|o| o.to_string()),
                     mode: disclosure.mode,
                     first_at: disclosure.first_at.clone(),
                 });
@@ -5692,10 +5697,13 @@ pub(crate) const QUEST_PRED_COMPLETED_BY: &str = "completed_by";
 /// first, so a non-entity object on a `pursues`/`requires` leg fails loud rather than
 /// dropping silently (the R631 `if let Entity` with no else); after it, those
 /// objects are entity-shaped.
-fn quest_ids(store: &AtomicStore) -> Result<BTreeSet<String>, String> {
+fn quest_ids(store: &AtomicStore) -> Result<BTreeSet<mnemosyne_core::EntityId>, String> {
     check_quest_predicate_shapes(store)?;
-    let mut quests: BTreeSet<String> = BTreeSet::new();
-    let mut actors: BTreeSet<String> = BTreeSet::new();
+    // Both sets hold ENTITY ids — the roles are what differ, not the vocabulary.
+    // Keeping them `String` here would type the claim legs and then throw the
+    // type away in the one place the two roles are compared.
+    let mut quests: BTreeSet<mnemosyne_core::EntityId> = BTreeSet::new();
+    let mut actors: BTreeSet<mnemosyne_core::EntityId> = BTreeSet::new();
     for fact in store.narrative_facts.values() {
         let Some(claim) = &fact.typed else { continue };
         match claim.predicate.as_str() {
@@ -5745,8 +5753,8 @@ fn quest_ids(store: &AtomicStore) -> Result<BTreeSet<String>, String> {
 // caller, so both readers share the one derivation + its shape/role-conflict gate.
 fn quest_giving_setups(
     store: &AtomicStore,
-    quests: &BTreeSet<String>,
-) -> BTreeMap<String, BTreeSet<String>> {
+    quests: &BTreeSet<mnemosyne_core::EntityId>,
+) -> BTreeMap<mnemosyne_core::EntityId, BTreeSet<String>> {
     let facts = &store.narrative_facts;
     let expected: BTreeSet<&str> = facts
         .iter()
@@ -6034,7 +6042,7 @@ pub fn quest_graph(
                     actors
                         .entry(id.as_str())
                         .or_default()
-                        .insert(claim.subject.clone());
+                        .insert(claim.subject.to_string());
                 }
             }
             QUEST_PRED_REQUIRES => {
@@ -6043,7 +6051,7 @@ pub fn quest_graph(
                     prereqs
                         .entry(claim.subject.as_str())
                         .or_default()
-                        .insert(id.clone());
+                        .insert(id.to_string());
                 }
             }
             QUEST_PRED_COMPLETED_BY => {
@@ -6054,7 +6062,7 @@ pub fn quest_graph(
                 // fallback (Token/Quantity/Fact for totality — Round 708 removed
                 // the free-text Value shape).
                 let actor = match &claim.object {
-                    mnemosyne_core::TypedObject::Entity { id } => Some(id.clone()),
+                    mnemosyne_core::TypedObject::Entity { id } => Some(id.to_string()),
                     mnemosyne_core::TypedObject::Token { token } => Some(token.clone()),
                     mnemosyne_core::TypedObject::Quantity { n, unit } => {
                         Some(format!("{n} {unit}"))
@@ -6099,7 +6107,7 @@ pub fn quest_graph(
         // `completed_by` fact, or none pays off an Expected setup) — surfaced,
         // not silently dropped (R558). Such a quest reads `unknown` everywhere.
         if q_givings.is_empty() {
-            unresolved_quests.push(quest_id.clone());
+            unresolved_quests.push(quest_id.to_string());
         }
         // This quest's completed_by facts by id → (scene, discharger): used to
         // credit a paid giving's R442 payoff list back to the named discharger.
@@ -6165,7 +6173,7 @@ pub fn quest_graph(
             }
         }
         quests.push(QuestNode {
-            quest_id: quest_id.clone(),
+            quest_id: quest_id.to_string(),
             objective: entity.description.clone(),
             actors: actors
                 .get(quest_id.as_str())
@@ -6225,7 +6233,7 @@ pub struct TypingCandidatesReport {
     pub predicates: BTreeMap<mnemosyne_core::PredicateId, mnemosyne_core::Predicate>,
     /// The entity registry verbatim — typed subjects/objects must be
     /// registered AND members of the fact's entities list (R446).
-    pub entities: BTreeMap<String, mnemosyne_core::Entity>,
+    pub entities: BTreeMap<mnemosyne_core::EntityId, mnemosyne_core::Entity>,
 }
 
 /// Collect typing candidates (Round 458). Order-independent by design —
@@ -6246,7 +6254,7 @@ pub fn typing_candidates(store: &AtomicStore) -> Result<TypingCandidatesReport, 
             claim: f.claim.clone(),
             claim_sha256: claim_sha256_hex(&f.claim),
             canon_from: f.canon_from.clone(),
-            entities: f.entities.clone(),
+            entities: f.entities.iter().map(ToString::to_string).collect(),
         })
         .collect();
     Ok(TypingCandidatesReport {
@@ -6366,7 +6374,7 @@ pub fn edge_candidates(
                 fact_a: aid.to_string(),
                 fact_b: bid.to_string(),
                 predicate: t.predicate.to_string(),
-                subject: t.subject.clone(),
+                subject: t.subject.to_string(),
             }
         })
         .collect();
@@ -6387,7 +6395,7 @@ pub fn edge_candidates(
             fact_id: id.clone(),
             frame: f.frame.to_string(),
             branch: f.branch.clone(),
-            entities: f.entities.clone(),
+            entities: f.entities.iter().map(ToString::to_string).collect(),
             claim: f.claim.clone(),
             claim_sha256: claim_sha256_hex(&f.claim),
             canon_from: f.canon_from.clone(),
@@ -8361,7 +8369,7 @@ mod tests {
     fn typed_value(mut f: FactImport, subject: &str, predicate: &str, value: &str) -> FactImport {
         f.entities = vec![subject.to_string()];
         f.typed = Some(mnemosyne_core::TypedClaim {
-            subject: subject.to_string(),
+            subject: subject.into(),
             predicate: predicate.into(),
             object: mnemosyne_core::TypedObject::Token {
                 token: value.to_string(),
@@ -8734,12 +8742,12 @@ mod tests {
     ) -> FactImport {
         let mut entities = vec![subject.to_string()];
         if let TypedObject::Entity { id } = &object {
-            entities.push(id.clone());
+            entities.push(id.to_string());
         }
         FactImport {
             entities,
             typed: Some(TypedClaim {
-                subject: subject.to_string(),
+                subject: subject.into(),
                 predicate: predicate.into(),
                 object,
             }),
@@ -8758,9 +8766,7 @@ mod tests {
     }
 
     fn holds(entity: &str) -> TypedObject {
-        TypedObject::Entity {
-            id: entity.to_string(),
-        }
+        TypedObject::Entity { id: entity.into() }
     }
 
     fn exclusive_rule(id: &str, predicate: &str, per: ExclusiveKey) -> NarrativeRule {
@@ -9922,7 +9928,7 @@ mod tests {
         }
         for p in floating {
             store.entities.insert(
-                p.to_string(),
+                (*p).into(),
                 mnemosyne_core::Entity {
                     kind: "place".into(),
                     description: String::new(),
@@ -11362,7 +11368,7 @@ mod tests {
                 first_at,
                 surface: Some(mnemosyne_core::DisclosureSurface {
                     scene: "ch-2".to_string(),
-                    object: Some("clock".to_string()),
+                    object: Some("clock".into()),
                 }),
             },
         );
@@ -11378,7 +11384,7 @@ mod tests {
         // this fixture builds the plan directly, so register it here).
         store
             .entities
-            .insert("clock".to_string(), mnemosyne_core::Entity::default());
+            .insert("clock".into(), mnemosyne_core::Entity::default());
         let order = chain(&["ch-1", "ch-2", "ch-3", "ch-4"]);
 
         // No telling → no disclosure annotation.
@@ -11406,7 +11412,7 @@ mod tests {
         // (first_at now carries the order-free reveal DECLARATION, R752.)
         let surface = d.surface.as_ref().unwrap();
         assert_eq!(surface.scene, "ch-2");
-        assert_eq!(surface.object.as_deref(), Some("clock"));
+        assert_eq!(surface.object, Some("clock".into()));
 
         // The route world resolves f-main's per-world-line first_at, and
         // f-rev (no override) falls to the plan default (withhold).
@@ -11470,7 +11476,7 @@ mod tests {
                 first_at,
                 surface: Some(mnemosyne_core::DisclosureSurface {
                     scene: "ch-2".to_string(),
-                    object: Some("clock".to_string()),
+                    object: Some("clock".into()),
                 }),
             },
         );
@@ -11485,7 +11491,7 @@ mod tests {
         // The surface object is a REGISTERED entity (write-path contract).
         store
             .entities
-            .insert("clock".to_string(), mnemosyne_core::Entity::default());
+            .insert("clock".into(), mnemosyne_core::Entity::default());
         let order = chain(&["ch-1", "ch-2", "ch-3", "ch-4"]);
 
         let report = playable_world(&store, &order, None, "t1").unwrap();
@@ -11668,14 +11674,14 @@ mod tests {
         // The surface object is a REGISTERED entity (write-path contract).
         store
             .entities
-            .insert("e-relic".to_string(), mnemosyne_core::Entity::default());
+            .insert("e-relic".into(), mnemosyne_core::Entity::default());
         store.disclosure_plans.insert(
             "t1".to_string(),
             plan_with(
                 mnemosyne_core::DisclosureMode::Imply,
                 Some(mnemosyne_core::DisclosureSurface {
                     scene: "ch-2".to_string(),
-                    object: Some("e-relic".to_string()),
+                    object: Some("e-relic".into()),
                 }),
             ),
         );
@@ -11703,7 +11709,7 @@ mod tests {
             None,
             Some(mnemosyne_core::DisclosureSurface {
                 scene: "ch-2".to_string(),
-                object: Some("e-relic".to_string()),
+                object: Some("e-relic".into()),
             }),
         ] {
             let mut store = store_with_forks(vec![fact("f-x", "gt", "ch-1", None)], &[]);
@@ -11711,7 +11717,7 @@ mod tests {
             // (write-path contract); harmless extra for the None iteration.
             store
                 .entities
-                .insert("e-relic".to_string(), mnemosyne_core::Entity::default());
+                .insert("e-relic".into(), mnemosyne_core::Entity::default());
             store.disclosure_plans.insert(
                 "t1".to_string(),
                 plan_with(mnemosyne_core::DisclosureMode::Withhold, surface.clone()),
@@ -11733,11 +11739,9 @@ mod tests {
     /// vocabulary — all three quest predicates take an entity object).
     fn ent_claim(subject: &str, predicate: &str, object: &str) -> mnemosyne_core::TypedClaim {
         mnemosyne_core::TypedClaim {
-            subject: subject.to_string(),
+            subject: subject.into(),
             predicate: predicate.into(),
-            object: mnemosyne_core::TypedObject::Entity {
-                id: object.to_string(),
-            },
+            object: mnemosyne_core::TypedObject::Entity { id: object.into() },
         }
     }
 
@@ -11840,7 +11844,7 @@ mod tests {
         // contract); this fixture builds the plan directly, so register it.
         store
             .entities
-            .insert("reeve-hall".to_string(), mnemosyne_core::Entity::default());
+            .insert("reeve-hall".into(), mnemosyne_core::Entity::default());
         // R676 — no `kind:"quest"` marker; quests are derived from their pursues/
         // completed_by legs. Only the objective (description) is authored here.
         for (id, desc) in [
@@ -11858,7 +11862,7 @@ mod tests {
                 first_at: BTreeMap::new(),
                 surface: Some(mnemosyne_core::DisclosureSurface {
                     scene: "ch-1".to_string(),
-                    object: Some("reeve-hall".to_string()),
+                    object: Some("reeve-hall".into()),
                 }),
             },
         );
@@ -12058,7 +12062,7 @@ mod tests {
         // same non-entity refusal).
         fn token_claim(subject: &str, predicate: &str, value: &str) -> mnemosyne_core::TypedClaim {
             mnemosyne_core::TypedClaim {
-                subject: subject.to_string(),
+                subject: subject.into(),
                 predicate: predicate.into(),
                 object: mnemosyne_core::TypedObject::Token {
                     token: value.to_string(),
@@ -12659,17 +12663,16 @@ mod tests {
             .entity_kinds
             .insert("place".into(), mnemosyne_core::EntityKind::default());
         store.entities.insert(
-            "ent-village".to_string(),
+            "ent-village".into(),
             mnemosyne_core::Entity {
                 kind: "place".into(),
                 description: String::new(),
             },
         );
         // An unkinded entity is legal — absence is not free text.
-        store.entities.insert(
-            "ent-nameless".to_string(),
-            mnemosyne_core::Entity::default(),
-        );
+        store
+            .entities
+            .insert("ent-nameless".into(), mnemosyne_core::Entity::default());
         check_store_boundary(&store, &CanonOrder::empty())
             .expect("a registered kind + an unkinded entity must both pass");
 
@@ -12703,7 +12706,7 @@ mod tests {
             let mut b = AtomicStore::new();
             mnemosyne_atomic::add_entity_kind(&mut b, &path, "place", &[], "").unwrap();
             b.entities.insert(
-                "ent-x".to_string(),
+                "ent-x".into(),
                 mnemosyne_core::Entity {
                     kind: kind.into(),
                     description: String::new(),

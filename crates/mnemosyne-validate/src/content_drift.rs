@@ -304,7 +304,7 @@ mod tests {
     fn scene_section(entity: &str, quote: &str, hash: &str) -> AtomicSection {
         AtomicSection {
             scene_cast: vec![mnemosyne_atomic::ScenePresence {
-                entity: entity.to_string(),
+                entity: entity.into(),
                 modality: mnemosyne_core::Modality::Observed,
                 can_answer: true,
                 excerpt: ContentExcerpt {
@@ -366,7 +366,7 @@ mod tests {
         let mut sec = content_section("edited", "badcontent");
         sec.scene_cast = vec![
             mnemosyne_atomic::ScenePresence {
-                entity: "ent-a".to_string(),
+                entity: "ent-a".into(),
                 modality: mnemosyne_core::Modality::Observed,
                 can_answer: true,
                 excerpt: ContentExcerpt {
@@ -379,7 +379,7 @@ mod tests {
                 },
             },
             mnemosyne_atomic::ScenePresence {
-                entity: "ent-b".to_string(),
+                entity: "ent-b".into(),
                 modality: mnemosyne_core::Modality::Told,
                 can_answer: false,
                 excerpt: ContentExcerpt {

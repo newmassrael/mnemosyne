@@ -786,7 +786,7 @@ pub struct Predicate {
 pub enum TypedObject {
     /// A registered entity id (must also be a member of the owning fact's
     /// `entities` list — the entities list stays THE retrieval key).
-    Entity { id: String },
+    Entity { id: crate::EntityId },
     /// A member of the predicate's CLOSED, declared vocabulary
     /// ([`Predicate::object_tokens`], Round 705) — the enumerable replacement for
     /// the removed free-text `Value`: the substrate CAN enumerate the legal set,
@@ -835,7 +835,7 @@ impl TypedObject {
         fact: Option<String>,
     ) -> Result<Self, String> {
         let candidates: Vec<TypedObject> = [
-            entity.map(|id| TypedObject::Entity { id }),
+            entity.map(|id| TypedObject::Entity { id: id.into() }),
             token.map(|token| TypedObject::Token { token }),
             // The boundary conversion: wire/CLI args stay `String` and become
             // ids HERE, once, where the value enters the store's vocabulary.
@@ -877,7 +877,7 @@ pub struct TypedClaim {
     /// Registered entity id; must be a member of the owning fact's
     /// `entities` list (a typed leg never silently widens the retrieval
     /// key).
-    pub subject: String,
+    pub subject: crate::EntityId,
     /// Registered predicate id (`AtomicStore.predicates` key).
     pub predicate: crate::PredicateId,
     /// Object leg; its shape must match the predicate's declared
@@ -961,7 +961,7 @@ pub struct NarrativeFact {
     /// entities. Optional — a world-level fact may be about no entity.
     /// Every ref must be registered (fail-loud at the mutate primitive).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub entities: Vec<String>,
+    pub entities: Vec<crate::EntityId>,
     /// The claim held in this frame, per-claim granularity (atomic,
     /// falsifiable — one assertion, not an entity dossier).
     pub claim: String,
@@ -1087,7 +1087,7 @@ pub struct DisclosureSurface {
     pub scene: String,
     /// Optional registered entity id the disclosure rides on.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub object: Option<String>,
+    pub object: Option<crate::EntityId>,
 }
 
 /// Round 751/752 — a per-world FIRST-REVEAL TRIGGER: the discourse coordinate

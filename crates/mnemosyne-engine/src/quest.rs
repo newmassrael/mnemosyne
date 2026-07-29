@@ -544,7 +544,7 @@ fn read_preconditions(
         // such a predicate (the R708 write-path gate), and an entity/token id
         // could never be an offered fact, so `Fact` is the sole checkable shape.
         if let TypedObject::Fact { id } = &claim.object {
-            map.entry(claim.subject.clone())
+            map.entry(claim.subject.to_string())
                 .or_default()
                 .push(id.clone());
         }
