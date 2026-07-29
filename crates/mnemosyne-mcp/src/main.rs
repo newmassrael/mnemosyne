@@ -2574,7 +2574,7 @@ impl MnemosyneServer {
     }
 
     #[tool(
-        description = "Fork tree (R497, read-only): the cross-world choice graph — every registered world-line with its divergence coordinate (parent + fork point + the branch description = the CYOA choice label), the fork point resolved against the parent's composed order (at_placed; false = surfaced in unplaced_fork_points, never dropped). The per-world manuscripts (R466) stitched at the fork points. Fail-loud on a fork whose parent is neither `main` nor registered. Reading surface, never gated."
+        description = "Fork tree (R497, read-only): the cross-world choice graph — every registered world-line with its divergence coordinate (parent + fork point + the branch description = the CYOA choice label), the fork point resolved against the parent's composed order (at_placed; false = surfaced in unplaced_fork_points, never dropped). The per-world manuscripts (R466) stitched at the fork points. `converges` = the merges flowing INTO a world-line; `rejoins` = the confluences it flows OUT into (R836, derived by inverting the merges — a branch that rejoins is not a permanent divergence, and its record alone would not say so). Fail-loud on a fork whose parent is neither `main` nor registered. Reading surface, never gated."
     )]
     async fn report_fork_tree(&self, args: Parameters<ReportForkTreeArgs>) -> CallToolResult {
         match ops::fork_tree_report(&self.workspace, None, args.0.order_path.as_deref()) {

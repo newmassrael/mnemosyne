@@ -3736,6 +3736,22 @@ fn cmd_report_fork_tree(args: &[String]) -> Result<()> {
                 }
             );
         }
+        // Round 836 — outgoing merges: where this world-line comes BACK. The
+        // converge lines above say who flows into this branch; without this a
+        // reader has to hold the whole table in their head and invert it.
+        for r in &b.rejoins {
+            println!(
+                "  `{}` rejoins `{}` at {}{}",
+                b.branch_id,
+                r.into,
+                r.at,
+                if r.at_placed {
+                    ""
+                } else {
+                    " [UNPLACED — not a node of this branch's order]"
+                }
+            );
+        }
         if !b.description.is_empty() {
             println!("      choice: {}", b.description);
         }

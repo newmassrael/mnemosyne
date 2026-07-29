@@ -5290,6 +5290,34 @@ pub struct ForkTreeEdge {
     pub at_placed: bool,
 }
 
+/// Where a world-line REJOINS — the outgoing half of a confluence edge (Round
+/// 836), the inverse of [`ForkTreeBranch::converges`].
+///
+/// A merge is stored on the confluence that receives it, so a branch's own
+/// record carries no sign that it comes back: to learn it, a consumer must scan
+/// EVERY branch's `converges` looking for itself as a parent. That inversion is
+/// one line and produces a plausible number when omitted — a consumer's
+/// authoring-floor gate counted 1 mid-story divergence, reported it green with a
+/// witness, and the true answer was 0 because every fork it counted rejoined.
+/// Derived here so the next consumer does not re-derive it.
+///
+/// Deliberately NOT [`ForkTreeEdge`]: that type's field is `parent`, and a
+/// confluence a branch flows into is the opposite direction. One message for two
+/// relations is the naming lie this project refuses elsewhere.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct ForkTreeRejoin {
+    /// The confluence world-line this branch merges into.
+    pub into: String,
+    /// The canon point of the merge.
+    pub at: String,
+    /// `at` is a node of THIS branch's composed order. The converge edge's own
+    /// `at_placed` is resolved against the merge's PARENT — which, inverted, is
+    /// this branch — so the flag's meaning survives the inversion unchanged and
+    /// is exactly what a consumer needs to measure the span between its fork and
+    /// its rejoin on its own axis.
+    pub at_placed: bool,
+}
+
 /// One registered world-line in the fork tree (Round 497, design sec 7.21).
 /// The CYOA mapping (design sec 10): `branch_id` = a reachable world (save
 /// state), the `fork` = the choice point, `description` = the choice label.
@@ -5313,6 +5341,17 @@ pub struct ForkTreeBranch {
     /// declared") — the merge made structurally visible.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub converges: Vec<ForkTreeEdge>,
+    /// Outgoing merges (Round 836) — the confluences this world-line rejoins
+    /// into, derived by inverting every branch's `converges`. Empty = this
+    /// world-line never comes back, which for a forked branch is what makes its
+    /// divergence permanent.
+    ///
+    /// A CONFLUENCE can carry this too: a merged continuation may itself flow
+    /// into a later one, so `rejoins` is not the exclusive property of forked
+    /// branches. Whether a rejoin ENDS a divergence is the consumer's question
+    /// and needs the fork edge beside it; this states the edge, not the verdict.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub rejoins: Vec<ForkTreeRejoin>,
 }
 
 /// Fork tree over the registered world-lines (Round 497, design sec 7.21) —
@@ -5347,6 +5386,31 @@ pub struct ForkTreeReport {
 /// `store.branches` unchanged, deliberately never gated.
 pub fn fork_tree(store: &AtomicStore, order: &CanonOrder) -> Result<ForkTreeReport, String> {
     check_store_boundary(store, order)?;
+    // Round 836 — the outgoing half of every merge, inverted once before the
+    // walk because a branch's rejoin is written on the OTHER branch's record.
+    //
+    // `MAIN_BRANCH` appears here whenever a confluence merges the trunk, and is
+    // then never attached: the trunk is not a registered branch and so is never
+    // a row of this report. Silence about main is therefore structural rather
+    // than a filter someone must remember — but it is pinned by a test, because
+    // a consumer inverting this by hand DOES surface main and would have to
+    // exclude it themselves.
+    let mut rejoins_by_branch: BTreeMap<&str, Vec<ForkTreeRejoin>> = BTreeMap::new();
+    for (confluence_id, branch) in &store.branches {
+        for edge in &branch.converges_from {
+            rejoins_by_branch
+                .entry(edge.branch.as_str())
+                .or_default()
+                .push(ForkTreeRejoin {
+                    into: confluence_id.clone(),
+                    at: edge.at.clone(),
+                    // The SAME resolution the converge side reports, against the
+                    // merge parent's order — which is this branch's own. Not
+                    // recomputed: two spellings of one question drift.
+                    at_placed: order.names(&edge.branch, &edge.at),
+                });
+        }
+    }
     let mut report = ForkTreeReport::default();
     for (branch_id, branch) in &store.branches {
         let fork = match &branch.forks_from {
@@ -5392,11 +5456,18 @@ pub fn fork_tree(store: &AtomicStore, order: &CanonOrder) -> Result<ForkTreeRepo
         if converge_unplaced {
             report.unplaced_fork_points.push(branch_id.clone());
         }
+        // An unplaced REJOIN is the same edge the converge side already counted,
+        // so it does not push again — the branch would otherwise be listed twice
+        // for one declaration gap.
+        let rejoins = rejoins_by_branch
+            .remove(branch_id.as_str())
+            .unwrap_or_default();
         report.branches.push(ForkTreeBranch {
             branch_id: branch_id.clone(),
             description: branch.description.clone(),
             fork,
             converges,
+            rejoins,
         });
     }
     report.branch_count = report.branches.len();
@@ -12198,6 +12269,114 @@ mod tests {
         // s2 is a node of each parent's composed order (the base chain) — placed.
         assert!(dawn.converges.iter().all(|e| e.at_placed));
         assert!(report.unplaced_fork_points.is_empty());
+    }
+
+    /// Round 836 — a world-line's OUTGOING merges, so "does this branch come
+    /// back" is answerable from its own record.
+    ///
+    /// Reported from the field: a consumer's authoring-floor gate counted forks
+    /// as divergences, reported `1` mid-story divergence green and with a
+    /// witness, and the true answer was `0` — every fork it counted rejoined a
+    /// confluence, and nothing on the forks' own records said so. The four
+    /// assertions below are the cases they asked be pinned, because each is one
+    /// they could get wrong again by hand.
+    #[test]
+    fn fork_tree_reports_where_a_world_line_rejoins() {
+        let mut store = AtomicStore::new();
+        for s in ["s1", "s2", "s3", "s4"] {
+            store
+                .sections
+                .insert(s.to_string(), AtomicSection::default());
+        }
+        let fork_at = |at: &str| mnemosyne_core::Branch {
+            description: String::new(),
+            forks_from: Some(mnemosyne_core::BranchFork {
+                branch: MAIN_BRANCH.to_string(),
+                at: at.to_string(),
+            }),
+            converges_from: vec![],
+        };
+        // Two forks that come back, and one that never does.
+        store.branches.insert("sluice".to_string(), fork_at("s1"));
+        store.branches.insert("ride".to_string(), fork_at("s1"));
+        store.branches.insert("drown".to_string(), fork_at("s2"));
+        let merge = |b: &str, at: &str| mnemosyne_core::BranchFork {
+            branch: b.to_string(),
+            at: at.to_string(),
+        };
+        store.branches.insert(
+            "dawn".to_string(),
+            mnemosyne_core::Branch {
+                description: String::new(),
+                forks_from: None,
+                // `main` among the parents — the case a hand-rolled inversion
+                // surfaces and has to remember to drop.
+                converges_from: vec![merge("sluice", "s2"), merge("main", "s2")],
+            },
+        );
+        // A confluence that itself flows on into a later one.
+        store.branches.insert(
+            "noon".to_string(),
+            mnemosyne_core::Branch {
+                description: String::new(),
+                forks_from: None,
+                converges_from: vec![merge("dawn", "s3"), merge("ride", "s3")],
+            },
+        );
+        let order = chain(&["s1", "s2", "s3", "s4"]);
+        let report = fork_tree(&store, &order).unwrap();
+        let at = |id: &str| {
+            report
+                .branches
+                .iter()
+                .find(|b| b.branch_id == id)
+                .unwrap_or_else(|| panic!("{id} missing"))
+        };
+
+        // (1) A branch that rejoins says so, and says WHERE.
+        assert_eq!(at("sluice").rejoins.len(), 1);
+        assert_eq!(at("sluice").rejoins[0].into, "dawn");
+        assert_eq!(at("sluice").rejoins[0].at, "s2");
+        assert!(at("sluice").rejoins[0].at_placed);
+
+        // (2) A branch that never comes back carries nothing — this is the
+        // assertion the consumer's wrong count needed and did not have.
+        assert!(
+            at("drown").rejoins.is_empty(),
+            "a permanent divergence must not claim a rejoin"
+        );
+
+        // (3) A CONFLUENCE can rejoin too. `dawn` is a merge that flows into
+        // `noon`, so `rejoins` is not the exclusive property of forked branches
+        // and a chain of merges must not read as unplaced or cyclic.
+        assert_eq!(at("dawn").rejoins.len(), 1);
+        assert_eq!(at("dawn").rejoins[0].into, "noon");
+        assert!(
+            at("dawn").fork.is_none(),
+            "dawn is a confluence, not a fork"
+        );
+        assert!(report.unplaced_fork_points.is_empty());
+
+        // (4) `main` is a merge parent here and is NOT a row of this report —
+        // the trunk is not a branch. A consumer inverting by hand DOES surface
+        // it, which is why this is pinned rather than left to construction.
+        assert!(
+            report.branches.iter().all(|b| b.branch_id != MAIN_BRANCH),
+            "the trunk must never appear as a rejoining world-line"
+        );
+
+        // (5) THE REJOIN COORDINATE IS CARRIED, NOT JUST A FLAG. `ride` forks at
+        // s1 and rejoins at s3 while `sluice` forks at s1 and rejoins at s2, so
+        // the two differ for two scenes and one scene respectively. A boolean
+        // `rejoins` would report both identically and collapse that difference,
+        // and the consumer's own axis — how much of a playthrough differs — is
+        // measured on exactly it.
+        assert_eq!(at("ride").rejoins[0].at, "s3");
+        assert_ne!(
+            at("ride").rejoins[0].at,
+            at("sluice").rejoins[0].at,
+            "two rejoins at different depths must be distinguishable"
+        );
     }
 
     /// Round 746 — the confluence fragment discriminator is ONE shared predicate

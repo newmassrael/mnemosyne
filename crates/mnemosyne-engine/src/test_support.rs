@@ -136,6 +136,11 @@ pub(crate) fn branch(
                 at_placed: true,
             })
             .collect(),
+        // Round 836 — a fixture states one branch in isolation, and a rejoin is
+        // an edge some OTHER branch declares. There is nothing to fill in from
+        // here; the projection derives it across the whole registry, which is
+        // where it is tested.
+        rejoins: Vec::new(),
     }
 }
 
