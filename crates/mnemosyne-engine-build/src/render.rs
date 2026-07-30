@@ -233,6 +233,34 @@ impl Chunks {
     }
 }
 
+/// A value a chunk function's bodies reach but do not own — declared as a
+/// parameter and passed down every nesting level (Round 851).
+///
+/// One instance exists, [`POOL_PARAM`]. It is a type rather than a bare string
+/// because the declaration and the call site must agree on the NAME, and two
+/// string constants that must match are two chances to drift.
+#[derive(Clone, Copy)]
+struct Param {
+    /// How a chunk function declares it.
+    decl: &'static str,
+    /// How a caller — `build`, or an outer chunk — passes it on. Identical at
+    /// every depth, which is why `build` binds the slice under this same name.
+    arg: &'static str,
+}
+
+/// The interned line pool, as a chunk function's parameter (Round 851).
+///
+/// The name carries a leading underscore on purpose. A chunk function groups 50
+/// items, and nothing stops a group from holding only worlds whose section list
+/// is empty — such a body touches no line and would be an `unused_variables`
+/// warning, which a consumer running `-D warnings` is entitled to have break its
+/// build. `_`-prefixed identifiers are exempt, and `__mn_` is already this
+/// generator's private prefix, so the exemption costs no readability.
+const POOL_PARAM: Param = Param {
+    decl: "__mn_pool: &[::mnemosyne_engine::LinePart]",
+    arg: "__mn_pool",
+};
+
 /// Emit `items` as chunk FUNCTIONS of at most [`CHUNK`] literals each and return
 /// the expression that reassembles them, instead of returning one `vec![..]`
 /// literal (Round 775).
@@ -250,6 +278,23 @@ fn chunked<T>(
     items: &[T],
     each: impl Fn(&mut Chunks, &T) -> String,
 ) -> String {
+    chunked_over(chunks, ty, items, None, each)
+}
+
+/// [`chunked`] for a list whose bodies reach a value `build` owns (Round 851).
+///
+/// Every chunk function on the path declares `param` and passes it to the nested
+/// ones, so the pool is threaded rather than parked in a process-lifetime
+/// `OnceLock`: it is scaffolding for construction and has no business outliving
+/// it. `chunked` is this with `None`, so there is one chunker rather than two
+/// that could drift.
+fn chunked_over<T>(
+    chunks: &mut Chunks,
+    ty: &str,
+    items: &[T],
+    param: Option<Param>,
+    each: impl Fn(&mut Chunks, &T) -> String,
+) -> String {
     if items.is_empty() {
         return "::std::vec::Vec::new()".to_string();
     }
@@ -257,6 +302,7 @@ fn chunked<T>(
     for item in items {
         bodies.push(each(chunks, item));
     }
+    let (decl, arg) = param.map_or(("", ""), |p| (p.decl, p.arg));
     let mut names: Vec<String> = Vec::new();
     let bound = chunks.bound.get();
     for group in bodies.chunks(bound) {
@@ -264,26 +310,29 @@ fn chunked<T>(
         chunks.next += 1;
         let _ = writeln!(
             chunks.fns,
-            "fn {name}() -> ::std::vec::Vec<{ty}> {{ vec![{}] }}",
+            "fn {name}({decl}) -> ::std::vec::Vec<{ty}> {{ vec![{}] }}",
             group.join(", ")
         );
         names.push(name);
     }
     let (first, rest) = names.split_first().expect("a non-empty item list chunks");
     if rest.is_empty() {
-        return format!("{first}()");
+        return format!("{first}({arg})");
     }
     let extends: String = rest
         .iter()
-        .map(|name| format!(" v.extend({name}());"))
+        .map(|name| format!(" v.extend({name}({arg}));"))
         .collect();
-    format!("{{ let mut v = {first}();{extends} v }}")
+    format!("{{ let mut v = {first}({arg});{extends} v }}")
 }
 
 /// The element types the generated chunk functions declare. Named rather than
 /// inlined so the nested ones stay readable — a `by_world` element is a world
 /// paired with its sections paired with their lines.
 const STRING_TY: &str = "::std::string::String";
+/// A line's position in the pool (Round 851) — what a world-line carries where it
+/// used to carry the whole disclosure.
+const INDEX_TY: &str = "usize";
 /// The borrowed scalar every moved projection key and list element now carries
 /// (Round 798). Spelled in full because a generated file has no `use`.
 const COW_TY: &str = "::std::borrow::Cow<'static, str>";
@@ -320,6 +369,68 @@ const QUEST_TY: &str = "::mnemosyne_engine::QuestPart";
 const QUEST_WORLD_TY: &str = "(::std::string::String, ::mnemosyne_engine::QuestWorldPart)";
 const QUEST_COMPLETION_TY: &str = "::mnemosyne_engine::QuestCompletionPart";
 
+/// The distinct emitted lines, and where each one sits (Round 851).
+///
+/// A telling's projection holds `world -> section -> lines`, and a section walked
+/// by seven world-lines carried its disclosures seven times: the emitted file grew
+/// with the CROSS PRODUCT of scenes and worlds while the store grew with neither.
+/// The first consumer measured 4,654 emitted lines over 882 distinct ones at nine
+/// branches, and 94 MB / 332s / 5.8 GB of rustc at 509 — against a sidecar that
+/// gained 70 KB for those 500 branches. What repeats is not information.
+///
+/// So the payload is emitted ONCE and a world-line names it by position. This is
+/// the prescription Round 791 already wrote for prose on the passage axis, applied
+/// to the axis that was still copying.
+///
+/// # Why the key is the EMITTED TEXT and not the fact id
+///
+/// The consumer's request proposed keying by `fact_id`, which is true of every
+/// store measured so far — 882 fact ids over 882 distinct payloads, no fact
+/// carrying two. It is not true of the TYPE: [`LinePart::mode`] is a per-telling
+/// disclosure and nothing in the projection forbids one world stating what
+/// another hints. Keying by fact id would then silently keep one of the two, which
+/// is a half-enforced invariant rather than an invariant. Interning the rendered
+/// text collapses exactly the lines that are the same line and cannot lose a
+/// difference, because the rendered text carries every field.
+#[derive(Default)]
+struct LinePool {
+    /// Each distinct line as generated Rust, in first-seen order.
+    rendered: Vec<String>,
+    /// The rendered line -> its position, so a repeat is found rather than added.
+    ///
+    /// Spelled in full: this file is `include!`d by a build script that has its
+    /// own imports, so a `use` here is `E0252` there.
+    positions: std::collections::HashMap<String, usize>,
+}
+
+impl LinePool {
+    /// The position of `part` in the pool, adding it if this is its first sighting.
+    fn intern(&mut self, part: &LinePart) -> usize {
+        let rendered = line(part);
+        if let Some(&at) = self.positions.get(&rendered) {
+            return at;
+        }
+        let at = self.rendered.len();
+        self.positions.insert(rendered.clone(), at);
+        self.rendered.push(rendered);
+        at
+    }
+}
+
+/// `world -> section -> the pool positions disclosed there` — [`ProjectionParts`]
+/// `by_world` with every payload replaced by where it sits (Round 851).
+type WorldIndices = Vec<(Cow<'static, str>, Vec<(Cow<'static, str>, Vec<usize>)>)>;
+
+/// The generated helper that turns a world-line's positions back into its lines.
+///
+/// Emitted only when some section is walked, because an artifact with no spot
+/// never calls it and a `dead_code` warning in generated source breaks a consumer
+/// running `-D warnings`.
+const LINES_FN: &str = "fn __mn_lines(__mn_pool: &[::mnemosyne_engine::LinePart], \
+                        at: ::std::vec::Vec<usize>) \
+                        -> ::std::vec::Vec<::mnemosyne_engine::LinePart> \
+                        { at.into_iter().map(|i| __mn_pool[i].clone()).collect() }\n";
+
 /// Render parts as Rust source. Deterministic — [`ProjectionParts`] is emitted in
 /// sorted key order (R769), so an unchanged store yields a byte-identical file
 /// and a no-op rebuild churns nothing downstream.
@@ -328,6 +439,12 @@ const QUEST_COMPLETION_TY: &str = "::mnemosyne_engine::QuestCompletionPart";
 /// function body grows with the store. The one body that still scales with the
 /// world is the [`artifact`] module's `build`, and it holds one CALL per chunk —
 /// the structure, never the prose.
+///
+/// Since Round 851 the disclosed lines are emitted once into a [`LinePool`] and a
+/// world-line carries positions, so the file grows with the STORE rather than with
+/// the store times its branches. Nothing about the parts type or the projection
+/// moved: `build` reassembles the identical [`ProjectionParts`], which is why a
+/// consumer's call sites do not change.
 #[must_use]
 pub fn render(parts: &ProjectionParts) -> String {
     render_bounded(parts, CHUNK)
@@ -345,10 +462,44 @@ pub fn render(parts: &ProjectionParts) -> String {
 /// choosing a bound, and the one caller that does lives in this crate.
 pub(crate) fn render_bounded(parts: &ProjectionParts, bound: NonZeroUsize) -> String {
     let mut c = Chunks::bounded(bound);
-    let by_world = chunked(&mut c, WORLD_TY, &parts.by_world, |c, (world, sections)| {
-        let sections = chunked(c, SECTION_LINES_TY, sections, |c, (section, lines)| {
-            let lines = chunked(c, LINE_TY, lines, |_, l| line(l));
-            format!("({}, {})", cow(section), lines)
+
+    // Intern first, in the traversal order of the already-sorted parts, so the
+    // pool is deterministic and the emission below only looks positions up.
+    // A separate pass rather than interning inside the renderers: `chunked` takes
+    // `Fn`, and two nesting levels both holding `&mut pool` is not that.
+    let mut pool = LinePool::default();
+    let indices: WorldIndices = parts
+        .by_world
+        .iter()
+        .map(|(world, sections)| {
+            let sections = sections
+                .iter()
+                .map(|(section, lines)| {
+                    let at = lines.iter().map(|l| pool.intern(l)).collect();
+                    (section.clone(), at)
+                })
+                .collect();
+            (world.clone(), sections)
+        })
+        .collect();
+    // A world with no section walks nothing, so an artifact of only such worlds
+    // reaches no line: no helper, no pool, no parameter to leave unread.
+    let walked = parts
+        .by_world
+        .iter()
+        .any(|(_, sections)| !sections.is_empty());
+    let param = walked.then_some(POOL_PARAM);
+    if walked {
+        c.fns.push_str(LINES_FN);
+    }
+    let pool_lines = chunked(&mut c, LINE_TY, &pool.rendered, |_, rendered| {
+        rendered.clone()
+    });
+
+    let by_world = chunked_over(&mut c, WORLD_TY, &indices, param, |c, (world, sections)| {
+        let sections = chunked_over(c, SECTION_LINES_TY, sections, param, |c, (section, at)| {
+            let at = chunked(c, INDEX_TY, at, |_, i| i.to_string());
+            format!("({}, __mn_lines({}, {at}))", cow(section), POOL_PARAM.arg)
         });
         format!("({}, {})", cow(world), sections)
     });
@@ -400,6 +551,14 @@ pub(crate) fn render_bounded(parts: &ProjectionParts, bound: NonZeroUsize) -> St
     );
 
     let mut build = String::new();
+    if walked {
+        // Two bindings rather than one borrowed initializer: generated source
+        // should not lean on temporary-lifetime extension to be read correctly.
+        // Both names are `_`-prefixed, so an artifact that somehow reaches no
+        // line still carries no warning.
+        let _ = writeln!(build, "    let __mn_pool_lines = {pool_lines};");
+        build.push_str("    let __mn_pool: &[::mnemosyne_engine::LinePart] = &__mn_pool_lines;\n");
+    }
     build.push_str("    ::mnemosyne_engine::PlayableProjection::from_parts(\n");
     build.push_str("        ::mnemosyne_engine::ProjectionParts {\n");
     let _ = writeln!(build, "            telling: {},", cow(&parts.telling));

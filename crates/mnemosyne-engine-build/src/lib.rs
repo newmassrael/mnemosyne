@@ -387,6 +387,32 @@ mod tests {
         assert_eq!(lines[0].mode(), DisclosureMode::Hint);
         assert_eq!(lines[1].carrier(), None);
 
+        // Round 851 — the SECOND world-line through the same scene, which is
+        // what the pool made possible to get wrong. `dark` carries the same two
+        // disclosures in the opposite order, and its `f-a` differs from `main`'s
+        // in `mode` alone. A generator that pooled per section and dropped the
+        // per-world sequence hands back main's order; one that keyed the pool by
+        // `fact_id` hands back main's mode. Both compile.
+        let dark = proj.lines("dark", "sc-01");
+        assert_eq!(
+            dark.iter()
+                .map(mnemosyne_engine::Line::fact_id)
+                .collect::<Vec<_>>(),
+            ["f-b", "f-a"],
+            "the pooled world-line lost its own order"
+        );
+        assert_eq!(dark[0].text(), "plain");
+        assert_eq!(dark[1].text(), nasty);
+        assert_eq!(
+            dark[1].mode(),
+            DisclosureMode::State,
+            "the pool collapsed two payloads of one fact into one"
+        );
+        assert_eq!(lines[0].mode(), DisclosureMode::Hint, "and the other way");
+        // The shared entry really is shared: `f-b` is one pool position reached
+        // from both worlds, so the two must agree on every field.
+        assert_eq!(lines[1].to_part(), dark[0].to_part());
+
         // Cast, forks, and all three door kinds survive.
         assert_eq!(proj.cast_at("sc-01")[0].entity(), "ent-jongdeuk");
         assert_eq!(proj.forks_at("sc-01", "main")[0].world, "dark");
@@ -617,6 +643,83 @@ mod tests {
         );
         // And the growth went where it was supposed to go.
         assert!(big.matches("fn __mn_").count() > small.matches("fn __mn_").count());
+    }
+
+    /// The same section, walked by `worlds` world-lines carrying `lines`
+    /// disclosures each — the CROSS PRODUCT shape, as a fixture that can vary one
+    /// factor at a time.
+    fn parts_walked_by(worlds: usize, lines: usize) -> ProjectionParts {
+        let section = |_| {
+            (
+                "sc-01".into(),
+                (0..lines)
+                    .map(|i| LinePart {
+                        fact_id: format!("f-{i:06}").into(),
+                        text: "그는 \"셈\"이라 했다.".into(),
+                        mode: DisclosureMode::State,
+                        frame: "ground-truth".into(),
+                        entities: vec!["ent-a".into()].into(),
+                        carrier: None,
+                        typed_predicate: None,
+                        typed_quantity: None,
+                        quote: None,
+                        count: None,
+                    })
+                    .collect(),
+            )
+        };
+        ProjectionParts {
+            by_world: (0..worlds)
+                .map(|w| (format!("w-{w:03}").into(), vec![section(w)]))
+                .collect(),
+            ..parts_with_lines(0)
+        }
+    }
+
+    #[test]
+    fn a_disclosure_many_worlds_walk_is_emitted_once() {
+        // Round 851 — the round's claim, and the one the round-trip test above
+        // cannot make: that test proves the lines come back RIGHT, which a
+        // generator emitting every copy also does. This proves they are not
+        // copied.
+        //
+        // The payload is what does not repeat; the positions do. So the arms vary
+        // the world count with the store fixed, and the assertion is on what the
+        // emitted file HOLDS rather than on its size.
+        let ctors = |src: &str| src.matches("::mnemosyne_engine::LinePart {").count();
+        let one = crate::render(&parts_walked_by(1, 100));
+        let many = crate::render(&parts_walked_by(20, 100));
+
+        // Non-vacuity first: the fixture really does walk the scene twenty times,
+        // so 100 constructors is a collapse and not an empty world-line list.
+        let walked: usize = parts_walked_by(20, 100)
+            .by_world
+            .iter()
+            .map(|(_, sections)| sections.iter().map(|(_, l)| l.len()).sum::<usize>())
+            .sum();
+        assert_eq!(walked, 2_000, "the fixture stopped repeating");
+
+        assert_eq!(ctors(&one), 100);
+        assert_eq!(
+            ctors(&many),
+            100,
+            "twenty world-lines emitted {} copies of 100 disclosures",
+            ctors(&many)
+        );
+        assert!(
+            many.contains("__mn_lines("),
+            "the world-lines carry payloads rather than pool positions"
+        );
+
+        // And what a twentyfold walk costs is the positions alone. Before this
+        // round `many` was twenty times `one`; the surviving growth is one
+        // integer per walked line.
+        assert!(
+            many.len() < 2 * one.len(),
+            "the file grew with the cross product: {} -> {}",
+            one.len(),
+            many.len()
+        );
     }
 
     /// One quest — the journal-axis sibling of [`parts_with_lines`], sized only to

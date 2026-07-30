@@ -48,41 +48,62 @@ fn main() {
     // backslash, and non-ASCII prose.
     let nasty = "그는 \"셈\"이라 했다.\n뒤에 \\ 하나.";
 
+    // The disclosure `main` opens with, and the one both world-lines carry.
+    // Round 851 emits each of them ONCE and lets a world-line name it by
+    // position, so the fixture has to be able to tell a right position from a
+    // wrong one: `dark` walks the same scene with the SAME two lines in the
+    // OPPOSITE order, and its `f-a` differs from `main`'s in `mode` alone.
+    //
+    // That triple is the gate. Sharing is real (`f-b` is one pool entry reached
+    // from two worlds), order is load-bearing (a generator that pooled per
+    // section and forgot the per-world sequence would hand `dark` main's order),
+    // and the pool key is the PAYLOAD rather than the fact id (keying by
+    // `fact_id`, as the consumer's request proposed, would collapse the two
+    // `f-a`s into one and give `dark` a mode it never had).
+    let f_a = LinePart {
+        fact_id: "f-a".into(),
+        text: nasty.into(),
+        mode: DisclosureMode::Hint,
+        frame: "ground-truth".into(),
+        entities: vec!["ent-a".into()].into(),
+        carrier: Some("ent-ledger".into()),
+        typed_predicate: Some("did".into()),
+        typed_quantity: None,
+        quote: Some(nasty.into()),
+        count: Some(3),
+    };
+    let f_b = LinePart {
+        fact_id: "f-b".into(),
+        text: "plain".into(),
+        mode: DisclosureMode::State,
+        frame: String::new().into(),
+        entities: Vec::new().into(),
+        carrier: None,
+        typed_predicate: None,
+        typed_quantity: None,
+        quote: None,
+        count: None,
+    };
+    let f_a_stated = LinePart {
+        mode: DisclosureMode::State,
+        ..f_a.clone()
+    };
+
     let parts = ProjectionParts {
         telling: "reader".into(),
-        by_world: vec![(
-            "main".into(),
-            vec![(
-                "sc-01".into(),
-                vec![
-                    LinePart {
-                        fact_id: "f-a".into(),
-                        text: nasty.into(),
-                        mode: DisclosureMode::Hint,
-                        frame: "ground-truth".into(),
-                        entities: vec!["ent-a".into()].into(),
-                        carrier: Some("ent-ledger".into()),
-                        typed_predicate: Some("did".into()),
-                        typed_quantity: None,
-                        quote: Some(nasty.into()),
-                        count: Some(3),
-                    },
-                    LinePart {
-                        fact_id: "f-b".into(),
-                        text: "plain".into(),
-                        mode: DisclosureMode::State,
-                        frame: String::new().into(),
-                        entities: Vec::new().into(),
-                        carrier: None,
-                        typed_predicate: None,
-                        typed_quantity: None,
-                        quote: None,
-                        count: None,
-                    },
-                ],
-            )],
-        )],
-        walks: vec![("main".into(), vec!["sc-01".into()])],
+        by_world: vec![
+            (
+                "dark".into(),
+                vec![("sc-01".into(), vec![f_b.clone(), f_a_stated])],
+            ),
+            ("main".into(), vec![("sc-01".into(), vec![f_a, f_b])]),
+        ],
+        // `dark` walks too — a world-line that carries lines and walks nothing is
+        // not a shape the projection produces, and a fixture may not be one.
+        walks: vec![
+            ("dark".into(), vec!["sc-01".into()]),
+            ("main".into(), vec!["sc-01".into()]),
+        ],
         titles: vec![("sc-01".into(), nasty.into())],
         cast: vec![(
             "sc-01".into(),
