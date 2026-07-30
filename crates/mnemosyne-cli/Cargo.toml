@@ -34,6 +34,14 @@ thiserror.workspace = true
 # "(Round <N>)") and atomic ledger entry-id keys via a small fixed pattern set.
 regex.workspace = true
 
+# Round 859 — SIGPIPE only. Rust installs SIG_IGN before `main`, so a report
+# piped into `head` dies at exit 101 with a `Broken pipe` panic instead of
+# ending like `cat` does; restoring the default disposition needs one libc call
+# and the unstable `#[unix_sigpipe]` attribute is not an option on stable.
+# Unix-gated: `SIGPIPE` does not exist on Windows, and neither does the defect.
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
 [dev-dependencies]
 tempfile = { workspace = true }
 serde_json = { workspace = true }

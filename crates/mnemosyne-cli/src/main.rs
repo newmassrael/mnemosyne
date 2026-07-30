@@ -157,7 +157,50 @@ fn build_symbol_resolver_map(
     Ok(out)
 }
 
+/// Restore the default `SIGPIPE` disposition (Round 859).
+///
+/// # Why
+///
+/// Rust installs `SIG_IGN` for `SIGPIPE` before `main`, so a write to a closed
+/// pipe returns `EPIPE` and `println!` unwraps it: `report-quest-graph … | head`
+/// died at exit code 101 with `failed printing to stdout: Broken pipe`. Every
+/// consumer pipes a long report into `head` or a pager, so every report verb
+/// carried it. Found in Round 857 while consuming the quest graph as a
+/// projection runtime would — and misread there, for a while, as a defect in the
+/// report itself.
+///
+/// This is the ONE site rather than an `EPIPE`-aware print helper, because the
+/// helper would have to be adopted by every one of the hundreds of `println!`
+/// calls here and in the ops/query crates, and the next one added would reopen
+/// the hole. A disposition covers writes that do not exist yet.
+///
+/// # Why only this binary
+///
+/// `mnemosyne-mcp` speaks a stdio protocol and `mnemosyne-server` speaks HTTP;
+/// dying mid-write there truncates a frame a peer is parsing, so neither gets
+/// this. A CLI report is the case where terminating like `cat` IS the correct
+/// answer — the reader asked to stop.
+///
+/// # Safety
+///
+/// Sound at exactly this point and nowhere later: `main`'s first statement, so
+/// no output has been produced and no thread exists to observe the change (this
+/// binary spawns none). The disposition then applies to every pipe this process
+/// writes — which is only its own stdout/stderr: it opens no socket, and its one
+/// child (`git log`, read via `Command::output`) is never written to.
+#[cfg(unix)]
+fn restore_default_sigpipe() {
+    // SAFETY: see the section above — first statement of `main`, single-threaded,
+    // and `SIG_DFL` for `SIGPIPE` is the disposition the process started life
+    // with before Rust's runtime replaced it.
+    unsafe {
+        libc::signal(libc::SIGPIPE, libc::SIG_DFL);
+    }
+}
+
 fn main() -> ExitCode {
+    #[cfg(unix)]
+    restore_default_sigpipe();
     // Round 826 — say which build this is BEFORE anything can open a workspace.
     // A workspace that declares `[tool] pin` is refused by a build that is not
     // it, and a build that never says who it is gets refused too (fail-closed).
