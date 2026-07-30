@@ -2438,15 +2438,22 @@ pub fn comment_mode_coverage(
 /// the tree and then drifts from it in silence (the Round 777 rule); an answer
 /// asked of the tree cannot.
 ///
-/// # Why `--others --ignored` and not `check-ignore`
+/// # Why `--others --ignored` and not `check-ignore` (corrected, Round 865)
 ///
-/// The predicate is untracked AND ignored. `git check-ignore` answers "does an
-/// ignore rule match this path", which is also true of a file committed with
-/// `git add -f` — a file its author deliberately placed under version control,
-/// which is the opposite of build output. Measured: the consumer tree that
-/// prompted this axis has zero tracked-but-ignored files, so both predicates
-/// agree there today. That is a measurement and not a property (the Round 862
-/// rule), so the predicate is chosen to be right rather than to match.
+/// The predicate is untracked AND ignored. Round 864 justified that by claiming
+/// `git check-ignore` reports a file committed with `git add -f` and this does
+/// not — and that is FALSE. `check-ignore` consults the index by default and
+/// stays silent on a tracked path; reporting it needs `--no-index`. Measured on
+/// git 2.34.1 with an ignore-matching `add -f` file in the index: `check-ignore`
+/// names only the untracked one, `check-ignore --no-index` names both, and
+/// `ls-files --others --ignored` names only the untracked one. The two commands
+/// agree, at every value of tracked-but-ignored, and the consumer caught the
+/// claim by running it.
+///
+/// So the choice is OPERATIONAL, not a correctness argument: this states the
+/// intent in the flags themselves, walks the tree in one call instead of being
+/// handed a path list, and has no `--no-index` footgun a later edit could trip.
+/// Nothing in the counts depends on it.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 #[serde(tag = "state", rename_all = "snake_case")]
 pub enum VcsIgnoreAxis {
@@ -5754,12 +5761,21 @@ mod tests {
     /// all. Both are in the fixture, because a fixture that only proves the axis
     /// agrees with the hand list proves nothing the hand list did not already do.
     ///
-    /// The `add -f` file is the DISCRIMINATING input (the Round 854 rule that an
-    /// assertion with no input able to falsify it passes vacuously). It matches
-    /// an ignore rule, so `git check-ignore` would name it — and it is tracked,
-    /// so its author put it under version control deliberately and it is not
-    /// build output. Without it, `--others --ignored` and `check-ignore` return
-    /// the same set and the choice between them is untested.
+    /// The `add -f` file discriminates against SWAPPING `--others` for
+    /// `--cached`: `ls-files -i -c --exclude-standard` reports the tracked file
+    /// and this test goes red. Deleting `--others` outright is not that edit —
+    /// git refuses `-i` without `-o` or `-c` and the axis reports
+    /// `NotDetermined`, which the sibling test catches instead. Measured both
+    /// ways by injection.
+    ///
+    /// Round 865 — it does NOT discriminate `--others --ignored` from
+    /// `check-ignore`, which is what the Round 864 version of this comment
+    /// claimed. `check-ignore` consults the index and stays silent on a tracked
+    /// path, so both commands return the same set here and at every other value
+    /// of tracked-but-ignored. The consumer measured that and sent it back: a
+    /// fixture input can only discriminate between two things that disagree
+    /// somewhere, and asserting it does is the R858 corroboration error inside
+    /// our own test.
     #[test]
     fn the_vcs_axis_names_build_output_no_hand_list_holds() {
         let tmp = TempDir::new().unwrap();
@@ -5776,8 +5792,10 @@ mod tests {
         // `.pyc`, which narrowing `paths` cannot reach without enumerating the
         // sibling modules and dropping the next one added.
         std::fs::write(root.join("src/__pycache__/x.pyc"), "x\n").unwrap();
-        // TRACKED and ignore-matching: `check-ignore` says yes, this axis says
-        // no, and the difference is the whole predicate choice.
+        // TRACKED and ignore-matching: swapping `--others` for `--cached`
+        // reports it and this test goes red. It does NOT separate us from
+        // `check-ignore`, which consults the index and is equally silent on it
+        // (Round 865).
         std::fs::write(root.join("src/pinned.gen"), "// Round 1\n").unwrap();
         // Ignored, INSIDE the queried pathspec, and skipped by the walk. The VCS
         // reports it and the read set does not hold it, so the intersection is
