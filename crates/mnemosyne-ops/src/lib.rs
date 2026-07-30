@@ -352,6 +352,34 @@ fn compose_canon_order(
     CanonOrder::from_declaration(decl, &store.branches).map_err(OpError::Other)
 }
 
+/// The store + composed order for a WORLD-SCOPED read, with the Round 857
+/// refusal applied: a per-world answer over an UNDECLARED canon order is empty
+/// in every world and says so nowhere.
+///
+/// The four report wrappers that serve a per-world question route through here,
+/// so the rule has one home and a new one inherits it. Callers whose SUBJECT is
+/// the missing order — `authoring_frontier_report`, which exists to name every
+/// unordered scene (R596), and the continuity scan, which prints `order_nodes`
+/// beside `sections` (R667) — deliberately do NOT: for them an empty order is
+/// input, not a defect, and that decision is ratified by their own tests.
+///
+/// `read` names the projection in the refusal, since the reader's next move is
+/// to pass `--order` or declare `[continuity].canon_order_path`.
+fn world_scoped_inputs(
+    workspace_root: &Path,
+    sidecar: Option<&Path>,
+    order_override: Option<&str>,
+    read: &str,
+) -> Result<(AtomicStore, mnemosyne_validate::continuity::CanonOrder), OpError> {
+    let policy = continuity_policy(workspace_root)?;
+    let decl = resolve_canon_order_file(&policy, order_override)?;
+    let store = load_atomic_store(workspace_root, sidecar)?;
+    let order = compose_canon_order(&decl, &store)?;
+    mnemosyne_validate::continuity::check_order_declared(&store, &order, read)
+        .map_err(OpError::Other)?;
+    Ok((store, order))
+}
+
 /// The continuity-scan envelope both wires emit (Round 435): the configured
 /// severity (None = `[continuity]` absent = gate disabled, scan still
 /// reported) plus the full frame-scoped report. Gating policy (exit code /
@@ -979,10 +1007,8 @@ pub fn payoff_coverage_report(
     sidecar: Option<&Path>,
     order_override: Option<&str>,
 ) -> Result<mnemosyne_validate::continuity::PayoffCoverageReport, OpError> {
-    let policy = continuity_policy(workspace_root)?;
-    let decl = resolve_canon_order_file(&policy, order_override)?;
-    let store = load_atomic_store(workspace_root, sidecar)?;
-    let order = compose_canon_order(&decl, &store)?;
+    let (store, order) =
+        world_scoped_inputs(workspace_root, sidecar, order_override, "payoff coverage")?;
     mnemosyne_validate::continuity::payoff_coverage(&store, &order).map_err(OpError::Other)
 }
 
@@ -1131,10 +1157,12 @@ pub fn playthrough_manuscript_report(
     telling: Option<&str>,
     reading_walk: bool,
 ) -> Result<mnemosyne_validate::continuity::PlaythroughManuscriptReport, OpError> {
-    let policy = continuity_policy(workspace_root)?;
-    let decl = resolve_canon_order_file(&policy, order_override)?;
-    let store = load_atomic_store(workspace_root, sidecar)?;
-    let order = compose_canon_order(&decl, &store)?;
+    let (store, order) = world_scoped_inputs(
+        workspace_root,
+        sidecar,
+        order_override,
+        "the playthrough manuscript",
+    )?;
     // Entry into the store vocabulary, once, for both wires.
     let world = world.map(mnemosyne_core::BranchId::from);
     let mut report = mnemosyne_validate::continuity::playthrough_manuscript(
@@ -1191,10 +1219,12 @@ pub fn playable_world_report(
     order_override: Option<&str>,
     telling: &str,
 ) -> Result<mnemosyne_validate::continuity::PlayableWorldReport, OpError> {
-    let policy = continuity_policy(workspace_root)?;
-    let decl = resolve_canon_order_file(&policy, order_override)?;
-    let store = load_atomic_store(workspace_root, sidecar)?;
-    let order = compose_canon_order(&decl, &store)?;
+    let (store, order) = world_scoped_inputs(
+        workspace_root,
+        sidecar,
+        order_override,
+        "the playable world",
+    )?;
     // Entry into the store vocabulary, once, for both wires.
     let world = world.map(mnemosyne_core::BranchId::from);
     mnemosyne_validate::continuity::playable_world(&store, &order, world.as_ref(), telling)
@@ -1216,10 +1246,8 @@ pub fn quest_graph_report(
     order_override: Option<&str>,
     telling: &str,
 ) -> Result<mnemosyne_validate::continuity::QuestGraphReport, OpError> {
-    let policy = continuity_policy(workspace_root)?;
-    let decl = resolve_canon_order_file(&policy, order_override)?;
-    let store = load_atomic_store(workspace_root, sidecar)?;
-    let order = compose_canon_order(&decl, &store)?;
+    let (store, order) =
+        world_scoped_inputs(workspace_root, sidecar, order_override, "the quest graph")?;
     // Entry into the store vocabulary, once, for both wires.
     let world = world.map(mnemosyne_core::BranchId::from);
     mnemosyne_validate::continuity::quest_graph(&store, &order, world.as_ref(), telling)
@@ -2091,6 +2119,86 @@ mod tests {
         // sc-2 is zero-fact (a distinct gap) but not fact-bearing, so not unordered.
         assert_eq!(r.zero_fact_scenes, vec!["sc-2".to_string()]);
         assert_eq!(r.total_gaps, 2); // one zero-fact + one unordered
+    }
+
+    /// Round 857 — a WORLD-SCOPED read refuses an undeclared canon order, while
+    /// the frontier — whose subject IS the absence — still answers.
+    ///
+    /// Found by consuming `report-quest-graph` the way a projection runtime
+    /// would. On the first playable consumer's real store, run without `--order`,
+    /// it printed 22 quests over 7 worlds with per-world states and no
+    /// complaint — from a manuscript walk that had visited ZERO scenes. Against
+    /// the declared order the same command reports 117 done where the silent run
+    /// reported 65, and 12 giver locators where it reported none.
+    ///
+    /// Both sides are asserted on ONE fixture because the two readings of an
+    /// empty order are both ratified and must not collapse into each other: the
+    /// per-world question is unanswerable, and "which scenes are not yet
+    /// ordered" is exactly answerable. A guard in the shared inner projection
+    /// would have broken the second — it did, in this round's first cut, and
+    /// these two frontier tests are what caught it.
+    #[test]
+    fn a_world_scoped_read_refuses_an_undeclared_order_but_the_frontier_answers() {
+        let tmp = TempDir::new().unwrap();
+        let root = tmp.path();
+        std::fs::write(
+            root.join("mnemosyne.toml"),
+            "[workspace]\nroot = \".\"\n\n[atomic]\nsidecar_path = \"store.json\"\n\n\
+             [continuity]\ncanon_order_path = \"canon.json\"\nseverity = \"reject\"\n",
+        )
+        .unwrap();
+        std::fs::write(root.join("canon.json"), r#"{"edges":[],"branches":{}}"#).unwrap();
+        std::fs::write(
+            root.join("store.json"),
+            r#"{"schema_version":23,"sections":{"sc-1":{},"sc-2":{}},"frames":{"gt":{}},
+               "disclosure_plans":{"player":{"description":"d","overrides":{}}},
+               "narrative_facts":{"f-1":{"frame":"gt","claim":"c","canon_from":"sc-1","evidence":["sc-1"]}}}"#,
+        )
+        .unwrap();
+
+        for (what, err) in [
+            (
+                "quest graph",
+                quest_graph_report(root, None, None, None, "player").err(),
+            ),
+            (
+                "payoff coverage",
+                payoff_coverage_report(root, None, None).err(),
+            ),
+            (
+                "playable world",
+                playable_world_report(root, None, None, None, "player").err(),
+            ),
+            (
+                "playthrough manuscript",
+                playthrough_manuscript_report(root, None, None, None, Some("player"), false).err(),
+            ),
+        ] {
+            let msg = format!("{:#}", err.unwrap_or_else(|| panic!("{what} must refuse")));
+            assert!(
+                msg.contains("no canon order is declared") && msg.contains("--order"),
+                "{what}: the refusal must name the state and the repair: {msg}"
+            );
+            assert!(
+                msg.contains("2 section(s)") && msg.contains("1 fact(s)"),
+                "{what}: and what would have been silently skipped: {msg}"
+            );
+        }
+
+        // The ratified exception, unchanged.
+        let frontier = authoring_frontier_report(root, None, None, None).unwrap();
+        assert_eq!(frontier.unordered_scenes, vec!["sc-1".to_string()]);
+
+        // CONTROL: declare one edge and the world-scoped read answers, so the
+        // refusal is about the empty declaration and not about the fixture.
+        std::fs::write(
+            root.join("canon.json"),
+            r#"{"edges":[["sc-1","sc-2"]],"branches":{}}"#,
+        )
+        .unwrap();
+        let graph =
+            quest_graph_report(root, None, None, None, "player").expect("a declared order answers");
+        assert_eq!(graph.worlds, vec!["main".to_string()]);
     }
 
     /// Round 667 — placement is its own axis, and the EMPTY unplaced section is

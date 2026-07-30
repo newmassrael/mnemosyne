@@ -2262,6 +2262,43 @@ impl WorldCtx<'_> {
 /// semantics below are not evaluable over it, so this is an `Err`, not a
 /// violation. (It also guarantees every fact branch has a lineage entry,
 /// which is what makes the downstream lineage lookups total.)
+/// Refuse a WORLD-SCOPED read whose canon order was never declared (Round 857).
+///
+/// # Why
+///
+/// The order is optional at the resolution layer — no `--order` and no
+/// `[continuity].canon_order_path` composes an EMPTY `CanonOrder` — and a
+/// world-scoped read over an empty order cannot say so. Found by consuming
+/// `report-quest-graph` the way a projection runtime would: on the first
+/// playable consumer's real store it printed 22 quests over 7 worlds with
+/// per-world states and no complaint, from a manuscript walk that had visited
+/// ZERO scenes. Against the declared order the same command reports 117 done
+/// where the silent run reported 65, and 12 giver locators where it reported
+/// none. Every number was wrong and every number looked authoritative.
+///
+/// [`playthrough_manuscript`] already refuses a typo'd world ("must not read as
+/// an empty manuscript") and a typo'd telling; this is the third and largest
+/// source of the same emptiness, and it was the unguarded one.
+///
+/// A store with no sections is a different case and stays allowed: an empty walk
+/// over an empty structure is honest.
+pub fn check_order_declared(
+    store: &AtomicStore,
+    order: &CanonOrder,
+    read: &str,
+) -> Result<(), String> {
+    if order.nodes().next().is_some() || store.sections.is_empty() {
+        return Ok(());
+    }
+    Err(format!(
+        "{read} is world-scoped and no canon order is declared, so every world would \
+         read as empty while the store holds {} section(s) and {} fact(s) — pass \
+         `--order <canon-order.json>` or declare `[continuity].canon_order_path`",
+        store.sections.len(),
+        store.narrative_facts.len()
+    ))
+}
+
 fn check_store_boundary(store: &AtomicStore, order: &CanonOrder) -> Result<(), String> {
     for n in order.nodes() {
         if !store.sections.contains_key(n) {
