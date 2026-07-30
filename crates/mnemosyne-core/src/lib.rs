@@ -294,7 +294,7 @@ pub enum CoverageExpectation {
 /// Render a closed value set the way an error message wants it — backticked,
 /// comma-separated, `or` before the last. THE one formatter, so two messages
 /// about the same enum cannot describe it differently (Round 870).
-fn join_or(tags: &[&str]) -> String {
+pub(crate) fn join_or(tags: &[&str]) -> String {
     match tags {
         [] => String::new(),
         [only] => format!("`{only}`"),

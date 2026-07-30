@@ -291,9 +291,14 @@ fn add_fact_rejects_cross_frame_succession() {
 }
 
 /// Round 446 — typed-claim verbs end-to-end: `add-predicate` (4th
-/// registry, object_kind fail-loud) and the typed flags on `add-fact`
-/// (all-or-nothing leg, registry + shape enforcement via the shared
-/// builder).
+/// registry) and the typed flags on `add-fact` (all-or-nothing leg,
+/// registry + shape enforcement via the shared builder).
+///
+/// Round 873 moved the `--object-kind` fail-loud assertion out to
+/// `predicate_object_kind_smoke.rs`, which asserts it on BOTH verbs that read
+/// the flag and against the DERIVED vocabulary. A second copy here would be a
+/// second phrasing of one rejection — and it was: it pinned the old wording and
+/// went red the moment the flag became typed.
 #[test]
 fn add_predicate_and_typed_fact_end_to_end() {
     let tmp = TempDir::new().unwrap();
@@ -304,19 +309,6 @@ fn add_predicate_and_typed_fact_end_to_end() {
     assert!(run(tmp.path(), &["add-entity", "--entity", "kara"])
         .status
         .success());
-    // Unknown object_kind rejects (no silent default).
-    let bad = run(
-        tmp.path(),
-        &[
-            "add-predicate",
-            "--predicate",
-            "alive",
-            "--object-kind",
-            "boolean",
-        ],
-    );
-    assert!(!bad.status.success());
-    assert!(String::from_utf8_lossy(&bad.stderr).contains("unknown object_kind"));
     assert!(run(
         tmp.path(),
         &[

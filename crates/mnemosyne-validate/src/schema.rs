@@ -2084,7 +2084,7 @@ mod tests {
             }],
             predicates: vec![mnemosyne_atomic::PredicateImport {
                 predicate_id: "p".into(),
-                object_kind: "token".into(),
+                object_kind: mnemosyne_core::PredicateObjectKind::Token,
                 subject_kind: None,
                 object_entity_kind: None,
                 object_tokens: vec!["v".into()],

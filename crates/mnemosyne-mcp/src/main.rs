@@ -595,9 +595,10 @@ pub struct AddPredicateArgs {
     /// Predicate id — the registry key every TypedClaim predicate must
     /// name. Load-bearing (narrative rules key off it), hence fail-loud.
     pub predicate_id: String,
-    /// Declared object shape: `entity` | `token` | `quantity` | `fact` (R708
-    /// removed free-text `scalar`). Unknown tags reject.
-    pub object_kind: String,
+    /// Declared object shape. Round 873 typed this slot: the closed set is now
+    /// in the tool's JSON Schema, so a client cannot spell a tag the wire
+    /// removed and learn about it only from a write-time reject.
+    pub object_kind: mnemosyne_core::PredicateObjectKind,
     /// R701 — required entity-KIND for the subject leg (a registered
     /// `entity_kinds` ref; omit = any). The write path rejects a fact whose
     /// subject entity is not this kind (the spatial-map G1 gate).
@@ -623,10 +624,10 @@ pub struct AddPredicateArgs {
 pub struct SetPredicateArgs {
     /// Predicate id — must ALREADY be registered (`add_predicate` creates).
     pub predicate_id: String,
-    /// New declared object shape: `entity` | `token` | `quantity` | `fact`
-    /// (R708 removed free-text `scalar`). A re-type rejects while any existing
-    /// use still holds an object of the old shape.
-    pub object_kind: String,
+    /// New declared object shape. A re-type rejects while any existing use still
+    /// holds an object of the old shape. Round 873 typed this slot, so the closed
+    /// set travels in the tool's JSON Schema.
+    pub object_kind: mnemosyne_core::PredicateObjectKind,
     /// R701 — new required subject entity-KIND (omit = clear; full replace).
     /// A tighten rejects while any existing use's subject is off-kind.
     #[serde(default)]
@@ -2105,7 +2106,7 @@ impl MnemosyneServer {
                 store,
                 path,
                 &a.predicate_id,
-                &a.object_kind,
+                a.object_kind,
                 a.subject_kind.as_deref(),
                 a.object_entity_kind.as_deref(),
                 &a.object_tokens,
@@ -2125,7 +2126,7 @@ impl MnemosyneServer {
                 store,
                 path,
                 &a.predicate_id,
-                &a.object_kind,
+                a.object_kind,
                 a.subject_kind.as_deref(),
                 a.object_entity_kind.as_deref(),
                 &a.object_tokens,
@@ -2391,10 +2392,14 @@ impl MnemosyneServer {
                 return Self::tool_error(format!("read manifest {}: {e}", args.0.manifest_path))
             }
         };
-        let manifest: mnemosyne_atomic::FactsManifest = match serde_json::from_str(&raw) {
+        let manifest = match mnemosyne_atomic::parse_facts_manifest(&raw) {
             Ok(m) => m,
             Err(e) => {
-                return Self::tool_error(format!("parse manifest {}: {e}", args.0.manifest_path))
+                return Self::tool_error(format!(
+                    "parse manifest {} ({}): {e}",
+                    args.0.manifest_path,
+                    mnemosyne_atomic::FACTS_MANIFEST_SHAPE
+                ))
             }
         };
         match ops::propose_verdict(

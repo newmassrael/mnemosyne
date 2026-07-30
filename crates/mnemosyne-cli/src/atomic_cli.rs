@@ -338,8 +338,9 @@ pub fn cmd_import_facts(workspace_root: &Path, args: &[String]) -> Result<(), Cl
     let manifest_path = manifest.ok_or_else(|| anyhow!("--manifest <path> arg required"))?;
     let raw = fs::read_to_string(&manifest_path)
         .with_context(|| format!("read manifest {}", manifest_path))?;
-    let parsed: mnemosyne_atomic::FactsManifest =
-        serde_json::from_str(&raw).with_context(|| {
+    let parsed = mnemosyne_atomic::parse_facts_manifest(&raw)
+        .map_err(|e| anyhow!("{}", e))
+        .with_context(|| {
             format!(
                 "parse manifest {} ({})",
                 manifest_path,
@@ -1428,7 +1429,8 @@ pub fn cmd_add_predicate(workspace_root: &Path, args: &[String]) -> Result<(), C
         }
     }
     let predicate_id = predicate_id.ok_or_else(|| anyhow!("--predicate arg required"))?;
-    let object_kind = object_kind.ok_or_else(|| anyhow!("--object-kind arg required"))?;
+    let object_kind =
+        parse_object_kind(&object_kind.ok_or_else(|| anyhow!("--object-kind arg required"))?)?;
     let sidecar_path = resolve_sidecar(workspace_root, sidecar.as_deref())?;
     let mut store = AtomicStore::load(&sidecar_path).map_err(|e| anyhow!("{}", e))?;
     finalize_mutate(
@@ -1436,7 +1438,7 @@ pub fn cmd_add_predicate(workspace_root: &Path, args: &[String]) -> Result<(), C
             &mut store,
             &sidecar_path,
             &predicate_id,
-            &object_kind,
+            object_kind,
             subject_kind.as_deref(),
             object_entity_kind.as_deref(),
             &object_tokens,
@@ -1519,7 +1521,8 @@ pub fn cmd_set_predicate(workspace_root: &Path, args: &[String]) -> Result<(), C
         }
     }
     let predicate_id = predicate_id.ok_or_else(|| anyhow!("--predicate arg required"))?;
-    let object_kind = object_kind.ok_or_else(|| anyhow!("--object-kind arg required"))?;
+    let object_kind =
+        parse_object_kind(&object_kind.ok_or_else(|| anyhow!("--object-kind arg required"))?)?;
     let description = description.ok_or_else(|| {
         anyhow!("--description arg required (set-predicate is a full replace; state it explicitly)")
     })?;
@@ -1530,7 +1533,7 @@ pub fn cmd_set_predicate(workspace_root: &Path, args: &[String]) -> Result<(), C
             &mut store,
             &sidecar_path,
             &predicate_id,
-            &object_kind,
+            object_kind,
             subject_kind.as_deref(),
             object_entity_kind.as_deref(),
             &object_tokens,
@@ -3441,6 +3444,21 @@ fn parse_binding_kind(raw: &str) -> Result<BindingKind> {
     BindingKind::from_tag(raw.trim()).ok_or_else(|| {
         anyhow!(
             "--kind must be `implements`, `references`, or `verifies` (got `{}`)",
+            raw
+        )
+    })
+}
+
+/// The ONE argv boundary where an `--object-kind` tag becomes the enum
+/// (Round 873). Both `add-predicate` and `set-predicate` route here, so the
+/// rejection cannot be phrased two ways, and the expected set is DERIVED rather
+/// than typed out — `build_predicate`'s hand-written "expected one of" still
+/// offered `scalar` 165 rounds after Round 708 removed it.
+fn parse_object_kind(raw: &str) -> Result<mnemosyne_core::PredicateObjectKind> {
+    mnemosyne_core::PredicateObjectKind::from_tag(raw.trim()).ok_or_else(|| {
+        anyhow!(
+            "--object-kind must be {} (got `{}`)",
+            mnemosyne_core::PredicateObjectKind::vocabulary(),
             raw
         )
     })

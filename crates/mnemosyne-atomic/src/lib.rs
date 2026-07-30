@@ -1876,38 +1876,33 @@ fn migrate_normative_excerpt_to_wrapped(raw: &mut serde_json::Value) {
     }
 }
 
-/// Round 708 — the reject-loud work-list for a store carrying EITHER removed
-/// shape: a `{kind:value}` typed object OR a `object_kind:"scalar"` predicate
-/// (both wire tokens were removed with the free-text shape). The strict parse
-/// has already failed; this lenient-parses the raw bytes and, IFF the failure is
-/// a lingering value object OR scalar predicate (not some other corruption),
-/// returns the named migration error listing every offender. `None` = the parse
-/// failed for a DIFFERENT reason (propagate the original serde error) — so a
-/// `{kind:bogus}` object or malformed JSON is NOT mislabeled here.
-fn removed_value_shape_error(bytes: &[u8]) -> Option<AtomicStoreError> {
-    let raw: serde_json::Value = serde_json::from_slice(bytes).ok()?;
-    let mut value_facts: Vec<&str> = raw
-        .get("narrative_facts")
-        .and_then(|f| f.as_object())
-        .into_iter()
-        .flatten()
-        .filter(|(_, f)| {
-            f.get("typed")
-                .and_then(|t| t.get("object"))
-                .and_then(|o| o.get("kind"))
-                .and_then(|k| k.as_str())
-                == Some("value")
-        })
-        .map(|(id, _)| id.as_str())
-        .collect();
-    let mut scalar_predicates: Vec<&str> = raw
-        .get("predicates")
-        .and_then(|p| p.as_object())
-        .into_iter()
-        .flatten()
-        .filter(|(_, p)| p.get("object_kind").and_then(|k| k.as_str()) == Some("scalar"))
-        .map(|(id, _)| id.as_str())
-        .collect();
+/// Does this typed leg still carry the removed `{kind:value}` object?
+fn carries_value_object(fact: &serde_json::Value) -> bool {
+    fact.get("typed")
+        .and_then(|t| t.get("object"))
+        .and_then(|o| o.get("kind"))
+        .and_then(|k| k.as_str())
+        == Some("value")
+}
+
+/// Does this predicate still declare the removed `object_kind:"scalar"`?
+fn declares_scalar_object(predicate: &serde_json::Value) -> bool {
+    predicate.get("object_kind").and_then(|k| k.as_str()) == Some("scalar")
+}
+
+/// Round 708 — the ONE message for the removed-shape migration work-list, built
+/// from the two offender lists whichever wire was scanned.
+///
+/// Two wires can carry the removed shapes: the STORE (id-keyed maps) and the
+/// import MANIFEST (id-bearing arrays). They are read by different extractors
+/// because their shapes differ, but a migration reading one must not be told
+/// something different from a migration reading the other — so the counting and
+/// the phrasing live here, once. `None` = no offender, i.e. the strict parse
+/// failed for a DIFFERENT reason and its own error must propagate.
+fn removed_shape_error(
+    mut value_facts: Vec<String>,
+    mut scalar_predicates: Vec<String>,
+) -> Option<AtomicStoreError> {
     if value_facts.is_empty() && scalar_predicates.is_empty() {
         return None;
     }
@@ -1931,6 +1926,80 @@ fn removed_value_shape_error(bytes: &[u8]) -> Option<AtomicStoreError> {
     Some(AtomicStoreError::RemovedValueShape {
         detail: clauses.join("; "),
     })
+}
+
+/// Round 708 — the reject-loud work-list for a STORE carrying EITHER removed
+/// shape: a `{kind:value}` typed object OR a `object_kind:"scalar"` predicate
+/// (both wire tokens were removed with the free-text shape). The strict parse
+/// has already failed; this lenient-parses the raw bytes and, IFF the failure is
+/// a lingering value object OR scalar predicate (not some other corruption),
+/// returns the named migration error listing every offender. `None` = the parse
+/// failed for a DIFFERENT reason (propagate the original serde error) — so a
+/// `{kind:bogus}` object or malformed JSON is NOT mislabeled here.
+fn store_removed_shape_error(bytes: &[u8]) -> Option<AtomicStoreError> {
+    let raw: serde_json::Value = serde_json::from_slice(bytes).ok()?;
+    let ids_of = |field: &str, offends: fn(&serde_json::Value) -> bool| -> Vec<String> {
+        raw.get(field)
+            .and_then(|rows| rows.as_object())
+            .into_iter()
+            .flatten()
+            .filter(|(_, row)| offends(row))
+            .map(|(id, _)| id.clone())
+            .collect()
+    };
+    removed_shape_error(
+        ids_of("narrative_facts", carries_value_object),
+        ids_of("predicates", declares_scalar_object),
+    )
+}
+
+/// Round 873 — the same work-list for the import MANIFEST wire.
+///
+/// Round 708 built the work-list for the store, but a migration EDITS the
+/// manifest: the manifest is what an author re-authors and re-imports. That path
+/// answered with a bare serde "unknown variant `value`" naming ONE line, so
+/// migrating a store meant one round trip per offender — 23 of them for the only
+/// store that ever authored quest-giver surfaces (Round 873 measured it while
+/// doing exactly that). Same reject, same message, one pass.
+///
+/// The manifest names rows by an id FIELD rather than a map key, so a row whose
+/// id is missing or blank is reported by its position: a work-list that silently
+/// skipped it would under-report the migration.
+fn manifest_removed_shape_error(raw: &str) -> Option<AtomicStoreError> {
+    let raw: serde_json::Value = serde_json::from_str(raw).ok()?;
+    let ids_of =
+        |field: &str, id_field: &str, offends: fn(&serde_json::Value) -> bool| -> Vec<String> {
+            raw.get(field)
+                .and_then(|rows| rows.as_array())
+                .into_iter()
+                .flatten()
+                .enumerate()
+                .filter(|(_, row)| offends(row))
+                .map(|(i, row)| {
+                    match row.get(id_field).and_then(|v| v.as_str()) {
+                        Some(id) if !id.trim().is_empty() => id.to_string(),
+                        // no usable id: name the slot, never drop the row
+                        _ => format!("({field} index {i}, no {id_field})"),
+                    }
+                })
+                .collect()
+        };
+    removed_shape_error(
+        ids_of("facts", "fact_id", carries_value_object),
+        ids_of("predicates", "predicate_id", declares_scalar_object),
+    )
+}
+
+/// Parse an import [`FactsManifest`], answering a removed-shape manifest with the
+/// named migration work-list instead of a one-line-at-a-time serde error
+/// (Round 873). The single parse entry for every caller — CLI `import-facts`,
+/// CLI and MCP `propose-verdict` — so none of them can drift back to the bare
+/// serde message.
+pub fn parse_facts_manifest(raw: &str) -> Result<FactsManifest, AtomicStoreError> {
+    match serde_json::from_str::<FactsManifest>(raw) {
+        Ok(manifest) => Ok(manifest),
+        Err(e) => Err(manifest_removed_shape_error(raw).unwrap_or_else(|| e.into())),
+    }
 }
 
 impl AtomicStore {
@@ -2008,7 +2077,7 @@ impl AtomicStore {
                 // lenient-parse the ORIGINAL bytes and list every fact still
                 // carrying a value object. If it is a DIFFERENT parse error,
                 // propagate it.
-                if let Some(err) = removed_value_shape_error(&bytes) {
+                if let Some(err) = store_removed_shape_error(&bytes) {
                     return Err(err);
                 }
                 return Err(e.into());
@@ -5145,14 +5214,20 @@ pub struct UnitImport {
 }
 
 /// One predicate entry in the [`FactsManifest`] (and the `add_predicate`
-/// shape, Round 446). `object_kind` is the canonical lowercase tag
-/// (`entity` | `token` | `quantity` | `fact`; Round 708 removed free-text
-/// `scalar`) — unknown tags reject (fail-loud, no silent default).
+/// shape, Round 446).
+///
+/// Round 873 — `object_kind` is the ENUM, not its lowercase tag. It was a
+/// `String` until then, which is why the wire could not see the shapes Round 708
+/// removed: a manifest declaring `object_kind: "scalar"` DESERIALIZED, and the
+/// reject came one row at a time out of `build_predicate` instead of arriving as
+/// the named migration work-list. Typing the field is what makes the removed
+/// token visible to the parse — the same free-text-machine-slot closure R708
+/// performed on the store, finally applied to the manifest wire.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct PredicateImport {
     pub predicate_id: String,
-    pub object_kind: String,
+    pub object_kind: mnemosyne_core::PredicateObjectKind,
     /// Round 701 — optional required entity-kind for the subject / entity-object
     /// legs (registered `entity_kinds` refs; omitted = any). Same guard as the
     /// primitive: an `object_entity_kind` under any non-entity object_kind rejects.
@@ -7931,19 +8006,12 @@ pub fn add_entity(
 /// reject; there is no silent default for a load-bearing declaration.
 fn build_predicate(
     context: &str,
-    object_kind: &str,
+    object_kind: PredicateObjectKind,
     subject_kind: Option<&str>,
     object_entity_kind: Option<&str>,
     object_tokens: &[String],
     description: &str,
 ) -> Result<Predicate, String> {
-    let tag = object_kind.trim();
-    let object_kind = PredicateObjectKind::from_tag(tag).ok_or_else(|| {
-        format!(
-            "{context}: unknown object_kind `{tag}` (expected one of: entity, scalar, token, \
-             quantity, fact)"
-        )
-    })?;
     let norm = |s: Option<&str>| {
         s.map(str::trim)
             .filter(|s| !s.is_empty())
@@ -8024,7 +8092,7 @@ pub fn add_predicate(
     store: &mut AtomicStore,
     sidecar_path: &Path,
     predicate_id: &str,
-    object_kind: &str,
+    object_kind: PredicateObjectKind,
     subject_kind: Option<&str>,
     object_entity_kind: Option<&str>,
     object_tokens: &[String],
@@ -8274,7 +8342,7 @@ pub fn set_predicate(
     store: &mut AtomicStore,
     sidecar_path: &Path,
     predicate_id: &str,
-    object_kind: &str,
+    object_kind: PredicateObjectKind,
     subject_kind: Option<&str>,
     object_entity_kind: Option<&str>,
     object_tokens: &[String],
@@ -9420,7 +9488,7 @@ pub fn apply_facts_manifest(
         let context = format!("import_facts: manifest predicate {idx}");
         let candidate = build_predicate(
             &context,
-            &p.object_kind,
+            p.object_kind,
             p.subject_kind.as_deref(),
             p.object_entity_kind.as_deref(),
             &p.object_tokens,
@@ -11785,6 +11853,176 @@ mod tests {
         );
     }
 
+    /// Round 873 — the same work-list on the wire a migration actually EDITS.
+    ///
+    /// Round 708 gave the STORE load a named work-list, but an author migrating
+    /// re-authors the MANIFEST and re-imports it, and that path answered with a
+    /// serde error naming one line — so a store with 18 value objects and 5
+    /// scalar predicates cost 23 round trips to migrate. Mirrors the store test's
+    /// controls: both offenders named and the clean row not, a scalar-only
+    /// manifest still named (the R708-review MED-1 lesson holds on this wire
+    /// too), a clean manifest parses, and a DIFFERENT corruption propagates the
+    /// original serde error rather than being relabeled.
+    #[test]
+    fn manifest_parse_rejects_removed_value_shape_with_named_worklist() {
+        // (a) a value object and a scalar predicate: BOTH named, the clean fact not.
+        let err = parse_facts_manifest(
+            r#"{ "frames": [{ "frame_id": "gt" }],
+ "entities": [{ "entity_id": "kara" }],
+ "predicates": [{ "predicate_id": "alive", "object_kind": "scalar" }],
+ "facts": [
+   { "fact_id": "f-a", "frame": "gt", "claim": "c", "canon_from": "ch-1", "evidence": ["ch-1"],
+     "entities": ["kara"],
+     "typed": { "subject": "kara", "predicate": "alive", "object": { "kind": "value", "value": "operational" } } },
+   { "fact_id": "f-prose", "frame": "gt", "claim": "p", "canon_from": "ch-1", "evidence": ["ch-1"] }
+ ] }"#,
+        )
+        .unwrap_err();
+        match err {
+            AtomicStoreError::RemovedValueShape { detail } => {
+                assert!(detail.contains("f-a"), "value object not named: {detail}");
+                assert!(!detail.contains("f-prose"), "clean fact listed: {detail}");
+                assert!(
+                    detail.contains("alive") && detail.contains("scalar"),
+                    "scalar predicate not named: {detail}"
+                );
+            }
+            other => panic!("expected RemovedValueShape, got {other:?}"),
+        }
+        // (b) a scalar predicate ALONE — no value object anywhere — is still the
+        // named work-list on this wire (the store's MED-1 control, mirrored).
+        // This case is why Round 873 had to TYPE `object_kind`: while the field
+        // was a String this manifest PARSED, and the scalar declaration surfaced
+        // one row at a time out of `build_predicate` instead of here.
+        let err = parse_facts_manifest(
+            r#"{ "predicates": [{ "predicate_id": "alive", "object_kind": "scalar" }] }"#,
+        )
+        .unwrap_err();
+        match err {
+            AtomicStoreError::RemovedValueShape { detail } => assert!(
+                detail.contains("alive") && !detail.contains("fact(s)"),
+                "{detail}"
+            ),
+            other => panic!("scalar-predicate-only must reject-loud, got {other:?}"),
+        }
+        // (c) an offending row with NO usable id is reported by its position — a
+        // work-list that dropped it would UNDER-report the migration.
+        let err = parse_facts_manifest(
+            r#"{ "predicates": [{ "predicate_id": "  ", "object_kind": "scalar" }] }"#,
+        )
+        .unwrap_err();
+        match err {
+            AtomicStoreError::RemovedValueShape { detail } => assert!(
+                detail.contains("predicates index 0") && detail.contains("no predicate_id"),
+                "an id-less offender must be named by slot: {detail}"
+            ),
+            other => panic!("expected RemovedValueShape, got {other:?}"),
+        }
+        // (d) non-vacuity: neither removed shape present → parses.
+        let manifest = parse_facts_manifest(
+            r#"{ "frames": [{ "frame_id": "gt" }],
+ "facts": [{ "fact_id": "f-prose", "frame": "gt", "claim": "p", "canon_from": "ch-1", "evidence": ["ch-1"] }] }"#,
+        )
+        .unwrap();
+        assert_eq!(manifest.facts.len(), 1);
+        // (e) NEGATIVE CONTROL — a DIFFERENT unknown variant keeps its own error.
+        let err = parse_facts_manifest(
+            r#"{ "entities": [{ "entity_id": "kara" }],
+ "predicates": [{ "predicate_id": "alive", "object_kind": "token", "object_tokens": ["x"] }],
+ "facts": [
+   { "fact_id": "f-x", "frame": "gt", "claim": "c", "canon_from": "ch-1", "evidence": ["ch-1"],
+     "entities": ["kara"],
+     "typed": { "subject": "kara", "predicate": "alive", "object": { "kind": "bogus", "id": "x" } } }
+ ] }"#,
+        )
+        .unwrap_err();
+        assert!(
+            matches!(err, AtomicStoreError::Json(_)),
+            "a different corruption must propagate the original serde error, got {err:?}"
+        );
+        // (f) an object_kind tag that was NEVER a shape is a plain parse error,
+        // not a migration work-list — the removed-shape reject must not become a
+        // catch-all for every bad tag. This is half of the coverage Round 873
+        // moved off `add_predicate`, which can no longer be handed a bad tag.
+        let err = parse_facts_manifest(
+            r#"{ "predicates": [{ "predicate_id": "alive", "object_kind": "boolean" }] }"#,
+        )
+        .unwrap_err();
+        assert!(
+            matches!(err, AtomicStoreError::Json(_)),
+            "a never-existed tag must keep its own serde error, got {err:?}"
+        );
+        // and a PADDED legal tag is a wire typo, not a value: the argv boundary
+        // trims, JSON does not (the Round 870 asymmetry, ratified there).
+        let err = parse_facts_manifest(
+            r#"{ "predicates": [{ "predicate_id": "alive", "object_kind": "  entity  " }] }"#,
+        )
+        .unwrap_err();
+        assert!(matches!(err, AtomicStoreError::Json(_)), "got {err:?}");
+    }
+
+    /// Round 873 — the two wires must describe ONE migration.
+    ///
+    /// The store scan and the manifest scan read different shapes, so nothing in
+    /// the types stops them drifting into two phrasings of the same repair — the
+    /// half-enforced-invariant class (R305), pointed at a pair of READ
+    /// predicates. Same offenders on both wires must yield a byte-identical
+    /// detail; the CONTROL is that the fixture actually carries offenders that
+    /// could differ, so a pair of empty work-lists cannot pass this vacuously.
+    #[test]
+    fn the_store_and_manifest_worklists_phrase_one_migration() {
+        let tmp = TempDir::new().unwrap();
+        let path = tmp.path().join("s.json");
+        std::fs::write(
+            &path,
+            r#"{ "sections": {}, "changelog_entries": {}, "frames": { "gt": {} },
+ "entities": { "kara": {} },
+ "predicates": { "alive": { "object_kind": "scalar" }, "mood": { "object_kind": "scalar" } },
+ "narrative_facts": {
+   "f-a": { "frame": "gt", "entities": ["kara"], "claim": "c", "canon_from": "ch-1", "evidence": ["ch-1"],
+            "typed": { "subject": "kara", "predicate": "alive", "object": { "kind": "value", "value": "up" } } },
+   "f-b": { "frame": "gt", "entities": ["kara"], "claim": "c", "canon_from": "ch-1", "evidence": ["ch-1"],
+            "typed": { "subject": "kara", "predicate": "mood", "object": { "kind": "value", "value": "grim" } } }
+ }, "schema_version": 28 }"#,
+        )
+        .unwrap();
+        let store_detail = match AtomicStore::load(&path).unwrap_err() {
+            AtomicStoreError::RemovedValueShape { detail } => detail,
+            other => panic!("store must reject-loud, got {other:?}"),
+        };
+        let manifest_detail = match parse_facts_manifest(
+            r#"{ "frames": [{ "frame_id": "gt" }],
+ "entities": [{ "entity_id": "kara" }],
+ "predicates": [
+   { "predicate_id": "alive", "object_kind": "scalar" },
+   { "predicate_id": "mood", "object_kind": "scalar" }
+ ],
+ "facts": [
+   { "fact_id": "f-a", "frame": "gt", "claim": "c", "canon_from": "ch-1", "evidence": ["ch-1"],
+     "entities": ["kara"],
+     "typed": { "subject": "kara", "predicate": "alive", "object": { "kind": "value", "value": "up" } } },
+   { "fact_id": "f-b", "frame": "gt", "claim": "c", "canon_from": "ch-1", "evidence": ["ch-1"],
+     "entities": ["kara"],
+     "typed": { "subject": "kara", "predicate": "mood", "object": { "kind": "value", "value": "grim" } } }
+ ] }"#,
+        )
+        .unwrap_err()
+        {
+            AtomicStoreError::RemovedValueShape { detail } => detail,
+            other => panic!("manifest must reject-loud, got {other:?}"),
+        };
+        // the CONTROL: this fixture has offenders of BOTH classes and more than
+        // one of each, so the two scans have something to disagree about.
+        assert!(
+            store_detail.contains("2 fact(s)") && store_detail.contains("2 predicate(s)"),
+            "the parity fixture must carry both classes: {store_detail}"
+        );
+        assert_eq!(
+            store_detail, manifest_detail,
+            "the two wires must state one migration"
+        );
+    }
+
     #[test]
     fn schema_version_2_store_loads_with_empty_outline_fields() {
         // Round 287 back-compat: a v2 store (pre-outline-lift) deserializes
@@ -13452,7 +13690,7 @@ mod tests {
             &mut store,
             &path,
             "did",
-            "token",
+            PredicateObjectKind::Token,
             None,
             None,
             &["climbed".to_string()],
@@ -15551,7 +15789,7 @@ mod tests {
             &mut store,
             &path,
             "did",
-            "token",
+            PredicateObjectKind::Token,
             None,
             None,
             &["climbed".to_string()],
@@ -15758,7 +15996,7 @@ mod tests {
                 }],
                 predicates: vec![PredicateImport {
                     predicate_id: "alive".to_string(),
-                    object_kind: "token".to_string(),
+                    object_kind: PredicateObjectKind::Token,
                     subject_kind: None,
                     object_entity_kind: None,
                     object_tokens: vec!["alive".to_string()],
@@ -15824,7 +16062,7 @@ mod tests {
             &mut store,
             &path,
             "did",
-            "token",
+            PredicateObjectKind::Token,
             None,
             None,
             &["climbed".to_string()],
@@ -16050,7 +16288,17 @@ mod tests {
         let tmp = TempDir::new().unwrap();
         let path = tmp.path().join("s.json");
         let mut store = typing_substrate(&path);
-        add_predicate(&mut store, &path, "opened-by", "fact", None, None, &[], "").unwrap();
+        add_predicate(
+            &mut store,
+            &path,
+            "opened-by",
+            PredicateObjectKind::Fact,
+            None,
+            None,
+            &[],
+            "",
+        )
+        .unwrap();
         // f-1's claim (sample_fact default) — the staleness pin must match so the
         // ONLY defect exercised is the Fact-ref itself.
         let f1_claim = "the count is an eccentric nobleman";
@@ -17164,7 +17412,7 @@ mod tests {
                 &mut store,
                 &path,
                 "adjacent",
-                "entity",
+                PredicateObjectKind::Entity,
                 Some("place"),
                 Some("place"),
                 &[],
@@ -17222,7 +17470,17 @@ mod tests {
         add_entity(&mut store, &path, "cove", "place", "").unwrap();
         add_entity(&mut store, &path, "stake", "thing", "").unwrap();
         // Unconstrained predicate + a use whose object is a `thing`.
-        add_predicate(&mut store, &path, "near", "entity", None, None, &[], "").unwrap();
+        add_predicate(
+            &mut store,
+            &path,
+            "near",
+            PredicateObjectKind::Entity,
+            None,
+            None,
+            &[],
+            "",
+        )
+        .unwrap();
         add_fact(
             &mut store,
             &path,
@@ -17243,7 +17501,7 @@ mod tests {
             &mut store,
             &path,
             "near",
-            "entity",
+            PredicateObjectKind::Entity,
             None,
             Some("place"),
             &[],
@@ -17272,7 +17530,7 @@ mod tests {
             &mut store,
             &path,
             "life",
-            "token",
+            PredicateObjectKind::Token,
             None,
             None,
             &["alive".to_string(), "dead".to_string()],
@@ -17310,15 +17568,24 @@ mod tests {
         let path = tmp.path().join("s.json");
         let mut store = AtomicStore::new();
         seed_chapters(&mut store);
-        let err = add_predicate(&mut store, &path, "life", "token", None, None, &[], "")
-            .unwrap_err()
-            .to_string();
+        let err = add_predicate(
+            &mut store,
+            &path,
+            "life",
+            PredicateObjectKind::Token,
+            None,
+            None,
+            &[],
+            "",
+        )
+        .unwrap_err()
+        .to_string();
         assert!(err.contains("non-empty object_tokens"), "unexpected: {err}");
         let err = add_predicate(
             &mut store,
             &path,
             "at",
-            "entity",
+            PredicateObjectKind::Entity,
             None,
             None,
             &["x".to_string()],
@@ -17334,7 +17601,7 @@ mod tests {
             &mut store,
             &path,
             "life",
-            "token",
+            PredicateObjectKind::Token,
             None,
             None,
             &["alive".to_string(), "  ".to_string()],
@@ -17362,7 +17629,7 @@ mod tests {
             &mut store,
             &path,
             "life",
-            "token",
+            PredicateObjectKind::Token,
             None,
             None,
             &["alive".to_string(), "dead".to_string()],
@@ -17390,7 +17657,7 @@ mod tests {
             &mut store,
             &path,
             "life",
-            "token",
+            PredicateObjectKind::Token,
             None,
             None,
             &["alive".to_string()],
@@ -17404,7 +17671,7 @@ mod tests {
             &mut store,
             &path,
             "life",
-            "token",
+            PredicateObjectKind::Token,
             None,
             None,
             &[
@@ -17436,7 +17703,7 @@ mod tests {
             &mut store,
             &path,
             "signed-on-day",
-            "quantity",
+            PredicateObjectKind::Quantity,
             None,
             None,
             &[],
@@ -18787,7 +19054,7 @@ mod tests {
             &mut store,
             &path,
             "wields",
-            "entity",
+            PredicateObjectKind::Entity,
             Some("creature"),
             Some("weapon"),
             &[],
@@ -18806,7 +19073,7 @@ mod tests {
             &mut store,
             &path,
             "bad-subj",
-            "entity",
+            PredicateObjectKind::Entity,
             Some("ghost"),
             None,
             &[],
@@ -18821,7 +19088,7 @@ mod tests {
             &mut store,
             &path,
             "wields",
-            "entity",
+            PredicateObjectKind::Entity,
             Some("creature"),
             Some("ghost"),
             &[],
@@ -19120,7 +19387,7 @@ mod tests {
             &mut store,
             &path,
             "did",
-            "token",
+            PredicateObjectKind::Token,
             None,
             None,
             &["climbed".to_string()],
@@ -19421,7 +19688,7 @@ mod tests {
             &mut store,
             &path,
             "did",
-            "token",
+            PredicateObjectKind::Token,
             None,
             None,
             &["climbed".to_string()],
@@ -19535,7 +19802,7 @@ mod tests {
             &mut store,
             &path,
             "did",
-            "token",
+            PredicateObjectKind::Token,
             None,
             None,
             &["climbed".to_string()],
@@ -19743,7 +20010,7 @@ mod tests {
             &mut store,
             &path,
             "wields",
-            "entity",
+            PredicateObjectKind::Entity,
             Some("character"),
             Some("weapon"),
             &[],
@@ -19802,7 +20069,7 @@ mod tests {
             &mut store,
             &path,
             "holds",
-            "entity",
+            PredicateObjectKind::Entity,
             Some("character"),
             Some("thing"),
             &[],
@@ -19813,7 +20080,7 @@ mod tests {
             &mut store,
             &path,
             "wields",
-            "entity",
+            PredicateObjectKind::Entity,
             Some("character"),
             Some("weapon"),
             &[],
@@ -19842,13 +20109,23 @@ mod tests {
         // PARITY (use_satisfies_declaration): tighten an unconstrained predicate
         // to object_entity_kind=thing over the holds(hero, sword) use — the
         // subtree resolver makes the weapon use satisfy, so the tighten SUCCEEDS.
-        add_predicate(&mut store, &path, "touches", "entity", None, None, &[], "").unwrap();
+        add_predicate(
+            &mut store,
+            &path,
+            "touches",
+            PredicateObjectKind::Entity,
+            None,
+            None,
+            &[],
+            "",
+        )
+        .unwrap();
         add_fact(&mut store, &path, &fact("touches", "sword", "f4")).unwrap();
         set_predicate(
             &mut store,
             &path,
             "touches",
-            "entity",
+            PredicateObjectKind::Entity,
             None,
             Some("thing"),
             &[],
@@ -19862,7 +20139,7 @@ mod tests {
             &mut store,
             &path,
             "touches",
-            "entity",
+            PredicateObjectKind::Entity,
             None,
             Some("weapon"),
             &[],
@@ -19886,7 +20163,17 @@ mod tests {
         seed_chapters(&mut store);
         store.frames.insert("gt".into(), Frame::default());
         store.entities.insert("mina".into(), Entity::default());
-        add_predicate(&mut store, &path, "opened-by", "fact", None, None, &[], "").unwrap();
+        add_predicate(
+            &mut store,
+            &path,
+            "opened-by",
+            PredicateObjectKind::Fact,
+            None,
+            None,
+            &[],
+            "",
+        )
+        .unwrap();
         let fact_ref = |id: &str, target: &str| FactImport {
             entities: vec!["mina".to_string()],
             typed: Some(TypedClaim {
@@ -19978,7 +20265,17 @@ mod tests {
         seed_chapters(&mut store);
         store.frames.insert("gt".into(), Frame::default());
         store.entities.insert("mina".into(), Entity::default());
-        add_predicate(&mut store, &path, "opened-by", "fact", None, None, &[], "").unwrap();
+        add_predicate(
+            &mut store,
+            &path,
+            "opened-by",
+            PredicateObjectKind::Fact,
+            None,
+            None,
+            &[],
+            "",
+        )
+        .unwrap();
         add_fact(&mut store, &path, &sample_fact("f-sluice", "gt")).unwrap();
         add_fact(
             &mut store,
@@ -20020,7 +20317,7 @@ mod tests {
         // (label, object_kind, subject_kind, object_entity_kind, accepts)
         type DeclCase = (
             &'static str,
-            &'static str,
+            PredicateObjectKind,
             Option<&'static str>,
             Option<&'static str>,
             bool,
@@ -20028,35 +20325,35 @@ mod tests {
         let cases: Vec<DeclCase> = vec![
             (
                 "place map (valid)",
-                "entity",
+                PredicateObjectKind::Entity,
                 Some("place"),
                 Some("place"),
                 true,
             ),
             (
                 "quantity, no constraint (valid)",
-                "quantity",
+                PredicateObjectKind::Quantity,
                 None,
                 None,
                 true,
             ),
             (
                 "quantity + object-entity-kind (combo)",
-                "quantity",
+                PredicateObjectKind::Quantity,
                 None,
                 Some("place"),
                 false,
             ),
             (
                 "unregistered subject_kind",
-                "entity",
+                PredicateObjectKind::Entity,
                 Some("nope"),
                 None,
                 false,
             ),
             (
                 "unregistered object_entity_kind",
-                "entity",
+                PredicateObjectKind::Entity,
                 None,
                 Some("nope"),
                 false,
@@ -20074,7 +20371,17 @@ mod tests {
             let path2 = tmp2.path().join("b.json");
             let mut store2 = AtomicStore::new();
             add_entity_kind(&mut store2, &path2, "place", &[], "").unwrap();
-            add_predicate(&mut store2, &path2, "p", "entity", None, None, &[], "").unwrap();
+            add_predicate(
+                &mut store2,
+                &path2,
+                "p",
+                PredicateObjectKind::Entity,
+                None,
+                None,
+                &[],
+                "",
+            )
+            .unwrap();
             let set_ok = set_predicate(&mut store2, &path2, "p", ok, sk, oek, &[], "").is_ok();
             assert_eq!(add_ok, accepts, "add_predicate `{label}`");
             assert_eq!(
@@ -20112,7 +20419,7 @@ mod tests {
                 &mut store,
                 &path,
                 "adjacent",
-                "entity",
+                PredicateObjectKind::Entity,
                 Some("place"),
                 Some("place"),
                 &[],
@@ -20290,10 +20597,18 @@ mod tests {
         }
     }
 
-    /// Round 446 — the predicate registry: tag parse fail-loud, A2 3-way
-    /// verdicts via the shared staging path, and the typed leg round-trips
-    /// while an untyped fact stays byte-stable (no `typed` key on the
-    /// wire).
+    /// Round 446 — the predicate registry: A2 3-way verdicts via the shared
+    /// staging path, and the typed leg round-trips while an untyped fact stays
+    /// byte-stable (no `typed` key on the wire).
+    ///
+    /// Round 873 moved this test's tag-parse half OUT. An unknown `object_kind`
+    /// is no longer REPRESENTABLE here — the argument is the enum — so the
+    /// question migrated to the two surfaces that can still receive a bad tag:
+    /// `parse_object_kind` at the CLI's argv boundary
+    /// (`predicate_object_kind_smoke.rs`) and serde on the manifest/MCP wire
+    /// (`manifest_parse_rejects_removed_value_shape_with_named_worklist`, case
+    /// (d)). Unrepresentable beats rejected, but only if the reject is still
+    /// asserted where the input can arrive.
     #[test]
     fn predicate_registry_and_typed_roundtrip() {
         let tmp = TempDir::new().unwrap();
@@ -20302,16 +20617,12 @@ mod tests {
         seed_chapters(&mut store);
         store.frames.insert("gt".into(), Frame::default());
         store.entities.insert("kara".into(), Entity::default());
-        // Unknown object_kind tag rejects (no silent default).
-        let err =
-            add_predicate(&mut store, &path, "alive", "boolean", None, None, &[], "").unwrap_err();
-        assert!(err.to_string().contains("unknown object_kind"), "{err}");
         // Create, then byte-identical no-op, then divergent reject.
         add_predicate(
             &mut store,
             &path,
             "alive",
-            "token",
+            PredicateObjectKind::Token,
             None,
             None,
             &["operational".to_string()],
@@ -20322,7 +20633,7 @@ mod tests {
             &mut store,
             &path,
             "alive",
-            "token",
+            PredicateObjectKind::Token,
             None,
             None,
             &["operational".to_string()],
@@ -20334,7 +20645,7 @@ mod tests {
             &mut store,
             &path,
             "alive",
-            "entity",
+            PredicateObjectKind::Entity,
             None,
             None,
             &[],
@@ -20403,7 +20714,7 @@ mod tests {
             &mut store,
             &path,
             "alive",
-            "entity",
+            PredicateObjectKind::Entity,
             None,
             None,
             &[],
@@ -20414,7 +20725,7 @@ mod tests {
             &mut store,
             &path,
             "alive",
-            "token",
+            PredicateObjectKind::Token,
             None,
             None,
             &["operational".to_string()],
@@ -20428,7 +20739,7 @@ mod tests {
             &mut store,
             &path,
             "alive",
-            "token",
+            PredicateObjectKind::Token,
             None,
             None,
             &["operational".to_string()],
@@ -20480,7 +20791,7 @@ mod tests {
             &mut store,
             &path,
             "alive",
-            "token",
+            PredicateObjectKind::Token,
             None,
             None,
             &["operational".to_string()],
@@ -20511,7 +20822,7 @@ mod tests {
             &mut store,
             &path,
             "alive",
-            "entity",
+            PredicateObjectKind::Entity,
             None,
             None,
             &[],
@@ -20531,7 +20842,7 @@ mod tests {
             &mut store,
             &path,
             "alive",
-            "token",
+            PredicateObjectKind::Token,
             None,
             None,
             &["operational".to_string()],
@@ -20544,7 +20855,7 @@ mod tests {
             &mut store,
             &path,
             "alive",
-            "token",
+            PredicateObjectKind::Token,
             None,
             None,
             &["operational".to_string()],
@@ -20568,8 +20879,17 @@ mod tests {
 
         // Absent predicate fails loud on BOTH repair paths (no silent create,
         // no idempotent delete).
-        let err =
-            set_predicate(&mut store, &path, "ghost", "entity", None, None, &[], "").unwrap_err();
+        let err = set_predicate(
+            &mut store,
+            &path,
+            "ghost",
+            PredicateObjectKind::Entity,
+            None,
+            None,
+            &[],
+            "",
+        )
+        .unwrap_err();
         assert!(err.to_string().contains("not present"), "{err}");
         let err = remove_predicate(&mut store, &path, "ghost").unwrap_err();
         assert!(err.to_string().contains("not present"), "{err}");
@@ -20582,15 +20902,28 @@ mod tests {
     /// `Predicate` VALUE they admit must not. R295's paste-error (a setter
     /// carrying a cap its sibling append path lacked) is the case this
     /// catches.
+    ///
+    /// Round 873 typed `object_kind`, which deleted four of this test's original
+    /// cases by making them unrepresentable: an unknown tag, an empty tag, a
+    /// padded tag, and a miscased tag are no longer values either writer can be
+    /// handed. What remains parity-relevant is every LEGAL shape (each is a
+    /// distinct downstream guard — a token needs a vocabulary, a quantity a
+    /// unit) plus the description, which is still free text and still trimmed by
+    /// one of the two. The retired tag cases live at the boundaries named in
+    /// `predicate_registry_and_typed_roundtrip`.
     #[test]
     fn add_and_set_predicate_admit_the_same_predicate_value() {
         let cases = [
-            ("unknown tag", "boolean", "d"),
-            ("empty tag", "", "d"),
-            ("tag whitespace", "  entity  ", "d"),
-            ("tag case", "Entity", "d"),
-            ("description whitespace", "entity", "  spaced  "),
-            ("description empty", "entity", ""),
+            ("entity", PredicateObjectKind::Entity, "d"),
+            ("token", PredicateObjectKind::Token, "d"),
+            ("quantity", PredicateObjectKind::Quantity, "d"),
+            ("fact", PredicateObjectKind::Fact, "d"),
+            (
+                "description whitespace",
+                PredicateObjectKind::Entity,
+                "  spaced  ",
+            ),
+            ("description empty", PredicateObjectKind::Entity, ""),
         ];
         for (label, object_kind, description) in cases {
             let tmp = TempDir::new().unwrap();
@@ -20620,7 +20953,7 @@ mod tests {
                 &mut store_b,
                 &path_b,
                 "p",
-                "entity",
+                PredicateObjectKind::Entity,
                 None,
                 None,
                 &[],
@@ -20684,7 +21017,7 @@ mod tests {
                 }],
                 predicates: vec![PredicateImport {
                     predicate_id: "alive".to_string(),
-                    object_kind: "token".to_string(),
+                    object_kind: PredicateObjectKind::Token,
                     subject_kind: None,
                     object_entity_kind: None,
                     object_tokens: vec!["operational".to_string(), "destroyed".to_string()],
@@ -21410,10 +21743,30 @@ mod tests {
         base.frames.insert("gt".into(), Frame::default());
         add_entity(&mut base, &path, "a", "", "").unwrap();
         add_entity(&mut base, &path, "b", "", "").unwrap();
-        add_predicate(&mut base, &path, "rel", "entity", None, None, &[], "").unwrap();
+        add_predicate(
+            &mut base,
+            &path,
+            "rel",
+            PredicateObjectKind::Entity,
+            None,
+            None,
+            &[],
+            "",
+        )
+        .unwrap();
         // A quantity predicate so the TypedUnit facet has a case (Round 706); the
         // unit corruption below is the ONLY defect (qty resolves, day registered).
-        add_predicate(&mut base, &path, "qty", "quantity", None, None, &[], "").unwrap();
+        add_predicate(
+            &mut base,
+            &path,
+            "qty",
+            PredicateObjectKind::Quantity,
+            None,
+            None,
+            &[],
+            "",
+        )
+        .unwrap();
         add_unit(&mut base, &path, "day", "").unwrap();
         let mut valid = sample_fact("f1", "gt");
         valid.entities = vec!["a".to_string(), "b".to_string()];
@@ -21555,8 +21908,28 @@ mod tests {
             s.frames.insert("gt".into(), Frame::default());
             add_entity(&mut s, &path, "a", "", "").unwrap();
             add_entity(&mut s, &path, "b", "", "").unwrap();
-            add_predicate(&mut s, &path, "rel", "entity", None, None, &[], "").unwrap();
-            add_predicate(&mut s, &path, "qty", "quantity", None, None, &[], "").unwrap();
+            add_predicate(
+                &mut s,
+                &path,
+                "rel",
+                PredicateObjectKind::Entity,
+                None,
+                None,
+                &[],
+                "",
+            )
+            .unwrap();
+            add_predicate(
+                &mut s,
+                &path,
+                "qty",
+                PredicateObjectKind::Quantity,
+                None,
+                None,
+                &[],
+                "",
+            )
+            .unwrap();
             add_unit(&mut s, &path, "day", "").unwrap();
             s
         };

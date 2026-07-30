@@ -703,6 +703,7 @@ pub struct EdgeCost {
 /// checks the typed leg's object against this declaration — a shape or
 /// vocabulary mismatch is a write-time reject, not a scan finding.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[serde(rename_all = "snake_case")]
 pub enum PredicateObjectKind {
     Entity,
@@ -712,6 +713,24 @@ pub enum PredicateObjectKind {
 }
 
 impl PredicateObjectKind {
+    /// Every value, in declaration order. The ONE source for any surface that
+    /// spells the closed set out (the Round 870 rule: a vocabulary hand-typed in
+    /// N places drifts in N−1 of them — the `scalar` this enum lost at Round 708
+    /// still stood in `build_predicate`'s "expected one of" until Round 873).
+    pub const ALL: [PredicateObjectKind; 4] = [
+        PredicateObjectKind::Entity,
+        PredicateObjectKind::Token,
+        PredicateObjectKind::Quantity,
+        PredicateObjectKind::Fact,
+    ];
+
+    /// The closed set as an error message says it, derived from [`Self::as_str`].
+    #[must_use]
+    pub fn vocabulary() -> String {
+        let tags: Vec<&str> = Self::ALL.iter().map(|v| v.as_str()).collect();
+        crate::join_or(&tags)
+    }
+
     /// Canonical lowercase label (matches the serde representation).
     pub fn as_str(self) -> &'static str {
         match self {

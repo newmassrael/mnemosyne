@@ -6681,10 +6681,18 @@ mod tests {
                 (
                     t.predicate.clone(),
                     match t.object {
-                        mnemosyne_core::TypedObject::Entity { .. } => "entity",
-                        mnemosyne_core::TypedObject::Token { .. } => "token",
-                        mnemosyne_core::TypedObject::Quantity { .. } => "quantity",
-                        mnemosyne_core::TypedObject::Fact { .. } => "fact",
+                        mnemosyne_core::TypedObject::Entity { .. } => {
+                            mnemosyne_core::PredicateObjectKind::Entity
+                        }
+                        mnemosyne_core::TypedObject::Token { .. } => {
+                            mnemosyne_core::PredicateObjectKind::Token
+                        }
+                        mnemosyne_core::TypedObject::Quantity { .. } => {
+                            mnemosyne_core::PredicateObjectKind::Quantity
+                        }
+                        mnemosyne_core::TypedObject::Fact { .. } => {
+                            mnemosyne_core::PredicateObjectKind::Fact
+                        }
                     },
                 )
             })
@@ -6698,7 +6706,7 @@ mod tests {
                         .unwrap_or_default(),
                     // PredicateImport is a wire/import DTO — id becomes text here.
                     predicate_id: predicate_id.into_inner(),
-                    object_kind: object_kind.to_string(),
+                    object_kind,
                     subject_kind: None,
                     object_entity_kind: None,
                     description: String::new(),

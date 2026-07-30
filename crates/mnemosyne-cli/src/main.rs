@@ -4173,8 +4173,9 @@ fn cmd_propose_verdict(args: &[String]) -> Result<()> {
     let manifest_path = manifest_path.ok_or_else(|| anyhow!("--manifest <path> arg required"))?;
     let raw = std::fs::read_to_string(&manifest_path)
         .with_context(|| format!("read manifest {}", manifest_path))?;
-    let manifest: mnemosyne_atomic::FactsManifest =
-        serde_json::from_str(&raw).with_context(|| {
+    let manifest = mnemosyne_atomic::parse_facts_manifest(&raw)
+        .map_err(|e| anyhow!("{}", e))
+        .with_context(|| {
             format!(
                 "parse manifest {} ({})",
                 manifest_path,
@@ -6570,15 +6571,15 @@ mod tests {
             .expect_err("non-numeric limit");
         assert!(err.to_string().contains("positive integer"));
     }
-    /// Round 870 — the `--expectation` value set in `--help` is the enum's, or
-    /// this is red.
+    /// Round 870 — the closed value set a flag documents in `--help` is the
+    /// enum's own, or this is red. Round 873 generalised it past `--expectation`.
     ///
-    /// The closed sets are now DERIVED for every runtime message
-    /// ([`mnemosyne_core::CoverageExpectation::vocabulary`]), but a usage line is
-    /// a `&'static str` and cannot be. So it is checked instead: each
-    /// alternation is parsed back through `from_tag`, and it must resolve to
-    /// exactly one enum and cover that enum COMPLETELY. A retired tag fails to
-    /// parse; a new variant nobody documented leaves the set short.
+    /// The sets are DERIVED for every runtime message
+    /// ([`mnemosyne_core::CoverageExpectation::vocabulary`] and peers), but a
+    /// usage line is a `&'static str` and cannot be. So it is checked instead:
+    /// each alternation must resolve to exactly one enum and cover that enum
+    /// COMPLETELY. A retired tag leaves the set long; a new variant nobody
+    /// documented leaves it short.
     ///
     /// Reported from the field: a consumer classifying 173 sections was told by
     /// the missing-argument message to pass `informative`, a tag Round 422
@@ -6586,52 +6587,66 @@ mod tests {
     /// later. Five surfaces spelled this set out by hand and three had drifted —
     /// including a note misfiled onto `add-confirmation-event`, which described
     /// coverage classification under an unrelated verb.
+    ///
+    /// Round 873 added `--object-kind` because it is the same class: `scalar`
+    /// left the enum at Round 708 and stayed in `build_predicate`'s hand-written
+    /// "expected one of" for 165 rounds. The usage lines happened to be right,
+    /// which is a measurement and not a property — so it is now pinned.
     #[test]
-    fn the_expectation_vocabulary_in_help_is_the_enums_own() {
-        use mnemosyne_core::{CoverageExpectation, VerificationExpectation};
+    fn the_closed_value_sets_in_help_are_the_enums_own() {
+        use mnemosyne_core::{CoverageExpectation, PredicateObjectKind, VerificationExpectation};
 
-        let coverage: BTreeSet<String> = CoverageExpectation::ALL
-            .iter()
-            .map(|v| v.as_str().to_string())
-            .collect();
-        let verification: BTreeSet<String> = VerificationExpectation::ALL
-            .iter()
-            .map(|v| v.as_str().to_string())
-            .collect();
-
-        let mut checked = 0usize;
-        for command in COMMANDS {
-            for usage in command.usage {
-                let Some(rest) = usage.split("--expectation ").nth(1) else {
-                    continue;
-                };
-                let listed: BTreeSet<String> = rest
-                    .split_whitespace()
-                    .next()
-                    .expect("a value follows --expectation")
-                    .split('|')
-                    .map(str::to_string)
-                    .collect();
-                assert!(
-                    listed == coverage || listed == verification,
-                    "`{}` documents {:?}, which is neither the complete \
-                     CoverageExpectation set {:?} nor the complete \
-                     VerificationExpectation set {:?}",
-                    command.name,
-                    listed,
-                    coverage,
-                    verification
-                );
-                checked += 1;
-            }
+        fn set_of(tags: impl IntoIterator<Item = &'static str>) -> BTreeSet<String> {
+            tags.into_iter().map(str::to_string).collect()
         }
-        // Non-vacuity: a refactor that renames the flag must not turn this test
-        // into a pass over zero usage lines.
-        assert_eq!(
-            checked, 2,
-            "expected the coverage and verification classification verbs to \
-             document an --expectation set; found {checked}"
-        );
+
+        // (flag, the enums a usage of it may document, how many usages must
+        // exist). The count is the non-vacuity guard: a refactor that renames a
+        // flag must not turn this into a pass over zero usage lines.
+        let axes: [(&str, Vec<BTreeSet<String>>, usize); 2] = [
+            (
+                "--expectation ",
+                vec![
+                    set_of(CoverageExpectation::ALL.iter().map(|v| v.as_str())),
+                    set_of(VerificationExpectation::ALL.iter().map(|v| v.as_str())),
+                ],
+                2,
+            ),
+            (
+                "--object-kind ",
+                vec![set_of(PredicateObjectKind::ALL.iter().map(|v| v.as_str()))],
+                2,
+            ),
+        ];
+
+        for (flag, admissible, expected_usages) in axes {
+            let mut checked = 0usize;
+            for command in COMMANDS {
+                for usage in command.usage {
+                    let Some(rest) = usage.split(flag).nth(1) else {
+                        continue;
+                    };
+                    let listed: BTreeSet<String> = rest
+                        .split_whitespace()
+                        .next()
+                        .unwrap_or_else(|| panic!("a value follows {flag}"))
+                        .split('|')
+                        .map(str::to_string)
+                        .collect();
+                    assert!(
+                        admissible.contains(&listed),
+                        "`{}` documents {listed:?} for {flag}, which is not any \
+                         complete enum set {admissible:?}",
+                        command.name,
+                    );
+                    checked += 1;
+                }
+            }
+            assert_eq!(
+                checked, expected_usages,
+                "expected {expected_usages} usage line(s) documenting {flag}; found {checked}"
+            );
+        }
 
         // The retired tag, named because it is the drift that actually happened,
         // and scoped to these two verbs so the report field name
