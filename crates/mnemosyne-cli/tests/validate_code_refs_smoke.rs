@@ -446,3 +446,80 @@ fn case_xiii_coverage_inherits_binding_and_rejects_as_coverage_class() {
         stderr
     );
 }
+
+/// Round 855 — a `[plugins.symbol_resolver.<lang>]` entry that cannot be built
+/// is a config error, not a warning and not a silence.
+///
+/// Two shapes of the same rule, asserted together because fixing one and
+/// leaving the other is the half-enforcement this project treats as no
+/// enforcement. A key naming a language no extension maps to (`c`, the obvious
+/// workaround for a `.c` tree taking no symbol binding) used to parse,
+/// register, and never be consulted, with no diagnostic at all. A key naming a
+/// backend this build has no plugin for printed to stderr and continued. Both
+/// leave `severity_binding = reject` reading as symbol-level enforcement while
+/// the run performs file-level.
+#[test]
+fn case_xiv_an_unbuildable_symbol_resolver_entry_is_refused() {
+    let tmp = TempDir::new().unwrap();
+    write_workspace(tmp.path(), true);
+    fs::write(tmp.path().join("src/foo.rs"), "// Round 1\n").unwrap();
+    let base = fs::read_to_string(tmp.path().join("mnemosyne.toml")).unwrap();
+
+    // The language key `c` — `.c` maps to the `cpp` resolver, never to `c`.
+    fs::write(
+        tmp.path().join("mnemosyne.toml"),
+        format!(
+            "{base}[plugins.symbol_resolver.c]\n\
+             transport = \"in-process\"\nbackend = \"tree-sitter-cpp\"\n"
+        ),
+    )
+    .unwrap();
+    let out = run_cli(tmp.path(), &["validate-code-refs"]);
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        !out.status.success(),
+        "a resolver nothing can consult must refuse; stdout: {}",
+        String::from_utf8_lossy(&out.stdout)
+    );
+    assert!(
+        stderr.contains("symbol_resolver.c") && stderr.contains("cpp"),
+        "the refusal must name the dead key AND the keys that work: {stderr}"
+    );
+
+    // Same file, legal language, backend this build has no plugin for.
+    fs::write(
+        tmp.path().join("mnemosyne.toml"),
+        format!(
+            "{base}[plugins.symbol_resolver.cpp]\n\
+             transport = \"in-process\"\nbackend = \"tree-sitter-kotlin\"\n"
+        ),
+    )
+    .unwrap();
+    let out = run_cli(tmp.path(), &["validate-code-refs"]);
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        !out.status.success(),
+        "a backend with no plugin must refuse rather than degrade to file-level"
+    );
+    assert!(
+        stderr.contains("tree-sitter-kotlin"),
+        "the refusal must name the backend it cannot build: {stderr}"
+    );
+
+    // CONTROL: the same config with a buildable entry passes, so the two
+    // refusals above are about the entries and not about the fixture.
+    fs::write(
+        tmp.path().join("mnemosyne.toml"),
+        format!(
+            "{base}[plugins.symbol_resolver.rust]\n\
+             transport = \"in-process\"\nbackend = \"tree-sitter-rust\"\n"
+        ),
+    )
+    .unwrap();
+    let out = run_cli(tmp.path(), &["validate-code-refs"]);
+    assert!(
+        out.status.success(),
+        "a buildable resolver must be accepted; stderr: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+}

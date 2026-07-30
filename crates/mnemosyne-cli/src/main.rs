@@ -73,19 +73,40 @@ fn cli_schema() -> Result<&'static SchemaSection> {
 /// R306. `transport = "mcp"` / `"cli"` parse cleanly (the config enum
 /// has those variants per RFC-003 transport-abstraction section) but their backends are not yet
 /// wired — callers reaching those variants surface `NotImplemented` at
-/// resolve time. Unknown in-process backend names log a stderr warning
-/// and are skipped (no plugin = file-only set-equality, no language
-/// blocked).
+/// resolve time.
+///
+/// Round 855 — a declared resolver that CANNOT BE BUILT is a config error, not
+/// a warning. Both shapes were silent-ish before: an unknown backend printed to
+/// stderr and continued, and an unknown LANGUAGE printed nothing at all, so
+/// `[plugins.symbol_resolver.c]` — the obvious workaround for a `.c` tree that
+/// took no symbol binding — parsed, registered, and was never consulted by
+/// anything. Both leave `severity_binding = reject` reading as symbol-level
+/// enforcement while the run performs none, which is the defect a consumer
+/// reported one axis over. Refusing cannot break a working config: an entry
+/// this rejects was doing nothing by construction.
+///
+/// # Errors
+///
+/// A `lang` key no file extension can map to, or an in-process `backend` name
+/// this build has no plugin for.
 fn build_symbol_resolver_map(
     cfg: &WorkspaceConfig,
-) -> std::collections::BTreeMap<String, Box<dyn mnemosyne_core::SymbolResolver>> {
+) -> anyhow::Result<std::collections::BTreeMap<String, Box<dyn mnemosyne_core::SymbolResolver>>> {
     use mnemosyne_config::SymbolResolverConfig;
     let mut out: std::collections::BTreeMap<String, Box<dyn mnemosyne_core::SymbolResolver>> =
         std::collections::BTreeMap::new();
     let Some(plugins) = cfg.plugins.as_ref() else {
-        return out;
+        return Ok(out);
     };
+    let known_langs = mnemosyne_validate::code_refs::symbol_axis_languages();
     for (lang, resolver_cfg) in &plugins.symbol_resolver {
+        if !known_langs.contains(lang.as_str()) {
+            anyhow::bail!(
+                "[plugins.symbol_resolver.{lang}] names a language no file extension maps to, \
+                 so nothing would ever consult it — the keys this build can reach are {:?}",
+                known_langs
+            );
+        }
         match resolver_cfg {
             SymbolResolverConfig::InProcess { backend } => {
                 if backend == mnemosyne_plugin_tree_sitter_rust::BACKEND_KEY {
@@ -99,9 +120,10 @@ fn build_symbol_resolver_map(
                         Box::new(mnemosyne_plugin_tree_sitter_cpp::TreesitterCppResolver),
                     );
                 } else {
-                    eprintln!(
-                        "[plugins.symbol_resolver.{}] unknown in-process backend `{}` — skipped",
-                        lang, backend
+                    anyhow::bail!(
+                        "[plugins.symbol_resolver.{lang}] names in-process backend `{backend}`, \
+                         which this build has no plugin for — the symbol axis would silently \
+                         fall back to file-level binding for {lang}"
                     );
                 }
             }
@@ -132,7 +154,7 @@ fn build_symbol_resolver_map(
             }
         }
     }
-    out
+    Ok(out)
 }
 
 fn main() -> ExitCode {
@@ -5208,7 +5230,7 @@ fn cmd_report_spec_map(args: &[String]) -> Result<()> {
                 config: cfg.clone(),
                 entry_id_prefix: cli_schema()?.entry_id_prefix.clone(),
                 orphan_ledger: loaded.config.orphan_ledger.clone(),
-                symbol_resolvers: build_symbol_resolver_map(&loaded.config),
+                symbol_resolvers: build_symbol_resolver_map(&loaded.config)?,
                 filter_id: None,
             };
             validator.citation_index(&root, &snapshot)?
@@ -5398,7 +5420,7 @@ fn cmd_propose_implementations(args: &[String]) -> Result<()> {
     let atomic_path = mnemosyne_ops::cascade::resolve_sidecar(&anchor, None)?;
     let store = AtomicStore::load(&atomic_path)
         .with_context(|| format!("atomic store load: {}", atomic_path.display()))?;
-    let symbol_resolvers = build_symbol_resolver_map(&loaded.config);
+    let symbol_resolvers = build_symbol_resolver_map(&loaded.config)?;
     let validator = SetEqualityValidator {
         config: cfg.clone(),
         entry_id_prefix: prefix,
@@ -5626,9 +5648,11 @@ fn cmd_validate_code_refs(args: &[String]) -> Result<()> {
     // Build the SymbolResolver registry from
     // [plugins.symbol_resolver.<lang>]. Only InProcess transport returns
     // real answers; Mcp/Cli surface ResolverError::NotImplemented at
-    // call time until R308+ wires real backends. Unknown in-process
-    // backend names log a warning and are skipped.
-    let symbol_resolvers = build_symbol_resolver_map(&loaded.config);
+    // call time until R308+ wires real backends. An entry naming an unknown
+    // language or an unbuildable backend is refused here (Round 855) — it
+    // could never have been consulted, and leaving it would let a config
+    // declare symbol-level enforcement the run does not perform.
+    let symbol_resolvers = build_symbol_resolver_map(&loaded.config)?;
 
     // Call the validator directly with typed return — cli owns the
     // concrete SetEqualityValidator construction so the registry
@@ -5659,6 +5683,13 @@ fn cmd_validate_code_refs(args: &[String]) -> Result<()> {
     let violations =
         <SetEqualityValidator as mnemosyne_core::Validator>::validate(&validator, &ctx)
             .map_err(|e| anyhow!("SetEqualityValidator dispatch failed: {}", e))?;
+
+    // Round 855 — what the symbol axis could NOT reach, computed with the
+    // resolver map this run actually built. Advisory and printed every run:
+    // `severity_binding = reject` reads as symbol-level enforcement, and for
+    // an unreachable file it is file-level, silently.
+    let symbol_axis = validator
+        .symbol_axis_coverage(&root, &mnemosyne_core::AtomicStoreView::snapshot(&store))?;
 
     // Per-class counting from typed enum — `CodeRefViolation::kind_tag`
     // is the stable string key shared with `validate-code-refs --json`
@@ -5749,6 +5780,7 @@ fn cmd_validate_code_refs(args: &[String]) -> Result<()> {
             "missing_count": missing_count,
             "section_missing_count": section_missing_count,
             "citation_unbound_count": citation_unbound_count,
+            "symbol_mismatch_count": symbol_mismatch_count,
             "binding_unbacked_count": binding_unbacked_count,
             "impl_missing_count": impl_missing_count,
             "verification_missing_count": verification_missing_count,
@@ -5767,6 +5799,7 @@ fn cmd_validate_code_refs(args: &[String]) -> Result<()> {
             "severity_blanket": severity_blanket,
             "severity_inventory": severity_inventory,
             "filter_id": filter_id,
+            "symbol_axis": symbol_axis,
             "violations": view,
             })
         );
@@ -5833,6 +5866,29 @@ fn cmd_validate_code_refs(args: &[String]) -> Result<()> {
                 );
             }
         }
+        // Round 855 tier B — the symbol axis, ADVISORY, printed every run for
+        // the Round 819 reason: a file the axis cannot reach binds at file
+        // level whatever `severity_binding` says, and until this line the only
+        // way to learn that was to read `lang_for_file`.
+        let fmt_axis = |m: &std::collections::BTreeMap<String, _>| -> String {
+            m.iter()
+                .map(
+                    |(k, c): (&String, &mnemosyne_validate::code_refs::AxisFileCount)| {
+                        format!("{k}={} ({} citing)", c.files, c.citing_files)
+                    },
+                )
+                .collect::<Vec<_>>()
+                .join(", ")
+        };
+        println!(
+            "symbol axis (advisory, Round 855): resolved [{}]; no resolver configured [{}]; \
+             extension maps to no language [{}]; {} file(s) carrying a gated citation are \
+             out of symbol reach",
+            fmt_axis(&symbol_axis.covered),
+            fmt_axis(&symbol_axis.unresolved_languages),
+            fmt_axis(&symbol_axis.unmapped_extensions),
+            symbol_axis.unreachable_citing_files(),
+        );
         if !cfg.inventory_path_prefixes.is_empty() {
             println!(
                 "inventory_path_prefixes={:?} (Round 302 section-path axis)",
@@ -5860,9 +5916,14 @@ fn cmd_validate_code_refs(args: &[String]) -> Result<()> {
         if let Some(ref fid) = filter_id {
             println!("filter_id={:?} (Round 258 decay scan mode)", fid);
         }
+        // `symbol_mismatch` is itemized here as of Round 855. It was counted
+        // into `total` and named in the reject message, but absent from this
+        // line — so the one axis whose coverage depends on a resolver being
+        // configured was also the one a reader could not see the count of.
         println!(
             "violations: total={} missing={} section_missing={} \
- citation_unbound={} binding_unbacked={} impl_missing={} verification_missing={} \
+ citation_unbound={} symbol_mismatch={} binding_unbacked={} impl_missing={} \
+ verification_missing={} \
  misclassified_coverage={} blanket_verifies={} prose_fact_assertion={} decay={} \
  inv_missing={} inv_deprecated={} unconfirmed_verifies={} \
  (severity_missing={} severity_binding={} severity_coverage={} severity_verification={} \
@@ -5872,6 +5933,7 @@ fn cmd_validate_code_refs(args: &[String]) -> Result<()> {
             missing_count,
             section_missing_count,
             citation_unbound_count,
+            symbol_mismatch_count,
             binding_unbacked_count,
             impl_missing_count,
             verification_missing_count,

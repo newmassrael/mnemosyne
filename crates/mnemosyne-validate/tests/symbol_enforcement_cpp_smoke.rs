@@ -3,7 +3,8 @@
 //! Mirror of `symbol_enforcement_smoke.rs` (Rust backend) using the
 //! production `tree-sitter-cpp` resolver the CLI wires for the `cpp`
 //! language key. Verifies the same three end-to-end paths against a C++
-//! source file:
+//! source file, plus a fourth (Round 855) over a `.c` source, since the
+//! extension table reaches this one resolver from every C-family extension:
 //! 1. **Happy path** — `Implementation.symbol` matches the resolver's
 //!    `resolve_symbol_at(file, citation_line)` answer; 0 SymbolMismatch.
 //! 2. **Mismatch path** — resolver returns a different symbol from the one
@@ -28,13 +29,20 @@ fn cpp_resolver_map() -> BTreeMap<String, Box<dyn SymbolResolver>> {
 }
 
 /// Stand up a minimal workspace with one Section declaring an
-/// implementation at `src/foo.cpp` and an optional `Implementation.symbol`.
-/// Writes `src/foo.cpp` carrying a `§<section_id>` citation at line 2 that
-/// sits inside a top-level `int body_symbol_name() { ... }`.
+/// implementation at `src/foo.<source_extension>` and an optional
+/// `Implementation.symbol`. Writes that file carrying a `§<section_id>`
+/// citation at line 2 that sits inside a top-level
+/// `int body_symbol_name() { ... }`.
+///
+/// `source_extension` is a parameter because Round 855 added `.c` to the
+/// extension table: every C-family extension must reach the same resolver, and
+/// a fixture pinned to one of them cannot say whether the others do.
 fn stand_up(
     expected_symbol_in_spec: Option<&str>,
     body_symbol_name: &str,
+    source_extension: &str,
 ) -> (TempDir, AtomicStore) {
+    let source_file = format!("src/foo.{source_extension}");
     let tmp = TempDir::new().unwrap();
     let sidecar = tmp.path().join("docs/.atomic/workspace.atomic.json");
     std::fs::create_dir_all(sidecar.parent().unwrap()).unwrap();
@@ -52,7 +60,7 @@ fn stand_up(
         &mut store,
         &sidecar,
         "sec1",
-        "src/foo.cpp",
+        &source_file,
         expected_symbol_in_spec,
         BindingKind::Implements,
     )
@@ -65,7 +73,7 @@ fn stand_up(
         "int {}() {{\n    // see §sec1\n    return 1;\n}}\n",
         body_symbol_name
     );
-    std::fs::write(tmp.path().join("src/foo.cpp"), src).unwrap();
+    std::fs::write(tmp.path().join(&source_file), src).unwrap();
     (tmp, store)
 }
 
@@ -116,7 +124,7 @@ fn symbol_mismatches(v: &[CodeRefViolation]) -> Vec<&CodeRefViolation> {
 
 #[test]
 fn happy_path_symbol_matches_no_mismatch_violation() {
-    let (tmp, store) = stand_up(Some("alpha"), "alpha");
+    let (tmp, store) = stand_up(Some("alpha"), "alpha", "cpp");
     let validator = build_validator(cpp_resolver_map());
     let snapshot = store.snapshot();
     let v = validator.scan(tmp.path(), &snapshot).unwrap();
@@ -131,7 +139,7 @@ fn happy_path_symbol_matches_no_mismatch_violation() {
 #[test]
 fn mismatch_path_surfaces_symbol_mismatch_violation() {
     // Spec says `alpha`, body actually defines `beta` at the cited line.
-    let (tmp, store) = stand_up(Some("alpha"), "beta");
+    let (tmp, store) = stand_up(Some("alpha"), "beta", "cpp");
     let validator = build_validator(cpp_resolver_map());
     let snapshot = store.snapshot();
     let v = validator.scan(tmp.path(), &snapshot).unwrap();
@@ -149,11 +157,39 @@ fn mismatch_path_surfaces_symbol_mismatch_violation() {
     }
 }
 
+/// Round 855 — a `.c` source is enforced at symbol level, like the `.h` file
+/// beside it always was.
+///
+/// Reported from the field: the extension table had no `.c` arm, so a C runtime
+/// of 226 files would have taken FILE-level binding on its `.c` files and
+/// symbol-level on its headers, with nothing saying so, under a config that
+/// declares `severity_binding = reject`. This is the mismatch path over a `.c`
+/// file: it fired for `.cpp` and was silent for `.c`, and the silence read
+/// exactly like a pass.
+#[test]
+fn a_c_source_is_enforced_at_symbol_level_like_its_header() {
+    let (tmp, store) = stand_up(Some("alpha"), "beta", "c");
+    let validator = build_validator(cpp_resolver_map());
+    let snapshot = store.snapshot();
+    let v = validator.scan(tmp.path(), &snapshot).unwrap();
+    let mismatches = symbol_mismatches(&v);
+    assert_eq!(
+        mismatches.len(),
+        1,
+        "a `.c` file must reach the cpp resolver; got: {:?}",
+        v
+    );
+    if let Some(CodeRefViolation::Citation { citation, .. }) = mismatches.first() {
+        assert_eq!(citation.file, PathBuf::from("src/foo.c"));
+        assert_eq!(citation.line, 2);
+    }
+}
+
 #[test]
 fn opt_out_path_no_resolver_passes_file_only_setequality() {
     // Same setup as the mismatch path, BUT no resolver provided. File-level
     // binding passes; without a resolver the symbol axis is silent.
-    let (tmp, store) = stand_up(Some("alpha"), "beta");
+    let (tmp, store) = stand_up(Some("alpha"), "beta", "cpp");
     let validator = build_validator(BTreeMap::new());
     let snapshot = store.snapshot();
     let v = validator.scan(tmp.path(), &snapshot).unwrap();

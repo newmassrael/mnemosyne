@@ -130,6 +130,19 @@ when the project never numbers its history rows.
  symbol-set mismatch (`symbol_mismatch`). Presence is **kind-agnostic** —
  a binding of *any* `kind` (`implements` or `references`) defends a cite.
  Bidirectional binding integrity.
+- **`[plugins.symbol_resolver.<lang>]`** — what makes `severity_binding` a
+ *symbol*-level claim rather than a file-level one. `<lang>` is a language
+ the extension table produces: `rust` (`.rs`), `cpp` (`.c` `.cc` `.cpp`
+ `.cxx` `.h` `.hh` `.hpp` `.hxx`), `python` (`.py`), `go` (`.go`) — an entry
+ keyed to anything else could never be consulted and is **refused** at
+ startup, as is an entry naming an in-process `backend` this build has no
+ plugin for. Backends shipped: `tree-sitter-rust`, `tree-sitter-cpp`.
+ A file the axis cannot reach — an extension in no row above, or a language
+ with no entry here — binds at **file** granularity whatever
+ `severity_binding` says; `validate-code-refs` prints that as its
+ `symbol axis (advisory)` line every run, with the count of unreachable
+ files that carry a gated citation. Read that number before believing
+ `severity_binding = "reject"` means symbol-level everywhere.
 - **`[plugins.set_equality_validator].severity_coverage`** — `warn`/`reject`/`info`;
  inherits `severity_binding` when unset. Fires (`impl_missing`) when an
  Active section has **zero `implements` bindings**. Coverage counts only

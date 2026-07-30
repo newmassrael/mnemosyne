@@ -2540,18 +2540,58 @@ fn scan_round_number(s: &str) -> Option<String> {
 /// Pass an empty slice on any axis to disable it. `filter_id` is the
 /// decay-scan toggle (Steps 3-4 stay silent under decay mode for
 /// surface-narrowing).
-/// Map a file path to the language ID used as the
-/// `[plugins.symbol_resolver.<lang>]` key. Round 306 — wires
-/// `SymbolResolver` plugins per file extension. Unknown extensions
-/// return `None`; the symbol axis is silently skipped for that file.
+/// File extension → the language ID used as the
+/// `[plugins.symbol_resolver.<lang>]` key. Round 306 wired `SymbolResolver`
+/// plugins per extension; Round 855 made this a TABLE rather than a match, so
+/// the set of legal config keys is derived from it ([`symbol_axis_languages`])
+/// instead of being restated somewhere free to drift (the Round 777 rule).
+///
+/// `.c` was absent until Round 855 — reported from the field, where a C runtime
+/// of 226 files would have taken file-level binding on its `.c` files and
+/// symbol-level on its `.h` files, with nothing saying so while
+/// `severity_binding = reject` read as symbol-level throughout. The omission
+/// was visible in this file: [`comment_syntax_for`] one screen away has always
+/// known `.c`.
+const SYMBOL_AXIS_EXTENSIONS: &[(&str, &str)] = &[
+    ("c", "cpp"),
+    ("cc", "cpp"),
+    ("cpp", "cpp"),
+    ("cxx", "cpp"),
+    ("go", "go"),
+    ("h", "cpp"),
+    ("hh", "cpp"),
+    ("hpp", "cpp"),
+    ("hxx", "cpp"),
+    ("py", "python"),
+    ("rs", "rust"),
+];
+
+/// Every language ID the extension table can produce — the legal key set for
+/// `[plugins.symbol_resolver.<lang>]`. Derived, so a resolver keyed to a
+/// language no file can ever map to is refusable rather than dead config.
+#[must_use]
+pub fn symbol_axis_languages() -> BTreeSet<&'static str> {
+    SYMBOL_AXIS_EXTENSIONS
+        .iter()
+        .map(|(_, lang)| *lang)
+        .collect()
+}
+
+/// Map a file path to its symbol-axis language, or `None` when no resolver
+/// could apply. A `None` is NOT silent: [`SetEqualityValidator::symbol_axis_coverage`]
+/// counts the file under its extension and the gate prints that every run.
+///
+/// Case-insensitive on the extension, like [`comment_syntax_for`] — a `.H`
+/// header was skipped by one of the two and read by the other.
 fn lang_for_file(path: &Path) -> Option<&'static str> {
-    match path.extension().and_then(|e| e.to_str()) {
-        Some("rs") => Some("rust"),
-        Some("py") => Some("python"),
-        Some("go") => Some("go"),
-        Some("h" | "hh" | "hpp" | "hxx" | "cpp" | "cc" | "cxx") => Some("cpp"),
-        _ => None,
-    }
+    let ext = path
+        .extension()
+        .and_then(|e| e.to_str())?
+        .to_ascii_lowercase();
+    SYMBOL_AXIS_EXTENSIONS
+        .iter()
+        .find(|(e, _)| *e == ext)
+        .map(|(_, lang)| *lang)
 }
 
 /// First-class Validator plugin embodying the set-equality citation
@@ -3145,6 +3185,111 @@ impl SetEqualityValidator {
             sites.sort();
         }
         Ok(index)
+    }
+
+    /// What the symbol axis can and cannot cover under this config (Round 855).
+    ///
+    /// # Why
+    ///
+    /// `severity_binding = reject` reads as symbol-level enforcement, and for
+    /// any file the axis cannot reach it is file-level — a materially weaker
+    /// claim, made silently. Two ways to be unreachable, and a consumer hit
+    /// both: an extension the table does not map (their C runtime's `.c`
+    /// files, while the `.h` files beside them resolved), and a language with
+    /// no configured resolver (their Go, Kotlin and Python runtimes, holding
+    /// 181 / 235 / 194 hand-authored citations between them).
+    ///
+    /// Reported, not rejected. Rejecting would fail every workspace that
+    /// enrols a directory holding a `.md` or a manifest, which is most of
+    /// them; the defect was never that those files are unreachable, it was
+    /// that nothing said so. This is the Round 819 shape: an axis that covers
+    /// nothing prints the same silence as an axis where everything passed, so
+    /// the counts go out every run.
+    ///
+    /// `citing` is the load-bearing half of each pair. A hundred unreachable
+    /// files that cite nothing cost no coverage; one that carries a citation
+    /// this ledger gates is a symbol-level claim the run did not check.
+    ///
+    /// # Errors
+    ///
+    /// Whatever the directory walk or [`Self::citation_index`] fails with.
+    pub fn symbol_axis_coverage(
+        &self,
+        workspace_root: &Path,
+        snapshot: &mnemosyne_core::AtomicSnapshot,
+    ) -> std::io::Result<SymbolAxisCoverage> {
+        // The SAME extraction, namespace scoping and known-section filter the
+        // gate applies, by calling it rather than by repeating it: a coverage
+        // report free to disagree with the gate about what a citation is would
+        // be reporting some other tool's coverage.
+        let citing: BTreeSet<String> = self
+            .citation_index(workspace_root, snapshot)?
+            .values()
+            .flatten()
+            .map(|site| site.file.clone())
+            .collect();
+        let mut cov = SymbolAxisCoverage::default();
+        for abs in walk_paths(workspace_root, &self.config.paths)? {
+            let rel = abs.strip_prefix(workspace_root).unwrap_or(&abs);
+            let cites = citing.contains(&rel.to_string_lossy().to_string());
+            let bucket = match lang_for_file(rel) {
+                None => {
+                    let ext = rel
+                        .extension()
+                        .map_or_else(|| "<none>".to_string(), |e| e.to_string_lossy().to_string());
+                    cov.unmapped_extensions.entry(ext).or_default()
+                }
+                Some(lang) if self.symbol_resolvers.contains_key(lang) => {
+                    cov.covered.entry(lang.to_string()).or_default()
+                }
+                Some(lang) => cov
+                    .unresolved_languages
+                    .entry(lang.to_string())
+                    .or_default(),
+            };
+            bucket.files += 1;
+            if cites {
+                bucket.citing_files += 1;
+            }
+        }
+        Ok(cov)
+    }
+}
+
+/// Files an axis reached, and how many of them carry a citation it gates.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize)]
+pub struct AxisFileCount {
+    pub files: usize,
+    /// Of those, the ones holding at least one citation this ledger gates —
+    /// the only files whose unreachability costs coverage.
+    pub citing_files: usize,
+}
+
+/// What the symbol axis covers under a given config (Round 855). See
+/// [`SetEqualityValidator::symbol_axis_coverage`].
+#[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize)]
+pub struct SymbolAxisCoverage {
+    /// Extension → count, for extensions no resolver can apply to. A citation
+    /// in one of these binds at FILE level whatever `severity_binding` says.
+    pub unmapped_extensions: BTreeMap<String, AxisFileCount>,
+    /// Language → count, for languages the table maps but no
+    /// `[plugins.symbol_resolver.<lang>]` entry covers.
+    pub unresolved_languages: BTreeMap<String, AxisFileCount>,
+    /// Language → count, for languages a configured resolver covers.
+    pub covered: BTreeMap<String, AxisFileCount>,
+}
+
+impl SymbolAxisCoverage {
+    /// Files carrying a gated citation that the symbol axis cannot reach, for
+    /// either reason. The one number that says how much weaker
+    /// `severity_binding` is than it reads.
+    #[must_use]
+    pub fn unreachable_citing_files(&self) -> usize {
+        self.unmapped_extensions
+            .values()
+            .chain(self.unresolved_languages.values())
+            .map(|c| c.citing_files)
+            .sum()
     }
 }
 
@@ -4108,6 +4253,127 @@ mod tests {
         )
         .unwrap();
         store
+    }
+
+    /// Round 855 — the symbol axis says what it cannot reach, and `.c` is no
+    /// longer one of those things.
+    ///
+    /// Reported from the field: `lang_for_file` had no `.c` arm, so a C runtime
+    /// took file-level binding on its `.c` files and symbol-level on the `.h`
+    /// files beside them, silently, under a config that says
+    /// `severity_binding = reject`. Three destinations in one fixture because
+    /// the distinction is the point — a file the axis reaches, a language it
+    /// could reach but has no resolver for, and an extension no resolver can
+    /// ever apply to — and `.c` moved between the first and the last.
+    #[test]
+    fn the_symbol_axis_reports_every_file_it_cannot_reach() {
+        use mnemosyne_core::AtomicStoreView;
+        let tmp = TempDir::new().unwrap();
+        let src = tmp.path().join("src");
+        std::fs::create_dir_all(&src).unwrap();
+        // Reachable: a cpp resolver is configured below, and `.c` maps to it.
+        std::fs::write(src.join("runtime.c"), "// §39 cite in C\n").unwrap();
+        std::fs::write(src.join("runtime.h"), "// §39 cite in a header\n").unwrap();
+        // Mapped to a language, no resolver configured for it.
+        std::fs::write(src.join("gen.py"), "# §39 cite in python\n").unwrap();
+        // No language for the extension, and no citation either — the pair of
+        // counts must tell these two apart.
+        std::fs::write(src.join("README.md"), "§39 cite in prose\n").unwrap();
+        std::fs::write(src.join("Cargo.toml"), "[package]\n").unwrap();
+
+        let mut store = AtomicStore::new();
+        store
+            .sections
+            .insert("39".into(), mnemosyne_atomic::AtomicSection::default());
+        let mut resolvers: BTreeMap<String, Box<dyn mnemosyne_core::SymbolResolver>> =
+            BTreeMap::new();
+        resolvers.insert(
+            "cpp".to_string(),
+            Box::new(mnemosyne_plugin_tree_sitter_cpp::TreesitterCppResolver),
+        );
+        let validator = SetEqualityValidator {
+            config: SetEqualityValidatorConfig {
+                scan_exclusions: Vec::new(),
+                paths: vec!["src/".to_string()],
+                severity_missing: mnemosyne_config::Severity::Reject,
+                severity_binding: mnemosyne_config::Severity::Reject,
+                severity_coverage: None,
+                severity_verification: None,
+                severity_confirmation: None,
+                severity_classification: None,
+                severity_blanket: None,
+                severity_prose_fact_assertion: None,
+                severity_inventory: mnemosyne_config::Severity::Reject,
+                comment_only: true,
+                inventory_prefixes: vec![],
+                external_section_prefixes: vec![],
+                external_section_prefixes_bare: vec![],
+                external_changelog_prefixes: vec![],
+                inventory_path_prefixes: vec![],
+                section_namespace: None,
+            },
+            entry_id_prefix: "Round ".to_string(),
+            orphan_ledger: vec![],
+            symbol_resolvers: resolvers,
+            filter_id: None,
+        };
+        let cov = validator
+            .symbol_axis_coverage(tmp.path(), &store.snapshot())
+            .unwrap();
+
+        assert_eq!(
+            cov.covered.get("cpp").map(|c| (c.files, c.citing_files)),
+            Some((2, 2)),
+            "`.c` and `.h` both reach the cpp resolver, and both cite: {cov:?}"
+        );
+        assert_eq!(
+            cov.unresolved_languages
+                .get("python")
+                .map(|c| (c.files, c.citing_files)),
+            Some((1, 1)),
+            "python is mapped but unconfigured, and the file carries a gated \
+             citation — this is the coverage the reject-level knob does not \
+             have: {cov:?}"
+        );
+        assert_eq!(
+            cov.unmapped_extensions
+                .get("md")
+                .map(|c| (c.files, c.citing_files)),
+            Some((1, 1)),
+            "prose the gate reads but no resolver can parse: {cov:?}"
+        );
+        assert_eq!(
+            cov.unmapped_extensions
+                .get("toml")
+                .map(|c| (c.files, c.citing_files)),
+            Some((1, 0)),
+            "an unreachable file with no citation costs no coverage, and the \
+             report must say so rather than counting it as a gap: {cov:?}"
+        );
+        assert_eq!(
+            cov.unreachable_citing_files(),
+            2,
+            "the python file and the markdown file, not the toml: {cov:?}"
+        );
+    }
+
+    /// Round 855 — the legal `[plugins.symbol_resolver.<lang>]` keys are derived
+    /// from the extension table, so a config naming `c` — the obvious
+    /// workaround for a `.c` tree — is refusable instead of dead.
+    #[test]
+    fn the_symbol_axis_language_set_comes_from_the_extension_table() {
+        let langs = symbol_axis_languages();
+        assert!(langs.contains("cpp") && langs.contains("rust"));
+        assert!(
+            !langs.contains("c"),
+            "`c` is an EXTENSION, not a language key — `.c` maps to `cpp`, and a \
+             resolver keyed `c` would never be consulted: {langs:?}"
+        );
+        assert!(
+            !langs.contains("kotlin"),
+            "no extension maps to kotlin, so a resolver keyed kotlin is dead \
+             config: {langs:?}"
+        );
     }
 
     #[test]
