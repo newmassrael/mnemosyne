@@ -125,6 +125,14 @@ when the project never numbers its history rows.
  reading a subtree — generated output under a source parent, a `build/` or
  `__pycache__/` directory — **narrow `paths` to the source subdirs**. There is
  no subtract-this-subtree key, and `scan_exclusions` is not one (below).
+ That skip list holds the two ecosystems this validator is written in and no
+ others, so `validate-code-refs` prints a **vcs axis** every run: how many files
+ in the read set the tree's own VCS calls build output, in the three distinct
+ states `N ignored` / `0 ignored` / `not determined`. It is advisory, and it is
+ the only axis that can see generated output which has a comment syntax and is
+ valid UTF-8 — the other two name files by those properties and structurally
+ cannot. The predicate is untracked AND ignored, so a file committed with
+ `git add -f` is not called build output.
 - **`[plugins.set_equality_validator].scan_exclusions`** — a DECLARATION for the
  coverage axis, not a filter on the read set. It answers "which Rust source is
  deliberately not covered by `paths`" (so a tree merely absent from the config

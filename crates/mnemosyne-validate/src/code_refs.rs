@@ -2413,6 +2413,141 @@ pub fn comment_mode_coverage(
     Ok(out)
 }
 
+/// What the tree's own version control says about the files the gate reads
+/// (Round 864).
+///
+/// # Why this axis exists
+///
+/// [`is_skipped_dir`] is a HAND LIST — `.`-prefixed, `target`, `node_modules` —
+/// and it is the only thing keeping build output out of the read set. It knows
+/// the two ecosystems this repo is written in and no others. Measured at this
+/// round against our own configured paths: 6454 of 6554 files are ignored by
+/// git, and the single word `target` is what removes them. The list is load
+/// bearing and it has already drifted — a consumer's `__pycache__` walks
+/// straight in (23 files, measured), and a generated Go tree has no
+/// conventional directory name for any list to hold at all (126 files, 182
+/// citations, reported from the field).
+///
+/// Rounds 856 and 860 each named part of this class and structurally could not
+/// name the rest: Round 856 names files with no known comment syntax, Round 860
+/// names files that are not valid UTF-8, and a generated `.go` file is neither.
+///
+/// The property read here has the shape Round 860 chose, one level up. A binary
+/// is excluded by the UTF-8 property it inherently lacks; build output is named
+/// by the tree under audit rather than by a list in this file. A list restates
+/// the tree and then drifts from it in silence (the Round 777 rule); an answer
+/// asked of the tree cannot.
+///
+/// # Why `--others --ignored` and not `check-ignore`
+///
+/// The predicate is untracked AND ignored. `git check-ignore` answers "does an
+/// ignore rule match this path", which is also true of a file committed with
+/// `git add -f` — a file its author deliberately placed under version control,
+/// which is the opposite of build output. Measured: the consumer tree that
+/// prompted this axis has zero tracked-but-ignored files, so both predicates
+/// agree there today. That is a measurement and not a property (the Round 862
+/// rule), so the predicate is chosen to be right rather than to match.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[serde(tag = "state", rename_all = "snake_case")]
+pub enum VcsIgnoreAxis {
+    /// The VCS answered for this tree.
+    Measured {
+        /// Files the configured paths cover — the same walk the gate reads.
+        scanned: usize,
+        /// Of those, the ones the VCS calls build output, in path order.
+        ignored: Vec<PathBuf>,
+        /// Extension → count for those, so "which of mine?" is in the report.
+        ignored_extensions: BTreeMap<String, usize>,
+    },
+    /// No VCS answer for this tree: git absent, not a repository, or the query
+    /// failed. A DISTINCT value from zero ignored files, because a report where
+    /// "nothing is build output" and "nobody asked" look alike is the silence
+    /// Round 856 was written to remove.
+    NotDetermined {
+        /// What went wrong, in the VCS's own words where it gave any.
+        reason: String,
+    },
+}
+
+/// Compute [`VcsIgnoreAxis`] for the read set `paths` resolves to under `root`.
+///
+/// Uses [`walk_paths`] for the read set rather than a second traversal, so the
+/// files judged "scanned" are exactly the files the gate reads (the Round 777
+/// discipline that a reporter and a walk must not be able to disagree).
+///
+/// Never fails on the VCS: an unanswerable tree is [`VcsIgnoreAxis::NotDetermined`]
+/// carrying the reason, following the Round 377 commit-scan precedent in this
+/// workspace, which degrades rather than aborting when `git` cannot answer.
+///
+/// # Errors
+///
+/// Whatever the underlying directory walk fails with — a walk failure is a
+/// config error and stays fatal, unlike a VCS one.
+pub fn vcs_ignored_in_read_set(root: &Path, paths: &[String]) -> std::io::Result<VcsIgnoreAxis> {
+    let read_set: BTreeSet<PathBuf> = walk_paths(root, paths)?.into_iter().collect();
+    // Scope the query to the configured roots, so a workspace inside a large
+    // monorepo does not pay for its siblings' build output.
+    let pathspecs: Vec<PathBuf> = expand_paths(root, paths)
+        .into_iter()
+        .filter_map(|p| p.strip_prefix(root).ok().map(Path::to_path_buf))
+        .collect();
+    let output = std::process::Command::new("git")
+        .args([
+            "ls-files",
+            "--others",
+            "--ignored",
+            "--exclude-standard",
+            "-z",
+        ])
+        .arg("--")
+        .args(&pathspecs)
+        .current_dir(root)
+        .output();
+    let output = match output {
+        Ok(o) if o.status.success() => o,
+        Ok(o) => {
+            let said = String::from_utf8_lossy(&o.stderr);
+            let first = said
+                .lines()
+                .next()
+                .unwrap_or("no message")
+                .trim()
+                .to_string();
+            return Ok(VcsIgnoreAxis::NotDetermined {
+                reason: format!("git exited {}: {first}", o.status),
+            });
+        }
+        Err(e) => {
+            return Ok(VcsIgnoreAxis::NotDetermined {
+                reason: format!("git could not be run: {e}"),
+            });
+        }
+    };
+    // `-z`, because a path may contain a newline and a line-split report would
+    // then name a file that does not exist. Paths arrive relative to the cwd the
+    // command ran in, which is `root`.
+    let mut ignored: Vec<PathBuf> = String::from_utf8_lossy(&output.stdout)
+        .split('\0')
+        .filter(|s| !s.is_empty())
+        .map(|s| root.join(s))
+        .filter(|p| read_set.contains(p))
+        .collect();
+    ignored.sort();
+    ignored.dedup();
+    let mut ignored_extensions: BTreeMap<String, usize> = BTreeMap::new();
+    for p in &ignored {
+        let ext = p
+            .extension()
+            .map_or_else(|| "<none>".to_string(), |e| e.to_string_lossy().to_string());
+        *ignored_extensions.entry(ext).or_insert(0) += 1;
+    }
+    Ok(VcsIgnoreAxis::Measured {
+        scanned: read_set.len(),
+        ignored,
+        ignored_extensions,
+    })
+}
+
 /// Replace non-comment characters with spaces so citation extractors see
 /// only comment text. Line breaks are preserved 1:1 so line numbers stay
 /// accurate. Unknown syntax returns the input unchanged.
@@ -5590,6 +5725,133 @@ mod tests {
                 .contains(&root.join("sce/src/gen/out.cpp")),
             "the gate reads it regardless of the exclusion — that is the whole \
              finding: {trap:?}"
+        );
+    }
+
+    /// Initialise a git repository at `root` with no user identity required —
+    /// tracked-ness is decided by the index, so nothing here needs a commit.
+    fn git_init_at(root: &Path) {
+        let run = |args: &[&str]| {
+            let out = std::process::Command::new("git")
+                .args(args)
+                .current_dir(root)
+                .output()
+                .expect("git must be runnable to test the VCS axis");
+            assert!(
+                out.status.success(),
+                "git {args:?} failed: {}",
+                String::from_utf8_lossy(&out.stderr)
+            );
+        };
+        run(&["init", "--quiet"]);
+    }
+
+    /// Round 864 — the axis names build output that `is_skipped_dir` cannot.
+    ///
+    /// The hand list holds `.`-prefixed, `target` and `node_modules`: the two
+    /// ecosystems this repo is written in. A consumer's `__pycache__` walks
+    /// straight in, and a generated Go tree has no conventional name to hold at
+    /// all. Both are in the fixture, because a fixture that only proves the axis
+    /// agrees with the hand list proves nothing the hand list did not already do.
+    ///
+    /// The `add -f` file is the DISCRIMINATING input (the Round 854 rule that an
+    /// assertion with no input able to falsify it passes vacuously). It matches
+    /// an ignore rule, so `git check-ignore` would name it — and it is tracked,
+    /// so its author put it under version control deliberately and it is not
+    /// build output. Without it, `--others --ignored` and `check-ignore` return
+    /// the same set and the choice between them is untested.
+    #[test]
+    fn the_vcs_axis_names_build_output_no_hand_list_holds() {
+        let tmp = TempDir::new().unwrap();
+        let root = tmp.path();
+        git_init_at(root);
+        std::fs::write(root.join(".gitignore"), "*.gen\n__pycache__/\n").unwrap();
+        std::fs::create_dir_all(root.join("src/__pycache__")).unwrap();
+
+        // Authored source: neither ignored nor build output.
+        std::fs::write(root.join("src/a.rs"), "// Round 1\n").unwrap();
+        // Untracked AND ignored — generated, and named by no hand list.
+        std::fs::write(root.join("src/out.gen"), "// Round 1\n").unwrap();
+        // Untracked AND ignored, inside a source directory: the consumer's 23
+        // `.pyc`, which narrowing `paths` cannot reach without enumerating the
+        // sibling modules and dropping the next one added.
+        std::fs::write(root.join("src/__pycache__/x.pyc"), "x\n").unwrap();
+        // TRACKED and ignore-matching: `check-ignore` says yes, this axis says
+        // no, and the difference is the whole predicate choice.
+        std::fs::write(root.join("src/pinned.gen"), "// Round 1\n").unwrap();
+        // Ignored, INSIDE the queried pathspec, and skipped by the walk. The VCS
+        // reports it and the read set does not hold it, so the intersection is
+        // what keeps the two from disagreeing about a file (the Round 777 rule).
+        std::fs::create_dir_all(root.join("src/node_modules")).unwrap();
+        std::fs::write(root.join("src/node_modules/dep.gen"), "// Round 1\n").unwrap();
+        let add = std::process::Command::new("git")
+            .args(["add", "-f", "src/pinned.gen"])
+            .current_dir(root)
+            .output()
+            .unwrap();
+        assert!(add.status.success());
+
+        let axis = vcs_ignored_in_read_set(root, &["src/".to_string()]).unwrap();
+        let VcsIgnoreAxis::Measured {
+            scanned,
+            ignored,
+            ignored_extensions,
+        } = axis
+        else {
+            panic!("a git tree must be measurable: {axis:?}");
+        };
+        assert_eq!(
+            scanned, 4,
+            "the read set is the walk's — `node_modules` never entered it"
+        );
+        assert_eq!(
+            ignored,
+            vec![root.join("src/__pycache__/x.pyc"), root.join("src/out.gen"),],
+            "exactly the untracked-and-ignored files the gate READS: not the \
+             `add -f` one, and not the one the walk already skipped"
+        );
+        assert_eq!(
+            ignored_extensions,
+            [("gen".to_string(), 1), ("pyc".to_string(), 1)]
+                .into_iter()
+                .collect::<BTreeMap<_, _>>(),
+            "the report names WHICH extensions: {ignored_extensions:?}"
+        );
+    }
+
+    /// Round 864 — the two silences the axis must not share.
+    ///
+    /// A workspace whose read set holds no build output and a workspace no VCS
+    /// can answer for are different facts, and a report that printed nothing for
+    /// both would be the Round 856 silence again (a store with zero facts and a
+    /// store whose every citation lands looked identical).
+    #[test]
+    fn a_clean_tree_and_an_unanswerable_one_are_different_answers() {
+        let clean = TempDir::new().unwrap();
+        git_init_at(clean.path());
+        std::fs::create_dir_all(clean.path().join("src")).unwrap();
+        std::fs::write(clean.path().join("src/a.rs"), "// Round 1\n").unwrap();
+        assert_eq!(
+            vcs_ignored_in_read_set(clean.path(), &["src/".to_string()]).unwrap(),
+            VcsIgnoreAxis::Measured {
+                scanned: 1,
+                ignored: vec![],
+                ignored_extensions: BTreeMap::new(),
+            },
+            "a git tree with no build output is MEASURED at zero"
+        );
+
+        // No `git init`: the same shape of tree, with nobody to ask.
+        let unasked = TempDir::new().unwrap();
+        std::fs::create_dir_all(unasked.path().join("src")).unwrap();
+        std::fs::write(unasked.path().join("src/a.rs"), "// Round 1\n").unwrap();
+        let axis = vcs_ignored_in_read_set(unasked.path(), &["src/".to_string()]).unwrap();
+        let VcsIgnoreAxis::NotDetermined { reason } = &axis else {
+            panic!("a tree outside version control cannot be measured: {axis:?}");
+        };
+        assert!(
+            reason.contains("git exited"),
+            "the reason carries what the VCS said, not a shrug: {reason}"
         );
     }
 

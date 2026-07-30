@@ -5734,6 +5734,14 @@ fn cmd_validate_code_refs(args: &[String]) -> Result<()> {
     let symbol_axis = validator
         .symbol_axis_coverage(&root, &mnemosyne_core::AtomicStoreView::snapshot(&store))?;
 
+    // Round 864 — what the tree's own VCS calls build output inside the read
+    // set. Advisory and printed every run, in all three states: the hand list
+    // in `is_skipped_dir` knows `target` and `node_modules` and nothing else,
+    // so "no build output here" is a claim this axis is the only one able to
+    // check. Asked of the tree rather than of a list, which is what keeps the
+    // answer the same for a developer and for CI.
+    let vcs_axis = mnemosyne_validate::code_refs::vcs_ignored_in_read_set(&root, &cfg.paths)?;
+
     // Per-class counting from typed enum — `CodeRefViolation::kind_tag`
     // is the stable string key shared with `validate-code-refs --json`
     // output. Pattern match is exhaustive at the type level.
@@ -5843,6 +5851,7 @@ fn cmd_validate_code_refs(args: &[String]) -> Result<()> {
             "severity_inventory": severity_inventory,
             "filter_id": filter_id,
             "symbol_axis": symbol_axis,
+            "vcs_axis": vcs_axis,
             "violations": view,
             })
         );
@@ -5881,6 +5890,43 @@ fn cmd_validate_code_refs(args: &[String]) -> Result<()> {
                      them {:?} — narrow `paths` if that is build output (Round 860)",
                     modes.unreadable, modes.unreadable_extensions
                 );
+            }
+        }
+        // Round 864 — printed in all three states, outside the `comment_only`
+        // block because the question does not depend on that knob. "Zero build
+        // output here" and "nobody could ask" must not share a silence.
+        match &vcs_axis {
+            mnemosyne_validate::code_refs::VcsIgnoreAxis::Measured {
+                scanned,
+                ignored,
+                ignored_extensions,
+            } => {
+                println!(
+                    "vcs axis (advisory, Round 864): {} of {} scanned file(s) are build \
+                     output by this tree's own VCS {:?}",
+                    ignored.len(),
+                    scanned,
+                    ignored_extensions
+                );
+                if !ignored.is_empty() {
+                    println!(
+                        "  every count above depends on whether the reader has built; \
+                         narrow `paths` where it can reach them"
+                    );
+                    for p in ignored.iter().take(3) {
+                        println!(
+                            "    vcs-ignored and scanned: {}",
+                            p.strip_prefix(&root)
+                                .unwrap_or(p)
+                                .display()
+                                .to_string()
+                                .replace('\\', "/")
+                        );
+                    }
+                }
+            }
+            mnemosyne_validate::code_refs::VcsIgnoreAxis::NotDetermined { reason } => {
+                println!("vcs axis (advisory, Round 864): not determined — {reason}");
             }
         }
         if !cfg.inventory_prefixes.is_empty() {
