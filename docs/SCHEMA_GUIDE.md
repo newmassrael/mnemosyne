@@ -636,6 +636,23 @@ config can protect against an older binary. Covering that direction is the
 `--version` assertion in the `MN`-style recipe above, which is why that
 recipe is not superseded by `[tool]` — the two guard opposite directions.
 
+**That floor stopped moving in Round 863.** The paragraph above described a
+consequence of the ORDER, not a property of pinning: the config was validated
+in full and only then was the pin looked at, so any unknown key killed the load
+before delegation was considered. From Round 863 the pin is read out of a
+generic TOML table BEFORE validation, so a binary at or after that revision
+hands over to the pinned build no matter how many keys it has never heard of.
+Measured on real builds: a pre-863 binary meeting a pinned workspace with an
+unknown key dies at the parse error and never prints a switch note; an 863
+binary prints the note and hands over.
+
+Three things that does NOT change, so it is not read as more than it is. A
+binary older than 863 is still stopped by any key it does not know, and nothing
+can reach back and fix that. A workspace with no pin still dies at the parse
+error, correctly — there is nothing to delegate to. And an unknown key is still
+fatal once the pinned build has it: the loose read decides where to run, never
+what is legal.
+
 The rules, so nothing is surprising:
 
 - **Opt-in.** No `[tool]` section means no check, which is every

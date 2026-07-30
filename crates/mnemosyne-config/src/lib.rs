@@ -1468,6 +1468,69 @@ fn switch_to_pinned(_pin: &str, _refusal: &PinRefusal) -> Result<()> {
     Ok(())
 }
 
+/// Whether a declared pin names ONE revision: at least seven hex characters,
+/// git's own abbreviation floor. Below it a prefix stops naming one commit, and
+/// a pin matching several revisions pins none.
+///
+/// Shared on purpose. Two paths read `tool.pin` — the strict one through
+/// `WorkspaceConfig`, and the loose pre-parse one in [`delegate_if_pinned`] —
+/// and a field with two readers that disagree about what is usable has no
+/// invariant at all. Whichever way this moves, both move together.
+fn pin_shape_is_usable(pin: &str) -> bool {
+    pin.len() >= 7 && pin.chars().all(|c| c.is_ascii_hexdigit())
+}
+
+/// Hand over to the pinned build BEFORE the config is validated (Round 863).
+///
+/// Round 840 recorded that a pin's floor is "the newest key in your file", and
+/// that was a true observation of a false property: the floor came from the
+/// ORDER, not from pinning. `load_config` deserialised the whole document under
+/// `deny_unknown_fields` and only then looked at the pin, so a single key the
+/// running binary had never heard of killed the load before delegation was ever
+/// considered — including, for a consumer, every command in a workspace that had
+/// correctly pinned a build able to run them all.
+///
+/// Reading the pin out of a GENERIC table first removes that. The floor becomes
+/// this revision and then stops moving, which is the same reach a separate
+/// frozen launcher would have bought, without a second artifact to acquire.
+///
+/// IT NEVER REFUSES — it delegates or it declines. A syntax error, an absent
+/// `[tool]`, a non-string pin, a pin that does not name one revision: every one
+/// of them returns `Ok` so the strict parse reports it once, in its own words,
+/// and `enforce_tool_pin` remains the single refusal. The one error it can
+/// produce is Round 861's broken-install report, which is the same message the
+/// later path would give, sooner.
+fn delegate_if_pinned(content: &str) -> Result<()> {
+    // The waiver declines delegation too, exactly as it did when the switch sat
+    // behind it: a waived run is not attributable to the pinned revision, and
+    // handing over would make it attributable to nothing. `enforce_tool_pin`
+    // still prints the warning, once, after the parse.
+    if std::env::var_os(PIN_SKIP_ENV).is_some() {
+        return Ok(());
+    }
+    // A generic parse fails only on TOML that is not TOML, which the strict
+    // parse is about to report better than this could.
+    let Ok(table) = content.parse::<toml::Table>() else {
+        return Ok(());
+    };
+    let Some(pin) = table
+        .get("tool")
+        .and_then(|tool| tool.get("pin"))
+        .and_then(toml::Value::as_str)
+    else {
+        return Ok(());
+    };
+    if !pin_shape_is_usable(pin) {
+        return Ok(());
+    }
+    let Err(refusal) = check_tool_pin(pin, tool_stamp()) else {
+        return Ok(());
+    };
+    // Diverges on success. Returns `Ok` when no switch was possible, leaving the
+    // strict parse and then the existing refusal to run.
+    switch_to_pinned(pin, &refusal)
+}
+
 /// Enforce a loaded config's `[tool] pin` against this process's stamp.
 ///
 /// Called from every config load, so a pinned workspace cannot be opened by a
@@ -1490,9 +1553,11 @@ fn enforce_tool_pin(cfg: &WorkspaceConfig, config_path: &Path) -> Result<()> {
     let Err(refusal) = check_tool_pin(pin, tool_stamp()) else {
         return Ok(());
     };
-    // Use the pinned build if it is already here. Diverges on success.
-    switch_to_pinned(pin, &refusal)?;
-
+    // NO SWITCH HERE (Round 863). `delegate_if_pinned` already tried, before the
+    // parse, and reaching this line means it could not: the build is absent, or
+    // this process never declared what it is. One caller of the switch, so the
+    // two readings of this field cannot hand over on different terms.
+    //
     // Name the binary that is actually refusing. Both binaries reach this one
     // message, and a remedy that says `mnemosyne-cli` to someone whose MCP
     // server just failed to start sends them to install the wrong tool.
@@ -1688,10 +1753,11 @@ fn validate(cfg: &WorkspaceConfig) -> Result<()> {
         }
     }
     // Round 826 — the tool pin's SHAPE, checked at load like every other pin in
-    // this file. Seven is git's own abbreviation floor; below it a prefix stops
-    // naming one commit, and a pin that matches several revisions pins none.
+    // this file. The predicate is shared with the loose pre-parse reader (Round
+    // 863) so the two paths that read this one field cannot come to different
+    // answers about whether it names a revision.
     if let Some(pin) = cfg.tool.as_ref().and_then(|t| t.pin.as_deref()) {
-        if pin.len() < 7 || !pin.chars().all(|c| c.is_ascii_hexdigit()) {
+        if !pin_shape_is_usable(pin) {
             bail!(
                 "mnemosyne.toml: `tool.pin` must be at least 7 hex characters of a git revision \
                  (got `{pin}`)"
@@ -1707,6 +1773,11 @@ fn validate(cfg: &WorkspaceConfig) -> Result<()> {
 pub fn load_config(config_path: &Path) -> Result<LoadedConfig> {
     let content = std::fs::read_to_string(config_path)
         .with_context(|| format!("read {}", config_path.display()))?;
+    // Round 863 — DELEGATION BEFORE VALIDATION. Reading `tool.pin` out of a
+    // generic table first is what stops the pin's floor from rising with every
+    // key added to this file; see `delegate_if_pinned`. Diverges when it hands
+    // over, so nothing below runs in that case.
+    delegate_if_pinned(&content)?;
     let config = parse_config(&content)?;
     // Round 826 — the tool pin is enforced HERE, the one place a workspace is
     // opened, so every one of the eighteen call sites that reach a config is
@@ -2555,6 +2626,48 @@ narrative_rules_path = "narrative-rules.json"
         assert!(
             !typed.contains("older than this workspace"),
             "a wrong-typed value collected the version hint: {typed}"
+        );
+    }
+
+    /// Round 863 — FIELD-INVARIANT PARITY. `tool.pin` now has two readers: the
+    /// strict one through `WorkspaceConfig`, and the loose pre-parse one that
+    /// decides whether to hand over before anything is validated.
+    ///
+    /// A field whose readers disagree about what counts as usable has no
+    /// invariant at all: one path would delegate on a value the other calls a
+    /// config error, and `$MN_ROOT/<that value>` is a directory nobody was ever
+    /// told about. So both go through one predicate, and this is what says so.
+    #[test]
+    fn both_readers_of_the_pin_agree_on_what_names_a_revision() {
+        let cases = [
+            "deadbeef",
+            "1234567",
+            "DEADBEEF",
+            "d02c12f0abcdef1234567890",
+            "",
+            "abc",
+            "123456",
+            "deadbeeg",
+            "dead beef",
+            "dead-beef",
+        ];
+        let mut usable = 0;
+        for pin in cases {
+            let loose = pin_shape_is_usable(pin);
+            let strict = parse_config(&format!("[workspace]\n\n[tool]\npin = \"{pin}\"\n")).is_ok();
+            assert_eq!(
+                loose, strict,
+                "the two readers of `tool.pin` disagree about `{pin}`: \
+                 loose={loose}, strict={strict}"
+            );
+            usable += usize::from(loose);
+        }
+        // NON-VACUOUS: a predicate constant in either direction satisfies every
+        // equality above and proves nothing about either reader.
+        assert!(
+            usable > 0 && usable < cases.len(),
+            "the cases do not separate usable from unusable ({usable} of {})",
+            cases.len()
         );
     }
 

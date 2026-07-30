@@ -265,9 +265,22 @@ fn an_unpinned_workspace_is_untouched_by_any_binary() {
 fn the_waiver_is_honoured_and_never_silent() {
     let ws = workspace_with("[workspace]\n\n[tool]\npin = \"deadbeef\"\n");
     let root = empty_root();
+    // Round 863 — the pinned build is INSTALLED here, which it was not before.
+    // The waiver used to sit in front of the only switch; now delegation happens
+    // earlier, in a different function, and an empty root would let a waiver that
+    // silently hands over pass this test for the wrong reason.
+    for bin in &pinned_binaries() {
+        install_pinned(
+            root.path(),
+            "deadbeef",
+            bin,
+            &stand_in(Some("deadbeef"), "echo SWITCHED-TO-PINNED\nexit 0"),
+        );
+    }
     for bin in &pinned_binaries() {
         let out = run_in(bin, ws.path(), true, root.path());
         let err = String::from_utf8_lossy(&out.stderr);
+        let stdout = String::from_utf8_lossy(&out.stdout);
         assert!(
             err.contains(mnemosyne_config::PIN_SKIP_ENV),
             "{bin} waived the pin without saying so — a silent waiver is how a \
@@ -276,6 +289,74 @@ fn the_waiver_is_honoured_and_never_silent() {
         assert!(
             !err.contains("pins Mnemosyne `deadbeef`, and"),
             "{bin} refused despite the documented waiver: {err}"
+        );
+        assert!(
+            !stdout.contains("SWITCHED-TO-PINNED"),
+            "{bin} handed over under the waiver — a waived run is attributable to \
+             no revision, and delegating makes it attributable to one: {stdout}"
+        );
+    }
+}
+
+/// Round 863 — THE FREEZE. The pin is read out of a generic table before the
+/// document is validated, so a key this build has never heard of must not stop
+/// the hand-off.
+///
+/// This is the test that keeps the floor from rising again. It is the entire
+/// reason the pre-parse read is loose, and a round that couples it back to
+/// `WorkspaceConfig` turns this red here rather than turning a consumer's gates
+/// red in the field, which is how Round 861 found out last time.
+#[test]
+fn a_key_this_build_does_not_know_still_reaches_the_pin() {
+    // `[from_a_later_round]` is what a NEWER Mnemosyne's section looks like to
+    // this build: valid TOML, unknown to `WorkspaceConfig`, fatal to the strict
+    // parse. The pin sits behind it in the file as well as behind it in time.
+    let ws = workspace_with(
+        "[workspace]\n\n[tool]\npin = \"deadbeef\"\n\n[from_a_later_round]\nkey = 1\n",
+    );
+    let root = empty_root();
+    for bin in &pinned_binaries() {
+        install_pinned(
+            root.path(),
+            "deadbeef",
+            bin,
+            &stand_in(Some("deadbeef"), "echo SWITCHED-TO-PINNED\nexit 0"),
+        );
+    }
+    for bin in &pinned_binaries() {
+        let out = run_in(bin, ws.path(), false, root.path());
+        let err = String::from_utf8_lossy(&out.stderr);
+        let stdout = String::from_utf8_lossy(&out.stdout);
+        assert!(
+            stdout.contains("SWITCHED-TO-PINNED"),
+            "{bin} died on a key it does not know instead of handing the workspace \
+             to the build that does\nstdout: {stdout}\nstderr: {err}"
+        );
+        assert!(
+            out.status.success(),
+            "{bin} switched but did not carry the replacement's exit code: {err}"
+        );
+    }
+}
+
+/// The other half of the freeze, and the one that can rot quietly: reading the
+/// pin loosely must not make an unknown key TOLERATED. With no pin there is
+/// nothing to delegate to, so the strict parse is still the answer and it must
+/// still be loud.
+#[test]
+fn an_unknown_key_without_a_pin_is_still_fatal() {
+    let ws = workspace_with("[workspace]\n\n[from_a_later_round]\nkey = 1\n");
+    let root = empty_root();
+    for bin in &pinned_binaries() {
+        let out = run_in(bin, ws.path(), false, root.path());
+        let err = String::from_utf8_lossy(&out.stderr);
+        assert!(
+            !out.status.success(),
+            "{bin} accepted a key no build of it knows: {err}"
+        );
+        assert!(
+            err.contains("unknown field"),
+            "{bin} failed on the unknown key without naming it: {err}"
         );
     }
 }
