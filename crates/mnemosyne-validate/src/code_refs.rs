@@ -1010,25 +1010,17 @@ pub struct SwallowedCitation {
 pub fn swallowed_citations(
     coverage: &ScanCoverage,
     known_sections: &BTreeSet<String>,
-    external_prefixes_numeric: &[String],
-    external_prefixes_bare: &[String],
-    comment_only: bool,
+    attribution: &CitationAttribution,
 ) -> Vec<SwallowedCitation> {
+    // THE shared predicate (Round 867), not a private copy of it. This axis used
+    // to take the prefix registries and `comment_only` and apply them itself,
+    // which is how it ended up honouring the registries and NOT
+    // `section_namespace` while the gate honoured both.
     let cites = |path: &PathBuf| -> Vec<(usize, String)> {
-        // Skipped exactly where the gate skips: a file it cannot read as UTF-8
-        // is a file whose citations it never saw.
-        let Ok(raw) = std::fs::read_to_string(path) else {
-            return Vec::new();
-        };
-        // The SAME comment-only treatment the citation gate applies, or the two
-        // would disagree about what counts as a citation — and a detector that
-        // sees more than the gate reports losses that were never coverage.
-        let content = if comment_only {
-            strip_to_comments(&raw, comment_syntax_for(path))
-        } else {
-            raw
-        };
-        extract_section_citations(&content, external_prefixes_numeric, external_prefixes_bare)
+        attribution
+            .attribute_file(path)
+            .map(|a| a.cited)
+            .unwrap_or_default()
     };
 
     let mut still_seen: BTreeSet<String> = BTreeSet::new();
@@ -2607,6 +2599,318 @@ pub fn vcs_ignored_among(root: &Path, files: &BTreeSet<PathBuf>) -> VcsIgnoreAxi
     }
 }
 
+/// Which subtrees speak ANOTHER document's `§N.M` numbering (Round 867).
+///
+/// # Why a FILE carries this, and not a token
+///
+/// [`SetEqualityValidatorConfig::external_section_prefixes`] and its bare sibling
+/// answer the same question one TOKEN at a time, keyed on the citing prose:
+/// `UAX #9 §6.7` names its document, so the registry can skip it. That reaches
+/// only a citation whose author named the document, and inside another project's
+/// own documents the numbering is IMPLICIT — a vendored `SCE_MESH.md` says
+/// `per §6.2` about a section of its own, with nothing in the token to match.
+/// (Both quotations are in code spans on purpose: this file is scanned, and a
+/// bare one would be exactly the misattribution described here. Our own gate
+/// caught the first draft of this paragraph.) Two consumers on
+/// this machine sat on exactly that: one was rejected for four such citations and
+/// pinned itself behind Round 840 to stay green, the other for five whose ids are
+/// SINGLE DIGITS, so every `§N` in its 8727 vendored files is a collision
+/// candidate. Only where the file lives distinguishes them.
+///
+/// # Why derived, and not declared
+///
+/// The shape the consumer asked for was a `numbering = "foreign"` attribute on a
+/// `scan_exclusions` entry: a claim nothing can check, on the wrong axis — the
+/// same misattribution is live on the SCANNED side, where a third consumer
+/// suppresses it with seven hand-registered prefixes and no exclusion exists at
+/// all. And this codebase has the Round 777 and Round 783 record of
+/// hand-maintained lists drifting from the tree they describe, its own included
+/// (Round 864). The tree's own VCS already answers it for the case that has
+/// consumers: `git ls-files --stage` marks a submodule with mode `160000`, and a
+/// file under that path belongs to ANOTHER REPOSITORY. Since a store is
+/// per-workspace, "another repository" and "not this store's numbering" are one
+/// statement here.
+///
+/// # Why three states, and why the third attributes nothing
+///
+/// "No foreign subtree" and "no VCS to ask" are different facts, and a report
+/// where they look alike is the silence Round 856 was written to remove — so
+/// [`NumberingOriginAxis::NotDetermined`] is its own value, as Round 864
+/// established for the sibling axis. It yields NO foreign subtrees, which keeps
+/// the gate exactly as tight as it was before this axis existed: unlike every
+/// other axis in this family, this one LOOSENS — it makes citations disappear —
+/// so an unanswerable VCS must never be able to un-gate anything.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[serde(tag = "state", rename_all = "snake_case")]
+pub enum NumberingOriginAxis {
+    /// The VCS answered for this tree.
+    Measured {
+        /// Workspace-relative subtree paths, in path order.
+        foreign_subtrees: Vec<PathBuf>,
+    },
+    /// No VCS answer: git absent, not a repository, or the query failed.
+    NotDetermined {
+        /// What went wrong, in the VCS's own words where it gave any.
+        reason: String,
+    },
+}
+
+impl NumberingOriginAxis {
+    /// Ask the tree's own VCS which subtrees are other repositories.
+    ///
+    /// Never fails, following the Round 377 precedent in this workspace: a tree
+    /// git cannot answer for degrades to [`Self::NotDetermined`] rather than
+    /// aborting a validate run.
+    #[must_use]
+    pub fn derive(root: &Path) -> Self {
+        let output = std::process::Command::new("git")
+            .args(["ls-files", "--stage", "-z"])
+            .current_dir(root)
+            .output();
+        let output = match output {
+            Ok(o) if o.status.success() => o,
+            Ok(o) => {
+                let said = String::from_utf8_lossy(&o.stderr);
+                let first = said
+                    .lines()
+                    .next()
+                    .unwrap_or("no message")
+                    .trim()
+                    .to_string();
+                return Self::NotDetermined {
+                    reason: format!("git exited {}: {first}", o.status),
+                };
+            }
+            Err(e) => {
+                return Self::NotDetermined {
+                    reason: format!("git could not be run: {e}"),
+                };
+            }
+        };
+        // `<mode> <object> <stage>\t<path>`, records NUL-separated. Split on the
+        // TAB rather than on whitespace: `-z` leaves paths unquoted, so a
+        // submodule directory containing a space would otherwise be truncated.
+        // Measured on git 2.34.1, including that space case.
+        let mut foreign_subtrees: Vec<PathBuf> = String::from_utf8_lossy(&output.stdout)
+            .split('\0')
+            .filter(|s| !s.is_empty())
+            .filter_map(|record| record.split_once('\t'))
+            .filter(|(meta, _)| meta.starts_with("160000 "))
+            .map(|(_, path)| PathBuf::from(path))
+            .collect();
+        foreign_subtrees.sort();
+        foreign_subtrees.dedup();
+        Self::Measured { foreign_subtrees }
+    }
+
+    /// The subtrees to attribute elsewhere — NONE when nobody could be asked.
+    #[must_use]
+    pub fn foreign_subtrees(&self) -> &[PathBuf] {
+        match self {
+            Self::Measured { foreign_subtrees } => foreign_subtrees,
+            Self::NotDetermined { .. } => &[],
+        }
+    }
+}
+
+/// What one file's `§N.M` tokens turned out to be.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Default)]
+pub struct FileCitations {
+    /// Tokens that cite THIS store, `(line, section_id)`.
+    pub cited: Vec<(usize, String)>,
+    /// The foreign subtree this file lives under. `Some` implies `cited` is
+    /// empty, by construction.
+    pub foreign_origin: Option<PathBuf>,
+    /// Citation-shaped tokens the foreign origin stopped attributing here.
+    ///
+    /// Counted AFTER the prefix registries and the namespace scope, so a
+    /// registered `UAX #9` reference is not among them. Not all of them would
+    /// have RESOLVED — in a consumer tree most name nothing in this store and
+    /// would have been hallucination-class violations — so this is the size of
+    /// what went quiet rather than a count of coverage lost. That is the number
+    /// the reader needs: it is what an over-broad derivation would hide.
+    pub foreign_skipped: usize,
+}
+
+/// THE answer to "does this `§N.M` token, in THIS file, cite this store"
+/// (Round 867).
+///
+/// # Why one resolver
+///
+/// Five production readers asked that question with THREE different predicates:
+/// [`SetEqualityValidator::scan`], [`SetEqualityValidator::propose_implementations`]
+/// and [`SetEqualityValidator::citation_index`] honoured both the prefix
+/// registries and `section_namespace`; [`swallowed_citations`] honoured the
+/// prefixes and not the namespace; [`scan_section_decay`] honoured neither. Both
+/// divergences measured zero on every tree available when they were found — the
+/// decay axis needs a superseded section and no workspace here sets a namespace —
+/// so they were latent rather than live, and recorded as latent. A half-enforced
+/// predicate is still no predicate: it is the shape Round 305 caught when two
+/// write paths to one field carried different caps, and the parity test that
+/// answered it there is the substrate here.
+pub struct CitationAttribution<'a> {
+    root: &'a Path,
+    prefixes_numeric: &'a [String],
+    prefixes_bare: &'a [String],
+    namespace: Option<&'a str>,
+    comment_only: bool,
+    origin: NumberingOriginAxis,
+}
+
+impl<'a> CitationAttribution<'a> {
+    /// Build the one attribution for a tree. Callers derive the origin ONCE per
+    /// command and pass this down, so no two axes in a run can hold different
+    /// answers to the same question.
+    #[must_use]
+    pub fn new(
+        root: &'a Path,
+        config: &'a SetEqualityValidatorConfig,
+        origin: NumberingOriginAxis,
+    ) -> Self {
+        Self {
+            root,
+            prefixes_numeric: config.external_section_prefixes.as_slice(),
+            prefixes_bare: config.external_section_prefixes_bare.as_slice(),
+            namespace: config.section_namespace.as_deref(),
+            comment_only: config.comment_only,
+            origin,
+        }
+    }
+
+    #[must_use]
+    pub fn root(&self) -> &Path {
+        self.root
+    }
+
+    #[must_use]
+    pub fn origin(&self) -> &NumberingOriginAxis {
+        &self.origin
+    }
+
+    /// The foreign subtree `file` lives under, if any.
+    ///
+    /// Component-wise [`Path::starts_with`], never a string prefix: `vendor/sce`
+    /// must not swallow `vendor/scenarios`, which is the collapse Round 866 had
+    /// to inject against on the sibling axis.
+    #[must_use]
+    fn foreign_subtree_of(&self, file: &Path) -> Option<PathBuf> {
+        let rel = file.strip_prefix(self.root).unwrap_or(file);
+        self.origin
+            .foreign_subtrees()
+            .iter()
+            .find(|sub| rel.starts_with(sub))
+            .cloned()
+    }
+
+    /// Attribute the tokens in `content`, which the caller has already read and
+    /// stripped the way the gate reads it.
+    #[must_use]
+    pub fn citations_in(&self, file: &Path, content: &str) -> FileCitations {
+        let foreign_origin = self.foreign_subtree_of(file);
+        let mut cited = Vec::new();
+        let mut foreign_skipped = 0usize;
+        for (line, section_id) in
+            extract_section_citations(content, self.prefixes_numeric, self.prefixes_bare)
+        {
+            // Namespace scope — a citation whose namespace segment (the part
+            // before the first `-`) is not exactly the declared one belongs to a
+            // different ledger of the same store (Round 376).
+            if let Some(ns) = self.namespace {
+                if citation_namespace(&section_id) != ns {
+                    continue;
+                }
+            }
+            if foreign_origin.is_some() {
+                foreign_skipped += 1;
+                continue;
+            }
+            cited.push((line, section_id));
+        }
+        FileCitations {
+            cited,
+            foreign_origin,
+            foreign_skipped,
+        }
+    }
+
+    /// Read `file` the way the gate reads it, then attribute it.
+    ///
+    /// `None` = the gate cannot read it either, so its citations were never
+    /// coverage (the Round 854 rule, with the Round 860 correction that the
+    /// question is `read_to_string` and not an extension guess).
+    #[must_use]
+    pub fn attribute_file(&self, file: &Path) -> Option<FileCitations> {
+        let raw = std::fs::read_to_string(file).ok()?;
+        let content = if self.comment_only {
+            strip_to_comments(&raw, comment_syntax_for(file))
+        } else {
+            raw
+        };
+        Some(self.citations_in(file, &content))
+    }
+}
+
+/// What the numbering-origin derivation removed, printed every run.
+///
+/// # Why this axis must be loud where its siblings may be silent
+///
+/// Every other axis in this family TIGHTENS: it finds a citation the gate was
+/// missing. This one loosens — a subtree derived foreign makes its citations
+/// vanish — so a wrong verdict silently un-gates real ones, which is Round 840's
+/// own class inverted. The counted line is what makes that visible instead of
+/// quiet, and it is also the discovery path for the one shape deliberately not
+/// built: a monorepo that shares numbering across a submodule reads this line and
+/// asks for an override, rather than the override being speculated into existence.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct NumberingOriginReport {
+    pub axis: NumberingOriginAxis,
+    /// Files handed in — the set whose attribution this describes.
+    pub files_considered: usize,
+    /// Of those, the ones living under a foreign subtree.
+    pub files_foreign: usize,
+    /// Citation-shaped tokens no longer attributed to this store. See
+    /// [`FileCitations::foreign_skipped`] for what the number does and does not
+    /// claim.
+    pub citations_skipped: usize,
+    /// Subtree → citations removed, so one stray vendored comment reads
+    /// differently from a whole tree going quiet.
+    pub skipped_per_subtree: BTreeMap<String, usize>,
+}
+
+/// Compute [`NumberingOriginReport`] over a set of files the config produced.
+///
+/// Takes the SET rather than the config that made it, for the Round 866 reason:
+/// a reporter that re-derives its own file list is free to disagree with the walk
+/// it is reporting on.
+#[must_use]
+pub fn numbering_origin_coverage(
+    attribution: &CitationAttribution,
+    files: &BTreeSet<PathBuf>,
+) -> NumberingOriginReport {
+    let mut files_foreign = 0usize;
+    let mut citations_skipped = 0usize;
+    let mut skipped_per_subtree: BTreeMap<String, usize> = BTreeMap::new();
+    for file in files {
+        let Some(attributed) = attribution.attribute_file(file) else {
+            continue;
+        };
+        if let Some(subtree) = attributed.foreign_origin {
+            files_foreign += 1;
+            *skipped_per_subtree
+                .entry(subtree.to_string_lossy().to_string())
+                .or_insert(0) += attributed.foreign_skipped;
+            citations_skipped += attributed.foreign_skipped;
+        }
+    }
+    NumberingOriginReport {
+        axis: attribution.origin().clone(),
+        files_considered: files.len(),
+        files_foreign,
+        citations_skipped,
+        skipped_per_subtree,
+    }
+}
+
 /// Replace non-comment characters with spaces so citation extractors see
 /// only comment text. Line breaks are preserved 1:1 so line numbers stay
 /// accurate. Unknown syntax returns the input unchanged.
@@ -2953,17 +3257,18 @@ impl SetEqualityValidator {
     /// [`CodeRefViolation`] doc for per-variant evidence.
     pub fn scan(
         &self,
-        workspace_root: &Path,
+        attribution: &CitationAttribution,
         snapshot: &mnemosyne_core::AtomicSnapshot,
     ) -> std::io::Result<Vec<CodeRefViolation>> {
+        // The tree comes from the attribution rather than beside it (Round 867):
+        // a root passed separately could name a tree the numbering origin was not
+        // derived from, and the answer would be wrong while looking right.
+        let workspace_root = attribution.root();
         let prefix = self.entry_id_prefix.as_str();
         let filter_id = self.filter_id.as_deref();
         let comment_only = self.config.comment_only;
         let inventory_prefixes = self.config.inventory_prefixes.as_slice();
-        let external_section_prefixes_numeric = self.config.external_section_prefixes.as_slice();
-        let external_section_prefixes_bare = self.config.external_section_prefixes_bare.as_slice();
         let inventory_path_prefixes = self.config.inventory_path_prefixes.as_slice();
-        let section_namespace = self.config.section_namespace.as_deref();
         // Empty resolver map = symbol axis silently skipped; identical
         // semantic to the pre-R307 `Option<&BTreeMap>` shape where None
         // bypassed lookup entirely.
@@ -3096,22 +3401,12 @@ impl SetEqualityValidator {
             if filter_id.is_some() {
                 continue;
             }
-            for (line, section_id) in extract_section_citations(
-                &content,
-                external_section_prefixes_numeric,
-                external_section_prefixes_bare,
-            ) {
-                // Namespace scope — when this workspace declares a
-                // `section_namespace`, a citation whose namespace segment
-                // (the part before the first `-`) is not exactly that value
-                // belongs to a different ledger. Skip it entirely: no
-                // SectionMissing, no `cited_by` binding record (step 3 must
-                // not treat a foreign cite as this workspace's binding).
-                if let Some(ns) = section_namespace {
-                    if citation_namespace(&section_id) != ns {
-                        continue;
-                    }
-                }
+            // The prefix registries, the namespace scope and the file's numbering
+            // origin all live in the one resolver (Round 867). A citation this
+            // resolver drops leaves no trace on either side of the set-equality:
+            // no SectionMissing, and no `cited_by` record, because step 3 must
+            // not treat another document's number as this workspace's binding.
+            for (line, section_id) in attribution.citations_in(&abs, &content).cited {
                 // Ledger suppression — if (file, id) is explicitly registered as a
                 // known-stale code citation, treat as if the binding were correct
                 // (record in `cited_by` so step 3 doesn't double-fire).
@@ -3352,22 +3647,21 @@ impl SetEqualityValidator {
     /// citation's enclosing symbol via the file's language `SymbolResolver`,
     /// returning the proposed implementation symbol set plus a count of
     /// citations whose symbol could not be resolved (file-only fallback).
-    /// Honors `comment_only` and `section_namespace` exactly as [`Self::scan`];
-    /// foreign-namespace and unknown-section citations are skipped (the
-    /// latter are hallucinations for `scan` to flag, not bindings).
+    /// Attributes citations through the SAME resolver as [`Self::scan`]
+    /// (Round 867), so a proposal can never bind a file on a citation the gate
+    /// does not count. Unknown-section citations are skipped here (they are
+    /// hallucinations for `scan` to flag, not bindings).
     ///
     /// The result is a *proposal* reflecting the current code state. The
     /// maintainer ratifies it into `§X.bindings` as design intent —
     /// the act of review is also an audit of where each section is cited.
     pub fn propose_implementations(
         &self,
-        workspace_root: &Path,
+        attribution: &CitationAttribution,
         snapshot: &mnemosyne_core::AtomicSnapshot,
     ) -> std::io::Result<Vec<ProposedImplementation>> {
+        let workspace_root = attribution.root();
         let comment_only = self.config.comment_only;
-        let external_section_prefixes_numeric = self.config.external_section_prefixes.as_slice();
-        let external_section_prefixes_bare = self.config.external_section_prefixes_bare.as_slice();
-        let section_namespace = self.config.section_namespace.as_deref();
         let known_section = &snapshot.section_ids_with_implied_parents;
 
         // (section_id, file) -> (resolved symbols, unresolved cite count)
@@ -3390,16 +3684,7 @@ impl SetEqualityValidator {
                 .unwrap_or(abs.clone());
             let rel_str = rel.to_string_lossy().to_string();
 
-            for (line, section_id) in extract_section_citations(
-                &content,
-                external_section_prefixes_numeric,
-                external_section_prefixes_bare,
-            ) {
-                if let Some(ns) = section_namespace {
-                    if citation_namespace(&section_id) != ns {
-                        continue;
-                    }
-                }
+            for (line, section_id) in attribution.citations_in(&abs, &content).cited {
                 if !known_section.contains(section_id.as_str()) {
                     continue;
                 }
@@ -3441,11 +3726,10 @@ impl SetEqualityValidator {
 
     /// Reverse citation index for citation-density reporting (the
     /// `report-spec-map` projection): `section_id -> [{file, line}]` for every
-    /// code site that cites the section. Reuses the same file walk, comment
-    /// strip, and namespace / known-section filtering as
-    /// [`Self::propose_implementations`], but aggregates the raw cite locations
-    /// per section without symbol resolution. Read-only — an L3 view substrate,
-    /// never a mutation.
+    /// code site that cites the section. Reuses the same file walk and the same
+    /// attribution resolver as [`Self::propose_implementations`], but aggregates
+    /// the raw cite locations per section without symbol resolution. Read-only —
+    /// an L3 view substrate, never a mutation.
     ///
     /// Only sections present in `snapshot.section_ids_with_implied_parents` are
     /// counted: a cite to a non-existent section is a hallucination
@@ -3454,13 +3738,11 @@ impl SetEqualityValidator {
     /// site list sorted by `(file, line)`.
     pub fn citation_index(
         &self,
-        workspace_root: &Path,
+        attribution: &CitationAttribution,
         snapshot: &mnemosyne_core::AtomicSnapshot,
     ) -> std::io::Result<BTreeMap<String, Vec<CitationSite>>> {
+        let workspace_root = attribution.root();
         let comment_only = self.config.comment_only;
-        let external_section_prefixes_numeric = self.config.external_section_prefixes.as_slice();
-        let external_section_prefixes_bare = self.config.external_section_prefixes_bare.as_slice();
-        let section_namespace = self.config.section_namespace.as_deref();
         let known_section = &snapshot.section_ids_with_implied_parents;
 
         let mut index: BTreeMap<String, Vec<CitationSite>> = BTreeMap::new();
@@ -3481,16 +3763,7 @@ impl SetEqualityValidator {
                 .unwrap_or(abs.clone());
             let rel_str = rel.to_string_lossy().to_string();
 
-            for (line, section_id) in extract_section_citations(
-                &content,
-                external_section_prefixes_numeric,
-                external_section_prefixes_bare,
-            ) {
-                if let Some(ns) = section_namespace {
-                    if citation_namespace(&section_id) != ns {
-                        continue;
-                    }
-                }
+            for (line, section_id) in attribution.citations_in(&abs, &content).cited {
                 if !known_section.contains(section_id.as_str()) {
                     continue;
                 }
@@ -3534,15 +3807,16 @@ impl SetEqualityValidator {
     /// Whatever the directory walk or [`Self::citation_index`] fails with.
     pub fn symbol_axis_coverage(
         &self,
-        workspace_root: &Path,
+        attribution: &CitationAttribution,
         snapshot: &mnemosyne_core::AtomicSnapshot,
     ) -> std::io::Result<SymbolAxisCoverage> {
+        let workspace_root = attribution.root();
         // The SAME extraction, namespace scoping and known-section filter the
         // gate applies, by calling it rather than by repeating it: a coverage
         // report free to disagree with the gate about what a citation is would
         // be reporting some other tool's coverage.
         let citing: BTreeSet<String> = self
-            .citation_index(workspace_root, snapshot)?
+            .citation_index(attribution, snapshot)?
             .values()
             .flatten()
             .map(|site| site.file.clone())
@@ -3653,7 +3927,15 @@ impl mnemosyne_core::Validator for SetEqualityValidator {
         ctx: &mnemosyne_core::ValidationContext<'_>,
     ) -> Result<Vec<CodeRefViolation>, mnemosyne_core::ValidatorError> {
         let snapshot = ctx.store.snapshot();
-        self.scan(ctx.workspace_root, &snapshot)
+        // The trait hands over a root, not an attribution, so this is where the
+        // numbering origin gets derived for a plugin-dispatched run — once, here,
+        // rather than per file or per axis (Round 867).
+        let attribution = CitationAttribution::new(
+            ctx.workspace_root,
+            &self.config,
+            NumberingOriginAxis::derive(ctx.workspace_root),
+        );
+        self.scan(&attribution, &snapshot)
             .map_err(|e| mnemosyne_core::ValidatorError::Internal(e.to_string()))
     }
 }
@@ -3667,34 +3949,35 @@ impl mnemosyne_core::Validator for SetEqualityValidator {
 /// will need authoring follow-up (no rejection — informational only).
 ///
 /// Skips file-read failures silently (consistent with the bidirectional
-/// scanner's behavior). Honors `comment_only` via `strip_to_comments` so
-/// fixture string literals don't generate noise.
+/// scanner's behavior).
+///
+/// Attributes through the SHARED resolver (Round 867). It used to call the
+/// extractor with two EMPTY prefix slices and no namespace scope, which made it
+/// the loosest of the five readers: a `UAX #9 §6.7` comment counted as decay of
+/// a section of ours numbered the same. Latent rather than live when found — this
+/// axis only runs for
+/// a superseded or removed section, and the trees available measured zero — but a
+/// predicate held by one reader and not its siblings is no predicate.
 ///
 /// `paths` is workspace-relative; symbol-side bindings are not consulted
 /// (decay is about cite locations, not implementation universe).
 pub fn scan_section_decay(
-    workspace_root: &Path,
+    attribution: &CitationAttribution,
     paths: &[String],
     section_id: &str,
-    comment_only: bool,
 ) -> std::io::Result<Vec<Citation>> {
+    let workspace_root = attribution.root();
     let files = walk_paths(workspace_root, paths)?;
     let mut hits = Vec::new();
     for abs in files {
-        let raw = match std::fs::read_to_string(&abs) {
-            Ok(c) => c,
-            Err(_) => continue,
-        };
-        let content = if comment_only {
-            strip_to_comments(&raw, comment_syntax_for(&abs))
-        } else {
-            raw
+        let Some(attributed) = attribution.attribute_file(&abs) else {
+            continue;
         };
         let rel = abs
             .strip_prefix(workspace_root)
             .map(|p| p.to_path_buf())
             .unwrap_or(abs.clone());
-        for (line, sid) in extract_section_citations(&content, &[], &[]) {
+        for (line, sid) in attributed.cited {
             if sid == section_id {
                 hits.push(Citation {
                     file: rel.clone(),
@@ -3880,6 +4163,31 @@ mod tests {
     };
     use mnemosyne_core::VerificationExpectation;
     use tempfile::TempDir;
+
+    /// A fixture tree STATES its numbering environment rather than asking the
+    /// disk (Round 867). These fixtures are bare temp directories with no VCS,
+    /// so deriving would answer `NotDetermined` and the tests would then be
+    /// asserting about a degraded path instead of the ordinary one.
+    fn no_foreign_subtree<'a>(
+        root: &'a Path,
+        config: &'a SetEqualityValidatorConfig,
+    ) -> CitationAttribution<'a> {
+        CitationAttribution::new(
+            root,
+            config,
+            NumberingOriginAxis::Measured {
+                foreign_subtrees: Vec::new(),
+            },
+        )
+    }
+
+    /// The decay axis consults only `comment_only` and the attribution.
+    fn decay_config(comment_only: bool) -> SetEqualityValidatorConfig {
+        SetEqualityValidatorConfig {
+            comment_only,
+            ..Default::default()
+        }
+    }
 
     /// Round 783 — the coverage check exists because `paths` is itself a claim
     /// about which trees hold citations, and that claim drifted exactly the way
@@ -4172,7 +4480,10 @@ mod tests {
             filter_id: filter_id.map(String::from),
         };
         let snapshot = store.snapshot();
-        validator.scan(workspace_root, &snapshot)
+        validator.scan(
+            &no_foreign_subtree(workspace_root, &validator.config),
+            &snapshot,
+        )
     }
 
     #[test]
@@ -4637,7 +4948,10 @@ mod tests {
             filter_id: None,
         };
         let cov = validator
-            .symbol_axis_coverage(tmp.path(), &store.snapshot())
+            .symbol_axis_coverage(
+                &no_foreign_subtree(tmp.path(), &validator.config),
+                &store.snapshot(),
+            )
             .unwrap();
 
         assert_eq!(
@@ -4740,7 +5054,12 @@ mod tests {
             filter_id: None,
         };
         let snapshot = store.snapshot();
-        let index = validator.citation_index(tmp.path(), &snapshot).unwrap();
+        let index = validator
+            .citation_index(
+                &no_foreign_subtree(tmp.path(), &validator.config),
+                &snapshot,
+            )
+            .unwrap();
 
         // id 999 not in the store: excluded (hallucination, not density).
         assert_eq!(index.len(), 1, "got: {:?}", index);
@@ -5006,7 +5325,12 @@ mod tests {
             symbol_resolvers: BTreeMap::new(),
             filter_id: None,
         };
-        validator.scan(workspace_root, &store.snapshot()).unwrap()
+        validator
+            .scan(
+                &no_foreign_subtree(workspace_root, &validator.config),
+                &store.snapshot(),
+            )
+            .unwrap()
     }
 
     fn verification_missing_ids(v: &[CodeRefViolation]) -> Vec<&str> {
@@ -5591,7 +5915,13 @@ mod tests {
             "// §39 here\n// §61 here\n// §39 again\n// §99 elsewhere\n",
         )
         .unwrap();
-        let hits = scan_section_decay(tmp.path(), &["src/".to_string()], "39", true).unwrap();
+        let cfg = decay_config(true);
+        let hits = scan_section_decay(
+            &no_foreign_subtree(tmp.path(), &cfg),
+            &["src/".to_string()],
+            "39",
+        )
+        .unwrap();
         assert_eq!(hits.len(), 2);
         assert_eq!(hits[0].entry_id, "§39");
         assert_eq!(hits[0].line, 1);
@@ -5604,7 +5934,13 @@ mod tests {
         let src = tmp.path().join("src");
         std::fs::create_dir_all(&src).unwrap();
         std::fs::write(src.join("clean.rs"), "fn main() {}\n").unwrap();
-        let hits = scan_section_decay(tmp.path(), &["src/".to_string()], "39", true).unwrap();
+        let cfg = decay_config(true);
+        let hits = scan_section_decay(
+            &no_foreign_subtree(tmp.path(), &cfg),
+            &["src/".to_string()],
+            "39",
+        )
+        .unwrap();
         assert!(hits.is_empty());
     }
 
@@ -5621,15 +5957,26 @@ mod tests {
             "let s = \"§39 in string\";\n// §39 in comment\n",
         )
         .unwrap();
-        let comment_hits =
-            scan_section_decay(tmp.path(), &["src/".to_string()], "39", true).unwrap();
+        let comment_cfg = decay_config(true);
+        let comment_hits = scan_section_decay(
+            &no_foreign_subtree(tmp.path(), &comment_cfg),
+            &["src/".to_string()],
+            "39",
+        )
+        .unwrap();
         assert_eq!(
             comment_hits.len(),
             1,
             "comment_only excludes string literal"
         );
         assert_eq!(comment_hits[0].line, 2);
-        let raw_hits = scan_section_decay(tmp.path(), &["src/".to_string()], "39", false).unwrap();
+        let raw_cfg = decay_config(false);
+        let raw_hits = scan_section_decay(
+            &no_foreign_subtree(tmp.path(), &raw_cfg),
+            &["src/".to_string()],
+            "39",
+        )
+        .unwrap();
         assert_eq!(raw_hits.len(), 2, "comment_only=false picks up both");
     }
 
@@ -8446,6 +8793,311 @@ mod tests {
         assert!(
             lines.contains(&2),
             "unquoted assertion still flags: {hits:?}"
+        );
+    }
+    // ============ Round 867 — numbering origin + one resolver ============
+
+    /// Stage a gitlink at `path`: the index entry git writes for a submodule.
+    ///
+    /// A real submodule checkout is not needed and would not be more faithful —
+    /// what the derivation reads is the parent's INDEX, and mode `160000` there is
+    /// what says "another repository". The object need not be a commit for git to
+    /// accept the entry, and the fixture needs no commit and no user identity;
+    /// both measured before this was written (Round 865's rule).
+    fn git_gitlink_at(root: &Path, path: &str) {
+        let run = |args: &[&str]| -> String {
+            let out = std::process::Command::new("git")
+                .args(args)
+                .current_dir(root)
+                .output()
+                .expect("git must be runnable to test the numbering-origin axis");
+            assert!(
+                out.status.success(),
+                "git {args:?} failed: {}",
+                String::from_utf8_lossy(&out.stderr)
+            );
+            String::from_utf8_lossy(&out.stdout).trim().to_string()
+        };
+        let object = run(&["hash-object", "-w", "--stdin"]);
+        run(&[
+            "update-index",
+            "--add",
+            "--cacheinfo",
+            &format!("160000,{object},{path}"),
+        ]);
+    }
+
+    /// The derivation names another repository, and only that.
+    ///
+    /// The `vendor/scenarios` sibling is the discriminating input: a string-prefix
+    /// membership test calls it foreign because `vendor/sce` is a prefix of it, and
+    /// then un-gates a directory nobody vendored. That is the collapse Round 866
+    /// had to inject against on the sibling axis, so it is asserted here rather
+    /// than trusted.
+    #[test]
+    fn the_vcs_names_another_repository_and_a_prefix_of_one_is_not_it() {
+        let tmp = TempDir::new().unwrap();
+        let root = tmp.path();
+        git_init_at(root);
+        std::fs::create_dir_all(root.join("vendor/sce")).unwrap();
+        std::fs::create_dir_all(root.join("vendor/scenarios")).unwrap();
+        std::fs::create_dir_all(root.join("src")).unwrap();
+        std::fs::write(root.join("vendor/sce/doc.md"), "per §6.2\n").unwrap();
+        std::fs::write(root.join("vendor/scenarios/one.rs"), "// §6.2\n").unwrap();
+        std::fs::write(root.join("src/own.rs"), "// §6.2\n").unwrap();
+        git_gitlink_at(root, "vendor/sce");
+
+        let axis = NumberingOriginAxis::derive(root);
+        assert_eq!(
+            axis,
+            NumberingOriginAxis::Measured {
+                foreign_subtrees: vec![PathBuf::from("vendor/sce")],
+            },
+            "the index names one gitlink and nothing else: {axis:?}"
+        );
+
+        let cfg = decay_config(true);
+        let attr = CitationAttribution::new(root, &cfg, axis);
+        assert_eq!(
+            attr.citations_in(&root.join("vendor/sce/doc.md"), "per §6.2\n")
+                .cited,
+            Vec::new(),
+            "a file inside the other repository cites the other repository"
+        );
+        // The two files a string prefix would confuse, and the plain sibling.
+        for still_ours in ["vendor/scenarios/one.rs", "src/own.rs"] {
+            let got = attr.citations_in(&root.join(still_ours), "// §6.2\n").cited;
+            assert_eq!(
+                got,
+                vec![(1, "6.2".to_string())],
+                "{still_ours} is this tree's own file: {got:?}"
+            );
+        }
+    }
+
+    /// No VCS is a THIRD state, and it attributes nothing.
+    ///
+    /// This axis is the only one in the family that LOOSENS — it makes citations
+    /// vanish — so an unanswerable tree must leave the gate exactly as tight as it
+    /// was. Zero foreign subtrees and "nobody could be asked" therefore agree
+    /// about filtering and must NOT agree in the report, which is the silence
+    /// Round 856 removed and Round 864 typed.
+    #[test]
+    fn no_vcs_is_its_own_state_and_still_attributes_every_citation_here() {
+        let tmp = TempDir::new().unwrap();
+        let root = tmp.path();
+        std::fs::create_dir_all(root.join("src")).unwrap();
+        std::fs::write(root.join("src/own.rs"), "// §6.2\n").unwrap();
+
+        let axis = NumberingOriginAxis::derive(root);
+        let NumberingOriginAxis::NotDetermined { reason } = &axis else {
+            panic!("a bare temp directory is not a repository: {axis:?}");
+        };
+        assert!(
+            !reason.is_empty(),
+            "the state carries the VCS's own words, or the reader cannot act"
+        );
+        assert!(
+            axis.foreign_subtrees().is_empty(),
+            "an unanswerable tree must not be able to un-gate anything"
+        );
+
+        let cfg = decay_config(true);
+        let attr = CitationAttribution::new(root, &cfg, axis);
+        let files: BTreeSet<PathBuf> = [root.join("src/own.rs")].into_iter().collect();
+        let report = numbering_origin_coverage(&attr, &files);
+        assert_eq!(
+            (
+                report.files_considered,
+                report.files_foreign,
+                report.citations_skipped
+            ),
+            (1, 0, 0),
+            "nothing was removed: {report:?}"
+        );
+        assert!(
+            matches!(report.axis, NumberingOriginAxis::NotDetermined { .. }),
+            "the report keeps the state, so zero-removed does not read as measured"
+        );
+    }
+
+    /// The count is the whole defence, so it is asserted non-vacuously.
+    ///
+    /// The line exists because this axis loosens: a wrong verdict silently
+    /// un-gates real citations, and only the number and the subtree name make that
+    /// visible. A report that said `0` while the filter dropped two would be worse
+    /// than no report, so the fixture drops two and the assertion reads them back
+    /// per subtree.
+    #[test]
+    fn the_numbering_origin_line_counts_what_it_removed_and_names_where() {
+        let tmp = TempDir::new().unwrap();
+        let root = tmp.path();
+        git_init_at(root);
+        std::fs::create_dir_all(root.join("vendor/sce/docs")).unwrap();
+        std::fs::create_dir_all(root.join("src")).unwrap();
+        // Two citations in the other repository, one of them beside a token the
+        // prefix registries would have skipped anyway — so the count is of
+        // citations of THIS store, not of section-shaped tokens.
+        std::fs::write(root.join("vendor/sce/doc.md"), "per §6.2 and §6.4\n").unwrap();
+        std::fs::write(root.join("vendor/sce/docs/layout.md"), "UAX §9 only\n").unwrap();
+        std::fs::write(root.join("src/own.rs"), "// §6.2 ours\n").unwrap();
+        git_gitlink_at(root, "vendor/sce");
+
+        let cfg = SetEqualityValidatorConfig {
+            comment_only: false,
+            external_section_prefixes_bare: vec!["UAX".to_string()],
+            ..Default::default()
+        };
+        let attr = CitationAttribution::new(root, &cfg, NumberingOriginAxis::derive(root));
+        let files: BTreeSet<PathBuf> = [
+            root.join("vendor/sce/doc.md"),
+            root.join("vendor/sce/docs/layout.md"),
+            root.join("src/own.rs"),
+        ]
+        .into_iter()
+        .collect();
+        let report = numbering_origin_coverage(&attr, &files);
+        assert_eq!(
+            (
+                report.files_considered,
+                report.files_foreign,
+                report.citations_skipped
+            ),
+            (3, 2, 2),
+            "two files are inside the other repository and two citations went \
+             with them; the registered `UAX §9` was never this store's to lose: \
+             {report:?}"
+        );
+        assert_eq!(
+            report.skipped_per_subtree,
+            [("vendor/sce".to_string(), 2)]
+                .into_iter()
+                .collect::<BTreeMap<_, _>>(),
+            "the reader has to know WHICH tree went quiet: {report:?}"
+        );
+    }
+
+    /// PARITY — five readers, one question, one answer (the Round 305 substrate).
+    ///
+    /// Round 867 collapsed three predicates into one: `scan`,
+    /// `propose_implementations` and `citation_index` honoured the prefix
+    /// registries and `section_namespace`, `swallowed_citations` honoured the
+    /// registries and not the namespace, and `scan_section_decay` honoured
+    /// neither. This test is what keeps them from drifting apart again: the same
+    /// foreign citation is driven through all five, and each must also still see
+    /// this tree's own citation, so neither half can pass vacuously.
+    ///
+    /// The swallowed axis reads the EXCLUDED set rather than the read set, so it
+    /// gets its own config over the same tree — that is the reader's own idiom,
+    /// not a second fixture. Its non-vacuity comes from a second excluded tree
+    /// that is NOT foreign and must still be reported.
+    #[test]
+    fn five_readers_answer_alike_about_one_foreign_citation() {
+        let tmp = TempDir::new().unwrap();
+        let root = tmp.path();
+        git_init_at(root);
+        std::fs::create_dir_all(root.join("vendor/sce")).unwrap();
+        std::fs::create_dir_all(root.join("src")).unwrap();
+        std::fs::create_dir_all(root.join("generated")).unwrap();
+        std::fs::write(root.join("src/own.rs"), "// §7 ours\n").unwrap();
+        std::fs::write(root.join("vendor/sce/doc.md"), "// §39 theirs\n").unwrap();
+        std::fs::write(root.join("generated/out.rs"), "// §61 generated\n").unwrap();
+        git_gitlink_at(root, "vendor/sce");
+
+        let mut store = AtomicStore::new();
+        for id in ["7", "39", "61"] {
+            store
+                .sections
+                .insert(id.into(), mnemosyne_atomic::AtomicSection::default());
+        }
+        let snapshot = mnemosyne_core::AtomicStoreView::snapshot(&store);
+
+        // Four readers walk `paths`, so the foreign tree is INSIDE it — anything
+        // narrower and their agreement would be about a file none of them read.
+        let read_cfg = SetEqualityValidatorConfig {
+            paths: vec!["src/".to_string(), "vendor/".to_string()],
+            comment_only: true,
+            severity_binding: mnemosyne_config::Severity::Reject,
+            ..Default::default()
+        };
+        let validator = SetEqualityValidator {
+            config: read_cfg.clone(),
+            entry_id_prefix: "Round ".to_string(),
+            orphan_ledger: vec![],
+            symbol_resolvers: BTreeMap::new(),
+            filter_id: None,
+        };
+        let attr = CitationAttribution::new(root, &read_cfg, NumberingOriginAxis::derive(root));
+
+        // 1. the gate. No bindings exist, so every counted citation surfaces as
+        //    CitationUnbound — which makes "counted" observable.
+        let unbound: Vec<String> = validator
+            .scan(&attr, &snapshot)
+            .unwrap()
+            .iter()
+            .filter_map(|v| match v {
+                CodeRefViolation::Citation {
+                    citation,
+                    kind: ViolationKind::CitationUnbound,
+                    ..
+                } => Some(citation.entry_id.clone()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            unbound,
+            vec!["§7".to_string()],
+            "the gate counts ours and not theirs: {unbound:?}"
+        );
+
+        // 2. the density index.
+        let index: Vec<String> = validator
+            .citation_index(&attr, &snapshot)
+            .unwrap()
+            .keys()
+            .cloned()
+            .collect();
+        assert_eq!(index, vec!["7".to_string()], "index: {index:?}");
+
+        // 3. the binding proposal.
+        let proposed: Vec<String> = validator
+            .propose_implementations(&attr, &snapshot)
+            .unwrap()
+            .iter()
+            .map(|p| p.section_id.clone())
+            .collect();
+        assert_eq!(proposed, vec!["7".to_string()], "proposals: {proposed:?}");
+
+        // 4. the decay trigger — the loosest of the five before this round.
+        let theirs = scan_section_decay(&attr, &read_cfg.paths, "39").unwrap();
+        assert!(
+            theirs.is_empty(),
+            "a superseded §39 here does not decay because of their §39: {theirs:?}"
+        );
+        let ours = scan_section_decay(&attr, &read_cfg.paths, "7").unwrap();
+        assert_eq!(ours.len(), 1, "and ours still decays: {ours:?}");
+
+        // 5. the exclusion-integrity axis, in its own idiom: it reads the
+        //    EXCLUDED set, so the foreign tree is declared rather than scanned.
+        let excl_cfg = SetEqualityValidatorConfig {
+            paths: vec!["src/".to_string()],
+            scan_exclusions: vec!["vendor/".to_string(), "generated/".to_string()],
+            comment_only: true,
+            ..Default::default()
+        };
+        let coverage = scan_coverage(root, &excl_cfg.paths, &excl_cfg.scan_exclusions).unwrap();
+        let excl_attr =
+            CitationAttribution::new(root, &excl_cfg, NumberingOriginAxis::derive(root));
+        let known: BTreeSet<String> = ["7", "39", "61"].iter().map(|s| (*s).to_string()).collect();
+        let swallowed: Vec<String> = swallowed_citations(&coverage, &known, &excl_attr)
+            .into_iter()
+            .map(|s| s.section_id)
+            .collect();
+        assert_eq!(
+            swallowed,
+            vec!["61".to_string()],
+            "the generated tree really did swallow §61 and must still reject; \
+             their §39 was never this store's coverage to lose: {swallowed:?}"
         );
     }
 }

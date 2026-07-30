@@ -148,6 +148,22 @@ when the project never numbers its history rows.
  exclusion swallowed, `validate-workspace` prints the same **vcs axis** over that
  set, in the same three states. A large `N of M` there means the `0 swallowed`
  above it was computed from files a fresh clone does not have.
+ **A vendored tree is not "swallowing" anything, and you do not have to declare
+ that.** If a subtree is a git submodule, the `§N.M` in it belongs to that
+ project's numbering, and every axis here skips it: `git ls-files --stage`
+ marks a submodule with mode `160000`, and a file under such a path is read as
+ another repository's. So `scan_exclusions = ["vendor/"]` over a submodule no
+ longer rejects the vendored project's citations of its own sections — which was
+ the one case the exclusion-integrity check got wrong, reported from the field by
+ two consumers whose section ids collided with a vendored spec's. There is
+ deliberately **no key** for this: a declaration would be a claim nothing could
+ check, and this codebase's hand-maintained lists have all drifted. Both commands
+ print a **numbering origin** line every run, in the same three states, naming the
+ subtrees and how many `§`-tokens went with them — read it, because this is the
+ one axis in the family that makes citations DISAPPEAR. A monorepo that
+ deliberately shares one numbering across a submodule is the shape this cannot
+ express; if that is yours, the line will say so and the override is a
+ conversation, not a config key.
 - **`[plugins.set_equality_validator].severity_missing`** — `warn` or `reject`. Fires when a
  citation's target id is absent from the atomic store (hallucination).
  Start at `warn` to surface the baseline, promote to `reject` once
@@ -218,6 +234,13 @@ when the project never numbers its history rows.
  Kept distinct from `external_section_prefixes` so registration is
  an *explicit opt-in* per prefix — see *External standard prefix
  kinds* below for the FP risk on generic-sounding tokens.
+ Both registries key on the CITING PROSE, so they reach a citation only when its
+ author named the document. A vendored project's documents cite their own sections
+ with the document left implicit (`per §6.2`), and no prefix can reach that — the
+ **numbering origin** axis under `scan_exclusions` above is what handles it,
+ by where the file lives rather than by what the token says. The two compose:
+ register a prefix for `W3C SCXML §5.10` in *your* source, and let the submodule
+ boundary answer for the same reference inside the vendored tree.
 - **`[plugins.set_equality_validator].severity_inventory`** — `warn` / `reject` / `info`.
  Fires when an inventory citation's id is absent from the atomic store
  (`InventoryMissing`) or its registered status is `Deprecated`

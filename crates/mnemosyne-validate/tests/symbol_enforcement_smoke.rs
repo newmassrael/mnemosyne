@@ -23,8 +23,26 @@ use mnemosyne_atomic::{add_section, add_section_binding, AtomicStore, BindingKin
 use mnemosyne_config::SetEqualityValidatorConfig;
 use mnemosyne_core::{AtomicStoreView, SymbolResolver};
 use mnemosyne_plugin_tree_sitter_rust::TreesitterRustResolver;
-use mnemosyne_validate::code_refs::{CodeRefViolation, SetEqualityValidator, ViolationKind};
+use mnemosyne_validate::code_refs::{
+    CitationAttribution, CodeRefViolation, NumberingOriginAxis, SetEqualityValidator, ViolationKind,
+};
 use tempfile::TempDir;
+
+/// This fixture is a bare temp directory and not a repository, so it STATES its
+/// numbering environment instead of asking the disk (Round 867): nothing here
+/// belongs to another document's numbering.
+fn no_foreign_subtree<'a>(
+    root: &'a std::path::Path,
+    config: &'a SetEqualityValidatorConfig,
+) -> CitationAttribution<'a> {
+    CitationAttribution::new(
+        root,
+        config,
+        NumberingOriginAxis::Measured {
+            foreign_subtrees: Vec::new(),
+        },
+    )
+}
 
 fn rust_resolver_map() -> BTreeMap<String, Box<dyn SymbolResolver>> {
     let mut m: BTreeMap<String, Box<dyn SymbolResolver>> = BTreeMap::new();
@@ -115,7 +133,12 @@ fn happy_path_symbol_matches_no_mismatch_violation() {
     let (tmp, store) = stand_up(Some("alpha"), "alpha");
     let validator = build_validator(rust_resolver_map());
     let snapshot = store.snapshot();
-    let v = validator.scan(tmp.path(), &snapshot).unwrap();
+    let v = validator
+        .scan(
+            &no_foreign_subtree(tmp.path(), &validator.config),
+            &snapshot,
+        )
+        .unwrap();
     let mismatches: Vec<_> = v
         .iter()
         .filter(|x| {
@@ -141,7 +164,12 @@ fn mismatch_path_surfaces_symbol_mismatch_violation() {
     let (tmp, store) = stand_up(Some("alpha"), "beta");
     let validator = build_validator(rust_resolver_map());
     let snapshot = store.snapshot();
-    let v = validator.scan(tmp.path(), &snapshot).unwrap();
+    let v = validator
+        .scan(
+            &no_foreign_subtree(tmp.path(), &validator.config),
+            &snapshot,
+        )
+        .unwrap();
     let mismatches: Vec<_> = v
         .iter()
         .filter(|x| {
@@ -176,7 +204,12 @@ fn opt_out_path_no_resolver_passes_file_only_setequality() {
     let (tmp, store) = stand_up(Some("alpha"), "beta");
     let validator = build_validator(BTreeMap::new());
     let snapshot = store.snapshot();
-    let v = validator.scan(tmp.path(), &snapshot).unwrap();
+    let v = validator
+        .scan(
+            &no_foreign_subtree(tmp.path(), &validator.config),
+            &snapshot,
+        )
+        .unwrap();
     let mismatches: Vec<_> = v
         .iter()
         .filter(|x| {
@@ -204,7 +237,12 @@ fn no_symbol_in_impl_skips_axis_even_with_resolver() {
     let (tmp, store) = stand_up(None, "anything");
     let validator = build_validator(rust_resolver_map());
     let snapshot = store.snapshot();
-    let v = validator.scan(tmp.path(), &snapshot).unwrap();
+    let v = validator
+        .scan(
+            &no_foreign_subtree(tmp.path(), &validator.config),
+            &snapshot,
+        )
+        .unwrap();
     assert!(v.iter().all(|x| !matches!(
         x,
         CodeRefViolation::Citation {
@@ -260,7 +298,12 @@ fn set_membership_multiple_symbols_one_file() {
 
     let validator = build_validator(rust_resolver_map());
     let snapshot = store.snapshot();
-    let v = validator.scan(tmp.path(), &snapshot).unwrap();
+    let v = validator
+        .scan(
+            &no_foreign_subtree(tmp.path(), &validator.config),
+            &snapshot,
+        )
+        .unwrap();
     let mismatches: Vec<_> = v
         .iter()
         .filter(|x| {

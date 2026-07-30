@@ -66,6 +66,13 @@ pub struct ValidateWorkspaceReport {
     pub scan_excluded_vcs: mnemosyne_validate::code_refs::VcsIgnoreAxis,
     /// Round 840 — citations an exclusion removed from the gate entirely.
     pub scan_swallowed_citations: Vec<String>,
+    /// Round 867 — which subtrees the tree's own VCS says belong to ANOTHER
+    /// repository, and how many citations of this store that removed from both
+    /// sides of the swallowed answer. `None` = no citation-gate config, so there
+    /// is nothing to attribute. Advisory, and LOUD BY OBLIGATION: every sibling
+    /// axis tightens and this one loosens, so a wrong verdict here un-gates real
+    /// citations, and the count is what keeps that from being silent.
+    pub scan_numbering_origin: Option<mnemosyne_validate::code_refs::NumberingOriginReport>,
     pub failed: bool,
     pub failure_reasons: Vec<String>,
 }
@@ -303,33 +310,38 @@ pub fn validate_workspace(workspace_root: &Path) -> Result<ValidateWorkspaceRepo
     // reads. The same consumer reported the first version answering that
     // whole-tree question from a Rust-only file set, which named seven sections
     // cited and bound in scanned C++ as excluded-only.
+    //
+    // Round 867 — the attribution is derived ONCE here and shared by the axis and
+    // its coverage line below, so no two answers to "whose numbering is this" can
+    // exist in one run.
+    let code_refs_cfg = loaded
+        .config
+        .plugins
+        .as_ref()
+        .and_then(|p| p.set_equality_validator.as_ref());
+    let attribution = code_refs_cfg.map(|c| {
+        mnemosyne_validate::code_refs::CitationAttribution::new(
+            code_root,
+            c,
+            mnemosyne_validate::code_refs::NumberingOriginAxis::derive(code_root),
+        )
+    });
     let swallowed: Vec<String> = {
-        let cfg = loaded
-            .config
-            .plugins
-            .as_ref()
-            .and_then(|p| p.set_equality_validator.as_ref());
-        match cfg {
+        match attribution.as_ref() {
             None => Vec::new(),
-            Some(c) => mnemosyne_validate::code_refs::swallowed_citations(
-                &scan,
-                &id_set,
-                &c.external_section_prefixes,
-                &c.external_section_prefixes_bare,
-                c.comment_only,
-            )
-            .into_iter()
-            .map(|s| {
-                format!(
-                    "`{}` is cited only inside an excluded tree ({}:{}, {} file(s)) — \
+            Some(attr) => mnemosyne_validate::code_refs::swallowed_citations(&scan, &id_set, attr)
+                .into_iter()
+                .map(|s| {
+                    format!(
+                        "`{}` is cited only inside an excluded tree ({}:{}, {} file(s)) — \
                      the exclusion removed it from the gate entirely",
-                    s.section_id,
-                    rel(&s.file),
-                    s.line,
-                    s.occurrences
-                )
-            })
-            .collect(),
+                        s.section_id,
+                        rel(&s.file),
+                        s.line,
+                        s.occurrences
+                    )
+                })
+                .collect(),
         }
     };
 
@@ -342,6 +354,20 @@ pub fn validate_workspace(workspace_root: &Path) -> Result<ValidateWorkspaceRepo
     // measured result rather than a property (the Round 862 rule).
     let excluded_vcs =
         mnemosyne_validate::code_refs::vcs_ignored_among(code_root, &scan.excluded_files);
+
+    // Round 867 — this axis LOOSENS where its siblings tighten, so it counts out
+    // loud. The set is BOTH sides the swallowed answer is read out of: the read
+    // set decides `still_seen` and the excluded set decides what is found, so a
+    // subtree derived foreign on either side moves the answer.
+    let numbering_origin = attribution.as_ref().map(|attr| {
+        let both: std::collections::BTreeSet<std::path::PathBuf> = scan
+            .scanned_files
+            .iter()
+            .chain(scan.excluded_files.iter())
+            .cloned()
+            .collect();
+        mnemosyne_validate::code_refs::numbering_origin_coverage(attr, &both)
+    });
 
     // Failure aggregation.
     let mut failure_reasons: Vec<String> = Vec::new();
@@ -457,6 +483,7 @@ pub fn validate_workspace(workspace_root: &Path) -> Result<ValidateWorkspaceRepo
         scan_excluded_files: scan.excluded_files.len(),
         scan_excluded_vcs: excluded_vcs,
         scan_swallowed_citations: swallowed,
+        scan_numbering_origin: numbering_origin,
         failed,
         failure_reasons,
     })
@@ -602,6 +629,38 @@ impl ValidateWorkspaceReport {
                     out,
                     "  vcs axis (advisory, Round 866): not determined — {reason}"
                 );
+            }
+        }
+        // Round 867 — printed beside the count for the same reason, and printed
+        // even at zero: this is the one axis in the family that makes citations
+        // DISAPPEAR, so a run that skipped some must say how many and from where.
+        if let Some(origin) = &self.scan_numbering_origin {
+            match &origin.axis {
+                mnemosyne_validate::code_refs::NumberingOriginAxis::Measured {
+                    foreign_subtrees,
+                } => {
+                    let _ = writeln!(
+                        out,
+                        "  numbering origin (advisory, Round 867): {} foreign subtree(s) by this \
+                         tree's own VCS — {} §-token(s) in {} of {} file(s) are NOT read as this \
+                         store's {}",
+                        foreign_subtrees.len(),
+                        origin.citations_skipped,
+                        origin.files_foreign,
+                        origin.files_considered,
+                        mnemosyne_validate::code_refs::summarize_extensions(
+                            &origin.skipped_per_subtree,
+                            5
+                        ),
+                    );
+                }
+                mnemosyne_validate::code_refs::NumberingOriginAxis::NotDetermined { reason } => {
+                    let _ = writeln!(
+                        out,
+                        "  numbering origin (advisory, Round 867): not determined — {reason}; \
+                         every citation stays this store's"
+                    );
+                }
             }
         }
         for e in &self.scan_swallowed_citations {

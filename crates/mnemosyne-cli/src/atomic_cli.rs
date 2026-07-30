@@ -4306,12 +4306,14 @@ fn print_section_decay_trigger(
         Some(c) if !c.paths.is_empty() => c,
         _ => return,
     };
-    let hits = match scan_section_decay(
+    // Round 867 — one attribution for this trigger, so a decay hit is a citation
+    // by the same definition the gate uses.
+    let attribution = mnemosyne_validate::code_refs::CitationAttribution::new(
         workspace_root,
-        &code_refs_cfg.paths,
-        section_id,
-        code_refs_cfg.comment_only,
-    ) {
+        code_refs_cfg,
+        mnemosyne_validate::code_refs::NumberingOriginAxis::derive(workspace_root),
+    );
+    let hits = match scan_section_decay(&attribution, &code_refs_cfg.paths, section_id) {
         Ok(h) => h,
         Err(e) => {
             eprintln!("[cascade] decay-trigger scan io error: {}", e);

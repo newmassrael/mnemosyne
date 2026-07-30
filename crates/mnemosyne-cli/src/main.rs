@@ -2057,12 +2057,19 @@ fn print_atomic_decay_surface(root: &std::path::Path) -> Result<()> {
     }
     let mut total = 0usize;
     let mut per_section: Vec<(&str, usize)> = Vec::new();
+    // Round 867 — ONE attribution for the whole sweep. Deriving it per section
+    // would ask the VCS the same question once per superseded section and let the
+    // answers differ mid-report.
+    let attribution = mnemosyne_validate::code_refs::CitationAttribution::new(
+        root,
+        code_refs_cfg,
+        mnemosyne_validate::code_refs::NumberingOriginAxis::derive(root),
+    );
     for sid in &targets {
         let hits = mnemosyne_validate::code_refs::scan_section_decay(
-            root,
+            &attribution,
             &code_refs_cfg.paths,
             sid,
-            code_refs_cfg.comment_only,
         )
         .map_err(|e| anyhow!("scan section decay (§{}): {}", sid, e))?;
         if !hits.is_empty() {
@@ -5276,7 +5283,12 @@ fn cmd_report_spec_map(args: &[String]) -> Result<()> {
                 symbol_resolvers: build_symbol_resolver_map(&loaded.config)?,
                 filter_id: None,
             };
-            validator.citation_index(&root, &snapshot)?
+            let attribution = mnemosyne_validate::code_refs::CitationAttribution::new(
+                &root,
+                cfg,
+                mnemosyne_validate::code_refs::NumberingOriginAxis::derive(&root),
+            );
+            validator.citation_index(&attribution, &snapshot)?
         }
         None => std::collections::BTreeMap::new(),
     };
@@ -5472,7 +5484,12 @@ fn cmd_propose_implementations(args: &[String]) -> Result<()> {
         filter_id: None,
     };
     let snapshot = mnemosyne_core::AtomicStoreView::snapshot(&store);
-    let mut proposals = validator.propose_implementations(&root, &snapshot)?;
+    let attribution = mnemosyne_validate::code_refs::CitationAttribution::new(
+        &root,
+        cfg,
+        mnemosyne_validate::code_refs::NumberingOriginAxis::derive(&root),
+    );
+    let mut proposals = validator.propose_implementations(&attribution, &snapshot)?;
     if let Some(ref sec) = section_filter {
         proposals.retain(|p| p.section_id == *sec);
     }
@@ -5727,12 +5744,24 @@ fn cmd_validate_code_refs(args: &[String]) -> Result<()> {
         <SetEqualityValidator as mnemosyne_core::Validator>::validate(&validator, &ctx)
             .map_err(|e| anyhow!("SetEqualityValidator dispatch failed: {}", e))?;
 
+    // Round 867 — the attribution for the advisory axes below. The plugin trait
+    // hands `validate` a root and not this, so the derivation above ran inside it:
+    // two reads of one immutable question, stated rather than hidden, because the
+    // alternative is leaking a citation-gate concern into `ValidationContext`.
+    let attribution = mnemosyne_validate::code_refs::CitationAttribution::new(
+        &root,
+        cfg,
+        mnemosyne_validate::code_refs::NumberingOriginAxis::derive(&root),
+    );
+
     // Round 855 — what the symbol axis could NOT reach, computed with the
     // resolver map this run actually built. Advisory and printed every run:
     // `severity_binding = reject` reads as symbol-level enforcement, and for
     // an unreachable file it is file-level, silently.
-    let symbol_axis = validator
-        .symbol_axis_coverage(&root, &mnemosyne_core::AtomicStoreView::snapshot(&store))?;
+    let symbol_axis = validator.symbol_axis_coverage(
+        &attribution,
+        &mnemosyne_core::AtomicStoreView::snapshot(&store),
+    )?;
 
     // Round 864 — what the tree's own VCS calls build output inside the read
     // set. Advisory and printed every run, in all three states: the hand list
@@ -5740,12 +5769,18 @@ fn cmd_validate_code_refs(args: &[String]) -> Result<()> {
     // so "no build output here" is a claim this axis is the only one able to
     // check. Asked of the tree rather than of a list, which is what keeps the
     // answer the same for a developer and for CI.
-    let vcs_axis = mnemosyne_validate::code_refs::vcs_ignored_among(
-        &root,
-        &mnemosyne_validate::code_refs::walk_paths(&root, &cfg.paths)?
+    let read_set: std::collections::BTreeSet<std::path::PathBuf> =
+        mnemosyne_validate::code_refs::walk_paths(&root, &cfg.paths)?
             .into_iter()
-            .collect(),
-    );
+            .collect();
+    let vcs_axis = mnemosyne_validate::code_refs::vcs_ignored_among(&root, &read_set);
+
+    // Round 867 — which of those files speak another document's numbering, and
+    // how many citations of this store that removed. Printed every run and even
+    // at zero: this axis LOOSENS, so a silent one cannot be told from a run that
+    // un-gated something.
+    let numbering_origin =
+        mnemosyne_validate::code_refs::numbering_origin_coverage(&attribution, &read_set);
 
     // Per-class counting from typed enum — `CodeRefViolation::kind_tag`
     // is the stable string key shared with `validate-code-refs --json`
@@ -5857,6 +5892,7 @@ fn cmd_validate_code_refs(args: &[String]) -> Result<()> {
             "filter_id": filter_id,
             "symbol_axis": symbol_axis,
             "vcs_axis": vcs_axis,
+            "numbering_origin": numbering_origin,
             "violations": view,
             })
         );
@@ -5932,6 +5968,35 @@ fn cmd_validate_code_refs(args: &[String]) -> Result<()> {
             }
             mnemosyne_validate::code_refs::VcsIgnoreAxis::NotDetermined { reason } => {
                 println!("vcs axis (advisory, Round 864): not determined — {reason}");
+            }
+        }
+        match &numbering_origin.axis {
+            mnemosyne_validate::code_refs::NumberingOriginAxis::Measured { foreign_subtrees } => {
+                println!(
+                    "numbering origin (advisory, Round 867): {} foreign subtree(s) by this tree's \
+                     own VCS — {} §-token(s) in {} of {} scanned file(s) are NOT read as this \
+                     store's {}",
+                    foreign_subtrees.len(),
+                    numbering_origin.citations_skipped,
+                    numbering_origin.files_foreign,
+                    numbering_origin.files_considered,
+                    mnemosyne_validate::code_refs::summarize_extensions(
+                        &numbering_origin.skipped_per_subtree,
+                        5
+                    )
+                );
+                if numbering_origin.citations_skipped > 0 {
+                    println!(
+                        "  they belong to the numbering of another repository this tree \
+                         vendors, so this gate never had them to lose"
+                    );
+                }
+            }
+            mnemosyne_validate::code_refs::NumberingOriginAxis::NotDetermined { reason } => {
+                println!(
+                    "numbering origin (advisory, Round 867): not determined — {reason}; every \
+                     citation stays this store's"
+                );
             }
         }
         if !cfg.inventory_prefixes.is_empty() {
