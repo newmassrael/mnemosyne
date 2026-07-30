@@ -58,8 +58,16 @@ fn main() {
     // from two worlds), order is load-bearing (a generator that pooled per
     // section and forgot the per-world sequence would hand `dark` main's order),
     // and the pool key is the PAYLOAD rather than the fact id (keying by
-    // `fact_id`, as the consumer's request proposed, would collapse the two
-    // `f-a`s into one and give `dark` a mode it never had).
+    // `fact_id` collapses the two `f-a`s into one and gives `dark` a mode it
+    // never had).
+    //
+    // Round 853 — the third leg is a claim about the TYPE and not about any
+    // store: a fact carrying two payloads is a shape `LinePart` admits and the
+    // current upstream never produces, because `mode` and `object` resolve per
+    // (telling, fact) and a projection has one telling. It is here so that the
+    // generator's key stays independent of that upstream property rather than
+    // depending on it unchecked — which is the reason Round 851 should have
+    // given and did not.
     let f_a = LinePart {
         fact_id: "f-a".into(),
         text: nasty.into(),

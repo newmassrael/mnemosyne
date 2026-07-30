@@ -384,14 +384,22 @@ const QUEST_COMPLETION_TY: &str = "::mnemosyne_engine::QuestCompletionPart";
 ///
 /// # Why the key is the EMITTED TEXT and not the fact id
 ///
-/// The consumer's request proposed keying by `fact_id`, which is true of every
-/// store measured so far — 882 fact ids over 882 distinct payloads, no fact
-/// carrying two. It is not true of the TYPE: [`LinePart::mode`] is a per-telling
-/// disclosure and nothing in the projection forbids one world stating what
-/// another hints. Keying by fact id would then silently keep one of the two, which
-/// is a half-enforced invariant rather than an invariant. Interning the rendered
-/// text collapses exactly the lines that are the same line and cannot lose a
-/// difference, because the rendered text carries every field.
+/// The consumer's request proposed keying by `fact_id`, and Round 853 established
+/// that this WOULD be correct against today's upstream — and that Round 851's
+/// reason for refusing it was wrong. That reason said `mode` may vary by world.
+/// It may not: a `MapLocator`'s `mode` and `object` are resolved per (telling,
+/// fact), a projection carries exactly one telling, and a world decides only
+/// WHICH facts it sees. No fact carries two payloads in any store measured — 882
+/// of 882, across a nine-branch store, a twenty-deep fork chain and a five-
+/// hundred-way fan — and that is a consequence, not luck.
+///
+/// The key stays the rendered text for the reason that survives: it is LOCALLY
+/// exact. A fact-id key would make this generator depend on a property of a type
+/// in another crate — that nothing world-shaped reaches `LinePart` — which
+/// nothing at this boundary can check and which a field added upstream would
+/// silently break. The rendered text carries every field, so it collapses exactly
+/// the lines that are the same line whatever `LinePart` grows. It costs nothing:
+/// both keys pool to the same 882.
 #[derive(Default)]
 struct LinePool {
     /// Each distinct line as generated Rust, in first-seen order — THE EMISSION
