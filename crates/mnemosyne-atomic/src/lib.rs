@@ -5300,7 +5300,7 @@ fn build_candidate_fact(
     if frame.is_empty() {
         return Err(format!("fact `{fact_id}`: frame mandatory (non-empty)"));
     }
-    if !fact_ref_resolves(store, FactRefFacet::Frame, frame) {
+    if !fact_ref_resolves(store, FactRef::Frame(&frame.into())) {
         return Err(format!(
             "fact `{fact_id}`: frame `{frame}` not present in the frames registry \
              (add_frame / manifest frames[] first; fail-loud)"
@@ -5315,7 +5315,7 @@ fn build_candidate_fact(
             ));
         }
         Some(b) => {
-            if !fact_ref_resolves(store, FactRefFacet::Branch, b) {
+            if !fact_ref_resolves(store, FactRef::Branch(&b.into())) {
                 return Err(format!(
                     "fact `{fact_id}`: branch `{b}` not present in the branch registry \
                      (add_branch / manifest branches[] first; fail-loud — a typo'd branch \
@@ -5334,7 +5334,7 @@ fn build_candidate_fact(
         if e.is_empty() {
             return Err(format!("fact `{fact_id}`: blank entity ref"));
         }
-        if !fact_ref_resolves(store, FactRefFacet::Entity, e) {
+        if !fact_ref_resolves(store, FactRef::Entity(&e.into())) {
             return Err(format!(
                 "fact `{fact_id}`: entity `{e}` not present in the entity registry \
                  (add_entity / manifest entities[] first; fail-loud)"
@@ -5355,7 +5355,7 @@ fn build_candidate_fact(
             "fact `{fact_id}`: canon_from mandatory (non-empty)"
         ));
     }
-    if !fact_ref_resolves(store, FactRefFacet::CanonFrom, canon_from) {
+    if !fact_ref_resolves(store, FactRef::CanonFrom(&canon_from.into())) {
         return Err(format!(
             "fact `{fact_id}`: canon_from `{canon_from}` not present as a section \
              (canon coordinates are structure-section refs)"
@@ -5369,7 +5369,7 @@ fn build_candidate_fact(
             ));
         }
         Some(c) => {
-            if !fact_ref_resolves(store, FactRefFacet::CanonTo, c) {
+            if !fact_ref_resolves(store, FactRef::CanonTo(&c.into())) {
                 return Err(format!(
                     "fact `{fact_id}`: canon_to `{c}` not present as a section"
                 ));
@@ -5389,7 +5389,7 @@ fn build_candidate_fact(
         if e.is_empty() {
             return Err(format!("fact `{fact_id}`: blank evidence ref"));
         }
-        if !fact_ref_resolves(store, FactRefFacet::Evidence, e) {
+        if !fact_ref_resolves(store, FactRef::Evidence(&e.into())) {
             return Err(format!(
                 "fact `{fact_id}`: evidence `{e}` not present as a section"
             ));
@@ -5517,7 +5517,7 @@ fn build_typed_claim(
                     "fact `{fact_id}`: typed {leg} mandatory (non-empty)"
                 ));
             }
-            if !fact_ref_resolves(store, FactRefFacet::Entity, id) {
+            if !fact_ref_resolves(store, FactRef::Entity(&id.into())) {
                 return Err(format!(
                     "fact `{fact_id}`: typed {leg} `{id}` not present in the entity registry \
                  (add_entity / manifest entities[] first; fail-loud)"
@@ -5618,7 +5618,7 @@ fn build_typed_claim(
                     "fact `{fact_id}`: quantity unit mandatory (non-empty)"
                 ));
             }
-            if !fact_ref_resolves(store, FactRefFacet::TypedUnit, unit) {
+            if !fact_ref_resolves(store, FactRef::TypedUnit(&unit.into())) {
                 return Err(format!(
                     "fact `{fact_id}`: predicate `{predicate}` quantity unit `{unit}` is not a \
                      registered unit (add_unit first; fail-loud — a bare unit string would \
@@ -7582,29 +7582,80 @@ pub enum FactRefFacet {
 /// (frame, branch, entities, canon_from, canon_to, evidence, then the typed
 /// legs) so the FIRST-violation slice `check_store_boundary` surfaces is
 /// unchanged for a single-corruption fact.
-pub fn fact_registry_refs(fact: &NarrativeFact) -> Vec<(FactRefFacet, &str)> {
-    let mut refs = vec![
-        (FactRefFacet::Frame, fact.frame.as_str()),
-        (FactRefFacet::Branch, fact.branch.as_str()),
-    ];
-    for e in &fact.entities {
-        refs.push((FactRefFacet::Entity, e.as_str()));
+/// One fact-level ref, WITH its id — the Round 850 replacement for the
+/// `(facet, value: &str)` pair this module carried since Round 688.
+///
+/// The pair was the last generic way to mismatch a registry against a string:
+/// `(FactRefFacet::Frame, some_section_id)` type-checked, and the removal of
+/// `Borrow<str>` in Round 849 did not close it because [`fact_ref_resolves`]
+/// simply constructed the id inside each arm. Carrying the TYPED id in the
+/// variant makes the mismatch unrepresentable instead, while keeping the single
+/// enumeration and the single resolver the Round 688 de-duplication bought.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FactRef<'a> {
+    Frame(&'a mnemosyne_core::FrameId),
+    Branch(&'a mnemosyne_core::BranchId),
+    Entity(&'a mnemosyne_core::EntityId),
+    CanonFrom(&'a mnemosyne_core::SectionId),
+    CanonTo(&'a mnemosyne_core::SectionId),
+    Evidence(&'a mnemosyne_core::SectionId),
+    TypedPredicate(&'a mnemosyne_core::PredicateId),
+    TypedSubject(&'a mnemosyne_core::EntityId),
+    TypedObject(&'a mnemosyne_core::EntityId),
+    TypedUnit(&'a mnemosyne_core::UnitId),
+}
+
+impl FactRef<'_> {
+    /// The slot this ref sits in — the label the violation message names.
+    #[must_use]
+    pub fn facet(&self) -> FactRefFacet {
+        match self {
+            FactRef::Frame(_) => FactRefFacet::Frame,
+            FactRef::Branch(_) => FactRefFacet::Branch,
+            FactRef::Entity(_) => FactRefFacet::Entity,
+            FactRef::CanonFrom(_) => FactRefFacet::CanonFrom,
+            FactRef::CanonTo(_) => FactRefFacet::CanonTo,
+            FactRef::Evidence(_) => FactRefFacet::Evidence,
+            FactRef::TypedPredicate(_) => FactRefFacet::TypedPredicate,
+            FactRef::TypedSubject(_) => FactRefFacet::TypedSubject,
+            FactRef::TypedObject(_) => FactRefFacet::TypedObject,
+            FactRef::TypedUnit(_) => FactRefFacet::TypedUnit,
+        }
     }
-    refs.push((FactRefFacet::CanonFrom, fact.canon_from.as_str()));
+
+    /// The id as text — for the message only. Every RESOLUTION goes through the
+    /// typed variant, so this cannot be the path a lookup takes.
+    #[must_use]
+    pub fn value(&self) -> &str {
+        match self {
+            FactRef::Frame(v) => v.as_str(),
+            FactRef::Branch(v) => v.as_str(),
+            FactRef::Entity(v) | FactRef::TypedSubject(v) | FactRef::TypedObject(v) => v.as_str(),
+            FactRef::CanonFrom(v) | FactRef::CanonTo(v) | FactRef::Evidence(v) => v.as_str(),
+            FactRef::TypedPredicate(v) => v.as_str(),
+            FactRef::TypedUnit(v) => v.as_str(),
+        }
+    }
+}
+
+pub fn fact_registry_refs(fact: &NarrativeFact) -> Vec<FactRef<'_>> {
+    let mut refs = vec![FactRef::Frame(&fact.frame), FactRef::Branch(&fact.branch)];
+    for e in &fact.entities {
+        refs.push(FactRef::Entity(e));
+    }
+    refs.push(FactRef::CanonFrom(&fact.canon_from));
     if let Some(to) = &fact.canon_to {
-        refs.push((FactRefFacet::CanonTo, to.as_str()));
+        refs.push(FactRef::CanonTo(to));
     }
     for e in &fact.evidence {
-        refs.push((FactRefFacet::Evidence, e.section.as_str()));
+        refs.push(FactRef::Evidence(&e.section));
     }
     if let Some(claim) = &fact.typed {
-        refs.push((FactRefFacet::TypedPredicate, claim.predicate.as_str()));
-        refs.push((FactRefFacet::TypedSubject, claim.subject.as_str()));
+        refs.push(FactRef::TypedPredicate(&claim.predicate));
+        refs.push(FactRef::TypedSubject(&claim.subject));
         match &claim.object {
-            TypedObject::Entity { id } => refs.push((FactRefFacet::TypedObject, id.as_str())),
-            TypedObject::Quantity { unit, .. } => {
-                refs.push((FactRefFacet::TypedUnit, unit.as_str()))
-            }
+            TypedObject::Entity { id } => refs.push(FactRef::TypedObject(id)),
+            TypedObject::Quantity { unit, .. } => refs.push(FactRef::TypedUnit(unit)),
             // Round 707 — a `Fact` object is NOT a phase-1 registry facet: it has
             // staging/forward-ref semantics, so it is resolved in PHASE 2
             // (`validate_and_stamp_fact_refs`) against store ∪ staged and
@@ -7620,23 +7671,18 @@ pub fn fact_registry_refs(fact: &NarrativeFact) -> Vec<(FactRefFacet, &str)> {
 /// how each facet resolves (branch via `is_known_world`, canon/evidence against
 /// sections, and so on). Both the write path and the detector call this, so
 /// they cannot disagree on what "resolves" means for a slot.
-pub fn fact_ref_resolves(store: &AtomicStore, facet: FactRefFacet, value: &str) -> bool {
-    match facet {
-        FactRefFacet::Frame => store.frames.contains_key(&value.into()),
-        // The generic resolver takes one `&str` for every facet, so the branch
-        // arm constructs the id it looks up — the lookup-position concession
-        // this migration records rather than pretends away.
-        FactRefFacet::Branch => {
-            mnemosyne_core::is_known_world(&store.branches, &mnemosyne_core::BranchId::from(value))
+pub fn fact_ref_resolves(store: &AtomicStore, r: FactRef<'_>) -> bool {
+    match r {
+        FactRef::Frame(id) => store.frames.contains_key(id),
+        FactRef::Branch(id) => mnemosyne_core::is_known_world(&store.branches, id),
+        FactRef::Entity(id) | FactRef::TypedSubject(id) | FactRef::TypedObject(id) => {
+            store.entities.contains_key(id)
         }
-        FactRefFacet::Entity | FactRefFacet::TypedSubject | FactRefFacet::TypedObject => {
-            store.entities.contains_key(&value.into())
+        FactRef::CanonFrom(id) | FactRef::CanonTo(id) | FactRef::Evidence(id) => {
+            store.sections.contains_key(id)
         }
-        FactRefFacet::CanonFrom | FactRefFacet::CanonTo | FactRefFacet::Evidence => {
-            store.sections.contains_key(&value.into())
-        }
-        FactRefFacet::TypedPredicate => resolve_predicate(store, value).is_some(),
-        FactRefFacet::TypedUnit => unit_registered(store, value),
+        FactRef::TypedPredicate(id) => resolve_predicate(store, id.as_str()).is_some(),
+        FactRef::TypedUnit(id) => store.units.contains_key(id),
     }
 }
 
@@ -7758,9 +7804,9 @@ pub fn store_registry_violations(store: &AtomicStore) -> Vec<String> {
         // entity refs (Round 681, the facet R677's "whole store registry"
         // missed) are enumerated too, so a typo'd predicate — off which rules
         // key — cannot silently escape here.
-        for (facet, value) in fact_registry_refs(fact) {
-            if !fact_ref_resolves(store, facet, value) {
-                out.push(store_registry_ref_message(id, facet, value));
+        for r in fact_registry_refs(fact) {
+            if !fact_ref_resolves(store, r) {
+                out.push(store_registry_ref_message(id, r.facet(), r.value()));
             }
         }
         // Structural invariants that are not ref resolution.
@@ -21678,7 +21724,7 @@ mod tests {
         let seen: std::collections::HashSet<FactRefFacet> = fact_registry_refs(&with_entity)
             .into_iter()
             .chain(fact_registry_refs(&with_quantity))
-            .map(|(f, _)| f)
+            .map(|r| r.facet())
             .collect();
         assert_eq!(
             seen,
