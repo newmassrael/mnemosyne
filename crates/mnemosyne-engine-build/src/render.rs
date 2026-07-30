@@ -394,9 +394,19 @@ const QUEST_COMPLETION_TY: &str = "::mnemosyne_engine::QuestCompletionPart";
 /// difference, because the rendered text carries every field.
 #[derive(Default)]
 struct LinePool {
-    /// Each distinct line as generated Rust, in first-seen order.
+    /// Each distinct line as generated Rust, in first-seen order — THE EMISSION
+    /// ORDER, and the only thing that decides it.
     rendered: Vec<String>,
     /// The rendered line -> its position, so a repeat is found rather than added.
+    ///
+    /// A LOOKUP INDEX, never an emission order: nothing may iterate it (Round
+    /// 852). `HashMap` iteration is seeded per process, so a pool emitted in map
+    /// order would be stable within one run and different between two — every
+    /// gate in this crate would stay green while an unchanged store emitted a
+    /// different file on every build, which is the one property the first
+    /// consumer's content-hash rebuild check rests on.
+    /// `the_pool_comes_out_in_the_order_the_worlds_are_walked` asserts the
+    /// separation from outside.
     ///
     /// Spelled in full: this file is `include!`d by a build script that has its
     /// own imports, so a `use` here is `E0252` there.

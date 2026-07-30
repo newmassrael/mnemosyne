@@ -722,6 +722,70 @@ mod tests {
         );
     }
 
+    #[test]
+    fn the_pool_comes_out_in_the_order_the_worlds_are_walked() {
+        // Round 852 — Round 851 put this generator's first hash map into it, and
+        // the crate's oldest promise is that an unchanged store emits a
+        // byte-identical file. `HashMap` iteration is seeded PER PROCESS, so a
+        // pool emitted in map order is stable within one run and different
+        // between two: every other gate here would stay green while a consumer
+        // rebuilt on every build. That consumer had just stopped rebuilding on
+        // unchanged input by hashing exactly this file's bytes, so the failure
+        // would land on the fix it had shipped the same day.
+        //
+        // The separation that makes it safe is internal — `rendered` is a `Vec`
+        // and owns the order, the map is only a lookup — and this asserts it
+        // from OUTSIDE, where a later round that reaches for the map cannot
+        // quietly be right.
+        let at = |id: &str| LinePart {
+            fact_id: id.to_string().into(),
+            text: "그는 \"셈\"이라 했다.".into(),
+            mode: DisclosureMode::State,
+            frame: "ground-truth".into(),
+            entities: Vec::new().into(),
+            carrier: None,
+            typed_predicate: None,
+            typed_quantity: None,
+            quote: None,
+            count: None,
+        };
+        let world = |name: &str, ids: &[&str]| {
+            (
+                name.to_string().into(),
+                vec![("sc-01".into(), ids.iter().map(|id| at(id)).collect())],
+            )
+        };
+        // Walked in sorted world order, and the ids are chosen so first-seen
+        // order is neither sorted nor reverse-sorted: a `BTreeMap` reached for
+        // instead of the `Vec` would fail this too, not only a `HashMap`.
+        let parts = ProjectionParts {
+            by_world: vec![
+                world("w-a", &["f-07", "f-02", "f-11", "f-02"]),
+                world("w-b", &["f-11", "f-05", "f-00"]),
+                world("w-c", &["f-02", "f-09", "f-05", "f-13"]),
+            ],
+            ..parts_with_lines(0)
+        };
+        let expected = ["f-07", "f-02", "f-11", "f-05", "f-00", "f-09", "f-13"];
+
+        // Only a POOL entry constructs a `LinePart` — a world-line carries
+        // positions — so the fact ids in the file, in file order, are the pool.
+        let src = crate::render(&parts);
+        let emitted: Vec<&str> = src
+            .match_indices("::mnemosyne_engine::LinePart { fact_id: ")
+            .map(|(i, m)| {
+                let rest = &src[i + m.len()..];
+                let open = rest.find('"').expect("a quoted fact id");
+                let close = rest[open + 1..].find('"').expect("a closed fact id");
+                &rest[open + 1..open + 1 + close]
+            })
+            .collect();
+        assert_eq!(
+            emitted, expected,
+            "the pool came out in some order other than the walk's"
+        );
+    }
+
     /// One quest — the journal-axis sibling of [`parts_with_lines`], sized only to
     /// make the emitter produce a chunk function.
     fn parts_with_quests() -> QuestProjectionParts {
