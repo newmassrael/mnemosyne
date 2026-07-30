@@ -57,6 +57,13 @@ pub struct ValidateWorkspaceReport {
     /// axis was silently Rust-only for a whole consumer's C++ tree.
     pub scan_gate_files: usize,
     pub scan_excluded_files: usize,
+    /// Round 866 — what the tree's own VCS calls build output INSIDE the
+    /// excluded set. The swallowed answer above is read out of that set, so a
+    /// set that differs between a developer and CI makes the answer differ too.
+    /// Round 864 asked this of the read set and left the excluded one open; a
+    /// consumer ledger measures 9591 of 13685 here. Advisory, and reported in
+    /// all three states for the Round 856 reason.
+    pub scan_excluded_vcs: mnemosyne_validate::code_refs::VcsIgnoreAxis,
     /// Round 840 — citations an exclusion removed from the gate entirely.
     pub scan_swallowed_citations: Vec<String>,
     pub failed: bool,
@@ -326,6 +333,16 @@ pub fn validate_workspace(workspace_root: &Path) -> Result<ValidateWorkspaceRepo
         }
     };
 
+    // Round 866 — the swallowed answer above is read OUT OF the excluded set, so
+    // whether it is stable depends on whether that set is the same on a
+    // developer's disk and in CI. Round 864 asked the tree's own VCS that
+    // question about the read set and left this one open; the consumer priced
+    // it: 9591 of one ledger's 13685 excluded files exist only where someone
+    // has built. It answers 0 swallowed on every ledger today, and that is a
+    // measured result rather than a property (the Round 862 rule).
+    let excluded_vcs =
+        mnemosyne_validate::code_refs::vcs_ignored_among(code_root, &scan.excluded_files);
+
     // Failure aggregation.
     let mut failure_reasons: Vec<String> = Vec::new();
     if !scan_unscanned.is_empty() {
@@ -438,6 +455,7 @@ pub fn validate_workspace(workspace_root: &Path) -> Result<ValidateWorkspaceRepo
         scan_excluded_but_scanned: scan.excluded_but_scanned.iter().map(|p| rel(p)).collect(),
         scan_gate_files: scan.scanned_files.len(),
         scan_excluded_files: scan.excluded_files.len(),
+        scan_excluded_vcs: excluded_vcs,
         scan_swallowed_citations: swallowed,
         failed,
         failure_reasons,
@@ -556,6 +574,36 @@ impl ValidateWorkspaceReport {
             self.scan_gate_files,
             self.scan_excluded_files,
         );
+        // Round 866 — printed in all three states directly under the count it
+        // qualifies, because the reader deciding whether to trust "0 swallowed"
+        // is reading that line right now.
+        match &self.scan_excluded_vcs {
+            mnemosyne_validate::code_refs::VcsIgnoreAxis::Measured {
+                considered,
+                ignored,
+                ignored_extensions,
+            } => {
+                let _ = writeln!(
+                    out,
+                    "  vcs axis (advisory, Round 866): {} of {} excluded file(s) are build \
+                     output by this tree's own VCS {}{}",
+                    ignored.len(),
+                    considered,
+                    mnemosyne_validate::code_refs::summarize_extensions(ignored_extensions, 5),
+                    if ignored.is_empty() {
+                        ""
+                    } else {
+                        " — the swallowed count above is developer-shaped"
+                    }
+                );
+            }
+            mnemosyne_validate::code_refs::VcsIgnoreAxis::NotDetermined { reason } => {
+                let _ = writeln!(
+                    out,
+                    "  vcs axis (advisory, Round 866): not determined — {reason}"
+                );
+            }
+        }
         for e in &self.scan_swallowed_citations {
             let _ = writeln!(out, "  swallowed: {}", e);
         }
@@ -657,6 +705,67 @@ mod tests {
             report.scan_unscanned.is_empty(),
             "unscanned: {:?}",
             report.scan_unscanned
+        );
+    }
+
+    /// Round 866 — `validate-workspace` asks the VCS about the EXCLUDED set.
+    ///
+    /// The wiring is the thing under test, not the axis: passing
+    /// `scanned_files` here instead of `excluded_files` compiles, prints a
+    /// plausible line, and answers the wrong question. This workspace cannot
+    /// catch that on its own — our excluded set holds zero build output, so both
+    /// wirings print zero — which is why the fixture makes the two sets differ in
+    /// SIZE as well as in content.
+    #[test]
+    fn the_excluded_set_axis_reports_the_excluded_set_not_the_read_set() {
+        let (tmp, toml_dir) = nested_ledger_workspace();
+        let repo = tmp.path();
+        let out = std::process::Command::new("git")
+            .args(["init", "--quiet"])
+            .current_dir(repo)
+            .output()
+            .expect("git must be runnable to test the VCS axis");
+        assert!(out.status.success());
+        fs::write(repo.join(".gitignore"), "*.gen\n").expect("gitignore");
+        let tests = repo.join("crates/alpha/tests");
+        fs::create_dir_all(&tests).expect("tests dir");
+        // Three files, so the excluded set (3) can never be mistaken for the
+        // read set (2) by its count alone.
+        fs::write(tests.join("a.rs"), "// Round 835\n").expect("a.rs");
+        fs::write(tests.join("b.rs"), "// Round 835\n").expect("b.rs");
+        fs::write(tests.join("out.gen"), "// Round 835\n").expect("out.gen");
+        fs::write(
+            toml_dir.join("mnemosyne.toml"),
+            "[workspace]\nroot = \"../..\"\n\n\
+             [atomic]\nsidecar_path = \"docs/spec/.atomic/store.json\"\n\n\
+             [plugins.set_equality_validator]\npaths = [\"crates/*/src/\"]\n\
+             scan_exclusions = [\"crates/*/tests/\"]\n",
+        )
+        .expect("write config");
+
+        let report = validate_workspace(&toml_dir).expect("validate-workspace");
+        assert_eq!(
+            (report.scan_gate_files, report.scan_excluded_files),
+            (2, 3),
+            "the fixture must make the two sets differ in size, or the wiring is \
+             untested"
+        );
+        let mnemosyne_validate::code_refs::VcsIgnoreAxis::Measured {
+            considered,
+            ignored,
+            ..
+        } = &report.scan_excluded_vcs
+        else {
+            panic!(
+                "a git workspace must be measurable: {:?}",
+                report.scan_excluded_vcs
+            );
+        };
+        assert_eq!(
+            (*considered, ignored.as_slice()),
+            (3, [repo.join("crates/alpha/tests/out.gen")].as_slice()),
+            "the axis must report the EXCLUDED set — the set the swallowed \
+             verdict above it is read out of"
         );
     }
 

@@ -2459,8 +2459,11 @@ pub fn comment_mode_coverage(
 pub enum VcsIgnoreAxis {
     /// The VCS answered for this tree.
     Measured {
-        /// Files the configured paths cover — the same walk the gate reads.
-        scanned: usize,
+        /// Files the caller handed in — the read set, or the excluded set, or
+        /// any other set the config produced. Named for what it is rather than
+        /// for one caller's use, since Round 866 gave it a second (the phrasing
+        /// "scanned" belongs to the report, not to the answer).
+        considered: usize,
         /// Of those, the ones the VCS calls build output, in path order.
         ignored: Vec<PathBuf>,
         /// Extension → count for those, so "which of mine?" is in the report.
@@ -2476,28 +2479,77 @@ pub enum VcsIgnoreAxis {
     },
 }
 
-/// Compute [`VcsIgnoreAxis`] for the read set `paths` resolves to under `root`.
+/// The `top` most common extensions, largest first, plus a count of the rest.
 ///
-/// Uses [`walk_paths`] for the read set rather than a second traversal, so the
-/// files judged "scanned" are exactly the files the gate reads (the Round 777
-/// discipline that a reporter and a walk must not be able to disagree).
-///
-/// Never fails on the VCS: an unanswerable tree is [`VcsIgnoreAxis::NotDetermined`]
-/// carrying the reason, following the Round 377 commit-scan precedent in this
-/// workspace, which degrades rather than aborting when `git` cannot answer.
-///
-/// # Errors
-///
-/// Whatever the underlying directory walk fails with — a walk failure is a
-/// config error and stays fatal, unlike a VCS one.
-pub fn vcs_ignored_in_read_set(root: &Path, paths: &[String]) -> std::io::Result<VcsIgnoreAxis> {
-    let read_set: BTreeSet<PathBuf> = walk_paths(root, paths)?.into_iter().collect();
-    // Scope the query to the configured roots, so a workspace inside a large
-    // monorepo does not pay for its siblings' build output.
-    let pathspecs: Vec<PathBuf> = expand_paths(root, paths)
-        .into_iter()
-        .filter_map(|p| p.strip_prefix(root).ok().map(Path::to_path_buf))
+/// The read set usually names one or two; a consumer's excluded set named SIXTY,
+/// and a report line that lists all of them is a line the next person scrolls
+/// past. Ties break on the extension name, so the string is deterministic and
+/// two runs of the same tree are diffable. The full map stays in `--json`.
+#[must_use]
+pub fn summarize_extensions(counts: &BTreeMap<String, usize>, top: usize) -> String {
+    let mut pairs: Vec<(&String, &usize)> = counts.iter().collect();
+    pairs.sort_by(|a, b| b.1.cmp(a.1).then_with(|| a.0.cmp(b.0)));
+    let shown: Vec<String> = pairs
+        .iter()
+        .take(top)
+        .map(|(k, v)| format!("{k:?}: {v}"))
         .collect();
+    let rest = pairs.len().saturating_sub(top);
+    if rest == 0 {
+        format!("{{{}}}", shown.join(", "))
+    } else {
+        format!("{{{}, +{rest} more}}", shown.join(", "))
+    }
+}
+
+/// The fewest directories under `root` that still contain every file in `files`.
+///
+/// Used to scope the VCS query, and DERIVED from the file set rather than from
+/// the config that produced it: a scope handed in separately could name a tree
+/// the set does not live under, and the query would then answer about the wrong
+/// files while looking correct (the Round 777 rule that a reporter and a walk
+/// must not be able to disagree). Anything extra the scope sweeps in is removed
+/// by the intersection, so widening is safe and narrowing is not.
+///
+/// `BTreeSet` order puts an ancestor immediately before its descendants, so
+/// keeping a directory only when it does not extend the last kept one collapses
+/// the set in a single pass.
+fn covering_roots(files: &BTreeSet<PathBuf>, root: &Path) -> Vec<PathBuf> {
+    let dirs: BTreeSet<PathBuf> = files
+        .iter()
+        .filter_map(|p| p.parent().map(Path::to_path_buf))
+        .collect();
+    let mut out: Vec<PathBuf> = Vec::new();
+    for d in dirs {
+        if out.last().is_some_and(|prev| d.starts_with(prev)) {
+            continue;
+        }
+        out.push(d);
+    }
+    out.iter()
+        .filter_map(|p| p.strip_prefix(root).ok().map(Path::to_path_buf))
+        .filter(|p| !p.as_os_str().is_empty())
+        .collect()
+}
+
+/// Compute [`VcsIgnoreAxis`] for a set of files the config already produced.
+///
+/// Takes the SET rather than the config that made it, because both callers
+/// already hold one and re-deriving it here would let this axis disagree with
+/// the walk it is reporting on (Round 777). `validate-code-refs` passes the read
+/// set; `validate-workspace` passes [`ScanCoverage::excluded_files`], which is
+/// the set Round 840 reads citations out of and therefore the set whose
+/// developer-versus-CI difference decides whether that answer is stable.
+///
+/// Never fails: an unanswerable tree is [`VcsIgnoreAxis::NotDetermined`] carrying
+/// the reason, following the Round 377 commit-scan precedent in this workspace,
+/// which degrades rather than aborting when `git` cannot answer.
+#[must_use]
+pub fn vcs_ignored_among(root: &Path, files: &BTreeSet<PathBuf>) -> VcsIgnoreAxis {
+    let read_set = files;
+    // Scope the query, so a workspace inside a large monorepo does not pay for
+    // its siblings' build output.
+    let pathspecs = covering_roots(files, root);
     let output = std::process::Command::new("git")
         .args([
             "ls-files",
@@ -2520,14 +2572,14 @@ pub fn vcs_ignored_in_read_set(root: &Path, paths: &[String]) -> std::io::Result
                 .unwrap_or("no message")
                 .trim()
                 .to_string();
-            return Ok(VcsIgnoreAxis::NotDetermined {
+            return VcsIgnoreAxis::NotDetermined {
                 reason: format!("git exited {}: {first}", o.status),
-            });
+            };
         }
         Err(e) => {
-            return Ok(VcsIgnoreAxis::NotDetermined {
+            return VcsIgnoreAxis::NotDetermined {
                 reason: format!("git could not be run: {e}"),
-            });
+            };
         }
     };
     // `-z`, because a path may contain a newline and a line-split report would
@@ -2548,11 +2600,11 @@ pub fn vcs_ignored_in_read_set(root: &Path, paths: &[String]) -> std::io::Result
             .map_or_else(|| "<none>".to_string(), |e| e.to_string_lossy().to_string());
         *ignored_extensions.entry(ext).or_insert(0) += 1;
     }
-    Ok(VcsIgnoreAxis::Measured {
-        scanned: read_set.len(),
+    VcsIgnoreAxis::Measured {
+        considered: read_set.len(),
         ignored,
         ignored_extensions,
-    })
+    }
 }
 
 /// Replace non-comment characters with spaces so citation extractors see
@@ -5735,6 +5787,15 @@ mod tests {
         );
     }
 
+    /// The walk's file set for one configured path — what both production
+    /// callers hand to `vcs_ignored_among` (a read set, or an excluded set).
+    fn walked(root: &Path, path: &str) -> BTreeSet<PathBuf> {
+        walk_paths(root, &[path.to_string()])
+            .unwrap()
+            .into_iter()
+            .collect()
+    }
+
     /// Initialise a git repository at `root` with no user identity required —
     /// tracked-ness is decided by the index, so nothing here needs a commit.
     fn git_init_at(root: &Path) {
@@ -5809,9 +5870,9 @@ mod tests {
             .unwrap();
         assert!(add.status.success());
 
-        let axis = vcs_ignored_in_read_set(root, &["src/".to_string()]).unwrap();
+        let axis = vcs_ignored_among(root, &walked(root, "src/"));
         let VcsIgnoreAxis::Measured {
-            scanned,
+            considered,
             ignored,
             ignored_extensions,
         } = axis
@@ -5819,7 +5880,7 @@ mod tests {
             panic!("a git tree must be measurable: {axis:?}");
         };
         assert_eq!(
-            scanned, 4,
+            considered, 4,
             "the read set is the walk's — `node_modules` never entered it"
         );
         assert_eq!(
@@ -5837,6 +5898,107 @@ mod tests {
         );
     }
 
+    /// Round 866 — the excluded set is a DIFFERENT set, and it can be build
+    /// output while the read set is clean.
+    ///
+    /// This is the whole round: Round 840 reads citations out of the excluded
+    /// set to decide what an exclusion swallowed, so a set that differs between
+    /// a developer and CI makes that verdict differ too. Round 864's axis
+    /// answered only for the read set, and on this fixture it answers zero —
+    /// which is exactly the reassuring silence the excluded set does not earn.
+    ///
+    /// Both sets come from one `scan_coverage` call, the same values the two
+    /// production callers pass, so this cannot pass while they diverge.
+    #[test]
+    fn the_excluded_set_can_be_build_output_when_the_read_set_is_not() {
+        let tmp = TempDir::new().unwrap();
+        let root = tmp.path();
+        git_init_at(root);
+        std::fs::write(root.join(".gitignore"), "*.gen\n").unwrap();
+        std::fs::create_dir_all(root.join("src")).unwrap();
+        std::fs::create_dir_all(root.join("gen")).unwrap();
+        std::fs::write(root.join("src/a.rs"), "// Round 1\n").unwrap();
+        // Declared out of coverage AND generated: present for a developer who
+        // has built, absent in a fresh clone.
+        std::fs::write(root.join("gen/out.gen"), "// Round 1\n").unwrap();
+        // Declared out of coverage and NOT generated: an ordinary excluded file,
+        // which must not be counted or the axis just measures set size.
+        std::fs::write(root.join("gen/notes.md"), "Round 1\n").unwrap();
+
+        let scan = scan_coverage(root, &["src/".to_string()], &["gen/".to_string()]).unwrap();
+        assert_eq!(
+            vcs_ignored_among(root, &scan.scanned_files),
+            VcsIgnoreAxis::Measured {
+                considered: 1,
+                ignored: vec![],
+                ignored_extensions: BTreeMap::new(),
+            },
+            "the read set is clean and Round 864's axis says so"
+        );
+        assert_eq!(
+            vcs_ignored_among(root, &scan.excluded_files),
+            VcsIgnoreAxis::Measured {
+                considered: 2,
+                ignored: vec![root.join("gen/out.gen")],
+                ignored_extensions: [("gen".to_string(), 1)].into_iter().collect(),
+            },
+            "and the set the swallowed verdict is read out of is half build output"
+        );
+    }
+
+    /// Round 866 — the query scope is derived from the file set, and collapses.
+    ///
+    /// One pathspec per file would be an argument list the size of the tree; one
+    /// per directory with no collapsing is nearly that on a deep build tree. The
+    /// collapse must not lose a directory, which is what the sibling case here
+    /// guards: `a/b` covering `a/b/c` is right, `a/b` covering `a/bc` is not.
+    #[test]
+    fn covering_roots_collapses_to_the_fewest_directories() {
+        let root = Path::new("/w");
+        let files: BTreeSet<PathBuf> = [
+            "/w/a/b/f1",
+            "/w/a/b/c/f2",
+            "/w/a/b/c/d/f3",
+            "/w/a/bc/f4",
+            "/w/z/f5",
+        ]
+        .into_iter()
+        .map(PathBuf::from)
+        .collect();
+        assert_eq!(
+            covering_roots(&files, root),
+            vec![
+                PathBuf::from("a/b"),
+                PathBuf::from("a/bc"),
+                PathBuf::from("z")
+            ],
+            "descendants collapse into their ancestor; a name that merely SHARES \
+             a prefix does not"
+        );
+    }
+
+    /// Round 866 — a sixty-extension histogram on one line is a line nobody
+    /// reads, and a truncated one that does not say it truncated is worse.
+    #[test]
+    fn summarize_extensions_names_the_largest_and_counts_the_rest() {
+        let counts: BTreeMap<String, usize> = [("a", 1), ("b", 9), ("c", 5), ("d", 9)]
+            .into_iter()
+            .map(|(k, v)| (k.to_string(), v))
+            .collect();
+        assert_eq!(
+            summarize_extensions(&counts, 2),
+            r#"{"b": 9, "d": 9, +2 more}"#,
+            "largest first, ties by name so two runs are diffable, and the \
+             remainder is COUNTED rather than dropped"
+        );
+        assert_eq!(
+            summarize_extensions(&counts, 9),
+            r#"{"b": 9, "d": 9, "c": 5, "a": 1}"#,
+            "no `+n more` when nothing was left out"
+        );
+        assert_eq!(summarize_extensions(&BTreeMap::new(), 5), "{}");
+    }
+
     /// Round 864 — the two silences the axis must not share.
     ///
     /// A workspace whose read set holds no build output and a workspace no VCS
@@ -5850,9 +6012,9 @@ mod tests {
         std::fs::create_dir_all(clean.path().join("src")).unwrap();
         std::fs::write(clean.path().join("src/a.rs"), "// Round 1\n").unwrap();
         assert_eq!(
-            vcs_ignored_in_read_set(clean.path(), &["src/".to_string()]).unwrap(),
+            vcs_ignored_among(clean.path(), &walked(clean.path(), "src/")),
             VcsIgnoreAxis::Measured {
-                scanned: 1,
+                considered: 1,
                 ignored: vec![],
                 ignored_extensions: BTreeMap::new(),
             },
@@ -5863,7 +6025,7 @@ mod tests {
         let unasked = TempDir::new().unwrap();
         std::fs::create_dir_all(unasked.path().join("src")).unwrap();
         std::fs::write(unasked.path().join("src/a.rs"), "// Round 1\n").unwrap();
-        let axis = vcs_ignored_in_read_set(unasked.path(), &["src/".to_string()]).unwrap();
+        let axis = vcs_ignored_among(unasked.path(), &walked(unasked.path(), "src/"));
         let VcsIgnoreAxis::NotDetermined { reason } = &axis else {
             panic!("a tree outside version control cannot be measured: {axis:?}");
         };

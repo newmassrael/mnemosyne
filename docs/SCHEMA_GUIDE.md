@@ -144,6 +144,10 @@ when the project never numbers its history rows.
  like it works. `validate-workspace` names that overlap as an advisory; the
  repair is to narrow `paths`. Reported from the field by a consumer who reached
  for this key first, exactly as its name invites.
+ Because the exclusion-integrity axis READS the excluded set to decide what an
+ exclusion swallowed, `validate-workspace` prints the same **vcs axis** over that
+ set, in the same three states. A large `N of M` there means the `0 swallowed`
+ above it was computed from files a fresh clone does not have.
 - **`[plugins.set_equality_validator].severity_missing`** — `warn` or `reject`. Fires when a
  citation's target id is absent from the atomic store (hallucination).
  Start at `warn` to surface the baseline, promote to `reject` once

@@ -5740,7 +5740,12 @@ fn cmd_validate_code_refs(args: &[String]) -> Result<()> {
     // so "no build output here" is a claim this axis is the only one able to
     // check. Asked of the tree rather than of a list, which is what keeps the
     // answer the same for a developer and for CI.
-    let vcs_axis = mnemosyne_validate::code_refs::vcs_ignored_in_read_set(&root, &cfg.paths)?;
+    let vcs_axis = mnemosyne_validate::code_refs::vcs_ignored_among(
+        &root,
+        &mnemosyne_validate::code_refs::walk_paths(&root, &cfg.paths)?
+            .into_iter()
+            .collect(),
+    );
 
     // Per-class counting from typed enum — `CodeRefViolation::kind_tag`
     // is the stable string key shared with `validate-code-refs --json`
@@ -5897,16 +5902,16 @@ fn cmd_validate_code_refs(args: &[String]) -> Result<()> {
         // output here" and "nobody could ask" must not share a silence.
         match &vcs_axis {
             mnemosyne_validate::code_refs::VcsIgnoreAxis::Measured {
-                scanned,
+                considered,
                 ignored,
                 ignored_extensions,
             } => {
                 println!(
                     "vcs axis (advisory, Round 864): {} of {} scanned file(s) are build \
-                     output by this tree's own VCS {:?}",
+                     output by this tree's own VCS {}",
                     ignored.len(),
-                    scanned,
-                    ignored_extensions
+                    considered,
+                    mnemosyne_validate::code_refs::summarize_extensions(ignored_extensions, 5)
                 );
                 if !ignored.is_empty() {
                     println!(
