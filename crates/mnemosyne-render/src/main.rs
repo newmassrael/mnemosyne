@@ -43,11 +43,27 @@ fn main() -> ExitCode {
     // design working and still a bug for this binary.
     mnemosyne_config::register_tool_stamp(env!("BUILD_GIT_HASH"));
     let args: Vec<String> = std::env::args().collect();
+    // Round 861 — `--version` was declared a universal surface in Round 286 and
+    // this binary never got one, which stopped being cosmetic when the tool pin
+    // began ASKING a binary which revision it is before handing over to it. The
+    // question has to be answerable by every shipped binary, including one too
+    // old to open a config; here it was answerable by none.
+    if matches!(args.get(1).map(String::as_str), Some("--version" | "-V")) {
+        println!(
+            "mnemosyne-render {} ({})",
+            env!("CARGO_PKG_VERSION"),
+            env!("BUILD_GIT_HASH")
+        );
+        return ExitCode::SUCCESS;
+    }
     let result = match args.as_slice() {
         [_, workspace, telling] => run(workspace, telling, None),
         [_, workspace, telling, overrides] => run(workspace, telling, Some(overrides)),
         _ => {
-            eprintln!("usage: mnemosyne-render <workspace> <telling> [overrides.json]");
+            eprintln!(
+                "usage: mnemosyne-render <workspace> <telling> [overrides.json]\n       \
+                 mnemosyne-render --version"
+            );
             return ExitCode::FAILURE;
         }
     };

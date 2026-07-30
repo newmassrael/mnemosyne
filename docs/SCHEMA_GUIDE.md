@@ -601,6 +601,31 @@ and only then add the section. If you pin an older revision on purpose,
 do not declare it here — keep using the `MN`-style resolution above,
 which needs no cooperation from the binary.
 
+**And this is a STANDING property, not an adoption step (Round 861).** The
+order above gets you in; it does not keep you in. A consumer adopted the pin
+correctly and went red 65 minutes later, when a concurrent session reinstalled
+an older binary on PATH — every command that reads a config then said their
+*config* was wrong, and no ordering discipline prevents that, because the
+older binary arrives after the ordering is done. Two things follow. Resolve
+the tool the way you resolve any other build input: a name on PATH is whatever
+was installed last, while a submodule, a lockfile rev or an explicit per-rev
+path names one revision and keeps naming it. And read `unknown field` on a key
+you did not typo as *"this binary is older than this workspace"* — which is
+what the error itself now says, on any build from Round 861 on:
+
+```
+unknown field `some_new_key`, expected one of `workspace`, …
+
+  this build is `25d30d16`, and a workspace's config is readable only by a
+  Mnemosyne at or after the revision that introduced its NEWEST key.
+  so: if the field named above is not a typo, this build is older than this
+  workspace — install a newer one, or remove the field
+```
+
+That hint cannot help the build in the report above, and could not have: a
+binary too old to know a key is also too old to carry the sentence explaining
+it. It is written for the key that does not exist yet.
+
 **And the floor is not `[tool]` — it is the newest key in your file
 (Round 840).** Field-tested by a consumer: their pre-`[tool]` binary never
 reached the pin at all, because it died on `scan_exclusions`, a key from an
@@ -624,12 +649,27 @@ The rules, so nothing is surprising:
   which is not the same as verified-and-wrong.
 - **`MNEMOSYNE_PIN_SKIP=1` waives it**, and warns on every use. A result
   produced under the waiver is not attributable to the pinned revision.
+  **It does not rescue a binary that cannot PARSE the file** (Round 861): the
+  waiver is read after the config has been parsed, so a build older than any
+  key in your file dies before reaching it. This was written here as an
+  unconditional escape hatch until a consumer reached for it in exactly that
+  situation and found it inert — an escape hatch with a floor of its own is
+  not one where the floor is.
+- **The build under a pin is verified BEFORE the hand-off** (Round 861).
+  `$MN_ROOT/<pin>/bin` is a directory-naming convention, so what sits there
+  merely *claims* to be that revision; the tool asks it `--version` and
+  refuses when the answer is a different revision, or is missing. Checking
+  only afterwards was not enough: a build older than `[tool]` cannot re-check
+  a pin at all and died at TOML parse instead, which reports a broken install
+  as a broken config.
 - **An unidentified build is refused, never switched away from.** A build
   that never declared which revision it is has a defect no installed
   binary repairs, and handing off would hide it in a second process.
-- **The switch happens at most once.** If the build sitting under a pin
-  is not the revision that path names, the second check says so and
-  stops, rather than exec'ing in a circle.
+- **The switch happens at most once.** Since Round 861 the ordinary
+  mis-install is refused before the hand-off, so what this still covers is
+  the build that *answers* with the pinned revision and then does not honour
+  it — one replaced between the check and the exec, say. The second check
+  says so and stops, rather than exec'ing in a circle.
 
 **Using an installed revision is not procuring one, and the difference is
 the whole boundary.** The switch resolves a build that is already on

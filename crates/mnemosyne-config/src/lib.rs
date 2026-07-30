@@ -1316,6 +1316,35 @@ fn running_binary_name() -> String {
         .unwrap_or_else(|| "mnemosyne-cli".to_string())
 }
 
+/// Ask the build at `path` which revision it is, by the one surface every
+/// Mnemosyne binary carries (`--version`, Round 286) — returning `None` when it
+/// will not say.
+///
+/// This is deliberately the CHEAPEST question available and not a config-reading
+/// one: a build that predates a key in the workspace cannot run any command that
+/// opens a config, and `--version` is the sole survivor (measured: on a
+/// pre-`[tool]` binary, `validate-workspace`, `validate-code-refs` and `query`
+/// all exit 1 at the parse error while `--version` exits 0).
+///
+/// The revision is the parenthesised tail of `<name> <semver> (<revision>)`,
+/// read from the LAST parenthesis so a name that ever gains one of its own does
+/// not shift the answer.
+#[cfg(unix)]
+fn installed_revision(path: &Path) -> Option<String> {
+    let out = std::process::Command::new(path)
+        .arg("--version")
+        .output()
+        .ok()?;
+    if !out.status.success() {
+        return None;
+    }
+    let text = String::from_utf8(out.stdout).ok()?;
+    let open = text.rfind('(')?;
+    let close = open + text[open..].find(')')?;
+    let rev = text[open + 1..close].trim();
+    (!rev.is_empty()).then(|| rev.to_string())
+}
+
 /// Replace this process with the pinned build when it is ALREADY INSTALLED
 /// (Round 832).
 ///
@@ -1366,11 +1395,56 @@ fn switch_to_pinned(pin: &str, refusal: &PinRefusal) -> Result<()> {
         return Ok(());
     }
 
+    // VERIFY THE TARGET BEFORE HANDING OVER (Round 861). `$MN_ROOT/<pin>/bin` is
+    // a directory-NAMING convention, and until now nothing checked that the
+    // build sitting there is the revision the directory claims. The loop guard
+    // above does catch it — but only AFTER the exec, and only when the
+    // replacement is new enough to re-check a pin at all. A build older than
+    // `[tool]` instead dies at TOML parse, so the same broken install reports
+    // itself as the reader's config being wrong. Measured both ways: with a
+    // current build at the path the guard names the broken install correctly,
+    // and with a pre-`[tool]` build at the same path the only message is
+    // `mnemosyne.toml parse failed`.
+    //
+    // Asking first is the only place the right answer can still be given, and
+    // `--version` is the one question every Mnemosyne binary answers (Round 286)
+    // AND the only command that still works on a build too old to parse the
+    // config — which is precisely the build this check exists to catch.
+    let bin_at_target = installed_revision(&target);
+    let verified = match &bin_at_target {
+        Some(rev) => check_tool_pin(pin, Some(rev)),
+        // Unverifiable is refused for the same reason Round 826 refuses an
+        // `unknown` stamp: not knowing is not the same as knowing it is right.
+        None => Err(PinRefusal::Unknown),
+    };
+    if let Err(there) = verified {
+        anyhow::bail!(
+            "{} is where pin `{pin}` resolves, but the build installed there is not that \
+             revision — {}.\n  \
+             the path names a revision; only reinstalling makes it true:\n    \
+             cargo install --git https://github.com/newmassrael/mnemosyne --rev {pin} --locked \\\n      \
+             {bin} --root {}",
+            target.display(),
+            match &bin_at_target {
+                Some(_) => there.to_string(),
+                None => "it reports no revision at all, so it cannot be checked (a build older \
+                         than `--version` itself, or not a Mnemosyne binary)"
+                    .to_string(),
+            },
+            pinned_root(pin).unwrap_or_default().display()
+        );
+    }
+
     // stderr, never stdout: an MCP server speaks its protocol on stdout and a
     // note there would corrupt the stream. Loud either way — a tool quietly
     // becoming a different tool is the surprise this must not be.
+    //
+    // Round 861 — no "this build" prefix: every switchable refusal's Display
+    // already opens with its own subject, and Round 840 rewrote `Different` to
+    // supply one without noticing this sibling caller supplied another. All
+    // three switchable variants printed `note: this build this build ...`.
     eprintln!(
-        "note: this build {refusal}; switching to the pinned build at {}",
+        "note: {refusal}; switching to the pinned build at {}",
         target.display()
     );
     // `exec` discards whatever this process has buffered and not written.
@@ -1448,9 +1522,59 @@ fn enforce_tool_pin(cfg: &WorkspaceConfig, config_path: &Path) -> Result<()> {
     ))
 }
 
+/// The sentence serde emits for a key no build of this type knows. Matched as
+/// text because the deserializer offers no typed variant for it — and pinned by
+/// a test, so a reworded upstream message turns the hint red instead of quietly
+/// dropping it.
+const UNKNOWN_FIELD_MARKER: &str = "unknown field";
+
+/// What an unknown key earns beyond the parse error: the revision THIS build is,
+/// and the rule that makes an unknown key a version symptom rather than only a
+/// typo (Round 861).
+///
+/// `WorkspaceConfig` denies unknown fields on purpose, so a typo fails loud —
+/// but the identical error is what a workspace declaring a NEWER key produces on
+/// an OLDER binary, and the message names neither revisions nor Mnemosyne. A
+/// consumer reported reaching the real cause only by reverse-engineering it:
+/// their gates went red 65 minutes after they adopted `[tool] pin`, when a
+/// concurrent session put an older binary back on PATH, and every command that
+/// reads a config said their config was wrong.
+///
+/// It cannot help the binary in THAT report — a build too old to know a key is
+/// also too old to carry this text — which is exactly why it is written for the
+/// key that does not exist yet rather than for `tool`. A hint that special-cased
+/// `tool` could only ever ship inside a build that already knows `tool`, and so
+/// would never once be printed.
+fn unknown_key_hint(rendered: &str) -> String {
+    if !rendered.contains(UNKNOWN_FIELD_MARKER) {
+        return String::new();
+    }
+    let who = match tool_stamp() {
+        Some(stamp) => format!("this build is `{stamp}`"),
+        None => "this build did not declare which revision it is".to_string(),
+    };
+    format!(
+        "\n  {who}, and a workspace's config is readable only by a Mnemosyne at or after the \
+         revision that introduced its NEWEST key.\n  \
+         so: if the field named above is not a typo, this build is older than this workspace — \
+         install a newer one, or remove the field"
+    )
+}
+
 /// Parse a TOML byte slice into a config struct + validate.
 pub fn parse_config(content: &str) -> Result<WorkspaceConfig> {
-    let cfg: WorkspaceConfig = toml::from_str(content).context("mnemosyne.toml parse failed")?;
+    let cfg: WorkspaceConfig = match toml::from_str(content) {
+        Ok(cfg) => cfg,
+        // Built rather than `context`ed: anyhow prints an added context BEFORE
+        // its cause, and this belongs after the error it explains.
+        Err(err) => {
+            let rendered = err.to_string();
+            bail!(
+                "mnemosyne.toml parse failed: {rendered}{}",
+                unknown_key_hint(&rendered)
+            )
+        }
+    };
     validate(&cfg)?;
     Ok(cfg)
 }
@@ -2394,6 +2518,44 @@ narrative_rules_path = "narrative-rules.json"
             "[workspace]\n\n[continuity]\ncanon_order_path = \"canon-order.json\"\nrules_path = \"narrative-rules.json\"\n",
         );
         assert!(ok.is_ok(), "correct keys must still parse: {ok:?}");
+    }
+
+    /// Round 861 — an unknown key is ALSO a version symptom, and the error said
+    /// only "unknown field". A consumer reached the real cause (their binary was
+    /// older than their config) by reverse-engineering it.
+    ///
+    /// This test is also what keeps the hint attached: it is bound to serde's
+    /// wording by one string, so an upstream rewording turns this red instead of
+    /// dropping the hint in silence.
+    #[test]
+    fn an_unknown_key_says_the_build_may_be_older_than_the_workspace() {
+        // A key no build of this type knows — which is the shape a NEWER
+        // Mnemosyne's section has when an OLDER binary meets it.
+        let err = format!(
+            "{:#}",
+            parse_config("[workspace]\n\n[from_a_later_round]\nkey = 1\n").unwrap_err()
+        );
+        assert!(
+            err.contains(UNKNOWN_FIELD_MARKER),
+            "serde no longer says `{UNKNOWN_FIELD_MARKER}`, so the hint is attached \
+             to nothing — reattach it: {err}"
+        );
+        assert!(
+            err.contains("older than this workspace"),
+            "an unknown key must offer the version reading, not only the typo one: {err}"
+        );
+        // NON-VACUOUS, and this half is the one that can rot quietly: a
+        // wrong-TYPED value is also a parse failure and must NOT collect the
+        // hint. Telling someone whose value is a number that their tool is old
+        // sends them to reinstall a binary that was never the problem.
+        let typed = format!(
+            "{:#}",
+            parse_config("[workspace]\n\n[tool]\npin = 7\n").unwrap_err()
+        );
+        assert!(
+            !typed.contains("older than this workspace"),
+            "a wrong-typed value collected the version hint: {typed}"
+        );
     }
 
     /// Round 826 — the tool-pin comparison, across every way a stamp can fail to

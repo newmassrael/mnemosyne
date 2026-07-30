@@ -184,6 +184,22 @@ fn install_pinned(root: &Path, pin: &str, bin: &str, content: &[u8]) {
     }
 }
 
+/// A stand-in build that ANSWERS `--version` with `revision`, and does `body`
+/// for anything else.
+///
+/// Round 861 made the answer load-bearing: the switch now asks the installed
+/// build which revision it is before handing over, so a stand-in that cannot say
+/// is a broken install rather than a pinned one. Pass `None` to model exactly
+/// that — a build too old to have a `--version`, which is the case the check
+/// exists for.
+fn stand_in(revision: Option<&str>, body: &str) -> Vec<u8> {
+    let answer = match revision {
+        Some(rev) => format!("echo \"stand-in 0.0.0 ({rev})\"\n  exit 0"),
+        None => "echo \"stand-in with no revision\"\n  exit 0".to_string(),
+    };
+    format!("#!/bin/sh\nif [ \"$1\" = --version ]; then\n  {answer}\nfi\n{body}\n").into_bytes()
+}
+
 #[test]
 fn every_binary_refuses_a_workspace_pinned_to_another_revision() {
     // `deadbeef` is hex, seven-plus characters, and is not this build — so it
@@ -280,7 +296,7 @@ fn an_installed_pinned_build_is_used_instead_of_refused() {
             root.path(),
             "deadbeef",
             bin,
-            b"#!/bin/sh\necho SWITCHED-TO-PINNED\nexit 0\n",
+            &stand_in(Some("deadbeef"), "echo SWITCHED-TO-PINNED\nexit 0"),
         );
     }
     for bin in &pinned_binaries() {
@@ -304,6 +320,143 @@ fn an_installed_pinned_build_is_used_instead_of_refused() {
         assert!(
             err.contains("switching to the pinned build"),
             "{bin} became a different tool without saying so: {err}"
+        );
+        // Round 861 — the note and the refusal share one `PinRefusal` Display,
+        // and each caller supplies its own sentence around it. Round 840 gave
+        // `Different` a subject of its own to fix the refusal, which made THIS
+        // caller's own subject a duplicate: `note: this build this build is ...`.
+        // The two callers cannot be checked by one assertion, so this is the
+        // note's own.
+        assert!(
+            !err.contains("this build this build"),
+            "{bin}'s switch note doubles its subject — the note and the refusal \
+             each supply one: {err}"
+        );
+    }
+}
+
+/// Round 861 — the pin path is a NAMING convention, so the build sitting there
+/// is a claim, and the claim is checked BEFORE the hand-off.
+///
+/// The loop guard checks it after, which works only when the replacement is new
+/// enough to re-check a pin at all: a build older than `[tool]` dies at TOML
+/// parse instead, and that message blames the reader's config for what is a
+/// broken install. Asking first is the only place the right answer can be given.
+#[test]
+fn a_pinned_path_holding_another_revision_is_refused_before_the_hand_off() {
+    let ws = workspace_with("[workspace]\n\n[tool]\npin = \"deadbeef\"\n");
+    let root = empty_root();
+    for bin in &pinned_binaries() {
+        install_pinned(
+            root.path(),
+            "deadbeef",
+            bin,
+            // Reports a revision, and it is not the one the directory names.
+            &stand_in(Some("cafef00d"), "echo RAN-THE-WRONG-BUILD\nexit 0"),
+        );
+    }
+    for bin in &pinned_binaries() {
+        let out = run_in(bin, ws.path(), false, root.path());
+        let err = String::from_utf8_lossy(&out.stderr);
+        let stdout = String::from_utf8_lossy(&out.stdout);
+        assert!(
+            !out.status.success(),
+            "{bin} handed over to a build that is not the revision its path names\nstderr: {err}"
+        );
+        // THE POINT: it never ran. A check that only reports afterwards is the
+        // one already there, and it is the one that cannot reach an old build.
+        assert!(
+            !stdout.contains("RAN-THE-WRONG-BUILD"),
+            "{bin} exec'd the mis-installed build and only then complained: {stdout}"
+        );
+        assert!(
+            err.contains("cafef00d") && err.contains("deadbeef"),
+            "{bin} must name BOTH what the path claims and what is actually there, \
+             or the reader cannot tell which one to fix: {err}"
+        );
+        assert!(
+            err.contains("cargo install --git"),
+            "{bin} reported a broken install without the line that repairs it: {err}"
+        );
+    }
+}
+
+/// The same check when the installed build will not answer at all — a build
+/// older than `--version` itself, or something that is not a Mnemosyne binary.
+/// Unverifiable is refused, for the reason Round 826 refuses an `unknown` stamp:
+/// not knowing is not the same as knowing it is right.
+#[test]
+fn a_pinned_path_holding_a_build_that_names_no_revision_is_refused() {
+    let ws = workspace_with("[workspace]\n\n[tool]\npin = \"deadbeef\"\n");
+    let root = empty_root();
+    for bin in &pinned_binaries() {
+        install_pinned(
+            root.path(),
+            "deadbeef",
+            bin,
+            &stand_in(None, "echo RAN-AN-UNVERIFIABLE-BUILD\nexit 0"),
+        );
+    }
+    for bin in &pinned_binaries() {
+        let out = run_in(bin, ws.path(), false, root.path());
+        let err = String::from_utf8_lossy(&out.stderr);
+        let stdout = String::from_utf8_lossy(&out.stdout);
+        assert!(
+            !out.status.success(),
+            "{bin} handed over to a build that would not say what it is\nstderr: {err}"
+        );
+        assert!(
+            !stdout.contains("RAN-AN-UNVERIFIABLE-BUILD"),
+            "{bin} exec'd a build it could not verify: {stdout}"
+        );
+        assert!(
+            err.contains("reports no revision at all"),
+            "{bin} must separate `cannot be checked` from `checked and wrong` — \
+             they are different repairs: {err}"
+        );
+    }
+}
+
+/// Round 861 — `--version` is the question the switch asks, so every shipped
+/// binary owes an answer.
+///
+/// Round 286 declared it a universal surface and `mnemosyne-render` never had
+/// one, which cost nothing until a binary's revision became something another
+/// binary ASKS for. The set comes from cargo, so a new binary is covered the day
+/// it exists rather than the day someone remembers it.
+#[test]
+fn every_shipped_binary_answers_which_revision_it_is() {
+    for bin in &pinned_binaries() {
+        let out = Command::new(env!("CARGO"))
+            .args([
+                "run",
+                "--quiet",
+                "--manifest-path",
+                concat!(env!("CARGO_MANIFEST_DIR"), "/Cargo.toml"),
+                "-p",
+                bin,
+                "--",
+                "--version",
+            ])
+            .output()
+            .expect("spawn");
+        let stdout = String::from_utf8_lossy(&out.stdout);
+        assert!(
+            out.status.success(),
+            "{bin} --version failed, so the switch cannot verify a build of it\n\
+             stderr: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+        // The parenthesised tail is what the switch reads. Asserting only
+        // "exit 0" would pass for a binary that printed nothing at all.
+        let open = stdout.rfind('(');
+        let revision = open
+            .and_then(|o| stdout[o..].find(')').map(|c| stdout[o + 1..o + c].trim()))
+            .unwrap_or("");
+        assert!(
+            !revision.is_empty(),
+            "{bin} --version names no revision in parentheses, so a build of it \
+             installed under a pin cannot be verified: {stdout}"
         );
     }
 }
@@ -341,17 +494,30 @@ fn an_absent_pinned_build_is_refused_and_never_procured() {
 /// The loop guard. A build installed under a pin that is not that revision would
 /// otherwise exec itself forever; it must stop after one hop and say why.
 ///
-/// The stand-in here IS the real CLI — `CARGO_BIN_EXE_*`, this crate's own
-/// binary, which cargo builds before the test — because only a build that
-/// re-checks the pin can reach the guard at all. (The file doc's warning about
-/// paths into `target/` is about reaching for a SIBLING crate's binary, which
-/// cargo has not been asked to build; this one it guarantees.)
+/// Round 861 moved the ordinary case of this OUT of the guard's reach — a build
+/// whose `--version` disagrees with its directory is now refused before the
+/// hand-off. What the guard still covers is the case that check cannot see: a
+/// path that ANSWERS with the pinned revision and then does not honour it. So
+/// the stand-in here answers `deadbeef` and execs the real CLI, which is this
+/// crate's own binary (`CARGO_BIN_EXE_*`, guaranteed built) because only a build
+/// that re-checks a pin can reach the guard at all.
+///
+/// That is not a contrived shape: a build being replaced between the check and
+/// the exec is how the incident this round answers began — a concurrent session
+/// reinstalled a binary under a path already in use.
 #[test]
 fn a_mis_installed_pin_stops_after_one_switch() {
     let ws = workspace_with("[workspace]\n\n[tool]\npin = \"deadbeef\"\n");
     let root = empty_root();
-    let real = std::fs::read(env!("CARGO_BIN_EXE_mnemosyne-cli")).expect("read built cli");
-    install_pinned(root.path(), "deadbeef", "mnemosyne-cli", &real);
+    install_pinned(
+        root.path(),
+        "deadbeef",
+        "mnemosyne-cli",
+        &stand_in(
+            Some("deadbeef"),
+            &format!("exec {} \"$@\"", env!("CARGO_BIN_EXE_mnemosyne-cli")),
+        ),
+    );
 
     let out = run_in("mnemosyne-cli", ws.path(), false, root.path());
     let err = String::from_utf8_lossy(&out.stderr);
