@@ -1136,7 +1136,7 @@ mod tests {
     fn related_sections_outbound_from_impact_scope_inbound_from_refs() {
         let mut store = AtomicStore::default();
         seed_section(&mut store, "39", "A", "a");
-        store.sections.get_mut("39").unwrap().impact_scope = vec!["41".into()];
+        store.sections.get_mut(&"39".into()).unwrap().impact_scope = vec!["41".into()];
         seed_section(&mut store, "41", "B", "b");
         store.changelog_entries.insert(
             "Round 1".into(),

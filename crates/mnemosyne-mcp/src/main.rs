@@ -3344,7 +3344,7 @@ mod tests {
             .await;
         assert!(r.is_error != Some(true), "import_sections failed: {r:?}");
         assert!(
-            read_store().sections.contains_key("sec-a"),
+            read_store().sections.contains_key(&"sec-a".into()),
             "sec-a not created"
         );
 
@@ -3380,7 +3380,7 @@ mod tests {
         let r = server.import_facts(Parameters(manifest)).await;
         assert!(r.is_error != Some(true), "import_facts failed: {r:?}");
         assert!(
-            read_store().narrative_facts.contains_key("f1"),
+            read_store().narrative_facts.contains_key(&"f1".into()),
             "f1 not created"
         );
 

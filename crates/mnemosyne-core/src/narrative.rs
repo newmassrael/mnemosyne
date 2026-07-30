@@ -1339,7 +1339,7 @@ mod tests {
             );
         }
         // Every world was computed and cached once (main reused by all of them).
-        assert!(memo.contains_key(MAIN_BRANCH) && memo.contains_key("dawn"));
+        assert!(memo.contains_key(&MAIN_BRANCH.into()) && memo.contains_key(&"dawn".into()));
 
         // A cycle still fails loud under a shared memo (a <-> b), for every root.
         let mut cyc: BTreeMap<crate::BranchId, Branch> = BTreeMap::new();
@@ -1581,17 +1581,26 @@ mod tests {
     fn confluence_membership_is_the_intersection_of_its_parents() {
         let b = braid_chain();
         let weave = world_membership(&b, &"weave1".into()).unwrap();
-        assert!(weave["weave1"].is_empty(), "own branch is unbounded");
+        assert!(
+            weave[&"weave1".into()].is_empty(),
+            "own branch is unbounded"
+        );
         // `main` survives the merge — but BOUNDED by both roads' cuts, which is
         // exactly what excludes main's own exclusive middle downstream of s1.
         assert_eq!(
-            weave["main"],
+            weave[&"main".into()],
             BTreeSet::from(["s1".into(), "s2".into()]),
             "the shared trunk is inherited, conjoined with BOTH roads' bounds"
         );
         // Neither parent's EXCLUSIVE identity crosses the merge.
-        assert!(!weave.contains_key("braid1"), "braid1's road is not shared");
-        assert!(!weave.contains_key("ending"), "a sibling never crosses");
+        assert!(
+            !weave.contains_key(&"braid1".into()),
+            "braid1's road is not shared"
+        );
+        assert!(
+            !weave.contains_key(&"ending".into()),
+            "a sibling never crosses"
+        );
     }
 
     /// Round 612 — FORK = CONJOIN A BOUND, and it composes with the merge. A fork
@@ -1605,17 +1614,20 @@ mod tests {
     fn fork_off_a_confluence_inherits_the_pre_merge_trunk() {
         let b = braid_chain();
         let braid2 = world_membership(&b, &"braid2".into()).unwrap();
-        assert!(braid2["braid2"].is_empty());
+        assert!(braid2[&"braid2".into()].is_empty());
         assert!(
-            braid2.contains_key("weave1"),
+            braid2.contains_key(&"weave1".into()),
             "the confluence it forked off is a member"
         );
         assert_eq!(
-            braid2["main"],
+            braid2[&"main".into()],
             BTreeSet::from(["s1".into(), "s2".into(), "s3".into()]),
             "the pre-merge trunk rides THROUGH the confluence, conjoined with the fork cut"
         );
-        assert!(!braid2.contains_key("braid1"), "the other road stays out");
+        assert!(
+            !braid2.contains_key(&"braid1".into()),
+            "the other road stays out"
+        );
     }
 
     /// Round 612 — CONJOINING (not min-ing) the bounds is what makes a NON-MONOTONE
@@ -1646,7 +1658,7 @@ mod tests {
             ),
         ]);
         assert_eq!(
-            world_membership(&b, &"early".into()).unwrap()["main"],
+            world_membership(&b, &"early".into()).unwrap()[&"main".into()],
             BTreeSet::from(["s1".into(), "s4".into()]),
             "BOTH departures bind — the order then enforces the tighter one"
         );

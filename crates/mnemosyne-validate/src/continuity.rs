@@ -461,12 +461,12 @@ impl CanonOrder {
         // axis made it consequential — so it fails LOUD rather than quietly truncating a
         // world-line. A branch's edge set must ATTACH to the road it rides in on.
         for (branch, edges) in &decl.branches {
-            let Some(r) = road.get(branch.as_str()) else {
+            let Some(r) = road.get(&branch.as_str().into()) else {
                 continue; // an edge set for an unregistered branch — the R607 guard's job
             };
             for e in edges {
                 let (u, v) = (e[0].trim(), e[1].trim());
-                if !r.contains(u) {
+                if !r.contains(&u.into()) {
                     return Err(format!(
                         "canon-order: branch `{branch}` declares the edge `{u} -> {v}`, but \
                          `{u}` is not on `{branch}`'s road — the edge can never be travelled, \
@@ -2818,7 +2818,7 @@ fn check_quest_predicate_shapes(store: &AtomicStore) -> Result<(), String> {
 fn check_rule_predicates(store: &AtomicStore, rules: &[NarrativeRule]) -> Result<(), String> {
     for rule in rules {
         for p in rule.referenced_predicates() {
-            if !store.predicates.contains_key(p) {
+            if !store.predicates.contains_key(&p.into()) {
                 return Err(format!(
                     "narrative-rules: rule `{}` names predicate `{p}`, which is not in the \
                      predicate registry — a typo'd predicate would silently escape its rule \
@@ -4046,7 +4046,7 @@ fn scan_spatial_map(
     // either leg (R699 half-enforced trap). Inert (completeness off) when neither.
     let place_kind = store
         .predicates
-        .get(adjacency)
+        .get(&adjacency.into())
         .and_then(|p| p.subject_kind.as_ref().or(p.object_entity_kind.as_ref()));
     for world in worlds {
         let ctx = WorldCtx {
@@ -4367,7 +4367,7 @@ pub fn frame_view(
         ));
     }
     if let Some(e) = entity {
-        if !store.entities.contains_key(e) {
+        if !store.entities.contains_key(&e.into()) {
             return Err(format!(
                 "entity `{e}` not present in the entity registry (fail-loud — a typo'd \
                  entity must not read as an empty dossier)"
@@ -4737,7 +4737,7 @@ fn discharging_payoffs(
         .iter()
         .filter(|pid| {
             facts
-                .get(pid.as_str())
+                .get(&pid.as_str().into())
                 .and_then(|f| f.typed.as_ref())
                 .is_some_and(|t| {
                     t.subject == setup_typed.subject
@@ -4767,16 +4767,17 @@ pub fn payoff_substantiation(
         for paid in &cov.paid {
             // The setup is present (it was just credited by payoff_coverage).
             let setup_typed = facts
-                .get(paid.setup.as_str())
+                .get(&paid.setup.as_str().into())
                 .and_then(|f| f.typed.as_ref());
             match setup_typed {
                 // Setup carries no typed state -> a discharge is undefinable.
                 None => w.unverifiable.push(paid.clone()),
                 Some(ts) => {
-                    let any_typed_payoff = paid
-                        .payoffs
-                        .iter()
-                        .any(|pid| facts.get(pid.as_str()).is_some_and(|f| f.typed.is_some()));
+                    let any_typed_payoff = paid.payoffs.iter().any(|pid| {
+                        facts
+                            .get(&pid.as_str().into())
+                            .is_some_and(|f| f.typed.is_some())
+                    });
                     if !any_typed_payoff {
                         // Setup typed, but every crediting payoff is prose-only:
                         // the discharge cannot be checked deterministically.
@@ -6428,7 +6429,7 @@ pub fn edge_candidates(
     let succession_gaps: Vec<SuccessionGap> = gaps
         .into_iter()
         .map(|(aid, bid)| {
-            let t = facts[aid].typed.as_ref().unwrap();
+            let t = facts[&aid.into()].typed.as_ref().unwrap();
             SuccessionGap {
                 fact_a: aid.to_string(),
                 fact_b: bid.to_string(),
@@ -7134,7 +7135,7 @@ mod tests {
         );
         // NEUTER-AND-FAIL: drop the count and the echo goes None — a hard-wired
         // Some(5) would fail here, so the assertion above is not vacuous.
-        store.fact_counts.remove("f-hold");
+        store.fact_counts.remove(&"f-hold".into());
         assert_eq!(
             count_of(&store, "f-hold"),
             None,
@@ -7574,7 +7575,7 @@ mod tests {
         // (R612 sources them from the membership map, hence sorted; the old
         // fork_chain walk happened to emit them nearest-first).
         assert_eq!(
-            composition["deep"].iter().collect::<BTreeSet<_>>(),
+            composition[&"deep".into()].iter().collect::<BTreeSet<_>>(),
             BTreeSet::from([
                 &mnemosyne_core::BranchId::from("route"),
                 &mnemosyne_core::BranchId::from(MAIN_BRANCH)
@@ -7733,7 +7734,11 @@ mod tests {
         // (5) the excerpt is dropped out of band, leaving an affirmation that
         // certifies prose the store no longer holds (the R440 boundary: the write
         // path rejects it, the scan re-reads the edited store).
-        store.sections.get_mut("ch-1").unwrap().content_excerpt = None;
+        store
+            .sections
+            .get_mut(&"ch-1".into())
+            .unwrap()
+            .content_excerpt = None;
         let report = scan_continuity(&store, &order, &[]).unwrap();
         assert_eq!(kinds(&report), (0, 1), "{:?}", report.violations);
     }
@@ -7859,7 +7864,7 @@ mod tests {
         // Out-of-band edits, which the write path rejects and therefore only the
         // scan can meet: a rung anchored by CFI, and a section whose excerpt was
         // deleted from under a ladder.
-        let section = store.sections.get_mut("ch-1").unwrap();
+        let section = store.sections.get_mut(&"ch-1".into()).unwrap();
         section.ladder.as_mut().unwrap().rungs[1].anchor = mnemosyne_core::ContentAnchor {
             source: "OTHER.md".to_string(),
             locator: mnemosyne_core::Locator::Cfi("/6/4[c01]!/4/2".to_string()),
@@ -7881,7 +7886,11 @@ mod tests {
             report.ladder_rungs_resolved, 1,
             "a CFI rung is named, never counted as resolved"
         );
-        store.sections.get_mut("ch-1").unwrap().content_excerpt = None;
+        store
+            .sections
+            .get_mut(&"ch-1".into())
+            .unwrap()
+            .content_excerpt = None;
         let report = scan_continuity(&store, &order, &[]).unwrap();
         assert!(
             report
@@ -8079,7 +8088,7 @@ mod tests {
         // (Round 765), so the store can only hold it through an out-of-band edit.
         // The order axis must not turn that into a false accusation: the two
         // coordinates are equal, not inverted, and equal offsets run in any order.
-        let section = store.sections.get_mut("ch-1").unwrap();
+        let section = store.sections.get_mut(&"ch-1".into()).unwrap();
         section.ladder.as_mut().unwrap().rungs = vec![
             rung("Seward counted"),
             rung("Seward counted"),
@@ -8141,7 +8150,7 @@ mod tests {
                          rungs: Vec<mnemosyne_atomic::LadderRung>| {
             store
                 .sections
-                .get_mut("ch-1")
+                .get_mut(&"ch-1".into())
                 .unwrap()
                 .ladder
                 .as_mut()
@@ -8348,7 +8357,7 @@ mod tests {
         let order = chain(&["ch-1", "ch-2"]);
         // Unregistered branch on a fact (hand-edited store).
         let mut store = store_with(vec![fact("f1", "seward", "ch-1", None)]);
-        store.narrative_facts.get_mut("f1").unwrap().branch = "ghost".into();
+        store.narrative_facts.get_mut(&"f1".into()).unwrap().branch = "ghost".into();
         let err = scan_continuity(&store, &order, &[]).unwrap_err();
         assert!(err.contains("branch registry"), "{err}");
         let err = frame_view(
@@ -8363,14 +8372,14 @@ mod tests {
         assert!(err.contains("branch registry"), "{err}");
         // Unregistered frame.
         let mut store = store_with(vec![fact("f1", "seward", "ch-1", None)]);
-        store.narrative_facts.get_mut("f1").unwrap().frame = "nobody".into();
+        store.narrative_facts.get_mut(&"f1".into()).unwrap().frame = "nobody".into();
         let err = scan_continuity(&store, &order, &[]).unwrap_err();
         assert!(err.contains("frames registry"), "{err}");
         // Evidence emptied out-of-band.
         let mut store = store_with(vec![fact("f1", "seward", "ch-1", None)]);
         store
             .narrative_facts
-            .get_mut("f1")
+            .get_mut(&"f1".into())
             .unwrap()
             .evidence
             .clear();
@@ -8877,7 +8886,7 @@ mod tests {
             setup_fact("su", "gt", "ch-1"),
             payoff_fact("p", "gt", "ch-2", &["su"]),
         ]);
-        store.narrative_facts.remove("su");
+        store.narrative_facts.remove(&"su".into());
         let order = chain(&["ch-1", "ch-2", "ch-3", "ch-4"]);
         let report = scan_continuity(&store, &order, &[]).unwrap();
         assert!(
@@ -10088,7 +10097,7 @@ mod tests {
         for p in place_entities {
             store
                 .entities
-                .get_mut(*p)
+                .get_mut(&mnemosyne_core::EntityId::from(*p))
                 .expect("place entity present in the store")
                 .kind = "place".into();
         }
@@ -10104,7 +10113,7 @@ mod tests {
         if let Some(sk) = subject_kind {
             store
                 .predicates
-                .get_mut("adjacent")
+                .get_mut(&"adjacent".into())
                 .expect("adjacent predicate present")
                 .subject_kind = Some(sk.into());
         }
@@ -10177,7 +10186,7 @@ mod tests {
         let mut store = map_g2_store(edges(), &["ent-a", "ent-b", "ent-c"], &["ent-ghost"], None);
         store
             .predicates
-            .get_mut("adjacent")
+            .get_mut(&"adjacent".into())
             .expect("adjacent predicate present")
             .object_entity_kind = Some("place".into());
         let report = scan_continuity(&store, &order, &rule).unwrap();
@@ -11131,10 +11140,10 @@ mod tests {
             "the R439 pin the proposal must stamp"
         );
         assert!(
-            report.predicates.contains_key("life-status"),
+            report.predicates.contains_key(&"life-status".into()),
             "the 4th registry rides verbatim"
         );
-        assert!(report.entities.contains_key("lucy"));
+        assert!(report.entities.contains_key(&"lucy".into()));
     }
 
     /// Order-independence is the contract: no canon declaration exists,
@@ -11287,7 +11296,7 @@ mod tests {
         // Close the loop out-of-band (the write paths reject this).
         store
             .narrative_facts
-            .get_mut("fa")
+            .get_mut(&"fa".into())
             .unwrap()
             .supersedes_in_frame = Some("fb".into());
         let report = scan_continuity(&store, &chain(&["ch-1", "ch-2"]), &[]).unwrap();
@@ -11373,7 +11382,7 @@ mod tests {
         // so the engine projects a provenance-bound cast (`cast_at`). This pins
         // the store->report wiring the engine's cast_at depends on.
         let mut store = store_with(vec![fact("f1", "gt", "ch-1", None)]);
-        store.sections.get_mut("ch-1").unwrap().scene_cast =
+        store.sections.get_mut(&"ch-1".into()).unwrap().scene_cast =
             vec![mnemosyne_atomic::ScenePresence {
                 entity: "ent-jongdeuk".into(),
                 modality: mnemosyne_core::Modality::Observed,
@@ -11416,7 +11425,7 @@ mod tests {
         assert_eq!(event("f-hold").count, Some(5), "the count rides the event");
         assert_eq!(event("f-plain").count, None, "no count = None, not Some(1)");
         // NEUTER-AND-FAIL: drop it and the mirror goes None too.
-        store.fact_counts.remove("f-hold");
+        store.fact_counts.remove(&"f-hold".into());
         let report = playthrough_manuscript(&store, &order, None, None).unwrap();
         assert_eq!(
             report.worlds[MAIN_BRANCH].scenes[0]
@@ -12035,7 +12044,7 @@ mod tests {
             ("q-key", "Recover the warden's key"),
             ("q-orphan", "Find the lost ledger"),
         ] {
-            store.entities.get_mut(id).unwrap().description = desc.to_string();
+            store.entities.get_mut(&id.into()).unwrap().description = desc.to_string();
         }
         let mut overrides: BTreeMap<mnemosyne_core::FactId, mnemosyne_core::DisclosureOverride> =
             BTreeMap::new();
@@ -12371,7 +12380,7 @@ mod tests {
             ..fact("f-sibling", "gt", "ch-2", None)
         };
         let mut store = store_with_forks(vec![give, pursue, complete, sibling], &[]);
-        let e = store.entities.get_mut("q-split").unwrap();
+        let e = store.entities.get_mut(&"q-split".into()).unwrap();
         e.description = "Split completion".to_string();
         store.disclosure_plans.insert(
             "t1".to_string(),
@@ -12889,7 +12898,7 @@ mod tests {
             .expect("a registered kind + an unkinded entity must both pass");
 
         // Injection: drop ONLY the registry row. The entity is untouched.
-        store.entity_kinds.remove("place");
+        store.entity_kinds.remove(&"place".into());
         let err = check_store_boundary(&store, &CanonOrder::empty())
             .expect_err("an unregistered kind must fail the boundary");
         assert!(err.contains("ent-village"), "{err}");

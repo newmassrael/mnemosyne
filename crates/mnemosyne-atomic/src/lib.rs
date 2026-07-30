@@ -2108,7 +2108,7 @@ impl AtomicStore {
     }
 
     pub fn section(&self, section_id: &str) -> Option<&AtomicSection> {
-        self.sections.get(section_id)
+        self.sections.get(&section_id.into())
     }
 
     pub fn entry(&self, entry_id: &str) -> Option<&AtomicChangelogEntry> {
@@ -2452,7 +2452,7 @@ fn section_mut_strict<'a>(
     store: &'a mut AtomicStore,
     section_id: &str,
 ) -> Result<&'a mut AtomicSection, AtomicMutateError> {
-    store.sections.get_mut(section_id).ok_or_else(|| {
+    store.sections.get_mut(&section_id.into()).ok_or_else(|| {
         AtomicMutateError::NotFound(format!(
             "section_id `{}` not present in atomic store (use add_section to create it first)",
             section_id
@@ -2668,7 +2668,7 @@ fn inbound_section_refs(store: &AtomicStore, section_id: &str) -> Vec<String> {
             if ov
                 .first_at
                 .values()
-                .any(|reveal| reveal.coords.contains(section_id))
+                .any(|reveal| reveal.coords.contains(&section_id.into()))
             {
                 refs.push(format!(
                     "telling `{telling}` (via first_at pin on fact `{fid}`)"
@@ -2741,7 +2741,7 @@ pub fn remove_section(
             "remove_section: --reason mandatory (audit-trail safeguard)".to_string(),
         ));
     }
-    if !store.sections.contains_key(section_id) {
+    if !store.sections.contains_key(&section_id.into()) {
         return Err(AtomicMutateError::NotFound(format!(
             "section_id `{}` not present in atomic store",
             section_id
@@ -2761,7 +2761,7 @@ pub fn remove_section(
             referrers.join(", ")
         )));
     }
-    store.sections.remove(section_id);
+    store.sections.remove(&section_id.into());
     save_with_receipt(store, sidecar_path, "remove_section", "section", section_id)
 }
 
@@ -2852,7 +2852,7 @@ fn build_candidate_section(
                 "parent_section must be None or non-empty".to_string(),
             ));
         }
-        if !store.sections.contains_key(parent_t) {
+        if !store.sections.contains_key(&parent_t.into()) {
             return Err(AtomicMutateError::NotFound(format!(
                 "parent_section `{}` not present in atomic store",
                 parent_t
@@ -3118,7 +3118,7 @@ pub fn set_section_parent_section(
     parent_section: Option<&str>,
 ) -> Result<AtomicMutateReceipt, AtomicMutateError> {
     // Validate target Section exists first (fail-loud).
-    if !store.sections.contains_key(section_id) {
+    if !store.sections.contains_key(&section_id.into()) {
         return Err(AtomicMutateError::NotFound(format!(
             "section_id `{}` not present in atomic store (use add_section to create it first)",
             section_id
@@ -3139,7 +3139,7 @@ pub fn set_section_parent_section(
   p_t
  )));
             }
-            if !store.sections.contains_key(p_t) {
+            if !store.sections.contains_key(&p_t.into()) {
                 return Err(AtomicMutateError::NotFound(format!(
                     "set_section_parent_section: parent_section `{}` not present in atomic store",
                     p_t
@@ -3465,7 +3465,7 @@ pub fn remove_section_binding(
         Some(s) => Some(validate_binding_symbol(s)?),
         None => None,
     };
-    let section = match store.sections.get_mut(section_id) {
+    let section = match store.sections.get_mut(&section_id.into()) {
         Some(s) => s,
         None => {
             return Err(AtomicMutateError::NotFound(format!(
@@ -3531,7 +3531,7 @@ pub fn set_section_binding_kind(
         Some(s) => Some(validate_binding_symbol(s)?),
         None => None,
     };
-    let section = match store.sections.get_mut(section_id) {
+    let section = match store.sections.get_mut(&section_id.into()) {
         Some(s) => s,
         None => {
             return Err(AtomicMutateError::NotFound(format!(
@@ -3592,7 +3592,7 @@ pub fn set_section_coverage_expectation(
                 .to_string(),
         ));
     }
-    let section = match store.sections.get_mut(section_id) {
+    let section = match store.sections.get_mut(&section_id.into()) {
         Some(s) => s,
         None => {
             return Err(AtomicMutateError::NotFound(format!(
@@ -3628,7 +3628,7 @@ pub fn set_section_verification_expectation(
                 .to_string(),
         ));
     }
-    let section = match store.sections.get_mut(section_id) {
+    let section = match store.sections.get_mut(&section_id.into()) {
         Some(s) => s,
         None => {
             return Err(AtomicMutateError::NotFound(format!(
@@ -3767,12 +3767,17 @@ pub fn import_content_excerpts(
     let mut applied = 0usize;
     let mut unmatched: Vec<mnemosyne_core::SectionId> = Vec::new();
     for (section_id, excerpt) in candidates {
-        match store.sections.get_mut(section_id.as_str()) {
+        // Entry into the store vocabulary: the manifest row is a wire DTO, so
+        // the id is constructed HERE rather than the registry being probed with
+        // untyped text (Round 849 — the removal of `Borrow<str>` is what made
+        // this conversion have to exist somewhere visible).
+        let section_id = mnemosyne_core::SectionId::from(section_id.as_str());
+        match store.sections.get_mut(&section_id) {
             Some(section) => {
                 section.content_excerpt = Some(excerpt);
                 applied += 1;
             }
-            None => unmatched.push(section_id.into()),
+            None => unmatched.push(section_id),
         }
     }
     if applied == 0 {
@@ -3876,7 +3881,7 @@ pub fn import_evidence_reviews(
                  omit the entry instead)"
             )));
         }
-        let Some(fact) = store.narrative_facts.get(fact_id) else {
+        let Some(fact) = store.narrative_facts.get(&fact_id.into()) else {
             return Err(AtomicMutateError::NotFound(format!(
                 "import_evidence_reviews: fact `{fact_id}` not present in atomic store"
             )));
@@ -3888,7 +3893,7 @@ pub fn import_evidence_reviews(
                  the claim"
             )));
         };
-        let Some(section) = store.sections.get(section_id) else {
+        let Some(section) = store.sections.get(&section_id.into()) else {
             return Err(AtomicMutateError::NotFound(format!(
                 "import_evidence_reviews: section `{section_id}` not present in atomic store"
             )));
@@ -3993,7 +3998,7 @@ pub fn import_scene_cast(
     let mut applied = 0usize;
     let mut unmatched: Vec<mnemosyne_core::SectionId> = Vec::new();
     for (section_id, cast) in grouped {
-        match store.sections.get_mut(section_id.as_str()) {
+        match store.sections.get_mut(&section_id.as_str().into()) {
             Some(section) => {
                 section.scene_cast = cast;
                 applied += 1;
@@ -4095,7 +4100,9 @@ pub fn import_ladders(
         // a section PRESENT with no excerpt is a reject (a coordinate into prose
         // the store does not hold), and a section with an excerpt is what the
         // rung anchors get resolved against.
-        let section_prose = match store.sections.get(l.section_id.as_str()) {
+        // Entry into the store vocabulary: `LadderImport` is a wire DTO.
+        let section_id = mnemosyne_core::SectionId::from(l.section_id.as_str());
+        let section_prose = match store.sections.get(&section_id) {
             None => None,
             Some(sec) => match sec.content_excerpt.as_ref() {
                 Some(excerpt) => Some(excerpt),
@@ -4207,7 +4214,9 @@ pub fn import_ladders(
     let mut applied = 0usize;
     let mut unmatched: Vec<mnemosyne_core::SectionId> = Vec::new();
     for l in ladders {
-        match store.sections.get_mut(l.section_id.as_str()) {
+        // Entry into the store vocabulary: `LadderImport` is a wire DTO.
+        let section_id = mnemosyne_core::SectionId::from(l.section_id.as_str());
+        match store.sections.get_mut(&section_id) {
             Some(section) => {
                 section.ladder = Some(SectionLadder {
                     carrier: l.carrier.clone(),
@@ -4275,7 +4284,9 @@ pub fn import_epub_excerpts(
         // state (owned clones so the immutable borrow ends before the mutable
         // get_mut below). The epub_locator seeds the same content-SSOT anchor the
         // v41→v42 migration would (a refresh must not regress it to a URL anchor).
-        let prev_meta = store.sections.get(e.section_id.as_str()).and_then(|s| {
+        // Entry into the store vocabulary: the excerpt row is a wire DTO.
+        let section_id = mnemosyne_core::SectionId::from(e.section_id.as_str());
+        let prev_meta = store.sections.get(&section_id).and_then(|s| {
             s.normative_excerpt.as_ref().map(|ne| {
                 (
                     ne.anchor_url.clone(),
@@ -4297,7 +4308,7 @@ pub fn import_epub_excerpts(
         )?;
         store
             .sections
-            .get_mut(e.section_id.as_str())
+            .get_mut(&section_id)
             .expect("section present: prev_meta resolved from it")
             .normative_excerpt = Some(refreshed);
         applied += 1;
@@ -4544,7 +4555,7 @@ pub fn append_confirmation_event(
     // `Verifies` kind are evaluated by the `confirmed?` predicate (R418), which
     // reads the live binding graph at query time rather than freezing it here.
     let claim_section = event.claim.section_id();
-    if !store.sections.contains_key(claim_section) {
+    if !store.sections.contains_key(&claim_section.into()) {
         return Err(AtomicMutateError::NotFound(format!(
             "claim section_id `{}` not present in atomic store (use add_section first; \
              R287 fail-loud)",
@@ -5873,24 +5884,25 @@ fn stage_registry_entry<K, T: PartialEq>(
     map: &mut BTreeMap<K, T>,
     context: &str,
     kind: &str,
-    id: &str,
+    id: &K,
     candidate: T,
 ) -> Result<bool, String>
 where
     // Round 839 — the key is a registry id type, not a bare `String`. Bounded
     // rather than concrete so ONE helper serves every registry as each is
-    // migrated: `Borrow<str>` is the lookup this body does, `From<String>` the
-    // construction, `Ord` the map.
-    K: Ord + std::borrow::Borrow<str> + From<String>,
+    // migrated. Round 849 took the id ITSELF rather than its text: the
+    // `Borrow<str>` bound this body used to lean on is gone, and with it the
+    // only generic way to probe one registry with another registry's string.
+    K: Ord + Clone + AsRef<str> + std::fmt::Display,
 {
-    if id.is_empty() {
+    if id.as_ref().is_empty() {
         return Err(format!(
             "{context}: {kind}_id mandatory (non-empty after trim)"
         ));
     }
     match map.get(id) {
         None => {
-            map.insert(K::from(id.to_string()), candidate);
+            map.insert(id.clone(), candidate);
             Ok(true)
         }
         Some(existing) if *existing == candidate => Ok(false),
@@ -5934,8 +5946,14 @@ pub fn add_frame(
     let candidate = Frame {
         description: description.trim().to_string(),
     };
-    let created = stage_registry_entry(&mut store.frames, "add_frame", "frame", &id, candidate)
-        .map_err(AtomicMutateError::Validation)?;
+    let created = stage_registry_entry(
+        &mut store.frames,
+        "add_frame",
+        "frame",
+        &id.as_str().into(),
+        candidate,
+    )
+    .map_err(AtomicMutateError::Validation)?;
     registry_receipt(store, sidecar_path, "add_frame", "frame", &id, created)
 }
 
@@ -6208,7 +6226,7 @@ pub fn add_branch(
         &mut store.branches,
         "add_branch",
         "branch",
-        id.as_str(),
+        &id.as_str().into(),
         candidate,
     )
     .map_err(AtomicMutateError::Validation)?;
@@ -6269,11 +6287,11 @@ pub fn add_entity_kind(
                  inheritance graph has no self-loop)"
             )));
         }
-        if !store.entity_kinds.contains_key(p.as_str()) {
+        if !store.entity_kinds.contains_key(&p.as_str().into()) {
             let known = store
                 .entity_kinds
                 .keys()
-                .cloned()
+                .map(ToString::to_string)
                 .collect::<Vec<_>>()
                 .join(", ");
             let known = if known.is_empty() {
@@ -6296,7 +6314,7 @@ pub fn add_entity_kind(
         &mut store.entity_kinds,
         "add_entity_kind",
         "entity_kind",
-        &id,
+        &id.as_str().into(),
         candidate,
     )
     .map_err(AtomicMutateError::Validation)?;
@@ -6332,7 +6350,7 @@ pub fn set_entity_kind_parents(
     parents: &[&str],
 ) -> Result<AtomicMutateReceipt, AtomicMutateError> {
     let id = kind_id.trim().to_string();
-    if !store.entity_kinds.contains_key(id.as_str()) {
+    if !store.entity_kinds.contains_key(&id.as_str().into()) {
         return Err(AtomicMutateError::Validation(format!(
             "set_entity_kind_parents: kind `{id}` not present in the registry — \
              add_entity_kind creates, set_entity_kind_parents mutates (fail-loud; a \
@@ -6355,7 +6373,7 @@ pub fn set_entity_kind_parents(
                  kind inheritance graph has no self-loop)"
             )));
         }
-        if !store.entity_kinds.contains_key(p.as_str()) {
+        if !store.entity_kinds.contains_key(&p.as_str().into()) {
             return Err(AtomicMutateError::Validation(format!(
                 "set_entity_kind_parents: kind `{id}` names parent `{p}`, which is not \
                  a registered entity kind — register it first or fix the spelling"
@@ -6375,7 +6393,7 @@ pub fn set_entity_kind_parents(
     }
     if store
         .entity_kinds
-        .get(id.as_str())
+        .get(&id.as_str().into())
         .is_some_and(|k| k.parents == new_parents)
     {
         return registry_receipt(
@@ -6387,7 +6405,11 @@ pub fn set_entity_kind_parents(
             false,
         );
     }
-    store.entity_kinds.get_mut(id.as_str()).unwrap().parents = new_parents;
+    store
+        .entity_kinds
+        .get_mut(&id.as_str().into())
+        .unwrap()
+        .parents = new_parents;
     registry_receipt(
         store,
         sidecar_path,
@@ -6423,7 +6445,7 @@ pub fn remove_entity_kind(
             "remove_entity_kind: kind_id mandatory (non-empty after trim)".to_string(),
         ));
     }
-    if !store.entity_kinds.contains_key(id.as_str()) {
+    if !store.entity_kinds.contains_key(&id.as_str().into()) {
         return Err(AtomicMutateError::Validation(format!(
             "remove_entity_kind: kind `{id}` not present in the registry (fail-loud)"
         )));
@@ -6484,7 +6506,7 @@ pub fn remove_entity_kind(
             offenders.join("; ")
         )));
     }
-    store.entity_kinds.remove(id.as_str());
+    store.entity_kinds.remove(&id.as_str().into());
     registry_receipt(
         store,
         sidecar_path,
@@ -6503,7 +6525,7 @@ pub fn remove_entity_kind(
 /// Empty = unspecified, and it PASSES: absence is not free text. A non-empty
 /// kind must resolve.
 pub fn entity_kind_registered(store: &AtomicStore, kind: &str) -> bool {
-    kind.is_empty() || store.entity_kinds.contains_key(kind)
+    kind.is_empty() || store.entity_kinds.contains_key(&kind.into())
 }
 
 /// Whether a stored [`Entity::kind`] (or any kind ref) satisfies a predicate's
@@ -6549,7 +6571,7 @@ pub fn is_kind_or_subkind(
         if !visited.insert(cursor) {
             continue;
         }
-        if let Some(k) = store.entity_kinds.get(cursor) {
+        if let Some(k) = store.entity_kinds.get(&cursor.into()) {
             for parent in &k.parents {
                 stack.push(parent.as_str());
             }
@@ -6604,7 +6626,7 @@ pub fn entity_kind_parent_violations(store: &AtomicStore) -> Vec<(String, String
             if parent.is_empty() {
                 continue;
             }
-            if !store.entity_kinds.contains_key(parent) {
+            if !store.entity_kinds.contains_key(&parent.into()) {
                 out.push((
                     id.to_string(),
                     format!(
@@ -6636,7 +6658,7 @@ pub fn entity_kind_parent_violations(store: &AtomicStore) -> Vec<(String, String
             if exiting {
                 on_path.remove(node);
                 black.insert(node);
-                if let Some(ek) = store.entity_kinds.get(node) {
+                if let Some(ek) = store.entity_kinds.get(&node.into()) {
                     if ek
                         .parents
                         .iter()
@@ -6652,10 +6674,10 @@ pub fn entity_kind_parent_violations(store: &AtomicStore) -> Vec<(String, String
             }
             on_path.insert(node);
             stack.push((node, true));
-            if let Some(ek) = store.entity_kinds.get(node) {
+            if let Some(ek) = store.entity_kinds.get(&node.into()) {
                 for parent in &ek.parents {
                     let parent = parent.as_str().trim();
-                    if parent.is_empty() || !store.entity_kinds.contains_key(parent) {
+                    if parent.is_empty() || !store.entity_kinds.contains_key(&parent.into()) {
                         continue; // dangling / empty — a dead end, not a cycle edge
                     }
                     if on_path.contains(parent) {
@@ -6700,8 +6722,14 @@ pub fn add_unit(
     let candidate = Unit {
         description: description.trim().to_string(),
     };
-    let created = stage_registry_entry(&mut store.units, "add_unit", "unit", &id, candidate)
-        .map_err(AtomicMutateError::Validation)?;
+    let created = stage_registry_entry(
+        &mut store.units,
+        "add_unit",
+        "unit",
+        &id.as_str().into(),
+        candidate,
+    )
+    .map_err(AtomicMutateError::Validation)?;
     registry_receipt(store, sidecar_path, "add_unit", "unit", &id, created)
 }
 
@@ -6712,7 +6740,7 @@ pub fn add_unit(
 /// Quantity unit is mandatory (the amount slot has no unit-less form — a bare
 /// number reintroduces the drift defect), so an empty unit fails to resolve.
 pub fn unit_registered(store: &AtomicStore, unit: &str) -> bool {
-    store.units.contains_key(unit)
+    store.units.contains_key(&unit.into())
 }
 
 /// Register the cost of one map EDGE (Round 709 design → DEBT-J build) — keyed by
@@ -6761,7 +6789,7 @@ pub fn add_edge_cost(
         &mut store.edge_costs,
         "add_edge_cost",
         "edge_cost",
-        id.as_str(),
+        &id.as_str().into(),
         candidate,
     )
     .map_err(AtomicMutateError::Validation)?;
@@ -7104,7 +7132,7 @@ pub fn add_parameter(
         &mut store.parameters,
         "add_parameter",
         "parameter",
-        &id,
+        &id.as_str().into(),
         candidate,
     )
     .map_err(AtomicMutateError::Validation)?;
@@ -7126,7 +7154,7 @@ pub fn add_parameter(
 /// meaning without its registered meter, so an unregistered parameter fails to
 /// resolve.
 pub fn parameter_registered(store: &AtomicStore, parameter: &str) -> bool {
-    store.parameters.contains_key(parameter)
+    store.parameters.contains_key(&parameter.into())
 }
 
 /// Attach a SIGNED per-beat delta to a parameter (Round 728 design → Round 729
@@ -7175,7 +7203,7 @@ pub fn add_parameter_delta(
     let created = match store
         .parameter_deltas
         .get(&fact)
-        .and_then(|m| m.get(param.as_str()))
+        .and_then(|m| m.get(&param.as_str().into()))
     {
         Some(existing) if *existing == delta => false,
         Some(existing) => {
@@ -7217,8 +7245,8 @@ pub fn remove_parameter_delta(
     let fact = mnemosyne_core::FactId::from(fact_id.trim());
     let param = parameter.trim().to_string();
     match store.parameter_deltas.get_mut(&fact) {
-        Some(m) if m.contains_key(param.as_str()) => {
-            m.remove(param.as_str());
+        Some(m) if m.contains_key(&param.as_str().into()) => {
+            m.remove(&param.as_str().into());
         }
         _ => {
             return Err(AtomicMutateError::Validation(format!(
@@ -7336,7 +7364,7 @@ pub fn add_parameter_gate(
         &mut store.parameter_gates,
         "add_parameter_gate",
         "parameter_gate",
-        fact.as_str(),
+        &fact.as_str().into(),
         candidate,
     )
     .map_err(AtomicMutateError::Validation)?;
@@ -7446,7 +7474,7 @@ pub fn add_fact_count(
         &mut store.fact_counts,
         "add_fact_count",
         "fact_count",
-        id.as_str(),
+        &id.as_str().into(),
         count,
     )
     .map_err(AtomicMutateError::Validation)?;
@@ -7594,7 +7622,7 @@ pub fn fact_registry_refs(fact: &NarrativeFact) -> Vec<(FactRefFacet, &str)> {
 /// they cannot disagree on what "resolves" means for a slot.
 pub fn fact_ref_resolves(store: &AtomicStore, facet: FactRefFacet, value: &str) -> bool {
     match facet {
-        FactRefFacet::Frame => store.frames.contains_key(value),
+        FactRefFacet::Frame => store.frames.contains_key(&value.into()),
         // The generic resolver takes one `&str` for every facet, so the branch
         // arm constructs the id it looks up — the lookup-position concession
         // this migration records rather than pretends away.
@@ -7602,10 +7630,10 @@ pub fn fact_ref_resolves(store: &AtomicStore, facet: FactRefFacet, value: &str) 
             mnemosyne_core::is_known_world(&store.branches, &mnemosyne_core::BranchId::from(value))
         }
         FactRefFacet::Entity | FactRefFacet::TypedSubject | FactRefFacet::TypedObject => {
-            store.entities.contains_key(value)
+            store.entities.contains_key(&value.into())
         }
         FactRefFacet::CanonFrom | FactRefFacet::CanonTo | FactRefFacet::Evidence => {
-            store.sections.contains_key(value)
+            store.sections.contains_key(&value.into())
         }
         FactRefFacet::TypedPredicate => resolve_predicate(store, value).is_some(),
         FactRefFacet::TypedUnit => unit_registered(store, value),
@@ -7617,7 +7645,7 @@ pub fn fact_ref_resolves(store: &AtomicStore, facet: FactRefFacet, value: &str) 
 /// needs the declaration for the object-shape check) call, so predicate
 /// resolution is single-copy (Round 693 — DEBT-PREDICATE-RESOLVE-SPLIT).
 pub fn resolve_predicate<'a>(store: &'a AtomicStore, id: &str) -> Option<&'a Predicate> {
-    store.predicates.get(id)
+    store.predicates.get(&id.into())
 }
 
 /// The out-of-band detector's message for one unresolved ref — kept byte-stable
@@ -7748,7 +7776,9 @@ pub fn store_registry_violations(store: &AtomicStore) -> Vec<String> {
         // when the ref resolves (a dangling ref is already reported).
         if let Some(claim) = &fact.typed {
             for (leg, ent) in typed_entity_refs(claim) {
-                if store.entities.contains_key(ent) && !fact.entities.iter().any(|e| e == ent) {
+                if store.entities.contains_key(&ent.into())
+                    && !fact.entities.iter().any(|e| e == ent)
+                {
                     out.push(format!(
                         "fact `{id}`: typed {leg} `{ent}` is not a member of the fact's \
                          entities list (the entities list stays THE retrieval key)"
@@ -7820,7 +7850,7 @@ pub fn add_entity(
         let known = store
             .entity_kinds
             .keys()
-            .cloned()
+            .map(ToString::to_string)
             .collect::<Vec<_>>()
             .join(", ");
         let known = if known.is_empty() {
@@ -7838,8 +7868,14 @@ pub fn add_entity(
         kind: kind.into(),
         description: description.trim().to_string(),
     };
-    let created = stage_registry_entry(&mut store.entities, "add_entity", "entity", &id, candidate)
-        .map_err(AtomicMutateError::Validation)?;
+    let created = stage_registry_entry(
+        &mut store.entities,
+        "add_entity",
+        "entity",
+        &id.as_str().into(),
+        candidate,
+    )
+    .map_err(AtomicMutateError::Validation)?;
     registry_receipt(store, sidecar_path, "add_entity", "entity", &id, created)
 }
 
@@ -7964,7 +8000,7 @@ pub fn add_predicate(
         &mut store.predicates,
         "add_predicate",
         "predicate",
-        &id,
+        &id.as_str().into(),
         candidate,
     )
     .map_err(AtomicMutateError::Validation)?;
@@ -8065,7 +8101,7 @@ fn validate_predicate_kind_refs(
 ) -> Result<(), String> {
     for (leg, k) in predicate_kind_refs(p) {
         if let Some(k) = k {
-            if !store.entity_kinds.contains_key(k) {
+            if !store.entity_kinds.contains_key(&k.into()) {
                 return Err(format!(
                     "{context}: {leg} `{k}` is not a registered entity_kind \
                      (add_entity_kind first; fail-loud — a typo'd kind would route \
@@ -8092,7 +8128,7 @@ pub fn predicate_kind_ref_violations(store: &AtomicStore) -> Vec<String> {
     for (id, p) in &store.predicates {
         for (leg, k) in predicate_kind_refs(p) {
             if let Some(k) = k {
-                if !store.entity_kinds.contains_key(k) {
+                if !store.entity_kinds.contains_key(&k.into()) {
                     out.push(format!(
                         "predicate `{id}`: {leg} `{k}` is not a registered entity_kind \
                          (out-of-band edit — a typo'd kind routes every fact out of the \
@@ -8215,7 +8251,7 @@ pub fn set_predicate(
     .map_err(AtomicMutateError::Validation)?;
     validate_predicate_kind_refs(store, "set_predicate", &candidate)
         .map_err(AtomicMutateError::Validation)?;
-    let Some(existing) = store.predicates.get(id.as_str()) else {
+    let Some(existing) = store.predicates.get(&id.as_str().into()) else {
         return Err(AtomicMutateError::Validation(format!(
             "set_predicate: predicate `{id}` not present in the registry — \
              add_predicate creates, set_predicate mutates (fail-loud; a silent \
@@ -8243,7 +8279,7 @@ pub fn set_predicate(
     let offenders: Vec<&str> = predicate_uses(store, &id)
         .into_iter()
         .filter(|fid| {
-            store.narrative_facts[*fid]
+            store.narrative_facts[&mnemosyne_core::FactId::from(*fid)]
                 .typed
                 .as_ref()
                 .is_some_and(|t| !use_satisfies_declaration(store, t, &candidate))
@@ -8287,7 +8323,7 @@ pub fn remove_predicate(
             "remove_predicate: predicate_id mandatory (non-empty after trim)".to_string(),
         ));
     }
-    if !store.predicates.contains_key(id.as_str()) {
+    if !store.predicates.contains_key(&id.as_str().into()) {
         return Err(AtomicMutateError::Validation(format!(
             "remove_predicate: predicate `{id}` not present in the registry (fail-loud)"
         )));
@@ -8301,7 +8337,7 @@ pub fn remove_predicate(
             sample_ids(&uses)
         )));
     }
-    store.predicates.remove(id.as_str());
+    store.predicates.remove(&id.as_str().into());
     registry_receipt(
         store,
         sidecar_path,
@@ -8490,7 +8526,7 @@ pub(crate) fn apply_disclosure_override(
              registry (add-disclosure-plan first)"
         )));
     }
-    let fact_is_typed = match store.narrative_facts.get(fact) {
+    let fact_is_typed = match store.narrative_facts.get(&fact.into()) {
         Some(f) => f.typed.is_some(),
         None => {
             return Err(AtomicMutateError::Validation(format!(
@@ -8607,7 +8643,7 @@ pub(crate) fn apply_disclosure_override(
     // Whether the stored override actually changed — a re-set of the identical
     // decision is a no-op, so a manifest re-import stays byte-stable (the
     // standalone `set_disclosure` persists unconditionally, its own contract).
-    let changed = plan.overrides.get(fact) != Some(&new_override);
+    let changed = plan.overrides.get(&fact.into()) != Some(&new_override);
     plan.overrides.insert(fact.into(), new_override);
     Ok(changed)
 }
@@ -8919,7 +8955,7 @@ pub fn remove_disclosure_reveal_coord(
     let coord = mnemosyne_core::SectionId::from(coord.trim());
     let ov = disclosure_override_mut(store, "remove_disclosure_reveal_coord", &telling, &fact)?;
     let reveal = match ov.first_at.get_mut(&branch) {
-        Some(r) if r.coords.contains(coord.as_str()) => r,
+        Some(r) if r.coords.contains(&coord.as_str().into()) => r,
         _ => {
             return Err(AtomicMutateError::Validation(format!(
                 "remove_disclosure_reveal_coord: telling `{telling}` fact `{fact}` has no first_at \
@@ -8938,7 +8974,7 @@ pub fn remove_disclosure_reveal_coord(
             )));
         }
     }
-    reveal.coords.remove(coord.as_str());
+    reveal.coords.remove(&coord.as_str().into());
     // Emptied set → drop the branch key (never a vacuous empty trigger). A
     // surviving Some(len) is KEPT (last-reached, distinct — unlike the edge guard).
     if reveal.coords.is_empty() {
@@ -9034,7 +9070,7 @@ pub fn remove_disclosure(
             "telling `{telling}` not present in the disclosure_plans registry"
         )));
     };
-    if plan.overrides.remove(fact).is_none() {
+    if plan.overrides.remove(&fact.into()).is_none() {
         return Err(AtomicMutateError::NotFound(format!(
             "telling `{telling}` carries no disclosure decision for fact `{fact}` \
              (nothing to clear)"
@@ -9168,7 +9204,7 @@ pub fn apply_facts_manifest(
             &mut store.frames,
             &format!("import_facts: manifest frame {idx}"),
             "frame",
-            f.frame_id.trim(),
+            &f.frame_id.trim().into(),
             candidate,
         )
         .map_err(AtomicMutateError::Validation)?;
@@ -9223,7 +9259,7 @@ pub fn apply_facts_manifest(
             &mut store.branches,
             &format!("import_facts: manifest branch {idx}"),
             "branch",
-            id,
+            &id.into(),
             candidate,
         )
         .map_err(AtomicMutateError::Validation)?;
@@ -9254,7 +9290,7 @@ pub fn apply_facts_manifest(
                      its own parent (a kind inheritance graph has no self-loop)"
                 )));
             }
-            if !store.entity_kinds.contains_key(p) {
+            if !store.entity_kinds.contains_key(&p.into()) {
                 return Err(AtomicMutateError::Validation(format!(
                     "import_facts: manifest entity_kind {idx} (`{kind_id}`) names parent \
                      `{p}`, which is not yet registered — list the parent kind EARLIER \
@@ -9271,7 +9307,7 @@ pub fn apply_facts_manifest(
             &mut store.entity_kinds,
             &format!("import_facts: manifest entity_kind {idx}"),
             "entity_kind",
-            kind_id,
+            &kind_id.into(),
             candidate,
         )
         .map_err(AtomicMutateError::Validation)?;
@@ -9290,7 +9326,7 @@ pub fn apply_facts_manifest(
             &mut store.units,
             &format!("import_facts: manifest unit {idx}"),
             "unit",
-            u.unit_id.trim(),
+            &u.unit_id.trim().into(),
             candidate,
         )
         .map_err(AtomicMutateError::Validation)?;
@@ -9323,7 +9359,7 @@ pub fn apply_facts_manifest(
             &mut store.entities,
             &format!("import_facts: manifest entity {idx}"),
             "entity",
-            e.entity_id.trim(),
+            &e.entity_id.trim().into(),
             candidate,
         )
         .map_err(AtomicMutateError::Validation)?;
@@ -9351,7 +9387,7 @@ pub fn apply_facts_manifest(
             &mut store.predicates,
             &context,
             "predicate",
-            p.predicate_id.trim(),
+            &p.predicate_id.trim().into(),
             candidate,
         )
         .map_err(AtomicMutateError::Validation)?;
@@ -9623,7 +9659,7 @@ fn inbound_disclosure_refs<'a>(
 ) -> Vec<(&'a String, &'a DisclosureOverride)> {
     plans
         .iter()
-        .filter_map(|(telling, plan)| plan.overrides.get(fact_id).map(|ov| (telling, ov)))
+        .filter_map(|(telling, plan)| plan.overrides.get(&fact_id.into()).map(|ov| (telling, ov)))
         .collect()
 }
 
@@ -10467,7 +10503,10 @@ mod tests {
         ];
         let (_, unmatched) = import_content_excerpts(&mut store, &sidecar, &imports, None).unwrap();
         assert_eq!(unmatched, vec!["nope".to_string()]);
-        let ex = store.sections["d01-nat"].content_excerpt.as_ref().unwrap();
+        let ex = store.sections[&"d01-nat".into()]
+            .content_excerpt
+            .as_ref()
+            .unwrap();
         assert_eq!(ex.text, text);
         assert_eq!(ex.anchor.source, "MANUSCRIPT.md");
         assert_eq!(ex.text_sha256, sha256_hex(text.as_bytes()));
@@ -10545,7 +10584,7 @@ mod tests {
         .unwrap();
         // The fact-creating path never affirms — one write path for the field.
         assert_eq!(
-            store.narrative_facts["f-silence"].evidence[0].reviewed_excerpt_sha256,
+            store.narrative_facts[&"f-silence".into()].evidence[0].reviewed_excerpt_sha256,
             ""
         );
         let sha = sha256_hex(text.as_bytes());
@@ -10561,7 +10600,7 @@ mod tests {
         )
         .unwrap();
         assert_eq!(
-            store.narrative_facts["f-silence"].evidence[0].reviewed_excerpt_sha256,
+            store.narrative_facts[&"f-silence".into()].evidence[0].reviewed_excerpt_sha256,
             sha
         );
         // Re-affirming the same review writes nothing (idempotent no-op).
@@ -10639,7 +10678,8 @@ mod tests {
             "{err}"
         );
         assert_eq!(
-            store.narrative_facts["f-silence"].evidence[0].reviewed_excerpt_sha256, "",
+            store.narrative_facts[&"f-silence".into()].evidence[0].reviewed_excerpt_sha256,
+            "",
             "a rejected batch records nothing"
         );
     }
@@ -10669,7 +10709,7 @@ mod tests {
         });
         std::fs::write(&sidecar, serde_json::to_string_pretty(&raw).unwrap()).unwrap();
         let store = AtomicStore::load(&sidecar).unwrap();
-        let ev = &store.narrative_facts["f-silence"].evidence;
+        let ev = &store.narrative_facts[&"f-silence".into()].evidence;
         assert_eq!(ev.len(), 1);
         assert_eq!(ev[0].section, "d01-bam");
         assert_eq!(
@@ -10723,7 +10763,7 @@ mod tests {
             Err(AtomicMutateError::Validation(_))
         ));
         // And the rejected import left NO content_excerpt (fail-before-save).
-        assert!(store2.sections["d01-nat"].content_excerpt.is_none());
+        assert!(store2.sections[&"d01-nat".into()].content_excerpt.is_none());
     }
 
     #[test]
@@ -10770,7 +10810,7 @@ mod tests {
         ];
         let (_, unmatched) = import_scene_cast(&mut store, &sidecar, &imports).unwrap();
         assert_eq!(unmatched, vec!["nope".to_string()]);
-        let cast = &store.sections["d08-bam"].scene_cast;
+        let cast = &store.sections[&"d08-bam".into()].scene_cast;
         assert_eq!(cast.len(), 2);
         assert_eq!(cast[0].entity, "ent-jongdeuk");
         assert_eq!(cast[0].modality, mnemosyne_core::Modality::Observed);
@@ -10782,7 +10822,7 @@ mod tests {
         assert!(!cast[1].can_answer);
         // Re-import REPLACES (idempotent), not appends.
         let (_, _) = import_scene_cast(&mut store, &sidecar, &imports[..1]).unwrap();
-        assert_eq!(store.sections["d08-bam"].scene_cast.len(), 1);
+        assert_eq!(store.sections[&"d08-bam".into()].scene_cast.len(), 1);
         // A malformed entry (empty entity) fails validation BEFORE any save.
         let bad = vec![ScenePresenceImport {
             section_id: "d08-bam".to_string(),
@@ -10900,7 +10940,7 @@ mod tests {
         // which closure inference cannot express here.
         fn ladder_mut(s: &mut AtomicStore) -> &mut SectionLadder {
             s.sections
-                .get_mut("d02-nat")
+                .get_mut(&"d02-nat".into())
                 .unwrap()
                 .ladder
                 .as_mut()
@@ -10958,7 +10998,12 @@ mod tests {
             corrupt,
         } in arms
         {
-            let pristine = store.sections.get("d02-nat").unwrap().ladder.clone();
+            let pristine = store
+                .sections
+                .get(&"d02-nat".into())
+                .unwrap()
+                .ladder
+                .clone();
             corrupt(&mut store);
             let found = ladder_ref_violations(&store);
             assert!(
@@ -10970,7 +11015,7 @@ mod tests {
                 found.iter().all(|v| v.contains("d02-nat")),
                 "{name}: a violation that does not name its section: {found:?}"
             );
-            store.sections.get_mut("d02-nat").unwrap().ladder = pristine;
+            store.sections.get_mut(&"d02-nat".into()).unwrap().ladder = pristine;
             assert!(
                 ladder_ref_violations(&store).is_empty(),
                 "{name}: repairing the arm did not silence the detector"
@@ -11003,7 +11048,7 @@ mod tests {
         );
         store
             .sections
-            .get_mut("d02-nat")
+            .get_mut(&"d02-nat".into())
             .unwrap()
             .ladder
             .as_mut()
@@ -11041,7 +11086,7 @@ mod tests {
         };
         // ACCEPT: a prefix the section's prose holds exactly once.
         import_ladders(&mut store, &sidecar, &ladder(rung("물때는"))).unwrap();
-        assert!(store.sections["d02-nat"].ladder.is_some());
+        assert!(store.sections[&"d02-nat".into()].ladder.is_some());
         // REJECT: prose the section does not hold — the probed defect.
         let err =
             import_ladders(&mut store, &sidecar, &ladder(rung("어디에도 없는 문장"))).unwrap_err();
@@ -11123,7 +11168,7 @@ mod tests {
         let (_, unmatched) = import_ladders(&mut store, &sidecar, &imports).unwrap();
         assert_eq!(unmatched, vec!["nope".to_string()]);
 
-        let ladder = store.sections["d02-nat"].ladder.as_ref().unwrap();
+        let ladder = store.sections[&"d02-nat".into()].ladder.as_ref().unwrap();
         assert_eq!(ladder.carrier, Some("ent-jongdeuk".into()));
         assert_eq!(ladder.rungs.len(), 2);
         assert_eq!(
@@ -11141,7 +11186,7 @@ mod tests {
             rungs: vec![rung("셈은")],
         }];
         import_ladders(&mut store, &sidecar, &shorter).unwrap();
-        let ladder = store.sections["d02-nat"].ladder.as_ref().unwrap();
+        let ladder = store.sections[&"d02-nat".into()].ladder.as_ref().unwrap();
         assert_eq!(ladder.rungs.len(), 1);
         assert!(
             ladder.carrier.is_none(),
@@ -11220,7 +11265,7 @@ mod tests {
                 "{why}: expected a validation reject"
             );
             // Fail-BEFORE-save: the good ladder from the top is still intact.
-            let ladder = store.sections["d02-nat"].ladder.as_ref().unwrap();
+            let ladder = store.sections[&"d02-nat".into()].ladder.as_ref().unwrap();
             assert_eq!(ladder.rungs.len(), 1, "{why}: the store was mutated anyway");
             assert_eq!(
                 ladder.carrier,
@@ -11259,7 +11304,8 @@ mod tests {
         let reloaded = AtomicStore::load(&sidecar).unwrap();
         assert_eq!(reloaded.schema_version, CURRENT_SCHEMA_VERSION);
         assert_eq!(
-            reloaded.sections["d02-nat"].ladder, store.sections["d02-nat"].ladder,
+            reloaded.sections[&"d02-nat".into()].ladder,
+            store.sections[&"d02-nat".into()].ladder,
             "the ladder must survive the round trip verbatim"
         );
     }
@@ -11479,12 +11525,12 @@ mod tests {
         .unwrap();
         let reloaded = AtomicStore::load(&path).unwrap();
         assert_eq!(
-            reloaded.sections["bycon"].verification_expectation,
+            reloaded.sections[&"bycon".into()].verification_expectation,
             mnemosyne_core::VerificationExpectation::ByConstruction,
             "ByConstruction must round-trip"
         );
         assert_eq!(
-            reloaded.sections["dedicated"].verification_expectation,
+            reloaded.sections[&"dedicated".into()].verification_expectation,
             mnemosyne_core::VerificationExpectation::Dedicated,
             "default Dedicated must reload from an omitted key"
         );
@@ -11713,7 +11759,7 @@ mod tests {
  }"#;
         std::fs::write(&path, schema_version_2_json).unwrap();
         let loaded = AtomicStore::load(&path).unwrap();
-        let s = loaded.sections.get("39").expect("§39 present");
+        let s = loaded.sections.get(&"39".into()).expect("§39 present");
         assert_eq!(s.skeleton.title, "", "title defaults to empty pre-backfill");
         assert_eq!(
             s.skeleton.parent_doc, "",
@@ -14859,7 +14905,7 @@ mod tests {
         seed_excerpt(&mut store, &path, "b", "text b", "https://x.org/#b", "rev2");
         store
             .sections
-            .get_mut("b")
+            .get_mut(&"b".into())
             .unwrap()
             .normative_excerpt
             .as_mut()
@@ -15071,7 +15117,7 @@ mod tests {
         ];
         let receipt = import_sections(&mut store, &path, &manifest).unwrap();
         assert_eq!(store.sections.len(), 2);
-        assert!(store.sections.contains_key("scxml-3.13"));
+        assert!(store.sections.contains_key(&"scxml-3.13".into()));
         assert!(
             receipt.target_id.contains("2 created"),
             "{}",
@@ -15277,10 +15323,10 @@ mod tests {
         child.parent_section = Some("§scxml-D".to_string());
         let manifest = vec![imp("§scxml-D", "docs/GENERATED.md", "Appendix D"), child];
         import_sections(&mut store, &path, &manifest).unwrap();
-        assert!(store.sections.contains_key("scxml-D"));
-        assert!(store.sections.contains_key("scxml-D-2"));
+        assert!(store.sections.contains_key(&"scxml-D".into()));
+        assert!(store.sections.contains_key(&"scxml-D-2".into()));
         assert!(
-            !store.sections.contains_key("§scxml-D"),
+            !store.sections.contains_key(&"§scxml-D".into()),
             "sigil leaked into key"
         );
         // Parent ref resolved against the bare key.
@@ -15309,7 +15355,7 @@ mod tests {
             s1.sections.keys().collect::<Vec<_>>(),
             s2.sections.keys().collect::<Vec<_>>()
         );
-        assert!(s1.sections.contains_key("scxml-1"));
+        assert!(s1.sections.contains_key(&"scxml-1".into()));
     }
 
     #[test]
@@ -15547,10 +15593,10 @@ mod tests {
             Some(("ch-2", Some("pike"))),
         )
         .unwrap();
-        let ov = &store.disclosure_plans["dark-souls"].overrides["f-typed"];
+        let ov = &store.disclosure_plans["dark-souls"].overrides[&"f-typed".into()];
         assert_eq!(ov.mode, DisclosureMode::State);
         assert_eq!(
-            ov.first_at.get("route"),
+            ov.first_at.get(&"route".into()),
             Some(&DisclosureReveal {
                 coords: BTreeSet::from(["ch-3".into()]),
                 threshold: None,
@@ -15781,7 +15827,10 @@ mod tests {
             // that actually clears it, and the pin must hold it to that.
             assert!(msg.contains("disclosure decision under telling"), "{msg}");
             assert!(msg.contains("remove-disclosure --telling"), "{msg}");
-            assert!(store.narrative_facts.contains_key(fact), "{fact} survived");
+            assert!(
+                store.narrative_facts.contains_key(&fact.into()),
+                "{fact} survived"
+            );
         }
 
         // AMEND may not drop the typed leg under a withhold — the write path
@@ -15789,7 +15838,7 @@ mod tests {
         let err = amend_fact(&mut store, &path, &untyped_import("f-withheld"), "typo").unwrap_err();
         assert!(err.to_string().contains("un-gateable"), "{err}");
         assert!(
-            store.narrative_facts["f-withheld"].typed.is_some(),
+            store.narrative_facts[&"f-withheld".into()].typed.is_some(),
             "the typed leg the withhold rides on was dropped anyway"
         );
 
@@ -15823,7 +15872,7 @@ mod tests {
             .expect("a craft-only state with no pin is legal on an untyped fact");
         amend_fact(&mut store, &path, &untyped_import("f-craft"), "craft-only")
             .expect("an untargeted override must not block an amend");
-        assert!(store.narrative_facts["f-craft"].typed.is_none());
+        assert!(store.narrative_facts[&"f-craft".into()].typed.is_none());
 
         // An amend that KEEPS the typed leg under a withhold stays legal.
         amend_fact(&mut store, &path, &typed_import("f-withheld"), "reworded").unwrap();
@@ -15843,9 +15892,9 @@ mod tests {
         remove_disclosure(&mut store, &path, "t", "f-withheld", "decision withdrawn").unwrap();
         assert!(!store.disclosure_plans["t"]
             .overrides
-            .contains_key("f-withheld"));
+            .contains_key(&"f-withheld".into()));
         retract_fact(&mut store, &path, "f-withheld", "no longer asserted").unwrap();
-        assert!(!store.narrative_facts.contains_key("f-withheld"));
+        assert!(!store.narrative_facts.contains_key(&"f-withheld".into()));
         let dangling = store
             .disclosure_plans
             .values()
@@ -15881,7 +15930,7 @@ mod tests {
         assert!(!report.applied);
         assert!(report.verdicts[1].verdict.contains("stale proposal"));
         assert!(
-            store.narrative_facts["f-1"].typed.is_none(),
+            store.narrative_facts[&"f-1".into()].typed.is_none(),
             "all-or-nothing: nothing applies while any proposal rejects"
         );
         // Corrected file: dry-run first (validates, writes nothing) ...
@@ -15892,13 +15941,13 @@ mod tests {
         let dry = import_typing_proposals(&mut store, &path, &file, "sha", true).unwrap();
         assert_eq!((dry.accepted, dry.rejected), (2, 0));
         assert!(dry.dry_run && !dry.applied && dry.written_bytes == 0);
-        assert!(store.narrative_facts["f-1"].typed.is_none());
+        assert!(store.narrative_facts[&"f-1".into()].typed.is_none());
         // ... then the real run applies both in one transaction.
         let real = import_typing_proposals(&mut store, &path, &file, "sha", false).unwrap();
         assert!(real.applied && real.written_bytes > 0);
         let reloaded = AtomicStore::load(&path).unwrap();
-        assert!(reloaded.narrative_facts["f-1"].typed.is_some());
-        assert!(reloaded.narrative_facts["f-2"].typed.is_some());
+        assert!(reloaded.narrative_facts[&"f-1".into()].typed.is_some());
+        assert!(reloaded.narrative_facts[&"f-2".into()].typed.is_some());
     }
 
     /// Every reject class carries its own named verdict: duplicate
@@ -15996,7 +16045,11 @@ mod tests {
                 .unwrap();
         assert!(report.applied, "{:?}", report.verdicts);
         assert!(matches!(
-            store.narrative_facts["f-1"].typed.as_ref().unwrap().object,
+            store.narrative_facts[&"f-1".into()]
+                .typed
+                .as_ref()
+                .unwrap()
+                .object,
             TypedObject::Fact { .. }
         ));
     }
@@ -16157,7 +16210,9 @@ mod tests {
             "the shared guard rejects: {err}"
         );
         assert!(
-            store.narrative_facts["f-1"].supersedes_in_frame.is_none(),
+            store.narrative_facts[&"f-1".into()]
+                .supersedes_in_frame
+                .is_none(),
             "store untouched"
         );
     }
@@ -16308,7 +16363,9 @@ mod tests {
         assert!(!report.applied);
         assert!(report.verdicts[1].verdict.contains("stale proposal"));
         assert!(
-            store.narrative_facts["f-2"].supersedes_in_frame.is_none(),
+            store.narrative_facts[&"f-2".into()]
+                .supersedes_in_frame
+                .is_none(),
             "all-or-nothing: nothing applies while any proposal rejects"
         );
         let good = edge_file(
@@ -16328,18 +16385,20 @@ mod tests {
         let dry = import_edge_proposals(&mut store, &path, &good, "sha", true).unwrap();
         assert!(dry.dry_run && !dry.applied && dry.rejected == 0);
         assert_eq!(dry.written_bytes, 0);
-        assert!(store.narrative_facts["f-2"].supersedes_in_frame.is_none());
+        assert!(store.narrative_facts[&"f-2".into()]
+            .supersedes_in_frame
+            .is_none());
         let real = import_edge_proposals(&mut store, &path, &good, "sha", false).unwrap();
         assert!(real.applied);
         assert!(real.written_bytes > 0);
         assert_eq!(
-            store.narrative_facts["f-2"]
+            store.narrative_facts[&"f-2".into()]
                 .supersedes_in_frame
                 .as_ref()
                 .map(mnemosyne_core::FactId::as_str),
             Some("f-1")
         );
-        let edge = &store.narrative_facts["f-3"].conflicts_with[0];
+        let edge = &store.narrative_facts[&"f-3".into()].conflicts_with[0];
         assert_eq!(edge.target, "f-1");
         assert_eq!(
             edge.target_claim_sha256,
@@ -16459,7 +16518,9 @@ mod tests {
         assert!(!report.applied);
         assert_eq!(report.verdicts[0].verdict, "accepted");
         assert!(report.verdicts[1].verdict.contains("cycle"));
-        assert!(store.narrative_facts["f-2"].supersedes_in_frame.is_none());
+        assert!(store.narrative_facts[&"f-2".into()]
+            .supersedes_in_frame
+            .is_none());
     }
 
     /// Loader boundary: schema tag mismatch, unknown fields (a stray
@@ -16533,7 +16594,7 @@ mod tests {
         let reloaded = AtomicStore::load(&path).unwrap();
         assert_eq!(reloaded.schema_version, CURRENT_SCHEMA_VERSION);
         assert_eq!(reloaded.frames.len(), 2);
-        let new = &reloaded.narrative_facts["f-new"];
+        let new = &reloaded.narrative_facts[&"f-new".into()];
         assert_eq!(new.supersedes_in_frame, Some("f-old".into()));
         // quote_sha256 computed by the primitive, never caller-supplied.
         assert_eq!(
@@ -16541,7 +16602,7 @@ mod tests {
             Some(sha256_hex("he crawled face-down the castle wall".as_bytes()).as_str())
         );
         assert_eq!(
-            reloaded.narrative_facts["f-old"].canon_to.as_ref(),
+            reloaded.narrative_facts[&"f-old".into()].canon_to.as_ref(),
             Some(&"ch-2".into())
         );
         // Idempotent re-import: pure no-op, nothing written.
@@ -16886,11 +16947,11 @@ mod tests {
         .unwrap();
         let reloaded = AtomicStore::load(&path).unwrap();
         assert_eq!(
-            reloaded.narrative_facts["setup-1"].payoff_expectation,
+            reloaded.narrative_facts[&"setup-1".into()].payoff_expectation,
             PayoffExpectation::Expected
         );
         assert_eq!(
-            reloaded.narrative_facts["payoff-1"].pays_off,
+            reloaded.narrative_facts[&"payoff-1".into()].pays_off,
             vec!["setup-1".to_string()]
         );
         // The unmarked default stays off the wire (byte-stability).
@@ -17396,8 +17457,8 @@ mod tests {
         add_fact(&mut store, &path, &sample_fact("f-edge", "gt")).unwrap();
         // Valid: fact exists, n>0, unit registered.
         add_edge_cost(&mut store, &path, "f-edge", 4, "minute").unwrap();
-        assert_eq!(store.edge_costs["f-edge"].n, 4);
-        assert_eq!(store.edge_costs["f-edge"].unit, "minute");
+        assert_eq!(store.edge_costs[&"f-edge".into()].n, 4);
+        assert_eq!(store.edge_costs[&"f-edge".into()].unit, "minute");
         // Missing fact rejects.
         let err = add_edge_cost(&mut store, &path, "f-gone", 4, "minute")
             .unwrap_err()
@@ -17451,9 +17512,12 @@ mod tests {
         // Remove the cost: it goes, the FACT stays (the whole point — a stray
         // cost on a kept fact has an exit that retract_fact could not give).
         remove_edge_cost(&mut store, &path, "f-edge").unwrap();
-        assert!(!store.edge_costs.contains_key("f-edge"), "cost removed");
         assert!(
-            store.narrative_facts.contains_key("f-edge"),
+            !store.edge_costs.contains_key(&"f-edge".into()),
+            "cost removed"
+        );
+        assert!(
+            store.narrative_facts.contains_key(&"f-edge".into()),
             "the fact is untouched"
         );
 
@@ -17477,7 +17541,7 @@ mod tests {
         );
         remove_edge_cost(&mut store, &path, "f-orphan").unwrap();
         assert!(
-            !store.edge_costs.contains_key("f-orphan"),
+            !store.edge_costs.contains_key(&"f-orphan".into()),
             "orphan cost cleaned"
         );
     }
@@ -17496,7 +17560,9 @@ mod tests {
         add_fact(&mut store, &path, &sample_fact("f-key", "gt")).unwrap();
         // Valid: both facts exist. The value is a SET (Round 722).
         add_edge_guard(&mut store, &path, "f-edge", "f-key").unwrap();
-        assert!(store.edge_guards["f-edge"].conditions.contains("f-key"));
+        assert!(store.edge_guards[&"f-edge".into()]
+            .conditions
+            .contains(&"f-key".into()));
         // Missing edge rejects.
         let err = add_edge_guard(&mut store, &path, "f-gone", "f-key")
             .unwrap_err()
@@ -17546,7 +17612,10 @@ mod tests {
         );
         // remove_edge_guard is the escape hatch; then the condition retracts.
         remove_edge_guard(&mut store, &path, "f-edge").unwrap();
-        assert!(!store.edge_guards.contains_key("f-edge"), "guard removed");
+        assert!(
+            !store.edge_guards.contains_key(&"f-edge".into()),
+            "guard removed"
+        );
         retract_fact(&mut store, &path, "f-key", "test").unwrap();
 
         // Re-attach, then retract the EDGE → the guard cascade-drops with it.
@@ -17554,7 +17623,7 @@ mod tests {
         add_edge_guard(&mut store, &path, "f-edge", "f-key2").unwrap();
         retract_fact(&mut store, &path, "f-edge", "test").unwrap();
         assert!(
-            !store.edge_guards.contains_key("f-edge"),
+            !store.edge_guards.contains_key(&"f-edge".into()),
             "the guard cascade-drops with its edge — no dangling guard"
         );
 
@@ -17568,7 +17637,7 @@ mod tests {
         );
         remove_edge_guard(&mut store, &path, "f-orphan").unwrap();
         assert!(
-            !store.edge_guards.contains_key("f-orphan"),
+            !store.edge_guards.contains_key(&"f-orphan".into()),
             "orphan cleaned"
         );
     }
@@ -17592,14 +17661,14 @@ mod tests {
         add_edge_guard(&mut store, &path, "f-edge", "f-key").unwrap();
         add_edge_guard(&mut store, &path, "f-edge", "f-tide").unwrap();
         assert_eq!(
-            store.edge_guards["f-edge"].conditions.len(),
+            store.edge_guards[&"f-edge".into()].conditions.len(),
             2,
             "both conditions held"
         );
         // Idempotent on an already-present condition (no-op, still 2).
         add_edge_guard(&mut store, &path, "f-edge", "f-key").unwrap();
         assert_eq!(
-            store.edge_guards["f-edge"].conditions.len(),
+            store.edge_guards[&"f-edge".into()].conditions.len(),
             2,
             "re-add is a no-op"
         );
@@ -17616,11 +17685,13 @@ mod tests {
         // Drop ONE condition; the guard survives with the other.
         remove_edge_guard_condition(&mut store, &path, "f-edge", "f-key").unwrap();
         assert_eq!(
-            store.edge_guards["f-edge"].conditions.len(),
+            store.edge_guards[&"f-edge".into()].conditions.len(),
             1,
             "one condition left"
         );
-        assert!(store.edge_guards["f-edge"].conditions.contains("f-tide"));
+        assert!(store.edge_guards[&"f-edge".into()]
+            .conditions
+            .contains(&"f-tide".into()));
         // f-key is now retractable (no longer referenced).
         retract_fact(&mut store, &path, "f-key", "test").unwrap();
         // Removing a condition the edge lacks fails loud.
@@ -17631,7 +17702,7 @@ mod tests {
         // Drop the LAST condition → the KEY is deleted (no empty-set entry).
         remove_edge_guard_condition(&mut store, &path, "f-edge", "f-tide").unwrap();
         assert!(
-            !store.edge_guards.contains_key("f-edge"),
+            !store.edge_guards.contains_key(&"f-edge".into()),
             "an emptied set drops its key — no vacuous empty guard"
         );
     }
@@ -17687,13 +17758,17 @@ mod tests {
             add_edge_guard(&mut store, &path, "f-edge", c).unwrap();
         }
         // A fresh guard is AND (threshold None).
-        assert_eq!(store.edge_guards["f-edge"].threshold, None);
+        assert_eq!(store.edge_guards[&"f-edge".into()].threshold, None);
         // Set 2-of-3.
         set_edge_guard_threshold(&mut store, &path, "f-edge", Some(2)).unwrap();
-        assert_eq!(store.edge_guards["f-edge"].threshold, Some(2));
+        assert_eq!(store.edge_guards[&"f-edge".into()].threshold, Some(2));
         // Some(len) is a redundant AND → normalized to None (canonical).
         set_edge_guard_threshold(&mut store, &path, "f-edge", Some(3)).unwrap();
-        assert_eq!(store.edge_guards["f-edge"].threshold, None, "k==len -> AND");
+        assert_eq!(
+            store.edge_guards[&"f-edge".into()].threshold,
+            None,
+            "k==len -> AND"
+        );
         // k==0 is vacuous → reject.
         let err = set_edge_guard_threshold(&mut store, &path, "f-edge", Some(0))
             .unwrap_err()
@@ -17707,7 +17782,7 @@ mod tests {
         // Clear back to AND.
         set_edge_guard_threshold(&mut store, &path, "f-edge", Some(2)).unwrap();
         set_edge_guard_threshold(&mut store, &path, "f-edge", None).unwrap();
-        assert_eq!(store.edge_guards["f-edge"].threshold, None);
+        assert_eq!(store.edge_guards[&"f-edge".into()].threshold, None);
         // An edge with no guard → reject (a threshold is a property of a guard).
         let err = set_edge_guard_threshold(&mut store, &path, "c1", Some(1))
             .unwrap_err()
@@ -17735,18 +17810,19 @@ mod tests {
         set_edge_guard_threshold(&mut store, &path, "f-edge", Some(3)).unwrap(); // 3-of-4
                                                                                  // add a 5th condition → k unchanged (3-of-5).
         add_edge_guard(&mut store, &path, "f-edge", "c5").unwrap();
-        assert_eq!(store.edge_guards["f-edge"].threshold, Some(3));
-        assert_eq!(store.edge_guards["f-edge"].conditions.len(), 5);
+        assert_eq!(store.edge_guards[&"f-edge".into()].threshold, Some(3));
+        assert_eq!(store.edge_guards[&"f-edge".into()].conditions.len(), 5);
         // remove one → 3-of-4 (k stays, still < len).
         remove_edge_guard_condition(&mut store, &path, "f-edge", "c5").unwrap();
-        assert_eq!(store.edge_guards["f-edge"].threshold, Some(3));
+        assert_eq!(store.edge_guards[&"f-edge".into()].threshold, Some(3));
         // remove one → the set shrinks to 3 → normalize Some(3) -> None (3-of-3 AND).
         remove_edge_guard_condition(&mut store, &path, "f-edge", "c4").unwrap();
         assert_eq!(
-            store.edge_guards["f-edge"].threshold, None,
+            store.edge_guards[&"f-edge".into()].threshold,
+            None,
             "3-of-3 is AND, normalized to None"
         );
-        assert_eq!(store.edge_guards["f-edge"].conditions.len(), 3);
+        assert_eq!(store.edge_guards[&"f-edge".into()].conditions.len(), 3);
     }
 
     /// Round 723 — DEFENSE-IN-DEPTH for a non-canonical threshold an out-of-band
@@ -17781,7 +17857,11 @@ mod tests {
             .to_string();
         assert!(err.contains("below the threshold"), "{err}");
         // A truly out-of-range k (k>len) is named by the detector.
-        store.edge_guards.get_mut("f-edge").unwrap().threshold = Some(5);
+        store
+            .edge_guards
+            .get_mut(&"f-edge".into())
+            .unwrap()
+            .threshold = Some(5);
         let v = store_registry_violations(&store);
         assert!(
             v.iter()
@@ -17854,7 +17934,7 @@ mod tests {
         // Retract the edge fact → its cost cascade-drops.
         retract_fact(&mut store, &path, "f-edge", "map edit").unwrap();
         assert!(
-            !store.edge_costs.contains_key("f-edge"),
+            !store.edge_costs.contains_key(&"f-edge".into()),
             "the cost must cascade-drop with its fact"
         );
         // Out-of-band: an edge_cost whose fact is gone (re-inserted directly,
@@ -17924,10 +18004,16 @@ mod tests {
 
         // Valid positive delta, and a NEGATIVE delta (the axis edge_cost forbids).
         add_parameter_delta(&mut store, &path, "f-beat", "affection", 2).unwrap();
-        assert_eq!(store.parameter_deltas["f-beat"]["affection"], 2);
+        assert_eq!(
+            store.parameter_deltas[&"f-beat".into()][&"affection".into()],
+            2
+        );
         add_fact(&mut store, &path, &sample_fact("f-insult", "gt")).unwrap();
         add_parameter_delta(&mut store, &path, "f-insult", "affection", -1).unwrap();
-        assert_eq!(store.parameter_deltas["f-insult"]["affection"], -1);
+        assert_eq!(
+            store.parameter_deltas[&"f-insult".into()][&"affection".into()],
+            -1
+        );
 
         // Missing fact rejects; zero delta rejects.
         let err = add_parameter_delta(&mut store, &path, "f-gone", "affection", 1)
@@ -17947,7 +18033,8 @@ mod tests {
             .to_string();
         assert!(err.contains("DIVERGENT"), "divergent delta rejects: {err}");
         assert_eq!(
-            store.parameter_deltas["f-beat"]["affection"], 2,
+            store.parameter_deltas[&"f-beat".into()][&"affection".into()],
+            2,
             "a rejected divergent add left the value intact"
         );
     }
@@ -17980,14 +18067,14 @@ mod tests {
         // Drop one: the beat key stays (trust remains).
         remove_parameter_delta(&mut store, &path, "f-gift", "affection").unwrap();
         assert!(
-            store.parameter_deltas.contains_key("f-gift"),
+            store.parameter_deltas.contains_key(&"f-gift".into()),
             "beat kept while a delta remains"
         );
-        assert!(!store.parameter_deltas["f-gift"].contains_key("affection"));
+        assert!(!store.parameter_deltas[&"f-gift".into()].contains_key(&"affection".into()));
         // Drop the last: the beat KEY is dropped (no vacuous empty map).
         remove_parameter_delta(&mut store, &path, "f-gift", "trust").unwrap();
         assert!(
-            !store.parameter_deltas.contains_key("f-gift"),
+            !store.parameter_deltas.contains_key(&"f-gift".into()),
             "emptied beat key dropped"
         );
     }
@@ -18021,7 +18108,7 @@ mod tests {
         // SCAN BOUNDARY flags the SAME two, injected out-of-band (bypassing writes).
         store
             .parameter_deltas
-            .get_mut("f-beat")
+            .get_mut(&"f-beat".into())
             .unwrap()
             .insert("affection".into(), 0);
         let v = store_registry_violations(&store);
@@ -18033,12 +18120,12 @@ mod tests {
         // Restore a valid delta; inject an unregistered-parameter delta.
         store
             .parameter_deltas
-            .get_mut("f-beat")
+            .get_mut(&"f-beat".into())
             .unwrap()
             .insert("affection".into(), 2);
         store
             .parameter_deltas
-            .get_mut("f-beat")
+            .get_mut(&"f-beat".into())
             .unwrap()
             .insert("karma".into(), 1);
         let v = store_registry_violations(&store);
@@ -18071,7 +18158,7 @@ mod tests {
 
         retract_fact(&mut store, &path, "f-beat", "beat cut").unwrap();
         assert!(
-            !store.parameter_deltas.contains_key("f-beat"),
+            !store.parameter_deltas.contains_key(&"f-beat".into()),
             "the deltas must cascade-drop with the beat"
         );
 
@@ -18190,7 +18277,7 @@ mod tests {
 
         retract_fact(&mut store, &path, "f-choice", "choice cut").unwrap();
         assert!(
-            !store.parameter_gates.contains_key("f-choice"),
+            !store.parameter_gates.contains_key(&"f-choice".into()),
             "the gate must cascade-drop with the choice"
         );
 
@@ -18272,7 +18359,7 @@ mod tests {
         // Remove drops the gate; a remove with nothing to drop fails loud.
         remove_parameter_gate(&mut store, &path, "f-choice").unwrap();
         assert!(
-            !store.parameter_gates.contains_key("f-choice"),
+            !store.parameter_gates.contains_key(&"f-choice".into()),
             "gate dropped"
         );
         let err = remove_parameter_gate(&mut store, &path, "f-choice").unwrap_err();
@@ -18295,7 +18382,7 @@ mod tests {
         store.frames.insert("gt".into(), Frame::default());
         add_fact(&mut store, &path, &sample_fact("f-hold", "gt")).unwrap();
         add_fact_count(&mut store, &path, "f-hold", 5).unwrap();
-        assert_eq!(store.fact_counts["f-hold"], 5);
+        assert_eq!(store.fact_counts[&"f-hold".into()], 5);
         assert!(
             store_registry_violations(&store).is_empty(),
             "a clean count passes the scan"
@@ -18354,7 +18441,7 @@ mod tests {
 
         retract_fact(&mut store, &path, "f-hold", "used the potions").unwrap();
         assert!(
-            !store.fact_counts.contains_key("f-hold"),
+            !store.fact_counts.contains_key(&"f-hold".into()),
             "the count must cascade-drop with the fact (orphaned-count hole closed)"
         );
 
@@ -18392,7 +18479,10 @@ mod tests {
 
         // Remove drops the count; a remove with nothing to drop fails loud.
         remove_fact_count(&mut store, &path, "f-hold").unwrap();
-        assert!(!store.fact_counts.contains_key("f-hold"), "count dropped");
+        assert!(
+            !store.fact_counts.contains_key(&"f-hold".into()),
+            "count dropped"
+        );
         let err = remove_fact_count(&mut store, &path, "f-hold").unwrap_err();
         assert!(err.to_string().contains("no fact count"), "{err}");
     }
@@ -18580,7 +18670,7 @@ mod tests {
         // A MULTI-parent write (both registered) is accepted and clean.
         add_entity_kind(&mut store, &path, "magic-sword", &["weapon", "magic"], "").unwrap();
         assert_eq!(
-            store.entity_kinds["magic-sword"].parents,
+            store.entity_kinds[&"magic-sword".into()].parents,
             BTreeSet::from(["weapon".into(), "magic".into()])
         );
         assert!(
@@ -18597,7 +18687,7 @@ mod tests {
         let err = add_entity_kind(&mut store, &path, "mixed", &["thing", "ghost"], "").unwrap_err();
         assert!(err.to_string().contains("not a registered"), "{err}");
         assert!(
-            !store.entity_kinds.contains_key("mixed"),
+            !store.entity_kinds.contains_key(&"mixed".into()),
             "rejected write leaves no row"
         );
 
@@ -18615,13 +18705,13 @@ mod tests {
                 .any(|m| m.contains("widget") && m.contains("parent `gone`")),
             "out-of-band dangling parent must be flagged: {v:?}"
         );
-        store.entity_kinds.remove("widget");
+        store.entity_kinds.remove(&"widget".into());
 
         // SCAN BOUNDARY flags an out-of-band CYCLE (unreachable via the write path):
         // adding weapon to thing.parents closes weapon↔thing.
         store
             .entity_kinds
-            .get_mut("thing")
+            .get_mut(&"thing".into())
             .unwrap()
             .parents
             .insert("weapon".into());
@@ -18697,7 +18787,7 @@ mod tests {
             "{err}"
         );
         assert!(
-            !store.predicates.contains_key("bad-subj"),
+            !store.predicates.contains_key(&"bad-subj".into()),
             "a rejected add leaves no row"
         );
         assert!(
@@ -18773,7 +18863,7 @@ mod tests {
             "{err}"
         );
         assert!(
-            !store.branches.contains_key("bad"),
+            !store.branches.contains_key(&"bad".into()),
             "a rejected add leaves no row"
         );
 
@@ -18801,7 +18891,7 @@ mod tests {
                 .any(|m| m.contains("rogue-fork") && m.contains("fork point `gone-section`")),
             "out-of-band phantom fork section must be flagged (both legs): {v:?}"
         );
-        store.branches.remove("rogue-fork");
+        store.branches.remove(&"rogue-fork".into());
 
         // SCAN BOUNDARY flags an out-of-band CONVERGE edge with a phantom parent.
         store.branches.insert(
@@ -18858,7 +18948,7 @@ mod tests {
         // fork at ride, so sluice -> ride -> sluice. Both refs RESOLVE (ride is a
         // known world, ch-2 a section), so the DANGLING detector stays clean — the
         // cycle detector is the one that catches it (cycle != dangling).
-        store.branches.get_mut("sluice").unwrap().forks_from = Some(BranchFork {
+        store.branches.get_mut(&"sluice".into()).unwrap().forks_from = Some(BranchFork {
             branch: "ride".into(),
             at: "ch-2".into(),
         });
@@ -18940,7 +19030,7 @@ mod tests {
                 ],
             },
         );
-        store.branches.get_mut("sluice").unwrap().forks_from = Some(BranchFork {
+        store.branches.get_mut(&"sluice".into()).unwrap().forks_from = Some(BranchFork {
             branch: "mouth".into(),
             at: "ch-2".into(),
         });
@@ -19189,16 +19279,16 @@ mod tests {
         fs::write(&path, serde_json::to_string_pretty(&v37).unwrap()).unwrap();
         let store = AtomicStore::load(&path).unwrap();
         assert_eq!(
-            store.entity_kinds["weapon"].parents,
+            store.entity_kinds[&"weapon".into()].parents,
             BTreeSet::from(["thing".into()]),
             "legacy `parent` migrates to a one-element `parents` set"
         );
         assert!(
-            store.entity_kinds["thing"].parents.is_empty(),
+            store.entity_kinds[&"thing".into()].parents.is_empty(),
             "a kind with no parent stays a root"
         );
         assert!(
-            store.entity_kinds["rootish"].parents.is_empty(),
+            store.entity_kinds[&"rootish".into()].parents.is_empty(),
             "an explicit null parent stays a root (no phantom parent)"
         );
         // The resolver works on the migrated store.
@@ -19213,7 +19303,7 @@ mod tests {
         // `parents` would be empty — proving the migration is load-bearing.
         let unmigrated: AtomicStore = serde_json::from_value(v37).unwrap();
         assert!(
-            unmigrated.entity_kinds["weapon"].parents.is_empty(),
+            unmigrated.entity_kinds[&"weapon".into()].parents.is_empty(),
             "control: without migration the legacy parent is silently dropped"
         );
     }
@@ -19243,9 +19333,9 @@ mod tests {
         });
         fs::write(&path, serde_json::to_string_pretty(&v38).unwrap()).unwrap();
         let store = AtomicStore::load(&path).unwrap();
-        let ov = &store.disclosure_plans["t"].overrides["f-1"];
+        let ov = &store.disclosure_plans["t"].overrides[&"f-1".into()];
         assert_eq!(
-            ov.first_at["main"],
+            ov.first_at[&"main".into()],
             DisclosureReveal {
                 coords: BTreeSet::from(["sc-08".into()]),
                 threshold: None,
@@ -19253,10 +19343,10 @@ mod tests {
             "legacy single coord migrates to a one-coord first-reached trigger"
         );
         assert_eq!(
-            ov.first_at["route"].coords,
+            ov.first_at[&"route".into()].coords,
             BTreeSet::from(["sc-12".into()])
         );
-        assert!(ov.first_at["route"].threshold.is_none());
+        assert!(ov.first_at[&"route".into()].threshold.is_none());
 
         // NON-VACUITY control: the SAME raw shape parsed WITHOUT the migration is
         // a hard parse error (a String where a DisclosureReveal object is
@@ -19340,13 +19430,14 @@ mod tests {
             ],
         )
         .unwrap();
-        let stored = |store: &AtomicStore| store.disclosure_plans["t"].overrides["f-typed"].clone();
+        let stored =
+            |store: &AtomicStore| store.disclosure_plans["t"].overrides[&"f-typed".into()].clone();
         assert_eq!(
-            stored(&store).first_at["main"].coords,
+            stored(&store).first_at[&"main".into()].coords,
             BTreeSet::from(["ch-1".into(), "ch-2".into()]),
             "two first_at entries for one branch accumulate into a set"
         );
-        assert!(stored(&store).first_at["main"].threshold.is_none());
+        assert!(stored(&store).first_at[&"main".into()].threshold.is_none());
 
         // Some(1) NORMALIZES to None (first-reached is the canonical default).
         set(
@@ -19355,7 +19446,7 @@ mod tests {
             &[reveal("main", &["ch-1", "ch-2"], Some(1))],
         )
         .unwrap();
-        assert!(stored(&store).first_at["main"].threshold.is_none());
+        assert!(stored(&store).first_at[&"main".into()].threshold.is_none());
 
         // Some(len) is KEPT distinct (last-reached — unlike the edge guard's AND).
         set(
@@ -19364,7 +19455,7 @@ mod tests {
             &[reveal("main", &["ch-1", "ch-2"], Some(2))],
         )
         .unwrap();
-        assert_eq!(stored(&store).first_at["main"].threshold, Some(2));
+        assert_eq!(stored(&store).first_at[&"main".into()].threshold, Some(2));
 
         // Some(0) is vacuous; Some(k>len) is unsatisfiable — both reject.
         let e = set(
@@ -19434,7 +19525,7 @@ mod tests {
         add_disclosure_reveal_coord(&mut store, &path, "t", "f-typed", "main", "ch-1").unwrap();
         add_disclosure_reveal_coord(&mut store, &path, "t", "f-typed", "main", "ch-2").unwrap();
         let coords = |store: &AtomicStore| {
-            store.disclosure_plans["t"].overrides["f-typed"].first_at["main"]
+            store.disclosure_plans["t"].overrides[&"f-typed".into()].first_at[&"main".into()]
                 .coords
                 .clone()
         };
@@ -19461,7 +19552,8 @@ mod tests {
         set_disclosure_reveal_threshold(&mut store, &path, "t", "f-typed", "main", Some(2))
             .unwrap();
         assert_eq!(
-            store.disclosure_plans["t"].overrides["f-typed"].first_at["main"].threshold,
+            store.disclosure_plans["t"].overrides[&"f-typed".into()].first_at[&"main".into()]
+                .threshold,
             Some(2)
         );
         // Some(0) is vacuous — reject through the shared discipline.
@@ -19481,9 +19573,9 @@ mod tests {
         assert_eq!(coords(&store), BTreeSet::from(["ch-2".into()]));
         remove_disclosure_reveal_coord(&mut store, &path, "t", "f-typed", "main", "ch-2").unwrap();
         assert!(
-            !store.disclosure_plans["t"].overrides["f-typed"]
+            !store.disclosure_plans["t"].overrides[&"f-typed".into()]
                 .first_at
-                .contains_key("main"),
+                .contains_key(&"main".into()),
             "an emptied coord set drops the branch key"
         );
         // Removing an absent coord fails loud.
@@ -19518,7 +19610,7 @@ mod tests {
         // REPLACE: weapon gains a second parent (thing + magic) — a DAG re-parent.
         set_entity_kind_parents(&mut store, &path, "weapon", &["thing", "magic"]).unwrap();
         assert_eq!(
-            store.entity_kinds["weapon"].parents,
+            store.entity_kinds[&"weapon".into()].parents,
             BTreeSet::from(["thing".into(), "magic".into()])
         );
         assert!(is_kind_or_subkind(
@@ -19529,7 +19621,7 @@ mod tests {
         // Full replace, not a merge: setting just [thing] drops magic.
         set_entity_kind_parents(&mut store, &path, "weapon", &["thing"]).unwrap();
         assert_eq!(
-            store.entity_kinds["weapon"].parents,
+            store.entity_kinds[&"weapon".into()].parents,
             BTreeSet::from(["thing".into()])
         );
 
@@ -19545,7 +19637,7 @@ mod tests {
         let err = set_entity_kind_parents(&mut store, &path, "thing", &["weapon"]).unwrap_err();
         assert!(err.to_string().contains("would create a cycle"), "{err}");
         assert!(
-            store.entity_kinds["thing"].parents.is_empty(),
+            store.entity_kinds[&"thing".into()].parents.is_empty(),
             "a rejected re-parent must not mutate the store"
         );
         assert!(
@@ -19556,12 +19648,12 @@ mod tests {
         // Idempotent: setting the identical set is a no-op that still succeeds.
         set_entity_kind_parents(&mut store, &path, "weapon", &["thing"]).unwrap();
         assert_eq!(
-            store.entity_kinds["weapon"].parents,
+            store.entity_kinds[&"weapon".into()].parents,
             BTreeSet::from(["thing".into()])
         );
         // Empty roots the kind.
         set_entity_kind_parents(&mut store, &path, "weapon", &[]).unwrap();
-        assert!(store.entity_kinds["weapon"].parents.is_empty());
+        assert!(store.entity_kinds[&"weapon".into()].parents.is_empty());
         assert!(!is_kind_or_subkind(
             &store,
             Some(&"weapon".into()),
@@ -19621,7 +19713,7 @@ mod tests {
         // SUCCESS: an unreferenced kind removes cleanly and the scan stays clean.
         add_entity_kind(&mut store, &path, "orphan-kind", &[], "").unwrap();
         remove_entity_kind(&mut store, &path, "orphan-kind").unwrap();
-        assert!(!store.entity_kinds.contains_key("orphan-kind"));
+        assert!(!store.entity_kinds.contains_key(&"orphan-kind".into()));
         assert!(
             store_registry_violations(&store).is_empty(),
             "the store is clean after a valid remove"
@@ -19637,7 +19729,7 @@ mod tests {
             },
         );
         remove_entity_kind(&mut store, &path, "selfy").unwrap();
-        assert!(!store.entity_kinds.contains_key("selfy"));
+        assert!(!store.entity_kinds.contains_key(&"selfy".into()));
     }
 
     /// Round 732 (DEBT-M) — the MEASURED gap closed at the fact level: a
@@ -19772,7 +19864,11 @@ mod tests {
         };
         import_facts(&mut store, &path, &manifest).unwrap();
         assert!(matches!(
-            store.narrative_facts["f-a"].typed.as_ref().unwrap().object,
+            store.narrative_facts[&"f-a".into()]
+                .typed
+                .as_ref()
+                .unwrap()
+                .object,
             TypedObject::Fact { .. }
         ));
         // Missing target: rejected in phase 2.
@@ -19865,7 +19961,7 @@ mod tests {
         // Retract the referrer first, then the target goes cleanly.
         retract_fact(&mut store, &path, "f-open", "drop the ref holder").unwrap();
         retract_fact(&mut store, &path, "f-sluice", "authorial slip").unwrap();
-        assert!(!store.narrative_facts.contains_key("f-sluice"));
+        assert!(!store.narrative_facts.contains_key(&"f-sluice".into()));
     }
 
     /// Round 701 — declaration guards on the predicate write path: a scalar
@@ -20219,7 +20315,10 @@ mod tests {
         .unwrap();
         add_fact(&mut store, &path, &sample_fact("prose-1", "gt")).unwrap();
         let reloaded = AtomicStore::load(&path).unwrap();
-        let t = reloaded.narrative_facts["typed-1"].typed.as_ref().unwrap();
+        let t = reloaded.narrative_facts[&"typed-1".into()]
+            .typed
+            .as_ref()
+            .unwrap();
         assert_eq!(t.subject, "kara");
         assert_eq!(t.predicate, "alive");
         assert_eq!(
@@ -20228,7 +20327,7 @@ mod tests {
                 token: "operational".to_string()
             }
         );
-        assert!(reloaded.narrative_facts["prose-1"].typed.is_none());
+        assert!(reloaded.narrative_facts[&"prose-1".into()].typed.is_none());
         let raw = fs::read_to_string(&path).unwrap();
         assert_eq!(
             raw.matches("\"typed\"").count(),
@@ -20291,7 +20390,7 @@ mod tests {
         )
         .unwrap();
         assert_eq!(
-            store.predicates["alive"].object_kind,
+            store.predicates[&"alive".into()].object_kind,
             PredicateObjectKind::Token
         );
         // Repaired for real: the fact builder now accepts the token leg.
@@ -20311,9 +20410,11 @@ mod tests {
             },
         )
         .unwrap();
-        assert!(AtomicStore::load(&path).unwrap().narrative_facts["typed-1"]
-            .typed
-            .is_some());
+        assert!(
+            AtomicStore::load(&path).unwrap().narrative_facts[&"typed-1".into()]
+                .typed
+                .is_some()
+        );
     }
 
     /// Round 658 — the invariant that keeps the repair from becoming the
@@ -20375,7 +20476,7 @@ mod tests {
         assert!(msg.contains("cannot be re-declared"), "{msg}");
         assert!(msg.contains("typed-1"), "offender not named: {msg}");
         assert_eq!(
-            store.predicates["alive"].object_kind,
+            store.predicates[&"alive".into()].object_kind,
             PredicateObjectKind::Token,
             "a rejected re-type must not mutate the registry"
         );
@@ -20391,7 +20492,7 @@ mod tests {
             "vital state",
         )
         .unwrap();
-        assert_eq!(store.predicates["alive"].description, "vital state");
+        assert_eq!(store.predicates[&"alive".into()].description, "vital state");
         // Identical content is an idempotent no-op (add_predicate's 3-way).
         let receipt = set_predicate(
             &mut store,
@@ -20409,7 +20510,7 @@ mod tests {
         // Removal while used REJECTS (no orphaned TypedClaim.predicate) …
         let err = remove_predicate(&mut store, &path, "alive").unwrap_err();
         assert!(err.to_string().contains("typed-1"), "{err}");
-        assert!(store.predicates.contains_key("alive"));
+        assert!(store.predicates.contains_key(&"alive".into()));
         // … and the SAME call succeeds once the use is gone: the reject was
         // load-bearing, not a blanket refusal.
         retract_fact(&mut store, &path, "typed-1", "R658 non-vacuity probe").unwrap();
@@ -20417,7 +20518,7 @@ mod tests {
         assert!(!AtomicStore::load(&path)
             .unwrap()
             .predicates
-            .contains_key("alive"));
+            .contains_key(&"alive".into()));
 
         // Absent predicate fails loud on BOTH repair paths (no silent create,
         // no idempotent delete).
@@ -20500,7 +20601,8 @@ mod tests {
             // the result, not just of the verdict (the R592 discipline).
             if add_ok {
                 assert_eq!(
-                    store_a.predicates["p"], store_b.predicates["p"],
+                    store_a.predicates[&"p".into()],
+                    store_b.predicates[&"p".into()],
                     "predicate stored-result parity broken for `{label}`"
                 );
             }
@@ -20556,7 +20658,7 @@ mod tests {
             },
         )
         .unwrap();
-        assert!(store.predicates.contains_key("alive"));
+        assert!(store.predicates.contains_key(&"alive".into()));
         // Amend a prose fact to attach its typed leg, id unchanged.
         add_fact(
             &mut store,
@@ -20584,7 +20686,7 @@ mod tests {
             "typing pass",
         )
         .unwrap();
-        assert!(store.narrative_facts["f-2"].typed.is_some());
+        assert!(store.narrative_facts[&"f-2".into()].typed.is_some());
     }
 
     /// Round 443 session review — a `pays_off` forward ref WITHIN one
@@ -20625,7 +20727,7 @@ mod tests {
         )
         .unwrap();
         assert_eq!(
-            store.narrative_facts["p-first"].pays_off,
+            store.narrative_facts[&"p-first".into()].pays_off,
             vec!["su-later".to_string()]
         );
     }
@@ -20655,10 +20757,13 @@ mod tests {
         )
         .unwrap();
         assert_eq!(
-            store.narrative_facts["f-main"].branch,
+            store.narrative_facts[&"f-main".into()].branch,
             mnemosyne_core::MAIN_BRANCH
         );
-        assert_eq!(store.narrative_facts["f-route"].branch, "vampire-route");
+        assert_eq!(
+            store.narrative_facts[&"f-route".into()].branch,
+            "vampire-route"
+        );
         let raw = std::fs::read_to_string(&path).unwrap();
         let json: serde_json::Value = serde_json::from_str(&raw).unwrap();
         assert!(
@@ -20671,7 +20776,7 @@ mod tests {
         );
         let reloaded = AtomicStore::load(&path).unwrap();
         assert_eq!(
-            reloaded.narrative_facts["f-main"].branch,
+            reloaded.narrative_facts[&"f-main".into()].branch,
             mnemosyne_core::MAIN_BRANCH
         );
     }
@@ -20770,7 +20875,7 @@ mod tests {
             ..sample_fact("f1", "gt")
         };
         amend_fact(&mut store, &path, &revised, "typo fix").unwrap();
-        let f1 = &store.narrative_facts["f1"];
+        let f1 = &store.narrative_facts[&"f1".into()];
         assert_eq!(f1.claim, "the count is a nobleman of the Carpathians");
         assert_eq!(
             f1.quote_sha256.as_deref(),
@@ -20856,7 +20961,7 @@ mod tests {
         )
         .unwrap();
         add_fact(&mut store, &path, &on_route).unwrap();
-        assert_eq!(store.narrative_facts["f-route"].branch, "sea-route");
+        assert_eq!(store.narrative_facts[&"f-route".into()].branch, "sea-route");
         // Idempotent re-register = no-op; divergent description rejects.
         let again = add_branch(
             &mut store,
@@ -20873,7 +20978,7 @@ mod tests {
         assert!(err.to_string().contains("DIVERGENT"), "{err}");
         let reloaded = AtomicStore::load(&path).unwrap();
         assert_eq!(
-            reloaded.branches["sea-route"].description,
+            reloaded.branches[&"sea-route".into()].description,
             "the Demeter voyage"
         );
     }
@@ -20904,7 +21009,10 @@ mod tests {
         // Valid fork round-trips; immutable thereafter (divergent reject).
         add_branch(&mut store, &path, "route", "", Some(("main", "ch-2")), &[]).unwrap();
         let reloaded = AtomicStore::load(&path).unwrap();
-        let fork = reloaded.branches["route"].forks_from.as_ref().unwrap();
+        let fork = reloaded.branches[&"route".into()]
+            .forks_from
+            .as_ref()
+            .unwrap();
         assert_eq!((fork.branch.as_str(), fork.at.as_str()), ("main", "ch-2"));
         let err =
             add_branch(&mut store, &path, "route", "", Some(("main", "ch-3")), &[]).unwrap_err();
@@ -21004,8 +21112,8 @@ mod tests {
         )
         .unwrap();
         let reloaded = AtomicStore::load(&path).unwrap();
-        assert_eq!(reloaded.branches["dawn"].converges_from.len(), 2);
-        assert!(reloaded.branches["dawn"].forks_from.is_none());
+        assert_eq!(reloaded.branches[&"dawn".into()].converges_from.len(), 2);
+        assert!(reloaded.branches[&"dawn".into()].forks_from.is_none());
         // Idempotent re-register = no-op; a divergent merge set rejects.
         let again = add_branch(
             &mut store,
@@ -21118,7 +21226,7 @@ mod tests {
         add_entity(&mut store, &path, "dracula", "character", "the count").unwrap();
         add_fact(&mut store, &path, &about_count).unwrap();
         assert_eq!(
-            store.narrative_facts["f-about"].entities,
+            store.narrative_facts[&"f-about".into()].entities,
             vec!["dracula".to_string()]
         );
         // Duplicate refs reject.
@@ -21134,7 +21242,7 @@ mod tests {
         let json: serde_json::Value = serde_json::from_str(&raw).unwrap();
         assert!(json["narrative_facts"]["f-plain"].get("entities").is_none());
         let reloaded = AtomicStore::load(&path).unwrap();
-        assert_eq!(reloaded.entities["dracula"].kind, "character");
+        assert_eq!(reloaded.entities[&"dracula".into()].kind, "character");
         // Divergent re-register rejects; identical = no-op.
         let again = add_entity(&mut store, &path, "dracula", "character", "the count").unwrap();
         assert_eq!(again.written_bytes, 0);
@@ -21159,12 +21267,15 @@ mod tests {
         assert!(msg.contains("not a registered entity kind"), "{msg}");
         assert!(msg.contains("add_entity_kind"), "{msg}");
         assert!(msg.contains("none registered yet"), "{msg}");
-        assert!(!store.entities.contains_key("ent-village"), "wrote anyway");
+        assert!(
+            !store.entities.contains_key(&"ent-village".into()),
+            "wrote anyway"
+        );
 
         // Registered kind is accepted — the gate is not rejecting everything.
         add_entity_kind(&mut store, &path, "place", &[], "somewhere a person can be").unwrap();
         add_entity(&mut store, &path, "ent-village", "place", "the lane").unwrap();
-        assert_eq!(store.entities["ent-village"].kind, "place");
+        assert_eq!(store.entities[&"ent-village".into()].kind, "place");
 
         // The motivating typo rejects, and names the vocabulary it missed.
         let err = add_entity(&mut store, &path, "ent-well", "palce", "").unwrap_err();
@@ -21172,11 +21283,11 @@ mod tests {
 
         // Empty = unspecified, and PASSES: absence is not free text.
         add_entity(&mut store, &path, "ent-nameless", "", "").unwrap();
-        assert_eq!(store.entities["ent-nameless"].kind, "");
+        assert_eq!(store.entities[&"ent-nameless".into()].kind, "");
 
         // The registry round-trips, and an unkinded entity writes no `kind` key.
         let reloaded = AtomicStore::load(&path).unwrap();
-        assert!(reloaded.entity_kinds.contains_key("place"));
+        assert!(reloaded.entity_kinds.contains_key(&"place".into()));
         let raw: serde_json::Value =
             serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
         assert!(raw["entities"]["ent-nameless"].get("kind").is_none());
@@ -21368,7 +21479,7 @@ mod tests {
         );
         for (label, _facet, mutate, want) in cases {
             let mut s = base.clone();
-            mutate(s.narrative_facts.get_mut("f1").unwrap());
+            mutate(s.narrative_facts.get_mut(&"f1".into()).unwrap());
             let v = store_registry_violations(&s);
             assert!(
                 v.iter().any(|m| m.contains(want)),
@@ -21612,13 +21723,13 @@ mod tests {
         assert!(err.to_string().contains("itself"), "{err}");
         add_fact_conflict(&mut store, &path, "f1", "f2").unwrap();
         let reloaded = AtomicStore::load(&path).unwrap();
-        let edges = &reloaded.narrative_facts["f1"].conflicts_with;
+        let edges = &reloaded.narrative_facts[&"f1".into()].conflicts_with;
         assert_eq!(edges.len(), 1);
         assert_eq!(edges[0].target, "f2");
         // Judgment-time content pin, computed by the primitive (R439).
         assert_eq!(
             edges[0].target_claim_sha256,
-            sha256_hex(reloaded.narrative_facts["f2"].claim.as_bytes())
+            sha256_hex(reloaded.narrative_facts[&"f2".into()].claim.as_bytes())
         );
         // Already recorded — in EITHER direction.
         let err = add_fact_conflict(&mut store, &path, "f1", "f2").unwrap_err();

@@ -50,7 +50,7 @@ fn hash_file(path: &Path) -> Option<String> {
 /// section's `implements` binding files.
 fn artifact_drifted(event: &ConfirmationEvent, store: &AtomicStore, workspace_root: &Path) -> bool {
     let section_id = event.claim.section_id();
-    let section = store.sections.get(section_id);
+    let section = store.sections.get(&section_id.into());
 
     // spec — store-only (R404 text_sha256 reuse).
     if let Some(spec) = event.artifact_hashes.spec_sha256.as_deref() {

@@ -18,12 +18,17 @@
 //! entity id, and a detector cannot resolve a unit against the predicates map
 //! without saying so out loud.
 //!
-//! It does NOT buy LOOKUP. [`Borrow<str>`] is implemented deliberately — of 132
-//! `contains_key` calls in this workspace 53 pass a string literal, and removing
-//! the impl converts every one into a constructor call that adds noise without
-//! adding safety. The consequence is honest: `entities.contains_key(unit.as_str())`
-//! still compiles. Closing that is a typed accessor per registry, not the removal
-//! of `Borrow` — follow-on work, recorded rather than pretended away.
+//! It buys LOOKUP too, since Round 849. `Borrow<str>` was implemented from Round
+//! 839 to Round 848 so `map.contains_key("literal")` kept working; the price was
+//! that `entities.contains_key(unit.as_str())` — a unit resolved against the
+//! entity registry — compiled. Round 848 re-measured that trade after the
+//! migration finished and it had inverted: the cost is 250 call sites, 175 of
+//! them fixture literals, and the String-keyed report maps are untouched because
+//! they borrow through std's impl, not ours. So the impl is gone and a map keyed
+//! by one id can no longer be probed with another id's text.
+//!
+//! What remains open is the wrong-VALUE class: `sections.get(&some_other_section)`
+//! is correct by every type here and wrong by intent. No newtype closes that.
 //!
 //! # Why the wire is unchanged
 //!
@@ -34,7 +39,6 @@
 //! the derived `Ord` matches `String`'s, so every `BTreeMap` walk and every
 //! deterministic-order claim in this codebase stays where it was.
 
-use std::borrow::Borrow;
 use std::fmt;
 
 use serde::{Deserialize, Serialize};
@@ -75,15 +79,6 @@ macro_rules! ref_id {
             #[must_use]
             pub fn is_empty(&self) -> bool {
                 self.0.is_empty()
-            }
-        }
-
-        /// So `map.contains_key("literal")` and `map.get(s: &str)` keep working
-        /// against a map keyed by this type. See the module docs for what this
-        /// concedes.
-        impl Borrow<str> for $name {
-            fn borrow(&self) -> &str {
-                &self.0
             }
         }
 
@@ -241,7 +236,7 @@ mod tests {
              map-key position — this is what makes the migration schema-0"
         );
         // The lookup path 53 call sites depend on.
-        assert!(after.by_unit.contains_key("day"));
+        assert!(after.by_unit.contains_key(&"day".into()));
     }
 
     /// A different `Ord` would silently reorder every `BTreeMap` walk in the

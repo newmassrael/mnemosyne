@@ -243,7 +243,7 @@ mod tests {
         // Mutate the log: flip alpha to Superseded with no supersession ref.
         store
             .sections
-            .get_mut("alpha")
+            .get_mut(&"alpha".into())
             .unwrap()
             .skeleton
             .decision_status = Some(DecisionStatus::Superseded);
@@ -280,7 +280,7 @@ mod tests {
         );
 
         // Remove the offending section → clean again.
-        store.sections.remove("beta");
+        store.sections.remove(&"beta".into());
         svc.reload(&store);
         assert!(svc.validate().ok());
     }
