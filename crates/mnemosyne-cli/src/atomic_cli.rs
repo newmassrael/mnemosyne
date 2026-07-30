@@ -3449,8 +3449,8 @@ fn parse_binding_kind(raw: &str) -> Result<BindingKind> {
 fn parse_coverage_expectation(raw: &str) -> Result<CoverageExpectation> {
     CoverageExpectation::from_tag(raw.trim()).ok_or_else(|| {
         anyhow!(
-            "--expectation must be `normative`, `out_of_scope_here`, or \
-             `informational` (got `{}`)",
+            "--expectation must be {} (got `{}`)",
+            CoverageExpectation::vocabulary(),
             raw
         )
     })
@@ -3754,10 +3754,12 @@ pub fn cmd_set_section_coverage_expectation(
         }
     }
     let section = strip_section_prefix(&section.ok_or_else(|| anyhow!("--section arg required"))?);
-    let expectation =
-        parse_coverage_expectation(&expectation.ok_or_else(|| {
-            anyhow!("--expectation arg required (`normative` or `informative`)")
-        })?)?;
+    let expectation = parse_coverage_expectation(&expectation.ok_or_else(|| {
+        anyhow!(
+            "--expectation arg required ({})",
+            CoverageExpectation::vocabulary()
+        )
+    })?)?;
     let reason = reason.ok_or_else(|| anyhow!("--reason arg required (audit safeguard)"))?;
     let sidecar_path = resolve_sidecar(workspace_root, sidecar.as_deref())?;
     let mut store = AtomicStore::load(&sidecar_path).map_err(|e| anyhow!("{}", e))?;
@@ -3818,7 +3820,10 @@ pub fn cmd_set_section_verification_expectation(
     }
     let section = strip_section_prefix(&section.ok_or_else(|| anyhow!("--section arg required"))?);
     let expectation = parse_verification_expectation(&expectation.ok_or_else(|| {
-        anyhow!("--expectation arg required (`dedicated` or `by_construction`)")
+        anyhow!(
+            "--expectation arg required ({})",
+            VerificationExpectation::vocabulary()
+        )
     })?)?;
     let reason = reason.ok_or_else(|| anyhow!("--reason arg required (audit safeguard)"))?;
     let sidecar_path = resolve_sidecar(workspace_root, sidecar.as_deref())?;

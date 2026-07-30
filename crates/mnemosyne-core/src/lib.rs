@@ -231,12 +231,14 @@ pub struct BindingRef {
     pub kind: BindingKind,
 }
 
-/// Whether a section's coverage axiom applies. A `Normative` section is a
-/// requirement that expects an `implements` binding — a non-`Removed`
-/// `Normative` section with zero `implements` bindings is the coverage gap
-/// (the Round 269 axiom). An `Informative` section is prose-only (terminology
-/// / overview / references) with nothing to implement here, and is exempt from
-/// the axiom. Canonical substrate enum (L0 core, mirroring [`BindingKind`] /
+/// Whether a section's coverage axiom applies — a THREE-state classification
+/// since Round 422. A `Normative` section is a requirement that expects an
+/// `implements` binding: a non-`Removed` `Normative` section with zero
+/// `implements` bindings is the coverage gap (the Round 269 axiom).
+/// `OutOfScopeHere` and `Informational` both EXEMPT the section, and they are
+/// not interchangeable — see each variant.
+///
+/// Canonical substrate enum (L0 core, mirroring [`BindingKind`] /
 /// [`DecisionStatus`]) so atomic / validate / render share one type with no
 /// adapter. Not lifted into [`SectionSkeleton`]: coverage applicability is not
 /// medium-neutral (meaningless for a non-code medium), so it lives with the
@@ -244,24 +246,90 @@ pub struct BindingRef {
 /// `Normative` is the default — it preserves the pre-classification behavior
 /// (every section expects coverage), so a store with no classification gates
 /// identically to before.
+///
+/// # The vocabulary is DERIVED, not retyped (Round 870)
+///
+/// [`Self::ALL`] and [`Self::vocabulary`] exist because this value set was
+/// spelled out by hand in every message and help string that names it, and had
+/// already drifted in five of them — three still offering `informative`, the
+/// two-state tag Round 422 removed with no alias, and two describing the
+/// two-state model in prose. Reported from the field by the consumer who
+/// classified 173 sections and was told by the missing-argument message to use a
+/// value the next message then refused. Any surface that spells the set out
+/// calls [`Self::vocabulary`]; a static one is covered by the derived test that
+/// parses every `--expectation` alternation back through [`Self::from_tag`].
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[serde(rename_all = "snake_case")]
 pub enum CoverageExpectation {
     #[default]
     Normative,
-    /// Part of the standard but not implemented by THIS consumer; revisitable if
-    /// scope expands (design sec 6). Serialized as `out_of_scope_here`. The
-    /// pre-3-state `informative` tag is NOT aliased (R422 clean break): a store
-    /// still carrying it fails to load LOUDLY, so a consumer migrates it
+    /// Part of **the document this ledger mirrors** but not implemented by THIS
+    /// consumer; revisitable if scope expands (design sec 6). Serialized as
+    /// `out_of_scope_here`.
+    ///
+    /// "The document this ledger mirrors" is the wording because "part of the
+    /// standard" was misread as meaning an EXTERNAL standard, by a consumer one
+    /// of whose other ledgers is exactly that. The document can equally be the
+    /// consumer's own design doc, and then this is the value for a **deferred or
+    /// Phase-2 feature**: implementable, intended, not built here yet. Under the
+    /// external-only reading, 19 such sections stayed `Normative` and produced
+    /// `impl_missing` warnings no binding could ever clear — caught only because
+    /// four independent classifiers disagreed with the written principle in the
+    /// same place (Round 870, reported from the field).
+    ///
+    /// The pre-3-state `informative` tag is NOT aliased (R422 clean break): a
+    /// store still carrying it fails to load LOUDLY, so a consumer migrates it
     /// (`informative` → `out_of_scope_here`) deliberately rather than relying on
     /// a silent compat shim. No silent-drop risk (unknown enum tags error).
     OutOfScopeHere,
     /// Inherently non-implementable prose / context (terminology / overview).
+    ///
+    /// "Inherently" is load-bearing: this is NOT "not implemented yet". A
+    /// feature someone intends to build is [`Self::OutOfScopeHere`], and marking
+    /// it here is a false declaration that no later binding can correct.
     Informational,
 }
 
+/// Render a closed value set the way an error message wants it — backticked,
+/// comma-separated, `or` before the last. THE one formatter, so two messages
+/// about the same enum cannot describe it differently (Round 870).
+fn join_or(tags: &[&str]) -> String {
+    match tags {
+        [] => String::new(),
+        [only] => format!("`{only}`"),
+        [a, b] => format!("`{a}` or `{b}`"),
+        [head @ .., last] => {
+            let mut out = String::new();
+            for t in head {
+                out.push('`');
+                out.push_str(t);
+                out.push_str("`, ");
+            }
+            out.push_str("or `");
+            out.push_str(last);
+            out.push('`');
+            out
+        }
+    }
+}
+
 impl CoverageExpectation {
+    /// Every value, in declaration order. The ONE source for any surface that
+    /// spells the closed set out (Round 870).
+    pub const ALL: [CoverageExpectation; 3] = [
+        CoverageExpectation::Normative,
+        CoverageExpectation::OutOfScopeHere,
+        CoverageExpectation::Informational,
+    ];
+
+    /// The closed set as an error message says it, derived from [`Self::as_str`].
+    #[must_use]
+    pub fn vocabulary() -> String {
+        let tags: Vec<&str> = Self::ALL.iter().map(|v| v.as_str()).collect();
+        join_or(&tags)
+    }
+
     /// Canonical lowercase label (matches the serde representation).
     pub fn as_str(self) -> &'static str {
         match self {
@@ -296,10 +364,10 @@ impl CoverageExpectation {
 /// tests), exempt from the dedicated-verify gate. This is SEPARATE from
 /// `CoverageExpectation` because a `ByConstruction` section is still
 /// `Normative` for the implements axiom (it has implementing code) — folding
-/// the two into one field would force an `Informative` mislabel that silently
+/// the two into one field would force an exempt mislabel that silently
 /// drops it from implements-coverage. Consulted only when
-/// `coverage_expectation == Normative` (an `Informative` section is exempt
-/// from both axes). `Dedicated` is the default: a new normative section, and
+/// `coverage_expectation == Normative` (a section exempt on that axis is exempt
+/// from both). `Dedicated` is the default: a new normative section, and
 /// any section with at least one independently-assertable clause, expects
 /// dedicated evidence until classified otherwise. Mirrors [`BindingKind`] /
 /// [`CoverageExpectation`] (L0 core, adapter-local, no medium-neutral lift).
@@ -312,6 +380,22 @@ pub enum VerificationExpectation {
 }
 
 impl VerificationExpectation {
+    /// Every value, in declaration order — the ONE source for any surface that
+    /// spells this closed set out, for the reason on
+    /// [`CoverageExpectation::ALL`]. This axis had not drifted yet; it is the
+    /// sibling that would drift next (Round 870).
+    pub const ALL: [VerificationExpectation; 2] = [
+        VerificationExpectation::Dedicated,
+        VerificationExpectation::ByConstruction,
+    ];
+
+    /// The closed set as an error message says it, derived from [`Self::as_str`].
+    #[must_use]
+    pub fn vocabulary() -> String {
+        let tags: Vec<&str> = Self::ALL.iter().map(|v| v.as_str()).collect();
+        join_or(&tags)
+    }
+
     /// Canonical lowercase label (matches the serde representation).
     pub fn as_str(self) -> &'static str {
         match self {
@@ -770,5 +854,38 @@ output_parser = "gopls_v0_15""#;
             err.to_string(),
             "`retired` invalid (expected active|deprecated|reserved)"
         );
+    }
+    /// Round 870 — the derived vocabulary names EVERY value, or a message can
+    /// omit one silently.
+    ///
+    /// The runtime messages now interpolate [`CoverageExpectation::vocabulary`]
+    /// instead of a literal, which removes the drift the field reported — but it
+    /// moves the risk into one function, where a formatter bug would drop a value
+    /// from every message at once. So each variant's tag is asserted present,
+    /// derived from `ALL` rather than listed here, and the joiner's shapes are
+    /// pinned at one, two and three elements (the `or` placement is where such a
+    /// function goes wrong).
+    #[test]
+    fn the_derived_vocabulary_names_every_value() {
+        let coverage = CoverageExpectation::vocabulary();
+        for v in CoverageExpectation::ALL {
+            assert!(
+                coverage.contains(v.as_str()),
+                "`{}` is missing from the coverage vocabulary `{coverage}`",
+                v.as_str()
+            );
+        }
+        let verification = VerificationExpectation::vocabulary();
+        for v in VerificationExpectation::ALL {
+            assert!(
+                verification.contains(v.as_str()),
+                "`{}` is missing from the verification vocabulary `{verification}`",
+                v.as_str()
+            );
+        }
+        // Shape, so a message reads as English at every arity.
+        assert_eq!(join_or(&["a"]), "`a`");
+        assert_eq!(join_or(&["a", "b"]), "`a` or `b`");
+        assert_eq!(join_or(&["a", "b", "c"]), "`a`, `b`, or `c`");
     }
 }

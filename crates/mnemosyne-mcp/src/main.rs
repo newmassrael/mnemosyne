@@ -276,8 +276,11 @@ pub struct SetSectionBindingKindArgs {
 pub struct SetSectionCoverageExpectationArgs {
     /// Section ID without the `§` prefix.
     pub section_id: String,
-    /// `"normative"` (expects an implements binding) or `"informative"`
-    /// (prose-only, exempt from the coverage axiom).
+    /// One of the three `CoverageExpectation` tags. `"normative"` expects an
+    /// `implements` binding; `"out_of_scope_here"` (in the document this ledger
+    /// mirrors, not built here — including a deferred or Phase-2 feature) and
+    /// `"informational"` (inherently non-implementable prose) both exempt the
+    /// section. The refusal message names the current set.
     pub expectation: String,
     /// Mandatory rationale recorded on the receipt (audit safeguard).
     pub reason: String,
@@ -1718,7 +1721,7 @@ impl MnemosyneServer {
     }
 
     #[tool(
-        description = "Classify a section's coverage applicability (R421 3-state). `normative` (default) keeps the coverage axiom — a non-removed normative section with zero `implements` bindings is a gap. `out_of_scope_here` (part of the standard but not implemented by this consumer; revisitable) and `informational` (inherently non-implementable prose — terminology / overview) both EXEMPT the section. Second write path to Section.coverage_expectation alongside import_sections; both enforce the same closed value set. `reason` mandatory."
+        description = "Classify a section's coverage applicability (R421 3-state). `normative` (default) keeps the coverage axiom — a non-removed normative section with zero `implements` bindings is a gap. `out_of_scope_here` (part of the document THIS LEDGER MIRRORS but not implemented by this consumer, which includes a deferred or Phase-2 feature; revisitable) and `informational` (inherently non-implementable prose — terminology / overview) both EXEMPT the section. Second write path to Section.coverage_expectation alongside import_sections; both enforce the same closed value set. `reason` mandatory."
     )]
     async fn set_section_coverage_expectation(
         &self,
@@ -1731,7 +1734,8 @@ impl MnemosyneServer {
             let expectation = atomic::CoverageExpectation::from_tag(expectation_raw.trim())
                 .ok_or_else(|| {
                     atomic::AtomicMutateError::Validation(format!(
-                        "expectation must be `normative` or `informative` (got `{}`)",
+                        "expectation must be {} (got `{}`)",
+                        atomic::CoverageExpectation::vocabulary(),
                         expectation_raw
                     ))
                 })?;
@@ -1754,7 +1758,8 @@ impl MnemosyneServer {
             let expectation = atomic::VerificationExpectation::from_tag(expectation_raw.trim())
                 .ok_or_else(|| {
                     atomic::AtomicMutateError::Validation(format!(
-                        "expectation must be `dedicated` or `by_construction` (got `{}`)",
+                        "expectation must be {} (got `{}`)",
+                        atomic::VerificationExpectation::vocabulary(),
                         expectation_raw
                     ))
                 })?;

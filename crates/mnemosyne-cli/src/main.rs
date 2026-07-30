@@ -1219,7 +1219,7 @@ static COMMANDS: &[Command] = &[
         group: Some(&GROUP_ATOMIC_MUTATE),
         blank_before: false,
         usage: &["set-section-coverage-expectation --section §<N> --expectation normative|out_of_scope_here|informational --reason <text> [--sidecar <path>] [--json]"],
-        notes: &[],
+        notes: &["   Classify coverage applicability; any value other than `normative` exempts the section from the coverage axiom (--reason mandatory)"],
         run: |c| atomic_cli::cmd_set_section_coverage_expectation(&c.anchor()?, c.rest()),
     },
     Command {
@@ -1237,7 +1237,7 @@ static COMMANDS: &[Command] = &[
         group: Some(&GROUP_ATOMIC_MUTATE),
         blank_before: false,
         usage: &["add-confirmation-event --section §<N> [--file <path> --symbol <sym>] --confirmer-kind tool|model --confirmer-id <id> --confirmer-version <v> --method linkage_check|semantic_review|coverage_attestation --verdict confirm|refute --authoring-run <id> --confirming-run <id> --rationale <text> --timestamp <iso> [--spec-sha256 <h>] [--code-sha256 <h>] [--test-sha256 <h>] [--sidecar <path>] [--json]"],
-        notes: &["   Classify coverage applicability; informative exempts the section from the coverage axiom (--reason mandatory)"],
+        notes: &[],
         run: |c| atomic_cli::cmd_add_confirmation_event(&c.anchor()?, c.rest()),
     },
     Command {
@@ -6506,7 +6506,7 @@ fn cmd_validate_content_drift(args: &[String]) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::{parse_query_args, COMMANDS};
-    use std::collections::HashMap;
+    use std::collections::{BTreeSet, HashMap};
 
     fn args(list: &[&str]) -> Vec<String> {
         list.iter().map(|s| s.to_string()).collect()
@@ -6569,5 +6569,84 @@ mod tests {
         let err = parse_query_args(&args(&["--limit", "abc", "--list-changelog"]))
             .expect_err("non-numeric limit");
         assert!(err.to_string().contains("positive integer"));
+    }
+    /// Round 870 — the `--expectation` value set in `--help` is the enum's, or
+    /// this is red.
+    ///
+    /// The closed sets are now DERIVED for every runtime message
+    /// ([`mnemosyne_core::CoverageExpectation::vocabulary`]), but a usage line is
+    /// a `&'static str` and cannot be. So it is checked instead: each
+    /// alternation is parsed back through `from_tag`, and it must resolve to
+    /// exactly one enum and cover that enum COMPLETELY. A retired tag fails to
+    /// parse; a new variant nobody documented leaves the set short.
+    ///
+    /// Reported from the field: a consumer classifying 173 sections was told by
+    /// the missing-argument message to pass `informative`, a tag Round 422
+    /// removed with no alias, and was then refused by the value message one line
+    /// later. Five surfaces spelled this set out by hand and three had drifted —
+    /// including a note misfiled onto `add-confirmation-event`, which described
+    /// coverage classification under an unrelated verb.
+    #[test]
+    fn the_expectation_vocabulary_in_help_is_the_enums_own() {
+        use mnemosyne_core::{CoverageExpectation, VerificationExpectation};
+
+        let coverage: BTreeSet<String> = CoverageExpectation::ALL
+            .iter()
+            .map(|v| v.as_str().to_string())
+            .collect();
+        let verification: BTreeSet<String> = VerificationExpectation::ALL
+            .iter()
+            .map(|v| v.as_str().to_string())
+            .collect();
+
+        let mut checked = 0usize;
+        for command in COMMANDS {
+            for usage in command.usage {
+                let Some(rest) = usage.split("--expectation ").nth(1) else {
+                    continue;
+                };
+                let listed: BTreeSet<String> = rest
+                    .split_whitespace()
+                    .next()
+                    .expect("a value follows --expectation")
+                    .split('|')
+                    .map(str::to_string)
+                    .collect();
+                assert!(
+                    listed == coverage || listed == verification,
+                    "`{}` documents {:?}, which is neither the complete \
+                     CoverageExpectation set {:?} nor the complete \
+                     VerificationExpectation set {:?}",
+                    command.name,
+                    listed,
+                    coverage,
+                    verification
+                );
+                checked += 1;
+            }
+        }
+        // Non-vacuity: a refactor that renames the flag must not turn this test
+        // into a pass over zero usage lines.
+        assert_eq!(
+            checked, 2,
+            "expected the coverage and verification classification verbs to \
+             document an --expectation set; found {checked}"
+        );
+
+        // The retired tag, named because it is the drift that actually happened,
+        // and scoped to these two verbs so the report field name
+        // `informative_exempt` (a consumer-visible JSON key) is untouched.
+        for command in COMMANDS {
+            if !command.name.contains("-expectation") {
+                continue;
+            }
+            for text in command.usage.iter().chain(command.notes.iter()) {
+                assert!(
+                    !text.contains("informative"),
+                    "`{}` still offers the pre-Round-422 tag: {text}",
+                    command.name
+                );
+            }
+        }
     }
 }

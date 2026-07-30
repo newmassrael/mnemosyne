@@ -193,6 +193,60 @@ when the project never numbers its history rows.
  Active section has **zero `implements` bindings**. Coverage counts only
  `kind = "implements"` (SysML «satisfy»); `references` («trace») links
  satisfy citations but do **not** count as implementation coverage.
+ **Before turning this to `reject`, classify.** The gap it reports is only
+ meaningful for sections that are supposed to have code, and that is a
+ per-section fact in the store, not a config setting — see
+ *Coverage classification* below. A consumer who enforced first had 244
+ undifferentiated warnings across four ledgers and could not tell a real gap
+ from prose; classifying brought it to 163, all of them real.
+
+### Coverage classification — which sections are supposed to have code
+
+`severity_coverage` asks "does this section have an `implements` binding". Whether
+it *should* is `Section.coverage_expectation`, set per section with
+`set-section-coverage-expectation --section §<id> --expectation <tag> --reason <text>`
+(`--reason` is mandatory and is recorded in the store — a year later that is the
+difference between an auditable decision and a bare tag). Three values, and they
+are not interchangeable:
+
+| tag | means | coverage axiom |
+|---|---|---|
+| `normative` (default) | a requirement that expects implementing code | **applies** |
+| `out_of_scope_here` | in **the document this ledger mirrors**, not implemented *here* — revisitable if scope expands | exempt |
+| `informational` | **inherently** non-implementable prose: terminology, overview, references | exempt |
+
+Two readings of `out_of_scope_here` have cost a consumer real time, so both are
+stated:
+
+- **"The document this ledger mirrors" is not necessarily an external standard.**
+ It is whatever this ledger documents — including your own design doc. A
+ consumer whose other ledger *was* an external mirror read "the standard" as
+ external, concluded the value was rare and standards-specific, and left 19
+ sections `normative` that no binding could ever clear.
+- **A deferred or Phase-2 feature is `out_of_scope_here`, not `informational`.**
+ `informational` means *inherently* non-implementable. Marking an intended
+ feature `informational` is a false declaration, and unlike a missing binding
+ nothing later contradicts it.
+
+The orthogonal axis is `Section.verification_expectation`
+(`dedicated` / `by_construction`, R413): whether a *normative* section's evidence
+is a concrete test artifact. A `by_construction` section is still `normative` for
+implements-coverage — folding the two axes into one would force an exempt
+mislabel that silently drops the section from coverage.
+
+**What the gates do and do not check here.** `misclassified_coverage` (R423)
+rejects an exempt section that carries an `implements`/`verifies` binding — the
+contradiction is structural, so it is caught. **Nothing checks whether a tag
+matches the prose**: an intended feature tagged `informational` passes every gate.
+The consumer above found two such misclassifications only by having four
+independent agents classify one ledger each without seeing the written principle,
+and their calls disagreed with it in the same place. If you are classifying at
+scale, that shape is the check.
+
+**The value set is not two.** Any message that spells it out derives it from the
+enum (R870); before that, five surfaces spelled it by hand and three still offered
+`informative`, the two-state tag R422 removed with no alias. If a tool ever offers
+you `informative`, it is older than R422 — the store will refuse it.
 - **`[plugins.set_equality_validator].comment_only`** — `true` strips string literals before
  scanning so only comment citations count. Default `true`; flip only if
  your project deliberately puts §id references in user-visible strings.
