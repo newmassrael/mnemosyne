@@ -844,6 +844,16 @@ pub fn expand_paths(root: &Path, paths: &[String]) -> Vec<PathBuf> {
 /// whose orphan resolved must be deleted). The same rule here keeps the
 /// exclusion list from accumulating names of trees that no longer exist —
 /// otherwise the list decays into folklore that reads as policy.
+/// # Two axes, two universes (Round 854)
+///
+/// The counts below answer the Round 783 question — "is every RUST source
+/// scanned or declared" — and are Rust-only by design: a language-agnostic
+/// `unscanned` would demand a declaration for every `.md` and `.toml` in the
+/// tree. The two file SETS answer a different question, the Round 840 one
+/// ("does the gate still read this citation anywhere"), and that answer depends
+/// on every language a consumer's `paths` enrol, so they are language-agnostic.
+/// Both are derived from the same walk, so the two axes cannot disagree about a
+/// file (the Round 777 rule).
 pub struct ScanCoverage {
     /// Rust sources found under `root`. A run that considered none proves
     /// nothing, so the count is reported rather than assumed.
@@ -852,13 +862,17 @@ pub struct ScanCoverage {
     pub scanned: usize,
     /// Rust sources neither scanned nor excluded — the drift this catches.
     pub unscanned: Vec<PathBuf>,
-    /// Declared exclusions that match no file under `root`.
+    /// Declared exclusions that match no file under `root`, ANY language
+    /// (Round 854): an exclusion over a C++ tree is doing work, and reporting
+    /// it stale told a consumer to delete the declaration that was doing it.
     pub stale_exclusions: Vec<String>,
-    /// The files an exclusion actually removed (Round 840) — carried so
-    /// [`swallowed_citations`] reads exactly the set this walk excluded, rather
-    /// than re-deriving it and being free to disagree (the Round 777 rule).
+    /// EVERY file an exclusion removed, any language (Round 840 set, Round 854
+    /// universe) — carried so [`swallowed_citations`] reads exactly the set this
+    /// walk excluded, rather than re-deriving it and being free to disagree (the
+    /// Round 777 rule).
     pub excluded_files: BTreeSet<PathBuf>,
-    /// The files the configured paths cover, carried for the same reason.
+    /// EVERY file the configured paths cover, any language — what the gate
+    /// reads, carried for the same reason.
     pub scanned_files: BTreeSet<PathBuf>,
 }
 
@@ -877,42 +891,39 @@ pub fn scan_coverage(
     paths: &[String],
     exclusions: &[String],
 ) -> std::io::Result<ScanCoverage> {
-    let is_rust = |p: &PathBuf| p.extension().is_some_and(|e| e == "rs");
-    let all: Vec<PathBuf> = walk_paths(root, &[String::new()])?
-        .into_iter()
-        .filter(is_rust)
-        .collect();
-    let scanned: BTreeSet<PathBuf> = walk_paths(root, paths)?
-        .into_iter()
-        .filter(is_rust)
-        .collect();
+    let is_rust = |p: &Path| p.extension().is_some_and(|e| e == "rs");
+    // Language-agnostic first, Rust view derived below. The other order — filter
+    // to `.rs` at the walk — is what Round 854 fixed: it made the Round 840
+    // reachability axis blind to C++, and blind in BOTH directions.
+    let all: Vec<PathBuf> = walk_paths(root, &[String::new()])?;
+    let scanned_files: BTreeSet<PathBuf> = walk_paths(root, paths)?.into_iter().collect();
 
-    let mut excluded: BTreeSet<PathBuf> = BTreeSet::new();
+    let mut excluded_files: BTreeSet<PathBuf> = BTreeSet::new();
     let mut stale_exclusions = Vec::new();
     for one in exclusions {
-        let hit: Vec<PathBuf> = walk_paths(root, std::slice::from_ref(one))
-            .unwrap_or_default()
-            .into_iter()
-            .filter(is_rust)
-            .collect();
+        let hit: Vec<PathBuf> = walk_paths(root, std::slice::from_ref(one)).unwrap_or_default();
         if hit.is_empty() {
             stale_exclusions.push(one.clone());
         }
-        excluded.extend(hit);
+        excluded_files.extend(hit);
     }
 
-    let unscanned: Vec<PathBuf> = all
+    // The Round 783 axis. Membership is tested against the language-agnostic
+    // sets, which for a Rust path is the same answer the filtered sets gave —
+    // so this axis is unchanged, by derivation rather than by a second walk.
+    let rust: Vec<&PathBuf> = all.iter().filter(|p| is_rust(p)).collect();
+    let unscanned: Vec<PathBuf> = rust
         .iter()
-        .filter(|p| !scanned.contains(*p) && !excluded.contains(*p))
-        .cloned()
+        .filter(|p| !scanned_files.contains(**p) && !excluded_files.contains(**p))
+        .map(|p| (*p).clone())
         .collect();
     Ok(ScanCoverage {
-        considered: all.len(),
-        scanned: scanned.len(),
+        considered: rust.len(),
+        scanned: scanned_files.iter().filter(|p| is_rust(p)).count(),
         unscanned,
         stale_exclusions,
-        excluded_files: excluded,
-        scanned_files: scanned,
+        excluded_files,
+        scanned_files,
     })
 }
 
@@ -959,18 +970,35 @@ pub struct SwallowedCitation {
 /// configured-but-empty scan set loud, and this makes a scan set emptied BY
 /// DECLARATION loud.
 ///
-/// # Errors
+/// # Why the universe is every language (Round 854)
 ///
-/// Whatever reading an excluded or scanned file fails with.
+/// "Nowhere the gate reads" is a claim about the gate, and the gate walks
+/// `paths` without looking at extensions — C++ headers, Jinja templates,
+/// whatever a consumer enrols. The first version inherited a Rust-only
+/// [`ScanCoverage`], which broke the claim in both directions and was reported
+/// from the field: seven sections cited and bound in scanned C++ were named as
+/// reachable only from an excluded tree (the consumer dropped the citation from
+/// its templates to get green), while a citation living only in an excluded C++
+/// file — the loss this exists to catch — could not be seen at all.
+///
+/// The rule that keeps this honest is unchanged and now runs on every file: the
+/// detector reads exactly what the gate reads, no more and no less. That is why
+/// an unreadable file is SKIPPED here rather than raising — the gate skips it
+/// too, so its citations were never coverage.
+#[must_use]
 pub fn swallowed_citations(
     coverage: &ScanCoverage,
     known_sections: &BTreeSet<String>,
     external_prefixes_numeric: &[String],
     external_prefixes_bare: &[String],
     comment_only: bool,
-) -> std::io::Result<Vec<SwallowedCitation>> {
-    let cites = |path: &PathBuf| -> std::io::Result<Vec<(usize, String)>> {
-        let raw = std::fs::read_to_string(path)?;
+) -> Vec<SwallowedCitation> {
+    let cites = |path: &PathBuf| -> Vec<(usize, String)> {
+        // Skipped exactly where the gate skips: a file it cannot read as UTF-8
+        // is a file whose citations it never saw.
+        let Ok(raw) = std::fs::read_to_string(path) else {
+            return Vec::new();
+        };
         // The SAME comment-only treatment the citation gate applies, or the two
         // would disagree about what counts as a citation — and a detector that
         // sees more than the gate reports losses that were never coverage.
@@ -979,23 +1007,19 @@ pub fn swallowed_citations(
         } else {
             raw
         };
-        Ok(extract_section_citations(
-            &content,
-            external_prefixes_numeric,
-            external_prefixes_bare,
-        ))
+        extract_section_citations(&content, external_prefixes_numeric, external_prefixes_bare)
     };
 
     let mut still_seen: BTreeSet<String> = BTreeSet::new();
     for path in &coverage.scanned_files {
-        for (_, id) in cites(path)? {
+        for (_, id) in cites(path) {
             still_seen.insert(id);
         }
     }
     // First site in path order + a count, so the message is deterministic.
     let mut found: BTreeMap<String, (PathBuf, usize, usize)> = BTreeMap::new();
     for path in &coverage.excluded_files {
-        for (line, id) in cites(path)? {
+        for (line, id) in cites(path) {
             // SCOPED TO THIS LEDGER. An exclusion asserts that no citation
             // THIS ledger gates lives in the tree — a citation of some other
             // ledger's namespace is not this one's coverage to lose, and
@@ -1012,7 +1036,7 @@ pub fn swallowed_citations(
                 .or_insert((path.clone(), line, 1));
         }
     }
-    Ok(found
+    found
         .into_iter()
         .map(
             |(section_id, (file, line, occurrences))| SwallowedCitation {
@@ -1022,7 +1046,7 @@ pub fn swallowed_citations(
                 occurrences,
             },
         )
-        .collect())
+        .collect()
 }
 
 /// One store id cited in code that the store does not hold (Round 819) — an
@@ -3427,6 +3451,53 @@ mod tests {
         let after = scan_coverage(root, &paths, &declared).unwrap();
         assert!(after.unscanned.is_empty(), "a declared tree must be silent");
         assert!(after.stale_exclusions.is_empty());
+    }
+
+    /// Round 854 — the two axes, and the fact that only one of them is about
+    /// Rust.
+    ///
+    /// `considered` / `scanned` / `unscanned` answer the Round 783 question and
+    /// are Rust-only on purpose: a language-agnostic `unscanned` would demand a
+    /// declaration for every `.md` in the tree. The file SETS answer the Round
+    /// 840 question — what the gate reads — and a consumer's `paths` enrol C++
+    /// headers and Jinja templates. One walk, two views, asserted together so a
+    /// future edit cannot quietly narrow one of them.
+    #[test]
+    fn the_rust_axis_and_the_file_sets_answer_different_questions() {
+        let tmp = TempDir::new().unwrap();
+        let root = tmp.path();
+        std::fs::create_dir_all(root.join("sce/src")).unwrap();
+        std::fs::write(root.join("sce/src/lib.rs"), "// Round 1\n").unwrap();
+        std::fs::write(root.join("sce/src/engine.cpp"), "// see 1.1\n").unwrap();
+        std::fs::write(root.join("sce/src/tpl.jinja2"), "{# see 1.1 #}\n").unwrap();
+        std::fs::create_dir_all(root.join("generated")).unwrap();
+        std::fs::write(root.join("generated/out.cpp"), "// see 1.1\n").unwrap();
+
+        let paths = vec!["sce/src/".to_string()];
+        let exclusions = vec!["generated/".to_string()];
+        let cov = scan_coverage(root, &paths, &exclusions).unwrap();
+
+        assert_eq!(cov.considered, 1, "one Rust source in the tree");
+        assert_eq!(cov.scanned, 1, "and the configured path covers it");
+        assert!(cov.unscanned.is_empty());
+        assert_eq!(
+            cov.scanned_files.len(),
+            3,
+            "the gate reads every file under a configured path, whatever the \
+             language: {:?}",
+            cov.scanned_files
+        );
+        assert_eq!(
+            cov.excluded_files,
+            [root.join("generated/out.cpp")].into_iter().collect(),
+            "an excluded C++ file is a file the exclusion removed — under a \
+             Rust-only view this set was empty and the exclusion read as stale"
+        );
+        assert!(
+            cov.stale_exclusions.is_empty(),
+            "the exclusion matches a real tree: {:?}",
+            cov.stale_exclusions
+        );
     }
 
     /// An exclusion that matches nothing is a rotting entry, and the workspace

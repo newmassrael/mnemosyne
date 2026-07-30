@@ -44,6 +44,13 @@ pub struct ValidateWorkspaceReport {
     pub scan_scanned: usize,
     pub scan_unscanned: Vec<String>,
     pub scan_stale_exclusions: Vec<String>,
+    /// Round 854 — the files the Round 840 axis actually read, any language: the
+    /// ones the gate covers and the ones an exclusion removed. Reported every
+    /// run, because "0 swallowed" out of 0 excluded files read is the same clean
+    /// a genuinely clean tree prints (the Round 783 non-vacuity rule), and the
+    /// axis was silently Rust-only for a whole consumer's C++ tree.
+    pub scan_gate_files: usize,
+    pub scan_excluded_files: usize,
     /// Round 840 — citations an exclusion removed from the gate entirely.
     pub scan_swallowed_citations: Vec<String>,
     pub failed: bool,
@@ -278,6 +285,11 @@ pub fn validate_workspace(workspace_root: &Path) -> Result<ValidateWorkspaceRepo
     // silently un-gated. Only citations found NOWHERE the gate reads count — a
     // copy inside an excluded tree loses nothing, which is what keeps their
     // honest codegen-output exclusions silent.
+    //
+    // Round 854 — "nowhere the gate reads" now means every language the gate
+    // reads. The same consumer reported the first version answering that
+    // whole-tree question from a Rust-only file set, which named seven sections
+    // cited and bound in scanned C++ as excluded-only.
     let swallowed: Vec<String> = {
         let cfg = loaded
             .config
@@ -293,7 +305,6 @@ pub fn validate_workspace(workspace_root: &Path) -> Result<ValidateWorkspaceRepo
                 &c.external_section_prefixes_bare,
                 c.comment_only,
             )
-            .map_err(|e| OpError::from(anyhow::anyhow!("exclusion integrity: {e}")))?
             .into_iter()
             .map(|s| {
                 format!(
@@ -328,7 +339,8 @@ pub fn validate_workspace(workspace_root: &Path) -> Result<ValidateWorkspaceRepo
     // copy of a citation is a gate reporting clean over coverage it gave away.
     if !swallowed.is_empty() {
         failure_reasons.push(format!(
-            "{} citation(s) exist only inside an excluded tree — scan the tree or              bind the citation; an exclusion asserts the gate loses nothing",
+            "{} citation(s) exist only inside an excluded tree — scan the tree or \
+             bind the citation; an exclusion asserts the gate loses nothing",
             swallowed.len()
         ));
     }
@@ -417,6 +429,8 @@ pub fn validate_workspace(workspace_root: &Path) -> Result<ValidateWorkspaceRepo
         scan_scanned: scan.scanned,
         scan_unscanned,
         scan_stale_exclusions: scan.stale_exclusions,
+        scan_gate_files: scan.scanned_files.len(),
+        scan_excluded_files: scan.excluded_files.len(),
         scan_swallowed_citations: swallowed,
         failed,
         failure_reasons,
@@ -507,10 +521,17 @@ impl ValidateWorkspaceReport {
         for e in &self.scan_stale_exclusions {
             let _ = writeln!(out, "  stale exclusion: {}", e);
         }
+        // Same non-vacuity discipline as the line above, one axis over: the
+        // file counts say whether the axis read anything at all, and in ANY
+        // language. Round 854 — it read only Rust, and a consumer whose
+        // citations live in C++ got a whole-tree verdict from an empty set.
         let _ = writeln!(
             out,
-            "exclusion integrity: {} citation(s) swallowed by an exclusion (Round 840)",
-            self.scan_swallowed_citations.len()
+            "exclusion integrity: {} citation(s) swallowed by an exclusion (Round 840); \
+             read {} gate file(s), {} excluded file(s), any language (Round 854)",
+            self.scan_swallowed_citations.len(),
+            self.scan_gate_files,
+            self.scan_excluded_files,
         );
         for e in &self.scan_swallowed_citations {
             let _ = writeln!(out, "  swallowed: {}", e);
@@ -552,6 +573,16 @@ mod tests {
         let src = repo.join("crates/alpha/src");
         fs::create_dir_all(&src).expect("src");
         fs::write(src.join("lib.rs"), "// Round 835\npub fn f() {}\n").expect("lib.rs");
+        // MIXED LANGUAGE by construction (Round 854). Every scan path in this
+        // repo holds Rust only, which is why a Rust-only file universe was
+        // invisible here and had to be reported from a C++ consumer's field.
+        // Cites nothing: its job is to be a file the gate reads and a
+        // Rust-shaped view of the workspace does not.
+        fs::write(
+            src.join("impl.cpp"),
+            "// no citation here\nint g() { return 0; }\n",
+        )
+        .expect("impl.cpp");
         let toml_dir = repo.join("docs/spec");
         fs::create_dir_all(toml_dir.join(".atomic")).expect("toml dir");
         fs::write(
@@ -638,8 +669,20 @@ mod tests {
             "the citation gate walked nothing — the comparison below would be \
              between two zeroes"
         );
+        // Round 854 — the comparison is against the count of files the baseline
+        // gate READS, not its Rust-source count. Those two were the same number
+        // for as long as the fixture was all-Rust, so this assertion held
+        // vacuously while the coverage struct filtered the citation gate's own
+        // universe down to `.rs`. The line below is what makes it load-bearing.
+        assert!(
+            citation_files
+                .iter()
+                .any(|p| p.extension().is_some_and(|e| e != "rs")),
+            "the walk found no non-Rust file — the equality below cannot tell a \
+             language-agnostic universe from a Rust-only one: {citation_files:?}"
+        );
         assert_eq!(
-            report.scan_scanned,
+            report.scan_gate_files,
             citation_files.len(),
             "the two gates disagree about which files the SAME configured paths \
              cover — the exact symptom the field report diagnosed by running \
@@ -762,6 +805,155 @@ mod tests {
         assert!(
             report.failed,
             "a swallowed citation must FAIL the gate, like its Round 783 sibling"
+        );
+    }
+
+    /// Round 854 — the reachability axis reads every language the gate reads.
+    ///
+    /// Reported from the field, and it is the Round 840 detector answering a
+    /// question about the whole tree from a Rust-only universe. `scan_coverage`
+    /// filtered its scanned AND excluded sets to `.rs`, so for a consumer whose
+    /// citations live in C++ the "still seen" side was empty: seven sections
+    /// cited and bound in scanned C++ were reported as reachable only from an
+    /// excluded tree. The cost was real — the consumer dropped the citation from
+    /// its codegen templates to get the gate green.
+    ///
+    /// Both error directions come from that ONE filter, and both are asserted
+    /// here because a fix verified in one direction is half a fix:
+    ///
+    /// - FALSE POSITIVE — cited in scanned C++ and in an excluded Rust copy:
+    ///   the gate still reads it, so nothing was lost and the axis must be
+    ///   silent. Before the fix this was the loud case.
+    /// - FALSE NEGATIVE — cited ONLY in an excluded C++ file: this is the exact
+    ///   coverage loss Round 840 exists to catch, and before the fix the axis
+    ///   could not see the file at all. This one is worse: a swallowed citation
+    ///   reads as clean.
+    ///
+    /// This repo's own fixtures could not have found it — every scan path here
+    /// holds Rust only, so the filter is invisible by construction. Hence a
+    /// MIXED-LANGUAGE fixture: the `.cpp` files are the test.
+    #[test]
+    fn the_reachability_axis_reads_every_language_the_gate_reads() {
+        let (tmp, toml_dir) = nested_ledger_workspace();
+        let repo = tmp.path();
+        // The detector is scoped to this ledger's own section space, so the
+        // store must hold every id the fixture cites.
+        fs::write(
+            toml_dir.join(".atomic/store.json"),
+            format!(
+                "{{\"schema_version\":{},\"sections\":\
+                 {{\"1.1\":{{}},\"2.2\":{{}},\"8.8\":{{}}}}}}",
+                mnemosyne_atomic::CURRENT_SCHEMA_VERSION
+            ),
+        )
+        .expect("store with the cited sections");
+        let excluded = repo.join("crates/generated/src");
+        fs::create_dir_all(&excluded).expect("excluded dir");
+        // SCANNED Rust — the control: `1.1` is cited here and in the excluded
+        // tree, and stayed silent before this round too. Its silence separates
+        // "the fix works" from "the detector went quiet".
+        fs::write(
+            repo.join("crates/alpha/src/lib.rs"),
+            "// Round 835\n// see §1.1\npub fn f() {}\n",
+        )
+        .expect("scanned rust source");
+        // SCANNED C++ — the false positive. The gate reads this file; the
+        // reachability axis did not.
+        fs::write(
+            repo.join("crates/alpha/src/impl.cpp"),
+            "// see §2.2\nint g() { return 0; }\n",
+        )
+        .expect("scanned cpp source");
+        // EXCLUDED Rust — an honest copy of two citations the gate still reads.
+        fs::write(
+            excluded.join("out.rs"),
+            "// generated — see §1.1 and §2.2\npub fn g() {}\n",
+        )
+        .expect("excluded rust copy");
+        // EXCLUDED C++ — the false negative. `8.8` is cited nowhere else.
+        fs::write(
+            excluded.join("gen.cpp"),
+            "// generated — see §8.8\nint h() { return 0; }\n",
+        )
+        .expect("excluded cpp source");
+        fs::write(
+            toml_dir.join("mnemosyne.toml"),
+            "[workspace]\nroot = \"../..\"\n\n\
+             [atomic]\nsidecar_path = \"docs/spec/.atomic/store.json\"\n\n\
+             [plugins.set_equality_validator]\npaths = [\"crates/alpha/src/\"]\n\
+             scan_exclusions = [\"crates/generated/\"]\n",
+        )
+        .expect("config");
+
+        let report = validate_workspace(&toml_dir).expect("report builds");
+        // NON-VACUITY on the axis itself: it read the C++ files. Without these
+        // two counts the assertions below would also pass against an axis that
+        // read one Rust file on each side and said the right thing by luck.
+        assert_eq!(
+            report.scan_gate_files, 2,
+            "the axis must read both scanned files (lib.rs + impl.cpp), not the \
+             Rust one only"
+        );
+        assert_eq!(
+            report.scan_excluded_files, 2,
+            "the axis must read both excluded files (out.rs + gen.cpp)"
+        );
+        let swallowed = &report.scan_swallowed_citations;
+        assert_eq!(
+            swallowed.len(),
+            1,
+            "expected exactly the citation that is cited nowhere the gate reads, \
+             got {swallowed:?}"
+        );
+        assert!(
+            swallowed[0].contains("8.8"),
+            "the only swallowed citation is the one cited solely in an excluded \
+             C++ file: {swallowed:?}"
+        );
+        assert!(
+            !swallowed.iter().any(|s| s.contains("2.2")),
+            "`2.2` is cited in a SCANNED C++ file — the gate reads it, so the \
+             excluded copy costs nothing: {swallowed:?}"
+        );
+    }
+
+    /// Round 854 — an exclusion that removes only non-Rust files is not stale.
+    ///
+    /// The same `.rs` filter, third symptom: `stale_exclusions` reported an
+    /// exclusion as matching nothing whenever it matched nothing in RUST, and a
+    /// stale exclusion is a REJECT. So a C++ consumer excluding a C++ tree was
+    /// told to delete the declaration that was doing the work.
+    #[test]
+    fn an_exclusion_matching_only_non_rust_files_is_not_stale() {
+        let (tmp, toml_dir) = nested_ledger_workspace();
+        let repo = tmp.path();
+        let cppgen = repo.join("crates/cppgen");
+        fs::create_dir_all(&cppgen).expect("cppgen dir");
+        fs::write(
+            cppgen.join("x.cpp"),
+            "// generated\nint x() { return 0; }\n",
+        )
+        .expect("cpp file");
+        fs::write(
+            toml_dir.join("mnemosyne.toml"),
+            "[workspace]\nroot = \"../..\"\n\n\
+             [atomic]\nsidecar_path = \"docs/spec/.atomic/store.json\"\n\n\
+             [plugins.set_equality_validator]\npaths = [\"crates/alpha/src/\"]\n\
+             scan_exclusions = [\"crates/cppgen/\"]\n",
+        )
+        .expect("config");
+
+        let report = validate_workspace(&toml_dir).expect("report builds");
+        assert!(
+            report.scan_stale_exclusions.is_empty(),
+            "the exclusion matches a real tree — it is stale only under a \
+             Rust-only view of the workspace: {:?}",
+            report.scan_stale_exclusions
+        );
+        assert!(
+            !report.failed,
+            "a live exclusion must not fail the gate: {:?}",
+            report.failure_reasons
         );
     }
 
