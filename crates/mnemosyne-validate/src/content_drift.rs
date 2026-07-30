@@ -137,7 +137,7 @@ pub fn scan_content_drift(store: &AtomicStore) -> Vec<ContentDriftViolation> {
                 .chain(presences)
                 .filter_map(|(kind, matches, declared, computed)| {
                     (matches == Some(false)).then(|| ContentDriftViolation {
-                        section_id: section_id.clone(),
+                        section_id: section_id.to_string(),
                         excerpt: kind,
                         declared_sha256: declared,
                         computed_sha256: computed,
@@ -199,7 +199,7 @@ mod tests {
     fn store_with(sections: &[(&str, AtomicSection)]) -> AtomicStore {
         let mut store = AtomicStore::default();
         for (id, sec) in sections {
-            store.sections.insert((*id).to_string(), sec.clone());
+            store.sections.insert((*id).into(), sec.clone());
         }
         store
     }

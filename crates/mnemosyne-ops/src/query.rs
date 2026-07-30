@@ -232,7 +232,7 @@ pub fn list_inventory(workspace_root: &Path) -> Result<Vec<InventoryEntryView>, 
         .map(|(id, e)| InventoryEntryView {
             id: id.clone(),
             status: e.status.as_str(),
-            section_ref: e.section_ref.clone(),
+            section_ref: e.section_ref.as_ref().map(ToString::to_string),
             source: e.source.clone(),
             reason: e.reason.clone(),
         })
@@ -254,7 +254,7 @@ pub fn query_inventory(
     Ok(InventoryEntryView {
         id: inventory_id.to_string(),
         status: entry.status.as_str(),
-        section_ref: entry.section_ref.clone(),
+        section_ref: entry.section_ref.as_ref().map(ToString::to_string),
         source: entry.source.clone(),
         reason: entry.reason.clone(),
     })

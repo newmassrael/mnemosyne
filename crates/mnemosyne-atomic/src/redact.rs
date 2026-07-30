@@ -192,7 +192,11 @@ pub fn redact_term(
             if let Some(new_vec) = redact_vec(
                 &matcher,
                 &req.replacement,
-                &entry.publishable_impact_refs,
+                &entry
+                    .publishable_impact_refs
+                    .iter()
+                    .map(ToString::to_string)
+                    .collect::<Vec<_>>(),
                 entry_id,
                 "publishable_impact_refs",
                 &mut hits,
@@ -242,6 +246,7 @@ pub fn redact_term(
                 })?;
         }
         for (entry_id, vec) in planned_impact_refs {
+            let vec: Vec<mnemosyne_core::SectionId> = vec.into_iter().map(Into::into).collect();
             set_changelog_publishable_impact_refs(store, sidecar_path, &entry_id, &vec).map_err(
                 |e| RedactError::Mutate {
                     entry_id,
@@ -429,7 +434,10 @@ fn apply_planned_to_entry(
             "publishable_impact_refs" => {
                 if let Some(i) = hit.index {
                     if let Some(b) = entry.publishable_impact_refs.get_mut(i) {
-                        *b = matcher.replace_all(b, replacement);
+                        *b = matcher
+                            .replace_all(b.as_str(), replacement)
+                            .to_string()
+                            .into();
                     }
                 }
             }

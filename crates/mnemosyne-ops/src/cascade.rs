@@ -129,16 +129,16 @@ pub fn validate_atomic_store(
     let mut orphan_entry_refs = Vec::new();
     for (entry_id, entry) in &store.changelog_entries {
         for r in &entry.impact_refs {
-            if !section_id_set.contains(r) {
-                orphan_entry_refs.push((entry_id.clone(), r.clone()));
+            if !section_id_set.contains(r.as_str()) {
+                orphan_entry_refs.push((entry_id.clone(), r.to_string()));
             }
         }
     }
     let mut orphan_section_refs = Vec::new();
     for (section_id, atomic) in &store.sections {
         for r in &atomic.impact_scope {
-            if !section_id_set.contains(r) {
-                orphan_section_refs.push((section_id.clone(), r.clone()));
+            if !section_id_set.contains(r.as_str()) {
+                orphan_section_refs.push((section_id.to_string(), r.to_string()));
             }
         }
         // R344: the supersession forward-pointer is a section cross-ref too —
@@ -147,8 +147,8 @@ pub fn validate_atomic_store(
         // phantom §M would pass the supersede-state gate (a decision ref exists)
         // yet dangle.
         if let Some(target) = &atomic.superseded_by {
-            if !section_id_set.contains(target) {
-                orphan_section_refs.push((section_id.clone(), target.clone()));
+            if !section_id_set.contains(target.as_str()) {
+                orphan_section_refs.push((section_id.to_string(), target.to_string()));
             }
         }
     }

@@ -145,7 +145,7 @@ mod tests {
                 parent_section: None,
                 decision_status: status,
             },
-            impact_scope: impact.iter().map(|s| s.to_string()).collect(),
+            impact_scope: impact.iter().map(|s| (*s).into()).collect(),
             ..Default::default()
         }
     }
@@ -153,7 +153,7 @@ mod tests {
     fn store_with(sections: Vec<(&str, AtomicSection)>) -> AtomicStore {
         let mut store = AtomicStore::new();
         for (id, s) in sections {
-            store.sections.insert(id.to_string(), s);
+            store.sections.insert(id.into(), s);
         }
         store
     }
@@ -221,7 +221,7 @@ mod tests {
         // This is the over-flagging bug the warm projection had before the
         // pointer was stored structurally (it could only see impact_scope).
         let mut old = section("Old", Some(DecisionStatus::Superseded), &[]);
-        old.superseded_by = Some("new".to_string());
+        old.superseded_by = Some("new".into());
         let store = store_with(vec![
             ("old", old),
             ("new", section("New", Some(DecisionStatus::Active), &[])),
@@ -270,7 +270,7 @@ mod tests {
 
         // Add a Superseded section with no supersession ref → one violation.
         store.sections.insert(
-            "beta".to_string(),
+            "beta".into(),
             section("Beta", Some(DecisionStatus::Superseded), &[]),
         );
         svc.reload(&store);

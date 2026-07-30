@@ -58,7 +58,7 @@ pub use scene::Modality;
 
 mod ids;
 pub use ids::{
-    BranchId, EntityId, EntityKindId, FactId, FrameId, ParameterId, PredicateId, UnitId,
+    BranchId, EntityId, EntityKindId, FactId, FrameId, ParameterId, PredicateId, SectionId, UnitId,
 };
 
 pub trait SymbolResolver: Send + Sync {

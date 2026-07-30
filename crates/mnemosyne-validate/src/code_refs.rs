@@ -1541,16 +1541,16 @@ pub fn scan_section_prose_fact_assertions(
     let mut out = Vec::new();
     for (section_id, section) in &store.sections {
         if let Some(intent) = &section.intent {
-            collect_section_prose(&mut out, section_id, "intent", intent);
+            collect_section_prose(&mut out, section_id.as_str(), "intent", intent);
         }
         for b in &section.rationale_bullets {
-            collect_section_prose(&mut out, section_id, "rationale", b);
+            collect_section_prose(&mut out, section_id.as_str(), "rationale", b);
         }
         for b in &section.inputs_bullets {
-            collect_section_prose(&mut out, section_id, "inputs", b);
+            collect_section_prose(&mut out, section_id.as_str(), "inputs", b);
         }
         for b in &section.outputs_bullets {
-            collect_section_prose(&mut out, section_id, "outputs", b);
+            collect_section_prose(&mut out, section_id.as_str(), "outputs", b);
         }
     }
     out
@@ -4024,7 +4024,7 @@ mod tests {
         // Round 287 fail-loud: seed Section before add_section_binding
         // (test fixture path — direct insert bypasses audit-receipt overhead).
         store.sections.insert(
-            section_id.to_string(),
+            section_id.into(),
             mnemosyne_atomic::AtomicSection::default(),
         );
         add_section_binding(
@@ -4055,7 +4055,7 @@ mod tests {
         let mut store = AtomicStore::new();
         store
             .sections
-            .insert("39".to_string(), mnemosyne_atomic::AtomicSection::default());
+            .insert("39".into(), mnemosyne_atomic::AtomicSection::default());
 
         let validator = SetEqualityValidator {
             config: SetEqualityValidatorConfig {
@@ -4154,7 +4154,7 @@ mod tests {
         let mut store = AtomicStore::new();
         store
             .sections
-            .insert("39".to_string(), mnemosyne_atomic::AtomicSection::default());
+            .insert("39".into(), mnemosyne_atomic::AtomicSection::default());
         add_section_binding(
             &mut store,
             &store_path,
@@ -4209,14 +4209,12 @@ mod tests {
         let tmp = TempDir::new().unwrap();
         let store_path = tmp.path().join(".atomic/workspace.atomic.json");
         let mut store = AtomicStore::new();
-        store.sections.insert(
-            "norm".to_string(),
-            mnemosyne_atomic::AtomicSection::default(),
-        );
-        store.sections.insert(
-            "info".to_string(),
-            mnemosyne_atomic::AtomicSection::default(),
-        );
+        store
+            .sections
+            .insert("norm".into(), mnemosyne_atomic::AtomicSection::default());
+        store
+            .sections
+            .insert("info".into(), mnemosyne_atomic::AtomicSection::default());
         set_section_coverage_expectation(
             &mut store,
             &store_path,
@@ -4274,7 +4272,7 @@ mod tests {
         let mut store = AtomicStore::new();
         store
             .sections
-            .insert("39".to_string(), mnemosyne_atomic::AtomicSection::default());
+            .insert("39".into(), mnemosyne_atomic::AtomicSection::default());
         add_section_binding(
             &mut store,
             &store_path,
@@ -4629,15 +4627,13 @@ mod tests {
         // implemented: Normative + implements binding.
         let mut store = build_store_with_impl(&store_path, "bound", "src/foo.rs", Some("Foo"));
         // normative gap: Normative, zero bindings.
-        store.sections.insert(
-            "gap".to_string(),
-            mnemosyne_atomic::AtomicSection::default(),
-        );
+        store
+            .sections
+            .insert("gap".into(), mnemosyne_atomic::AtomicSection::default());
         // informative exempt.
-        store.sections.insert(
-            "info".to_string(),
-            mnemosyne_atomic::AtomicSection::default(),
-        );
+        store
+            .sections
+            .insert("info".into(), mnemosyne_atomic::AtomicSection::default());
         set_section_coverage_expectation(
             &mut store,
             &store_path,
@@ -4647,10 +4643,9 @@ mod tests {
         )
         .unwrap();
         // removed: Normative, zero bindings, but tombstoned → excluded.
-        store.sections.insert(
-            "dead".to_string(),
-            mnemosyne_atomic::AtomicSection::default(),
-        );
+        store
+            .sections
+            .insert("dead".into(), mnemosyne_atomic::AtomicSection::default());
         mnemosyne_atomic::set_section_decision_status(
             &mut store,
             &store_path,
@@ -5226,7 +5221,7 @@ mod tests {
         // Round 287 fail-loud: explicit Section creation via direct insert
         // (test fixture path — no audit-receipt needed).
         store.sections.insert(
-            section_id.to_string(),
+            section_id.into(),
             mnemosyne_atomic::AtomicSection {
                 skeleton: mnemosyne_core::SectionSkeleton {
                     decision_status,
@@ -7386,7 +7381,7 @@ mod tests {
             intent: Some(format!("see {s}5.3 for the DSL")),
             ..AtomicSection::default()
         };
-        store.sections.insert("5.41".to_string(), sec);
+        store.sections.insert("5.41".into(), sec);
         let findings = scan_section_prose_fact_assertions(&store);
         // Only the rationale assertion flags — caveat exempt, intent is a pointer.
         assert_eq!(findings.len(), 1, "{findings:?}");

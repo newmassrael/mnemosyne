@@ -203,6 +203,15 @@ ref_id! {
     FactId
 }
 
+ref_id! {
+    /// A key of the sections registry (the structure spine) — and, because a
+    /// canon coordinate IS a structure-section ref (design sec 7.3/7.5), the
+    /// type of every canon coordinate in the store.
+    ///
+    /// The widest of the nine: the last migration round of the Round 838 arc.
+    SectionId
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

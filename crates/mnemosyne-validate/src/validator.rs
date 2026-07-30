@@ -50,7 +50,7 @@ pub fn scan_store_prose_cross_ref_orphans(
     let last_segment_set: BTreeSet<&str> = store
         .sections
         .keys()
-        .filter_map(|s| s.rsplit_once('/').map(|(_, last)| last))
+        .filter_map(|s| s.as_str().rsplit_once('/').map(|(_, last)| last))
         .collect();
 
     let mut orphans = Vec::new();
@@ -61,7 +61,7 @@ pub fn scan_store_prose_cross_ref_orphans(
                 if id_set.contains(target.as_str()) || last_segment_set.contains(target.as_str()) {
                     continue;
                 }
-                orphans.push((section_id.clone(), target));
+                orphans.push((section_id.to_string(), target));
             }
         }
     }
@@ -98,7 +98,7 @@ pub fn atomic_section_supersede_state_reject(
         }
         if atomic_section.superseded_by.is_none() {
             errors.push(ValidationError::SupersedeMissingRef {
-                section_id: section_id.clone(),
+                section_id: section_id.to_string(),
                 prev_status: DecisionStatus::Active,
                 curr_status: DecisionStatus::Superseded,
             });
@@ -148,7 +148,7 @@ mod tests {
     fn atomic_rule4_state_gate_superseded_without_ref_rejects() {
         let mut store = mnemosyne_atomic::AtomicStore::new();
         store.sections.insert(
-            "39".to_string(),
+            "39".into(),
             mnemosyne_atomic::AtomicSection {
                 skeleton: mnemosyne_core::SectionSkeleton {
                     decision_status: Some(DecisionStatus::Superseded),
@@ -170,13 +170,13 @@ mod tests {
     fn atomic_rule4_state_gate_superseded_with_ref_passes() {
         let mut store = mnemosyne_atomic::AtomicStore::new();
         store.sections.insert(
-            "39".to_string(),
+            "39".into(),
             mnemosyne_atomic::AtomicSection {
                 skeleton: mnemosyne_core::SectionSkeleton {
                     decision_status: Some(DecisionStatus::Superseded),
                     ..Default::default()
                 },
-                superseded_by: Some("40".to_string()),
+                superseded_by: Some("40".into()),
                 ..Default::default()
             },
         );
@@ -188,7 +188,7 @@ mod tests {
     fn atomic_rule4_state_gate_removed_is_tombstone_exempt() {
         let mut store = mnemosyne_atomic::AtomicStore::new();
         store.sections.insert(
-            "39".to_string(),
+            "39".into(),
             mnemosyne_atomic::AtomicSection {
                 skeleton: mnemosyne_core::SectionSkeleton {
                     decision_status: Some(DecisionStatus::Removed),
@@ -205,7 +205,7 @@ mod tests {
     fn atomic_rule4_state_gate_active_and_none_skip() {
         let mut store = mnemosyne_atomic::AtomicStore::new();
         store.sections.insert(
-            "1".to_string(),
+            "1".into(),
             mnemosyne_atomic::AtomicSection {
                 skeleton: mnemosyne_core::SectionSkeleton {
                     decision_status: Some(DecisionStatus::Active),
@@ -216,7 +216,7 @@ mod tests {
         );
         store
             .sections
-            .insert("2".to_string(), mnemosyne_atomic::AtomicSection::default());
+            .insert("2".into(), mnemosyne_atomic::AtomicSection::default());
         let errors = atomic_section_supersede_state_reject(&store);
         assert!(errors.is_empty());
     }

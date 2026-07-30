@@ -1571,7 +1571,15 @@ impl MnemosyneServer {
             .map(|r| strip_section_marker(r).to_string())
             .collect();
         let outcome = self.run_mutate(|store, path| {
-            atomic::set_section_impact_scope(store, path, &section, &refs)
+            atomic::set_section_impact_scope(
+                store,
+                path,
+                &section,
+                &refs
+                    .iter()
+                    .map(|s| mnemosyne_core::SectionId::from(s.as_str()))
+                    .collect::<Vec<_>>(),
+            )
         });
         self.finish_mutate(outcome)
     }
@@ -2731,7 +2739,10 @@ impl MnemosyneServer {
                     decision_summary: Some(&decision),
                     changes_bullets: &changes,
                     verification_bullets: &verify,
-                    impact_refs: &impact,
+                    impact_refs: &impact
+                        .iter()
+                        .map(|s| mnemosyne_core::SectionId::from(s.as_str()))
+                        .collect::<Vec<_>>(),
                     carry_forward_bullets: &carry,
                 },
                 &entry_id_prefix,
@@ -2807,7 +2818,15 @@ impl MnemosyneServer {
             .map(|r| strip_section_marker(r).to_string())
             .collect();
         let outcome = self.run_mutate(|store, path| {
-            atomic::set_changelog_publishable_impact_refs(store, path, &entry_id, &bullets)
+            atomic::set_changelog_publishable_impact_refs(
+                store,
+                path,
+                &entry_id,
+                &bullets
+                    .iter()
+                    .map(|s| mnemosyne_core::SectionId::from(s.as_str()))
+                    .collect::<Vec<_>>(),
+            )
         });
         self.finish_mutate(outcome)
     }

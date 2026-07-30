@@ -120,7 +120,7 @@ pub struct BranchFork {
     pub branch: crate::BranchId,
     /// Canon point of divergence — facts on the parent starting at or
     /// before this point are part of this world's inherited history.
-    pub at: String,
+    pub at: crate::SectionId,
 }
 
 /// World-line MEMBERSHIP of one query world (Round 612) — THE single definition
@@ -138,7 +138,7 @@ pub struct BranchFork {
 /// write path (`succession_branch_inherits`) and the read path (the continuity
 /// gate's visibility) — the one-invariant discipline. The canon order compares
 /// `canon_from` against each bound later, at visibility time.
-pub type WorldMembership = BTreeMap<crate::BranchId, BTreeSet<String>>;
+pub type WorldMembership = BTreeMap<crate::BranchId, BTreeSet<crate::SectionId>>;
 
 /// Compute [`WorldMembership`] for `world` (Round 612 — the series-parallel
 /// lattice that replaced the enumerated `cut` / `forward` / `cut_forward`
@@ -255,11 +255,11 @@ fn membership_of(
 
 /// Cut an inherited membership at a departure coordinate: every bound gains
 /// `at`, so an inherited fact must now ALSO be at-or-before the departure.
-fn conjoin(membership: WorldMembership, at: &str) -> WorldMembership {
+fn conjoin(membership: WorldMembership, at: &crate::SectionId) -> WorldMembership {
     membership
         .into_iter()
         .map(|(id, mut bounds)| {
-            bounds.insert(at.to_string());
+            bounds.insert(at.clone());
             (id, bounds)
         })
         .collect()
@@ -447,7 +447,7 @@ pub struct ConflictAssertion {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct EvidenceRef {
     /// Structure-section id evidencing the claim.
-    pub section: String,
+    pub section: crate::SectionId,
     /// sha256 of that section's `content_excerpt.text` the author affirms
     /// they judged this claim against. Set by exactly ONE primitive
     /// (`import_evidence_reviews`); the fact-creating primitives always
@@ -459,7 +459,7 @@ pub struct EvidenceRef {
 impl EvidenceRef {
     /// An evidence ref with no affirmation on record — what every
     /// fact-creating primitive writes.
-    pub fn unreviewed(section: impl Into<String>) -> Self {
+    pub fn unreviewed(section: impl Into<crate::SectionId>) -> Self {
         Self {
             section: section.into(),
             reviewed_excerpt_sha256: String::new(),
@@ -973,12 +973,12 @@ pub struct NarrativeFact {
     pub claim: String,
     /// Canon coordinate where this claim starts holding: a structure-section
     /// id (the medium's discourse order, e.g. a chapter).
-    pub canon_from: String,
+    pub canon_from: crate::SectionId,
     /// Explicit canon end for a belief that ends WITHOUT an in-frame
     /// successor. When a successor exists, the effective end derives from
     /// the successor's `canon_from` and this stays `None`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub canon_to: Option<String>,
+    pub canon_to: Option<crate::SectionId>,
     /// Structure sections evidencing the claim (≥ 1, fail-loud at the
     /// mutate primitive). Multi-ref by design — a claim's evidence usually
     /// spans sections. Each ref carries the review affirmation for the prose
@@ -1090,7 +1090,7 @@ fn disclosure_mode_is_withhold(m: &DisclosureMode) -> bool {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DisclosureSurface {
     /// Structure-section ref the disclosure surfaces in.
-    pub scene: String,
+    pub scene: crate::SectionId,
     /// Optional registered entity id the disclosure rides on.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub object: Option<crate::EntityId>,
@@ -1119,7 +1119,7 @@ pub struct DisclosureReveal {
     /// The discourse-coordinate trigger set (each a canon structure-section ref,
     /// per-member dangling-ref checked). An emptied set drops the whole world
     /// key from [`DisclosureOverride::first_at`].
-    pub coords: BTreeSet<String>,
+    pub coords: BTreeSet<crate::SectionId>,
     /// K-of-N threshold: `None` = FIRST-reached (k = 1); `Some(k)` = the
     /// k-th-earliest (`2 <= k <= len`, `Some(len)` = last-reached, kept
     /// distinct). Omitted from the wire form when `None`.
@@ -1261,7 +1261,7 @@ mod tests {
     fn is_confluence_has_one_definition_shared_by_method_and_free_fn() {
         let edge = |b: &str, at: &str| BranchFork {
             branch: b.into(),
-            at: at.to_string(),
+            at: at.into(),
         };
         // The method IS the definition: a non-empty converges_from is a confluence.
         let merge = Branch {
@@ -1301,7 +1301,7 @@ mod tests {
     fn world_membership_memoized_is_transparent_and_still_fails_loud_on_a_cycle() {
         let edge = |b: &str, at: &str| BranchFork {
             branch: b.into(),
-            at: at.to_string(),
+            at: at.into(),
         };
         // A diamond: sluice/ride fork main at s1; dawn converges both at s2.
         let mut branches: BTreeMap<crate::BranchId, Branch> = BTreeMap::new();
@@ -1370,11 +1370,11 @@ mod tests {
     fn succession_inherits_in_both_lineage_directions() {
         let fork = |at: &str| BranchFork {
             branch: MAIN_BRANCH.into(),
-            at: at.to_string(),
+            at: at.into(),
         };
         let converge = |b: &str, at: &str| BranchFork {
             branch: b.into(),
-            at: at.to_string(),
+            at: at.into(),
         };
         let mut branches: BTreeMap<crate::BranchId, Branch> = BTreeMap::new();
         branches.insert(
@@ -1426,7 +1426,7 @@ mod tests {
         first_at.insert(
             "w1".into(),
             DisclosureReveal {
-                coords: BTreeSet::from(["ch-3".to_string()]),
+                coords: BTreeSet::from(["ch-3".into()]),
                 threshold: None,
             },
         );
@@ -1436,7 +1436,7 @@ mod tests {
                 mode: DisclosureMode::State,
                 first_at,
                 surface: Some(DisclosureSurface {
-                    scene: "ch-2".to_string(),
+                    scene: "ch-2".into(),
                     object: None,
                 }),
             },
@@ -1458,7 +1458,7 @@ mod tests {
         assert_eq!(
             e_w1.first_at,
             Some(DisclosureReveal {
-                coords: BTreeSet::from(["ch-3".to_string()]),
+                coords: BTreeSet::from(["ch-3".into()]),
                 threshold: None,
             }),
             "the resolver carries the order-free reveal declaration for w1"
@@ -1536,7 +1536,7 @@ mod tests {
     fn braid_chain() -> BTreeMap<crate::BranchId, Branch> {
         let fork = |from: &str, at: &str| BranchFork {
             branch: from.into(),
-            at: at.to_string(),
+            at: at.into(),
         };
         BTreeMap::from([
             (
@@ -1586,7 +1586,7 @@ mod tests {
         // exactly what excludes main's own exclusive middle downstream of s1.
         assert_eq!(
             weave["main"],
-            BTreeSet::from(["s1".to_string(), "s2".to_string()]),
+            BTreeSet::from(["s1".into(), "s2".into()]),
             "the shared trunk is inherited, conjoined with BOTH roads' bounds"
         );
         // Neither parent's EXCLUSIVE identity crosses the merge.
@@ -1612,7 +1612,7 @@ mod tests {
         );
         assert_eq!(
             braid2["main"],
-            BTreeSet::from(["s1".to_string(), "s2".to_string(), "s3".to_string()]),
+            BTreeSet::from(["s1".into(), "s2".into(), "s3".into()]),
             "the pre-merge trunk rides THROUGH the confluence, conjoined with the fork cut"
         );
         assert!(!braid2.contains_key("braid1"), "the other road stays out");
@@ -1627,7 +1627,7 @@ mod tests {
     fn non_monotone_fork_chain_conjoins_every_cut() {
         let fork = |from: &str, at: &str| BranchFork {
             branch: from.into(),
-            at: at.to_string(),
+            at: at.into(),
         };
         let b = BTreeMap::from([
             (
@@ -1647,7 +1647,7 @@ mod tests {
         ]);
         assert_eq!(
             world_membership(&b, &"early".into()).unwrap()["main"],
-            BTreeSet::from(["s1".to_string(), "s4".to_string()]),
+            BTreeSet::from(["s1".into(), "s4".into()]),
             "BOTH departures bind — the order then enforces the tighter one"
         );
     }
@@ -1687,7 +1687,7 @@ mod tests {
     fn cyclic_branch_lineage_fails_loud() {
         let fork = |from: &str| BranchFork {
             branch: from.into(),
-            at: "s1".to_string(),
+            at: "s1".into(),
         };
         let b: BTreeMap<crate::BranchId, Branch> = BTreeMap::from([
             (

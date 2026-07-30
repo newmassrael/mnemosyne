@@ -64,7 +64,7 @@ pub fn frozen_ledger_atomic(prev: &AtomicStore, curr: &AtomicStore) -> Vec<T2Val
             Some(s) => s,
             None => continue, // section itself removed = atomic primitive scope block
         };
-        check_atomic_section(section_id, prev_section, curr_section, &mut errors);
+        check_atomic_section(section_id.as_str(), prev_section, curr_section, &mut errors);
     }
 
     for (entry_id, prev_entry) in &prev.changelog_entries {
@@ -129,8 +129,16 @@ fn check_atomic_section(
     push_string_diff(
         section_id,
         "impact_scope",
-        &prev.impact_scope,
-        &curr.impact_scope,
+        &prev
+            .impact_scope
+            .iter()
+            .map(ToString::to_string)
+            .collect::<Vec<_>>(),
+        &curr
+            .impact_scope
+            .iter()
+            .map(ToString::to_string)
+            .collect::<Vec<_>>(),
         errors,
         T2ValidationError::section_frozen,
     );
@@ -185,8 +193,16 @@ fn check_atomic_entry(
     push_string_diff(
         entry_id,
         "impact_refs",
-        &prev.impact_refs,
-        &curr.impact_refs,
+        &prev
+            .impact_refs
+            .iter()
+            .map(ToString::to_string)
+            .collect::<Vec<_>>(),
+        &curr
+            .impact_refs
+            .iter()
+            .map(ToString::to_string)
+            .collect::<Vec<_>>(),
         errors,
         T2ValidationError::entry_frozen,
     );
@@ -323,7 +339,7 @@ mod tests {
 
     fn atomic_store_with_section(id: &str, s: AtomicSection) -> AtomicStore {
         let mut store = AtomicStore::default();
-        store.sections.insert(id.to_string(), s);
+        store.sections.insert(id.into(), s);
         store
     }
 

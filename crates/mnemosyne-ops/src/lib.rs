@@ -233,7 +233,11 @@ pub fn section_content_excerpts(
     Ok(store
         .sections
         .iter()
-        .filter_map(|(id, s)| s.content_excerpt.as_ref().map(|e| (id.clone(), e.clone())))
+        .filter_map(|(id, s)| {
+            s.content_excerpt
+                .as_ref()
+                .map(|e| (id.to_string(), e.clone()))
+        })
         .collect())
 }
 
@@ -253,7 +257,7 @@ pub fn section_ladders(
     Ok(store
         .sections
         .iter()
-        .filter_map(|(id, s)| s.ladder.as_ref().map(|l| (id.clone(), l.clone())))
+        .filter_map(|(id, s)| s.ladder.as_ref().map(|l| (id.to_string(), l.clone())))
         .collect())
 }
 
@@ -778,16 +782,22 @@ pub fn authoring_frontier_report(
     // consumer-side, decision C).
     let structural_ids =
         mnemosyne_validate::continuity::structural_fact_ids(&store).map_err(OpError::Other)?;
-    let mut counts: BTreeMap<String, usize> =
-        store.sections.keys().map(|s| (s.clone(), 0usize)).collect();
-    let mut structural_counts: BTreeMap<String, usize> =
-        store.sections.keys().map(|s| (s.clone(), 0usize)).collect();
+    let mut counts: BTreeMap<String, usize> = store
+        .sections
+        .keys()
+        .map(|s| (s.to_string(), 0usize))
+        .collect();
+    let mut structural_counts: BTreeMap<String, usize> = store
+        .sections
+        .keys()
+        .map(|s| (s.to_string(), 0usize))
+        .collect();
     for (fid, fact) in &store.narrative_facts {
-        if let Some(c) = counts.get_mut(&fact.canon_from) {
+        if let Some(c) = counts.get_mut(fact.canon_from.as_str()) {
             *c += 1;
         }
         if structural_ids.contains(fid.as_str()) {
-            if let Some(c) = structural_counts.get_mut(&fact.canon_from) {
+            if let Some(c) = structural_counts.get_mut(fact.canon_from.as_str()) {
                 *c += 1;
             }
         }
@@ -800,10 +810,10 @@ pub fn authoring_frontier_report(
     // Placement (Round 667), the ONE resolver: every section the order does not
     // position, content-independent. The projection below is its consumer, so a
     // section's placement is decided in exactly one place.
-    let ordered: BTreeSet<&str> = order.nodes().collect();
+    let ordered: BTreeSet<&mnemosyne_core::SectionId> = order.nodes().collect();
     let unplaced_scenes: Vec<String> = counts
         .keys()
-        .filter(|scene| !ordered.contains(scene.as_str()))
+        .filter(|scene| !ordered.contains(&mnemosyne_core::SectionId::from(scene.as_str())))
         .cloned()
         .collect();
     // Unordered fact-bearing scenes (Finding 4): a scene carries facts but is
@@ -938,9 +948,15 @@ pub fn continuity_frame_view(
     // CLI/MCP arguments and become registry ids here, once, for both wires.
     let frame = mnemosyne_core::FrameId::from(frame);
     let branch = mnemosyne_core::BranchId::from(branch);
-    let view =
-        mnemosyne_validate::continuity::frame_view(&store, &order, &frame, &branch, entity, at)
-            .map_err(OpError::Other)?;
+    let view = mnemosyne_validate::continuity::frame_view(
+        &store,
+        &order,
+        &frame,
+        &branch,
+        entity,
+        &at.into(),
+    )
+    .map_err(OpError::Other)?;
     Ok(FrameViewReport {
         frame: view.frame,
         branch: view.branch,
@@ -1562,9 +1578,9 @@ pub fn entity_dossier(
             frame: f.frame.to_string(),
             branch: f.branch.to_string(),
             claim: f.claim.clone(),
-            canon_from: f.canon_from.clone(),
-            canon_to: f.canon_to.clone(),
-            evidence: f.evidence.iter().map(|e| e.section.clone()).collect(),
+            canon_from: f.canon_from.to_string(),
+            canon_to: f.canon_to.as_ref().map(ToString::to_string),
+            evidence: f.evidence.iter().map(|e| e.section.to_string()).collect(),
             typed: f.typed.clone(),
             quote: f.quote.clone(),
             count: store.fact_counts.get(fid).copied(),

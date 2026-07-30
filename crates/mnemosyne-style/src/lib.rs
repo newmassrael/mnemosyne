@@ -298,17 +298,25 @@ pub fn check_style_atomic(
         match rule.scope {
             StyleScope::SectionBody | StyleScope::FullDoc => {
                 for (section_id, atomic) in &store.sections {
-                    if rule_skips_strong_carry(&rule.rule_id) && is_strong_carry_section(section_id)
+                    if rule_skips_strong_carry(&rule.rule_id)
+                        && is_strong_carry_section(section_id.as_str())
                     {
                         continue;
                     }
                     if rule_skips_changelog_area(&rule.rule_id)
-                        && is_changelog_area_section(section_id)
+                        && is_changelog_area_section(section_id.as_str())
                     {
                         continue;
                     }
                     let body = mnemosyne_atomic::synthesize_section_prose_body(atomic);
-                    check_section_body_rule(doc_label, section_id, &body, None, rule, &mut out);
+                    check_section_body_rule(
+                        doc_label,
+                        section_id.as_str(),
+                        &body,
+                        None,
+                        rule,
+                        &mut out,
+                    );
                 }
             }
             StyleScope::ChangelogSubBullets => {
@@ -785,7 +793,7 @@ mod tests {
     fn store_with_body(id: &str, body: &str) -> AtomicStore {
         let mut store = AtomicStore::default();
         store.sections.insert(
-            id.to_string(),
+            id.into(),
             AtomicSection {
                 skeleton: mnemosyne_core::SectionSkeleton {
                     title: "Test".into(),

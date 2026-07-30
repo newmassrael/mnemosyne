@@ -47,12 +47,12 @@ pub fn resolve_reveal_pin(
     reveal: &DisclosureReveal,
     world: &mnemosyne_core::BranchId,
     order: &CanonOrder,
-) -> Option<String> {
+) -> Option<mnemosyne_core::SectionId> {
     let k = reveal.threshold.unwrap_or(1);
     if k == 0 {
         return None; // defensive — the write path normalizes Some(0) away
     }
-    let mut coords: Vec<&str> = reveal.coords.iter().map(String::as_str).collect();
+    let mut coords: Vec<&mnemosyne_core::SectionId> = reveal.coords.iter().collect();
     if coords.len() < k {
         return None;
     }
@@ -72,7 +72,7 @@ pub fn resolve_reveal_pin(
     // The coords must form a CHAIN (each precedes the next) for the k-th-earliest
     // to be well-defined; a non-chain has no definite k-th trigger.
     if coords.windows(2).all(|w| order.le(world, w[0], w[1])) {
-        Some(coords[k - 1].to_string())
+        Some(coords[k - 1].clone())
     } else {
         None
     }
@@ -279,11 +279,11 @@ pub fn disclosure_leak(
                 ));
             }
         };
-        let matches: Vec<(&mnemosyne_core::FactId, &str)> = reextracted
+        let matches: Vec<(&mnemosyne_core::FactId, &mnemosyne_core::SectionId)> = reextracted
             .narrative_facts
             .iter()
             .filter(|(_, g)| &g.frame == truth_frame && g.typed.as_ref() == Some(typed))
-            .map(|(gid, g)| (gid, g.canon_from.as_str()))
+            .map(|(gid, g)| (gid, &g.canon_from))
             .collect();
         if is_withhold {
             for (gid, coord) in matches {
@@ -308,7 +308,7 @@ pub fn disclosure_leak(
             report.unmatched.push(fact_id.to_string());
         }
         for (gid, coord) in matches {
-            let Some(pin) = pin.as_deref() else {
+            let Some(pin) = pin.as_ref() else {
                 report.unordered.push(DisclosureLeak {
                     fact_id: fact_id.to_string(),
                     kind: LeakKind::Unordered,
@@ -385,7 +385,7 @@ pub fn render_fidelity(
     order: &CanonOrder,
     world: &mnemosyne_core::BranchId,
 ) -> RenderFidelityReport {
-    let nodes: BTreeSet<&str> = order.nodes().collect();
+    let nodes: BTreeSet<&mnemosyne_core::SectionId> = order.nodes().collect();
     let mut report = RenderFidelityReport {
         world: world.to_string(),
         reextracted_facts: reextracted.narrative_facts.len(),
@@ -394,7 +394,7 @@ pub fn render_fidelity(
         reached_terminal: false,
     };
     for (id, g) in &reextracted.narrative_facts {
-        let coord = g.canon_from.as_str();
+        let coord = &g.canon_from;
         if order.names(world, coord) {
             if order.is_maximal(world, coord) {
                 report.reached_terminal = true;
@@ -461,7 +461,7 @@ mod tests {
             branch: MAIN_BRANCH.into(),
             entities: vec![],
             claim: "c".to_string(),
-            canon_from: canon_from.to_string(),
+            canon_from: canon_from.into(),
             canon_to: None,
             evidence: vec![mnemosyne_core::EvidenceRef::unreviewed(canon_from)],
             conflicts_with: vec![],
@@ -485,7 +485,7 @@ mod tests {
                     (
                         (*b).into(),
                         DisclosureReveal {
-                            coords: BTreeSet::from([c.to_string()]),
+                            coords: BTreeSet::from([(*c).into()]),
                             threshold: None,
                         },
                     )
@@ -506,7 +506,7 @@ mod tests {
         first_at.insert(
             branch.into(),
             DisclosureReveal {
-                coords: coords.iter().map(|c| c.to_string()).collect(),
+                coords: coords.iter().map(|c| (*c).into()).collect(),
                 threshold,
             },
         );
@@ -806,7 +806,7 @@ mod tests {
         let fork_at_ch2 = || mnemosyne_core::Branch {
             forks_from: Some(mnemosyne_core::BranchFork {
                 branch: mnemosyne_core::MAIN_BRANCH.into(),
-                at: "ch-2".to_string(),
+                at: "ch-2".into(),
             }),
             ..Default::default()
         };

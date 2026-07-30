@@ -1707,7 +1707,7 @@ fn cmd_query(prog: &str, args: &[String]) -> Result<()> {
                 let status_label = entry.status.as_str();
                 let section_part = entry
                     .section_ref
-                    .as_deref()
+                    .as_ref()
                     .map(|s| format!(" §{}", s))
                     .unwrap_or_default();
                 println!("{}\t{}{}", id, status_label, section_part);
@@ -1736,7 +1736,7 @@ fn cmd_query(prog: &str, args: &[String]) -> Result<()> {
             let status_label = entry.status.as_str();
             println!("inventory_id: {}", inv_id);
             println!("status: {}", status_label);
-            if let Some(s) = entry.section_ref.as_deref() {
+            if let Some(s) = entry.section_ref.as_ref() {
                 println!("section_ref: §{}", s);
             }
             if let Some(s) = entry.source.as_deref() {
@@ -3541,7 +3541,11 @@ fn cmd_report_irony_intervals(args: &[String]) -> Result<()> {
 /// the structured shape; this is the readable echo (leading space to slot into
 /// the existing bracketed line).
 fn format_reveal(reveal: &mnemosyne_core::DisclosureReveal) -> String {
-    let coords: Vec<&str> = reveal.coords.iter().map(String::as_str).collect();
+    let coords: Vec<&str> = reveal
+        .coords
+        .iter()
+        .map(mnemosyne_core::SectionId::as_str)
+        .collect();
     format!(
         " first_at={{{}}} k={}",
         coords.join(","),
@@ -5241,7 +5245,7 @@ fn cmd_report_spec_map(args: &[String]) -> Result<()> {
                 })
             })
             .collect();
-        let sites = citation_index.get(section_id);
+        let sites = citation_index.get(section_id.as_str());
         let citation_count = sites.map(Vec::len).unwrap_or(0);
         let cited_from: Vec<serde_json::Value> = sites
             .map(|v| {
@@ -5257,7 +5261,7 @@ fn cmd_report_spec_map(args: &[String]) -> Result<()> {
             "parent_section": sec.skeleton.parent_section,
             "decision_status": status,
             "coverage_class": class,
-            "drift": drift_ids.contains(section_id),
+            "drift": drift_ids.contains(section_id.as_str()),
             "spec": spec,
             // EPUB-SSOT pointer (R393). Serialized via the EpubLocator struct
             // definition (single source) so the viewer resolves the section's

@@ -96,7 +96,7 @@ pub struct AtomicSection {
     /// relations, not an inline array. The JSON log adapter stores them inline
     /// here; index projection (convergence B) reads this and emits CrossRefFacts.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub impact_scope: Vec<String>,
+    pub impact_scope: Vec<mnemosyne_core::SectionId>,
     /// Supersession forward-pointer — the section_id (without the `§` prefix)
     /// of the decision that replaced this one. `Some` iff
     /// `decision_status == Superseded`; the pairing is enforced by the single
@@ -107,7 +107,7 @@ pub struct AtomicSection {
     /// Storing it structurally is what lets the warm read-side projection (R339)
     /// see the supersession relation from the store instead of re-parsed markdown.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub superseded_by: Option<String>,
+    pub superseded_by: Option<mnemosyne_core::SectionId>,
     /// Resolution forward-pointer — the section_id (without `§`) of the section
     /// expected to RESOLVE this open question. `Some` only when
     /// `decision_status == Open`, and OPTIONAL there (an open question may not
@@ -120,7 +120,7 @@ pub struct AtomicSection {
     /// SSOT home for "deferred to §Y" prose
     /// (claudedocs/structured-fact-ssot-design.md sec 12a / sec 6).
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub resolved_by: Option<String>,
+    pub resolved_by: Option<mnemosyne_core::SectionId>,
     /// code/config block list. T3 style threshold: code block itself exempt.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub examples: Vec<ExampleBlock>,
@@ -597,7 +597,7 @@ pub struct AtomicChangelogEntry {
     pub verification_bullets: Vec<String>,
     /// cross-ref list (target section_id without `§` prefix). Audit half.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub impact_refs: Vec<String>,
+    pub impact_refs: Vec<mnemosyne_core::SectionId>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub carry_forward_bullets: Vec<String>,
 
@@ -613,7 +613,7 @@ pub struct AtomicChangelogEntry {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub publishable_verification_bullets: Vec<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub publishable_impact_refs: Vec<String>,
+    pub publishable_impact_refs: Vec<mnemosyne_core::SectionId>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub publishable_carry_forward_bullets: Vec<String>,
 }
@@ -742,7 +742,7 @@ pub struct InventoryEntry {
     /// Optional Section binding (section_id without leading `§`).
     /// `None` = orphan inventory entry (later rounds may surface as T4 info).
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub section_ref: Option<String>,
+    pub section_ref: Option<mnemosyne_core::SectionId>,
     /// Optional traceability pointer to the upstream SSOT row (PDF page ref,
     /// `case_inventory.json` row id, requirements DB key). Opaque string —
     /// no shape validation; supports humans tracing back to the source.
@@ -762,7 +762,7 @@ pub struct InventoryEntry {
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AtomicStore {
     #[serde(default)]
-    pub sections: BTreeMap<String, AtomicSection>,
+    pub sections: BTreeMap<mnemosyne_core::SectionId, AtomicSection>,
     #[serde(default)]
     pub changelog_entries: BTreeMap<String, AtomicChangelogEntry>,
     /// Phase 1A 5th entity — inventory entries (Round 273). Keyed by the
@@ -2040,7 +2040,7 @@ impl AtomicStore {
         for (section_id, section) in &self.sections {
             for binding in &section.bindings {
                 rows.push(KindMigrationRow {
-                    section_id: section_id.clone(),
+                    section_id: section_id.to_string(),
                     file: binding.file.clone(),
                     symbol: binding.symbol.clone(),
                     defaulted_kind: binding.kind,
@@ -2076,7 +2076,7 @@ impl AtomicStore {
                         .text_sha256
                         .is_empty()
                         .then(|| ExcerptHashBackfillRow {
-                            section_id: section_id.clone(),
+                            section_id: section_id.to_string(),
                             source_revision: ne.source_revision.clone(),
                         })
                 })
@@ -2134,8 +2134,10 @@ impl AtomicStore {
     /// decompose (ARCHITECTURE.md / VISION.md / PRIOR_ART.md h1 roots) but
     /// are still legitimate cross-ref targets.
     pub fn atomic_section_id_set(&self) -> std::collections::BTreeSet<String> {
-        let mut set: std::collections::BTreeSet<String> = self.sections.keys().cloned().collect();
+        let mut set: std::collections::BTreeSet<String> =
+            self.sections.keys().map(ToString::to_string).collect();
         for key in self.sections.keys() {
+            let key = key.as_str();
             let mut start = 0usize;
             while let Some(idx) = key[start..].find('/') {
                 let abs = start + idx;
@@ -2198,7 +2200,7 @@ impl mnemosyne_core::AtomicStoreView for AtomicStore {
                     })
                     .collect();
                 (
-                    sid.clone(),
+                    sid.to_string(),
                     mnemosyne_core::SectionView {
                         bindings,
                         decision_status: sec.skeleton.decision_status,
@@ -2375,7 +2377,7 @@ fn check_changelog_entry_required(
     decision_summary: Option<&str>,
     changes_bullets: &[String],
     verification_bullets: &[String],
-    impact_refs: &[String],
+    impact_refs: &[mnemosyne_core::SectionId],
     carry_forward_bullets: &[String],
 ) -> Result<(), AtomicMutateError> {
     let summary = decision_summary.ok_or_else(|| {
@@ -2405,9 +2407,12 @@ fn check_required_bullets(field: &str, bullets: &[String]) -> Result<(), AtomicM
     check_optional_bullets(field, bullets)
 }
 
-fn check_optional_bullets(field: &str, bullets: &[String]) -> Result<(), AtomicMutateError> {
+fn check_optional_bullets(
+    field: &str,
+    bullets: &[impl AsRef<str>],
+) -> Result<(), AtomicMutateError> {
     for (i, b) in bullets.iter().enumerate() {
-        if b.trim().is_empty() {
+        if b.as_ref().trim().is_empty() {
             return Err(AtomicMutateError::Validation(format!(
                 "{}[{}] is blank (Round 298 silent-accept gate)",
                 field, i
@@ -2568,7 +2573,7 @@ pub fn set_section_impact_scope(
     store: &mut AtomicStore,
     sidecar_path: &Path,
     section_id: &str,
-    refs: &[String],
+    refs: &[mnemosyne_core::SectionId],
 ) -> Result<AtomicMutateReceipt, AtomicMutateError> {
     section_mut_strict(store, section_id)?.impact_scope = refs.to_vec();
     save_with_receipt(
@@ -2649,7 +2654,7 @@ fn inbound_section_refs(store: &AtomicStore, section_id: &str) -> Vec<String> {
         if fact.canon_from == section_id {
             refs.push(format!("fact `{fid}` (via canon_from)"));
         }
-        if fact.canon_to.as_deref() == Some(section_id) {
+        if fact.canon_to.as_ref().map(AsRef::as_ref) == Some(section_id) {
             refs.push(format!("fact `{fid}` (via canon_to)"));
         }
         if fact.evidence.iter().any(|e| e.section == section_id) {
@@ -2680,7 +2685,7 @@ fn inbound_section_refs(store: &AtomicStore, section_id: &str) -> Vec<String> {
     // add_section check the parent exists; orphaning it strands the child's
     // place in the outline — this is the SPEC half of the store).
     for (sid, section) in &store.sections {
-        if section.skeleton.parent_section.as_deref() == Some(section_id) {
+        if section.skeleton.parent_section.as_ref().map(AsRef::as_ref) == Some(section_id) {
             refs.push(format!("section `{sid}` (via parent_section)"));
         }
     }
@@ -2814,7 +2819,7 @@ fn build_candidate_section(
     parent_section: Option<&str>,
     normative_excerpt: Option<(&str, &str, &str, &str)>,
     coverage_expectation: mnemosyne_core::CoverageExpectation,
-) -> Result<(String, AtomicSection), AtomicMutateError> {
+) -> Result<(mnemosyne_core::SectionId, AtomicSection), AtomicMutateError> {
     // Strip a leading `§` citation sigil so store keys stay bare, regardless of
     // caller. The CLI/MCP boundaries already strip for the set_section_* paths;
     // doing it here in the one shared section-create core makes `add_section`
@@ -2853,7 +2858,7 @@ fn build_candidate_section(
                 parent_t
             )));
         }
-        Some(parent_t.to_string())
+        Some(parent_t.into())
     } else {
         None
     };
@@ -2877,7 +2882,7 @@ fn build_candidate_section(
         coverage_expectation,
         ..Default::default()
     };
-    Ok((section_id_t.to_string(), section))
+    Ok((section_id_t.into(), section))
 }
 
 pub fn add_section(
@@ -2907,7 +2912,13 @@ pub fn add_section(
  )));
     }
     store.sections.insert(section_id_t.clone(), section);
-    save_with_receipt(store, sidecar_path, "add_section", "section", &section_id_t)
+    save_with_receipt(
+        store,
+        sidecar_path,
+        "add_section",
+        "section",
+        section_id_t.as_str(),
+    )
 }
 
 /// Flat manifest shape for a Section's normative excerpt in [`SectionImport`]
@@ -3134,7 +3145,7 @@ pub fn set_section_parent_section(
                     p_t
                 )));
             }
-            Some(p_t.to_string())
+            Some(p_t.into())
         }
         None => None,
     };
@@ -3207,7 +3218,7 @@ pub fn set_section_decision_status(
         let section = section_mut_strict(store, section_id)?;
         section.skeleton.decision_status = Some(new_status);
         section.superseded_by = match new_status {
-            DecisionStatus::Superseded => superseding.map(str::to_string),
+            DecisionStatus::Superseded => superseding.map(mnemosyne_core::SectionId::from),
             // Open poses an undecided question, so like Active/Removed it
             // carries no superseding pointer (Open → Active/Removed on resolve).
             DecisionStatus::Active | DecisionStatus::Removed | DecisionStatus::Open => None,
@@ -3215,7 +3226,7 @@ pub fn set_section_decision_status(
         // Symmetric resolution forward-pointer — set only while Open, cleared on
         // every other transition (Open → Active/Removed/Superseded drops it).
         section.resolved_by = match new_status {
-            DecisionStatus::Open => resolving.map(str::to_string),
+            DecisionStatus::Open => resolving.map(mnemosyne_core::SectionId::from),
             DecisionStatus::Active | DecisionStatus::Removed | DecisionStatus::Superseded => None,
         };
     }
@@ -3645,10 +3656,10 @@ pub fn set_section_verification_expectation(
 pub fn import_epub_anchors(
     store: &mut AtomicStore,
     sidecar_path: &Path,
-    anchors: &[(String, EpubLocator)],
-) -> Result<(AtomicMutateReceipt, Vec<String>), AtomicMutateError> {
+    anchors: &[(mnemosyne_core::SectionId, EpubLocator)],
+) -> Result<(AtomicMutateReceipt, Vec<mnemosyne_core::SectionId>), AtomicMutateError> {
     let mut applied = 0usize;
-    let mut unmatched = Vec::new();
+    let mut unmatched: Vec<mnemosyne_core::SectionId> = Vec::new();
     for (section_id, locator) in anchors {
         match store.sections.get_mut(section_id) {
             Some(section) => {
@@ -3713,7 +3724,7 @@ pub fn import_content_excerpts(
     sidecar_path: &Path,
     excerpts: &[ContentExcerptImport],
     grounding: Option<&std::collections::HashSet<String>>,
-) -> Result<(AtomicMutateReceipt, Vec<String>), AtomicMutateError> {
+) -> Result<(AtomicMutateReceipt, Vec<mnemosyne_core::SectionId>), AtomicMutateError> {
     // Build + validate every candidate BEFORE mutating, so a malformed one never
     // leaves a partially-applied store (the import_epub_excerpts fail-before-save
     // rule). The text/anchor/sha invariant is the shared validate_content_excerpt
@@ -3754,14 +3765,14 @@ pub fn import_content_excerpts(
         candidates.push((e.section_id.clone(), excerpt));
     }
     let mut applied = 0usize;
-    let mut unmatched = Vec::new();
+    let mut unmatched: Vec<mnemosyne_core::SectionId> = Vec::new();
     for (section_id, excerpt) in candidates {
-        match store.sections.get_mut(&section_id) {
+        match store.sections.get_mut(section_id.as_str()) {
             Some(section) => {
                 section.content_excerpt = Some(excerpt);
                 applied += 1;
             }
-            None => unmatched.push(section_id),
+            None => unmatched.push(section_id.into()),
         }
     }
     if applied == 0 {
@@ -3937,7 +3948,7 @@ pub fn import_scene_cast(
     store: &mut AtomicStore,
     sidecar_path: &Path,
     presences: &[ScenePresenceImport],
-) -> Result<(AtomicMutateReceipt, Vec<String>), AtomicMutateError> {
+) -> Result<(AtomicMutateReceipt, Vec<mnemosyne_core::SectionId>), AtomicMutateError> {
     // Validate every entry BEFORE mutating, so a malformed one never leaves a
     // partially-applied store (the import_content_excerpts fail-before-save rule).
     // The presence quote is a ContentExcerpt, so its text/anchor/sha invariant
@@ -3980,14 +3991,14 @@ pub fn import_scene_cast(
             });
     }
     let mut applied = 0usize;
-    let mut unmatched = Vec::new();
+    let mut unmatched: Vec<mnemosyne_core::SectionId> = Vec::new();
     for (section_id, cast) in grouped {
-        match store.sections.get_mut(&section_id) {
+        match store.sections.get_mut(section_id.as_str()) {
             Some(section) => {
                 section.scene_cast = cast;
                 applied += 1;
             }
-            None => unmatched.push(section_id),
+            None => unmatched.push(section_id.into()),
         }
     }
     if applied == 0 {
@@ -4056,7 +4067,7 @@ pub fn import_ladders(
     store: &mut AtomicStore,
     sidecar_path: &Path,
     ladders: &[LadderImport],
-) -> Result<(AtomicMutateReceipt, Vec<String>), AtomicMutateError> {
+) -> Result<(AtomicMutateReceipt, Vec<mnemosyne_core::SectionId>), AtomicMutateError> {
     for l in ladders {
         let where_ = &l.section_id;
         if l.rungs.is_empty() {
@@ -4084,7 +4095,7 @@ pub fn import_ladders(
         // a section PRESENT with no excerpt is a reject (a coordinate into prose
         // the store does not hold), and a section with an excerpt is what the
         // rung anchors get resolved against.
-        let section_prose = match store.sections.get(&l.section_id) {
+        let section_prose = match store.sections.get(l.section_id.as_str()) {
             None => None,
             Some(sec) => match sec.content_excerpt.as_ref() {
                 Some(excerpt) => Some(excerpt),
@@ -4194,9 +4205,9 @@ pub fn import_ladders(
     }
 
     let mut applied = 0usize;
-    let mut unmatched = Vec::new();
+    let mut unmatched: Vec<mnemosyne_core::SectionId> = Vec::new();
     for l in ladders {
-        match store.sections.get_mut(&l.section_id) {
+        match store.sections.get_mut(l.section_id.as_str()) {
             Some(section) => {
                 section.ladder = Some(SectionLadder {
                     carrier: l.carrier.clone(),
@@ -4204,7 +4215,7 @@ pub fn import_ladders(
                 });
                 applied += 1;
             }
-            None => unmatched.push(l.section_id.clone()),
+            None => unmatched.push(l.section_id.clone().into()),
         }
     }
     if applied == 0 {
@@ -4256,15 +4267,15 @@ pub fn import_epub_excerpts(
     store: &mut AtomicStore,
     sidecar_path: &Path,
     excerpts: &[ExcerptImport],
-) -> Result<(AtomicMutateReceipt, Vec<String>), AtomicMutateError> {
+) -> Result<(AtomicMutateReceipt, Vec<mnemosyne_core::SectionId>), AtomicMutateError> {
     let mut applied = 0usize;
-    let mut unmatched = Vec::new();
+    let mut unmatched: Vec<mnemosyne_core::SectionId> = Vec::new();
     for e in excerpts {
         // Read the authored identity + the Section's EPUB pointer off the existing
         // state (owned clones so the immutable borrow ends before the mutable
         // get_mut below). The epub_locator seeds the same content-SSOT anchor the
         // v41→v42 migration would (a refresh must not regress it to a URL anchor).
-        let prev_meta = store.sections.get(&e.section_id).and_then(|s| {
+        let prev_meta = store.sections.get(e.section_id.as_str()).and_then(|s| {
             s.normative_excerpt.as_ref().map(|ne| {
                 (
                     ne.anchor_url.clone(),
@@ -4274,7 +4285,7 @@ pub fn import_epub_excerpts(
             })
         });
         let Some((anchor_url, source_revision, epub_locator)) = prev_meta else {
-            unmatched.push(e.section_id.clone());
+            unmatched.push(e.section_id.clone().into());
             continue;
         };
         let refreshed = build_normative_excerpt(
@@ -4286,7 +4297,7 @@ pub fn import_epub_excerpts(
         )?;
         store
             .sections
-            .get_mut(&e.section_id)
+            .get_mut(e.section_id.as_str())
             .expect("section present: prev_meta resolved from it")
             .normative_excerpt = Some(refreshed);
         applied += 1;
@@ -4405,7 +4416,7 @@ pub struct ChangelogEntryDraft<'a> {
     /// How the change was verified. ≥ 1 non-blank bullet required.
     pub verification_bullets: &'a [String],
     /// Affected section ids (no `§` prefix).
-    pub impact_refs: &'a [String],
+    pub impact_refs: &'a [mnemosyne_core::SectionId],
     /// Carry-forward items for the next round.
     pub carry_forward_bullets: &'a [String],
 }
@@ -4680,7 +4691,7 @@ pub fn set_changelog_publishable_impact_refs(
     store: &mut AtomicStore,
     sidecar_path: &Path,
     entry_id: &str,
-    refs: &[String],
+    refs: &[mnemosyne_core::SectionId],
 ) -> Result<AtomicMutateReceipt, AtomicMutateError> {
     entry_mut_strict(store, entry_id)?.publishable_impact_refs = refs.to_vec();
     save_with_receipt(
@@ -4829,7 +4840,7 @@ pub fn add_inventory_entry(
  )));
     }
     let section_ref_clean = match section_ref {
-        Some(s) => Some(validate_section_ref_input(s)?.to_string()),
+        Some(s) => Some(validate_section_ref_input(s)?.into()),
         None => None,
     };
     let source_clean = match source {
@@ -4922,7 +4933,7 @@ pub fn set_inventory_section_ref(
 ) -> Result<AtomicMutateReceipt, AtomicMutateError> {
     validate_inventory_id(inventory_id)?;
     let cleaned = match section_ref {
-        Some(s) => Some(validate_section_ref_input(s)?.to_string()),
+        Some(s) => Some(validate_section_ref_input(s)?.into()),
         None => None,
     };
     let entry = store
@@ -5352,7 +5363,7 @@ fn build_candidate_fact(
                     "fact `{fact_id}`: canon_to `{c}` not present as a section"
                 ));
             }
-            Some(c.to_string())
+            Some(c.into())
         }
     };
     if entry.evidence.is_empty() {
@@ -5454,7 +5465,7 @@ fn build_candidate_fact(
             branch,
             entities,
             claim: claim.to_string(),
-            canon_from: canon_from.to_string(),
+            canon_from: canon_from.into(),
             canon_to,
             evidence,
             conflicts_with,
@@ -5958,18 +5969,17 @@ fn build_branch_fork(
     if branch_id == parent {
         return Err(format!("branch `{branch_id}`: cannot fork from itself"));
     }
-    // Entry into the store vocabulary: the parent arrives as a raw argument.
+    // Entry into the store vocabulary: the parent and the divergence coordinate
+    // both arrive as raw arguments.
     let parent = mnemosyne_core::BranchId::from(parent);
-    if let Some(msg) = branch_edge_ref_violations(store, "fork", branch_id, &parent, at)
+    let at = mnemosyne_core::SectionId::from(at);
+    if let Some(msg) = branch_edge_ref_violations(store, "fork", branch_id, &parent, &at)
         .into_iter()
         .next()
     {
         return Err(msg);
     }
-    Ok(Some(BranchFork {
-        branch: parent,
-        at: at.to_string(),
-    }))
+    Ok(Some(BranchFork { branch: parent, at }))
 }
 
 /// Validate the incoming-merge edges of a confluence branch (Round 532 — the
@@ -6005,9 +6015,11 @@ fn build_branch_converges(
         if branch_id == parent {
             return Err(format!("branch `{branch_id}`: cannot converge from itself"));
         }
-        // Entry into the store vocabulary: the parent arrives as a raw argument.
+        // Entry into the store vocabulary: the parent and the merge coordinate
+        // both arrive as raw arguments.
         let parent = mnemosyne_core::BranchId::from(parent);
-        if let Some(msg) = branch_edge_ref_violations(store, "converge", branch_id, &parent, at)
+        let at = mnemosyne_core::SectionId::from(at);
+        if let Some(msg) = branch_edge_ref_violations(store, "converge", branch_id, &parent, &at)
             .into_iter()
             .next()
         {
@@ -6018,10 +6030,7 @@ fn build_branch_converges(
                 "branch `{branch_id}`: converges_from names parent `{parent}` more than once"
             ));
         }
-        out.push(BranchFork {
-            branch: parent,
-            at: at.to_string(),
-        });
+        out.push(BranchFork { branch: parent, at });
     }
     Ok(out)
 }
@@ -6063,7 +6072,7 @@ fn branch_edge_ref_violations(
     kind: &str,
     owner: &mnemosyne_core::BranchId,
     parent: &mnemosyne_core::BranchId,
-    at: &str,
+    at: &mnemosyne_core::SectionId,
 ) -> Vec<String> {
     let mut out = Vec::new();
     if !mnemosyne_core::is_known_world(&store.branches, parent) {
@@ -8501,8 +8510,10 @@ pub(crate) fn apply_disclosure_override(
     // drops the branch key (never a vacuous pin); each coord non-empty. The
     // DisclosureReveal threshold discipline runs through the ONE shared helper
     // the granular `set_disclosure_reveal_threshold` also uses (parity).
-    let mut acc: BTreeMap<mnemosyne_core::BranchId, (BTreeSet<String>, Option<usize>)> =
-        BTreeMap::new();
+    let mut acc: BTreeMap<
+        mnemosyne_core::BranchId,
+        (BTreeSet<mnemosyne_core::SectionId>, Option<usize>),
+    > = BTreeMap::new();
     for reveal in first_at {
         let branch = reveal.branch.trim();
         if branch.is_empty() {
@@ -8518,7 +8529,7 @@ pub(crate) fn apply_disclosure_override(
                     "set_disclosure: each first_at coord must be non-empty".to_string(),
                 ));
             }
-            entry.0.insert(coord.to_string());
+            entry.0.insert(coord.into());
         }
         if reveal.threshold.is_some() {
             entry.1 = reveal.threshold; // last-write-wins per branch
@@ -8569,7 +8580,7 @@ pub(crate) fn apply_disclosure_override(
                 _ => None,
             };
             Some(DisclosureSurface {
-                scene: scene.to_string(),
+                scene: scene.into(),
                 object,
             })
         }
@@ -8829,7 +8840,7 @@ pub fn add_disclosure_reveal_coord(
     let telling = telling_id.trim().to_string();
     let fact = mnemosyne_core::FactId::from(fact_id.trim());
     let branch = mnemosyne_core::BranchId::from(branch.trim());
-    let coord = coord.trim().to_string();
+    let coord = mnemosyne_core::SectionId::from(coord.trim());
     if branch.is_empty() || coord.is_empty() {
         return Err(AtomicMutateError::Validation(
             "add_disclosure_reveal_coord: --branch and --coord must be non-empty".to_string(),
@@ -8905,10 +8916,10 @@ pub fn remove_disclosure_reveal_coord(
     let telling = telling_id.trim().to_string();
     let fact = mnemosyne_core::FactId::from(fact_id.trim());
     let branch = mnemosyne_core::BranchId::from(branch.trim());
-    let coord = coord.trim().to_string();
+    let coord = mnemosyne_core::SectionId::from(coord.trim());
     let ov = disclosure_override_mut(store, "remove_disclosure_reveal_coord", &telling, &fact)?;
     let reveal = match ov.first_at.get_mut(&branch) {
-        Some(r) if r.coords.contains(&coord) => r,
+        Some(r) if r.coords.contains(coord.as_str()) => r,
         _ => {
             return Err(AtomicMutateError::Validation(format!(
                 "remove_disclosure_reveal_coord: telling `{telling}` fact `{fact}` has no first_at \
@@ -8927,7 +8938,7 @@ pub fn remove_disclosure_reveal_coord(
             )));
         }
     }
-    reveal.coords.remove(&coord);
+    reveal.coords.remove(coord.as_str());
     // Emptied set → drop the branch key (never a vacuous empty trigger). A
     // surviving Some(len) is KEPT (last-reached, distinct — unlike the edge guard).
     if reveal.coords.is_empty() {
@@ -10424,7 +10435,7 @@ mod tests {
     fn seed_section(store: &mut AtomicStore, section_id: &str) {
         store
             .sections
-            .insert(section_id.to_string(), AtomicSection::default());
+            .insert(section_id.into(), AtomicSection::default());
     }
 
     #[test]
@@ -12162,7 +12173,7 @@ mod tests {
             "ARP_07".to_string(),
             InventoryEntry {
                 status: InventoryStatus::Active,
-                section_ref: Some("4.2.4".to_string()),
+                section_ref: Some("4.2.4".into()),
                 source: Some("tc8_p041-p060.pdf#row=12".to_string()),
                 reason: None,
             },
@@ -12171,7 +12182,7 @@ mod tests {
             "TCP_RETRANSMISSION_TO_04".to_string(),
             InventoryEntry {
                 status: InventoryStatus::Deprecated,
-                section_ref: Some("4.8.6.11".to_string()),
+                section_ref: Some("4.8.6.11".into()),
                 source: None,
                 reason: Some("superseded by RETRANSMISSION_TO_05 in TC8 v2.3".to_string()),
             },
@@ -12180,7 +12191,7 @@ mod tests {
         let loaded = AtomicStore::load(&path).unwrap();
         let arp = loaded.inventory("ARP_07").expect("ARP_07 not found");
         assert_eq!(arp.status, InventoryStatus::Active);
-        assert_eq!(arp.section_ref.as_deref(), Some("4.2.4"));
+        assert_eq!(arp.section_ref.as_ref(), Some(&"4.2.4".into()));
         let tcp = loaded.inventory("TCP_RETRANSMISSION_TO_04").unwrap();
         assert_eq!(tcp.status, InventoryStatus::Deprecated);
         assert!(tcp.reason.as_ref().unwrap().contains("v2.3"));
@@ -12205,7 +12216,7 @@ mod tests {
         let loaded = AtomicStore::load(&path).unwrap();
         let e = loaded.inventory("ARP_07").unwrap();
         assert_eq!(e.status, InventoryStatus::Active);
-        assert_eq!(e.section_ref.as_deref(), Some("4.2.4"));
+        assert_eq!(e.section_ref.as_ref(), Some(&"4.2.4".into()));
         assert_eq!(e.source.as_deref(), Some("tc8_p041-p060.pdf#row=12"));
         assert!(e.reason.is_none());
     }
@@ -12425,8 +12436,8 @@ mod tests {
                 .inventory("ARP_07")
                 .unwrap()
                 .section_ref
-                .as_deref(),
-            Some("4.2.4")
+                .as_ref(),
+            Some(&"4.2.4".into())
         );
         set_inventory_section_ref(&mut store, &path, "ARP_07", None).unwrap();
         assert!(AtomicStore::load(&path)
@@ -13579,7 +13590,7 @@ mod tests {
         add_section(&mut store, &path, "39", "docs/X.md", "Parent", None).unwrap();
         add_section(&mut store, &path, "39.1", "docs/X.md", "Child", Some("39")).unwrap();
         let child = store.section("39.1").expect("§39.1 created");
-        assert_eq!(child.skeleton.parent_section.as_deref(), Some("39"));
+        assert_eq!(child.skeleton.parent_section.as_ref(), Some(&"39".into()));
         assert_eq!(child.skeleton.title, "Child");
     }
 
@@ -13684,8 +13695,8 @@ mod tests {
                 .unwrap()
                 .skeleton
                 .parent_section
-                .as_deref(),
-            Some("39")
+                .as_ref(),
+            Some(&"39".into())
         );
         // Promote back to top-level (None).
         set_section_parent_section(&mut store, &path, "39.1", None).unwrap();
@@ -13936,8 +13947,8 @@ mod tests {
         );
         // R342: the superseding target is stored structurally.
         assert_eq!(
-            store.section("39").unwrap().superseded_by.as_deref(),
-            Some("40")
+            store.section("39").unwrap().superseded_by.as_ref(),
+            Some(&"40".into())
         );
     }
 
@@ -13960,8 +13971,8 @@ mod tests {
         )
         .unwrap();
         assert_eq!(
-            store.section("39").unwrap().superseded_by.as_deref(),
-            Some("40")
+            store.section("39").unwrap().superseded_by.as_ref(),
+            Some(&"40".into())
         );
         set_section_decision_status(&mut store, &path, "39", DecisionStatus::Active, None, None)
             .unwrap();
@@ -13992,8 +14003,8 @@ mod tests {
             Some(DecisionStatus::Open)
         );
         assert_eq!(
-            store.section("q").unwrap().resolved_by.as_deref(),
-            Some("r")
+            store.section("q").unwrap().resolved_by.as_ref(),
+            Some(&"r".into())
         );
         // Resolving the question (→ Active) clears the forward-pointer.
         set_section_decision_status(&mut store, &path, "q", DecisionStatus::Active, None, None)
@@ -14259,7 +14270,10 @@ mod tests {
                 decision_summary: Some("audit summary"),
                 changes_bullets: &bullets,
                 verification_bullets: &bullets,
-                impact_refs: &bullets,
+                impact_refs: &bullets
+                    .iter()
+                    .map(|b| b.as_str().into())
+                    .collect::<Vec<_>>(),
                 carry_forward_bullets: &bullets,
             },
             "Round ",
@@ -14275,8 +14289,16 @@ mod tests {
             .expect("publishable changes setter must mirror append's cap-0 invariant");
         set_changelog_publishable_verification_bullets(&mut store_b, &path_b, "Round PB", &bullets)
             .expect("publishable verification setter must mirror append's cap-0 invariant");
-        set_changelog_publishable_impact_refs(&mut store_b, &path_b, "Round PB", &bullets)
-            .expect("publishable impact_refs setter must mirror append's cap-0 invariant");
+        set_changelog_publishable_impact_refs(
+            &mut store_b,
+            &path_b,
+            "Round PB",
+            &bullets
+                .iter()
+                .map(|b| b.as_str().into())
+                .collect::<Vec<_>>(),
+        )
+        .expect("publishable impact_refs setter must mirror append's cap-0 invariant");
         set_changelog_publishable_carry_forward_bullets(
             &mut store_b,
             &path_b,
@@ -14710,7 +14732,7 @@ mod tests {
         });
         import_sections(&mut store, path, &[e]).unwrap();
         if let Some(loc) = epub_locator {
-            import_epub_anchors(&mut store, path, &[(section_id.to_string(), loc)]).unwrap();
+            import_epub_anchors(&mut store, path, &[(section_id.into(), loc)]).unwrap();
         }
         let mut raw: serde_json::Value =
             serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap();
@@ -15144,8 +15166,8 @@ mod tests {
             &mut store,
             &path,
             &[
-                ("scxml-3.13".to_string(), loc.clone()),
-                ("scxml-absent".to_string(), loc.clone()),
+                ("scxml-3.13".into(), loc.clone()),
+                ("scxml-absent".into(), loc.clone()),
             ],
         )
         .unwrap();
@@ -15160,12 +15182,7 @@ mod tests {
             fragment: "scxml-3.13".to_string(),
             cfi: None,
         };
-        import_epub_anchors(
-            &mut store,
-            &path,
-            &[("scxml-3.13".to_string(), loc2.clone())],
-        )
-        .unwrap();
+        import_epub_anchors(&mut store, &path, &[("scxml-3.13".into(), loc2.clone())]).unwrap();
         assert_eq!(
             store.section("scxml-3.13").unwrap().epub_locator,
             Some(loc2)
@@ -15189,7 +15206,7 @@ mod tests {
             cfi: None,
         };
         assert!(matches!(
-            import_epub_anchors(&mut store, &path, &[("scxml-9".to_string(), loc)]),
+            import_epub_anchors(&mut store, &path, &[("scxml-9".into(), loc)]),
             Err(AtomicMutateError::NotFound(_))
         ));
     }
@@ -15210,8 +15227,8 @@ mod tests {
                 .unwrap()
                 .skeleton
                 .parent_section
-                .as_deref(),
-            Some("scxml-D")
+                .as_ref(),
+            Some(&"scxml-D".into())
         );
     }
 
@@ -15273,8 +15290,8 @@ mod tests {
                 .unwrap()
                 .skeleton
                 .parent_section
-                .as_deref(),
-            Some("scxml-D")
+                .as_ref(),
+            Some(&"scxml-D".into())
         );
     }
 
@@ -15535,7 +15552,7 @@ mod tests {
         assert_eq!(
             ov.first_at.get("route"),
             Some(&DisclosureReveal {
-                coords: BTreeSet::from(["ch-3".to_string()]),
+                coords: BTreeSet::from(["ch-3".into()]),
                 threshold: None,
             })
         );
@@ -16524,8 +16541,8 @@ mod tests {
             Some(sha256_hex("he crawled face-down the castle wall".as_bytes()).as_str())
         );
         assert_eq!(
-            reloaded.narrative_facts["f-old"].canon_to.as_deref(),
-            Some("ch-2")
+            reloaded.narrative_facts["f-old"].canon_to.as_ref(),
+            Some(&"ch-2".into())
         );
         // Idempotent re-import: pure no-op, nothing written.
         let again = import_facts(&mut store, &path, &manifest).unwrap();
@@ -18768,7 +18785,7 @@ mod tests {
                 description: String::new(),
                 forks_from: Some(BranchFork {
                     branch: "gone-parent".into(),
-                    at: "gone-section".to_string(),
+                    at: "gone-section".into(),
                 }),
                 converges_from: Vec::new(),
             },
@@ -18794,7 +18811,7 @@ mod tests {
                 forks_from: None,
                 converges_from: vec![BranchFork {
                     branch: "gone-a".into(),
-                    at: "gone-sec".to_string(),
+                    at: "gone-sec".into(),
                 }],
             },
         );
@@ -18843,7 +18860,7 @@ mod tests {
         // cycle detector is the one that catches it (cycle != dangling).
         store.branches.get_mut("sluice").unwrap().forks_from = Some(BranchFork {
             branch: "ride".into(),
-            at: "ch-2".to_string(),
+            at: "ch-2".into(),
         });
         assert!(
             branch_ref_violations(&store).is_empty(),
@@ -18881,7 +18898,7 @@ mod tests {
                 description: String::new(),
                 forks_from: Some(BranchFork {
                     branch: "sluice".into(),
-                    at: "ch-2".to_string(),
+                    at: "ch-2".into(),
                 }),
                 converges_from: Vec::new(),
             },
@@ -18914,18 +18931,18 @@ mod tests {
                 converges_from: vec![
                     BranchFork {
                         branch: "sluice".into(),
-                        at: "ch-3".to_string(),
+                        at: "ch-3".into(),
                     },
                     BranchFork {
                         branch: "ride".into(),
-                        at: "ch-3".to_string(),
+                        at: "ch-3".into(),
                     },
                 ],
             },
         );
         store.branches.get_mut("sluice").unwrap().forks_from = Some(BranchFork {
             branch: "mouth".into(),
-            at: "ch-2".to_string(),
+            at: "ch-2".into(),
         });
         assert!(
             branch_ref_violations(&store).is_empty(),
@@ -19066,12 +19083,12 @@ mod tests {
                 first_at: BTreeMap::from([(
                     "gone-branch".into(),
                     DisclosureReveal {
-                        coords: BTreeSet::from(["gone-sec".to_string()]),
+                        coords: BTreeSet::from(["gone-sec".into()]),
                         threshold: None,
                     },
                 )]),
                 surface: Some(DisclosureSurface {
-                    scene: "gone-scene".to_string(),
+                    scene: "gone-scene".into(),
                     object: Some("gone-obj".into()),
                 }),
             },
@@ -19230,14 +19247,14 @@ mod tests {
         assert_eq!(
             ov.first_at["main"],
             DisclosureReveal {
-                coords: BTreeSet::from(["sc-08".to_string()]),
+                coords: BTreeSet::from(["sc-08".into()]),
                 threshold: None,
             },
             "legacy single coord migrates to a one-coord first-reached trigger"
         );
         assert_eq!(
             ov.first_at["route"].coords,
-            BTreeSet::from(["sc-12".to_string()])
+            BTreeSet::from(["sc-12".into()])
         );
         assert!(ov.first_at["route"].threshold.is_none());
 
@@ -19326,7 +19343,7 @@ mod tests {
         let stored = |store: &AtomicStore| store.disclosure_plans["t"].overrides["f-typed"].clone();
         assert_eq!(
             stored(&store).first_at["main"].coords,
-            BTreeSet::from(["ch-1".to_string(), "ch-2".to_string()]),
+            BTreeSet::from(["ch-1".into(), "ch-2".into()]),
             "two first_at entries for one branch accumulate into a set"
         );
         assert!(stored(&store).first_at["main"].threshold.is_none());
@@ -19423,7 +19440,7 @@ mod tests {
         };
         assert_eq!(
             coords(&store),
-            BTreeSet::from(["ch-1".to_string(), "ch-2".to_string()])
+            BTreeSet::from(["ch-1".into(), "ch-2".into()])
         );
         // Idempotent re-add is a no-op.
         let r =
@@ -19461,7 +19478,7 @@ mod tests {
         // the branch key drops (never a vacuous empty trigger).
         set_disclosure_reveal_threshold(&mut store, &path, "t", "f-typed", "main", None).unwrap();
         remove_disclosure_reveal_coord(&mut store, &path, "t", "f-typed", "main", "ch-1").unwrap();
-        assert_eq!(coords(&store), BTreeSet::from(["ch-2".to_string()]));
+        assert_eq!(coords(&store), BTreeSet::from(["ch-2".into()]));
         remove_disclosure_reveal_coord(&mut store, &path, "t", "f-typed", "main", "ch-2").unwrap();
         assert!(
             !store.disclosure_plans["t"].overrides["f-typed"]
@@ -21527,8 +21544,8 @@ mod tests {
             branch: mnemosyne_core::MAIN_BRANCH.into(),
             entities: vec!["a".into()],
             claim: "c".to_string(),
-            canon_from: "ch-1".to_string(),
-            canon_to: Some("ch-2".to_string()),
+            canon_from: "ch-1".into(),
+            canon_to: Some("ch-2".into()),
             evidence: vec![EvidenceRef::unreviewed("ch-1")],
             conflicts_with: vec![],
             supersedes_in_frame: None,

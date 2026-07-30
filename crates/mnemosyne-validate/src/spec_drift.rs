@@ -87,7 +87,7 @@ pub fn scan_spec_drift(store: &AtomicStore, workspace_revision: &str) -> Vec<Spe
                 return None;
             }
             Some(SpecDriftViolation {
-                section_id: section_id.clone(),
+                section_id: section_id.to_string(),
                 section_revision: excerpt.source_revision.clone(),
                 workspace_revision: workspace_revision.to_string(),
             })
@@ -128,7 +128,7 @@ mod tests {
     fn store_with(sections: &[(&str, AtomicSection)]) -> AtomicStore {
         let mut store = AtomicStore::default();
         for (id, sec) in sections {
-            store.sections.insert((*id).to_string(), sec.clone());
+            store.sections.insert((*id).into(), sec.clone());
         }
         store
     }

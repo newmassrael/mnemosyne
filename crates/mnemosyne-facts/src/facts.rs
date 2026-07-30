@@ -172,7 +172,10 @@ impl IndexCodec for SectionFact {
         write_string(&mut out, &self.section_id);
         write_string(&mut out, &self.skeleton.parent_doc);
         write_string(&mut out, &self.skeleton.title);
-        write_opt_string(&mut out, self.skeleton.parent_section.as_deref());
+        write_opt_string(
+            &mut out,
+            self.skeleton.parent_section.as_ref().map(AsRef::as_ref),
+        );
         out.push(encode_decision_status(self.skeleton.decision_status));
         out
     }
@@ -199,7 +202,7 @@ impl IndexCodec for SectionFact {
             skeleton: SectionSkeleton {
                 title,
                 parent_doc,
-                parent_section,
+                parent_section: parent_section.map(Into::into),
                 decision_status,
             },
         })
@@ -309,7 +312,7 @@ mod tests {
             skeleton: SectionSkeleton {
                 title: "Phase 0 design_doc schema".to_string(),
                 parent_doc: "docs/DESIGN.md".to_string(),
-                parent_section: Some("38".to_string()),
+                parent_section: Some("38".into()),
                 decision_status: Some(DecisionStatus::Superseded),
             },
         };

@@ -2408,8 +2408,11 @@ pub fn cmd_import_epub_anchors(workspace_root: &Path, args: &[String]) -> Result
     let raw = fs::read_to_string(&path).with_context(|| format!("read anchors {}", path))?;
     let map: AnchorMap = serde_json::from_str(&raw)
         .with_context(|| format!("parse {} (epub-anchor-map/v1)", path))?;
-    let pairs: Vec<(String, mnemosyne_atomic::EpubLocator)> =
-        map.anchors.into_iter().map(|a| (a.id, a.locator)).collect();
+    let pairs: Vec<(mnemosyne_core::SectionId, mnemosyne_atomic::EpubLocator)> = map
+        .anchors
+        .into_iter()
+        .map(|a| (a.id.into(), a.locator))
+        .collect();
     let sidecar_path = resolve_sidecar(workspace_root, sidecar.as_deref())?;
     let mut store = AtomicStore::load(&sidecar_path).map_err(|e| anyhow!("{}", e))?;
     let outcome = mnemosyne_atomic::import_epub_anchors(&mut store, &sidecar_path, &pairs);
@@ -2949,11 +2952,17 @@ pub fn cmd_set_changelog_publishable_impact_refs(
     workspace_root: &Path,
     args: &[String],
 ) -> Result<(), CliError> {
+    // The generic bullet-setter speaks prose bullets; impact refs are section
+    // ids, so the vocabulary conversion happens at this one adapter.
     cmd_set_changelog_publishable_bullets(
         workspace_root,
         args,
         "publishable_impact_refs",
-        mnemosyne_atomic::set_changelog_publishable_impact_refs,
+        |store, path, entry, bullets| {
+            let refs: Vec<mnemosyne_core::SectionId> =
+                bullets.iter().map(|b| b.as_str().into()).collect();
+            mnemosyne_atomic::set_changelog_publishable_impact_refs(store, path, entry, &refs)
+        },
     )
 }
 
@@ -3357,7 +3366,15 @@ pub fn cmd_set_section_impact_scope(
     let sidecar_path = resolve_sidecar(workspace_root, sidecar.as_deref())?;
     let mut store = AtomicStore::load(&sidecar_path).map_err(|e| anyhow!("{}", e))?;
     finalize_mutate(
-        set_section_impact_scope(&mut store, &sidecar_path, &section, &refs),
+        set_section_impact_scope(
+            &mut store,
+            &sidecar_path,
+            &section,
+            &refs
+                .iter()
+                .map(|s| mnemosyne_core::SectionId::from(s.as_str()))
+                .collect::<Vec<_>>(),
+        ),
         json,
     )
 }
@@ -4510,7 +4527,10 @@ pub fn cmd_append_changelog_entry(workspace_root: &Path, args: &[String]) -> Res
                 decision_summary: decision_summary.as_deref(),
                 changes_bullets: &changes,
                 verification_bullets: &verification,
-                impact_refs: &impact_refs,
+                impact_refs: &impact_refs
+                    .iter()
+                    .map(|s| mnemosyne_core::SectionId::from(s.as_str()))
+                    .collect::<Vec<_>>(),
                 carry_forward_bullets: &carry_forward,
             },
             &entry_id_prefix,

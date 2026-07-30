@@ -181,7 +181,11 @@ fn build_section_view(section_id: &str, atomic: &AtomicSection) -> SectionView {
     SectionView {
         section_id: section_id.to_string(),
         parent_doc: atomic.skeleton.parent_doc.clone(),
-        parent_section: atomic.skeleton.parent_section.clone(),
+        parent_section: atomic
+            .skeleton
+            .parent_section
+            .as_ref()
+            .map(ToString::to_string),
         title: atomic.skeleton.title.clone(),
         decision_status: atomic
             .skeleton
@@ -225,7 +229,7 @@ pub fn related_sections_with_atomic(
             out.outbound_refs.push(CrossRefView {
                 from_doc: "<atomic>".to_string(),
                 from_section: section_id.to_string(),
-                to_target: target.clone(),
+                to_target: target.to_string(),
                 ref_kind: "decision".to_string(),
                 created_at_changelog_entry: None,
             });
@@ -249,7 +253,7 @@ pub fn related_sections_with_atomic(
             if r == section_id {
                 out.inbound_refs.push(CrossRefView {
                     from_doc: "<atomic>".to_string(),
-                    from_section: source_section_id.clone(),
+                    from_section: source_section_id.to_string(),
                     to_target: section_id.to_string(),
                     ref_kind: "decision".to_string(),
                     created_at_changelog_entry: None,
@@ -417,7 +421,7 @@ fn build_entry_view(
         atomic_decision_summary: atomic.decision_summary.clone(),
         atomic_changes_bullets: atomic.changes_bullets.clone(),
         atomic_verification_bullets: atomic.verification_bullets.clone(),
-        atomic_impact_refs: atomic.impact_refs.clone(),
+        atomic_impact_refs: atomic.impact_refs.iter().map(ToString::to_string).collect(),
         atomic_carry_forward_bullets: atomic.carry_forward_bullets.clone(),
     }
 }
@@ -656,7 +660,13 @@ pub fn query_term(store: &AtomicStore, q: &TermQuery) -> Result<Vec<TermHit>, Qu
 
     if matches!(q.scope, TermScope::All | TermScope::Sections) {
         for (id, section) in &store.sections {
-            scan_section(id, section, &matcher, q.field_filter.as_ref(), &mut hits);
+            scan_section(
+                id.as_str(),
+                section,
+                &matcher,
+                q.field_filter.as_ref(),
+                &mut hits,
+            );
         }
     }
     if matches!(q.scope, TermScope::All | TermScope::ChangelogEntries) {
@@ -848,7 +858,10 @@ fn scan_section(
         TermTargetKind::Section,
         section_id,
         "impact_scope",
-        &s.impact_scope,
+        &s.impact_scope
+            .iter()
+            .map(ToString::to_string)
+            .collect::<Vec<_>>(),
         m,
         filter,
         out,
@@ -962,7 +975,10 @@ fn scan_changelog_entry(
         TermTargetKind::ChangelogEntry,
         entry_id,
         "impact_refs",
-        &e.impact_refs,
+        &e.impact_refs
+            .iter()
+            .map(ToString::to_string)
+            .collect::<Vec<_>>(),
         m,
         filter,
         out,
@@ -1034,7 +1050,7 @@ mod tests {
 
     fn seed_section(store: &mut AtomicStore, id: &str, title: &str, intent: &str) {
         store.sections.insert(
-            id.to_string(),
+            id.into(),
             AtomicSection {
                 skeleton: mnemosyne_core::SectionSkeleton {
                     title: title.into(),
@@ -1216,7 +1232,7 @@ mod tests {
 
     fn store_with_one_section(id: &str, s: AtomicSection) -> AtomicStore {
         let mut store = AtomicStore::default();
-        store.sections.insert(id.to_string(), s);
+        store.sections.insert(id.into(), s);
         store
     }
 
@@ -1380,7 +1396,7 @@ mod tests {
             decision_summary: Some("redact secret tokens from logs".to_string()),
             changes_bullets: vec!["scrub secret env vars".to_string()],
             verification_bullets: vec!["no secret in audit output".to_string()],
-            impact_refs: vec!["secret-handling".to_string()],
+            impact_refs: vec!["secret-handling".into()],
             carry_forward_bullets: vec!["nothing".to_string()],
             ..Default::default()
         };
@@ -1567,7 +1583,7 @@ mod tests {
     fn fully_populated_store() -> AtomicStore {
         let mut store = AtomicStore::default();
         store.sections.insert(
-            "zz-sec".to_string(),
+            "zz-sec".into(),
             AtomicSection {
                 skeleton: mnemosyne_core::SectionSkeleton {
                     title: "zz title".into(),
@@ -1579,7 +1595,7 @@ mod tests {
                 inputs_bullets: vec!["zz i".to_string()],
                 outputs_bullets: vec!["zz o".to_string()],
                 caveats_bullets: vec!["zz c".to_string()],
-                impact_scope: vec!["zz-target".to_string()],
+                impact_scope: vec!["zz-target".into()],
                 alternatives_rejected: vec![RejectedAlternative {
                     alternative: "zz alt".to_string(),
                     reason: "zz why".to_string(),
@@ -1602,7 +1618,7 @@ mod tests {
                 decision_summary: Some("zz summary".to_string()),
                 changes_bullets: vec!["zz ch".to_string()],
                 verification_bullets: vec!["zz v".to_string()],
-                impact_refs: vec!["zz-ref".to_string()],
+                impact_refs: vec!["zz-ref".into()],
                 carry_forward_bullets: vec!["zz carry".to_string()],
                 ..Default::default()
             },
@@ -1691,7 +1707,7 @@ mod tests {
     fn query_term_scope_filter_excludes_other_kinds() {
         let mut store = AtomicStore::default();
         store.sections.insert(
-            "42".to_string(),
+            "42".into(),
             AtomicSection {
                 intent: Some("secret intent".to_string()),
                 ..Default::default()
@@ -1773,14 +1789,14 @@ mod tests {
         // Round 292 contract: section_id BTreeMap order × kind-variant order.
         let mut store = AtomicStore::default();
         store.sections.insert(
-            "b-section".to_string(),
+            "b-section".into(),
             AtomicSection {
                 intent: Some("X".to_string()),
                 ..Default::default()
             },
         );
         store.sections.insert(
-            "a-section".to_string(),
+            "a-section".into(),
             AtomicSection {
                 intent: Some("X".to_string()),
                 ..Default::default()

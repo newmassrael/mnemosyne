@@ -69,7 +69,7 @@ pub struct SectionSkeleton {
     pub parent_doc: String,
     /// Nullable parent section_id. `None` = top-level section in its doc.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub parent_section: Option<String>,
+    pub parent_section: Option<crate::SectionId>,
     /// Atomic decision_status override (Round 265). `None` = fall back to the
     /// parser-derived status; `Some(_)` = the store authoritatively declares
     /// the section's lifecycle state.

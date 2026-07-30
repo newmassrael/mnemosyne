@@ -82,10 +82,10 @@ impl AtomicStore {
             .map(|(section_id, section)| SectionFact {
                 key: FactKey {
                     branch_id,
-                    entity_id: section_entity_id(section_id),
+                    entity_id: section_entity_id(section_id.as_str()),
                     valid_from: SECTION_VALID_FROM,
                 },
-                section_id: section_id.clone(),
+                section_id: section_id.to_string(),
                 skeleton: section.skeleton.clone(),
             })
             .collect()
@@ -100,12 +100,12 @@ impl AtomicStore {
     pub fn project_cross_ref_facts(&self, branch_id: u64) -> Vec<CrossRefFact> {
         let mut out = Vec::new();
         for (section_id, section) in &self.sections {
-            let from_section = section_entity_id(section_id);
+            let from_section = section_entity_id(section_id.as_str());
             for target in &section.impact_scope {
                 out.push(CrossRefFact {
                     branch_id,
                     from_section,
-                    to_section: section_entity_id(target),
+                    to_section: section_entity_id(target.as_str()),
                     ref_kind: IMPACT_SCOPE_REF_KIND.to_string(),
                 });
             }
@@ -113,7 +113,7 @@ impl AtomicStore {
                 out.push(CrossRefFact {
                     branch_id,
                     from_section,
-                    to_section: section_entity_id(target),
+                    to_section: section_entity_id(target.as_str()),
                     ref_kind: SUPERSEDED_BY_REF_KIND.to_string(),
                 });
             }
@@ -121,7 +121,7 @@ impl AtomicStore {
                 out.push(CrossRefFact {
                     branch_id,
                     from_section,
-                    to_section: section_entity_id(target),
+                    to_section: section_entity_id(target.as_str()),
                     ref_kind: RESOLVED_BY_REF_KIND.to_string(),
                 });
             }
@@ -168,7 +168,7 @@ mod tests {
     fn store_with(sections: Vec<(&str, AtomicSection)>) -> AtomicStore {
         let mut store = AtomicStore::new();
         for (id, section) in sections {
-            store.sections.insert(id.to_string(), section);
+            store.sections.insert(id.into(), section);
         }
         store
     }
@@ -181,7 +181,7 @@ mod tests {
                 parent_section: None,
                 decision_status: Some(DecisionStatus::Active),
             },
-            impact_scope: impact.iter().map(|s| s.to_string()).collect(),
+            impact_scope: impact.iter().map(|s| (*s).into()).collect(),
             ..Default::default()
         }
     }
@@ -228,7 +228,7 @@ mod tests {
         // from any `impact_scope` edge on the same section.
         let mut old = section("Old", &["beta"]);
         old.skeleton.decision_status = Some(DecisionStatus::Superseded);
-        old.superseded_by = Some("new".to_string());
+        old.superseded_by = Some("new".into());
         let store = store_with(vec![("old", old)]);
         let refs = store.project_cross_ref_facts(MAIN_BRANCH_ID);
         let decision: Vec<_> = refs.iter().filter(|r| r.ref_kind == "decision").collect();
@@ -249,7 +249,7 @@ mod tests {
         // symmetric with the supersession edge and orphan-checked the same way.
         let mut q = section("Question", &[]);
         q.skeleton.decision_status = Some(DecisionStatus::Open);
-        q.resolved_by = Some("resolver".to_string());
+        q.resolved_by = Some("resolver".into());
         let store = store_with(vec![("q", q)]);
         let refs = store.project_cross_ref_facts(MAIN_BRANCH_ID);
         let resolved: Vec<_> = refs
