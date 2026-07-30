@@ -5870,6 +5870,18 @@ fn cmd_validate_code_refs(args: &[String]) -> Result<()> {
                  and are read whole {:?} (Round 856)",
                 modes.whole_text, modes.scanned, modes.whole_text_extensions
             );
+            // Round 860 — the files the walk reaches and NO axis reads. Kept out
+            // of the count above, where they overstated the whole-text exposure
+            // and named compiled artifacts as if an author had cited in them;
+            // kept in the report because a configured path full of build output
+            // is a finding about the config.
+            if modes.unreadable > 0 {
+                println!(
+                    "  advisory: {} scanned file(s) are not readable as text, so no axis sees \
+                     them {:?} — narrow `paths` if that is build output (Round 860)",
+                    modes.unreadable, modes.unreadable_extensions
+                );
+            }
         }
         if !cfg.inventory_prefixes.is_empty() {
             println!(

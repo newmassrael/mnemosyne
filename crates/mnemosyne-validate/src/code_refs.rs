@@ -854,6 +854,7 @@ pub fn expand_paths(root: &Path, paths: &[String]) -> Vec<PathBuf> {
 /// on every language a consumer's `paths` enrol, so they are language-agnostic.
 /// Both are derived from the same walk, so the two axes cannot disagree about a
 /// file (the Round 777 rule).
+#[derive(Debug)]
 pub struct ScanCoverage {
     /// Rust sources found under `root`. A run that considered none proves
     /// nothing, so the count is reported rather than assumed.
@@ -866,6 +867,17 @@ pub struct ScanCoverage {
     /// (Round 854): an exclusion over a C++ tree is doing work, and reporting
     /// it stale told a consumer to delete the declaration that was doing it.
     pub stale_exclusions: Vec<String>,
+    /// Files a configured path COVERS and a declared exclusion also names
+    /// (Round 860) — a contradiction the config cannot resolve, because
+    /// `scan_exclusions` declares intent for the coverage axis and does NOT
+    /// subtract from what the citation gate reads.
+    ///
+    /// Reported from the field: the consumer's `paths` enrolled a parent
+    /// directory holding build output, so they added four exclusion prefixes to
+    /// quiet it. The counts did not move and `stale_exclusions` stayed 0 — the
+    /// prefixes matched real files and changed nothing, which is config that
+    /// looks like it works. The repair is to narrow `paths`; nothing said so.
+    pub excluded_but_scanned: Vec<PathBuf>,
     /// EVERY file an exclusion removed, any language (Round 840 set, Round 854
     /// universe) — carried so [`swallowed_citations`] reads exactly the set this
     /// walk excluded, rather than re-deriving it and being free to disagree (the
@@ -917,11 +929,20 @@ pub fn scan_coverage(
         .filter(|p| !scanned_files.contains(**p) && !excluded_files.contains(**p))
         .map(|p| (*p).clone())
         .collect();
+    // Round 860 — the two sets are supposed to be disjoint: `paths` says what
+    // the gate reads, an exclusion says which Rust source is deliberately NOT
+    // covered by it. A file in both says both at once, and the exclusion is the
+    // half that cannot win.
+    let excluded_but_scanned: Vec<PathBuf> = excluded_files
+        .intersection(&scanned_files)
+        .cloned()
+        .collect();
     Ok(ScanCoverage {
         considered: rust.len(),
         scanned: scanned_files.iter().filter(|p| is_rust(p)).count(),
         unscanned,
         stale_exclusions,
+        excluded_but_scanned,
         excluded_files,
         scanned_files,
     })
@@ -2321,20 +2342,47 @@ pub fn comment_syntax_for(path: &Path) -> CommentSyntax {
 ///
 /// Behaviour deliberately unchanged. Making `Unknown` scan nothing would drop
 /// the prose citations this same round measured as real coverage.
+///
+/// # Why the unreadable files are counted apart (Round 860)
+///
+/// The Round 856 version of this report counted every unknown-extension file as
+/// "read whole", including files the gate CANNOT read: the citation scan does
+/// `read_to_string` and skips whatever is not valid UTF-8, so a `.class` or a
+/// `.pyc` is walked and then dropped. The consumer's first run printed
+/// `1138 of 1684 … read whole {"class": 368, "pyc": 23, "bin": 10, "jar": 1}`
+/// and every one of those is a compiled artifact that no author cites. The count
+/// overstated the exposure and named the wrong files, so the split is now
+/// measured rather than inferred from the extension.
+///
+/// This is also what makes the number STABLE between a developer and CI, which
+/// is the consumer's own framing and the sharper half of their report: a binary
+/// artifact is excluded by the UTF-8 property it inherently lacks, not by a name
+/// on a skip list that would drift the way every hand list here has.
 #[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize)]
 pub struct CommentModeCoverage {
     /// Files under the configured paths.
     pub scanned: usize,
-    /// Of those, the ones with no known comment syntax — read whole.
+    /// Of those, the ones with no known comment syntax AND readable as text —
+    /// the files whose whole content the citation extractors see.
     pub whole_text: usize,
     /// Extension → count for those files, so the answer to "which of mine?" is
     /// in the report rather than in this function's source.
     pub whole_text_extensions: BTreeMap<String, usize>,
+    /// Files the gate walks and cannot read as UTF-8 — no axis sees them, in
+    /// any language. Counted because a configured path full of build artifacts
+    /// is a real finding about the config (Round 860).
+    pub unreadable: usize,
+    /// Extension → count for those, same reason.
+    pub unreadable_extensions: BTreeMap<String, usize>,
 }
 
 /// Compute [`CommentModeCoverage`] for `root` under the configured `paths`.
 ///
-/// Walks only — no file is read — so this is cheap enough to print every run.
+/// Reads each unknown-extension file, because "the gate reads this whole" and
+/// "the gate cannot read this at all" are the two answers a reader needs and
+/// only the bytes can tell them apart (Round 860). Files whose extension HAS a
+/// comment syntax are not read — they are already accounted for and their
+/// content changes nothing here.
 ///
 /// # Errors
 ///
@@ -2346,12 +2394,20 @@ pub fn comment_mode_coverage(
     let mut out = CommentModeCoverage::default();
     for abs in walk_paths(root, paths)? {
         out.scanned += 1;
-        if comment_syntax_for(&abs) == CommentSyntax::Unknown {
+        if comment_syntax_for(&abs) != CommentSyntax::Unknown {
+            continue;
+        }
+        let ext = abs
+            .extension()
+            .map_or_else(|| "<none>".to_string(), |e| e.to_string_lossy().to_string());
+        // The SAME question the gate asks of the same file, asked the same way:
+        // `read_to_string` succeeds or the file is invisible to every axis.
+        if std::fs::read_to_string(&abs).is_ok() {
             out.whole_text += 1;
-            let ext = abs
-                .extension()
-                .map_or_else(|| "<none>".to_string(), |e| e.to_string_lossy().to_string());
             *out.whole_text_extensions.entry(ext).or_insert(0) += 1;
+        } else {
+            out.unreadable += 1;
+            *out.unreadable_extensions.entry(ext).or_insert(0) += 1;
         }
     }
     Ok(out)
@@ -5450,11 +5506,18 @@ mod tests {
         std::fs::write(root.join("src/scene.scxml"), "<!-- x -->\n").unwrap();
         std::fs::write(root.join("src/LICENSE"), "x\n").unwrap();
 
+        // Round 860 — a file the gate WALKS and cannot READ. `read_to_string`
+        // fails on it, so no axis sees it, and counting it as "read whole" both
+        // overstated the exposure and named a compiled artifact as if an author
+        // had cited in it. Invalid UTF-8 by construction (a lone 0xFF byte).
+        std::fs::write(root.join("src/Runtime.class"), [0xFFu8, 0xFE, 0x00, 0x01]).unwrap();
+
         let cov = comment_mode_coverage(root, &["src".to_string()]).unwrap();
-        assert_eq!(cov.scanned, 4);
+        assert_eq!(cov.scanned, 5);
         assert_eq!(
             cov.whole_text, 2,
-            "the `.rs` and `.toml` files have a comment syntax: {cov:?}"
+            "the `.rs` and `.toml` files have a comment syntax, and the `.class` \
+             is not readable: {cov:?}"
         );
         assert_eq!(
             cov.whole_text_extensions,
@@ -5462,6 +5525,71 @@ mod tests {
                 .into_iter()
                 .collect::<BTreeMap<_, _>>(),
             "the report must name WHICH extensions, not just how many: {cov:?}"
+        );
+        assert_eq!(
+            (
+                cov.unreadable,
+                cov.unreadable_extensions.get("class").copied()
+            ),
+            (1, Some(1)),
+            "an unreadable file is its own bucket, named by extension — the \
+             consumer's first run reported 368 `.class` files as read whole: {cov:?}"
+        );
+    }
+
+    /// Round 860 — `scan_exclusions` does not narrow what the gate READS, and a
+    /// file in both sets says two things at once.
+    ///
+    /// Reported from the field, as the one thing they asked us to write down.
+    /// Their `paths` enrolled a parent directory holding build output, so they
+    /// added exclusion prefixes to quiet the Round 856 line. The counts did not
+    /// move and `stale_exclusions` stayed 0 — the prefixes matched real files and
+    /// changed nothing, which is config that looks like it works. The repair is
+    /// to narrow `paths`.
+    ///
+    /// Asserted together with the DISJOINT case, because an advisory that fires
+    /// on every workspace is one the next person switches off.
+    #[test]
+    fn an_exclusion_inside_a_scanned_path_is_named_as_the_contradiction_it_is() {
+        let tmp = TempDir::new().unwrap();
+        let root = tmp.path();
+        std::fs::create_dir_all(root.join("sce/src/gen")).unwrap();
+        std::fs::write(root.join("sce/src/lib.cpp"), "// see 1.1\n").unwrap();
+        std::fs::write(root.join("sce/src/gen/out.cpp"), "// see 1.1\n").unwrap();
+        std::fs::create_dir_all(root.join("elsewhere")).unwrap();
+        std::fs::write(root.join("elsewhere/stray.rs"), "// Round 1\n").unwrap();
+
+        let paths = vec!["sce/src/".to_string()];
+
+        // DISJOINT: the exclusion names a tree no configured path covers — the
+        // Round 783 declaration, and it must stay silent.
+        let honest = scan_coverage(root, &paths, &["elsewhere/".to_string()]).unwrap();
+        assert!(
+            honest.excluded_but_scanned.is_empty(),
+            "a declaration about an unscanned tree is not a contradiction: {:?}",
+            honest.excluded_but_scanned
+        );
+        assert!(honest.stale_exclusions.is_empty());
+
+        // OVERLAPPING: the exclusion names a subtree INSIDE a configured path.
+        // The gate still reads it, and nothing said so.
+        let trap = scan_coverage(root, &paths, &["sce/src/gen/".to_string()]).unwrap();
+        assert_eq!(
+            trap.excluded_but_scanned,
+            vec![root.join("sce/src/gen/out.cpp")],
+            "the file the config claims twice must be named: {trap:?}"
+        );
+        assert!(
+            trap.stale_exclusions.is_empty(),
+            "and it is NOT stale — it matched a real file, which is exactly why \
+             the trap is quiet: {:?}",
+            trap.stale_exclusions
+        );
+        assert!(
+            trap.scanned_files
+                .contains(&root.join("sce/src/gen/out.cpp")),
+            "the gate reads it regardless of the exclusion — that is the whole \
+             finding: {trap:?}"
         );
     }
 

@@ -44,6 +44,12 @@ pub struct ValidateWorkspaceReport {
     pub scan_scanned: usize,
     pub scan_unscanned: Vec<String>,
     pub scan_stale_exclusions: Vec<String>,
+    /// Round 860 — files a configured path covers that a declared exclusion also
+    /// names. ADVISORY: the config contradicts itself and the exclusion is the
+    /// half that cannot win, but no existing consumer's gate weakens because of
+    /// it, so naming it beats failing a workspace that has been correct for
+    /// rounds.
+    pub scan_excluded_but_scanned: Vec<String>,
     /// Round 854 — the files the Round 840 axis actually read, any language: the
     /// ones the gate covers and the ones an exclusion removed. Reported every
     /// run, because "0 swallowed" out of 0 excluded files read is the same clean
@@ -429,6 +435,7 @@ pub fn validate_workspace(workspace_root: &Path) -> Result<ValidateWorkspaceRepo
         scan_scanned: scan.scanned,
         scan_unscanned,
         scan_stale_exclusions: scan.stale_exclusions,
+        scan_excluded_but_scanned: scan.excluded_but_scanned.iter().map(|p| rel(p)).collect(),
         scan_gate_files: scan.scanned_files.len(),
         scan_excluded_files: scan.excluded_files.len(),
         scan_swallowed_citations: swallowed,
@@ -520,6 +527,22 @@ impl ValidateWorkspaceReport {
         }
         for e in &self.scan_stale_exclusions {
             let _ = writeln!(out, "  stale exclusion: {}", e);
+        }
+        // Round 860 — say it once with the count and the repair, then name a few.
+        // A consumer reaching for `scan_exclusions` to stop the gate reading a
+        // subtree gets config that matches files and changes nothing; the field
+        // report that found this had to diff the counts to notice.
+        if !self.scan_excluded_but_scanned.is_empty() {
+            let _ = writeln!(
+                out,
+                "  advisory: {} file(s) are BOTH covered by [plugins.set_equality_validator].paths \
+                 and named by scan_exclusions — an exclusion declares coverage intent and does \
+                 not narrow what the gate reads; narrow `paths` instead (Round 860)",
+                self.scan_excluded_but_scanned.len()
+            );
+            for p in self.scan_excluded_but_scanned.iter().take(3) {
+                let _ = writeln!(out, "    both scanned and excluded: {}", p);
+            }
         }
         // Same non-vacuity discipline as the line above, one axis over: the
         // file counts say whether the axis read anything at all, and in ANY

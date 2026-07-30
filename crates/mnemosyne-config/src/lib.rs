@@ -437,6 +437,17 @@ pub struct SetEqualityValidatorConfig {
     /// An entry matching no file is reported as stale, the same rule the
     /// orphan-ledger axis already applies to a row whose orphan resolved.
     ///
+    /// # This does NOT narrow what the gate reads (Round 860)
+    ///
+    /// `paths` is the only thing that decides which files are read. An entry
+    /// here naming a subtree that a `paths` entry already covers matches real
+    /// files, reports no stale exclusion, and changes nothing the gate does —
+    /// config that looks like it works. Reported from the field by a consumer
+    /// whose `paths` enrolled a parent directory holding build output: they
+    /// added four exclusion prefixes, the counts did not move, and only a diff
+    /// of the numbers showed it. `validate-workspace` now names that overlap as
+    /// an advisory; the repair is to narrow `paths`.
+    ///
     /// Empty by default: the check costs an adopter nothing until they declare
     /// something, and a workspace that has declared nothing is told about every
     /// unscanned tree it has rather than silently passing.

@@ -119,6 +119,23 @@ when the project never numbers its history rows.
  traceability anchors in tests carry a different policy contract than
  rationale in production source. Typically `["src/"]` or
  per-crate `["crates/foo/src/", "crates/bar/src/"]`.
+ **This list is the ONLY thing that decides what the gate reads.** Every file
+ under a listed directory is read, whatever its language or extension; the walk
+ skips only hidden directories, `target/` and `node_modules/`. To stop the gate
+ reading a subtree — generated output under a source parent, a `build/` or
+ `__pycache__/` directory — **narrow `paths` to the source subdirs**. There is
+ no subtract-this-subtree key, and `scan_exclusions` is not one (below).
+- **`[plugins.set_equality_validator].scan_exclusions`** — a DECLARATION for the
+ coverage axis, not a filter on the read set. It answers "which Rust source is
+ deliberately not covered by `paths`" (so a tree merely absent from the config
+ fails while a tree someone wrote down stays out), and it feeds the
+ exclusion-integrity check that catches an exclusion swallowing the only copy
+ of a citation. **It does not narrow what the citation gate reads.** An entry
+ naming a subtree that a `paths` entry already covers therefore matches real
+ files, reports no stale exclusion, and changes nothing — config that looks
+ like it works. `validate-workspace` names that overlap as an advisory; the
+ repair is to narrow `paths`. Reported from the field by a consumer who reached
+ for this key first, exactly as its name invites.
 - **`[plugins.set_equality_validator].severity_missing`** — `warn` or `reject`. Fires when a
  citation's target id is absent from the atomic store (hallucination).
  Start at `warn` to surface the baseline, promote to `reject` once
