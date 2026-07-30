@@ -857,6 +857,16 @@ pub struct ReportTimelineGapsArgs {
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct ReportTransitionMapArgs {
+    /// `narrative-rules/v1` declaration path override (Round 875; the
+    /// transition rules DECLARE which predicate names a map edge). Omit to use
+    /// `[continuity].rules_path`. No canon-order override — the map is read
+    /// flat, exactly as the gate evaluates it.
+    #[serde(default)]
+    pub rules_path: Option<String>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct ReportFrameViewArgs {
     /// Epistemic frame to project.
     pub frame: String,
@@ -2511,6 +2521,19 @@ impl MnemosyneServer {
             args.0.order_path.as_deref(),
             args.0.rules_path.as_deref(),
         ) {
+            Ok(report) => self.tool_json(&report),
+            Err(e) => self.op_error(e),
+        }
+    }
+
+    #[tool(
+        description = "The declared map (R875, read-only): per transition rule, the map its `adjacency` predicate names — nodes, edges (each the declaring fact id + from/to + the fact's frame/branch), and per edge the STORED side-table values: `cost` {n, registered unit} (R710) and `guard` {conditions, optional k-of-N threshold} (R722/R723). The read half of the map axis: `add_edge_cost` / `add_edge_guard` write these, and until now no read handed them back, so a consumer had to parse the store sidecar itself. Also names what a naive bake would silently lose: self-loops (excluded from edges, as the gate excludes them) and side-table keys on facts that are not an edge of any declared map. Flat and un-scoped, exactly as the continuity gate evaluates the map — `undirected` is reported, never applied, and a guard is never evaluated (the R712 layering line). `transition_rules: 0` means no rule declares an adjacency predicate, which is NOT the same as a map with no edges."
+    )]
+    async fn report_transition_map(
+        &self,
+        args: Parameters<ReportTransitionMapArgs>,
+    ) -> CallToolResult {
+        match ops::transition_map_report(&self.workspace, None, args.0.rules_path.as_deref()) {
             Ok(report) => self.tool_json(&report),
             Err(e) => self.op_error(e),
         }

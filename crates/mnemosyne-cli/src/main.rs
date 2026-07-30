@@ -1052,6 +1052,15 @@ static COMMANDS: &[Command] = &[
         run: |c| cmd_report_timeline_gaps(c.rest()).map_err(CliError::from),
     },
     Command {
+        name: "report-transition-map",
+        aliases: &[],
+        group: Some(&GROUP_ATOMIC_MUTATE),
+        blank_before: false,
+        usage: &["report-transition-map [--rules <narrative-rules.json>] [--sidecar <path>] [--json]"],
+        notes: &["   Round 875 — the declared map as a READ: per transition rule, its nodes + edges with the stored edge_costs / edge_guards, so a consumer need not parse the store sidecar to get back what it wrote"],
+        run: |c| cmd_report_transition_map(c.rest()).map_err(CliError::from),
+    },
+    Command {
         name: "add-fact",
         aliases: &[],
         group: Some(&GROUP_ATOMIC_MUTATE),
@@ -4807,6 +4816,114 @@ fn cmd_report_payoff_substantiation(args: &[String]) -> Result<()> {
                 );
             }
         }
+    }
+    Ok(())
+}
+
+/// Round 875 — the declared-map READ (`report-transition-map`): per transition
+/// rule, the map its `adjacency` predicate names, each edge carrying the
+/// `edge_costs` (R710) and `edge_guards` (R722/R723) the store already holds.
+/// The write half of this axis shipped in R710/R722 and the read never did, so
+/// the one consumer that authored costs and guards had to open the store
+/// sidecar by hand to read them back. No `--order`: the map is evaluated flat.
+fn cmd_report_transition_map(args: &[String]) -> Result<()> {
+    let mut json = false;
+    let mut rules_override: Option<String> = None;
+    let mut sidecar_override: Option<String> = None;
+    let mut iter = args.iter();
+    while let Some(a) = iter.next() {
+        match a.as_str() {
+            "--json" => json = true,
+            "--rules" => {
+                rules_override = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--rules missing"))?
+                        .clone(),
+                )
+            }
+            "--sidecar" => {
+                sidecar_override = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--sidecar missing"))?
+                        .clone(),
+                )
+            }
+            other => bail!("unknown flag `{}`", other),
+        }
+    }
+    let loaded = workspace_config()?;
+    let anchor = loaded
+        .config_path
+        .parent()
+        .map(std::path::Path::to_path_buf)
+        .unwrap_or_else(|| loaded.workspace_root.clone());
+    let report = mnemosyne_ops::transition_map_report(
+        &anchor,
+        sidecar_override.as_deref().map(std::path::Path::new),
+        rules_override.as_deref(),
+    )
+    .map_err(|e| anyhow!("{e}"))?;
+    if json {
+        println!("{}", serde_json::to_string(&report)?);
+        return Ok(());
+    }
+    // Zero transition rules is its own sentence: with no rule there is no
+    // declared adjacency predicate, so "no map" and "an empty map" are
+    // different answers and must not print alike.
+    println!(
+        "=== declared maps — {} transition rule(s) ===",
+        report.transition_rules
+    );
+    if report.transition_rules == 0 {
+        println!(
+            "  no transition rule declares an adjacency predicate — \
+             the store cannot know which facts are edges"
+        );
+    }
+    for map in &report.maps {
+        println!(
+            "map `{}` (adjacency `{}`, {}): {} node(s), {} edge(s)",
+            map.rule,
+            map.adjacency,
+            if map.undirected {
+                "undirected"
+            } else {
+                "directed"
+            },
+            map.nodes.len(),
+            map.edges.len()
+        );
+        for e in &map.edges {
+            let cost = e
+                .cost
+                .as_ref()
+                .map(|c| format!(" {} {}", c.n, c.unit))
+                .unwrap_or_default();
+            let guard = e
+                .guard
+                .as_ref()
+                .map(|g| {
+                    let k = g
+                        .threshold
+                        .map(|k| format!("{k}-of-{}", g.conditions.len()))
+                        .unwrap_or_else(|| "all".to_string());
+                    format!(" [guard {k}: {}]", g.conditions.join(", "))
+                })
+                .unwrap_or_default();
+            println!("  {} -> {}{} ({}){}", e.from, e.to, cost, e.fact_id, guard);
+        }
+        for loop_ in &map.self_loops {
+            println!(
+                "  [self-loop, not an edge] {} @ {}",
+                loop_.fact_id, loop_.node
+            );
+        }
+    }
+    for fid in &report.unattached_costs {
+        println!("  [cost on a non-edge] {fid}");
+    }
+    for fid in &report.unattached_guards {
+        println!("  [guard on a non-edge] {fid}");
     }
     Ok(())
 }

@@ -641,8 +641,11 @@ fn registries() -> Vec<RegistrySpec> {
         RegistrySpec {
             name: "edge_costs",
             key: "adjacent fact id",
-            referenced_by: "keyed BY the adjacent fact; read by the future derived travel-time \
-                computation (tide_budget − Σcost) — not referenced by any other row",
+            referenced_by: "keyed BY the adjacent fact; handed back by report-transition-map \
+                (R875) on its edge — the DERIVED travel-time computation (tide_budget − Σcost) \
+                this once pointed at as \"future\" is the CONSUMER's, never ours: it needs a \
+                domain number core must not know (R711), which is why the plain carriage read \
+                is the one that exists",
             add_op: "add-edge-cost",
             load_bearing: false,
             description: "Map EDGE COSTS (R709 → DEBT-J) — keyed by the adjacent(a,b) fact id, \
@@ -656,8 +659,9 @@ fn registries() -> Vec<RegistrySpec> {
             name: "edge_guards",
             key: "adjacent (edge) fact id",
             referenced_by: "keyed BY the adjacent (edge) fact; VALUE = a condition SET plus an \
-                optional K-of-N threshold — read by the consumer (pinion runtime) which evaluates \
-                each condition and ANDs them (or counts >= the threshold), never by Mnemosyne",
+                optional K-of-N threshold — handed back by report-transition-map (R875) on its \
+                edge, and evaluated by the consumer (pinion runtime) which ANDs the conditions \
+                (or counts >= the threshold), never by Mnemosyne",
             add_op: "add-edge-guard",
             load_bearing: false,
             description: "Map EDGE GUARDS (R717/721 design → R720/722, K-of-N threshold R723) — a \

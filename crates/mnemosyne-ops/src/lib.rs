@@ -1087,6 +1087,26 @@ pub fn timeline_gaps_report(
         .map_err(OpError::Other)
 }
 
+/// The declared-map read (Round 875) — every transition rule's map with the
+/// edge side-table values (`edge_costs` R710, `edge_guards` R722/R723) the
+/// store already holds. Resolves the same `narrative-rules` artifact as the
+/// gate, for the same reason `timeline_gaps` does: the rule is what DECLARES
+/// which predicate names an edge, and core must not know (invariant 4).
+///
+/// Takes NO canon order — the map has never been canon-ordered (the gate
+/// evaluates it flat, R696 review finding #6), so requiring one would be a
+/// scoping this read does not perform.
+pub fn transition_map_report(
+    workspace_root: &Path,
+    sidecar: Option<&Path>,
+    rules_override: Option<&str>,
+) -> Result<mnemosyne_validate::continuity::TransitionMapReport, OpError> {
+    let policy = continuity_policy(workspace_root)?;
+    let rules = resolve_narrative_rules(&policy, rules_override)?;
+    let store = load_atomic_store(workspace_root, sidecar)?;
+    mnemosyne_validate::continuity::transition_map(&store, &rules.rules).map_err(OpError::Other)
+}
+
 /// Import succession + conflict edges from a reviewed `edge-proposals/v1`
 /// artifact (Round 463, design sec 7.16 Round B) — load + shape-check the
 /// file, then run the all-or-nothing import (or its dry-run twin). Returns

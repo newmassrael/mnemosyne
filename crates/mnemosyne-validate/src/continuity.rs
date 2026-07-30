@@ -915,6 +915,61 @@ fn typed_object_key(o: &mnemosyne_core::TypedObject) -> &str {
     }
 }
 
+/// One transition rule's map, derived from the store's `adjacency`-predicate
+/// facts — THE single edge model (Round 875). The continuity gate and the
+/// `transition_map` read both call [`transition_edges`]: two derivations of
+/// "what is an edge" is the R699 divergence this type exists to prevent (the
+/// eval once admitted a self-loop the detector rejected), now extended to the
+/// read so a consumer baking a map from the report and a consumer reading the
+/// gate cannot disagree about the same store.
+struct TransitionEdges<'a> {
+    /// `(from, to)` → the `adjacency` fact that declares it. Self-loops are
+    /// EXCLUDED (they are degenerate, and the gate flags them), so an edge here
+    /// is always a step between two distinct nodes.
+    edges: BTreeMap<(&'a str, &'a str), &'a str>,
+    /// Every endpoint named by an `adjacency` fact — "on the map" (G2, Round
+    /// 703). Collected from the RAW facts (both legs, self-loops included): a
+    /// self-loop place is still named on the map, so G2 must not ALSO call it an
+    /// invented place.
+    nodes: BTreeSet<&'a str>,
+    /// `(fact, place)` per degenerate `adjacent(a, a)`. Carried rather than
+    /// dropped so both readers can NAME the exclusion — an edge silently absent
+    /// from the read would read as "never authored".
+    self_loops: Vec<(&'a str, &'a str)>,
+}
+
+/// Derive one transition rule's map from the store (Round 875). Flat and
+/// un-scoped, matching what the gate has always evaluated — branch-scoped
+/// adjacency stays deferred (R696 review finding #6), so a per-branch bridge is
+/// NOT resolved here; each edge carries its fact id and the caller reads that
+/// fact's frame/branch if it wants to scope.
+fn transition_edges<'a>(
+    facts: &'a BTreeMap<mnemosyne_core::FactId, NarrativeFact>,
+    adjacency: &str,
+) -> TransitionEdges<'a> {
+    let mut out = TransitionEdges {
+        edges: BTreeMap::new(),
+        nodes: BTreeSet::new(),
+        self_loops: Vec::new(),
+    };
+    for (fid, t) in facts
+        .iter()
+        .filter_map(|(fid, f)| f.typed.as_ref().map(|t| (fid.as_str(), t)))
+        .filter(|(_, t)| t.predicate.as_str() == adjacency)
+    {
+        let a = t.subject.as_str();
+        let b = typed_object_key(&t.object);
+        out.nodes.insert(a);
+        out.nodes.insert(b);
+        if a == b {
+            out.self_loops.push((fid, a));
+        } else {
+            out.edges.insert((a, b), fid);
+        }
+    }
+    out
+}
+
 /// The object leg's owned, COLLISION-FREE display/identity string (Round 706).
 /// For the single-string shapes this is the field itself (byte-identical to
 /// [`typed_object_key`]); for a `Quantity` it is `"{n} {unit}"`, so two
@@ -3607,34 +3662,18 @@ pub fn scan_continuity(
                 // scoped to "not both directions".) Flat, un-scoped (as the file
                 // `allowed` was) — the present single-map ground-truth case;
                 // branch-scoped adjacency deferred (R696 review finding #6).
-                let mut edges: BTreeMap<(&str, &str), &str> = BTreeMap::new();
-                // Every endpoint that appears in an `adjacency` fact is a NODE
-                // (G2, Round 703): "on the map". Collected from the RAW facts
-                // (both legs, self-loops included) — a self-loop place is still
-                // named on the map (it is separately flagged as a self-loop, so
-                // G2 must not ALSO call it an invented place).
-                let mut nodes: BTreeSet<&str> = BTreeSet::new();
-                for (fid, t) in facts
-                    .iter()
-                    .filter_map(|(fid, f)| f.typed.as_ref().map(|t| (fid.as_str(), t)))
-                    .filter(|(_, t)| t.predicate == *adjacency)
-                {
-                    let a = t.subject.as_str();
-                    let b = typed_object_key(&t.object);
-                    nodes.insert(a);
-                    nodes.insert(b);
-                    if a == b {
-                        report
-                            .violations
-                            .push(ContinuityViolation::AdjacencySelfLoop {
-                                rule: rule.id.clone(),
-                                predicate: adjacency.clone(),
-                                fact: fid.to_string(),
-                                place: a.to_string(),
-                            });
-                    } else {
-                        edges.insert((a, b), fid);
-                    }
+                let TransitionEdges {
+                    edges, self_loops, ..
+                } = transition_edges(facts, adjacency);
+                for (fid, place) in self_loops {
+                    report
+                        .violations
+                        .push(ContinuityViolation::AdjacencySelfLoop {
+                            rule: rule.id.clone(),
+                            predicate: adjacency.clone(),
+                            fact: fid.to_string(),
+                            place: place.to_string(),
+                        });
                 }
                 if *undirected {
                     // Canonical walk: each unordered pair visited once at a < b,
@@ -5655,6 +5694,204 @@ pub struct PlayableWorld {
     /// stated as what it is for the override case. Sort by `scene_ordinal` if
     /// you need the audience's encounter order.
     pub locators: Vec<MapLocator>,
+}
+
+/// One map edge as the read emits it (Round 875) — the `adjacency` fact that
+/// declares the step, plus the two side-table values keyed by that fact id.
+#[derive(Debug, Clone, Serialize)]
+pub struct TransitionMapEdge {
+    /// The `adjacency` fact declaring this step — the key BOTH side tables use.
+    pub fact_id: String,
+    pub from: String,
+    pub to: String,
+    /// The declaring fact's frame and world-line. Carried, NOT filtered on: the
+    /// map is evaluated flat and un-scoped (R696 review finding #6 — branch-
+    /// scoped adjacency stays deferred), so a consumer that wants a per-world
+    /// map scopes on these itself rather than trusting a scoping we do not do.
+    pub frame: String,
+    pub branch: String,
+    /// The stored walk cost (R710), absent when none was authored. Mnemosyne
+    /// stores it and hands it back; what a cost MEANS (a tide budget, a stay
+    /// time) is the consumer's — the R711 layering line.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cost: Option<TransitionMapCost>,
+    /// The stored access guard (R722/R723), absent when none was authored.
+    /// Mnemosyne NEVER evaluates whether it holds now (the R712 layering line).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub guard: Option<TransitionMapGuard>,
+}
+
+/// An edge's stored cost (Round 875 read of the R710 `edge_costs` side table).
+#[derive(Debug, Clone, Serialize)]
+pub struct TransitionMapCost {
+    pub n: i64,
+    /// A ref into the store's `units` registry, checked at write time (R706).
+    pub unit: String,
+}
+
+/// An edge's stored guard (Round 875 read of the R722/R723 `edge_guards` side
+/// table). `threshold` absent = require ALL the conditions (the canonical AND).
+#[derive(Debug, Clone, Serialize)]
+pub struct TransitionMapGuard {
+    pub conditions: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub threshold: Option<usize>,
+}
+
+/// A degenerate `adjacent(a, a)` (Round 875). Named rather than dropped: the
+/// gate excludes a self-loop from the edge set, and an authored fact missing
+/// from `edges` with no reason given reads as "never authored".
+#[derive(Debug, Clone, Serialize)]
+pub struct TransitionMapSelfLoop {
+    pub fact_id: String,
+    pub node: String,
+}
+
+/// One declared map (Round 875) — a transition rule plus the store facts its
+/// `adjacency` predicate names.
+#[derive(Debug, Clone, Serialize)]
+pub struct TransitionMapView {
+    /// The transition rule that DECLARES this map ("룰로 박아" — the rule is the
+    /// declaration, the store facts are the edges).
+    pub rule: String,
+    pub adjacency: String,
+    /// Edge symmetry (R697). Carried so a consumer symmetrizes because the
+    /// DECLARATION says to, not because it hardcoded that maps are two-way.
+    pub undirected: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub containment: Option<String>,
+    pub nodes: Vec<String>,
+    pub edges: Vec<TransitionMapEdge>,
+    pub self_loops: Vec<TransitionMapSelfLoop>,
+}
+
+/// The declared-map read (Round 875) — the READ half of the map axis, whose
+/// absence made a live consumer hand-parse the store sidecar to get back the
+/// costs and guards it had just written through `add-edge-cost` /
+/// `add-edge-guard` (measured: a 1.2 MB parse per start, then a build-time
+/// bake, and the store's shape bitten in TWO places on the consumer's side).
+/// R710 named the write-only axis a latency awaiting "the derived read"; R711
+/// then established that THAT read (minutes-within-a-tide) is not ours to build
+/// at all — it needs a domain number core must never know (invariant 4). The
+/// two are different reads, and collapsing them left this one, plain carriage
+/// of what the store already holds, never designed.
+///
+/// Pure read projection, never gated. Flat and un-scoped, exactly as the gate
+/// evaluates the map.
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct TransitionMapReport {
+    /// One entry per transition rule, in rule order.
+    pub maps: Vec<TransitionMapView>,
+    /// Transition rules declared. ZERO is a distinct answer from "a map with no
+    /// edges": with no rule there is no declared adjacency predicate, so the
+    /// store genuinely cannot know which facts are edges (invariant 4) — the
+    /// two silences must not read alike (the R864 three-state discipline).
+    pub transition_rules: usize,
+    /// Side-table keys that are NOT an edge of any declared map — the read's
+    /// echo of the gate's `EdgeCostNotAnEdge` / `EdgeGuardNotAnEdge` (R711 /
+    /// R720). Listed, not dropped: a consumer baking a map from this report
+    /// would otherwise see a cost it authored simply vanish.
+    pub unattached_costs: Vec<String>,
+    pub unattached_guards: Vec<String>,
+}
+
+/// Project every declared map (Round 875). The edges come from
+/// [`transition_edges`] — the SAME derivation the continuity gate runs, so the
+/// read and the gate cannot disagree about what an edge is.
+///
+/// Order-free by construction: the map has never been canon-ordered (the gate
+/// evaluates it flat), so this read does not take a `CanonOrder` and does not
+/// pretend the map is world-scoped. The store-registry half of the gate's
+/// boundary still runs — an orphaned or unit-invalid side-table entry fails
+/// loud here exactly as it does at the gate.
+pub fn transition_map(
+    store: &AtomicStore,
+    rules: &[NarrativeRule],
+) -> Result<TransitionMapReport, String> {
+    if let Some(msg) = mnemosyne_atomic::store_registry_violations(store)
+        .into_iter()
+        .next()
+    {
+        return Err(msg);
+    }
+    check_rule_predicates(store, rules)?;
+    let facts = &store.narrative_facts;
+    let mut report = TransitionMapReport::default();
+    // Every fact that IS an edge of some declared map, so the unattached
+    // side-table scan below asks the union — a second map's cost is not
+    // reported as stray (the R711 union, same reason).
+    let mut edge_facts: BTreeSet<String> = BTreeSet::new();
+    for rule in rules {
+        let NarrativeRuleSpec::Transition {
+            adjacency,
+            undirected,
+            containment,
+        } = &rule.spec
+        else {
+            continue;
+        };
+        report.transition_rules += 1;
+        let derived = transition_edges(facts, adjacency);
+        let mut view = TransitionMapView {
+            rule: rule.id.clone(),
+            adjacency: adjacency.clone(),
+            undirected: *undirected,
+            containment: containment.clone(),
+            nodes: derived.nodes.iter().map(|n| (*n).to_string()).collect(),
+            edges: Vec::new(),
+            self_loops: derived
+                .self_loops
+                .iter()
+                .map(|(fid, node)| TransitionMapSelfLoop {
+                    fact_id: (*fid).to_string(),
+                    node: (*node).to_string(),
+                })
+                .collect(),
+        };
+        for ((from, to), fid) in derived.edges {
+            edge_facts.insert(fid.to_string());
+            // One key for all three tables — the id newtypes stopped borrowing
+            // as `str` in R848, deliberately, so the lookup owns its key.
+            let key = mnemosyne_core::FactId::from(fid);
+            // Present by construction: `fid` was just read out of this map.
+            let Some(fact) = facts.get(&key) else {
+                continue;
+            };
+            view.edges.push(TransitionMapEdge {
+                fact_id: fid.to_string(),
+                from: from.to_string(),
+                to: to.to_string(),
+                frame: fact.frame.to_string(),
+                branch: fact.branch.to_string(),
+                cost: store.edge_costs.get(&key).map(|c| TransitionMapCost {
+                    n: c.n,
+                    unit: c.unit.to_string(),
+                }),
+                guard: store.edge_guards.get(&key).map(|g| TransitionMapGuard {
+                    conditions: g.conditions.iter().map(ToString::to_string).collect(),
+                    threshold: g.threshold,
+                }),
+            });
+        }
+        report.maps.push(view);
+    }
+    // Only meaningful once some map is declared — with no transition rule every
+    // key would be "unattached", which is the inert case, not a finding.
+    if report.transition_rules > 0 {
+        report.unattached_costs = store
+            .edge_costs
+            .keys()
+            .filter(|fid| !edge_facts.contains(fid.as_str()))
+            .map(ToString::to_string)
+            .collect();
+        report.unattached_guards = store
+            .edge_guards
+            .keys()
+            .filter(|fid| !edge_facts.contains(fid.as_str()))
+            .map(ToString::to_string)
+            .collect();
+    }
+    Ok(report)
 }
 
 /// The playable-world projection for one telling (Round 556/557, design sec
@@ -9938,6 +10175,78 @@ mod tests {
             1,
             "self-loop flagged under a DIRECTED rule too: {:?}",
             report2.violations
+        );
+    }
+
+    /// Round 875 — the gate and the READ derive ONE edge set. Both call
+    /// [`transition_edges`], so they cannot diverge structurally; what this
+    /// test holds is the part that IS forkable by hand — that the read applies
+    /// the same self-loop EXCLUSION the gate does. A read that listed a
+    /// self-loop as a walkable edge would hand a consumer a step the gate
+    /// rejects (the R699 divergence, in the other direction).
+    #[test]
+    fn transition_map_read_and_the_gate_agree_on_what_an_edge_is() {
+        let order = chain(&["ch-1", "ch-2"]);
+        let anchor = || typed_fact("p0", "gt", "ch-1", "ent-jiun", "pred-at", holds("ent-well"));
+        let mut e_self = typed_fact(
+            "e-self",
+            "gt",
+            "ch-1",
+            "ent-well",
+            "adjacent",
+            holds("ent-well"),
+        );
+        e_self.entities = vec!["ent-well".to_string()];
+        let rules = [transition_rule("roads", "pred-at", "adjacent", true, None)];
+        let store = store_with(vec![
+            anchor(),
+            e_self,
+            typed_fact(
+                "e-well-alley",
+                "gt",
+                "ch-1",
+                "ent-well",
+                "adjacent",
+                holds("ent-alley"),
+            ),
+            typed_fact(
+                "e-alley-shop",
+                "gt",
+                "ch-1",
+                "ent-alley",
+                "adjacent",
+                holds("ent-shop"),
+            ),
+        ]);
+
+        let gate = scan_continuity(&store, &order, &rules).unwrap();
+        let read = transition_map(&store, &rules).unwrap();
+        let gate_self: BTreeSet<&str> = gate
+            .violations
+            .iter()
+            .filter_map(|v| match v {
+                ContinuityViolation::AdjacencySelfLoop { fact, .. } => Some(fact.as_str()),
+                _ => None,
+            })
+            .collect();
+        let read_self: BTreeSet<&str> = read.maps[0]
+            .self_loops
+            .iter()
+            .map(|s| s.fact_id.as_str())
+            .collect();
+        let read_edges: BTreeSet<&str> = read.maps[0]
+            .edges
+            .iter()
+            .map(|e| e.fact_id.as_str())
+            .collect();
+        // NON-VACUITY: the fixture must hold BOTH classes, or the set equality
+        // and the disjointness below are two true statements about nothing.
+        assert_eq!(gate_self.len(), 1, "{:?}", gate.violations);
+        assert_eq!(read_edges.len(), 2, "{read_edges:?}");
+        assert_eq!(gate_self, read_self);
+        assert!(
+            read_edges.is_disjoint(&gate_self),
+            "the read must not offer a step the gate rejects: {read_edges:?}"
         );
     }
 
