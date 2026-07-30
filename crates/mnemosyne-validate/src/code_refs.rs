@@ -1165,6 +1165,27 @@ fn id_shaped_tokens(content: &str) -> Vec<(usize, String)> {
 /// build artifacts, which is what keeps a baked projection's thousands of
 /// emitted ids out of an axis about what an author wrote.
 ///
+/// # Why the universe is every language (Round 856)
+///
+/// That last sentence was true of the directory boundary and false of the file
+/// boundary, which this axis narrowed to `.rs` and said nothing about — the
+/// third site of the class Round 854 closed for the exclusion axis and Round
+/// 855 for the symbol axis, and the only one whose doc comment did not even
+/// admit the filter. The claim it publishes is a coverage claim
+/// (`facts_cited` of `facts_total`, over `files_scanned`), so a Rust-only
+/// universe understates it silently.
+///
+/// Measured on the first playable consumer, whose store this axis was built
+/// for: its `.scxml` scenario files carry HAND-AUTHORED fact citations in
+/// prose — `f-bell-counts`, `f-knots-are-sins`, `f-unconfessed-stays-bound` —
+/// and every one of them was invisible here. The axis was blank in exactly the
+/// files where that author writes fact citations by hand.
+///
+/// Noise stays bounded by two properties already in place rather than by an
+/// extension list: the namespace prefixes are DERIVED from the store's own key
+/// space (a prefix needs two ids), and the axis is advisory, so a shape match in
+/// data costs a printed line and never a red gate.
+///
 /// # Errors
 ///
 /// Whatever the underlying directory walk fails with.
@@ -1187,9 +1208,9 @@ pub fn scan_id_citations(
     let mut facts_seen: BTreeSet<&str> = BTreeSet::new();
     let mut entities_seen: BTreeSet<&str> = BTreeSet::new();
     for abs in walk_paths(root, paths)? {
-        if abs.extension().is_none_or(|e| e != "rs") {
-            continue;
-        }
+        // Every file the gate reads, in any language (Round 856). Unreadable
+        // files are skipped exactly where the gate skips them, so `files_scanned`
+        // counts what was examined rather than what was walked.
         let Ok(raw) = std::fs::read_to_string(&abs) else {
             continue;
         };
@@ -2286,6 +2307,54 @@ pub fn comment_syntax_for(path: &Path) -> CommentSyntax {
         "py" | "sh" | "bash" | "zsh" | "rb" | "toml" | "yaml" | "yml" => CommentSyntax::Hash,
         _ => CommentSyntax::Unknown,
     }
+}
+
+/// How `comment_only = true` actually applied, per file (Round 856).
+///
+/// [`CommentSyntax::Unknown`] means the whole text is scanned, so the knob's
+/// meaning depends on the file's extension — and that dependency was invisible.
+/// It is load-bearing in both directions: it is why a consumer's `.scxml`
+/// scenario files put their fact citations in prose and have them read, and it
+/// is also why a citation-shaped token in a data file counts as a citation under
+/// a `reject`-level severity. Reporting it costs a line; guessing costs a field
+/// report.
+///
+/// Behaviour deliberately unchanged. Making `Unknown` scan nothing would drop
+/// the prose citations this same round measured as real coverage.
+#[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize)]
+pub struct CommentModeCoverage {
+    /// Files under the configured paths.
+    pub scanned: usize,
+    /// Of those, the ones with no known comment syntax — read whole.
+    pub whole_text: usize,
+    /// Extension → count for those files, so the answer to "which of mine?" is
+    /// in the report rather than in this function's source.
+    pub whole_text_extensions: BTreeMap<String, usize>,
+}
+
+/// Compute [`CommentModeCoverage`] for `root` under the configured `paths`.
+///
+/// Walks only — no file is read — so this is cheap enough to print every run.
+///
+/// # Errors
+///
+/// Whatever the underlying directory walk fails with.
+pub fn comment_mode_coverage(
+    root: &Path,
+    paths: &[String],
+) -> std::io::Result<CommentModeCoverage> {
+    let mut out = CommentModeCoverage::default();
+    for abs in walk_paths(root, paths)? {
+        out.scanned += 1;
+        if comment_syntax_for(&abs) == CommentSyntax::Unknown {
+            out.whole_text += 1;
+            let ext = abs
+                .extension()
+                .map_or_else(|| "<none>".to_string(), |e| e.to_string_lossy().to_string());
+            *out.whole_text_extensions.entry(ext).or_insert(0) += 1;
+        }
+    }
+    Ok(out)
 }
 
 /// Replace non-comment characters with spaces so citation extractors see
@@ -5358,6 +5427,44 @@ mod tests {
         );
     }
 
+    /// Round 856 — `comment_only = true` means two different things depending on
+    /// the extension, and the report says which files got which.
+    ///
+    /// Found by sweeping every extension-dependent branch in this file after
+    /// closing the same class on three axes: `CommentSyntax::Unknown` leaves the
+    /// WHOLE text on every axis, so the knob is a comment filter for `.rs` and a
+    /// no-op for `.scxml`. Load-bearing in both directions — it is why a
+    /// consumer's prose fact citations are read, and why a citation-shaped token
+    /// in a data file counts under a reject-level severity — so it is reported
+    /// rather than changed.
+    #[test]
+    fn the_comment_mode_report_names_the_files_read_whole() {
+        let tmp = TempDir::new().unwrap();
+        let root = tmp.path();
+        std::fs::create_dir_all(root.join("src")).unwrap();
+        // Known syntax, both families: these must NOT be counted, or the report
+        // would say "everything is read whole" and mean nothing.
+        std::fs::write(root.join("src/a.rs"), "// x\n").unwrap();
+        std::fs::write(root.join("src/b.toml"), "# x\n").unwrap();
+        // No known syntax, one with an extension and one without.
+        std::fs::write(root.join("src/scene.scxml"), "<!-- x -->\n").unwrap();
+        std::fs::write(root.join("src/LICENSE"), "x\n").unwrap();
+
+        let cov = comment_mode_coverage(root, &["src".to_string()]).unwrap();
+        assert_eq!(cov.scanned, 4);
+        assert_eq!(
+            cov.whole_text, 2,
+            "the `.rs` and `.toml` files have a comment syntax: {cov:?}"
+        );
+        assert_eq!(
+            cov.whole_text_extensions,
+            [("scxml".to_string(), 1), ("<none>".to_string(), 1)]
+                .into_iter()
+                .collect::<BTreeMap<_, _>>(),
+            "the report must name WHICH extensions, not just how many: {cov:?}"
+        );
+    }
+
     #[test]
     fn strip_slash_preserves_line_comment_content() {
         let src = "let x = 1; // Round 254 carry\nlet y = 2;\n";
@@ -6685,10 +6792,20 @@ mod tests {
         }
     }
 
-    /// Round 808 — a parenthetical gloss is subordinate to the cite it follows,
-    /// so it chains; anything OUTSIDE the gloss obeys the Round 380 rule
-    /// unchanged. Both classes are pinned, the Round 801 discipline for a set
-    /// that cannot derive its own oracle.
+    /// Round 820 — the fact axis names what the store lacks and stays quiet
+    /// otherwise, over every language the gate reads.
+    ///
+    /// The doc comment here used to describe the parenthetical-gloss test below
+    /// it, which is a different axis; that was a paste, corrected in Round 856.
+    ///
+    /// The fixture is MIXED-LANGUAGE for the reason Round 854 learned the hard
+    /// way: this axis filtered its walk to `.rs` and said nothing about it, and
+    /// an all-Rust fixture cannot tell that apart from a language-agnostic one.
+    /// The `.scxml` file carries both halves — a real id that must be counted
+    /// and an invented one that must be named — because the consumer this axis
+    /// was built for writes its fact citations in exactly such files, in prose.
+    /// Every count below is exact, so the fixture cannot lose the non-Rust file
+    /// without the test failing.
     #[test]
     fn the_fact_axis_names_what_the_store_lacks_and_stays_quiet_otherwise_r820() {
         let tmp = tempfile::TempDir::new().unwrap();
@@ -6715,6 +6832,15 @@ mod tests {
              fn f() { let _some_ident-f-bell-six = 0; }\n",
         )
         .unwrap();
+        // NOT RUST, and the axis must read it (Round 856). `.scxml` has no known
+        // comment syntax, so `comment_only` leaves the whole text on the axis —
+        // which is what the consumer's scenario files rely on, since their fact
+        // citations sit in prose rather than in a comment token.
+        std::fs::write(
+            root.join("src/scene.scxml"),
+            "<!-- 물때가 f-tide-out 이다 (f-bell-eight 은 스토어에 없다) -->\n",
+        )
+        .unwrap();
         // Never scanned: the axis inherits walk_paths, which skips build trees —
         // the boundary that separates ten findings from a baked projection's
         // thousands of emitted ids.
@@ -6734,11 +6860,13 @@ mod tests {
             "a prefix is derived from the store and needs two ids"
         );
         // The ACCEPT first: real ids are counted, so a report of zero findings
-        // cannot be confused with an axis that read nothing.
-        assert_eq!((r.fact_sites, r.entity_sites), (1, 2));
-        assert_eq!((r.facts_cited, r.facts_total), (1, 3));
+        // cannot be confused with an axis that read nothing. The second fact
+        // site and the second citing file are the `.scxml` — under the Rust-only
+        // universe these read (1, …) and (1, 1).
+        assert_eq!((r.fact_sites, r.entity_sites), (2, 2));
+        assert_eq!((r.facts_cited, r.facts_total), (2, 3));
         assert_eq!((r.entities_cited, r.entities_total), (2, 2));
-        assert_eq!((r.files_citing, r.files_scanned), (1, 1));
+        assert_eq!((r.files_citing, r.files_scanned), (2, 2));
         let unknown: Vec<(usize, &str)> = r
             .unknown
             .iter()
@@ -6746,8 +6874,9 @@ mod tests {
             .collect();
         assert_eq!(
             unknown,
-            vec![(2, "f-bell-seven")],
-            "only the id-shaped token carrying a derived namespace that names nothing"
+            vec![(2, "f-bell-seven"), (1, "f-bell-eight")],
+            "only the id-shaped tokens carrying a derived namespace that name \
+             nothing — one per file, in walk order"
         );
         // With comment_only off the code line joins the scan, and the token
         // welded to an identifier is still not a citation.
@@ -6758,7 +6887,7 @@ mod tests {
                 .iter()
                 .map(|f| f.token.as_str())
                 .collect::<Vec<_>>(),
-            vec!["f-bell-seven"],
+            vec!["f-bell-seven", "f-bell-eight"],
             "`_some_ident-f-bell-six` is one name, never a cite"
         );
         // The boundary, asserted where it can fail: scanning the ROOT reaches the
@@ -6767,8 +6896,8 @@ mod tests {
         let whole_root =
             scan_id_citations(root, &[String::new()], true, &facts, &entities).unwrap();
         assert_eq!(
-            whole_root.files_scanned, 1,
-            "a build tree is not authorship"
+            whole_root.files_scanned, 2,
+            "a build tree is not authorship, and the two authored files are"
         );
         assert_eq!(
             whole_root
@@ -6776,7 +6905,7 @@ mod tests {
                 .iter()
                 .map(|f| f.token.as_str())
                 .collect::<Vec<_>>(),
-            vec!["f-bell-seven"],
+            vec!["f-bell-seven", "f-bell-eight"],
             "a baked id must never reach the advisory list"
         );
         // A store with no id namespaces reports the axis as inapplicable rather

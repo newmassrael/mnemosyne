@@ -5815,6 +5815,19 @@ fn cmd_validate_code_refs(args: &[String]) -> Result<()> {
             cfg.paths,
             scanned_paths
         );
+        // Round 856 — what `comment_only` meant per file. `true` reads comments
+        // only where a comment syntax is known and the WHOLE text everywhere
+        // else, so the knob's meaning depends on the extension. That is why a
+        // consumer's prose citations in `.scxml` are read at all, and why a
+        // citation-shaped token in a data file counts under a reject severity.
+        if cfg.comment_only {
+            let modes = mnemosyne_validate::code_refs::comment_mode_coverage(&root, &cfg.paths)?;
+            println!(
+                "comment_only=true: {} of {} scanned file(s) have no known comment syntax \
+                 and are read whole {:?} (Round 856)",
+                modes.whole_text, modes.scanned, modes.whole_text_extensions
+            );
+        }
         if !cfg.inventory_prefixes.is_empty() {
             println!(
                 "inventory_prefixes={:?} (Round 275 axis)",
