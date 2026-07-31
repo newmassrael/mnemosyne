@@ -32,6 +32,11 @@
 #      - Unconditional (push validates publishable state, so the clippy
 #        budget is paid once per push regardless of which files changed).
 #
+#   4. CI state of `origin/main` (R890) — REPORT ONLY, never blocks.
+#      - Nothing here could see a red CI; four consecutive red runs went
+#        unnoticed for eleven hours. See the block at the bottom for why
+#        this reports rather than gates, and what it cannot see.
+#
 # Install (one-time per clone):
 #   git config core.hooksPath .githooks
 
@@ -78,6 +83,54 @@ echo "pre-push: cargo clippy --workspace --all-targets -- -D warnings ..." >&2
 if ! cargo clippy --workspace --all-targets -- -D warnings; then
     echo "pre-push: clippy failed — fix violations before push" >&2
     exit 1
+fi
+
+# 4. Report what CI said about the commit this push builds on (R890).
+#
+# Nothing in this repo could see a red CI. `mnemosyne-validate` failed on four
+# consecutive pushes over eleven hours (R872, R874, R877, R883) and was found by
+# a human typing `gh run list`; the cause was a missing `protoc` on the runner,
+# which the local hooks cannot see because this machine has one. Worse, that
+# failure killed the build before any test ran, hiding a second defect: the job
+# checked out a shallow clone, so the evidence gates had never executed on CI at
+# all (R888, R889). Two rounds went to failures a glance would have caught.
+#
+# REPORTS, never blocks — and that is the semantics the history argues for, not
+# a softening. The R888 and R889 pushes were both made deliberately while CI was
+# red, to fix it; a gate would have been wrong both times. What was missing was
+# knowledge, not restraint.
+#
+# It reads the state of `origin/main` as this clone last saw it: the commit that
+# is already published, which is what a new push builds on top of. Its limit is
+# stated rather than papered over — a run that goes red after the LAST push of a
+# session is seen at the NEXT session's first push, so the round checklist in
+# `RULEBOOK.md` still owns reading the result of the push you just made.
+#
+# Every branch prints. A check that stays quiet when it cannot answer is
+# indistinguishable from one that answered "fine".
+base="$(git rev-parse --verify --quiet origin/main || true)"
+if [[ -z "$base" ]]; then
+    echo "pre-push: NOTE no local origin/main ref — cannot report CI state" >&2
+elif ! command -v gh >/dev/null 2>&1; then
+    echo "pre-push: NOTE gh not installed — cannot report CI state for ${base:0:8}" >&2
+else
+    runs=""
+    if runs="$(gh run list --limit 20 --json headSha,name,status,conclusion \
+        -q ".[] | select(.headSha==\"$base\") | .name + \" \" + .status + \" \" + (.conclusion // \"-\")" \
+        2>/dev/null)"; then
+        if [[ -z "$runs" ]]; then
+            echo "pre-push: no CI runs recorded for origin/main ${base:0:8}" >&2
+        else
+            echo "pre-push: CI on origin/main ${base:0:8} —" >&2
+            sed 's/^/  /' <<<"$runs" >&2
+            if grep -qE ' (failure|cancelled|timed_out|startup_failure)$' <<<"$runs"; then
+                echo "pre-push: ^^ the commit you are building on is RED. Not blocking" >&2
+                echo "pre-push:    (fixing it is itself a push), but do not push past it blind." >&2
+            fi
+        fi
+    else
+        echo "pre-push: NOTE gh could not reach GitHub — CI state for ${base:0:8} unknown" >&2
+    fi
 fi
 
 exit 0

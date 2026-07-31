@@ -28693,6 +28693,48 @@
         "`fetch-depth: 0` makes the validate job clone the full history on every push and PR. That is a real cost paid by every run for the benefit of gates that only some changes touch; it was not measured against a partial-depth alternative.",
         "The gates read the workflow, not GitHub's schema, so a file that satisfies all four could still be rejected for a key GitHub does not recognise."
       ]
+    },
+    "Round 890": {
+      "decision_summary": "The repo could not see its own red CI, and a hook can only see the commit before",
+      "changes_bullets": [
+        "Closed the finding R888 and R889 left open: nothing in this repo could see a red CI, and both of those rounds were defects a human found by typing `gh run list`. Two halves, because one mechanism cannot cover it.",
+        "The pre-push hook now reports the CI state of the commit the push builds ON — `origin/main` as this clone last saw it. That is the moment it matters most: about to stack more work on a published base that may already be failing. It would have spoken on the second of the four red pushes rather than the fifth.",
+        "It REPORTS and never blocks, and the history is what argues for that rather than a wish to be lenient: the R888 and R889 pushes were both made deliberately while CI was red, in order to fix it. A gate would have been wrong both times. What was missing was knowledge, not restraint.",
+        "`RULEBOOK.md` takes the half a hook structurally cannot: reading the run the push you JUST made started. The hook can only ever see the previous commit's runs, so a failure introduced by the final push of a session is invisible to it until the next session. That is stated in both places rather than left as a gap someone rediscovers.",
+        "Every branch prints — gh missing, gh unreachable, no `origin/main` ref, no runs recorded. A check that goes quiet when it cannot answer is indistinguishable from one that answered \"fine\", which is the shape of the failure this whole thing is about."
+      ],
+      "verification_bullets": [
+        "All four branches exercised against the real `gh`, not reasoned about. GREEN: `origin/main` 99eda22 reports `evidence-replay completed success` and `mnemosyne-validate completed success`, and the red clause does not fire. RED: the same query against b4478b8 — a commit whose run genuinely failed an hour ago — returns `mnemosyne-validate completed failure` and the red clause fires. So the discriminating input is real data from this repository, not a fixture.",
+        "Degraded paths, each forced: `gh` absent (PATH without /usr/bin) prints the NOTE and proceeds; `gh` unable to reach GitHub (GH_HOST=nonexistent.invalid) exits nonzero and takes the NOTE branch without blocking; a missing ref (`origin/nonexistent-branch`) yields an empty base and takes its own NOTE. None of them fail the push, and none of them stay silent.",
+        "Two environment facts measured rather than assumed, and both changed the implementation: this `gh` has no `--commit` or `--branch` flag, so the run list is filtered client-side by `headSha`; and `jq` is not installed on this machine, so the filter uses gh's built-in `-q` instead.",
+        "1343 green, clippy -D warnings clean, fmt clean, validate-workspace clean.",
+        "Not verified: that the hook behaves identically on a machine other than this one. It depends on `gh`'s JSON field names, and this version already lacks flags a newer one has — the degraded branches are what keep that from being a push-blocking problem."
+      ],
+      "carry_forward_bullets": [
+        "The hook is not gated by a test. Nothing asserts it still contains this check, the same way nothing asserts any other line of it; deleting the block would be silent. Whether the hooks themselves deserve gating is a question this round did not open.",
+        "It reports the runs of `origin/main` as the local clone last saw it. A stale ref reports stale runs, and nothing here fetches first — adding a network fetch to every push was not worth it, but the staleness is real.",
+        "`actions/checkout@v4` and `actions/cache@v4` are annotated on every run as targeting a deprecated Node.js 20, forced onto Node 24. Both workflows use them. Not a failure yet, and not touched here: bumping a major action version without reading its changelog is how a working CI becomes a broken one."
+      ],
+      "publishable_decision_summary": "The repo could not see its own red CI, and a hook can only see the commit before",
+      "publishable_changes_bullets": [
+        "Closed the finding R888 and R889 left open: nothing in this repo could see a red CI, and both of those rounds were defects a human found by typing `gh run list`. Two halves, because one mechanism cannot cover it.",
+        "The pre-push hook now reports the CI state of the commit the push builds ON — `origin/main` as this clone last saw it. That is the moment it matters most: about to stack more work on a published base that may already be failing. It would have spoken on the second of the four red pushes rather than the fifth.",
+        "It REPORTS and never blocks, and the history is what argues for that rather than a wish to be lenient: the R888 and R889 pushes were both made deliberately while CI was red, in order to fix it. A gate would have been wrong both times. What was missing was knowledge, not restraint.",
+        "`RULEBOOK.md` takes the half a hook structurally cannot: reading the run the push you JUST made started. The hook can only ever see the previous commit's runs, so a failure introduced by the final push of a session is invisible to it until the next session. That is stated in both places rather than left as a gap someone rediscovers.",
+        "Every branch prints — gh missing, gh unreachable, no `origin/main` ref, no runs recorded. A check that goes quiet when it cannot answer is indistinguishable from one that answered \"fine\", which is the shape of the failure this whole thing is about."
+      ],
+      "publishable_verification_bullets": [
+        "All four branches exercised against the real `gh`, not reasoned about. GREEN: `origin/main` 99eda22 reports `evidence-replay completed success` and `mnemosyne-validate completed success`, and the red clause does not fire. RED: the same query against b4478b8 — a commit whose run genuinely failed an hour ago — returns `mnemosyne-validate completed failure` and the red clause fires. So the discriminating input is real data from this repository, not a fixture.",
+        "Degraded paths, each forced: `gh` absent (PATH without /usr/bin) prints the NOTE and proceeds; `gh` unable to reach GitHub (GH_HOST=nonexistent.invalid) exits nonzero and takes the NOTE branch without blocking; a missing ref (`origin/nonexistent-branch`) yields an empty base and takes its own NOTE. None of them fail the push, and none of them stay silent.",
+        "Two environment facts measured rather than assumed, and both changed the implementation: this `gh` has no `--commit` or `--branch` flag, so the run list is filtered client-side by `headSha`; and `jq` is not installed on this machine, so the filter uses gh's built-in `-q` instead.",
+        "1343 green, clippy -D warnings clean, fmt clean, validate-workspace clean.",
+        "Not verified: that the hook behaves identically on a machine other than this one. It depends on `gh`'s JSON field names, and this version already lacks flags a newer one has — the degraded branches are what keep that from being a push-blocking problem."
+      ],
+      "publishable_carry_forward_bullets": [
+        "The hook is not gated by a test. Nothing asserts it still contains this check, the same way nothing asserts any other line of it; deleting the block would be silent. Whether the hooks themselves deserve gating is a question this round did not open.",
+        "It reports the runs of `origin/main` as the local clone last saw it. A stale ref reports stale runs, and nothing here fetches first — adding a network fetch to every push was not worth it, but the staleness is real.",
+        "`actions/checkout@v4` and `actions/cache@v4` are annotated on every run as targeting a deprecated Node.js 20, forced onto Node 24. Both workflows use them. Not a failure yet, and not touched here: bumping a major action version without reading its changelog is how a working CI becomes a broken one."
+      ]
     }
   },
   "inventory_entries": {},

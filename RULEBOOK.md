@@ -76,7 +76,12 @@ until a gate.
 
 - **PUSH** — never `git push` (any variant) without an explicit push word in the
   current turn. Autonomous running does NOT authorize it; push waits for the end
-  (the autonomous-rounds doctrine).
+  (the autonomous-rounds doctrine). **After a push lands, read the run it
+  started** and report the result — green is not the assumption. The pre-push
+  hook reports the state of the commit you are building ON, which by
+  construction cannot include the push you just made; that last one is only
+  ever seen by a person looking. Round 888 and Round 889 were both defects that
+  a glance at `gh run list` found and nothing else did.
 - **EXPERIMENT EXECUTION** — running a blind acceptance experiment. Trigger:
   the owner's `실험` / `experiment` word.
 - **IRREVERSIBLE / OUTWARD** — anything published, deleted, or hard to reverse.
