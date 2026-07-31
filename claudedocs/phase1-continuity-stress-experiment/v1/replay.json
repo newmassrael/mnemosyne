@@ -1,21 +1,79 @@
 {
-  "schema": "kit-replay/v1",
+  "schema": "kit-replay/v2",
   "revision_provenance": "derived-upper-bound",
   "derived_in": "Round 882",
-  "derivation": "git log --diff-filter=A -1 -- <facts>: the commit that first added the manifest, which is AT OR AFTER the run that produced it",
+  "derivation": "git log --diff-filter=A -1 -- <every input of the replay>: the newest commit that added any of them. A replay needs a tree holding ALL its inputs, so the pin is the max, and each add-commit is AT OR AFTER the run that produced that input.",
   "note": "Re-checking runs the declared revision against these manifests UNCHANGED. The manifests are the blind author's output and are never edited to suit a later tool.",
-  "manifests": [
+  "inputs": [
     {
-      "sections": "run/game/sections.json",
-      "facts": "render-reextracted-facts.json",
-      "role": "replay-input",
-      "revision": "be5e698b0fa0a69a663757f3474d20dc576a74fc"
+      "path": "run/game/sections.json",
+      "role": "replay-input"
     },
     {
-      "sections": "run/game/sections.json",
-      "facts": "run/game/facts.json",
-      "role": "replay-input",
-      "revision": "8141f603682385d410eb976112e92adf7c959f04"
+      "path": "render-reextracted-facts.json",
+      "role": "replay-input"
+    },
+    {
+      "path": "run/game/facts.json",
+      "role": "replay-input"
+    },
+    {
+      "path": "pin2-probes/probe-exclusive.json",
+      "role": "replay-input"
+    },
+    {
+      "path": "pin2-probes/probe-interval.json",
+      "role": "replay-input"
+    },
+    {
+      "path": "pin2-probes/probe-transition.json",
+      "role": "replay-input"
     }
-  ]
+  ],
+  "replays": [
+    {
+      "name": "render-reextracted-facts",
+      "revision": "be5e698b0fa0a69a663757f3474d20dc576a74fc",
+      "steps": [
+        {
+          "verb": "import-sections",
+          "input": "run/game/sections.json"
+        },
+        {
+          "verb": "import-facts",
+          "input": "render-reextracted-facts.json"
+        }
+      ]
+    },
+    {
+      "name": "game-facts",
+      "revision": "8141f603682385d410eb976112e92adf7c959f04",
+      "steps": [
+        {
+          "verb": "import-sections",
+          "input": "run/game/sections.json"
+        },
+        {
+          "verb": "import-facts",
+          "input": "run/game/facts.json"
+        },
+        {
+          "verb": "propose-verdict",
+          "input": "pin2-probes/probe-exclusive.json",
+          "expect": "reject"
+        },
+        {
+          "verb": "propose-verdict",
+          "input": "pin2-probes/probe-interval.json",
+          "expect": "reject"
+        },
+        {
+          "verb": "propose-verdict",
+          "input": "pin2-probes/probe-transition.json",
+          "expect": "reject"
+        }
+      ]
+    }
+  ],
+  "step_note": "The three probes are PIN-2, the run's deterministic negative control (pins/PIN-2-negative-control.txt): each is proposed against the finished store and must roll back naming its rule. They are steps of the game replay, not a replay of their own — a probe means nothing against an empty store, and `propose-verdict` leaves nothing behind, so they run last and in any order among themselves."
 }

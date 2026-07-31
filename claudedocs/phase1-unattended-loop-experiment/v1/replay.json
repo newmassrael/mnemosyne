@@ -1,15 +1,56 @@
 {
-  "schema": "kit-replay/v1",
+  "schema": "kit-replay/v2",
   "revision_provenance": "derived-upper-bound",
   "derived_in": "Round 882",
-  "derivation": "git log --diff-filter=A -1 -- <facts>: the commit that first added the manifest, which is AT OR AFTER the run that produced it",
+  "derivation": "git log --diff-filter=A -1 -- <every input of the replay>: the newest commit that added any of them. A replay needs a tree holding ALL its inputs, so the pin is the max, and each add-commit is AT OR AFTER the run that produced that input.",
   "note": "Re-checking runs the declared revision against these manifests UNCHANGED. The manifests are the blind author's output and are never edited to suit a later tool.",
-  "manifests": [
+  "inputs": [
     {
-      "sections": "run/game/sections.json",
-      "facts": "run/game/facts.json",
-      "role": "replay-input",
-      "revision": "f488298a167fe32dc2b3d163a62edb3ba95944f3"
+      "path": "run/game/sections.json",
+      "role": "replay-input"
+    },
+    {
+      "path": "run/game/facts.json",
+      "role": "replay-input"
+    },
+    {
+      "path": "run/extract/reextracted.facts.json",
+      "role": "raw-agent-output"
+    },
+    {
+      "path": "run/extract/reextracted.manifest.json",
+      "role": "replay-input"
     }
-  ]
+  ],
+  "replays": [
+    {
+      "name": "game-facts",
+      "revision": "f488298a167fe32dc2b3d163a62edb3ba95944f3",
+      "steps": [
+        {
+          "verb": "import-sections",
+          "input": "run/game/sections.json"
+        },
+        {
+          "verb": "import-facts",
+          "input": "run/game/facts.json"
+        }
+      ]
+    },
+    {
+      "name": "extract-reextracted",
+      "revision": "f488298a167fe32dc2b3d163a62edb3ba95944f3",
+      "steps": [
+        {
+          "verb": "import-sections",
+          "input": "run/game/sections.json"
+        },
+        {
+          "verb": "import-facts",
+          "input": "run/extract/reextracted.manifest.json"
+        }
+      ]
+    }
+  ],
+  "step_note": "The blind re-extraction arm — 54 facts read back out of the rendered manuscript. It reuses the game's section ids (its facts cite sc-01-long-climb onward) because the extractor was given the world's coordinate vocabulary, not a fresh one. reextracted.facts.json holds the same 54 facts with no registries: it is the agent's raw output, superseded by the manifest, and is fed by no replay. This whole arm was invisible to the R882 census, which recognised an input by its filename."
 }

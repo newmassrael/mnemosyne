@@ -10078,6 +10078,12 @@ pub struct TypingProposalsFile {
     pub proposals: Vec<TypingProposal>,
 }
 
+/// The one schema string a [`TypingProposalsFile`] may carry. Named because a
+/// reader that has to recognise the artifact WITHOUT importing it — the
+/// evidence-coverage gate does exactly that — would otherwise keep a second
+/// copy of the literal, free to drift from the one the loader enforces.
+pub const TYPING_PROPOSALS_SCHEMA: &str = "typing-proposals/v1";
+
 /// Load + shape-check a `typing-proposals/v1` file; returns the parsed
 /// artifact with the file content's sha256 (the audit anchor the import
 /// receipt carries).
@@ -10086,9 +10092,9 @@ pub fn load_typing_proposals(path: &Path) -> Result<(TypingProposalsFile, String
         .map_err(|e| format!("typing-proposals: cannot read `{}`: {e}", path.display()))?;
     let file: TypingProposalsFile = serde_json::from_str(&raw)
         .map_err(|e| format!("typing-proposals: `{}` does not parse: {e}", path.display()))?;
-    if file.schema != "typing-proposals/v1" {
+    if file.schema != TYPING_PROPOSALS_SCHEMA {
         return Err(format!(
-            "typing-proposals: schema `{}` is not `typing-proposals/v1` (fail-loud — \
+            "typing-proposals: schema `{}` is not `{TYPING_PROPOSALS_SCHEMA}` (fail-loud — \
              an unknown schema must not half-apply)",
             file.schema
         ));
@@ -10297,6 +10303,10 @@ pub struct EdgeProposalsFile {
     pub conflicts: Vec<ConflictProposal>,
 }
 
+/// The one schema string an [`EdgeProposalsFile`] may carry — the
+/// [`TYPING_PROPOSALS_SCHEMA`] reasoning, for the other proposal artifact.
+pub const EDGE_PROPOSALS_SCHEMA: &str = "edge-proposals/v1";
+
 /// Load + shape-check an `edge-proposals/v1` file; returns the parsed
 /// artifact with the file content's sha256 (the audit anchor the import
 /// receipt carries).
@@ -10305,9 +10315,9 @@ pub fn load_edge_proposals(path: &Path) -> Result<(EdgeProposalsFile, String), S
         .map_err(|e| format!("edge-proposals: cannot read `{}`: {e}", path.display()))?;
     let file: EdgeProposalsFile = serde_json::from_str(&raw)
         .map_err(|e| format!("edge-proposals: `{}` does not parse: {e}", path.display()))?;
-    if file.schema != "edge-proposals/v1" {
+    if file.schema != EDGE_PROPOSALS_SCHEMA {
         return Err(format!(
-            "edge-proposals: schema `{}` is not `edge-proposals/v1` (fail-loud — \
+            "edge-proposals: schema `{}` is not `{EDGE_PROPOSALS_SCHEMA}` (fail-loud — \
              an unknown schema must not half-apply)",
             file.schema
         ));

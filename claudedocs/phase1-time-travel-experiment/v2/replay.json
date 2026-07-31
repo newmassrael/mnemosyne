@@ -1,15 +1,33 @@
 {
-  "schema": "kit-replay/v1",
+  "schema": "kit-replay/v2",
   "revision_provenance": "derived-upper-bound",
   "derived_in": "Round 882",
-  "derivation": "git log --diff-filter=A -1 -- <facts>: the commit that first added the manifest, which is AT OR AFTER the run that produced it",
+  "derivation": "git log --diff-filter=A -1 -- <every input of the replay>: the newest commit that added any of them. A replay needs a tree holding ALL its inputs, so the pin is the max, and each add-commit is AT OR AFTER the run that produced that input.",
   "note": "Re-checking runs the declared revision against these manifests UNCHANGED. The manifests are the blind author's output and are never edited to suit a later tool.",
-  "manifests": [
+  "inputs": [
     {
-      "sections": "run/extract-mystery/sections.json",
-      "facts": "run/extract-mystery/facts.json",
-      "role": "replay-input",
-      "revision": "192f18520a117d0d7845f85d28370b2870f78898"
+      "path": "run/extract-mystery/sections.json",
+      "role": "replay-input"
+    },
+    {
+      "path": "run/extract-mystery/facts.json",
+      "role": "replay-input"
+    }
+  ],
+  "replays": [
+    {
+      "name": "extract-mystery-facts",
+      "revision": "192f18520a117d0d7845f85d28370b2870f78898",
+      "steps": [
+        {
+          "verb": "import-sections",
+          "input": "run/extract-mystery/sections.json"
+        },
+        {
+          "verb": "import-facts",
+          "input": "run/extract-mystery/facts.json"
+        }
+      ]
     }
   ]
 }

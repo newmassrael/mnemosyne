@@ -1,21 +1,51 @@
 {
-  "schema": "kit-replay/v1",
+  "schema": "kit-replay/v2",
   "revision_provenance": "derived-upper-bound",
   "derived_in": "Round 882",
-  "derivation": "git log --diff-filter=A -1 -- <facts>: the commit that first added the manifest, which is AT OR AFTER the run that produced it",
+  "derivation": "git log --diff-filter=A -1 -- <every input of the replay>: the newest commit that added any of them. A replay needs a tree holding ALL its inputs, so the pin is the max, and each add-commit is AT OR AFTER the run that produced that input.",
   "note": "Re-checking runs the declared revision against these manifests UNCHANGED. The manifests are the blind author's output and are never edited to suit a later tool.",
-  "manifests": [
+  "inputs": [
     {
-      "sections": "section-manifest.json",
-      "facts": "contrast-manifest.json",
-      "role": "replay-input",
-      "revision": "7d95e6884929deee23b790f715241c5853c01d15"
+      "path": "section-manifest.json",
+      "role": "replay-input"
     },
     {
-      "sections": "section-manifest.json",
-      "facts": "facts-manifest.json",
-      "role": "replay-input",
-      "revision": "7d95e6884929deee23b790f715241c5853c01d15"
+      "path": "contrast-manifest.json",
+      "role": "replay-input"
+    },
+    {
+      "path": "facts-manifest.json",
+      "role": "replay-input"
+    }
+  ],
+  "replays": [
+    {
+      "name": "contrast-manifest",
+      "revision": "7d95e6884929deee23b790f715241c5853c01d15",
+      "steps": [
+        {
+          "verb": "import-sections",
+          "input": "section-manifest.json"
+        },
+        {
+          "verb": "import-facts",
+          "input": "contrast-manifest.json"
+        }
+      ]
+    },
+    {
+      "name": "facts-manifest",
+      "revision": "7d95e6884929deee23b790f715241c5853c01d15",
+      "steps": [
+        {
+          "verb": "import-sections",
+          "input": "section-manifest.json"
+        },
+        {
+          "verb": "import-facts",
+          "input": "facts-manifest.json"
+        }
+      ]
     }
   ]
 }
