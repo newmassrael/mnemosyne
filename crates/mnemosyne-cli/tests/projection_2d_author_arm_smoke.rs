@@ -1,24 +1,29 @@
-//! Round 879 — the 2D-projection experiment's author arm still rebuilds from
-//! its own tracked manifests.
+//! Round 879, corrected in Round 883 — the 2D-projection author arm rebuilds on
+//! today's binary from the record plus ONE derived fixture.
 //!
 //! R878 measured the class: of 34 tracked experiment arms, 31 could not be
 //! rebuilt against today's binary. Thirty died on R708 (the `value`/`scalar`
 //! removal), which needs an authorial re-decision per fact. THIS arm died on
 //! one purely mechanical thing — R752 widened a disclosure override's
 //! `first_at` from a single coordinate to a coordinate SET, and the manifest
-//! still carried the old `[branch, coord]` pair. R879 re-encoded those three
-//! pairs; the content is unchanged and git holds the original.
+//! carried the superseded `[branch, coord]` pair.
 //!
-//! The repair is only half. R873's finding was that the dnd store rotted for
-//! ~150 rounds because NOTHING IN THE WORKSPACE LOADED IT — a manifest that is
-//! merely tracked will break again at the next removal, silently, and be found
-//! by the next census instead of by CI. So this test is the other half: it
-//! rebuilds the arm from the tracked record on every run.
+//! R879 re-encoded those three pairs IN THE RECORD, arguing the transcription
+//! provably preserved content. R883 replayed every manifest at the revision that
+//! authored it and the edited record FAILED at `14d7a1e0`, its own revision,
+//! where the original bytes import cleanly. The edit had bought readability by
+//! today's tool at the price of readability by its own. So the facts manifest
+//! now comes from `tests/fixtures/projection-2d-author/` — a copy, labelled as
+//! derived — and the record is back to its authored bytes. Everything else this
+//! rebuild reads is the record itself, unchanged and uncopied.
 //!
-//! What it asserts is what the experiment's own record already claims, not a
-//! number invented here: the arm's two world-lines, its three withheld secrets
-//! with their per-world first-reveal coordinates and diegetic surfaces, and a
-//! continuity scan that comes back clean.
+//! The gate half is unchanged and is still the point: R873 found the dnd store
+//! rotted for ~150 rounds because NOTHING IN THE WORKSPACE LOADED IT. What this
+//! asserts is what the experiment's own record already claims — the arm's two
+//! world-lines, its three withheld secrets with their per-world first-reveal
+//! coordinates and diegetic surfaces, and a continuity scan that comes back
+//! clean. Its green is its own claim and does not stand in for the experiment's
+//! pre-committed pin, which is re-checked by running `14d7a1e0` on the record.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -38,9 +43,20 @@ fn repo_root() -> PathBuf {
         .to_path_buf()
 }
 
-/// The tracked experiment record. Read, never written by this test.
+/// The tracked experiment record. Read, never written, never edited — R883's
+/// correction of R879. Its facts manifest is at the shape `14d7a1e0` wrote and
+/// today's binary cannot read it; the sections, order, and rules it holds are
+/// read from here directly.
 fn arm_dir() -> PathBuf {
     repo_root().join("claudedocs/phase1-2d-projection-experiment/v1/run/author")
+}
+
+/// The one DERIVED input: the record's facts manifest transcribed into today's
+/// `first_at` shape. A copy, so the record can stay readable by its own
+/// revision — see this directory's README for why R879's in-place edit was
+/// wrong even though its content argument was right.
+fn derived_facts() -> PathBuf {
+    repo_root().join("crates/mnemosyne-cli/tests/fixtures/projection-2d-author/facts.json")
 }
 
 fn run(ws: &Path, args: &[&str]) -> std::process::Output {
@@ -98,7 +114,7 @@ fn rebuilt_workspace() -> TempDir {
             .unwrap_or_else(|e| panic!("the tracked record must hold {}: {e}", src.display()));
     }
     let sections = arm_dir().join("sections.json");
-    let facts = arm_dir().join("facts.json");
+    let facts = derived_facts();
     run_ok(
         ws,
         &[

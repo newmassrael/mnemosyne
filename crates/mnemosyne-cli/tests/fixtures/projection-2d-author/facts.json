@@ -133,9 +133,9 @@
         { "fact_id": "f-give-staffkey", "mode": "state", "surface": { "scene": "sc-03", "object": "e-staff-room" } },
         { "fact_id": "f-give-save-yeon", "mode": "state", "surface": { "scene": "sc-02", "object": "e-yeon" } },
         { "fact_id": "f-give-truth", "mode": "state", "surface": { "scene": "sc-07", "object": "e-record-book" } },
-        { "fact_id": "f-secret-yeon", "mode": "withhold", "first_at": [ ["together", "tg-14"] ], "surface": { "scene": "sc-08", "object": "e-record-book" } },
-        { "fact_id": "f-secret-geot", "mode": "withhold", "first_at": [ ["together", "tg-14"] ], "surface": { "scene": "sc-08", "object": "e-record-book" } },
-        { "fact_id": "f-secret-exit", "mode": "withhold", "first_at": [ ["alone", "al-14"] ], "surface": { "scene": "sc-12", "object": "e-exit" } }
+        { "fact_id": "f-secret-yeon", "mode": "withhold", "first_at": [ { "branch": "together", "coords": ["tg-14"] } ], "surface": { "scene": "sc-08", "object": "e-record-book" } },
+        { "fact_id": "f-secret-geot", "mode": "withhold", "first_at": [ { "branch": "together", "coords": ["tg-14"] } ], "surface": { "scene": "sc-08", "object": "e-record-book" } },
+        { "fact_id": "f-secret-exit", "mode": "withhold", "first_at": [ { "branch": "alone", "coords": ["al-14"] } ], "surface": { "scene": "sc-12", "object": "e-exit" } }
       ]
     }
   ]
