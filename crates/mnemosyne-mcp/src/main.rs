@@ -843,6 +843,11 @@ pub struct ReportAuthoringFrontierArgs {
     /// `[continuity].canon_order_path`.
     #[serde(default)]
     pub order_path: Option<String>,
+    /// `narrative-rules/v1` declaration path override (Round 891; the
+    /// transition rules that declare the map). Omit to use
+    /// `[continuity].rules_path`.
+    #[serde(default)]
+    pub rules_path: Option<String>,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
@@ -2667,7 +2672,7 @@ impl MnemosyneServer {
     }
 
     #[tool(
-        description = "Authoring frontier (R589, read-only): the consolidated coverage-gap surface an unattended generate-gate-repair loop pulls its next work from, JOINed from the scattered projections. Always: zero_fact_scenes (sections with no fact anchored) + scene_coverage (facts per section, incl. a derived structural quest-plumbing count, R619) + structural_facts (the flat structural fact-id set to JOIN with each fact's branch, R619) + branch_owned_density (per world-line, own facts over its full traversed road — a divergent world that looks full by inheritance but owns little reads LOW, R617/R619) + dangling_setups (per world-line, R442 Expected facts with no visible payoff) + total_gaps. With telling: unresolved_quests (R568) + never_planned_disclosures (R507, facts never given an explicit disclosure decision). Pure read, never gated. Fail-loud on a typo'd telling."
+        description = "Authoring frontier (R589, read-only): the consolidated coverage-gap surface an unattended generate-gate-repair loop pulls its next work from, JOINed from the scattered projections. Always: zero_fact_scenes (sections with no fact anchored) + scene_coverage (facts per section, incl. a derived structural quest-plumbing count, R619) + structural_facts (the flat structural fact-id set to JOIN with each fact's branch, R619) + branch_owned_density (per world-line, own facts over its full traversed road — a divergent world that looks full by inheritance but owns little reads LOW, R617/R619) + dangling_setups (per world-line, R442 Expected facts with no visible payoff) + total_gaps. With telling: unresolved_quests (R568) + never_planned_disclosures (R507, facts never given an explicit disclosure decision). Plus map_frontier (R891): per declared map, the registered places its adjacency predicate's leg kinds admit that are NOT a node of it (places with no way in or out), plus costs/guards keyed to a non-edge. transition_rules 0 is the THIRD state — no adjacency predicate is declared, so the store cannot know which facts are edges — never 'no map work'. Pure read, never gated. Fail-loud on a typo'd telling."
     )]
     async fn report_authoring_frontier(
         &self,
@@ -2678,6 +2683,7 @@ impl MnemosyneServer {
             None,
             args.0.order_path.as_deref(),
             args.0.telling.as_deref(),
+            args.0.rules_path.as_deref(),
         ) {
             Ok(report) => self.tool_json(&report),
             Err(e) => self.op_error(e),

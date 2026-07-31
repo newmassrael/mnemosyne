@@ -963,8 +963,11 @@ static COMMANDS: &[Command] = &[
         aliases: &[],
         group: Some(&GROUP_ATOMIC_MUTATE),
         blank_before: false,
-        usage: &["report-authoring-frontier [--telling <id>] [--order <path>] [--sidecar <path>] [--json]"],
-        notes: &["   Round 589 — the consolidated coverage-gap frontier a loop pulls work from: zero-fact scenes + per-scene coverage + dangling setups + (with --telling) unresolved quests + never-planned disclosures"],
+        usage: &["report-authoring-frontier [--telling <id>] [--order <path>] [--rules <path>] [--sidecar <path>] [--json]"],
+        notes: &[
+            "   Round 589 — the consolidated coverage-gap frontier a loop pulls work from: zero-fact scenes + per-scene coverage + dangling setups + (with --telling) unresolved quests + never-planned disclosures",
+            "   Round 891 — plus the MAP axis: registered places no declared map connects + costs/guards keyed to a non-edge. No transition rule = the store cannot know which facts are edges, said as its own sentence (never 'no map work')",
+        ],
         run: |c| cmd_report_authoring_frontier(c.rest()).map_err(CliError::from),
     },
     Command {
@@ -4256,6 +4259,7 @@ fn cmd_report_authoring_frontier(args: &[String]) -> Result<()> {
     let mut telling: Option<String> = None;
     let mut order_override: Option<String> = None;
     let mut sidecar_override: Option<String> = None;
+    let mut rules_override: Option<String> = None;
     let mut json = false;
     let mut iter = args.iter();
     while let Some(a) = iter.next() {
@@ -4281,6 +4285,13 @@ fn cmd_report_authoring_frontier(args: &[String]) -> Result<()> {
                         .clone(),
                 )
             }
+            "--rules" => {
+                rules_override = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--rules missing"))?
+                        .clone(),
+                )
+            }
             "--json" => json = true,
             other => bail!("unknown flag `{}`", other),
         }
@@ -4296,6 +4307,7 @@ fn cmd_report_authoring_frontier(args: &[String]) -> Result<()> {
         sidecar_override.as_deref().map(std::path::Path::new),
         order_override.as_deref(),
         telling.as_deref(),
+        rules_override.as_deref(),
     )
     .map_err(|e| anyhow!("{e}"))?;
     if json {
@@ -4335,6 +4347,31 @@ fn cmd_report_authoring_frontier(args: &[String]) -> Result<()> {
     match &report.never_planned_disclosures {
         Some(d) => list("never-planned disclosures", d),
         None => println!("never-planned disclosures: (pass --telling)"),
+    }
+    // The map axis (Round 891). The no-rule case gets its OWN sentence: a store
+    // that cannot know which facts are edges must never render like a store
+    // whose map is complete.
+    let map = &report.map_frontier;
+    if map.transition_rules == 0 {
+        println!(
+            "map: no transition rule declares an adjacency predicate — this store \
+             cannot know which facts are edges, so no map work can be pulled"
+        );
+    } else {
+        for view in &map.maps {
+            if view.place_kinds.is_empty() {
+                println!(
+                    "unconnected places [{}]: not derivable — predicate `{}` declares \
+                     no leg kind, so the registered place set cannot be asked for",
+                    view.rule, view.adjacency
+                );
+            } else {
+                list(
+                    &format!("unconnected places [{}]", view.rule),
+                    &view.unconnected_places,
+                );
+            }
+        }
     }
     for (world, d) in &report.branch_owned_density {
         let density = match d.density {

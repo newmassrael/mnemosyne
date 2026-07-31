@@ -780,6 +780,17 @@ pub struct AuthoringFrontierReport {
     /// (withheld by default, R507). Present only when a telling is given.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub never_planned_disclosures: Option<Vec<String>>,
+    /// The MAP axis's gaps (Round 891) — registered places no declared map
+    /// connects, plus costs/guards keyed to a non-edge. Order-free and
+    /// telling-free, like the map itself, so it is present unconditionally.
+    ///
+    /// The axis was built (R697 edges, R710 costs, R722 guards) and read (R875)
+    /// entirely after this JOIN was written (R589), and no round reached back —
+    /// so the loop's work source could not pull map work, and a store whose
+    /// scenes have no way between them reported its OTHER gaps and read as
+    /// healthy on this one. `transition_rules: 0` is the third state, not zero
+    /// work: see [`MapFrontierReport`].
+    pub map_frontier: mnemosyne_validate::continuity::MapFrontierReport,
     /// Total distinct gap items across every category — the loop's "work
     /// remaining" gauge (a dangling setup counted once across worlds).
     pub total_gaps: usize,
@@ -796,11 +807,18 @@ pub fn authoring_frontier_report(
     sidecar: Option<&Path>,
     order_override: Option<&str>,
     telling: Option<&str>,
+    rules_override: Option<&str>,
 ) -> Result<AuthoringFrontierReport, OpError> {
     let policy = continuity_policy(workspace_root)?;
     let decl = resolve_canon_order_file(&policy, order_override)?;
+    // The map axis (Round 891). Resolved through the SAME artifact resolver the
+    // gate and `transition_map_report` use — the rule is what DECLARES the
+    // adjacency predicate, which core must not know (invariant 4).
+    let rules = resolve_narrative_rules(&policy, rules_override)?;
     let store = load_atomic_store(workspace_root, sidecar)?;
     let order = compose_canon_order(&decl, &store)?;
+    let map_frontier = mnemosyne_validate::continuity::map_frontier(&store, &rules.rules)
+        .map_err(OpError::Other)?;
 
     // Scene coverage: every section starts at zero, each fact credits its
     // canon_from (the anchor). A canon_from is always an existing section (the
@@ -921,7 +939,8 @@ pub fn authoring_frontier_report(
         + unordered_scenes.len()
         + distinct_dangling.len()
         + unresolved_quests.as_ref().map_or(0, Vec::len)
-        + never_planned_disclosures.as_ref().map_or(0, Vec::len);
+        + never_planned_disclosures.as_ref().map_or(0, Vec::len)
+        + map_frontier.total_gaps;
 
     Ok(AuthoringFrontierReport {
         telling: telling.map(str::to_string),
@@ -934,6 +953,7 @@ pub fn authoring_frontier_report(
         dangling_setups,
         unresolved_quests,
         never_planned_disclosures,
+        map_frontier,
         total_gaps,
     })
 }
@@ -2091,7 +2111,7 @@ mod tests {
     #[test]
     fn authoring_frontier_reports_gaps_and_gates_telling() {
         let ws = narrative_ws("reject");
-        let r = authoring_frontier_report(ws.path(), None, None, None).unwrap();
+        let r = authoring_frontier_report(ws.path(), None, None, None, None).unwrap();
         assert_eq!(r.zero_fact_scenes, vec!["sc-2".to_string()]);
         let counts: std::collections::BTreeMap<_, _> = r
             .scene_coverage
@@ -2133,7 +2153,7 @@ mod tests {
                "narrative_facts":{"f-1":{"frame":"gt","claim":"c","canon_from":"sc-1","evidence":["sc-1"]}}}"#,
         )
         .unwrap();
-        let r = authoring_frontier_report(root, None, None, None).unwrap();
+        let r = authoring_frontier_report(root, None, None, None, None).unwrap();
         // sc-1 carries a fact but the order places nothing -> unordered.
         assert_eq!(r.unordered_scenes, vec!["sc-1".to_string()]);
         // sc-2 is zero-fact (a distinct gap) but not fact-bearing, so not unordered.
@@ -2206,7 +2226,7 @@ mod tests {
         }
 
         // The ratified exception, unchanged.
-        let frontier = authoring_frontier_report(root, None, None, None).unwrap();
+        let frontier = authoring_frontier_report(root, None, None, None, None).unwrap();
         assert_eq!(frontier.unordered_scenes, vec!["sc-1".to_string()]);
 
         // CONTROL: declare one edge and the world-scoped read answers, so the
@@ -2258,7 +2278,7 @@ mod tests {
                  "f-3":{"frame":"gt","claim":"c","canon_from":"s3","evidence":["s3"]}}}"#,
         )
         .unwrap();
-        let r = authoring_frontier_report(root, None, None, None).unwrap();
+        let r = authoring_frontier_report(root, None, None, None, None).unwrap();
 
         // The placement axis, regardless of content — s4 is the half that used
         // to be computed nowhere.
@@ -2329,7 +2349,7 @@ mod tests {
 
         // Nothing is lost by staying quiet: R596 already reports every
         // fact-bearing scene when no order is declared.
-        let r = authoring_frontier_report(root, None, None, None).unwrap();
+        let r = authoring_frontier_report(root, None, None, None, None).unwrap();
         assert_eq!(r.unordered_scenes, vec!["s1".to_string()]);
         assert_eq!(r.unplaced_scenes, vec!["s1".to_string(), "s2".to_string()]);
     }
@@ -2376,7 +2396,7 @@ mod tests {
                  "f-b1":{"frame":"gt","branch":"braid","claim":"c","canon_from":"s2","evidence":["s2"]}}}"#,
         )
         .unwrap();
-        let r = authoring_frontier_report(root, None, None, None).unwrap();
+        let r = authoring_frontier_report(root, None, None, None, None).unwrap();
         let d = &r.branch_owned_density;
 
         // main owns 4 facts over its 3 traversed scenes -> density > 1.0.

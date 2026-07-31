@@ -5894,6 +5894,117 @@ pub fn transition_map(
     Ok(report)
 }
 
+/// One declared map's AUTHORING gap (Round 891) — the registered places the
+/// map leaves unconnected.
+#[derive(Debug, Clone, Serialize)]
+pub struct MapFrontierView {
+    /// The transition rule that DECLARES this map (R697) — the finding's name.
+    pub rule: String,
+    pub adjacency: String,
+    /// The leg kinds the adjacency predicate declares (R701 `subject_kind` /
+    /// `object_entity_kind`), sorted and deduped. This is what makes "a place"
+    /// derivable WITHOUT core knowing the word: the rule names the predicate,
+    /// the predicate names its kinds, and the vocabulary itself stays the
+    /// consumer's (ARCHITECTURE.md sec 6 invariant 4 — routing, not prohibition).
+    ///
+    /// EMPTY is a DISTINCT answer from "every place is connected": with neither
+    /// leg kind-scoped there is no registered set to subtract the map's nodes
+    /// from, so `unconnected_places` below is empty BECAUSE THE QUESTION CANNOT
+    /// BE ASKED. The two silences must not read alike (the R864 three-state
+    /// discipline), which is why this field carries the discriminator rather
+    /// than a parallel bool that would be free to drift from it.
+    pub place_kinds: Vec<String>,
+    /// Registered entities of a declared leg kind — or a SUBKIND of one, via
+    /// `is_kind_or_subkind`, the R738 one resolver — that are NOT a node of
+    /// this map: places an author registered and the map gives no way into or
+    /// out of. Sorted. Never gated: an unconnected place may simply be
+    /// unconnected YET, which is precisely why it is FRONTIER work and not a
+    /// violation.
+    pub unconnected_places: Vec<String>,
+}
+
+/// The map axis's authoring frontier (Round 891) — the gap [`transition_map`]
+/// made READABLE but no work-list ever pulled from.
+///
+/// R589 built the frontier as "every coverage gap an unattended loop pulls its
+/// next work from", JOINing the payoff (R442), quest (R568) and disclosure
+/// (R507) projections. The map axis was built afterwards, across R697 (the
+/// store-native map), R710 (costs) and R722 (guards), and its read arrived at
+/// R875 — and none of those rounds reached back to the JOIN. R875 listed the
+/// reads it had not reached; the frontier was not even on that list. So a store
+/// could hold scenes with no way between any of them and the loop's work source
+/// would report its other gaps and stay silent on this one — an absence that
+/// reads as health, which is the failure class this substrate exists to remove.
+///
+/// Pure read, never gated, and DERIVED from [`transition_map`] rather than
+/// re-deriving edges: the frontier cannot disagree with the read about what an
+/// edge is, exactly as R875 made the read unable to disagree with the gate.
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct MapFrontierReport {
+    /// One entry per declared map, in rule order.
+    pub maps: Vec<MapFrontierView>,
+    /// Transition rules declared. ZERO is the third state, NOT "no map work
+    /// remaining": with no rule there is no declared adjacency predicate and
+    /// the store genuinely cannot know which facts are edges (invariant 4). A
+    /// novel legitimately has no map, so this is never counted as a gap — but
+    /// it must be SAID, because omitting the axis is how it stayed invisible.
+    pub transition_rules: usize,
+    /// Distinct map-axis work items: the unconnected places, summed.
+    ///
+    /// A cost or guard keyed to a NON-edge is deliberately NOT here. It is
+    /// already a continuity VIOLATION (`EdgeCostNotAnEdge` / `EdgeGuardNotAnEdge`,
+    /// R710/R722) which [`transition_map`] echoes — and this report is the
+    /// never-gated todo surface (the R442 dangling-is-a-todo discipline).
+    /// Counting a defect as authoring work conflates the two categories and
+    /// would give the datum a third home to drift in.
+    pub total_gaps: usize,
+}
+
+/// Derive the map axis's frontier (Round 891). Calls [`transition_map`] for the
+/// edges and node sets — one resolver — then subtracts each map's nodes from
+/// the entities its adjacency predicate's declared leg kinds admit.
+pub fn map_frontier(
+    store: &AtomicStore,
+    rules: &[NarrativeRule],
+) -> Result<MapFrontierReport, String> {
+    let map = transition_map(store, rules)?;
+    let mut out = MapFrontierReport {
+        transition_rules: map.transition_rules,
+        ..Default::default()
+    };
+    for view in &map.maps {
+        // The predicate resolves by construction — `transition_map` ran
+        // `check_rule_predicates` before building this view.
+        let mut place_kinds: BTreeSet<mnemosyne_core::EntityKindId> = BTreeSet::new();
+        if let Some(decl) = mnemosyne_atomic::resolve_predicate(store, &view.adjacency) {
+            place_kinds.extend(decl.subject_kind.iter().cloned());
+            place_kinds.extend(decl.object_entity_kind.iter().cloned());
+        }
+        let nodes: BTreeSet<&str> = view.nodes.iter().map(String::as_str).collect();
+        // With no kind-scoped leg the registered place set is unknowable, so
+        // this stays empty and `place_kinds` (empty) says why.
+        let unconnected_places: Vec<String> = store
+            .entities
+            .iter()
+            .filter(|(id, entity)| {
+                !nodes.contains(id.as_str())
+                    && place_kinds.iter().any(|required| {
+                        mnemosyne_atomic::is_kind_or_subkind(store, Some(&entity.kind), required)
+                    })
+            })
+            .map(|(id, _)| id.to_string())
+            .collect();
+        out.total_gaps += unconnected_places.len();
+        out.maps.push(MapFrontierView {
+            rule: view.rule.clone(),
+            adjacency: view.adjacency.clone(),
+            place_kinds: place_kinds.iter().map(ToString::to_string).collect(),
+            unconnected_places,
+        });
+    }
+    Ok(out)
+}
+
 /// The playable-world projection for one telling (Round 556/557, design sec
 /// 7.37) — the single composing READ a pinion narrative runtime consumes,
 /// stitching the existing projections so a runtime need not re-derive across
@@ -10247,6 +10358,159 @@ mod tests {
         assert!(
             read_edges.is_disjoint(&gate_self),
             "the read must not offer a step the gate rejects: {read_edges:?}"
+        );
+    }
+
+    /// A map store built through the REAL write path (`import_facts`), so the
+    /// fixture cannot encode a store the mutate API would refuse — the R873
+    /// lesson, where an injection "passed" only because the primitive rejected
+    /// the setup before the assertion was ever reached.
+    ///
+    /// `kind_scoped` chooses whether the adjacency predicate declares its leg
+    /// kinds. That flag is the DISCRIMINATING INPUT for Round 891's three-state
+    /// report: with it off, the registered place set is unknowable, and an
+    /// empty `unconnected_places` must not read like "every place is connected".
+    fn map_frontier_store(kind_scoped: bool) -> AtomicStore {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let path = tmp.path().join("s.json");
+        let mut store = AtomicStore::new();
+        for ch in ["ch-1", "ch-2"] {
+            store.sections.insert(ch.into(), AtomicSection::default());
+        }
+        let entity = |id: &str, kind: &str| mnemosyne_atomic::EntityImport {
+            entity_id: id.to_string(),
+            kind: kind.to_string(),
+            description: String::new(),
+        };
+        let kind = |id: &str, parents: &[&str]| mnemosyne_atomic::EntityKindImport {
+            kind_id: id.to_string(),
+            parents: parents.iter().map(ToString::to_string).collect(),
+            description: String::new(),
+        };
+        let predicate = |id: &str, subject: Option<&str>, object: Option<&str>| {
+            mnemosyne_atomic::PredicateImport {
+                predicate_id: id.to_string(),
+                object_kind: mnemosyne_core::PredicateObjectKind::Entity,
+                subject_kind: subject.map(ToString::to_string),
+                object_entity_kind: object.map(ToString::to_string),
+                object_tokens: vec![],
+                description: String::new(),
+            }
+        };
+        let facts = vec![
+            typed_fact("p0", "gt", "ch-1", "ent-jiun", "pred-at", holds("ent-well")),
+            typed_fact(
+                "e-well-alley",
+                "gt",
+                "ch-1",
+                "ent-well",
+                "adjacent",
+                holds("ent-alley"),
+            ),
+            typed_fact(
+                "e-alley-shop",
+                "gt",
+                "ch-1",
+                "ent-alley",
+                "adjacent",
+                holds("ent-shop"),
+            ),
+        ];
+        mnemosyne_atomic::import_facts(
+            &mut store,
+            &path,
+            &FactsManifest {
+                disclosure_plans: vec![],
+                // `waypoint` is a SUBKIND of `place` — the R738 resolver must
+                // admit it, or a whole class of authored place silently drops
+                // out of the frontier.
+                entity_kinds: vec![
+                    kind("place", &[]),
+                    kind("waypoint", &["place"]),
+                    kind("person", &[]),
+                ],
+                units: vec![],
+                entities: vec![
+                    entity("ent-well", "place"),
+                    entity("ent-alley", "place"),
+                    entity("ent-shop", "place"),
+                    // Registered, never an endpoint: the gap this round exists
+                    // to surface.
+                    entity("ent-vault", "place"),
+                    entity("ent-ferry", "waypoint"),
+                    // The NEGATIVE control: unconnected and NOT a place, so a
+                    // derivation that forgot to filter on kind would list it.
+                    entity("ent-jiun", "person"),
+                ],
+                frames: vec![mnemosyne_atomic::FrameImport {
+                    frame_id: "gt".to_string(),
+                    description: String::new(),
+                }],
+                branches: vec![],
+                predicates: vec![
+                    predicate("pred-at", None, None),
+                    predicate(
+                        "adjacent",
+                        kind_scoped.then_some("place"),
+                        kind_scoped.then_some("place"),
+                    ),
+                ],
+                facts,
+            },
+        )
+        .unwrap();
+        store
+    }
+
+    /// Round 891 — the frontier finds the places the map leaves out, and only
+    /// those. Three assertions in one fixture because they are one question:
+    /// a registered place absent from the map is work (`ent-vault`), a SUBKIND
+    /// of the declared leg kind is equally a place (`ent-ferry`, the R738
+    /// resolver), and an unconnected entity of another kind is NOT (`ent-jiun`,
+    /// the negative control without which "filters on kind" is untested).
+    #[test]
+    fn the_map_frontier_names_registered_places_no_edge_reaches() {
+        let store = map_frontier_store(true);
+        let rules = [transition_rule("roads", "pred-at", "adjacent", true, None)];
+        let report = map_frontier(&store, &rules).unwrap();
+
+        assert_eq!(report.transition_rules, 1);
+        let view = &report.maps[0];
+        // NON-VACUITY: the map must actually connect something, or "the rest is
+        // unconnected" is a true statement about a fixture with no map at all.
+        assert_eq!(view.place_kinds, vec!["place".to_string()]);
+        assert_eq!(
+            report.maps[0].unconnected_places,
+            vec!["ent-ferry".to_string(), "ent-vault".to_string()],
+            "a registered place (or subkind) that no edge reaches is frontier work, \
+             and an entity of another kind never is"
+        );
+        assert!(
+            store.entities.contains_key(&"ent-jiun".into()),
+            "the negative control must BE in the registry, or it proves nothing"
+        );
+        assert_eq!(report.total_gaps, 2);
+    }
+
+    /// Round 891 — the third state. With no leg kind declared the place set
+    /// cannot be asked for, so the SAME store reports an empty gap list for a
+    /// reason that is not "nothing to do". Paired against the kind-scoped run
+    /// above deliberately: an empty list alone is exactly the silence this
+    /// round removed, and only the pair shows the two are distinguishable.
+    #[test]
+    fn an_unkinded_adjacency_says_it_cannot_ask_rather_than_reporting_zero() {
+        let rules = [transition_rule("roads", "pred-at", "adjacent", true, None)];
+        let unkinded = map_frontier(&map_frontier_store(false), &rules).unwrap();
+        let kinded = map_frontier(&map_frontier_store(true), &rules).unwrap();
+
+        assert!(unkinded.maps[0].place_kinds.is_empty());
+        assert!(unkinded.maps[0].unconnected_places.is_empty());
+        assert_eq!(unkinded.total_gaps, 0);
+        // The pair is the point: same store, same rule, and the ONLY difference
+        // is whether the predicate declares its legs.
+        assert!(
+            !kinded.maps[0].place_kinds.is_empty() && !kinded.maps[0].unconnected_places.is_empty(),
+            "the discriminating input must actually discriminate"
         );
     }
 
