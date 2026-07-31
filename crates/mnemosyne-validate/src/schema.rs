@@ -1396,7 +1396,24 @@ fn rule_class_specs() -> Vec<RuleClassSpec> {
                             naming it inside a container without edges is that PLUS \
                             `map_contained_off_map`. All three were measured on one authored town: \
                             of the three ways to encode \"spoken of but never reached\", exactly \
-                            one passes, and the two that fail are the ones the phrase suggests.",
+                            one passes, and the two that fail are the ones the phrase suggests. \
+                            ROUND 911 — HOW A SUBJECT ENTERS A CONTAINER, which is the question two \
+                            blind authors (R910) each raised unprompted and each answered unaided. \
+                            Entry is NOT a succession and cannot be made one: a step from the \
+                            container to something inside it is `rule_transition_invalid`, and \
+                            adding the edge that would license it is `adjacency_cross_scope`. Both \
+                            direct encodings reject, and no intermediate state exists to route \
+                            through. The one that passes: let the COARSE fact (`at` the container) \
+                            CO-HOLD across the whole visit — one fact whose canon extent spans it — \
+                            while the FINE facts inside succeed each other normally. The overlap is \
+                            legal only because a refinement-aware exclusive rule (one declaring \
+                            `containment`, Round 714) reads a coarser and a finer statement of one \
+                            position as refinement rather than conflict; drop that `containment` \
+                            and the same corpus is `rule_exclusive_overlap`. THE COST, stated: the \
+                            entry itself is then not a CHECKED step. It appears in \
+                            `unchained_state_pairs`, which is surfaced and never gated, so the gate \
+                            confirms the walking inside a container and the walking between \
+                            containers but takes the crossing on trust.",
                     },
                 ],
             },
@@ -2517,6 +2534,23 @@ mod tests {
         assert!(
             containment.contains("adjacency_cross_scope"),
             "name the finding, so a rejected author can search for it"
+        );
+        // Round 911 — and the question two blind authors each asked unprompted:
+        // how a subject gets INSIDE. Both reject-paths and the one that works
+        // must be named, or an author searches for an intermediate state that
+        // cannot exist.
+        assert!(
+            containment.contains("rule_transition_invalid"),
+            "entry-as-a-succession rejects; name what the author will be handed"
+        );
+        assert!(
+            containment.contains("CO-HOLD"),
+            "the encoding that passes has to be stated — it is not discoverable from \
+             either rejection"
+        );
+        assert!(
+            containment.contains("unchained_state_pairs"),
+            "the cost of the co-hold is that the crossing is not a checked step; say so"
         );
         // The superseded model must not be re-stated anywhere in the contract.
         let stale = ["must not be walked on", "a search-key, not a position"];

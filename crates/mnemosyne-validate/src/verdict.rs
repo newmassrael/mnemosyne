@@ -560,8 +560,19 @@ pub fn continuity_actionable(v: &ContinuityViolation) -> ActionableViolation {
                 "transition rule `{rule}` (predicate `{predicate}`): `{from}` -> `{to}` is not an \
                  allowed step"
             ),
+            // Round 911 — the repair hint used to offer only "an intermediate
+            // succession", which is unreachable for the commonest case: a
+            // subject moving INTO a container. No edge can join a container to
+            // its own child (that is cross-scope), so no intermediate state
+            // exists, and an author following this hint searches for one
+            // forever. Two blind authors (R910) each hit this and each invented
+            // the co-hold idiom unaided; it is named here now.
             "author an intermediate succession through an allowed state, or correct the from/to \
-             values"
+             values. If the step ENTERS OR LEAVES A CONTAINER, no such intermediate exists — a \
+             container cannot be adjacent to its own contents — so do not model it as a \
+             succession at all: let the coarse fact (`at` the container) CO-HOLD across the \
+             whole visit while the fine facts succeed each other inside it. A refinement-aware \
+             exclusive rule (one declaring `containment`) accepts that overlap."
                 .to_string(),
             format!(
                 "transition rule `{rule}`: subject `{subject}` steps `{from}` -> `{to}` \

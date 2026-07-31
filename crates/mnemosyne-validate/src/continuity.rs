@@ -11031,6 +11031,127 @@ mod tests {
         );
     }
 
+    /// Round 911 — a subject ENTERING a container: both direct encodings reject,
+    /// and the co-hold that works is only legal through R714 refinement.
+    ///
+    /// R910's two blind authors each raised this unprompted — the contract never
+    /// said how a person walks INTO a quarter — and each invented the same
+    /// answer alone. Demonstrated here rather than argued (the R909 discipline):
+    /// stepping from the container to its own child is `rule_transition_invalid`,
+    /// licensing that step with an edge is `adjacency_cross_scope`, and the
+    /// coarse/fine co-hold passes. The last assertion is the load-bearing one:
+    /// remove `containment` from the exclusive rule and the SAME facts become
+    /// `rule_exclusive_overlap`, so refinement is what makes entry expressible
+    /// at all.
+    #[test]
+    fn entering_a_container_is_a_co_hold_because_it_cannot_be_a_step() {
+        let order = chain(&["ch-1", "ch-2", "ch-3", "ch-4"]);
+        let moves = |refining: bool| {
+            [
+                transition_rule("roads", "pred-at", "adjacent", true, Some("contains")),
+                if refining {
+                    refining_exclusive_rule(
+                        "one-place",
+                        "pred-at",
+                        ExclusiveKey::Subject,
+                        "contains",
+                    )
+                } else {
+                    exclusive_rule("one-place", "pred-at", ExclusiveKey::Subject)
+                },
+            ]
+        };
+        // A subject's position fact: `from`..`to` inclusive, optionally
+        // superseding its predecessor (succession IS the transition edge).
+        let pos = |id: &str, place: &str, from: &str, to: Option<&str>, sup: Option<&str>| {
+            let mut f = typed_fact(id, "gt", from, "p", "pred-at", holds(place));
+            f.canon_to = to.map(|t| t.to_string());
+            f.supersedes_in_frame = sup.map(|s| s.to_string());
+            f
+        };
+        // gate and quarter are siblings at the root; market and well are inside
+        // the quarter and joined to each other.
+        let world = || {
+            vec![
+                contains_fact("quarter", "market"),
+                contains_fact("quarter", "well"),
+                map_edge("gate", "quarter"),
+                map_edge("market", "well"),
+            ]
+        };
+        let places = ["gate", "quarter", "market", "well"];
+        let scan = |facts: Vec<_>, refining: bool| {
+            let store = map_g2_store(facts, &places, &[], Some("place"));
+            scan_continuity(&store, &order, &moves(refining))
+                .unwrap()
+                .violations
+        };
+        let kinds = |vs: &[ContinuityViolation]| -> Vec<&'static str> {
+            let mut k: Vec<&'static str> = vs
+                .iter()
+                .filter_map(|v| match v {
+                    ContinuityViolation::RuleTransitionInvalid { .. } => {
+                        Some("rule_transition_invalid")
+                    }
+                    ContinuityViolation::AdjacencyCrossScope { .. } => {
+                        Some("adjacency_cross_scope")
+                    }
+                    ContinuityViolation::RuleExclusiveOverlap { .. } => {
+                        Some("rule_exclusive_overlap")
+                    }
+                    _ => None,
+                })
+                .collect();
+            k.sort_unstable();
+            k.dedup();
+            k
+        };
+
+        // A — walk in as a succession: quarter -> market is not an allowed step.
+        let mut a = world();
+        a.push(pos("a1", "gate", "ch-1", None, None));
+        a.push(pos("a2", "quarter", "ch-2", None, Some("a1")));
+        a.push(pos("a3", "market", "ch-3", None, Some("a2")));
+        assert_eq!(
+            kinds(&scan(a, true)),
+            vec!["rule_transition_invalid"],
+            "entry cannot be a succession: no edge joins a container to its contents"
+        );
+
+        // B — license it with the edge the reject seems to ask for. Rejected the
+        // other way, so there is no intermediate state to route through.
+        let mut b = world();
+        b.push(map_edge("quarter", "market"));
+        b.push(pos("b1", "quarter", "ch-2", None, None));
+        b.push(pos("b2", "market", "ch-3", None, Some("b1")));
+        assert!(
+            kinds(&scan(b, true)).contains(&"adjacency_cross_scope"),
+            "the edge that would license the step is itself cross-scope"
+        );
+
+        // C — the co-hold: coarse spans the visit, fine succeeds inside it.
+        let cohold = || {
+            let mut c = world();
+            c.push(pos("c1", "gate", "ch-1", Some("ch-1"), None));
+            c.push(pos("c2", "quarter", "ch-2", Some("ch-3"), Some("c1")));
+            c.push(pos("c3", "market", "ch-2", Some("ch-2"), None));
+            c.push(pos("c4", "well", "ch-3", Some("ch-3"), Some("c3")));
+            c
+        };
+        assert!(
+            kinds(&scan(cohold(), true)).is_empty(),
+            "the co-hold is the encoding that passes: {:?}",
+            scan(cohold(), true)
+        );
+        // ...and it passes ONLY through refinement. Without it, the same facts
+        // are an exclusivity conflict — the discriminating half.
+        assert!(
+            kinds(&scan(cohold(), false)).contains(&"rule_exclusive_overlap"),
+            "refinement is what makes the co-hold legal; without `containment` the \
+             same corpus must conflict"
+        );
+    }
+
     /// Round 909 — "a place spoken of but never reached" has exactly ONE encoding
     /// this gate accepts, and the two the phrase suggests are the two it rejects.
     ///
