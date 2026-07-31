@@ -571,7 +571,7 @@ jobs:
   citations:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Install mnemosyne-cli (pinned revision)
         run: cargo install --git https://github.com/newmassrael/mnemosyne --rev <PINNED_SHA> --locked mnemosyne-cli
       - name: Validate spec citations (per workspace)

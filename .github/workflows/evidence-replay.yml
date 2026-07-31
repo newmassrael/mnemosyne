@@ -55,6 +55,8 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+# R893 — action majors bumped off the deprecated Node 20 runtime; the reading
+# behind the target versions is recorded once, in `mnemosyne-validate.yml`.
 jobs:
   replay:
     name: replay every kit at its pinned revision
@@ -64,7 +66,7 @@ jobs:
     # more often than most: it compiles 23 different `Cargo.lock`s.
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           # See the header. The runner extracts historical commits.
           fetch-depth: 0
@@ -76,7 +78,7 @@ jobs:
       # target dir of its own, so there is nothing there to reuse. What DOES
       # repay caching is the crate sources for 23 historical lockfiles.
       - name: Cache cargo registry
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
             ~/.cargo/registry

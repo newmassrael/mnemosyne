@@ -19,12 +19,24 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+# R893 — the `@v4` lines of both actions declare `runs.using: node20`, which
+# GitHub deprecated on 2025-09-19 and now force-runs on Node 24. Every run in
+# this repo's visible history carried the warning (measured back to 2026-05-07,
+# where the wording was still the pre-forcing one) and nothing read it. node24
+# starts at checkout v5 / cache v5 — measured from each tag's own `action.yml`,
+# not from the blog post. The majors past that were read rather than skipped:
+# checkout v6 moves credentials to a separate file and v7 blocks fork-PR
+# checkout for `pull_request_target` / `workflow_run` (neither trigger is used
+# here, and v7.0.1 skips that check when `ref` is defaulted, as it is here);
+# cache v6 is an ESM migration. Both require runner >= 2.327.1 — this repo's
+# hosted runner reported 2.336.0 on the last green run, and a self-hosted one
+# would have to be checked.
 jobs:
   validate:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           # R889 — `cargo test --workspace` includes the evidence-replay
           # declaration gates, and those resolve pinned historical commits. A
@@ -46,7 +58,7 @@ jobs:
         run: rustup show
 
       - name: Cache cargo
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
             ~/.cargo/registry
@@ -73,7 +85,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # Verify the declared MSRV actually compiles. The version is read from
       # Cargo.toml (single source — no drift with rust-version). rust-toolchain.toml
@@ -94,7 +106,7 @@ jobs:
         run: rustup toolchain install ${{ steps.msrv.outputs.version }} --profile minimal
 
       - name: Cache cargo (MSRV)
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
             ~/.cargo/registry

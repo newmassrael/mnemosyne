@@ -32,10 +32,13 @@
 #      - Unconditional (push validates publishable state, so the clippy
 #        budget is paid once per push regardless of which files changed).
 #
-#   4. CI state of `origin/main` (R890) — REPORT ONLY, never blocks.
+#   4. CI state of `origin/main` (R890, R893) — REPORT ONLY, never blocks.
 #      - Nothing here could see a red CI; four consecutive red runs went
 #        unnoticed for eleven hours. See the block at the bottom for why
 #        this reports rather than gates, and what it cannot see.
+#      - Conclusion AND annotations. A green run still says things, and
+#        this repo shipped a deprecated action runtime for months because
+#        `success` was the whole of what anything here read.
 #
 # Install (one-time per clone):
 #   git config core.hooksPath .githooks
@@ -130,6 +133,55 @@ else
         fi
     else
         echo "pre-push: NOTE gh could not reach GitHub — CI state for ${base:0:8} unknown" >&2
+    fi
+
+    # The other half of what CI said (R893). A conclusion is one word, and a
+    # green run can still be reporting something: the Node 20 runtime
+    # deprecation rode in the annotations of every run this repo can still see
+    # — back to at least 2026-05-07 — while the conclusion above said
+    # `success` on every one of them. Warnings do not gate, for the same
+    # reason a red conclusion does not, but they have to be legible before
+    # anyone can decide that.
+    if checks="$(gh api "repos/{owner}/{repo}/commits/$base/check-runs" \
+        -q '.check_runs[] | select(.output.annotations_count > 0)
+            | "\(.id) \(.output.annotations_count)"' 2>/dev/null)"; then
+        if [[ -z "$checks" ]]; then
+            echo "pre-push: no CI annotations on ${base:0:8}" >&2
+        else
+            notes=""
+            declared=0
+            while read -r check_id count; do
+                [[ -z "${check_id:-}" ]] && continue
+                declared=$((declared + count))
+                # One page per check run. GitHub's own UI stops at 50 too, and
+                # the declared count is carried alongside so a shortfall shows
+                # up in the header line rather than passing as the whole story.
+                if one="$(gh api "repos/{owner}/{repo}/check-runs/$check_id/annotations" \
+                    -q '.[] | .annotation_level + " " + ((.message | split("\n")[0])[0:160])' \
+                    2>/dev/null)"; then
+                    notes+="$one"$'\n'
+                else
+                    echo "pre-push: NOTE could not read annotations of check-run $check_id" >&2
+                fi
+            done <<<"$checks"
+
+            # The same annotation is emitted once per job, so the distinct set
+            # is what a reader wants. Both numbers are printed: a cap that does
+            # not say what it dropped reads as "that was all of them".
+            uniq_notes="$(sed '/^$/d' <<<"$notes" | sort -u)"
+            if [[ -z "$uniq_notes" ]]; then
+                echo "pre-push: NOTE ${base:0:8} reports $declared annotation(s), none readable" >&2
+            else
+                n_uniq="$(grep -c '' <<<"$uniq_notes")"
+                echo "pre-push: CI annotations on ${base:0:8} — $n_uniq distinct of $declared reported:" >&2
+                head -n 10 <<<"$uniq_notes" | sed 's/^/  /' >&2
+                if (( n_uniq > 10 )); then
+                    echo "pre-push:    (+$((n_uniq - 10)) distinct not shown)" >&2
+                fi
+            fi
+        fi
+    else
+        echo "pre-push: NOTE could not list check runs for ${base:0:8} — annotations unknown" >&2
     fi
 fi
 
