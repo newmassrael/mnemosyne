@@ -820,11 +820,25 @@ pub enum NarrativeRuleSpec {
     /// edge is the SSOT (no reverse duplicate to drift).
     ///
     /// Round 703 (store-native map, DESIGN R696 sec 2) — `containment` names the
-    /// predicate whose facts are `contains(region, node)`: a region (a container
-    /// place, a search-key not a position) and the map nodes it holds. The SAME
-    /// map's rule declares both its `adjacency` and its `containment` predicate,
-    /// so the G2 completeness/leak invariant knows both legs of the map from one
+    /// predicate whose facts are `contains(container, contained)`. The SAME map's
+    /// rule declares both its `adjacency` and its `containment` predicate, so the
+    /// G2 completeness/leak invariant knows both legs of the map from one
     /// declaration. `None` = a map with no containers.
+    ///
+    /// Round 716 replaced R703's grouping model: the containment tree PARTITIONS
+    /// the edges into scopes (siblings-only), and a container PARTICIPATES AS A
+    /// NODE in its parent's scope. Round 913 makes it a step relation too — one
+    /// endpoint containing the other is a descent or an ascent, and any other
+    /// pair is judged between the two ancestors that are siblings.
+    ///
+    /// Round 913 — this doc comment used to call a container "a search-key not a
+    /// position", the R703 model R716 replaced. R906 corrected that wording in
+    /// the CONTRACT and pinned it with a negative assert, but that assert reads
+    /// contract prose only, so the sentence the contract had been copied FROM
+    /// went on saying it here — the same fourth-habitat shape as R908 (an
+    /// `IntervalBound` doc comment `describe-schema` had copied) and R870 (one
+    /// retired vocabulary hand-retyped five times). A container is a position: a
+    /// subject can be `at` one, which is what makes the R714 co-hold legal.
     Transition {
         adjacency: String,
         undirected: bool,
@@ -1676,15 +1690,31 @@ pub enum ContinuityViolation {
     /// A transition rule violated (Round 449): an in-frame succession edge
     /// whose two legs are typed with the same subject + predicate steps
     /// `(from → to)` outside the rule's allowed set.
+    ///
+    /// Round 913 — a step is judged at the DEEPEST SCOPE where its endpoints are
+    /// comparable, so the finding also carries WHERE it was judged: `scope` is
+    /// the container both lifted endpoints sit directly in (empty = the root
+    /// scope), and `lifted_from` / `lifted_to` are the two places that ARE
+    /// siblings there. With no `containment` declared the lift is the identity
+    /// and the three add nothing; with one, they are the difference between "no
+    /// edge joins these two rooms" and "no edge joins the two districts holding
+    /// them", which is the edge the author actually has to write. `branch` is
+    /// the world whose hierarchy judged it, or `None` when no `containment` is
+    /// declared and the verdict is world-agnostic (the pre-R913 shape).
     RuleTransitionInvalid {
         rule: String,
         predicate: String,
         frame: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        branch: Option<String>,
         subject: String,
         predecessor: String,
         successor: String,
         from: String,
         to: String,
+        scope: String,
+        lifted_from: String,
+        lifted_to: String,
     },
     /// An interval rule violated (Round 489, design sec 7.20): for one subject
     /// in one (frame × world), the numeric relation
@@ -3726,21 +3756,57 @@ pub fn scan_continuity(
                 );
                 // The allowed step set: the SAME validated edges (self-loops
                 // excluded), symmetrized when undirected. Derived from `edges`,
-                // not re-scanned — one edge model, no divergence.
-                let allowed: BTreeSet<(&str, &str)> = edges
-                    .keys()
-                    .flat_map(|&(a, b)| {
-                        if *undirected {
-                            vec![(a, b), (b, a)]
-                        } else {
-                            vec![(a, b)]
-                        }
-                    })
-                    .collect();
+                // not re-scanned — one edge model, no divergence. Held as an
+                // adjacency MAP rather than a pair set so a step can be looked up
+                // BY VALUE: the Round 913 lift names places borrowed from the
+                // containment snapshot of the step being judged, which outlives
+                // nothing (`BTreeMap::get`/`BTreeSet::contains` borrow through
+                // `str`, a pair set cannot).
+                let mut allowed: BTreeMap<&str, BTreeSet<&str>> = BTreeMap::new();
+                for &(a, b) in edges.keys() {
+                    allowed.entry(a).or_default().insert(b);
+                    if *undirected {
+                        allowed.entry(b).or_default().insert(a);
+                    }
+                }
                 // The gated half: every typed succession edge with this
-                // predicate and one subject must step inside `allowed`.
-                // The edge itself is the scope — the write path already
-                // confines succession to one frame and one world-line.
+                // predicate and one subject must be a LEGAL step. The edge itself
+                // is the scope — the write path already confines succession to one
+                // frame and one world-line.
+                //
+                // Round 913 — legality is judged at the DEEPEST SCOPE WHERE THE
+                // ENDPOINTS ARE COMPARABLE, because the map declares TWO relations
+                // and a step may use either: `adjacency` says which siblings you
+                // may walk between, `containment` says what is inside what.
+                // Same-scope siblings need an edge (the pre-R913 rule); a pair
+                // where one transitively contains the other is a descent or an
+                // ascent, allowed outright; anything else lifts both endpoints to
+                // the children of their deepest common container and requires an
+                // edge THERE.
+                //
+                // Why, measured: before this, a crossing between depths was not
+                // wrong but UNSAYABLE. The succession rejected
+                // (`rule_transition_invalid`) and the edge that would license it
+                // was `adjacency_cross_scope` (R911 ran all three encodings), so
+                // the only legal telling left the crossing UNDECLARED, where it
+                // lands in `unchained_state_pairs`: surfaced, never gated. Across
+                // FOUR blind authorings (R904, R910) the crossing was never
+                // declared once — and one author called 6 of 13 places unreachable
+                // and wrote none of them, concluding it was "the shape the map
+                // model forces". So the dominant cost was lost CONTENT, not the
+                // ungated false claim. The R714 co-hold R911 documented stays
+                // legal; it is now one encoding of two.
+                //
+                // The hierarchy is read per (frame, world, point) at the
+                // SUCCESSOR's frame and `canon_from` — the hierarchy in force AT
+                // the step — consistent with R715 and R716 both being per-point
+                // projections. The edge set stays flat (the R696 branch-scoped-
+                // adjacency deferral is untouched), so the asymmetry is
+                // deliberate: this round moves the STEP model, not the edge model.
+                // A rule with no `containment` has an empty parent map, so every
+                // lift is the identity in the root scope and the verdicts are
+                // bit-for-bit the pre-R913 ones.
+                let flat_hierarchy: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
                 for (sid, s) in &typed {
                     let st = s.typed.as_ref().unwrap();
                     let Some(pid) = &s.supersedes_in_frame else {
@@ -3757,19 +3823,67 @@ pub fn scan_continuity(
                         continue;
                     }
                     let (from, to) = (typed_object_key(&pt.object), typed_object_key(&st.object));
-                    if !allowed.contains(&(from, to)) {
+                    // The hierarchies this step is judged under: one per world the
+                    // successor is VISIBLE in, read at its own canon point. A step
+                    // visible in no world (a fact on a pruned line) keeps the
+                    // pre-R913 world-agnostic coverage via the empty hierarchy
+                    // below — dropping it would silently stop checking it.
+                    let mut hierarchies: StepHierarchies<'_> = Vec::new();
+                    if let Some(cont) = containment {
+                        for world in &worlds {
+                            let ctx = WorldCtx {
+                                world,
+                                membership: &lineages[world],
+                                order,
+                                successors: &successors,
+                            };
+                            if ctx.visibility(s) != Vis::In {
+                                continue;
+                            }
+                            hierarchies.push((
+                                Some(world),
+                                containment_snapshot(&ctx, store, cont, &s.frame, &s.canon_from),
+                            ));
+                        }
+                    }
+                    if hierarchies.is_empty() {
+                        hierarchies.push((None, flat_hierarchy.clone()));
+                    }
+                    // One finding per step: the FIRST world whose hierarchy forbids
+                    // it. A step legal in every world it is visible in is legal.
+                    for (world, snap) in &hierarchies {
+                        let parent = snapshot_parent(snap);
+                        let StepShape::Lifted {
+                            scope,
+                            from: lifted_from,
+                            to: lifted_to,
+                        } = classify_step(&parent, from, to)
+                        else {
+                            continue; // a descent or an ascent — entering or leaving
+                        };
+                        if allowed
+                            .get(lifted_from)
+                            .is_some_and(|next| next.contains(lifted_to))
+                        {
+                            continue;
+                        }
                         report
                             .violations
                             .push(ContinuityViolation::RuleTransitionInvalid {
                                 rule: rule.id.clone(),
                                 predicate: rule.predicate.clone(),
                                 frame: s.frame.to_string(),
+                                branch: world.map(|w| w.to_string()),
                                 subject: st.subject.to_string(),
                                 predecessor: pid.to_string(),
                                 successor: sid.to_string(),
                                 from: from.to_string(),
                                 to: to.to_string(),
+                                scope: scope.to_string(),
+                                lifted_from: lifted_from.to_string(),
+                                lifted_to: lifted_to.to_string(),
                             });
+                        break;
                     }
                 }
                 // The honesty half: same-frame same-subject typed pairs
@@ -4097,6 +4211,107 @@ fn snapshot_parent(snap: &BTreeMap<String, BTreeSet<String>>) -> BTreeMap<&str, 
     snap.iter()
         .map(|(c, conts)| (c.as_str(), conts.iter().next().unwrap().as_str()))
         .collect()
+}
+
+/// Round 913 — the ROOT scope id: the scope of a place no `contains` fact holds
+/// as contained. The SAME sentinel [`scan_spatial_map`] partitions edges with (an
+/// absent parent), so a step and an edge can never disagree about which scope a
+/// place is in — the Round 699 one-model discipline.
+const ROOT_SCOPE: &str = "";
+
+/// Round 913 — a place's containment chain under one snapshot's parent map: the
+/// place itself, then each container outward, ending at [`ROOT_SCOPE`].
+///
+/// Cycle-safe on its own. Round 715 rejects a containment cycle, but a gate must
+/// never depend on another gate having run first (the Round 714 refinement walk
+/// set that precedent): on a cycle this stops at the repeat, and the corpus is
+/// rejected by the tree gate regardless.
+fn containment_chain<'a>(parent: &BTreeMap<&'a str, &'a str>, place: &'a str) -> Vec<&'a str> {
+    let mut chain = vec![place];
+    let mut cur = place;
+    while let Some(&up) = parent.get(cur) {
+        if chain.contains(&up) {
+            break; // a cycle — the Round 715 finding, not this walk's business
+        }
+        chain.push(up);
+        cur = up;
+    }
+    chain.push(ROOT_SCOPE);
+    chain
+}
+
+/// Round 913 — the hierarchies ONE step is judged under: for every world the
+/// successor is visible in, that world's containment snapshot at the step's own
+/// canon point. A `None` world means the rule declares no `containment`, so
+/// there is no hierarchy and the verdict is world-agnostic (the pre-R913 shape).
+type StepHierarchies<'a> = Vec<(
+    Option<&'a mnemosyne_core::BranchId>,
+    BTreeMap<String, BTreeSet<String>>,
+)>;
+
+/// Round 913 — how a declared step relates to the place hierarchy.
+enum StepShape<'a> {
+    /// One endpoint transitively contains the other: a DESCENT (entering) or an
+    /// ASCENT (leaving). Allowed outright, because a container participates as
+    /// ONE node in its parent's scope (Round 716), so crossing its own boundary
+    /// is a move through the hierarchy rather than a walk between siblings — and
+    /// no edge can express it, an edge to your own contents being
+    /// `adjacency_cross_scope`.
+    Hierarchy,
+    /// Neither endpoint contains the other. Both lift to the two places that ARE
+    /// siblings — the children of their deepest common container — and THAT pair
+    /// must be an edge in that scope. With no containment declared this is the
+    /// identity lift in the root scope, i.e. the pre-Round-913 flat check.
+    Lifted {
+        scope: &'a str,
+        from: &'a str,
+        to: &'a str,
+    },
+}
+
+/// Round 913 — classify a declared step `(from → to)` against one containment
+/// snapshot's parent map. See [`StepShape`]. A self-step never reaches here: a
+/// self-loop is excluded from the edge set and flagged flat (Round 698), and
+/// `from == to` therefore falls out as an ordinary missing edge.
+fn classify_step<'a>(
+    parent: &BTreeMap<&'a str, &'a str>,
+    from: &'a str,
+    to: &'a str,
+) -> StepShape<'a> {
+    let (cf, ct) = (
+        containment_chain(parent, from),
+        containment_chain(parent, to),
+    );
+    if cf[1..].contains(&to) || ct[1..].contains(&from) {
+        return StepShape::Hierarchy;
+    }
+    // The DEEPEST container the two chains share. Both end at ROOT_SCOPE so one
+    // always exists, and scanning `from`'s chain outward and taking the first
+    // shared entry finds the deepest by construction: a parent map is a tree, so
+    // the shared entries are a common suffix of the two chains.
+    let (i, j) = cf
+        .iter()
+        .enumerate()
+        .skip(1)
+        .find_map(|(i, up)| ct.iter().position(|c| c == up).map(|j| (i, j)))
+        .expect("every containment chain ends at the root scope");
+    // Both lifted children exist because the shared container is a container of
+    // BOTH endpoints and neither endpoint IS it — which is exactly what the
+    // hierarchy arm above has already returned on. Said by name rather than left
+    // to an index underflow, so deleting that arm reports which invariant it
+    // broke instead of a subtraction overflow.
+    match (i.checked_sub(1), j.checked_sub(1)) {
+        (Some(fi), Some(tj)) => StepShape::Lifted {
+            scope: cf[i],
+            from: cf[fi],
+            to: ct[tj],
+        },
+        _ => unreachable!(
+            "classify_step: `{from}` -> `{to}` share `{}` AS an endpoint, so the \
+             ancestor arms must have returned first",
+            cf[i]
+        ),
+    }
 }
 
 /// Round 716 — the per-canon-point PER-SCOPE spatial-map checks for ONE
@@ -11073,20 +11288,30 @@ mod tests {
         );
     }
 
-    /// Round 911 — a subject ENTERING a container: both direct encodings reject,
-    /// and the co-hold that works is only legal through R714 refinement.
+    /// Round 913 (this was the Round 911 pin) — entering or leaving a container
+    /// IS a step, judged at the deepest scope where the endpoints are siblings,
+    /// and the co-hold R911 documented stays legal as one telling of two.
     ///
-    /// R910's two blind authors each raised this unprompted — the contract never
-    /// said how a person walks INTO a quarter — and each invented the same
-    /// answer alone. Demonstrated here rather than argued (the R909 discipline):
-    /// stepping from the container to its own child is `rule_transition_invalid`,
-    /// licensing that step with an edge is `adjacency_cross_scope`, and the
-    /// coarse/fine co-hold passes. The last assertion is the load-bearing one:
-    /// remove `containment` from the exclusive rule and the SAME facts become
-    /// `rule_exclusive_overlap`, so refinement is what makes entry expressible
-    /// at all.
+    /// R911 measured the pre-R913 substrate and pinned it: entry-as-succession
+    /// rejected, the edge that would license it rejected, and only the
+    /// coarse/fine co-hold passed. R913 inverts the FIRST of those on purpose,
+    /// because a crossing that cannot be DECLARED cannot be CHECKED. Measured
+    /// cost of the old shape: across four blind authorings (R904, R910) the
+    /// crossing was never declared once, and one author called 6 of 13 places
+    /// unreachable and wrote none of them.
+    ///
+    /// Arms B and C are UNCHANGED, which is what keeps this honest: an edge from
+    /// a container to its own contents is still `adjacency_cross_scope` (the map
+    /// stays scope-partitioned, R716 — this round moves the step model, not the
+    /// edge model), and the co-hold is still legal only through R714 refinement,
+    /// the discriminating half. Arm E is the non-vacuity half: the lift REJECTS
+    /// when the two ancestors sharing a scope are not adjacent, and the same
+    /// destination reached from the adjacent sibling passes — so the check is
+    /// discriminating on the lifted pair, not merely permissive. A container-less
+    /// map keeps its pre-R913 verdicts, pinned unchanged by
+    /// `rule_transition_catches_disallowed_step`.
     #[test]
-    fn entering_a_container_is_a_co_hold_because_it_cannot_be_a_step() {
+    fn entering_a_container_is_a_step_judged_where_the_endpoints_are_siblings() {
         let order = chain(&["ch-1", "ch-2", "ch-3", "ch-4"]);
         let moves = |refining: bool| {
             [
@@ -11111,17 +11336,31 @@ mod tests {
             f.supersedes_in_frame = sup.map(|s| s.to_string());
             f
         };
-        // gate and quarter are siblings at the root; market and well are inside
-        // the quarter and joined to each other.
+        // gate, quarter and palace are root siblings joined gate—quarter—palace,
+        // with NO gate—palace edge (that absence is arm E's discriminator).
+        // market and well sit in the quarter and are joined; stall and cart sit
+        // in the market, two levels down; shrine and hall sit in the palace.
+        // Every scope is internally connected and every contained place is a
+        // node, so the world itself is gate-clean and an arm that asserts "no
+        // violations" is asserting only about its own step.
         let world = || {
             vec![
                 contains_fact("quarter", "market"),
                 contains_fact("quarter", "well"),
+                contains_fact("market", "stall"),
+                contains_fact("market", "cart"),
+                contains_fact("palace", "shrine"),
+                contains_fact("palace", "hall"),
                 map_edge("gate", "quarter"),
+                map_edge("quarter", "palace"),
                 map_edge("market", "well"),
+                map_edge("stall", "cart"),
+                map_edge("shrine", "hall"),
             ]
         };
-        let places = ["gate", "quarter", "market", "well"];
+        let places = [
+            "gate", "quarter", "palace", "market", "well", "stall", "cart", "shrine", "hall",
+        ];
         let scan = |facts: Vec<_>, refining: bool| {
             let store = map_g2_store(facts, &places, &[], Some("place"));
             scan_continuity(&store, &order, &moves(refining))
@@ -11149,26 +11388,50 @@ mod tests {
             k
         };
 
-        // A — walk in as a succession: quarter -> market is not an allowed step.
-        let mut a = world();
-        a.push(pos("a1", "gate", "ch-1", None, None));
-        a.push(pos("a2", "quarter", "ch-2", None, Some("a1")));
-        a.push(pos("a3", "market", "ch-3", None, Some("a2")));
-        assert_eq!(
-            kinds(&scan(a, true)),
-            vec!["rule_transition_invalid"],
-            "entry cannot be a succession: no edge joins a container to its contents"
+        // A — walk in as a succession: quarter -> market is a DESCENT, allowed
+        // outright, and nothing else in the corpus is disturbed. R911 measured
+        // this same arm as `rule_transition_invalid`; that is the verdict this
+        // round changes.
+        let descent = || {
+            let mut a = world();
+            a.push(pos("a1", "gate", "ch-1", None, None));
+            a.push(pos("a2", "quarter", "ch-2", None, Some("a1")));
+            a.push(pos("a3", "market", "ch-3", None, Some("a2")));
+            a
+        };
+        assert!(
+            scan(descent(), true).is_empty(),
+            "entering a container is a descent, not a missing edge: {:?}",
+            scan(descent(), true)
         );
 
-        // B — license it with the edge the reject seems to ask for. Rejected the
-        // other way, so there is no intermediate state to route through.
+        // A' — and the way back OUT is an ASCENT, equally allowed. A separate
+        // arm because it is a separate clause of the classifier: deleting one
+        // does not break the other's assertion.
+        let ascent = || {
+            let mut o = world();
+            o.push(pos("o1", "market", "ch-1", None, None));
+            o.push(pos("o2", "quarter", "ch-2", None, Some("o1")));
+            o
+        };
+        assert!(
+            scan(ascent(), true).is_empty(),
+            "leaving a container is an ascent: {:?}",
+            scan(ascent(), true)
+        );
+
+        // B — the edge that the pre-R913 reject seemed to ask for is STILL
+        // cross-scope, and the step no longer needs it: the map stays
+        // scope-partitioned (R716) while the step model changes.
         let mut b = world();
         b.push(map_edge("quarter", "market"));
         b.push(pos("b1", "quarter", "ch-2", None, None));
         b.push(pos("b2", "market", "ch-3", None, Some("b1")));
-        assert!(
-            kinds(&scan(b, true)).contains(&"adjacency_cross_scope"),
-            "the edge that would license the step is itself cross-scope"
+        assert_eq!(
+            kinds(&scan(b, true)),
+            vec!["adjacency_cross_scope"],
+            "a container may not be adjacent to its own contents, and the step does not \
+             need that edge"
         );
 
         // C — the co-hold: coarse spans the visit, fine succeeds inside it.
@@ -11191,6 +11454,121 @@ mod tests {
             kinds(&scan(cohold(), false)).contains(&"rule_exclusive_overlap"),
             "refinement is what makes the co-hold legal; without `containment` the \
              same corpus must conflict"
+        );
+
+        // D — the sentence a blind author actually writes: "she walked from the
+        // gate into the market", one step across the boundary. Judged by lifting
+        // market to its container, so the edge that licenses it is the one the
+        // author already drew between gate and quarter.
+        let lifted = || {
+            let mut d = world();
+            d.push(pos("d1", "gate", "ch-1", None, None));
+            d.push(pos("d2", "market", "ch-2", None, Some("d1")));
+            d
+        };
+        assert!(
+            scan(lifted(), true).is_empty(),
+            "a step into a container's interior is judged between the ancestors that are \
+             siblings: {:?}",
+            scan(lifted(), true)
+        );
+
+        // E — the non-vacuity half, as a DISCRIMINATING PAIR on one destination.
+        // The lift is a check, not a licence: from the gate, which is not
+        // adjacent to the palace, entering the palace's shrine REJECTS...
+        let unreachable = || {
+            let mut e = world();
+            e.push(pos("e1", "gate", "ch-1", None, None));
+            e.push(pos("e2", "shrine", "ch-2", None, Some("e1")));
+            e
+        };
+        let found = scan(unreachable(), true);
+        assert_eq!(
+            kinds(&found),
+            vec!["rule_transition_invalid"],
+            "the gate is not adjacent to the palace, so no step reaches inside it: {found:?}"
+        );
+        match found
+            .iter()
+            .find(|v| matches!(v, ContinuityViolation::RuleTransitionInvalid { .. }))
+            .expect("the transition finding is present")
+        {
+            ContinuityViolation::RuleTransitionInvalid {
+                from,
+                to,
+                scope,
+                lifted_from,
+                lifted_to,
+                branch,
+                ..
+            } => {
+                assert_eq!((from.as_str(), to.as_str()), ("gate", "shrine"));
+                // The step as written names two places no edge could ever join;
+                // the finding names the two that CAN be joined, in the scope it
+                // judged them in (empty = root).
+                assert_eq!(scope, "");
+                assert_eq!(
+                    (lifted_from.as_str(), lifted_to.as_str()),
+                    ("gate", "palace"),
+                    "the reject must name the edge the author can actually author"
+                );
+                assert!(
+                    branch.is_some(),
+                    "a hierarchy-judged step names the world whose hierarchy judged it"
+                );
+            }
+            other => panic!("expected a transition finding, got {other:?}"),
+        }
+        // ...while the SAME destination reached from the palace's own sibling
+        // passes. Without this half the arm above would only show the check is
+        // strict, not that it is right.
+        let reachable = || {
+            let mut e = world();
+            e.push(pos("r1", "quarter", "ch-1", None, None));
+            e.push(pos("r2", "shrine", "ch-2", None, Some("r1")));
+            e
+        };
+        assert!(
+            scan(reachable(), true).is_empty(),
+            "the quarter IS adjacent to the palace, so the same step inside it is legal: {:?}",
+            scan(reachable(), true)
+        );
+
+        // F — the lift is TRANSITIVE, not one level: a stall two containers deep
+        // still lifts to the quarter, so the gate's own edge licenses the step.
+        let deep = || {
+            let mut f = world();
+            f.push(pos("f1", "gate", "ch-1", None, None));
+            f.push(pos("f2", "stall", "ch-2", None, Some("f1")));
+            f
+        };
+        assert!(
+            scan(deep(), true).is_empty(),
+            "a two-level descent lifts to the outermost container that shares a scope: {:?}",
+            scan(deep(), true)
+        );
+
+        // G — the consequence the R913 design did NOT predict, found by re-running
+        // the recorded blind corpora and pinned here so it cannot regress: a step
+        // may no longer RIDE an edge the gate rejects. Before this round the flat
+        // allowed-set held every edge including the cross-scope ones, so a
+        // succession along a rejected edge passed while the edge beside it was
+        // flagged — one relation, two verdicts, the half-enforced shape. The lift
+        // judges the step between the ancestors instead, and the palace is not
+        // adjacent to the gate. Measured on the two R904 corpora: 27 -> 32 and
+        // 12 -> 15 findings, every new one a step that had been riding a
+        // cross-scope edge (the R910 corpora are unchanged at 27 and 16).
+        let riding = || {
+            let mut g = world();
+            g.push(map_edge("shrine", "gate"));
+            g.push(pos("g1", "shrine", "ch-1", None, None));
+            g.push(pos("g2", "gate", "ch-2", None, Some("g1")));
+            g
+        };
+        assert_eq!(
+            kinds(&scan(riding(), true)),
+            vec!["adjacency_cross_scope", "rule_transition_invalid"],
+            "a cross-scope edge is rejected AND may no longer license the step along it"
         );
     }
 

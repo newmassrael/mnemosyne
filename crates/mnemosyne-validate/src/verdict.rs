@@ -543,41 +543,70 @@ pub fn continuity_actionable(v: &ContinuityViolation) -> ActionableViolation {
             rule,
             predicate,
             frame,
+            branch,
             subject,
             predecessor,
             successor,
             from,
             to,
+            scope,
+            lifted_from,
+            lifted_to,
         } => action(
             "rule_transition_invalid",
             ViolationLocus {
                 facts: vec![predecessor.clone(), successor.clone()],
                 field: Some("typed".to_string()),
                 frame: Some(frame.clone()),
+                branch: branch.clone(),
                 ..Default::default()
             },
             format!(
                 "transition rule `{rule}` (predicate `{predicate}`): `{from}` -> `{to}` is not an \
                  allowed step"
             ),
-            // Round 911 — the repair hint used to offer only "an intermediate
-            // succession", which is unreachable for the commonest case: a
-            // subject moving INTO a container. No edge can join a container to
-            // its own child (that is cross-scope), so no intermediate state
-            // exists, and an author following this hint searches for one
-            // forever. Two blind authors (R910) each hit this and each invented
-            // the co-hold idiom unaided; it is named here now.
-            "author an intermediate succession through an allowed state, or correct the from/to \
-             values. If the step ENTERS OR LEAVES A CONTAINER, no such intermediate exists — a \
-             container cannot be adjacent to its own contents — so do not model it as a \
-             succession at all: let the coarse fact (`at` the container) CO-HOLD across the \
-             whole visit while the fine facts succeed each other inside it. A refinement-aware \
-             exclusive rule (one declaring `containment`) accepts that overlap."
+            // Round 913 — the R911 hint told the author that entering or leaving
+            // a container CANNOT be a succession and to reach for the co-hold
+            // instead. Half of that is now false: the crossing IS a step. What
+            // survives is the edge advice, and it needs the lift to be right —
+            // the edge to author joins the two ancestors that are SIBLINGS, not
+            // the deep endpoints (an edge from a container to its own contents
+            // is still `adjacency_cross_scope`).
+            "correct the from/to values, or author the missing edge — and author it between the \
+             two places named as JUDGED, which are the ancestors that share a scope, never \
+             between a container and something inside it (that edge is \
+             `adjacency_cross_scope`). A step whose endpoints are hierarchy-related needs no \
+             edge at all: entering or leaving a container is allowed outright. The coarse/fine \
+             CO-HOLD remains legal as the alternative telling — one coarse fact spanning the \
+             visit while the fine facts succeed each other inside it, accepted by a \
+             refinement-aware exclusive rule (one declaring `containment`)."
                 .to_string(),
-            format!(
-                "transition rule `{rule}`: subject `{subject}` steps `{from}` -> `{to}` \
-                 (`{predecessor}` -> `{successor}`) outside the allowed set"
-            ),
+            {
+                // Round 913 — a step is judged where its endpoints are
+                // comparable, so the message says WHERE whenever that is not the
+                // step as written. Naming the judged pair is the difference
+                // between "no edge joins these two rooms" — which an author
+                // cannot fix, since an edge between them would be cross-scope —
+                // and "no edge joins the two districts holding them", which is
+                // the edge to write.
+                let base = format!(
+                    "transition rule `{rule}`: subject `{subject}` steps `{from}` -> `{to}` \
+                     (`{predecessor}` -> `{successor}`) outside the allowed set"
+                );
+                if (lifted_from, lifted_to) == (from, to) {
+                    base
+                } else {
+                    let scope = if scope.is_empty() {
+                        "the root scope".to_string()
+                    } else {
+                        format!("scope `{scope}`")
+                    };
+                    format!(
+                        "{base} — judged in {scope} as `{lifted_from}` -> `{lifted_to}`, which is \
+                         not an edge there"
+                    )
+                }
+            },
         ),
         ContinuityViolation::RuleIntervalViolation {
             rule,
@@ -1045,6 +1074,71 @@ mod tests {
                 "no anchored fact or entity for {v:?}"
             );
         }
+    }
+
+    /// Round 913 — a transition reject says WHERE it was judged, and the repair
+    /// hint points at an edge the author can actually author.
+    ///
+    /// The hint is load-bearing prose with a real oracle, which is the R909
+    /// lesson (guidance added with no oracle, and an injection removing it fired
+    /// nothing). Two things must hold: the lifted pair reaches the message, so an
+    /// author rejected on two rooms learns which DISTRICTS need the edge, and the
+    /// R911 sentence "do not model it as a succession at all" must be gone — this
+    /// round made the crossing a step, so that instruction is now false.
+    #[test]
+    fn transition_reject_names_the_scope_it_was_judged_in() {
+        let judged = |scope: &str, lifted_from: &str, lifted_to: &str| {
+            ContinuityViolation::RuleTransitionInvalid {
+                rule: "roads".into(),
+                predicate: "pred-at".into(),
+                frame: "gt".into(),
+                branch: Some("main".into()),
+                subject: "ent-hero".into(),
+                predecessor: "f-1".into(),
+                successor: "f-2".into(),
+                from: "ent-gate".into(),
+                to: "ent-shrine".into(),
+                scope: scope.into(),
+                lifted_from: lifted_from.into(),
+                lifted_to: lifted_to.into(),
+            }
+        };
+        let lifted = continuity_actionable(&judged("", "ent-gate", "ent-palace"));
+        assert!(
+            lifted.message.contains("ent-palace") && lifted.message.contains("root scope"),
+            "the lifted pair and its scope must reach the author: {}",
+            lifted.message
+        );
+        let nested = continuity_actionable(&judged("ent-campus", "ent-school", "ent-library"));
+        assert!(
+            nested.message.contains("scope `ent-campus`"),
+            "a non-root scope is named: {}",
+            nested.message
+        );
+        // The flat case — no containment, so the lift is the identity — says
+        // nothing extra. Without this half the message could name the judged pair
+        // unconditionally and nobody would notice the noise.
+        let flat = continuity_actionable(&judged("", "ent-gate", "ent-shrine"));
+        assert!(
+            !flat.message.contains("judged in"),
+            "an unlifted step must not carry lift prose: {}",
+            flat.message
+        );
+        assert!(
+            lifted.repair_hint.contains("JUDGED"),
+            "the hint must send the author to the judged pair: {}",
+            lifted.repair_hint
+        );
+        assert!(
+            !lifted.repair_hint.contains("do not model it as a"),
+            "the R911 hint forbade modelling the crossing as a step, which R913 made \
+             false: {}",
+            lifted.repair_hint
+        );
+        assert!(
+            lifted.locus.branch.as_deref() == Some("main"),
+            "the judging world reaches the locus"
+        );
     }
 
     /// A shape violation carries the primitive's message verbatim.

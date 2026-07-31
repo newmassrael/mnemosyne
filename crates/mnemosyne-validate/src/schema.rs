@@ -1416,23 +1416,37 @@ fn rule_class_specs() -> Vec<RuleClassSpec> {
                             `map_contained_off_map`. All three were measured on one authored town: \
                             of the three ways to encode \"spoken of but never reached\", exactly \
                             one passes, and the two that fail are the ones the phrase suggests. \
-                            ROUND 911 — HOW A SUBJECT ENTERS A CONTAINER, which is the question two \
+                            ROUND 913 — HOW A SUBJECT ENTERS A CONTAINER, which is the question two \
                             blind authors (R910) each raised unprompted and each answered unaided. \
-                            Entry is NOT a succession and cannot be made one: a step from the \
-                            container to something inside it is `rule_transition_invalid`, and \
-                            adding the edge that would license it is `adjacency_cross_scope`. Both \
-                            direct encodings reject, and no intermediate state exists to route \
-                            through. The one that passes: let the COARSE fact (`at` the container) \
-                            CO-HOLD across the whole visit — one fact whose canon extent spans it — \
-                            while the FINE facts inside succeed each other normally. The overlap is \
-                            legal only because a refinement-aware exclusive rule (one declaring \
-                            `containment`, Round 714) reads a coarser and a finer statement of one \
-                            position as refinement rather than conflict; drop that `containment` \
-                            and the same corpus is `rule_exclusive_overlap`. THE COST, stated: the \
-                            entry itself is then not a CHECKED step. It appears in \
-                            `unchained_state_pairs`, which is surfaced and never gated, so the gate \
-                            confirms the walking inside a container and the walking between \
-                            containers but takes the crossing on trust.",
+                            Just write the step. A succession is judged AT THE DEEPEST SCOPE WHERE \
+                            ITS ENDPOINTS ARE COMPARABLE, because the map declares two relations \
+                            and a step may use either: places sharing a direct container need an \
+                            EDGE between them; a pair where one transitively CONTAINS the other is \
+                            a descent (entering) or an ascent (leaving) and needs no edge at all; \
+                            anything else is judged between the two ancestors that ARE siblings, so \
+                            a step from a gate to a market inside a district is licensed by the \
+                            gate-to-district edge you already drew. That lift is a CHECK, not a \
+                            licence — reaching a shrine inside a palace from a gate that is not \
+                            adjacent to the palace is `rule_transition_invalid`, and the finding \
+                            names the lifted pair, which is the edge you could author. Adding an \
+                            edge from a container to something inside it is still \
+                            `adjacency_cross_scope`: the step model changed here, the edge model \
+                            did not. THE ALTERNATIVE TELLING, still legal (Round 911): let the \
+                            COARSE fact (`at` the container) CO-HOLD across the whole visit — one \
+                            fact whose canon extent spans it — while the FINE facts inside succeed \
+                            each other normally. That overlap is legal only because a \
+                            refinement-aware exclusive rule (one declaring `containment`, Round \
+                            714) reads a coarser and a finer statement of one position as \
+                            refinement rather than conflict; drop that `containment` and the same \
+                            corpus is `rule_exclusive_overlap`. THE LIMIT, stated: only a DECLARED \
+                            crossing is checked. Leave the crossing undeclared — the ellipsis of \
+                            untold travel, which is legitimate — and the pair appears in \
+                            `unchained_state_pairs`, surfaced and never gated, so a corpus that \
+                            never says how a subject got inside is taken on trust. WHY THIS \
+                            CHANGED: before Round 913 the crossing was not wrong but UNSAYABLE, \
+                            and across four blind authorings nobody declared one — one author \
+                            called 6 of 13 places unreachable and wrote none of them, reporting it \
+                            as the shape the map model forced.",
                     },
                 ],
             },
@@ -2618,24 +2632,40 @@ mod tests {
             "name the finding, so a rejected author can search for it"
         );
         // Round 911 — and the question two blind authors each asked unprompted:
-        // how a subject gets INSIDE. Both reject-paths and the one that works
-        // must be named, or an author searches for an intermediate state that
-        // cannot exist.
+        // how a subject gets INSIDE. Round 913 changed the ANSWER (the crossing
+        // is now a declarable, checked step), so these pins move with it: the
+        // rule an author needs, the finding they may be handed, the co-hold that
+        // remains legal as the alternative, and the limit that only a DECLARED
+        // crossing is checked.
+        assert!(
+            containment.contains("DEEPEST SCOPE WHERE"),
+            "the step rule is the answer to `how do I get inside`; state it"
+        );
+        assert!(
+            containment.contains("descent") && containment.contains("ascent"),
+            "entering and leaving need no edge — the half an author cannot infer"
+        );
         assert!(
             containment.contains("rule_transition_invalid"),
-            "entry-as-a-succession rejects; name what the author will be handed"
+            "the lift is a check: name what an author will be handed when it fails"
         );
         assert!(
             containment.contains("CO-HOLD"),
-            "the encoding that passes has to be stated — it is not discoverable from \
-             either rejection"
+            "the alternative telling stays legal and stays stated"
         );
         assert!(
             containment.contains("unchained_state_pairs"),
-            "the cost of the co-hold is that the crossing is not a checked step; say so"
+            "the limit is that only a DECLARED crossing is checked; say so"
         );
-        // The superseded model must not be re-stated anywhere in the contract.
-        let stale = ["must not be walked on", "a search-key, not a position"];
+        // The superseded model must not be re-stated anywhere in the contract —
+        // including Round 911's own answer, which Round 913 falsified. An author
+        // told the crossing cannot be a step will not write one.
+        let stale = [
+            "must not be walked on",
+            "a search-key, not a position",
+            "Entry is NOT a succession",
+            "no intermediate state exists",
+        ];
         let surfaces = [c.narrative_rules_wire, containment];
         for s in surfaces {
             for phrase in stale {
