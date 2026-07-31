@@ -65,3 +65,6 @@ Cargo.lock.bak
 !/claudedocs/phase1-2d-projection-experiment/
 /claudedocs/phase1-2d-projection-experiment/**/*.atomic.json
 /claudedocs/phase1-2d-projection-experiment/**/*.playthrough.json
+!/claudedocs/phase1-map-corpus-experiment/
+/claudedocs/phase1-map-corpus-experiment/**/*.atomic.json
+/claudedocs/phase1-map-corpus-experiment/**/*.playthrough.json
