@@ -83,6 +83,14 @@ pub struct SchemaContract {
     /// plus a complete worked example. Without this an
     /// agent must reverse-engineer the serializer from parse errors.
     pub manifest_wire: ManifestWireSpec,
+    /// The JSON WIRE FORMAT of the `import-sections` manifest (Round 906) — the
+    /// STRUCTURE half of an authoring run, which this contract described nowhere
+    /// until two blind authors (R904) independently guessed it and both guessed
+    /// wrong in the same way. It is a BARE ARRAY, not an object, and its
+    /// `parent_doc` is required and appeared zero times in this contract. Facts
+    /// name sections in `canon_from` / `evidence`, so sections are authored
+    /// FIRST; without this an author reverse-engineers them from parse errors.
+    pub sections_wire: &'static str,
     /// The canon ORDER a store needs to be RENDERABLE (Round 596,
     /// unattended-loop-experiment/v1 Finding 4) — a SEPARATE authoring artifact,
     /// NOT part of the fact manifest, that the read projections require. Without
@@ -117,12 +125,23 @@ pub struct SchemaContract {
 /// `manifest_wire_prose_names_every_serde_key`, which fails if the serializer
 /// emits any key the prose does not name. So a serde rename cannot silently
 /// leave this contract stale.
+///
+/// Round 906 — the ARRAY ROSTER is derived, not counted by hand. [`Self::kinds`]
+/// is the single ordered list (apply order, which is semantic and not a serde
+/// fact), `manifest_kinds_cover_every_facts_manifest_array` holds it set-equal to
+/// [`mnemosyne_atomic::FactsManifest`]'s real serde keys, and [`Self::overview`]
+/// is GENERATED from it — so the count and the roster cannot drift. They had:
+/// `units` joined the manifest and this prose went on saying "seven ... frames,
+/// branches, entity_kinds, entities, predicates, facts, disclosure_plans" for
+/// thirteen rounds, which is how two blind authors both concluded a Quantity
+/// could not be authored from a file (R904 gap 2).
 #[derive(Debug, Clone, Serialize)]
 pub struct ManifestWireSpec {
     /// The batch verbs this manifest is fed to.
     pub add_op: &'static str,
-    /// The top-level object shape and the order kinds are applied in.
-    pub overview: &'static str,
+    /// The top-level object shape and the order kinds are applied in. GENERATED
+    /// from [`Self::kinds`] (Round 906) — never hand-enumerated.
+    pub overview: String,
     /// Per-kind serialized JSON key names (what the parser reads).
     pub kinds: Vec<KindWire>,
     /// The typed leg's object enum wire tagging — one wire tag per object_kind
@@ -294,6 +313,29 @@ pub fn describe_schema() -> SchemaContract {
              optional check. `propose-verdict` runs the same gate over a candidate batch and \
              returns each as an actionable violation.",
         manifest_wire: manifest_wire(),
+        sections_wire:
+            "Creating the structure SECTIONS a fact's `canon_from` / `evidence` point at — the \
+             FIRST authoring step, because a fact naming an unregistered section is rejected. \
+             `import-sections --manifest <file>`, and the file is a BARE JSON ARRAY, NOT an object \
+             with a `\"sections\"` key: [ { \"section_id\": string (the store key), \"parent_doc\": \
+             string (REQUIRED — the document this section belongs to; there is no default, and an \
+             omitted one is a parse error, not an empty string), \"title\": string, \
+             \"parent_section\"?: string (a section id declared EARLIER in this array — order \
+             matters, a child follows its parent), \"coverage_expectation\"?: \
+             \"normative\"|\"out_of_scope_here\"|\"informational\" (omitted = normative; \
+             `out_of_scope_here` = in the mirrored document but not implemented by THIS consumer, \
+             revisitable; `informational` = INHERENTLY non-implementable prose, terminology or \
+             overview — the distinction is load-bearing, since marking an intended-but-unbuilt \
+             feature `informational` is a false declaration no later binding can correct. The \
+             pre-R422 tag `informative` is NOT accepted and NOT aliased — it fails loudly), \
+             \"normative_excerpt\"?: { \"text\": string, \"anchor_url\": string, \
+             \"source_revision\": string, \"text_sha256\"?: string (computed if omitted) } }, … ]. \
+             Applied as ONE atomic transaction with a 3-way per-entry classification: absent → \
+             create, byte-identical → no-op skip (so a re-run is idempotent), present-but-different \
+             → the WHOLE manifest rejects (no silent overwrite — supersede and re-create to \
+             revise). A manifest of only no-ops does not write, and reports `0 created`. NOTE the \
+             asymmetry with the fact manifest: this one is a bare array of REQUIRED-field objects, \
+             that one is an object of optional arrays.",
         canon_order:
             "The canon ORDER — the discourse sequence of the sections — is a SEPARATE artifact \
              from the fact manifest, and a store needs it to be RENDERABLE: the read projections \
@@ -344,9 +386,13 @@ pub fn describe_schema() -> SchemaContract {
              — `adjacent(a,b)` admits (a,b); this is how movement between PLACES is gated, the \
              store-native map — the edges are FACTS, not a file list) + \"undirected\"?: bool \
              (true = an edge admits both directions, the map; absent/false = one-way, a state \
-             machine like `alive → dead`) + \"containment\"?: <predicate id> (Round 703: its \
-             facts are `contains(region, node)` — turns on the G2 completeness/leak checks over \
-             containers; omit for a map with no containers). Any declared containment predicate \
+             machine like `alive → dead`) + \"containment\"?: <predicate id> (Round 716, \
+             superseding R703's grouping model: its facts are `contains(container, contained)` and \
+             they PARTITION the map into SCOPES — an adjacency edge may only join SIBLINGS (same \
+             direct container), a non-sibling edge is `adjacency_cross_scope`, and a container \
+             LEAVES its own scope by being a NODE in its parent's (a portal). Also turns on the \
+             per-scope completeness/leak checks. Omit for a flat map). Any declared containment \
+             predicate \
              (a transition map's OR an exclusive rule's) is Round-715 integrity-checked to form a \
              TREE per (frame, world): at most one direct container per place, and acyclic. \
              interval → \
@@ -381,15 +427,46 @@ pub fn describe_schema() -> SchemaContract {
 /// `forks_from` is a bare string, the typed object is a tagged enum, `first_at`
 /// is a list of per-world reveal triggers `{branch, coords, threshold?}`).
 fn manifest_wire() -> ManifestWireSpec {
+    let kinds = manifest_kinds();
     ManifestWireSpec {
         add_op: "import-facts (apply) / propose-verdict (dry-run gate) — both read this manifest",
-        overview: "A JSON object with seven optional arrays applied in this order in ONE atomic \
-             transaction: frames, branches, entity_kinds, entities, predicates, facts, \
-             disclosure_plans. Later kinds may reference earlier ones (an entity names an \
-             entity_kind; a fact names a frame/branch/entity/section; a disclosure override names \
-             a fact), so order matters — registries first, then facts, then disclosure. Any array \
-             may be omitted (defaults to empty).",
-        kinds: vec![
+        overview: manifest_overview(&kinds),
+        kinds,
+        typed_object_wire: TYPED_OBJECT_WIRE,
+        example_json: MANIFEST_EXAMPLE_JSON,
+    }
+}
+
+/// Round 906 — the manifest overview, GENERATED from the kind roster. The count
+/// word and the ordered list were hand-written and drifted (see
+/// [`ManifestWireSpec`]); here they are one expression over the single roster,
+/// so an added kind updates both or neither.
+fn manifest_overview(kinds: &[KindWire]) -> String {
+    let names: Vec<&str> = kinds.iter().map(|k| k.kind).collect();
+    format!(
+        "A JSON object with {} optional arrays applied in this order in ONE atomic transaction: \
+         {}. Later kinds may reference earlier ones (an entity names an entity_kind; a Quantity \
+         object names a unit; a fact names a frame/branch/entity/section; a disclosure override \
+         names a fact), so order matters — registries first, then facts, then disclosure. Any \
+         array may be omitted (defaults to empty). UNKNOWN KEYS ARE IGNORED, DELIBERATELY: every \
+         field is optional and the parser neither rejects nor reports a key it does not know, so a \
+         MISSPELLED kind (or a key from a shape this manifest never had) parses cleanly and builds \
+         NOTHING — `exit 0`, zero rows. That leniency is load-bearing (a reader can ask \"does this \
+         file parse\" separately from \"does it build anything\"), which is exactly why the roster \
+         above is authoritative: a correct guess and a typo are byte-identical at the parse, so the \
+         only way to know a kind exists is that it is named here. Sections are NOT in this manifest \
+         — see the sections wire; author them first, since facts name them.",
+        names.len(),
+        names.join(", ")
+    )
+}
+
+/// The ordered roster of manifest arrays: APPLY order (semantic — later kinds
+/// reference earlier ones), which is not recoverable from serde. Round 906 holds
+/// this set-equal to the real `FactsManifest` serde keys, so the roster is
+/// complete by test even though the ORDER is authored.
+fn manifest_kinds() -> Vec<KindWire> {
+    vec![
             KindWire {
                 kind: "frames",
                 json_keys: "{ \"frame_id\": string, \"description\"?: string }",
@@ -411,6 +488,16 @@ fn manifest_wire() -> ManifestWireSpec {
                     satisfies both), \"description\"?: string } — the consumer's entity-kind \
                     vocabulary (character/place/item/quest/…); members are the consumer's, never \
                     core's",
+            },
+            KindWire {
+                kind: "units",
+                json_keys: "{ \"unit_id\": string, \"description\"?: string } — the unit registry \
+                    (R706) a `quantity` typed object's \"unit\" must be a member of. A Quantity IS \
+                    authorable from a manifest: declare the unit here, then write { \"kind\": \
+                    \"quantity\", \"n\": …, \"unit\": <unit_id> } on the fact's typed leg. This \
+                    array existed for thirteen rounds while the overview said seven; two blind \
+                    authors read that roster and both reported a Quantity could not be file-\
+                    authored (R904), which is why the roster is generated now",
             },
             KindWire {
                 kind: "entities",
@@ -448,9 +535,12 @@ fn manifest_wire() -> ManifestWireSpec {
                     list of per-world reveal triggers), \"surface\"?: {\"scene\": string, \
                     \"object\"?: string} } ] }",
             },
-        ],
-        typed_object_wire:
-            "A fact's optional `typed` leg is { \"subject\": entity id, \"predicate\": predicate \
+    ]
+}
+
+/// The typed leg's object enum wire tagging (Round 595, Round 708).
+const TYPED_OBJECT_WIRE: &str =
+    "A fact's optional `typed` leg is { \"subject\": entity id, \"predicate\": predicate \
              id, \"object\": <tagged enum> }. The object is an INTERNALLY-TAGGED enum with four \
              registered variants matching the predicate's object_kind (Round 708 removed the \
              free-text `scalar`/`value` shape — every machine-slot object is now enumerable; free \
@@ -463,10 +553,7 @@ fn manifest_wire() -> ManifestWireSpec {
              { \"kind\": \"fact\", \"id\": fact id } referencing another fact of this store \
              (existence checked in phase 2 against store + same-manifest staged; self-reference \
              rejects; the fact cannot be retracted while referenced). The subject and any \
-             entity-shaped object must ALSO appear in the fact's `entities` list.",
-        example_json: MANIFEST_EXAMPLE_JSON,
-    }
-}
+             entity-shaped object must ALSO appear in the fact's `entities` list.";
 
 /// A complete, valid `import-facts` manifest — the copy-and-adapt template
 /// (Round 595). Exercises every kind and the load-bearing serialization quirks:
@@ -1239,12 +1326,28 @@ fn rule_class_specs() -> Vec<RuleClassSpec> {
                         name: "containment",
                         ty: "predicate id (optional)",
                         required: false,
-                        description: "Round 703 (store-native map): the predicate whose facts are \
-                            `contains(region, node)` — a region (a container: a search-key, not a \
-                            position) and the map nodes it holds. Wiring it turns on the G2 \
-                            completeness/leak invariant: every place-kind entity must be a node or \
-                            a container; a container must not be walked on; a region contains only \
-                            real nodes. Omit for a map with no containers.",
+                        description: "Round 716 (per-scope map; supersedes the Round 703 grouping \
+                            model): the predicate whose facts are `contains(container, contained)`. \
+                            Its facts form a per-(frame, world) containment TREE, and that tree \
+                            PARTITIONS the adjacency edges into SCOPES: an edge may only join \
+                            SIBLINGS — two places with the SAME direct container (the root scope \
+                            counts). An edge between non-siblings is `adjacency_cross_scope`, \
+                            evaluated per canon point (a place that MOVES makes the same edge \
+                            sibling early and cross-scope late). A container is NOT a search-key \
+                            you must not walk on — it PARTICIPATES AS A NODE in its parent's scope, \
+                            and that is how you leave it: a PORTAL is the container's own edge to \
+                            its siblings, not an edge from something inside it to something \
+                            outside. So model a village of walled districts as districts adjacent \
+                            to each other (or to a shared road), never as a house in one district \
+                            adjacent to a house in the next. Wiring the predicate also turns on the \
+                            completeness/leak checks PER SCOPE, UNION-over-canon-points: a \
+                            place-kind entity off every scope at every point is `map_invented_\
+                            place`, a contained thing that is never a node nor itself a container \
+                            is `map_contained_off_map`, and an undirected scope whose sub-graph is \
+                            disconnected at every point is `map_disconnected`. A container-less map \
+                            degenerates to ONE root scope (the flat Round 702/703 behaviour). \
+                            KNOWN LIMIT: two mutually-unreachable TOP-LEVEL containers produce no \
+                            finding. Omit for a flat map.",
                     },
                 ],
             },
@@ -2022,6 +2125,227 @@ mod tests {
         assert_eq!(overrides[0].first_at[0].threshold, None);
     }
 
+    /// Round 906 — the ROSTER guard, derived from the type. The hand-written
+    /// sample below can only check the kinds it happens to build; nothing asked
+    /// whether the contract MENTIONS every kind at all. `units` was added to
+    /// `FactsManifest` and this contract went on advertising "seven" arrays for
+    /// thirteen rounds — two blind authors (R904) read the short roster and both
+    /// concluded, in a sealed report, that a Quantity could not be authored from
+    /// a file. The oracle is the real serde key set, so a kind cannot be added
+    /// without being described.
+    #[test]
+    fn manifest_kinds_cover_every_facts_manifest_array() {
+        use std::collections::BTreeSet;
+        // Every `FactsManifest` field is `#[serde(default)]`, so an empty object
+        // parses and re-serializes to exactly the manifest's array names.
+        let empty: mnemosyne_atomic::FactsManifest = serde_json::from_str("{}")
+            .expect("every FactsManifest field is #[serde(default)] — the documented leniency");
+        let arrays: BTreeSet<String> = serde_json::to_value(empty)
+            .expect("FactsManifest serializes")
+            .as_object()
+            .expect("a struct serializes to an object")
+            .keys()
+            .cloned()
+            .collect();
+
+        let wire = describe_schema().manifest_wire;
+        let described: BTreeSet<String> = wire.kinds.iter().map(|k| k.kind.to_string()).collect();
+        assert_eq!(
+            arrays, described,
+            "describe-schema's kind roster drifted from FactsManifest's real arrays — every array \
+             an author may write needs a KindWire, and a KindWire for an array that no longer \
+             exists sends them at a shape the parser will ignore"
+        );
+
+        // The overview is GENERATED from that roster, so the count word and the
+        // ordered list follow it. Assert the generation, not a copy of the list.
+        let overview = &wire.overview;
+        for name in &arrays {
+            assert!(
+                overview.contains(name.as_str()),
+                "manifest overview does not name the `{name}` array"
+            );
+        }
+        assert!(
+            overview.contains(&format!("with {} optional arrays", arrays.len())),
+            "the overview must state the REAL array count ({}) — it said `seven` while the type \
+             held eight",
+            arrays.len()
+        );
+        // The leniency that makes the roster load-bearing (see the test below).
+        assert!(
+            overview.contains("UNKNOWN KEYS ARE IGNORED"),
+            "an author cannot discover a misspelled kind from the parser, so the contract must say \
+             the parse is silent"
+        );
+    }
+
+    /// Round 906 — the manifest's unknown-key tolerance is INTENDED, not a bug,
+    /// and this pins it as behaviour rather than leaving it as prose. It is the
+    /// reason the roster above is the only way to learn a kind exists: a correct
+    /// guess and a typo produce byte-identical results at the parse (R904 gap 3).
+    /// `evidence_replay_smoke::classify` depends on this to separate "does the
+    /// file parse" from "does the file build anything".
+    #[test]
+    fn manifest_tolerates_unknown_keys_and_builds_nothing() {
+        let typo = r#"{ "unti": [ { "unit_id": "minute" } ], "no_such_kind": 3 }"#;
+        let m: mnemosyne_atomic::FactsManifest = serde_json::from_str(typo)
+            .expect("unknown keys are ignored — the documented, load-bearing leniency");
+        // Parsed cleanly AND built nothing: the two questions the contract must
+        // keep separate.
+        assert!(m.units.is_empty(), "a misspelled kind builds no rows");
+        assert!(m.frames.is_empty() && m.facts.is_empty() && m.entities.is_empty());
+        // The correctly-spelled key is what differs — the discriminating input
+        // this pair exists to hold (without it the assertion above is vacuous).
+        let correct = r#"{ "units": [ { "unit_id": "minute" } ] }"#;
+        let m: mnemosyne_atomic::FactsManifest =
+            serde_json::from_str(correct).expect("the real key parses");
+        assert_eq!(m.units.len(), 1, "the spelling is the ONLY difference");
+    }
+
+    /// Round 906 — the SECTIONS wire is a serialization contract, so its prose is
+    /// reflection-pinned to `SectionImport` (the `manifest_wire_prose_names_every_serde_key`
+    /// discipline). Until this round the contract described the sections manifest
+    /// NOWHERE — `parent_doc` appeared zero times — and two blind authors (R904)
+    /// independently guessed an object with a `sections` key, both rejected by a
+    /// loader that wants a bare array. A guess that two isolated readers make the
+    /// same way is a contract gap, not two mistakes.
+    #[test]
+    fn sections_wire_prose_names_every_serde_key() {
+        fn assert_documented(value: &serde_json::Value, prose: &str) {
+            match value {
+                serde_json::Value::Object(map) => {
+                    for (k, v) in map {
+                        assert!(
+                            prose.contains(&format!("\"{k}\"")),
+                            "SectionImport serde key `{k}` is not named in the sections-wire prose"
+                        );
+                        assert_documented(v, prose);
+                    }
+                }
+                serde_json::Value::Array(items) => {
+                    items.iter().for_each(|v| assert_documented(v, prose))
+                }
+                _ => {}
+            }
+        }
+        // Fully populated: every optional key present, so none escapes the walk
+        // (the empty-array lesson one type over).
+        let sample = mnemosyne_atomic::SectionImport {
+            section_id: "s".into(),
+            parent_doc: "d".into(),
+            title: "t".into(),
+            parent_section: Some("p".into()),
+            normative_excerpt: Some(mnemosyne_atomic::NormativeExcerptImport {
+                text: "x".into(),
+                anchor_url: "u".into(),
+                source_revision: "r".into(),
+                text_sha256: "h".into(),
+            }),
+            coverage_expectation: mnemosyne_core::CoverageExpectation::Informational,
+        };
+        let prose = describe_schema().sections_wire;
+        assert_documented(&serde_json::to_value(&sample).unwrap(), prose);
+
+        // A key-set walk checks that every KEY is named; it says nothing about
+        // the VALUES a closed-enum key accepts. The first draft of this prose
+        // offered `"normative"|"informative"` — the two-state vocabulary R422
+        // removed and R870 had already found hand-retyped in five surfaces — and
+        // every key-level assertion above passed on it. So the closed vocabulary
+        // is pinned to the enum too.
+        for tag in serde_variants::<mnemosyne_core::CoverageExpectation>() {
+            assert!(
+                prose.contains(&format!("\"{tag}\"")),
+                "coverage_expectation value `{tag}` is not named in the sections-wire prose"
+            );
+        }
+        assert!(
+            mnemosyne_core::CoverageExpectation::from_tag("informative").is_none(),
+            "the prose claims `informative` is refused; hold it to that"
+        );
+
+        // The two shape facts a reader cannot get from the key list, and that
+        // both blind authors got wrong: it is a BARE ARRAY, and `parent_doc` is
+        // required (no default — an omitted one is a parse error).
+        assert!(
+            prose.contains("BARE JSON ARRAY"),
+            "the top-level shape is the guess that failed twice"
+        );
+        assert!(
+            serde_json::from_str::<Vec<mnemosyne_atomic::SectionImport>>(
+                r#"[{"section_id":"s","title":"t"}]"#
+            )
+            .is_err(),
+            "parent_doc must really be required — else this prose overstates the loader"
+        );
+        assert!(
+            prose.contains("REQUIRED"),
+            "the required-ness of parent_doc must be stated, not implied by ordering"
+        );
+    }
+
+    /// Round 906 — the transition rule's `containment` prose must describe the
+    /// R716 model the gate actually enforces, not the R703 one it replaced. The
+    /// contract said a container is "a search-key, not a position" that "must not
+    /// be walked on" while `scan_spatial_map` had, since R716, treated containment
+    /// as a SCOPE BOUNDARY with the container participating as a node in its
+    /// parent's scope. Two blind authors (R904) quoted the stale sentence back in
+    /// their sealed reports and were rejected by the live gate for obeying it:
+    /// 24 of 39 findings were `adjacency_cross_scope`. Tier-3 prose, so this pins
+    /// the CONCEPTS and the emitted violation names, never the wording.
+    #[test]
+    fn transition_containment_documents_the_scope_boundary_model() {
+        let c = describe_schema();
+        let containment = &c
+            .narrative_rules
+            .iter()
+            .find(|r| r.class == "transition")
+            .expect("transition rule class present")
+            .parameters
+            .iter()
+            .find(|p| p.name == "containment")
+            .expect("containment parameter present")
+            .description;
+
+        // The model: siblings-only edges, and the portal that replaces the
+        // forbidden cross-container edge.
+        assert!(
+            containment.contains("SIBLINGS"),
+            "an edge may only join places sharing a direct container"
+        );
+        assert!(
+            containment.contains("PORTAL") || containment.contains("portal"),
+            "how a container is left — the half an author cannot infer from the reject"
+        );
+        assert!(
+            containment.contains("NODE in its parent's scope"),
+            "the container/node dichotomy dissolving is the R716 correction"
+        );
+        // The violation an author will actually be handed.
+        assert!(
+            containment.contains("adjacency_cross_scope"),
+            "name the finding, so a rejected author can search for it"
+        );
+        // The superseded model must not be re-stated anywhere in the contract.
+        let stale = ["must not be walked on", "a search-key, not a position"];
+        let surfaces = [c.narrative_rules_wire, containment];
+        for s in surfaces {
+            for phrase in stale {
+                assert!(
+                    !s.contains(phrase),
+                    "the R703 grouping model is superseded by R716, but the contract still says \
+                     `{phrase}`"
+                );
+            }
+        }
+        // The rules-file wire carries the same correction (the same fact is
+        // described in two places; they may not disagree).
+        assert!(
+            c.narrative_rules_wire.contains("adjacency_cross_scope"),
+            "the rules-wire prose must name the same finding as the rule-class prose"
+        );
+    }
+
     /// Round 600 (session review, Findings 1 + 3): extend the drift guard from
     /// the worked example to the KEY PROSE. Every JSON key the serializer emits
     /// for any manifest kind — including the nested confluence / typed / surface
@@ -2080,7 +2404,10 @@ mod tests {
                 parents: vec![],
                 description: "d".into(),
             }],
-            units: vec![],
+            units: vec![mnemosyne_atomic::UnitImport {
+                unit_id: "minute".into(),
+                description: "d".into(),
+            }],
             entities: vec![mnemosyne_atomic::EntityImport {
                 entity_id: "e".into(),
                 kind: "character".into(),
@@ -2135,10 +2462,19 @@ mod tests {
                 }],
             }],
         };
-        // Recurse into each kind's array (the six top-level array names are the
-        // well-known kinds, documented in the overview + FACTS_MANIFEST_SHAPE).
+        // Round 906 — the sample must POPULATE every array before its element
+        // keys can be checked, and that is exactly where this guard went quiet:
+        // `units` joined `FactsManifest`, the struct literal below stopped
+        // compiling, and the repair was `units: vec![]` — which recurses into
+        // nothing and asks nothing. An empty array is not a checked array, so
+        // failing here is the only way an added kind reaches the prose.
         let value = serde_json::to_value(&manifest).unwrap();
-        for arr in value.as_object().unwrap().values() {
+        for (kind, arr) in value.as_object().unwrap() {
+            assert!(
+                arr.as_array().is_some_and(|a| !a.is_empty()),
+                "the wire-prose sample leaves `{kind}` EMPTY, so no key of it is checked — \
+                 populate it here (an empty array silently exempts a whole kind)"
+            );
             assert_documented(arr, &prose);
         }
 

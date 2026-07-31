@@ -4144,6 +4144,8 @@ fn cmd_describe_schema(args: &[String]) -> Result<()> {
     println!("  typed object: {}", w.typed_object_wire);
     println!("\n  worked example (copy and adapt):");
     println!("{}", w.example_json);
+    println!("\n-- sections wire (import-sections; author these FIRST, facts name them) --");
+    println!("  {}", c.sections_wire);
     println!("\n-- canon order (required for a renderable store) --");
     println!("  {}", c.canon_order);
     println!("\n-- disclosure encoding (per-road secrets; frontier != leak gate) --");
