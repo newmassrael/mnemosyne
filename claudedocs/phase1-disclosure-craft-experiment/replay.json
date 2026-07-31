@@ -1,0 +1,21 @@
+{
+  "schema": "kit-replay/v1",
+  "revision_provenance": "derived-upper-bound",
+  "derived_in": "Round 882",
+  "derivation": "git log --diff-filter=A -1 -- <facts>: the commit that first added the manifest, which is AT OR AFTER the run that produced it",
+  "note": "Re-checking runs the declared revision against these manifests UNCHANGED. The manifests are the blind author's output and are never edited to suit a later tool.",
+  "manifests": [
+    {
+      "sections": "run/extract/A-sections.json",
+      "facts": "run/extract/A-facts.json",
+      "role": "replay-input",
+      "revision": "d624ba9bd2b9f47c7ac7e59fd179e7a8304e39b5"
+    },
+    {
+      "sections": "run/extract/B-sections.json",
+      "facts": "run/extract/B-facts.json",
+      "role": "replay-input",
+      "revision": "d624ba9bd2b9f47c7ac7e59fd179e7a8304e39b5"
+    }
+  ]
+}

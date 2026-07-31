@@ -1,0 +1,33 @@
+{
+  "schema": "kit-replay/v1",
+  "revision_provenance": "derived-upper-bound",
+  "derived_in": "Round 882",
+  "derivation": "git log --diff-filter=A -1 -- <facts>: the commit that first added the manifest, which is AT OR AFTER the run that produced it",
+  "note": "Re-checking runs the declared revision against these manifests UNCHANGED. The manifests are the blind author's output and are never edited to suit a later tool.",
+  "manifests": [
+    {
+      "sections": "run/author/sections.json",
+      "facts": "run/author/facts.json",
+      "role": "replay-input",
+      "revision": "14d7a1e0b1fd6cfc0a84da1f6ffde0758ff58144"
+    },
+    {
+      "sections": "run/extract-tsukuru/sections.json",
+      "facts": "run/extract-tsukuru/facts.json",
+      "role": "raw-agent-output",
+      "revision": "14d7a1e0b1fd6cfc0a84da1f6ffde0758ff58144"
+    },
+    {
+      "sections": "run/extract-tsukuru/sections.norm.json",
+      "facts": "run/extract-tsukuru/facts.norm.json",
+      "role": "replay-input",
+      "revision": "14d7a1e0b1fd6cfc0a84da1f6ffde0758ff58144"
+    },
+    {
+      "sections": "run/extract-vn/sections.json",
+      "facts": "run/extract-vn/facts.json",
+      "role": "replay-input",
+      "revision": "14d7a1e0b1fd6cfc0a84da1f6ffde0758ff58144"
+    }
+  ]
+}
