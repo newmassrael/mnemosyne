@@ -408,6 +408,18 @@ fn every_input_a_verb_would_accept_is_declared_exactly_once() {
 /// run at all — the pair rule was a special case that happened to agree.
 #[test]
 fn every_declared_revision_resolves_and_derived_ones_still_match() {
+    // A shallow clone holds none of the pinned commits, so every assertion
+    // below would fail with `revision does not resolve` and send the reader
+    // hunting for a corrupt declaration. R889 spent that hunt: name the cause
+    // instead. Failing — rather than skipping — is deliberate; a gate that
+    // quietly stops asserting where the history is thin is worse than a red one.
+    assert_eq!(
+        git(&["rev-parse", "--is-shallow-repository"]).trim(),
+        "false",
+        "this is a SHALLOW clone, so no pinned revision can be resolved and \
+         these declarations cannot be checked here. Whatever runs this test \
+         must check out full history (`fetch-depth: 0` for actions/checkout)."
+    );
     let d = declarations();
     assert!(!d.replays.is_empty(), "no replays — nothing asserted");
     let mut checked_derived = 0usize;
@@ -1268,4 +1280,79 @@ fn the_path_filter_covers_every_file_the_replay_reads() {
         "{} files read by replays, all covered by {patterns:?}",
         read.len()
     );
+}
+
+/// Whether a `cargo test` command could run the tests in THIS file. Defaults to
+/// yes: the question is answered from a command string, and the safe direction
+/// is to demand full history for a job that might need it. Being wrong the other
+/// way produces a gate that cannot run and says nothing, which is how R889
+/// happened.
+fn could_run_this_file(cmd: &str) -> bool {
+    if !cmd.contains("cargo test") {
+        return false;
+    }
+    let words: Vec<&str> = cmd.split_whitespace().collect();
+    // An explicit `--test <other>` restricts the run to one target.
+    if let Some(i) = words.iter().position(|w| *w == "--test") {
+        if words.get(i + 1) != Some(&"evidence_replay_smoke") {
+            return false;
+        }
+    }
+    // An explicit `-p <other crate>` restricts it to one package.
+    if let Some(i) = words.iter().position(|w| *w == "-p" || *w == "--package") {
+        if words.get(i + 1) != Some(&"mnemosyne-cli") {
+            return false;
+        }
+    }
+    true
+}
+
+/// Any workflow job that could run the tests in this file must check the repo
+/// out with full history, because they resolve pinned historical commits.
+///
+/// This is the check that would have caught R889 at commit time. R887 built the
+/// same shape one axis over — the path filter has to cover what a replay reads —
+/// and this is its sibling: the requirement the gates place on their runner has
+/// to be asserted against the runner's own configuration, not remembered.
+#[test]
+fn every_job_that_could_run_these_gates_checks_out_full_history() {
+    let mut checked = 0usize;
+    for path in workflow_files() {
+        let doc = load_workflow(&path);
+        for (name, job) in doc["jobs"].as_hash().expect("jobs is a mapping") {
+            let name = name.as_str().unwrap_or("<unnamed>");
+            let steps = job["steps"].as_vec().expect("a job declares steps");
+            let runs_them = steps
+                .iter()
+                .filter_map(|s| s["run"].as_str())
+                .any(could_run_this_file);
+            if !runs_them {
+                continue;
+            }
+            let depth = steps
+                .iter()
+                .find(|s| {
+                    s["uses"]
+                        .as_str()
+                        .is_some_and(|u| u.starts_with("actions/checkout"))
+                })
+                .map(|s| s["with"]["fetch-depth"].as_i64());
+            assert_eq!(
+                depth,
+                Some(Some(0)),
+                "{path} job `{name}` runs these gates but does not check out \
+                 full history (fetch-depth: {depth:?}). A shallow clone holds \
+                 none of the pinned revisions, so the gates cannot run there."
+            );
+            checked += 1;
+        }
+    }
+    // Non-vacuity: if no job were recognised as running these tests, the loop
+    // above would assert nothing while looking thorough.
+    assert!(
+        checked > 0,
+        "no workflow job was recognised as running these gates — either the \
+         command shapes changed or `could_run_this_file` stopped matching"
+    );
+    println!("{checked} job(s) run these gates, all with full history");
 }

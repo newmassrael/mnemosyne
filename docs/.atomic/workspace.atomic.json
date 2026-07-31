@@ -28653,6 +28653,46 @@
         "The two workflows install a toolchain the local machine happens to have. Any other build-time system dependency added later will fail the same way, at build, only on CI, and only where someone happens to look.",
         "`actions/checkout@v4` and `actions/cache@v4` are annotated as targeting a deprecated Node.js 20 and are being forced onto Node 24. Both workflows use them. Not a failure yet."
       ]
+    },
+    "Round 889": {
+      "decision_summary": "The gates needed history and the job that runs them had none; protoc had been hiding that",
+      "changes_bullets": [
+        "`mnemosyne-validate`'s validate job now checks out full history. `cargo test --workspace` includes the R884-R887 declaration gates, and those resolve pinned historical commits — a shallow clone has none of them, so the gates could not run in that job at all. R886 measured this exact constraint and fixed it in the workflow it was writing; the job that runs ALL the tests kept the default depth. My own gate was the thing failing on the first CI run that got far enough to execute it.",
+        "Two defects were stacked and the outer one hid the inner one. R888's missing `protoc` killed the workspace build before a single test ran, so these gates had never once executed on CI. Fixing protoc uncovered mine — the msrv job went green in the same run and validate advanced from failing at BUILD to failing inside a test.",
+        "The failure now names its cause. A shallow clone made every declaration report `revision does not resolve`, which reads as a corrupt record and sent me hunting; the test asks `git rev-parse --is-shallow-repository` first and says what is actually wrong. It FAILS rather than skips: a gate that quietly stops asserting where the history is thin is worse than a red one.",
+        "New gate `every_job_that_could_run_these_gates_checks_out_full_history` — the check that would have caught this at commit time. It is R887's shape one axis over: R887 asserted the CI path filter covers what a replay reads, this asserts the requirement the gates place on their runner against the runner's own configuration, rather than leaving it remembered. The recogniser defaults to \"this command could run these tests\" and only backs off on an explicit `--test` or `-p` naming something else, because being wrong in the other direction is what produced a gate that could not run and said nothing."
+      ],
+      "verification_bullets": [
+        "10 green in the file (+1), clippy -D warnings clean, fmt clean, validate-workspace clean.",
+        "The shallow predicate discriminates, measured on both sides: a `--depth 1` clone of this repo answers `git rev-parse --is-shallow-repository` with `true`, this tree with `false`, and in that clone the pinned revision is `fatal: Not a valid object name` — the confusing message the new assertion replaces.",
+        "Injections, self-reported. J1 (delete the `fetch-depth: 0` I just added — the R889 defect restored) reddened the new gate alone, naming the file, the job, and `fetch-depth: Some(None)`. J2 (blind the recogniser so no command matches) reddened it on the non-vacuity clause instead, which is the direction that matters: a recogniser that stops matching would otherwise leave the loop asserting nothing while looking thorough.",
+        "SELF-REPORTED PROCESS ERROR: I reverted J2 with `git checkout -- <test file>`, which restored the file to its last COMMITTED state and deleted this round's implementation. That is the exact hazard my own notes record from R817 — revert from a copy, never with git checkout, because the round's work is not committed yet. Caught it on the next run (9 passed where 10 were expected), re-applied, re-verified.",
+        "NOT verified: that CI is green. Only a push settles it, and this round is the second time in a row that a fix uncovered another failure underneath, so the honest expectation is that the next run may find a third."
+      ],
+      "carry_forward_bullets": [
+        "Still nothing tells this repo its CI is red — R888's finding, unchanged. Two rounds have now been spent on failures that a human reading `gh run list` found, and nothing in the repo asks that question.",
+        "`fetch-depth: 0` makes the validate job clone the full history on every push and PR. That is a real cost paid by every run for the benefit of gates that only some changes touch; it was not measured against a partial-depth alternative.",
+        "The gates read the workflow, not GitHub's schema, so a file that satisfies all four could still be rejected for a key GitHub does not recognise."
+      ],
+      "publishable_decision_summary": "The gates needed history and the job that runs them had none; protoc had been hiding that",
+      "publishable_changes_bullets": [
+        "`mnemosyne-validate`'s validate job now checks out full history. `cargo test --workspace` includes the R884-R887 declaration gates, and those resolve pinned historical commits — a shallow clone has none of them, so the gates could not run in that job at all. R886 measured this exact constraint and fixed it in the workflow it was writing; the job that runs ALL the tests kept the default depth. My own gate was the thing failing on the first CI run that got far enough to execute it.",
+        "Two defects were stacked and the outer one hid the inner one. R888's missing `protoc` killed the workspace build before a single test ran, so these gates had never once executed on CI. Fixing protoc uncovered mine — the msrv job went green in the same run and validate advanced from failing at BUILD to failing inside a test.",
+        "The failure now names its cause. A shallow clone made every declaration report `revision does not resolve`, which reads as a corrupt record and sent me hunting; the test asks `git rev-parse --is-shallow-repository` first and says what is actually wrong. It FAILS rather than skips: a gate that quietly stops asserting where the history is thin is worse than a red one.",
+        "New gate `every_job_that_could_run_these_gates_checks_out_full_history` — the check that would have caught this at commit time. It is R887's shape one axis over: R887 asserted the CI path filter covers what a replay reads, this asserts the requirement the gates place on their runner against the runner's own configuration, rather than leaving it remembered. The recogniser defaults to \"this command could run these tests\" and only backs off on an explicit `--test` or `-p` naming something else, because being wrong in the other direction is what produced a gate that could not run and said nothing."
+      ],
+      "publishable_verification_bullets": [
+        "10 green in the file (+1), clippy -D warnings clean, fmt clean, validate-workspace clean.",
+        "The shallow predicate discriminates, measured on both sides: a `--depth 1` clone of this repo answers `git rev-parse --is-shallow-repository` with `true`, this tree with `false`, and in that clone the pinned revision is `fatal: Not a valid object name` — the confusing message the new assertion replaces.",
+        "Injections, self-reported. J1 (delete the `fetch-depth: 0` I just added — the R889 defect restored) reddened the new gate alone, naming the file, the job, and `fetch-depth: Some(None)`. J2 (blind the recogniser so no command matches) reddened it on the non-vacuity clause instead, which is the direction that matters: a recogniser that stops matching would otherwise leave the loop asserting nothing while looking thorough.",
+        "SELF-REPORTED PROCESS ERROR: I reverted J2 with `git checkout -- <test file>`, which restored the file to its last COMMITTED state and deleted this round's implementation. That is the exact hazard my own notes record from R817 — revert from a copy, never with git checkout, because the round's work is not committed yet. Caught it on the next run (9 passed where 10 were expected), re-applied, re-verified.",
+        "NOT verified: that CI is green. Only a push settles it, and this round is the second time in a row that a fix uncovered another failure underneath, so the honest expectation is that the next run may find a third."
+      ],
+      "publishable_carry_forward_bullets": [
+        "Still nothing tells this repo its CI is red — R888's finding, unchanged. Two rounds have now been spent on failures that a human reading `gh run list` found, and nothing in the repo asks that question.",
+        "`fetch-depth: 0` makes the validate job clone the full history on every push and PR. That is a real cost paid by every run for the benefit of gates that only some changes touch; it was not measured against a partial-depth alternative.",
+        "The gates read the workflow, not GitHub's schema, so a file that satisfies all four could still be rejected for a key GitHub does not recognise."
+      ]
     }
   },
   "inventory_entries": {},
