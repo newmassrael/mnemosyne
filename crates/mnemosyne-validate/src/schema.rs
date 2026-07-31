@@ -1372,9 +1372,18 @@ fn rule_class_specs() -> Vec<RuleClassSpec> {
                     },
                     FieldSpec {
                         name: "bound",
-                        ty: "a literal number, or a third scalar predicate id",
+                        ty: "a TAGGED object: { \"const\": number } | { \"predicate\": <predicate \
+                             id> }",
                         required: true,
-                        description: "The right-hand bound of the comparison.",
+                        description: "Round 907: the right-hand bound, and it is NEVER a bare \
+                            number — `\"bound\": 5` is a PARSE ERROR (`invalid type: integer, \
+                            expected struct IntervalBoundWire`). Write { \"const\": 5 } for a \
+                            literal, read in the difference's own unit (a const has no unit slot), \
+                            or { \"predicate\": <id> } for a bound resolved on the same subject as \
+                            the operands — an inherited rule fact such as `min-ratify-gap-days`. \
+                            That predicate must yield a NUMERIC object (a `quantity`, or a bare \
+                            numeric token); a non-numeric operand is surfaced as \
+                            `interval_unverifiable`, never subtracted.",
                     },
                 ],
             },
@@ -2123,6 +2132,83 @@ mod tests {
         assert_eq!(overrides[0].first_at[0].branch, "road-b");
         assert_eq!(overrides[0].first_at[0].coords, vec!["sc-04".to_string()]);
         assert_eq!(overrides[0].first_at[0].threshold, None);
+    }
+
+    /// Round 907 — the interval `bound` prose is pinned to what the REAL rules
+    /// parser accepts, not to a word list.
+    ///
+    /// The rule-class parameter said the bound was "a literal number, or a third
+    /// scalar predicate id". Both halves were wrong and each was wrong in a
+    /// different way: a bare number is a PARSE ERROR (the wire is a tagged
+    /// object), and `scalar` is the `object_kind` R708 removed — so the more
+    /// prominent of the contract's two descriptions of one field contradicted
+    /// the other and used dead vocabulary while doing it. An author following it
+    /// writes `"bound": 5` and is refused at load.
+    ///
+    /// No key-set or vocabulary-alternation oracle reaches this: `scalar` was an
+    /// ADJECTIVE, not an enumerated value, and "a literal number" names no
+    /// identifier at all. What IS decidable is the behaviour, so the test runs
+    /// both spellings through the parser and holds the prose to the outcome.
+    #[test]
+    fn interval_bound_prose_matches_what_the_rules_parser_accepts() {
+        // Through the real public entry point, on a real file — the same call
+        // `validate-continuity` makes.
+        fn parse(bound: &str) -> Result<(), String> {
+            let json = format!(
+                r#"{{"rules":[{{"id":"r","predicate":"p","class":"interval",
+                   "right":"q","op":"ge","bound":{bound}}}]}}"#
+            );
+            let dir = tempfile::tempdir().expect("tempdir");
+            let path = dir.path().join("rules.json");
+            std::fs::write(&path, json).expect("write rules");
+            crate::continuity::load_narrative_rules(&path, None).map(|_| ())
+        }
+        // The discriminating pair — without both halves the assertion is vacuous.
+        assert!(
+            parse("5").is_err(),
+            "a bare-number bound must be refused; if this ever parses, the prose \
+             below is what needs changing, not this test"
+        );
+        assert!(
+            parse(r#"{"const":5}"#).is_ok(),
+            "the tagged const bound is the documented spelling and must parse"
+        );
+        assert!(
+            parse(r#"{"predicate":"min-gap"}"#).is_ok(),
+            "the tagged predicate bound is the documented spelling and must parse"
+        );
+
+        let c = describe_schema();
+        let bound = &c
+            .narrative_rules
+            .iter()
+            .find(|r| r.class == "interval")
+            .expect("interval rule class present")
+            .parameters
+            .iter()
+            .find(|p| p.name == "bound")
+            .expect("bound parameter present");
+        let prose = format!("{} {}", bound.ty, bound.description);
+        // Both spellings the parser accepts must be named where an author looks.
+        for tag in ["\"const\"", "\"predicate\""] {
+            assert!(
+                prose.contains(tag),
+                "the bound parameter does not name the {tag} wire tag, which is one of \
+                 the only two shapes the parser accepts"
+            );
+        }
+        // And the shape it refuses must not be offered, in either surface.
+        for surface in [prose.as_str(), c.narrative_rules_wire] {
+            assert!(
+                !surface.contains("a literal number,"),
+                "the contract still offers a bare-number bound, which is a parse error"
+            );
+            assert!(
+                !surface.contains("scalar"),
+                "`scalar` is the object_kind R708 removed; it must not appear in the \
+                 authoring contract"
+            );
+        }
     }
 
     /// Round 906 — the ROSTER guard, derived from the type. The hand-written

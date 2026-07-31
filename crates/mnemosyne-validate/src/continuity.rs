@@ -849,9 +849,17 @@ pub enum NarrativeRuleSpec {
 }
 
 /// The right-hand bound of an [`NarrativeRuleSpec::Interval`] rule (Round
-/// 489): a literal constant, or a third scalar predicate resolved on the
+/// 489): a literal constant, or a third NUMERIC predicate resolved on the
 /// SAME subject as the operands (the inherited rule fact, e.g.
 /// `min-ratify-gap-days`).
+///
+/// Round 907 — this said "a third SCALAR predicate", and `scalar` is the
+/// `object_kind` Round 708 removed. `describe-schema` copied the word into the
+/// interval rule's `bound` parameter, where an author reading the rule-class
+/// list met a vocabulary the predicate registry has refused since R708. Core's
+/// own [`mnemosyne_core::PredicateObjectKind`] doc records the same token
+/// surviving in `build_predicate`'s "expected one of" until R873; this was its
+/// third habitat. The constraint is NUMERIC-ness, so it is named that way.
 #[derive(Debug, Clone, PartialEq)]
 pub enum IntervalBound {
     Const(f64),
