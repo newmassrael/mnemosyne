@@ -30,6 +30,6 @@ pub use commit_ledger::{diff as commit_ledger_diff, CommitLedgerDriftReport};
 pub use content_drift::{
     scan_content_drift, ContentDriftScan, ContentDriftViolation, ExcerptCensus, ExcerptKind,
 };
-pub use spec_drift::{scan_spec_drift, SpecDriftViolation};
+pub use spec_drift::{scan_spec_drift, SpecDriftScan, SpecDriftViolation, SpecMirrorCensus};
 pub use t2::{frozen_ledger_atomic, T2ValidationError};
 pub use validator::{atomic_section_supersede_state_reject, ValidationError};

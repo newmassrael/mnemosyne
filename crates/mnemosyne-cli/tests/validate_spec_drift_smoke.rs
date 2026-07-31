@@ -221,3 +221,71 @@ fn case_vii_section_without_excerpt_never_drifts() {
         String::from_utf8_lossy(&out.stderr)
     );
 }
+
+/// Round 901 — case vii above is the store where NOTHING is examined, and it
+/// only ever asserted that the verb does not gate. These two are the
+/// discriminating pair: the same verb, one store mirroring a spec and one
+/// mirroring none, both reporting zero drift, and they must not render alike.
+#[test]
+fn case_viii_a_store_with_no_spec_mirror_says_it_compared_nothing() {
+    let tmp = TempDir::new().unwrap();
+    write_workspace(
+        tmp.path(),
+        Some(("https://www.w3.org/TR/scxml/", "2024-rec")),
+        Some("reject"),
+        serde_json::json!({
+        "ordinary-decision": { "title": "Plain", "parent_doc": "docs/GENERATED.md" },
+        "another-decision": { "title": "Plain too", "parent_doc": "docs/GENERATED.md" }
+        }),
+    );
+    let out = run_cli(tmp.path(), &["validate-spec-drift"]);
+    assert!(
+        out.status.success(),
+        "nothing to check must not gate; stderr: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        stdout.contains("sections=2 mirroring=0"),
+        "the reach must be printed beside the store size; stdout: {stdout}"
+    );
+    assert!(
+        stdout.contains("0 section(s) examined") && stdout.contains("nothing to check"),
+        "the scan must say which zero this is; stdout: {stdout}"
+    );
+}
+
+#[test]
+fn case_ix_a_mirroring_store_reports_the_reach_behind_its_list() {
+    // The partner. Without this, case viii would pass with the verb hardwired
+    // to print `nothing to check` on every store.
+    let tmp = TempDir::new().unwrap();
+    write_workspace(
+        tmp.path(),
+        Some(("https://www.w3.org/TR/scxml/", "2024-rec")),
+        Some("reject"),
+        serde_json::json!({
+        "scxml-3.13": spec_section("2024-rec", None),
+        "scxml-4.1": spec_section("2024-rec", Some("superseded"))
+        }),
+    );
+    let out = run_cli(tmp.path(), &["validate-spec-drift"]);
+    assert!(
+        out.status.success(),
+        "no drift here, so no gate; stderr: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        stdout.contains("sections=2 mirroring=2 exempt_by_status=1"),
+        "stdout: {stdout}"
+    );
+    assert!(
+        stdout.contains("drift: total=0 over 1 section(s) examined"),
+        "stdout: {stdout}"
+    );
+    assert!(
+        !stdout.contains("nothing to check"),
+        "a store mirroring a spec must not claim it compared nothing; stdout: {stdout}"
+    );
+}

@@ -5437,6 +5437,7 @@ fn cmd_report_spec_map(args: &[String]) -> Result<()> {
     let spec_source = loaded.config.workspace.spec_source.as_ref();
     let drift_ids: BTreeSet<String> = match spec_source {
         Some(s) => mnemosyne_validate::scan_spec_drift(&store, &s.revision)
+            .violations
             .into_iter()
             .map(|v| v.section_id)
             .collect(),
@@ -6467,7 +6468,9 @@ fn cmd_validate_spec_drift(args: &[String]) -> Result<()> {
     let store = AtomicStore::load(&atomic_path)
         .with_context(|| format!("atomic store load: {}", atomic_path.display()))?;
 
-    let violations = mnemosyne_validate::scan_spec_drift(&store, &workspace_revision);
+    let scan = mnemosyne_validate::scan_spec_drift(&store, &workspace_revision);
+    let violations = &scan.violations;
+    let census = scan.census;
 
     if json {
         let view: Vec<serde_json::Value> = violations.iter().map(|v| v.to_cli_json()).collect();
@@ -6477,7 +6480,14 @@ fn cmd_validate_spec_drift(args: &[String]) -> Result<()> {
             "primitive": "validate-spec-drift",
             "spec_url": spec_source.url,
             "workspace_revision": workspace_revision,
-            "valid_section_count": store.sections.len(),
+            // Round 901 — was `valid_section_count`, a name that says "the
+            // sections a citation may resolve to" (its honest meaning over in
+            // validate-code-refs) and a value that is the store total. Read as
+            // this scan's denominator it claimed a reach the scan never had.
+            "section_count": store.sections.len(),
+            "sections_with_excerpt": census.sections_with_excerpt,
+            "examined_count": census.examined,
+            "exempt_by_status_count": census.exempt_by_status,
             "drift_count": violations.len(),
             "severity": severity,
             "violations": view,
@@ -6486,16 +6496,36 @@ fn cmd_validate_spec_drift(args: &[String]) -> Result<()> {
     } else {
         println!("=== mnemosyne-cli validate-spec-drift ===");
         println!(
-            "spec_url={:?} workspace_revision={:?} sections={} severity={}",
+            "spec_url={:?} workspace_revision={:?} sections={} mirroring={} exempt_by_status={} severity={}",
             spec_source.url,
             workspace_revision,
             store.sections.len(),
+            census.sections_with_excerpt,
+            census.exempt_by_status,
             severity.as_str(),
         );
-        println!("drift: total={}", violations.len());
+        // Round 901 — say which zero this is, the Round 895 repair one verb
+        // over. `total=0` beside the store's section count read as "every
+        // section is on the current revision"; on a store where nothing
+        // carries a normative excerpt it means the scan compared NOTHING.
+        if census.examined == 0 {
+            println!(
+                "drift: total=0 over 0 section(s) examined — {} of {} section(s) carry a \
+                 normative excerpt, so this scan compared NOTHING. Read this as `nothing to \
+                 check`, not `nothing wrong`.",
+                census.sections_with_excerpt,
+                store.sections.len(),
+            );
+        } else {
+            println!(
+                "drift: total={} over {} section(s) examined",
+                violations.len(),
+                census.examined,
+            );
+        }
         // Bare section_id (no `§` sigil) — the CLI never renders a literal
         // section citation the R255 pre-commit hook would scan.
-        for v in &violations {
+        for v in violations {
             println!(
                 " [drift] {} anchored_rev={:?} workspace_rev={:?}",
                 v.section_id, v.section_revision, v.workspace_revision
