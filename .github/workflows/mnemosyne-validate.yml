@@ -26,6 +26,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # R888 — `mnemosyne-server`'s build script runs tonic-build, which shells
+      # out to `protoc`. The hosted runner does not ship one, so `cargo test
+      # --workspace` failed at BUILD, before a single test ran, on every push
+      # for at least four commits. It is installed from the runner's own apt
+      # source rather than a third-party action: one less thing to trust, and
+      # the version question is prost-build's, which accepts what Ubuntu ships.
+      - name: Install protoc (mnemosyne-server build script)
+        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
+
       - name: Install rust toolchain (rust-toolchain.toml)
         run: rustup show
 
@@ -63,6 +72,12 @@ jobs:
       # Cargo.toml (single source — no drift with rust-version). rust-toolchain.toml
       # pins the newer *dev* toolchain; RUSTUP_TOOLCHAIN overrides it so this job
       # builds on the MSRV itself (dev-on-latest, support-down-to-MSRV).
+      # Same reason as the validate job: `cargo check --workspace` builds
+      # `mnemosyne-server`'s script too, so this job was failing on the missing
+      # `protoc` as well.
+      - name: Install protoc (mnemosyne-server build script)
+        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
+
       - name: Read MSRV from Cargo.toml
         id: msrv
         run: |

@@ -28619,6 +28619,40 @@
         "The weekly cadence remains a guess, not a measurement: a yanked dependency has no known arrival rate here.",
         "The gates read the workflow, not GitHub's schema. A file that parses and satisfies all three could still be rejected by GitHub for a key it does not recognise; only a real run settles that, and this workflow has not had one."
       ]
+    },
+    "Round 888": {
+      "decision_summary": "CI was red for four commits, and the thing that noticed was me reading the runs by hand",
+      "changes_bullets": [
+        "`mnemosyne-validate` CI has been failing on every push, at BUILD, before a single test ran, and the failure is one missing package: `mnemosyne-server`'s build script runs tonic-build, which shells out to `protoc`, and the hosted runner does not ship one. Both jobs install it now, from the runner's own apt source rather than a third-party action — one less thing to trust, and the version question belongs to prost-build, which takes what Ubuntu ships. The `msrv` job needed it too: `cargo check --workspace` builds the same script.",
+        "Found by looking at `gh run list` after the R884-R887 push, not by any gate. The four most recent runs on main were all red — R872, R874, R877, R883 — so this had been the state for at least eleven hours and four commits while local `cargo test --workspace` stayed green the whole time. The local pre-commit and pre-push hooks cannot see it: they run on a machine that HAS protoc."
+      ],
+      "verification_bullets": [
+        "The diagnosis is the runner's own words, read from the job log rather than inferred: \"Could not find `protoc` ... Error: Custom { kind: NotFound }\" from `mnemosyne-server`'s build script. Locally `protoc` is 3.12.4 at /usr/bin/protoc, which is why the same command passes here and has for every round.",
+        "Not verified: that the fix works. Only a push settles it, exactly as R886 said of its own workflow, and this commit has not been pushed.",
+        "Verified in the same session, and this is the part worth keeping: the R886 workflow RAN on GitHub and was not a hollow green. 7m22s, exit 0, and the log says \"36 replays across 23 revisions\", \"34 replays reproduced their declared digest, 2 blocked as declared\". So three things that were open are now observed — GitHub accepts the workflow, `fetch-depth: 0` really does let it extract 23 historical commits, and 23 historical `Cargo.lock` files still resolve against crates.io from a hosted runner, which is the residual risk R880 recorded as UNOBSERVED.",
+        "It also closes an R885 carry that was honestly open: the 34 digests were measured on one machine, and nothing proved a path or environment value had not leaked into the store bytes. They reproduce byte-for-byte on GitHub's runner, on different hardware and a different OS image."
+      ],
+      "carry_forward_bullets": [
+        "Nothing tells this repo its CI is red. That is the whole finding here and it is not fixed: the gate that catches a hollow workflow (R887) does not catch a workflow that runs and fails, because the result lives on GitHub and nobody here reads it. Four red runs went unnoticed across eleven hours. A local hook cannot answer it either — the hooks pass because this machine has what the runner lacks.",
+        "The two workflows install a toolchain the local machine happens to have. Any other build-time system dependency added later will fail the same way, at build, only on CI, and only where someone happens to look.",
+        "`actions/checkout@v4` and `actions/cache@v4` are annotated as targeting a deprecated Node.js 20 and are being forced onto Node 24. Both workflows use them. Not a failure yet."
+      ],
+      "publishable_decision_summary": "CI was red for four commits, and the thing that noticed was me reading the runs by hand",
+      "publishable_changes_bullets": [
+        "`mnemosyne-validate` CI has been failing on every push, at BUILD, before a single test ran, and the failure is one missing package: `mnemosyne-server`'s build script runs tonic-build, which shells out to `protoc`, and the hosted runner does not ship one. Both jobs install it now, from the runner's own apt source rather than a third-party action — one less thing to trust, and the version question belongs to prost-build, which takes what Ubuntu ships. The `msrv` job needed it too: `cargo check --workspace` builds the same script.",
+        "Found by looking at `gh run list` after the R884-R887 push, not by any gate. The four most recent runs on main were all red — R872, R874, R877, R883 — so this had been the state for at least eleven hours and four commits while local `cargo test --workspace` stayed green the whole time. The local pre-commit and pre-push hooks cannot see it: they run on a machine that HAS protoc."
+      ],
+      "publishable_verification_bullets": [
+        "The diagnosis is the runner's own words, read from the job log rather than inferred: \"Could not find `protoc` ... Error: Custom { kind: NotFound }\" from `mnemosyne-server`'s build script. Locally `protoc` is 3.12.4 at /usr/bin/protoc, which is why the same command passes here and has for every round.",
+        "Not verified: that the fix works. Only a push settles it, exactly as R886 said of its own workflow, and this commit has not been pushed.",
+        "Verified in the same session, and this is the part worth keeping: the R886 workflow RAN on GitHub and was not a hollow green. 7m22s, exit 0, and the log says \"36 replays across 23 revisions\", \"34 replays reproduced their declared digest, 2 blocked as declared\". So three things that were open are now observed — GitHub accepts the workflow, `fetch-depth: 0` really does let it extract 23 historical commits, and 23 historical `Cargo.lock` files still resolve against crates.io from a hosted runner, which is the residual risk R880 recorded as UNOBSERVED.",
+        "It also closes an R885 carry that was honestly open: the 34 digests were measured on one machine, and nothing proved a path or environment value had not leaked into the store bytes. They reproduce byte-for-byte on GitHub's runner, on different hardware and a different OS image."
+      ],
+      "publishable_carry_forward_bullets": [
+        "Nothing tells this repo its CI is red. That is the whole finding here and it is not fixed: the gate that catches a hollow workflow (R887) does not catch a workflow that runs and fails, because the result lives on GitHub and nobody here reads it. Four red runs went unnoticed across eleven hours. A local hook cannot answer it either — the hooks pass because this machine has what the runner lacks.",
+        "The two workflows install a toolchain the local machine happens to have. Any other build-time system dependency added later will fail the same way, at build, only on CI, and only where someone happens to look.",
+        "`actions/checkout@v4` and `actions/cache@v4` are annotated as targeting a deprecated Node.js 20 and are being forced onto Node 24. Both workflows use them. Not a failure yet."
+      ]
     }
   },
   "inventory_entries": {},
