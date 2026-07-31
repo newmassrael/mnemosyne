@@ -11031,6 +11031,86 @@ mod tests {
         );
     }
 
+    /// Round 909 — "a place spoken of but never reached" has exactly ONE encoding
+    /// this gate accepts, and the two the phrase suggests are the two it rejects.
+    ///
+    /// The map brief asks for such a place, and both blind authors (R904) wrote
+    /// one. An author reading "nobody ever reaches it" naturally leaves it off
+    /// the map, or names it inside a quarter and gives it no way in. Both are
+    /// rejected. The accepted encoding is the counter-intuitive one: put it ON
+    /// the map and never travel it in the canon order — because the map is
+    /// POSSIBILITY and being unvisited is a property of the telling.
+    ///
+    /// This pins all three outcomes, so the guidance now in `describe-schema`
+    /// cannot drift from what the gate does. Prose alone would have been an
+    /// unguarded claim (an injection removing it fired nothing).
+    #[test]
+    fn a_place_never_visited_is_authorable_only_by_putting_it_on_the_map() {
+        let order = chain(&["ch-1", "ch-2", "ch-3", "ch-4"]);
+        let rule = [transition_rule(
+            "roads",
+            "pred-at",
+            "adjacent",
+            true,
+            Some("contains"),
+        )];
+        // The town both encodings share: two siblings in one quarter, joined.
+        let town = || {
+            vec![
+                contains_fact("campus", "school"),
+                contains_fact("campus", "library"),
+                map_edge("school", "library"),
+            ]
+        };
+        // `floating` = registered as a place but named in NO fact, which is
+        // exactly what "off the map" means at the store level.
+        let scan = |facts: Vec<_>, places: &[&str], floating: &[&str]| {
+            let store = map_g2_store(facts, places, floating, Some("place"));
+            scan_continuity(&store, &order, &rule).unwrap().violations
+        };
+        let names = |vs: &[ContinuityViolation]| -> Vec<&'static str> {
+            vs.iter()
+                .filter_map(|v| match v {
+                    ContinuityViolation::MapInventedPlace { .. } => Some("map_invented_place"),
+                    ContinuityViolation::MapContainedOffMap { .. } => Some("map_contained_off_map"),
+                    _ => None,
+                })
+                .collect()
+        };
+
+        // A — off the map entirely: the place exists and leads nowhere.
+        let a = scan(town(), &["campus", "school", "library"], &["belfry"]);
+        assert_eq!(
+            names(&a),
+            vec!["map_invented_place"],
+            "a place-kind entity off every scope is dead content: {a:?}"
+        );
+
+        // B — named inside a quarter with no way in: the same, plus the
+        // container's own complaint.
+        let mut b_facts = town();
+        b_facts.push(contains_fact("campus", "belfry"));
+        let b = scan(b_facts, &["campus", "school", "library", "belfry"], &[]);
+        let mut b_names = names(&b);
+        b_names.sort_unstable();
+        assert_eq!(
+            b_names,
+            vec!["map_contained_off_map", "map_invented_place"],
+            "a contained place that is neither node nor container is flagged twice: {b:?}"
+        );
+
+        // C — on the map, as a sibling. Clean. Whether anyone GOES there is the
+        // canon order's business, and this gate never asks.
+        let mut c_facts = town();
+        c_facts.push(contains_fact("campus", "belfry"));
+        c_facts.push(map_edge("library", "belfry"));
+        let c = scan(c_facts, &["campus", "school", "library", "belfry"], &[]);
+        assert!(
+            names(&c).is_empty(),
+            "a place on the map is authorable however rarely it is visited: {c:?}"
+        );
+    }
+
     /// Round 716 — connectivity is PER SCOPE: a container whose direct children
     /// form two components is a disconnected scope (campus holds a-b and c-d, two
     /// islands), even though the flat graph would look like two components of one

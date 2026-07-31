@@ -91,6 +91,17 @@ pub struct SchemaContract {
     /// name sections in `canon_from` / `evidence`, so sections are authored
     /// FIRST; without this an author reverse-engineers them from parse errors.
     pub sections_wire: &'static str,
+    /// How to author the KEYED SIDE TABLES (Round 909) — the registries that are
+    /// NOT manifest arrays. They are reached only through their own CLI verbs,
+    /// and an author who guesses a manifest array for them gets `exit 0`, a
+    /// receipt that never mentions their kind, and NOTHING BUILT (the deliberate
+    /// unknown-key leniency, doing exactly what `manifest_wire.overview` warns
+    /// it does). Measured: writing `edge_costs` / `edge_guards` into a facts
+    /// manifest is silently a no-op, so the two brief requirements "some
+    /// journeys take longer" and "one way is shut until something is true" were
+    /// unreachable from a file, and the contract named the verbs without ever
+    /// giving their arguments.
+    pub side_table_wire: &'static str,
     /// The canon ORDER a store needs to be RENDERABLE (Round 596,
     /// unattended-loop-experiment/v1 Finding 4) — a SEPARATE authoring artifact,
     /// NOT part of the fact manifest, that the read projections require. Without
@@ -316,6 +327,10 @@ pub fn describe_schema() -> SchemaContract {
         sections_wire:
             "Creating the structure SECTIONS a fact's `canon_from` / `evidence` point at — the \
              FIRST authoring step, because a fact naming an unregistered section is rejected. \
+             Two routes, and the registry's `add_op` names the SINGLE one: \
+             `add-section --section <id> --parent-doc <doc-id> --title <text> [--parent <p>]` \
+             creates one section per call, which is the right shape when structure arrives a \
+             scene at a time. For a whole document use the bulk route instead — \
              `import-sections --manifest <file>`, and the file is a BARE JSON ARRAY, NOT an object \
              with a `\"sections\"` key: [ { \"section_id\": string (the store key), \"parent_doc\": \
              string (REQUIRED — the document this section belongs to; there is no default, and an \
@@ -336,6 +351,30 @@ pub fn describe_schema() -> SchemaContract {
              revise). A manifest of only no-ops does not write, and reports `0 created`. NOTE the \
              asymmetry with the fact manifest: this one is a bare array of REQUIRED-field objects, \
              that one is an object of optional arrays.",
+        side_table_wire:
+            "The KEYED SIDE TABLES are NOT manifest arrays and there is no file wire for them — \
+             each is reached ONLY through its own verb, keyed by an existing fact. Writing \
+             `\"edge_costs\"` or `\"edge_guards\"` (or any of the others) into a facts manifest is \
+             a SILENT NO-OP: the manifest parses, `exit 0`, and the receipt simply never mentions \
+             that kind, because unknown manifest keys are ignored by design (see the manifest \
+             overview). The verbs, with their arguments: \
+             `add-edge-cost --fact <adjacent-fact-id> --n <positive-int> --unit <registered-unit>` \
+             (travel time on one edge; the unit must be registered first, and n must be POSITIVE \
+             — 0 is a free teleport). \
+             `add-edge-guard --fact <adjacent-fact-id> --condition <condition-fact-id>` (call it \
+             once per condition; the set is ANDed) plus \
+             `set-edge-guard-threshold --fact <edge-fact-id> (--threshold <k> | --clear)` for \
+             K-of-N. \
+             `add-parameter --parameter <id>`, then \
+             `add-parameter-delta --fact <beat-fact-id> --parameter <registered-id> --delta \
+             <nonzero-int>` and \
+             `add-parameter-gate --fact <choice-fact-id> --parameter <registered-id> --op \
+             <ge|le|eq|gt|lt> --threshold <int>`. \
+             `add-fact-count --fact <fact-id> --count <positive-int>`. \
+             Each verb takes `[--sidecar <path>] [--json]` like every other mutate. So an authoring \
+             run that must express \"this journey takes longer\" or \"this way is shut until \
+             something is true\" writes its facts to a file and then makes these calls — the two \
+             halves are not one artifact, and nothing in a manifest will tell you so.",
         canon_order:
             "The canon ORDER — the discourse sequence of the sections — is a SEPARATE artifact \
              from the fact manifest, and a store needs it to be RENDERABLE: the read projections \
@@ -1347,7 +1386,17 @@ fn rule_class_specs() -> Vec<RuleClassSpec> {
                             disconnected at every point is `map_disconnected`. A container-less map \
                             degenerates to ONE root scope (the flat Round 702/703 behaviour). \
                             KNOWN LIMIT: two mutually-unreachable TOP-LEVEL containers produce no \
-                            finding. Omit for a flat map.",
+                            finding. Omit for a flat map. \
+                            ROUND 909 — THE MAP IS POSSIBILITY, NOT ITINERARY, and this is the \
+                            distinction an author reaches for and does not find. To write a place \
+                            that EXISTS but that nobody in the story ever visits, put it ON the \
+                            map (give it an edge) and simply never travel it in the canon order: \
+                            being unvisited is a property of the telling, not of the map. Leaving \
+                            it OFF the map instead — no edges — is `map_invented_place`, and \
+                            naming it inside a container without edges is that PLUS \
+                            `map_contained_off_map`. All three were measured on one authored town: \
+                            of the three ways to encode \"spoken of but never reached\", exactly \
+                            one passes, and the two that fail are the ones the phrase suggests.",
                     },
                 ],
             },
@@ -2132,6 +2181,63 @@ mod tests {
         assert_eq!(overrides[0].first_at[0].branch, "road-b");
         assert_eq!(overrides[0].first_at[0].coords, vec!["sc-04".to_string()]);
         assert_eq!(overrides[0].first_at[0].threshold, None);
+    }
+
+    /// Round 909 — every registry an author may write to must have a documented
+    /// WAY to write to it, and which way is derived, not asserted.
+    ///
+    /// A registry is reachable either as a manifest array or through its own
+    /// verb. The contract listed all of them and documented the wire for only
+    /// one route, so `edge_costs` and `edge_guards` — the two the map brief needs
+    /// for "some journeys take longer" and "one way is shut until something is
+    /// true" — had no authoring path anywhere in it. Measured on a real store:
+    /// writing them as manifest arrays parses, exits 0, and builds nothing.
+    ///
+    /// The oracle is the contract's own two lists differenced against each
+    /// other, so a registry added tomorrow joins the obligation by itself.
+    #[test]
+    fn every_registry_has_a_documented_authoring_path() {
+        use std::collections::BTreeSet;
+        let c = describe_schema();
+        let manifest_kinds: BTreeSet<&str> = c.manifest_wire.kinds.iter().map(|k| k.kind).collect();
+
+        // The registries a manifest cannot reach — derived, never listed here.
+        let side: Vec<&RegistrySpec> = c
+            .registries
+            .iter()
+            .filter(|r| !manifest_kinds.contains(r.name))
+            .collect();
+        assert!(
+            side.len() >= 5,
+            "only {} registries fell outside the manifest — the difference broke, and an \
+             empty difference would assert nothing",
+            side.len()
+        );
+
+        for r in side {
+            // `sections` has its own file wire; everything else is a keyed side
+            // table reached by verb.
+            let home = if r.name == "sections" {
+                c.sections_wire
+            } else {
+                c.side_table_wire
+            };
+            assert!(
+                home.contains(r.add_op),
+                "registry `{}` is not a manifest array, so `{}` is the only way to write it — \
+                 and no wire prose names that verb. An author meets this registry in the list, \
+                 guesses a manifest array, and is answered with exit 0 and nothing built.",
+                r.name,
+                r.add_op
+            );
+        }
+
+        // The silent-no-op consequence must be stated where the guess is made,
+        // not only where the verbs are listed.
+        assert!(
+            c.side_table_wire.contains("SILENT NO-OP"),
+            "the failure mode is silence, so the contract has to say so"
+        );
     }
 
     /// Round 907 — the interval `bound` prose is pinned to what the REAL rules
