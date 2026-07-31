@@ -786,6 +786,76 @@ mod tests {
         );
     }
 
+    /// Round 881 — the sibling of the pool gate above, for the OTHER hash-ordered
+    /// container this generator serializes.
+    ///
+    /// `Interactivity` is the only `Serialize` type in the workspace holding a
+    /// `HashMap`/`HashSet`; `render::interactivity` sorts both and its doc comment
+    /// claims byte-identical source follows. That claim had NO DISCRIMINATING
+    /// FIXTURE: the one non-empty `Interactivity` the renderer ever saw carried a
+    /// single-entry map, where sorting is a no-op, so deleting BOTH sorts left the
+    /// entire workspace green — measured, not assumed. This is the outside
+    /// assertion R852 gave the pool, given to the leg it did not reach.
+    #[test]
+    fn the_interactive_layer_comes_out_in_sorted_order() {
+        use std::collections::{HashMap, HashSet};
+        let rung = |q: &str| {
+            vec![mnemosyne_engine::Rung {
+                question: q.to_string(),
+                question_anchor: None,
+                reveals: "f-x".to_string(),
+                needs: Vec::new(),
+            }]
+        };
+        // FIVE entries per leg, inserted in an order that is neither sorted nor
+        // reversed. A dropped sort then escapes only if hash order happens to be
+        // the sorted one — 1 chance in 120 per leg, where three entries would
+        // have left 1 in 6. The gate is a probability, and this is the dial.
+        let ids = ["e", "a", "d", "b", "c"];
+        let parts = ProjectionParts {
+            interactivity: Interactivity {
+                ladders: HashMap::from_iter(
+                    ids.iter()
+                        .map(|i| (format!("{i}-ladder"), rung(&format!("q-{i}")))),
+                ),
+                objects: HashSet::from_iter(ids.iter().map(|i| format!("{i}-object"))),
+                free_investigate: false,
+            },
+            ..parts_with_lines(0)
+        };
+        let src = crate::render(&parts);
+        // The emitted order, read off the generated source by position, compared
+        // against sorted — the pool gate's shape, not a chain of pairwise checks.
+        let emitted = |suffix: &str| -> Vec<String> {
+            let mut seen: Vec<(usize, String)> = ids
+                .iter()
+                .map(|i| {
+                    let id = format!("{i}-{suffix}");
+                    let at = src
+                        .find(&id)
+                        .unwrap_or_else(|| panic!("`{id}` never reached the generated source"));
+                    (at, id)
+                })
+                .collect();
+            seen.sort_by_key(|(at, _)| *at);
+            seen.into_iter().map(|(_, id)| id).collect()
+        };
+        let sorted = |suffix: &str| -> Vec<String> {
+            let mut v: Vec<String> = ids.iter().map(|i| format!("{i}-{suffix}")).collect();
+            v.sort();
+            v
+        };
+        for suffix in ["ladder", "object"] {
+            assert_eq!(
+                emitted(suffix),
+                sorted(suffix),
+                "the interactive layer's {suffix}s came out in some order other \
+                 than sorted, so an unchanged store no longer emits a \
+                 byte-identical file"
+            );
+        }
+    }
+
     /// One quest — the journal-axis sibling of [`parts_with_lines`], sized only to
     /// make the emitter produce a chunk function.
     fn parts_with_quests() -> QuestProjectionParts {
