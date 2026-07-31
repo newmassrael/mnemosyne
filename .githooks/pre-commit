@@ -48,6 +48,11 @@
 # Install (one-time per clone):
 #   git config core.hooksPath .githooks
 #
+# Gated by `crates/mnemosyne-cli/tests/git_hooks_smoke.rs` (R899): every
+# gate below has an accept/reject pair run against a throwaway repo wired
+# to THIS file, so deleting a block turns a test red instead of going
+# unnoticed. Add a case with any gate you add.
+#
 # Bypass: `--no-verify` (discouraged; the project policy treats audit
 # gates as load-bearing, not nudges).
 

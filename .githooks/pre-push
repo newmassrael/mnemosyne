@@ -42,6 +42,11 @@
 #
 # Install (one-time per clone):
 #   git config core.hooksPath .githooks
+#
+# Gated by `crates/mnemosyne-cli/tests/git_hooks_smoke.rs` (R899): the
+# delete-only skip, the workspace gate's exit code, and every CI-report
+# branch (gh absent / unreachable / no runs / red / annotated) run against
+# THIS file with a stub `gh`. Add a case with any branch you add.
 
 set -euo pipefail
 
