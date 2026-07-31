@@ -51,7 +51,8 @@
           "verb": "import-facts",
           "input": "run/stage-a/facts.json"
         }
-      ]
+      ],
+      "expected_store_sha256": "3c01107032a7f6ee48744f30dcecbc422fbecb3d2ecc808b5492c4ee5447b795"
     },
     {
       "name": "stage-b-engine-must-answer-fixed-contract",
@@ -65,7 +66,8 @@
           "verb": "import-facts",
           "input": "run/stage-b/facts.json"
         }
-      ]
+      ],
+      "expected_store_sha256": "f7304b3a641f0cd5fb7752a47204de5d8e40fbdc68b5d40958cfbd903455cc6d"
     }
   ]
 }
