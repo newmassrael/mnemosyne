@@ -36,14 +36,48 @@ use tempfile::TempDir;
 /// baseline every gate must accept.
 const CLEAN_LIB: &str = "pub fn one() -> u8 {\n    1\n}\n";
 
-const MN_STUB: &str = "#!/usr/bin/env bash\n\
-     echo \"$@\" >> \"$PWD/mn-calls.log\"\n\
-     exit \"${MN_STUB_EXIT:-0}\"\n";
+/// Logs the verb it was asked for, then REFUSES anything the real CLI does not
+/// answer to. Round 900: a stub that accepts every argument would let a hook
+/// call a misspelled verb and still pass — the gap Round 899 named in a carry
+/// instead of closing.
+const MN_STUB: &str = r#"#!/usr/bin/env bash
+echo "$@" >> "$PWD/mn-calls.log"
+case "${1:-}" in
+    validate-code-refs|validate-workspace) ;;
+    *)
+        echo "stub mn: no CLI verb is named '${1:-}'" >&2
+        exit 127
+        ;;
+esac
+exit "${MN_STUB_EXIT:-0}"
+"#;
 
-/// Answers the three `gh` calls `pre-push` makes, keyed by `GH_STUB_MODE`.
-/// Each arm returns what `gh -q <jq>` would have already reduced to lines.
+/// Answers the three `gh` calls `pre-push` makes, keyed by `GH_STUB_MODE`, and
+/// CHECKS THE ARGUMENTS of each. Round 900: returning canned lines without
+/// looking at the request meant a hook that asked for the wrong `--json` field
+/// or the wrong endpoint still got its answer — Round 899 wrote that down as a
+/// carry. The stub cannot evaluate jq, so what it pins is the request contract:
+/// the subcommand, the field list, the headSha filter, and the endpoint shape.
+/// Violations land in a file the test asserts is empty.
 const GH_STUB: &str = r#"#!/usr/bin/env bash
 mode="${GH_STUB_MODE:-unreachable}"
+violate() { echo "$1" >> "$PWD/gh-contract-violations.log"; }
+if [[ "${1:-}" == "run" ]]; then
+    [[ "${2:-}" == "list" ]] || violate "gh run subcommand is '${2:-}', not 'list'"
+    [[ "$*" == *"--json headSha,name,status,conclusion"* ]] \
+        || violate "gh run list asked for the wrong --json fields: $*"
+    [[ "$*" == *'headSha=='* ]] \
+        || violate "gh run list does not filter on headSha: $*"
+fi
+if [[ "${1:-}" == "api" ]]; then
+    if [[ "${2:-}" == "repos/{owner}/{repo}/commits/"*"/check-runs" ]]; then
+        :
+    elif [[ "${2:-}" == "repos/{owner}/{repo}/check-runs/"*"/annotations" ]]; then
+        :
+    else
+        violate "gh api hit an unexpected endpoint: ${2:-}"
+    fi
+fi
 if [[ "${1:-}" == "run" ]]; then
     case "$mode" in
         empty) exit 0 ;;
@@ -75,6 +109,13 @@ fn repo_root() -> PathBuf {
 fn hook(name: &str) -> PathBuf {
     let p = repo_root().join(".githooks").join(name);
     assert!(p.is_file(), "the tracked hook {} must exist", p.display());
+    let mode = fs::metadata(&p).expect("stat").permissions().mode();
+    assert!(
+        mode & 0o111 != 0,
+        "the hook {} must be executable — git SILENTLY SKIPS a hook without \
+         the bit, which removes the gate with no message at all",
+        p.display()
+    );
     p
 }
 
@@ -181,6 +222,11 @@ impl Fixture {
     /// Which verbs the stub resolver was asked for, in order.
     fn mn_calls(&self) -> String {
         fs::read_to_string(self.path().join("mn-calls.log")).unwrap_or_default()
+    }
+
+    /// Every request `pre-push` made to `gh` that broke the pinned contract.
+    fn gh_contract_violations(&self) -> String {
+        fs::read_to_string(self.path().join("gh-contract-violations.log")).unwrap_or_default()
     }
 
     fn commit_msg(&self, message: &str) -> Output {
@@ -679,6 +725,16 @@ fn pre_push_reports_every_ci_state_it_can_and_cannot_read() {
             stderr_of(&out)
         );
     }
+
+    // Every request the hook made was the one it is supposed to make. This is
+    // what keeps the canned answers from covering for a hook that asked the
+    // wrong question — a wrong `--json` field, a wrong subcommand, a wrong
+    // endpoint. The stub cannot judge the jq expression, only the request.
+    assert!(
+        f.gh_contract_violations().is_empty(),
+        "pre-push broke the gh request contract:\n{}",
+        f.gh_contract_violations()
+    );
 
     // A green conclusion does not silence the annotation half (Round 893): the
     // `annotated` arm above returns `success`, and the annotation still prints.

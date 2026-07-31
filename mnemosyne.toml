@@ -96,7 +96,7 @@ max_section_body_length = 5000
 # mode — validate-workspace now fails on any `.rs` in neither list, so a tree
 # merely absent is loud and only a tree written down stays out.
 [plugins.set_equality_validator]
-paths = ["crates/*/src/", "crates/*/build.rs", "tools/*/src/", "studio/"]
+paths = ["crates/*/src/", "crates/*/build.rs", "tools/*/src/", "studio/", ".githooks/"]
 scan_exclusions = ["crates/*/tests/", "tools/*/tests/", "bench/"]
 severity_missing = "reject"
 severity_binding = "reject"
