@@ -6551,10 +6551,14 @@ fn cmd_validate_content_drift(args: &[String]) -> Result<()> {
     let store = AtomicStore::load(&atomic_path)
         .with_context(|| format!("atomic store load: {}", atomic_path.display()))?;
 
-    let violations = mnemosyne_validate::scan_content_drift(&store);
-    // Unrevalidatable (empty-hash) excerpts are NOT drift — single-sourced
-    // from the R402 backfill report and surfaced here only for context.
-    let unrevalidatable = store.excerpt_hash_backfill_report().rows.len();
+    // Round 895 — the scan reports its own reach. Both context numbers come from
+    // the walk that produced the violations: `unrevalidatable` used to be read off
+    // the R402 backfill report, which counts `normative_excerpt` only, while this
+    // scan has covered three excerpt kinds since R756/R757 — a context number
+    // narrower than the thing it sat next to.
+    let scan = mnemosyne_validate::scan_content_drift(&store);
+    let violations = &scan.violations;
+    let census = scan.census;
 
     // EPUB-file provenance (R405): when [workspace.spec_source].epub_path +
     // epub_sha256 are pinned, re-hash the committed EPUB offline and compare.
@@ -6608,8 +6612,10 @@ fn cmd_validate_content_drift(args: &[String]) -> Result<()> {
             serde_json::json!({
             "primitive": "validate-content-drift",
             "section_count": store.sections.len(),
+            "sections_with_excerpt": census.sections_with_excerpt,
+            "examined_count": census.examined,
             "drift_count": violations.len(),
-            "unrevalidatable_count": unrevalidatable,
+            "unrevalidatable_count": census.unrevalidatable,
             "epub_file": epub_json,
             "severity": severity,
             "violations": view,
@@ -6618,15 +6624,34 @@ fn cmd_validate_content_drift(args: &[String]) -> Result<()> {
     } else {
         println!("=== mnemosyne-cli validate-content-drift ===");
         println!(
-            "sections={} severity={} unrevalidatable={}",
+            "sections={} with_excerpt={} severity={} unrevalidatable={}",
             store.sections.len(),
+            census.sections_with_excerpt,
             severity.as_str(),
-            unrevalidatable,
+            census.unrevalidatable,
         );
-        println!("drift: total={}", violations.len());
+        // Round 895 — say which zero this is. An empty finding list means "every
+        // cache still matches its pin" only when there were caches to compare; on
+        // a store carrying none it means the scan compared nothing, and the two
+        // rendered identically until here.
+        if census.examined == 0 {
+            println!(
+                "drift: total=0 over 0 excerpt(s) examined — {} of {} section(s) carry an \
+                 excerpt cache, so this scan compared NOTHING. Read this as `nothing to \
+                 check`, not `nothing wrong`.",
+                census.sections_with_excerpt,
+                store.sections.len(),
+            );
+        } else {
+            println!(
+                "drift: total={} over {} excerpt(s) examined",
+                violations.len(),
+                census.examined,
+            );
+        }
         // Bare section_id (no `§` sigil) — the CLI never renders a literal
         // section citation the R255 pre-commit hook would scan.
-        for v in &violations {
+        for v in violations {
             println!(
                 " [drift] {} declared={} computed={}",
                 v.section_id, v.declared_sha256, v.computed_sha256

@@ -7,6 +7,9 @@
 //! (ii) `--severity warn` prints the drift but exits 0
 //! (iii) the unrevalidatable (empty-hash) count is surfaced but never gates
 //! (iv) `--json` reports drift_count + unrevalidatable_count
+//! (v) Round 895 — a store carrying NO excerpt says so instead of rendering
+//!     the same empty finding list a fully-checked clean store renders, and a
+//!     store that does carry caches reports the reach behind its list
 
 use std::fs;
 use std::path::Path;
@@ -101,6 +104,78 @@ fn content_drift_warn_opts_out_of_gate() {
     assert!(stdout.contains("unrevalidatable=1"), "stdout: {stdout}");
 }
 
+/// A workspace whose sections carry no excerpt of any kind — the shape R894
+/// measured on the dnd-quest corpus (56 sections, not one with prose).
+fn write_excerptless_workspace(ws: &Path) {
+    fs::create_dir_all(ws.join("docs/.atomic")).unwrap();
+    fs::write(
+        ws.join("mnemosyne.toml"),
+        "[workspace]\n[schema]\nentry_id_prefix = \"Round \"\n",
+    )
+    .unwrap();
+    let store = serde_json::json!({
+        "schema_version": 8,
+        "sections": {
+            "a": { "title": "A", "parent_doc": "docs/spec.epub" },
+            "b": { "title": "B", "parent_doc": "docs/spec.epub" }
+        },
+        "changelog_entries": {}
+    });
+    fs::write(
+        ws.join("docs/.atomic/workspace.atomic.json"),
+        serde_json::to_string_pretty(&store).unwrap(),
+    )
+    .unwrap();
+}
+
+#[test]
+fn a_store_with_no_excerpts_says_it_compared_nothing() {
+    // Round 895 — the two zeros. This store is clean in the sense that nothing
+    // drifted, and it is also a store the scan could not check at all; before the
+    // census both printed `drift: total=0` and stopped there.
+    let tmp = TempDir::new().unwrap();
+    write_excerptless_workspace(tmp.path());
+    let out = run(tmp.path(), &[]);
+    assert!(
+        out.status.success(),
+        "nothing to check must not gate; stderr: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        stdout.contains("sections=2 with_excerpt=0"),
+        "stdout: {stdout}"
+    );
+    assert!(
+        stdout.contains("0 excerpt(s) examined") && stdout.contains("nothing to check"),
+        "the scan must say which zero this is; stdout: {stdout}"
+    );
+}
+
+#[test]
+fn a_store_with_excerpts_reports_the_reach_behind_its_finding_list() {
+    // The discriminating partner: the SAME verb on a store that does carry
+    // caches must print a reach, not the `nothing to check` sentence. Two of the
+    // three excerpts here are hashed; the third is unrevalidatable.
+    let tmp = TempDir::new().unwrap();
+    write_workspace(tmp.path());
+    let out = run(tmp.path(), &["--severity", "warn"]);
+    assert!(out.status.success());
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        stdout.contains("sections=3 with_excerpt=3"),
+        "stdout: {stdout}"
+    );
+    assert!(
+        stdout.contains("drift: total=1 over 2 excerpt(s) examined"),
+        "stdout: {stdout}"
+    );
+    assert!(
+        !stdout.contains("nothing to check"),
+        "a store with caches must not claim it compared nothing; stdout: {stdout}"
+    );
+}
+
 #[test]
 fn content_drift_json_reports_counts() {
     let tmp = TempDir::new().unwrap();
@@ -111,6 +186,10 @@ fn content_drift_json_reports_counts() {
     let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
     assert_eq!(v["drift_count"], 1);
     assert_eq!(v["unrevalidatable_count"], 1);
+    // Round 895 — the reach travels on the machine surface too, or a consumer
+    // reading JSON is left with the ambiguity the text surface just lost.
+    assert_eq!(v["sections_with_excerpt"], 3);
+    assert_eq!(v["examined_count"], 2);
     assert_eq!(v["violations"][0]["section_id"], "drifted");
     assert_eq!(v["violations"][0]["declared_sha256"], STALE_HASH);
 }
