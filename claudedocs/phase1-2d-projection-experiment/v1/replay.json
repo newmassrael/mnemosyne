@@ -51,7 +51,8 @@
           "verb": "import-facts",
           "input": "run/author/facts.json"
         }
-      ]
+      ],
+      "expected_store_sha256": "acfbcbab2f0e1f172b96ec7270fd27bfd56901a800400d89e0618dd53b7152e7"
     },
     {
       "name": "extract-tsukuru-facts-norm",
@@ -65,7 +66,8 @@
           "verb": "import-facts",
           "input": "run/extract-tsukuru/facts.norm.json"
         }
-      ]
+      ],
+      "expected_store_sha256": "e0029a502570da006021b94569fb32c3e35d6cbc5cd2eeb48cfc2e65a9b50c52"
     },
     {
       "name": "extract-vn-facts",
@@ -79,7 +81,8 @@
           "verb": "import-facts",
           "input": "run/extract-vn/facts.json"
         }
-      ]
+      ],
+      "expected_store_sha256": "435761ef148c146c02b64d3b19432d8f439dfc4a46f633e5a243d3c0650e949c"
     }
   ]
 }

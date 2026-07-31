@@ -27,7 +27,8 @@
           "verb": "import-facts",
           "input": "run/extract-mystery/facts.json"
         }
-      ]
+      ],
+      "expected_store_sha256": "36f2fc2272fcd3d010e4bd8ea0611c92a7e939a901cc8ae0f5af56904a02a0ee"
     }
   ]
 }

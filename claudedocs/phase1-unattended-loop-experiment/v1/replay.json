@@ -35,7 +35,9 @@
           "verb": "import-facts",
           "input": "run/game/facts.json"
         }
-      ]
+      ],
+      "config": "run/game/mnemosyne.toml",
+      "expected_store_sha256": "64c33ede747f8ef42143106951cd9a4cbef53a22aafaedb0a11b8e169c3ea5af"
     },
     {
       "name": "extract-reextracted",
@@ -49,7 +51,9 @@
           "verb": "import-facts",
           "input": "run/extract/reextracted.manifest.json"
         }
-      ]
+      ],
+      "config": "run/extract/store/mnemosyne.toml",
+      "expected_store_sha256": "44cd28b920a30b294c99bca90f6b56d2e4fd6b3df91c24f4607d9f5bb0cd2e42"
     }
   ],
   "step_note": "The blind re-extraction arm — 54 facts read back out of the rendered manuscript. It reuses the game's section ids (its facts cite sc-01-long-climb onward) because the extractor was given the world's coordinate vocabulary, not a fresh one. reextracted.facts.json holds the same 54 facts with no registries: it is the agent's raw output, superseded by the manifest, and is fed by no replay. This whole arm was invisible to the R882 census, which recognised an input by its filename."

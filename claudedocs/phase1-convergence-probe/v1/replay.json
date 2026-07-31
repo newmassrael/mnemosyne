@@ -27,7 +27,8 @@
           "verb": "import-facts",
           "input": "run/author/facts.json"
         }
-      ]
+      ],
+      "expected_store_sha256": "e2906387733f4505fd99186a44ab0c13da26ed1e9130afb1c5395b4e85541f22"
     }
   ]
 }

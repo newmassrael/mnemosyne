@@ -27,7 +27,9 @@
           "verb": "import-facts",
           "input": "run/game/facts.json"
         }
-      ]
+      ],
+      "config": "run/game/mnemosyne.toml",
+      "expected_store_sha256": "e3b3da3f0ccd0634c3903bf29f1872bea40b739e73013ad653e96bb1965ef37c"
     }
   ]
 }

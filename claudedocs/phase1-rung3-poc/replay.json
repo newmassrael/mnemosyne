@@ -31,7 +31,8 @@
           "verb": "import-facts",
           "input": "facts-base.json"
         }
-      ]
+      ],
+      "expected_store_sha256": "c26e32c7a24396217ad6ad4b7f4be02e7bab79023a259627a271010fc7ec20c6"
     },
     {
       "name": "facts-preconditions",
@@ -45,7 +46,8 @@
           "verb": "import-facts",
           "input": "facts-preconditions.json"
         }
-      ]
+      ],
+      "expected_store_sha256": "4ff8ec3cb395ce8406fc99d8f8907154523fcd33feed19c15482438ea63fb0cf"
     }
   ]
 }

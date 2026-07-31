@@ -227,6 +227,14 @@ struct Replay {
     name: String,
     revision: String,
     blocked: Option<String>,
+    /// sha256 of the store this replay builds at its pinned revision — the
+    /// third of the triple, absent until R885's runner measured it.
+    digest: Option<String>,
+    /// The `mnemosyne.toml` the run itself worked under, when the kit tracked
+    /// one. It is not decoration: `continuity-stress`'s config names the canon
+    /// order and the narrative rules, and without them its three negative
+    /// controls APPLY instead of rolling back — the probes stop probing.
+    config: Option<String>,
     steps: Vec<Step>,
 }
 
@@ -296,6 +304,8 @@ fn declarations() -> Declarations {
                 name: r["name"].as_str().expect("replay name").to_string(),
                 revision: r["revision"].as_str().expect("replay revision").to_string(),
                 blocked: r["blocked"].as_str().map(str::to_string),
+                digest: r["expected_store_sha256"].as_str().map(str::to_string),
+                config: r["config"].as_str().map(str::to_string),
                 steps,
             });
         }
@@ -582,6 +592,22 @@ fn replays_are_ordered_sequences_over_their_own_inputs() {
             r.unit, r.name
         );
 
+        if let Some(cfg) = &r.config {
+            let path = normalize(&format!("{}/{}", r.unit, cfg));
+            assert!(
+                path.ends_with("/mnemosyne.toml"),
+                "{}/{}: a replay's config is a mnemosyne.toml, not {path}",
+                r.unit,
+                r.name
+            );
+            assert!(
+                tracked_evidence_files().contains(&path),
+                "{}/{}: declares an untracked config: {path}",
+                r.unit,
+                r.name
+            );
+        }
+
         if let Some(reason) = &r.blocked {
             assert!(
                 reason.len() > 30,
@@ -736,4 +762,287 @@ fn every_step_cites_only_what_an_earlier_step_created() {
         "no citation was resolved — the walk ran on nothing"
     );
     println!("{checked} citations resolved against earlier steps");
+}
+
+// ---------------------------------------------------------------------------
+// Round 885 — the third of the triple: the EXPECTED OUTPUT.
+//
+// Everything above is cheap and always on: it reads declarations. This half
+// runs them. For each declared revision it extracts that tree, builds the CLI
+// there, and feeds the untouched inputs through the declared steps in order —
+// then does it a second time and requires the two stores to be byte-identical
+// before believing either. The resulting hash is written back into the record,
+// so from here a re-check is a comparison rather than a judgement call.
+//
+// R883 established the facts this rests on by hand: 23 of 23 revisions build,
+// and every replay that ran was deterministic across two processes. What it
+// could NOT do was record the result, because the schema had no place to put a
+// sequence, and writing digests for the units it could express would have
+// claimed a completeness the corpus did not have. R884 gave the record that
+// place. This closes it.
+//
+// Ignored by default — it compiles 23 workspaces. That is the honest cost of
+// the design, and hiding it inside `cargo test` would make every unrelated run
+// pay it. Run explicitly:
+//
+// ```text
+// cargo test -p mnemosyne-cli --test evidence_replay_smoke -- --ignored --nocapture
+// ```
+
+use std::io::Write;
+use tempfile::TempDir;
+
+/// Which flag each verb takes its input under. A small closed map, and the
+/// verbs in it are the same set `every_step_verb_is_one_the_cli_has` checks
+/// against the binary's own usage — so a verb that vanishes is caught by the
+/// cheap test, and a verb whose FLAG changed is caught here, loudly, by the
+/// step failing.
+fn input_flag(verb: &str) -> &'static str {
+    match verb {
+        "import-sections" | "import-facts" | "propose-verdict" => "--manifest",
+        "import-typing-proposals" | "import-edge-proposals" => "--proposals",
+        other => panic!("no input flag known for verb `{other}`"),
+    }
+}
+
+/// An empty workspace the CLI will accept: the config it looks for in CWD or an
+/// ancestor, and a store to load. Same seed R880 used, which is why the two
+/// tests' results are comparable.
+fn seed_workspace(ws: &Path) {
+    std::fs::create_dir_all(ws.join("docs/.atomic")).expect("mkdir");
+    std::fs::write(ws.join("mnemosyne.toml"), "[workspace]\n").expect("config");
+    std::fs::write(
+        ws.join("docs/.atomic/workspace.atomic.json"),
+        "{\"schema_version\": 1, \"sections\": {}, \"changelog_entries\": {}}\n",
+    )
+    .expect("seed store");
+}
+
+/// Extract a revision with `git archive` — NOT a worktree, which would register
+/// state in `.git` and leak if this panicked — and build its CLI into a target
+/// directory of its own.
+fn build_revision(root: &Path, rev: &str) -> (TempDir, TempDir, PathBuf) {
+    let tree = TempDir::new().expect("tempdir");
+    let archive = Command::new("git")
+        .args(["archive", rev])
+        .current_dir(root)
+        .output()
+        .expect("git archive");
+    assert!(archive.status.success(), "git archive {rev} failed");
+    let mut tar = Command::new("tar")
+        .args(["-x", "-C", tree.path().to_str().expect("utf-8 path")])
+        .stdin(std::process::Stdio::piped())
+        .spawn()
+        .expect("tar spawn");
+    tar.stdin
+        .as_mut()
+        .expect("tar stdin")
+        .write_all(&archive.stdout)
+        .expect("write archive");
+    assert!(
+        tar.wait().expect("tar wait").success(),
+        "tar extract failed"
+    );
+
+    let target = TempDir::new().expect("target tempdir");
+    let build = Command::new("cargo")
+        .args(["build", "--bin", "mnemosyne-cli"])
+        .current_dir(tree.path())
+        .env("CARGO_TARGET_DIR", target.path())
+        .output()
+        .expect("cargo exec");
+    assert!(
+        build.status.success(),
+        "revision {rev} no longer builds — THIS is the finding, and it kills \
+         the pin-the-revision design for every replay that names it:\n{}",
+        String::from_utf8_lossy(&build.stderr)
+    );
+    let cli = target.path().join("debug/mnemosyne-cli");
+    assert!(cli.is_file(), "no binary at {}", cli.display());
+    (tree, target, cli)
+}
+
+/// Run one replay to completion against `cli`, returning the sha256 of the
+/// store it built, or the first step that did not do what the record says it
+/// should.
+fn run_replay(cli: &Path, root: &Path, tree: &Path, r: &Replay) -> Result<String, String> {
+    let ws = TempDir::new().expect("ws tempdir");
+    seed_workspace(ws.path());
+    // A declared config is copied in WITH the rest of its directory, because the
+    // paths inside it are relative to where it sits — which is where the run's
+    // CWD was. Reading the toml to chase those paths would be a second parser
+    // free to disagree with the config crate's.
+    if let Some(cfg) = &r.config {
+        let dir = normalize(&format!("{}/{}", r.unit, cfg))
+            .rsplit_once('/')
+            .map(|(d, _)| d.to_string())
+            .expect("a config path has a directory");
+        for f in tracked_evidence_files()
+            .into_iter()
+            .filter(|f| f.rsplit_once('/').map(|(d, _)| d) == Some(dir.as_str()))
+        {
+            let name = f.rsplit_once('/').expect("has a name").1;
+            let then = std::fs::read(tree.join(&f))
+                .map_err(|e| format!("config dir file {f} is not in the pinned tree: {e}"))?;
+            if then != std::fs::read(root.join(&f)).expect("config dir file today") {
+                return Err(format!(
+                    "{f} differs between {} and today — the replay would run \
+                     under a configuration the record does not show",
+                    r.revision
+                ));
+            }
+            std::fs::write(ws.path().join(name), &then).expect("copy config dir file");
+        }
+        assert!(
+            ws.path().join("mnemosyne.toml").is_file(),
+            "{}/{}: the declared config did not land in the workspace",
+            r.unit,
+            r.name
+        );
+    }
+    for (n, s) in r.steps.iter().enumerate() {
+        let rel = normalize(&format!("{}/{}", r.unit, s.input));
+
+        // The record has not moved since it was authored. Without this the run
+        // below could be reading a later edit and would report it as the
+        // original's result — the exact failure R883 found in its own corpus.
+        let then = std::fs::read(tree.join(&rel))
+            .map_err(|e| format!("step {n}: {rel} is not in the pinned tree: {e}"))?;
+        let now = std::fs::read(root.join(&rel)).expect("input today");
+        if then != now {
+            return Err(format!(
+                "step {n}: {rel} differs between {} and today — this replay \
+                 would not be reading the original",
+                r.revision
+            ));
+        }
+
+        let out = Command::new(cli)
+            .args([
+                &s.verb,
+                input_flag(&s.verb),
+                root.join(&rel).to_str().expect("utf-8 path"),
+            ])
+            .current_dir(ws.path())
+            .output()
+            .expect("cli exec");
+        let ok = out.status.success();
+        match (s.expect.as_str(), ok) {
+            ("apply", false) => {
+                return Err(format!(
+                    "step {n} ({} {rel}) was rejected:\n{}",
+                    s.verb,
+                    String::from_utf8_lossy(&out.stderr).trim()
+                ));
+            }
+            ("reject", true) => {
+                return Err(format!(
+                    "step {n} ({} {rel}) was APPLIED, and the record says it must \
+                     be rolled back — the negative control has stopped controlling",
+                    s.verb
+                ));
+            }
+            _ => {}
+        }
+    }
+    let store = std::fs::read(ws.path().join("docs/.atomic/workspace.atomic.json"))
+        .expect("the store the replay built");
+    Ok(mnemosyne_core::sha256_hex(&store))
+}
+
+/// Every replay that is not declared blocked runs at its pinned revision, twice,
+/// and produces the store the record says it produces. Every replay that IS
+/// declared blocked actually fails there — a `blocked` note nobody re-checks
+/// would go stale the moment the obstacle was removed, and would then be a
+/// reason not to look.
+#[test]
+#[ignore = "extracts and compiles one workspace per declared revision; run with --ignored"]
+fn every_replay_rebuilds_the_store_its_record_says_it_does() {
+    let root = repo_root();
+    let d = declarations();
+    let mut revisions: Vec<String> = d.replays.iter().map(|r| r.revision.clone()).collect();
+    revisions.sort();
+    revisions.dedup();
+    println!(
+        "{} replays across {} revisions",
+        d.replays.len(),
+        revisions.len()
+    );
+
+    let mut ran = 0usize;
+    let mut blocked_confirmed = 0usize;
+    let mut undeclared: Vec<(String, String)> = Vec::new();
+    let mut wrong: Vec<String> = Vec::new();
+    for rev in &revisions {
+        let (tree, _target, cli) = build_revision(&root, rev);
+        for r in d.replays.iter().filter(|r| &r.revision == rev) {
+            let name = format!("{}/{}", r.unit, r.name);
+            let first = run_replay(&cli, &root, tree.path(), r);
+            match (&r.blocked, first) {
+                (Some(_), Err(why)) => {
+                    println!(
+                        "blocked, confirmed: {name}\n    {}",
+                        why.lines().next().unwrap_or("")
+                    );
+                    blocked_confirmed += 1;
+                }
+                (Some(reason), Ok(_)) => wrong.push(format!(
+                    "{name}: declared BLOCKED but it ran — the note is stale and \
+                     is telling readers not to look: {reason}"
+                )),
+                (None, Err(why)) => wrong.push(format!("{name}: {why}")),
+                (None, Ok(sha)) => {
+                    // Determinism is measured here, not inherited from R881's
+                    // sample: a digest from a single run could pin a hash map's
+                    // iteration order and reject the same evidence tomorrow.
+                    let again = run_replay(&cli, &root, tree.path(), r)
+                        .expect("the same replay failed on its second run");
+                    if again != sha {
+                        wrong.push(format!(
+                            "{name}: two runs of the SAME replay at {rev} disagree \
+                             ({sha} vs {again}) — nothing here can be pinned"
+                        ));
+                        continue;
+                    }
+                    match &r.digest {
+                        Some(declared) if declared == &sha => ran += 1,
+                        Some(declared) => wrong.push(format!(
+                            "{name}: record says {declared}, replay produced {sha}"
+                        )),
+                        None => {
+                            undeclared.push((name.clone(), sha.clone()));
+                            println!("undeclared digest: {name} -> {sha}");
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    assert!(
+        wrong.is_empty(),
+        "{} replay(s) disagree with the record:\n{}",
+        wrong.len(),
+        wrong.join("\n")
+    );
+    assert!(
+        undeclared.is_empty(),
+        "{} replay(s) reproduce deterministically but declare no digest — the \
+         record is not yet holding what it measured:\n{}",
+        undeclared.len(),
+        undeclared
+            .iter()
+            .map(|(n, s)| format!("  {n} -> {s}"))
+            .collect::<Vec<_>>()
+            .join("\n")
+    );
+    // Non-vacuity: a corpus where everything was blocked, or where no digest was
+    // declared, would satisfy every assertion above while proving nothing ran.
+    assert!(
+        ran > 0,
+        "no replay reproduced a declared digest — this test asserted nothing"
+    );
+    println!(
+        "{ran} replays reproduced their declared digest, {blocked_confirmed} blocked as declared"
+    );
 }

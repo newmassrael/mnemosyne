@@ -31,7 +31,8 @@
           "verb": "import-facts",
           "input": "contrast-manifest.json"
         }
-      ]
+      ],
+      "expected_store_sha256": "56b1d8f0bbbbeae2fffef2b3efd35147689ea620251078e0f28b10ab82c8d11b"
     },
     {
       "name": "facts-manifest",
@@ -45,7 +46,8 @@
           "verb": "import-facts",
           "input": "facts-manifest.json"
         }
-      ]
+      ],
+      "expected_store_sha256": "1c788c4bcbb9eb924278396085ef01b15442e195155bc8b8b151be1af137b21c"
     }
   ]
 }

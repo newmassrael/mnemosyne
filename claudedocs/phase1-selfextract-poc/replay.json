@@ -31,7 +31,8 @@
           "verb": "import-facts",
           "input": "facts-extracted.json"
         }
-      ]
+      ],
+      "expected_store_sha256": "7f543259b853a767b8263cce7e65ec144526d9a190493f2eeb19d8fc5c7d6df9"
     },
     {
       "name": "facts-inferred",
@@ -45,7 +46,8 @@
           "verb": "import-facts",
           "input": "facts-inferred.json"
         }
-      ]
+      ],
+      "expected_store_sha256": "93dca5a6088421fa1b7685a63bbaa7974430bec5db4c494ed29f8a9e1023a347"
     }
   ]
 }

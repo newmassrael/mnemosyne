@@ -43,7 +43,8 @@
           "verb": "import-facts",
           "input": "render-reextracted-facts.json"
         }
-      ]
+      ],
+      "expected_store_sha256": "66723a490f6597818287f95cae3c74ac2e1555674c04fd47a5d4c9727143099b"
     },
     {
       "name": "game-facts",
@@ -72,7 +73,9 @@
           "input": "pin2-probes/probe-transition.json",
           "expect": "reject"
         }
-      ]
+      ],
+      "config": "run/game/mnemosyne.toml",
+      "expected_store_sha256": "3661e04d55b39abf83c9d786484cb814e88b4004f1d6280f01576a6dc24f129d"
     }
   ],
   "step_note": "The three probes are PIN-2, the run's deterministic negative control (pins/PIN-2-negative-control.txt): each is proposed against the finished store and must roll back naming its rule. They are steps of the game replay, not a replay of their own — a probe means nothing against an empty store, and `propose-verdict` leaves nothing behind, so they run last and in any order among themselves."

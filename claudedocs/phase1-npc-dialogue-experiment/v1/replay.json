@@ -35,7 +35,8 @@
           "verb": "import-facts",
           "input": "run/author/facts.json"
         }
-      ]
+      ],
+      "expected_store_sha256": "90880f972566c0517f09b4c09c0ab5f08a562b45adcba3b2d3e11ec1c8ea6756"
     },
     {
       "name": "extract-facts",
@@ -49,7 +50,8 @@
           "verb": "import-facts",
           "input": "run/extract/facts.json"
         }
-      ]
+      ],
+      "expected_store_sha256": "5d7e7328b80590fde82c5384a4c2ba242ab683f8952c52a9d6b28849d8819bd2"
     }
   ]
 }
