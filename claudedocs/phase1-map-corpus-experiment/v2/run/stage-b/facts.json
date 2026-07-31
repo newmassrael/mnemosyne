@@ -1,0 +1,715 @@
+{
+  "frames": [
+    { "frame_id": "ground-truth", "description": "what is so in Cawl Hill, held non-privileged alongside the rest" },
+    { "frame_id": "townsfolk", "description": "what the hill says among itself" },
+    { "frame_id": "tessit", "description": "the ferryman's belief, held below the gate" }
+  ],
+
+  "branches": [
+    {
+      "branch_id": "barred-stair",
+      "description": "the world-line in which the tide turns before the key does and the stair gate is never opened",
+      "forks_from": "main",
+      "forks_at": "sc-13"
+    }
+  ],
+
+  "entity_kinds": [
+    { "kind_id": "place", "description": "somewhere a person can stand" },
+    { "kind_id": "quarter", "parents": ["place"], "description": "a walled district of the hill; a place that holds places" },
+    { "kind_id": "character", "description": "a person of the town" },
+    { "kind_id": "item", "description": "a carried thing" },
+    { "kind_id": "phenomenon", "description": "a standing condition of the world, such as the flood" }
+  ],
+
+  "units": [
+    { "unit_id": "minute", "description": "walking minutes, as the warden reckons them" },
+    { "unit_id": "metre", "description": "metres of standing water against the Crown Yard gauge" }
+  ],
+
+  "entities": [
+    { "entity_id": "loc-crown-yard", "kind": "place", "description": "the summit yard, the bell, the flood gauge; the town's dry ground" },
+    { "entity_id": "loc-upper-quarter", "kind": "quarter", "description": "the walled district below the crown" },
+    { "entity_id": "loc-market-quarter", "kind": "quarter", "description": "the walled district below the upper quarter, ending at the stair gate" },
+    { "entity_id": "loc-shrine-terrace", "kind": "place", "description": "the shoulder terrace and its lamp" },
+    { "entity_id": "loc-pilgrim-stair", "kind": "place", "description": "the stair below the gate, going down to the water" },
+    { "entity_id": "loc-water-line", "kind": "place", "description": "where the flood stands against the drowned doors" },
+    { "entity_id": "loc-lantern-house", "kind": "place", "description": "the light out on the water; spoken of on the hill, reached by nobody in this telling" },
+    { "entity_id": "loc-almshouse", "kind": "place", "description": "in the upper quarter; the shelter" },
+    { "entity_id": "loc-rope-walk", "kind": "place", "description": "in the upper quarter; where line is twisted" },
+    { "entity_id": "loc-cistern-yard", "kind": "place", "description": "in the upper quarter; the town's water" },
+    { "entity_id": "loc-salt-market", "kind": "place", "description": "in the market quarter; the stalls" },
+    { "entity_id": "loc-tanners-row", "kind": "place", "description": "in the market quarter; the pits" },
+    { "entity_id": "loc-weighhouse", "kind": "place", "description": "in the market quarter; the scale" },
+
+    { "entity_id": "char-hesper", "kind": "character", "description": "flood-warden of Cawl Hill" },
+    { "entity_id": "char-onnu", "kind": "character", "description": "the rope-maker's daughter" },
+    { "entity_id": "char-mareth", "kind": "character", "description": "keeper of the shrine lamp" },
+    { "entity_id": "char-borl", "kind": "character", "description": "weighmaster of the market quarter" },
+    { "entity_id": "char-tessit", "kind": "character", "description": "ferryman, below the gate since the water rose" },
+    { "entity_id": "char-sabb", "kind": "character", "description": "the oldest of the almshouse" },
+
+    { "entity_id": "item-stair-key", "kind": "item", "description": "the second key to the stair gate" },
+    { "entity_id": "item-tide-board", "kind": "item", "description": "the warden's slate, read for the tide" },
+    { "entity_id": "item-lantern-oil", "kind": "item", "description": "a sealed jar of oil for the Lantern House" },
+
+    { "entity_id": "env-flood", "kind": "phenomenon", "description": "the water standing over the lower town" }
+  ],
+
+  "predicates": [
+    { "predicate_id": "at", "object_kind": "entity", "subject_kind": "character", "object_entity_kind": "place", "description": "a person is at a place" },
+    { "predicate_id": "adjacent", "object_kind": "entity", "subject_kind": "place", "object_entity_kind": "place", "description": "a way leads from the first place to the second; one direction per fact" },
+    { "predicate_id": "contains", "object_kind": "entity", "subject_kind": "place", "object_entity_kind": "place", "description": "the first place holds the second inside it" },
+    { "predicate_id": "holds", "object_kind": "entity", "subject_kind": "character", "object_entity_kind": "item", "description": "custody of a carried thing" },
+    { "predicate_id": "tide", "object_kind": "token", "object_tokens": ["slack", "rising", "full", "ebb"], "subject_kind": "phenomenon", "description": "the standing state of the water" },
+    { "predicate_id": "depth", "object_kind": "quantity", "subject_kind": "phenomenon", "description": "how high the flood stands against the gauge" },
+    { "predicate_id": "safe_depth", "object_kind": "quantity", "subject_kind": "phenomenon", "description": "the depth under which the Pilgrim Stair is held passable" }
+  ],
+
+  "facts": [
+    {
+      "fact_id": "f-way-crown-upper", "frame": "ground-truth",
+      "claim": "A stepped lane runs down from the Crown Yard into the Upper Quarter.",
+      "canon_from": "sc-01", "evidence": ["sc-01"],
+      "entities": ["loc-crown-yard", "loc-upper-quarter"],
+      "typed": { "subject": "loc-crown-yard", "predicate": "adjacent", "object": { "kind": "entity", "id": "loc-upper-quarter" } }
+    },
+    {
+      "fact_id": "f-way-upper-crown", "frame": "ground-truth",
+      "claim": "The stepped lane climbs from the Upper Quarter back to the Crown Yard.",
+      "canon_from": "sc-01", "evidence": ["sc-01"],
+      "entities": ["loc-upper-quarter", "loc-crown-yard"],
+      "typed": { "subject": "loc-upper-quarter", "predicate": "adjacent", "object": { "kind": "entity", "id": "loc-crown-yard" } }
+    },
+    {
+      "fact_id": "f-way-crown-shrine", "frame": "ground-truth",
+      "claim": "A shoulder path crosses from the Crown Yard to the Shrine Terrace.",
+      "canon_from": "sc-01", "evidence": ["sc-01"],
+      "entities": ["loc-crown-yard", "loc-shrine-terrace"],
+      "typed": { "subject": "loc-crown-yard", "predicate": "adjacent", "object": { "kind": "entity", "id": "loc-shrine-terrace" } }
+    },
+    {
+      "fact_id": "f-way-shrine-crown", "frame": "ground-truth",
+      "claim": "The shoulder path returns from the Shrine Terrace to the Crown Yard.",
+      "canon_from": "sc-01", "evidence": ["sc-01"],
+      "entities": ["loc-shrine-terrace", "loc-crown-yard"],
+      "typed": { "subject": "loc-shrine-terrace", "predicate": "adjacent", "object": { "kind": "entity", "id": "loc-crown-yard" } }
+    },
+    {
+      "fact_id": "f-way-upper-market", "frame": "ground-truth",
+      "claim": "The Upper Quarter's lower gate opens on the Market Quarter.",
+      "canon_from": "sc-01", "evidence": ["sc-01"],
+      "entities": ["loc-upper-quarter", "loc-market-quarter"],
+      "typed": { "subject": "loc-upper-quarter", "predicate": "adjacent", "object": { "kind": "entity", "id": "loc-market-quarter" } }
+    },
+    {
+      "fact_id": "f-way-market-upper", "frame": "ground-truth",
+      "claim": "From the Market Quarter the lower gate lets back up into the Upper Quarter.",
+      "canon_from": "sc-01", "evidence": ["sc-01"],
+      "entities": ["loc-market-quarter", "loc-upper-quarter"],
+      "typed": { "subject": "loc-market-quarter", "predicate": "adjacent", "object": { "kind": "entity", "id": "loc-upper-quarter" } }
+    },
+    {
+      "fact_id": "f-way-shrine-market", "frame": "ground-truth",
+      "claim": "A switchback drops from the Shrine Terrace into the Market Quarter.",
+      "canon_from": "sc-01", "evidence": ["sc-01"],
+      "entities": ["loc-shrine-terrace", "loc-market-quarter"],
+      "typed": { "subject": "loc-shrine-terrace", "predicate": "adjacent", "object": { "kind": "entity", "id": "loc-market-quarter" } }
+    },
+    {
+      "fact_id": "f-way-market-shrine", "frame": "ground-truth",
+      "claim": "The switchback climbs from the Market Quarter to the Shrine Terrace.",
+      "canon_from": "sc-01", "evidence": ["sc-01"],
+      "entities": ["loc-market-quarter", "loc-shrine-terrace"],
+      "typed": { "subject": "loc-market-quarter", "predicate": "adjacent", "object": { "kind": "entity", "id": "loc-shrine-terrace" } }
+    },
+    {
+      "fact_id": "f-way-market-stair", "frame": "ground-truth",
+      "claim": "The barred gate at the foot of the Market Quarter opens on the Pilgrim Stair.",
+      "canon_from": "sc-01", "evidence": ["sc-01"],
+      "entities": ["loc-market-quarter", "loc-pilgrim-stair"],
+      "typed": { "subject": "loc-market-quarter", "predicate": "adjacent", "object": { "kind": "entity", "id": "loc-pilgrim-stair" } }
+    },
+    {
+      "fact_id": "f-way-stair-market", "frame": "ground-truth",
+      "claim": "From the stair head the gate lets back into the Market Quarter.",
+      "canon_from": "sc-01", "evidence": ["sc-01"],
+      "entities": ["loc-pilgrim-stair", "loc-market-quarter"],
+      "typed": { "subject": "loc-pilgrim-stair", "predicate": "adjacent", "object": { "kind": "entity", "id": "loc-market-quarter" } }
+    },
+    {
+      "fact_id": "f-way-stair-water", "frame": "ground-truth",
+      "claim": "The Pilgrim Stair goes down to the Water Line, and only down: below the gate the treads are gone and nothing climbs them.",
+      "canon_from": "sc-01", "evidence": ["sc-01"],
+      "entities": ["loc-pilgrim-stair", "loc-water-line"],
+      "typed": { "subject": "loc-pilgrim-stair", "predicate": "adjacent", "object": { "kind": "entity", "id": "loc-water-line" } }
+    },
+    {
+      "fact_id": "f-way-water-lantern", "frame": "ground-truth",
+      "claim": "A boat channel runs out from the Water Line to the Lantern House.",
+      "canon_from": "sc-01", "evidence": ["sc-01"],
+      "entities": ["loc-water-line", "loc-lantern-house"],
+      "typed": { "subject": "loc-water-line", "predicate": "adjacent", "object": { "kind": "entity", "id": "loc-lantern-house" } }
+    },
+    {
+      "fact_id": "f-way-lantern-water", "frame": "ground-truth",
+      "claim": "The boat channel runs back from the Lantern House to the Water Line.",
+      "canon_from": "sc-01", "evidence": ["sc-01"],
+      "entities": ["loc-lantern-house", "loc-water-line"],
+      "typed": { "subject": "loc-lantern-house", "predicate": "adjacent", "object": { "kind": "entity", "id": "loc-water-line" } }
+    },
+    {
+      "fact_id": "f-way-almshouse-rope", "frame": "ground-truth",
+      "claim": "Inside the Upper Quarter the Almshouse door gives on the Rope Walk.",
+      "canon_from": "sc-01", "evidence": ["sc-01"],
+      "entities": ["loc-almshouse", "loc-rope-walk"],
+      "typed": { "subject": "loc-almshouse", "predicate": "adjacent", "object": { "kind": "entity", "id": "loc-rope-walk" } }
+    },
+    {
+      "fact_id": "f-way-rope-almshouse", "frame": "ground-truth",
+      "claim": "The Rope Walk runs back to the Almshouse door.",
+      "canon_from": "sc-01", "evidence": ["sc-01"],
+      "entities": ["loc-rope-walk", "loc-almshouse"],
+      "typed": { "subject": "loc-rope-walk", "predicate": "adjacent", "object": { "kind": "entity", "id": "loc-almshouse" } }
+    },
+    {
+      "fact_id": "f-way-rope-cistern", "frame": "ground-truth",
+      "claim": "The far end of the Rope Walk opens on the Cistern Yard.",
+      "canon_from": "sc-01", "evidence": ["sc-01"],
+      "entities": ["loc-rope-walk", "loc-cistern-yard"],
+      "typed": { "subject": "loc-rope-walk", "predicate": "adjacent", "object": { "kind": "entity", "id": "loc-cistern-yard" } }
+    },
+    {
+      "fact_id": "f-way-cistern-rope", "frame": "ground-truth",
+      "claim": "The Cistern Yard opens back on the Rope Walk.",
+      "canon_from": "sc-01", "evidence": ["sc-01"],
+      "entities": ["loc-cistern-yard", "loc-rope-walk"],
+      "typed": { "subject": "loc-cistern-yard", "predicate": "adjacent", "object": { "kind": "entity", "id": "loc-rope-walk" } }
+    },
+    {
+      "fact_id": "f-way-weigh-salt", "frame": "ground-truth",
+      "claim": "Inside the Market Quarter the Weighhouse stands on the Salt Market's head.",
+      "canon_from": "sc-01", "evidence": ["sc-01"],
+      "entities": ["loc-weighhouse", "loc-salt-market"],
+      "typed": { "subject": "loc-weighhouse", "predicate": "adjacent", "object": { "kind": "entity", "id": "loc-salt-market" } }
+    },
+    {
+      "fact_id": "f-way-salt-weigh", "frame": "ground-truth",
+      "claim": "The Salt Market runs back up to the Weighhouse.",
+      "canon_from": "sc-01", "evidence": ["sc-01"],
+      "entities": ["loc-salt-market", "loc-weighhouse"],
+      "typed": { "subject": "loc-salt-market", "predicate": "adjacent", "object": { "kind": "entity", "id": "loc-weighhouse" } }
+    },
+    {
+      "fact_id": "f-way-salt-tanners", "frame": "ground-truth",
+      "claim": "A lane runs from the Salt Market down to Tanners' Row.",
+      "canon_from": "sc-01", "evidence": ["sc-01"],
+      "entities": ["loc-salt-market", "loc-tanners-row"],
+      "typed": { "subject": "loc-salt-market", "predicate": "adjacent", "object": { "kind": "entity", "id": "loc-tanners-row" } }
+    },
+    {
+      "fact_id": "f-way-tanners-salt", "frame": "ground-truth",
+      "claim": "The lane runs back from Tanners' Row to the Salt Market.",
+      "canon_from": "sc-01", "evidence": ["sc-01"],
+      "entities": ["loc-tanners-row", "loc-salt-market"],
+      "typed": { "subject": "loc-tanners-row", "predicate": "adjacent", "object": { "kind": "entity", "id": "loc-salt-market" } }
+    },
+
+    {
+      "fact_id": "f-in-almshouse", "frame": "ground-truth",
+      "claim": "The Almshouse stands inside the Upper Quarter's wall.",
+      "canon_from": "sc-01", "evidence": ["sc-01"],
+      "entities": ["loc-upper-quarter", "loc-almshouse"],
+      "typed": { "subject": "loc-upper-quarter", "predicate": "contains", "object": { "kind": "entity", "id": "loc-almshouse" } }
+    },
+    {
+      "fact_id": "f-in-rope-walk", "frame": "ground-truth",
+      "claim": "The Rope Walk lies inside the Upper Quarter's wall.",
+      "canon_from": "sc-01", "evidence": ["sc-01"],
+      "entities": ["loc-upper-quarter", "loc-rope-walk"],
+      "typed": { "subject": "loc-upper-quarter", "predicate": "contains", "object": { "kind": "entity", "id": "loc-rope-walk" } }
+    },
+    {
+      "fact_id": "f-in-cistern-yard", "frame": "ground-truth",
+      "claim": "The Cistern Yard lies inside the Upper Quarter's wall.",
+      "canon_from": "sc-01", "evidence": ["sc-01"],
+      "entities": ["loc-upper-quarter", "loc-cistern-yard"],
+      "typed": { "subject": "loc-upper-quarter", "predicate": "contains", "object": { "kind": "entity", "id": "loc-cistern-yard" } }
+    },
+    {
+      "fact_id": "f-in-weighhouse", "frame": "ground-truth",
+      "claim": "The Weighhouse stands inside the Market Quarter's wall.",
+      "canon_from": "sc-01", "evidence": ["sc-01"],
+      "entities": ["loc-market-quarter", "loc-weighhouse"],
+      "typed": { "subject": "loc-market-quarter", "predicate": "contains", "object": { "kind": "entity", "id": "loc-weighhouse" } }
+    },
+    {
+      "fact_id": "f-in-salt-market", "frame": "ground-truth",
+      "claim": "The Salt Market lies inside the Market Quarter's wall.",
+      "canon_from": "sc-01", "evidence": ["sc-01"],
+      "entities": ["loc-market-quarter", "loc-salt-market"],
+      "typed": { "subject": "loc-market-quarter", "predicate": "contains", "object": { "kind": "entity", "id": "loc-salt-market" } }
+    },
+    {
+      "fact_id": "f-in-tanners-row", "frame": "ground-truth",
+      "claim": "Tanners' Row lies inside the Market Quarter's wall.",
+      "canon_from": "sc-01", "evidence": ["sc-01"],
+      "entities": ["loc-market-quarter", "loc-tanners-row"],
+      "typed": { "subject": "loc-market-quarter", "predicate": "contains", "object": { "kind": "entity", "id": "loc-tanners-row" } }
+    },
+
+    {
+      "fact_id": "f-safe-depth", "frame": "ground-truth",
+      "claim": "The wardens hold the Pilgrim Stair passable while the flood stands under five metres on the gauge.",
+      "canon_from": "sc-01", "evidence": ["sc-01"],
+      "entities": ["env-flood", "loc-pilgrim-stair"],
+      "typed": { "subject": "env-flood", "predicate": "safe_depth", "object": { "kind": "quantity", "n": 5, "unit": "metre" } }
+    },
+    {
+      "fact_id": "f-depth-three", "frame": "ground-truth",
+      "claim": "The flood stands at three metres on the Crown Yard gauge.",
+      "canon_from": "sc-02", "evidence": ["sc-02"],
+      "entities": ["env-flood"],
+      "typed": { "subject": "env-flood", "predicate": "depth", "object": { "kind": "quantity", "n": 3, "unit": "metre" } }
+    },
+    {
+      "fact_id": "f-depth-four", "frame": "ground-truth",
+      "claim": "The flood stands at four metres on the Crown Yard gauge.",
+      "canon_from": "sc-12", "evidence": ["sc-12"],
+      "entities": ["env-flood"],
+      "supersedes_in_frame": "f-depth-three",
+      "typed": { "subject": "env-flood", "predicate": "depth", "object": { "kind": "quantity", "n": 4, "unit": "metre" } }
+    },
+    {
+      "fact_id": "f-tide-rising", "frame": "ground-truth",
+      "claim": "The water is rising against the hill.",
+      "canon_from": "sc-02", "evidence": ["sc-02"],
+      "entities": ["env-flood"],
+      "typed": { "subject": "env-flood", "predicate": "tide", "object": { "kind": "token", "token": "rising" } }
+    },
+    {
+      "fact_id": "f-tide-slack", "frame": "ground-truth",
+      "claim": "The water stands slack, neither making nor falling.",
+      "canon_from": "sc-12", "evidence": ["sc-12"],
+      "entities": ["env-flood"],
+      "supersedes_in_frame": "f-tide-rising",
+      "typed": { "subject": "env-flood", "predicate": "tide", "object": { "kind": "token", "token": "slack" } }
+    },
+    {
+      "fact_id": "f-tide-turns", "frame": "ground-truth", "branch": "barred-stair",
+      "claim": "The slack breaks and the water makes again while the bar is still being tried.",
+      "canon_from": "sc-b1", "evidence": ["sc-b1"],
+      "entities": ["env-flood"],
+      "supersedes_in_frame": "f-tide-slack",
+      "typed": { "subject": "env-flood", "predicate": "tide", "object": { "kind": "token", "token": "rising" } }
+    },
+    {
+      "fact_id": "f-tide-full", "frame": "ground-truth", "branch": "main",
+      "claim": "By dark the tide is full over the drowned doors.",
+      "canon_from": "sc-16", "evidence": ["sc-16"],
+      "entities": ["env-flood"],
+      "supersedes_in_frame": "f-tide-slack",
+      "typed": { "subject": "env-flood", "predicate": "tide", "object": { "kind": "token", "token": "full" } }
+    },
+
+    {
+      "fact_id": "f-setup-second-key", "frame": "ground-truth",
+      "claim": "Sabb tells Hesper that the shrine has kept a second key to the stair gate since the pilgrimage was stopped.",
+      "canon_from": "sc-04", "evidence": ["sc-04"],
+      "entities": ["char-sabb", "char-hesper", "item-stair-key", "loc-shrine-terrace"],
+      "payoff_expectation": "expected"
+    },
+    {
+      "fact_id": "f-setup-long-line", "frame": "ground-truth",
+      "claim": "Onnu twists a line long enough to reach from the gate post to the stair foot.",
+      "canon_from": "sc-05", "evidence": ["sc-05"],
+      "entities": ["char-onnu", "loc-rope-walk", "loc-pilgrim-stair"],
+      "payoff_expectation": "expected"
+    },
+
+    {
+      "fact_id": "f-key-with-mareth", "frame": "ground-truth",
+      "claim": "The second key to the stair gate hangs on Mareth's belt at the shrine.",
+      "canon_from": "sc-01", "evidence": ["sc-01"],
+      "entities": ["char-mareth", "item-stair-key"],
+      "typed": { "subject": "char-mareth", "predicate": "holds", "object": { "kind": "entity", "id": "item-stair-key" } }
+    },
+    {
+      "fact_id": "f-key-in-hand", "frame": "ground-truth",
+      "claim": "Mareth puts the second stair key into Hesper's hand.",
+      "canon_from": "sc-11", "evidence": ["sc-11"],
+      "entities": ["char-hesper", "item-stair-key"],
+      "supersedes_in_frame": "f-key-with-mareth",
+      "pays_off": ["f-setup-second-key"],
+      "typed": { "subject": "char-hesper", "predicate": "holds", "object": { "kind": "entity", "id": "item-stair-key" } }
+    },
+    {
+      "fact_id": "f-board-with-hesper", "frame": "ground-truth",
+      "claim": "Hesper carries the warden's tide board.",
+      "canon_from": "sc-01", "evidence": ["sc-01"],
+      "entities": ["char-hesper", "item-tide-board"],
+      "typed": { "subject": "char-hesper", "predicate": "holds", "object": { "kind": "entity", "id": "item-tide-board" } }
+    },
+    {
+      "fact_id": "f-oil-with-onnu", "frame": "ground-truth",
+      "claim": "Onnu carries a sealed jar of lantern oil in her creel.",
+      "canon_from": "sc-05", "evidence": ["sc-05"],
+      "entities": ["char-onnu", "item-lantern-oil"],
+      "typed": { "subject": "char-onnu", "predicate": "holds", "object": { "kind": "entity", "id": "item-lantern-oil" } }
+    },
+    {
+      "fact_id": "f-oil-with-tessit", "frame": "ground-truth", "branch": "main",
+      "claim": "Onnu puts the oil jar into Tessit's keeping against the night he will row.",
+      "canon_from": "sc-16", "evidence": ["sc-16"],
+      "entities": ["char-tessit", "item-lantern-oil"],
+      "supersedes_in_frame": "f-oil-with-onnu",
+      "typed": { "subject": "char-tessit", "predicate": "holds", "object": { "kind": "entity", "id": "item-lantern-oil" } }
+    },
+
+    {
+      "fact_id": "f-payoff-line-stair", "frame": "ground-truth", "branch": "main",
+      "claim": "Onnu's line is made fast to the gate post, and they go down it where the treads have washed away.",
+      "canon_from": "sc-14", "evidence": ["sc-14"],
+      "entities": ["char-onnu", "char-hesper", "loc-pilgrim-stair"],
+      "pays_off": ["f-setup-long-line"]
+    },
+    {
+      "fact_id": "f-payoff-line-cistern", "frame": "ground-truth", "branch": "barred-stair",
+      "claim": "Onnu's line draws the deep bucket, and the cistern is found sweet below the brack.",
+      "canon_from": "sc-b2", "evidence": ["sc-b2"],
+      "entities": ["char-onnu", "loc-cistern-yard"],
+      "pays_off": ["f-setup-long-line"]
+    },
+
+    {
+      "fact_id": "f-at-hesper-crown", "frame": "ground-truth",
+      "claim": "Hesper is in the Crown Yard.",
+      "canon_from": "sc-01", "evidence": ["sc-01", "sc-02"],
+      "entities": ["char-hesper", "loc-crown-yard"],
+      "typed": { "subject": "char-hesper", "predicate": "at", "object": { "kind": "entity", "id": "loc-crown-yard" } }
+    },
+    {
+      "fact_id": "f-at-hesper-upper", "frame": "ground-truth",
+      "claim": "Hesper is in the Upper Quarter.",
+      "canon_from": "sc-03", "evidence": ["sc-03", "sc-04", "sc-05", "sc-06"],
+      "entities": ["char-hesper", "loc-upper-quarter"],
+      "supersedes_in_frame": "f-at-hesper-crown",
+      "typed": { "subject": "char-hesper", "predicate": "at", "object": { "kind": "entity", "id": "loc-upper-quarter" } }
+    },
+    {
+      "fact_id": "f-at-hesper-market", "frame": "ground-truth",
+      "claim": "Hesper is in the Market Quarter.",
+      "canon_from": "sc-07", "evidence": ["sc-07", "sc-08", "sc-09", "sc-10"],
+      "entities": ["char-hesper", "loc-market-quarter"],
+      "supersedes_in_frame": "f-at-hesper-upper",
+      "typed": { "subject": "char-hesper", "predicate": "at", "object": { "kind": "entity", "id": "loc-market-quarter" } }
+    },
+    {
+      "fact_id": "f-at-hesper-shrine", "frame": "ground-truth",
+      "claim": "Hesper is on the Shrine Terrace.",
+      "canon_from": "sc-11", "evidence": ["sc-11"],
+      "entities": ["char-hesper", "loc-shrine-terrace"],
+      "supersedes_in_frame": "f-at-hesper-market",
+      "typed": { "subject": "char-hesper", "predicate": "at", "object": { "kind": "entity", "id": "loc-shrine-terrace" } }
+    },
+    {
+      "fact_id": "f-at-hesper-market-again", "frame": "ground-truth",
+      "claim": "Hesper is back in the Market Quarter with the key.",
+      "canon_from": "sc-12", "evidence": ["sc-12", "sc-13"],
+      "entities": ["char-hesper", "loc-market-quarter"],
+      "supersedes_in_frame": "f-at-hesper-shrine",
+      "typed": { "subject": "char-hesper", "predicate": "at", "object": { "kind": "entity", "id": "loc-market-quarter" } }
+    },
+    {
+      "fact_id": "f-at-hesper-stair", "frame": "ground-truth", "branch": "main",
+      "claim": "Hesper is on the Pilgrim Stair, below the opened gate.",
+      "canon_from": "sc-14", "evidence": ["sc-14"],
+      "entities": ["char-hesper", "loc-pilgrim-stair"],
+      "supersedes_in_frame": "f-at-hesper-market-again",
+      "typed": { "subject": "char-hesper", "predicate": "at", "object": { "kind": "entity", "id": "loc-pilgrim-stair" } }
+    },
+    {
+      "fact_id": "f-at-hesper-water", "frame": "ground-truth", "branch": "main",
+      "claim": "Hesper is at the Water Line.",
+      "canon_from": "sc-15", "evidence": ["sc-15", "sc-16", "sc-17"],
+      "entities": ["char-hesper", "loc-water-line"],
+      "supersedes_in_frame": "f-at-hesper-stair",
+      "typed": { "subject": "char-hesper", "predicate": "at", "object": { "kind": "entity", "id": "loc-water-line" } }
+    },
+    {
+      "fact_id": "f-at-hesper-upper-back", "frame": "ground-truth", "branch": "barred-stair",
+      "claim": "Hesper turns from the shut gate and goes back up into the Upper Quarter.",
+      "canon_from": "sc-b2", "evidence": ["sc-b2"],
+      "entities": ["char-hesper", "loc-upper-quarter"],
+      "supersedes_in_frame": "f-at-hesper-market-again",
+      "typed": { "subject": "char-hesper", "predicate": "at", "object": { "kind": "entity", "id": "loc-upper-quarter" } }
+    },
+    {
+      "fact_id": "f-at-hesper-crown-back", "frame": "ground-truth", "branch": "barred-stair",
+      "claim": "Hesper climbs to the Crown Yard to ring a second time.",
+      "canon_from": "sc-b3", "evidence": ["sc-b3"],
+      "entities": ["char-hesper", "loc-crown-yard"],
+      "supersedes_in_frame": "f-at-hesper-upper-back",
+      "typed": { "subject": "char-hesper", "predicate": "at", "object": { "kind": "entity", "id": "loc-crown-yard" } }
+    },
+
+    {
+      "fact_id": "f-at-hesper-almshouse", "frame": "ground-truth",
+      "claim": "Hesper is in the Almshouse.",
+      "canon_from": "sc-04", "evidence": ["sc-04"],
+      "entities": ["char-hesper", "loc-almshouse"],
+      "typed": { "subject": "char-hesper", "predicate": "at", "object": { "kind": "entity", "id": "loc-almshouse" } }
+    },
+    {
+      "fact_id": "f-at-hesper-ropewalk", "frame": "ground-truth",
+      "claim": "Hesper is on the Rope Walk.",
+      "canon_from": "sc-05", "evidence": ["sc-05"],
+      "entities": ["char-hesper", "loc-rope-walk"],
+      "supersedes_in_frame": "f-at-hesper-almshouse",
+      "typed": { "subject": "char-hesper", "predicate": "at", "object": { "kind": "entity", "id": "loc-rope-walk" } }
+    },
+    {
+      "fact_id": "f-at-hesper-cistern", "frame": "ground-truth",
+      "claim": "Hesper is in the Cistern Yard.",
+      "canon_from": "sc-06", "canon_to": "sc-06", "evidence": ["sc-06"],
+      "entities": ["char-hesper", "loc-cistern-yard"],
+      "supersedes_in_frame": "f-at-hesper-ropewalk",
+      "typed": { "subject": "char-hesper", "predicate": "at", "object": { "kind": "entity", "id": "loc-cistern-yard" } }
+    },
+    {
+      "fact_id": "f-at-hesper-weighhouse", "frame": "ground-truth",
+      "claim": "Hesper is in the Weighhouse.",
+      "canon_from": "sc-08", "evidence": ["sc-08"],
+      "entities": ["char-hesper", "loc-weighhouse"],
+      "typed": { "subject": "char-hesper", "predicate": "at", "object": { "kind": "entity", "id": "loc-weighhouse" } }
+    },
+    {
+      "fact_id": "f-at-hesper-saltmarket", "frame": "ground-truth",
+      "claim": "Hesper is in the Salt Market.",
+      "canon_from": "sc-09", "evidence": ["sc-09"],
+      "entities": ["char-hesper", "loc-salt-market"],
+      "supersedes_in_frame": "f-at-hesper-weighhouse",
+      "typed": { "subject": "char-hesper", "predicate": "at", "object": { "kind": "entity", "id": "loc-salt-market" } }
+    },
+    {
+      "fact_id": "f-at-hesper-tanners", "frame": "ground-truth",
+      "claim": "Hesper is on Tanners' Row.",
+      "canon_from": "sc-10", "canon_to": "sc-10", "evidence": ["sc-10"],
+      "entities": ["char-hesper", "loc-tanners-row"],
+      "supersedes_in_frame": "f-at-hesper-saltmarket",
+      "typed": { "subject": "char-hesper", "predicate": "at", "object": { "kind": "entity", "id": "loc-tanners-row" } }
+    },
+    {
+      "fact_id": "f-at-hesper-cistern-night", "frame": "ground-truth", "branch": "barred-stair",
+      "claim": "Hesper is in the Cistern Yard by lamplight.",
+      "canon_from": "sc-b2", "canon_to": "sc-b2", "evidence": ["sc-b2"],
+      "entities": ["char-hesper", "loc-cistern-yard"],
+      "typed": { "subject": "char-hesper", "predicate": "at", "object": { "kind": "entity", "id": "loc-cistern-yard" } }
+    },
+
+    {
+      "fact_id": "f-at-onnu-upper", "frame": "ground-truth",
+      "claim": "Onnu is in the Upper Quarter.",
+      "canon_from": "sc-05", "evidence": ["sc-05", "sc-06"],
+      "entities": ["char-onnu", "loc-upper-quarter"],
+      "typed": { "subject": "char-onnu", "predicate": "at", "object": { "kind": "entity", "id": "loc-upper-quarter" } }
+    },
+    {
+      "fact_id": "f-at-onnu-ropewalk", "frame": "ground-truth",
+      "claim": "Onnu is at her work on the Rope Walk.",
+      "canon_from": "sc-05", "canon_to": "sc-11", "evidence": ["sc-05"],
+      "entities": ["char-onnu", "loc-rope-walk"],
+      "typed": { "subject": "char-onnu", "predicate": "at", "object": { "kind": "entity", "id": "loc-rope-walk" } }
+    },
+    {
+      "fact_id": "f-at-onnu-market", "frame": "ground-truth",
+      "claim": "Onnu comes down into the Market Quarter with her line.",
+      "canon_from": "sc-12", "evidence": ["sc-12", "sc-13"],
+      "entities": ["char-onnu", "loc-market-quarter"],
+      "supersedes_in_frame": "f-at-onnu-upper",
+      "typed": { "subject": "char-onnu", "predicate": "at", "object": { "kind": "entity", "id": "loc-market-quarter" } }
+    },
+    {
+      "fact_id": "f-at-onnu-stair", "frame": "ground-truth", "branch": "main",
+      "claim": "Onnu is on the Pilgrim Stair.",
+      "canon_from": "sc-14", "evidence": ["sc-14"],
+      "entities": ["char-onnu", "loc-pilgrim-stair"],
+      "supersedes_in_frame": "f-at-onnu-market",
+      "typed": { "subject": "char-onnu", "predicate": "at", "object": { "kind": "entity", "id": "loc-pilgrim-stair" } }
+    },
+    {
+      "fact_id": "f-at-onnu-water", "frame": "ground-truth", "branch": "main",
+      "claim": "Onnu is at the Water Line.",
+      "canon_from": "sc-15", "evidence": ["sc-15", "sc-16"],
+      "entities": ["char-onnu", "loc-water-line"],
+      "supersedes_in_frame": "f-at-onnu-stair",
+      "typed": { "subject": "char-onnu", "predicate": "at", "object": { "kind": "entity", "id": "loc-water-line" } }
+    },
+    {
+      "fact_id": "f-at-onnu-upper-back", "frame": "ground-truth", "branch": "barred-stair",
+      "claim": "Onnu goes back up into the Upper Quarter with her line still coiled.",
+      "canon_from": "sc-b2", "evidence": ["sc-b2"],
+      "entities": ["char-onnu", "loc-upper-quarter"],
+      "supersedes_in_frame": "f-at-onnu-market",
+      "typed": { "subject": "char-onnu", "predicate": "at", "object": { "kind": "entity", "id": "loc-upper-quarter" } }
+    },
+    {
+      "fact_id": "f-at-onnu-cistern-night", "frame": "ground-truth", "branch": "barred-stair",
+      "claim": "Onnu is in the Cistern Yard by lamplight.",
+      "canon_from": "sc-b2", "canon_to": "sc-b2", "evidence": ["sc-b2"],
+      "entities": ["char-onnu", "loc-cistern-yard"],
+      "typed": { "subject": "char-onnu", "predicate": "at", "object": { "kind": "entity", "id": "loc-cistern-yard" } }
+    },
+
+    {
+      "fact_id": "f-at-mareth-shrine", "frame": "ground-truth",
+      "claim": "Mareth keeps to the Shrine Terrace.",
+      "canon_from": "sc-01", "evidence": ["sc-01", "sc-11"],
+      "entities": ["char-mareth", "loc-shrine-terrace"],
+      "typed": { "subject": "char-mareth", "predicate": "at", "object": { "kind": "entity", "id": "loc-shrine-terrace" } }
+    },
+    {
+      "fact_id": "f-at-borl-weighhouse", "frame": "ground-truth",
+      "claim": "Borl keeps the Weighhouse.",
+      "canon_from": "sc-01", "evidence": ["sc-01", "sc-08"],
+      "entities": ["char-borl", "loc-weighhouse"],
+      "typed": { "subject": "char-borl", "predicate": "at", "object": { "kind": "entity", "id": "loc-weighhouse" } }
+    },
+    {
+      "fact_id": "f-at-sabb-almshouse", "frame": "ground-truth",
+      "claim": "Sabb keeps her bed in the Almshouse.",
+      "canon_from": "sc-04", "evidence": ["sc-04"],
+      "entities": ["char-sabb", "loc-almshouse"],
+      "typed": { "subject": "char-sabb", "predicate": "at", "object": { "kind": "entity", "id": "loc-almshouse" } }
+    },
+    {
+      "fact_id": "f-at-tessit-water", "frame": "ground-truth",
+      "claim": "Tessit has been at the Water Line since the water first came over the lower doors, and has not been up since.",
+      "canon_from": "sc-01", "evidence": ["sc-01"],
+      "entities": ["char-tessit", "loc-water-line"],
+      "typed": { "subject": "char-tessit", "predicate": "at", "object": { "kind": "entity", "id": "loc-water-line" } }
+    },
+
+    {
+      "fact_id": "f-bell-first", "frame": "ground-truth",
+      "claim": "Hesper rings the Crown Yard bell and the hill comes up to hear the count.",
+      "canon_from": "sc-02", "evidence": ["sc-02"],
+      "entities": ["char-hesper", "loc-crown-yard"]
+    },
+    {
+      "fact_id": "f-lantern-dark", "frame": "ground-truth",
+      "claim": "The Lantern House light has not been lit for nine nights.",
+      "canon_from": "sc-02", "evidence": ["sc-02"],
+      "entities": ["loc-lantern-house"]
+    },
+    {
+      "fact_id": "f-almshouse-count", "frame": "ground-truth",
+      "claim": "Eleven households out of the drowned lower town are sheltering in the Almshouse.",
+      "canon_from": "sc-04", "evidence": ["sc-04"],
+      "entities": ["loc-almshouse", "char-hesper"]
+    },
+    {
+      "fact_id": "f-cistern-brack", "frame": "ground-truth",
+      "claim": "The Cistern Yard's cistern has gone brackish at the top and the hill's sweet water is failing.",
+      "canon_from": "sc-06", "evidence": ["sc-06"],
+      "entities": ["loc-cistern-yard"]
+    },
+    {
+      "fact_id": "f-weighhouse-honest", "frame": "ground-truth",
+      "claim": "Borl weighs the salt honestly, calls it short, and loses the custom of every dealer on the row.",
+      "canon_from": "sc-08", "evidence": ["sc-08"],
+      "entities": ["char-borl", "loc-weighhouse"]
+    },
+    {
+      "fact_id": "f-salt-price", "frame": "ground-truth",
+      "claim": "Salt is being sold in the Salt Market at eleven times the winter price.",
+      "canon_from": "sc-09", "evidence": ["sc-09"],
+      "entities": ["loc-salt-market"]
+    },
+    {
+      "fact_id": "f-tanners-drowned", "frame": "ground-truth",
+      "claim": "The tanning pits have taken the flood and the stink of them lies over the whole hill.",
+      "canon_from": "sc-10", "evidence": ["sc-10"],
+      "entities": ["loc-tanners-row"]
+    },
+    {
+      "fact_id": "f-mareth-vigil", "frame": "ground-truth",
+      "claim": "Mareth has kept the shrine lamp burning every night since the water came over the lower doors.",
+      "canon_from": "sc-11", "evidence": ["sc-11"],
+      "entities": ["char-mareth", "loc-shrine-terrace"]
+    },
+    {
+      "fact_id": "f-bar-tried", "frame": "ground-truth",
+      "claim": "The whole hill stands at the stair gate while the bar is tried.",
+      "canon_from": "sc-13", "evidence": ["sc-13"],
+      "entities": ["loc-market-quarter", "loc-pilgrim-stair", "item-stair-key"]
+    },
+    {
+      "fact_id": "f-gate-gives", "frame": "ground-truth", "branch": "main",
+      "claim": "The bar lifts at slack water and the stair gate gives.",
+      "canon_from": "sc-14", "evidence": ["sc-14"],
+      "entities": ["loc-market-quarter", "loc-pilgrim-stair", "item-stair-key", "char-hesper"]
+    },
+    {
+      "fact_id": "f-treads-gone", "frame": "ground-truth", "branch": "main",
+      "claim": "Below the gate the lower treads wash out behind them, and the Pilgrim Stair is a way down and no longer a way up.",
+      "canon_from": "sc-14", "evidence": ["sc-14"],
+      "entities": ["loc-pilgrim-stair", "loc-water-line"]
+    },
+    {
+      "fact_id": "f-skiff", "frame": "ground-truth", "branch": "main",
+      "claim": "Tessit's skiff lies against the flooded doors at the Water Line.",
+      "canon_from": "sc-15", "evidence": ["sc-15"],
+      "entities": ["char-tessit", "loc-water-line"]
+    },
+    {
+      "fact_id": "f-tessit-refuses", "frame": "ground-truth", "branch": "main",
+      "claim": "Tessit will not row out to the Lantern House, and the oil jar stays under the thwart.",
+      "canon_from": "sc-16", "evidence": ["sc-16"],
+      "entities": ["char-tessit", "loc-lantern-house", "item-lantern-oil"]
+    },
+    {
+      "fact_id": "f-bell-heard", "frame": "ground-truth", "branch": "main",
+      "claim": "At dawn the Crown Yard bell is heard from the Water Line, and those below count who is left above.",
+      "canon_from": "sc-17", "evidence": ["sc-17"],
+      "entities": ["loc-water-line", "loc-crown-yard", "char-hesper", "char-onnu"]
+    },
+    {
+      "fact_id": "f-gate-holds", "frame": "ground-truth", "branch": "barred-stair",
+      "claim": "The tide turns before the key does, and the bar will not lift.",
+      "canon_from": "sc-b1", "evidence": ["sc-b1"],
+      "entities": ["loc-market-quarter", "loc-pilgrim-stair", "item-stair-key", "char-hesper"]
+    },
+    {
+      "fact_id": "f-cistern-sweet", "frame": "ground-truth", "branch": "barred-stair",
+      "claim": "Below the brack the cistern is sweet, and the hill has water for another month.",
+      "canon_from": "sc-b2", "evidence": ["sc-b2"],
+      "entities": ["loc-cistern-yard"]
+    },
+    {
+      "fact_id": "f-bell-second", "frame": "ground-truth", "branch": "barred-stair",
+      "claim": "The bell is rung a second time, nobody goes down, and the Lantern House stays dark.",
+      "canon_from": "sc-b3", "evidence": ["sc-b3"],
+      "entities": ["loc-crown-yard", "loc-lantern-house", "char-hesper"]
+    },
+
+    {
+      "fact_id": "f-townsfolk-lantern-keeper", "frame": "townsfolk",
+      "claim": "They say the Lantern House still stands and its keeper trims the wick against the night the hill comes for him.",
+      "canon_from": "sc-02", "evidence": ["sc-02", "sc-04"],
+      "entities": ["loc-lantern-house"]
+    },
+    {
+      "fact_id": "f-townsfolk-gate-unopened", "frame": "townsfolk",
+      "claim": "They say the stair gate has not been opened since the pilgrimage was stopped, and that it was barred for a reason nobody now remembers.",
+      "canon_from": "sc-04", "evidence": ["sc-04"],
+      "entities": ["loc-pilgrim-stair", "loc-market-quarter"]
+    },
+    {
+      "fact_id": "f-tessit-channel", "frame": "tessit", "branch": "main",
+      "claim": "Tessit holds that the channel out to the Lantern House cannot be rowed at any tide, and that whoever is there is past helping.",
+      "canon_from": "sc-16", "evidence": ["sc-16"],
+      "entities": ["char-tessit", "loc-lantern-house", "loc-water-line"]
+    }
+  ]
+}

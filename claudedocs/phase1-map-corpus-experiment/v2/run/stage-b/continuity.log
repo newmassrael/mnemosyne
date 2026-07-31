@@ -1,0 +1,24 @@
+=== continuity gate (reject) ===
+  facts=90 order_nodes=20/20 sections conflict_pairs=0 cross_scope(data)=0 unordered=0
+  rules=4 rule_unordered=0 unchained_state_pairs=85 interval_unverifiable=2 interval_severity=off
+  evidence reviews: 0 ref(s) with prose but no affirmation (import-evidence-reviews records one; an unaffirmed claim cannot go stale)
+  fact quotes: 0 unverifiable (an evidence section holds no prose, so the quote could live exactly there)
+  ladder rungs: 0 coordinate(s) resolved against current prose, and each ladder's declared order and distinctness judged against it (a stranded rung, an out-of-order ladder, or two rungs at one anchor is reported as a violation)
+  violations: 16 (structural=16 interval=0)
+  {"kind":"evidence_unreachable","fact":"f-at-borl-weighhouse","branch":"main","evidence":"sc-08","canon_from":"sc-01"}
+  {"kind":"evidence_unreachable","fact":"f-at-hesper-crown","branch":"main","evidence":"sc-02","canon_from":"sc-01"}
+  {"kind":"evidence_unreachable","fact":"f-at-hesper-market","branch":"main","evidence":"sc-08","canon_from":"sc-07"}
+  {"kind":"evidence_unreachable","fact":"f-at-hesper-market","branch":"main","evidence":"sc-09","canon_from":"sc-07"}
+  {"kind":"evidence_unreachable","fact":"f-at-hesper-market","branch":"main","evidence":"sc-10","canon_from":"sc-07"}
+  {"kind":"evidence_unreachable","fact":"f-at-hesper-market-again","branch":"main","evidence":"sc-13","canon_from":"sc-12"}
+  {"kind":"evidence_unreachable","fact":"f-at-hesper-upper","branch":"main","evidence":"sc-04","canon_from":"sc-03"}
+  {"kind":"evidence_unreachable","fact":"f-at-hesper-upper","branch":"main","evidence":"sc-05","canon_from":"sc-03"}
+  {"kind":"evidence_unreachable","fact":"f-at-hesper-upper","branch":"main","evidence":"sc-06","canon_from":"sc-03"}
+  {"kind":"evidence_unreachable","fact":"f-at-hesper-water","branch":"main","evidence":"sc-16","canon_from":"sc-15"}
+  {"kind":"evidence_unreachable","fact":"f-at-hesper-water","branch":"main","evidence":"sc-17","canon_from":"sc-15"}
+  {"kind":"evidence_unreachable","fact":"f-at-mareth-shrine","branch":"main","evidence":"sc-11","canon_from":"sc-01"}
+  {"kind":"evidence_unreachable","fact":"f-at-onnu-market","branch":"main","evidence":"sc-13","canon_from":"sc-12"}
+  {"kind":"evidence_unreachable","fact":"f-at-onnu-upper","branch":"main","evidence":"sc-06","canon_from":"sc-05"}
+  {"kind":"evidence_unreachable","fact":"f-at-onnu-water","branch":"main","evidence":"sc-16","canon_from":"sc-15"}
+  {"kind":"evidence_unreachable","fact":"f-townsfolk-lantern-keeper","branch":"main","evidence":"sc-04","canon_from":"sc-02"}
+  NOTICE: 1 interval rule(s) declared but interval_severity is off — timeline gaps are SURFACED, not gated; set [continuity].interval_severity = reject to gate them (a gap can be a deliberate time-bend).

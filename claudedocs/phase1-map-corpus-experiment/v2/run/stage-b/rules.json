@@ -1,0 +1,35 @@
+{
+  "schema": "narrative-rules/v1",
+  "comment": "Cawl Hill. One person stands in one place (a quarter and a yard inside it are one place, not two). Nobody moves except along a way the map declares, and the ways are one-directional facts, because the Pilgrim Stair goes down and does not come back. The stair is held passable only while the flood stands under the warden's safe depth.",
+  "rules": [
+    {
+      "id": "one-place-per-person",
+      "predicate": "at",
+      "class": "exclusive",
+      "per": "subject",
+      "containment": "contains"
+    },
+    {
+      "id": "one-holder-per-thing",
+      "predicate": "holds",
+      "class": "exclusive",
+      "per": "object"
+    },
+    {
+      "id": "moves-along-the-ways",
+      "predicate": "at",
+      "class": "transition",
+      "adjacency": "adjacent",
+      "undirected": false,
+      "containment": "contains"
+    },
+    {
+      "id": "stair-passable-while-shallow",
+      "predicate": "safe_depth",
+      "class": "interval",
+      "right": "depth",
+      "op": "gt",
+      "bound": { "const": 0 }
+    }
+  ]
+}

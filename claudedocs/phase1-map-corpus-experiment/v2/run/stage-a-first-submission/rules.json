@@ -1,0 +1,27 @@
+{
+  "schema": "narrative-rules/v1",
+  "comment": "Harrow Steep. One place per person, refinement-aware so that standing in the Sunken Market is also standing in the Drowned Quarter. Movement rides the store-native map, directed, so the Forty Steps admit the descent and refuse the climb. One holder per thing, so the sluice key and the Almshouse ledger cannot be in two hands at once.",
+  "rules": [
+    {
+      "id": "one-place-per-person",
+      "predicate": "at",
+      "class": "exclusive",
+      "per": "subject",
+      "containment": "contains"
+    },
+    {
+      "id": "movement-rides-the-map",
+      "predicate": "at",
+      "class": "transition",
+      "adjacency": "adjacent",
+      "undirected": false,
+      "containment": "contains"
+    },
+    {
+      "id": "one-holder-per-thing",
+      "predicate": "holds",
+      "class": "exclusive",
+      "per": "object"
+    }
+  ]
+}

@@ -1,0 +1,71 @@
+{
+  "schema": "kit-replay/v2",
+  "revision_provenance": "declared-at-run",
+  "declared_in": "Round 910",
+  "derivation": "Arm B of the map-corpus A/B. Same frozen brief and protocol as v1; the ONLY variable is contract.txt, regenerated from describe-schema after R906/R908/R909. The revision is the commit that lands these inputs, recorded at the run \u2014 a self-referential pin costs a second commit by construction, exactly as v1 recorded.",
+  "note": "Both first submissions imported clean (exit 0), so the -first-submission trees are byte-identical to the iterated ones: there was no iteration, and that is arm B's E2 result. It also explains why this kit declares two more inputs than v1's: arm A's first-submission sections.json was a malformed object and classified as no verb's input, while arm B's are valid Sections manifests and therefore must be declared.",
+  "inputs": [
+    {
+      "path": "run/stage-a/sections.json",
+      "role": "replay-input"
+    },
+    {
+      "path": "run/stage-a/facts.json",
+      "role": "replay-input"
+    },
+    {
+      "path": "run/stage-b/sections.json",
+      "role": "replay-input"
+    },
+    {
+      "path": "run/stage-b/facts.json",
+      "role": "replay-input"
+    },
+    {
+      "path": "run/stage-a-first-submission/facts.json",
+      "role": "raw-agent-output"
+    },
+    {
+      "path": "run/stage-b-first-submission/facts.json",
+      "role": "raw-agent-output"
+    },
+    {
+      "path": "run/stage-a-first-submission/sections.json",
+      "role": "raw-agent-output"
+    },
+    {
+      "path": "run/stage-b-first-submission/sections.json",
+      "role": "raw-agent-output"
+    }
+  ],
+  "replays": [
+    {
+      "name": "stage-a-no-map-words-fixed-contract",
+      "revision": "PENDING",
+      "steps": [
+        {
+          "verb": "import-sections",
+          "input": "run/stage-a/sections.json"
+        },
+        {
+          "verb": "import-facts",
+          "input": "run/stage-a/facts.json"
+        }
+      ]
+    },
+    {
+      "name": "stage-b-engine-must-answer-fixed-contract",
+      "revision": "PENDING",
+      "steps": [
+        {
+          "verb": "import-sections",
+          "input": "run/stage-b/sections.json"
+        },
+        {
+          "verb": "import-facts",
+          "input": "run/stage-b/facts.json"
+        }
+      ]
+    }
+  ]
+}
