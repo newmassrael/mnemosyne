@@ -57,6 +57,130 @@ fn bare_invocation_succeeds_quietly() {
     );
 }
 
+/// The verb set this binary dispatches, read back out of `--help` — which the
+/// tests above pin as the whole surface. Guarded against vacuity: a parse that
+/// silently yielded a handful would make the contract check below pass on
+/// nothing.
+fn dispatched_verbs(help: &str) -> std::collections::BTreeSet<String> {
+    let verbs: std::collections::BTreeSet<String> = help
+        .lines()
+        .filter_map(|line| {
+            let mut it = line.split_whitespace();
+            let prog = it.next()?;
+            let verb = it.next()?;
+            (prog.ends_with("mnemosyne-cli")
+                && verb.starts_with(|c: char| c.is_ascii_lowercase())
+                && verb.chars().all(|c| c.is_ascii_lowercase() || c == '-'))
+            .then(|| verb.to_string())
+        })
+        .collect();
+    assert!(
+        verbs.len() > 40,
+        "parsed only {} verbs out of --help — the parse broke, and a broken parse \
+         would let the contract check below pass by finding nothing to check",
+        verbs.len()
+    );
+    verbs
+}
+
+/// Round 907 — every VERB the authoring contract hands its reader must be a verb
+/// this binary dispatches.
+///
+/// This file's own header records the failure it is guarding: a second,
+/// hand-maintained command list drifted, and a consumer was taught that five
+/// present capabilities did not exist. `describe-schema` is a third list one
+/// layer up — it does not enumerate commands, but it names them inside prose an
+/// author follows literally ("declare it via `add-unit` first",
+/// "`report-authoring-frontier` reports those scenes"), and nothing checked that
+/// those names still dispatch. A renamed verb would leave the contract sending
+/// authors at a command that answers `unknown command`.
+///
+/// Measured before it was written (R907): 30 distinct verb names across the
+/// contract, 0 of them missing. So this starts GREEN — it is prevention, not a
+/// repair, and the honest claim is that it holds a currently-true property, not
+/// that it found something.
+///
+/// SCOPE, stated because the neighbouring drift was NOT of this kind: this
+/// checks that a NAME resolves, never that the prose around it describes what
+/// the verb does. R906 fixed a `containment` description that had named no dead
+/// identifier at all — it described a superseded MODEL in live vocabulary. No
+/// name-existence check reaches that, and pretending otherwise would be the
+/// green-and-hollow class.
+#[test]
+fn every_verb_the_authoring_contract_names_is_dispatched() {
+    let help = bin().arg("--help").output().expect("run --help");
+    let help = String::from_utf8(help.stdout).expect("help is utf-8");
+    let dispatched = dispatched_verbs(&help);
+
+    let contract = bin()
+        .args(["describe-schema", "--json"])
+        .output()
+        .expect("run describe-schema --json");
+    assert!(
+        contract.status.success(),
+        "describe-schema --json must exit 0"
+    );
+    let contract: serde_json::Value =
+        serde_json::from_slice(&contract.stdout).expect("the contract is JSON");
+
+    // Every string the contract serializes is prose an author reads.
+    let mut prose = Vec::new();
+    collect_strings(&contract, &mut prose);
+    assert!(
+        prose.len() > 100,
+        "walked only {} strings of the contract — the walk broke",
+        prose.len()
+    );
+
+    // Verb-shaped tokens: the imperative prefixes this CLI actually uses.
+    let prefixes = [
+        "report-",
+        "validate-",
+        "import-",
+        "add-",
+        "set-",
+        "remove-",
+        "propose-",
+        "describe-",
+        "emit-",
+        "redact-",
+    ];
+    let mut named: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+    for s in &prose {
+        for raw in s.split(|c: char| !(c.is_ascii_alphanumeric() || c == '-')) {
+            let token = raw.trim_matches('-');
+            if prefixes.iter().any(|p| token.starts_with(p)) && token.len() > 4 {
+                named.insert(token.to_string());
+            }
+        }
+    }
+    assert!(
+        named.len() > 20,
+        "found only {} verb names in the contract — the extraction broke, and an \
+         extraction that finds nothing asserts nothing",
+        named.len()
+    );
+
+    let missing: Vec<&String> = named.iter().filter(|v| !dispatched.contains(*v)).collect();
+    assert!(
+        missing.is_empty(),
+        "the authoring contract names {} verb(s) this binary does not dispatch: {:?} — \
+         an author following the contract would be answered `unknown command`",
+        missing.len(),
+        missing
+    );
+}
+
+/// Every string value in a serialized contract, recursively.
+fn collect_strings(v: &serde_json::Value, out: &mut Vec<String>) {
+    match v {
+        serde_json::Value::String(s) => out.push(s.clone()),
+        serde_json::Value::Array(items) => items.iter().for_each(|i| collect_strings(i, out)),
+        serde_json::Value::Object(map) => map.values().for_each(|i| collect_strings(i, out)),
+        _ => {}
+    }
+}
+
 /// A verb absent from the table is a failure, never a silent no-op.
 #[test]
 fn unknown_command_fails_loud() {

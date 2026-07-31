@@ -6745,6 +6745,43 @@ mod tests {
         list.iter().map(|s| s.to_string()).collect()
     }
 
+    /// Round 907 — a command's `usage` must LEAD WITH the verb it dispatches.
+    ///
+    /// `name` is the dispatch key; `usage` is what `--help` prints. They are two
+    /// hand-written strings in one struct, and nothing tied them together, so a
+    /// verb could be renamed in `name` while `--help` went on advertising the
+    /// old spelling — the help text would name a verb that answers `unknown
+    /// command`, and every reader of `--help` (including
+    /// `help_registry_smoke::every_verb_the_authoring_contract_names_is_dispatched`,
+    /// which derives the dispatched set from exactly that output) would believe
+    /// it. Found by an injection that was supposed to break the contract gate
+    /// and did not: renaming `name` left `usage` untouched, so the drift the gate
+    /// exists to catch was invisible to it.
+    ///
+    /// An alias may lead instead — some usages document the alias spelling.
+    #[test]
+    fn every_usage_line_leads_with_a_verb_that_dispatches() {
+        for command in COMMANDS {
+            let verbs: Vec<&str> = std::iter::once(&command.name)
+                .chain(command.aliases)
+                .copied()
+                .collect();
+            let first = command
+                .usage
+                .first()
+                .unwrap_or_else(|| panic!("`{}` documents no usage line", command.name));
+            let leading = first.split_whitespace().next().unwrap_or("");
+            assert!(
+                verbs.contains(&leading),
+                "`{}` prints usage starting `{}`, which is not the verb it dispatches \
+                 ({:?}) — `--help` would send a reader at a command that does not exist",
+                command.name,
+                leading,
+                verbs
+            );
+        }
+    }
+
     /// Every verb resolves to exactly one command. `run` dispatches by first
     /// match, so a duplicate name or alias would make the second entry
     /// silently unreachable — dead behavior that still documents itself in
