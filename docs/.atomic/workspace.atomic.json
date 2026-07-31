@@ -28541,6 +28541,44 @@
         "The digests were taken on one machine. Nothing yet proves a path or an environment value does not leak into the store bytes, so a disagreement on other hardware would be a finding about the digest, not about the evidence.",
         "`narrative-rules.json` and `canon-order.json` files are still outside the coverage claim: they are read by report and validate verbs, not by a store-construction verb, so the shape oracle does not classify them and no gate requires them to be declared. The `config` field reaches the three that matter, by way of the directory they sit in, rather than naming them."
       ]
+    },
+    "Round 886": {
+      "decision_summary": "The replay had no clock; the two things that can break it run on different ones",
+      "changes_bullets": [
+        "New workflow `.github/workflows/evidence-replay.yml` runs the R885 replay runner on GitHub. R885 left it `#[ignore]`d and unrun, which is the shape R873 named as the reason evidence rots — tracked, and nothing loads it. This closes the other half.",
+        "Two triggers, because the two failure modes run on different clocks. A digest can only change if an input, a step, or the runner changes, so `push` / `pull_request` are path-filtered to `claudedocs/phase1-*/**` plus the test file. The filter is tight BY CONSTRUCTION, not by guesswork: a digest is produced by the binary built at the kit's own pinned revision, so no change under `crates/` can move it. A pinned revision that stops BUILDING is the world moving instead — a yanked crate, a registry that stops serving an old lockfile — and no commit of ours triggers that, so it gets a weekly `schedule` plus `workflow_dispatch`.",
+        "Separate workflow rather than a job in `mnemosyne-validate`: that one runs on every push and all PRs, and paying 5 minutes there for a result our own code cannot change would be the wrong trade. Only the cargo registry is cached, not `target` — each replay builds into a throwaway target dir, so there is nothing there to reuse; what repays caching is the crate sources for 23 historical lockfiles."
+      ],
+      "verification_bullets": [
+        "`fetch-depth: 0` is measured, not assumed. Cloned this repo at `--depth 1` and asked it for a pinned revision: `git archive 7d95e688` exits 128, `not a valid object name`. The runner extracts 23 historical commits, so checkout's default shallow clone would fail every one of them for a reason with nothing to do with the evidence.",
+        "Cost measured before recommending, not after: all 23 pinned revisions declare toolchain 1.94.1 — one toolchain, no per-revision download — and one cold isolated build is 12.8s, which is where the 272s full run comes from. `timeout-minutes: 45` leaves margin for a cold dependency cache, which this job pays more often than most.",
+        "Both workflow files parse, checked with a YAML parser rather than by eye: triggers and jobs enumerate as intended and the new checkout carries `fetch-depth: 0`. R583 is why this is checked at all — this repo has already shipped a malformed workflow that left CI silently non-running.",
+        "The declaration-gates step was run locally with `--locked` (6 passed) so the job cannot fail on a lockfile mismatch before it reaches the work.",
+        "NOT verified, and only a push can: that GitHub accepts the schedule, that the hosted runner's checkout behaves as the local shallow-clone experiment predicts, and that 23 historical lockfiles still resolve against crates.io from a hosted runner. That last one is the residual risk R880 recorded as UNOBSERVED — this workflow exists partly to observe it, and until it runs once the observation has not been made."
+      ],
+      "carry_forward_bullets": [
+        "Nothing prevents a malformed workflow YAML from landing. R583's failure was silent — the CI simply did not run — and the check above was a one-off run of a parser this repo does not carry: there is no YAML crate anywhere in the dependency tree, and pulling one in for a single test assertion was declined rather than done quietly. A future round that wants this gated should decide the dependency deliberately.",
+        "The weekly schedule is a guess at a cadence, not a measurement. A yanked dependency has no known arrival rate here; weekly was chosen because the job is 5 minutes and the failure it looks for is slow-moving.",
+        "GitHub disables scheduled workflows on repositories with no activity for 60 days. If this repo goes quiet, the cadence stops silently — the same class of silence R583 was."
+      ],
+      "publishable_decision_summary": "The replay had no clock; the two things that can break it run on different ones",
+      "publishable_changes_bullets": [
+        "New workflow `.github/workflows/evidence-replay.yml` runs the R885 replay runner on GitHub. R885 left it `#[ignore]`d and unrun, which is the shape R873 named as the reason evidence rots — tracked, and nothing loads it. This closes the other half.",
+        "Two triggers, because the two failure modes run on different clocks. A digest can only change if an input, a step, or the runner changes, so `push` / `pull_request` are path-filtered to `claudedocs/phase1-*/**` plus the test file. The filter is tight BY CONSTRUCTION, not by guesswork: a digest is produced by the binary built at the kit's own pinned revision, so no change under `crates/` can move it. A pinned revision that stops BUILDING is the world moving instead — a yanked crate, a registry that stops serving an old lockfile — and no commit of ours triggers that, so it gets a weekly `schedule` plus `workflow_dispatch`.",
+        "Separate workflow rather than a job in `mnemosyne-validate`: that one runs on every push and all PRs, and paying 5 minutes there for a result our own code cannot change would be the wrong trade. Only the cargo registry is cached, not `target` — each replay builds into a throwaway target dir, so there is nothing there to reuse; what repays caching is the crate sources for 23 historical lockfiles."
+      ],
+      "publishable_verification_bullets": [
+        "`fetch-depth: 0` is measured, not assumed. Cloned this repo at `--depth 1` and asked it for a pinned revision: `git archive 7d95e688` exits 128, `not a valid object name`. The runner extracts 23 historical commits, so checkout's default shallow clone would fail every one of them for a reason with nothing to do with the evidence.",
+        "Cost measured before recommending, not after: all 23 pinned revisions declare toolchain 1.94.1 — one toolchain, no per-revision download — and one cold isolated build is 12.8s, which is where the 272s full run comes from. `timeout-minutes: 45` leaves margin for a cold dependency cache, which this job pays more often than most.",
+        "Both workflow files parse, checked with a YAML parser rather than by eye: triggers and jobs enumerate as intended and the new checkout carries `fetch-depth: 0`. R583 is why this is checked at all — this repo has already shipped a malformed workflow that left CI silently non-running.",
+        "The declaration-gates step was run locally with `--locked` (6 passed) so the job cannot fail on a lockfile mismatch before it reaches the work.",
+        "NOT verified, and only a push can: that GitHub accepts the schedule, that the hosted runner's checkout behaves as the local shallow-clone experiment predicts, and that 23 historical lockfiles still resolve against crates.io from a hosted runner. That last one is the residual risk R880 recorded as UNOBSERVED — this workflow exists partly to observe it, and until it runs once the observation has not been made."
+      ],
+      "publishable_carry_forward_bullets": [
+        "Nothing prevents a malformed workflow YAML from landing. R583's failure was silent — the CI simply did not run — and the check above was a one-off run of a parser this repo does not carry: there is no YAML crate anywhere in the dependency tree, and pulling one in for a single test assertion was declined rather than done quietly. A future round that wants this gated should decide the dependency deliberately.",
+        "The weekly schedule is a guess at a cadence, not a measurement. A yanked dependency has no known arrival rate here; weekly was chosen because the job is 5 minutes and the failure it looks for is slow-moving.",
+        "GitHub disables scheduled workflows on repositories with no activity for 60 days. If this repo goes quiet, the cadence stops silently — the same class of silence R583 was."
+      ]
     }
   },
   "inventory_entries": {},

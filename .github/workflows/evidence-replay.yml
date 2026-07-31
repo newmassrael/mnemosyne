@@ -1,0 +1,91 @@
+name: evidence-replay
+
+# Round 886 — run the evidence replay on a cadence.
+#
+# R885 built the runner and recorded what each experiment kit rebuilds to, but
+# left it `#[ignore]`d and unrun. That is the shape R873 named as the reason
+# evidence rots: tracked, and nothing loads it. The cheap declaration gates run
+# on every `cargo test` in the main workflow; this is the expensive half.
+#
+# TWO triggers, because the two things that can break are driven by different
+# clocks:
+#
+#   - `push` / `pull_request`, path-filtered: a digest can only change if an
+#     input, a step, or the runner changes. It CANNOT change when `crates/`
+#     changes, because every digest is produced by the binary built at the
+#     kit's own pinned revision, not by today's. So the filter is tight by
+#     construction rather than by guesswork.
+#   - `schedule`: a pinned revision that stops building is the world moving,
+#     not us — a yanked dependency, a registry that no longer serves an old
+#     `Cargo.lock`. No commit of ours triggers that, so only a clock finds it.
+#     R880 recorded this residual risk as UNOBSERVED; a weekly run is what
+#     turns it into something observed.
+#
+# `fetch-depth: 0` is load-bearing and not a precaution: the runner does
+# `git archive <sha>` for 23 historical commits, and checkout's default shallow
+# clone has none of them. Without it every revision fails to extract and the
+# job fails for a reason that has nothing to do with the evidence.
+#
+# R583 is the reason the YAML shape matters here: this repo has already shipped
+# a malformed workflow that made CI silently non-running for an unknown stretch.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'claudedocs/phase1-*/**'
+      - 'crates/mnemosyne-cli/tests/evidence_replay_smoke.rs'
+      - '.github/workflows/evidence-replay.yml'
+  pull_request:
+    paths:
+      - 'claudedocs/phase1-*/**'
+      - 'crates/mnemosyne-cli/tests/evidence_replay_smoke.rs'
+      - '.github/workflows/evidence-replay.yml'
+  schedule:
+    # Mondays, 04:17 UTC. Off the hour so it does not queue behind everything
+    # else scheduled on one.
+    - cron: '17 4 * * 1'
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  replay:
+    name: replay every kit at its pinned revision
+    runs-on: ubuntu-latest
+    # Measured locally at 272s for 23 revisions (12.8s per cold isolated
+    # build). The margin is for a cold dependency cache, which this job pays
+    # more often than most: it compiles 23 different `Cargo.lock`s.
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # See the header. The runner extracts historical commits.
+          fetch-depth: 0
+
+      - name: Install rust toolchain (rust-toolchain.toml)
+        run: rustup show
+
+      # Only the registry, not `target`: each replay builds into a throwaway
+      # target dir of its own, so there is nothing there to reuse. What DOES
+      # repay caching is the crate sources for 23 historical lockfiles.
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: ${{ runner.os }}-cargo-replay-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-replay-
+            ${{ runner.os }}-cargo-
+
+      # The cheap half first: if a declaration is malformed there is no point
+      # compiling 23 workspaces to find out.
+      - name: declaration gates
+        run: cargo test -p mnemosyne-cli --test evidence_replay_smoke --locked
+
+      - name: replay
+        run: cargo test -p mnemosyne-cli --test evidence_replay_smoke --locked -- --ignored --nocapture
