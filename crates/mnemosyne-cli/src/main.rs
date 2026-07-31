@@ -2523,10 +2523,17 @@ fn cmd_report_excerpt_hash_backfill(args: &[String]) -> Result<()> {
         println!("{}", serde_json::to_string_pretty(&report)?);
     } else {
         println!("=== excerpt-hash backfill report ===");
+        // Round 896 — say which zero. `0 of 0` is a store with no spec excerpt at
+        // all, which is not the same answer as `0 of 42`, and both printed the
+        // same line until the denominator joined it.
         println!(
-            "{} excerpt(s) lack a text_sha256 — project from an EPUB via import-epub-excerpts",
-            report.rows.len()
+            "{} of {} excerpt(s) lack a text_sha256 — project from an EPUB via import-epub-excerpts",
+            report.rows.len(),
+            report.excerpts_examined
         );
+        if report.excerpts_examined == 0 {
+            println!("  (no section carries a normative excerpt — nothing to backfill because there is nothing here)");
+        }
         for r in &report.rows {
             println!("  §{}  (rev {})", r.section_id, r.source_revision);
         }
@@ -3299,11 +3306,25 @@ fn cmd_report_entity_kind_migration(args: &[String]) -> Result<()> {
     if json {
         println!("{}", serde_json::to_string(&report)?);
     } else if report.unregistered_kinds.is_empty() {
-        println!("entity-kind migration: 0 unregistered kinds — every in-use kind is registered");
+        // Round 896 — say which zero. The first draft of this line reached for
+        // the report's `total_entities`, which counts entities naming an
+        // UNREGISTERED kind and is therefore 0 on exactly this branch: a
+        // denominator that could only ever print zero. The field was renamed and
+        // a real one added.
+        println!(
+            "entity-kind migration: 0 unregistered kinds over {} entity(ies){}",
+            report.entities_examined,
+            if report.entities_examined == 0 {
+                " — the store registers no entities, so nothing was checked"
+            } else {
+                " — every in-use kind is registered"
+            }
+        );
     } else {
         println!(
-            "entity-kind migration: {} entity(ies) name {} unregistered kind(s) — register each:",
-            report.total_entities,
+            "entity-kind migration: {} of {} entity(ies) name {} unregistered kind(s) — register each:",
+            report.entities_naming_an_unregistered_kind,
+            report.entities_examined,
             report.unregistered_kinds.len()
         );
         for row in &report.unregistered_kinds {

@@ -1435,7 +1435,15 @@ pub struct EntityKindMigrationRow {
 #[derive(Debug, Clone, Serialize)]
 pub struct EntityKindMigration {
     pub unregistered_kinds: Vec<EntityKindMigrationRow>,
-    pub total_entities: usize,
+    /// Entities naming an UNREGISTERED kind — the size of the worklist, not of
+    /// the store. Round 896 renamed it from `total_entities`, a name this
+    /// project's own CLI misread: the empty-worklist branch printed it as a
+    /// denominator, where it is 0 by construction.
+    pub entities_naming_an_unregistered_kind: usize,
+    /// Every entity the store registers — the denominator (Round 896). Without
+    /// it, "0 unregistered kinds" reads the same on a store whose kinds are all
+    /// declared and on a store holding no entities at all.
+    pub entities_examined: usize,
 }
 
 pub fn entity_kind_migration(
@@ -1447,14 +1455,16 @@ pub fn entity_kind_migration(
     for (id, kind) in mnemosyne_atomic::unregistered_entity_kinds(&store) {
         by_kind.entry(kind).or_default().push(id);
     }
-    let total_entities = by_kind.values().map(Vec::len).sum();
+    let entities_naming_an_unregistered_kind = by_kind.values().map(Vec::len).sum();
+    let entities_examined = store.entities.len();
     let unregistered_kinds = by_kind
         .into_iter()
         .map(|(kind, entities)| EntityKindMigrationRow { kind, entities })
         .collect();
     Ok(EntityKindMigration {
         unregistered_kinds,
-        total_entities,
+        entities_naming_an_unregistered_kind,
+        entities_examined,
     })
 }
 

@@ -563,6 +563,11 @@ pub struct ExcerptHashBackfillRow {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct ExcerptHashBackfillReport {
     pub rows: Vec<ExcerptHashBackfillRow>,
+    /// How many `normative_excerpt`s the walk looked at (Round 896). An empty
+    /// `rows` says "no excerpt needs a hash", which is also what it says when
+    /// there is no excerpt at all — a store with none rendered byte-identically
+    /// to a fully-hashed one until this count stood beside it.
+    pub excerpts_examined: usize,
 }
 
 /// ChangelogEntry atomic typed fields.
@@ -2136,11 +2141,15 @@ impl AtomicStore {
     /// empty field that persists across saves, not a defaulted-then-blessed
     /// claim. Ordered by `section_id` for stable output.
     pub fn excerpt_hash_backfill_report(&self) -> ExcerptHashBackfillReport {
+        // Round 896 — the denominator comes from this same walk. A second pass to
+        // count what the first one looked at is free to disagree with it.
+        let mut excerpts_examined = 0usize;
         let mut rows: Vec<ExcerptHashBackfillRow> = self
             .sections
             .iter()
             .filter_map(|(section_id, section)| {
                 section.normative_excerpt.as_ref().and_then(|ne| {
+                    excerpts_examined += 1;
                     ne.excerpt
                         .text_sha256
                         .is_empty()
@@ -2152,7 +2161,10 @@ impl AtomicStore {
             })
             .collect();
         rows.sort_by(|a, b| a.section_id.cmp(&b.section_id));
-        ExcerptHashBackfillReport { rows }
+        ExcerptHashBackfillReport {
+            rows,
+            excerpts_examined,
+        }
     }
 
     /// Atomic save (temp + rename). Creates parent dir as needed.
@@ -15212,6 +15224,63 @@ mod tests {
         assert_eq!(report.rows.len(), 1);
         assert_eq!(report.rows[0].section_id, "a");
         assert_eq!(report.rows[0].source_revision, "rev1");
+        // Round 896 — the denominator counts excerpts, not sections: `c` has none.
+        assert_eq!(report.excerpts_examined, 2);
+    }
+
+    #[test]
+    fn a_fully_hashed_worklist_and_an_absent_one_are_not_the_same_report() {
+        // Round 896 — THE discriminating pair. Both have an empty `rows`, and
+        // until `excerpts_examined` stood beside it the CLI rendered them in
+        // byte-identical words: "0 excerpt(s) lack a text_sha256". One store's
+        // excerpts are all hashed; the other has no excerpt to hash.
+        let tmp = TempDir::new().unwrap();
+        let path = tmp.path().join(".atomic/workspace.atomic.json");
+
+        let mut hashed = AtomicStore::new();
+        seed_excerpt(
+            &mut hashed,
+            &path,
+            "a",
+            "text a",
+            "https://x.org/#a",
+            "rev1",
+        );
+        seed_excerpt(
+            &mut hashed,
+            &path,
+            "b",
+            "text b",
+            "https://x.org/#b",
+            "rev2",
+        );
+        for id in ["a", "b"] {
+            hashed
+                .sections
+                .get_mut(&id.into())
+                .unwrap()
+                .normative_excerpt
+                .as_mut()
+                .unwrap()
+                .excerpt
+                .text_sha256 = "deadbeef".into();
+        }
+
+        let mut bare = AtomicStore::new();
+        seed_section(&mut bare, "a");
+        seed_section(&mut bare, "b");
+
+        let full = hashed.excerpt_hash_backfill_report();
+        let empty = bare.excerpt_hash_backfill_report();
+        assert!(full.rows.is_empty());
+        assert!(empty.rows.is_empty());
+        assert_ne!(
+            full, empty,
+            "two stores a reader must not confuse produced the same report"
+        );
+        assert_eq!(full.excerpts_examined, 2);
+        assert_eq!(empty.excerpts_examined, 0);
+        assert_eq!(bare.sections.len(), 2, "the section count is not the reach");
     }
 
     #[test]

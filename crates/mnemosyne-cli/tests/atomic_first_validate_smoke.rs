@@ -299,8 +299,8 @@ fn report_entity_kind_migration_lists_the_worklist() {
         .expect("run report-entity-kind-migration");
     assert!(clean.status.success());
     assert!(
-        String::from_utf8_lossy(&clean.stdout).contains("0 unregistered kinds"),
-        "expected clean worklist; got: {}",
+        String::from_utf8_lossy(&clean.stdout).contains("0 unregistered kinds over 1 entity(ies)"),
+        "expected clean worklist WITH its denominator; got: {}",
         String::from_utf8_lossy(&clean.stdout)
     );
 
@@ -384,5 +384,103 @@ fn validate_workspace_rejects_superseded_by_orphan() {
         combined.contains("atomic orphan") || combined.contains("orphan_refs=0+1"),
         "expected superseded_by orphan diagnostic; got: {}",
         combined
+    );
+}
+
+#[test]
+fn report_entity_kind_migration_says_which_zero_it_means() {
+    // Round 896 — the discriminating partner of the test above. A store with no
+    // entities at all reported "0 unregistered kinds — every in-use kind is
+    // registered", word for word what a store whose kinds ARE all registered
+    // says. The two must not read the same.
+    let tmp = TempDir::new().unwrap();
+    write_min_workspace_config(tmp.path());
+    // A mutate so the sidecar exists; it registers no entity.
+    add_section(tmp.path(), "s-1");
+
+    let out = Command::new(cli_binary())
+        .arg("report-entity-kind-migration")
+        .current_dir(tmp.path())
+        .output()
+        .expect("run report-entity-kind-migration");
+    assert!(out.status.success());
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        stdout.contains("0 unregistered kinds over 0 entity(ies)")
+            && stdout.contains("the store registers no entities, so nothing was checked"),
+        "a store with no entities must say so; got: {stdout}"
+    );
+    assert!(
+        !stdout.contains("every in-use kind is registered"),
+        "nothing was checked, so nothing can be reported as registered; got: {stdout}"
+    );
+}
+
+#[test]
+fn report_excerpt_hash_backfill_says_which_zero_it_means() {
+    // Round 896 — same shape, the other verb R896 confirmed. `0 excerpt(s) lack
+    // a text_sha256` was printed identically by a store whose excerpts are all
+    // hashed and by a store carrying no excerpt at all.
+    let tmp = TempDir::new().unwrap();
+    write_min_workspace_config(tmp.path());
+    add_section(tmp.path(), "s-1");
+
+    let bare = Command::new(cli_binary())
+        .arg("report-excerpt-hash-backfill")
+        .current_dir(tmp.path())
+        .output()
+        .expect("run report-excerpt-hash-backfill");
+    assert!(bare.status.success());
+    let bare_out = String::from_utf8_lossy(&bare.stdout);
+    assert!(
+        bare_out.contains("0 of 0 excerpt(s)")
+            && bare_out.contains("no section carries a normative excerpt"),
+        "a store with no excerpt must say so; got: {bare_out}"
+    );
+
+    // The partner state: one section carrying a HASHED excerpt. Same empty
+    // worklist, and the line must not be the same line.
+    let manifest = tmp.path().join("sections.json");
+    fs::write(
+        &manifest,
+        serde_json::json!([{
+            "section_id": "s-2",
+            "parent_doc": "spec",
+            "title": "Hashed",
+            "normative_excerpt": {
+                "text": "alpha text",
+                "anchor_url": "https://x.org/#a",
+                "source_revision": "rev1",
+                "text_sha256": "89a17ed624e1586515338bb4f8481788424c93f9836d1e1e382aeb7da5334b0f"
+            }
+        }])
+        .to_string(),
+    )
+    .unwrap();
+    let imported = Command::new(cli_binary())
+        .args(["import-sections", "--manifest", "sections.json"])
+        .current_dir(tmp.path())
+        .output()
+        .expect("import-sections");
+    assert!(
+        imported.status.success(),
+        "import-sections failed: {}",
+        String::from_utf8_lossy(&imported.stderr)
+    );
+
+    let hashed = Command::new(cli_binary())
+        .arg("report-excerpt-hash-backfill")
+        .current_dir(tmp.path())
+        .output()
+        .expect("run report-excerpt-hash-backfill");
+    assert!(hashed.status.success());
+    let hashed_out = String::from_utf8_lossy(&hashed.stdout);
+    assert!(
+        hashed_out.contains("0 of 1 excerpt(s)"),
+        "a hashed excerpt must show in the denominator; got: {hashed_out}"
+    );
+    assert_ne!(
+        bare_out, hashed_out,
+        "an absent worklist and a satisfied one must not render identically"
     );
 }
