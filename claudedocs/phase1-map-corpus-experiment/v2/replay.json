@@ -41,7 +41,7 @@
   "replays": [
     {
       "name": "stage-a-no-map-words-fixed-contract",
-      "revision": "PENDING",
+      "revision": "1656b7e3a93239caa58d9a708a27f858d83059fb",
       "steps": [
         {
           "verb": "import-sections",
@@ -55,7 +55,7 @@
     },
     {
       "name": "stage-b-engine-must-answer-fixed-contract",
-      "revision": "PENDING",
+      "revision": "1656b7e3a93239caa58d9a708a27f858d83059fb",
       "steps": [
         {
           "verb": "import-sections",
