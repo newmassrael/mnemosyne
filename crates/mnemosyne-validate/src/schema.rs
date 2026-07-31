@@ -393,7 +393,15 @@ pub fn describe_schema() -> SchemaContract {
              — a section may be unplaced YET, the same forward-declared mode the canon-coordinate \
              checks tolerate — so it is reported and never gated.",
         disclosure_encoding:
-            "Encoding a per-ROAD secret without leaking it — the `withhold` + `first_at` reveal \
+            "WHEN THE READER LEARNS A FACT — the general axis, not only a secrecy device (Round \
+             912). A fact's `canon_from` is when the claim becomes TRUE in the world; `evidence` is \
+             a prior establishing scene; and the reader's discovery is a THIRD thing, pinned here \
+             by `first_at`. So an ordinary, unsecret fact that holds from chapter one and is only \
+             found out in chapter nine is authored `canon_from` at chapter one with a `first_at` at \
+             chapter nine — NOT by citing chapter nine as evidence, which is a forward reference and \
+             fails the gate (see the fact's `evidence` field). Two blind authors (R910) reached for \
+             the evidence field because this surface described itself only as follows. \
+             Encoding a per-ROAD secret without leaking it — the `withhold` + `first_at` reveal \
              idiom. A telling's disclosure `mode` is world-INDEPENDENT (one decision per fact × \
              telling); only `first_at` is per-world. So a fact set to `state`/`hint`/`imply` is \
              disclosed on EVERY world-line — reaching for `state` to reveal a secret on one road \
@@ -940,10 +948,21 @@ fn fact_spec() -> FactSpec {
             },
             FieldSpec {
                 name: "evidence",
-                ty: "section id[] (>= 1)",
+                ty: "section id[] (>= 1), each AT OR BEFORE `canon_from`",
                 required: true,
                 description: "Structure sections evidencing the claim. At least one — a claim \
-                    without provenance is unauditable.",
+                    without provenance is unauditable. ROUND 912: evidence is a BACKREFERENCE, \
+                    not a place where the claim is shown. Every ref must be reachable AND PRIOR in \
+                    this fact's own world-line — at or before its `canon_from` — and a forward \
+                    reference is `evidence_unreachable` at the continuity gate (R522). \
+                    `canon_to` DOES NOT WIDEN THIS: a fact holding sc-01..sc-05 still may not cite \
+                    sc-03, because the comparison is against `canon_from` alone. IF WHAT YOU MEAN \
+                    IS \"true from here, but the reader only finds out later\", THIS IS THE WRONG \
+                    FIELD — leave `canon_from` where the claim becomes true, cite a prior \
+                    establishing scene here, and pin the reader's discovery with a disclosure \
+                    `first_at` (see disclosure_encoding; it is the general when-does-the-reader-\
+                    learn-this axis, not only a secrecy device). Two blind authors (R910) reached \
+                    for a forward `evidence` ref instead and produced 43 findings between them.",
             },
             FieldSpec {
                 name: "branch",
@@ -1544,7 +1563,11 @@ fn invariants() -> Vec<Invariant> {
         Invariant {
             name: "evidence-provenance",
             rule: "evidence has >= 1 ref and canon_from / canon_to / every evidence ref must \
-                name an existing section (a claim without provenance is unauditable).",
+                name an existing section (a claim without provenance is unauditable). EXISTENCE is \
+                what the write path checks; ORDER is checked by the continuity gate, which requires \
+                every evidence ref to be reachable and AT OR BEFORE `canon_from` in this fact's \
+                world-line — so a manifest carrying a forward reference IMPORTS CLEANLY and fails \
+                the gate as `evidence_unreachable` (Round 912).",
             enforced_at: mutate,
         },
         Invariant {
@@ -2254,6 +2277,65 @@ mod tests {
         assert!(
             c.side_table_wire.contains("SILENT NO-OP"),
             "the failure mode is silence, so the contract has to say so"
+        );
+    }
+
+    /// Round 912 — the `evidence` ordering rule and the field that actually
+    /// carries "the reader finds out later", both pinned to prose an author meets
+    /// where they are looking.
+    ///
+    /// R910's two blind authors produced 43 `evidence_unreachable` findings
+    /// between them by citing scenes LATER than `canon_from`. The check is right
+    /// — `evidence` is defined as a backreference (R522) — but the contract said
+    /// so nowhere an author would look: the field description said "provenance",
+    /// the invariant said "must name an existing section", and the ordering rule
+    /// appeared once, as a clause inside a paragraph about forks and sibling
+    /// world-lines. Measured: zero occurrences of at-or-before / prior /
+    /// backreference / forward reference in the whole rendered contract.
+    #[test]
+    fn evidence_says_it_must_be_prior_and_points_at_the_field_that_is_not() {
+        let c = describe_schema();
+        let ev = c
+            .fact
+            .fields
+            .iter()
+            .find(|f| f.name == "evidence")
+            .expect("evidence field present");
+        let prose = format!("{} {}", ev.ty, ev.description);
+
+        assert!(
+            prose.contains("AT OR BEFORE") || prose.contains("at or before"),
+            "the ordering requirement belongs in the field's own description"
+        );
+        assert!(
+            prose.contains("evidence_unreachable"),
+            "name the finding the author will be handed"
+        );
+        // The sharp case: the extent does not widen the window. A fact holding
+        // sc-01..sc-05 still may not cite sc-03.
+        assert!(
+            prose.contains("canon_to") && prose.contains("DOES NOT WIDEN"),
+            "a reader who knows about canon_to will assume the span is the window; \
+             it is compared against canon_from alone"
+        );
+        // And the redirection, which is the half that makes the rule survivable.
+        assert!(
+            prose.contains("first_at"),
+            "an author who wanted `where the reader finds out` must be sent to the \
+             field that means that, or they will come back to this one"
+        );
+
+        // The disclosure surface has to accept that traffic: it described itself
+        // as a secrecy device only, so a non-secret late reveal looked out of scope.
+        let d = c.disclosure_encoding;
+        assert!(
+            d.contains("WHEN THE READER LEARNS A FACT"),
+            "the general axis must be stated before the secrecy idiom"
+        );
+        assert!(
+            d.contains("canon_from") && d.contains("evidence"),
+            "the three-way distinction (true / established / discovered) is the \
+             confusion this fixes, so all three have to appear"
         );
     }
 

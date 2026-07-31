@@ -9141,6 +9141,48 @@ mod tests {
         );
     }
 
+    /// Round 912 — `canon_to` does NOT widen the evidence window, and the
+    /// contract now says so because nothing else would have told an author.
+    ///
+    /// The comparison is against `canon_from` alone, so a fact that HOLDS across
+    /// ch-1..ch-4 still may not cite ch-3: the claim being true at ch-3 is not the
+    /// same as ch-3 being reachable at the moment the claim starts. This is the
+    /// one part of the rule a reader who knows about extents will guess wrong,
+    /// and R910's two blind authors produced 43 findings in this shape.
+    #[test]
+    fn a_canon_extent_does_not_widen_the_evidence_window() {
+        let order = chain(&["ch-1", "ch-2", "ch-3", "ch-4"]);
+        let scan = |ev: &str, to: Option<&str>| {
+            let store = store_with(vec![FactImport {
+                evidence: vec![ev.to_string()],
+                canon_to: to.map(|t| t.to_string()),
+                ..fact("f", "gt", "ch-1", None)
+            }]);
+            scan_continuity(&store, &order, &[]).unwrap().violations
+        };
+        let unreachable = |vs: &[ContinuityViolation]| {
+            vs.iter()
+                .any(|v| matches!(v, ContinuityViolation::EvidenceUnreachable { .. }))
+        };
+
+        // Spanning the cited scene does not license citing it.
+        assert!(
+            unreachable(&scan("ch-3", Some("ch-4"))),
+            "a fact holding ch-1..ch-4 may still not cite ch-3 as evidence"
+        );
+        // The discriminating half: the same forward ref with no extent at all
+        // behaves identically, so the extent is genuinely not consulted.
+        assert!(
+            unreachable(&scan("ch-3", None)),
+            "and it is not the extent that made it fail"
+        );
+        // At-or-before is what passes, extent or not.
+        assert!(
+            !unreachable(&scan("ch-1", Some("ch-4"))),
+            "evidence at canon_from is clean"
+        );
+    }
+
     /// Round 443 session review: a payoff edge between SIBLING branches
     /// credits in no world — both endpoints exist, no world sees them
     /// together. The dead edge itself surfaces as `uncredited_edges`
