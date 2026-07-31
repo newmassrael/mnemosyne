@@ -1,0 +1,29 @@
+{
+  "comment": "Map EDGE COSTS - how long each way takes. The contract gives edge_costs as a registry keyed by the adjacent (edge) fact id and written with add-edge-cost, NOT as one of the seven arrays of the fact manifest, so this file is the argument list for those calls rather than something import-facts can read. The unit must be registered first (add-unit minute) - a Quantity's unit is a ref into the units registry. Every cost is a positive integer: 0 would be a free teleport and is refused. Uphill and against the current costs more than the way back down; the scour costs one minute because it is a fall.",
+  "units_required": ["minute"],
+  "edge_costs": [
+    { "fact": "f-adj-bell-shrine",   "n": 3, "unit": "minute" },
+    { "fact": "f-adj-shrine-bell",   "n": 2, "unit": "minute" },
+    { "fact": "f-adj-bell-market",   "n": 4, "unit": "minute" },
+    { "fact": "f-adj-market-bell",   "n": 6, "unit": "minute" },
+    { "fact": "f-adj-market-cistern", "n": 2, "unit": "minute" },
+    { "fact": "f-adj-cistern-market", "n": 2, "unit": "minute" },
+    { "fact": "f-adj-shrine-cistern", "n": 3, "unit": "minute" },
+    { "fact": "f-adj-cistern-shrine", "n": 5, "unit": "minute" },
+    { "fact": "f-adj-market-lane",   "n": 5, "unit": "minute" },
+    { "fact": "f-adj-lane-market",   "n": 8, "unit": "minute" },
+    { "fact": "f-adj-lane-vetch",    "n": 2, "unit": "minute" },
+    { "fact": "f-adj-vetch-lane",    "n": 2, "unit": "minute" },
+    { "fact": "f-adj-lane-stair",    "n": 6, "unit": "minute" },
+    { "fact": "f-adj-stair-lane",    "n": 9, "unit": "minute" },
+    { "fact": "f-adj-stair-jetty",   "n": 4, "unit": "minute" },
+    { "fact": "f-adj-jetty-stair",   "n": 4, "unit": "minute" },
+    { "fact": "f-adj-jetty-shed",    "n": 3, "unit": "minute" },
+    { "fact": "f-adj-shed-jetty",    "n": 3, "unit": "minute" },
+    { "fact": "f-adj-lane-granary",  "n": 1, "unit": "minute" },
+    { "fact": "f-adj-granary-lane",  "n": 1, "unit": "minute" },
+    { "fact": "f-adj-lane-scour",    "n": 1, "unit": "minute" },
+    { "fact": "f-adj-scour-shed",    "n": 1, "unit": "minute" },
+    { "fact": "f-adj-mill-jetty",    "n": 7, "unit": "minute" }
+  ]
+}

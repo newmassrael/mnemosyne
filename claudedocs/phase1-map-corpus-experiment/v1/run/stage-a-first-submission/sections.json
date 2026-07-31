@@ -1,0 +1,26 @@
+{
+  "sections": [
+    { "section_id": "sc-01", "title": "The Bell House: the watch rung three times" },
+    { "section_id": "sc-02", "title": "The Reeve's Hall: the tally" },
+    { "section_id": "sc-03", "title": "The Shrine of Still Water: the water's due" },
+    { "section_id": "sc-04", "title": "The Old Lookout: a shape on the net-loft roofs" },
+    { "section_id": "sc-05", "title": "The Almshouse: the blanket given away" },
+    { "section_id": "sc-06", "title": "The Marl House: her father's line" },
+    { "section_id": "sc-07", "title": "The Wet Market: trading from boats" },
+    { "section_id": "sc-08", "title": "The Cistern Yard: what the silt kept" },
+    { "section_id": "sc-09", "title": "Drowned Lane: down the slip" },
+    { "section_id": "sc-10", "title": "The Quay Stair: the last step gone" },
+    { "section_id": "sc-11", "title": "Drowned Lane: against the current" },
+    { "section_id": "sc-12", "title": "The Sluice Arch: water to the keystone" },
+    { "section_id": "sc-13", "title": "Drowned Lane: back down the lane" },
+    { "section_id": "sc-14", "title": "The Quay Stair: out on her own line" },
+    { "section_id": "sc-15", "title": "The Wet Market: his nets already sold" },
+    { "section_id": "sc-16", "title": "The Bell House: nine strokes" },
+    { "section_id": "sc-17", "title": "The Reeve's Hall: written into the lost" },
+    { "section_id": "sc-18", "title": "The Shrine of Still Water: a cup not poured" },
+    { "section_id": "sc-b1", "title": "The Sluice Arch: the gate gives" },
+    { "section_id": "sc-b2", "title": "The Nets Yard: three days thirsty" },
+    { "section_id": "sc-b3", "title": "The Sluice Arch: the town from the water side" },
+    { "section_id": "sc-b4", "title": "Drowned Lane: only the gratings" }
+  ]
+}

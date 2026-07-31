@@ -1,0 +1,27 @@
+{
+  "schema": "narrative-rules/v1",
+  "comment": "Ossary Rise. The map is store-native: the edges are the `adjacent` facts in facts.json and the quarters are the `contains` facts. `undirected` is false on purpose - every two-way passage is authored as two `adjacent` facts, and the Cistern Slip is authored as one, so it can be taken down and not climbed back. `at` exclusivity is refinement-aware through `contains`, so `at(Sabb, the Crown)` and `at(Sabb, the Reeve's Hall)` co-hold as one place coarsely and finely stated. No interval rule is declared: an interval needs numeric typed legs, a Quantity object needs a registered unit, and the units registry has no manifest array.",
+  "rules": [
+    {
+      "id": "one-place-per-person",
+      "predicate": "at",
+      "class": "exclusive",
+      "per": "subject",
+      "containment": "contains"
+    },
+    {
+      "id": "one-holder-per-thing",
+      "predicate": "holds",
+      "class": "exclusive",
+      "per": "object"
+    },
+    {
+      "id": "movement-follows-the-map",
+      "predicate": "at",
+      "class": "transition",
+      "adjacency": "adjacent",
+      "undirected": false,
+      "containment": "contains"
+    }
+  ]
+}

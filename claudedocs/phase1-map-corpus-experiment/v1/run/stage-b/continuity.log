@@ -1,0 +1,19 @@
+=== continuity gate (reject) ===
+  facts=97 order_nodes=21/21 sections conflict_pairs=0 cross_scope(data)=0 unordered=0
+  rules=3 rule_unordered=0 unchained_state_pairs=0 interval_unverifiable=0 interval_severity=off
+  evidence reviews: 0 ref(s) with prose but no affirmation (import-evidence-reviews records one; an unaffirmed claim cannot go stale)
+  fact quotes: 0 unverifiable (an evidence section holds no prose, so the quote could live exactly there)
+  ladder rungs: 0 coordinate(s) resolved against current prose, and each ladder's declared order and distinctness judged against it (a stranded rung, an out-of-order ladder, or two rungs at one anchor is reported as a violation)
+  violations: 12 (structural=12 interval=0)
+  {"kind":"evidence_unreachable","fact":"f-granary-barred","branch":"main","evidence":"sc-15","canon_from":"sc-10"}
+  {"kind":"evidence_unreachable","fact":"f-scour-one-way","branch":"main","evidence":"sc-14","canon_from":"sc-13"}
+  {"kind":"adjacency_cross_scope","rule":"moves-follow-the-map","adjacency":"adjacent","fact":"f-adj-lane-market","a":"loc-terrace-lane","b":"loc-dry-market","scope_a":"q-terrace","scope_b":"q-crown","frame":"ground-truth","branch":"main","at":"sc-01"}
+  {"kind":"adjacency_cross_scope","rule":"moves-follow-the-map","adjacency":"adjacent","fact":"f-adj-lane-stair","a":"loc-terrace-lane","b":"loc-water-stair","scope_a":"q-terrace","scope_b":"q-waterline","frame":"ground-truth","branch":"main","at":"sc-01"}
+  {"kind":"adjacency_cross_scope","rule":"moves-follow-the-map","adjacency":"adjacent","fact":"f-adj-market-lane","a":"loc-dry-market","b":"loc-terrace-lane","scope_a":"q-crown","scope_b":"q-terrace","frame":"ground-truth","branch":"main","at":"sc-01"}
+  {"kind":"adjacency_cross_scope","rule":"moves-follow-the-map","adjacency":"adjacent","fact":"f-adj-scour-shed","a":"loc-scour","b":"loc-boat-shed","scope_a":"q-terrace","scope_b":"q-waterline","frame":"ground-truth","branch":"main","at":"sc-01"}
+  {"kind":"adjacency_cross_scope","rule":"moves-follow-the-map","adjacency":"adjacent","fact":"f-adj-stair-lane","a":"loc-water-stair","b":"loc-terrace-lane","scope_a":"q-waterline","scope_b":"q-terrace","frame":"ground-truth","branch":"main","at":"sc-01"}
+  {"kind":"adjacency_cross_scope","rule":"moves-follow-the-map","adjacency":"adjacent","fact":"f-adj-lane-market","a":"loc-terrace-lane","b":"loc-dry-market","scope_a":"q-terrace","scope_b":"q-crown","frame":"ground-truth","branch":"sluice-drawn","at":"sc-01"}
+  {"kind":"adjacency_cross_scope","rule":"moves-follow-the-map","adjacency":"adjacent","fact":"f-adj-lane-stair","a":"loc-terrace-lane","b":"loc-water-stair","scope_a":"q-terrace","scope_b":"q-waterline","frame":"ground-truth","branch":"sluice-drawn","at":"sc-01"}
+  {"kind":"adjacency_cross_scope","rule":"moves-follow-the-map","adjacency":"adjacent","fact":"f-adj-market-lane","a":"loc-dry-market","b":"loc-terrace-lane","scope_a":"q-crown","scope_b":"q-terrace","frame":"ground-truth","branch":"sluice-drawn","at":"sc-01"}
+  {"kind":"adjacency_cross_scope","rule":"moves-follow-the-map","adjacency":"adjacent","fact":"f-adj-scour-shed","a":"loc-scour","b":"loc-boat-shed","scope_a":"q-terrace","scope_b":"q-waterline","frame":"ground-truth","branch":"sluice-drawn","at":"sc-01"}
+  {"kind":"adjacency_cross_scope","rule":"moves-follow-the-map","adjacency":"adjacent","fact":"f-adj-stair-lane","a":"loc-water-stair","b":"loc-terrace-lane","scope_a":"q-waterline","scope_b":"q-terrace","frame":"ground-truth","branch":"sluice-drawn","at":"sc-01"}

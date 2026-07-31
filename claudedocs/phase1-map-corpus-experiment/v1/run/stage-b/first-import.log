@@ -1,0 +1,5 @@
+error: parse manifest sections.json (JSON array of section imports): invalid type: map, expected a sequence at line 1 column 0
+exit=1
+=== mnemosyne-cli atomic mutate FAILED ===
+error: validation: branch `sluice-drawn`: fork point `sc-15` not present as a section (canon coordinates are structure refs)
+exit=1

@@ -1,0 +1,26 @@
+{
+  "schema": "narrative-rules/v1",
+  "comment": "Wired via [continuity].rules_path in mnemosyne.toml. The transition rule is what makes the `adjacent` facts the town's map: every move a person makes must be one declared edge, in the declared direction. undirected is false on purpose - the scour and the mill race run one way only, so a two-way passage is authored as two `adjacent` facts and a one-way passage as one.",
+  "rules": [
+    {
+      "id": "one-place-per-person",
+      "predicate": "at",
+      "class": "exclusive",
+      "per": "subject"
+    },
+    {
+      "id": "moves-follow-the-map",
+      "predicate": "at",
+      "class": "transition",
+      "adjacency": "adjacent",
+      "undirected": false,
+      "containment": "contains"
+    },
+    {
+      "id": "one-holder-per-thing",
+      "predicate": "holds",
+      "class": "exclusive",
+      "per": "object"
+    }
+  ]
+}

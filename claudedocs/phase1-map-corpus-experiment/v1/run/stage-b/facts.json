@@ -1,0 +1,805 @@
+{
+  "frames": [
+    { "frame_id": "ground-truth", "description": "what is so in the town, held by no one in particular" },
+    { "frame_id": "townsfolk", "description": "what the town says at the tally stone" },
+    { "frame_id": "kell", "description": "Kell the boatman's belief" },
+    { "frame_id": "sarn", "description": "Sarn the shrine-keeper's belief" },
+    { "frame_id": "vetch", "description": "Vetch's belief, read off her tide board" }
+  ],
+
+  "branches": [
+    {
+      "branch_id": "sluice-drawn",
+      "description": "the world-line in which the water falls below the third step on the ninth night and the granary's lane door opens; main is the world-line in which it stays shut",
+      "forks_from": "main",
+      "forks_at": "sc-15"
+    }
+  ],
+
+  "units": [
+    { "unit_id": "minute", "description": "map minutes, the unit the edge costs are carried in" }
+  ],
+
+  "entity_kinds": [
+    { "kind_id": "place", "description": "a walkable map node - somewhere a person can stand" },
+    { "kind_id": "quarter", "description": "a region of the town holding map nodes; a search key, never a position" },
+    { "kind_id": "character", "description": "a person of the town" },
+    { "kind_id": "item", "description": "a thing that can be carried or read" }
+  ],
+
+  "entities": [
+    { "entity_id": "loc-bell-house", "kind": "place", "description": "the bell house at the crown of the hill, where the flood bell is rung" },
+    { "entity_id": "loc-shrine", "kind": "place", "description": "the shrine of standing water, above the bell house path" },
+    { "entity_id": "loc-dry-market", "kind": "place", "description": "the dry market and its tally stone, the last unflooded open ground" },
+    { "entity_id": "loc-cistern-yard", "kind": "place", "description": "the cistern yard, the town's sweet-water yard" },
+    { "entity_id": "loc-terrace-lane", "kind": "place", "description": "terrace lane, running along the flood's edge" },
+    { "entity_id": "loc-vetch-house", "kind": "place", "description": "the vetch house, where the tide board hangs" },
+    { "entity_id": "loc-granary", "kind": "place", "description": "the granary and its seed corn, shut behind a barred lane door" },
+    { "entity_id": "loc-scour", "kind": "place", "description": "the scour, a washed-out chute from the terrace to the waterline" },
+    { "entity_id": "loc-water-stair", "kind": "place", "description": "the water stair, the town's stair down into the flood" },
+    { "entity_id": "loc-boat-shed", "kind": "place", "description": "the boat shed with its back wall gone" },
+    { "entity_id": "loc-rope-jetty", "kind": "place", "description": "the rope jetty, floating and re-moored each morning" },
+    { "entity_id": "loc-drowned-mill", "kind": "place", "description": "the drowned mill at the foot of the town, spoken of and never reached" },
+
+    { "entity_id": "q-crown", "kind": "quarter", "description": "the crown quarter, above the water" },
+    { "entity_id": "q-terrace", "kind": "quarter", "description": "the terrace quarter, at the water's edge" },
+    { "entity_id": "q-waterline", "kind": "quarter", "description": "the waterline quarter, in the flood" },
+
+    { "entity_id": "ch-orrin", "kind": "character", "description": "Orrin, the bell-keeper" },
+    { "entity_id": "ch-sarn", "kind": "character", "description": "Sarn, who keeps the shrine's rite" },
+    { "entity_id": "ch-vetch", "kind": "character", "description": "Vetch, who cuts the tide marks" },
+    { "entity_id": "ch-kell", "kind": "character", "description": "Kell, a boatman" },
+    { "entity_id": "ch-mira", "kind": "character", "description": "Mira, who listens at the tally stone" },
+
+    { "entity_id": "it-bell-rope", "kind": "item", "description": "the flood bell's rope" },
+    { "entity_id": "it-water-bowl", "kind": "item", "description": "the shrine's standing-water bowl" },
+    { "entity_id": "it-tide-board", "kind": "item", "description": "Vetch's tide board and its cut marks" },
+    { "entity_id": "it-granary-key", "kind": "item", "description": "the granary key, off the boat shed hook" },
+    { "entity_id": "it-drowned-lamp", "kind": "item", "description": "a brass lamp the mill race carries out" }
+  ],
+
+  "predicates": [
+    {
+      "predicate_id": "adjacent",
+      "object_kind": "entity",
+      "subject_kind": "place",
+      "object_entity_kind": "place",
+      "description": "one may move from the subject place to the object place; DIRECTED - a two-way passage is two facts, a one-way passage is one"
+    },
+    {
+      "predicate_id": "contains",
+      "object_kind": "entity",
+      "subject_kind": "quarter",
+      "object_entity_kind": "place",
+      "description": "the subject quarter holds the object place as one of its nodes"
+    },
+    {
+      "predicate_id": "at",
+      "object_kind": "entity",
+      "subject_kind": "character",
+      "object_entity_kind": "place",
+      "description": "the subject person is at the object place"
+    },
+    {
+      "predicate_id": "holds",
+      "object_kind": "entity",
+      "subject_kind": "character",
+      "object_entity_kind": "item",
+      "description": "the subject person has the object thing in keeping; keyed per object by the custody rule, so a thing has at most one holder at a time"
+    },
+    {
+      "predicate_id": "door_state",
+      "object_kind": "token",
+      "object_tokens": ["barred", "open"],
+      "subject_kind": "place",
+      "description": "whether a place's door stands barred or open"
+    },
+    {
+      "predicate_id": "water_state",
+      "object_kind": "token",
+      "object_tokens": ["sweet", "brackish", "gone"],
+      "subject_kind": "place",
+      "description": "what a place's water is fit for"
+    },
+    {
+      "predicate_id": "rumoured_state",
+      "object_kind": "token",
+      "object_tokens": ["turning", "silent", "gone"],
+      "subject_kind": "place",
+      "description": "what a place is said to be doing, in a frame that is not ground truth"
+    }
+  ],
+
+  "facts": [
+    {
+      "fact_id": "f-adj-bell-shrine", "frame": "ground-truth",
+      "claim": "from the bell house the crown path climbs to the shrine",
+      "canon_from": "sc-01", "evidence": ["sc-01"],
+      "entities": ["loc-bell-house", "loc-shrine"],
+      "typed": { "subject": "loc-bell-house", "predicate": "adjacent", "object": { "kind": "entity", "id": "loc-shrine" } }
+    },
+    {
+      "fact_id": "f-adj-shrine-bell", "frame": "ground-truth",
+      "claim": "from the shrine the crown path returns to the bell house",
+      "canon_from": "sc-01", "evidence": ["sc-01"],
+      "entities": ["loc-shrine", "loc-bell-house"],
+      "typed": { "subject": "loc-shrine", "predicate": "adjacent", "object": { "kind": "entity", "id": "loc-bell-house" } }
+    },
+    {
+      "fact_id": "f-adj-bell-market", "frame": "ground-truth",
+      "claim": "from the bell house the tally steps go down to the dry market",
+      "canon_from": "sc-01", "evidence": ["sc-01"],
+      "entities": ["loc-bell-house", "loc-dry-market"],
+      "typed": { "subject": "loc-bell-house", "predicate": "adjacent", "object": { "kind": "entity", "id": "loc-dry-market" } }
+    },
+    {
+      "fact_id": "f-adj-market-bell", "frame": "ground-truth",
+      "claim": "from the dry market the tally steps climb to the bell house",
+      "canon_from": "sc-01", "evidence": ["sc-01"],
+      "entities": ["loc-dry-market", "loc-bell-house"],
+      "typed": { "subject": "loc-dry-market", "predicate": "adjacent", "object": { "kind": "entity", "id": "loc-bell-house" } }
+    },
+    {
+      "fact_id": "f-adj-market-cistern", "frame": "ground-truth",
+      "claim": "from the dry market a covered passage runs to the cistern yard",
+      "canon_from": "sc-01", "evidence": ["sc-01"],
+      "entities": ["loc-dry-market", "loc-cistern-yard"],
+      "typed": { "subject": "loc-dry-market", "predicate": "adjacent", "object": { "kind": "entity", "id": "loc-cistern-yard" } }
+    },
+    {
+      "fact_id": "f-adj-cistern-market", "frame": "ground-truth",
+      "claim": "from the cistern yard the covered passage runs back to the dry market",
+      "canon_from": "sc-01", "evidence": ["sc-01"],
+      "entities": ["loc-cistern-yard", "loc-dry-market"],
+      "typed": { "subject": "loc-cistern-yard", "predicate": "adjacent", "object": { "kind": "entity", "id": "loc-dry-market" } }
+    },
+    {
+      "fact_id": "f-adj-shrine-cistern", "frame": "ground-truth",
+      "claim": "from the shrine a stone walk drops to the cistern yard",
+      "canon_from": "sc-01", "evidence": ["sc-01"],
+      "entities": ["loc-shrine", "loc-cistern-yard"],
+      "typed": { "subject": "loc-shrine", "predicate": "adjacent", "object": { "kind": "entity", "id": "loc-cistern-yard" } }
+    },
+    {
+      "fact_id": "f-adj-cistern-shrine", "frame": "ground-truth",
+      "claim": "from the cistern yard the stone walk climbs to the shrine",
+      "canon_from": "sc-01", "evidence": ["sc-01"],
+      "entities": ["loc-cistern-yard", "loc-shrine"],
+      "typed": { "subject": "loc-cistern-yard", "predicate": "adjacent", "object": { "kind": "entity", "id": "loc-shrine" } }
+    },
+    {
+      "fact_id": "f-adj-market-lane", "frame": "ground-truth",
+      "claim": "from the dry market the market steps go down into terrace lane",
+      "canon_from": "sc-01", "evidence": ["sc-01"],
+      "entities": ["loc-dry-market", "loc-terrace-lane"],
+      "typed": { "subject": "loc-dry-market", "predicate": "adjacent", "object": { "kind": "entity", "id": "loc-terrace-lane" } }
+    },
+    {
+      "fact_id": "f-adj-lane-market", "frame": "ground-truth",
+      "claim": "from terrace lane the market steps climb to the dry market",
+      "canon_from": "sc-01", "evidence": ["sc-01"],
+      "entities": ["loc-terrace-lane", "loc-dry-market"],
+      "typed": { "subject": "loc-terrace-lane", "predicate": "adjacent", "object": { "kind": "entity", "id": "loc-dry-market" } }
+    },
+    {
+      "fact_id": "f-adj-lane-vetch", "frame": "ground-truth",
+      "claim": "from terrace lane a door-yard leads into the vetch house",
+      "canon_from": "sc-01", "evidence": ["sc-01"],
+      "entities": ["loc-terrace-lane", "loc-vetch-house"],
+      "typed": { "subject": "loc-terrace-lane", "predicate": "adjacent", "object": { "kind": "entity", "id": "loc-vetch-house" } }
+    },
+    {
+      "fact_id": "f-adj-vetch-lane", "frame": "ground-truth",
+      "claim": "from the vetch house the door-yard lets out onto terrace lane",
+      "canon_from": "sc-01", "evidence": ["sc-01"],
+      "entities": ["loc-vetch-house", "loc-terrace-lane"],
+      "typed": { "subject": "loc-vetch-house", "predicate": "adjacent", "object": { "kind": "entity", "id": "loc-terrace-lane" } }
+    },
+    {
+      "fact_id": "f-adj-lane-stair", "frame": "ground-truth",
+      "claim": "from terrace lane the lane's foot meets the head of the water stair",
+      "canon_from": "sc-01", "evidence": ["sc-01"],
+      "entities": ["loc-terrace-lane", "loc-water-stair"],
+      "typed": { "subject": "loc-terrace-lane", "predicate": "adjacent", "object": { "kind": "entity", "id": "loc-water-stair" } }
+    },
+    {
+      "fact_id": "f-adj-stair-lane", "frame": "ground-truth",
+      "claim": "from the water stair one climbs back up into terrace lane",
+      "canon_from": "sc-01", "evidence": ["sc-01"],
+      "entities": ["loc-water-stair", "loc-terrace-lane"],
+      "typed": { "subject": "loc-water-stair", "predicate": "adjacent", "object": { "kind": "entity", "id": "loc-terrace-lane" } }
+    },
+    {
+      "fact_id": "f-adj-stair-jetty", "frame": "ground-truth",
+      "claim": "from the water stair a plank walk reaches the rope jetty",
+      "canon_from": "sc-01", "evidence": ["sc-01"],
+      "entities": ["loc-water-stair", "loc-rope-jetty"],
+      "typed": { "subject": "loc-water-stair", "predicate": "adjacent", "object": { "kind": "entity", "id": "loc-rope-jetty" } }
+    },
+    {
+      "fact_id": "f-adj-jetty-stair", "frame": "ground-truth",
+      "claim": "from the rope jetty the plank walk returns to the water stair",
+      "canon_from": "sc-01", "evidence": ["sc-01"],
+      "entities": ["loc-rope-jetty", "loc-water-stair"],
+      "typed": { "subject": "loc-rope-jetty", "predicate": "adjacent", "object": { "kind": "entity", "id": "loc-water-stair" } }
+    },
+    {
+      "fact_id": "f-adj-jetty-shed", "frame": "ground-truth",
+      "claim": "from the rope jetty one crosses the moorings into the boat shed",
+      "canon_from": "sc-01", "evidence": ["sc-01"],
+      "entities": ["loc-rope-jetty", "loc-boat-shed"],
+      "typed": { "subject": "loc-rope-jetty", "predicate": "adjacent", "object": { "kind": "entity", "id": "loc-boat-shed" } }
+    },
+    {
+      "fact_id": "f-adj-shed-jetty", "frame": "ground-truth",
+      "claim": "from the boat shed one crosses the moorings back onto the rope jetty",
+      "canon_from": "sc-01", "evidence": ["sc-01"],
+      "entities": ["loc-boat-shed", "loc-rope-jetty"],
+      "typed": { "subject": "loc-boat-shed", "predicate": "adjacent", "object": { "kind": "entity", "id": "loc-rope-jetty" } }
+    },
+    {
+      "fact_id": "f-adj-lane-granary", "frame": "ground-truth",
+      "claim": "from terrace lane the granary's lane door opens into the granary",
+      "canon_from": "sc-01", "evidence": ["sc-01"],
+      "entities": ["loc-terrace-lane", "loc-granary"],
+      "typed": { "subject": "loc-terrace-lane", "predicate": "adjacent", "object": { "kind": "entity", "id": "loc-granary" } }
+    },
+    {
+      "fact_id": "f-adj-granary-lane", "frame": "ground-truth",
+      "claim": "from inside the granary the lane door lets out onto terrace lane",
+      "canon_from": "sc-01", "evidence": ["sc-01"],
+      "entities": ["loc-granary", "loc-terrace-lane"],
+      "typed": { "subject": "loc-granary", "predicate": "adjacent", "object": { "kind": "entity", "id": "loc-terrace-lane" } }
+    },
+    {
+      "fact_id": "f-adj-lane-scour", "frame": "ground-truth",
+      "claim": "from terrace lane one drops into the head of the scour",
+      "canon_from": "sc-01", "evidence": ["sc-01"],
+      "entities": ["loc-terrace-lane", "loc-scour"],
+      "typed": { "subject": "loc-terrace-lane", "predicate": "adjacent", "object": { "kind": "entity", "id": "loc-scour" } }
+    },
+    {
+      "fact_id": "f-adj-scour-shed", "frame": "ground-truth",
+      "claim": "the scour lets out at the boat shed's broken wall, and there is no way back up it",
+      "canon_from": "sc-01", "evidence": ["sc-01"],
+      "entities": ["loc-scour", "loc-boat-shed"],
+      "typed": { "subject": "loc-scour", "predicate": "adjacent", "object": { "kind": "entity", "id": "loc-boat-shed" } }
+    },
+    {
+      "fact_id": "f-adj-mill-jetty", "frame": "ground-truth",
+      "claim": "the mill race carries out of the drowned mill to the rope jetty, and nothing goes up it",
+      "canon_from": "sc-08", "evidence": ["sc-08"],
+      "entities": ["loc-drowned-mill", "loc-rope-jetty"],
+      "typed": { "subject": "loc-drowned-mill", "predicate": "adjacent", "object": { "kind": "entity", "id": "loc-rope-jetty" } }
+    },
+
+    {
+      "fact_id": "f-in-crown-bell", "frame": "ground-truth",
+      "claim": "the bell house stands in the crown quarter",
+      "canon_from": "sc-01", "evidence": ["sc-01"],
+      "entities": ["q-crown", "loc-bell-house"],
+      "typed": { "subject": "q-crown", "predicate": "contains", "object": { "kind": "entity", "id": "loc-bell-house" } }
+    },
+    {
+      "fact_id": "f-in-crown-shrine", "frame": "ground-truth",
+      "claim": "the shrine stands in the crown quarter",
+      "canon_from": "sc-01", "evidence": ["sc-01"],
+      "entities": ["q-crown", "loc-shrine"],
+      "typed": { "subject": "q-crown", "predicate": "contains", "object": { "kind": "entity", "id": "loc-shrine" } }
+    },
+    {
+      "fact_id": "f-in-crown-market", "frame": "ground-truth",
+      "claim": "the dry market lies in the crown quarter",
+      "canon_from": "sc-01", "evidence": ["sc-01"],
+      "entities": ["q-crown", "loc-dry-market"],
+      "typed": { "subject": "q-crown", "predicate": "contains", "object": { "kind": "entity", "id": "loc-dry-market" } }
+    },
+    {
+      "fact_id": "f-in-crown-cistern", "frame": "ground-truth",
+      "claim": "the cistern yard lies in the crown quarter",
+      "canon_from": "sc-01", "evidence": ["sc-01"],
+      "entities": ["q-crown", "loc-cistern-yard"],
+      "typed": { "subject": "q-crown", "predicate": "contains", "object": { "kind": "entity", "id": "loc-cistern-yard" } }
+    },
+    {
+      "fact_id": "f-in-terrace-lane", "frame": "ground-truth",
+      "claim": "terrace lane lies in the terrace quarter",
+      "canon_from": "sc-01", "evidence": ["sc-01"],
+      "entities": ["q-terrace", "loc-terrace-lane"],
+      "typed": { "subject": "q-terrace", "predicate": "contains", "object": { "kind": "entity", "id": "loc-terrace-lane" } }
+    },
+    {
+      "fact_id": "f-in-terrace-vetch", "frame": "ground-truth",
+      "claim": "the vetch house stands in the terrace quarter",
+      "canon_from": "sc-01", "evidence": ["sc-01"],
+      "entities": ["q-terrace", "loc-vetch-house"],
+      "typed": { "subject": "q-terrace", "predicate": "contains", "object": { "kind": "entity", "id": "loc-vetch-house" } }
+    },
+    {
+      "fact_id": "f-in-terrace-granary", "frame": "ground-truth",
+      "claim": "the granary stands in the terrace quarter",
+      "canon_from": "sc-01", "evidence": ["sc-01"],
+      "entities": ["q-terrace", "loc-granary"],
+      "typed": { "subject": "q-terrace", "predicate": "contains", "object": { "kind": "entity", "id": "loc-granary" } }
+    },
+    {
+      "fact_id": "f-in-terrace-scour", "frame": "ground-truth",
+      "claim": "the scour cuts through the terrace quarter",
+      "canon_from": "sc-01", "evidence": ["sc-01"],
+      "entities": ["q-terrace", "loc-scour"],
+      "typed": { "subject": "q-terrace", "predicate": "contains", "object": { "kind": "entity", "id": "loc-scour" } }
+    },
+    {
+      "fact_id": "f-in-water-stair", "frame": "ground-truth",
+      "claim": "the water stair belongs to the waterline quarter",
+      "canon_from": "sc-01", "evidence": ["sc-01"],
+      "entities": ["q-waterline", "loc-water-stair"],
+      "typed": { "subject": "q-waterline", "predicate": "contains", "object": { "kind": "entity", "id": "loc-water-stair" } }
+    },
+    {
+      "fact_id": "f-in-water-shed", "frame": "ground-truth",
+      "claim": "the boat shed belongs to the waterline quarter",
+      "canon_from": "sc-01", "evidence": ["sc-01"],
+      "entities": ["q-waterline", "loc-boat-shed"],
+      "typed": { "subject": "q-waterline", "predicate": "contains", "object": { "kind": "entity", "id": "loc-boat-shed" } }
+    },
+    {
+      "fact_id": "f-in-water-jetty", "frame": "ground-truth",
+      "claim": "the rope jetty belongs to the waterline quarter",
+      "canon_from": "sc-01", "evidence": ["sc-01"],
+      "entities": ["q-waterline", "loc-rope-jetty"],
+      "typed": { "subject": "q-waterline", "predicate": "contains", "object": { "kind": "entity", "id": "loc-rope-jetty" } }
+    },
+    {
+      "fact_id": "f-in-water-mill", "frame": "ground-truth",
+      "claim": "the drowned mill belongs to the waterline quarter",
+      "canon_from": "sc-01", "evidence": ["sc-01"],
+      "entities": ["q-waterline", "loc-drowned-mill"],
+      "typed": { "subject": "q-waterline", "predicate": "contains", "object": { "kind": "entity", "id": "loc-drowned-mill" } }
+    },
+
+    {
+      "fact_id": "f-at-orrin-sc01", "frame": "ground-truth",
+      "claim": "Orrin is in the bell house at the ninth bell",
+      "canon_from": "sc-01", "evidence": ["sc-01"],
+      "entities": ["ch-orrin", "loc-bell-house"],
+      "typed": { "subject": "ch-orrin", "predicate": "at", "object": { "kind": "entity", "id": "loc-bell-house" } }
+    },
+    {
+      "fact_id": "f-ninth-bell", "frame": "ground-truth",
+      "claim": "Orrin rings the ninth flood bell from the bell house",
+      "canon_from": "sc-01", "evidence": ["sc-01"],
+      "entities": ["ch-orrin", "loc-bell-house", "it-bell-rope"]
+    },
+    {
+      "fact_id": "f-rope-swollen", "frame": "ground-truth",
+      "claim": "the bell rope has swollen with water and the ninth bell sounds flat",
+      "canon_from": "sc-01", "evidence": ["sc-01"],
+      "entities": ["it-bell-rope", "loc-bell-house"]
+    },
+
+    {
+      "fact_id": "f-at-kell-sc02", "frame": "ground-truth",
+      "claim": "Kell is out on the rope jetty on the ninth morning",
+      "canon_from": "sc-02", "evidence": ["sc-02"],
+      "entities": ["ch-kell", "loc-rope-jetty"],
+      "typed": { "subject": "ch-kell", "predicate": "at", "object": { "kind": "entity", "id": "loc-rope-jetty" } }
+    },
+    {
+      "fact_id": "f-jetty-higher", "frame": "ground-truth",
+      "claim": "the rope jetty rides a hand higher than it did at the eighth bell",
+      "canon_from": "sc-02", "evidence": ["sc-02"],
+      "entities": ["loc-rope-jetty"]
+    },
+    {
+      "fact_id": "f-ropes-shortened", "frame": "ground-truth",
+      "claim": "Kell takes in a fathom of the jetty's mooring ropes",
+      "canon_from": "sc-02", "evidence": ["sc-02"],
+      "entities": ["ch-kell", "loc-rope-jetty"]
+    },
+
+    {
+      "fact_id": "f-at-orrin-sc03", "frame": "ground-truth",
+      "claim": "Orrin has climbed the crown path to the shrine",
+      "canon_from": "sc-03", "evidence": ["sc-03"],
+      "entities": ["ch-orrin", "loc-shrine"],
+      "supersedes_in_frame": "f-at-orrin-sc01",
+      "typed": { "subject": "ch-orrin", "predicate": "at", "object": { "kind": "entity", "id": "loc-shrine" } }
+    },
+    {
+      "fact_id": "f-at-sarn-sc03", "frame": "ground-truth",
+      "claim": "Sarn keeps the shrine on the ninth morning",
+      "canon_from": "sc-03", "evidence": ["sc-03"],
+      "entities": ["ch-sarn", "loc-shrine"],
+      "typed": { "subject": "ch-sarn", "predicate": "at", "object": { "kind": "entity", "id": "loc-shrine" } }
+    },
+    {
+      "fact_id": "f-orrin-asks-bowl", "frame": "ground-truth",
+      "claim": "Orrin asks Sarn for the shrine's standing-water bowl on the town's behalf",
+      "canon_from": "sc-03", "evidence": ["sc-03"],
+      "entities": ["ch-orrin", "ch-sarn", "it-water-bowl", "loc-shrine"]
+    },
+    {
+      "fact_id": "f-sarn-refuses", "frame": "ground-truth",
+      "claim": "Sarn will not let the standing-water bowl out of the shrine",
+      "canon_from": "sc-03", "evidence": ["sc-03"],
+      "entities": ["ch-sarn", "it-water-bowl", "loc-shrine"]
+    },
+    {
+      "fact_id": "f-sarn-believes-rite", "frame": "sarn",
+      "claim": "the standing water is the rite itself and must never be drunk",
+      "canon_from": "sc-03", "evidence": ["sc-03"],
+      "entities": ["ch-sarn", "it-water-bowl", "loc-shrine"]
+    },
+
+    {
+      "fact_id": "f-at-vetch-sc04", "frame": "ground-truth",
+      "claim": "Vetch is in her house with the tide board",
+      "canon_from": "sc-04", "evidence": ["sc-04"],
+      "entities": ["ch-vetch", "loc-vetch-house"],
+      "typed": { "subject": "ch-vetch", "predicate": "at", "object": { "kind": "entity", "id": "loc-vetch-house" } }
+    },
+    {
+      "fact_id": "f-ninth-mark", "frame": "ground-truth",
+      "claim": "Vetch cuts the ninth mark into her tide board and the eighth mark is already under water",
+      "canon_from": "sc-04", "evidence": ["sc-04"],
+      "entities": ["ch-vetch", "it-tide-board", "loc-vetch-house"]
+    },
+    {
+      "fact_id": "f-vetch-believes-fall", "frame": "vetch",
+      "claim": "the water will begin to fall before the ninth night is out",
+      "canon_from": "sc-04", "evidence": ["sc-04"],
+      "entities": ["ch-vetch", "it-tide-board"]
+    },
+
+    {
+      "fact_id": "f-at-kell-sc05", "frame": "ground-truth",
+      "claim": "Kell has crossed from the jetty into the boat shed",
+      "canon_from": "sc-05", "evidence": ["sc-05"],
+      "entities": ["ch-kell", "loc-boat-shed"],
+      "supersedes_in_frame": "f-at-kell-sc02",
+      "typed": { "subject": "ch-kell", "predicate": "at", "object": { "kind": "entity", "id": "loc-boat-shed" } }
+    },
+    {
+      "fact_id": "f-key-held", "frame": "ground-truth",
+      "claim": "Kell takes his father's granary key off the boat shed hook and keeps it",
+      "canon_from": "sc-05", "evidence": ["sc-05"],
+      "entities": ["it-granary-key", "ch-kell", "loc-boat-shed"],
+      "typed": { "subject": "ch-kell", "predicate": "holds", "object": { "kind": "entity", "id": "it-granary-key" } }
+    },
+    {
+      "fact_id": "f-kell-believes-key", "frame": "kell",
+      "claim": "his father's key still turns the granary's lane door",
+      "canon_from": "sc-05", "evidence": ["sc-05"],
+      "entities": ["ch-kell", "it-granary-key", "loc-granary"]
+    },
+
+    {
+      "fact_id": "f-at-orrin-sc06", "frame": "ground-truth",
+      "claim": "Orrin has come down the stone walk into the cistern yard",
+      "canon_from": "sc-06", "evidence": ["sc-06"],
+      "entities": ["ch-orrin", "loc-cistern-yard"],
+      "supersedes_in_frame": "f-at-orrin-sc03",
+      "typed": { "subject": "ch-orrin", "predicate": "at", "object": { "kind": "entity", "id": "loc-cistern-yard" } }
+    },
+    {
+      "fact_id": "f-cistern-brackish", "frame": "ground-truth",
+      "claim": "the cistern has gone brackish where the flood came up through its floor, and the town has no sweet water left",
+      "canon_from": "sc-06", "evidence": ["sc-06"],
+      "entities": ["loc-cistern-yard"],
+      "payoff_expectation": "expected",
+      "typed": { "subject": "loc-cistern-yard", "predicate": "water_state", "object": { "kind": "token", "token": "brackish" } }
+    },
+
+    {
+      "fact_id": "f-at-orrin-sc07", "frame": "ground-truth",
+      "claim": "Orrin has come through the passage into the dry market",
+      "canon_from": "sc-07", "evidence": ["sc-07"],
+      "entities": ["ch-orrin", "loc-dry-market"],
+      "supersedes_in_frame": "f-at-orrin-sc06",
+      "typed": { "subject": "ch-orrin", "predicate": "at", "object": { "kind": "entity", "id": "loc-dry-market" } }
+    },
+    {
+      "fact_id": "f-at-mira-sc07", "frame": "ground-truth",
+      "claim": "Mira is at the dry market's tally stone",
+      "canon_from": "sc-07", "evidence": ["sc-07"],
+      "entities": ["ch-mira", "loc-dry-market"],
+      "typed": { "subject": "ch-mira", "predicate": "at", "object": { "kind": "entity", "id": "loc-dry-market" } }
+    },
+    {
+      "fact_id": "f-orrin-tells-market", "frame": "ground-truth",
+      "claim": "Orrin tells the dry market that the cistern is spoiled",
+      "canon_from": "sc-07", "evidence": ["sc-07"],
+      "entities": ["ch-orrin", "loc-dry-market", "loc-cistern-yard"]
+    },
+    {
+      "fact_id": "f-mill-turning", "frame": "townsfolk",
+      "claim": "the drowned mill still turns under the water at the foot of the town",
+      "canon_from": "sc-07", "evidence": ["sc-07"],
+      "entities": ["loc-drowned-mill"],
+      "typed": { "subject": "loc-drowned-mill", "predicate": "rumoured_state", "object": { "kind": "token", "token": "turning" } }
+    },
+    {
+      "fact_id": "f-granary-seed", "frame": "townsfolk",
+      "claim": "the granary still holds seed enough for a second sowing",
+      "canon_from": "sc-07", "evidence": ["sc-07"],
+      "entities": ["loc-granary"]
+    },
+    {
+      "fact_id": "f-mill-unentered", "frame": "ground-truth",
+      "claim": "no one has stood in the drowned mill since the water took the second step",
+      "canon_from": "sc-07", "evidence": ["sc-07"],
+      "entities": ["loc-drowned-mill"]
+    },
+    {
+      "fact_id": "f-mira-listens", "frame": "ground-truth",
+      "claim": "Mira keeps by the tally stone and listens to the mill talk without saying anything",
+      "canon_from": "sc-07", "evidence": ["sc-07"],
+      "entities": ["ch-mira", "loc-dry-market", "loc-drowned-mill"]
+    },
+
+    {
+      "fact_id": "f-at-kell-sc08", "frame": "ground-truth",
+      "claim": "Kell has come back out onto the rope jetty",
+      "canon_from": "sc-08", "evidence": ["sc-08"],
+      "entities": ["ch-kell", "loc-rope-jetty"],
+      "supersedes_in_frame": "f-at-kell-sc05",
+      "typed": { "subject": "ch-kell", "predicate": "at", "object": { "kind": "entity", "id": "loc-rope-jetty" } }
+    },
+    {
+      "fact_id": "f-race-heard", "frame": "ground-truth",
+      "claim": "under the jetty boards the mill race can be heard running out into the flood",
+      "canon_from": "sc-08", "evidence": ["sc-08"],
+      "entities": ["loc-drowned-mill", "loc-rope-jetty", "ch-kell"]
+    },
+
+    {
+      "fact_id": "f-at-kell-sc09", "frame": "ground-truth",
+      "claim": "Kell has taken the plank walk to the water stair",
+      "canon_from": "sc-09", "evidence": ["sc-09"],
+      "entities": ["ch-kell", "loc-water-stair"],
+      "supersedes_in_frame": "f-at-kell-sc08",
+      "typed": { "subject": "ch-kell", "predicate": "at", "object": { "kind": "entity", "id": "loc-water-stair" } }
+    },
+    {
+      "fact_id": "f-eleven-steps", "frame": "ground-truth",
+      "claim": "the water has taken eleven steps of the water stair",
+      "canon_from": "sc-09", "evidence": ["sc-09"],
+      "entities": ["loc-water-stair", "ch-kell"]
+    },
+
+    {
+      "fact_id": "f-at-kell-sc10", "frame": "ground-truth",
+      "claim": "Kell has climbed the water stair into terrace lane",
+      "canon_from": "sc-10", "evidence": ["sc-10"],
+      "entities": ["ch-kell", "loc-terrace-lane"],
+      "supersedes_in_frame": "f-at-kell-sc09",
+      "typed": { "subject": "ch-kell", "predicate": "at", "object": { "kind": "entity", "id": "loc-terrace-lane" } }
+    },
+    {
+      "fact_id": "f-granary-barred", "frame": "ground-truth",
+      "claim": "the granary's lane door is barred and the water stands over its third step",
+      "canon_from": "sc-10", "evidence": ["sc-10", "sc-15"],
+      "entities": ["loc-granary", "loc-terrace-lane"],
+      "typed": { "subject": "loc-granary", "predicate": "door_state", "object": { "kind": "token", "token": "barred" } }
+    },
+
+    {
+      "fact_id": "f-at-kell-sc11", "frame": "ground-truth",
+      "claim": "Kell has crossed the door-yard into the vetch house",
+      "canon_from": "sc-11", "evidence": ["sc-11"],
+      "entities": ["ch-kell", "loc-vetch-house"],
+      "supersedes_in_frame": "f-at-kell-sc10",
+      "typed": { "subject": "ch-kell", "predicate": "at", "object": { "kind": "entity", "id": "loc-vetch-house" } }
+    },
+    {
+      "fact_id": "f-vetch-names-conditions", "frame": "ground-truth",
+      "claim": "Vetch tells Kell the lane door waits on two things at once, the key in a hand and the water below the third step",
+      "canon_from": "sc-11", "evidence": ["sc-11"],
+      "entities": ["ch-vetch", "ch-kell", "loc-granary", "it-granary-key"]
+    },
+
+    {
+      "fact_id": "f-at-mira-sc12", "frame": "ground-truth",
+      "claim": "Mira has come down the market steps into terrace lane",
+      "canon_from": "sc-12", "evidence": ["sc-12"],
+      "entities": ["ch-mira", "loc-terrace-lane"],
+      "supersedes_in_frame": "f-at-mira-sc07",
+      "typed": { "subject": "ch-mira", "predicate": "at", "object": { "kind": "entity", "id": "loc-terrace-lane" } }
+    },
+    {
+      "fact_id": "f-lane-knee-deep", "frame": "ground-truth",
+      "claim": "terrace lane runs knee-deep at its lower end",
+      "canon_from": "sc-12", "evidence": ["sc-12"],
+      "entities": ["loc-terrace-lane"]
+    },
+
+    {
+      "fact_id": "f-at-mira-sc13", "frame": "ground-truth",
+      "claim": "Mira has stepped down into the scour",
+      "canon_from": "sc-13", "evidence": ["sc-13"],
+      "entities": ["ch-mira", "loc-scour"],
+      "supersedes_in_frame": "f-at-mira-sc12",
+      "typed": { "subject": "ch-mira", "predicate": "at", "object": { "kind": "entity", "id": "loc-scour" } }
+    },
+    {
+      "fact_id": "f-scour-one-way", "frame": "ground-truth",
+      "claim": "the scour has carried its own stair away, so what goes down the scour does not come back up it",
+      "canon_from": "sc-13", "evidence": ["sc-13", "sc-14"],
+      "entities": ["loc-scour"]
+    },
+    {
+      "fact_id": "f-lip-breaks", "frame": "ground-truth",
+      "claim": "the lip of stone at the scour's head breaks away behind Mira",
+      "canon_from": "sc-13", "evidence": ["sc-13"],
+      "entities": ["ch-mira", "loc-scour", "loc-terrace-lane"]
+    },
+
+    {
+      "fact_id": "f-at-mira-sc14", "frame": "ground-truth",
+      "claim": "Mira comes out of the scour into the boat shed",
+      "canon_from": "sc-14", "evidence": ["sc-14"],
+      "entities": ["ch-mira", "loc-boat-shed"],
+      "supersedes_in_frame": "f-at-mira-sc13",
+      "typed": { "subject": "ch-mira", "predicate": "at", "object": { "kind": "entity", "id": "loc-boat-shed" } }
+    },
+    {
+      "fact_id": "f-shed-back-open", "frame": "ground-truth",
+      "claim": "the boat shed's back wall is gone and the flood stands in it to the bench",
+      "canon_from": "sc-14", "evidence": ["sc-14"],
+      "entities": ["loc-boat-shed"]
+    },
+
+    {
+      "fact_id": "f-at-kell-sc15", "frame": "ground-truth",
+      "claim": "Kell has come back out onto terrace lane at the granary door",
+      "canon_from": "sc-15", "evidence": ["sc-15"],
+      "entities": ["ch-kell", "loc-terrace-lane"],
+      "supersedes_in_frame": "f-at-kell-sc11",
+      "typed": { "subject": "ch-kell", "predicate": "at", "object": { "kind": "entity", "id": "loc-terrace-lane" } }
+    },
+    {
+      "fact_id": "f-at-vetch-sc15", "frame": "ground-truth",
+      "claim": "Vetch has followed Kell out onto terrace lane",
+      "canon_from": "sc-15", "evidence": ["sc-15"],
+      "entities": ["ch-vetch", "loc-terrace-lane"],
+      "supersedes_in_frame": "f-at-vetch-sc04",
+      "typed": { "subject": "ch-vetch", "predicate": "at", "object": { "kind": "entity", "id": "loc-terrace-lane" } }
+    },
+    {
+      "fact_id": "f-fourth-step", "frame": "ground-truth",
+      "claim": "at the ninth evening the water stands at the fourth step of the granary stair",
+      "canon_from": "sc-15", "evidence": ["sc-15"],
+      "entities": ["loc-granary", "loc-terrace-lane"]
+    },
+    {
+      "fact_id": "f-kell-waits-door", "frame": "ground-truth",
+      "claim": "Kell waits at the granary's lane door with his father's key in his fist",
+      "canon_from": "sc-15", "evidence": ["sc-15"],
+      "entities": ["ch-kell", "loc-granary", "it-granary-key"]
+    },
+    {
+      "fact_id": "f-vetch-reads-lane", "frame": "ground-truth",
+      "claim": "Vetch reads the lane's water against her board and says it is falling",
+      "canon_from": "sc-15", "evidence": ["sc-15"],
+      "entities": ["ch-vetch", "it-tide-board", "loc-terrace-lane"]
+    },
+
+    {
+      "fact_id": "f-at-mira-sc16", "frame": "ground-truth",
+      "claim": "Mira has crossed from the boat shed onto the rope jetty",
+      "canon_from": "sc-16", "evidence": ["sc-16"],
+      "entities": ["ch-mira", "loc-rope-jetty"],
+      "supersedes_in_frame": "f-at-mira-sc14",
+      "typed": { "subject": "ch-mira", "predicate": "at", "object": { "kind": "entity", "id": "loc-rope-jetty" } }
+    },
+    {
+      "fact_id": "f-lamp-out-of-race", "frame": "ground-truth",
+      "claim": "a brass lamp comes out of the mill race and knocks against the rope jetty",
+      "canon_from": "sc-16", "evidence": ["sc-16"],
+      "entities": ["it-drowned-lamp", "loc-rope-jetty", "loc-drowned-mill"]
+    },
+    {
+      "fact_id": "f-mira-keeps-lamp", "frame": "ground-truth",
+      "claim": "Mira takes the lamp out of the water and will not give it back",
+      "canon_from": "sc-16", "evidence": ["sc-16"],
+      "entities": ["ch-mira", "it-drowned-lamp", "loc-rope-jetty"]
+    },
+
+    {
+      "fact_id": "f-at-sarn-sc17", "frame": "ground-truth",
+      "claim": "Sarn has come down the stone walk into the cistern yard",
+      "canon_from": "sc-17", "evidence": ["sc-17"],
+      "entities": ["ch-sarn", "loc-cistern-yard"],
+      "supersedes_in_frame": "f-at-sarn-sc03",
+      "typed": { "subject": "ch-sarn", "predicate": "at", "object": { "kind": "entity", "id": "loc-cistern-yard" } }
+    },
+    {
+      "fact_id": "f-sarn-carries-bowl", "frame": "ground-truth",
+      "claim": "Sarn carries the standing-water bowl past the spoiled cistern without stopping",
+      "canon_from": "sc-17", "evidence": ["sc-17"],
+      "entities": ["ch-sarn", "it-water-bowl", "loc-cistern-yard"]
+    },
+
+    {
+      "fact_id": "f-at-sarn-sc18", "frame": "ground-truth",
+      "claim": "Sarn has come through the passage into the dry market",
+      "canon_from": "sc-18", "evidence": ["sc-18"],
+      "entities": ["ch-sarn", "loc-dry-market"],
+      "supersedes_in_frame": "f-at-sarn-sc17",
+      "typed": { "subject": "ch-sarn", "predicate": "at", "object": { "kind": "entity", "id": "loc-dry-market" } }
+    },
+    {
+      "fact_id": "f-rite-drunk", "frame": "ground-truth",
+      "claim": "Sarn sets the standing water on the tally stone and the dry market drinks the rite",
+      "canon_from": "sc-18", "evidence": ["sc-18"],
+      "entities": ["ch-sarn", "it-water-bowl", "loc-dry-market"],
+      "pays_off": ["f-cistern-brackish"]
+    },
+    {
+      "fact_id": "f-sarn-believes-drinking", "frame": "sarn",
+      "claim": "the standing water was always meant to be drunk on a day like this one",
+      "canon_from": "sc-18", "evidence": ["sc-18"],
+      "entities": ["ch-sarn", "it-water-bowl", "loc-dry-market"],
+      "supersedes_in_frame": "f-sarn-believes-rite"
+    },
+
+    {
+      "fact_id": "f-water-below-third", "frame": "ground-truth", "branch": "sluice-drawn",
+      "claim": "by the ninth night the water has fallen below the third step of the granary stair",
+      "canon_from": "sc-19", "evidence": ["sc-19"],
+      "entities": ["loc-granary", "loc-terrace-lane"]
+    },
+    {
+      "fact_id": "f-lane-door-opens", "frame": "ground-truth", "branch": "sluice-drawn",
+      "claim": "Kell's key turns and the granary's lane door comes open on the falling water",
+      "canon_from": "sc-19", "evidence": ["sc-19"],
+      "entities": ["loc-granary", "ch-kell", "it-granary-key"],
+      "supersedes_in_frame": "f-granary-barred",
+      "typed": { "subject": "loc-granary", "predicate": "door_state", "object": { "kind": "token", "token": "open" } }
+    },
+    {
+      "fact_id": "f-vetch-believes-board", "frame": "vetch", "branch": "sluice-drawn",
+      "claim": "the board told the fall true and the marks can be trusted from here on",
+      "canon_from": "sc-19", "evidence": ["sc-19"],
+      "entities": ["ch-vetch", "it-tide-board"],
+      "supersedes_in_frame": "f-vetch-believes-fall"
+    },
+
+    {
+      "fact_id": "f-at-kell-sc20", "frame": "ground-truth", "branch": "sluice-drawn",
+      "claim": "Kell has gone in through the lane door and stands in the granary",
+      "canon_from": "sc-20", "evidence": ["sc-20"],
+      "entities": ["ch-kell", "loc-granary"],
+      "supersedes_in_frame": "f-at-kell-sc15",
+      "typed": { "subject": "ch-kell", "predicate": "at", "object": { "kind": "entity", "id": "loc-granary" } }
+    },
+    {
+      "fact_id": "f-seed-dry", "frame": "ground-truth", "branch": "sluice-drawn",
+      "claim": "the seed corn on the granary's upper floor is dry",
+      "canon_from": "sc-20", "evidence": ["sc-20"],
+      "entities": ["loc-granary"]
+    },
+    {
+      "fact_id": "f-tally-swollen", "frame": "ground-truth", "branch": "sluice-drawn",
+      "claim": "the granary's tally book is swollen shut and cannot be opened",
+      "canon_from": "sc-20", "evidence": ["sc-20"],
+      "entities": ["loc-granary"]
+    },
+
+    {
+      "fact_id": "f-rain-well", "frame": "ground-truth", "branch": "sluice-drawn",
+      "claim": "under the granary floor there is a rain-well the flood has not reached, and its water is sweet",
+      "canon_from": "sc-21", "evidence": ["sc-21"],
+      "entities": ["loc-granary"],
+      "pays_off": ["f-cistern-brackish"],
+      "typed": { "subject": "loc-granary", "predicate": "water_state", "object": { "kind": "token", "token": "sweet" } }
+    },
+    {
+      "fact_id": "f-kell-calls-up", "frame": "ground-truth", "branch": "sluice-drawn",
+      "claim": "Kell calls up the lane that the town can drink",
+      "canon_from": "sc-21", "evidence": ["sc-21"],
+      "entities": ["ch-kell", "loc-granary", "loc-terrace-lane"]
+    }
+  ]
+}

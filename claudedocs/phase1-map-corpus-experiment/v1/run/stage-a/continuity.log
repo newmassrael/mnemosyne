@@ -1,0 +1,35 @@
+=== continuity gate (reject) ===
+  facts=122 order_nodes=22/23 sections conflict_pairs=2 cross_scope(data)=2 unordered=0
+  rules=3 rule_unordered=0 unchained_state_pairs=1 interval_unverifiable=0 interval_severity=off
+  evidence reviews: 0 ref(s) with prose but no affirmation (import-evidence-reviews records one; an unaffirmed claim cannot go stale)
+  fact quotes: 0 unverifiable (an evidence section holds no prose, so the quote could live exactly there)
+  ladder rungs: 0 coordinate(s) resolved against current prose, and each ladder's declared order and distinctness judged against it (a stranded rung, an out-of-order ladder, or two rungs at one anchor is reported as a violation)
+  violations: 27 (structural=27 interval=0)
+  {"kind":"evidence_unreachable","fact":"f-adj-cistern-lane","branch":"main","evidence":"sc-09","canon_from":"sc-01"}
+  {"kind":"evidence_unreachable","fact":"f-adj-sluice-nets","branch":"main","evidence":"sc-12","canon_from":"sc-01"}
+  {"kind":"evidence_unreachable","fact":"f-at-liss-shrine","branch":"main","evidence":"sc-18","canon_from":"sc-03"}
+  {"kind":"evidence_unreachable","fact":"f-at-orrel-bell","branch":"main","evidence":"sc-16","canon_from":"sc-01"}
+  {"kind":"evidence_unreachable","fact":"f-at-sabb-crown","branch":"main","evidence":"sc-02","canon_from":"sc-01"}
+  {"kind":"evidence_unreachable","fact":"f-at-sabb-hall","branch":"main","evidence":"sc-17","canon_from":"sc-02"}
+  {"kind":"evidence_unreachable","fact":"f-blocked-nets","branch":"main","evidence":"sc-12","canon_from":"sc-02"}
+  {"kind":"evidence_unreachable","fact":"f-hesk-cut-off","branch":"main","evidence":"sc-04","canon_from":"sc-02"}
+  {"kind":"evidence_unreachable","fact":"f-sluice-shut","branch":"main","evidence":"sc-12","canon_from":"sc-02"}
+  {"kind":"evidence_unreachable","fact":"f-town-hesk-drowned","branch":"main","evidence":"sc-07","canon_from":"sc-05"}
+  {"kind":"evidence_unreachable","fact":"f-town-undertown-bell","branch":"main","evidence":"sc-13","canon_from":"sc-07"}
+  {"kind":"adjacency_cross_scope","rule":"movement-follows-the-map","adjacency":"adjacent","fact":"f-adj-alms-marl","a":"l-almshouse","b":"l-marl-house","scope_a":"q-crown","scope_b":"q-market-shelf","frame":"ground-truth","branch":"main","at":"sc-01"}
+  {"kind":"adjacency_cross_scope","rule":"movement-follows-the-map","adjacency":"adjacent","fact":"f-adj-bell-reeve","a":"l-bell-house","b":"l-reeve-hall","scope_a":"q-market-shelf","scope_b":"q-crown","frame":"ground-truth","branch":"main","at":"sc-01"}
+  {"kind":"adjacency_cross_scope","rule":"movement-follows-the-map","adjacency":"adjacent","fact":"f-adj-cistern-lane","a":"l-cistern-yard","b":"l-drowned-lane","scope_a":"q-market-shelf","scope_b":"q-tidefoot","frame":"ground-truth","branch":"main","at":"sc-01"}
+  {"kind":"adjacency_cross_scope","rule":"movement-follows-the-map","adjacency":"adjacent","fact":"f-adj-market-quay","a":"l-market","b":"l-quay-stair","scope_a":"q-market-shelf","scope_b":"q-tidefoot","frame":"ground-truth","branch":"main","at":"sc-01"}
+  {"kind":"adjacency_cross_scope","rule":"movement-follows-the-map","adjacency":"adjacent","fact":"f-adj-marl-alms","a":"l-marl-house","b":"l-almshouse","scope_a":"q-market-shelf","scope_b":"q-crown","frame":"ground-truth","branch":"main","at":"sc-01"}
+  {"kind":"adjacency_cross_scope","rule":"movement-follows-the-map","adjacency":"adjacent","fact":"f-adj-quay-market","a":"l-quay-stair","b":"l-market","scope_a":"q-tidefoot","scope_b":"q-market-shelf","frame":"ground-truth","branch":"main","at":"sc-01"}
+  {"kind":"adjacency_cross_scope","rule":"movement-follows-the-map","adjacency":"adjacent","fact":"f-adj-reeve-bell","a":"l-reeve-hall","b":"l-bell-house","scope_a":"q-crown","scope_b":"q-market-shelf","frame":"ground-truth","branch":"main","at":"sc-01"}
+  {"kind":"map_contained_off_map","rule":"movement-follows-the-map","adjacency":"adjacent","containment":"contains","fact":"f-con-tidefoot-undertown","container":"q-tidefoot","contained":"l-undertown","frame":"ground-truth","branch":"main"}
+  {"kind":"adjacency_cross_scope","rule":"movement-follows-the-map","adjacency":"adjacent","fact":"f-adj-alms-marl","a":"l-almshouse","b":"l-marl-house","scope_a":"q-crown","scope_b":"q-market-shelf","frame":"ground-truth","branch":"sluice-open","at":"sc-01"}
+  {"kind":"adjacency_cross_scope","rule":"movement-follows-the-map","adjacency":"adjacent","fact":"f-adj-bell-reeve","a":"l-bell-house","b":"l-reeve-hall","scope_a":"q-market-shelf","scope_b":"q-crown","frame":"ground-truth","branch":"sluice-open","at":"sc-01"}
+  {"kind":"adjacency_cross_scope","rule":"movement-follows-the-map","adjacency":"adjacent","fact":"f-adj-cistern-lane","a":"l-cistern-yard","b":"l-drowned-lane","scope_a":"q-market-shelf","scope_b":"q-tidefoot","frame":"ground-truth","branch":"sluice-open","at":"sc-01"}
+  {"kind":"adjacency_cross_scope","rule":"movement-follows-the-map","adjacency":"adjacent","fact":"f-adj-market-quay","a":"l-market","b":"l-quay-stair","scope_a":"q-market-shelf","scope_b":"q-tidefoot","frame":"ground-truth","branch":"sluice-open","at":"sc-01"}
+  {"kind":"adjacency_cross_scope","rule":"movement-follows-the-map","adjacency":"adjacent","fact":"f-adj-marl-alms","a":"l-marl-house","b":"l-almshouse","scope_a":"q-market-shelf","scope_b":"q-crown","frame":"ground-truth","branch":"sluice-open","at":"sc-01"}
+  {"kind":"adjacency_cross_scope","rule":"movement-follows-the-map","adjacency":"adjacent","fact":"f-adj-quay-market","a":"l-quay-stair","b":"l-market","scope_a":"q-tidefoot","scope_b":"q-market-shelf","frame":"ground-truth","branch":"sluice-open","at":"sc-01"}
+  {"kind":"adjacency_cross_scope","rule":"movement-follows-the-map","adjacency":"adjacent","fact":"f-adj-reeve-bell","a":"l-reeve-hall","b":"l-bell-house","scope_a":"q-crown","scope_b":"q-market-shelf","frame":"ground-truth","branch":"sluice-open","at":"sc-01"}
+  {"kind":"map_contained_off_map","rule":"movement-follows-the-map","adjacency":"adjacent","containment":"contains","fact":"f-con-tidefoot-undertown","container":"q-tidefoot","contained":"l-undertown","frame":"ground-truth","branch":"sluice-open"}
+  NOTICE: the canon order places 22 of 23 section(s) — 1 unplaced. A store renders only where the order places it, so a fact anchored to an unplaced section can never be rendered; the section may also be unplaced YET, which is the author's todo and never gated. Run report-authoring-frontier: `unplaced scenes` names these 1.

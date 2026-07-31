@@ -1,0 +1,10 @@
+{
+  "comment": "The one way that is shut until something is true: terrace lane into the granary. The contract gives edge_guards as a registry keyed by the edge fact id and written with add-edge-guard (one call per condition), NOT as one of the seven arrays of the fact manifest, so this file is the argument list for those calls rather than something import-facts can read. Each condition is a real fact in facts.json. threshold is null, which is the default AND: the consumer (the runtime) must find BOTH conditions true before it lets a mover cross this edge. Mnemosyne only checks that the edge and every condition resolve; it never evaluates whether the guard holds. The two outcomes are authored as world-lines instead: on `main` the door stays barred, on the fork `sluice-drawn` the water falls, the key turns and Kell goes in.",
+  "edge_guards": [
+    {
+      "edge": "f-adj-lane-granary",
+      "conditions": ["f-key-held", "f-water-below-third"],
+      "threshold": null
+    }
+  ]
+}

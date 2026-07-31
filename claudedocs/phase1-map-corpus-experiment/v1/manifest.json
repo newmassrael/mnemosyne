@@ -1,0 +1,35 @@
+{
+  "manifest": "map-corpus-experiment/v1",
+  "designed": "2026-07-31 (Round 898, DESIGN). Unlike the pre-committed manifests of the render/judge kits, THIS file is a post-run record, not a pre-commitment. The pre-commitment for this experiment is the runbook committed in b9ca7c8 BEFORE execution, which carries both author briefs verbatim; the owner's experiment word triggered the run against that frozen protocol.",
+
+  "thesis": "The map primitives have no authored instance anywhere in this tree — every store declares zero transition rules, so every map verb answers from its empty branch. A corpus authored by someone who did not build the contract exercises those branches and gives the Round 896 sweep a third arm that differs exactly where the existing two agree.",
+
+  "lineage_note": "Round 469 contamination bound. The orchestrating lineage knew the hypothesis; it ran every command, wrote no manifest in its own voice, and repaired no author file — a failing submission was handed back as the verbatim tool error and the author fixed it.",
+
+  "claim_bound": "THE ORACLE IS OUR OWN VERB OUTPUT, SO THE CLAIM IS EXERCISE AND DISCRIMINATION, NOT CORRECTNESS (Round 884: a hand-built oracle that shares the blind spot of what it grades is one measurement, not two). No verb here is evidence that any other verb is right.",
+
+  "shape": {
+    "authors": "two, fresh context each, firewalled to their own directory",
+    "stage_a": "the world brief with NO map vocabulary anywhere in it — measures E1, whether the transition class is reachable from the contract alone",
+    "stage_b": "the same brief plus one fiction sentence asking that the engine be able to answer where one can move to; guarantees the corpus exists regardless of E1",
+    "not_run": "no render, no re-extraction, no judge panel. The map axis is a structure axis (Round 892 measured the map reads working on a store with zero prose), so a prose arm would double the protocol to test something else."
+  },
+
+  "evidence": {
+    "E1": "Does a blind author reach for the `transition` class given only the contract? Read off the authored files, never asked for.",
+    "E2": "Does the FIRST submission import? Frozen with its full error text before anything is handed back — an author holding the CLI iterates to green, so `does the corpus load` asked afterwards is the Round 854 vacuous pass.",
+    "E3": "The sealed self-report's counts beside the machine's. A disagreement is a FINDING about the substrate or the contract, not an author error.",
+    "C1": "Which previously-empty branches ran on authored data.",
+    "C2": "Which verbs, byte-identical across the two existing stores after Round 896's repairs, now differ with this corpus as a third arm."
+  },
+
+  "honest_caveats": [
+    "n=2 authors, one world premise, one lineage orchestrating — one instance, not a distribution.",
+    "Everything the brief MANDATES is decoration: the place count, the unreachable place, the one-way descent, the region. All were demanded, so producing them proves only that the author followed the brief. The evidence is what the brief did not mandate.",
+    "Neither corpus passes `validate-continuity`. The registered replay covers the IMPORT, which is what this corpus demonstrates; a gate-clean map corpus would first require settling the `adjacency_cross_scope` design question the run surfaced.",
+    "The corpus does not unblock `validate-render-fidelity` / `validate-disclosure-leak` (Round 897), does not compute reachability (Round 891 excluded it), and does not settle per-world maps (Round 696 finding 6).",
+    "`edge-costs.json` / `edge-guards.json` in Stage B are argument lists for `add-edge-cost` / `add-edge-guard`, not manifest-loadable, so the cost and guard side tables remain unexercised."
+  ],
+
+  "findings_home": "map-corpus-report.md is the evidence; the changelog entry is the SSOT for the decision."
+}
