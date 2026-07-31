@@ -28579,6 +28579,46 @@
         "The weekly schedule is a guess at a cadence, not a measurement. A yanked dependency has no known arrival rate here; weekly was chosen because the job is 5 minutes and the failure it looks for is slow-moving.",
         "GitHub disables scheduled workflows on repositories with no activity for 60 days. If this repo goes quiet, the cadence stops silently — the same class of silence R583 was."
       ]
+    },
+    "Round 887": {
+      "decision_summary": "The carry was a cost judgement wearing a note, and the gate it deferred had a hollow job inside it",
+      "changes_bullets": [
+        "Paid the carry R886 left instead of carrying it. The reason given there — that pulling in a YAML parser for one assertion was a dependency decision worth making separately — was deferring a real defect on a cost judgement, which this repo's round discipline does not allow. The owner asked why it was left; there was no good answer.",
+        "Three gates over this repo's own workflows, in the same file as the declarations because one of them is a cross-check between the record and the CI config. `every_shipped_workflow_parses_and_declares_work`: every tracked workflow parses and declares at least one trigger and one job — R583 lost an unknown stretch of CI to a workflow that did not parse, and GitHub says so nowhere the author looks. `the_replay_workflow_still_replays`: the checkout takes full history, some step passes `--ignored`, and every `--test` target named anywhere in the job exists. `the_path_filter_covers_every_file_the_replay_reads`: every input, config, and declaration a replay reads is matched by the push trigger's path filter.",
+        "The gate is a parser, not a text match, and that is not a preference: the R886 workflow names `fetch-depth: 0` and `--ignored` in its own comments, so a substring check passes on prose while the job is hollow. `yaml-rust2` with `default-features = false` — 4 transitive crates, dev-dependency only, never in a shipped binary. Not `serde_yaml`, which is deprecated upstream; adopting a dead crate is the legacy-carry pattern this repo forbids.",
+        "The `paths:` matcher supports exactly the two pattern shapes this workflow uses and PANICS on any other. A matcher that quietly mis-read a pattern it did not understand would report coverage it had never checked, which is the same failure the gate exists to catch."
+      ],
+      "verification_bullets": [
+        "1342 green (+3), clippy -D warnings clean, fmt clean, validate-workspace clean.",
+        "Injections, self-reported. J2 (drop `-- --ignored`) reddened the replay gate alone — that is the vacuous-pass this round is really about: without it the job runs the cheap tests twice, goes green, and replays nothing. J3 (`fetch-depth: 1`) reddened it alone. J4 (narrow the filter to `claudedocs/phase1-2d-*/**`) reddened the coverage gate alone, naming the uncovered files.",
+        "J1 (a tab-indented broken block) reddened THREE — every test that loads this file. Correct and reported as three: an unparseable workflow is unreadable to all of its readers, not one.",
+        "J5 was MIS-AIMED and the green was mine, not the gate's: I renamed the test target in the first of the two steps that name it, and the assertion only read the step carrying `--ignored`. So the check was reading one of the two places a rename can land. Generalised it to every `--test` target in the job, with a non-vacuity count, and re-ran BOTH placements — each reddens now.",
+        "The path-filter check has no discriminating fixture in the tree as it stands: every declared input already lives under one prefix, so it can only be shown to discriminate by injection, which J4 does."
+      ],
+      "carry_forward_bullets": [
+        "GitHub disables scheduled workflows on repositories with no activity for 60 days. If this repo goes quiet the weekly replay stops, and the stopping is silent — the same shape as R583, one level up. Nothing here can see that from inside the repo.",
+        "The weekly cadence remains a guess, not a measurement: a yanked dependency has no known arrival rate here.",
+        "The gates read the workflow, not GitHub's schema. A file that parses and satisfies all three could still be rejected by GitHub for a key it does not recognise; only a real run settles that, and this workflow has not had one."
+      ],
+      "publishable_decision_summary": "The carry was a cost judgement wearing a note, and the gate it deferred had a hollow job inside it",
+      "publishable_changes_bullets": [
+        "Paid the carry R886 left instead of carrying it. The reason given there — that pulling in a YAML parser for one assertion was a dependency decision worth making separately — was deferring a real defect on a cost judgement, which this repo's round discipline does not allow. The owner asked why it was left; there was no good answer.",
+        "Three gates over this repo's own workflows, in the same file as the declarations because one of them is a cross-check between the record and the CI config. `every_shipped_workflow_parses_and_declares_work`: every tracked workflow parses and declares at least one trigger and one job — R583 lost an unknown stretch of CI to a workflow that did not parse, and GitHub says so nowhere the author looks. `the_replay_workflow_still_replays`: the checkout takes full history, some step passes `--ignored`, and every `--test` target named anywhere in the job exists. `the_path_filter_covers_every_file_the_replay_reads`: every input, config, and declaration a replay reads is matched by the push trigger's path filter.",
+        "The gate is a parser, not a text match, and that is not a preference: the R886 workflow names `fetch-depth: 0` and `--ignored` in its own comments, so a substring check passes on prose while the job is hollow. `yaml-rust2` with `default-features = false` — 4 transitive crates, dev-dependency only, never in a shipped binary. Not `serde_yaml`, which is deprecated upstream; adopting a dead crate is the legacy-carry pattern this repo forbids.",
+        "The `paths:` matcher supports exactly the two pattern shapes this workflow uses and PANICS on any other. A matcher that quietly mis-read a pattern it did not understand would report coverage it had never checked, which is the same failure the gate exists to catch."
+      ],
+      "publishable_verification_bullets": [
+        "1342 green (+3), clippy -D warnings clean, fmt clean, validate-workspace clean.",
+        "Injections, self-reported. J2 (drop `-- --ignored`) reddened the replay gate alone — that is the vacuous-pass this round is really about: without it the job runs the cheap tests twice, goes green, and replays nothing. J3 (`fetch-depth: 1`) reddened it alone. J4 (narrow the filter to `claudedocs/phase1-2d-*/**`) reddened the coverage gate alone, naming the uncovered files.",
+        "J1 (a tab-indented broken block) reddened THREE — every test that loads this file. Correct and reported as three: an unparseable workflow is unreadable to all of its readers, not one.",
+        "J5 was MIS-AIMED and the green was mine, not the gate's: I renamed the test target in the first of the two steps that name it, and the assertion only read the step carrying `--ignored`. So the check was reading one of the two places a rename can land. Generalised it to every `--test` target in the job, with a non-vacuity count, and re-ran BOTH placements — each reddens now.",
+        "The path-filter check has no discriminating fixture in the tree as it stands: every declared input already lives under one prefix, so it can only be shown to discriminate by injection, which J4 does."
+      ],
+      "publishable_carry_forward_bullets": [
+        "GitHub disables scheduled workflows on repositories with no activity for 60 days. If this repo goes quiet the weekly replay stops, and the stopping is silent — the same shape as R583, one level up. Nothing here can see that from inside the repo.",
+        "The weekly cadence remains a guess, not a measurement: a yanked dependency has no known arrival rate here.",
+        "The gates read the workflow, not GitHub's schema. A file that parses and satisfies all three could still be rejected by GitHub for a key it does not recognise; only a real run settles that, and this workflow has not had one."
+      ]
     }
   },
   "inventory_entries": {},

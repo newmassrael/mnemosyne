@@ -28,6 +28,10 @@ name: evidence-replay
 #
 # R583 is the reason the YAML shape matters here: this repo has already shipped
 # a malformed workflow that made CI silently non-running for an unknown stretch.
+# R887 gated that class rather than leaving it as a note: this file is parsed on
+# every `cargo test`, and the gate fails if the history depth, the `--ignored`
+# flag, a named test target, or the path filter's coverage of the replay's own
+# inputs ever stops being what this job needs.
 
 on:
   push:

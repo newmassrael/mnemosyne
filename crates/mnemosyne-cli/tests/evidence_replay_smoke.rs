@@ -1046,3 +1046,226 @@ fn every_replay_rebuilds_the_store_its_record_says_it_does() {
         "{ran} replays reproduced their declared digest, {blocked_confirmed} blocked as declared"
     );
 }
+
+// ---------------------------------------------------------------------------
+// Round 887 — the workflow that runs all of the above is itself unwatched.
+//
+// R886 put the replay on GitHub and left this as a carry, on the grounds that
+// pulling in a YAML parser for one assertion was a dependency decision worth
+// making deliberately. That was deferring a real defect on a cost judgement,
+// which is the one thing this repo's round discipline does not allow, and the
+// defect is worse than "the file might not parse":
+//
+//   - R583 lost an unknown stretch of CI to a workflow that did not parse.
+//     GitHub does not run it and does not say so anywhere the author looks.
+//   - If `-- --ignored` is ever dropped from the replay step, the job runs the
+//     cheap gates twice, goes GREEN, and replays nothing. A vacuous pass, in
+//     the workflow built to stop evidence from rotting unnoticed.
+//   - If a future kit is tracked outside `claudedocs/phase1-*`, the push
+//     trigger's path filter silently stops covering it. Nothing else would
+//     notice: the replay would still pass, just never run on the change.
+//
+// Substring matching cannot answer any of these — the R886 workflow names
+// `fetch-depth: 0` in its own comments, so a text check passes on prose. Hence
+// a parser, and hence this living beside the declarations: the path-filter
+// check is a cross-check between the record and the CI config, and it needs
+// both.
+
+use yaml_rust2::{Yaml, YamlLoader};
+
+const REPLAY_WORKFLOW: &str = ".github/workflows/evidence-replay.yml";
+
+fn workflow_files() -> Vec<String> {
+    let mut out: Vec<String> = git(&["ls-files", ".github/workflows"])
+        .lines()
+        .map(str::to_string)
+        .collect();
+    out.sort();
+    out
+}
+
+fn load_workflow(path: &str) -> Yaml {
+    let raw = std::fs::read_to_string(repo_root().join(path)).expect("read workflow");
+    let docs = YamlLoader::load_from_str(&raw).unwrap_or_else(|e| {
+        panic!("{path} is not parseable YAML — GitHub would silently not run it: {e}")
+    });
+    assert_eq!(docs.len(), 1, "{path}: expected exactly one YAML document");
+    docs.into_iter().next().expect("one document")
+}
+
+/// A workflow's trigger block. YAML 1.1 reads a bare `on` as the boolean true
+/// and YAML 1.2 as the string, so ask for both rather than assume which this
+/// parser is.
+fn trigger_block(doc: &Yaml) -> Option<&Yaml> {
+    if !matches!(doc["on"], Yaml::BadValue) {
+        return Some(&doc["on"]);
+    }
+    doc.as_hash().and_then(|h| h.get(&Yaml::Boolean(true)))
+}
+
+/// Every workflow this repo ships parses, and declares at least one trigger and
+/// one job. An unparseable workflow is not a loud failure anywhere — it is an
+/// absence, which is why it went unnoticed once already.
+#[test]
+fn every_shipped_workflow_parses_and_declares_work() {
+    let files = workflow_files();
+    assert!(!files.is_empty(), "no workflows found — nothing asserted");
+    for path in &files {
+        let doc = load_workflow(path);
+        // YAML 1.1 reads a bare `on` as the boolean true and YAML 1.2 as the
+        // string; accept whichever this parser produces rather than assuming.
+        let triggers = trigger_block(&doc)
+            .unwrap_or_else(|| panic!("{path}: declares no triggers, so it can never run"));
+        assert!(
+            triggers.as_hash().is_some_and(|h| !h.is_empty()),
+            "{path}: trigger block is empty"
+        );
+        assert!(
+            doc["jobs"].as_hash().is_some_and(|h| !h.is_empty()),
+            "{path}: declares no jobs"
+        );
+    }
+    println!("{} workflow(s) parse: {files:?}", files.len());
+}
+
+/// The replay workflow still does the thing it exists to do. Both halves are
+/// load-bearing and both were measured, not assumed: a `--depth 1` clone
+/// answers `git archive <pinned rev>` with exit 128, and without `--ignored`
+/// the replay test is filtered out and the job passes having replayed nothing.
+#[test]
+fn the_replay_workflow_still_replays() {
+    let doc = load_workflow(REPLAY_WORKFLOW);
+    let steps = doc["jobs"]["replay"]["steps"]
+        .as_vec()
+        .expect("the replay job declares steps");
+
+    let checkout = steps
+        .iter()
+        .find(|s| {
+            s["uses"]
+                .as_str()
+                .is_some_and(|u| u.starts_with("actions/checkout"))
+        })
+        .expect("the replay job checks the repo out");
+    assert_eq!(
+        checkout["with"]["fetch-depth"].as_i64(),
+        Some(0),
+        "the replay job must check out full history: it runs `git archive` on \
+         23 historical commits, and a shallow clone answers `not a valid \
+         object name` for every one of them"
+    );
+
+    let runs: Vec<&str> = steps.iter().filter_map(|s| s["run"].as_str()).collect();
+    let replay = runs
+        .iter()
+        .find(|r| r.contains("--ignored"))
+        .unwrap_or_else(|| {
+            panic!(
+                "no step runs the replay: without `-- --ignored` the heavy test \
+                 is filtered out and the job goes green having replayed \
+                 nothing. Steps: {runs:#?}"
+            )
+        });
+    // Every test target this job names must exist — not just the replay step's.
+    // A first cut checked only the step carrying `--ignored`, and an injection
+    // that renamed the target in the OTHER step passed clean: the gate was
+    // reading one of the two places a rename can land. R885's rename of this
+    // very file is the move that would have done it.
+    let mut named = 0usize;
+    for step in &runs {
+        let mut words = step.split_whitespace();
+        while let Some(w) = words.next() {
+            if w != "--test" {
+                continue;
+            }
+            let target = words.next().expect("`--test` names a target");
+            assert!(
+                repo_root()
+                    .join(format!("crates/mnemosyne-cli/tests/{target}.rs"))
+                    .is_file(),
+                "the workflow runs `--test {target}`, and there is no such test file"
+            );
+            named += 1;
+        }
+    }
+    assert!(
+        named > 0,
+        "no step names a test target — the check above ran on nothing"
+    );
+    println!("replay step: `{replay}`; {named} test target(s) named and present");
+}
+
+/// Match one GitHub `paths:` pattern. Deliberately supports only the two shapes
+/// this workflow uses, and panics on anything else: a matcher that quietly
+/// mis-read a pattern it did not understand would report coverage it had not
+/// checked, which is the failure this whole test is about.
+fn path_filter_matches(pattern: &str, path: &str) -> bool {
+    if let Some(prefix) = pattern.strip_suffix("/**") {
+        if let Some((head, tail)) = prefix.split_once('*') {
+            assert!(
+                !tail.contains('*') && !tail.contains('/'),
+                "unsupported paths pattern `{pattern}`"
+            );
+            return path.starts_with(head)
+                && path[head.len()..]
+                    .split_once('/')
+                    .is_some_and(|(seg, rest)| seg.ends_with(tail) && !rest.is_empty());
+        }
+        return path.starts_with(&format!("{prefix}/"));
+    }
+    assert!(
+        !pattern.contains('*'),
+        "unsupported paths pattern `{pattern}`"
+    );
+    pattern == path
+}
+
+/// Every file the replay actually reads is covered by the push trigger's path
+/// filter. A kit tracked outside the filter would still replay correctly and
+/// would simply stop being re-checked when it changed — an absence again, with
+/// nothing red to show for it.
+#[test]
+fn the_path_filter_covers_every_file_the_replay_reads() {
+    let doc = load_workflow(REPLAY_WORKFLOW);
+    let triggers = trigger_block(&doc).expect("the replay workflow declares triggers");
+    let patterns: Vec<String> = triggers["push"]["paths"]
+        .as_vec()
+        .expect("the push trigger is path-filtered")
+        .iter()
+        .map(|p| p.as_str().expect("pattern is a string").to_string())
+        .collect();
+    assert!(!patterns.is_empty(), "empty path filter");
+
+    let d = declarations();
+    let mut read: BTreeSet<String> = BTreeSet::new();
+    for r in &d.replays {
+        for s in &r.steps {
+            read.insert(normalize(&format!("{}/{}", r.unit, s.input)));
+        }
+        if let Some(cfg) = &r.config {
+            read.insert(normalize(&format!("{}/{}", r.unit, cfg)));
+        }
+    }
+    // The declarations themselves decide what runs, so they are read too.
+    read.extend(
+        tracked_evidence_files()
+            .into_iter()
+            .filter(|f| f.ends_with("/replay.json")),
+    );
+    assert!(!read.is_empty(), "nothing to cover — the check is vacuous");
+
+    let uncovered: Vec<&String> = read
+        .iter()
+        .filter(|p| !patterns.iter().any(|pat| path_filter_matches(pat, p)))
+        .collect();
+    assert!(
+        uncovered.is_empty(),
+        "{} file(s) the replay reads are outside the workflow's path filter, so \
+         changing them would not re-run it: {uncovered:#?}",
+        uncovered.len()
+    );
+    println!(
+        "{} files read by replays, all covered by {patterns:?}",
+        read.len()
+    );
+}

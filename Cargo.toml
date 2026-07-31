@@ -62,6 +62,18 @@ tracing = "0.1"
 
 sha2 = "0.11"
 
+# Round 887 — TEST-ONLY (dev-dependency of mnemosyne-cli, never in a shipped
+# binary): parse this repo's own GitHub workflows so a malformed or hollowed-out
+# one is caught at commit rather than by nobody. R583 already lost an unknown
+# stretch of CI to a workflow that did not parse — GitHub simply does not run
+# it, and says so nowhere the author looks. Substring matching cannot stand in:
+# the R886 workflow names `fetch-depth: 0` in its own comments, so a text check
+# passes on prose. `no-default-features` drops `encoding_rs`, leaving 4
+# transitive crates. yaml-rust2 rather than serde_yaml because serde_yaml is
+# deprecated upstream, and adopting a dead crate is the legacy-carry pattern
+# this repo forbids.
+yaml-rust2 = { version = "0.11", default-features = false }
+
 # Round 292 — regex backend for `query_term` read primitive
 # (literal+regex search over atomic-store fields, replacing external grep).
 # Used by mnemosyne-validate::query::query_term; not pulled into runtime
