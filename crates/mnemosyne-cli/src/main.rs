@@ -3080,6 +3080,27 @@ interval_unverifiable={} interval_severity={}",
                 interval_severity.map_or("off", Severity::as_str)
             );
         }
+        // Map-completeness NOTICE (Round 934). `map_invented_place` rides
+        // `severity`, and it is kind-gated: with neither leg of the adjacency
+        // predicate declaring a kind, the store cannot say which entities are
+        // places, so the class emits nothing and the run reads clean. Three of
+        // the six recorded blind corpora are in exactly that state — one author
+        // per arm, all three arms — and none of them was told. Naming the rule
+        // AND the predicate is the R931 line: a reader should not have to
+        // re-derive which declaration is missing. This NOTICES, never gates:
+        // requiring the kind would reject half the corpus over a question no
+        // author was asked, the R924 error this round exists to avoid repeating.
+        for u in &report.completeness_unaskable {
+            println!(
+                "  NOTICE: map completeness NOT EVALUATED for rule `{}` \u{2014} its adjacency \
+                 predicate `{}` declares neither `subject_kind` nor `object_entity_kind`, so \
+                 the store cannot be asked which entities are places and `map_invented_place` \
+                 emitted nothing. That is not the same as finding none. Declare a leg kind on \
+                 `{}` to turn the class on; edges, scopes and step licensing are unaffected \
+                 and were checked.",
+                u.rule, u.adjacency, u.adjacency
+            );
+        }
         // Road declaration-completeness NOTICE (Round 614). A branch that declares no
         // road segment rides its lineage's road on, so its ENDING is the trunk's. That
         // is correct for a world-line that diverges only in FACTS — and WRONG for a

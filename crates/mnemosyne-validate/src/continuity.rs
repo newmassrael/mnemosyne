@@ -2212,6 +2212,32 @@ pub struct ContinuityReport {
     /// Round 924 — `None` = NO INTERVAL RULE was declared. See
     /// [`Self::unchained_unreachable_pairs`].
     pub interval_unverifiable: Option<usize>,
+    /// Round 934 — the transition rules whose `map_invented_place` completeness
+    /// class COULD NOT BE ASKED: their adjacency predicate declares neither
+    /// `subject_kind` nor `object_entity_kind`, so the store cannot say which
+    /// entities are places and the class emits nothing.
+    ///
+    /// This is [`Self::unchained_unreachable_pairs`]'s distinction applied to a
+    /// finding CLASS rather than a counter, and it matters more here because
+    /// `map_invented_place` rides `severity`: an unaskable class reads exactly
+    /// like a clean one. THREE OF THE SIX RECORDED BLIND CORPORA are in this
+    /// state — one author per arm, across all three arms — and every one of
+    /// those runs reported `violations: 0` with the class never evaluated.
+    ///
+    /// NOT a violation. Requiring the declaration would reject half the corpus
+    /// on a question no author was asked, which is the R924 error; the contract
+    /// says a gate that evaluated nothing must never read like a gate that
+    /// passed, and this is the field that lets it keep its word.
+    pub completeness_unaskable: Vec<UnaskableCompleteness>,
+}
+
+/// One transition rule whose completeness class went unevaluated (Round 934).
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct UnaskableCompleteness {
+    /// The rule that declares the map.
+    pub rule: String,
+    /// Its adjacency predicate — the one that declares no leg kind.
+    pub adjacency: String,
 }
 
 /// One world's membership view — a thin alias over
@@ -4974,6 +5000,33 @@ fn judge_steps<'a>(
 /// place-kind entity off every scope, kind-gated), MapContainedOffMap (a contained
 /// thing that is neither a node nor a container, KIND-INDEPENDENT — R713 F1).
 /// Each finding deduped per identity across points within a (frame, world).
+/// THE resolver for the entity kinds a transition map treats as its NODES —
+/// the union of the adjacency predicate's two declared legs (R701's
+/// `subject_kind` / `object_entity_kind`), so core never hardcodes "place"
+/// (ARCHITECTURE invariant 4).
+///
+/// Round 934 — ONE reader, because there were two. `scan_spatial_map` took the
+/// first declared leg to gate the reject-severity `map_invented_place`, and the
+/// map-view builder the authoring frontier reads took the union; a predicate
+/// declaring `subject_kind: place` and `object_entity_kind: landmark` therefore
+/// had the ADVISORY surface policing more than the GATE did. Nothing on record
+/// declares two different kinds — all three kinded corpora say `place` on both
+/// legs — so this is verdict-neutral on every authored store, and the
+/// discriminating input has to be constructed
+/// ([`both_declared_legs_are_read_not_only_the_first`]).
+///
+/// An EMPTY set is the map's "unaskable" state: the store cannot be asked which
+/// entities are places, so completeness is not inert-by-accident but
+/// unanswerable, and both readers must say so rather than report zero.
+fn map_node_kinds(store: &AtomicStore, adjacency: &str) -> BTreeSet<mnemosyne_core::EntityKindId> {
+    let mut kinds = BTreeSet::new();
+    if let Some(decl) = mnemosyne_atomic::resolve_predicate(store, adjacency) {
+        kinds.extend(decl.subject_kind.iter().cloned());
+        kinds.extend(decl.object_entity_kind.iter().cloned());
+    }
+    kinds
+}
+
 #[allow(clippy::too_many_arguments)]
 fn scan_spatial_map(
     rule: &NarrativeRule,
@@ -4987,12 +5040,28 @@ fn scan_spatial_map(
     successors: &BTreeMap<&mnemosyne_core::FactId, Vec<(&mnemosyne_core::FactId, &NarrativeFact)>>,
     report: &mut ContinuityReport,
 ) {
-    // The place kind (R701): core never hardcodes "place" (invariant 4). Read
-    // either leg (R699 half-enforced trap). Inert (completeness off) when neither.
-    let place_kind = store
-        .predicates
-        .get(&adjacency.into())
-        .and_then(|p| p.subject_kind.as_ref().or(p.object_entity_kind.as_ref()));
+    // The place kinds (R701): core never hardcodes "place" (invariant 4).
+    // Round 934 — ONE RESOLVER, shared with the map view the frontier reads.
+    // This site used to take `subject_kind.or(object_entity_kind)` — the FIRST
+    // declared leg — while the view builder took the UNION of both, so a
+    // predicate declaring two different kinds gave the reject-severity
+    // completeness check a NARROWER place set than the advisory report beside
+    // it. Two readers of one relation with different invariants is the R919
+    // mirror defect, and this pair had the strict one on the ADVISORY side: a
+    // reader who ran the frontier saw places the gate had passed.
+    let place_kinds = map_node_kinds(store, adjacency);
+    // Round 934 — an empty set means the completeness class CANNOT BE ASKED,
+    // not that it found nothing. `map_invented_place` rides `severity`, so a
+    // silent zero here is a reject-severity class that never ran, which is the
+    // R924 counter defect one level up. Recorded so the gate can say it: half
+    // of every blind authoring on record (three of six corpora) declares no leg
+    // kind at all, and every one of those runs read as clean.
+    if place_kinds.is_empty() {
+        report.completeness_unaskable.push(UnaskableCompleteness {
+            rule: rule.id.clone(),
+            adjacency: adjacency.to_string(),
+        });
+    }
     // Round 922 — the hygiene findings are deduped ONCE PER RULE, not per
     // coordinate: a self-loop fact and a both-directions pair are defects of the
     // AUTHORED SET, so their wire stays exactly one finding each, as it was when
@@ -5249,24 +5318,30 @@ fn scan_spatial_map(
             // subkind node the completeness scan would then not police, the
             // R699 half-enforced-invariant trap). Flat registry ⇒ subtree =
             // singleton ⇒ the exact-match this replaced.
-            if let Some(pk) = place_kind {
-                for (eid, ent) in &store.entities {
-                    if mnemosyne_atomic::is_kind_or_subkind(store, Some(&ent.kind), pk)
-                        && !union_nodes.contains(eid.as_str())
-                        && !union_containers.contains(eid.as_str())
-                    {
-                        report
-                            .violations
-                            .push(ContinuityViolation::MapInventedPlace {
-                                rule: rule.id.clone(),
-                                predicate: adjacency.to_string(),
-                                place_kind: pk.to_string(),
-                                place: eid.to_string(),
-                                frame: frame.to_string(),
-                                branch: world.to_string(),
-                            });
-                    }
+            // Round 934 — every declared leg, not just the first. `place_kind`
+            // names the kind this entity was actually judged against, so a
+            // predicate declaring two kinds reports which one matched rather
+            // than a set the author must re-derive.
+            for (eid, ent) in &store.entities {
+                if union_nodes.contains(eid.as_str()) || union_containers.contains(eid.as_str()) {
+                    continue;
                 }
+                let Some(pk) = place_kinds
+                    .iter()
+                    .find(|pk| mnemosyne_atomic::is_kind_or_subkind(store, Some(&ent.kind), pk))
+                else {
+                    continue;
+                };
+                report
+                    .violations
+                    .push(ContinuityViolation::MapInventedPlace {
+                        rule: rule.id.clone(),
+                        predicate: adjacency.to_string(),
+                        place_kind: pk.to_string(),
+                        place: eid.to_string(),
+                        frame: frame.to_string(),
+                        branch: world.to_string(),
+                    });
             }
             // MapContainedOffMap (KIND-INDEPENDENT, R713 F1): a contained thing must
             // be a node OR a container at SOME point (union) — else the region holds
@@ -6907,12 +6982,10 @@ pub fn map_frontier(
     };
     for view in &map.maps {
         // The predicate resolves by construction — `transition_map` ran
-        // `check_rule_predicates` before building this view.
-        let mut place_kinds: BTreeSet<mnemosyne_core::EntityKindId> = BTreeSet::new();
-        if let Some(decl) = mnemosyne_atomic::resolve_predicate(store, &view.adjacency) {
-            place_kinds.extend(decl.subject_kind.iter().cloned());
-            place_kinds.extend(decl.object_entity_kind.iter().cloned());
-        }
+        // `check_rule_predicates` before building this view. Round 934: the
+        // union of both legs is no longer spelled out here, it is
+        // [`map_node_kinds`], which the gate's completeness check reads too.
+        let place_kinds = map_node_kinds(store, &view.adjacency);
         let nodes: BTreeSet<&str> = view.nodes.iter().map(String::as_str).collect();
         // With no kind-scoped leg the registered place set is unknowable, so
         // this stays empty and `place_kinds` (empty) says why.
@@ -12074,6 +12147,147 @@ mod tests {
                 .subject_kind = Some(sk.into());
         }
         store
+    }
+
+    /// Round 934 — the completeness check reads BOTH declared legs, not just the
+    /// first. Until this round `scan_spatial_map` took
+    /// `subject_kind.or(object_entity_kind)` while the map view the authoring
+    /// frontier reads took the UNION, so a predicate declaring two different
+    /// kinds gave the reject-severity gate a NARROWER place set than the
+    /// advisory report beside it — two readers of one relation, with the strict
+    /// one on the advisory side.
+    ///
+    /// The discriminating input is a predicate whose legs DISAGREE, which no
+    /// recorded corpus contains (all three kinded ones say `place` twice), so
+    /// the fixture has to build it and the test asserts it built it: without
+    /// `sk != ok` the object-leg assertion below passes under the old
+    /// single-leg code and proves nothing (the R854 class).
+    #[test]
+    fn both_declared_legs_are_read_not_only_the_first() {
+        let order = chain(&["ch-1", "ch-2", "ch-3", "ch-4"]);
+        let rule = [transition_rule("roads", "pred-at", "adjacent", true, None)];
+        let edges = vec![map_edge("ent-a", "ent-b"), map_edge("ent-b", "ent-c")];
+        let mut store = map_g2_store(
+            edges,
+            &["ent-a", "ent-b", "ent-c"],
+            &["ent-ghost"],
+            Some("place"),
+        );
+        // The second leg declares a DIFFERENT kind, and an entity of that kind
+        // sits off the map exactly as `ent-ghost` does.
+        store
+            .entity_kinds
+            .insert("landmark".into(), mnemosyne_core::EntityKind::default());
+        store
+            .predicates
+            .get_mut(&"adjacent".into())
+            .expect("adjacent predicate present")
+            .object_entity_kind = Some("landmark".into());
+        store.entities.insert(
+            "ent-obelisk".into(),
+            mnemosyne_core::Entity {
+                kind: "landmark".into(),
+                description: String::new(),
+            },
+        );
+
+        // THE DISCRIMINATING INPUT EXISTS: the two legs must name different
+        // kinds, else this fixture cannot tell the union from the first leg.
+        let decl = store
+            .predicates
+            .get(&"adjacent".into())
+            .expect("adjacent predicate present");
+        assert_ne!(
+            decl.subject_kind, decl.object_entity_kind,
+            "the fixture must declare two DIFFERENT leg kinds or it cannot \
+             discriminate the union from the first leg"
+        );
+
+        let report = scan_continuity(&store, &order, &rule).unwrap();
+        let mut invented: Vec<String> = report
+            .violations
+            .iter()
+            .filter_map(|x| match x {
+                ContinuityViolation::MapInventedPlace { place, .. } => Some(place.clone()),
+                _ => None,
+            })
+            .collect();
+        invented.sort();
+        // `ent-ghost` is the first leg's kind and was always caught;
+        // `ent-obelisk` is the SECOND leg's, and is what this round adds.
+        assert_eq!(
+            invented,
+            vec!["ent-ghost".to_string(), "ent-obelisk".to_string()],
+            "both declared legs name the map's node kinds: {:?}",
+            report.violations
+        );
+        // The finding names the kind THIS entity was judged against, not a set
+        // the author has to re-derive.
+        let obelisk_kind = report.violations.iter().find_map(|x| match x {
+            ContinuityViolation::MapInventedPlace {
+                place, place_kind, ..
+            } if place == "ent-obelisk" => Some(place_kind.clone()),
+            _ => None,
+        });
+        assert_eq!(obelisk_kind, Some("landmark".to_string()));
+        // A map that CAN be asked is not reported as unaskable.
+        assert!(report.completeness_unaskable.is_empty());
+    }
+
+    /// Round 934 — a completeness class that could not be asked is NAMED, and a
+    /// class that ran is not. `map_invented_place` rides `severity` and is
+    /// kind-gated, so with neither leg declared it emits nothing and the run
+    /// reads exactly like a clean one; three of the six recorded blind corpora
+    /// are in that state and none was told. Both arms are here because the
+    /// naming is only worth anything if the silence is also asserted: a field
+    /// that is always populated says nothing.
+    #[test]
+    fn an_unaskable_completeness_class_is_named_rather_than_read_as_clean() {
+        let order = chain(&["ch-1", "ch-2", "ch-3", "ch-4"]);
+        let rule = [transition_rule("roads", "pred-at", "adjacent", true, None)];
+        let edges = || vec![map_edge("ent-a", "ent-b"), map_edge("ent-b", "ent-c")];
+
+        // UNASKABLE: neither leg declares a kind. `ent-ghost` is off the map and
+        // would be an invented place if the store could be asked what a place is.
+        let store = map_g2_store(edges(), &["ent-a", "ent-b", "ent-c"], &["ent-ghost"], None);
+        let report = scan_continuity(&store, &order, &rule).unwrap();
+        assert!(
+            !report
+                .violations
+                .iter()
+                .any(|v| matches!(v, ContinuityViolation::MapInventedPlace { .. })),
+            "kind-gated: the class cannot fire without a declared kind"
+        );
+        assert_eq!(
+            report
+                .completeness_unaskable
+                .iter()
+                .map(|u| (u.rule.as_str(), u.adjacency.as_str()))
+                .collect::<Vec<_>>(),
+            vec![("roads", "adjacent")],
+            "the rule and the predicate are both named, so the author is not \
+             left to re-derive which declaration is missing"
+        );
+
+        // ASKABLE, same store shape: the class runs and the silence is gone.
+        let store = map_g2_store(
+            edges(),
+            &["ent-a", "ent-b", "ent-c"],
+            &["ent-ghost"],
+            Some("place"),
+        );
+        let report = scan_continuity(&store, &order, &rule).unwrap();
+        assert!(
+            report
+                .violations
+                .iter()
+                .any(|v| matches!(v, ContinuityViolation::MapInventedPlace { .. })),
+            "the SAME off-map place is found once the store can be asked"
+        );
+        assert!(
+            report.completeness_unaskable.is_empty(),
+            "a class that ran must not be reported as unaskable"
+        );
     }
 
     /// Round 703 (G2 check 1, completeness) — every `place`-kind entity must be a

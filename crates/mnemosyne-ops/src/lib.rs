@@ -448,6 +448,12 @@ pub struct ContinuityScanReport {
     /// about what a step IS. Always populated (R663: a knob decides whether an
     /// axis fails, never whether it is measured).
     pub step_judgements: Vec<mnemosyne_validate::continuity::StepJudgement>,
+    /// Round 934 — transition rules whose `map_invented_place` completeness
+    /// class could not be asked: their adjacency predicate declares no leg
+    /// kind, so the store cannot say which entities are places. Not a
+    /// violation; surfaced so a class that never ran does not read as a class
+    /// that found nothing.
+    pub completeness_unaskable: Vec<mnemosyne_validate::continuity::UnaskableCompleteness>,
     /// Interval-rule resolutions that could not be evaluated (operand absent
     /// on the right/bound leg, non-numeric, or ambiguous) — surfaced, never
     /// gated (Round 489, the R485 `unverifiable` class).
@@ -515,6 +521,7 @@ pub fn continuity_scan(
         unchained_state_pairs: report.unchained_state_pairs,
         unchained_unreachable_pairs: report.unchained_unreachable_pairs,
         step_judgements: report.step_judgements.clone(),
+        completeness_unaskable: report.completeness_unaskable.clone(),
         interval_unverifiable: report.interval_unverifiable,
         violation_count: report.violations.len(),
         interval_violation_count,

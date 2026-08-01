@@ -441,7 +441,11 @@ pub fn describe_schema() -> SchemaContract {
              they PARTITION the map into SCOPES — an adjacency edge may only join SIBLINGS (same \
              direct container), a non-sibling edge is `adjacency_cross_scope`, and a container \
              LEAVES its own scope by being a NODE in its parent's (a portal). Also turns on the \
-             per-scope completeness/leak checks. Round 913/925, the STEP side of the same \
+             per-scope completeness/leak checks — EXCEPT `map_invented_place`, which additionally \
+             needs the ADJACENCY predicate to declare a leg kind, since only that says what a \
+             place IS (Round 934; declare neither leg and the class is unaskable and emits \
+             nothing, which the gate names rather than passing over). Round 913/925, the STEP \
+             side of the same \
              declaration, which the edge rule above does not imply: a succession between a \
              container and a place inside it is a crossing and needs NO EDGE AT ALL, and a CHAIN \
              of crossings is ONE move judged between its outer endpoints — so routing a forbidden \
@@ -1423,7 +1427,22 @@ fn rule_class_specs() -> Vec<RuleClassSpec> {
                             place-kind entity off every scope at every point is `map_invented_\
                             place`, a contained thing that is never a node nor itself a container \
                             is `map_contained_off_map`, and an undirected scope whose sub-graph is \
-                            disconnected at every point is `map_disconnected`. A container-less map \
+                            disconnected at every point is `map_disconnected`. \
+                            ROUND 934 — TWO OF THOSE THREE ARE TURNED ON BY THIS DECLARATION; \
+                            `map_invented_place` NEEDS A SECOND ONE. It asks whether every PLACE \
+                            is on the map, and only your ADJACENCY PREDICATE can say what a place \
+                            is: the kind comes from that predicate's `subject_kind` / \
+                            `object_entity_kind` (either leg, both read), never from a hardcoded \
+                            \"place\". Declare neither and the store cannot be asked which \
+                            entities are places, so the class emits nothing — the run then reads \
+                            exactly like one where every place was on the map. It is NOT a \
+                            violation to leave the kinds off, and nothing here rejects you for \
+                            it; `validate-continuity` NAMES the rule and predicate whose \
+                            completeness went unevaluated, because a gate that evaluated nothing \
+                            must never read like a gate that passed. This is measured, not \
+                            supposed: HALF OF EVERY BLIND AUTHORING ON RECORD — three of six \
+                            corpora, one author per arm across three arms — declared no leg kind \
+                            at all and was never told. A container-less map \
                             degenerates to ONE root scope (the flat Round 702/703 behaviour). \
                             KNOWN LIMIT: two mutually-unreachable TOP-LEVEL containers produce no \
                             finding. Omit for a flat map. \
@@ -2829,6 +2848,32 @@ mod tests {
                 );
             }
         }
+        // Round 934 — the contract used to attribute ALL THREE completeness
+        // findings to wiring `containment`, and that misattribution is worse
+        // than silence: every one of the six recorded authors DID wire
+        // containment, so the three who declared no leg kind had every reason
+        // to believe completeness was on. Pin the CLAIM, not a word: a
+        // rewording that drops which declaration turns `map_invented_place` on
+        // must fail here. The phrase names the adjacency predicate because that
+        // is the half the old sentence got wrong — `containment` is right there
+        // in the same paragraph and would satisfy any looser pin (the R929
+        // trap, where a claim pin rode a substring its own neighbour supplied).
+        assert!(
+            containment.contains("only your ADJACENCY PREDICATE can say what a place"),
+            "the contract must say WHICH declaration turns `map_invented_place` on; \
+             attributing it to `containment` is what three of six blind authors read"
+        );
+        assert!(
+            containment.contains("the class emits nothing"),
+            "and it must say what happens when neither leg is declared, or an author \
+             reads an unaskable class as a clean one"
+        );
+        assert!(
+            c.narrative_rules_wire
+                .contains("EXCEPT `map_invented_place`"),
+            "the wire states the same exception, or an author who reads only it \
+             concludes containment alone turns every completeness check on"
+        );
         // The rules-file wire carries the same correction (the same fact is
         // described in two places; they may not disagree).
         assert!(

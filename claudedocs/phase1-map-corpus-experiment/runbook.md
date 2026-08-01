@@ -49,15 +49,39 @@ MN="$(git rev-parse --show-toplevel)/scripts/mn"
 
 ```
 cd "$(git rev-parse --show-toplevel)/claudedocs/phase1-map-corpus-experiment"
-mkdir -p v1/run/stage-a v1/run/stage-b
+mkdir -p vN/run/stage-a vN/run/stage-b
 # seed each stage dir with a store + config, exactly as the dnd kit's rebuild does
-for d in v1/run/stage-a v1/run/stage-b; do
+for d in vN/run/stage-a vN/run/stage-b; do
   mkdir -p $d/docs/.atomic
-  printf '[workspace]\n[continuity]\ncanon_order_path = "order.json"\nrules_path = "narrative-rules.json"\n' > $d/mnemosyne.toml
+  printf '[workspace]\n[continuity]\ncanon_order_path = "order.json"\n' > $d/mnemosyne.toml
   printf '{"schema_version":23,"sections":{},"changelog_entries":{}}' > $d/docs/.atomic/workspace.atomic.json
+  "$MN" describe-schema > $d/contract.txt
 done
-"$MN" describe-schema > v1/run/contract.txt
 ```
+
+**The seed does NOT name a rules file, and that is a fix, not an omission**
+(Round 934). Arms A, B and C all seeded `rules_path = "narrative-rules.json"`
+while forbidding the author to read the toml, so the filename they invented was
+a coin flip: arm A's two authors happened to match, arm B's two both wrote
+`rules.json`, arm C's split. Six authors, three mismatches. In arm C it did real
+damage — stage A's **sealed** self-report states that the toml pins `rules.json`,
+which is false, and a sealed report is the one artifact this protocol declares
+unrevisable. Every arm already passed `--rules` explicitly at read time, so
+naming a file in the seed bought nothing and cost that.
+
+So: **the orchestrator passes `--rules <whatever the author actually wrote>` on
+every gate and report call** (step 5). The canon order stays pinned because all
+six authors wrote `order.json`, the name the brief itself gives them.
+
+A larger alternative, deliberately NOT taken here and left for whoever designs
+the next arm: let the author write `mnemosyne.toml` themselves. The contract
+tells them how to wire it, so their claim about the pin would be true by
+construction and the wiring would become a measured capability instead of a
+trap. That changes more than one variable, which is why this round did the
+smaller correct thing instead.
+
+`contract.txt` is written **into each stage dir** because the firewall confines
+the author to that directory.
 
 `v1/run/*/docs/.atomic/*.json` is scratch (gitignored). The manifests, the
 self-reports, the frozen first-submission logs, and the report are tracked
@@ -120,11 +144,20 @@ iterate-to-green.
 In the Stage B directory, capture each in full:
 
 ```
-"$MN" report-transition-map
-"$MN" report-authoring-frontier
-"$MN" validate-continuity
+"$MN" report-transition-map        --rules <the rules file the author wrote>
+"$MN" report-authoring-frontier    --rules <the rules file the author wrote>
+"$MN" validate-continuity          --rules <the rules file the author wrote>
 "$MN" report-playable-world --telling <the telling, if one exists>
 ```
+
+`--rules` is not optional here: the seed pins no rules file (step 2), and
+`report-authoring-frontier` without it fails loud on the missing path rather
+than reporting a map with no rules.
+
+Read the **whole** of `validate-continuity`, not just `violations:`. Round 934
+added a NOTICE for a completeness class that could not be asked, and three of
+the six corpora on record trip it — a store can read `violations: 0` with a
+reject-severity class never evaluated.
 
 Then re-run the Round 896 sweep with this store as a THIRD arm (the script form
 is in that round's verification) and record which verbs now differ that were
