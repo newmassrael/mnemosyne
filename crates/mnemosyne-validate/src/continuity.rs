@@ -3807,6 +3807,7 @@ pub fn scan_continuity(
                 // lift is the identity in the root scope and the verdicts are
                 // bit-for-bit the pre-R913 ones.
                 let flat_hierarchy: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
+                let mut snapshot_memo: SnapshotMemo<'_> = BTreeMap::new();
                 for (sid, s) in &typed {
                     let st = s.typed.as_ref().unwrap();
                     let Some(pid) = &s.supersedes_in_frame else {
@@ -3823,12 +3824,24 @@ pub fn scan_continuity(
                         continue;
                     }
                     let (from, to) = (typed_object_key(&pt.object), typed_object_key(&st.object));
-                    // The hierarchies this step is judged under: one per world the
-                    // successor is VISIBLE in, read at its own canon point. A step
-                    // visible in no world (a fact on a pruned line) keeps the
-                    // pre-R913 world-agnostic coverage via the empty hierarchy
-                    // below — dropping it would silently stop checking it.
-                    let mut hierarchies: StepHierarchies<'_> = Vec::new();
+                    // The worlds this step is judged in: those the successor is
+                    // VISIBLE in, each against that world's hierarchy at the
+                    // step's own canon point.
+                    //
+                    // Round 915 — the empty-`judged` fallback below is UNREACHABLE
+                    // as far as anything can construct, and it is kept only so the
+                    // loop has no silent hole: a fact is `In` in its own branch's
+                    // world (the departure bounds membership carries constrain
+                    // INHERITED facts, not a fact on the branch itself), and a fact
+                    // on an unregistered branch is rejected by the R440 boundary
+                    // before the scan. R914 called this path "a fact on a pruned
+                    // line", which was a guess and wrong; two attempts to fire it
+                    // (a no-order store, a fork with an incomparable start) both
+                    // stayed visible. What those attempts DO hit is pinned by
+                    // `a_hierarchy_the_order_cannot_place_judges_the_step_flat`:
+                    // the snapshot comes back empty and the lift is the identity,
+                    // which reaches the pre-R913 verdict by a different route.
+                    let mut judged: Vec<Option<&mnemosyne_core::BranchId>> = Vec::new();
                     if let Some(cont) = containment {
                         for world in &worlds {
                             let ctx = WorldCtx {
@@ -3840,18 +3853,31 @@ pub fn scan_continuity(
                             if ctx.visibility(s) != Vis::In {
                                 continue;
                             }
-                            hierarchies.push((
-                                Some(world),
-                                containment_snapshot(&ctx, store, cont, &s.frame, &s.canon_from),
-                            ));
+                            // Round 915 — one containment read per (world, frame,
+                            // point), shared by every step judged there. The
+                            // per-step read this replaces was redundant BY
+                            // CONSTRUCTION — the same three keys can only give the
+                            // same snapshot — so this removes duplicated work
+                            // rather than tuning a measured hot spot, and no
+                            // wall-clock claim is made for it.
+                            snapshot_memo
+                                .entry((world, &s.frame, &s.canon_from))
+                                .or_insert_with(|| {
+                                    containment_snapshot(&ctx, store, cont, &s.frame, &s.canon_from)
+                                });
+                            judged.push(Some(world));
                         }
                     }
-                    if hierarchies.is_empty() {
-                        hierarchies.push((None, flat_hierarchy.clone()));
+                    if judged.is_empty() {
+                        judged.push(None);
                     }
                     // One finding per step: the FIRST world whose hierarchy forbids
                     // it. A step legal in every world it is visible in is legal.
-                    for (world, snap) in &hierarchies {
+                    for world in judged {
+                        let snap = match world {
+                            Some(w) => &snapshot_memo[&(w, &s.frame, &s.canon_from)],
+                            None => &flat_hierarchy,
+                        };
                         let parent = snapshot_parent(snap);
                         let StepShape::Lifted {
                             scope,
@@ -4240,14 +4266,18 @@ fn containment_chain<'a>(parent: &BTreeMap<&'a str, &'a str>, place: &'a str) ->
     chain
 }
 
-/// Round 913 — the hierarchies ONE step is judged under: for every world the
-/// successor is visible in, that world's containment snapshot at the step's own
-/// canon point. A `None` world means the rule declares no `containment`, so
-/// there is no hierarchy and the verdict is world-agnostic (the pre-R913 shape).
-type StepHierarchies<'a> = Vec<(
-    Option<&'a mnemosyne_core::BranchId>,
+/// Round 915 — containment snapshots memoized by (world, frame, canon point):
+/// the three keys that determine one. Every step judged at the same coordinates
+/// reads the same snapshot, so computing it per step was duplicated work by
+/// construction.
+type SnapshotMemo<'a> = BTreeMap<
+    (
+        &'a mnemosyne_core::BranchId,
+        &'a mnemosyne_core::FrameId,
+        &'a mnemosyne_core::SectionId,
+    ),
     BTreeMap<String, BTreeSet<String>>,
-)>;
+>;
 
 /// Round 913 — how a declared step relates to the place hierarchy.
 enum StepShape<'a> {
@@ -4257,6 +4287,25 @@ enum StepShape<'a> {
     /// is a move through the hierarchy rather than a walk between siblings — and
     /// no edge can express it, an edge to your own contents being
     /// `adjacency_cross_scope`.
+    ///
+    /// Round 915 — R914 left "is this SOUND with no edge at all?" open, awaiting a
+    /// review, because no corpus in this tree has ever declared an exit and it
+    /// therefore could not be measured. Wrong instrument: this is a question about
+    /// what the model MEANS, and R714 and R716 already answer it. Being `at` a
+    /// container and `at` a place inside it are a COARSE and a FINE statement of
+    /// ONE position — that is exactly why R714 lets them co-hold — so moving
+    /// between them changes the GRAIN of the claim, not the position. No
+    /// parent-scope boundary is crossed, because the subject was already inside;
+    /// no sibling edge within the container is crossed, because the coarse
+    /// statement names no sibling. An edge requirement would demand the crossing
+    /// of something that is not crossed.
+    ///
+    /// What remains open is NOT soundness but GRANULARITY: may a subject land at
+    /// ANY interior place, or only at a declared entry? That is the choice R716
+    /// made when it put the container in its parent's scope as one node, and
+    /// narrowing it needs authored data nothing pulls yet (the R913 deferral, whose
+    /// pull test is a world where two doors into one container differ in
+    /// consequence).
     Hierarchy,
     /// Neither endpoint contains the other. Both lift to the two places that ARE
     /// siblings — the children of their deepest common container — and THAT pair
@@ -11570,6 +11619,84 @@ mod tests {
             vec!["adjacency_cross_scope", "rule_transition_invalid"],
             "a cross-scope edge is rejected AND may no longer license the step along it"
         );
+    }
+
+    /// Round 915 — a hierarchy the ORDER cannot place gives an empty hierarchy,
+    /// so the step is judged flat, and the finding still names the world it was
+    /// judged in.
+    ///
+    /// This is the correction of an R914 comment that claimed the step check's
+    /// "visible in no world" fallback was for a fact on a pruned line. It is not,
+    /// and I could not make that fallback fire at all: a fact is `In` in its OWN
+    /// branch's world (the departure bounds membership carries constrain
+    /// INHERITED facts, not a fact on the branch itself), and a fact on an
+    /// unregistered branch is rejected by the R440 boundary before the scan — so
+    /// every typed fact a scan sees is visible somewhere. Two constructions were
+    /// tried, a no-order store and a fork with an incomparable start, and BOTH
+    /// stayed visible; what is pinned here is what they actually do, which is the
+    /// near-miss an author with a partial order will really hit: `holds_at` cannot
+    /// place the `contains` fact, the snapshot comes back EMPTY, the lift
+    /// degenerates to the identity, and the verdict is the pre-R913 flat one.
+    #[test]
+    fn a_hierarchy_the_order_cannot_place_judges_the_step_flat() {
+        let rules = [transition_rule(
+            "roads",
+            "pred-at",
+            "adjacent",
+            true,
+            Some("contains"),
+        )];
+        let on_fork = |id: &str, place: &str, at: &str, sup: Option<&str>| {
+            let mut f = typed_fact(id, "gt", at, "p", "pred-at", holds(place));
+            f.branch = Some("route".to_string());
+            f.supersedes_in_frame = sup.map(|s| s.to_string());
+            f
+        };
+        let facts = vec![
+            contains_fact("quarter", "market"),
+            map_edge("gate", "quarter"),
+            on_fork("i1", "quarter", "ch-1", None),
+            on_fork("i2", "market", "ch-1", Some("i1")),
+        ];
+        // The fork departs at ch-2 and the order is empty, so ch-1 is
+        // incomparable to the departure bound: Unknown on `route`, Out on main.
+        let store = store_with_forks(facts, &[("route", MAIN_BRANCH, "ch-2")]);
+        let report = scan_continuity(&store, &CanonOrder::empty(), &rules).unwrap();
+        let transition: Vec<&ContinuityViolation> = report
+            .violations
+            .iter()
+            .filter(|v| matches!(v, ContinuityViolation::RuleTransitionInvalid { .. }))
+            .collect();
+        assert_eq!(
+            transition.len(),
+            1,
+            "a step no world places is still CHECKED, flat: {:?}",
+            report.violations
+        );
+        match transition[0] {
+            ContinuityViolation::RuleTransitionInvalid {
+                branch,
+                from,
+                to,
+                scope,
+                lifted_from,
+                lifted_to,
+                ..
+            } => {
+                assert!(
+                    branch.is_some(),
+                    "the step IS placed in a world — it is the hierarchy that is not"
+                );
+                assert_eq!((from.as_str(), to.as_str()), ("quarter", "market"));
+                assert_eq!(scope, "", "an empty hierarchy means the root scope");
+                assert_eq!(
+                    (lifted_from.as_str(), lifted_to.as_str()),
+                    ("quarter", "market"),
+                    "with no hierarchy the lift is the identity — the pre-R913 verdict"
+                );
+            }
+            other => panic!("expected a transition finding, got {other:?}"),
+        }
     }
 
     /// Round 909 — "a place spoken of but never reached" has exactly ONE encoding
