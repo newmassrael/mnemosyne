@@ -71,3 +71,7 @@ Cargo.lock.bak
 # the contract handed to each author is a byte-identical copy of
 # v1/run/contract.txt; track the one, not the copies.
 /claudedocs/phase1-map-corpus-experiment/v1/run/*/contract.txt
+!/claudedocs/phase1-disclosed-place-experiment/
+/claudedocs/phase1-disclosed-place-experiment/**/*.atomic.json
+/claudedocs/phase1-disclosed-place-experiment/**/*.playthrough.json
+/claudedocs/phase1-disclosed-place-experiment/*/run/*/contract.txt
