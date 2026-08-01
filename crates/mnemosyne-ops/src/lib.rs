@@ -433,6 +433,12 @@ pub struct ContinuityScanReport {
     /// Same-frame same-subject typed pairs no succession PATH connects —
     /// surfaced, never gated (Round 449; path not edge, Round 452).
     pub unchained_state_pairs: usize,
+    /// Round 916 — the subset of `unchained_state_pairs` that NO ROUTE joins in
+    /// the hierarchy-augmented map: the subject is asserted on both sides of a
+    /// gap no journey crosses, so no ellipsis could have covered it. Surfaced,
+    /// never gated; undirected rules only (a directed rule may be `alive ->
+    /// dead`, where unreachability is the design).
+    pub unchained_unreachable_pairs: usize,
     /// Interval-rule resolutions that could not be evaluated (operand absent
     /// on the right/bound leg, non-numeric, or ambiguous) — surfaced, never
     /// gated (Round 489, the R485 `unverifiable` class).
@@ -497,6 +503,7 @@ pub fn continuity_scan(
         undeclared_roads: report.undeclared_roads.clone(),
         rule_unordered_pairs: report.rule_unordered_pairs,
         unchained_state_pairs: report.unchained_state_pairs,
+        unchained_unreachable_pairs: report.unchained_unreachable_pairs,
         interval_unverifiable: report.interval_unverifiable,
         violation_count: report.violations.len(),
         interval_violation_count,

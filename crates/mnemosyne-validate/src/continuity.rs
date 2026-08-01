@@ -2118,6 +2118,21 @@ pub struct ContinuityReport {
     /// raw branch equality would silently miss fork-inherited pairs),
     /// deduplicated across worlds.
     pub unchained_state_pairs: usize,
+    /// Round 916 — the SUBSET of [`Self::unchained_state_pairs`] that no ROUTE
+    /// joins: the subject is asserted at two places with no path between them in
+    /// the hierarchy-augmented map, so there is no journey the telling could have
+    /// left untold. Surfaced, never gated, for the same reason as its parent — an
+    /// author's silence is not a contradiction — but named separately, because
+    /// this is the half R911 could only take on trust ("a corpus can claim a
+    /// subject entered a container it was never adjacent to, and pass").
+    ///
+    /// UNDIRECTED rules only: a directed transition rule may be `alive -> dead`,
+    /// where unreachability IS the design. R719's relaxation stands — two
+    /// mutually-unreachable top-level containers are a legal map — because what is
+    /// counted here is not the map's shape but a subject asserted on both sides of
+    /// it. A place the map does not hold at all is left to `map_invented_place` /
+    /// `map_contained_off_map` rather than counted twice.
+    pub unchained_unreachable_pairs: usize,
     /// Interval-rule operand resolutions (Round 489) that could not be
     /// evaluated: a rule applies to a subject (it has both operands) but an
     /// operand value is non-numeric, or an operand / a predicate-bound
@@ -3931,23 +3946,80 @@ pub fn scan_continuity(
                     .map(|(id, _)| (*id, succession_ancestors(facts, id)))
                     .collect();
                 let mut seen: BTreeSet<(&str, &str)> = BTreeSet::new();
+                // Round 916 — the subset of those pairs NO ROUTE joins, keyed the
+                // same way so the two counts cannot disagree about which pairs
+                // they are talking about.
+                let mut unreachable: BTreeSet<(&str, &str)> = BTreeSet::new();
+                // Keyed by owned (world, frame): the component map is derived per
+                // world-line and frame, and there are few of those, so the keys are
+                // owned rather than borrowed from the per-pair `ctx`.
+                let mut components: BTreeMap<(String, String), BTreeMap<String, usize>> =
+                    BTreeMap::new();
                 for_each_world_pair(
                     &worlds,
                     &lineages,
                     order,
                     &successors,
                     &typed,
-                    |_, aid, a, bid, b| {
-                        if a.typed.as_ref().unwrap().subject != b.typed.as_ref().unwrap().subject {
+                    |ctx, aid, a, bid, b| {
+                        let (ta, tb) = (a.typed.as_ref().unwrap(), b.typed.as_ref().unwrap());
+                        if ta.subject != tb.subject {
                             return;
                         }
                         if ancestors[aid].contains(bid) || ancestors[bid].contains(aid) {
                             return; // connected through the succession chain
                         }
                         seen.insert((aid.as_str(), bid.as_str()));
+                        // Round 916 — AND THE HALF R911 LEFT OPEN. An undeclared
+                        // crossing is the ELLIPSIS of untold travel and stays
+                        // legal: an author's silence is not a contradiction, so
+                        // this cannot be gated. But an ellipsis between two
+                        // positions that NO ROUTE joins is a different animal —
+                        // there is no journey the telling could have omitted — and
+                        // that is checkable from authored structure alone. So the
+                        // pair is named instead of being buried in the count
+                        // above, which is the strongest honest form of "a corpus
+                        // can claim a subject entered a container it was never
+                        // adjacent to, and pass".
+                        //
+                        // UNDIRECTED ONLY, and that is the declaration R891's carry
+                        // said the store lacked: a DIRECTED transition rule may be
+                        // `alive -> dead`, where unreachability is the design.
+                        // `scan_spatial_map` has gated its per-scope connectivity
+                        // walk on the same field since R716/R719, so this reuses an
+                        // existing discriminator rather than inventing one.
+                        //
+                        // R719 stays intact: two mutually-unreachable top-level
+                        // containers remain a LEGAL map (two islands, a dream and
+                        // the waking world). What is reported here is not the map's
+                        // shape but a SUBJECT asserted on both sides of it.
+                        if !*undirected || a.frame != b.frame {
+                            return; // a directed state machine, or a cross-frame pair (data)
+                        }
+                        let comp = components
+                            .entry((ctx.world.to_string(), a.frame.to_string()))
+                            .or_insert_with(|| {
+                                place_components(
+                                    ctx,
+                                    store,
+                                    adjacency,
+                                    containment.as_deref(),
+                                    &a.frame,
+                                )
+                            });
+                        let (pa, pb) = (typed_object_key(&ta.object), typed_object_key(&tb.object));
+                        // A place the graph does not hold is OFF the map, which
+                        // `map_invented_place` / `map_contained_off_map` already
+                        // say — counting it here would give one defect two homes.
+                        if let (Some(ca), Some(cb)) = (comp.get(pa), comp.get(pb)) {
+                            if ca != cb {
+                                unreachable.insert((aid.as_str(), bid.as_str()));
+                            }
+                        }
                     },
                 );
                 report.unchained_state_pairs += seen.len();
+                report.unchained_unreachable_pairs += unreachable.len();
             }
             NarrativeRuleSpec::Interval { right, op, bound } => {
                 let outcomes = scan_interval_rule(
@@ -4264,6 +4336,64 @@ fn containment_chain<'a>(parent: &BTreeMap<&'a str, &'a str>, place: &'a str) ->
     }
     chain.push(ROOT_SCOPE);
     chain
+}
+
+/// Round 916 — which places a route can join, as `place -> component id` for one
+/// (world, frame). The graph is the HIERARCHY-AUGMENTED map: sibling adjacency
+/// edges plus a link between every container and the things it holds, because
+/// entering and leaving a container are steps (Round 913) and a route may
+/// therefore use them.
+///
+/// UNION over canon points, via world visibility rather than `holds_at`: the same
+/// relaxation `scan_spatial_map`'s connectivity and completeness checks use, and
+/// for the same reason — an incrementally authored map (a bridge built in a later
+/// chapter) is legitimately disconnected at an earlier point, and a per-point
+/// answer would report the map's growth as a defect.
+///
+/// This is a READ over authored structure, not a playthrough: no guard is
+/// evaluated and no cost is spent (the R712 layering line — a guarded edge counts
+/// as a route here, because whether it OPENS is the consumer's question).
+fn place_components(
+    ctx: &WorldCtx<'_>,
+    store: &AtomicStore,
+    adjacency: &str,
+    containment: Option<&str>,
+    frame: &mnemosyne_core::FrameId,
+) -> BTreeMap<String, usize> {
+    // Both relations are read as UNDIRECTED links here: an adjacency because the
+    // caller only asks for an undirected rule, and a containment because a route
+    // may descend into a container or ascend out of one. Borrowed from the store,
+    // so the graph allocates nothing per link.
+    let mut adj: BTreeMap<&str, BTreeSet<&str>> = BTreeMap::new();
+    for f in store.narrative_facts.values() {
+        let Some(t) = f.typed.as_ref() else {
+            continue;
+        };
+        let names_a_link =
+            t.predicate == adjacency || containment.is_some_and(|c| t.predicate == c);
+        if !names_a_link || &f.frame != frame || ctx.visibility(f) != Vis::In {
+            continue;
+        }
+        let (a, b) = (t.subject.as_str(), typed_object_key(&t.object));
+        adj.entry(a).or_default().insert(b);
+        adj.entry(b).or_default().insert(a);
+    }
+    let mut component: BTreeMap<String, usize> = BTreeMap::new();
+    let mut next = 0usize;
+    for start in adj.keys().copied() {
+        if component.contains_key(start) {
+            continue;
+        }
+        let mut stack = vec![start];
+        while let Some(n) = stack.pop() {
+            if component.insert(n.to_string(), next).is_some() {
+                continue;
+            }
+            stack.extend(adj.get(n).into_iter().flatten().copied());
+        }
+        next += 1;
+    }
+    component
 }
 
 /// Round 915 — containment snapshots memoized by (world, frame, canon point):
@@ -11697,6 +11827,145 @@ mod tests {
             }
             other => panic!("expected a transition finding, got {other:?}"),
         }
+    }
+
+    /// Round 916 — an ellipsis NO ROUTE could have covered is named, and the
+    /// same corpus with one road added stops being named.
+    ///
+    /// R911 could only take the undeclared crossing on trust: "a corpus can claim
+    /// a subject entered a container it was never adjacent to, and pass". It still
+    /// passes — silence is not a contradiction, so this is never gated — but the
+    /// pair is now counted separately when there is NO JOURNEY the telling could
+    /// have omitted. The discriminating half is the second scan: adding the one
+    /// road between the two districts drops the count to zero while
+    /// `unchained_state_pairs` stays 1, so the count measures ROUTES and not
+    /// merely unchained-ness.
+    #[test]
+    fn an_ellipsis_no_route_could_cover_is_named_and_a_road_unnames_it() {
+        let order = chain(&["ch-1", "ch-2", "ch-3", "ch-4"]);
+        let rules = [transition_rule(
+            "roads",
+            "pred-at",
+            "adjacent",
+            true,
+            Some("contains"),
+        )];
+        let places = ["quarter", "market", "well", "palace", "shrine", "hall"];
+        // Two internally-connected districts and NO road between them — a legal
+        // map since R719 (two islands, a dream and the waking world).
+        let world = || {
+            vec![
+                contains_fact("quarter", "market"),
+                contains_fact("quarter", "well"),
+                contains_fact("palace", "shrine"),
+                contains_fact("palace", "hall"),
+                map_edge("market", "well"),
+                map_edge("shrine", "hall"),
+                // The subject is asserted inside each district, with NO succession
+                // between the two — the ellipsis of untold travel.
+                typed_fact("u1", "gt", "ch-1", "p", "pred-at", holds("market")),
+                typed_fact("u2", "gt", "ch-3", "p", "pred-at", holds("shrine")),
+                // ...and a third position OFF the map entirely. Its two pairs are
+                // unchained like the others but must NOT be counted here: a place
+                // the map does not hold is `map_invented_place`'s finding, and
+                // giving one defect two homes is how counts start disagreeing.
+                typed_fact("u3", "gt", "ch-4", "p", "pred-at", holds("nowhere")),
+            ]
+        };
+        let scan = |facts: Vec<_>| {
+            let store = map_g2_store(facts, &places, &["nowhere"], Some("place"));
+            scan_continuity(&store, &order, &rules).unwrap()
+        };
+        let split = scan(world());
+        assert_eq!(
+            (
+                split.unchained_state_pairs,
+                split.unchained_unreachable_pairs
+            ),
+            (3, 1),
+            "three unchained pairs, and exactly ONE of them is a gap no journey \
+             crosses — the off-map pairs belong to `map_invented_place`: {:?}",
+            split.violations
+        );
+        assert!(
+            !split
+                .violations
+                .iter()
+                .any(|v| matches!(v, ContinuityViolation::RuleTransitionInvalid { .. })),
+            "an ellipsis is never GATED — it is surfaced: {:?}",
+            split.violations
+        );
+        // ...and one road makes the same ellipsis ordinary.
+        let mut joined = world();
+        joined.push(map_edge("quarter", "palace"));
+        let linked = scan(joined);
+        assert_eq!(
+            (
+                linked.unchained_state_pairs,
+                linked.unchained_unreachable_pairs
+            ),
+            (3, 0),
+            "the pairs are still unchained, but a route now joins the one that \
+             mattered"
+        );
+    }
+
+    /// Round 916 — a DIRECTED transition rule is exempt, because unreachability is
+    /// its design.
+    ///
+    /// This is the discriminator R891's carry said the store did not have: the
+    /// transition class also models one-way state machines, where `dead` being
+    /// unreachable from `undead` is the point. `scan_spatial_map` has gated its
+    /// connectivity walk on `undirected` since R716/R719, and the route count
+    /// reuses that field rather than inventing a second declaration.
+    ///
+    /// THE FIXTURE'S FIRST VERSION ASSERTED THIS VACUOUSLY and an injection that
+    /// fired NOTHING is what found it: with one `alive -> dead` edge the two
+    /// states are one component read undirected, so the count was 0 whether the
+    /// guard was there or not. The states here are two DISJOINT pairs, so the
+    /// subject's two positions genuinely have no route between them and the guard
+    /// is the only reason the count stays 0 (R854's lesson: an assertion needs an
+    /// input that could make it fail).
+    #[test]
+    fn a_directed_rule_never_counts_an_unreachable_pair() {
+        let order = chain(&["ch-1", "ch-2", "ch-3", "ch-4"]);
+        let rules = [transition_rule(
+            "life",
+            "life-status",
+            "life-adjacent",
+            false,
+            None,
+        )];
+        let mut facts = adjacency_facts(
+            "life-adjacent",
+            &[("alive", "dead"), ("machine", "deviant")],
+        );
+        facts.push(typed_fact(
+            "s1",
+            "gt",
+            "ch-1",
+            "p",
+            "life-status",
+            holds("dead"),
+        ));
+        facts.push(typed_fact(
+            "s2",
+            "gt",
+            "ch-3",
+            "p",
+            "life-status",
+            holds("deviant"),
+        ));
+        let store = store_with(facts);
+        let report = scan_continuity(&store, &order, &rules).unwrap();
+        assert_eq!(
+            (
+                report.unchained_state_pairs,
+                report.unchained_unreachable_pairs
+            ),
+            (1, 0),
+            "a one-way state machine's unreachability is the design, not a finding"
+        );
     }
 
     /// Round 909 — "a place spoken of but never reached" has exactly ONE encoding

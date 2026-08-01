@@ -2913,10 +2913,12 @@ fn cmd_validate_continuity(args: &[String]) -> Result<()> {
         );
         if report.rules > 0 {
             println!(
-                "  rules={} rule_unordered={} unchained_state_pairs={} interval_unverifiable={} interval_severity={}",
+                "  rules={} rule_unordered={} unchained_state_pairs={} (no route joins {}) \
+interval_unverifiable={} interval_severity={}",
                 report.rules,
                 report.rule_unordered_pairs,
                 report.unchained_state_pairs,
+                report.unchained_unreachable_pairs,
                 report.interval_unverifiable,
                 interval_severity.map_or("off", Severity::as_str)
             );
