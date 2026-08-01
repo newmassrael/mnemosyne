@@ -1,0 +1,27 @@
+{
+  "schema": "narrative-rules/v1",
+  "comment": "Cairnwell, a flooded hill-town. The map is the `adjacent` facts in facts.json, partitioned into scopes by the `contains` facts; the rule below is what turns them into a gate. The map is DIRECTED: one `adjacent` fact is one direction, so a two-way road is two facts, and the cairn stair (loc-cairn-stair -> loc-boat-landing) and the roof-plank ladder (loc-drowned-quarter -> loc-highwater-quarter) are single facts because each can only be travelled one way.",
+  "rules": [
+    {
+      "id": "one-place-per-person",
+      "class": "exclusive",
+      "predicate": "at",
+      "per": "subject",
+      "containment": "contains"
+    },
+    {
+      "id": "one-holder-per-thing",
+      "class": "exclusive",
+      "predicate": "holds",
+      "per": "object"
+    },
+    {
+      "id": "cairnwell-map",
+      "class": "transition",
+      "predicate": "at",
+      "adjacency": "adjacent",
+      "undirected": false,
+      "containment": "contains"
+    }
+  ]
+}

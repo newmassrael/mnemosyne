@@ -1,0 +1,14 @@
+=== mnemosyne-cli import_sections ===
+primitive: import_sections
+target_kind: section
+target_id: 20 created, 0 no-op
+sidecar_path: /home/coin/mnemosyne/claudedocs/phase1-map-corpus-experiment/v4/run/stage-a/docs/.atomic/workspace.atomic.json
+written_bytes: 2950
+exit=0
+=== mnemosyne-cli import_facts ===
+primitive: import_facts
+target_kind: narrative_fact
+target_id: 3 frames + 0 branches + 4 entity-kinds + 2 units + 20 entities + 8 predicates + 70 facts + 0 disclosure-plans + 0 disclosure-overrides created, 0 no-op
+sidecar_path: /home/coin/mnemosyne/claudedocs/phase1-map-corpus-experiment/v4/run/stage-a/docs/.atomic/workspace.atomic.json
+written_bytes: 42181
+exit=0

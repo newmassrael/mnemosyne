@@ -1,0 +1,591 @@
+{
+  "frames": [
+    { "frame_id": "ground-truth", "description": "what is so in Ondree, held by no one in particular" },
+    { "frame_id": "townsfolk", "description": "what the town of Ondree says among itself" },
+    { "frame_id": "sula", "description": "the tide-warden's own belief" }
+  ],
+
+  "entity_kinds": [
+    { "kind_id": "place", "description": "somewhere a person can stand" },
+    { "kind_id": "quarter", "parents": ["place"], "description": "a walled district of the town; a place that holds other places" },
+    { "kind_id": "character", "description": "a person of Ondree" },
+    { "kind_id": "item", "description": "a thing that can be carried or spoken of" }
+  ],
+
+  "units": [
+    { "unit_id": "minute", "description": "map minutes of walking" },
+    { "unit_id": "metre", "description": "depth of standing floodwater" }
+  ],
+
+  "entities": [
+    { "entity_id": "e-crown", "kind": "place", "description": "Crown Rock, the bare summit the town is wound around" },
+    { "entity_id": "e-upper", "kind": "quarter", "description": "the Upper Quarter, above the flood, behind its own gate" },
+    { "entity_id": "e-market", "kind": "quarter", "description": "the Market Quarter, half a street of it standing in water" },
+    { "entity_id": "e-stair", "kind": "place", "description": "the head of the Drowned Stair, behind a barred gate" },
+    { "entity_id": "e-waterline", "kind": "place", "description": "the waterline, where the flood meets the town" },
+    { "entity_id": "e-isle", "kind": "place", "description": "Bell Isle, a roof and a tower out in the channel" },
+    { "entity_id": "e-shrine", "kind": "place", "description": "the Shrine of Still Water, in the Upper Quarter" },
+    { "entity_id": "e-almshouse", "kind": "place", "description": "the almshouse, in the Upper Quarter" },
+    { "entity_id": "e-cistern", "kind": "place", "description": "the Cistern House, in the Upper Quarter" },
+    { "entity_id": "e-fishmarket", "kind": "place", "description": "the fish market, in the Market Quarter" },
+    { "entity_id": "e-ropewalk", "kind": "place", "description": "the ropewalk, in the Market Quarter" },
+    { "entity_id": "e-ferry", "kind": "place", "description": "the ferry landing, in the Market Quarter" },
+
+    { "entity_id": "e-sula", "kind": "character", "description": "Sula, tide-warden of Ondree" },
+    { "entity_id": "e-vess", "kind": "character", "description": "Vess, who keeps the shrine" },
+    { "entity_id": "e-oona", "kind": "character", "description": "Oona, of the almshouse" },
+    { "entity_id": "e-brack", "kind": "character", "description": "Brack, fishmonger" },
+    { "entity_id": "e-mert", "kind": "character", "description": "Mert, ferryman" },
+
+    { "entity_id": "e-key", "kind": "item", "description": "the sluice key, which unbars the stair gate" },
+    { "entity_id": "e-rope", "kind": "item", "description": "a coil of tarred rope from the ropewalk" },
+    { "entity_id": "e-bell", "kind": "item", "description": "the drowned bell of Bell Isle" }
+  ],
+
+  "predicates": [
+    { "predicate_id": "at", "object_kind": "entity", "subject_kind": "character", "object_entity_kind": "place", "description": "where a person is standing" },
+    { "predicate_id": "adjacent", "object_kind": "entity", "subject_kind": "place", "object_entity_kind": "place", "description": "a way leads from the subject place to the object place; one fact is one direction" },
+    { "predicate_id": "contains", "object_kind": "entity", "subject_kind": "place", "object_entity_kind": "place", "description": "the subject quarter holds the object place inside it" },
+    { "predicate_id": "holds", "object_kind": "entity", "subject_kind": "character", "object_entity_kind": "item", "description": "custody of a carried thing" },
+    { "predicate_id": "rests_at", "object_kind": "entity", "subject_kind": "item", "object_entity_kind": "place", "description": "where an uncarried thing lies" },
+    { "predicate_id": "water_state", "object_kind": "token", "object_tokens": ["flood", "slack", "low"], "subject_kind": "place", "description": "the state of the water at a place" },
+    { "predicate_id": "gate_state", "object_kind": "token", "object_tokens": ["barred", "unbarred"], "subject_kind": "place", "description": "whether a place's gate is barred" },
+    { "predicate_id": "depth", "object_kind": "quantity", "subject_kind": "place", "description": "standing depth of floodwater at a place" }
+  ],
+
+  "facts": [
+    {
+      "fact_id": "f-adj-crown-upper", "frame": "ground-truth",
+      "claim": "a cut lane runs down from Crown Rock to the Upper Quarter gate",
+      "canon_from": "sc-01", "evidence": ["sc-01"],
+      "entities": ["e-crown", "e-upper"],
+      "typed": { "subject": "e-crown", "predicate": "adjacent", "object": { "kind": "entity", "id": "e-upper" } }
+    },
+    {
+      "fact_id": "f-adj-upper-crown", "frame": "ground-truth",
+      "claim": "the cut lane climbs from the Upper Quarter gate back to Crown Rock",
+      "canon_from": "sc-01", "evidence": ["sc-01"],
+      "entities": ["e-upper", "e-crown"],
+      "typed": { "subject": "e-upper", "predicate": "adjacent", "object": { "kind": "entity", "id": "e-crown" } }
+    },
+    {
+      "fact_id": "f-adj-upper-market", "frame": "ground-truth",
+      "claim": "the Cross Way runs down from the Upper Quarter to the Market Quarter",
+      "canon_from": "sc-01", "evidence": ["sc-01"],
+      "entities": ["e-upper", "e-market"],
+      "typed": { "subject": "e-upper", "predicate": "adjacent", "object": { "kind": "entity", "id": "e-market" } }
+    },
+    {
+      "fact_id": "f-adj-market-upper", "frame": "ground-truth",
+      "claim": "the Cross Way climbs from the Market Quarter to the Upper Quarter",
+      "canon_from": "sc-01", "evidence": ["sc-01"],
+      "entities": ["e-market", "e-upper"],
+      "typed": { "subject": "e-market", "predicate": "adjacent", "object": { "kind": "entity", "id": "e-upper" } }
+    },
+    {
+      "fact_id": "f-adj-market-stair", "frame": "ground-truth",
+      "claim": "a short alley runs from the Market Quarter to the head of the Drowned Stair",
+      "canon_from": "sc-01", "evidence": ["sc-01"],
+      "entities": ["e-market", "e-stair"],
+      "typed": { "subject": "e-market", "predicate": "adjacent", "object": { "kind": "entity", "id": "e-stair" } }
+    },
+    {
+      "fact_id": "f-adj-stair-market", "frame": "ground-truth",
+      "claim": "the short alley runs back from the head of the Drowned Stair into the Market Quarter",
+      "canon_from": "sc-01", "evidence": ["sc-01"],
+      "entities": ["e-stair", "e-market"],
+      "typed": { "subject": "e-stair", "predicate": "adjacent", "object": { "kind": "entity", "id": "e-market" } }
+    },
+    {
+      "fact_id": "f-adj-stair-waterline", "frame": "ground-truth",
+      "claim": "the Drowned Stair goes down from its head to the waterline and admits no return, its lower treads being weeded and undercut",
+      "canon_from": "sc-01", "evidence": ["sc-01"],
+      "entities": ["e-stair", "e-waterline"],
+      "typed": { "subject": "e-stair", "predicate": "adjacent", "object": { "kind": "entity", "id": "e-waterline" } }
+    },
+    {
+      "fact_id": "f-adj-market-waterline", "frame": "ground-truth",
+      "claim": "the old towpath leaves the Market Quarter and runs the long way round the hill to the waterline",
+      "canon_from": "sc-01", "evidence": ["sc-01"],
+      "entities": ["e-market", "e-waterline"],
+      "typed": { "subject": "e-market", "predicate": "adjacent", "object": { "kind": "entity", "id": "e-waterline" } }
+    },
+    {
+      "fact_id": "f-adj-waterline-market", "frame": "ground-truth",
+      "claim": "the old towpath climbs the long way round the hill from the waterline to the Market Quarter",
+      "canon_from": "sc-01", "evidence": ["sc-01"],
+      "entities": ["e-waterline", "e-market"],
+      "typed": { "subject": "e-waterline", "predicate": "adjacent", "object": { "kind": "entity", "id": "e-market" } }
+    },
+    {
+      "fact_id": "f-adj-waterline-isle", "frame": "ground-truth",
+      "claim": "open channel crosses from the waterline to Bell Isle",
+      "canon_from": "sc-01", "evidence": ["sc-01"],
+      "entities": ["e-waterline", "e-isle"],
+      "typed": { "subject": "e-waterline", "predicate": "adjacent", "object": { "kind": "entity", "id": "e-isle" } }
+    },
+    {
+      "fact_id": "f-adj-isle-waterline", "frame": "ground-truth",
+      "claim": "open channel crosses back from Bell Isle to the waterline",
+      "canon_from": "sc-01", "evidence": ["sc-01"],
+      "entities": ["e-isle", "e-waterline"],
+      "typed": { "subject": "e-isle", "predicate": "adjacent", "object": { "kind": "entity", "id": "e-waterline" } }
+    },
+    {
+      "fact_id": "f-adj-shrine-almshouse", "frame": "ground-truth",
+      "claim": "the shrine yard opens onto the almshouse court",
+      "canon_from": "sc-01", "evidence": ["sc-01"],
+      "entities": ["e-shrine", "e-almshouse"],
+      "typed": { "subject": "e-shrine", "predicate": "adjacent", "object": { "kind": "entity", "id": "e-almshouse" } }
+    },
+    {
+      "fact_id": "f-adj-almshouse-shrine", "frame": "ground-truth",
+      "claim": "the almshouse court opens onto the shrine yard",
+      "canon_from": "sc-01", "evidence": ["sc-01"],
+      "entities": ["e-almshouse", "e-shrine"],
+      "typed": { "subject": "e-almshouse", "predicate": "adjacent", "object": { "kind": "entity", "id": "e-shrine" } }
+    },
+    {
+      "fact_id": "f-adj-almshouse-cistern", "frame": "ground-truth",
+      "claim": "a covered walk joins the almshouse court to the Cistern House",
+      "canon_from": "sc-01", "evidence": ["sc-01"],
+      "entities": ["e-almshouse", "e-cistern"],
+      "typed": { "subject": "e-almshouse", "predicate": "adjacent", "object": { "kind": "entity", "id": "e-cistern" } }
+    },
+    {
+      "fact_id": "f-adj-cistern-almshouse", "frame": "ground-truth",
+      "claim": "the covered walk joins the Cistern House back to the almshouse court",
+      "canon_from": "sc-01", "evidence": ["sc-01"],
+      "entities": ["e-cistern", "e-almshouse"],
+      "typed": { "subject": "e-cistern", "predicate": "adjacent", "object": { "kind": "entity", "id": "e-almshouse" } }
+    },
+    {
+      "fact_id": "f-adj-fishmarket-ropewalk", "frame": "ground-truth",
+      "claim": "the fish market gives onto the ropewalk",
+      "canon_from": "sc-01", "evidence": ["sc-01"],
+      "entities": ["e-fishmarket", "e-ropewalk"],
+      "typed": { "subject": "e-fishmarket", "predicate": "adjacent", "object": { "kind": "entity", "id": "e-ropewalk" } }
+    },
+    {
+      "fact_id": "f-adj-ropewalk-fishmarket", "frame": "ground-truth",
+      "claim": "the ropewalk gives back onto the fish market",
+      "canon_from": "sc-01", "evidence": ["sc-01"],
+      "entities": ["e-ropewalk", "e-fishmarket"],
+      "typed": { "subject": "e-ropewalk", "predicate": "adjacent", "object": { "kind": "entity", "id": "e-fishmarket" } }
+    },
+    {
+      "fact_id": "f-adj-ropewalk-ferry", "frame": "ground-truth",
+      "claim": "the ropewalk runs down to the ferry landing",
+      "canon_from": "sc-01", "evidence": ["sc-01"],
+      "entities": ["e-ropewalk", "e-ferry"],
+      "typed": { "subject": "e-ropewalk", "predicate": "adjacent", "object": { "kind": "entity", "id": "e-ferry" } }
+    },
+    {
+      "fact_id": "f-adj-ferry-ropewalk", "frame": "ground-truth",
+      "claim": "the ferry landing runs back up to the ropewalk",
+      "canon_from": "sc-01", "evidence": ["sc-01"],
+      "entities": ["e-ferry", "e-ropewalk"],
+      "typed": { "subject": "e-ferry", "predicate": "adjacent", "object": { "kind": "entity", "id": "e-ropewalk" } }
+    },
+
+    {
+      "fact_id": "f-con-upper-shrine", "frame": "ground-truth",
+      "claim": "the Shrine of Still Water stands inside the Upper Quarter",
+      "canon_from": "sc-01", "evidence": ["sc-01"],
+      "entities": ["e-upper", "e-shrine"],
+      "typed": { "subject": "e-upper", "predicate": "contains", "object": { "kind": "entity", "id": "e-shrine" } }
+    },
+    {
+      "fact_id": "f-con-upper-almshouse", "frame": "ground-truth",
+      "claim": "the almshouse stands inside the Upper Quarter",
+      "canon_from": "sc-01", "evidence": ["sc-01"],
+      "entities": ["e-upper", "e-almshouse"],
+      "typed": { "subject": "e-upper", "predicate": "contains", "object": { "kind": "entity", "id": "e-almshouse" } }
+    },
+    {
+      "fact_id": "f-con-upper-cistern", "frame": "ground-truth",
+      "claim": "the Cistern House stands inside the Upper Quarter",
+      "canon_from": "sc-01", "evidence": ["sc-01"],
+      "entities": ["e-upper", "e-cistern"],
+      "typed": { "subject": "e-upper", "predicate": "contains", "object": { "kind": "entity", "id": "e-cistern" } }
+    },
+    {
+      "fact_id": "f-con-market-fishmarket", "frame": "ground-truth",
+      "claim": "the fish market stands inside the Market Quarter",
+      "canon_from": "sc-01", "evidence": ["sc-01"],
+      "entities": ["e-market", "e-fishmarket"],
+      "typed": { "subject": "e-market", "predicate": "contains", "object": { "kind": "entity", "id": "e-fishmarket" } }
+    },
+    {
+      "fact_id": "f-con-market-ropewalk", "frame": "ground-truth",
+      "claim": "the ropewalk stands inside the Market Quarter",
+      "canon_from": "sc-01", "evidence": ["sc-01"],
+      "entities": ["e-market", "e-ropewalk"],
+      "typed": { "subject": "e-market", "predicate": "contains", "object": { "kind": "entity", "id": "e-ropewalk" } }
+    },
+    {
+      "fact_id": "f-con-market-ferry", "frame": "ground-truth",
+      "claim": "the ferry landing stands inside the Market Quarter",
+      "canon_from": "sc-01", "evidence": ["sc-01"],
+      "entities": ["e-market", "e-ferry"],
+      "typed": { "subject": "e-market", "predicate": "contains", "object": { "kind": "entity", "id": "e-ferry" } }
+    },
+
+    {
+      "fact_id": "f-depth-first", "frame": "ground-truth",
+      "claim": "at first light the flood stands two metres deep over the lower town",
+      "canon_from": "sc-01", "evidence": ["sc-01"],
+      "entities": ["e-waterline"],
+      "typed": { "subject": "e-waterline", "predicate": "depth", "object": { "kind": "quantity", "n": 2, "unit": "metre" } }
+    },
+    {
+      "fact_id": "f-tide-flood", "frame": "ground-truth",
+      "claim": "at first light the water at the foot of the Drowned Stair is running in flood",
+      "canon_from": "sc-01", "evidence": ["sc-01"],
+      "entities": ["e-stair"],
+      "typed": { "subject": "e-stair", "predicate": "water_state", "object": { "kind": "token", "token": "flood" } }
+    },
+    {
+      "fact_id": "f-sula-01", "frame": "ground-truth",
+      "claim": "Sula stands on Crown Rock at first light and takes the count of the water",
+      "canon_from": "sc-01", "evidence": ["sc-01"],
+      "entities": ["e-sula", "e-crown"],
+      "typed": { "subject": "e-sula", "predicate": "at", "object": { "kind": "entity", "id": "e-crown" } }
+    },
+
+    {
+      "fact_id": "f-sula-02", "frame": "ground-truth",
+      "claim": "Sula comes down the cut lane to the Upper Quarter gate",
+      "canon_from": "sc-02", "evidence": ["sc-02"],
+      "entities": ["e-sula", "e-upper"],
+      "supersedes_in_frame": "f-sula-01",
+      "typed": { "subject": "e-sula", "predicate": "at", "object": { "kind": "entity", "id": "e-upper" } }
+    },
+
+    {
+      "fact_id": "f-sula-03", "frame": "ground-truth",
+      "claim": "Sula goes in to the Shrine of Still Water",
+      "canon_from": "sc-03", "evidence": ["sc-03"],
+      "entities": ["e-sula", "e-shrine"],
+      "supersedes_in_frame": "f-sula-02",
+      "typed": { "subject": "e-sula", "predicate": "at", "object": { "kind": "entity", "id": "e-shrine" } }
+    },
+    {
+      "fact_id": "f-vess-03", "frame": "ground-truth",
+      "claim": "Vess is keeping the shrine and filling the still-water bowls",
+      "canon_from": "sc-03", "evidence": ["sc-03"],
+      "entities": ["e-vess", "e-shrine"],
+      "typed": { "subject": "e-vess", "predicate": "at", "object": { "kind": "entity", "id": "e-shrine" } }
+    },
+    {
+      "fact_id": "f-bell-belief", "frame": "townsfolk",
+      "claim": "the drowned bell still hangs in the tower on Bell Isle",
+      "canon_from": "sc-03", "evidence": ["sc-03"],
+      "entities": ["e-bell", "e-isle"],
+      "typed": { "subject": "e-bell", "predicate": "rests_at", "object": { "kind": "entity", "id": "e-isle" } }
+    },
+
+    {
+      "fact_id": "f-sula-04", "frame": "ground-truth",
+      "claim": "Sula crosses the shrine yard into the almshouse court",
+      "canon_from": "sc-04", "evidence": ["sc-04"],
+      "entities": ["e-sula", "e-almshouse"],
+      "supersedes_in_frame": "f-sula-03",
+      "typed": { "subject": "e-sula", "predicate": "at", "object": { "kind": "entity", "id": "e-almshouse" } }
+    },
+    {
+      "fact_id": "f-oona-04", "frame": "ground-truth",
+      "claim": "Oona is in the almshouse court with a bucket under the broken slate",
+      "canon_from": "sc-04", "evidence": ["sc-04"],
+      "entities": ["e-oona", "e-almshouse"],
+      "typed": { "subject": "e-oona", "predicate": "at", "object": { "kind": "entity", "id": "e-almshouse" } }
+    },
+    {
+      "fact_id": "f-rope-need", "frame": "ground-truth",
+      "claim": "the almshouse roof cannot be mended without a tackle rope from the ropewalk",
+      "canon_from": "sc-04", "evidence": ["sc-04"],
+      "entities": ["e-almshouse", "e-rope"],
+      "payoff_expectation": "expected"
+    },
+
+    {
+      "fact_id": "f-sula-05", "frame": "ground-truth",
+      "claim": "Sula goes along the covered walk to the Cistern House",
+      "canon_from": "sc-05", "evidence": ["sc-05"],
+      "entities": ["e-sula", "e-cistern"],
+      "supersedes_in_frame": "f-sula-04",
+      "typed": { "subject": "e-sula", "predicate": "at", "object": { "kind": "entity", "id": "e-cistern" } }
+    },
+    {
+      "fact_id": "f-oona-05", "frame": "ground-truth",
+      "claim": "Oona follows Sula to the Cistern House to see the water for herself",
+      "canon_from": "sc-05", "evidence": ["sc-05"],
+      "entities": ["e-oona", "e-cistern"],
+      "supersedes_in_frame": "f-oona-04",
+      "typed": { "subject": "e-oona", "predicate": "at", "object": { "kind": "entity", "id": "e-cistern" } }
+    },
+    {
+      "fact_id": "f-cistern-fouled", "frame": "ground-truth",
+      "claim": "the town cistern has taken the flood in through its overflow and is no longer fit to drink",
+      "canon_from": "sc-05", "evidence": ["sc-05"],
+      "entities": ["e-cistern"],
+      "payoff_expectation": "expected",
+      "typed": { "subject": "e-cistern", "predicate": "water_state", "object": { "kind": "token", "token": "flood" } }
+    },
+
+    {
+      "fact_id": "f-sula-06", "frame": "ground-truth",
+      "claim": "Sula takes the Cross Way down into the Market Quarter to carry the word",
+      "canon_from": "sc-06", "evidence": ["sc-06"],
+      "entities": ["e-sula", "e-market"],
+      "supersedes_in_frame": "f-sula-05",
+      "typed": { "subject": "e-sula", "predicate": "at", "object": { "kind": "entity", "id": "e-market" } }
+    },
+    {
+      "fact_id": "f-gate-shut", "frame": "ground-truth",
+      "claim": "the gate at the head of the Drowned Stair stands barred against the flood",
+      "canon_from": "sc-06", "evidence": ["sc-06"],
+      "entities": ["e-stair"],
+      "payoff_expectation": "expected",
+      "typed": { "subject": "e-stair", "predicate": "gate_state", "object": { "kind": "token", "token": "barred" } }
+    },
+
+    {
+      "fact_id": "f-sula-07", "frame": "ground-truth",
+      "claim": "Sula comes in under the fish market awning",
+      "canon_from": "sc-07", "evidence": ["sc-07"],
+      "entities": ["e-sula", "e-fishmarket"],
+      "supersedes_in_frame": "f-sula-06",
+      "typed": { "subject": "e-sula", "predicate": "at", "object": { "kind": "entity", "id": "e-fishmarket" } }
+    },
+    {
+      "fact_id": "f-brack-07", "frame": "ground-truth",
+      "claim": "Brack keeps his slab at the fish market with the water at his ankles",
+      "canon_from": "sc-07", "evidence": ["sc-07"],
+      "entities": ["e-brack", "e-fishmarket"],
+      "typed": { "subject": "e-brack", "predicate": "at", "object": { "kind": "entity", "id": "e-fishmarket" } }
+    },
+    {
+      "fact_id": "f-catch-short", "frame": "ground-truth",
+      "claim": "the morning catch is a third of what the slab takes in a dry week",
+      "canon_from": "sc-07", "evidence": ["sc-07"],
+      "entities": ["e-brack", "e-fishmarket"]
+    },
+
+    {
+      "fact_id": "f-sula-08", "frame": "ground-truth",
+      "claim": "Sula walks the length of the ropewalk",
+      "canon_from": "sc-08", "evidence": ["sc-08"],
+      "entities": ["e-sula", "e-ropewalk"],
+      "supersedes_in_frame": "f-sula-07",
+      "typed": { "subject": "e-sula", "predicate": "at", "object": { "kind": "entity", "id": "e-ropewalk" } }
+    },
+    {
+      "fact_id": "f-rope-taken", "frame": "ground-truth",
+      "claim": "Sula takes up a coil of tarred rope at the ropewalk",
+      "canon_from": "sc-08", "evidence": ["sc-04", "sc-08"],
+      "entities": ["e-sula", "e-rope"],
+      "typed": { "subject": "e-sula", "predicate": "holds", "object": { "kind": "entity", "id": "e-rope" } }
+    },
+
+    {
+      "fact_id": "f-sula-09", "frame": "ground-truth",
+      "claim": "Sula goes down to the ferry landing",
+      "canon_from": "sc-09", "evidence": ["sc-09"],
+      "entities": ["e-sula", "e-ferry"],
+      "supersedes_in_frame": "f-sula-08",
+      "typed": { "subject": "e-sula", "predicate": "at", "object": { "kind": "entity", "id": "e-ferry" } }
+    },
+    {
+      "fact_id": "f-mert-09", "frame": "ground-truth",
+      "claim": "Mert sits at the ferry landing beside a boat he will not put out",
+      "canon_from": "sc-09", "evidence": ["sc-09"],
+      "entities": ["e-mert", "e-ferry"],
+      "typed": { "subject": "e-mert", "predicate": "at", "object": { "kind": "entity", "id": "e-ferry" } }
+    },
+    {
+      "fact_id": "f-ferry-idle", "frame": "ground-truth",
+      "claim": "the ferry cannot be rowed while the channel runs in flood",
+      "canon_from": "sc-09", "evidence": ["sc-09"],
+      "entities": ["e-mert", "e-ferry"]
+    },
+    {
+      "fact_id": "f-key-mert", "frame": "ground-truth",
+      "claim": "Mert has kept the sluice key since the last warden died",
+      "canon_from": "sc-09", "evidence": ["sc-09"],
+      "entities": ["e-mert", "e-key"],
+      "typed": { "subject": "e-mert", "predicate": "holds", "object": { "kind": "entity", "id": "e-key" } }
+    },
+
+    {
+      "fact_id": "f-key-sula", "frame": "ground-truth",
+      "claim": "Mert gives the sluice key over to Sula",
+      "canon_from": "sc-10", "evidence": ["sc-09", "sc-10"],
+      "entities": ["e-sula", "e-key"],
+      "supersedes_in_frame": "f-key-mert",
+      "typed": { "subject": "e-sula", "predicate": "holds", "object": { "kind": "entity", "id": "e-key" } }
+    },
+
+    {
+      "fact_id": "f-tide-slack", "frame": "ground-truth",
+      "claim": "the water at the foot of the Drowned Stair goes slack at the turn of the tide",
+      "canon_from": "sc-11", "evidence": ["sc-11"],
+      "entities": ["e-stair"],
+      "supersedes_in_frame": "f-tide-flood",
+      "typed": { "subject": "e-stair", "predicate": "water_state", "object": { "kind": "token", "token": "slack" } }
+    },
+
+    {
+      "fact_id": "f-sula-12", "frame": "ground-truth",
+      "claim": "Sula comes up the alley to the head of the Drowned Stair",
+      "canon_from": "sc-12", "evidence": ["sc-12"],
+      "entities": ["e-sula", "e-stair"],
+      "supersedes_in_frame": "f-sula-09",
+      "typed": { "subject": "e-sula", "predicate": "at", "object": { "kind": "entity", "id": "e-stair" } }
+    },
+    {
+      "fact_id": "f-sula-trust", "frame": "sula",
+      "claim": "the Drowned Stair will carry her back up when she wants it",
+      "canon_from": "sc-12", "evidence": ["sc-12"],
+      "entities": ["e-sula", "e-stair"]
+    },
+    {
+      "fact_id": "f-gate-open", "frame": "ground-truth",
+      "claim": "Sula unbars the stair gate with the sluice key at slack water",
+      "canon_from": "sc-12", "evidence": ["sc-06", "sc-10", "sc-11", "sc-12"],
+      "entities": ["e-stair", "e-sula", "e-key"],
+      "supersedes_in_frame": "f-gate-shut",
+      "pays_off": ["f-gate-shut"],
+      "typed": { "subject": "e-stair", "predicate": "gate_state", "object": { "kind": "token", "token": "unbarred" } }
+    },
+
+    {
+      "fact_id": "f-sula-13", "frame": "ground-truth",
+      "claim": "Sula goes down the Drowned Stair to the waterline",
+      "canon_from": "sc-13", "evidence": ["sc-13"],
+      "entities": ["e-sula", "e-waterline"],
+      "supersedes_in_frame": "f-sula-12",
+      "typed": { "subject": "e-sula", "predicate": "at", "object": { "kind": "entity", "id": "e-waterline" } }
+    },
+    {
+      "fact_id": "f-stair-broken", "frame": "ground-truth",
+      "claim": "the lower treads of the Drowned Stair go from under her as she steps off them, so that the stair cannot be climbed",
+      "canon_from": "sc-13", "evidence": ["sc-13"],
+      "entities": ["e-stair", "e-sula"],
+      "conflicts_with": ["f-sula-trust"]
+    },
+
+    {
+      "fact_id": "f-flotsam", "frame": "ground-truth",
+      "claim": "a drowned door and three crab-pots turn slowly against the waterline",
+      "canon_from": "sc-14", "evidence": ["sc-14"],
+      "entities": ["e-waterline"]
+    },
+
+    {
+      "fact_id": "f-bell-toll", "frame": "townsfolk",
+      "claim": "the bell on Bell Isle tolls of itself at the turn of every tide, and that is how the flood is counted",
+      "canon_from": "sc-15", "evidence": ["sc-03", "sc-15"],
+      "entities": ["e-bell", "e-isle"]
+    },
+    {
+      "fact_id": "f-isle-unreached", "frame": "ground-truth",
+      "claim": "no boat has crossed the channel to Bell Isle since the water came up",
+      "canon_from": "sc-15", "evidence": ["sc-09", "sc-15"],
+      "entities": ["e-isle", "e-waterline"]
+    },
+
+    {
+      "fact_id": "f-sula-16", "frame": "ground-truth",
+      "claim": "Sula walks the old towpath the long way round the hill and comes up into the Market Quarter",
+      "canon_from": "sc-16", "evidence": ["sc-16"],
+      "entities": ["e-sula", "e-market"],
+      "supersedes_in_frame": "f-sula-13",
+      "typed": { "subject": "e-sula", "predicate": "at", "object": { "kind": "entity", "id": "e-market" } }
+    },
+
+    {
+      "fact_id": "f-sula-17", "frame": "ground-truth",
+      "claim": "Sula stops at Brack's slab in the fish market on her way up",
+      "canon_from": "sc-17", "evidence": ["sc-17"],
+      "entities": ["e-sula", "e-fishmarket"],
+      "supersedes_in_frame": "f-sula-16",
+      "typed": { "subject": "e-sula", "predicate": "at", "object": { "kind": "entity", "id": "e-fishmarket" } }
+    },
+
+    {
+      "fact_id": "f-sula-18", "frame": "ground-truth",
+      "claim": "Sula climbs the Cross Way and comes into the almshouse court with the rope",
+      "canon_from": "sc-18", "evidence": ["sc-18"],
+      "entities": ["e-sula", "e-almshouse"],
+      "supersedes_in_frame": "f-sula-17",
+      "typed": { "subject": "e-sula", "predicate": "at", "object": { "kind": "entity", "id": "e-almshouse" } }
+    },
+    {
+      "fact_id": "f-vess-18", "frame": "ground-truth",
+      "claim": "Vess leaves the shrine and comes to the almshouse court to hold the ladder",
+      "canon_from": "sc-18", "evidence": ["sc-18"],
+      "entities": ["e-vess", "e-almshouse"],
+      "supersedes_in_frame": "f-vess-03",
+      "typed": { "subject": "e-vess", "predicate": "at", "object": { "kind": "entity", "id": "e-almshouse" } }
+    },
+    {
+      "fact_id": "f-oona-18", "frame": "ground-truth",
+      "claim": "Oona comes back along the covered walk to the almshouse court",
+      "canon_from": "sc-18", "evidence": ["sc-18"],
+      "entities": ["e-oona", "e-almshouse"],
+      "supersedes_in_frame": "f-oona-05",
+      "typed": { "subject": "e-oona", "predicate": "at", "object": { "kind": "entity", "id": "e-almshouse" } }
+    },
+    {
+      "fact_id": "f-rope-delivered", "frame": "ground-truth",
+      "claim": "Sula puts the coil of tarred rope into Oona's hands for the roof tackle",
+      "canon_from": "sc-18", "evidence": ["sc-08", "sc-18"],
+      "entities": ["e-oona", "e-rope"],
+      "supersedes_in_frame": "f-rope-taken",
+      "pays_off": ["f-rope-need"],
+      "typed": { "subject": "e-oona", "predicate": "holds", "object": { "kind": "entity", "id": "e-rope" } }
+    },
+
+    {
+      "fact_id": "f-sula-19", "frame": "ground-truth",
+      "claim": "Sula crosses back into the shrine yard",
+      "canon_from": "sc-19", "evidence": ["sc-19"],
+      "entities": ["e-sula", "e-shrine"],
+      "supersedes_in_frame": "f-sula-18",
+      "typed": { "subject": "e-sula", "predicate": "at", "object": { "kind": "entity", "id": "e-shrine" } }
+    },
+    {
+      "fact_id": "f-vess-19", "frame": "ground-truth",
+      "claim": "Vess returns to the shrine ahead of her",
+      "canon_from": "sc-19", "evidence": ["sc-19"],
+      "entities": ["e-vess", "e-shrine"],
+      "supersedes_in_frame": "f-vess-18",
+      "typed": { "subject": "e-vess", "predicate": "at", "object": { "kind": "entity", "id": "e-shrine" } }
+    },
+    {
+      "fact_id": "f-bowls-shared", "frame": "ground-truth",
+      "claim": "the still-water bowls of the shrine are given over to be the town's drinking store while the cistern is fouled",
+      "canon_from": "sc-19", "evidence": ["sc-05", "sc-19"],
+      "entities": ["e-shrine", "e-cistern", "e-vess"],
+      "pays_off": ["f-cistern-fouled"]
+    },
+
+    {
+      "fact_id": "f-sula-20", "frame": "ground-truth",
+      "claim": "Sula climbs the cut lane to Crown Rock again at dusk",
+      "canon_from": "sc-20", "evidence": ["sc-20"],
+      "entities": ["e-sula", "e-crown"],
+      "supersedes_in_frame": "f-sula-19",
+      "typed": { "subject": "e-sula", "predicate": "at", "object": { "kind": "entity", "id": "e-crown" } }
+    },
+    {
+      "fact_id": "f-depth-dusk", "frame": "ground-truth",
+      "claim": "by dusk the flood stands one metre deep over the lower town",
+      "canon_from": "sc-20", "evidence": ["sc-01", "sc-20"],
+      "entities": ["e-waterline"],
+      "supersedes_in_frame": "f-depth-first",
+      "typed": { "subject": "e-waterline", "predicate": "depth", "object": { "kind": "quantity", "n": 1, "unit": "metre" } }
+    }
+  ]
+}
