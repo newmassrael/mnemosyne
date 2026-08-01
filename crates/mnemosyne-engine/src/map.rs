@@ -353,9 +353,15 @@ impl MapProjection {
                     }
                     let place = entity.to_string();
                     let fact_id = line.fact_id().to_string();
+                    let frame = line.frame().to_string();
+                    // THE FRAME IS PART OF THE IDENTITY, not a detail hanging off
+                    // it (Round 945). Deduplicating on (rule, place) alone let the
+                    // first line to name a place speak for every later one, so a
+                    // room the world asserts and a room a character merely CLAIMS
+                    // collapsed into one row whose frame was whichever came first.
                     if found
                         .iter()
-                        .any(|d| d.map.rule == map.rule && d.place == place)
+                        .any(|d| d.map.rule == map.rule && d.place == place && d.frame == frame)
                     {
                         continue;
                     }
@@ -363,11 +369,14 @@ impl MapProjection {
                         map,
                         place,
                         fact_id,
+                        frame,
                     });
                 }
             }
         }
-        found.sort_by(|a, b| (&a.map.rule, &a.place).cmp(&(&b.map.rule, &b.place)));
+        found.sort_by(|a, b| {
+            (&a.map.rule, &a.place, &a.frame).cmp(&(&b.map.rule, &b.place, &b.frame))
+        });
         found
     }
 }
@@ -385,6 +394,38 @@ pub struct DisclosedPlace<'m> {
     /// is showing it, which is the whole provenance contract: no place on the
     /// screen that no disclosed fact put there.
     pub fact_id: String,
+    /// WHOSE knowledge put it there — the disclosing fact's epistemic frame
+    /// (`"ground-truth"`, a character's frame, or empty when the store left it
+    /// unframed). Carried, never filtered: the kernel does not decide that a
+    /// rumoured place is not worth showing, it refuses to show it as a fact
+    /// (carriage, not computation — the Round 940 line, on the place axis).
+    ///
+    /// Round 945. Round 938 built this row without the coordinate and Round 943
+    /// measured the cost on authored data: a store's own false rumour ("she took
+    /// a boat from the mooring") rendered as a place beside the scene's real one,
+    /// and the blind author who wrote it asserted in a sealed report that the
+    /// engine could never read it as a position, because the contract had told
+    /// them a belief frame keeps the two apart. It does — everywhere but here.
+    pub frame: String,
+}
+
+impl DisclosedPlace<'_> {
+    /// Is this place a character's belief/report rather than the world's fact?
+    ///
+    /// Reads [`crate::types::frame_is_belief`], the same resolver [`Line`]'s own
+    /// [`is_belief`](Line::is_belief) reads, so the two axes cannot drift.
+    #[must_use]
+    pub fn is_belief(&self) -> bool {
+        crate::types::frame_is_belief(&self.frame)
+    }
+
+    /// Is this place asserted by the world (not a character's belief/report)?
+    /// An unframed disclosure counts as ground truth, exactly as it does for a
+    /// [`Line`].
+    #[must_use]
+    pub fn is_ground_truth(&self) -> bool {
+        !self.is_belief()
+    }
 }
 
 /// An [`EdgeCostView`] as plain data — the emit/ingest mirror, for the reason
@@ -848,18 +889,24 @@ mod place_tests {
         ForkTreeReport, TransitionMapEdge, TransitionMapReport, TransitionMapView,
     };
 
-    /// A disclosed `at(subject, place)` fact.
+    /// A disclosed `at(subject, place)` fact the WORLD asserts.
     fn at_fact(
         fact_id: &str,
         subject: &str,
         place: &str,
     ) -> mnemosyne_validate::continuity::ManuscriptFactEvent {
-        let mut event = begin(
-            fact_id,
-            "someone stands there",
-            "ground-truth",
-            &[subject, place],
-        );
+        at_fact_in_frame(fact_id, subject, place, "ground-truth")
+    }
+
+    /// The same shape in a named epistemic frame — what a character or a town
+    /// SAYS, which the store keeps as a fact of its own (Round 945).
+    fn at_fact_in_frame(
+        fact_id: &str,
+        subject: &str,
+        place: &str,
+        frame: &str,
+    ) -> mnemosyne_validate::continuity::ManuscriptFactEvent {
+        let mut event = begin(fact_id, "someone stands there", frame, &[subject, place]);
         event.typed = Some(TypedClaim {
             subject: subject.into(),
             predicate: "at".into(),
@@ -958,6 +1005,80 @@ mod place_tests {
             .collect();
         exits.sort_unstable();
         assert_eq!(exits, ["loc-shrine", "loc-stair"]);
+        assert!(
+            here[0].is_ground_truth() && !here[0].is_belief(),
+            "the world's own assertion is not hearsay: {here:?}"
+        );
+    }
+
+    /// A RUMOUR IS NOT A POSITION, and the row has to say so (Round 945).
+    ///
+    /// The discriminating input is the pair AT ONE PLACE: the world asserts
+    /// someone is in the market, and the town SAYS someone is in the market, in
+    /// its own frame. Both are disclosed, both name a node of the map, and
+    /// before this round the join deduplicated on `(rule, place)` alone — so the
+    /// two collapsed into a single row wearing whichever frame happened to sort
+    /// first, and a reading surface could not tell the world's fact from the
+    /// town's talk. Round 943 measured that on authored data: a blind author's
+    /// false rumour rendered as a place beside the scene's real one, and their
+    /// sealed report asserted the engine could never do that.
+    ///
+    /// Two facts at one place is what makes this a guard. Drop `frame` from the
+    /// dedup key and the length assertion fails; drop it from the struct and
+    /// nothing compiles.
+    #[test]
+    fn the_world_and_the_town_can_name_one_place_and_stay_two_rows() {
+        let map = town();
+        let projection = projected(vec![
+            at_fact("f-at-mirren", "ent-mirren", "loc-market"),
+            at_fact_in_frame("f-talk-mirren", "ent-mirren", "loc-market", "town-talk"),
+        ]);
+        let here = map.places_disclosed_in(&scene_of(&projection));
+
+        assert_eq!(
+            here.len(),
+            2,
+            "one place, two frames, two rows — not one: {here:?}"
+        );
+        assert!(
+            here.iter().all(|d| d.place == "loc-market"),
+            "both rows are the same place: {here:?}"
+        );
+
+        let truth = here
+            .iter()
+            .find(|d| d.is_ground_truth())
+            .expect("the world's row");
+        let talk = here.iter().find(|d| d.is_belief()).expect("the town's row");
+        assert_eq!(truth.frame, "ground-truth");
+        assert_eq!(truth.fact_id, "f-at-mirren");
+        assert_eq!(talk.frame, "town-talk");
+        assert_eq!(
+            talk.fact_id, "f-talk-mirren",
+            "the believed row names the fact that SAID it, not the one that is so"
+        );
+    }
+
+    /// An unframed disclosure is ground truth, exactly as it is for a [`Line`] —
+    /// the two axes read one resolver, so this cannot drift from
+    /// [`Line::is_belief`] without both changing together.
+    #[test]
+    fn an_unframed_place_is_read_as_the_world_speaking() {
+        let map = town();
+        let projection = projected(vec![at_fact_in_frame(
+            "f-at-mirren",
+            "ent-mirren",
+            "loc-market",
+            "",
+        )]);
+        let here = map.places_disclosed_in(&scene_of(&projection));
+
+        assert_eq!(here.len(), 1);
+        assert_eq!(here[0].frame, "", "the emptiness is carried, not invented");
+        assert!(
+            here[0].is_ground_truth() && !here[0].is_belief(),
+            "an unframed store is not accusing anyone of hearsay: {here:?}"
+        );
     }
 
     /// THE LEAK GUARD, and the reason this reads the scene rather than the gate.

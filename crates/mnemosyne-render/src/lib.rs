@@ -43,8 +43,16 @@ pub trait Theme {
     /// `exits` is what the DECLARATION allows, not what is passable now: a road
     /// whose guard does not hold is still here, because evaluating a guard is
     /// the consumer's (the kernel's R712 line, kept whole through the surface).
+    /// A BELIEVED place is named as believed. The kernel carries the frame and
+    /// refuses to decide whether a rumour is worth showing; the default theme
+    /// refuses to show it as a fact, which is the same refusal one layer up.
+    /// Round 945 — before it, a town's false claim that a missing woman took a
+    /// boat printed exactly like the room the scene was actually in.
     fn place(&self, place: &DisclosedPlace<'_>, exits: &[&str]) -> String {
         let mut out = place.place.clone();
+        if place.is_belief() {
+            out.push_str(&format!(" [{}]", place.frame));
+        }
         if !exits.is_empty() {
             out.push_str(" -> ");
             out.push_str(&exits.join(", "));
@@ -263,6 +271,72 @@ mod tests {
             // fact would be showing what the telling withheld from prose.
             journal_offers: Vec::new(),
         })
+    }
+
+    /// A projection whose ONE scene places the same person at the same place
+    /// twice: once because the world says so, once because a character does.
+    fn demo_with_a_rumour() -> PlayableProjection {
+        let placed = |fact_id: &str, frame: &str| LinePart {
+            typed_predicate: Some("at".to_string().into()),
+            entities: vec!["ent-bunok".into(), "loc-quay".into()].into(),
+            ..line(fact_id, "Bunok is at the quay", frame, None, None)
+        };
+        PlayableProjection::from_parts(ProjectionParts {
+            telling: "reader".into(),
+            by_world: vec![(
+                "main".into(),
+                vec![(
+                    "sc-01".into(),
+                    vec![
+                        placed("f-at", "ground-truth"),
+                        placed("f-at-said", "frame-bunok"),
+                    ],
+                )],
+            )],
+            walks: vec![("main".into(), vec!["sc-01".into()])],
+            titles: vec![("sc-01".into(), "Dawn".into())],
+            cast: Vec::new(),
+            forks: Vec::new(),
+            divergent_endings: Vec::new(),
+            interactivity: Interactivity::default(),
+            choice_entity_refs: Vec::new(),
+            ask_doors: Vec::new(),
+            journal_offers: Vec::new(),
+        })
+    }
+
+    /// THE RENDERED PLACE SAYS WHOSE IT IS (Round 945).
+    ///
+    /// Round 943 watched a blind author's false rumour print exactly like the
+    /// room the scene was in, and the author's sealed report said the engine
+    /// could not do that. The kernel now carries the frame; the default theme
+    /// declines to show hearsay as fact.
+    ///
+    /// The two rows at ONE place are the discriminating input. With the frame
+    /// dropped anywhere along the path — struct, dedup key, or theme — the two
+    /// lines become one line, or two identical ones, and this fails.
+    #[test]
+    fn a_believed_place_is_rendered_as_believed_and_the_worlds_is_not() {
+        let proj = demo_with_a_rumour();
+        let out = render_scene(
+            &proj.scene("main", "sc-01", &std::collections::HashSet::new()),
+            &town(),
+            &PlainTheme,
+        );
+
+        assert!(
+            out.contains("\nloc-quay -> loc-ford\n"),
+            "the world's own place stays unmarked:\n{out}"
+        );
+        assert!(
+            out.contains("\nloc-quay [frame-bunok] -> loc-ford\n"),
+            "the believed place names the frame that claimed it:\n{out}"
+        );
+        assert_eq!(
+            out.matches("loc-quay").count(),
+            2,
+            "two rows, not one collapsed and not one duplicated:\n{out}"
+        );
     }
 
     #[test]

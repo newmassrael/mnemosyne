@@ -130,16 +130,30 @@ pub struct Line {
     pub(crate) count: Option<i64>,
 }
 
-impl Line {
-    const GROUND_TRUTH: &'static str = "ground-truth";
+/// The frame name the store uses for "the world asserts it".
+pub(crate) const GROUND_TRUTH_FRAME: &str = "ground-truth";
 
+/// Is this frame a character's belief/report rather than ground truth?
+///
+/// THE ONE RESOLVER for that question. It was a private detail of [`Line`] until
+/// Round 945, when the place axis was found flattening exactly the distinction
+/// [`Line::is_belief`]'s own doc-comment forbids flattening — a rumour rendered
+/// as a place indistinguishable from the world's fact, witnessed by two blind
+/// authors (Round 943). A second copy of this rule is how the two axes would
+/// drift apart again, so both read it here.
+#[must_use]
+pub(crate) fn frame_is_belief(frame: &str) -> bool {
+    !frame.is_empty() && frame != GROUND_TRUTH_FRAME
+}
+
+impl Line {
     /// Is this a character's belief/report rather than ground truth? The store
     /// keeps a believed-fact and its ground-truth counterpart as DISTINCT facts;
     /// a renderer that flattens the two robs the player of the distinction (a
     /// character's guess vs the world's fact).
     #[must_use]
     pub fn is_belief(&self) -> bool {
-        !self.frame.is_empty() && self.frame != Self::GROUND_TRUTH
+        frame_is_belief(&self.frame)
     }
 
     /// Is this the world's ground truth (not a character's belief/report)? The
@@ -147,7 +161,7 @@ impl Line {
     /// truth and hearsay apart. An unframed line counts as ground truth.
     #[must_use]
     pub fn is_ground_truth(&self) -> bool {
-        self.frame.is_empty() || self.frame == Self::GROUND_TRUTH
+        !self.is_belief()
     }
 
     /// Provenance — the `narrative_facts` key this line projects.
