@@ -3722,42 +3722,17 @@ pub fn scan_continuity(
                 // scoped to "not both directions".) Flat, un-scoped (as the file
                 // `allowed` was) — the present single-map ground-truth case;
                 // branch-scoped adjacency deferred (R696 review finding #6).
-                let TransitionEdges {
-                    edges, self_loops, ..
-                } = transition_edges(facts, adjacency);
-                for (fid, place) in self_loops {
-                    report
-                        .violations
-                        .push(ContinuityViolation::AdjacencySelfLoop {
-                            rule: rule.id.clone(),
-                            predicate: adjacency.clone(),
-                            fact: fid.to_string(),
-                            place: place.to_string(),
-                        });
-                }
-                if *undirected {
-                    // Canonical walk: each unordered pair visited once at a < b,
-                    // so the reverse twin (b, a) reports exactly once. `fact_a`
-                    // is the forward (a, b) fact, `fact_b` the reverse (b, a).
-                    for (&(a, b), &fwd) in &edges {
-                        if a < b {
-                            if let Some(&rev) = edges.get(&(b, a)) {
-                                report.violations.push(
-                                    ContinuityViolation::AdjacencyReverseDuplicate {
-                                        rule: rule.id.clone(),
-                                        predicate: adjacency.clone(),
-                                        fact_a: fwd.to_string(),
-                                        fact_b: rev.to_string(),
-                                        a: a.to_string(),
-                                        b: b.to_string(),
-                                    },
-                                );
-                            }
-                        }
-                    }
-                    // G4 connectivity moved to `scan_spatial_map` (Round 716):
-                    // it is now PER SCOPE + per canon point, not one flat graph.
-                }
+                // Round 922 — the hygiene findings (a degenerate self-loop, a
+                // both-directions pair on an undirected rule) moved into
+                // `scan_spatial_map`, which reads the map AT THE COORDINATES the
+                // facts hold. They were derived here from a flat read, which
+                // called a belief-frame road a duplicate of the ground-truth one
+                // — one relation with two readers, in its FALSE-POSITIVE
+                // direction (Round 919). G4 connectivity moved there at R716 for
+                // the same reason. What is still derived flat here is the
+                // LICENSING set below, which is the other direction of the same
+                // defect and the next round's.
+                let TransitionEdges { edges, .. } = transition_edges(facts, adjacency);
                 // G2 (completeness / container leaks) + the per-scope partition +
                 // connectivity moved to `scan_spatial_map` (Round 716): the whole
                 // spatial map is now a PER-SCOPE, per-canon-point projection, not a
@@ -4631,6 +4606,15 @@ fn scan_spatial_map(
         .predicates
         .get(&adjacency.into())
         .and_then(|p| p.subject_kind.as_ref().or(p.object_entity_kind.as_ref()));
+    // Round 922 — the hygiene findings are deduped ONCE PER RULE, not per
+    // coordinate: a self-loop fact and a both-directions pair are defects of the
+    // AUTHORED SET, so their wire stays exactly one finding each, as it was when
+    // the read was flat. What moves is DETECTION — both are now judged where the
+    // facts actually co-hold, which is what stops a belief-frame road from being
+    // called a duplicate of the ground-truth one (Round 919 measured that false
+    // positive; two frames are two claims, not one datum in two homes).
+    let mut self_loop_seen: BTreeSet<String> = BTreeSet::new();
+    let mut revdup_seen: BTreeSet<(String, String)> = BTreeSet::new();
     for world in worlds {
         let ctx = WorldCtx {
             world,
@@ -4705,6 +4689,48 @@ fn scan_spatial_map(
                     union_nodes.insert(b.to_string());
                     if a != b {
                         edges.push((a, b, fid.as_str()));
+                    } else if self_loop_seen.insert(fid.to_string()) {
+                        // Round 698 — a degenerate `adjacent(a, a)`. Excluded from
+                        // `edges` so no reader admits an a-to-a step, and named so
+                        // the exclusion is not read as "never authored".
+                        report
+                            .violations
+                            .push(ContinuityViolation::AdjacencySelfLoop {
+                                rule: rule.id.clone(),
+                                predicate: adjacency.to_string(),
+                                fact: fid.as_str().to_string(),
+                                place: a.to_string(),
+                            });
+                    }
+                }
+                if undirected {
+                    // Round 697 — for an UNDIRECTED rule, holding both `(a, b)`
+                    // and `(b, a)` is one datum in two homes. Round 922 — asked
+                    // at the coordinate where the two facts CO-HOLD, so a road in
+                    // one frame and its reverse in another are two claims and are
+                    // left alone. Canonical walk at a < b, so the pair reports
+                    // once; `fact_a` is the forward fact, `fact_b` the reverse.
+                    let at_point: BTreeMap<(&str, &str), &str> =
+                        edges.iter().map(|&(a, b, fid)| ((a, b), fid)).collect();
+                    for (&(a, b), &fwd) in &at_point {
+                        if a >= b {
+                            continue;
+                        }
+                        let Some(&rev) = at_point.get(&(b, a)) else {
+                            continue;
+                        };
+                        if revdup_seen.insert((a.to_string(), b.to_string())) {
+                            report.violations.push(
+                                ContinuityViolation::AdjacencyReverseDuplicate {
+                                    rule: rule.id.clone(),
+                                    predicate: adjacency.to_string(),
+                                    fact_a: fwd.to_string(),
+                                    fact_b: rev.to_string(),
+                                    a: a.to_string(),
+                                    b: b.to_string(),
+                                },
+                            );
+                        }
                     }
                 }
                 // Partition this point's edges by shared direct container:
@@ -10585,6 +10611,53 @@ mod tests {
 
     /// A transition outside the allowed set, riding the succession edge —
     /// caught at the exact offending pair (R441 probe 3).
+    /// Round 922 — a road in one frame and its REVERSE in another are two
+    /// claims, not one datum in two homes. The pair is what makes this a check
+    /// rather than a coincidence: move the belief road into the true frame and
+    /// the duplicate must still report. Round 919 measured the false positive
+    /// this closes — the flat edge read judged the two facts together because it
+    /// never asked where either of them holds.
+    #[test]
+    fn a_belief_frame_road_is_not_a_duplicate_of_the_true_one() {
+        let rules = [transition_rule("moves", "at", "adjacent", true, None)];
+        let order = chain(&["ch-1", "ch-2"]);
+
+        let two_frames = vec![
+            // A position fact so the rule's predicate is registered (R436).
+            typed_fact("s1", "gt", "ch-1", "her", "at", at("p-a")),
+            typed_fact("f-ab", "gt", "ch-1", "p-a", "adjacent", at("p-b")),
+            typed_fact("f-ba", "mira", "ch-1", "p-b", "adjacent", at("p-a")),
+        ];
+        let r = scan_continuity(&store_with(two_frames), &order, &rules).unwrap();
+        assert!(
+            r.violations.is_empty(),
+            "two frames are two claims: {:?}",
+            r.violations
+        );
+
+        let one_frame = vec![
+            typed_fact("s1", "gt", "ch-1", "her", "at", at("p-a")),
+            typed_fact("f-ab", "gt", "ch-1", "p-a", "adjacent", at("p-b")),
+            typed_fact("f-ba", "gt", "ch-1", "p-b", "adjacent", at("p-a")),
+        ];
+        let r = scan_continuity(&store_with(one_frame), &order, &rules).unwrap();
+        assert_eq!(
+            r.violations.len(),
+            1,
+            "one frame holding both directions IS one datum twice: {:?}",
+            r.violations
+        );
+        assert!(
+            matches!(
+                &r.violations[0],
+                ContinuityViolation::AdjacencyReverseDuplicate { a, b, .. }
+                    if a == "p-a" && b == "p-b"
+            ),
+            "{:?}",
+            r.violations[0]
+        );
+    }
+
     /// Round 921 — the crossing-versus-lift split is MEASURED, not a constant.
     /// Two stores differing by ONE coarse position: the direct one is all lifts
     /// with the illegal pair caught, the laundered one is two hierarchy
