@@ -106,10 +106,12 @@
 
 use std::path::Path;
 
-use mnemosyne_engine::{EngineError, EngineOverrides, PlayableProjection, QuestProjection};
+use mnemosyne_engine::{
+    EngineError, EngineOverrides, MapProjection, PlayableProjection, QuestProjection,
+};
 
 mod render;
-pub use render::{render, render_passages, render_quest};
+pub use render::{render, render_map, render_passages, render_quest};
 
 /// Project the workspace at build time and return Rust source defining
 /// `pub fn playable_projection() -> &'static PlayableProjection`.
@@ -229,6 +231,53 @@ pub fn emit_quest_projection(
     declare_inputs(workspace_root)?;
     let projection = QuestProjection::from_workspace(workspace_root, telling, None, overrides)?;
     Ok(render_quest(&projection.to_parts()))
+}
+
+/// Project the workspace's declared MAPS at build time and return Rust source
+/// defining `pub fn map_projection() -> &'static MapProjection` — the PLACE-axis
+/// sibling of [`emit_playable_projection`], and the emitter the first consumer
+/// of this axis has been waiting on.
+///
+/// # What this replaces
+///
+/// A consumer opening our store sidecar by hand. The map read landed on the CLI
+/// and MCP surfaces and nowhere a linked kernel could reach, so the consumer
+/// that had just authored 28 edges' costs and guards parsed the sidecar itself
+/// to get them back — 1.2 MB per start, then moved to a build-time bake of its
+/// own. Its comment names the cost (our store's shape bitten in two places on
+/// its side) and the single swap point that was waiting on us. This is it.
+///
+/// # Why it declares one more input than its siblings
+///
+/// [`declare_inputs`] watches the config, the canon order and the sidecar. A map
+/// read opens one more file — the narrative-rules artifact — and it is not a
+/// detail: a transition rule is what declares which facts are edges at all, so a
+/// bake built against a rules file cargo is not watching does not go slightly
+/// stale, it silently bakes a DIFFERENT map. `mnemosyne_ops::transition_map_inputs`
+/// resolves it through the same path resolution the read uses, so the file
+/// declared and the file opened cannot drift (the R772 rule).
+///
+/// # Why no telling and no order
+///
+/// The map is neither disclosure-scoped nor canon-ordered — the gate evaluates
+/// it flat, and R875's read takes neither for that reason. Accepting one here
+/// would name a narrowing this artifact does not perform.
+///
+/// # Errors
+///
+/// [`EngineError::Projection`] if the map read fails — an unreadable store, an
+/// unresolvable rules artifact, a rule naming an unregistered predicate, or a
+/// side-table entry the store-registry boundary rejects. Each is a BUILD
+/// failure; the consumer's runtime never sees them.
+pub fn emit_map_projection(
+    workspace_root: &Path,
+    rules_override: Option<&str>,
+) -> Result<String, EngineError> {
+    for input in mnemosyne_engine::transition_map_inputs(workspace_root, rules_override)? {
+        println!("cargo:rerun-if-changed={}", input.display());
+    }
+    let projection = MapProjection::from_workspace(workspace_root, rules_override)?;
+    Ok(render_map(&projection.to_parts()))
 }
 
 /// Project the workspace's authored PASSAGES at build time and return Rust source
@@ -363,6 +412,8 @@ mod tests {
         // to learn was for a third emitter to exist. It does now, and it went in
         // here rather than beside here.
         include!(concat!(env!("OUT_DIR"), "/fixture_passages.rs"));
+        // The FOURTH, the place axis, in the same module for the same reason.
+        include!(concat!(env!("OUT_DIR"), "/fixture_map.rs"));
     }
 
     #[test]
@@ -522,6 +573,52 @@ mod tests {
         assert_eq!(done[0].actor.as_deref(), Some("ent-eldest"));
         assert_eq!(done[0].scene, "sc-gut");
         assert_eq!(done[1].actor, None);
+    }
+
+    #[test]
+    fn the_generated_map_source_rebuilds_the_projection_it_was_baked_from() {
+        // Compiling was the hard part; this asserts the VALUES survived. The
+        // fields that matter most here are the two side-table ones, because
+        // dropping them is not a hypothetical failure mode — it is the exact
+        // shape of the gap that sent a live consumer to parse our sidecar.
+        let proj = baked::map_projection();
+        assert_eq!(proj.transition_rules(), 2);
+        assert_eq!(proj.maps().len(), 2);
+        assert_eq!(proj.unattached_costs(), ["f-stray-cost".to_string()]);
+        assert_eq!(proj.unattached_guards(), ["f-stray-guard".to_string()]);
+
+        let town = proj.map("town").expect("the map is baked");
+        assert!(!town.undirected);
+        assert_eq!(town.containment.as_deref(), Some("inside"));
+        assert_eq!(town.self_loops[0].fact_id, "f-adj-a-a");
+
+        // The nasty string round-tripped through a Rust literal, in a place id.
+        let nasty = "그는 \"셈\"이라 했다.\n뒤에 \\ 하나.";
+        assert!(town.nodes.contains(&nasty.to_string()));
+        assert_eq!(town.edges[1].to, nasty);
+
+        // Both side tables, and `Option` in both states on each.
+        let cost = town.edges[0].cost.as_ref().expect("the baked cost");
+        assert_eq!((cost.n, cost.unit.as_str()), (10, "unit-minute"));
+        assert!(town.edges[1].cost.is_none());
+        let k_of_n = town.edges[0]
+            .guard
+            .as_ref()
+            .expect("the baked K-of-N guard");
+        assert_eq!(k_of_n.threshold, Some(1));
+        assert_eq!(k_of_n.conditions.len(), 2);
+        let and_guard = town.edges[1].guard.as_ref().expect("the baked AND guard");
+        assert_eq!(and_guard.threshold, None, "K-of-N must not flatten");
+
+        // The declared flag survived and still decides: this map is directed, so
+        // the back leg is not walkable, and the second map's `undirected: true`
+        // is carried rather than defaulted.
+        assert_eq!(town.steps_from("loc-a").len(), 1);
+        assert!(town.steps_from("loc-b").iter().all(|(_, to)| *to == nasty));
+        assert!(
+            proj.map("tunnels").expect("the empty map").undirected,
+            "the second map's declaration was baked, not defaulted"
+        );
     }
 
     /// Feeds that accept ONLY a borrow living as long as the process. Free

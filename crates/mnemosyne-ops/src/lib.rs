@@ -330,15 +330,59 @@ fn resolve_narrative_rules(
 ) -> Result<mnemosyne_validate::continuity::NarrativeRulesFile, OpError> {
     use mnemosyne_validate::continuity::{load_narrative_rules, NarrativeRulesFile};
     let cont = policy.continuity.as_ref();
-    match (rules_override, cont.and_then(|c| c.rules_path.as_ref())) {
-        (Some(p), _) => load_narrative_rules(&policy.root.join(p), None).map_err(OpError::Other),
-        (None, Some(p)) => load_narrative_rules(
-            &policy.root.join(p),
-            cont.and_then(|c| c.rules_sha256.as_deref()),
-        )
-        .map_err(OpError::Other),
-        (None, None) => Ok(NarrativeRulesFile::default()),
+    match narrative_rules_path(policy, rules_override) {
+        // An override bypasses the sha256 pin: the pin claims nothing about a
+        // different file (the R428 `--catalog` rule, as `resolve_canon_order_file`
+        // applies it one axis over).
+        Some(path) if rules_override.is_some() => {
+            load_narrative_rules(&path, None).map_err(OpError::Other)
+        }
+        Some(path) => load_narrative_rules(&path, cont.and_then(|c| c.rules_sha256.as_deref()))
+            .map_err(OpError::Other),
+        None => Ok(NarrativeRulesFile::default()),
     }
+}
+
+/// WHICH narrative-rules file a read will open, resolved without opening it.
+///
+/// Split out of [`resolve_narrative_rules`] so the artifact a build DECLARES to
+/// cargo and the artifact a read OPENS are one decision rather than two that
+/// agree today. R772 closed exactly that divergence on the sidecar: the store a
+/// bake read was not the file it watched, so editing it left the artifact
+/// silently stale. The map axis is the sharpest case of the same shape — a
+/// transition rule is what declares which facts are edges at all, so a baked map
+/// built against a stale rules file is not slightly wrong, it is a different map.
+fn narrative_rules_path(
+    policy: &ContinuityPolicy,
+    rules_override: Option<&str>,
+) -> Option<PathBuf> {
+    let declared = rules_override.map(str::to_string).or_else(|| {
+        policy
+            .continuity
+            .as_ref()
+            .and_then(|c| c.rules_path.clone())
+    })?;
+    Some(policy.root.join(declared))
+}
+
+/// The files a BAKED MAP depends on — [`projection_inputs`] plus the
+/// narrative-rules artifact, which no other projection opens and which decides
+/// the whole content of this one.
+///
+/// # Errors
+///
+/// [`OpError`] if the workspace config or the sidecar cannot be resolved.
+pub fn transition_map_inputs(
+    workspace_root: &Path,
+    sidecar: Option<&Path>,
+    rules_override: Option<&str>,
+) -> Result<Vec<PathBuf>, OpError> {
+    let mut inputs = projection_inputs(workspace_root, sidecar)?;
+    let policy = continuity_policy(workspace_root)?;
+    if let Some(rules) = narrative_rules_path(&policy, rules_override) {
+        inputs.push(rules);
+    }
+    Ok(inputs)
 }
 
 /// Compose the declaration with the store's fork ancestry (Round 438) and

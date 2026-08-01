@@ -284,6 +284,75 @@ fn main() {
     )
     .expect("write the generated passage fixture");
 
+    // The PLACE axis, dogfooded on the same terms: every emitted form once. Two
+    // maps so the outer list is not a singleton, both `undirected` values, a
+    // containment predicate present and absent, an edge carrying both side-table
+    // values and one carrying neither, a guard with a K-of-N threshold and one
+    // without, a self-loop, both unattached lists non-empty, and the nasty string
+    // where a place id can hold authored text. A fixture with no `None` in it
+    // would compile while the generator emitted a broken `Some` arm.
+    let maps = MapProjectionParts {
+        maps: vec![
+            DeclaredMapPart {
+                rule: "town".to_string(),
+                adjacency: "adjacent".to_string(),
+                undirected: false,
+                containment: Some("inside".to_string()),
+                nodes: vec!["loc-a".to_string(), "loc-b".to_string(), nasty.to_string()],
+                edges: vec![
+                    MapEdgePart {
+                        fact_id: "f-adj-a-b".to_string(),
+                        from: "loc-a".to_string(),
+                        to: "loc-b".to_string(),
+                        frame: "ground-truth".to_string(),
+                        branch: "main".to_string(),
+                        cost: Some(mnemosyne_engine::EdgeCostPart {
+                            n: 10,
+                            unit: "unit-minute".to_string(),
+                        }),
+                        guard: Some(mnemosyne_engine::EdgeGuardPart {
+                            conditions: vec!["f-tide-out".to_string(), "f-key".to_string()],
+                            threshold: Some(1),
+                        }),
+                    },
+                    MapEdgePart {
+                        fact_id: "f-adj-b-nasty".to_string(),
+                        from: "loc-b".to_string(),
+                        to: nasty.to_string(),
+                        frame: "townsfolk".to_string(),
+                        branch: "dark".to_string(),
+                        cost: None,
+                        guard: Some(mnemosyne_engine::EdgeGuardPart {
+                            conditions: vec!["f-gate".to_string()],
+                            threshold: None,
+                        }),
+                    },
+                ],
+                self_loops: vec![mnemosyne_engine::MapSelfLoopPart {
+                    fact_id: "f-adj-a-a".to_string(),
+                    node: "loc-a".to_string(),
+                }],
+            },
+            DeclaredMapPart {
+                rule: "tunnels".to_string(),
+                adjacency: "connects".to_string(),
+                undirected: true,
+                containment: None,
+                nodes: Vec::new(),
+                edges: Vec::new(),
+                self_loops: Vec::new(),
+            },
+        ],
+        transition_rules: 2,
+        unattached_costs: vec!["f-stray-cost".to_string()],
+        unattached_guards: vec!["f-stray-guard".to_string()],
+    };
+    std::fs::write(
+        std::path::Path::new(&out_dir).join("fixture_map.rs"),
+        render_map(&maps),
+    )
+    .expect("write the generated map fixture");
+
     stack_fixtures(&out_dir);
     alloc_fixtures(&out_dir);
     prose_fixtures(&out_dir);

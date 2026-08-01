@@ -67,12 +67,28 @@
 //! let _shut = mnemosyne_engine::QuestProjection::from_report;
 //! ```
 //!
+//! The PLACE axis ([`map`]) was born with that door shut rather than reaching it
+//! by correction, and is proven the same paired way — the positive half
+//! compiles:
+//!
+//! ```
+//! let _open = mnemosyne_engine::MapProjection::from_parts;
+//! ```
+//!
+//! and the negative half must not, with the same path spelling:
+//!
+//! ```compile_fail
+//! let _open = mnemosyne_engine::MapProjection::from_parts;
+//! let _shut = mnemosyne_engine::MapProjection::from_report;
+//! ```
+//!
 //! A withheld fact emits no locator, so it never becomes a [`Line`]: the store
 //! filters disclosure additively, and this kernel never re-implements a
 //! subtractive withhold filter.
 
 pub mod baked_ingestion;
 mod gate;
+mod map;
 mod overrides;
 mod projection;
 mod prose;
@@ -82,6 +98,10 @@ mod test_support;
 mod types;
 
 pub use gate::GateViolation;
+pub use map::{
+    DeclaredMapPart, DeclaredMapView, EdgeCostPart, EdgeCostView, EdgeGuardPart, EdgeGuardView,
+    MapEdgePart, MapEdgeView, MapProjection, MapProjectionParts, MapSelfLoopPart, MapSelfLoopView,
+};
 pub use mnemosyne_core::{DisclosureMode, Modality, MAIN_BRANCH};
 pub use mnemosyne_validate::continuity::QuestState;
 pub use overrides::{DefaultOverrides, EngineOverrides, OverrideLoadError, StaticOverrides};
@@ -239,6 +259,27 @@ pub fn projection_inputs(
     workspace_root: &std::path::Path,
 ) -> Result<Vec<std::path::PathBuf>, EngineError> {
     mnemosyne_ops::projection_inputs(workspace_root, None)
+        .map_err(|e| EngineError::Projection(e.to_string()))
+}
+
+/// The files a baked MAP reads — [`projection_inputs`] plus the narrative-rules
+/// artifact. A read-through of [`mnemosyne_ops::transition_map_inputs`], for the
+/// reason above: a consumer talks to its kernel, not past it into `ops`.
+///
+/// The rules file is the one input no other projection opens and the one this
+/// projection cannot be computed without: a transition rule is what declares
+/// which facts are edges. A bake that watches everything else and not this
+/// silently emits a DIFFERENT map after the rules change.
+///
+/// # Errors
+///
+/// [`EngineError::Projection`] if the config cannot be read or the sidecar
+/// cannot be resolved.
+pub fn transition_map_inputs(
+    workspace_root: &std::path::Path,
+    rules_override: Option<&str>,
+) -> Result<Vec<std::path::PathBuf>, EngineError> {
+    mnemosyne_ops::transition_map_inputs(workspace_root, None, rules_override)
         .map_err(|e| EngineError::Projection(e.to_string()))
 }
 

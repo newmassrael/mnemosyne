@@ -11,8 +11,9 @@ use std::fmt::Write as _;
 use std::num::NonZeroUsize;
 
 use mnemosyne_engine::{
-    CastPart, ContentAnchor, DoorPart, ForkPart, Interactivity, LinePart, Locator, PassagesParts,
-    ProjectionParts, QuestCompletionPart, QuestPart, QuestProjectionParts, QuestWorldPart, Rung,
+    CastPart, ContentAnchor, DeclaredMapPart, DoorPart, ForkPart, Interactivity, LinePart, Locator,
+    MapEdgePart, MapProjectionParts, PassagesParts, ProjectionParts, QuestCompletionPart,
+    QuestPart, QuestProjectionParts, QuestWorldPart, Rung,
 };
 
 /// The item the generated playable source defines, and the type it returns.
@@ -22,6 +23,10 @@ const PLAYABLE_PROJECTION_TY: &str = "::mnemosyne_engine::PlayableProjection";
 /// The item the generated quest source defines, and the type it returns (Round 774).
 const QUEST_FN_NAME: &str = "quest_projection";
 const QUEST_PROJECTION_TY: &str = "::mnemosyne_engine::QuestProjection";
+
+/// The item the generated PLACE-axis source defines, and the type it returns.
+const MAP_FN_NAME: &str = "map_projection";
+const MAP_PROJECTION_TY: &str = "::mnemosyne_engine::MapProjection";
 
 /// The item the generated passage source defines, and the type it returns
 /// (Round 791). A map rather than a kernel struct, because that is what
@@ -368,6 +373,9 @@ const SECTION_RUNGS_TY: &str = "(::std::string::String, ::std::vec::Vec<::mnemos
 const QUEST_TY: &str = "::mnemosyne_engine::QuestPart";
 const QUEST_WORLD_TY: &str = "(::std::string::String, ::mnemosyne_engine::QuestWorldPart)";
 const QUEST_COMPLETION_TY: &str = "::mnemosyne_engine::QuestCompletionPart";
+const DECLARED_MAP_TY: &str = "::mnemosyne_engine::DeclaredMapPart";
+const MAP_EDGE_TY: &str = "::mnemosyne_engine::MapEdgePart";
+const MAP_SELF_LOOP_TY: &str = "::mnemosyne_engine::MapSelfLoopPart";
 
 /// The distinct emitted lines, and where each one sits (Round 851).
 ///
@@ -661,6 +669,84 @@ fn quest_state(state: mnemosyne_engine::QuestState) -> String {
         mnemosyne_engine::QuestState::Unknown => "Unknown",
     };
     format!("::mnemosyne_engine::QuestState::{variant}")
+}
+
+/// Render map parts as Rust source — the PLACE-axis sibling of [`render`],
+/// emitting `pub fn map_projection() -> &'static MapProjection`.
+///
+/// Deterministic for the same reason the quest renderer is: the read already
+/// emits maps in rule order, nodes from a `BTreeSet`, and edges in fact-id
+/// order, so nothing is sorted on the way out here either.
+///
+/// Everything a road carries is emitted, including both side-table values a
+/// naive bake would drop. That is the whole point of the door: the consumer this
+/// axis exists for hand-parsed our store precisely because a projection handed
+/// it edges with no cost and no guard.
+#[must_use]
+pub fn render_map(parts: &MapProjectionParts) -> String {
+    let mut c = Chunks::new();
+    let maps = chunked(&mut c, DECLARED_MAP_TY, &parts.maps, declared_map);
+    let unattached_costs = strings(&mut c, &parts.unattached_costs);
+    let unattached_guards = strings(&mut c, &parts.unattached_guards);
+    let mut build = String::new();
+    build.push_str("    ::mnemosyne_engine::MapProjection::from_parts(\n");
+    build.push_str("        ::mnemosyne_engine::MapProjectionParts {\n");
+    let _ = writeln!(build, "            maps: {maps},");
+    let _ = writeln!(
+        build,
+        "            transition_rules: {},",
+        parts.transition_rules
+    );
+    let _ = writeln!(build, "            unattached_costs: {unattached_costs},");
+    let _ = writeln!(build, "            unattached_guards: {unattached_guards},");
+    build.push_str("        },\n    )\n");
+    artifact(MAP_FN_NAME, MAP_PROJECTION_TY, &c, &build)
+}
+
+fn declared_map(chunks: &mut Chunks, part: &DeclaredMapPart) -> String {
+    let nodes = strings(chunks, &part.nodes);
+    let edges = chunked(chunks, MAP_EDGE_TY, &part.edges, |_, e| map_edge(e));
+    let self_loops = chunked(chunks, MAP_SELF_LOOP_TY, &part.self_loops, |_, s| {
+        format!(
+            "::mnemosyne_engine::MapSelfLoopPart {{ fact_id: {}, node: {} }}",
+            string(&s.fact_id),
+            string(&s.node),
+        )
+    });
+    format!(
+        "::mnemosyne_engine::DeclaredMapPart {{ rule: {}, adjacency: {}, undirected: {}, \
+         containment: {}, nodes: {nodes}, edges: {edges}, self_loops: {self_loops} }}",
+        string(&part.rule),
+        string(&part.adjacency),
+        part.undirected,
+        option(part.containment.as_deref().map(string)),
+    )
+}
+
+fn map_edge(part: &MapEdgePart) -> String {
+    let cost = option(part.cost.as_ref().map(|c| {
+        format!(
+            "::mnemosyne_engine::EdgeCostPart {{ n: {}, unit: {} }}",
+            c.n,
+            string(&c.unit),
+        )
+    }));
+    let guard = option(part.guard.as_ref().map(|g| {
+        format!(
+            "::mnemosyne_engine::EdgeGuardPart {{ conditions: {}, threshold: {} }}",
+            inline_strings(&g.conditions),
+            option(g.threshold.map(|t| t.to_string())),
+        )
+    }));
+    format!(
+        "::mnemosyne_engine::MapEdgePart {{ fact_id: {}, from: {}, to: {}, frame: {}, \
+         branch: {}, cost: {cost}, guard: {guard} }}",
+        string(&part.fact_id),
+        string(&part.from),
+        string(&part.to),
+        string(&part.frame),
+        string(&part.branch),
+    )
 }
 
 /// A Rust string literal for `s`. `{:?}` on a `&str` is exactly the escaping
