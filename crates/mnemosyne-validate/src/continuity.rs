@@ -12961,6 +12961,163 @@ mod tests {
         );
     }
 
+    /// Round 925 — a world that DEPARTS mid-chain judges the crossing it saw and
+    /// does not reach past its own departure for the rest of the run.
+    ///
+    /// This arm exists because an injection said it was missing: blinding the
+    /// forward walk to per-world visibility — so a hop is called INTERIOR because
+    /// some OTHER world continues the run — passed the entire suite. A guard no
+    /// injection can kill is guidance with no test (the R909 lesson), and this
+    /// one is not decorative: the map is read only at coordinates a hop is
+    /// actually judged at, so consulting a hop the world cannot see reads a
+    /// coordinate that was never filled.
+    ///
+    /// The shape is ordinary authoring, not a corner: the castle holds the rooms
+    /// on `main`, one chain walks `room-a -> castle -> room-b`, and a fork leaves
+    /// at the castle. `main` sees the whole run and rejects it — no door joins the
+    /// two rooms. The fork sees a woman step out of a room into the castle, which
+    /// is a crossing, allowed, and complete as far as that world goes.
+    #[test]
+    fn a_world_that_leaves_mid_chain_judges_only_the_crossing_it_saw() {
+        let order = chain(&["ch-1", "ch-2", "ch-3", "ch-4"]);
+        let rules = [transition_rule(
+            "roads",
+            "pred-at",
+            "adjacent",
+            true,
+            Some("contains"),
+        )];
+        let mut facts = vec![
+            contains_fact("castle", "room-a"),
+            contains_fact("castle", "room-b"),
+            contains_fact("castle", "room-c"),
+            // room-a — room-c — room-b keeps the castle's scope connected while
+            // leaving the two rooms of the chain unjoined.
+            map_edge("room-a", "room-c"),
+            map_edge("room-c", "room-b"),
+            typed_fact("q1", "gt", "ch-2", "p", "pred-at", holds("room-a")),
+            typed_fact("q2", "gt", "ch-3", "p", "pred-at", holds("castle")),
+            typed_fact("q3", "gt", "ch-4", "p", "pred-at", holds("room-b")),
+        ];
+        facts[6].supersedes_in_frame = Some("q1".to_string());
+        facts[7].supersedes_in_frame = Some("q2".to_string());
+        let places = ["castle", "room-a", "room-b", "room-c"];
+        let mut store = map_g2_store(facts, &places, &[], Some("place"));
+        // The fork leaves at the castle: it inherits `main` up to ch-3, so the
+        // last fact of the chain is not in that world at all.
+        store.branches.insert(
+            "left".into(),
+            mnemosyne_core::Branch {
+                description: String::new(),
+                forks_from: Some(mnemosyne_core::BranchFork {
+                    branch: MAIN_BRANCH.into(),
+                    at: "ch-3".into(),
+                }),
+                converges_from: vec![],
+            },
+        );
+        let r = scan_continuity(&store, &order, &rules).unwrap();
+        let unit = |b: &str| {
+            r.step_judgements
+                .iter()
+                .filter(|j| j.branch.as_deref() == Some(b))
+                .map(|j| (j.from.as_str(), j.to.as_str(), j.shape, j.licensed))
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(
+            unit("left"),
+            vec![("room-a", "castle", "hierarchy", true)],
+            "the world that left judges the crossing it saw, and nothing past its \
+             own departure: {:?}",
+            r.step_judgements
+        );
+        assert_eq!(
+            rejects(&r).len(),
+            1,
+            "and the world that stayed still catches the whole run: {:?}",
+            r.violations
+        );
+        match rejects(&r)[0] {
+            ContinuityViolation::RuleTransitionInvalid { branch, via, .. } => {
+                assert_eq!(
+                    (branch.as_deref(), via.as_slice()),
+                    (Some("main"), &["castle".to_string()][..])
+                );
+            }
+            other => panic!("expected a transition finding, got {other:?}"),
+        }
+    }
+
+    /// Round 925 — the BACKWARD half of the same guard: a run does not reach back
+    /// through a fact the judging world cannot place.
+    ///
+    /// The forward half is `a_world_that_leaves_mid_chain_judges_only_the_crossing_it_saw`;
+    /// this is its mirror, and it needed a PARTIAL canon order to construct,
+    /// because within one branch an earlier fact is visible wherever a later one
+    /// is — succession never crosses a branch, so both consult the same departure
+    /// bounds, and comparability is the only way they can differ. `ch-2` sits in
+    /// the order with no edges at all, so the fork that departs at `ch-4`
+    /// inherits `ch-1` and `ch-3` and cannot decide `ch-2`: the middle of the
+    /// chain is `Unknown` there while both its ends are `In`.
+    ///
+    /// What that world must do is judge `castle -> room-b` as the descent it is,
+    /// and NOT compose it with a hop whose own position that world cannot place.
+    /// The guard is load-bearing rather than defensive: the map is read only at
+    /// coordinates a hop is judged at, so reaching back to an unjudged hop reads a
+    /// coordinate that was never filled.
+    #[test]
+    fn a_run_does_not_reach_back_through_a_fact_the_world_cannot_place() {
+        // ch-1 -> ch-3 -> ch-4, and ch-2 joined to NOTHING.
+        let order = CanonOrder::from_edges(&[
+            ["ch-1".to_string(), "ch-3".to_string()],
+            ["ch-3".to_string(), "ch-4".to_string()],
+        ])
+        .unwrap();
+        let rules = [transition_rule(
+            "roads",
+            "pred-at",
+            "adjacent",
+            true,
+            Some("contains"),
+        )];
+        let mut facts = vec![
+            contains_fact("castle", "room-a"),
+            contains_fact("castle", "room-b"),
+            // The one road, so the castle's scope is connected and the run in the
+            // world that CAN place everything is licensed.
+            map_edge("room-a", "room-b"),
+            typed_fact("q1", "gt", "ch-1", "p", "pred-at", holds("room-a")),
+            typed_fact("q2", "gt", "ch-2", "p", "pred-at", holds("castle")),
+            typed_fact("q3", "gt", "ch-3", "p", "pred-at", holds("room-b")),
+        ];
+        facts[4].supersedes_in_frame = Some("q1".to_string());
+        facts[5].supersedes_in_frame = Some("q2".to_string());
+        let places = ["castle", "room-a", "room-b"];
+        let mut store = map_g2_store(facts, &places, &[], Some("place"));
+        store.branches.insert(
+            "unplaced".into(),
+            mnemosyne_core::Branch {
+                description: String::new(),
+                forks_from: Some(mnemosyne_core::BranchFork {
+                    branch: MAIN_BRANCH.into(),
+                    at: "ch-4".into(),
+                }),
+                converges_from: vec![],
+            },
+        );
+        let r = scan_continuity(&store, &order, &rules).unwrap();
+        assert_eq!(
+            r.step_judgements
+                .iter()
+                .filter(|j| j.branch.as_deref() == Some("unplaced"))
+                .map(|j| (j.from.as_str(), j.to.as_str(), j.shape, j.via.as_slice()))
+                .collect::<Vec<_>>(),
+            vec![("castle", "room-b", "hierarchy", &[][..])],
+            "the world that cannot place the middle judges the descent alone: {:?}",
+            r.step_judgements
+        );
+    }
+
     /// Round 915 — a hierarchy the ORDER cannot place gives an empty hierarchy,
     /// so the step is judged flat, and the finding still names the world it was
     /// judged in.
