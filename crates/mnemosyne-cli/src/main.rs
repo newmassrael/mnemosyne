@@ -3499,6 +3499,13 @@ fn cmd_report_parameter_economy(args: &[String]) -> Result<()> {
                 "meter `{}`: {} delta(s), Σ+ {} / Σ- {} (apply-once reach; the consumer's model decides), {} gate(s){}",
                 m.parameter, m.delta_count, m.sum_positive, m.sum_negative, m.gates.len(), desc
             );
+            // The deltas print per BEAT, like the gates beside them (Round 941).
+            // Printing only the Σ taught a reader the aggregate was the whole of
+            // what the store held, which is the model the first consumer wrote
+            // into its build script before this row existed.
+            for d in &m.deltas {
+                println!("  [delta] {} {:+}", d.fact, d.delta);
+            }
             for g in &m.gates {
                 println!("  [gate] {} {} {}", g.fact, g.op, g.threshold);
             }

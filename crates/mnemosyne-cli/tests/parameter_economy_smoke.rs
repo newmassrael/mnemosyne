@@ -472,6 +472,28 @@ fn the_courtship_parameter_gate_end_to_end() {
     assert_eq!(meter["delta_count"], 3);
     assert_eq!(meter["sum_positive"], 4, "Σ+ = 2 + 2");
     assert_eq!(meter["sum_negative"], -1, "Σ- = -1");
+    // Round 941 — the beats themselves, not only their totals. WHICH gift moves
+    // the meter and by how much is the datum a playing consumer applies, and
+    // until this row existed the read summed it away (Round 939 found the first
+    // consumer's build re-deriving it by parsing the sidecar).
+    let beats: Vec<(&str, i64)> = meter["deltas"]
+        .as_array()
+        .expect("the per-beat rows")
+        .iter()
+        .map(|d| (d["fact"].as_str().unwrap(), d["delta"].as_i64().unwrap()))
+        .collect();
+    assert_eq!(
+        beats,
+        vec![("f-gift-1", 2), ("f-gift-2", 2), ("f-insult", -1)],
+        "each beat with its own signed delta, fact-id ordered"
+    );
+    // The same read, on the WIRE a human sees: printing only Σ taught a reader
+    // the aggregate was all the store held.
+    let text = stdout(&run(ws, &["report-parameter-economy"]));
+    assert!(
+        text.contains("[delta] f-insult -1"),
+        "the per-beat row must reach the printed report too:\n{text}"
+    );
     let gate_row = &meter["gates"][0];
     assert_eq!(gate_row["fact"], "f-romance-choice");
     assert_eq!(gate_row["op"], ">=");

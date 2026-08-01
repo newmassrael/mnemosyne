@@ -1625,9 +1625,29 @@ pub struct ParameterEconomyGateRow {
     pub threshold: i64,
 }
 
-/// Round 730 (DEBT-K) — one meter's economy row: its declared description, how
-/// many beats move it, the apply-once Σ of positive and of negative deltas, and
-/// the gates that reference it. A NEUTRAL aggregate: `sum_positive` /
+/// Round 940 — one authored delta on one meter: the beat that moves it and by
+/// how much. Verbatim authored data, the DELTA-axis peer of
+/// [`ParameterEconomyGateRow`].
+///
+/// This row is what Round 941 added and Round 730 did not have. The read carried
+/// the gates per-fact from the start and the deltas only as a count and a Σ, so
+/// the datum a playing runtime must actually apply — which fact moves which
+/// meter by how much — was summed away before it reached anyone, and the first
+/// consumer's build re-derived it by parsing our sidecar. Two stores with
+/// different beats and the same totals produced BYTE-IDENTICAL reports, which is
+/// the property the discriminating-pair test now forbids.
+#[derive(Debug, Clone, Serialize)]
+pub struct ParameterEconomyDeltaRow {
+    /// The beat (fact) carrying the delta.
+    pub fact: String,
+    /// The authored change, signed. Never accumulated here — the running sum is
+    /// the consumer's playthrough job (the R712 layering line).
+    pub delta: i64,
+}
+
+/// Round 730 (DEBT-K) — one meter's economy row: its declared description, the
+/// beats that move it and by how much, the apply-once Σ of positive and of
+/// negative deltas, and the gates that reference it. A NEUTRAL aggregate: `sum_positive` /
 /// `sum_negative` are DESCRIPTIVE Σ over the authored deltas the consumer
 /// interprets with its OWN accumulation model (grinding, one-shot, clamped) —
 /// NOT a reachability verdict (the R728 review killed `ParameterGateUnreachable`:
@@ -1638,7 +1658,12 @@ pub struct ParameterEconomyGateRow {
 pub struct ParameterEconomyRow {
     pub parameter: String,
     pub description: String,
-    /// How many beats carry a delta on this meter.
+    /// Every authored delta on this meter, fact-id ordered (Round 941). THE
+    /// row-level datum; the three aggregates below are projections of it kept in
+    /// the same struct for an author reading at a glance, the way
+    /// [`EntityDossier::fact_count`] sits beside its own rows.
+    pub deltas: Vec<ParameterEconomyDeltaRow>,
+    /// How many beats carry a delta on this meter (= `deltas.len()`).
     pub delta_count: usize,
     /// Σ of the POSITIVE deltas (an apply-once max reach — descriptive only).
     pub sum_positive: i64,
@@ -1669,12 +1694,17 @@ pub fn parameter_economy_report(
         .parameters
         .iter()
         .map(|(param, decl)| {
-            let mut delta_count = 0usize;
+            let mut deltas = Vec::new();
             let mut sum_positive = 0i64;
             let mut sum_negative = 0i64;
-            for deltas in store.parameter_deltas.values() {
-                if let Some(d) = deltas.get(param) {
-                    delta_count += 1;
+            // `parameter_deltas` is keyed by fact id, so the rows come out
+            // fact-ordered without a sort here.
+            for (fact, per_meter) in &store.parameter_deltas {
+                if let Some(d) = per_meter.get(param) {
+                    deltas.push(ParameterEconomyDeltaRow {
+                        fact: fact.to_string(),
+                        delta: *d,
+                    });
                     if *d > 0 {
                         sum_positive += *d;
                     } else {
@@ -1682,6 +1712,7 @@ pub fn parameter_economy_report(
                     }
                 }
             }
+            let delta_count = deltas.len();
             let gates = store
                 .parameter_gates
                 .iter()
@@ -1697,6 +1728,7 @@ pub fn parameter_economy_report(
                 // boundary, the mirror of the input conversion.
                 parameter: param.to_string(),
                 description: decl.description.clone(),
+                deltas,
                 delta_count,
                 sum_positive,
                 sum_negative,
@@ -1962,6 +1994,97 @@ mod tests {
         assert!(
             load_atomic_store(tmp.path(), None).is_err(),
             "corrupt sidecar must fail loud, not silently empty"
+        );
+    }
+
+    /// Round 941 — THE DISCRIMINATING PAIR. Two stores that move the same meter
+    /// by the same totals through DIFFERENT beats must not read the same.
+    ///
+    /// This is the defect stated as a demonstration rather than as an opinion.
+    /// Before the per-beat row existed, these two stores produced byte-identical
+    /// reports: `delta_count` 2, Σ+ 3, Σ- 0 for both. A consumer reading the
+    /// report could not tell which beat moves the meter and by how much, which is
+    /// precisely what a playing runtime must apply — so the first consumer's
+    /// build parsed our sidecar instead, and Round 939 found it doing so.
+    ///
+    /// The assertion is on the DIFFERENCE, not on either store alone: an
+    /// implementation that carried a per-beat row but filled it from the wrong
+    /// side would still pass a single-store check.
+    #[test]
+    fn two_stores_with_the_same_totals_and_different_beats_do_not_read_alike() {
+        fn economy(deltas: &str) -> ParameterEconomyReport {
+            let tmp = TempDir::new().unwrap();
+            let root = tmp.path();
+            std::fs::write(
+                root.join("mnemosyne.toml"),
+                "[workspace]\nroot = \".\"\n\n[atomic]\nsidecar_path = \"store.json\"\n",
+            )
+            .unwrap();
+            std::fs::write(
+                root.join("store.json"),
+                format!(
+                    r#"{{"schema_version":43,"sections":{{}},"frames":{{}},"entities":{{}},
+                        "narrative_facts":{{}},
+                        "parameters":{{"affection":{{"description":"how warmly she reads him"}}}},
+                        "parameter_deltas":{deltas}}}"#
+                ),
+            )
+            .unwrap();
+            parameter_economy_report(root, None).expect("the economy reads")
+        }
+
+        let gift_then_letter = economy(
+            r#"{"f-gift":{"affection":2},"f-letter":{"affection":1},"f-slight":{"affection":-1}}"#,
+        );
+        let letter_then_gift = economy(
+            r#"{"f-gift":{"affection":1},"f-letter":{"affection":2},"f-slight":{"affection":-1}}"#,
+        );
+
+        // The totals are identical, which is what made the old read blind.
+        for report in [&gift_then_letter, &letter_then_gift] {
+            let m = &report.meters[0];
+            assert_eq!(m.delta_count, 3);
+            assert_eq!(m.sum_positive, 3);
+            assert_eq!(m.sum_negative, -1);
+        }
+
+        // The rows are not.
+        let rows = |r: &ParameterEconomyReport| -> Vec<(String, i64)> {
+            r.meters[0]
+                .deltas
+                .iter()
+                .map(|d| (d.fact.clone(), d.delta))
+                .collect()
+        };
+        assert_eq!(
+            rows(&gift_then_letter),
+            vec![
+                ("f-gift".to_string(), 2),
+                ("f-letter".to_string(), 1),
+                // The negative beat is here so the SIGN is pinned at this level
+                // too: an injection that returned `d.abs()` was caught only by
+                // the end-to-end wire test until this row existed.
+                ("f-slight".to_string(), -1)
+            ],
+            "the beat that carries the delta, and its sign, survive the read"
+        );
+        assert_ne!(
+            rows(&gift_then_letter),
+            rows(&letter_then_gift),
+            "two different worlds must not project to one report"
+        );
+
+        // And the aggregates stay honest projections of the rows they now sit
+        // beside, rather than a second source for the same datum.
+        let m = &gift_then_letter.meters[0];
+        assert_eq!(m.delta_count, m.deltas.len());
+        assert_eq!(
+            m.sum_positive,
+            m.deltas
+                .iter()
+                .map(|d| d.delta)
+                .filter(|d| *d > 0)
+                .sum::<i64>(),
         );
     }
 

@@ -106,8 +106,12 @@ pub use map::{
 pub use mnemosyne_core::{DisclosureMode, Modality, TypedObject, MAIN_BRANCH};
 // The typed-claim row travels with its object shape (Round 940), so a consumer
 // dispatching on that shape gets both from the kernel and needs no `ops` or
-// `core` dependency of its own.
-pub use mnemosyne_ops::TypedClaimRow;
+// `core` dependency of its own. The parameter-economy rows travel for the same
+// reason (Round 941) — a build script bakes them into its own generated types.
+pub use mnemosyne_ops::{
+    ParameterEconomyDeltaRow, ParameterEconomyGateRow, ParameterEconomyReport, ParameterEconomyRow,
+    TypedClaimRow,
+};
 pub use mnemosyne_validate::continuity::QuestState;
 pub use overrides::{DefaultOverrides, EngineOverrides, OverrideLoadError, StaticOverrides};
 pub use projection::{
@@ -275,6 +279,33 @@ pub fn store_typed_claims(
         .map_err(|e| EngineError::Projection(e.to_string()))
 }
 
+/// The store's parameter economy — per registered meter, the beats that move it
+/// (fact + signed delta), the descriptive Σ, and the numeric gates that
+/// threshold it. A read-through of [`mnemosyne_ops::parameter_economy_report`].
+///
+/// Round 939 measured this axis at ZERO kernel reach while the first consumer's
+/// build hand-parsed `parameters`, `parameter_deltas` and `parameter_gates` out
+/// of our sidecar, recording in a comment that "the kernel hands back no read"
+/// and that the report was "a human summary, not a consumer seam". Half of that
+/// was wrong — the report is typed — and half was right: its delta axis was
+/// aggregate-only, so the datum a runtime applies could not survive it. Round
+/// 941 gave the delta axis its per-beat row and this door.
+///
+/// NOTHING IS ACCUMULATED HERE. The kernel hands over the authored deltas and
+/// the thresholds; adding them up over a playthrough, and deciding whether a
+/// gate is open, is the consumer's model (the R712 layering line, which R730
+/// held by killing a reachability verdict).
+///
+/// # Errors
+///
+/// [`EngineError::Projection`] if the store (or its sidecar) cannot be read.
+pub fn store_parameter_economy(
+    workspace_root: &std::path::Path,
+) -> Result<ParameterEconomyReport, EngineError> {
+    mnemosyne_ops::parameter_economy_report(workspace_root, None)
+        .map_err(|e| EngineError::Projection(e.to_string()))
+}
+
 /// The FILES this workspace's projections read (Round 772) — the discovered
 /// config, the atomic sidecar it names, the canon-order file it declares. A
 /// read-through of [`mnemosyne_ops::projection_inputs`], so a consumer talks to
@@ -424,7 +455,10 @@ pub fn store_interactivity(workspace_root: &std::path::Path) -> Result<Interacti
 
 #[cfg(test)]
 mod tests {
-    use super::{store_entity_kinds, store_interactivity, store_passages, store_typed_claims};
+    use super::{
+        store_entity_kinds, store_interactivity, store_parameter_economy, store_passages,
+        store_typed_claims,
+    };
     use tempfile::TempDir;
 
     /// Round 768 — a store holding one DIALOGUE ladder (a carrier, two holds, the
@@ -574,6 +608,75 @@ mod tests {
         assert_eq!(branches, ["weave-letter", "main"]);
         // A fact with no typed leg is absent rather than present and empty.
         assert_eq!(claims.values().map(Vec::len).sum::<usize>(), 2);
+    }
+
+    /// Round 941 — the parameter economy through the KERNEL, in the shape a
+    /// build script bakes: for each meter, the beats that move it and the gates
+    /// that threshold it. The first consumer generates exactly this pair of
+    /// tables (`MeterDelta { fact, meter, delta }` / `MeterGate { fact, meter,
+    /// op, threshold }`) and had to parse our sidecar to fill them, so the test
+    /// asks the question its build asks.
+    ///
+    /// Nothing is accumulated: the meter's beats arrive as authored, and this
+    /// asserts the read does not hand back a running total anywhere.
+    #[test]
+    fn store_parameter_economy_hands_back_the_beats_a_bake_needs() {
+        let tmp = TempDir::new().unwrap();
+        let root = tmp.path();
+        std::fs::write(
+            root.join("mnemosyne.toml"),
+            "[workspace]\nroot = \".\"\n\n[atomic]\nsidecar_path = \"store.json\"\n",
+        )
+        .unwrap();
+        std::fs::write(
+            root.join("store.json"),
+            r#"{"schema_version":43,"sections":{},"frames":{},"entities":{},
+               "narrative_facts":{},
+               "parameters":{"way-out":{"description":"knowing the way out"},
+                             "madness":{"description":"how far she counts"}},
+               "parameter_deltas":{"f-bell":{"madness":3,"way-out":1},
+                                   "f-tide":{"way-out":2}},
+               "parameter_gates":{"f-leave":{"parameter":"way-out","op":"ge","threshold":3}}}"#,
+        )
+        .unwrap();
+
+        let economy = store_parameter_economy(root).expect("kernel reads the economy");
+        let way_out = economy
+            .meters
+            .iter()
+            .find(|m| m.parameter == "way-out")
+            .expect("the registered meter");
+
+        // ONE beat can move TWO meters, and the row carries the per-meter share
+        // rather than the beat's total — `f-bell` is +3 madness and +1 way-out.
+        let beats: Vec<(&str, i64)> = way_out
+            .deltas
+            .iter()
+            .map(|d| (d.fact.as_str(), d.delta))
+            .collect();
+        assert_eq!(beats, [("f-bell", 1), ("f-tide", 2)]);
+        let madness = economy
+            .meters
+            .iter()
+            .find(|m| m.parameter == "madness")
+            .expect("the other meter");
+        assert_eq!(
+            madness
+                .deltas
+                .iter()
+                .map(|d| (d.fact.as_str(), d.delta))
+                .collect::<Vec<_>>(),
+            [("f-bell", 3)],
+            "the same beat, its OTHER meter's share"
+        );
+
+        // The gate rides the meter, and the kernel judges nothing about it: 3 is
+        // reachable here under an apply-once model and the read says only what
+        // was authored.
+        assert_eq!(way_out.gates.len(), 1);
+        assert_eq!(way_out.gates[0].fact, "f-leave");
+        assert_eq!(way_out.gates[0].threshold, 3);
+        assert!(madness.gates.is_empty());
     }
 
     /// R757 P3b — the kernel projects the store's `content_excerpt`s into
