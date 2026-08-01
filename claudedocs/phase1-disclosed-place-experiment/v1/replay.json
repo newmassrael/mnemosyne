@@ -1,0 +1,80 @@
+{
+  "schema": "kit-replay/v2",
+  "revision_provenance": "declared-at-run",
+  "derivation": "The revision is the commit that landed these inputs, recorded at the run rather than reconstructed after it. A self-referential pin costs a second commit by construction: a replay's revision must name a tree that already HOLDS its inputs, so the pin can only land after the corpus. Round 942's runbook asked for provenance `exact`; the gate's vocabulary is `derived-upper-bound` and `declared-at-run`, and an unknown value panics — the same correction the map-corpus run had to make against the same word in Round 898's design.",
+  "note": "Re-checking runs the declared revision against these manifests UNCHANGED. The manifests are the blind authors' output and are never edited to suit a later tool. Stage B's manifest is the author's own repair of their first submission, made from the verbatim tool error; the first submission itself is preserved beside it and is not replayed, because it does not import by design.",
+  "inputs": [
+    {
+      "path": "run/stage-a/sections.json",
+      "role": "replay-input"
+    },
+    {
+      "path": "run/stage-a/facts.json",
+      "role": "replay-input"
+    },
+    {
+      "path": "run/stage-b/sections.json",
+      "role": "replay-input"
+    },
+    {
+      "path": "run/stage-b/facts.json",
+      "role": "replay-input"
+    },
+    {
+      "path": "run/stage-a-first-submission/sections.json",
+      "role": "raw-agent-output"
+    },
+    {
+      "path": "run/stage-a-first-submission/facts.json",
+      "role": "raw-agent-output"
+    },
+    {
+      "path": "run/stage-b-first-submission/sections.json",
+      "role": "raw-agent-output"
+    },
+    {
+      "path": "run/stage-b-first-submission/facts.json",
+      "role": "raw-agent-output"
+    },
+    {
+      "path": "run/stage-a/self-report.md",
+      "role": "raw-agent-output"
+    },
+    {
+      "path": "run/stage-b-first-submission/self-report.md",
+      "role": "raw-agent-output"
+    }
+  ],
+  "replays": [
+    {
+      "name": "stage-a-neither-axis-named",
+      "revision": "c8487538e8b939fadb3deb72b34cc00faffeab5f",
+      "steps": [
+        {
+          "verb": "import-sections",
+          "input": "run/stage-a/sections.json"
+        },
+        {
+          "verb": "import-facts",
+          "input": "run/stage-a/facts.json"
+        }
+      ],
+      "expected_store_sha256": "3084c341027e6323091e3ad509321a563f1955410eeb1894b3eba230bde5ef80"
+    },
+    {
+      "name": "stage-b-both-axes-asked-in-fiction",
+      "revision": "c8487538e8b939fadb3deb72b34cc00faffeab5f",
+      "steps": [
+        {
+          "verb": "import-sections",
+          "input": "run/stage-b/sections.json"
+        },
+        {
+          "verb": "import-facts",
+          "input": "run/stage-b/facts.json"
+        }
+      ],
+      "expected_store_sha256": "8c82dff8880e9b00e0aaebe108c9afc6772a498dd7f26347da8dd9f82ea2bc2c"
+    }
+  ]
+}
