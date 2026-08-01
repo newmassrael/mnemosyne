@@ -432,8 +432,11 @@ pub fn describe_schema() -> SchemaContract {
              transition → \"adjacency\": <predicate id> (Round 697: its facts ARE the edges \
              — `adjacent(a,b)` admits (a,b); this is how movement between PLACES is gated, the \
              store-native map — the edges are FACTS, not a file list) + \"undirected\"?: bool \
-             (true = an edge admits both directions, the map; absent/false = one-way, a state \
-             machine like `alive → dead`) + \"containment\"?: <predicate id> (Round 716, \
+             (Round 924 — this declares EDGE SYMMETRY and nothing else: true = one fact admits \
+             both directions; absent/false = one fact is one way, so a two-way road is two facts \
+             and a way that costs more upward than downward is sayable. It does NOT declare \
+             whether your rule is a map or a lifecycle — every recorded corpus is a DIRECTED map \
+             — and no check reads it as though it did) + \"containment\"?: <predicate id> (Round 716, \
              superseding R703's grouping model: its facts are `contains(container, contained)` and \
              they PARTITION the map into SCOPES — an adjacency edge may only join SIBLINGS (same \
              direct container), a non-sibling edge is `adjacency_cross_scope`, and a container \
@@ -1375,10 +1378,19 @@ fn rule_class_specs() -> Vec<RuleClassSpec> {
                         name: "undirected",
                         ty: "bool (default false)",
                         required: false,
-                        description: "Round 697: edge symmetry. true = an `adjacent(a, b)` fact \
-                            admits BOTH (a, b) and (b, a) — the undirected MAP, so one fact per \
-                            edge is the SSOT. Absent/false = one-way, a state machine (`alive → \
-                            dead` must not admit the reverse).",
+                        description: "Round 697: EDGE SYMMETRY, and Round 924: that is ALL it \
+                            declares. true = an `adjacent(a, b)` fact admits BOTH (a, b) and \
+                            (b, a), so one fact per edge is the SSOT. Absent/false = one fact is \
+                            ONE WAY, so a two-way road is two facts and a way that costs more \
+                            upward than downward is sayable (`alive → dead` must not admit the \
+                            reverse either — the same knob serves both). THIS DOES NOT DECLARE \
+                            WHETHER YOUR RULE IS A MAP OR A LIFECYCLE. It used to be read that \
+                            way by two checks, and every corpus written against this contract is \
+                            a DIRECTED map, so those checks asked four maps a question and heard \
+                            `state machine` (Round 918). Nothing reads it that way now: a map's \
+                            islands are named and its unreachable pairs counted whichever value \
+                            you set, and you set it purely by whether one fact means one \
+                            direction or two.",
                     },
                     FieldSpec {
                         name: "containment",
@@ -2587,6 +2599,55 @@ mod tests {
             prose.contains("REQUIRED"),
             "the required-ness of parent_doc must be stated, not implied by ordering"
         );
+    }
+
+    /// Round 924 — the contract must tell an author that `undirected` declares
+    /// EDGE SYMMETRY, and must not tell them it selects a genre.
+    ///
+    /// Both surfaces said the true value was "the MAP" and the false value "a
+    /// state machine". Two checks read the field that way, and R918 measured what
+    /// it cost: every corpus written against this contract declares
+    /// `undirected: false` — because a road per direction is how an author says a
+    /// way costs more upward than downward — so four MAPS were exempted from the
+    /// connectivity walk and the route count. The behaviour is pinned in
+    /// `continuity.rs` (`genre_is_not_inferable_from_any_declared_field`); what is
+    /// pinned here is that the author is not told the retired story, because the
+    /// author's copy is the one that produced the corpora.
+    #[test]
+    fn undirected_declares_symmetry_and_never_the_genre() {
+        let c = describe_schema();
+        let undirected = &c
+            .narrative_rules
+            .iter()
+            .find(|r| r.class == "transition")
+            .expect("transition rule class present")
+            .parameters
+            .iter()
+            .find(|p| p.name == "undirected")
+            .expect("undirected parameter present")
+            .description;
+
+        assert!(
+            undirected.contains("EDGE SYMMETRY"),
+            "say what the field declares"
+        );
+        assert!(
+            undirected.contains("DOES NOT DECLARE WHETHER YOUR RULE IS A MAP OR A LIFECYCLE"),
+            "and say what it does not, since the retired gloss is what an author \
+             would otherwise infer from `true = undirected`"
+        );
+        // The retired gloss itself, in BOTH surfaces that carried it — a
+        // structured parameter description and the wire prose beside it.
+        let retired = ["the undirected MAP", "a state machine like"];
+        for surface in [&undirected[..], c.narrative_rules_wire] {
+            for phrase in retired {
+                assert!(
+                    !surface.contains(phrase),
+                    "`undirected` is edge symmetry (R924), but the contract still \
+                     glosses it as `{phrase}`"
+                );
+            }
+        }
     }
 
     /// Round 906 — the transition rule's `containment` prose must describe the

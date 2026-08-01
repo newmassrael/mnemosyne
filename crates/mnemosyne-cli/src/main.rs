@@ -2805,6 +2805,19 @@ fn cmd_validate_confirmation(args: &[String]) -> Result<()> {
 /// R428 `--catalog` rule); `--sidecar` overrides the store path (narrative
 /// facts usually live in non-dogfood stores). `--rules` overrides the
 /// declared `narrative-rules/v1` artifact (Round 449; same pin-bypass rule).
+/// Round 924 — a class-scoped continuity counter as a person reads it: the
+/// number when a rule of that class ran, and `not-declared` when none did.
+///
+/// THE ONE RESOLVER for that distinction on this surface, so the four counters
+/// printed below cannot render it four ways. A silence is not a zero: R918
+/// measured four corpora whose route count printed `0` because an early return
+/// had skipped it, and read the number as evidence of a clean map. The type
+/// stopped that from being representable; this stops the printer from flattening
+/// it back out.
+fn counter_or_silence(n: Option<usize>) -> String {
+    n.map_or_else(|| "not-declared".to_string(), |n| n.to_string())
+}
+
 fn cmd_validate_continuity(args: &[String]) -> Result<()> {
     use mnemosyne_config::Severity;
     let mut json = false;
@@ -2916,10 +2929,10 @@ fn cmd_validate_continuity(args: &[String]) -> Result<()> {
                 "  rules={} rule_unordered={} unchained_state_pairs={} (no route joins {}) \
 interval_unverifiable={} interval_severity={}",
                 report.rules,
-                report.rule_unordered_pairs,
-                report.unchained_state_pairs,
-                report.unchained_unreachable_pairs,
-                report.interval_unverifiable,
+                counter_or_silence(report.rule_unordered_pairs),
+                counter_or_silence(report.unchained_state_pairs),
+                counter_or_silence(report.unchained_unreachable_pairs),
+                counter_or_silence(report.interval_unverifiable),
                 interval_severity.map_or("off", Severity::as_str)
             );
             // Round 921 — how the REAL classifier read every declared step.

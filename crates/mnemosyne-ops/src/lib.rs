@@ -429,16 +429,20 @@ pub struct ContinuityScanReport {
     /// so the ambiguity is NAMED (the CLI notice), never guessed.
     pub undeclared_roads: Vec<String>,
     /// Exclusive-rule candidate pairs the declared order cannot compare.
-    pub rule_unordered_pairs: usize,
+    /// `None` = no exclusive rule was declared (Round 924).
+    pub rule_unordered_pairs: Option<usize>,
     /// Same-frame same-subject typed pairs no succession PATH connects —
     /// surfaced, never gated (Round 449; path not edge, Round 452).
-    pub unchained_state_pairs: usize,
+    /// `None` = no transition rule was declared (Round 924).
+    pub unchained_state_pairs: Option<usize>,
     /// Round 916 — the subset of `unchained_state_pairs` that NO ROUTE joins in
     /// the hierarchy-augmented map: the subject is asserted on both sides of a
     /// gap no journey crosses, so no ellipsis could have covered it. Surfaced,
-    /// never gated; undirected rules only (a directed rule may be `alive ->
-    /// dead`, where unreachability is the design).
-    pub unchained_unreachable_pairs: usize,
+    /// never gated; EVERY transition rule, directed or not (Round 924 — the
+    /// claim needs no genre, and on a directed rule it is conservative because
+    /// the component walk symmetrizes). `None` = no transition rule was
+    /// declared, so this was never computed: `Some(0)` is a measurement.
+    pub unchained_unreachable_pairs: Option<usize>,
     /// Round 921 — every declared step as the REAL classifier judged it, carried
     /// through so a consumer reading this report and the gate cannot disagree
     /// about what a step IS. Always populated (R663: a knob decides whether an
@@ -447,7 +451,8 @@ pub struct ContinuityScanReport {
     /// Interval-rule resolutions that could not be evaluated (operand absent
     /// on the right/bound leg, non-numeric, or ambiguous) — surfaced, never
     /// gated (Round 489, the R485 `unverifiable` class).
-    pub interval_unverifiable: usize,
+    /// `None` = no interval rule was declared (Round 924).
+    pub interval_unverifiable: Option<usize>,
     pub violation_count: usize,
     /// Interval (timeline) violations within `violation_count` (Round 491):
     /// these gate under `interval_severity`, the structural remainder

@@ -812,12 +812,24 @@ pub enum NarrativeRuleSpec {
     /// "룰로 박아". One source for the edge set: the store.
     ///
     /// `undirected` is the edge SYMMETRY, made explicit (Round 697 build —
-    /// most real transition rules are one-way STATE MACHINES: `alive → dead`,
+    /// many transition rules are one-way: `alive → dead`,
     /// `operational → destroyed`, `machine → deviant` are irreversible, and a
     /// blanket symmetrize would silently admit the reverse — resurrection). So
     /// directed by default: an `adjacent(a,b)` fact admits ONLY (a,b). When
-    /// `undirected` (the MAP), it admits BOTH (a,b) and (b,a), so one fact per
-    /// edge is the SSOT (no reverse duplicate to drift).
+    /// `undirected`, it admits BOTH (a,b) and (b,a), so one fact per edge is the
+    /// SSOT (no reverse duplicate to drift).
+    ///
+    /// Round 924 — SYMMETRY IS ALL IT MEANS, and the parenthetical this comment
+    /// used to carry ("when `undirected` (the MAP)") is why that has to be said
+    /// out loud. Two checks read the flag as a GENRE answer — "is this a map, or
+    /// a state machine where unreachability is the design" — and R918 measured
+    /// the collision: all four recorded corpora are directed MAPS, because a road
+    /// per direction is how an author says a way costs more upward than downward.
+    /// So the connectivity walk and the route count were both asking four maps a
+    /// question and hearing "state machine". Neither reads it now, and the genre
+    /// question turned out to have no answer in any declared field
+    /// ([`genre_is_not_inferable_from_any_declared_field`] pins the refutations).
+    /// A rule that admits both directions is undirected; that is the whole claim.
     ///
     /// Round 703 (store-native map, DESIGN R696 sec 2) — `containment` names the
     /// predicate whose facts are `contains(container, contained)`. The SAME map's
@@ -1154,10 +1166,15 @@ struct NarrativeRuleWire {
     /// the map went store-native.
     #[serde(default)]
     adjacency: Option<String>,
-    /// Transition edge symmetry (Round 697): `true` = undirected (an
-    /// `adjacent(a,b)` fact admits both directions — the map); absent/`false`
-    /// = directed one-way (a state machine). Belongs to a transition rule; a
-    /// stray one on exclusive/interval rejects.
+    /// Transition edge SYMMETRY, and nothing else (Round 697): `true` = an
+    /// `adjacent(a,b)` fact admits both directions; absent/`false` = one-way.
+    /// Belongs to a transition rule; a stray one on exclusive/interval rejects.
+    ///
+    /// Round 924 — this doc used to gloss the two values as "the map" and "a
+    /// state machine", which is the reading two checks then made of the field and
+    /// R918 measured to be wrong: every recorded corpus is a DIRECTED map, one
+    /// fact per direction. A directed map is not a state machine, and no declared
+    /// field tells the two apart.
     #[serde(default)]
     undirected: Option<bool>,
     /// The containment-source predicate for a transition rule (Round 703): its
@@ -2114,7 +2131,11 @@ pub struct ContinuityReport {
     /// Distinct exclusive-rule candidate pairs whose canon coordinates the
     /// declared order cannot compare in some world (B-1: surfaced, never
     /// gated — the rule cannot decide them).
-    pub rule_unordered_pairs: usize,
+    ///
+    /// Round 924 — `None` = NO EXCLUSIVE RULE was declared, so nothing was
+    /// counted. See [`Self::unchained_unreachable_pairs`] for why the four
+    /// class-scoped counters on this report are optional rather than zero.
+    pub rule_unordered_pairs: Option<usize>,
     /// Distinct same-frame same-subject typed pairs (per transition rule)
     /// visible together in some query world with NO succession PATH
     /// between them — states the chain never connects, which the
@@ -2124,7 +2145,10 @@ pub struct ContinuityReport {
     /// WORLD-scoped via the shared visibility (the R441 probe finding:
     /// raw branch equality would silently miss fork-inherited pairs),
     /// deduplicated across worlds.
-    pub unchained_state_pairs: usize,
+    ///
+    /// Round 924 — `None` = NO TRANSITION RULE was declared. See
+    /// [`Self::unchained_unreachable_pairs`].
+    pub unchained_state_pairs: Option<usize>,
     /// Round 916 — the SUBSET of [`Self::unchained_state_pairs`] that no ROUTE
     /// joins: the subject is asserted at two places with no path between them in
     /// the hierarchy-augmented map, so there is no journey the telling could have
@@ -2133,13 +2157,29 @@ pub struct ContinuityReport {
     /// this is the half R911 could only take on trust ("a corpus can claim a
     /// subject entered a container it was never adjacent to, and pass").
     ///
-    /// UNDIRECTED rules only: a directed transition rule may be `alive -> dead`,
-    /// where unreachability IS the design. R719's relaxation stands — two
-    /// mutually-unreachable top-level containers are a legal map — because what is
-    /// counted here is not the map's shape but a subject asserted on both sides of
-    /// it. A place the map does not hold at all is left to `map_invented_place` /
-    /// `map_contained_off_map` rather than counted twice.
-    pub unchained_unreachable_pairs: usize,
+    /// EVERY transition rule, directed or not (Round 924). R916 restricted this
+    /// to undirected rules, reading `undirected` as "a map, or possibly
+    /// `alive -> dead` where unreachability IS the design" — and R918 measured
+    /// that the field cannot answer that, since all four recorded corpora are
+    /// directed MAPS. The claim made here needs no genre: no route joins these two
+    /// positions in EITHER direction. On a directed rule it is CONSERVATIVE, since
+    /// the component walk symmetrizes and a one-way road therefore counts as a
+    /// route back. R719's relaxation stands — two mutually-unreachable top-level
+    /// containers are a legal map — because what is counted here is not the map's
+    /// shape but a subject asserted on both sides of it. A place the map does not
+    /// hold at all is left to `map_invented_place` / `map_contained_off_map`
+    /// rather than counted twice.
+    ///
+    /// Round 924 — `None` = NO TRANSITION RULE was declared, so this was never
+    /// computed. THE FOUR ZEROS R918 FOUND WERE OF EXACTLY THIS KIND, one level
+    /// down: an early return the report printed as a measurement, and a reader who
+    /// cannot tell "we looked and found none" from "we never looked" is being
+    /// misinformed by a number that looks like evidence. The acute form is gone —
+    /// nothing returns early any more — and the residual form is made
+    /// unrepresentable here rather than left to each consumer to remember, which
+    /// is the same reasoning applied to all four class-scoped counters on this
+    /// report: `Some(0)` is a measurement, `None` is a silence.
+    pub unchained_unreachable_pairs: Option<usize>,
     /// Round 921 — every declared step of every transition rule, as the REAL
     /// classifier judged it. ALWAYS populated, never knob-gated: a knob may
     /// decide whether an axis FAILS, never whether it is MEASURED (the R663
@@ -2155,7 +2195,10 @@ pub struct ContinuityReport {
     /// absent/unparseable, not contradictory (the R485 `unverifiable` class:
     /// the author types it, then the gate decides). Deduplicated per
     /// (rule, frame, world, subject).
-    pub interval_unverifiable: usize,
+    ///
+    /// Round 924 — `None` = NO INTERVAL RULE was declared. See
+    /// [`Self::unchained_unreachable_pairs`].
+    pub interval_unverifiable: Option<usize>,
 }
 
 /// One world's membership view — a thin alias over
@@ -3705,7 +3748,9 @@ pub fn scan_continuity(
                         }
                     },
                 );
-                report.rule_unordered_pairs += unordered.len();
+                // Round 924 — reached once per EXCLUSIVE rule, so the insert is
+                // what turns "never computed" into "measured".
+                *report.rule_unordered_pairs.get_or_insert(0) += unordered.len();
             }
             NarrativeRuleSpec::Transition {
                 adjacency,
@@ -3905,19 +3950,34 @@ pub fn scan_continuity(
                         // can claim a subject entered a container it was never
                         // adjacent to, and pass".
                         //
-                        // UNDIRECTED ONLY, and that is the declaration R891's carry
-                        // said the store lacked: a DIRECTED transition rule may be
-                        // `alive -> dead`, where unreachability is the design.
-                        // `scan_spatial_map` has gated its per-scope connectivity
-                        // walk on the same field since R716/R719, so this reuses an
-                        // existing discriminator rather than inventing one.
+                        // Round 924 — NO GENRE GATE. R916 gated this on
+                        // `undirected`, reading it as "is this a map, or might it
+                        // be `alive -> dead`, where unreachability is the design".
+                        // R918 measured that the field cannot answer that: all
+                        // four recorded corpora are directed MAPS (one road per
+                        // direction), so every zero this counter has ever reported
+                        // was an EARLY RETURN and not a measurement. The probe for
+                        // a replacement discriminator refuted all three candidates
+                        // ([`genre_is_not_inferable_from_any_declared_field`]), and
+                        // what it found instead is that this count never needed
+                        // one: "no route joins these two positions in EITHER
+                        // direction" is true whatever the rule models, and the
+                        // count is SURFACED rather than gated, so a lifecycle with
+                        // genuinely disjoint state families is described here
+                        // rather than rejected.
+                        //
+                        // CONSERVATIVE on a directed rule, and deliberately:
+                        // `place_components` symmetrizes, so a one-way road counts
+                        // as a route back. That UNDER-reports (a pair reachable
+                        // only downhill is not named) and never over-reports,
+                        // which is the safe direction for an honesty count.
                         //
                         // R719 stays intact: two mutually-unreachable top-level
                         // containers remain a LEGAL map (two islands, a dream and
                         // the waking world). What is reported here is not the map's
                         // shape but a SUBJECT asserted on both sides of it.
-                        if !*undirected || a.frame != b.frame {
-                            return; // a directed state machine, or a cross-frame pair (data)
+                        if a.frame != b.frame {
+                            return; // a cross-frame pair is data, not a gap
                         }
                         let comp = components
                             .entry((ctx.world.to_string(), a.frame.to_string()))
@@ -3941,8 +4001,10 @@ pub fn scan_continuity(
                         }
                     },
                 );
-                report.unchained_state_pairs += seen.len();
-                report.unchained_unreachable_pairs += unreachable.len();
+                // Round 924 — reached once per TRANSITION rule, so the inserts are
+                // what turn "never computed" into "measured".
+                *report.unchained_state_pairs.get_or_insert(0) += seen.len();
+                *report.unchained_unreachable_pairs.get_or_insert(0) += unreachable.len();
             }
             NarrativeRuleSpec::Interval { right, op, bound } => {
                 let outcomes = scan_interval_rule(
@@ -3990,7 +4052,9 @@ pub fn scan_continuity(
                         IntervalVerdict::Satisfied { .. } => {}
                     }
                 }
-                report.interval_unverifiable += unverifiable.len();
+                // Round 924 — reached once per INTERVAL rule, so the insert is what
+                // turns "never computed" into "measured".
+                *report.interval_unverifiable.get_or_insert(0) += unverifiable.len();
             }
         }
     }
@@ -4658,7 +4722,8 @@ fn judge_steps<'a>(
 /// map this degenerates to ONE root scope = the Round 702 whole-map connectivity
 /// + the Round 703 completeness (backward-compatible). Emits: AdjacencyCrossScope
 /// (a non-sibling edge — subsumes the Round 703 MapContainerAsNode), MapDisconnected
-/// (a scope's sub-graph disconnected, undirected only), MapInventedPlace (a
+/// (a scope's sub-graph disconnected — EVERY rule since Round 924, the walk
+/// symmetrizes and so has always asked for WEAK connectivity), MapInventedPlace (a
 /// place-kind entity off every scope, kind-gated), MapContainedOffMap (a contained
 /// thing that is neither a node nor a container, KIND-INDEPENDENT — R713 F1).
 /// Each finding deduped per identity across points within a (frame, world).
@@ -4856,9 +4921,24 @@ fn scan_spatial_map(
                 }
             }
             // --- UNION checks (once per frame/world) ---
-            // Per-scope connectivity (undirected/spatial only): each scope's UNION
-            // graph must be one component — an island never connected AT ANY point
-            // is dead content. Root-independent; DFS from an arbitrary node.
+            // Per-scope connectivity: each scope's UNION graph must be one
+            // component — an island never connected AT ANY point is dead content.
+            // Root-independent; DFS from an arbitrary node.
+            //
+            // Round 924 — THE `undirected` GATE IS GONE, the second habitat of the
+            // overload R918 measured. This walk symmetrizes every edge, so it has
+            // always asked for WEAK connectivity, and weak connectivity is not a
+            // question about one-wayness: a one-way road still joins its two
+            // places. What the gate actually excluded was the four recorded
+            // corpora, every one of them a directed map, which is the whole of the
+            // authored evidence this check exists for. Genre is not inferable from
+            // any declared field ([`genre_is_not_inferable_from_any_declared_field`])
+            // and this check does not need it: an island of states no subject can
+            // ever move to or from is dead content on the same argument as an
+            // island of places. An author who wants two genuinely separate
+            // families under one predicate has the model's own answer — declare
+            // them in separate SCOPES (R719), which is the mechanism that already
+            // makes a dream and the waking world legal.
             //
             // SCOPE (Round 719, the debt-slate disposition of the R716-F3 /
             // DEBT-MAP-G2-SINGLEMAP tail): connectivity is checked PER SCOPE, so
@@ -4877,41 +4957,39 @@ fn scan_spatial_map(
             // model with explicit containment. (Measured: the live tide map is
             // flat/0-containers = one root scope = the R702 whole-map check, so no
             // live case is affected either way.)
-            if undirected {
-                for (scope, sedges) in &scope_union_edges {
-                    let mut adj: BTreeMap<&str, Vec<&str>> = BTreeMap::new();
-                    for (a, b) in sedges {
-                        adj.entry(a.as_str()).or_default().push(b.as_str());
-                        adj.entry(b.as_str()).or_default().push(a.as_str());
+            for (scope, sedges) in &scope_union_edges {
+                let mut adj: BTreeMap<&str, Vec<&str>> = BTreeMap::new();
+                for (a, b) in sedges {
+                    adj.entry(a.as_str()).or_default().push(b.as_str());
+                    adj.entry(b.as_str()).or_default().push(a.as_str());
+                }
+                if adj.len() > 1 {
+                    let start = *adj.keys().next().unwrap();
+                    let mut seen: BTreeSet<&str> = BTreeSet::new();
+                    let mut stack = vec![start];
+                    while let Some(n) = stack.pop() {
+                        if seen.insert(n) {
+                            stack.extend(adj.get(n).into_iter().flatten().copied());
+                        }
                     }
-                    if adj.len() > 1 {
-                        let start = *adj.keys().next().unwrap();
-                        let mut seen: BTreeSet<&str> = BTreeSet::new();
-                        let mut stack = vec![start];
-                        while let Some(n) = stack.pop() {
-                            if seen.insert(n) {
-                                stack.extend(adj.get(n).into_iter().flatten().copied());
-                            }
-                        }
-                        if seen.len() < adj.len() {
-                            let unreached: Vec<String> = adj
-                                .keys()
-                                .filter(|n| !seen.contains(*n))
-                                .map(|n| n.to_string())
-                                .collect();
-                            report
-                                .violations
-                                .push(ContinuityViolation::MapDisconnected {
-                                    rule: rule.id.clone(),
-                                    predicate: adjacency.to_string(),
-                                    scope: scope.clone(),
-                                    reached: seen.len(),
-                                    total: adj.len(),
-                                    unreached,
-                                    frame: frame.to_string(),
-                                    branch: world.to_string(),
-                                });
-                        }
+                    if seen.len() < adj.len() {
+                        let unreached: Vec<String> = adj
+                            .keys()
+                            .filter(|n| !seen.contains(*n))
+                            .map(|n| n.to_string())
+                            .collect();
+                        report
+                            .violations
+                            .push(ContinuityViolation::MapDisconnected {
+                                rule: rule.id.clone(),
+                                predicate: adjacency.to_string(),
+                                scope: scope.clone(),
+                                reached: seen.len(),
+                                total: adj.len(),
+                                unreached,
+                                frame: frame.to_string(),
+                                branch: world.to_string(),
+                            });
                     }
                 }
             }
@@ -10907,7 +10985,7 @@ mod tests {
         // The whole s1→s2→bad arc is succession-connected (path, not
         // direct edge — Round 452): zero unchained pairs on chained data,
         // even with the invalid step (the violation IS the signal there).
-        assert_eq!(report.unchained_state_pairs, 0);
+        assert_eq!(report.unchained_state_pairs, Some(0));
     }
 
     /// Round 697 (store-native map): an UNDIRECTED transition derives its
@@ -11389,6 +11467,164 @@ mod tests {
         // the island {ent-c, ent-d} is unreached (deterministic, sorted).
         assert_eq!(*reached, 2);
         assert_eq!(unreached, &vec!["ent-c".to_string(), "ent-d".to_string()]);
+    }
+
+    /// Round 924 — a DIRECTED map's island is flagged, and one road silences it.
+    ///
+    /// This is the behavioural half of removing the `undirected` gate from the
+    /// connectivity walk. The walk symmetrizes every edge, so it has always asked
+    /// for WEAK connectivity, and a one-way road still joins its two places —
+    /// there was never a question about one-wayness here. What the gate actually
+    /// excluded was every recorded corpus, all four of them directed maps (R918),
+    /// which is the whole of the authored evidence this check exists to serve.
+    ///
+    /// The second scan is the discriminating half: the same places, one road
+    /// added, no finding. So this measures CONNECTIVITY and not merely "a
+    /// directed rule now reaches the walk".
+    #[test]
+    fn a_directed_map_island_is_flagged_and_one_road_silences_it() {
+        let order = chain(&["ch-1", "ch-2", "ch-3", "ch-4"]);
+        // Directed: one fact per direction, as all four recorded corpora author.
+        let directed = [transition_rule("roads", "pred-at", "adjacent", false, None)];
+        let anchor = || typed_fact("p0", "gt", "ch-1", "ent-jiun", "pred-at", holds("ent-a"));
+        let disconnected = |v: &ContinuityReport| {
+            v.violations
+                .iter()
+                .filter_map(|v| match v {
+                    ContinuityViolation::MapDisconnected {
+                        reached,
+                        total,
+                        unreached,
+                        ..
+                    } => Some((*reached, *total, unreached.clone())),
+                    _ => None,
+                })
+                .collect::<Vec<_>>()
+        };
+
+        // a -> b, and an island c -> d with no way between them.
+        let island = vec![
+            anchor(),
+            map_edge("ent-a", "ent-b"),
+            map_edge("ent-c", "ent-d"),
+        ];
+        let report = scan_continuity(&store_with(island.clone()), &order, &directed).unwrap();
+        let found = disconnected(&report);
+        assert_eq!(found.len(), 1, "{:?}", report.violations);
+        assert_eq!(
+            (found[0].0, found[0].1),
+            (2, 4),
+            "two of four places reached: a directed map is not exempt from having \
+             its dead content named"
+        );
+        assert_eq!(
+            found[0].2,
+            vec!["ent-c".to_string(), "ent-d".to_string()],
+            "the island names its own nodes"
+        );
+
+        // ...and ONE one-way road joins them, weakly, which is all the walk asks.
+        let mut joined = island;
+        joined.push(map_edge("ent-b", "ent-c"));
+        let report = scan_continuity(&store_with(joined), &order, &directed).unwrap();
+        assert!(
+            disconnected(&report).is_empty(),
+            "a single one-way road is a join for a WEAK connectivity walk: {:?}",
+            report.violations
+        );
+    }
+
+    /// Round 924 — the genre of a transition rule ("a map, or a lifecycle where
+    /// unreachability is the design") is NOT inferable from any declared field,
+    /// and this pins the inputs that refute each candidate.
+    ///
+    /// R916 gated its route count on `undirected`, and R918 measured that as a
+    /// genre answer the field cannot give — all four recorded corpora declare
+    /// `undirected: false` because their roads are per-direction facts, so four
+    /// maps answered "state machine". R918 left the replacement to a probe
+    /// between two unoverloaded candidates rather than picking by argument. The
+    /// probe refuted BOTH, and the third candidate it turned up as well:
+    ///
+    ///  - `containment` DECLARED: refuted by a flat map. R719 recorded that the
+    ///    live tide map is container-less, and `adjacency_connectivity_flags_
+    ///    disconnected_map` is one in this tree.
+    ///  - the adjacency predicate's KINDS (R701's `place_kind`): refuted by the
+    ///    recorded corpora, two of whose four declare neither leg — and blind by
+    ///    construction even when present, since `place_kind` is DEFINED as
+    ///    whatever that predicate declares, so a lifecycle declaring
+    ///    `subject_kind = state` would answer "map".
+    ///  - the adjacency object SHAPE (`Entity` vs `Token`): all four corpora
+    ///    declare `object_kind: entity` and the lifecycle fixtures are tokens, so
+    ///    this one survives the authored data — and is refuted by this tree,
+    ///    where map fixtures are authored token-shaped (`adjacency_facts`).
+    ///
+    /// So neither consumer of the old flag reads a genre any more, and these two
+    /// arms are what says so: each is a map that at least one candidate calls a
+    /// lifecycle, and BOTH must be flagged. Re-introducing any of the four gates
+    /// turns one of them green-without-finding.
+    #[test]
+    fn genre_is_not_inferable_from_any_declared_field() {
+        let order = chain(&["ch-1", "ch-2", "ch-3", "ch-4"]);
+        let directed = [transition_rule("roads", "pred-at", "adjacent", false, None)];
+        assert!(
+            matches!(
+                directed[0].spec,
+                NarrativeRuleSpec::Transition {
+                    undirected: false,
+                    containment: None,
+                    ..
+                }
+            ),
+            "the discriminating input must actually discriminate: this rule is \
+             the one `undirected` and `containment`-declared both call a lifecycle"
+        );
+        let anchor = || typed_fact("p0", "gt", "ch-1", "ent-jiun", "pred-at", holds("ent-a"));
+        let islanded = |report: &ContinuityReport| {
+            report
+                .violations
+                .iter()
+                .any(|v| matches!(v, ContinuityViolation::MapDisconnected { .. }))
+        };
+
+        // ARM 1 — entity-shaped edges, no containment, no declared kinds.
+        let mut entity_shaped = vec![anchor()];
+        entity_shaped.push(map_edge("ent-a", "ent-b"));
+        entity_shaped.push(map_edge("ent-c", "ent-d"));
+        let store = store_with(entity_shaped);
+        let adjacent = &store.predicates[&"adjacent".into()];
+        assert!(
+            adjacent.subject_kind.is_none() && adjacent.object_entity_kind.is_none(),
+            "the discriminating input must actually discriminate: R701's \
+             `place_kind` is blank here, as it is in two of the four corpora"
+        );
+        assert_eq!(
+            adjacent.object_kind,
+            mnemosyne_core::PredicateObjectKind::Entity
+        );
+        assert!(
+            islanded(&scan_continuity(&store, &order, &directed).unwrap()),
+            "a map is a map though it declares no containment and no kinds"
+        );
+
+        // ARM 2 — the same island authored TOKEN-shaped, which is how this tree's
+        // own map fixtures are built and what the object-shape candidate reads as
+        // a lifecycle.
+        let mut token_shaped = vec![anchor()];
+        token_shaped.extend(adjacency_facts(
+            "adjacent",
+            &[("ent-a", "ent-b"), ("ent-c", "ent-d")],
+        ));
+        let store = store_with(token_shaped);
+        assert_eq!(
+            store.predicates[&"adjacent".into()].object_kind,
+            mnemosyne_core::PredicateObjectKind::Token,
+            "the discriminating input must actually discriminate: this is the \
+             shape the object-kind candidate calls a lifecycle"
+        );
+        assert!(
+            islanded(&scan_continuity(&store, &order, &directed).unwrap()),
+            "a map is a map though its edges name their endpoints as tokens"
+        );
     }
 
     /// Round 711 (the R710 LOW-3 deferral) — an `edge_costs` entry is a map-edge
@@ -12260,7 +12496,7 @@ mod tests {
                 split.unchained_state_pairs,
                 split.unchained_unreachable_pairs
             ),
-            (3, 1),
+            (Some(3), Some(1)),
             "three unchained pairs, and exactly ONE of them is a gap no journey \
              crosses — the off-map pairs belong to `map_invented_place`: {:?}",
             split.violations
@@ -12282,30 +12518,37 @@ mod tests {
                 linked.unchained_state_pairs,
                 linked.unchained_unreachable_pairs
             ),
-            (3, 0),
+            (Some(3), Some(0)),
             "the pairs are still unchained, but a route now joins the one that \
              mattered"
         );
     }
 
-    /// Round 916 — a DIRECTED transition rule is exempt, because unreachability is
-    /// its design.
+    /// Round 924 — a DIRECTED rule is counted like any other, and the count is
+    /// CONSERVATIVE rather than exempt. This replaces R916's exemption, which
+    /// R918 measured to be reading `undirected` for a genre answer it cannot
+    /// give: all four recorded corpora are directed MAPS, so the exemption
+    /// silenced the whole of the authored evidence.
     ///
-    /// This is the discriminator R891's carry said the store did not have: the
-    /// transition class also models one-way state machines, where `dead` being
-    /// unreachable from `undead` is the point. `scan_spatial_map` has gated its
-    /// connectivity walk on `undirected` since R716/R719, and the route count
-    /// reuses that field rather than inventing a second declaration.
+    /// The two arms are the claim, and the second is why the first is safe:
     ///
-    /// THE FIXTURE'S FIRST VERSION ASSERTED THIS VACUOUSLY and an injection that
-    /// fired NOTHING is what found it: with one `alive -> dead` edge the two
-    /// states are one component read undirected, so the count was 0 whether the
-    /// guard was there or not. The states here are two DISJOINT pairs, so the
-    /// subject's two positions genuinely have no route between them and the guard
-    /// is the only reason the count stays 0 (R854's lesson: an assertion needs an
-    /// input that could make it fail).
+    ///  - DISJOINT FAMILIES ARE COUNTED. `alive - dead` and `machine - deviant`
+    ///    share no edge, so a subject asserted `dead` then `deviant` has no route
+    ///    in EITHER direction. That is true whatever the rule models, and the
+    ///    count is surfaced and never gated, so nothing is rejected by it.
+    ///  - A ONE-WAY ROAD COUNTS AS A ROUTE BACK. `place_components` symmetrizes,
+    ///    so `dead -> alive` with only an `alive -> dead` edge is unchained but
+    ///    NOT unreachable. The count therefore UNDER-reports on a directed rule
+    ///    and never over-reports — the safe direction for an honesty count, and
+    ///    the reason removing the exemption cannot manufacture a finding.
+    ///
+    /// The disjoint arm is the discriminating input R916's own version needed and
+    /// found (its first draft had one `alive -> dead` edge, where the two states
+    /// are one component and the count is 0 whether the guard is there or not).
+    /// Both arms share it: the same store answers 1 and 0 depending only on
+    /// whether a route exists.
     #[test]
-    fn a_directed_rule_never_counts_an_unreachable_pair() {
+    fn a_directed_rule_counts_a_disjoint_pair_but_not_a_one_way_return() {
         let order = chain(&["ch-1", "ch-2", "ch-3", "ch-4"]);
         let rules = [transition_rule(
             "life",
@@ -12314,35 +12557,106 @@ mod tests {
             false,
             None,
         )];
-        let mut facts = adjacency_facts(
-            "life-adjacent",
-            &[("alive", "dead"), ("machine", "deviant")],
+        let scan = |from: &str, to: &str| {
+            let mut facts = adjacency_facts(
+                "life-adjacent",
+                &[("alive", "dead"), ("machine", "deviant")],
+            );
+            facts.push(typed_fact(
+                "s1",
+                "gt",
+                "ch-1",
+                "p",
+                "life-status",
+                holds(from),
+            ));
+            facts.push(typed_fact(
+                "s2",
+                "gt",
+                "ch-3",
+                "p",
+                "life-status",
+                holds(to),
+            ));
+            let store = store_with(facts);
+            let report = scan_continuity(&store, &order, &rules).unwrap();
+            (
+                report.unchained_state_pairs,
+                report.unchained_unreachable_pairs,
+            )
+        };
+        assert_eq!(
+            scan("dead", "deviant"),
+            (Some(1), Some(1)),
+            "two state families with no edge between them: no route joins the \
+             subject's two positions, and a directed rule is not exempt from \
+             saying so"
         );
-        facts.push(typed_fact(
-            "s1",
-            "gt",
-            "ch-1",
-            "p",
-            "life-status",
-            holds("dead"),
-        ));
-        facts.push(typed_fact(
-            "s2",
-            "gt",
-            "ch-3",
-            "p",
-            "life-status",
-            holds("deviant"),
-        ));
-        let store = store_with(facts);
-        let report = scan_continuity(&store, &order, &rules).unwrap();
+        assert_eq!(
+            scan("dead", "alive"),
+            (Some(1), Some(0)),
+            "the one-way `alive -> dead` edge counts as a route back: the count \
+             under-reports on a directed rule rather than inventing a finding"
+        );
+    }
+
+    /// Round 924 — a class-scoped counter is `None` when no rule of its class ran,
+    /// and `Some(0)` when one ran and found nothing. A silence is not a zero.
+    ///
+    /// This is the residual form of what R918 measured: the route count printed
+    /// `0` for four corpora because an early return had skipped it, and a reader
+    /// took the number for evidence. Removing the early return fixed the acute
+    /// case; a report with no transition rule at all could still print `0` for a
+    /// question nobody asked. The type now refuses to say it, and this is the
+    /// discriminating pair — ONE store, TWO rule sets, and each counter answers
+    /// `None` under the set that does not declare its class.
+    #[test]
+    fn a_counter_is_none_when_its_rule_class_never_ran() {
+        let order = chain(&["ch-1", "ch-2", "ch-3", "ch-4"]);
+        let facts = || {
+            vec![
+                typed_fact("s1", "gt", "ch-1", "p", "pred-at", holds("ent-a")),
+                typed_fact("s2", "gt", "ch-3", "p", "pred-at", holds("ent-b")),
+                map_edge("ent-a", "ent-b"),
+            ]
+        };
+
+        let exclusive_only = [exclusive_rule(
+            "one-place",
+            "pred-at",
+            ExclusiveKey::Subject,
+        )];
+        let report = scan_continuity(&store_with(facts()), &order, &exclusive_only).unwrap();
+        assert_eq!(
+            report.rule_unordered_pairs,
+            Some(0),
+            "the exclusive class RAN and found none — a measurement"
+        );
+        assert_eq!(
+            (
+                report.unchained_state_pairs,
+                report.unchained_unreachable_pairs,
+                report.interval_unverifiable
+            ),
+            (None, None, None),
+            "no transition and no interval rule was declared, so nothing was \
+             counted and nothing may be printed as a count"
+        );
+
+        let transition_only = [transition_rule("roads", "pred-at", "adjacent", false, None)];
+        let report = scan_continuity(&store_with(facts()), &order, &transition_only).unwrap();
         assert_eq!(
             (
                 report.unchained_state_pairs,
                 report.unchained_unreachable_pairs
             ),
-            (1, 0),
-            "a one-way state machine's unreachability is the design, not a finding"
+            (Some(1), Some(0)),
+            "the transition class ran: an unchained pair, joined by a road"
+        );
+        assert_eq!(
+            (report.rule_unordered_pairs, report.interval_unverifiable),
+            (None, None),
+            "and the two classes that did not run say so"
         );
     }
 
@@ -12602,7 +12916,7 @@ mod tests {
         // Exactly the (s1, w1) pair surfaces: same frame + subject, both
         // visible only in the lucy-lives world, not chained. (s2, w1)
         // never co-occur in any world; (s1, s2) is chained.
-        assert_eq!(report.unchained_state_pairs, 1);
+        assert_eq!(report.unchained_state_pairs, Some(1));
     }
 
     /// Sibling forks never share a world: each world-line's state facts are
@@ -12634,7 +12948,7 @@ mod tests {
         let rules = [exclusive_rule("loc", "at-location", ExclusiveKey::Subject)];
         let report = scan_continuity(&store, &CanonOrder::empty(), &rules).unwrap();
         assert!(report.violations.is_empty(), "{:?}", report.violations);
-        assert_eq!(report.rule_unordered_pairs, 1);
+        assert_eq!(report.rule_unordered_pairs, Some(1));
     }
 
     /// A rule naming an unregistered predicate fails LOUD at the scan
@@ -12980,7 +13294,7 @@ mod tests {
         let store = store_with(arc);
         let report = scan_continuity(&store, &order, &rules).unwrap();
         assert!(report.violations.is_empty(), "{:?}", report.violations);
-        assert_eq!(report.unchained_state_pairs, 0);
+        assert_eq!(report.unchained_state_pairs, Some(0));
         // Untyped middle: s1(typed) <- m(untyped) <- s3(typed) still
         // connects the endpoints through the chain (the hops are outside
         // the rule — partial coverage — but the pair is not unchained).
@@ -13002,7 +13316,7 @@ mod tests {
         let report = scan_continuity(&store, &order, &rules).unwrap();
         // (s1,s3) path-connected through m -> not counted; (s1,loose),
         // (s3,loose) disconnected -> 2.
-        assert_eq!(report.unchained_state_pairs, 2);
+        assert_eq!(report.unchained_state_pairs, Some(2));
     }
 
     // ---- dramatic-irony intervals (Round 455, design sec 7.14) ----
@@ -16624,7 +16938,7 @@ mod tests {
             "exactly the hasty world-line violates, lawful is clean: {:?}",
             report.violations
         );
-        assert_eq!(report.interval_unverifiable, 0);
+        assert_eq!(report.interval_unverifiable, Some(0));
     }
 
     /// A `const` bound (no rule fact): `ratified − signed >= 6` fails on a
@@ -16758,7 +17072,8 @@ mod tests {
             report.violations
         );
         assert_eq!(
-            report.interval_unverifiable, 1,
+            report.interval_unverifiable,
+            Some(1),
             "the mismatch is surfaced as unverifiable: {report:?}"
         );
         // NON-VACUITY: the SAME numbers under ONE unit gate as before.
@@ -16843,7 +17158,7 @@ mod tests {
             "distinct-unit same-number values must not collapse into a compare: {:?}",
             report.violations
         );
-        assert_eq!(report.interval_unverifiable, 1, "{report:?}");
+        assert_eq!(report.interval_unverifiable, Some(1), "{report:?}");
     }
 
     /// Round 718 (review F1) — the de-dup is on `(num, unit)`, NOT the display
@@ -16873,7 +17188,8 @@ mod tests {
         ]);
         let report = scan_continuity(&store, &order, &[rule]).unwrap();
         assert_eq!(
-            report.interval_unverifiable, 0,
+            report.interval_unverifiable,
+            Some(0),
             "10 and 10.0 are one value restated, not ambiguous: {report:?}"
         );
         assert!(
@@ -16930,7 +17246,7 @@ mod tests {
             "a bound in a different unit must not gate: {:?}",
             report.violations
         );
-        assert_eq!(report.interval_unverifiable, 1, "{report:?}");
+        assert_eq!(report.interval_unverifiable, Some(1), "{report:?}");
     }
 
     /// A non-numeric operand is SURFACED as `interval_unverifiable`, never a
@@ -16961,7 +17277,7 @@ mod tests {
             "an unparseable operand must not gate: {:?}",
             report.violations
         );
-        assert_eq!(report.interval_unverifiable, 1);
+        assert_eq!(report.interval_unverifiable, Some(1));
     }
 
     /// Every referenced predicate is a load-bearing ref: an interval rule whose
