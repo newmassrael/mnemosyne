@@ -11,7 +11,8 @@ use std::path::Path;
 use std::process::ExitCode;
 
 use mnemosyne_engine::{
-    DefaultOverrides, EngineOverrides, PlayableProjection, StaticOverrides, MAIN_BRANCH,
+    DefaultOverrides, EngineOverrides, MapProjection, PlayableProjection, StaticOverrides,
+    MAIN_BRANCH,
 };
 use mnemosyne_render::{render_playthrough, PlainTheme};
 
@@ -32,7 +33,17 @@ fn run(workspace: &str, telling: &str, overrides_path: Option<&str>) -> Result<S
         }
         None => project(workspace, telling, &DefaultOverrides::default())?,
     };
-    Ok(render_playthrough(&projection, MAIN_BRANCH, &PlainTheme))
+    // The place axis reads the same workspace. A store declaring no transition
+    // rule yields a projection with no maps, and the renderer then prints no
+    // place line — the inert case working, not the axis missing.
+    let map =
+        MapProjection::from_workspace(Path::new(workspace), None).map_err(|e| format!("{e:?}"))?;
+    Ok(render_playthrough(
+        &projection,
+        &map,
+        MAIN_BRANCH,
+        &PlainTheme,
+    ))
 }
 
 fn main() -> ExitCode {

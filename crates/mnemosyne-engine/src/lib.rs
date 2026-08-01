@@ -99,8 +99,9 @@ mod types;
 
 pub use gate::GateViolation;
 pub use map::{
-    DeclaredMapPart, DeclaredMapView, EdgeCostPart, EdgeCostView, EdgeGuardPart, EdgeGuardView,
-    MapEdgePart, MapEdgeView, MapProjection, MapProjectionParts, MapSelfLoopPart, MapSelfLoopView,
+    DeclaredMapPart, DeclaredMapView, DisclosedPlace, EdgeCostPart, EdgeCostView, EdgeGuardPart,
+    EdgeGuardView, MapEdgePart, MapEdgeView, MapProjection, MapProjectionParts, MapSelfLoopPart,
+    MapSelfLoopView,
 };
 pub use mnemosyne_core::{DisclosureMode, Modality, MAIN_BRANCH};
 pub use mnemosyne_validate::continuity::QuestState;

@@ -12,7 +12,7 @@
 //! only obtainable from the engine (its constructor is crate-private there), so
 //! a `Theme` styles provenance-bound content and cannot fabricate narrative.
 
-use mnemosyne_engine::{Door, Line, PlayableProjection, SceneView};
+use mnemosyne_engine::{DisclosedPlace, Door, Line, MapProjection, PlayableProjection, SceneView};
 
 /// The style-override surface: how the SEMANTIC axes of a [`Line`] / [`Door`]
 /// map to a visual look. Implement it to restyle without touching the kernel;
@@ -29,6 +29,27 @@ pub trait Theme {
     /// title unchanged.
     fn heading(&self, title: &str) -> String {
         title.to_string()
+    }
+
+    /// The display string for WHERE this scene is, and where it leads (Round
+    /// 938) — the place a disclosed fact put someone at, plus the roads the
+    /// store declares out of it.
+    ///
+    /// Default: the place, then the exits in declared order. A theme that wants
+    /// no place line returns the empty string and the renderer prints nothing,
+    /// which is how a reading surface opts out of the axis rather than the
+    /// engine deciding for it.
+    ///
+    /// `exits` is what the DECLARATION allows, not what is passable now: a road
+    /// whose guard does not hold is still here, because evaluating a guard is
+    /// the consumer's (the kernel's R712 line, kept whole through the surface).
+    fn place(&self, place: &DisclosedPlace<'_>, exits: &[&str]) -> String {
+        let mut out = place.place.clone();
+        if !exits.is_empty() {
+            out.push_str(" -> ");
+            out.push_str(&exits.join(", "));
+        }
+        out
     }
 }
 
@@ -94,11 +115,28 @@ impl Theme for MarkerTheme {
 /// numbered interactive doors — each element styled by `theme`. The layout is
 /// the renderer's; the per-element look is the theme's (the style override).
 #[must_use]
-pub fn render_scene(scene: &SceneView, theme: &impl Theme) -> String {
+pub fn render_scene(scene: &SceneView, map: &MapProjection, theme: &impl Theme) -> String {
     let mut out = String::new();
     if let Some(title) = &scene.title {
         out.push_str(&theme.heading(title));
         out.push('\n');
+    }
+    // Where the scene is, before what happens in it — a reader orients, then
+    // reads. Nothing prints when the telling disclosed no place, which is the
+    // common and correct case for a store that declares no map at all: the
+    // projection then holds no maps and this loop does not run.
+    for here in map.places_disclosed_in(scene) {
+        let exits: Vec<&str> = here
+            .map
+            .steps_from(&here.place)
+            .into_iter()
+            .map(|(_, to)| to)
+            .collect();
+        let rendered = theme.place(&here, &exits);
+        if !rendered.is_empty() {
+            out.push_str(&rendered);
+            out.push('\n');
+        }
     }
     for line in &scene.lines {
         out.push_str(&theme.line(line));
@@ -115,6 +153,7 @@ pub fn render_scene(scene: &SceneView, theme: &impl Theme) -> String {
 #[must_use]
 pub fn render_playthrough(
     projection: &PlayableProjection,
+    map: &MapProjection,
     world: &str,
     theme: &impl Theme,
 ) -> String {
@@ -127,6 +166,7 @@ pub fn render_playthrough(
     for section in projection.walk(world) {
         out.push_str(&render_scene(
             &projection.scene(world, section, &holds_nothing),
+            map,
             theme,
         ));
         out.push('\n');
@@ -136,7 +176,9 @@ pub fn render_playthrough(
 
 #[cfg(test)]
 mod tests {
-    use super::{render_playthrough, render_scene, MarkerTheme, PlainTheme};
+    use super::{
+        render_playthrough, render_scene, Door, Line, MapProjection, MarkerTheme, PlainTheme, Theme,
+    };
 
     use mnemosyne_core::DisclosureMode;
     use mnemosyne_engine::{
@@ -191,6 +233,14 @@ mod tests {
                             Some("I crossed at two"),
                             Some(3),
                         ),
+                        // A DISCLOSED position: the `at` leg the place axis
+                        // reads (Round 938). A fixture without one cannot tell a
+                        // renderer that shows the place from one that does not.
+                        LinePart {
+                            typed_predicate: Some("at".to_string().into()),
+                            entities: vec!["ent-bunok".into(), "loc-quay".into()].into(),
+                            ..line("f-at", "Bunok is at the quay", "ground-truth", None, None)
+                        },
                     ],
                 )],
             )],
@@ -220,6 +270,7 @@ mod tests {
         let proj = demo();
         let out = render_scene(
             &proj.scene("main", "sc-01", &std::collections::HashSet::new()),
+            &no_map(),
             &PlainTheme,
         );
         assert!(out.contains("Dawn"));
@@ -235,6 +286,7 @@ mod tests {
         let proj = demo();
         let out = render_scene(
             &proj.scene("main", "sc-01", &std::collections::HashSet::new()),
+            &no_map(),
             &MarkerTheme,
         );
         // ground truth stays plain; belief is set apart; quote wrapped; count shown.
@@ -245,10 +297,109 @@ mod tests {
         assert!(out.contains("[1] > run")); // door -> "> label"
     }
 
+    /// A store that declares no transition rule — the inert place axis. Built
+    /// through the public bake door, which is the only way a test outside the
+    /// kernel can hold a projection at all.
+    fn no_map() -> MapProjection {
+        MapProjection::from_parts(mnemosyne_engine::MapProjectionParts {
+            maps: Vec::new(),
+            transition_rules: 0,
+            unattached_costs: Vec::new(),
+            unattached_guards: Vec::new(),
+        })
+    }
+
+    /// A one-road town whose `at` predicate matches the demo's placed fact.
+    fn town() -> MapProjection {
+        MapProjection::from_parts(mnemosyne_engine::MapProjectionParts {
+            maps: vec![mnemosyne_engine::DeclaredMapPart {
+                rule: "town".into(),
+                predicate: "at".into(),
+                adjacency: "adjacent".into(),
+                undirected: false,
+                containment: None,
+                nodes: vec!["loc-ford".into(), "loc-quay".into()],
+                edges: vec![mnemosyne_engine::MapEdgePart {
+                    fact_id: "f-adj".into(),
+                    from: "loc-quay".into(),
+                    to: "loc-ford".into(),
+                    frame: "ground-truth".into(),
+                    branch: "main".into(),
+                    cost: None,
+                    guard: None,
+                }],
+                self_loops: Vec::new(),
+            }],
+            transition_rules: 1,
+            unattached_costs: Vec::new(),
+            unattached_guards: Vec::new(),
+        })
+    }
+
+    /// The place line reaches the page, above the prose, with its exits — and
+    /// the SAME scene under a map-less projection prints none of it. The pair is
+    /// the assertion: a bare `contains` would pass on a renderer that printed the
+    /// place unconditionally from something else.
+    #[test]
+    fn a_scene_shows_where_it_is_and_where_it_leads_only_when_a_map_declares_it() {
+        let proj = demo();
+        let scene = proj.scene("main", "sc-01", &std::collections::HashSet::new());
+
+        let with = render_scene(&scene, &town(), &PlainTheme);
+        assert!(with.contains("loc-quay -> loc-ford"), "{with}");
+        let place_at = with.find("loc-quay").expect("the place line");
+        let prose_at = with.find("the tide pulls out").expect("the prose");
+        assert!(place_at < prose_at, "a reader orients, then reads:\n{with}");
+
+        let without = render_scene(&scene, &no_map(), &PlainTheme);
+        assert!(
+            !without.contains("loc-quay"),
+            "a store with no declared map prints no place:\n{without}"
+        );
+    }
+
+    /// A theme opts the axis out by returning the empty string, and the renderer
+    /// prints nothing rather than a blank line.
+    #[test]
+    fn a_theme_can_refuse_the_place_line() {
+        struct Placeless;
+        impl Theme for Placeless {
+            fn line(&self, line: &Line) -> String {
+                line.text().to_string()
+            }
+            fn door(&self, door: &Door) -> String {
+                super::door_label(door)
+            }
+            fn place(&self, _: &mnemosyne_engine::DisclosedPlace<'_>, _: &[&str]) -> String {
+                String::new()
+            }
+        }
+        let proj = demo();
+        let scene = proj.scene("main", "sc-01", &std::collections::HashSet::new());
+        let out = render_scene(&scene, &town(), &Placeless);
+        assert!(!out.contains("loc-quay"), "{out}");
+        assert!(
+            out.contains("the tide pulls out"),
+            "the prose still renders"
+        );
+
+        // The refusal must leave NO trace, and where a trace would be is BETWEEN
+        // the heading and the first prose line — not at the start of the output,
+        // which is what an earlier draft of this assertion checked and is why an
+        // injection that printed the blank line stayed green. Comparing against
+        // the same scene with no map at all pins the position too: an empty place
+        // string must cost exactly one nothing.
+        assert_eq!(
+            out,
+            render_scene(&scene, &no_map(), &Placeless),
+            "a refused place line left a blank line behind:\n{out}"
+        );
+    }
+
     #[test]
     fn render_playthrough_walks_the_world() {
         let proj = demo();
-        let out = render_playthrough(&proj, "main", &PlainTheme);
+        let out = render_playthrough(&proj, &no_map(), "main", &PlainTheme);
         assert!(out.contains("Dawn"));
         assert!(out.contains("the tide pulls out"));
     }

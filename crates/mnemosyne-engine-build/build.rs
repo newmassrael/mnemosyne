@@ -295,6 +295,7 @@ fn main() {
         maps: vec![
             DeclaredMapPart {
                 rule: "town".to_string(),
+                predicate: "at".to_string(),
                 adjacency: "adjacent".to_string(),
                 undirected: false,
                 containment: Some("inside".to_string()),
@@ -335,6 +336,7 @@ fn main() {
             },
             DeclaredMapPart {
                 rule: "tunnels".to_string(),
+                predicate: "stands_in".to_string(),
                 adjacency: "connects".to_string(),
                 undirected: true,
                 containment: None,

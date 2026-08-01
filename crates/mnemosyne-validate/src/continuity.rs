@@ -6762,6 +6762,14 @@ pub struct TransitionMapView {
     /// The transition rule that DECLARES this map ("룰로 박아" — the rule is the
     /// declaration, the store facts are the edges).
     pub rule: String,
+    /// The rule's own `predicate` — the one that says WHERE A SUBJECT IS, as
+    /// opposed to `adjacency`, which says which places are joined (Round 938).
+    /// Carried for the same reason the other two declared names are: without it
+    /// a consumer holding this report can see the roads and cannot ask who is
+    /// standing on one, so it either guesses a predicate or re-reads the rules
+    /// file we already read. The gate has always used it — it is what makes a
+    /// pair of facts a STEP.
+    pub predicate: String,
     pub adjacency: String,
     /// Edge symmetry (R697). Carried so a consumer symmetrizes because the
     /// DECLARATION says to, not because it hardcoded that maps are two-way.
@@ -6842,6 +6850,7 @@ pub fn transition_map(
         let derived = transition_edges(facts, adjacency);
         let mut view = TransitionMapView {
             rule: rule.id.clone(),
+            predicate: rule.predicate.clone(),
             adjacency: adjacency.clone(),
             undirected: *undirected,
             containment: containment.clone(),

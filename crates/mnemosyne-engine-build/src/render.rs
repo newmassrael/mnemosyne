@@ -714,9 +714,11 @@ fn declared_map(chunks: &mut Chunks, part: &DeclaredMapPart) -> String {
         )
     });
     format!(
-        "::mnemosyne_engine::DeclaredMapPart {{ rule: {}, adjacency: {}, undirected: {}, \
-         containment: {}, nodes: {nodes}, edges: {edges}, self_loops: {self_loops} }}",
+        "::mnemosyne_engine::DeclaredMapPart {{ rule: {}, predicate: {}, adjacency: {}, \
+         undirected: {}, containment: {}, nodes: {nodes}, edges: {edges}, \
+         self_loops: {self_loops} }}",
         string(&part.rule),
+        string(&part.predicate),
         string(&part.adjacency),
         part.undirected,
         option(part.containment.as_deref().map(string)),

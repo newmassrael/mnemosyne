@@ -59,7 +59,7 @@ use std::path::Path;
 
 use mnemosyne_validate::continuity::TransitionMapReport;
 
-use crate::EngineError;
+use crate::{EngineError, SceneView};
 
 /// An edge's stored walk cost, as the store holds it. Carried, never summed —
 /// see the module's carriage-not-computation boundary.
@@ -127,6 +127,11 @@ pub struct MapSelfLoopView {
 pub struct DeclaredMapView {
     /// The transition rule that DECLARES this map.
     pub rule: String,
+    /// The predicate that says WHERE A SUBJECT IS — the rule's own, as opposed
+    /// to `adjacency`, which says which places are joined. This is what makes
+    /// [`MapProjection::places_disclosed_in`] possible without the kernel
+    /// guessing which predicate means location.
+    pub predicate: String,
     /// The predicate whose facts are this map's edges.
     pub adjacency: String,
     /// Edge symmetry as DECLARED. Read by [`Self::steps_from`]; never assumed.
@@ -232,6 +237,7 @@ impl MapProjection {
                 .into_iter()
                 .map(|m| DeclaredMapView {
                     rule: m.rule,
+                    predicate: m.predicate,
                     adjacency: m.adjacency,
                     undirected: m.undirected,
                     containment: m.containment,
@@ -303,6 +309,82 @@ impl MapProjection {
     pub fn unattached_guards(&self) -> &[String] {
         &self.unattached_guards
     }
+
+    /// Where a scene puts people, READ OUT OF WHAT THE TELLING DISCLOSED
+    /// (Round 938) — the join that lets a reading surface say "you are here"
+    /// without anyone authoring a second coordinate.
+    ///
+    /// A place is reported when a line the scene DISCLOSED carries the map's
+    /// own location predicate and names an entity that is a node of that map.
+    /// Nothing is guessed: the predicate comes from the transition rule the
+    /// author wrote, and the place-hood test is membership in the node set the
+    /// same rule's edges derive.
+    ///
+    /// # Why it reads the disclosed scene and not the store
+    ///
+    /// The continuity gate already knows where every subject stands at every
+    /// step — that is what a step IS — and using it here would be a LEAK. The
+    /// gate reads ground truth; a telling is allowed to withhold that a
+    /// character is at the drowned quarter, and a reading surface that showed it
+    /// anyway would disclose by the back door what the disclosure plan spent its
+    /// whole design withholding. So this asks the scene, and where the telling
+    /// says nothing the answer is honestly nothing.
+    ///
+    /// # What it does NOT answer
+    ///
+    /// "Where is the PLAYER." This returns every place the scene disclosed
+    /// someone at, because the kernel does not know which character the screen
+    /// belongs to — that is a consumer's declaration (a live one bakes its own
+    /// viewpoint from a `plays` predicate). On authored data the two usually
+    /// coincide: 19 of arm D's 20 scenes disclose exactly one place. A scene
+    /// cutting between two rooms yields two, in sorted order, and saying so is
+    /// better than picking one.
+    #[must_use]
+    pub fn places_disclosed_in<'m>(&'m self, scene: &SceneView) -> Vec<DisclosedPlace<'m>> {
+        let mut found: Vec<DisclosedPlace<'m>> = Vec::new();
+        for map in &self.maps {
+            for line in &scene.lines {
+                if line.typed_predicate() != Some(map.predicate.as_str()) {
+                    continue;
+                }
+                for entity in line.entities() {
+                    if !map.nodes.iter().any(|n| n == entity) {
+                        continue;
+                    }
+                    let place = entity.to_string();
+                    let fact_id = line.fact_id().to_string();
+                    if found
+                        .iter()
+                        .any(|d| d.map.rule == map.rule && d.place == place)
+                    {
+                        continue;
+                    }
+                    found.push(DisclosedPlace {
+                        map,
+                        place,
+                        fact_id,
+                    });
+                }
+            }
+        }
+        found.sort_by(|a, b| (&a.map.rule, &a.place).cmp(&(&b.map.rule, &b.place)));
+        found
+    }
+}
+
+/// A place a scene disclosed someone at ([`MapProjection::places_disclosed_in`]).
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
+pub struct DisclosedPlace<'m> {
+    /// The declared map this place is a node of — ask it for the exits, so a
+    /// road has one home rather than a copy here.
+    pub map: &'m DeclaredMapView,
+    /// The place entity the scene disclosed.
+    pub place: String,
+    /// The fact that disclosed it. A surface showing this place can name WHY it
+    /// is showing it, which is the whole provenance contract: no place on the
+    /// screen that no disclosed fact put there.
+    pub fact_id: String,
 }
 
 /// An [`EdgeCostView`] as plain data — the emit/ingest mirror, for the reason
@@ -358,6 +440,8 @@ pub struct MapSelfLoopPart {
 pub struct DeclaredMapPart {
     /// The transition rule that declares this map.
     pub rule: String,
+    /// The predicate that says where a subject is.
+    pub predicate: String,
     /// The predicate whose facts are this map's edges.
     pub adjacency: String,
     /// Edge symmetry as declared.
@@ -407,6 +491,7 @@ impl MapProjection {
                 .iter()
                 .map(|m| DeclaredMapPart {
                     rule: m.rule.clone(),
+                    predicate: m.predicate.clone(),
                     adjacency: m.adjacency.clone(),
                     undirected: m.undirected,
                     containment: m.containment.clone(),
@@ -458,6 +543,7 @@ impl MapProjection {
                 .into_iter()
                 .map(|m| DeclaredMapView {
                     rule: m.rule,
+                    predicate: m.predicate,
                     adjacency: m.adjacency,
                     undirected: m.undirected,
                     containment: m.containment,
@@ -527,6 +613,7 @@ mod tests {
         nodes.dedup();
         TransitionMapView {
             rule: rule.into(),
+            predicate: "at".into(),
             adjacency: "adjacent".into(),
             undirected,
             containment: None,
@@ -748,5 +835,235 @@ mod tests {
         assert!(m.edges[1].guard.is_none());
         assert_eq!(reingested.unattached_costs(), ["f-stray-cost"]);
         assert_eq!(reingested.unattached_guards(), ["f-stray-guard"]);
+    }
+}
+
+#[cfg(test)]
+mod place_tests {
+    use super::*;
+    use crate::test_support::{begin, locator, report, scene};
+    use crate::{DefaultOverrides, DisclosureMode, PlayableProjection};
+    use mnemosyne_core::{TypedClaim, TypedObject};
+    use mnemosyne_validate::continuity::{
+        ForkTreeReport, TransitionMapEdge, TransitionMapReport, TransitionMapView,
+    };
+
+    /// A disclosed `at(subject, place)` fact.
+    fn at_fact(
+        fact_id: &str,
+        subject: &str,
+        place: &str,
+    ) -> mnemosyne_validate::continuity::ManuscriptFactEvent {
+        let mut event = begin(
+            fact_id,
+            "someone stands there",
+            "ground-truth",
+            &[subject, place],
+        );
+        event.typed = Some(TypedClaim {
+            subject: subject.into(),
+            predicate: "at".into(),
+            object: TypedObject::Entity { id: place.into() },
+        });
+        event
+    }
+
+    fn town() -> MapProjection {
+        let edges = vec![
+            TransitionMapEdge {
+                fact_id: "f-adj-market-stair".into(),
+                from: "loc-market".into(),
+                to: "loc-stair".into(),
+                frame: "ground-truth".into(),
+                branch: "main".into(),
+                cost: None,
+                guard: None,
+            },
+            TransitionMapEdge {
+                fact_id: "f-adj-market-shrine".into(),
+                from: "loc-market".into(),
+                to: "loc-shrine".into(),
+                frame: "ground-truth".into(),
+                branch: "main".into(),
+                cost: None,
+                guard: None,
+            },
+        ];
+        let mut nodes: Vec<String> =
+            vec!["loc-market".into(), "loc-shrine".into(), "loc-stair".into()];
+        nodes.sort();
+        MapProjection::from_report(TransitionMapReport {
+            maps: vec![TransitionMapView {
+                rule: "town-map".into(),
+                predicate: "at".into(),
+                adjacency: "adjacent".into(),
+                undirected: false,
+                containment: None,
+                nodes,
+                edges,
+                self_loops: Vec::new(),
+            }],
+            transition_rules: 1,
+            unattached_costs: Vec::new(),
+            unattached_guards: Vec::new(),
+        })
+    }
+
+    /// Build a one-scene projection whose disclosed lines are exactly `facts`.
+    fn projected(
+        facts: Vec<mnemosyne_validate::continuity::ManuscriptFactEvent>,
+    ) -> PlayableProjection {
+        let locators = facts
+            .iter()
+            .map(|f| locator(&f.fact_id, "sc-01", DisclosureMode::State))
+            .collect();
+        PlayableProjection::from_report(
+            report(
+                "main",
+                vec![scene("sc-01", "The market", facts)],
+                locators,
+                ForkTreeReport::default(),
+            ),
+            &DefaultOverrides::default(),
+        )
+        .expect("the projection")
+    }
+
+    fn scene_of(projection: &PlayableProjection) -> crate::SceneView {
+        projection.scene("main", "sc-01", &std::collections::HashSet::new())
+    }
+
+    /// The join, on the shape authored data actually has: one `at` fact naming a
+    /// person and a place, and only the place is a node of the map.
+    #[test]
+    fn a_scene_is_placed_by_the_disclosed_fact_that_puts_someone_there() {
+        let map = town();
+        let projection = projected(vec![at_fact("f-at-mirren", "ent-mirren", "loc-market")]);
+        let here = map.places_disclosed_in(&scene_of(&projection));
+
+        assert_eq!(here.len(), 1, "one place, not two: {here:?}");
+        assert_eq!(here[0].place, "loc-market");
+        assert_eq!(
+            here[0].fact_id, "f-at-mirren",
+            "the place names the fact that disclosed it"
+        );
+        assert_eq!(here[0].map.rule, "town-map");
+
+        // And the exits come off the same edge list everything else reads.
+        let mut exits: Vec<&str> = here[0]
+            .map
+            .steps_from(&here[0].place)
+            .into_iter()
+            .map(|(_, to)| to)
+            .collect();
+        exits.sort_unstable();
+        assert_eq!(exits, ["loc-shrine", "loc-stair"]);
+    }
+
+    /// THE LEAK GUARD, and the reason this reads the scene rather than the gate.
+    ///
+    /// The continuity gate knows where everyone stands whether or not the telling
+    /// says so. Here the `at` fact exists in the world and is NOT disclosed at
+    /// this scene, and the honest answer is nothing — a reading surface that
+    /// showed the place would disclose by the back door exactly what the
+    /// disclosure plan withheld.
+    ///
+    /// The pair is what makes it a guard: the same fact, disclosed and withheld,
+    /// with the map and the scene otherwise identical.
+    #[test]
+    fn a_withheld_at_fact_places_nothing_even_though_the_world_knows() {
+        let map = town();
+        let fact = at_fact("f-at-mirren", "ent-mirren", "loc-market");
+
+        let disclosed = projected(vec![fact.clone()]);
+        assert_eq!(
+            map.places_disclosed_in(&scene_of(&disclosed)).len(),
+            1,
+            "the disclosed half must place, or the withheld half proves nothing"
+        );
+
+        // Same scene, same fact in the walk, NO locator — the store's additive
+        // filter emitted none, so the kernel never sees it as a line.
+        let withheld = PlayableProjection::from_report(
+            report(
+                "main",
+                vec![scene("sc-01", "The market", vec![fact])],
+                Vec::new(),
+                ForkTreeReport::default(),
+            ),
+            &DefaultOverrides::default(),
+        )
+        .expect("the projection");
+        assert!(
+            map.places_disclosed_in(&scene_of(&withheld)).is_empty(),
+            "a withheld position must not reach the surface"
+        );
+    }
+
+    /// The predicate is the RULE's, not a guess. A disclosed fact about the same
+    /// person and the same place under a different predicate is not a position.
+    #[test]
+    fn only_the_rules_own_predicate_places_a_scene() {
+        let map = town();
+        let mut wrong = at_fact("f-remembers", "ent-mirren", "loc-market");
+        wrong.typed = Some(TypedClaim {
+            subject: "ent-mirren".into(),
+            predicate: "remembers".into(),
+            object: TypedObject::Entity {
+                id: "loc-market".into(),
+            },
+        });
+        let projection = projected(vec![wrong]);
+        assert!(
+            map.places_disclosed_in(&scene_of(&projection)).is_empty(),
+            "`remembers` is not `at`, however place-shaped its object is"
+        );
+    }
+
+    /// An `at` fact naming a place the map does not have is not a position
+    /// either — place-hood is membership in the declared node set, so the answer
+    /// cannot drift from the roads.
+    #[test]
+    fn an_at_fact_naming_a_place_off_the_map_places_nothing() {
+        let map = town();
+        let projection = projected(vec![at_fact("f-at-elsewhere", "ent-mirren", "loc-nowhere")]);
+        assert!(
+            map.places_disclosed_in(&scene_of(&projection)).is_empty(),
+            "a place with no road is not a node of this map"
+        );
+    }
+
+    /// A scene cutting between two rooms yields BOTH, sorted, rather than one
+    /// picked quietly — and two people in one room yield one, deduped.
+    #[test]
+    fn a_scene_in_two_rooms_names_both_and_two_people_in_one_name_it_once() {
+        let map = town();
+        let cut = projected(vec![
+            at_fact("f-at-mirren", "ent-mirren", "loc-shrine"),
+            at_fact("f-at-teo", "ent-teo", "loc-market"),
+        ]);
+        let here = map.places_disclosed_in(&scene_of(&cut));
+        assert_eq!(
+            here.iter().map(|d| d.place.as_str()).collect::<Vec<_>>(),
+            ["loc-market", "loc-shrine"],
+            "both, in sorted order"
+        );
+
+        let together = projected(vec![
+            at_fact("f-at-mirren", "ent-mirren", "loc-market"),
+            at_fact("f-at-teo", "ent-teo", "loc-market"),
+        ]);
+        let here = map.places_disclosed_in(&scene_of(&together));
+        assert_eq!(here.len(), 1, "one room, named once: {here:?}");
+    }
+
+    /// A store with no transition rule places nothing, and that is the inert case
+    /// working rather than the axis failing.
+    #[test]
+    fn a_store_with_no_declared_map_places_nothing() {
+        let none = MapProjection::from_report(TransitionMapReport::default());
+        let projection = projected(vec![at_fact("f-at-mirren", "ent-mirren", "loc-market")]);
+        assert!(none.places_disclosed_in(&scene_of(&projection)).is_empty());
+        assert_eq!(none.transition_rules(), 0);
     }
 }

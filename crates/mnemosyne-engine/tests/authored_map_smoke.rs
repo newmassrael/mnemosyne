@@ -83,6 +83,18 @@ fn the_kernel_reads_a_blind_authors_declared_map() {
         .map("cairnwell-map")
         .expect("the rule the author named");
     assert_eq!(map.adjacency, "adjacent");
+    // The rule's OWN predicate — what says where a subject is, as opposed to
+    // which places are joined. Without it a consumer holding this report can see
+    // the roads and cannot ask who stands on one, and the scene-placing join is
+    // impossible. The author declared it; the read must carry it.
+    assert_eq!(
+        map.predicate, "at",
+        "the location predicate the transition rule declares"
+    );
+    assert_ne!(
+        map.predicate, map.adjacency,
+        "the two declared names are different questions and must not collapse"
+    );
     assert_eq!(map.nodes.len(), 12, "12 places");
     assert_eq!(map.edges.len(), 20, "20 roads");
     assert!(
