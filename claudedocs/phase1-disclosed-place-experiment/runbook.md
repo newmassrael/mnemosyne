@@ -1,4 +1,13 @@
-# Runbook — disclosed-place-experiment/v1
+# Runbook — disclosed-place-experiment
+
+**v1 RAN UNDER THE VERSION OF THIS FILE COMMITTED AT `636c91d`, NOT THIS ONE.**
+That commit is the pre-commitment and the evidentiary text; read it there if you
+are auditing what v1's authors were actually run against. Round 944 corrected
+four instructions here against what v1 measured — the rules pin (step 2), the
+self-report seal (step 3), the E3 oracle's shape (step 6), and the replay
+provenance string (step 7) — so that the next arm does not inherit them. The
+arms' own frozen files are untouched, which is the Round 934 precedent: fix the
+runbook, never the evidence.
 
 **ORCHESTRATOR-ONLY.** The authors must NEVER read this file, the design doc
 (`claudedocs/disclosed-place-corpus-design.md`), the changelog, or any verb
@@ -70,24 +79,32 @@ done
 across three earlier arms invented the filename and three of them mismatched a
 seeded pin they were forbidden to read.
 
-**THE RULES PIN MUST BE PATCHED BEFORE THE RENDER READ, AND THAT IS THIS ARM'S
-ONE NEW HARNESS STEP.** `mnemosyne-render` takes `<workspace> <telling>` and
-resolves the rules file through `mnemosyne.toml` alone — it has no `--rules`
-flag, unlike every gate and report the map arms used. So after the author's
-submission is frozen (step 3), and before any read in step 5:
+**THE RULES PIN MUST BE VERIFIED BEFORE THE RENDER READ — AND v1 MEASURED THAT
+IT DOES NOT NEED PATCHING.** `mnemosyne-render` takes `<workspace> <telling>`
+and resolves the rules file through `mnemosyne.toml` alone — it has no `--rules`
+flag, unlike every gate and report the map arms used. So before any read in step
+5, check that `rules_path` names the rules file the author actually wrote:
 
 ```
-printf '[workspace]\n[continuity]\ncanon_order_path = "order.json"\nrules_path = "%s"\n' \
-  "<the rules file the author actually wrote>" > $d/mnemosyne.toml
+grep -n rules_path $d/mnemosyne.toml   # and confirm that file exists
 ```
 
-This is orchestrator-side and invisible to the author: their sealed self-report
-never claims anything about the pin, which is exactly the falsehood the Round
-934 seed produced. Patching post-submission keeps ONE variable changed by this
-arm. The larger alternative the map runbook left open — letting the author write
-`mnemosyne.toml` themselves, making the wiring a measured capability — stays
-open and is deliberately NOT taken here, for the same reason it was not taken
-there.
+**If it already resolves, DO NOT REWRITE IT.** In v1 both authors wired
+`rules_path` themselves, unprompted, 2 of 2 — the wiring turned out to be a
+capability the contract teaches, not a trap the harness has to paper over. This
+file previously carried a `printf` that overwrote the whole config, and applying
+it would have DELETED an authored line (Stage A had added
+`interval_severity = "reject"` on purpose). Overwriting an author's file is
+forbidden twice elsewhere in this runbook; a convenience step does not outrank
+that.
+
+Only if `rules_path` is absent or names a file the author did not write does the
+orchestrator add the single missing line — appended, never by rewriting the
+file — and the report must record that it did.
+
+The alternative the map runbook left open — letting the author write
+`mnemosyne.toml` themselves, making the wiring a measured capability — **measured
+itself in v1** and the answer was 2/2. It is no longer an open question.
 
 `vN/run/*/docs/.atomic/*.json` is scratch (gitignored). The manifests, the
 self-reports, the frozen first-submission logs, and the report are tracked
@@ -133,8 +150,19 @@ cp -r . ../stage-a-first-submission
 ```
 
 Keep `first-import.log` verbatim — full text, both exit codes, no filtering.
-Then hand the author the verbatim errors and let them iterate to green. Their
-`self-report.md` is sealed at first submission and is never revised.
+Then hand the author the verbatim errors and let them iterate to green.
+
+**THE SELF-REPORT IS FROZEN BY THE COPY ABOVE, NOT BY ANY PROMISE THE AUTHOR
+MADE.** This file used to say the report "is sealed at first submission and is
+never revised", which reads as a rule the author is keeping. The author is never
+told it, and in v1 Stage B revised theirs in good faith after fixing the import
+error. **E3 must therefore read `stage-*-first-submission/self-report.md`, never
+the working copy**, and the report must diff the two and record any difference.
+
+Telling the author it is sealed is deliberately NOT done: a writer who knows a
+document is about to be frozen writes a different document, and the honest first
+answer is what E3 needs. So the freeze is the mechanism and the diff is the
+check — but do not call it a seal as though the author were enforcing it.
 
 **E1 is read off the result, not asked for.** Record all four, YES/NO with the
 file that says so:
@@ -185,11 +213,23 @@ read `violations: 0` with a reject-severity class never evaluated (Round 934).
 
 ## 6. Compare (E3) — the discriminating step
 
-Put the sealed `self-report.md` beside the render. For every location the report
-says a reader cannot place a character at until scene N:
+Put the FROZEN `self-report.md` (step 3) beside the render. **The oracle is a
+triple — (character, location, scene-range) — not a location on its own.** v1's
+first formulation said only "the place line must NOT name it in any scene before
+N", and read strictly that manufactures a disagreement wherever the same
+location is legitimately disclosed earlier for a different, told stretch: Stage
+B's hidden location is the Old Cistern, and its author had also, correctly, put
+that character there in the open at scene 4.
 
-- the place line must NOT name it in any scene before N;
-- it MUST name it at or after N;
+So for every claim of the form "a reader cannot place character C at location L
+until scene N":
+
+- no place line attributable to C at L may appear before N — check the FACT that
+  disclosed it (`DisclosedPlace.fact_id`), not the place name alone, because
+  another character standing in the same room is not a leak;
+- it MUST appear at or after N. If it does not, do not write it off as a near
+  miss: check whether the withheld fact's extent has already ended at N, which
+  in v1 was true in both stores and is finding 3 of the report;
 - and the plainly-moving character's places must appear from their first scene.
 
 This is the authored analogue of the built pair Round 938 pinned (the same fact,
@@ -215,9 +255,26 @@ here.
   logs verbatim), E3 (the disagreements), and the render output in full.
 - `vN/manifest.json` + `vN/replay.json` (`kit-replay/v2`) listing the Stage B
   manifests as inputs, the landing commit as `revision`, and
-  `revision_provenance: "exact"`.
+  `revision_provenance: "declared-at-run"`. **That string is the gate's
+  vocabulary, checked against the code and not invented here**: the accepted set
+  is `["derived-upper-bound", "declared-at-run"]` in
+  `crates/mnemosyne-cli/tests/evidence_replay_smoke.rs`, and an unknown value
+  panics. This file asked for `"exact"` until v1 ran; Round 898's design used the
+  same non-existent word and the map-corpus run corrected it at execution time,
+  and the correction was never carried back into a design, so it came round
+  again. **Before writing any machine-checked literal into a runbook, grep the
+  code that reads it.**
+- A self-referential pin costs TWO commits by construction: a replay's revision
+  must name a tree that already holds its inputs, so land the corpus first and
+  pin it second.
+- Declare EVERY tracked file shaped like a mutate verb's input, including the
+  frozen first submissions' `sections.json` — anything undeclared fails
+  `every_input_a_verb_would_accept_is_declared_exactly_once`.
 - Register the replay so `evidence_replay_smoke` rebuilds it in CI. A corpus
   nothing loads is the rot this corpus exists to end (Round 873, Round 897).
+  Kits are discovered by `git ls-files`, so **stage before running the suite**,
+  and read the count — the run must report MORE replays than before, or the
+  green is somebody else's kit (Round 933).
 - One changelog entry, one commit. Push is a separate gate.
 
 ## Out of scope, deliberately
