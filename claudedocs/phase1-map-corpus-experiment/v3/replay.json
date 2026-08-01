@@ -1,0 +1,73 @@
+{
+  "schema": "kit-replay/v2",
+  "revision_provenance": "declared-at-run",
+  "declared_in": "Round 933",
+  "derivation": "Arm C of the map-corpus A/B. Same frozen brief and protocol as v1 and v2; the ONLY variable is contract.txt, regenerated from describe-schema after the R911-R931 hierarchy-crossing arc (218 lines in both arms, 49,193 bytes in arm B against 55,288 here, seven lines differing). The revision is the commit that lands these inputs, recorded at the run — a self-referential pin costs a second commit by construction, exactly as v1 and v2 recorded.",
+  "note": "Both first submissions imported clean (exit 0) and neither author iterated, so the -first-submission trees are byte-identical to the iterated ones — verified by diff on sections.json, facts.json and order.json in both stages. That is arm C's E2 result and it matches arm B's; arm A's authors both failed their first import. The first-submission manifests are still declared as raw-agent-output because they are valid manifests and therefore classify as some verb's input.",
+  "inputs": [
+    {
+      "path": "run/stage-a/sections.json",
+      "role": "replay-input"
+    },
+    {
+      "path": "run/stage-a/facts.json",
+      "role": "replay-input"
+    },
+    {
+      "path": "run/stage-b/sections.json",
+      "role": "replay-input"
+    },
+    {
+      "path": "run/stage-b/facts.json",
+      "role": "replay-input"
+    },
+    {
+      "path": "run/stage-a-first-submission/sections.json",
+      "role": "raw-agent-output"
+    },
+    {
+      "path": "run/stage-a-first-submission/facts.json",
+      "role": "raw-agent-output"
+    },
+    {
+      "path": "run/stage-b-first-submission/sections.json",
+      "role": "raw-agent-output"
+    },
+    {
+      "path": "run/stage-b-first-submission/facts.json",
+      "role": "raw-agent-output"
+    }
+  ],
+  "replays": [
+    {
+      "name": "stage-a-no-map-words-crossing-contract",
+      "revision": "416baf37312c36fb9dd535ae593bba14e05649ec",
+      "steps": [
+        {
+          "verb": "import-sections",
+          "input": "run/stage-a/sections.json"
+        },
+        {
+          "verb": "import-facts",
+          "input": "run/stage-a/facts.json"
+        }
+      ],
+      "expected_store_sha256": "7b2969e8ad7437ca2d13a4f13aa499eb2a194266549cce8f09530114c2acf1fe"
+    },
+    {
+      "name": "stage-b-engine-must-answer-crossing-contract",
+      "revision": "416baf37312c36fb9dd535ae593bba14e05649ec",
+      "steps": [
+        {
+          "verb": "import-sections",
+          "input": "run/stage-b/sections.json"
+        },
+        {
+          "verb": "import-facts",
+          "input": "run/stage-b/facts.json"
+        }
+      ],
+      "expected_store_sha256": "45c2857e2acc176e8b66c3222e8b0e08a1f2743bd26e85e1694feda134534b3b"
+    }
+  ]
+}
