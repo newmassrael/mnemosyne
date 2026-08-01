@@ -1,0 +1,11 @@
+=== authoring frontier — telling (none) — 0 gap(s) ===
+zero-fact scenes: none
+unplaced scenes: none
+unordered scenes: none
+dangling setups: none
+unresolved quests: (pass --telling)
+never-planned disclosures: (pass --telling)
+unconnected places [movement-follows-the-map]: not derivable — predicate `adjacent` declares no leg kind, so the registered place set cannot be asked for
+branch density [gate-jammed]: 8 owned fact(s) over 14 traversed scene(s) = 0.57
+branch density [main]: 92 owned fact(s) over 18 traversed scene(s) = 5.11
+exit=0

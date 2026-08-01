@@ -1,0 +1,509 @@
+{
+  "frames": [
+    { "frame_id": "ground-truth", "description": "what is so in Vellmoor, held as one frame among others and privileged over none" },
+    { "frame_id": "townsfolk", "description": "the common talk of the town: what people say to one another, whether or not it is so" },
+    { "frame_id": "kess", "description": "what Kess believes" }
+  ],
+
+  "entity_kinds": [
+    { "kind_id": "place", "description": "a location on the town map; a quarter is a place too, and what makes it a quarter is that it contains others" },
+    { "kind_id": "character", "description": "a person who moves through the town" },
+    { "kind_id": "item", "description": "a thing that can be held or worked" }
+  ],
+
+  "units": [
+    { "unit_id": "minute", "description": "one minute of map time" }
+  ],
+
+  "entities": [
+    { "entity_id": "q-crown", "kind": "place", "description": "Crownhead, the dry upper quarter of the hill; a container of places" },
+    { "entity_id": "q-midslope", "kind": "place", "description": "the Midslope, the middle quarter where the water stands ankle-deep; a container of places" },
+
+    { "entity_id": "p-shrine", "kind": "place", "description": "the Shrine of the Still Water, in Crownhead" },
+    { "entity_id": "p-almoner-house", "kind": "place", "description": "the Almoner's House, in Crownhead, where the flood ledger is kept" },
+    { "entity_id": "p-bell-tower", "kind": "place", "description": "the Bell Tower, in Crownhead" },
+
+    { "entity_id": "p-market", "kind": "place", "description": "the Tilted Market, in the Midslope" },
+    { "entity_id": "p-dyers-row", "kind": "place", "description": "Dyers' Row, in the Midslope" },
+    { "entity_id": "p-ferry-house", "kind": "place", "description": "the Ferryman's House, in the Midslope" },
+
+    { "entity_id": "p-cistern-stair", "kind": "place", "description": "the Cistern Stair, whose head opens off the Midslope and whose foot is under water" },
+    { "entity_id": "p-drowned-landing", "kind": "place", "description": "the Drowned Landing at the foot of the stair, at the waterline" },
+    { "entity_id": "p-boat-shed", "kind": "place", "description": "the Boat Shed on the water" },
+    { "entity_id": "p-weir-gate", "kind": "place", "description": "the Weir Gate, where the undersluice is worked" },
+    { "entity_id": "p-sunken-vaults", "kind": "place", "description": "the Sunken Vaults, spoken of all season and entered by nobody" },
+
+    { "entity_id": "c-kess", "kind": "character", "description": "Kess, the almoner's daughter, who keeps the flood ledger" },
+    { "entity_id": "c-orin", "kind": "character", "description": "Orin, who rings the marks from the Bell Tower" },
+    { "entity_id": "c-mavey", "kind": "character", "description": "Old Mavey, who keeps the weir" },
+    { "entity_id": "c-tull", "kind": "character", "description": "Tull, a dyer of Dyers' Row" },
+    { "entity_id": "c-hesper", "kind": "character", "description": "Hesper, the ferryman" },
+    { "entity_id": "c-sela", "kind": "character", "description": "Sela, keeper of the Shrine of the Still Water" },
+
+    { "entity_id": "i-sluice-key", "kind": "item", "description": "the sluice key, which hangs on a hook in the Almoner's House when it hangs anywhere" },
+    { "entity_id": "i-undersluice", "kind": "item", "description": "the undersluice of the Weir Gate, raised or lowered by the key" }
+  ],
+
+  "predicates": [
+    { "predicate_id": "at", "object_kind": "entity", "subject_kind": "character", "object_entity_kind": "place",
+      "description": "where a person is" },
+    { "predicate_id": "adjacent", "object_kind": "entity", "subject_kind": "place", "object_entity_kind": "place",
+      "description": "a way that leads from the subject place to the object place; one fact is one direction" },
+    { "predicate_id": "contains", "object_kind": "entity", "subject_kind": "place", "object_entity_kind": "place",
+      "description": "the subject place holds the object place inside it" },
+    { "predicate_id": "holds", "object_kind": "entity", "subject_kind": "character", "object_entity_kind": "item",
+      "description": "custody of a thing" },
+    { "predicate_id": "water_state", "object_kind": "token", "object_tokens": ["dry", "ankle", "waist", "drowned"],
+      "subject_kind": "place", "description": "how deep the water stands in a place" },
+    { "predicate_id": "sluice_state", "object_kind": "token", "object_tokens": ["raised", "lowered"],
+      "subject_kind": "item", "description": "whether the undersluice stands raised or lowered" },
+    { "predicate_id": "holds_for", "object_kind": "quantity", "subject_kind": "item",
+      "description": "how long a worked thing will stay as it has been set" }
+  ],
+
+  "facts": [
+
+    { "fact_id": "f-contains-crown-shrine", "frame": "ground-truth",
+      "claim": "The Shrine of the Still Water stands inside the quarter of Crownhead.",
+      "canon_from": "sc-01", "evidence": ["sc-01"], "entities": ["q-crown", "p-shrine"],
+      "typed": { "subject": "q-crown", "predicate": "contains", "object": { "kind": "entity", "id": "p-shrine" } } },
+
+    { "fact_id": "f-contains-crown-almoner", "frame": "ground-truth",
+      "claim": "The Almoner's House stands inside the quarter of Crownhead.",
+      "canon_from": "sc-01", "evidence": ["sc-01"], "entities": ["q-crown", "p-almoner-house"],
+      "typed": { "subject": "q-crown", "predicate": "contains", "object": { "kind": "entity", "id": "p-almoner-house" } } },
+
+    { "fact_id": "f-contains-crown-bell", "frame": "ground-truth",
+      "claim": "The Bell Tower stands inside the quarter of Crownhead.",
+      "canon_from": "sc-01", "evidence": ["sc-01"], "entities": ["q-crown", "p-bell-tower"],
+      "typed": { "subject": "q-crown", "predicate": "contains", "object": { "kind": "entity", "id": "p-bell-tower" } } },
+
+    { "fact_id": "f-contains-mid-market", "frame": "ground-truth",
+      "claim": "The Tilted Market lies inside the quarter of the Midslope.",
+      "canon_from": "sc-01", "evidence": ["sc-01"], "entities": ["q-midslope", "p-market"],
+      "typed": { "subject": "q-midslope", "predicate": "contains", "object": { "kind": "entity", "id": "p-market" } } },
+
+    { "fact_id": "f-contains-mid-dyers", "frame": "ground-truth",
+      "claim": "Dyers' Row lies inside the quarter of the Midslope.",
+      "canon_from": "sc-01", "evidence": ["sc-01"], "entities": ["q-midslope", "p-dyers-row"],
+      "typed": { "subject": "q-midslope", "predicate": "contains", "object": { "kind": "entity", "id": "p-dyers-row" } } },
+
+    { "fact_id": "f-contains-mid-ferry", "frame": "ground-truth",
+      "claim": "The Ferryman's House lies inside the quarter of the Midslope.",
+      "canon_from": "sc-01", "evidence": ["sc-01"], "entities": ["q-midslope", "p-ferry-house"],
+      "typed": { "subject": "q-midslope", "predicate": "contains", "object": { "kind": "entity", "id": "p-ferry-house" } } },
+
+    { "fact_id": "f-edge-crown-mid", "frame": "ground-truth",
+      "claim": "The Crown Steps run down out of Crownhead into the Midslope.",
+      "canon_from": "sc-01", "evidence": ["sc-01"], "entities": ["q-crown", "q-midslope"],
+      "typed": { "subject": "q-crown", "predicate": "adjacent", "object": { "kind": "entity", "id": "q-midslope" } } },
+
+    { "fact_id": "f-edge-mid-crown", "frame": "ground-truth",
+      "claim": "The Crown Steps run up out of the Midslope into Crownhead.",
+      "canon_from": "sc-01", "evidence": ["sc-01"], "entities": ["q-midslope", "q-crown"],
+      "typed": { "subject": "q-midslope", "predicate": "adjacent", "object": { "kind": "entity", "id": "q-crown" } } },
+
+    { "fact_id": "f-edge-mid-stair", "frame": "ground-truth",
+      "claim": "A door off the Midslope opens onto the head of the Cistern Stair.",
+      "canon_from": "sc-01", "evidence": ["sc-01"], "entities": ["q-midslope", "p-cistern-stair"],
+      "typed": { "subject": "q-midslope", "predicate": "adjacent", "object": { "kind": "entity", "id": "p-cistern-stair" } } },
+
+    { "fact_id": "f-edge-stair-mid", "frame": "ground-truth",
+      "claim": "From the head of the Cistern Stair the same door opens back into the Midslope.",
+      "canon_from": "sc-01", "evidence": ["sc-01"], "entities": ["p-cistern-stair", "q-midslope"],
+      "typed": { "subject": "p-cistern-stair", "predicate": "adjacent", "object": { "kind": "entity", "id": "q-midslope" } } },
+
+    { "fact_id": "f-edge-stair-landing", "frame": "ground-truth",
+      "claim": "The Cistern Stair falls from its head to the Drowned Landing, and it is a way down only.",
+      "canon_from": "sc-01", "evidence": ["sc-01"], "entities": ["p-cistern-stair", "p-drowned-landing"],
+      "typed": { "subject": "p-cistern-stair", "predicate": "adjacent", "object": { "kind": "entity", "id": "p-drowned-landing" } } },
+
+    { "fact_id": "f-edge-landing-shed", "frame": "ground-truth",
+      "claim": "A duckboard walk runs from the Drowned Landing to the Boat Shed.",
+      "canon_from": "sc-01", "evidence": ["sc-01"], "entities": ["p-drowned-landing", "p-boat-shed"],
+      "typed": { "subject": "p-drowned-landing", "predicate": "adjacent", "object": { "kind": "entity", "id": "p-boat-shed" } } },
+
+    { "fact_id": "f-edge-shed-landing", "frame": "ground-truth",
+      "claim": "The duckboard walk runs back from the Boat Shed to the Drowned Landing.",
+      "canon_from": "sc-01", "evidence": ["sc-01"], "entities": ["p-boat-shed", "p-drowned-landing"],
+      "typed": { "subject": "p-boat-shed", "predicate": "adjacent", "object": { "kind": "entity", "id": "p-drowned-landing" } } },
+
+    { "fact_id": "f-edge-shed-weir", "frame": "ground-truth",
+      "claim": "Open water lies between the Boat Shed and the Weir Gate, and is crossed by boat.",
+      "canon_from": "sc-01", "evidence": ["sc-01"], "entities": ["p-boat-shed", "p-weir-gate"],
+      "typed": { "subject": "p-boat-shed", "predicate": "adjacent", "object": { "kind": "entity", "id": "p-weir-gate" } } },
+
+    { "fact_id": "f-edge-weir-shed", "frame": "ground-truth",
+      "claim": "The same open water is crossed by boat back from the Weir Gate to the Boat Shed.",
+      "canon_from": "sc-01", "evidence": ["sc-01"], "entities": ["p-weir-gate", "p-boat-shed"],
+      "typed": { "subject": "p-weir-gate", "predicate": "adjacent", "object": { "kind": "entity", "id": "p-boat-shed" } } },
+
+    { "fact_id": "f-edge-weir-mid", "frame": "ground-truth",
+      "claim": "The ladder inside the Weir Gate's undersluice is the one climb from the water up into the Midslope.",
+      "canon_from": "sc-01", "evidence": ["sc-01"], "entities": ["p-weir-gate", "q-midslope"],
+      "typed": { "subject": "p-weir-gate", "predicate": "adjacent", "object": { "kind": "entity", "id": "q-midslope" } } },
+
+    { "fact_id": "f-edge-landing-vaults", "frame": "ground-truth",
+      "claim": "A flooded passage runs from the Drowned Landing to the door of the Sunken Vaults.",
+      "canon_from": "sc-01", "evidence": ["sc-01"], "entities": ["p-drowned-landing", "p-sunken-vaults"],
+      "typed": { "subject": "p-drowned-landing", "predicate": "adjacent", "object": { "kind": "entity", "id": "p-sunken-vaults" } } },
+
+    { "fact_id": "f-edge-shrine-almoner", "frame": "ground-truth",
+      "claim": "The shrine yard opens onto the door of the Almoner's House.",
+      "canon_from": "sc-01", "evidence": ["sc-01"], "entities": ["p-shrine", "p-almoner-house"],
+      "typed": { "subject": "p-shrine", "predicate": "adjacent", "object": { "kind": "entity", "id": "p-almoner-house" } } },
+
+    { "fact_id": "f-edge-almoner-shrine", "frame": "ground-truth",
+      "claim": "The door of the Almoner's House opens onto the shrine yard.",
+      "canon_from": "sc-01", "evidence": ["sc-01"], "entities": ["p-almoner-house", "p-shrine"],
+      "typed": { "subject": "p-almoner-house", "predicate": "adjacent", "object": { "kind": "entity", "id": "p-shrine" } } },
+
+    { "fact_id": "f-edge-almoner-bell", "frame": "ground-truth",
+      "claim": "A covered walk joins the Almoner's House to the foot of the Bell Tower.",
+      "canon_from": "sc-01", "evidence": ["sc-01"], "entities": ["p-almoner-house", "p-bell-tower"],
+      "typed": { "subject": "p-almoner-house", "predicate": "adjacent", "object": { "kind": "entity", "id": "p-bell-tower" } } },
+
+    { "fact_id": "f-edge-bell-almoner", "frame": "ground-truth",
+      "claim": "The covered walk joins the foot of the Bell Tower back to the Almoner's House.",
+      "canon_from": "sc-01", "evidence": ["sc-01"], "entities": ["p-bell-tower", "p-almoner-house"],
+      "typed": { "subject": "p-bell-tower", "predicate": "adjacent", "object": { "kind": "entity", "id": "p-almoner-house" } } },
+
+    { "fact_id": "f-edge-market-dyers", "frame": "ground-truth",
+      "claim": "The market's low arcade lets through to Dyers' Row.",
+      "canon_from": "sc-01", "evidence": ["sc-01"], "entities": ["p-market", "p-dyers-row"],
+      "typed": { "subject": "p-market", "predicate": "adjacent", "object": { "kind": "entity", "id": "p-dyers-row" } } },
+
+    { "fact_id": "f-edge-dyers-market", "frame": "ground-truth",
+      "claim": "Dyers' Row lets back through the low arcade into the market.",
+      "canon_from": "sc-01", "evidence": ["sc-01"], "entities": ["p-dyers-row", "p-market"],
+      "typed": { "subject": "p-dyers-row", "predicate": "adjacent", "object": { "kind": "entity", "id": "p-market" } } },
+
+    { "fact_id": "f-edge-market-ferry", "frame": "ground-truth",
+      "claim": "The market's water stair goes along to the Ferryman's House.",
+      "canon_from": "sc-01", "evidence": ["sc-01"], "entities": ["p-market", "p-ferry-house"],
+      "typed": { "subject": "p-market", "predicate": "adjacent", "object": { "kind": "entity", "id": "p-ferry-house" } } },
+
+    { "fact_id": "f-edge-ferry-market", "frame": "ground-truth",
+      "claim": "The water stair goes back from the Ferryman's House to the market.",
+      "canon_from": "sc-01", "evidence": ["sc-01"], "entities": ["p-ferry-house", "p-market"],
+      "typed": { "subject": "p-ferry-house", "predicate": "adjacent", "object": { "kind": "entity", "id": "p-market" } } },
+
+    { "fact_id": "f-at-kess-01", "frame": "ground-truth",
+      "claim": "Kess is in the Almoner's House.",
+      "canon_from": "sc-01", "evidence": ["sc-01"], "entities": ["c-kess", "p-almoner-house"],
+      "typed": { "subject": "c-kess", "predicate": "at", "object": { "kind": "entity", "id": "p-almoner-house" } } },
+
+    { "fact_id": "f-water-crown-01", "frame": "ground-truth",
+      "claim": "Crownhead is still dry.",
+      "canon_from": "sc-01", "evidence": ["sc-01"], "entities": ["q-crown"],
+      "typed": { "subject": "q-crown", "predicate": "water_state", "object": { "kind": "token", "token": "dry" } } },
+
+    { "fact_id": "f-ledger-mark", "frame": "ground-truth",
+      "claim": "The flood mark Kess enters in the almoner's ledger stands a hand above any mark her father wrote.",
+      "canon_from": "sc-01", "evidence": ["sc-01"], "entities": ["c-kess", "p-almoner-house"] },
+
+    { "fact_id": "f-at-kess-02", "frame": "ground-truth",
+      "claim": "Kess is in the shrine yard.",
+      "canon_from": "sc-02", "evidence": ["sc-02"], "entities": ["c-kess", "p-shrine"],
+      "supersedes_in_frame": "f-at-kess-01",
+      "typed": { "subject": "c-kess", "predicate": "at", "object": { "kind": "entity", "id": "p-shrine" } } },
+
+    { "fact_id": "f-at-sela-02", "frame": "ground-truth",
+      "claim": "Sela is at the shrine.",
+      "canon_from": "sc-02", "evidence": ["sc-02"], "entities": ["c-sela", "p-shrine"],
+      "typed": { "subject": "c-sela", "predicate": "at", "object": { "kind": "entity", "id": "p-shrine" } } },
+
+    { "fact_id": "f-water-shrine-02", "frame": "ground-truth",
+      "claim": "The water stands ankle-deep across the shrine floor.",
+      "canon_from": "sc-02", "evidence": ["sc-02"], "entities": ["p-shrine"],
+      "typed": { "subject": "p-shrine", "predicate": "water_state", "object": { "kind": "token", "token": "ankle" } } },
+
+    { "fact_id": "f-shrine-weeps", "frame": "ground-truth",
+      "claim": "The shrine's flagstones seep, and Sela's basin fills without being filled.",
+      "canon_from": "sc-02", "evidence": ["sc-02"], "entities": ["p-shrine", "c-sela"] },
+
+    { "fact_id": "f-at-orin-03", "frame": "ground-truth",
+      "claim": "Orin is up the Bell Tower.",
+      "canon_from": "sc-03", "evidence": ["sc-03"], "entities": ["c-orin", "p-bell-tower"],
+      "typed": { "subject": "c-orin", "predicate": "at", "object": { "kind": "entity", "id": "p-bell-tower" } } },
+
+    { "fact_id": "f-bell-carries", "frame": "ground-truth",
+      "claim": "The fourth-mark bell carries down the hill and out over the water as far as the Weir Gate.",
+      "canon_from": "sc-03", "evidence": ["sc-03"], "entities": ["c-orin", "p-bell-tower", "p-weir-gate"],
+      "payoff_expectation": "expected" },
+
+    { "fact_id": "f-at-kess-04", "frame": "ground-truth",
+      "claim": "Kess is out in Crownhead.",
+      "canon_from": "sc-04", "evidence": ["sc-04"], "entities": ["c-kess", "q-crown"],
+      "supersedes_in_frame": "f-at-kess-02",
+      "typed": { "subject": "c-kess", "predicate": "at", "object": { "kind": "entity", "id": "q-crown" } } },
+
+    { "fact_id": "f-crown-steps-crowd", "frame": "ground-truth",
+      "claim": "The Crown Steps are packed with households carrying their goods uphill.",
+      "canon_from": "sc-04", "evidence": ["sc-04"], "entities": ["q-crown", "c-kess"] },
+
+    { "fact_id": "f-at-orin-05", "frame": "ground-truth",
+      "claim": "Orin is in the Almoner's House.",
+      "canon_from": "sc-05", "evidence": ["sc-05"], "entities": ["c-orin", "p-almoner-house"],
+      "supersedes_in_frame": "f-at-orin-03",
+      "typed": { "subject": "c-orin", "predicate": "at", "object": { "kind": "entity", "id": "p-almoner-house" } } },
+
+    { "fact_id": "f-key-missing", "frame": "ground-truth",
+      "claim": "The sluice key is gone from its hook in the Almoner's House.",
+      "canon_from": "sc-05", "evidence": ["sc-05"], "entities": ["i-sluice-key", "p-almoner-house", "c-orin"],
+      "payoff_expectation": "expected" },
+
+    { "fact_id": "f-at-kess-06", "frame": "ground-truth",
+      "claim": "Kess is in the Tilted Market.",
+      "canon_from": "sc-06", "evidence": ["sc-06"], "entities": ["c-kess", "p-market"],
+      "supersedes_in_frame": "f-at-kess-04",
+      "typed": { "subject": "c-kess", "predicate": "at", "object": { "kind": "entity", "id": "p-market" } } },
+
+    { "fact_id": "f-at-hesper-06", "frame": "ground-truth",
+      "claim": "Hesper is in the Tilted Market.",
+      "canon_from": "sc-06", "evidence": ["sc-06"], "entities": ["c-hesper", "p-market"],
+      "typed": { "subject": "c-hesper", "predicate": "at", "object": { "kind": "entity", "id": "p-market" } } },
+
+    { "fact_id": "f-water-market-06", "frame": "ground-truth",
+      "claim": "The water stands ankle-deep in the Tilted Market.",
+      "canon_from": "sc-06", "evidence": ["sc-06"], "entities": ["p-market"],
+      "typed": { "subject": "p-market", "predicate": "water_state", "object": { "kind": "token", "token": "ankle" } } },
+
+    { "fact_id": "f-talk-vaults-charter", "frame": "townsfolk",
+      "claim": "The town's charter lies dry in the Sunken Vaults, in a lead box on a shelf above the water.",
+      "canon_from": "sc-06", "evidence": ["sc-06"], "entities": ["p-sunken-vaults"] },
+
+    { "fact_id": "f-at-kess-07", "frame": "ground-truth",
+      "claim": "Kess is in Dyers' Row.",
+      "canon_from": "sc-07", "evidence": ["sc-07"], "entities": ["c-kess", "p-dyers-row"],
+      "supersedes_in_frame": "f-at-kess-06",
+      "typed": { "subject": "c-kess", "predicate": "at", "object": { "kind": "entity", "id": "p-dyers-row" } } },
+
+    { "fact_id": "f-at-tull-07", "frame": "ground-truth",
+      "claim": "Tull is in Dyers' Row.",
+      "canon_from": "sc-07", "evidence": ["sc-07"], "entities": ["c-tull", "p-dyers-row"],
+      "typed": { "subject": "c-tull", "predicate": "at", "object": { "kind": "entity", "id": "p-dyers-row" } } },
+
+    { "fact_id": "f-water-dyers-07", "frame": "ground-truth",
+      "claim": "The water stands ankle-deep in Dyers' Row and runs blue with the overturned vats.",
+      "canon_from": "sc-07", "evidence": ["sc-07"], "entities": ["p-dyers-row"],
+      "typed": { "subject": "p-dyers-row", "predicate": "water_state", "object": { "kind": "token", "token": "ankle" } } },
+
+    { "fact_id": "f-key-tull", "frame": "ground-truth",
+      "claim": "Tull has the sluice key, taken as surety against a debt of dye.",
+      "canon_from": "sc-07", "evidence": ["sc-05", "sc-07"], "entities": ["c-tull", "i-sluice-key"],
+      "pays_off": ["f-key-missing"],
+      "typed": { "subject": "c-tull", "predicate": "holds", "object": { "kind": "entity", "id": "i-sluice-key" } } },
+
+    { "fact_id": "f-at-orin-08", "frame": "ground-truth",
+      "claim": "Orin is at the shrine.",
+      "canon_from": "sc-08", "evidence": ["sc-08"], "entities": ["c-orin", "p-shrine"],
+      "supersedes_in_frame": "f-at-orin-05",
+      "typed": { "subject": "c-orin", "predicate": "at", "object": { "kind": "entity", "id": "p-shrine" } } },
+
+    { "fact_id": "f-talk-vault-door", "frame": "townsfolk",
+      "claim": "The vault door was shut with the charter inside on the night the water came.",
+      "canon_from": "sc-08", "evidence": ["sc-06", "sc-08"], "entities": ["p-sunken-vaults", "c-sela"] },
+
+    { "fact_id": "f-at-kess-09", "frame": "ground-truth",
+      "claim": "Kess is at the head of the Cistern Stair.",
+      "canon_from": "sc-09", "evidence": ["sc-09"], "entities": ["c-kess", "p-cistern-stair"],
+      "supersedes_in_frame": "f-at-kess-07",
+      "typed": { "subject": "c-kess", "predicate": "at", "object": { "kind": "entity", "id": "p-cistern-stair" } } },
+
+    { "fact_id": "f-at-tull-09", "frame": "ground-truth",
+      "claim": "Tull is at the head of the Cistern Stair.",
+      "canon_from": "sc-09", "evidence": ["sc-09"], "entities": ["c-tull", "p-cistern-stair"],
+      "supersedes_in_frame": "f-at-tull-07",
+      "typed": { "subject": "c-tull", "predicate": "at", "object": { "kind": "entity", "id": "p-cistern-stair" } } },
+
+    { "fact_id": "f-stair-oneway", "frame": "ground-truth",
+      "claim": "The Cistern Stair's lower flight is a chute of fallen masonry: a body can go down it and no body can come back up.",
+      "canon_from": "sc-09", "evidence": ["sc-09"], "entities": ["p-cistern-stair", "p-drowned-landing", "c-tull"],
+      "payoff_expectation": "expected" },
+
+    { "fact_id": "f-key-kess", "frame": "ground-truth",
+      "claim": "Kess has the sluice key, redeemed from Tull at the stair head.",
+      "canon_from": "sc-09", "evidence": ["sc-07", "sc-09"], "entities": ["c-kess", "i-sluice-key"],
+      "supersedes_in_frame": "f-key-tull",
+      "typed": { "subject": "c-kess", "predicate": "holds", "object": { "kind": "entity", "id": "i-sluice-key" } } },
+
+    { "fact_id": "f-kess-believes-climb", "frame": "kess",
+      "claim": "Kess believes she can climb the Cistern Stair back up when she is done below.",
+      "canon_from": "sc-09", "evidence": ["sc-09"], "entities": ["c-kess", "p-cistern-stair"] },
+
+    { "fact_id": "f-at-kess-10", "frame": "ground-truth",
+      "claim": "Kess is on the Drowned Landing.",
+      "canon_from": "sc-10", "evidence": ["sc-10"], "entities": ["c-kess", "p-drowned-landing"],
+      "supersedes_in_frame": "f-at-kess-09",
+      "typed": { "subject": "c-kess", "predicate": "at", "object": { "kind": "entity", "id": "p-drowned-landing" } } },
+
+    { "fact_id": "f-water-landing-10", "frame": "ground-truth",
+      "claim": "The Drowned Landing is under water to its handrail.",
+      "canon_from": "sc-10", "evidence": ["sc-10"], "entities": ["p-drowned-landing"],
+      "typed": { "subject": "p-drowned-landing", "predicate": "water_state", "object": { "kind": "token", "token": "drowned" } } },
+
+    { "fact_id": "f-stair-fall-10", "frame": "ground-truth",
+      "claim": "Kess goes down the chute and the masonry settles behind her, so that nobody will return by the stair.",
+      "canon_from": "sc-10", "evidence": ["sc-09", "sc-10"], "entities": ["c-kess", "p-cistern-stair", "p-drowned-landing"],
+      "pays_off": ["f-stair-oneway"] },
+
+    { "fact_id": "f-kess-knows-noclimb", "frame": "kess",
+      "claim": "Kess knows there is no climbing back, and that the only way up is the Weir Gate.",
+      "canon_from": "sc-10", "evidence": ["sc-09", "sc-10"], "entities": ["c-kess", "p-cistern-stair", "p-weir-gate"],
+      "supersedes_in_frame": "f-kess-believes-climb" },
+
+    { "fact_id": "f-vaults-flooded", "frame": "ground-truth",
+      "claim": "The passage to the Sunken Vaults runs full to its crown, and nothing is dry beyond the vault door.",
+      "canon_from": "sc-10", "evidence": ["sc-10"], "entities": ["p-drowned-landing", "p-sunken-vaults"],
+      "conflicts_with": ["f-talk-vaults-charter"] },
+
+    { "fact_id": "f-at-mavey-11", "frame": "ground-truth",
+      "claim": "Mavey is at the Weir Gate.",
+      "canon_from": "sc-11", "evidence": ["sc-11"], "entities": ["c-mavey", "p-weir-gate"],
+      "typed": { "subject": "c-mavey", "predicate": "at", "object": { "kind": "entity", "id": "p-weir-gate" } } },
+
+    { "fact_id": "f-water-weir-11", "frame": "ground-truth",
+      "claim": "The water stands waist-deep at the Weir Gate.",
+      "canon_from": "sc-11", "evidence": ["sc-11"], "entities": ["p-weir-gate"],
+      "typed": { "subject": "p-weir-gate", "predicate": "water_state", "object": { "kind": "token", "token": "waist" } } },
+
+    { "fact_id": "f-sluice-raised", "frame": "ground-truth",
+      "claim": "The undersluice stands raised.",
+      "canon_from": "sc-11", "evidence": ["sc-11"], "entities": ["i-undersluice", "p-weir-gate"],
+      "typed": { "subject": "i-undersluice", "predicate": "sluice_state", "object": { "kind": "token", "token": "raised" } } },
+
+    { "fact_id": "f-weir-shut", "frame": "ground-truth",
+      "claim": "While the undersluice stands raised the ladder inside the Weir Gate is drowned, and the climb to the Midslope is shut.",
+      "canon_from": "sc-11", "evidence": ["sc-11"], "entities": ["p-weir-gate", "i-undersluice", "q-midslope"],
+      "payoff_expectation": "expected" },
+
+    { "fact_id": "f-mavey-hears", "frame": "ground-truth",
+      "claim": "Mavey hears the fourth mark come over the water and knows the tower still stands.",
+      "canon_from": "sc-11", "evidence": ["sc-03", "sc-11"], "entities": ["c-mavey", "p-weir-gate", "p-bell-tower"],
+      "pays_off": ["f-bell-carries"] },
+
+    { "fact_id": "f-at-kess-12", "frame": "ground-truth",
+      "claim": "Kess is in the Boat Shed.",
+      "canon_from": "sc-12", "evidence": ["sc-12"], "entities": ["c-kess", "p-boat-shed"],
+      "supersedes_in_frame": "f-at-kess-10",
+      "typed": { "subject": "c-kess", "predicate": "at", "object": { "kind": "entity", "id": "p-boat-shed" } } },
+
+    { "fact_id": "f-water-shed-12", "frame": "ground-truth",
+      "claim": "The water stands waist-deep in the Boat Shed.",
+      "canon_from": "sc-12", "evidence": ["sc-12"], "entities": ["p-boat-shed"],
+      "typed": { "subject": "p-boat-shed", "predicate": "water_state", "object": { "kind": "token", "token": "waist" } } },
+
+    { "fact_id": "f-boats-holed", "frame": "ground-truth",
+      "claim": "Every boat left in the Boat Shed has been holed through the bilge.",
+      "canon_from": "sc-12", "evidence": ["sc-12"], "entities": ["p-boat-shed", "c-kess"] },
+
+    { "fact_id": "f-at-tull-13", "frame": "ground-truth",
+      "claim": "Tull is in the Tilted Market.",
+      "canon_from": "sc-13", "evidence": ["sc-13"], "entities": ["c-tull", "p-market"],
+      "supersedes_in_frame": "f-at-tull-09",
+      "typed": { "subject": "c-tull", "predicate": "at", "object": { "kind": "entity", "id": "p-market" } } },
+
+    { "fact_id": "f-talk-vaults-passage", "frame": "townsfolk",
+      "claim": "The flooded passage from the Drowned Landing still runs clear to the vault door.",
+      "canon_from": "sc-13", "evidence": ["sc-06", "sc-13"], "entities": ["p-drowned-landing", "p-sunken-vaults", "c-tull"] },
+
+    { "fact_id": "f-at-mavey-14", "frame": "ground-truth",
+      "claim": "Mavey is in the Boat Shed.",
+      "canon_from": "sc-14", "evidence": ["sc-14"], "entities": ["c-mavey", "p-boat-shed"],
+      "supersedes_in_frame": "f-at-mavey-11",
+      "typed": { "subject": "c-mavey", "predicate": "at", "object": { "kind": "entity", "id": "p-boat-shed" } } },
+
+    { "fact_id": "f-mavey-brings-boat", "frame": "ground-truth",
+      "claim": "Mavey rows the last sound boat over the drowned roofs and ties up in the Boat Shed.",
+      "canon_from": "sc-14", "evidence": ["sc-12", "sc-14"], "entities": ["c-mavey", "p-boat-shed", "p-weir-gate"] },
+
+    { "fact_id": "f-at-kess-15", "frame": "ground-truth",
+      "claim": "Kess is at the Weir Gate.",
+      "canon_from": "sc-15", "evidence": ["sc-15"], "entities": ["c-kess", "p-weir-gate"],
+      "supersedes_in_frame": "f-at-kess-12",
+      "typed": { "subject": "c-kess", "predicate": "at", "object": { "kind": "entity", "id": "p-weir-gate" } } },
+
+    { "fact_id": "f-at-mavey-15", "frame": "ground-truth",
+      "claim": "Mavey is at the Weir Gate.",
+      "canon_from": "sc-15", "evidence": ["sc-15"], "entities": ["c-mavey", "p-weir-gate"],
+      "supersedes_in_frame": "f-at-mavey-14",
+      "typed": { "subject": "c-mavey", "predicate": "at", "object": { "kind": "entity", "id": "p-weir-gate" } } },
+
+    { "fact_id": "f-key-mavey", "frame": "ground-truth",
+      "claim": "Mavey has the sluice key, handed over at the gate.",
+      "canon_from": "sc-15", "evidence": ["sc-09", "sc-15"], "entities": ["c-mavey", "i-sluice-key"],
+      "supersedes_in_frame": "f-key-kess",
+      "typed": { "subject": "c-mavey", "predicate": "holds", "object": { "kind": "entity", "id": "i-sluice-key" } } },
+
+    { "fact_id": "f-sluice-lowered", "frame": "ground-truth",
+      "claim": "The undersluice comes down, and the water inside the Weir Gate falls below the ladder's third rung.",
+      "canon_from": "sc-16", "evidence": ["sc-11", "sc-15", "sc-16"], "entities": ["i-undersluice", "p-weir-gate"],
+      "supersedes_in_frame": "f-sluice-raised",
+      "pays_off": ["f-weir-shut"],
+      "typed": { "subject": "i-undersluice", "predicate": "sluice_state", "object": { "kind": "token", "token": "lowered" } } },
+
+    { "fact_id": "f-water-weir-16", "frame": "ground-truth",
+      "claim": "The water at the Weir Gate stands ankle-deep.",
+      "canon_from": "sc-16", "evidence": ["sc-16"], "entities": ["p-weir-gate"],
+      "supersedes_in_frame": "f-water-weir-11",
+      "typed": { "subject": "p-weir-gate", "predicate": "water_state", "object": { "kind": "token", "token": "ankle" } } },
+
+    { "fact_id": "f-tide-window", "frame": "ground-truth",
+      "claim": "The undersluice will hold down for forty minutes before the weir overtops it again.",
+      "canon_from": "sc-16", "evidence": ["sc-11", "sc-16"], "entities": ["i-undersluice"],
+      "typed": { "subject": "i-undersluice", "predicate": "holds_for", "object": { "kind": "quantity", "n": 40, "unit": "minute" } } },
+
+    { "fact_id": "f-at-orin-17", "frame": "ground-truth",
+      "claim": "Orin is in the Almoner's House.",
+      "canon_from": "sc-17", "evidence": ["sc-17"], "entities": ["c-orin", "p-almoner-house"],
+      "supersedes_in_frame": "f-at-orin-08",
+      "typed": { "subject": "c-orin", "predicate": "at", "object": { "kind": "entity", "id": "p-almoner-house" } } },
+
+    { "fact_id": "f-ledger-last", "frame": "ground-truth",
+      "claim": "Orin writes the falling mark as the last line of the almoner's ledger.",
+      "canon_from": "sc-17", "evidence": ["sc-01", "sc-17"], "entities": ["c-orin", "p-almoner-house"] },
+
+    { "fact_id": "f-at-kess-18", "frame": "ground-truth",
+      "claim": "Kess is up in the Midslope.",
+      "canon_from": "sc-18", "evidence": ["sc-18"], "entities": ["c-kess", "q-midslope"],
+      "supersedes_in_frame": "f-at-kess-15",
+      "typed": { "subject": "c-kess", "predicate": "at", "object": { "kind": "entity", "id": "q-midslope" } } },
+
+    { "fact_id": "f-kess-climbs", "frame": "ground-truth",
+      "claim": "Kess climbs the undersluice ladder and comes up out of the Weir Gate into the Midslope.",
+      "canon_from": "sc-18", "evidence": ["sc-16", "sc-18"], "entities": ["c-kess", "p-weir-gate", "q-midslope"] },
+
+    { "fact_id": "f-at-kess-19", "frame": "ground-truth",
+      "claim": "Kess is at the Ferryman's House.",
+      "canon_from": "sc-19", "evidence": ["sc-19"], "entities": ["c-kess", "p-ferry-house"],
+      "supersedes_in_frame": "f-at-kess-18",
+      "typed": { "subject": "c-kess", "predicate": "at", "object": { "kind": "entity", "id": "p-ferry-house" } } },
+
+    { "fact_id": "f-at-tull-19", "frame": "ground-truth",
+      "claim": "Tull is at the Ferryman's House.",
+      "canon_from": "sc-19", "evidence": ["sc-19"], "entities": ["c-tull", "p-ferry-house"],
+      "supersedes_in_frame": "f-at-tull-13",
+      "typed": { "subject": "c-tull", "predicate": "at", "object": { "kind": "entity", "id": "p-ferry-house" } } },
+
+    { "fact_id": "f-at-hesper-19", "frame": "ground-truth",
+      "claim": "Hesper is at the Ferryman's House.",
+      "canon_from": "sc-19", "evidence": ["sc-19"], "entities": ["c-hesper", "p-ferry-house"],
+      "supersedes_in_frame": "f-at-hesper-06",
+      "typed": { "subject": "c-hesper", "predicate": "at", "object": { "kind": "entity", "id": "p-ferry-house" } } },
+
+    { "fact_id": "f-ferry-rope", "frame": "ground-truth",
+      "claim": "Hesper cuts the ferry rope, which the falling water has drawn taut enough to sing.",
+      "canon_from": "sc-19", "evidence": ["sc-16", "sc-19"], "entities": ["c-hesper", "p-ferry-house"] },
+
+    { "fact_id": "f-at-orin-20", "frame": "ground-truth",
+      "claim": "Orin is up the Bell Tower.",
+      "canon_from": "sc-20", "evidence": ["sc-20"], "entities": ["c-orin", "p-bell-tower"],
+      "supersedes_in_frame": "f-at-orin-17",
+      "typed": { "subject": "c-orin", "predicate": "at", "object": { "kind": "entity", "id": "p-bell-tower" } } },
+
+    { "fact_id": "f-vaults-unreached", "frame": "ground-truth",
+      "claim": "Nobody in Vellmoor goes down to the Sunken Vaults this season.",
+      "canon_from": "sc-20", "evidence": ["sc-06", "sc-13", "sc-20"], "entities": ["p-sunken-vaults"] }
+  ]
+}

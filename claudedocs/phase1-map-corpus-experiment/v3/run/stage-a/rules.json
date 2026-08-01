@@ -1,0 +1,33 @@
+{
+  "schema": "narrative-rules/v1",
+  "comment": "Vellmoor. One place per person (refinement-aware, because a person in the Tilted Market is also in the Midslope). One holder per key. One waterline per place. And movement judged against the store-native map: the adjacency facts are the ways, the contains facts cut them into quarter-scopes.",
+  "rules": [
+    {
+      "id": "one-place-per-person",
+      "predicate": "at",
+      "class": "exclusive",
+      "per": "subject",
+      "containment": "contains"
+    },
+    {
+      "id": "one-holder-per-thing",
+      "predicate": "holds",
+      "class": "exclusive",
+      "per": "object"
+    },
+    {
+      "id": "one-waterline-per-place",
+      "predicate": "water_state",
+      "class": "exclusive",
+      "per": "subject"
+    },
+    {
+      "id": "movement-follows-the-map",
+      "predicate": "at",
+      "class": "transition",
+      "adjacency": "adjacent",
+      "undirected": false,
+      "containment": "contains"
+    }
+  ]
+}
