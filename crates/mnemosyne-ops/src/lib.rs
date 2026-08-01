@@ -214,6 +214,81 @@ pub fn entity_kinds(
         .collect())
 }
 
+/// One typed claim as the store holds it, with the coordinates that say WHOSE
+/// claim it is (Round 940). The subject/object legs are the claim; `frame` and
+/// `branch` are what stop a consumer reading a rumour as a fact and a fork's
+/// claim as the trunk's.
+///
+/// The object keeps its [`mnemosyne_core::TypedObject`] shape rather than being
+/// stringified at this edge, unlike [`entity_kinds`]: the shapes are what a
+/// consumer dispatches on (an `opened_by = f-*` bridge joins against a fact id,
+/// a `state = token` does not), and a consumer that had to re-parse a rendered
+/// object would be hand-parsing our store again — the thing this read exists to
+/// stop.
+#[derive(Debug, Clone, Serialize)]
+pub struct TypedClaimRow {
+    pub fact_id: String,
+    pub subject: String,
+    pub object: mnemosyne_core::TypedObject,
+    /// The frame the claim is held in — `ground-truth`, or a belief frame. A
+    /// belief-frame typed claim is a real authored shape, not a hypothetical:
+    /// the map corpus's `f-rumour-bell` types the drowned bell as `ringing` in
+    /// the `townsfolk` frame, which is what the town says and not what is so.
+    pub frame: String,
+    /// The branch (world) the claim is declared on. Authored data spreads one
+    /// subject's claims across branches — the first consumer's store carries
+    /// `pursues` for one character on three.
+    pub branch: String,
+}
+
+/// Every typed claim in the store, keyed by predicate — `predicate ->
+/// [TypedClaimRow]`, read straight from `AtomicStore.narrative_facts`.
+///
+/// The typed-leg companion to [`entity_kinds`]: a consumer asking "which facts
+/// carry predicate P, and whose claims are they" gets one read instead of
+/// opening our sidecar itself. Round 939 measured that hand-parse happening in a
+/// live consumer's build (`bake_viewpoint` scans `narrative_facts` for its
+/// `pred-plays` subject) while the kernel held the same scan privately in its
+/// quest axis — the capability existed and only the door was missing.
+///
+/// UNFILTERED on purpose. A `predicates` parameter would have to answer what an
+/// empty list means, and both answers are traps: "empty = all" is a footgun, and
+/// "empty = nothing" makes a not-computed result indistinguishable from an
+/// absent one (the R924 class). Keyed by predicate, a consumer's filter is a map
+/// lookup, and an empty vec can only mean the store holds no such claim.
+///
+/// Rows arrive fact-id ordered within each predicate, so a bake reading this is
+/// byte-stable across runs. That order is INHERITED — `narrative_facts` is keyed
+/// by fact id — rather than imposed by a sort here, because a sort over an
+/// already-ordered source is a guard no test can discriminate. The order is a
+/// promise to the caller either way, so the authored pin asserts it against the
+/// output and would redden if this read ever collected from an unordered map.
+///
+/// # Errors
+///
+/// [`OpError`] if the store (or its sidecar) cannot be read.
+pub fn typed_claims(
+    workspace_root: &Path,
+    sidecar: Option<&Path>,
+) -> Result<BTreeMap<String, Vec<TypedClaimRow>>, OpError> {
+    let store = load_atomic_store(workspace_root, sidecar)?;
+    let mut by_predicate: BTreeMap<String, Vec<TypedClaimRow>> = BTreeMap::new();
+    for (fact_id, fact) in &store.narrative_facts {
+        let Some(claim) = &fact.typed else { continue };
+        by_predicate
+            .entry(claim.predicate.to_string())
+            .or_default()
+            .push(TypedClaimRow {
+                fact_id: fact_id.to_string(),
+                subject: claim.subject.to_string(),
+                object: claim.object.clone(),
+                frame: fact.frame.to_string(),
+                branch: fact.branch.to_string(),
+            });
+    }
+    Ok(by_predicate)
+}
+
 /// Every section's narrative-prose `content_excerpt` (R756 P3a) — `section_id ->
 /// ContentExcerpt`, read straight from `AtomicStore.sections`. The bulk read the
 /// engine's `store_passages` (R757 P3b) projects into provenance-bound `Passage`s,

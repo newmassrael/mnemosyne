@@ -103,7 +103,11 @@ pub use map::{
     EdgeGuardView, MapEdgePart, MapEdgeView, MapProjection, MapProjectionParts, MapSelfLoopPart,
     MapSelfLoopView,
 };
-pub use mnemosyne_core::{DisclosureMode, Modality, MAIN_BRANCH};
+pub use mnemosyne_core::{DisclosureMode, Modality, TypedObject, MAIN_BRANCH};
+// The typed-claim row travels with its object shape (Round 940), so a consumer
+// dispatching on that shape gets both from the kernel and needs no `ops` or
+// `core` dependency of its own.
+pub use mnemosyne_ops::TypedClaimRow;
 pub use mnemosyne_validate::continuity::QuestState;
 pub use overrides::{DefaultOverrides, EngineOverrides, OverrideLoadError, StaticOverrides};
 pub use projection::{
@@ -240,6 +244,34 @@ pub fn store_entity_kinds(
     workspace_root: &std::path::Path,
 ) -> Result<std::collections::BTreeMap<String, String>, EngineError> {
     mnemosyne_ops::entity_kinds(workspace_root, None)
+        .map_err(|e| EngineError::Projection(e.to_string()))
+}
+
+/// Every typed claim in the store, keyed by predicate — `predicate ->
+/// [TypedClaimRow]`, each row carrying the claim's subject, object shape, frame
+/// and branch. A read-through of [`mnemosyne_ops::typed_claims`] so a consumer
+/// talks to its kernel rather than past it into `ops` — or, as Round 939
+/// measured a live consumer doing, straight into our sidecar with a JSON parser.
+///
+/// This is the door over a scan the kernel already had and kept private: the
+/// quest axis's precondition read (`opened_by = f-*`) is now one caller of this
+/// function rather than a second copy of the loop. The kernel no longer loads
+/// the raw store anywhere.
+///
+/// WHAT THIS DOES NOT DO, because it is carriage and not computation: it does
+/// not filter by frame or branch, does not resolve a belief-frame claim against
+/// ground truth, and does not decide that N claims under one predicate are too
+/// many. Those are the consumer's rules — the first consumer requires exactly
+/// one `pred-plays` subject and fails loudly on two, which is its story's rule
+/// about viewpoint, not the store's rule about claims.
+///
+/// # Errors
+///
+/// [`EngineError::Projection`] if the store (or its sidecar) cannot be read.
+pub fn store_typed_claims(
+    workspace_root: &std::path::Path,
+) -> Result<std::collections::BTreeMap<String, Vec<TypedClaimRow>>, EngineError> {
+    mnemosyne_ops::typed_claims(workspace_root, None)
         .map_err(|e| EngineError::Projection(e.to_string()))
 }
 
@@ -392,7 +424,7 @@ pub fn store_interactivity(workspace_root: &std::path::Path) -> Result<Interacti
 
 #[cfg(test)]
 mod tests {
-    use super::{store_entity_kinds, store_interactivity, store_passages};
+    use super::{store_entity_kinds, store_interactivity, store_passages, store_typed_claims};
     use tempfile::TempDir;
 
     /// Round 768 — a store holding one DIALOGUE ladder (a carrier, two holds, the
@@ -496,6 +528,52 @@ mod tests {
         assert_eq!(kinds.get("ent-post").map(String::as_str), Some("object"));
         assert_eq!(kinds.get("ent-weir").map(String::as_str), Some("place"));
         assert_eq!(kinds.len(), 2);
+    }
+
+    /// Round 940 — the branch coordinate, which the authored corpora cannot pin
+    /// (every tracked corpus is trunk-only) and the first consumer's store can:
+    /// there, one character's `pursues` claims sit on three branches at once.
+    /// This is the fixture standing in for that shape, so a read that flattened
+    /// a fork's claim into the trunk's reddens here rather than in a tree we do
+    /// not run.
+    #[test]
+    fn store_typed_claims_carries_the_branch_a_claim_is_declared_on() {
+        let tmp = TempDir::new().unwrap();
+        let root = tmp.path();
+        std::fs::write(
+            root.join("mnemosyne.toml"),
+            "[workspace]\nroot = \".\"\n\n[atomic]\nsidecar_path = \"store.json\"\n",
+        )
+        .unwrap();
+        std::fs::write(
+            root.join("store.json"),
+            r#"{"schema_version":43,"sections":{},"frames":{},"entities":{},
+               "narrative_facts":{
+                 "f-trunk":{"frame":"gt","entities":["hero"],"claim":"on the trunk",
+                   "canon_from":"sc-01","branch":"main","evidence":[],
+                   "typed":{"subject":"hero","predicate":"pursues",
+                            "object":{"kind":"entity","id":"q-a"}}},
+                 "f-fork":{"frame":"gt","entities":["hero"],"claim":"on a fork",
+                   "canon_from":"sc-01","branch":"weave-letter","evidence":[],
+                   "typed":{"subject":"hero","predicate":"pursues",
+                            "object":{"kind":"entity","id":"q-b"}}},
+                 "f-plain":{"frame":"gt","entities":["hero"],"claim":"no typed leg",
+                   "canon_from":"sc-01","evidence":[]}
+               }}"#,
+        )
+        .unwrap();
+
+        let claims = store_typed_claims(root).expect("kernel reads the claims");
+        let rows = &claims["pursues"];
+        assert_eq!(rows.len(), 2, "both claims arrive; neither is deduped away");
+        // Same subject, same predicate, DIFFERENT branch — the datum that says
+        // these are two worlds' claims and not one repeated.
+        assert!(rows.iter().all(|r| r.subject == "hero"));
+        // Fact-id order, so `f-fork` reads before `f-trunk`.
+        let branches: Vec<&str> = rows.iter().map(|r| r.branch.as_str()).collect();
+        assert_eq!(branches, ["weave-letter", "main"]);
+        // A fact with no typed leg is absent rather than present and empty.
+        assert_eq!(claims.values().map(Vec::len).sum::<usize>(), 2);
     }
 
     /// R757 P3b — the kernel projects the store's `content_excerpt`s into

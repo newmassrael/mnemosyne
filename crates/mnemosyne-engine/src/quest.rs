@@ -521,7 +521,22 @@ impl QuestProjection {
 /// (the quest) -> the object's fact id, the typed `opened_by = f-*` fact bridge
 /// (R707/R708). Only a `TypedObject::Fact` object is a checkable precondition (a
 /// fact the walk can offer); other object shapes are not. Empty predicate list =
-/// no store read. Fails through the store load with a stringified error.
+/// no store read. Fails through the store read with a stringified error.
+///
+/// The scan itself is [`crate::store_typed_claims`] since Round 940, which was
+/// this function's private loop before it became a public door. What stays here
+/// is the quest axis's own rule — which object shape counts as a precondition —
+/// because that is not a fact about the store.
+///
+/// FRAME AND BRANCH ARE DELIBERATELY NOT FILTERED, and this is the sentence that
+/// says so rather than leaving a green run to imply it. The rows now arrive
+/// carrying both coordinates, so filtering became possible in Round 940 and was
+/// not done: no authored store discriminates. Every recorded precondition claim
+/// is `ground-truth`, and each quest's claims sit on exactly one branch, so a
+/// filter would be a rule written against no data (the R924 class — answering a
+/// question nobody asked). The shape that WOULD discriminate is a precondition
+/// declared in a belief frame, which would make what a character believes into a
+/// gate the walk must satisfy; write one and this decision is due again.
 fn read_preconditions(
     workspace_root: &Path,
     predicates: &[String],
@@ -530,23 +545,24 @@ fn read_preconditions(
     if predicates.is_empty() {
         return Ok(map);
     }
-    let store =
-        mnemosyne_ops::load_atomic_store(workspace_root, None).map_err(|e| e.to_string())?;
-    for fact in store.narrative_facts.values() {
-        let Some(claim) = &fact.typed else { continue };
-        if !predicates.iter().any(|p| claim.predicate == *p) {
+    let claims = crate::store_typed_claims(workspace_root).map_err(|e| e.to_string())?;
+    for predicate in predicates {
+        let Some(rows) = claims.get(predicate.as_str()) else {
             continue;
-        }
-        // A completion-precondition object is a typed FACT bridge (R707/R708
-        // closed the object-shape: `opened_by = f-*`), so the gate can check it
-        // against the facts the walk offers — only a `Fact` id joins against a
-        // line's `fact_id`. A validated store carries no other object shape under
-        // such a predicate (the R708 write-path gate), and an entity/token id
-        // could never be an offered fact, so `Fact` is the sole checkable shape.
-        if let TypedObject::Fact { id } = &claim.object {
-            map.entry(claim.subject.to_string())
-                .or_default()
-                .push(id.to_string());
+        };
+        for row in rows {
+            // A completion-precondition object is a typed FACT bridge (R707/R708
+            // closed the object-shape: `opened_by = f-*`), so the gate can check
+            // it against the facts the walk offers — only a `Fact` id joins
+            // against a line's `fact_id`. A validated store carries no other
+            // object shape under such a predicate (the R708 write-path gate), and
+            // an entity/token id could never be an offered fact, so `Fact` is the
+            // sole checkable shape.
+            if let TypedObject::Fact { id } = &row.object {
+                map.entry(row.subject.clone())
+                    .or_default()
+                    .push(id.to_string());
+            }
         }
     }
     Ok(map)
@@ -558,6 +574,7 @@ mod tests {
 
     use mnemosyne_core::DisclosureMode;
     use mnemosyne_validate::continuity::{ForkTreeReport, QuestState};
+    use tempfile::TempDir;
 
     use crate::test_support::{
         begin, completion, journal_begin, locator, quest_node, quest_report, report, report_worlds,
@@ -826,6 +843,136 @@ mod tests {
         assert_eq!(wv.completions[0].actor.as_deref(), Some("ent-eldest"));
         assert_eq!(proj.telling(), "reader");
         assert_eq!(proj.quests().len(), 1);
+    }
+
+    /// Round 940 — the STORE-READING wrapper, which had no in-repo test at all
+    /// until the round that rewired its scan onto the public typed-claim door.
+    /// Only the first consumer's build exercised it, so a change here was
+    /// answerable only by a tree we do not run.
+    ///
+    /// Three arms over one built workspace, because the rule this function owns
+    /// is which typed claims are preconditions and the arms are what distinguish
+    /// it from "all of them":
+    ///
+    /// - `opened_by = f-*` (a FACT object) under a declared predicate IS a
+    ///   precondition — a fact the walk can offer, joinable against a line.
+    /// - `requires = q-*` (an ENTITY object) under an EQUALLY DECLARED predicate
+    ///   is NOT, and it is declared on the same quest, so a dropped shape filter
+    ///   would show up as `q-other` sitting in this quest's preconditions rather
+    ///   than as an entry nothing looks up.
+    /// - `debunked_by = f-*`, a FACT object on the same quest under a predicate
+    ///   the consumer did NOT declare, is not read at all. This arm exists
+    ///   because the first version of this test did not have it and the policy
+    ///   went untested: every undeclared claim in the fixture was entity-shaped,
+    ///   so the shape filter caught them and dropping the predicate policy
+    ///   entirely changed no answer. An injection found that, not a reading of it.
+    #[test]
+    fn from_workspace_reads_preconditions_through_the_typed_claim_door() {
+        let tmp = TempDir::new().expect("scratch workspace");
+        let root = tmp.path();
+        std::fs::create_dir_all(root.join("docs/.atomic")).expect("sidecar dir");
+        std::fs::write(
+            root.join("mnemosyne.toml"),
+            "[workspace]\n[continuity]\ncanon_order_path = \"order.json\"\n",
+        )
+        .expect("config");
+        std::fs::write(
+            root.join("order.json"),
+            r#"{"edges": [["sc-01", "sc-02"]]}"#,
+        )
+        .expect("canon order");
+
+        let sidecar = mnemosyne_atomic::AtomicStore::default_sidecar_path(root);
+        let mut store = mnemosyne_atomic::AtomicStore::default();
+        let sections: Vec<mnemosyne_atomic::SectionImport> = serde_json::from_str(
+            r#"[{"section_id":"sc-01","parent_doc":"M.md","title":"the sealed door"},
+                {"section_id":"sc-02","parent_doc":"M.md","title":"the key"}]"#,
+        )
+        .expect("sections manifest parses");
+        mnemosyne_atomic::import_sections(&mut store, &sidecar, &sections).expect("sections");
+
+        let facts: mnemosyne_atomic::FactsManifest = serde_json::from_str(
+            r#"{
+              "frames": [{"frame_id": "gt", "description": "what is so"}],
+              "entity_kinds": [
+                {"kind_id": "character", "description": "a person"},
+                {"kind_id": "quest", "description": "an errand"}
+              ],
+              "entities": [
+                {"entity_id": "hero", "kind": "character", "description": "the hero"},
+                {"entity_id": "q-door", "kind": "quest", "description": "open the sealed door"},
+                {"entity_id": "q-other", "kind": "quest", "description": "the errand before it"}
+              ],
+              "predicates": [
+                {"predicate_id": "pursues", "object_kind": "entity", "description": "who leads a quest"},
+                {"predicate_id": "requires", "object_kind": "entity", "description": "a quest gated by another"},
+                {"predicate_id": "opened_by", "object_kind": "fact", "description": "the knowledge that opens a quest"},
+                {"predicate_id": "debunked_by", "object_kind": "fact", "description": "the knowledge that ends a rumour"},
+                {"predicate_id": "holds", "object_kind": "entity", "description": "who carries what"}
+              ],
+              "facts": [
+                {"fact_id":"f-key","frame":"gt","entities":["hero"],
+                 "claim":"the hero learns the key is in the well","canon_from":"sc-02","evidence":["sc-02"]},
+                {"fact_id":"f-rumour","frame":"gt","entities":["hero"],
+                 "claim":"the hero hears the door was never sealed at all","canon_from":"sc-02",
+                 "evidence":["sc-02"]},
+                {"fact_id":"f-debunk","frame":"gt","entities":["q-door","hero"],
+                 "claim":"the tale of the unsealed door dies at the door itself","canon_from":"sc-01",
+                 "evidence":["sc-01"],
+                 "typed":{"subject":"q-door","predicate":"debunked_by","object":{"kind":"fact","id":"f-rumour"}}},
+                {"fact_id":"f-pursue","frame":"gt","entities":["hero","q-door"],
+                 "claim":"the hero takes on the sealed door","canon_from":"sc-01","evidence":["sc-01"],
+                 "typed":{"subject":"hero","predicate":"pursues","object":{"kind":"entity","id":"q-door"}}},
+                {"fact_id":"f-opens","frame":"gt","entities":["q-door","hero"],
+                 "claim":"the sealed door opens to whoever knows where the key lies","canon_from":"sc-01",
+                 "evidence":["sc-01"],
+                 "typed":{"subject":"q-door","predicate":"opened_by","object":{"kind":"fact","id":"f-key"}}},
+                {"fact_id":"f-requires","frame":"gt","entities":["q-door","q-other"],
+                 "claim":"the sealed door waits on the earlier errand","canon_from":"sc-01","evidence":["sc-01"],
+                 "typed":{"subject":"q-door","predicate":"requires","object":{"kind":"entity","id":"q-other"}}},
+                {"fact_id":"f-holds","frame":"gt","entities":["q-door","hero"],
+                 "claim":"the door's errand rests with the hero","canon_from":"sc-01","evidence":["sc-01"],
+                 "typed":{"subject":"q-door","predicate":"holds","object":{"kind":"entity","id":"hero"}}}
+              ],
+              "disclosure_plans": [{"telling_id":"t1","description":"the reader's telling"}]
+            }"#,
+        )
+        .expect("facts manifest parses");
+        mnemosyne_atomic::import_facts(&mut store, &sidecar, &facts).expect("facts");
+
+        let declared = StaticOverrides {
+            // BOTH shapes declared, so the filter is what separates them.
+            quest_precondition_predicates: vec!["opened_by".to_string(), "requires".to_string()],
+            ..StaticOverrides::default()
+        };
+        let quests =
+            QuestProjection::from_workspace(root, "t1", None, &declared).expect("the store reads");
+        let door = quests.quest("q-door").expect("the pursued quest projects");
+        assert_eq!(
+            door.preconditions,
+            vec!["f-key".to_string()],
+            "only the FACT-object claim is a checkable precondition"
+        );
+
+        // The undeclared-predicate arm, and the one that has to be FACT-shaped:
+        // `debunked_by = f-rumour` names this same quest with the same object
+        // shape a precondition has, so the ONLY thing keeping it out is the
+        // consumer's policy. An entity-shaped claim here would have been caught
+        // by the shape filter and proved nothing.
+        assert!(
+            !door.preconditions.iter().any(|p| p == "f-rumour"),
+            "a fact-shaped claim under an undeclared predicate is not a precondition"
+        );
+
+        // And declaring NOTHING reads no preconditions at all — the empty policy
+        // is a policy, not a store that happens to be empty.
+        let silent = QuestProjection::from_workspace(root, "t1", None, &StaticOverrides::default())
+            .expect("the store reads");
+        assert!(silent
+            .quest("q-door")
+            .expect("the quest still projects")
+            .preconditions
+            .is_empty());
     }
 
     /// Round 773 — the build-time seam's whole claim on the quest axis: a

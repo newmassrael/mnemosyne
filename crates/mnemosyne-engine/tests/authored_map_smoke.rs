@@ -9,10 +9,10 @@
 //! whole lesson of Round 873.
 //!
 //! The store is REBUILT from the tracked manifests where they already live,
-//! rather than copied into a fixtures directory beside this file. A copy would
-//! be a second site biting the same shape, and two sites diverge — the exact
-//! cost the consumer's own map module records paying. Reading the evidence in
-//! place also means this test reddens if the frozen record is ever mutated.
+//! rather than copied into a fixtures directory beside this file (the rebuild
+//! is `corpus::rebuild`, shared with the claim-axis pin since Round 940).
+//! Reading the evidence in place means this test reddens if the frozen record is
+//! ever mutated.
 //!
 //! WHAT THIS CANNOT PIN, stated here rather than left to be inferred from a
 //! green run: five blind-authored maps are on record and every one of them is
@@ -21,51 +21,10 @@
 //! oracles are the in-crate unit tests over built fixtures. What this file pins
 //! is the half real authors actually wrote.
 
-use std::fs;
-use std::path::{Path, PathBuf};
+mod corpus;
 
-use mnemosyne_atomic::{AtomicStore, FactsManifest, SectionImport};
+use corpus::rebuild;
 use mnemosyne_engine::MapProjection;
-use tempfile::TempDir;
-
-/// The arm-D stage-B corpus: a blind author's flooded hill-town, authored
-/// against `describe-schema` alone with the words map / transition / adjacency /
-/// edge / graph / route withheld from the brief.
-fn corpus_dir() -> PathBuf {
-    // CARGO_MANIFEST_DIR = <root>/crates/mnemosyne-engine
-    Path::new(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .and_then(Path::parent)
-        .expect("repo root")
-        .join("claudedocs/phase1-map-corpus-experiment/v4/run/stage-b")
-}
-
-/// Rebuild the corpus into a scratch workspace and hand back its root.
-fn rebuild() -> TempDir {
-    let src = corpus_dir();
-    let tmp = TempDir::new().expect("scratch workspace");
-    let root = tmp.path();
-    fs::create_dir_all(root.join("docs/.atomic")).expect("sidecar dir");
-    for f in ["mnemosyne.toml", "order.json", "rules.json"] {
-        fs::copy(src.join(f), root.join(f)).unwrap_or_else(|e| panic!("copy {f}: {e}"));
-    }
-
-    let sidecar = AtomicStore::default_sidecar_path(root);
-    let mut store = AtomicStore::default();
-
-    let sections: Vec<SectionImport> = serde_json::from_str(
-        &fs::read_to_string(src.join("sections.json")).expect("sections.json"),
-    )
-    .expect("sections manifest parses");
-    mnemosyne_atomic::import_sections(&mut store, &sidecar, &sections).expect("sections import");
-
-    let facts: FactsManifest =
-        serde_json::from_str(&fs::read_to_string(src.join("facts.json")).expect("facts.json"))
-            .expect("facts manifest parses");
-    mnemosyne_atomic::import_facts(&mut store, &sidecar, &facts).expect("facts import");
-
-    tmp
-}
 
 /// The numbers are the ones the run recorded (`transition-map.log`, arm D stage
 /// B), so a change here is a change to a published measurement.
