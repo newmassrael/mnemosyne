@@ -938,12 +938,19 @@ fn typed_object_key(o: &mnemosyne_core::TypedObject) -> &str {
 }
 
 /// One transition rule's map, derived from the store's `adjacency`-predicate
-/// facts — THE single edge model (Round 875). The continuity gate and the
-/// `transition_map` read both call [`transition_edges`]: two derivations of
-/// "what is an edge" is the R699 divergence this type exists to prevent (the
-/// eval once admitted a self-loop the detector rejected), now extended to the
-/// read so a consumer baking a map from the report and a consumer reading the
-/// gate cannot disagree about the same store.
+/// facts (Round 875).
+///
+/// Round 923 — THE PARITY THIS DOC USED TO ASSERT IS GONE, and saying so is the
+/// point of this paragraph. It read: "the continuity gate and the
+/// `transition_map` read both call this, so they cannot disagree about the same
+/// store". The gate no longer calls it. Every map read in the gate — hygiene
+/// (R922), integrity (R716), licensing (R923) — now asks WHERE a road holds,
+/// while this stays flat, which its own consumer contract asks for ("does not
+/// pretend the map is world-scoped"). Parity and scoping cannot both hold, and
+/// choosing between them is a contract question for the projection's consumer,
+/// not a defect this round may settle by itself. Until it is settled, a reader
+/// baking a map from `transition_map` sees every road the store declares in any
+/// frame, branch or point; the gate sees the ones that hold where it is looking.
 struct TransitionEdges<'a> {
     /// `(from, to)` → the `adjacency` fact that declares it. Self-loops are
     /// EXCLUDED (they are degenerate, and the gate flags them), so an edge here
@@ -3732,7 +3739,6 @@ pub fn scan_continuity(
                 // the same reason. What is still derived flat here is the
                 // LICENSING set below, which is the other direction of the same
                 // defect and the next round's.
-                let TransitionEdges { edges, .. } = transition_edges(facts, adjacency);
                 // G2 (completeness / container leaks) + the per-scope partition +
                 // connectivity moved to `scan_spatial_map` (Round 716): the whole
                 // spatial map is now a PER-SCOPE, per-canon-point projection, not a
@@ -3751,21 +3757,17 @@ pub fn scan_continuity(
                     &successors,
                     &mut report,
                 );
-                // The allowed step set: the SAME validated edges (self-loops
-                // excluded), symmetrized when undirected. Derived from `edges`,
-                // not re-scanned — one edge model, no divergence. Held as an
-                // adjacency MAP rather than a pair set so a step can be looked up
-                // BY VALUE: the Round 913 lift names places borrowed from the
-                // containment snapshot of the step being judged, which outlives
-                // nothing (`BTreeMap::get`/`BTreeSet::contains` borrow through
-                // `str`, a pair set cannot).
-                let mut allowed: BTreeMap<&str, BTreeSet<&str>> = BTreeMap::new();
-                for &(a, b) in edges.keys() {
-                    allowed.entry(a).or_default().insert(b);
-                    if *undirected {
-                        allowed.entry(b).or_default().insert(a);
-                    }
-                }
+                // Round 923 — the licensing set is no longer derived FLAT. It is
+                // read at the coordinate the step is judged at, inside
+                // `judge_steps`, exactly where the containment snapshot is read.
+                // Before this, `transition_edges` filtered on predicate alone, so
+                // a road holding only in a BELIEF frame, only on a FORK, only
+                // before it was retired, or only where the map gate rejects it
+                // as cross-scope, each licensed a step somewhere it does not
+                // exist (Round 917 confirmed all four). Containment was already
+                // per (world, frame, point); one relation may not have two
+                // readers with different invariants, which is the `CLAUDE.md`
+                // half-enforced-invariant rule in its read-path form.
                 // The gated half: every typed succession edge with this
                 // predicate and one subject must be a LEGAL step. The edge itself
                 // is the scope — the write path already confines succession to one
@@ -3813,6 +3815,8 @@ pub fn scan_continuity(
                 // forbids a step reports it, and that step is judged no further.
                 judge_steps(
                     rule,
+                    adjacency,
+                    *undirected,
                     containment.as_deref(),
                     store,
                     &typed,
@@ -3821,7 +3825,6 @@ pub fn scan_continuity(
                     &lineages,
                     order,
                     &successors,
-                    &allowed,
                     |j| {
                         let licensed = j.licensed;
                         report.step_judgements.push(j);
@@ -4413,6 +4416,42 @@ fn classify_step<'a>(
     }
 }
 
+/// Round 923 — the LICENSING set at one coordinate: which places a declared
+/// step may move between, read with the same filter `containment_snapshot` and
+/// `scan_spatial_map` use (predicate, frame, `holds_at` at the point) and with
+/// the rule's own symmetry.
+///
+/// Self-loops are excluded, never admitted, and named elsewhere (R698): a
+/// degenerate `adjacent(a, a)` is a defect of the authored set, reported once by
+/// `scan_spatial_map` (R922), and it must not license an a-to-a step here.
+fn adjacency_allowed_at<'a>(
+    ctx: &WorldCtx<'_>,
+    store: &'a AtomicStore,
+    adjacency: &str,
+    undirected: bool,
+    frame: &mnemosyne_core::FrameId,
+    p: &mnemosyne_core::SectionId,
+) -> BTreeMap<&'a str, BTreeSet<&'a str>> {
+    let mut allowed: BTreeMap<&'a str, BTreeSet<&'a str>> = BTreeMap::new();
+    for (fid, f) in &store.narrative_facts {
+        let Some(t) = f.typed.as_ref() else {
+            continue;
+        };
+        if t.predicate != adjacency || &f.frame != frame || !ctx.holds_at(fid, f, p) {
+            continue;
+        }
+        let (a, b) = (t.subject.as_str(), typed_object_key(&t.object));
+        if a == b {
+            continue;
+        }
+        allowed.entry(a).or_default().insert(b);
+        if undirected {
+            allowed.entry(b).or_default().insert(a);
+        }
+    }
+    allowed
+}
+
 /// Round 921 — ONE authored step, judged at ONE coordinate. The gate turns an
 /// unlicensed one into a `rule_transition_invalid`; the report prints them all.
 /// Both drive [`judge_steps`], so the description and the verdict cannot drift:
@@ -4462,6 +4501,8 @@ pub struct StepJudgement {
 #[allow(clippy::too_many_arguments)]
 fn judge_steps<'a>(
     rule: &NarrativeRule,
+    adjacency: &str,
+    undirected: bool,
     containment: Option<&str>,
     store: &'a AtomicStore,
     typed: &[(&'a mnemosyne_core::FactId, &'a NarrativeFact)],
@@ -4470,13 +4511,24 @@ fn judge_steps<'a>(
     lineages: &BTreeMap<mnemosyne_core::BranchId, mnemosyne_core::WorldMembership>,
     order: &CanonOrder,
     successors: &BTreeMap<&mnemosyne_core::FactId, Vec<(&mnemosyne_core::FactId, &NarrativeFact)>>,
-    allowed: &BTreeMap<&str, BTreeSet<&str>>,
     mut emit: impl FnMut(StepJudgement) -> bool,
 ) {
     // A rule with no `containment` has an empty parent map, so every lift is the
     // identity in the root scope and the verdicts are the pre-R913 ones.
     let flat_hierarchy: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
+    let no_edges: BTreeMap<&str, BTreeSet<&str>> = BTreeMap::new();
     let mut snapshot_memo: SnapshotMemo<'a> = BTreeMap::new();
+    // Round 923 — the licensing set, memoised at the SAME (world, frame, point)
+    // key as the containment snapshot, because the two halves of the map must be
+    // read at one coordinate or they disagree about the same store.
+    let mut allowed_memo: BTreeMap<
+        (
+            &'a mnemosyne_core::BranchId,
+            &'a mnemosyne_core::FrameId,
+            &'a mnemosyne_core::SectionId,
+        ),
+        BTreeMap<&'a str, BTreeSet<&'a str>>,
+    > = BTreeMap::new();
     for &(sid, s) in typed {
         let st = s.typed.as_ref().unwrap();
         let Some(pid) = &s.supersedes_in_frame else {
@@ -4495,40 +4547,63 @@ fn judge_steps<'a>(
         // The worlds this step is judged in: those the successor is VISIBLE in,
         // each against that world's hierarchy at the step's own canon point.
         //
-        // Round 915 — the empty-`judged` fallback below is the ONLY path for a
-        // container-less rule (`judged` is filled only inside the `if let`), and
-        // for a containment-bearing rule it is unreachable as far as anything can
-        // construct: a fact is `In` in its own branch's world, and a fact on an
-        // unregistered branch is rejected by the R440 boundary before the scan.
+        // Round 923 — the empty-`judged` fallback below is now reachable ONLY by
+        // a successor visible in NO world, for EVERY rule: worlds are walked
+        // whether or not containment is declared, because a road can be
+        // world-scoped where nothing contains anything. R915 said this path is
+        // unconstructible and R917 corrected it — it was the ONLY path for a
+        // container-less rule while those rules skipped the world walk. Both are
+        // now true at once, so the R915 reasoning stands unqualified: a fact is
+        // `In` in its own branch's world, and a fact on an unregistered branch is
+        // rejected by the R440 boundary before the scan.
         let mut judged: Vec<Option<&'a mnemosyne_core::BranchId>> = Vec::new();
-        if let Some(cont) = containment {
-            for world in worlds {
-                let ctx = WorldCtx {
-                    world,
-                    membership: &lineages[world],
-                    order,
-                    successors,
-                };
-                if ctx.visibility(s) != Vis::In {
-                    continue;
-                }
-                // Round 915 — one containment read per (world, frame, point),
-                // shared by every step judged there.
+        for world in worlds {
+            let ctx = WorldCtx {
+                world,
+                membership: &lineages[world],
+                order,
+                successors,
+            };
+            if ctx.visibility(s) != Vis::In {
+                continue;
+            }
+            // Round 915 — one containment read per (world, frame, point), shared
+            // by every step judged there. Round 923 — and the licensing set beside
+            // it, at the same key: worlds are now walked for EVERY transition
+            // rule, not only a containment-bearing one, because a road can be
+            // world-scoped even where nothing contains anything.
+            if let Some(cont) = containment {
                 snapshot_memo
                     .entry((world, &s.frame, &s.canon_from))
                     .or_insert_with(|| {
                         containment_snapshot(&ctx, store, cont, &s.frame, &s.canon_from)
                     });
-                judged.push(Some(world));
             }
+            allowed_memo
+                .entry((world, &s.frame, &s.canon_from))
+                .or_insert_with(|| {
+                    adjacency_allowed_at(
+                        &ctx,
+                        store,
+                        adjacency,
+                        undirected,
+                        &s.frame,
+                        &s.canon_from,
+                    )
+                });
+            judged.push(Some(world));
         }
         if judged.is_empty() {
             judged.push(None);
         }
         for world in judged {
             let snap = match world {
-                Some(w) => &snapshot_memo[&(w, &s.frame, &s.canon_from)],
-                None => &flat_hierarchy,
+                Some(w) if containment.is_some() => &snapshot_memo[&(w, &s.frame, &s.canon_from)],
+                _ => &flat_hierarchy,
+            };
+            let allowed = match world {
+                Some(w) => &allowed_memo[&(w, &s.frame, &s.canon_from)],
+                None => &no_edges,
             };
             let parent = snapshot_parent(snap);
             let (shape, scope, lifted_from, lifted_to, licensed) =
@@ -10611,6 +10686,48 @@ mod tests {
 
     /// A transition outside the allowed set, riding the succession edge —
     /// caught at the exact offending pair (R441 probe 3).
+    /// Round 923 — a road that holds only in a BELIEF frame does not license a
+    /// ground-truth move. The pair is the check: move the same road into the
+    /// true frame and the step is clean. Round 917 confirmed this leak by
+    /// construction and R914's headline — "a step may no longer be licensed by
+    /// an edge the gate rejects" — was false while the edge read stayed flat.
+    ///
+    /// The rule declares NO containment on purpose: the leak was never about the
+    /// hierarchy, and before this round a container-less rule was not even walked
+    /// per world.
+    #[test]
+    fn a_belief_frame_road_does_not_license_a_true_move() {
+        let rules = [transition_rule("moves", "at", "adjacent", false, None)];
+        let order = chain(&["ch-1", "ch-2", "ch-3"]);
+        let world = |frame: &str| {
+            let mut s2 = typed_fact("s2", "gt", "ch-3", "her", "at", at("p-b"));
+            s2.supersedes_in_frame = Some("s1".to_string());
+            vec![
+                typed_fact("f-ab", frame, "ch-1", "p-a", "adjacent", at("p-b")),
+                typed_fact("s1", "gt", "ch-2", "her", "at", at("p-a")),
+                s2,
+            ]
+        };
+        let believed = scan_continuity(&store_with(world("mira")), &order, &rules).unwrap();
+        assert!(
+            believed
+                .violations
+                .iter()
+                .any(|v| matches!(v, ContinuityViolation::RuleTransitionInvalid { .. })),
+            "a belief-frame road must not license a ground-truth step: {:?}",
+            believed.violations
+        );
+        let true_road = scan_continuity(&store_with(world("gt")), &order, &rules).unwrap();
+        assert!(
+            !true_road
+                .violations
+                .iter()
+                .any(|v| matches!(v, ContinuityViolation::RuleTransitionInvalid { .. })),
+            "the same road in the true frame licenses it: {:?}",
+            true_road.violations
+        );
+    }
+
     /// Round 922 — a road in one frame and its REVERSE in another are two
     /// claims, not one datum in two homes. The pair is what makes this a check
     /// rather than a coincidence: move the belief road into the true frame and
