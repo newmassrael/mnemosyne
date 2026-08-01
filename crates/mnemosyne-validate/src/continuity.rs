@@ -800,10 +800,15 @@ pub enum NarrativeRuleSpec {
     },
     /// Rides the in-frame SUCCESSION edge: successor and predecessor both
     /// typed with the same subject + predicate → `(from, to)` must be an
-    /// adjacent step. Succession IS the declared adjacency — "adjacent" over
-    /// a partial canon order is ill-defined, so the rule deliberately sees
-    /// ONLY chained pairs; unchained same-subject pairs surface as
-    /// `unchained_state_pairs`, never gated.
+    /// ALLOWED step. Succession says WHICH pairs are steps — "adjacent" over a
+    /// partial canon order is ill-defined, so the rule deliberately sees ONLY
+    /// chained pairs, and unchained same-subject pairs surface as
+    /// `unchained_state_pairs`, never gated. What makes a step ALLOWED is the
+    /// declared map, and since Round 913 that is a different relation: the step
+    /// is judged at the deepest scope where its endpoints are comparable, so a
+    /// crossing into or out of a container needs no edge at all. Round 930 — the
+    /// sentence here used to read "Succession IS the declared adjacency", which
+    /// conflated the two and told a reader a crossing must be an edge.
     ///
     /// Round 697 (store-native map, DESIGN R696 sec 3) — the allowed step set
     /// is no longer a file-carried `[[from,to],…]` list; `adjacency` names the

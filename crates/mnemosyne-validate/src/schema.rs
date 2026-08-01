@@ -441,7 +441,12 @@ pub fn describe_schema() -> SchemaContract {
              they PARTITION the map into SCOPES — an adjacency edge may only join SIBLINGS (same \
              direct container), a non-sibling edge is `adjacency_cross_scope`, and a container \
              LEAVES its own scope by being a NODE in its parent's (a portal). Also turns on the \
-             per-scope completeness/leak checks. Omit for a flat map). Any declared containment \
+             per-scope completeness/leak checks. Round 913/925, the STEP side of the same \
+             declaration, which the edge rule above does not imply: a succession between a \
+             container and a place inside it is a crossing and needs NO EDGE AT ALL, and a CHAIN \
+             of crossings is ONE move judged between its outer endpoints — so routing a forbidden \
+             step through a container does not license it. Omit for a flat map). Any declared \
+             containment \
              predicate \
              (a transition map's OR an exclusive rule's) is Round-715 integrity-checked to form a \
              TREE per (frame, world): at most one direct container per place, and acyclic. \
@@ -1359,9 +1364,13 @@ fn rule_class_specs() -> Vec<RuleClassSpec> {
             RuleClass::Transition => RuleClassSpec {
                 class: "transition",
                 description: "Rides the in-frame succession edge: a successor and predecessor \
-                    both typed with the same subject+predicate must form an adjacent `(from, \
-                    to)` step. Succession IS the declared adjacency; unchained \
-                    same-subject pairs are surfaced, never gated.",
+                    both typed with the same subject+predicate must form an ALLOWED `(from, \
+                    to)` step. Succession says WHICH pairs are steps; the declared map says \
+                    which steps are allowed, and the two are not the same relation — a step is \
+                    judged at the deepest scope where its endpoints are comparable, so siblings \
+                    need an adjacency EDGE while entering or leaving a container needs NO EDGE \
+                    AT ALL (see `containment`). Unchained same-subject pairs are surfaced, \
+                    never gated.",
                 parameters: vec![
                     FieldSpec {
                         name: "adjacency",
@@ -1698,6 +1707,7 @@ pub(crate) const SUPERSEDED_CROSSING_TELLINGS: &[&str] = &[
     "Entry is NOT a succession",
     "no intermediate state exists",
     "do not model it as a",
+    "Succession IS the declared adjacency",
 ];
 
 #[cfg(test)]
@@ -2796,7 +2806,20 @@ mod tests {
         // told the crossing cannot be a step will not write one. Round 929 — the
         // list itself now lives in ONE place and the repair hint is scanned with
         // it too; see [`SUPERSEDED_CROSSING_TELLINGS`].
-        let surfaces = [c.narrative_rules_wire, containment];
+        //
+        // Round 930 — and the RULE-CLASS description is the third contract
+        // surface, which nothing scanned until now. That is not a hypothetical
+        // gap: `Succession IS the declared adjacency` was sitting there, R917
+        // named it, and adding the phrase to the list above changed NOTHING until
+        // this line was added, because the sentence lives on the one surface the
+        // scan never read.
+        let class_prose = c
+            .narrative_rules
+            .iter()
+            .find(|r| r.class == "transition")
+            .expect("transition rule class present")
+            .description;
+        let surfaces = [c.narrative_rules_wire, containment, class_prose];
         for s in surfaces {
             for phrase in SUPERSEDED_CROSSING_TELLINGS.iter().copied() {
                 assert!(
@@ -2811,6 +2834,33 @@ mod tests {
         assert!(
             c.narrative_rules_wire.contains("adjacency_cross_scope"),
             "the rules-wire prose must name the same finding as the rule-class prose"
+        );
+        // Round 930 — and the STEP side, which the wire described only for EDGES.
+        // An author reading the wire alone learned that containment partitions the
+        // map and nothing about crossings, so the edge rule ("an adjacency edge
+        // may only join SIBLINGS") was the whole of what they knew — which is
+        // exactly the R911 dead end R913 falsified, reachable by reading one
+        // surface instead of the other.
+        assert!(
+            c.narrative_rules_wire
+                .contains("crossing and needs NO EDGE AT ALL"),
+            "the wire must carry the crossing rule too, or an author who reads only \
+             it concludes a crossing has to be an edge"
+        );
+        assert!(
+            c.narrative_rules_wire
+                .contains("CHAIN of crossings is ONE move"),
+            "and the run rule, for the same reason the rule-class prose carries it"
+        );
+        // The class prose and the wire must agree that a succession is not itself
+        // the map relation — the conflation R930 removed, pinned as the claim so
+        // it cannot come back in other words.
+        assert!(
+            class_prose.contains("Succession says WHICH pairs are steps")
+                && class_prose.contains("not the same relation"),
+            "succession supplies the pairs and the map licenses them; a contract \
+             that says they are one relation tells an author a crossing must be an \
+             edge: {class_prose}"
         );
     }
 
