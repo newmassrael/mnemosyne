@@ -1,0 +1,73 @@
+{
+  "schema": "kit-replay/v2",
+  "revision_provenance": "declared-at-run",
+  "declared_in": "Round 935",
+  "derivation": "Arm D of the map-corpus experiment. Round 898's protocol and the arm A brief, both unchanged. TWO author-observable inputs moved, unlike arms B and C which moved one: contract.txt, regenerated after R934 corrected the two surfaces that credited every completeness check to wiring containment (218 lines in both arms, 55,288 bytes in arm C against 56,509 here, four lines differing); and the seeded mnemosyne.toml, from which R934 removed the rules_path line that had made the rules filename a guess. The revision is the commit that lands these inputs, recorded at the run - a self-referential pin costs a second commit by construction, as v1, v2 and v3 each recorded.",
+  "note": "Both first submissions imported clean (exit 0) and neither author iterated, verified by diff on sections.json, facts.json, order.json, rules.json and mnemosyne.toml in both stages. Both authors WROTE mnemosyne.toml themselves - the seed pins only the canon order - so the toml is an authored input here, not a harness constant, which is why it is declared alongside the manifests.",
+  "inputs": [
+    {
+      "path": "run/stage-a/sections.json",
+      "role": "replay-input"
+    },
+    {
+      "path": "run/stage-a/facts.json",
+      "role": "replay-input"
+    },
+    {
+      "path": "run/stage-b/sections.json",
+      "role": "replay-input"
+    },
+    {
+      "path": "run/stage-b/facts.json",
+      "role": "replay-input"
+    },
+    {
+      "path": "run/stage-a-first-submission/sections.json",
+      "role": "raw-agent-output"
+    },
+    {
+      "path": "run/stage-a-first-submission/facts.json",
+      "role": "raw-agent-output"
+    },
+    {
+      "path": "run/stage-b-first-submission/sections.json",
+      "role": "raw-agent-output"
+    },
+    {
+      "path": "run/stage-b-first-submission/facts.json",
+      "role": "raw-agent-output"
+    }
+  ],
+  "replays": [
+    {
+      "name": "stage-a-no-map-words-corrected-contract",
+      "revision": "2db523786485001f155b5ffa65caae430f2ecafd",
+      "steps": [
+        {
+          "verb": "import-sections",
+          "input": "run/stage-a/sections.json"
+        },
+        {
+          "verb": "import-facts",
+          "input": "run/stage-a/facts.json"
+        }
+      ],
+      "expected_store_sha256": "54221321703b76eac0546352be87b892e26e68bad939f771fe875829d02bea79"
+    },
+    {
+      "name": "stage-b-engine-must-answer-corrected-contract",
+      "revision": "2db523786485001f155b5ffa65caae430f2ecafd",
+      "steps": [
+        {
+          "verb": "import-sections",
+          "input": "run/stage-b/sections.json"
+        },
+        {
+          "verb": "import-facts",
+          "input": "run/stage-b/facts.json"
+        }
+      ],
+      "expected_store_sha256": "d34b15354d6cc517b3a418baedc71ed648a5f2255babc9c6ad54b3d5e51f1379"
+    }
+  ]
+}
