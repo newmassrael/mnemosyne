@@ -1,0 +1,135 @@
+The Toll House: eleven steps
+p-toll-house -> p-market
+The Crown Quarter opens onto the Ridge Road at the upper gate.
+The Ridge Road drops through the lower gate into the Drowned Quarter.
+The Ridge Road ends at the shrine steps.
+A door in the Crown Quarter wall lets straight onto the shrine yard.
+The Cutting runs down from the Crown Quarter into the Drowned Quarter.
+The Drowned Quarter ends at the head of the Water Stair.
+The Water Stair goes down to the Skiff Mooring.
+The Weighhouse door gives onto the market floor.
+The Toll House stands at the market corner.
+The cistern mouth is set in the market yard.
+A plank walk joins the Net Loft to the chapel roof.
+The Net Loft looks down into the Boat Shed by its own ladder.
+A person can wade from the Drowned Chapel to the Boat Shed.
+Corin is at the Toll House.
+The Rain Market stands inside the Crown Quarter.
+The Weighhouse stands inside the Crown Quarter.
+The Toll House stands inside the Crown Quarter.
+The Old Cistern lies inside the Crown Quarter.
+The Net Loft stands inside the Drowned Quarter.
+The Drowned Chapel stands inside the Drowned Quarter.
+The Boat Shed stands inside the Drowned Quarter.
+The flood stands eleven steps below the Toll House door, and Corin writes it in the book.
+
+The Rain Market: forty feet of rope
+p-market -> p-cistern, p-toll-house, p-weighhouse
+Brida is at the Rain Market.
+Corin is at the Rain Market.
+Yrsa is at the Rain Market.
+Brida weighs out grain that has taken water while Yrsa buys forty feet of rope.
+
+The Weighhouse: the salt has taken water
+p-weighhouse -> p-market
+Brida is at the Weighhouse.
+Corin is at the Weighhouse.
+The salt in the weighhouse store has gone to brine, and Brida seals the door on it.
+
+The Old Cistern: wet at nine feet
+p-cistern -> p-market
+Yrsa is at the Old Cistern.
+Yrsa's line comes up wet at nine feet in a cistern that should be dry to thirty.
+
+The Ridge Road: the eaves of the Drowned Quarter
+p-ridge-road -> p-shrine, q-drowned, q-crown
+Corin is on the Ridge Road.
+From the Ridge Road the Drowned Quarter stands to its eaves in water.
+
+The Shrine of Still Water: Hallam will not move the bell
+p-shrine -> p-ridge-road, q-crown
+Corin is at the Shrine of Still Water.
+Hallam is at the Shrine of Still Water.
+Hallam refuses to take the bell down from the shrine, flood or no flood.
+
+The Net Loft: a weight and a lamp
+p-net-loft -> p-boat-shed, p-chapel
+Yrsa is at the Net Loft.
+Yrsa takes a diving weight and a lamp from the net loft and signs the peg-tally for both.
+
+The Boat Shed: before light
+p-boat-shed -> p-chapel, p-net-loft
+Orla is at the Boat Shed.
+Yrsa is at the Boat Shed.
+Orla's skiff lies out on its mooring, and Yrsa asks nothing of her and goes before light.
+
+The Ridge Road: a bell that does not ring
+p-cistern -> p-market
+p-ridge-road -> p-shrine, q-drowned, q-crown
+Corin is on the Ridge Road.
+Yrsa is in the Old Cistern.
+No bell rings over the hill on the second morning, and no one has seen Yrsa since the boat shed.
+
+The Drowned Chapel: a candle burned into its tin
+p-chapel -> p-boat-shed, p-net-loft
+Corin is at the Drowned Chapel.
+In the Drowned Chapel the water stands at the sill and a candle has burned down into its tin.
+
+The Water Stair: two steps gone
+p-water-stair -> p-mooring, q-drowned
+Corin is on the Water Stair.
+Orla is on the Water Stair.
+Two more steps of the Water Stair have gone under, putting the flood at thirteen steps.
+Yrsa went down the Water Stair at dawn.
+
+The Skiff Mooring: dry inside
+p-mooring -> p-water-stair
+Orla is at the Skiff Mooring.
+The skiff is still tied at the mooring and dry inside, so nothing went out on the water.
+
+The Net Loft: the peg-tally
+p-net-loft -> p-boat-shed, p-chapel
+Corin is at the Net Loft.
+The weight and the lamp are gone from their pegs and the tally is signed in Yrsa's hand.
+
+Dark: the rope cut to nine feet
+Yrsa wedges the lamp into a crack and cuts her rope back to nine feet, with the noise of the town somewhere over her head.
+
+The Rain Market: the town says drowned
+p-market -> p-cistern, p-toll-house, p-weighhouse
+p-mooring -> p-water-stair
+Brida is at the Rain Market.
+Corin is at the Rain Market.
+Yrsa is drowned.
+The market has settled on it that Yrsa went out to the sunk mill and drowned there.
+Yrsa took a boat from the Skiff Mooring and went out to the sunk mill.
+
+The Water Stair: the skiff never left
+p-water-stair -> p-mooring, q-drowned
+Orla is on the Water Stair.
+Yrsa is alive.
+Orla climbs the Water Stair saying plainly that the skiff never left its mooring.
+
+Dark: twenty feet down, the water moves
+Yrsa is twenty feet down where the water is cold and moving, and moving water has somewhere to go.
+
+The Shrine of Still Water: the bell for the dead
+p-shrine -> p-ridge-road, q-crown
+Corin is at the Shrine of Still Water.
+Hallam rings the bell for the dead and Corin will not sign the register under it.
+
+Dark: the bottom is not a bottom
+The bottom of Yrsa's shaft is not a bottom but an opening, and the way on from it is upward and dry.
+
+The Rain Market: the lid lifts
+p-market -> p-cistern, p-toll-house, p-weighhouse
+Corin is at the Rain Market.
+Yrsa is at the Rain Market.
+The cistern lid lifts in the market yard and Yrsa comes up out of it after four days under the town's feet.
+
+The Old Cistern: where the flood comes in
+p-cistern -> p-market
+Corin is at the Old Cistern.
+Yrsa is at the Old Cistern.
+Yrsa shows Corin the throat in the cistern wall where the flood comes into the hill, and he enters it in the toll book.
+

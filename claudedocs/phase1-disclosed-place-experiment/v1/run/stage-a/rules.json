@@ -1,0 +1,35 @@
+{
+  "schema": "narrative-rules/v1",
+  "comment": "Rules for the flooded hill-town. `contains` is the containment tree for both the exclusive rule (so a coarse `at` a quarter and a fine `at` a site inside it refine one position instead of conflicting) and the transition map (so the adjacency edges are partitioned into one root scope plus one scope per quarter, and a step between a quarter and a site inside it is a crossing that needs no edge). The adjacency predicate declares both leg kinds (`place`), so the map-completeness class can be asked what a place is.",
+  "rules": [
+    {
+      "id": "one-place-per-person",
+      "predicate": "at",
+      "class": "exclusive",
+      "per": "subject",
+      "containment": "contains"
+    },
+    {
+      "id": "one-holder-per-thing",
+      "predicate": "carries",
+      "class": "exclusive",
+      "per": "object"
+    },
+    {
+      "id": "town-map",
+      "predicate": "at",
+      "class": "transition",
+      "adjacency": "adjacent",
+      "undirected": true,
+      "containment": "contains"
+    },
+    {
+      "id": "flood-falls-after-it-rises",
+      "predicate": "fell_on_day",
+      "class": "interval",
+      "right": "rose_on_day",
+      "op": "ge",
+      "bound": { "const": 1 }
+    }
+  ]
+}

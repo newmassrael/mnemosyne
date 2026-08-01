@@ -1,0 +1,678 @@
+{
+  "frames": [
+    { "frame_id": "ground-truth", "description": "what is so in the town, held by no one in particular" },
+    { "frame_id": "town-talk", "description": "what the town says to itself at the stalls" },
+    { "frame_id": "orin", "description": "what Orin believes" }
+  ],
+
+  "entity_kinds": [
+    { "kind_id": "place", "description": "anywhere a person can be" },
+    { "kind_id": "quarter", "parents": ["place"], "description": "a named district of the town, holding places inside it" },
+    { "kind_id": "site", "parents": ["place"], "description": "a building, yard, stair or road" },
+    { "kind_id": "character", "description": "a person" },
+    { "kind_id": "item", "description": "a thing that can be carried or set down" },
+    { "kind_id": "event", "description": "a happening the town measures" }
+  ],
+
+  "units": [
+    { "unit_id": "day", "description": "a day of the flood, counted from the first rain" },
+    { "unit_id": "metre", "description": "a metre of standing water" }
+  ],
+
+  "entities": [
+    { "entity_id": "q-crownhead", "kind": "quarter", "description": "Crownhead, the dry quarter on the top of the hill" },
+    { "entity_id": "q-drownmarket", "kind": "quarter", "description": "the Drowned Market, the middle quarter the water took first" },
+    { "entity_id": "q-waterline", "kind": "quarter", "description": "the Waterline, the lowest quarter, standing in the flood" },
+
+    { "entity_id": "p-causeway", "kind": "site", "description": "the Causeway, the one road that joins the quarters" },
+    { "entity_id": "p-shrine", "kind": "site", "description": "the Shrine of the Still Water" },
+    { "entity_id": "p-bellhouse", "kind": "site", "description": "the Bell House" },
+    { "entity_id": "p-vessner-house", "kind": "site", "description": "Vessner's house, the ferry clerk's" },
+    { "entity_id": "p-market", "kind": "site", "description": "the Market Under Awnings" },
+    { "entity_id": "p-granary", "kind": "site", "description": "the Salt Granary" },
+    { "entity_id": "p-lamp-cellar", "kind": "site", "description": "the Lamp Cellar, cut in rock under the granary floor" },
+    { "entity_id": "p-stair", "kind": "site", "description": "the Stair Down to the Water" },
+    { "entity_id": "p-quay", "kind": "site", "description": "the Broken Quay" },
+    { "entity_id": "p-pump-house", "kind": "site", "description": "the Pump House" },
+
+    { "entity_id": "e-orin", "kind": "character", "description": "Orin, the bell-ringer's boy" },
+    { "entity_id": "e-sella", "kind": "character", "description": "Sella, the ferry clerk's daughter" },
+    { "entity_id": "e-vessner", "kind": "character", "description": "Vessner, the ferry clerk" },
+    { "entity_id": "e-dessa", "kind": "character", "description": "Dessa, who keeps the shrine" },
+
+    { "entity_id": "e-ledger", "kind": "item", "description": "the ferry ledger, every crossing since the town was a town" },
+    { "entity_id": "e-lamp", "kind": "item", "description": "a tin lamp on a nail" },
+
+    { "entity_id": "e-flood", "kind": "event", "description": "the flood" }
+  ],
+
+  "predicates": [
+    { "predicate_id": "at", "object_kind": "entity", "subject_kind": "character", "object_entity_kind": "place", "description": "a person's position" },
+    { "predicate_id": "adjacent", "object_kind": "entity", "subject_kind": "place", "object_entity_kind": "place", "description": "a way leads between two places; the rule declares this map undirected, so one fact is a two-way road" },
+    { "predicate_id": "contains", "object_kind": "entity", "subject_kind": "place", "object_entity_kind": "place", "description": "a quarter holds a place inside it" },
+    { "predicate_id": "carries", "object_kind": "entity", "subject_kind": "character", "object_entity_kind": "item", "description": "custody of a thing" },
+    { "predicate_id": "stowed_at", "object_kind": "entity", "subject_kind": "item", "object_entity_kind": "place", "description": "where an unheld thing rests" },
+    { "predicate_id": "condition", "object_kind": "token", "object_tokens": ["dry", "damp", "flooded", "sealed", "open"], "subject_kind": "place", "description": "the state the water has left a place in" },
+    { "predicate_id": "does", "object_kind": "token", "object_tokens": ["climbs", "counts", "rings-the-bell", "lights-a-lamp", "writes", "listens", "knocks"], "subject_kind": "character", "description": "what a person is doing in a scene, said without saying where" },
+    { "predicate_id": "rose_on_day", "object_kind": "quantity", "subject_kind": "event", "description": "the day of the flood on which the water rose" },
+    { "predicate_id": "fell_on_day", "object_kind": "quantity", "subject_kind": "event", "description": "the day of the flood on which the water began to fall" },
+    { "predicate_id": "water_depth", "object_kind": "quantity", "subject_kind": "event", "description": "how deep the standing water is" }
+  ],
+
+  "facts": [
+    {
+      "fact_id": "f-c-shrine", "frame": "ground-truth",
+      "claim": "the Shrine of the Still Water stands in Crownhead, the dry quarter on the top of the hill",
+      "canon_from": "sc-01", "evidence": ["sc-01"],
+      "entities": ["q-crownhead", "p-shrine"],
+      "typed": { "subject": "q-crownhead", "predicate": "contains", "object": { "kind": "entity", "id": "p-shrine" } }
+    },
+    {
+      "fact_id": "f-c-bellhouse", "frame": "ground-truth",
+      "claim": "the Bell House stands in Crownhead, above the reach of any water the town has known",
+      "canon_from": "sc-01", "evidence": ["sc-01"],
+      "entities": ["q-crownhead", "p-bellhouse"],
+      "typed": { "subject": "q-crownhead", "predicate": "contains", "object": { "kind": "entity", "id": "p-bellhouse" } }
+    },
+    {
+      "fact_id": "f-c-vessner-house", "frame": "ground-truth",
+      "claim": "Vessner's house stands in Crownhead, with the ferry's business kept in its front room",
+      "canon_from": "sc-01", "evidence": ["sc-01"],
+      "entities": ["q-crownhead", "p-vessner-house"],
+      "typed": { "subject": "q-crownhead", "predicate": "contains", "object": { "kind": "entity", "id": "p-vessner-house" } }
+    },
+    {
+      "fact_id": "f-c-market", "frame": "ground-truth",
+      "claim": "the Market Under Awnings lies in the Drowned Market, the quarter the water took first",
+      "canon_from": "sc-01", "evidence": ["sc-01"],
+      "entities": ["q-drownmarket", "p-market"],
+      "typed": { "subject": "q-drownmarket", "predicate": "contains", "object": { "kind": "entity", "id": "p-market" } }
+    },
+    {
+      "fact_id": "f-c-granary", "frame": "ground-truth",
+      "claim": "the Salt Granary lies in the Drowned Market, at the end of the awnings",
+      "canon_from": "sc-01", "evidence": ["sc-01"],
+      "entities": ["q-drownmarket", "p-granary"],
+      "typed": { "subject": "q-drownmarket", "predicate": "contains", "object": { "kind": "entity", "id": "p-granary" } }
+    },
+    {
+      "fact_id": "f-c-cellar", "frame": "ground-truth",
+      "claim": "the Lamp Cellar lies in the Drowned Market too, cut into the hill's rock beneath the granary floor",
+      "canon_from": "sc-01", "evidence": ["sc-01"],
+      "entities": ["q-drownmarket", "p-lamp-cellar"],
+      "typed": { "subject": "q-drownmarket", "predicate": "contains", "object": { "kind": "entity", "id": "p-lamp-cellar" } }
+    },
+    {
+      "fact_id": "f-c-stair", "frame": "ground-truth",
+      "claim": "the Stair Down to the Water belongs to the Waterline, the lowest quarter",
+      "canon_from": "sc-01", "evidence": ["sc-01"],
+      "entities": ["q-waterline", "p-stair"],
+      "typed": { "subject": "q-waterline", "predicate": "contains", "object": { "kind": "entity", "id": "p-stair" } }
+    },
+    {
+      "fact_id": "f-c-quay", "frame": "ground-truth",
+      "claim": "the Broken Quay belongs to the Waterline",
+      "canon_from": "sc-01", "evidence": ["sc-01"],
+      "entities": ["q-waterline", "p-quay"],
+      "typed": { "subject": "q-waterline", "predicate": "contains", "object": { "kind": "entity", "id": "p-quay" } }
+    },
+    {
+      "fact_id": "f-c-pump-house", "frame": "ground-truth",
+      "claim": "the Pump House belongs to the Waterline, and has been standing in it since the second day",
+      "canon_from": "sc-01", "evidence": ["sc-01"],
+      "entities": ["q-waterline", "p-pump-house"],
+      "typed": { "subject": "q-waterline", "predicate": "contains", "object": { "kind": "entity", "id": "p-pump-house" } }
+    },
+
+    {
+      "fact_id": "f-e-crownhead-causeway", "frame": "ground-truth",
+      "claim": "the Causeway runs up to the gate of Crownhead",
+      "canon_from": "sc-01", "evidence": ["sc-01"],
+      "entities": ["q-crownhead", "p-causeway"],
+      "typed": { "subject": "q-crownhead", "predicate": "adjacent", "object": { "kind": "entity", "id": "p-causeway" } }
+    },
+    {
+      "fact_id": "f-e-causeway-drownmarket", "frame": "ground-truth",
+      "claim": "the Causeway runs down into the Drowned Market",
+      "canon_from": "sc-01", "evidence": ["sc-01"],
+      "entities": ["p-causeway", "q-drownmarket"],
+      "typed": { "subject": "p-causeway", "predicate": "adjacent", "object": { "kind": "entity", "id": "q-drownmarket" } }
+    },
+    {
+      "fact_id": "f-e-drownmarket-waterline", "frame": "ground-truth",
+      "claim": "the Drowned Market gives on to the Waterline below it",
+      "canon_from": "sc-01", "evidence": ["sc-01"],
+      "entities": ["q-drownmarket", "q-waterline"],
+      "typed": { "subject": "q-drownmarket", "predicate": "adjacent", "object": { "kind": "entity", "id": "q-waterline" } }
+    },
+    {
+      "fact_id": "f-e-bellhouse-shrine", "frame": "ground-truth",
+      "claim": "a walled path joins the Bell House to the shrine yard",
+      "canon_from": "sc-01", "evidence": ["sc-01"],
+      "entities": ["p-bellhouse", "p-shrine"],
+      "typed": { "subject": "p-bellhouse", "predicate": "adjacent", "object": { "kind": "entity", "id": "p-shrine" } }
+    },
+    {
+      "fact_id": "f-e-bellhouse-vessner-house", "frame": "ground-truth",
+      "claim": "the Bell House looks across its yard at Vessner's door",
+      "canon_from": "sc-01", "evidence": ["sc-01"],
+      "entities": ["p-bellhouse", "p-vessner-house"],
+      "typed": { "subject": "p-bellhouse", "predicate": "adjacent", "object": { "kind": "entity", "id": "p-vessner-house" } }
+    },
+    {
+      "fact_id": "f-e-shrine-vessner-house", "frame": "ground-truth",
+      "claim": "the shrine yard backs on to Vessner's garden wall, and the wall has a gate in it",
+      "canon_from": "sc-01", "evidence": ["sc-01"],
+      "entities": ["p-shrine", "p-vessner-house"],
+      "typed": { "subject": "p-shrine", "predicate": "adjacent", "object": { "kind": "entity", "id": "p-vessner-house" } }
+    },
+    {
+      "fact_id": "f-e-market-granary", "frame": "ground-truth",
+      "claim": "the last of the awnings runs right up to the granary door",
+      "canon_from": "sc-01", "evidence": ["sc-01"],
+      "entities": ["p-market", "p-granary"],
+      "typed": { "subject": "p-market", "predicate": "adjacent", "object": { "kind": "entity", "id": "p-granary" } }
+    },
+    {
+      "fact_id": "f-e-granary-cellar", "frame": "ground-truth",
+      "claim": "a hatch in the granary floor lets down into the Lamp Cellar, and there is no other way in",
+      "canon_from": "sc-01", "evidence": ["sc-01"],
+      "entities": ["p-granary", "p-lamp-cellar"],
+      "typed": { "subject": "p-granary", "predicate": "adjacent", "object": { "kind": "entity", "id": "p-lamp-cellar" } }
+    },
+    {
+      "fact_id": "f-e-stair-quay", "frame": "ground-truth",
+      "claim": "the stair ends on the broken quay",
+      "canon_from": "sc-01", "evidence": ["sc-01"],
+      "entities": ["p-stair", "p-quay"],
+      "typed": { "subject": "p-stair", "predicate": "adjacent", "object": { "kind": "entity", "id": "p-quay" } }
+    },
+    {
+      "fact_id": "f-e-quay-pump-house", "frame": "ground-truth",
+      "claim": "a plank walk joins the quay to the pump house",
+      "canon_from": "sc-01", "evidence": ["sc-01"],
+      "entities": ["p-quay", "p-pump-house"],
+      "typed": { "subject": "p-quay", "predicate": "adjacent", "object": { "kind": "entity", "id": "p-pump-house" } }
+    },
+
+    {
+      "fact_id": "f-cond-waterline", "frame": "ground-truth",
+      "claim": "the Waterline stands under water to the height of a man",
+      "canon_from": "sc-01", "evidence": ["sc-01"],
+      "entities": ["q-waterline"],
+      "typed": { "subject": "q-waterline", "predicate": "condition", "object": { "kind": "token", "token": "flooded" } }
+    },
+    {
+      "fact_id": "f-cond-cellar", "frame": "ground-truth",
+      "claim": "the Lamp Cellar is cut in rock above the seep and stays dry, which is why the salt was ever kept there",
+      "canon_from": "sc-01", "evidence": ["sc-01"],
+      "entities": ["p-lamp-cellar"],
+      "typed": { "subject": "p-lamp-cellar", "predicate": "condition", "object": { "kind": "token", "token": "dry" } }
+    },
+    {
+      "fact_id": "f-cond-stair", "frame": "ground-truth",
+      "claim": "the stair is wet to its fourth step and green under the hand",
+      "canon_from": "sc-09", "evidence": ["sc-09"],
+      "entities": ["p-stair"],
+      "typed": { "subject": "p-stair", "predicate": "condition", "object": { "kind": "token", "token": "damp" } }
+    },
+
+    {
+      "fact_id": "f-flood-rose", "frame": "ground-truth",
+      "claim": "the water rose on the second day of the rain",
+      "canon_from": "sc-03", "evidence": ["sc-03"],
+      "entities": ["e-flood"],
+      "typed": { "subject": "e-flood", "predicate": "rose_on_day", "object": { "kind": "quantity", "n": 2, "unit": "day" } }
+    },
+    {
+      "fact_id": "f-flood-depth", "frame": "ground-truth",
+      "claim": "the water stands two metres over the broken quay",
+      "canon_from": "sc-10", "evidence": ["sc-10"],
+      "entities": ["e-flood"],
+      "typed": { "subject": "e-flood", "predicate": "water_depth", "object": { "kind": "quantity", "n": 2, "unit": "metre" } }
+    },
+    {
+      "fact_id": "f-flood-fell", "frame": "ground-truth",
+      "claim": "the water begins to fall on the fourteenth day",
+      "canon_from": "sc-14", "evidence": ["sc-03", "sc-14"],
+      "entities": ["e-flood"],
+      "typed": { "subject": "e-flood", "predicate": "fell_on_day", "object": { "kind": "quantity", "n": 14, "unit": "day" } }
+    },
+
+    {
+      "fact_id": "f-orin-at-01", "frame": "ground-truth",
+      "claim": "Orin is in the Bell House",
+      "canon_from": "sc-01", "evidence": ["sc-01"],
+      "entities": ["e-orin", "p-bellhouse"],
+      "typed": { "subject": "e-orin", "predicate": "at", "object": { "kind": "entity", "id": "p-bellhouse" } }
+    },
+    {
+      "fact_id": "f-orin-climbs", "frame": "ground-truth",
+      "claim": "Orin climbs to the bell and finds the rope swollen shut with damp",
+      "canon_from": "sc-01", "evidence": ["sc-01"],
+      "entities": ["e-orin"],
+      "typed": { "subject": "e-orin", "predicate": "does", "object": { "kind": "token", "token": "climbs" } }
+    },
+    {
+      "fact_id": "f-orin-at-02", "frame": "ground-truth",
+      "claim": "Orin is at the shrine, sent to fetch Dessa",
+      "canon_from": "sc-02", "evidence": ["sc-02"],
+      "entities": ["e-orin", "p-shrine"],
+      "supersedes_in_frame": "f-orin-at-01",
+      "typed": { "subject": "e-orin", "predicate": "at", "object": { "kind": "entity", "id": "p-shrine" } }
+    },
+    {
+      "fact_id": "f-orin-at-03", "frame": "ground-truth",
+      "claim": "Orin is in Vessner's front room",
+      "canon_from": "sc-03", "evidence": ["sc-03"],
+      "entities": ["e-orin", "p-vessner-house"],
+      "supersedes_in_frame": "f-orin-at-02",
+      "typed": { "subject": "e-orin", "predicate": "at", "object": { "kind": "entity", "id": "p-vessner-house" } }
+    },
+    {
+      "fact_id": "f-orin-at-04", "frame": "ground-truth",
+      "claim": "Orin is on the causeway at first light",
+      "canon_from": "sc-04", "evidence": ["sc-04"],
+      "entities": ["e-orin", "p-causeway"],
+      "supersedes_in_frame": "f-orin-at-03",
+      "typed": { "subject": "e-orin", "predicate": "at", "object": { "kind": "entity", "id": "p-causeway" } }
+    },
+    {
+      "fact_id": "f-orin-at-05", "frame": "ground-truth",
+      "claim": "Orin is under the awnings of the market",
+      "canon_from": "sc-05", "evidence": ["sc-05"],
+      "entities": ["e-orin", "p-market"],
+      "supersedes_in_frame": "f-orin-at-04",
+      "typed": { "subject": "e-orin", "predicate": "at", "object": { "kind": "entity", "id": "p-market" } }
+    },
+    {
+      "fact_id": "f-orin-at-06", "frame": "ground-truth",
+      "claim": "Orin is inside the salt granary",
+      "canon_from": "sc-06", "evidence": ["sc-06"],
+      "entities": ["e-orin", "p-granary"],
+      "supersedes_in_frame": "f-orin-at-05",
+      "typed": { "subject": "e-orin", "predicate": "at", "object": { "kind": "entity", "id": "p-granary" } }
+    },
+    {
+      "fact_id": "f-orin-at-07", "frame": "ground-truth",
+      "claim": "Orin is back among the stalls, listening",
+      "canon_from": "sc-08", "evidence": ["sc-08"],
+      "entities": ["e-orin", "p-market"],
+      "supersedes_in_frame": "f-orin-at-06",
+      "typed": { "subject": "e-orin", "predicate": "at", "object": { "kind": "entity", "id": "p-market" } }
+    },
+    {
+      "fact_id": "f-orin-at-08", "frame": "ground-truth",
+      "claim": "Orin is on the stair down to the water",
+      "canon_from": "sc-09", "evidence": ["sc-09"],
+      "entities": ["e-orin", "p-stair"],
+      "supersedes_in_frame": "f-orin-at-07",
+      "typed": { "subject": "e-orin", "predicate": "at", "object": { "kind": "entity", "id": "p-stair" } }
+    },
+    {
+      "fact_id": "f-orin-at-09", "frame": "ground-truth",
+      "claim": "Orin is out on the broken quay",
+      "canon_from": "sc-10", "evidence": ["sc-10"],
+      "entities": ["e-orin", "p-quay"],
+      "supersedes_in_frame": "f-orin-at-08",
+      "typed": { "subject": "e-orin", "predicate": "at", "object": { "kind": "entity", "id": "p-quay" } }
+    },
+    {
+      "fact_id": "f-orin-at-10", "frame": "ground-truth",
+      "claim": "Orin is in the pump house, turning the wheel with the pump-keeper",
+      "canon_from": "sc-11", "evidence": ["sc-11"],
+      "entities": ["e-orin", "p-pump-house"],
+      "supersedes_in_frame": "f-orin-at-09",
+      "typed": { "subject": "e-orin", "predicate": "at", "object": { "kind": "entity", "id": "p-pump-house" } }
+    },
+    {
+      "fact_id": "f-orin-at-11", "frame": "ground-truth",
+      "claim": "Orin is on the quay again, watching the mark on the post",
+      "canon_from": "sc-14", "evidence": ["sc-14"],
+      "entities": ["e-orin", "p-quay"],
+      "supersedes_in_frame": "f-orin-at-10",
+      "typed": { "subject": "e-orin", "predicate": "at", "object": { "kind": "entity", "id": "p-quay" } }
+    },
+    {
+      "fact_id": "f-orin-at-12", "frame": "ground-truth",
+      "claim": "Orin is climbing back up the stair",
+      "canon_from": "sc-16", "evidence": ["sc-16"],
+      "entities": ["e-orin", "p-stair"],
+      "supersedes_in_frame": "f-orin-at-11",
+      "typed": { "subject": "e-orin", "predicate": "at", "object": { "kind": "entity", "id": "p-stair" } }
+    },
+    {
+      "fact_id": "f-orin-at-13", "frame": "ground-truth",
+      "claim": "Orin is under the awnings, and the stalls are stripped and empty",
+      "canon_from": "sc-17", "evidence": ["sc-17"],
+      "entities": ["e-orin", "p-market"],
+      "supersedes_in_frame": "f-orin-at-12",
+      "typed": { "subject": "e-orin", "predicate": "at", "object": { "kind": "entity", "id": "p-market" } }
+    },
+    {
+      "fact_id": "f-orin-at-14", "frame": "ground-truth",
+      "claim": "Orin is on the causeway in the rain, where Vessner stops him",
+      "canon_from": "sc-18", "evidence": ["sc-18"],
+      "entities": ["e-orin", "p-causeway"],
+      "supersedes_in_frame": "f-orin-at-13",
+      "typed": { "subject": "e-orin", "predicate": "at", "object": { "kind": "entity", "id": "p-causeway" } }
+    },
+    {
+      "fact_id": "f-orin-at-15", "frame": "ground-truth",
+      "claim": "Orin is standing on the granary floor over the hatch",
+      "canon_from": "sc-19", "evidence": ["sc-19"],
+      "entities": ["e-orin", "p-granary"],
+      "supersedes_in_frame": "f-orin-at-14",
+      "typed": { "subject": "e-orin", "predicate": "at", "object": { "kind": "entity", "id": "p-granary" } }
+    },
+    {
+      "fact_id": "f-orin-at-16", "frame": "ground-truth",
+      "claim": "Orin goes down into the Lamp Cellar",
+      "canon_from": "sc-20", "evidence": ["sc-07", "sc-20"],
+      "entities": ["e-orin", "p-lamp-cellar"],
+      "supersedes_in_frame": "f-orin-at-15",
+      "typed": { "subject": "e-orin", "predicate": "at", "object": { "kind": "entity", "id": "p-lamp-cellar" } }
+    },
+
+    {
+      "fact_id": "f-vessner-at-01", "frame": "ground-truth",
+      "claim": "Vessner is in his own front room with the ferry's business around him",
+      "canon_from": "sc-03", "evidence": ["sc-03"],
+      "entities": ["e-vessner", "p-vessner-house"],
+      "typed": { "subject": "e-vessner", "predicate": "at", "object": { "kind": "entity", "id": "p-vessner-house" } }
+    },
+    {
+      "fact_id": "f-vessner-counts", "frame": "ground-truth",
+      "claim": "Vessner counts the boats the water has taken and writes none of it down, and gives the ledger to Orin to carry down out of the damp",
+      "canon_from": "sc-03", "evidence": ["sc-03"],
+      "entities": ["e-vessner"],
+      "typed": { "subject": "e-vessner", "predicate": "does", "object": { "kind": "token", "token": "counts" } }
+    },
+    {
+      "fact_id": "f-vessner-at-02", "frame": "ground-truth",
+      "claim": "Vessner is out on the causeway in the rain, asking everyone who passes about the granary",
+      "canon_from": "sc-18", "evidence": ["sc-18"],
+      "entities": ["e-vessner", "p-causeway"],
+      "supersedes_in_frame": "f-vessner-at-01",
+      "typed": { "subject": "e-vessner", "predicate": "at", "object": { "kind": "entity", "id": "p-causeway" } }
+    },
+
+    {
+      "fact_id": "f-dessa-at-01", "frame": "ground-truth",
+      "claim": "Dessa is at the shrine, pouring a cup for the drowned",
+      "canon_from": "sc-02", "evidence": ["sc-02"],
+      "entities": ["e-dessa", "p-shrine"],
+      "typed": { "subject": "e-dessa", "predicate": "at", "object": { "kind": "entity", "id": "p-shrine" } }
+    },
+    {
+      "fact_id": "f-dessa-at-02", "frame": "ground-truth",
+      "claim": "Dessa is in the Bell House, having come up the walled path with a knife for the rope",
+      "canon_from": "sc-13", "evidence": ["sc-13"],
+      "entities": ["e-dessa", "p-bellhouse"],
+      "supersedes_in_frame": "f-dessa-at-01",
+      "typed": { "subject": "e-dessa", "predicate": "at", "object": { "kind": "entity", "id": "p-bellhouse" } }
+    },
+    {
+      "fact_id": "f-dessa-rings", "frame": "ground-truth",
+      "claim": "Dessa gets the bell to ring at last, once for every day the water has stood",
+      "canon_from": "sc-13", "evidence": ["sc-01", "sc-13"],
+      "entities": ["e-dessa"],
+      "typed": { "subject": "e-dessa", "predicate": "does", "object": { "kind": "token", "token": "rings-the-bell" } }
+    },
+
+    {
+      "fact_id": "f-ledger-vessner", "frame": "ground-truth",
+      "claim": "Vessner has the ferry ledger",
+      "canon_from": "sc-03", "evidence": ["sc-03"],
+      "entities": ["e-vessner", "e-ledger"],
+      "typed": { "subject": "e-vessner", "predicate": "carries", "object": { "kind": "entity", "id": "e-ledger" } }
+    },
+    {
+      "fact_id": "f-ledger-orin", "frame": "ground-truth",
+      "claim": "Orin carries the ferry ledger down the causeway, wrapped in his coat",
+      "canon_from": "sc-04", "evidence": ["sc-03", "sc-04"],
+      "entities": ["e-orin", "e-ledger"],
+      "supersedes_in_frame": "f-ledger-vessner",
+      "typed": { "subject": "e-orin", "predicate": "carries", "object": { "kind": "entity", "id": "e-ledger" } }
+    },
+    {
+      "fact_id": "f-ledger-sella", "frame": "ground-truth",
+      "claim": "Sella takes the ferry ledger from Orin under the awnings and says she will keep it dry",
+      "canon_from": "sc-05", "evidence": ["sc-05"],
+      "entities": ["e-sella", "e-ledger"],
+      "supersedes_in_frame": "f-ledger-orin",
+      "typed": { "subject": "e-sella", "predicate": "carries", "object": { "kind": "entity", "id": "e-ledger" } }
+    },
+
+    {
+      "fact_id": "f-lamp-setup", "frame": "ground-truth",
+      "claim": "a tin lamp hangs on a nail beside the hatch in the granary floor, filled and never lit",
+      "canon_from": "sc-07", "evidence": ["sc-06", "sc-07"],
+      "entities": ["e-lamp", "p-granary"],
+      "payoff_expectation": "expected",
+      "typed": { "subject": "e-lamp", "predicate": "stowed_at", "object": { "kind": "entity", "id": "p-granary" } }
+    },
+
+    {
+      "fact_id": "f-talk-sella-quay", "frame": "town-talk",
+      "claim": "the town says the clerk's daughter went down to the broken quay when the water came, and did not come up",
+      "canon_from": "sc-08", "canon_to": "sc-19", "evidence": ["sc-08"],
+      "entities": ["e-sella", "p-quay"],
+      "typed": { "subject": "e-sella", "predicate": "at", "object": { "kind": "entity", "id": "p-quay" } }
+    },
+
+    {
+      "fact_id": "f-sella-at-01", "frame": "ground-truth",
+      "claim": "Sella is at the shrine",
+      "canon_from": "sc-02", "evidence": ["sc-02"],
+      "entities": ["e-sella", "p-shrine"],
+      "typed": { "subject": "e-sella", "predicate": "at", "object": { "kind": "entity", "id": "p-shrine" } }
+    },
+    {
+      "fact_id": "f-sella-at-02", "frame": "ground-truth",
+      "claim": "Sella is on the causeway, walking down beside Orin",
+      "canon_from": "sc-04", "evidence": ["sc-04"],
+      "entities": ["e-sella", "p-causeway"],
+      "supersedes_in_frame": "f-sella-at-01",
+      "typed": { "subject": "e-sella", "predicate": "at", "object": { "kind": "entity", "id": "p-causeway" } }
+    },
+    {
+      "fact_id": "f-sella-at-03", "frame": "ground-truth",
+      "claim": "Sella is under the awnings of the market, and this is the last of her the town sees",
+      "canon_from": "sc-05", "evidence": ["sc-05"],
+      "entities": ["e-sella", "p-market"],
+      "supersedes_in_frame": "f-sella-at-02",
+      "payoff_expectation": "expected",
+      "typed": { "subject": "e-sella", "predicate": "at", "object": { "kind": "entity", "id": "p-market" } }
+    },
+    {
+      "fact_id": "f-sella-at-04", "frame": "ground-truth",
+      "claim": "Sella is in the salt granary, working the hatch loose to get the ferry ledger under the floor before the stalls are stripped",
+      "canon_from": "sc-09", "evidence": ["sc-05", "sc-07"],
+      "entities": ["e-sella", "p-granary"],
+      "supersedes_in_frame": "f-sella-at-03",
+      "typed": { "subject": "e-sella", "predicate": "at", "object": { "kind": "entity", "id": "p-granary" } }
+    },
+    {
+      "fact_id": "f-sella-at-05", "frame": "ground-truth",
+      "claim": "Sella is in the Lamp Cellar, and the hatch has shut over her",
+      "canon_from": "sc-12", "evidence": ["sc-07", "sc-09"],
+      "entities": ["e-sella", "p-lamp-cellar"],
+      "supersedes_in_frame": "f-sella-at-04",
+      "conflicts_with": ["f-talk-sella-quay"],
+      "typed": { "subject": "e-sella", "predicate": "at", "object": { "kind": "entity", "id": "p-lamp-cellar" } }
+    },
+    {
+      "fact_id": "f-sella-at-06", "frame": "ground-truth",
+      "claim": "Sella comes up on to the granary floor with the ledger dry under her arm",
+      "canon_from": "sc-20", "evidence": ["sc-12", "sc-19"],
+      "entities": ["e-sella", "p-granary"],
+      "supersedes_in_frame": "f-sella-at-05",
+      "pays_off": ["f-sella-at-03"],
+      "typed": { "subject": "e-sella", "predicate": "at", "object": { "kind": "entity", "id": "p-granary" } }
+    },
+
+    {
+      "fact_id": "f-sella-lamp-lit", "frame": "ground-truth",
+      "claim": "Sella lights a tin lamp and sets it on a salt-crusted shelf",
+      "canon_from": "sc-12", "evidence": ["sc-07", "sc-12"],
+      "entities": ["e-sella", "e-lamp"],
+      "typed": { "subject": "e-sella", "predicate": "does", "object": { "kind": "token", "token": "lights-a-lamp" } }
+    },
+    {
+      "fact_id": "f-sella-listens", "frame": "ground-truth",
+      "claim": "Sella hears the bell start up somewhere over her head and counts the strokes, and does not answer it",
+      "canon_from": "sc-13", "evidence": ["sc-12", "sc-13"],
+      "entities": ["e-sella"],
+      "typed": { "subject": "e-sella", "predicate": "does", "object": { "kind": "token", "token": "listens" } }
+    },
+    {
+      "fact_id": "f-sella-writes", "frame": "ground-truth",
+      "claim": "Sella writes the water's height in the ferry ledger by lamplight, a line for every day",
+      "canon_from": "sc-15", "evidence": ["sc-05", "sc-12"],
+      "entities": ["e-sella", "e-ledger"],
+      "typed": { "subject": "e-sella", "predicate": "does", "object": { "kind": "token", "token": "writes" } }
+    },
+    {
+      "fact_id": "f-sella-knocks", "frame": "ground-truth",
+      "claim": "Sella knocks twice on the boards above her when she hears a step",
+      "canon_from": "sc-19", "evidence": ["sc-12", "sc-19"],
+      "entities": ["e-sella"],
+      "typed": { "subject": "e-sella", "predicate": "does", "object": { "kind": "token", "token": "knocks" } }
+    },
+
+    {
+      "fact_id": "f-orin-believes-stair", "frame": "orin",
+      "claim": "Orin believes Sella went down the stair ahead of him",
+      "canon_from": "sc-09", "canon_to": "sc-19", "evidence": ["sc-05", "sc-09"],
+      "entities": ["e-sella", "p-stair"],
+      "typed": { "subject": "e-sella", "predicate": "at", "object": { "kind": "entity", "id": "p-stair" } }
+    },
+    {
+      "fact_id": "f-orin-knows", "frame": "orin",
+      "claim": "Orin knows Sella is in the Lamp Cellar, because he has just put his own lamp down through the hatch and seen her",
+      "canon_from": "sc-20", "evidence": ["sc-09", "sc-20"],
+      "entities": ["e-sella", "p-lamp-cellar"],
+      "typed": { "subject": "e-sella", "predicate": "at", "object": { "kind": "entity", "id": "p-lamp-cellar" } }
+    },
+
+    {
+      "fact_id": "f-talk-sella-found", "frame": "town-talk",
+      "claim": "the town says the clerk's daughter was under the granary the whole fortnight, and that it always knew the cellar was dry",
+      "canon_from": "sc-20", "evidence": ["sc-08", "sc-20"],
+      "entities": ["e-sella", "p-lamp-cellar"],
+      "typed": { "subject": "e-sella", "predicate": "at", "object": { "kind": "entity", "id": "p-lamp-cellar" } }
+    },
+
+    {
+      "fact_id": "f-lamp-payoff", "frame": "ground-truth",
+      "claim": "the tin lamp is burning in the Lamp Cellar when the hatch comes up, and the nail by the hatch is bare",
+      "canon_from": "sc-20", "evidence": ["sc-07", "sc-20"],
+      "entities": ["e-lamp", "p-lamp-cellar"],
+      "supersedes_in_frame": "f-lamp-setup",
+      "pays_off": ["f-lamp-setup"],
+      "typed": { "subject": "e-lamp", "predicate": "stowed_at", "object": { "kind": "entity", "id": "p-lamp-cellar" } }
+    }
+  ],
+
+  "disclosure_plans": [
+    {
+      "telling_id": "withheld-place",
+      "default_mode": "withhold",
+      "description": "The told story. Orin's position is stated at every scene he is in, from the first. Sella's position is stated up to the market and then withheld: the scenes in which she lights a lamp, listens to the bell, writes in the ledger and knocks on the boards are all told, but WHERE she is doing them is not disclosed until sc-20. The Lamp Cellar itself is not disclosed as a place until sc-07, and no character can be placed in it until sc-20. Meanwhile the town's belief that she drowned at the quay IS stated, at sc-08.",
+      "overrides": [
+        { "fact_id": "f-c-shrine", "mode": "state", "first_at": [ { "branch": "main", "coords": ["sc-01"] } ] },
+        { "fact_id": "f-c-bellhouse", "mode": "state", "first_at": [ { "branch": "main", "coords": ["sc-01"] } ] },
+        { "fact_id": "f-c-vessner-house", "mode": "state", "first_at": [ { "branch": "main", "coords": ["sc-01"] } ] },
+        { "fact_id": "f-c-market", "mode": "state", "first_at": [ { "branch": "main", "coords": ["sc-01"] } ] },
+        { "fact_id": "f-c-granary", "mode": "state", "first_at": [ { "branch": "main", "coords": ["sc-01"] } ] },
+        { "fact_id": "f-c-cellar", "mode": "withhold", "first_at": [ { "branch": "main", "coords": ["sc-07"] } ] },
+        { "fact_id": "f-c-stair", "mode": "state", "first_at": [ { "branch": "main", "coords": ["sc-01"] } ] },
+        { "fact_id": "f-c-quay", "mode": "state", "first_at": [ { "branch": "main", "coords": ["sc-01"] } ] },
+        { "fact_id": "f-c-pump-house", "mode": "state", "first_at": [ { "branch": "main", "coords": ["sc-01"] } ] },
+
+        { "fact_id": "f-e-crownhead-causeway", "mode": "state", "first_at": [ { "branch": "main", "coords": ["sc-01"] } ] },
+        { "fact_id": "f-e-causeway-drownmarket", "mode": "state", "first_at": [ { "branch": "main", "coords": ["sc-01"] } ] },
+        { "fact_id": "f-e-drownmarket-waterline", "mode": "state", "first_at": [ { "branch": "main", "coords": ["sc-01"] } ] },
+        { "fact_id": "f-e-bellhouse-shrine", "mode": "state", "first_at": [ { "branch": "main", "coords": ["sc-01"] } ] },
+        { "fact_id": "f-e-bellhouse-vessner-house", "mode": "state", "first_at": [ { "branch": "main", "coords": ["sc-01"] } ] },
+        { "fact_id": "f-e-shrine-vessner-house", "mode": "state", "first_at": [ { "branch": "main", "coords": ["sc-01"] } ] },
+        { "fact_id": "f-e-market-granary", "mode": "state", "first_at": [ { "branch": "main", "coords": ["sc-01"] } ] },
+        { "fact_id": "f-e-granary-cellar", "mode": "withhold", "first_at": [ { "branch": "main", "coords": ["sc-07"] } ] },
+        { "fact_id": "f-e-stair-quay", "mode": "state", "first_at": [ { "branch": "main", "coords": ["sc-01"] } ] },
+        { "fact_id": "f-e-quay-pump-house", "mode": "state", "first_at": [ { "branch": "main", "coords": ["sc-01"] } ] },
+
+        { "fact_id": "f-cond-waterline", "mode": "state", "first_at": [ { "branch": "main", "coords": ["sc-01"] } ] },
+        { "fact_id": "f-cond-cellar", "mode": "withhold", "first_at": [ { "branch": "main", "coords": ["sc-07"] } ] },
+        { "fact_id": "f-cond-stair", "mode": "state", "first_at": [ { "branch": "main", "coords": ["sc-09"] } ] },
+
+        { "fact_id": "f-flood-rose", "mode": "state", "first_at": [ { "branch": "main", "coords": ["sc-03"] } ] },
+        { "fact_id": "f-flood-depth", "mode": "state", "first_at": [ { "branch": "main", "coords": ["sc-10"] } ] },
+        { "fact_id": "f-flood-fell", "mode": "state", "first_at": [ { "branch": "main", "coords": ["sc-14"] } ] },
+
+        { "fact_id": "f-orin-at-01", "mode": "state", "first_at": [ { "branch": "main", "coords": ["sc-01"] } ] },
+        { "fact_id": "f-orin-climbs", "mode": "state", "first_at": [ { "branch": "main", "coords": ["sc-01"] } ] },
+        { "fact_id": "f-orin-at-02", "mode": "state", "first_at": [ { "branch": "main", "coords": ["sc-02"] } ] },
+        { "fact_id": "f-orin-at-03", "mode": "state", "first_at": [ { "branch": "main", "coords": ["sc-03"] } ] },
+        { "fact_id": "f-orin-at-04", "mode": "state", "first_at": [ { "branch": "main", "coords": ["sc-04"] } ] },
+        { "fact_id": "f-orin-at-05", "mode": "state", "first_at": [ { "branch": "main", "coords": ["sc-05"] } ] },
+        { "fact_id": "f-orin-at-06", "mode": "state", "first_at": [ { "branch": "main", "coords": ["sc-06"] } ] },
+        { "fact_id": "f-orin-at-07", "mode": "state", "first_at": [ { "branch": "main", "coords": ["sc-08"] } ] },
+        { "fact_id": "f-orin-at-08", "mode": "state", "first_at": [ { "branch": "main", "coords": ["sc-09"] } ] },
+        { "fact_id": "f-orin-at-09", "mode": "state", "first_at": [ { "branch": "main", "coords": ["sc-10"] } ] },
+        { "fact_id": "f-orin-at-10", "mode": "state", "first_at": [ { "branch": "main", "coords": ["sc-11"] } ] },
+        { "fact_id": "f-orin-at-11", "mode": "state", "first_at": [ { "branch": "main", "coords": ["sc-14"] } ] },
+        { "fact_id": "f-orin-at-12", "mode": "state", "first_at": [ { "branch": "main", "coords": ["sc-16"] } ] },
+        { "fact_id": "f-orin-at-13", "mode": "state", "first_at": [ { "branch": "main", "coords": ["sc-17"] } ] },
+        { "fact_id": "f-orin-at-14", "mode": "state", "first_at": [ { "branch": "main", "coords": ["sc-18"] } ] },
+        { "fact_id": "f-orin-at-15", "mode": "state", "first_at": [ { "branch": "main", "coords": ["sc-19"] } ] },
+        { "fact_id": "f-orin-at-16", "mode": "state", "first_at": [ { "branch": "main", "coords": ["sc-20"] } ] },
+
+        { "fact_id": "f-vessner-at-01", "mode": "state", "first_at": [ { "branch": "main", "coords": ["sc-03"] } ] },
+        { "fact_id": "f-vessner-counts", "mode": "state", "first_at": [ { "branch": "main", "coords": ["sc-03"] } ] },
+        { "fact_id": "f-vessner-at-02", "mode": "state", "first_at": [ { "branch": "main", "coords": ["sc-18"] } ] },
+
+        { "fact_id": "f-dessa-at-01", "mode": "state", "first_at": [ { "branch": "main", "coords": ["sc-02"] } ] },
+        { "fact_id": "f-dessa-at-02", "mode": "state", "first_at": [ { "branch": "main", "coords": ["sc-13"] } ] },
+        { "fact_id": "f-dessa-rings", "mode": "state", "first_at": [ { "branch": "main", "coords": ["sc-13"] } ] },
+
+        { "fact_id": "f-ledger-vessner", "mode": "state", "first_at": [ { "branch": "main", "coords": ["sc-03"] } ] },
+        { "fact_id": "f-ledger-orin", "mode": "state", "first_at": [ { "branch": "main", "coords": ["sc-04"] } ] },
+        { "fact_id": "f-ledger-sella", "mode": "state", "first_at": [ { "branch": "main", "coords": ["sc-05"] } ] },
+
+        { "fact_id": "f-lamp-setup", "mode": "state", "first_at": [ { "branch": "main", "coords": ["sc-07"] } ] },
+        { "fact_id": "f-lamp-payoff", "mode": "state", "first_at": [ { "branch": "main", "coords": ["sc-20"] } ] },
+
+        { "fact_id": "f-sella-at-01", "mode": "state", "first_at": [ { "branch": "main", "coords": ["sc-02"] } ] },
+        { "fact_id": "f-sella-at-02", "mode": "state", "first_at": [ { "branch": "main", "coords": ["sc-04"] } ] },
+        { "fact_id": "f-sella-at-03", "mode": "state", "first_at": [ { "branch": "main", "coords": ["sc-05"] } ] },
+        { "fact_id": "f-sella-at-04", "mode": "withhold", "first_at": [ { "branch": "main", "coords": ["sc-20"] } ] },
+        { "fact_id": "f-sella-at-05", "mode": "withhold", "first_at": [ { "branch": "main", "coords": ["sc-20"] } ] },
+        { "fact_id": "f-sella-at-06", "mode": "state", "first_at": [ { "branch": "main", "coords": ["sc-20"] } ] },
+
+        { "fact_id": "f-sella-lamp-lit", "mode": "state", "first_at": [ { "branch": "main", "coords": ["sc-12"] } ] },
+        { "fact_id": "f-sella-listens", "mode": "state", "first_at": [ { "branch": "main", "coords": ["sc-13"] } ] },
+        { "fact_id": "f-sella-writes", "mode": "state", "first_at": [ { "branch": "main", "coords": ["sc-15"] } ] },
+        { "fact_id": "f-sella-knocks", "mode": "state", "first_at": [ { "branch": "main", "coords": ["sc-19"] } ] },
+
+        { "fact_id": "f-talk-sella-quay", "mode": "state", "first_at": [ { "branch": "main", "coords": ["sc-08"] } ] },
+        { "fact_id": "f-talk-sella-found", "mode": "state", "first_at": [ { "branch": "main", "coords": ["sc-20"] } ] },
+        { "fact_id": "f-orin-believes-stair", "mode": "state", "first_at": [ { "branch": "main", "coords": ["sc-09"] } ] },
+        { "fact_id": "f-orin-knows", "mode": "state", "first_at": [ { "branch": "main", "coords": ["sc-20"] } ] }
+      ]
+    },
+
+    {
+      "telling_id": "plain-place",
+      "default_mode": "state",
+      "description": "The same fact base told with nothing held back about place: every fact is stated, and the five facts the other telling withholds are pinned to the scene where they become true instead of to the reveal. Nothing in facts.json differs between the two tellings — only which telling is asked for.",
+      "overrides": [
+        { "fact_id": "f-c-cellar", "mode": "state", "first_at": [ { "branch": "main", "coords": ["sc-01"] } ] },
+        { "fact_id": "f-e-granary-cellar", "mode": "state", "first_at": [ { "branch": "main", "coords": ["sc-01"] } ] },
+        { "fact_id": "f-cond-cellar", "mode": "state", "first_at": [ { "branch": "main", "coords": ["sc-01"] } ] },
+        { "fact_id": "f-sella-at-04", "mode": "state", "first_at": [ { "branch": "main", "coords": ["sc-09"] } ] },
+        { "fact_id": "f-sella-at-05", "mode": "state", "first_at": [ { "branch": "main", "coords": ["sc-12"] } ] }
+      ]
+    }
+  ]
+}

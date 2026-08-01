@@ -1,0 +1,26 @@
+### report-disclosure-coverage --telling told
+=== disclosure coverage — telling `told` — 73 fact(s) ===
+disclosed=52 hidden_by_design=1 never_planned=20
+  never-planned: adj-01
+  never-planned: adj-02
+  never-planned: adj-03
+  never-planned: adj-04
+  never-planned: adj-05
+  never-planned: adj-06
+  never-planned: adj-07
+  never-planned: adj-08
+  never-planned: adj-09
+  never-planned: adj-10
+  never-planned: adj-11
+  never-planned: adj-12
+  never-planned: adj-13
+  never-planned: con-01
+  never-planned: con-02
+  never-planned: con-03
+  never-planned: con-04
+  never-planned: con-05
+  never-planned: con-06
+  never-planned: con-07
+### --telling told-open
+=== disclosure coverage — telling `told-open` — 73 fact(s) ===
+disclosed=73 hidden_by_design=0 never_planned=0

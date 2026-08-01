@@ -1,0 +1,21 @@
+{
+  "schema": "narrative-rules/v1",
+  "comment": "Two rules over one predicate. `at` is the position leg; `adjacent` facts are the town's ways and `contains` facts are the two quarters, so the map is read out of the store and not out of this file. undirected=true: one adjacent fact is one way that can be walked in both directions, which is what a street is here.",
+  "rules": [
+    {
+      "id": "one-place-per-person",
+      "predicate": "at",
+      "class": "exclusive",
+      "per": "subject",
+      "containment": "contains"
+    },
+    {
+      "id": "walk-the-town",
+      "predicate": "at",
+      "class": "transition",
+      "adjacency": "adjacent",
+      "undirected": true,
+      "containment": "contains"
+    }
+  ]
+}

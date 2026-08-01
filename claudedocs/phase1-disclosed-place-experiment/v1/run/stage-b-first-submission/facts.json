@@ -1,0 +1,513 @@
+{
+  "frames": [
+    { "frame_id": "ground-truth", "description": "what is so in the town, whoever knows it" },
+    { "frame_id": "town-talk", "description": "what the hill agrees on out loud" },
+    { "frame_id": "corin", "description": "the tollman's own reckoning" }
+  ],
+
+  "entity_kinds": [
+    { "kind_id": "place", "description": "somewhere a person can stand" },
+    { "kind_id": "quarter", "parents": ["place"], "description": "a walled district that holds other places" },
+    { "kind_id": "person", "description": "a townsperson" },
+    { "kind_id": "phenomenon", "description": "a thing that happens to the town" }
+  ],
+
+  "units": [
+    { "unit_id": "step", "description": "one step of the water stair" },
+    { "unit_id": "foot", "description": "one foot of sounding line" }
+  ],
+
+  "entities": [
+    { "entity_id": "q-crown", "kind": "quarter", "description": "the Crown Quarter, the dry top of the hill" },
+    { "entity_id": "q-drowned", "kind": "quarter", "description": "the Drowned Quarter, standing in water to its eaves" },
+    { "entity_id": "p-ridge-road", "kind": "place", "description": "the Ridge Road, the spine of the hill" },
+    { "entity_id": "p-shrine", "kind": "place", "description": "the Shrine of Still Water, above everything" },
+    { "entity_id": "p-water-stair", "kind": "place", "description": "the Water Stair, cut down to the flood" },
+    { "entity_id": "p-mooring", "kind": "place", "description": "the Skiff Mooring at the foot of the stair" },
+    { "entity_id": "p-market", "kind": "place", "description": "the Rain Market, under its awnings" },
+    { "entity_id": "p-weighhouse", "kind": "place", "description": "the Weighhouse and its salt store" },
+    { "entity_id": "p-toll-house", "kind": "place", "description": "the Toll House, where the flood is written down" },
+    { "entity_id": "p-cistern", "kind": "place", "description": "the Old Cistern under the market yard" },
+    { "entity_id": "p-net-loft", "kind": "place", "description": "the Net Loft above the waterline" },
+    { "entity_id": "p-chapel", "kind": "place", "description": "the Drowned Chapel, water at the sill" },
+    { "entity_id": "p-boat-shed", "kind": "place", "description": "the Boat Shed" },
+    { "entity_id": "e-corin", "kind": "person", "description": "Corin, the tollman, who counts the water" },
+    { "entity_id": "e-yrsa", "kind": "person", "description": "Yrsa, who keeps the wells and dives" },
+    { "entity_id": "e-hallam", "kind": "person", "description": "Hallam, who keeps the shrine" },
+    { "entity_id": "e-brida", "kind": "person", "description": "Brida, who weighs at the market" },
+    { "entity_id": "e-orla", "kind": "person", "description": "Orla, the boatwright" },
+    { "entity_id": "e-flood", "kind": "phenomenon", "description": "the flood standing over the town" }
+  ],
+
+  "predicates": [
+    { "predicate_id": "at", "object_kind": "entity", "subject_kind": "person", "object_entity_kind": "place", "description": "a person's position" },
+    { "predicate_id": "adjacent", "object_kind": "entity", "subject_kind": "place", "object_entity_kind": "place", "description": "a way leads from one place to the other" },
+    { "predicate_id": "contains", "object_kind": "entity", "subject_kind": "place", "object_entity_kind": "place", "description": "a quarter holds a place inside it" },
+    { "predicate_id": "condition", "object_kind": "token", "object_tokens": ["alive", "drowned", "missing"], "subject_kind": "person", "description": "what has become of a person" },
+    { "predicate_id": "water_level", "object_kind": "quantity", "subject_kind": "phenomenon", "description": "how far the flood has come up the stair" },
+    { "predicate_id": "sounded_depth", "object_kind": "quantity", "description": "how deep a line or a diver has gone" }
+  ],
+
+  "facts": [
+    { "fact_id": "adj-01", "frame": "ground-truth",
+      "claim": "The Crown Quarter opens onto the Ridge Road at the upper gate.",
+      "canon_from": "sc-01", "evidence": ["sc-01"], "entities": ["q-crown", "p-ridge-road"],
+      "typed": { "subject": "q-crown", "predicate": "adjacent", "object": { "kind": "entity", "id": "p-ridge-road" } } },
+
+    { "fact_id": "adj-02", "frame": "ground-truth",
+      "claim": "The Ridge Road drops through the lower gate into the Drowned Quarter.",
+      "canon_from": "sc-01", "evidence": ["sc-01"], "entities": ["p-ridge-road", "q-drowned"],
+      "typed": { "subject": "p-ridge-road", "predicate": "adjacent", "object": { "kind": "entity", "id": "q-drowned" } } },
+
+    { "fact_id": "adj-03", "frame": "ground-truth",
+      "claim": "The Ridge Road ends at the shrine steps.",
+      "canon_from": "sc-01", "evidence": ["sc-01"], "entities": ["p-ridge-road", "p-shrine"],
+      "typed": { "subject": "p-ridge-road", "predicate": "adjacent", "object": { "kind": "entity", "id": "p-shrine" } } },
+
+    { "fact_id": "adj-04", "frame": "ground-truth",
+      "claim": "A door in the Crown Quarter wall lets straight onto the shrine yard.",
+      "canon_from": "sc-01", "evidence": ["sc-01"], "entities": ["q-crown", "p-shrine"],
+      "typed": { "subject": "q-crown", "predicate": "adjacent", "object": { "kind": "entity", "id": "p-shrine" } } },
+
+    { "fact_id": "adj-05", "frame": "ground-truth",
+      "claim": "The Cutting runs down from the Crown Quarter into the Drowned Quarter.",
+      "canon_from": "sc-01", "evidence": ["sc-01"], "entities": ["q-crown", "q-drowned"],
+      "typed": { "subject": "q-crown", "predicate": "adjacent", "object": { "kind": "entity", "id": "q-drowned" } } },
+
+    { "fact_id": "adj-06", "frame": "ground-truth",
+      "claim": "The Drowned Quarter ends at the head of the Water Stair.",
+      "canon_from": "sc-01", "evidence": ["sc-01"], "entities": ["q-drowned", "p-water-stair"],
+      "typed": { "subject": "q-drowned", "predicate": "adjacent", "object": { "kind": "entity", "id": "p-water-stair" } } },
+
+    { "fact_id": "adj-07", "frame": "ground-truth",
+      "claim": "The Water Stair goes down to the Skiff Mooring.",
+      "canon_from": "sc-01", "evidence": ["sc-01"], "entities": ["p-water-stair", "p-mooring"],
+      "typed": { "subject": "p-water-stair", "predicate": "adjacent", "object": { "kind": "entity", "id": "p-mooring" } } },
+
+    { "fact_id": "adj-08", "frame": "ground-truth",
+      "claim": "The Weighhouse door gives onto the market floor.",
+      "canon_from": "sc-01", "evidence": ["sc-01"], "entities": ["p-market", "p-weighhouse"],
+      "typed": { "subject": "p-market", "predicate": "adjacent", "object": { "kind": "entity", "id": "p-weighhouse" } } },
+
+    { "fact_id": "adj-09", "frame": "ground-truth",
+      "claim": "The Toll House stands at the market corner.",
+      "canon_from": "sc-01", "evidence": ["sc-01"], "entities": ["p-market", "p-toll-house"],
+      "typed": { "subject": "p-market", "predicate": "adjacent", "object": { "kind": "entity", "id": "p-toll-house" } } },
+
+    { "fact_id": "adj-10", "frame": "ground-truth",
+      "claim": "The cistern mouth is set in the market yard.",
+      "canon_from": "sc-01", "evidence": ["sc-01"], "entities": ["p-market", "p-cistern"],
+      "typed": { "subject": "p-market", "predicate": "adjacent", "object": { "kind": "entity", "id": "p-cistern" } } },
+
+    { "fact_id": "adj-11", "frame": "ground-truth",
+      "claim": "A plank walk joins the Net Loft to the chapel roof.",
+      "canon_from": "sc-01", "evidence": ["sc-01"], "entities": ["p-net-loft", "p-chapel"],
+      "typed": { "subject": "p-net-loft", "predicate": "adjacent", "object": { "kind": "entity", "id": "p-chapel" } } },
+
+    { "fact_id": "adj-12", "frame": "ground-truth",
+      "claim": "The Net Loft looks down into the Boat Shed by its own ladder.",
+      "canon_from": "sc-01", "evidence": ["sc-01"], "entities": ["p-net-loft", "p-boat-shed"],
+      "typed": { "subject": "p-net-loft", "predicate": "adjacent", "object": { "kind": "entity", "id": "p-boat-shed" } } },
+
+    { "fact_id": "adj-13", "frame": "ground-truth",
+      "claim": "A person can wade from the Drowned Chapel to the Boat Shed.",
+      "canon_from": "sc-01", "evidence": ["sc-01"], "entities": ["p-chapel", "p-boat-shed"],
+      "typed": { "subject": "p-chapel", "predicate": "adjacent", "object": { "kind": "entity", "id": "p-boat-shed" } } },
+
+    { "fact_id": "con-01", "frame": "ground-truth",
+      "claim": "The Rain Market stands inside the Crown Quarter.",
+      "canon_from": "sc-01", "evidence": ["sc-01"], "entities": ["q-crown", "p-market"],
+      "typed": { "subject": "q-crown", "predicate": "contains", "object": { "kind": "entity", "id": "p-market" } } },
+
+    { "fact_id": "con-02", "frame": "ground-truth",
+      "claim": "The Weighhouse stands inside the Crown Quarter.",
+      "canon_from": "sc-01", "evidence": ["sc-01"], "entities": ["q-crown", "p-weighhouse"],
+      "typed": { "subject": "q-crown", "predicate": "contains", "object": { "kind": "entity", "id": "p-weighhouse" } } },
+
+    { "fact_id": "con-03", "frame": "ground-truth",
+      "claim": "The Toll House stands inside the Crown Quarter.",
+      "canon_from": "sc-01", "evidence": ["sc-01"], "entities": ["q-crown", "p-toll-house"],
+      "typed": { "subject": "q-crown", "predicate": "contains", "object": { "kind": "entity", "id": "p-toll-house" } } },
+
+    { "fact_id": "con-04", "frame": "ground-truth",
+      "claim": "The Old Cistern lies inside the Crown Quarter.",
+      "canon_from": "sc-01", "evidence": ["sc-01"], "entities": ["q-crown", "p-cistern"],
+      "typed": { "subject": "q-crown", "predicate": "contains", "object": { "kind": "entity", "id": "p-cistern" } } },
+
+    { "fact_id": "con-05", "frame": "ground-truth",
+      "claim": "The Net Loft stands inside the Drowned Quarter.",
+      "canon_from": "sc-01", "evidence": ["sc-01"], "entities": ["q-drowned", "p-net-loft"],
+      "typed": { "subject": "q-drowned", "predicate": "contains", "object": { "kind": "entity", "id": "p-net-loft" } } },
+
+    { "fact_id": "con-06", "frame": "ground-truth",
+      "claim": "The Drowned Chapel stands inside the Drowned Quarter.",
+      "canon_from": "sc-01", "evidence": ["sc-01"], "entities": ["q-drowned", "p-chapel"],
+      "typed": { "subject": "q-drowned", "predicate": "contains", "object": { "kind": "entity", "id": "p-chapel" } } },
+
+    { "fact_id": "con-07", "frame": "ground-truth",
+      "claim": "The Boat Shed stands inside the Drowned Quarter.",
+      "canon_from": "sc-01", "evidence": ["sc-01"], "entities": ["q-drowned", "p-boat-shed"],
+      "typed": { "subject": "q-drowned", "predicate": "contains", "object": { "kind": "entity", "id": "p-boat-shed" } } },
+
+    { "fact_id": "at-corin-01", "frame": "ground-truth",
+      "claim": "Corin is at the Toll House.",
+      "canon_from": "sc-01", "evidence": ["sc-01"], "entities": ["e-corin", "p-toll-house"],
+      "typed": { "subject": "e-corin", "predicate": "at", "object": { "kind": "entity", "id": "p-toll-house" } } },
+
+    { "fact_id": "ev-01", "frame": "ground-truth",
+      "claim": "The flood stands eleven steps below the Toll House door, and Corin writes it in the book.",
+      "canon_from": "sc-01", "evidence": ["sc-01"], "entities": ["e-corin", "e-flood", "p-toll-house"],
+      "typed": { "subject": "e-flood", "predicate": "water_level", "object": { "kind": "quantity", "n": 11, "unit": "step" } } },
+
+    { "fact_id": "at-corin-02", "frame": "ground-truth",
+      "claim": "Corin is at the Rain Market.",
+      "canon_from": "sc-02", "evidence": ["sc-02"], "entities": ["e-corin", "p-market"],
+      "supersedes_in_frame": "at-corin-01",
+      "typed": { "subject": "e-corin", "predicate": "at", "object": { "kind": "entity", "id": "p-market" } } },
+
+    { "fact_id": "at-yrsa-01", "frame": "ground-truth",
+      "claim": "Yrsa is at the Rain Market.",
+      "canon_from": "sc-02", "evidence": ["sc-02"], "entities": ["e-yrsa", "p-market"],
+      "typed": { "subject": "e-yrsa", "predicate": "at", "object": { "kind": "entity", "id": "p-market" } } },
+
+    { "fact_id": "at-brida-01", "frame": "ground-truth",
+      "claim": "Brida is at the Rain Market.",
+      "canon_from": "sc-02", "evidence": ["sc-02"], "entities": ["e-brida", "p-market"],
+      "typed": { "subject": "e-brida", "predicate": "at", "object": { "kind": "entity", "id": "p-market" } } },
+
+    { "fact_id": "ev-02", "frame": "ground-truth",
+      "claim": "Brida weighs out grain that has taken water while Yrsa buys forty feet of rope.",
+      "canon_from": "sc-02", "evidence": ["sc-02"], "entities": ["e-brida", "e-yrsa", "p-market"] },
+
+    { "fact_id": "at-corin-03", "frame": "ground-truth",
+      "claim": "Corin is at the Weighhouse.",
+      "canon_from": "sc-03", "evidence": ["sc-03"], "entities": ["e-corin", "p-weighhouse"],
+      "supersedes_in_frame": "at-corin-02",
+      "typed": { "subject": "e-corin", "predicate": "at", "object": { "kind": "entity", "id": "p-weighhouse" } } },
+
+    { "fact_id": "at-brida-02", "frame": "ground-truth",
+      "claim": "Brida is at the Weighhouse.",
+      "canon_from": "sc-03", "evidence": ["sc-03"], "entities": ["e-brida", "p-weighhouse"],
+      "supersedes_in_frame": "at-brida-01",
+      "typed": { "subject": "e-brida", "predicate": "at", "object": { "kind": "entity", "id": "p-weighhouse" } } },
+
+    { "fact_id": "ev-03", "frame": "ground-truth",
+      "claim": "The salt in the weighhouse store has gone to brine, and Brida seals the door on it.",
+      "canon_from": "sc-03", "evidence": ["sc-03"], "entities": ["e-brida", "p-weighhouse"] },
+
+    { "fact_id": "at-yrsa-02", "frame": "ground-truth",
+      "claim": "Yrsa is at the Old Cistern.",
+      "canon_from": "sc-04", "evidence": ["sc-04"], "entities": ["e-yrsa", "p-cistern"],
+      "supersedes_in_frame": "at-yrsa-01",
+      "typed": { "subject": "e-yrsa", "predicate": "at", "object": { "kind": "entity", "id": "p-cistern" } } },
+
+    { "fact_id": "ev-04", "frame": "ground-truth",
+      "claim": "Yrsa's line comes up wet at nine feet in a cistern that should be dry to thirty.",
+      "canon_from": "sc-04", "evidence": ["sc-04"], "entities": ["e-yrsa", "p-cistern"],
+      "payoff_expectation": "expected",
+      "typed": { "subject": "p-cistern", "predicate": "sounded_depth", "object": { "kind": "quantity", "n": 9, "unit": "foot" } } },
+
+    { "fact_id": "at-corin-04", "frame": "ground-truth",
+      "claim": "Corin is on the Ridge Road.",
+      "canon_from": "sc-05", "evidence": ["sc-05"], "entities": ["e-corin", "p-ridge-road"],
+      "supersedes_in_frame": "at-corin-03",
+      "typed": { "subject": "e-corin", "predicate": "at", "object": { "kind": "entity", "id": "p-ridge-road" } } },
+
+    { "fact_id": "ev-05", "frame": "ground-truth",
+      "claim": "From the Ridge Road the Drowned Quarter stands to its eaves in water.",
+      "canon_from": "sc-05", "evidence": ["sc-05"], "entities": ["e-corin", "q-drowned", "p-ridge-road"] },
+
+    { "fact_id": "at-corin-05", "frame": "ground-truth",
+      "claim": "Corin is at the Shrine of Still Water.",
+      "canon_from": "sc-06", "evidence": ["sc-06"], "entities": ["e-corin", "p-shrine"],
+      "supersedes_in_frame": "at-corin-04",
+      "typed": { "subject": "e-corin", "predicate": "at", "object": { "kind": "entity", "id": "p-shrine" } } },
+
+    { "fact_id": "at-hallam-01", "frame": "ground-truth",
+      "claim": "Hallam is at the Shrine of Still Water.",
+      "canon_from": "sc-06", "evidence": ["sc-06"], "entities": ["e-hallam", "p-shrine"],
+      "typed": { "subject": "e-hallam", "predicate": "at", "object": { "kind": "entity", "id": "p-shrine" } } },
+
+    { "fact_id": "ev-06", "frame": "ground-truth",
+      "claim": "Hallam refuses to take the bell down from the shrine, flood or no flood.",
+      "canon_from": "sc-06", "evidence": ["sc-06"], "entities": ["e-hallam", "p-shrine"] },
+
+    { "fact_id": "at-yrsa-03", "frame": "ground-truth",
+      "claim": "Yrsa is at the Net Loft.",
+      "canon_from": "sc-07", "evidence": ["sc-07"], "entities": ["e-yrsa", "p-net-loft"],
+      "supersedes_in_frame": "at-yrsa-02",
+      "typed": { "subject": "e-yrsa", "predicate": "at", "object": { "kind": "entity", "id": "p-net-loft" } } },
+
+    { "fact_id": "ev-07", "frame": "ground-truth",
+      "claim": "Yrsa takes a diving weight and a lamp from the net loft and signs the peg-tally for both.",
+      "canon_from": "sc-07", "evidence": ["sc-07"], "entities": ["e-yrsa", "p-net-loft"],
+      "payoff_expectation": "expected" },
+
+    { "fact_id": "at-yrsa-04", "frame": "ground-truth",
+      "claim": "Yrsa is at the Boat Shed.",
+      "canon_from": "sc-08", "evidence": ["sc-08"], "entities": ["e-yrsa", "p-boat-shed"],
+      "supersedes_in_frame": "at-yrsa-03",
+      "typed": { "subject": "e-yrsa", "predicate": "at", "object": { "kind": "entity", "id": "p-boat-shed" } } },
+
+    { "fact_id": "at-orla-01", "frame": "ground-truth",
+      "claim": "Orla is at the Boat Shed.",
+      "canon_from": "sc-08", "evidence": ["sc-08"], "entities": ["e-orla", "p-boat-shed"],
+      "typed": { "subject": "e-orla", "predicate": "at", "object": { "kind": "entity", "id": "p-boat-shed" } } },
+
+    { "fact_id": "ev-08", "frame": "ground-truth",
+      "claim": "Orla's skiff lies out on its mooring, and Yrsa asks nothing of her and goes before light.",
+      "canon_from": "sc-08", "evidence": ["sc-08"], "entities": ["e-yrsa", "e-orla", "p-boat-shed", "p-mooring"],
+      "payoff_expectation": "expected" },
+
+    { "fact_id": "at-corin-06", "frame": "ground-truth",
+      "claim": "Corin is on the Ridge Road.",
+      "canon_from": "sc-09", "evidence": ["sc-09"], "entities": ["e-corin", "p-ridge-road"],
+      "supersedes_in_frame": "at-corin-05",
+      "typed": { "subject": "e-corin", "predicate": "at", "object": { "kind": "entity", "id": "p-ridge-road" } } },
+
+    { "fact_id": "at-yrsa-05", "frame": "ground-truth",
+      "claim": "Yrsa is in the Old Cistern.",
+      "canon_from": "sc-09", "evidence": ["sc-04", "sc-07", "sc-08"], "entities": ["e-yrsa", "p-cistern"],
+      "supersedes_in_frame": "at-yrsa-04",
+      "typed": { "subject": "e-yrsa", "predicate": "at", "object": { "kind": "entity", "id": "p-cistern" } } },
+
+    { "fact_id": "ev-09", "frame": "ground-truth",
+      "claim": "No bell rings over the hill on the second morning, and no one has seen Yrsa since the boat shed.",
+      "canon_from": "sc-09", "evidence": ["sc-08", "sc-09"], "entities": ["e-corin", "e-yrsa", "p-ridge-road"] },
+
+    { "fact_id": "at-corin-07", "frame": "ground-truth",
+      "claim": "Corin is at the Drowned Chapel.",
+      "canon_from": "sc-10", "evidence": ["sc-10"], "entities": ["e-corin", "p-chapel"],
+      "supersedes_in_frame": "at-corin-06",
+      "typed": { "subject": "e-corin", "predicate": "at", "object": { "kind": "entity", "id": "p-chapel" } } },
+
+    { "fact_id": "ev-10", "frame": "ground-truth",
+      "claim": "In the Drowned Chapel the water stands at the sill and a candle has burned down into its tin.",
+      "canon_from": "sc-10", "evidence": ["sc-10"], "entities": ["e-corin", "p-chapel"] },
+
+    { "fact_id": "at-corin-08", "frame": "ground-truth",
+      "claim": "Corin is on the Water Stair.",
+      "canon_from": "sc-11", "evidence": ["sc-11"], "entities": ["e-corin", "p-water-stair"],
+      "supersedes_in_frame": "at-corin-07",
+      "typed": { "subject": "e-corin", "predicate": "at", "object": { "kind": "entity", "id": "p-water-stair" } } },
+
+    { "fact_id": "at-orla-02", "frame": "ground-truth",
+      "claim": "Orla is on the Water Stair.",
+      "canon_from": "sc-11", "evidence": ["sc-11"], "entities": ["e-orla", "p-water-stair"],
+      "supersedes_in_frame": "at-orla-01",
+      "typed": { "subject": "e-orla", "predicate": "at", "object": { "kind": "entity", "id": "p-water-stair" } } },
+
+    { "fact_id": "ev-11", "frame": "ground-truth",
+      "claim": "Two more steps of the Water Stair have gone under, putting the flood at thirteen steps.",
+      "canon_from": "sc-11", "evidence": ["sc-11"], "entities": ["e-corin", "e-flood", "p-water-stair"],
+      "supersedes_in_frame": "ev-01",
+      "typed": { "subject": "e-flood", "predicate": "water_level", "object": { "kind": "quantity", "n": 13, "unit": "step" } } },
+
+    { "fact_id": "tt-yrsa-01", "frame": "town-talk",
+      "claim": "Yrsa went down the Water Stair at dawn.",
+      "canon_from": "sc-11", "evidence": ["sc-08", "sc-11"], "canon_to": "sc-14",
+      "entities": ["e-yrsa", "p-water-stair"],
+      "conflicts_with": ["at-yrsa-05"],
+      "typed": { "subject": "e-yrsa", "predicate": "at", "object": { "kind": "entity", "id": "p-water-stair" } } },
+
+    { "fact_id": "at-orla-03", "frame": "ground-truth",
+      "claim": "Orla is at the Skiff Mooring.",
+      "canon_from": "sc-12", "evidence": ["sc-12"], "entities": ["e-orla", "p-mooring"],
+      "supersedes_in_frame": "at-orla-02",
+      "typed": { "subject": "e-orla", "predicate": "at", "object": { "kind": "entity", "id": "p-mooring" } } },
+
+    { "fact_id": "ev-12", "frame": "ground-truth",
+      "claim": "The skiff is still tied at the mooring and dry inside, so nothing went out on the water.",
+      "canon_from": "sc-12", "evidence": ["sc-08", "sc-12"], "entities": ["e-orla", "p-mooring"],
+      "pays_off": ["ev-08"] },
+
+    { "fact_id": "at-corin-09", "frame": "ground-truth",
+      "claim": "Corin is at the Net Loft.",
+      "canon_from": "sc-13", "evidence": ["sc-13"], "entities": ["e-corin", "p-net-loft"],
+      "supersedes_in_frame": "at-corin-08",
+      "typed": { "subject": "e-corin", "predicate": "at", "object": { "kind": "entity", "id": "p-net-loft" } } },
+
+    { "fact_id": "ev-13", "frame": "ground-truth",
+      "claim": "The weight and the lamp are gone from their pegs and the tally is signed in Yrsa's hand.",
+      "canon_from": "sc-13", "evidence": ["sc-07", "sc-13"], "entities": ["e-corin", "e-yrsa", "p-net-loft"],
+      "pays_off": ["ev-07"] },
+
+    { "fact_id": "ev-14", "frame": "ground-truth",
+      "claim": "Yrsa wedges the lamp into a crack and cuts her rope back to nine feet, with the noise of the town somewhere over her head.",
+      "canon_from": "sc-14", "evidence": ["sc-02", "sc-14"], "entities": ["e-yrsa"] },
+
+    { "fact_id": "at-corin-10", "frame": "ground-truth",
+      "claim": "Corin is at the Rain Market.",
+      "canon_from": "sc-15", "evidence": ["sc-15"], "entities": ["e-corin", "p-market"],
+      "supersedes_in_frame": "at-corin-09",
+      "typed": { "subject": "e-corin", "predicate": "at", "object": { "kind": "entity", "id": "p-market" } } },
+
+    { "fact_id": "at-brida-03", "frame": "ground-truth",
+      "claim": "Brida is at the Rain Market.",
+      "canon_from": "sc-15", "evidence": ["sc-15"], "entities": ["e-brida", "p-market"],
+      "supersedes_in_frame": "at-brida-02",
+      "typed": { "subject": "e-brida", "predicate": "at", "object": { "kind": "entity", "id": "p-market" } } },
+
+    { "fact_id": "tt-yrsa-02", "frame": "town-talk",
+      "claim": "Yrsa took a boat from the Skiff Mooring and went out to the sunk mill.",
+      "canon_from": "sc-15", "evidence": ["sc-11", "sc-15"], "canon_to": "sc-19",
+      "entities": ["e-yrsa", "p-mooring"],
+      "conflicts_with": ["at-yrsa-05"],
+      "typed": { "subject": "e-yrsa", "predicate": "at", "object": { "kind": "entity", "id": "p-mooring" } } },
+
+    { "fact_id": "cond-town-01", "frame": "town-talk",
+      "claim": "Yrsa is drowned.",
+      "canon_from": "sc-15", "evidence": ["sc-15"], "canon_to": "sc-19", "entities": ["e-yrsa"],
+      "typed": { "subject": "e-yrsa", "predicate": "condition", "object": { "kind": "token", "token": "drowned" } } },
+
+    { "fact_id": "ev-15", "frame": "ground-truth",
+      "claim": "The market has settled on it that Yrsa went out to the sunk mill and drowned there.",
+      "canon_from": "sc-15", "evidence": ["sc-15"], "entities": ["e-brida", "e-yrsa", "p-market"] },
+
+    { "fact_id": "at-orla-04", "frame": "ground-truth",
+      "claim": "Orla is on the Water Stair.",
+      "canon_from": "sc-16", "evidence": ["sc-16"], "entities": ["e-orla", "p-water-stair"],
+      "supersedes_in_frame": "at-orla-03",
+      "typed": { "subject": "e-orla", "predicate": "at", "object": { "kind": "entity", "id": "p-water-stair" } } },
+
+    { "fact_id": "cond-corin-01", "frame": "corin",
+      "claim": "Yrsa is alive.",
+      "canon_from": "sc-16", "evidence": ["sc-12", "sc-16"], "entities": ["e-yrsa"],
+      "conflicts_with": ["cond-town-01"],
+      "typed": { "subject": "e-yrsa", "predicate": "condition", "object": { "kind": "token", "token": "alive" } } },
+
+    { "fact_id": "ev-16", "frame": "ground-truth",
+      "claim": "Orla climbs the Water Stair saying plainly that the skiff never left its mooring.",
+      "canon_from": "sc-16", "evidence": ["sc-12", "sc-16"], "entities": ["e-orla", "p-water-stair", "p-mooring"] },
+
+    { "fact_id": "ev-17", "frame": "ground-truth",
+      "claim": "Yrsa is twenty feet down where the water is cold and moving, and moving water has somewhere to go.",
+      "canon_from": "sc-17", "evidence": ["sc-14", "sc-17"], "entities": ["e-yrsa"],
+      "typed": { "subject": "e-yrsa", "predicate": "sounded_depth", "object": { "kind": "quantity", "n": 20, "unit": "foot" } } },
+
+    { "fact_id": "at-corin-11", "frame": "ground-truth",
+      "claim": "Corin is at the Shrine of Still Water.",
+      "canon_from": "sc-18", "evidence": ["sc-18"], "entities": ["e-corin", "p-shrine"],
+      "supersedes_in_frame": "at-corin-10",
+      "typed": { "subject": "e-corin", "predicate": "at", "object": { "kind": "entity", "id": "p-shrine" } } },
+
+    { "fact_id": "ev-18", "frame": "ground-truth",
+      "claim": "Hallam rings the bell for the dead and Corin will not sign the register under it.",
+      "canon_from": "sc-18", "evidence": ["sc-18"], "entities": ["e-hallam", "e-corin", "p-shrine"] },
+
+    { "fact_id": "ev-19", "frame": "ground-truth",
+      "claim": "The bottom of Yrsa's shaft is not a bottom but an opening, and the way on from it is upward and dry.",
+      "canon_from": "sc-19", "evidence": ["sc-17", "sc-19"], "entities": ["e-yrsa"] },
+
+    { "fact_id": "at-yrsa-06", "frame": "ground-truth",
+      "claim": "Yrsa is at the Rain Market.",
+      "canon_from": "sc-20", "evidence": ["sc-20"], "entities": ["e-yrsa", "p-market"],
+      "supersedes_in_frame": "at-yrsa-05",
+      "typed": { "subject": "e-yrsa", "predicate": "at", "object": { "kind": "entity", "id": "p-market" } } },
+
+    { "fact_id": "at-corin-12", "frame": "ground-truth",
+      "claim": "Corin is at the Rain Market.",
+      "canon_from": "sc-20", "evidence": ["sc-20"], "entities": ["e-corin", "p-market"],
+      "supersedes_in_frame": "at-corin-11",
+      "typed": { "subject": "e-corin", "predicate": "at", "object": { "kind": "entity", "id": "p-market" } } },
+
+    { "fact_id": "ev-20", "frame": "ground-truth",
+      "claim": "The cistern lid lifts in the market yard and Yrsa comes up out of it after four days under the town's feet.",
+      "canon_from": "sc-20", "evidence": ["sc-04", "sc-20"], "entities": ["e-yrsa", "p-cistern", "p-market"] },
+
+    { "fact_id": "at-yrsa-07", "frame": "ground-truth",
+      "claim": "Yrsa is at the Old Cistern.",
+      "canon_from": "sc-21", "evidence": ["sc-21"], "entities": ["e-yrsa", "p-cistern"],
+      "supersedes_in_frame": "at-yrsa-06",
+      "typed": { "subject": "e-yrsa", "predicate": "at", "object": { "kind": "entity", "id": "p-cistern" } } },
+
+    { "fact_id": "at-corin-13", "frame": "ground-truth",
+      "claim": "Corin is at the Old Cistern.",
+      "canon_from": "sc-21", "evidence": ["sc-21"], "entities": ["e-corin", "p-cistern"],
+      "supersedes_in_frame": "at-corin-12",
+      "typed": { "subject": "e-corin", "predicate": "at", "object": { "kind": "entity", "id": "p-cistern" } } },
+
+    { "fact_id": "ev-21", "frame": "ground-truth",
+      "claim": "Yrsa shows Corin the throat in the cistern wall where the flood comes into the hill, and he enters it in the toll book.",
+      "canon_from": "sc-21", "evidence": ["sc-04", "sc-21"], "entities": ["e-yrsa", "e-corin", "p-cistern"],
+      "pays_off": ["ev-04"] }
+  ],
+
+  "disclosure_plans": [
+    {
+      "telling_id": "told",
+      "default_mode": "withhold",
+      "description": "The telling as intended: every position is pinned to the scene the reader is told it, except Yrsa's place through the middle, which is held back to sc-20. The map facts carry no decision at all and ride the withhold default, so the reader reconstructs the town by being walked through it.",
+      "overrides": [
+        { "fact_id": "at-corin-01", "mode": "state", "first_at": [ { "branch": "main", "coords": ["sc-01"] } ] },
+        { "fact_id": "at-corin-02", "mode": "state", "first_at": [ { "branch": "main", "coords": ["sc-02"] } ] },
+        { "fact_id": "at-corin-03", "mode": "state", "first_at": [ { "branch": "main", "coords": ["sc-03"] } ] },
+        { "fact_id": "at-corin-04", "mode": "state", "first_at": [ { "branch": "main", "coords": ["sc-05"] } ] },
+        { "fact_id": "at-corin-05", "mode": "state", "first_at": [ { "branch": "main", "coords": ["sc-06"] } ] },
+        { "fact_id": "at-corin-06", "mode": "state", "first_at": [ { "branch": "main", "coords": ["sc-09"] } ] },
+        { "fact_id": "at-corin-07", "mode": "state", "first_at": [ { "branch": "main", "coords": ["sc-10"] } ] },
+        { "fact_id": "at-corin-08", "mode": "state", "first_at": [ { "branch": "main", "coords": ["sc-11"] } ] },
+        { "fact_id": "at-corin-09", "mode": "state", "first_at": [ { "branch": "main", "coords": ["sc-13"] } ] },
+        { "fact_id": "at-corin-10", "mode": "state", "first_at": [ { "branch": "main", "coords": ["sc-15"] } ] },
+        { "fact_id": "at-corin-11", "mode": "state", "first_at": [ { "branch": "main", "coords": ["sc-18"] } ] },
+        { "fact_id": "at-corin-12", "mode": "state", "first_at": [ { "branch": "main", "coords": ["sc-20"] } ] },
+        { "fact_id": "at-corin-13", "mode": "state", "first_at": [ { "branch": "main", "coords": ["sc-21"] } ] },
+
+        { "fact_id": "at-yrsa-01", "mode": "state", "first_at": [ { "branch": "main", "coords": ["sc-02"] } ] },
+        { "fact_id": "at-yrsa-02", "mode": "state", "first_at": [ { "branch": "main", "coords": ["sc-04"] } ] },
+        { "fact_id": "at-yrsa-03", "mode": "state", "first_at": [ { "branch": "main", "coords": ["sc-07"] } ] },
+        { "fact_id": "at-yrsa-04", "mode": "state", "first_at": [ { "branch": "main", "coords": ["sc-08"] } ] },
+        { "fact_id": "at-yrsa-05", "mode": "withhold", "first_at": [ { "branch": "main", "coords": ["sc-20"] } ],
+          "surface": { "scene": "sc-20", "object": "the cistern lid" } },
+        { "fact_id": "at-yrsa-06", "mode": "state", "first_at": [ { "branch": "main", "coords": ["sc-20"] } ] },
+        { "fact_id": "at-yrsa-07", "mode": "state", "first_at": [ { "branch": "main", "coords": ["sc-21"] } ] },
+
+        { "fact_id": "at-brida-01", "mode": "state", "first_at": [ { "branch": "main", "coords": ["sc-02"] } ] },
+        { "fact_id": "at-brida-02", "mode": "state", "first_at": [ { "branch": "main", "coords": ["sc-03"] } ] },
+        { "fact_id": "at-brida-03", "mode": "state", "first_at": [ { "branch": "main", "coords": ["sc-15"] } ] },
+
+        { "fact_id": "at-hallam-01", "mode": "state", "first_at": [ { "branch": "main", "coords": ["sc-06"] } ] },
+
+        { "fact_id": "at-orla-01", "mode": "state", "first_at": [ { "branch": "main", "coords": ["sc-08"] } ] },
+        { "fact_id": "at-orla-02", "mode": "state", "first_at": [ { "branch": "main", "coords": ["sc-11"] } ] },
+        { "fact_id": "at-orla-03", "mode": "state", "first_at": [ { "branch": "main", "coords": ["sc-12"] } ] },
+        { "fact_id": "at-orla-04", "mode": "state", "first_at": [ { "branch": "main", "coords": ["sc-16"] } ] },
+
+        { "fact_id": "tt-yrsa-01", "mode": "state", "first_at": [ { "branch": "main", "coords": ["sc-11"] } ] },
+        { "fact_id": "tt-yrsa-02", "mode": "state", "first_at": [ { "branch": "main", "coords": ["sc-15"] } ] },
+        { "fact_id": "cond-town-01", "mode": "state", "first_at": [ { "branch": "main", "coords": ["sc-15"] } ] },
+        { "fact_id": "cond-corin-01", "mode": "state", "first_at": [ { "branch": "main", "coords": ["sc-16"] } ] },
+
+        { "fact_id": "ev-01", "mode": "state", "first_at": [ { "branch": "main", "coords": ["sc-01"] } ] },
+        { "fact_id": "ev-02", "mode": "state" },
+        { "fact_id": "ev-03", "mode": "state" },
+        { "fact_id": "ev-04", "mode": "state", "first_at": [ { "branch": "main", "coords": ["sc-04"] } ] },
+        { "fact_id": "ev-05", "mode": "state" },
+        { "fact_id": "ev-06", "mode": "state" },
+        { "fact_id": "ev-07", "mode": "state" },
+        { "fact_id": "ev-08", "mode": "state" },
+        { "fact_id": "ev-09", "mode": "state" },
+        { "fact_id": "ev-10", "mode": "state" },
+        { "fact_id": "ev-11", "mode": "state", "first_at": [ { "branch": "main", "coords": ["sc-11"] } ] },
+        { "fact_id": "ev-12", "mode": "state" },
+        { "fact_id": "ev-13", "mode": "state" },
+        { "fact_id": "ev-14", "mode": "state" },
+        { "fact_id": "ev-15", "mode": "state" },
+        { "fact_id": "ev-16", "mode": "state" },
+        { "fact_id": "ev-17", "mode": "state", "first_at": [ { "branch": "main", "coords": ["sc-17"] } ] },
+        { "fact_id": "ev-18", "mode": "state" },
+        { "fact_id": "ev-19", "mode": "state" },
+        { "fact_id": "ev-20", "mode": "state" },
+        { "fact_id": "ev-21", "mode": "state" }
+      ]
+    },
+    {
+      "telling_id": "told-open",
+      "default_mode": "state",
+      "description": "The same world with nothing held back: everything is told outright, and Yrsa's place through the middle is pinned to the scene she goes there. Not one fact differs from the telling above; only the disclosure does.",
+      "overrides": [
+        { "fact_id": "at-yrsa-05", "mode": "state", "first_at": [ { "branch": "main", "coords": ["sc-09"] } ] }
+      ]
+    }
+  ]
+}

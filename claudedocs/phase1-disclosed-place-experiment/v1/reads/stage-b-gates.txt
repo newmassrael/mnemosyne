@@ -1,0 +1,40 @@
+### report-transition-map
+=== declared maps — 1 transition rule(s) ===
+map `walk-the-town` (adjacency `adjacent`, undirected): 13 node(s), 13 edge(s)
+  p-chapel -> p-boat-shed (adj-13)
+  p-market -> p-cistern (adj-10)
+  p-market -> p-toll-house (adj-09)
+  p-market -> p-weighhouse (adj-08)
+  p-net-loft -> p-boat-shed (adj-12)
+  p-net-loft -> p-chapel (adj-11)
+  p-ridge-road -> p-shrine (adj-03)
+  p-ridge-road -> q-drowned (adj-02)
+  p-water-stair -> p-mooring (adj-07)
+  q-crown -> p-ridge-road (adj-01)
+  q-crown -> p-shrine (adj-04)
+  q-crown -> q-drowned (adj-05)
+  q-drowned -> p-water-stair (adj-06)
+exit=0
+
+### report-authoring-frontier (no telling)
+=== authoring frontier — telling (none) — 0 gap(s) ===
+zero-fact scenes: none
+unplaced scenes: none
+unordered scenes: none
+dangling setups: none
+unresolved quests: (pass --telling)
+never-planned disclosures: (pass --telling)
+unconnected places [walk-the-town]: none
+branch density [main]: 73 owned fact(s) over 21 traversed scene(s) = 3.48
+exit=0
+
+### validate-continuity
+=== continuity gate (reject) ===
+  facts=73 order_nodes=21/21 sections conflict_pairs=3 cross_scope(data)=3 unordered=0
+  rules=2 rule_unordered=0 unchained_state_pairs=1 (no route joins 0) interval_unverifiable=not-declared interval_severity=off
+  steps judged: 23 (hierarchy crossing 0 / lifted 23 / unmoved 0, 0 unlicensed; 0 of them RUNS of consecutive crossings) — --json carries each one with its scope, route and judging coordinate
+  evidence reviews: 0 ref(s) with prose but no affirmation (import-evidence-reviews records one; an unaffirmed claim cannot go stale)
+  fact quotes: 0 unverifiable (an evidence section holds no prose, so the quote could live exactly there)
+  ladder rungs: 0 coordinate(s) resolved against current prose, and each ladder's declared order and distinctness judged against it (a stranded rung, an out-of-order ladder, or two rungs at one anchor is reported as a violation)
+  violations: 0 (structural=0 interval=0)
+exit=0

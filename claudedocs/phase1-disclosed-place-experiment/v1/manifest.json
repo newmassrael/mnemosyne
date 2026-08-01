@@ -1,0 +1,40 @@
+{
+  "manifest": "disclosed-place-experiment/v1",
+  "designed": "2026-08-02 (Round 942, DESIGN). A post-run record, like the map-corpus manifest. The pre-commitment is `runbook.md`, committed in 636c91d BEFORE execution, carrying both author briefs verbatim; the owner's experiment word triggered the run against that frozen protocol.",
+
+  "thesis": "Round 938 built the disclosed-place join and had no authored witness for it. Round 942 measured why: of 90 stores on disk, 8 declare a spatial map and all 8 carry an empty `disclosure_plans`, 13 carry a telling and none declares an `adjacency` predicate, and the both-axes cell is 0. `mnemosyne-render`, the shipping consumer of the join, had therefore never been run on authored data and could not be. This arm authors the missing store, blind, and runs the renderer on it.",
+
+  "lineage_note": "Round 469 contamination bound. The orchestrating lineage knew the hypothesis; it ran every command, wrote no manifest in its own voice, and repaired no author file — the failing Stage B submission was handed back as the verbatim tool error and the author fixed it.",
+
+  "claim_bound": "THE ORACLE IS THE SEALED SELF-REPORT, NOT OUR OWN VERB OUTPUT. Where report and render disagree the disagreement is recorded, not resolved in the orchestrator's voice. Findings 1 and 2 are additionally confirmed against the source, so they do not rest on author prose alone; finding 3 rests on a machine-checkable supersession chain plus a reading of intent that is not.",
+
+  "shape": {
+    "authors": "two, fresh context each, firewalled to their own directory, forbidden every other file in the repository",
+    "stage_a": "the world brief naming NEITHER capability — measures E1, whether the second axis is reachable from the contract alone",
+    "stage_b": "the same brief plus one fiction sentence asking that the engine answer both questions without reading prose; guarantees the corpus exists regardless of E1",
+    "not_run": "no prose extraction, no judge panel, no render-acceptance gates. The telling is store data, so the read is the renderer over the author's own workspace."
+  },
+
+  "evidence": {
+    "E1": "Does a blind author reach the transition class AND the disclosure layer given only the contract? Four sub-answers, read off the authored files, never asked for. The discriminating token is `adjacency`, not `transition` — the transition class also models one-way state machines (Round 891, Round 942).",
+    "E2": "Does the FIRST submission import? Frozen with its full error text before anything is handed back.",
+    "E3": "The sealed self-report beside the render. A disagreement is a FINDING about the substrate or the contract, not an author error."
+  },
+
+  "results": {
+    "E1": "YES on all four sub-answers in Stage A, the arm that was told nothing. The missing thing was never discoverability.",
+    "E2": "Stage A clean on first submission, both verbs. Stage B failed on a prose string in the entity-id slot `surface.object`, which the manifest wire types as bare `string`.",
+    "E3": "The placement half of the join honours the telling — swapping tellings moves exactly the withheld placements and nothing else. Three findings against it: the map half never looks at the telling (both stores, Stage B at full scale with all 20 map facts never_planned); `DisclosedPlace` carries no frame, so a town-talk rumour renders as a place indistinguishable from ground truth (both stores, and Stage B's author asserted the opposite in a sealed report); and a reveal pinned at the scene its fact stops being current never renders at all (both stores)."
+  },
+
+  "honest_caveats": [
+    "n=2 authors, one world premise, one lineage orchestrating — one instance, not a distribution.",
+    "Everything the brief MANDATES is decoration: the location count, the containment, the hidden character, the plain character. The evidence is what the brief did not mandate.",
+    "Stage B's E1 answers prove only that the author followed the brief; Stage A is the measurement.",
+    "No repair is proposed by this arm. It measures.",
+    "Three protocol deviations are recorded in the report rather than smoothed: the rules pin was unnecessary and was NOT applied (both authors wired `rules_path` themselves, and the runbook's literal patch would have deleted an authored line); `revision_provenance: \"exact\"` does not exist in the gate's vocabulary and this kit uses `declared-at-run`; and the self-report seal is enforced by the orchestrator's freeze, not by any instruction the author receives — Stage B revised theirs.",
+    "Edge costs and edge guards remain unexercised: both authors independently reported that the side tables are verb-only with no manifest wire, so a file-only authoring run cannot reach them."
+  ],
+
+  "findings_home": "disclosed-place-report.md is the evidence; the changelog entry is the SSOT for the decision."
+}

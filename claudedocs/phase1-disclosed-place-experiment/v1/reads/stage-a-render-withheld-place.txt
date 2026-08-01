@@ -1,0 +1,121 @@
+The Bell That Will Not Ring
+p-bellhouse -> p-shrine, p-vessner-house
+the Bell House stands in Crownhead, above the reach of any water the town has known
+the Salt Granary lies in the Drowned Market, at the end of the awnings
+the Market Under Awnings lies in the Drowned Market, the quarter the water took first
+the Pump House belongs to the Waterline, and has been standing in it since the second day
+the Broken Quay belongs to the Waterline
+the Shrine of the Still Water stands in Crownhead, the dry quarter on the top of the hill
+the Stair Down to the Water belongs to the Waterline, the lowest quarter
+Vessner's house stands in Crownhead, with the ferry's business kept in its front room
+the Waterline stands under water to the height of a man
+a walled path joins the Bell House to the shrine yard
+the Bell House looks across its yard at Vessner's door
+the Causeway runs down into the Drowned Market
+the Causeway runs up to the gate of Crownhead
+the Drowned Market gives on to the Waterline below it
+the last of the awnings runs right up to the granary door
+a plank walk joins the quay to the pump house
+the shrine yard backs on to Vessner's garden wall, and the wall has a gate in it
+the stair ends on the broken quay
+Orin is in the Bell House
+Orin climbs to the bell and finds the rope swollen shut with damp
+
+The Shrine of the Still Water
+p-shrine -> p-bellhouse, p-vessner-house
+Dessa is at the shrine, pouring a cup for the drowned
+Orin is at the shrine, sent to fetch Dessa
+Sella is at the shrine
+
+Vessner Counts What the Water Took
+p-vessner-house -> p-bellhouse, p-shrine
+the water rose on the second day of the rain
+Vessner has the ferry ledger
+Orin is in Vessner's front room
+Vessner is in his own front room with the ferry's business around him
+Vessner counts the boats the water has taken and writes none of it down, and gives the ledger to Orin to carry down out of the damp
+
+The Causeway at First Light
+p-causeway -> q-drownmarket, q-crownhead
+Orin carries the ferry ledger down the causeway, wrapped in his coat
+Orin is on the causeway at first light
+Sella is on the causeway, walking down beside Orin
+
+Under the Awnings
+p-market -> p-granary
+Sella takes the ferry ledger from Orin under the awnings and says she will keep it dry
+Orin is under the awnings of the market
+Sella is under the awnings of the market, and this is the last of her the town sees
+
+The Salt Granary
+p-granary -> p-lamp-cellar, p-market
+Orin is inside the salt granary
+
+The Hatch in the Granary Floor
+a tin lamp hangs on a nail beside the hatch in the granary floor, filled and never lit
+
+Talk at the Market Stalls
+p-market -> p-granary
+p-quay -> p-pump-house, p-stair
+Orin is back among the stalls, listening
+the town says the clerk's daughter went down to the broken quay when the water came, and did not come up
+
+The Stair Down to the Water
+p-stair -> p-quay
+the stair is wet to its fourth step and green under the hand
+Orin is on the stair down to the water
+Orin believes Sella went down the stair ahead of him
+
+The Broken Quay
+p-quay -> p-pump-house, p-stair
+the water stands two metres over the broken quay
+Orin is out on the broken quay
+
+The Pump House
+p-pump-house -> p-quay
+Orin is in the pump house, turning the wheel with the pump-keeper
+
+A Lamp Somewhere Below
+Sella lights a tin lamp and sets it on a salt-crusted shelf
+
+The Bell House, Again
+p-bellhouse -> p-shrine, p-vessner-house
+Dessa is in the Bell House, having come up the walled path with a knife for the rope
+Dessa gets the bell to ring at last, once for every day the water has stood
+Sella hears the bell start up somewhere over her head and counts the strokes, and does not answer it
+
+The Water at Fourteen Days
+p-quay -> p-pump-house, p-stair
+the water begins to fall on the fourteenth day
+Orin is on the quay again, watching the mark on the post
+
+What the Ledger Says
+Sella writes the water's height in the ferry ledger by lamplight, a line for every day
+
+Back Up the Stair
+p-stair -> p-quay
+Orin is climbing back up the stair
+
+The Awnings, Empty
+p-market -> p-granary
+Orin is under the awnings, and the stalls are stripped and empty
+
+The Causeway in the Rain
+p-causeway -> q-drownmarket, q-crownhead
+Orin is on the causeway in the rain, where Vessner stops him
+Vessner is out on the causeway in the rain, asking everyone who passes about the granary
+
+The Granary Floor
+p-granary -> p-lamp-cellar, p-market
+Orin is standing on the granary floor over the hatch
+Sella knocks twice on the boards above her when she hears a step
+
+The Hatch Opens
+p-granary -> p-lamp-cellar, p-market
+p-lamp-cellar -> p-granary
+the tin lamp is burning in the Lamp Cellar when the hatch comes up, and the nail by the hatch is bare
+Orin goes down into the Lamp Cellar
+Orin knows Sella is in the Lamp Cellar, because he has just put his own lamp down through the hatch and seen her
+Sella comes up on to the granary floor with the ledger dry under her arm
+the town says the clerk's daughter was under the granary the whole fortnight, and that it always knew the cellar was dry
+

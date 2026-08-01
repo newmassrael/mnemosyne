@@ -1,0 +1,7 @@
+=== mnemosyne-cli import_facts ===
+primitive: import_facts
+target_kind: narrative_fact
+target_id: 3 frames + 0 branches + 5 entity-kinds + 2 units + 20 entities + 6 predicates + 73 facts + 2 disclosure-plans + 54 disclosure-overrides created, 0 no-op
+sidecar_path: /home/coin/mnemosyne/claudedocs/phase1-disclosed-place-experiment/v1/run/stage-b/docs/.atomic/workspace.atomic.json
+written_bytes: 51401
+exit=0

@@ -1,0 +1,6 @@
+### report-disclosure-coverage --telling withheld-place
+=== disclosure coverage — telling `withheld-place` — 67 fact(s) ===
+disclosed=62 hidden_by_design=5 never_planned=0
+### --telling plain-place
+=== disclosure coverage — telling `plain-place` — 67 fact(s) ===
+disclosed=67 hidden_by_design=0 never_planned=0
