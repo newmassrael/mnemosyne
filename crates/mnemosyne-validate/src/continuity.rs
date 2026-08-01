@@ -4360,6 +4360,13 @@ fn place_components(
     // caller only asks for an undirected rule, and a containment because a route
     // may descend into a container or ascend out of one. Borrowed from the store,
     // so the graph allocates nothing per link.
+    //
+    // Round 927 — the (frame, world) filter below is the coordinate this graph is
+    // read at, and BOTH halves are pinned by
+    // `a_route_is_read_at_one_world_and_frame_not_across_them`. Deleting either
+    // one used to pass the whole suite, in the direction that makes the count go
+    // QUIET: a believed road or a road built on a fork would join two places the
+    // asserting world cannot walk between, and the gap would stop being named.
     let mut adj: BTreeMap<&str, BTreeSet<&str>> = BTreeMap::new();
     for f in store.narrative_facts.values() {
         let Some(t) = f.typed.as_ref() else {
@@ -4651,7 +4658,9 @@ fn hop_shape<'m, 'a: 'm>(
 /// [`StepJudgement`] per (judged unit, judging world). `emit` returns `false` to
 /// stop judging THAT unit's remaining worlds, which is how the gate keeps its
 /// one-finding-per-step behaviour without this function knowing what a finding
-/// is.
+/// is. Round 927 pins that contract in
+/// `a_unit_two_worlds_both_forbid_is_reported_once`: until then, filing one
+/// finding per forbidding world passed the whole suite.
 ///
 /// This is the only place a step is classified. It exists because the number
 /// that says how many authored steps are crossings versus lifts was, before this
@@ -13118,6 +13127,83 @@ mod tests {
         );
     }
 
+    /// Round 927 — a unit that BOTH worlds forbid is reported ONCE, by the first
+    /// world that forbids it, and the worlds after it are not judged.
+    ///
+    /// The short-circuit is stated in three places — [`judge_steps`]'s `emit`
+    /// contract, the `false // one finding per step` at the gate's call site, and
+    /// the R921 comment above it — and until this arm it was asserted in none:
+    /// turning that `break` into a `continue`, so every forbidding world files its
+    /// own finding, passed the entire workspace suite. R917 named this axis
+    /// "shipped and argued true and asserted nowhere", and it is the R909 class:
+    /// behaviour a reader can only take on trust.
+    ///
+    /// NON-VACUITY is built into the fixture instead of claimed. The second
+    /// subject walks a road that EXISTS, so its licensed judgement is emitted
+    /// twice, once per world — two worlds are demonstrably judging here, and the
+    /// single finding for the first subject is a deduplication rather than a
+    /// world that never looked.
+    #[test]
+    fn a_unit_two_worlds_both_forbid_is_reported_once() {
+        let order = chain(&["ch-1", "ch-2", "ch-3", "ch-4"]);
+        let rules = [transition_rule("roads", "pred-at", "adjacent", true, None)];
+        let mut facts = vec![
+            // The one road: `town-c` is reachable from `town-a`, `town-b` is not.
+            map_edge("town-a", "town-c"),
+            // `p` walks the pair no road joins — forbidden in EVERY world.
+            typed_fact("w1", "gt", "ch-2", "p", "pred-at", holds("town-a")),
+            typed_fact("w2", "gt", "ch-3", "p", "pred-at", holds("town-b")),
+            // `q` walks the road — licensed in every world, which is what makes
+            // this fixture's second world visibly present.
+            typed_fact("v1", "gt", "ch-2", "q", "pred-at", holds("town-a")),
+            typed_fact("v2", "gt", "ch-3", "q", "pred-at", holds("town-c")),
+        ];
+        facts[2].supersedes_in_frame = Some("w1".to_string());
+        facts[4].supersedes_in_frame = Some("v1".to_string());
+        let places = ["town-a", "town-b", "town-c"];
+        let mut store = map_g2_store(facts, &places, &[], Some("place"));
+        // A second world that inherits the whole chain, so both steps are judged
+        // in both worlds.
+        store.branches.insert(
+            "echo".into(),
+            mnemosyne_core::Branch {
+                description: String::new(),
+                forks_from: Some(mnemosyne_core::BranchFork {
+                    branch: MAIN_BRANCH.into(),
+                    at: "ch-4".into(),
+                }),
+                converges_from: vec![],
+            },
+        );
+        let r = scan_continuity(&store, &order, &rules).unwrap();
+        assert_eq!(
+            r.step_judgements
+                .iter()
+                .map(|j| (
+                    j.subject.as_str(),
+                    j.to.as_str(),
+                    j.branch.as_deref(),
+                    j.licensed
+                ))
+                .collect::<Vec<_>>(),
+            vec![
+                // The licensed step is judged by both worlds...
+                ("q", "town-c", Some("main"), true),
+                ("q", "town-c", Some("echo"), true),
+                // ...and the forbidden one stops at the first world that says so.
+                ("p", "town-b", Some("main"), false),
+            ],
+            "both worlds judge, and only the forbidden unit is short-circuited: {:?}",
+            r.step_judgements
+        );
+        assert_eq!(
+            rejects(&r).len(),
+            1,
+            "one unit, one finding — not one per forbidding world: {:?}",
+            r.violations
+        );
+    }
+
     /// Round 915 — a hierarchy the ORDER cannot place gives an empty hierarchy,
     /// so the step is judged flat, and the finding still names the world it was
     /// judged in.
@@ -13274,6 +13360,132 @@ mod tests {
             (Some(3), Some(0)),
             "the pairs are still unchained, but a route now joins the one that \
              mattered"
+        );
+    }
+
+    /// Round 927 — the route graph is read at ONE (world, frame), and both halves
+    /// of that coordinate are load-bearing: a road in a BELIEF frame does not join
+    /// two districts the ground-truth map leaves apart, and a road that exists
+    /// only on a FORK does not join them on the main line.
+    ///
+    /// Both filters were unpinned. Deleting either one from `place_components`
+    /// passed the entire workspace suite, which is the direction that makes the
+    /// check go QUIET: a count that answers "no gap here" because it read roads
+    /// nobody in that world can walk is worse than no count, and R917 named both
+    /// as missing oracles.
+    ///
+    /// The DISCRIMINATING INPUT is in the fixture rather than in the prose: each
+    /// arm scans the same store twice, moving the SAME road between the coordinate
+    /// that can be walked and the one that cannot. The control arm going to zero
+    /// is what proves the road is really in the store and really capable of
+    /// joining the two — without it, a mistyped fact would satisfy the assertion
+    /// by being absent.
+    ///
+    /// The fork arm also states which world the count speaks for: the union over
+    /// worlds. The pair IS route-joined in the world that took the detour — the
+    /// fourth arm moves the traveller onto that branch and watches the gap close —
+    /// and it is named anyway, because a world that cannot get there exists.
+    #[test]
+    fn a_route_is_read_at_one_world_and_frame_not_across_them() {
+        let order = chain(&["ch-1", "ch-2", "ch-3", "ch-4"]);
+        let rules = [transition_rule(
+            "roads",
+            "pred-at",
+            "adjacent",
+            true,
+            Some("contains"),
+        )];
+        let places = ["quarter", "market", "well", "palace", "shrine", "hall"];
+        // Two internally-connected districts, no road between them, and one
+        // subject asserted inside each with no succession joining the two.
+        let world = || {
+            vec![
+                contains_fact("quarter", "market"),
+                contains_fact("quarter", "well"),
+                contains_fact("palace", "shrine"),
+                contains_fact("palace", "hall"),
+                map_edge("market", "well"),
+                map_edge("shrine", "hall"),
+                typed_fact("u1", "gt", "ch-1", "p", "pred-at", holds("market")),
+                typed_fact("u2", "gt", "ch-3", "p", "pred-at", holds("shrine")),
+            ]
+        };
+        let scan = |facts: Vec<_>| {
+            let mut store = map_g2_store(facts, &places, &[], Some("place"));
+            // Registered whether or not this arm puts anything on it, so the two
+            // arms of the fork case differ ONLY in where the road sits.
+            store.branches.insert(
+                "detour".into(),
+                mnemosyne_core::Branch {
+                    description: String::new(),
+                    forks_from: Some(mnemosyne_core::BranchFork {
+                        branch: MAIN_BRANCH.into(),
+                        at: "ch-4".into(),
+                    }),
+                    converges_from: vec![],
+                },
+            );
+            scan_continuity(&store, &order, &rules).unwrap()
+        };
+        let counts =
+            |r: &ContinuityReport| (r.unchained_state_pairs, r.unchained_unreachable_pairs);
+
+        // THE FRAME HALF. `mira` believes the two districts adjoin; the ground
+        // truth does not say so, and the count is about the ground truth.
+        let mut believed = world();
+        believed.push(typed_fact(
+            "e-believed",
+            "mira",
+            "ch-1",
+            "quarter",
+            "adjacent",
+            holds("palace"),
+        ));
+        let believed = scan(believed);
+        assert_eq!(
+            counts(&believed),
+            (Some(1), Some(1)),
+            "a road only a belief frame states joins nothing in the ground truth"
+        );
+
+        // THE WORLD HALF. The road is built on a fork; the main line never has it.
+        let mut forked = world();
+        let mut road = map_edge("quarter", "palace");
+        road.branch = Some("detour".to_string());
+        forked.push(road);
+        assert_eq!(
+            counts(&scan(forked)),
+            (Some(1), Some(1)),
+            "a road only a fork builds joins nothing on the main line"
+        );
+
+        // ...AND THE FORK CAN WALK WHAT IT BUILT. The same two facts, with the
+        // traveller moved onto the branch that has the road, close the gap. Without
+        // this the arm above would pass just as well on a road that failed to
+        // import at all, which is the way a scoping assertion usually goes vacuous.
+        let mut local = world();
+        for f in &mut local[6..8] {
+            f.branch = Some("detour".to_string());
+        }
+        let mut road = map_edge("quarter", "palace");
+        road.branch = Some("detour".to_string());
+        local.push(road);
+        assert_eq!(
+            counts(&scan(local)),
+            (Some(1), Some(0)),
+            "the world that built the road is the world that can walk it"
+        );
+
+        // THE CONTROL, and the reason neither assertion above is vacuous: the same
+        // road, at the coordinate the subject is actually asserted at, takes the
+        // count to zero while the pair stays unchained.
+        let mut joined = world();
+        joined.push(map_edge("quarter", "palace"));
+        assert_eq!(
+            counts(&scan(joined)),
+            (Some(1), Some(0)),
+            "the pair is still unchained, but a route the ground truth and the \
+             main line both hold now joins it"
         );
     }
 
