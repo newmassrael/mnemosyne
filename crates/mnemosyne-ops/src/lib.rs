@@ -439,6 +439,11 @@ pub struct ContinuityScanReport {
     /// never gated; undirected rules only (a directed rule may be `alive ->
     /// dead`, where unreachability is the design).
     pub unchained_unreachable_pairs: usize,
+    /// Round 921 — every declared step as the REAL classifier judged it, carried
+    /// through so a consumer reading this report and the gate cannot disagree
+    /// about what a step IS. Always populated (R663: a knob decides whether an
+    /// axis fails, never whether it is measured).
+    pub step_judgements: Vec<mnemosyne_validate::continuity::StepJudgement>,
     /// Interval-rule resolutions that could not be evaluated (operand absent
     /// on the right/bound leg, non-numeric, or ambiguous) — surfaced, never
     /// gated (Round 489, the R485 `unverifiable` class).
@@ -504,6 +509,7 @@ pub fn continuity_scan(
         rule_unordered_pairs: report.rule_unordered_pairs,
         unchained_state_pairs: report.unchained_state_pairs,
         unchained_unreachable_pairs: report.unchained_unreachable_pairs,
+        step_judgements: report.step_judgements.clone(),
         interval_unverifiable: report.interval_unverifiable,
         violation_count: report.violations.len(),
         interval_violation_count,

@@ -2133,6 +2133,13 @@ pub struct ContinuityReport {
     /// it. A place the map does not hold at all is left to `map_invented_place` /
     /// `map_contained_off_map` rather than counted twice.
     pub unchained_unreachable_pairs: usize,
+    /// Round 921 — every declared step of every transition rule, as the REAL
+    /// classifier judged it. ALWAYS populated, never knob-gated: a knob may
+    /// decide whether an axis FAILS, never whether it is MEASURED (the R663
+    /// line). Before this, "how many authored steps are crossings rather than
+    /// lifts" — the number R918 rested its scope on — could only be had by
+    /// re-implementing the classifier beside it.
+    pub step_judgements: Vec<StepJudgement>,
     /// Interval-rule operand resolutions (Round 489) that could not be
     /// evaluated: a rule applies to a subject (it has both operands) but an
     /// operand value is non-numeric, or an operand / a predicate-bound
@@ -3821,112 +3828,50 @@ pub fn scan_continuity(
                 // A rule with no `containment` has an empty parent map, so every
                 // lift is the identity in the root scope and the verdicts are
                 // bit-for-bit the pre-R913 ones.
-                let flat_hierarchy: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
-                let mut snapshot_memo: SnapshotMemo<'_> = BTreeMap::new();
-                for (sid, s) in &typed {
-                    let st = s.typed.as_ref().unwrap();
-                    let Some(pid) = &s.supersedes_in_frame else {
-                        continue;
-                    };
-                    // A missing predecessor is already surfaced as
-                    // SuccessionTargetMissing; an untyped or
-                    // other-predicate/subject predecessor is outside this
-                    // rule (partial coverage is the design).
-                    let Some(pt) = facts.get(pid).and_then(|p| p.typed.as_ref()) else {
-                        continue;
-                    };
-                    if pt.predicate != rule.predicate || pt.subject != st.subject {
-                        continue;
-                    }
-                    let (from, to) = (typed_object_key(&pt.object), typed_object_key(&st.object));
-                    // The worlds this step is judged in: those the successor is
-                    // VISIBLE in, each against that world's hierarchy at the
-                    // step's own canon point.
-                    //
-                    // Round 915 — the empty-`judged` fallback below is UNREACHABLE
-                    // as far as anything can construct, and it is kept only so the
-                    // loop has no silent hole: a fact is `In` in its own branch's
-                    // world (the departure bounds membership carries constrain
-                    // INHERITED facts, not a fact on the branch itself), and a fact
-                    // on an unregistered branch is rejected by the R440 boundary
-                    // before the scan. R914 called this path "a fact on a pruned
-                    // line", which was a guess and wrong; two attempts to fire it
-                    // (a no-order store, a fork with an incomparable start) both
-                    // stayed visible. What those attempts DO hit is pinned by
-                    // `a_hierarchy_the_order_cannot_place_judges_the_step_flat`:
-                    // the snapshot comes back empty and the lift is the identity,
-                    // which reaches the pre-R913 verdict by a different route.
-                    let mut judged: Vec<Option<&mnemosyne_core::BranchId>> = Vec::new();
-                    if let Some(cont) = containment {
-                        for world in &worlds {
-                            let ctx = WorldCtx {
-                                world,
-                                membership: &lineages[world],
-                                order,
-                                successors: &successors,
-                            };
-                            if ctx.visibility(s) != Vis::In {
-                                continue;
-                            }
-                            // Round 915 — one containment read per (world, frame,
-                            // point), shared by every step judged there. The
-                            // per-step read this replaces was redundant BY
-                            // CONSTRUCTION — the same three keys can only give the
-                            // same snapshot — so this removes duplicated work
-                            // rather than tuning a measured hot spot, and no
-                            // wall-clock claim is made for it.
-                            snapshot_memo
-                                .entry((world, &s.frame, &s.canon_from))
-                                .or_insert_with(|| {
-                                    containment_snapshot(&ctx, store, cont, &s.frame, &s.canon_from)
-                                });
-                            judged.push(Some(world));
+                // Round 921 — the step verdict lives in ONE place now,
+                // [`judge_steps`], and the gate is one of its two drivers. A
+                // report that re-walked the steps to describe them would be a
+                // SECOND classifier answering for the first — the instrument
+                // defect R920 measured, where a prose regex built beside the data
+                // answered for the data and under-counted one-way roads by half.
+                // Gate behaviour is unchanged: the FIRST world whose hierarchy
+                // forbids a step reports it, and that step is judged no further.
+                judge_steps(
+                    rule,
+                    containment.as_deref(),
+                    store,
+                    &typed,
+                    facts,
+                    &worlds,
+                    &lineages,
+                    order,
+                    &successors,
+                    &allowed,
+                    |j| {
+                        let licensed = j.licensed;
+                        report.step_judgements.push(j);
+                        if licensed {
+                            return true; // judge this step's remaining worlds
                         }
-                    }
-                    if judged.is_empty() {
-                        judged.push(None);
-                    }
-                    // One finding per step: the FIRST world whose hierarchy forbids
-                    // it. A step legal in every world it is visible in is legal.
-                    for world in judged {
-                        let snap = match world {
-                            Some(w) => &snapshot_memo[&(w, &s.frame, &s.canon_from)],
-                            None => &flat_hierarchy,
+                        let j = report.step_judgements.last().unwrap();
+                        let v = ContinuityViolation::RuleTransitionInvalid {
+                            rule: j.rule.clone(),
+                            predicate: j.predicate.clone(),
+                            frame: j.frame.clone(),
+                            branch: j.branch.clone(),
+                            subject: j.subject.clone(),
+                            predecessor: j.predecessor.clone(),
+                            successor: j.successor.clone(),
+                            from: j.from.clone(),
+                            to: j.to.clone(),
+                            scope: j.scope.clone().unwrap_or_default(),
+                            lifted_from: j.lifted_from.clone().unwrap_or_default(),
+                            lifted_to: j.lifted_to.clone().unwrap_or_default(),
                         };
-                        let parent = snapshot_parent(snap);
-                        let StepShape::Lifted {
-                            scope,
-                            from: lifted_from,
-                            to: lifted_to,
-                        } = classify_step(&parent, from, to)
-                        else {
-                            continue; // a descent or an ascent — entering or leaving
-                        };
-                        if allowed
-                            .get(lifted_from)
-                            .is_some_and(|next| next.contains(lifted_to))
-                        {
-                            continue;
-                        }
-                        report
-                            .violations
-                            .push(ContinuityViolation::RuleTransitionInvalid {
-                                rule: rule.id.clone(),
-                                predicate: rule.predicate.clone(),
-                                frame: s.frame.to_string(),
-                                branch: world.map(|w| w.to_string()),
-                                subject: st.subject.to_string(),
-                                predecessor: pid.to_string(),
-                                successor: sid.to_string(),
-                                from: from.to_string(),
-                                to: to.to_string(),
-                                scope: scope.to_string(),
-                                lifted_from: lifted_from.to_string(),
-                                lifted_to: lifted_to.to_string(),
-                            });
-                        break;
-                    }
-                }
+                        report.violations.push(v);
+                        false // one finding per step (the pre-R921 `break`)
+                    },
+                );
                 // The honesty half: same-frame same-subject typed pairs
                 // visible together in some world with NO succession PATH
                 // between them — states the chain never connects, which the
@@ -4490,6 +4435,166 @@ fn classify_step<'a>(
              ancestor arms must have returned first",
             cf[i]
         ),
+    }
+}
+
+/// Round 921 — ONE authored step, judged at ONE coordinate. The gate turns an
+/// unlicensed one into a `rule_transition_invalid`; the report prints them all.
+/// Both drive [`judge_steps`], so the description and the verdict cannot drift:
+/// a second walk built to describe the first is the instrument defect R920
+/// measured, where a regex built beside the data answered for the data.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct StepJudgement {
+    pub rule: String,
+    pub predicate: String,
+    pub frame: String,
+    /// The world whose hierarchy judged this step. `None` for a rule declaring
+    /// no `containment`: there is no per-world hierarchy, so the step is judged
+    /// once against the empty one.
+    pub branch: Option<String>,
+    pub subject: String,
+    pub predecessor: String,
+    pub successor: String,
+    pub from: String,
+    pub to: String,
+    /// The canon point whose hierarchy was read — the SUCCESSOR's `canon_from`,
+    /// the hierarchy in force at the step (Round 913).
+    pub point: String,
+    /// `"hierarchy"` for a descent or an ascent, `"lifted"` otherwise.
+    pub shape: &'static str,
+    /// The scope the lift landed in, and the two children compared there.
+    /// All three are absent for a hierarchy crossing, which lifts nothing.
+    pub scope: Option<String>,
+    pub lifted_from: Option<String>,
+    pub lifted_to: Option<String>,
+    /// Whether the map admits the step: ALWAYS true for a hierarchy crossing
+    /// (allowed outright, Round 913), and for a lifted pair whether the lifted
+    /// endpoints are an edge in that scope.
+    pub licensed: bool,
+}
+
+/// Round 921 — judge every declared step of one transition rule, emitting one
+/// [`StepJudgement`] per (step, judging world). `emit` returns `false` to stop
+/// judging THAT step's remaining worlds, which is how the gate keeps its
+/// one-finding-per-step behaviour without this function knowing what a finding
+/// is.
+///
+/// This is the only place a step is classified. It exists because the number
+/// that says how many authored steps are crossings versus lifts was, before this
+/// round, produced by re-implementing the classifier beside it (R918's M2) —
+/// corroborated but never executed. R920 measured what that class of instrument
+/// costs.
+#[allow(clippy::too_many_arguments)]
+fn judge_steps<'a>(
+    rule: &NarrativeRule,
+    containment: Option<&str>,
+    store: &'a AtomicStore,
+    typed: &[(&'a mnemosyne_core::FactId, &'a NarrativeFact)],
+    facts: &'a BTreeMap<mnemosyne_core::FactId, NarrativeFact>,
+    worlds: &'a [mnemosyne_core::BranchId],
+    lineages: &BTreeMap<mnemosyne_core::BranchId, mnemosyne_core::WorldMembership>,
+    order: &CanonOrder,
+    successors: &BTreeMap<&mnemosyne_core::FactId, Vec<(&mnemosyne_core::FactId, &NarrativeFact)>>,
+    allowed: &BTreeMap<&str, BTreeSet<&str>>,
+    mut emit: impl FnMut(StepJudgement) -> bool,
+) {
+    // A rule with no `containment` has an empty parent map, so every lift is the
+    // identity in the root scope and the verdicts are the pre-R913 ones.
+    let flat_hierarchy: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
+    let mut snapshot_memo: SnapshotMemo<'a> = BTreeMap::new();
+    for &(sid, s) in typed {
+        let st = s.typed.as_ref().unwrap();
+        let Some(pid) = &s.supersedes_in_frame else {
+            continue;
+        };
+        // A missing predecessor is already surfaced as SuccessionTargetMissing;
+        // an untyped or other-predicate/subject predecessor is outside this rule
+        // (partial coverage is the design).
+        let Some(pt) = facts.get(pid).and_then(|p| p.typed.as_ref()) else {
+            continue;
+        };
+        if pt.predicate != rule.predicate || pt.subject != st.subject {
+            continue;
+        }
+        let (from, to) = (typed_object_key(&pt.object), typed_object_key(&st.object));
+        // The worlds this step is judged in: those the successor is VISIBLE in,
+        // each against that world's hierarchy at the step's own canon point.
+        //
+        // Round 915 — the empty-`judged` fallback below is the ONLY path for a
+        // container-less rule (`judged` is filled only inside the `if let`), and
+        // for a containment-bearing rule it is unreachable as far as anything can
+        // construct: a fact is `In` in its own branch's world, and a fact on an
+        // unregistered branch is rejected by the R440 boundary before the scan.
+        let mut judged: Vec<Option<&'a mnemosyne_core::BranchId>> = Vec::new();
+        if let Some(cont) = containment {
+            for world in worlds {
+                let ctx = WorldCtx {
+                    world,
+                    membership: &lineages[world],
+                    order,
+                    successors,
+                };
+                if ctx.visibility(s) != Vis::In {
+                    continue;
+                }
+                // Round 915 — one containment read per (world, frame, point),
+                // shared by every step judged there.
+                snapshot_memo
+                    .entry((world, &s.frame, &s.canon_from))
+                    .or_insert_with(|| {
+                        containment_snapshot(&ctx, store, cont, &s.frame, &s.canon_from)
+                    });
+                judged.push(Some(world));
+            }
+        }
+        if judged.is_empty() {
+            judged.push(None);
+        }
+        for world in judged {
+            let snap = match world {
+                Some(w) => &snapshot_memo[&(w, &s.frame, &s.canon_from)],
+                None => &flat_hierarchy,
+            };
+            let parent = snapshot_parent(snap);
+            let (shape, scope, lifted_from, lifted_to, licensed) =
+                match classify_step(&parent, from, to) {
+                    // A descent or an ascent — entering or leaving. Allowed
+                    // outright, and it lifts nothing, so the three lift fields
+                    // are absent rather than echoing the endpoints.
+                    StepShape::Hierarchy => ("hierarchy", None, None, None, true),
+                    StepShape::Lifted {
+                        scope,
+                        from: lf,
+                        to: lt,
+                    } => (
+                        "lifted",
+                        Some(scope.to_string()),
+                        Some(lf.to_string()),
+                        Some(lt.to_string()),
+                        allowed.get(lf).is_some_and(|next| next.contains(lt)),
+                    ),
+                };
+            let keep_judging = emit(StepJudgement {
+                rule: rule.id.clone(),
+                predicate: rule.predicate.clone(),
+                frame: s.frame.to_string(),
+                branch: world.map(|w| w.to_string()),
+                subject: st.subject.to_string(),
+                predecessor: pid.to_string(),
+                successor: sid.to_string(),
+                from: from.to_string(),
+                to: to.to_string(),
+                point: s.canon_from.to_string(),
+                shape,
+                scope,
+                lifted_from,
+                lifted_to,
+                licensed,
+            });
+            if !keep_judging {
+                break;
+            }
+        }
     }
 }
 
@@ -10480,6 +10585,89 @@ mod tests {
 
     /// A transition outside the allowed set, riding the succession edge —
     /// caught at the exact offending pair (R441 probe 3).
+    /// Round 921 — the crossing-versus-lift split is MEASURED, not a constant.
+    /// Two stores differing by ONE coarse position: the direct one is all lifts
+    /// with the illegal pair caught, the laundered one is two hierarchy
+    /// crossings and catches nothing. All four recorded corpora contain zero
+    /// crossings, so a `hierarchy` count hardcoded to 0 would pass every live
+    /// measurement this arc has — this pair is what forbids that, and it is the
+    /// discriminating input R918's M2 was reported without.
+    #[test]
+    fn step_judgements_tell_a_crossing_from_a_lift() {
+        let map = || {
+            let mut f = vec![
+                typed_fact("c-a", "gt", "ch-1", "castle", "contains", at("room-a")),
+                typed_fact("c-b", "gt", "ch-1", "castle", "contains", at("room-b")),
+                typed_fact("c-h", "gt", "ch-1", "castle", "contains", at("hall")),
+            ];
+            // Doors a-hall and hall-b, but NEVER a-b: the direct step is illegal.
+            f.extend(adjacency_facts(
+                "adjacent",
+                &[
+                    ("room-a", "hall"),
+                    ("hall", "room-a"),
+                    ("hall", "room-b"),
+                    ("room-b", "hall"),
+                ],
+            ));
+            f
+        };
+        let rule = || {
+            [transition_rule(
+                "moves",
+                "at",
+                "adjacent",
+                false,
+                Some("contains"),
+            )]
+        };
+        let order = chain(&["ch-1", "ch-2", "ch-3", "ch-4"]);
+
+        // DIRECT — room-a to room-b in one step.
+        let mut direct = map();
+        direct.push(typed_fact("p1", "gt", "ch-2", "her", "at", at("room-a")));
+        let mut d2 = typed_fact("p2", "gt", "ch-3", "her", "at", at("room-b"));
+        d2.supersedes_in_frame = Some("p1".to_string());
+        direct.push(d2);
+        let d = scan_continuity(&store_with(direct), &order, &rule()).unwrap();
+        assert!(
+            d.step_judgements.iter().all(|j| j.shape == "lifted"),
+            "a sibling pair is a LIFT, not a crossing: {:?}",
+            d.step_judgements
+        );
+        assert_eq!(
+            d.step_judgements.iter().filter(|j| !j.licensed).count(),
+            1,
+            "the unlicensed pair must be counted: {:?}",
+            d.step_judgements
+        );
+
+        // LAUNDERED — the same move, with one coarse position between.
+        let mut laundered = map();
+        laundered.push(typed_fact("p1", "gt", "ch-2", "her", "at", at("room-a")));
+        let mut mid = typed_fact("pm", "gt", "ch-3", "her", "at", at("castle"));
+        mid.supersedes_in_frame = Some("p1".to_string());
+        laundered.push(mid);
+        let mut l2 = typed_fact("p2", "gt", "ch-4", "her", "at", at("room-b"));
+        l2.supersedes_in_frame = Some("pm".to_string());
+        laundered.push(l2);
+        let l = scan_continuity(&store_with(laundered), &order, &rule()).unwrap();
+        assert_eq!(
+            l.step_judgements
+                .iter()
+                .filter(|j| j.shape == "hierarchy")
+                .count(),
+            2,
+            "an ascent and a descent are CROSSINGS, and the count must see them: {:?}",
+            l.step_judgements
+        );
+        assert_eq!(
+            l.step_judgements.iter().filter(|j| !j.licensed).count(),
+            0,
+            "each hop is individually allowed — this is the laundering R918 measured"
+        );
+    }
+
     #[test]
     fn rule_transition_catches_disallowed_step() {
         let mut s2 = typed_fact("s2", "gt", "ch-2", "lucy", "life-status", at("dead"));

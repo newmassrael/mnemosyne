@@ -2922,6 +2922,32 @@ interval_unverifiable={} interval_severity={}",
                 report.interval_unverifiable,
                 interval_severity.map_or("off", Severity::as_str)
             );
+            // Round 921 — how the REAL classifier read every declared step.
+            // Printed for the reason the three lines below it are: a run with no
+            // crossings and a run whose crossings were never classified produce
+            // the same silence, and only this number tells them apart. Before
+            // this, the crossing-versus-lift split — the number Round 918 scoped
+            // its decisions on — existed nowhere the shipping code could produce
+            // it, and Round 920 measured what an instrument built beside the
+            // code costs when nobody can re-run it.
+            let hierarchy = report
+                .step_judgements
+                .iter()
+                .filter(|j| j.shape == "hierarchy")
+                .count();
+            let unlicensed = report
+                .step_judgements
+                .iter()
+                .filter(|j| !j.licensed)
+                .count();
+            println!(
+                "  steps judged: {} (hierarchy crossing {} / lifted {}, {} unlicensed) \u{2014} \
+                 --json carries each one with its scope and judging coordinate",
+                report.step_judgements.len(),
+                hierarchy,
+                report.step_judgements.len() - hierarchy,
+                unlicensed
+            );
         } else {
             // Zero-rules NOTICE (Round 664). The count above printed only when
             // NONZERO, so a run with no rules file wired — or a wired one that
