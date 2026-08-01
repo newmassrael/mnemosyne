@@ -1160,12 +1160,31 @@ mod tests {
             "the hint must send the author to the judged pair: {}",
             lifted.repair_hint
         );
+        // Round 929 — the CLAIM, not one hand-written substring. Until this round
+        // the whole negative guard here was `!contains("do not model it as a")`,
+        // and the contract's stale-phrase scanner never looked at this file, so
+        // R911's superseded answer could return REWORDED — "must not be written
+        // as a succession at all: reach for the co-hold" — sitting beside the
+        // correct run clause with the suite green. Measured by injection.
+        //
+        // Two halves, and neither alone is enough: the positive pin fails when
+        // the claim is inverted or deleted (a rewording cannot dodge it), and the
+        // shared list fails when a superseded sentence returns verbatim on ANY
+        // surface (this one is the third reader R917 found missing).
         assert!(
-            !lifted.repair_hint.contains("do not model it as a"),
-            "the R911 hint forbade modelling the crossing as a step, which R913 made \
-             false: {}",
+            lifted.repair_hint.contains("needs no edge at all"),
+            "the crossing rule is the half an author cannot infer, and an inverted \
+             hint would send them to author an `adjacency_cross_scope` edge: {}",
             lifted.repair_hint
         );
+        for phrase in crate::schema::SUPERSEDED_CROSSING_TELLINGS.iter().copied() {
+            assert!(
+                !lifted.repair_hint.contains(phrase),
+                "the hint an author is handed still carries the superseded telling \
+                 `{phrase}`: {}",
+                lifted.repair_hint
+            );
+        }
         assert!(
             lifted.locus.branch.as_deref() == Some("main"),
             "the judging world reaches the locus"

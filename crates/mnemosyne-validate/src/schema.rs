@@ -1675,6 +1675,31 @@ fn invariants() -> Vec<Invariant> {
     ]
 }
 
+/// Round 929 — the SUPERSEDED tellings of how a subject gets inside a container,
+/// in ONE list read by every surface that can carry one.
+///
+/// R911 answered "do not model it as a succession at all" and R913 falsified
+/// that: the crossing IS a declarable, checked step. The sentence therefore may
+/// not survive anywhere an author reads, and there are THREE such places — the
+/// rule-class prose, the rules-file wire, and the repair hint a rejected author
+/// is handed. R917 found the list scanning the first two and `verdict.rs`
+/// carrying a single hand-written substring of its own, so R911's answer could
+/// return there reworded past it. One list, three readers: a phrase added here
+/// is checked on every surface at once, which is the property a second copy
+/// cannot have.
+///
+/// This catches a stale sentence RETURNING VERBATIM. It cannot catch a rewording,
+/// and it is not asked to — that is the job of the POSITIVE claim pins beside
+/// each use, which fail when the claim they name is inverted or deleted.
+#[cfg(test)]
+pub(crate) const SUPERSEDED_CROSSING_TELLINGS: &[&str] = &[
+    "must not be walked on",
+    "a search-key, not a position",
+    "Entry is NOT a succession",
+    "no intermediate state exists",
+    "do not model it as a",
+];
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -2714,7 +2739,27 @@ mod tests {
         );
         assert!(
             containment.contains("descent") && containment.contains("ascent"),
-            "entering and leaving need no edge — the half an author cannot infer"
+            "an author searching for the crossing rule needs the vocabulary the \
+             finding and the docs use"
+        );
+        // Round 929 — and the CLAIM those two words are attached to, which is the
+        // half R917 found unpinned. The guard above asserts the words while its
+        // own message named the claim, so keeping both words and inverting the
+        // sentence to "STILL REQUIRES an edge between the container and the place
+        // inside it" passed the whole suite — and the contract would then be
+        // instructing an author to write the exact edge the gate rejects as
+        // `adjacency_cross_scope`. Measured by injection, not read off the code.
+        //
+        // The pin carries the ASCENT clause and not just the trailing phrase, and
+        // that is not caution: the first version of this guard pinned "needs no
+        // edge at all" alone, and R925's equal-endpoint sentence three lines below
+        // ("a chain that ends BACK WHERE IT STARTED needs no edge at all")
+        // satisfied it — the inverted crossing rule still passed. A claim pin that
+        // another claim can satisfy is a word pin wearing the right message.
+        assert!(
+            containment.contains("or an ascent (leaving) and needs no edge at all"),
+            "entering and leaving need NO edge — the half an author cannot infer, \
+             and the half an inverted sentence silently reverses"
         );
         assert!(
             containment.contains("rule_transition_invalid"),
@@ -2748,16 +2793,12 @@ mod tests {
         );
         // The superseded model must not be re-stated anywhere in the contract —
         // including Round 911's own answer, which Round 913 falsified. An author
-        // told the crossing cannot be a step will not write one.
-        let stale = [
-            "must not be walked on",
-            "a search-key, not a position",
-            "Entry is NOT a succession",
-            "no intermediate state exists",
-        ];
+        // told the crossing cannot be a step will not write one. Round 929 — the
+        // list itself now lives in ONE place and the repair hint is scanned with
+        // it too; see [`SUPERSEDED_CROSSING_TELLINGS`].
         let surfaces = [c.narrative_rules_wire, containment];
         for s in surfaces {
-            for phrase in stale {
+            for phrase in SUPERSEDED_CROSSING_TELLINGS.iter().copied() {
                 assert!(
                     !s.contains(phrase),
                     "the R703 grouping model is superseded by R716, but the contract still says \
