@@ -1339,3 +1339,165 @@ fn a_laundered_run_gates_and_the_report_counts_every_shape_by_name() {
         "the report must count each shape by name: {stdout}"
     );
 }
+
+/// Round 931 — the AUTHOR-FACING half of R913 reaches the verb authors run.
+///
+/// R913 required that a transition reject say WHERE it was judged and that
+/// R911's hint be rewritten with it. Both were built and both landed only in
+/// `continuity_actionable`, whose one non-test consumer is `mnemosyne-ops`. The
+/// map-corpus runbook prescribes `validate-continuity`, every recorded
+/// `continuity.log` came from it, and what it printed was `"scope":""` — a field
+/// an author cannot distinguish from "not applicable" — with no repair at all.
+///
+/// The fixture is the shape the recorded corpora actually hit: two districts,
+/// each internally connected, with no road between them, and one subject stepping
+/// from a room in one to a room in the other. The lift lands in the ROOT scope,
+/// which is exactly the case whose wire value is the empty string.
+///
+/// The discriminating pair is asserted together: the JSON line still carries the
+/// bare `"scope":""` for tooling, and the line under it says "the root scope" in
+/// words. Without the second, the empty field is all an author ever saw; without
+/// the first, this would be a rename of the wire rather than a delivery.
+fn write_two_district_workspace(ws: &Path) {
+    fs::create_dir_all(ws.join("docs/.atomic")).unwrap();
+    fs::write(
+        ws.join("mnemosyne.toml"),
+        "[workspace]\n[continuity]\ncanon_order_path = \"canon-order.json\"\n\
+         rules_path = \"narrative-rules.json\"\n",
+    )
+    .unwrap();
+    let place = |id: &str| (id.to_string(), serde_json::json!({ "kind": "place" }));
+    let mut entities: serde_json::Map<String, serde_json::Value> = [
+        "q-north", "q-south", "room-a", "room-n2", "room-b", "room-s2",
+    ]
+    .iter()
+    .map(|p| place(p))
+    .collect();
+    entities.insert("her".into(), serde_json::json!({ "kind": "person" }));
+    let mut facts = serde_json::Map::new();
+    let mut fact = |id: &str, subject: &str, predicate: &str, object: &str, at: &str, sup| {
+        let mut f = serde_json::json!({
+            "frame": "gt",
+            "entities": [subject, object],
+            "claim": format!("{subject} {predicate} {object}"),
+            "canon_from": at,
+            "evidence": [at],
+            "typed": { "subject": subject, "predicate": predicate,
+                       "object": { "kind": "entity", "id": object } }
+        });
+        if let Some(p) = sup {
+            f["supersedes_in_frame"] = serde_json::Value::String(String::from(p));
+        }
+        facts.insert(id.to_string(), f);
+    };
+    for (district, rooms) in [
+        ("q-north", ["room-a", "room-n2"]),
+        ("q-south", ["room-b", "room-s2"]),
+    ] {
+        for room in rooms {
+            fact(
+                &format!("c-{district}-{room}"),
+                district,
+                "contains",
+                room,
+                "ch-1",
+                None,
+            );
+        }
+        fact(
+            &format!("e-{district}"),
+            rooms[0],
+            "adjacent",
+            rooms[1],
+            "ch-1",
+            None,
+        );
+    }
+    // No road joins the districts, and she crosses anyway.
+    fact("h1", "her", "at", "room-a", "ch-1", None);
+    fact("h2", "her", "at", "room-b", "ch-2", Some("h1"));
+    let atomic = serde_json::json!({
+        "schema_version": 32,
+        "sections": { "ch-1": {}, "ch-2": {} },
+        "changelog_entries": {},
+        "frames": { "gt": {} },
+        "entity_kinds": { "place": {}, "person": {} },
+        "entities": entities,
+        "predicates": {
+            "adjacent": { "object_kind": "entity", "subject_kind": "place",
+                          "object_entity_kind": "place" },
+            "contains": { "object_kind": "entity" },
+            "at": { "object_kind": "entity" }
+        },
+        "narrative_facts": facts
+    });
+    fs::write(
+        ws.join("docs/.atomic/workspace.atomic.json"),
+        serde_json::to_string_pretty(&atomic).unwrap(),
+    )
+    .unwrap();
+    fs::write(
+        ws.join("canon-order.json"),
+        serde_json::json!({ "schema": "canon-order/v1", "edges": [["ch-1", "ch-2"]] }).to_string(),
+    )
+    .unwrap();
+    fs::write(
+        ws.join("narrative-rules.json"),
+        serde_json::json!({ "schema": "narrative-rules/v1", "rules": [
+            { "id": "roads", "class": "transition", "predicate": "at",
+              "adjacency": "adjacent", "undirected": true, "containment": "contains" }
+        ]})
+        .to_string(),
+    )
+    .unwrap();
+}
+
+#[test]
+fn a_transition_reject_reaches_the_author_with_its_scope_and_its_repair() {
+    let tmp = TempDir::new().unwrap();
+    write_two_district_workspace(tmp.path());
+
+    // The MACHINE line is unchanged: an empty scope string, which is what a
+    // parser reads and what an author could not interpret.
+    let out = run(tmp.path(), &["validate-continuity", "--json"]);
+    let v: serde_json::Value = serde_json::from_slice(&out.stdout).expect("json output");
+    let hit = &v["violations"][0];
+    assert_eq!(hit["kind"], "rule_transition_invalid", "{v}");
+    assert_eq!(
+        (
+            hit["scope"].as_str(),
+            hit["lifted_from"].as_str(),
+            hit["lifted_to"].as_str()
+        ),
+        (Some(""), Some("q-north"), Some("q-south")),
+        "the root-scope lift is the case whose wire value is empty: {v}"
+    );
+
+    let out = run(tmp.path(), &["validate-continuity"]);
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        stdout.contains(r#""scope":"""#),
+        "the machine line stays, verbatim, for tooling: {stdout}"
+    );
+    // ...and the author is told the same thing in words, including WHERE.
+    assert!(
+        stdout.contains(
+            "judged in the root scope as `q-north` -> `q-south`, which is not an edge there"
+        ),
+        "the empty scope must reach the author as words, and the lifted pair with \
+         it — that pair is the edge they can actually author: {stdout}"
+    );
+    // ...and the repair, once per KIND rather than once per finding.
+    assert!(
+        stdout.contains("repair hints (1 finding kind(s) above"),
+        "the hint legend must appear and count the kinds: {stdout}"
+    );
+    assert!(
+        stdout.contains("rule_transition_invalid \u{2014} correct the from/to values"),
+        "the hint is keyed by the kind an author just read: {stdout}"
+    );
+    assert!(
+        stdout.contains("entering or leaving a container is allowed outright"),
+        "and it is the REWRITTEN hint R913 asked for, not R911's: {stdout}"
+    );
+}

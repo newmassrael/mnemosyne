@@ -3030,8 +3030,41 @@ interval_unverifiable={} interval_severity={}",
             "  violations: {} (structural={} interval={})",
             report.violation_count, structural_count, report.interval_violation_count
         );
+        // Round 931 — the AUTHOR-FACING half, delivered to the verb authors
+        // actually run. R913 required that a reject say WHERE it was judged and
+        // that R911's hint be rewritten with it; both were built, and both landed
+        // only in `continuity_actionable`, whose one non-test consumer is
+        // `mnemosyne-ops`. The map-corpus runbook prescribes `validate-continuity`
+        // and every recorded `continuity.log` came from it, so what an author has
+        // seen since R913 is `"scope":""` — a field whose empty value they cannot
+        // distinguish from "not applicable" — and no repair at all.
+        //
+        // Read through `continuity_actionable` rather than formatted here: it
+        // already renders the empty scope as "the root scope" and names the lifted
+        // pair, and a second copy of that prose beside it is the drift R920
+        // measured. The JSON line stays FIRST and unchanged — it is what tooling
+        // parses.
+        //
+        // The hint is per-KIND, so it prints once in a legend rather than once per
+        // finding; the message is per-finding, because it names this step's own
+        // judging coordinate.
+        let mut repairs: std::collections::BTreeMap<String, String> =
+            std::collections::BTreeMap::new();
         for v in &report.violations {
             println!("  {}", serde_json::to_string(v)?);
+            let a = mnemosyne_validate::verdict::continuity_actionable(v);
+            println!("    {}", a.message);
+            repairs.entry(a.rule).or_insert(a.repair_hint);
+        }
+        if !repairs.is_empty() {
+            println!(
+                "  repair hints ({} finding kind(s) above; one hint each, not one per \
+                 finding):",
+                repairs.len()
+            );
+            for (rule, hint) in &repairs {
+                println!("    {rule} \u{2014} {hint}");
+            }
         }
         // Interval opt-in NOTICE (Round 491): a declared interval rule is
         // surface-only until `interval_severity = reject`. Name the count so a
