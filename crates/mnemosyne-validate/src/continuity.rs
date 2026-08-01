@@ -4208,13 +4208,13 @@ fn scan_containment_tree(
                             });
                     }
                 }
-                // Cycle within the snapshot's functional parent graph (first
-                // container per place — a place with a SECOND container is already
-                // the multiple-parents finding, so a cycle closing only through
-                // that non-first container is under-reported, never a silent
-                // accept: the store is gated regardless). Reported once per cycle,
-                // rotated to start at the minimum member (mirror SuccessionCycle
-                // R463).
+                // Cycle within the snapshot's functional parent graph. A place
+                // with a SECOND container has no parent there at all since Round
+                // 928, so a cycle closing through such a place is under-reported,
+                // never a silent accept: that place is already the
+                // multiple-parents finding and the store is gated regardless.
+                // Reported once per cycle, rotated to start at the minimum member
+                // (mirror SuccessionCycle R463).
                 let parent = snapshot_parent(&snap);
                 for &start in parent.keys() {
                     let mut path: Vec<&str> = Vec::new();
@@ -4298,11 +4298,29 @@ fn containment_snapshot(
 }
 
 /// Round 716 — the functional direct-parent map from a containment snapshot:
-/// contained -> its (first) container. A place with >1 container is R715's
-/// multiple-parents finding; here the first is taken so the partition has a
-/// single parent to scope by.
+/// contained -> its container. THE ONE RESOLVER for "which scope is this place
+/// in", read by the step classifier ([`classify_step`]), the edge partition
+/// ([`scan_spatial_map`]) and the containment-cycle walk, so those three can
+/// never disagree about the same store (the R699 one-model discipline).
+///
+/// Round 928 — A PLACE WITH TWO CONTAINERS GETS NEITHER. Until this round the
+/// FIRST container was taken, and R917 measured what that costs: `next()` versus
+/// `next_back()` flips a step verdict, and RENAMING a container — pure spelling,
+/// no change to the world — turns an accept into a reject. A verdict that
+/// depends on how a place is spelled is not a verdict.
+///
+/// Omitting the place is the only answer that uses NO information about which
+/// container won, so it is the only one a rename cannot move. It is also the
+/// safe direction under this file's standing rule for a broken hierarchy —
+/// under-report, never a SILENT ACCEPT (the same rule the cycle walk states):
+/// the guessed parent could make a crossing legal, and without it the pair must
+/// be licensed by a declared edge like any other. Nothing here is left unsaid,
+/// because the place itself is R715's `ContainmentMultipleParents` at the same
+/// (frame, world, point) — this function declines to answer, it does not hide
+/// the question.
 fn snapshot_parent(snap: &BTreeMap<String, BTreeSet<String>>) -> BTreeMap<&str, &str> {
     snap.iter()
+        .filter(|(_, conts)| conts.len() == 1)
         .map(|(c, conts)| (c.as_str(), conts.iter().next().unwrap().as_str()))
         .collect()
 }
@@ -13124,6 +13142,102 @@ mod tests {
             vec![("castle", "room-b", "hierarchy", &[][..])],
             "the world that cannot place the middle judges the descent alone: {:?}",
             r.step_judgements
+        );
+    }
+
+    /// Round 928 — a place with TWO containers is put in NEITHER, and the verdict
+    /// is the same whatever the containers are called.
+    ///
+    /// R917 measured the defect as a rename: `snapshot_parent` took the FIRST
+    /// container, so a step into a two-container place was a legal descent when
+    /// the step's own container sorted first and an unlicensed lift when it did
+    /// not. The two arms here are that rename and nothing else — the same world,
+    /// the same step, one container spelled to sort BEFORE `keep` and once AFTER
+    /// — and before this round they disagreed.
+    ///
+    /// There is no oracle for the old behaviour, which is why R927 left this to
+    /// its own round rather than writing one: a test pinning `next()` would have
+    /// made an arbitrary pick the contract and would have had to be inverted the
+    /// moment the pick stopped guessing.
+    ///
+    /// The third arm is the discriminating input. With ONE container the step is
+    /// the descent it always was, so the equality above is a rename invariance and
+    /// not the trivial observation that this fixture rejects everything. The
+    /// fourth is the other half of "declines to answer, does not hide the
+    /// question": R715 names the place at the same coordinate, so nothing about
+    /// the broken hierarchy goes unsaid.
+    #[test]
+    fn a_place_with_two_containers_is_put_in_neither() {
+        let order = chain(&["ch-1", "ch-2", "ch-3", "ch-4"]);
+        let rules = [transition_rule(
+            "roads",
+            "pred-at",
+            "adjacent",
+            true,
+            Some("contains"),
+        )];
+        // `hall` is held by `keep` and by the traveller's own container. Which of
+        // the two sorts first is the only thing that changes between arms.
+        let scan = |castle: &str, second_container: bool| {
+            let mut facts = vec![
+                contains_fact(castle, "hall"),
+                // A road between two places neither arm touches, so the adjacency
+                // predicate is declared without licensing anything here.
+                map_edge("far-a", "far-b"),
+                typed_fact("h1", "gt", "ch-2", "p", "pred-at", holds(castle)),
+                typed_fact("h2", "gt", "ch-3", "p", "pred-at", holds("hall")),
+            ];
+            facts[3].supersedes_in_frame = Some("h1".to_string());
+            if second_container {
+                facts.push(contains_fact("keep", "hall"));
+            }
+            let mut places = vec![castle, "hall", "far-a", "far-b"];
+            if second_container {
+                places.push("keep");
+            }
+            let store = map_g2_store(facts, &places, &[], Some("place"));
+            let r = scan_continuity(&store, &order, &rules).unwrap();
+            let step = r
+                .step_judgements
+                .iter()
+                .find(|j| j.to == "hall")
+                .map(|j| (j.shape, j.licensed))
+                .expect("the step into the hall is judged");
+            let named = r.violations.iter().any(|v| {
+                matches!(
+                    v,
+                    ContinuityViolation::ContainmentMultipleParents { place, .. } if place == "hall"
+                )
+            });
+            (step, named)
+        };
+
+        // THE RENAME. `aardvark-castle` sorts before `keep`, `zulu-castle` after,
+        // so the old first-container pick answered the two differently.
+        assert_eq!(
+            scan("aardvark-castle", true),
+            scan("zulu-castle", true),
+            "the verdict may not depend on how a container is spelled"
+        );
+        assert_eq!(
+            scan("zulu-castle", true).0,
+            ("lifted", false),
+            "and the answer is not a crossing: with two containers there is no \
+             hierarchy to cross, so the pair needs a declared road like any other"
+        );
+
+        // THE CONTROL. One container, and the same step is the descent it always
+        // was — so the arms above pin a rename invariance rather than a fixture
+        // that rejects whatever it is given.
+        assert_eq!(
+            scan("zulu-castle", false),
+            (("hierarchy", true), false),
+            "one container, and entering it is a crossing, allowed, unnamed"
+        );
+        // ...and the broken hierarchy is never silent: R715 names the place.
+        assert!(
+            scan("zulu-castle", true).1,
+            "the author is told which place has two containers"
         );
     }
 
