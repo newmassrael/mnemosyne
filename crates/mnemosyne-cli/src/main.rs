@@ -2943,23 +2943,36 @@ interval_unverifiable={} interval_severity={}",
             // its decisions on — existed nowhere the shipping code could produce
             // it, and Round 920 measured what an instrument built beside the
             // code costs when nobody can re-run it.
-            let hierarchy = report
-                .step_judgements
-                .iter()
-                .filter(|j| j.shape == "hierarchy")
-                .count();
+            let shape = |s: &str| {
+                report
+                    .step_judgements
+                    .iter()
+                    .filter(|j| j.shape == s)
+                    .count()
+            };
             let unlicensed = report
                 .step_judgements
                 .iter()
                 .filter(|j| !j.licensed)
                 .count();
+            // Round 925 — each shape counted by NAME rather than one of them
+            // derived as "the rest". The unit gained a third shape this round
+            // (`unmoved`), and a subtraction would have folded it into `lifted`
+            // and reported a lift that was never judged as one.
             println!(
-                "  steps judged: {} (hierarchy crossing {} / lifted {}, {} unlicensed) \u{2014} \
-                 --json carries each one with its scope and judging coordinate",
+                "  steps judged: {} (hierarchy crossing {} / lifted {} / unmoved {}, {} \
+                 unlicensed; {} of them RUNS of consecutive crossings) \u{2014} --json carries \
+                 each one with its scope, route and judging coordinate",
                 report.step_judgements.len(),
-                hierarchy,
-                report.step_judgements.len() - hierarchy,
-                unlicensed
+                shape("hierarchy"),
+                shape("lifted"),
+                shape("unmoved"),
+                unlicensed,
+                report
+                    .step_judgements
+                    .iter()
+                    .filter(|j| !j.via.is_empty())
+                    .count()
             );
         } else {
             // Zero-rules NOTICE (Round 664). The count above printed only when

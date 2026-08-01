@@ -1443,7 +1443,17 @@ fn rule_class_specs() -> Vec<RuleClassSpec> {
                             names the lifted pair, which is the edge you could author. Adding an \
                             edge from a container to something inside it is still \
                             `adjacency_cross_scope`: the step model changed here, the edge model \
-                            did not. THE ALTERNATIVE TELLING, still legal (Round 911): let the \
+                            did not. ROUND 925 — A CHAIN OF CROSSINGS IS ONE MOVE. Consecutive \
+                            crossings by one subject (out of a room, into the courtyard, into \
+                            another room) are judged TOGETHER, between the last place before the \
+                            chain and the first place after it, because a crossing changes the \
+                            GRAIN of the claim and not the position — so a chain of them moves \
+                            nobody either. Routing a step through a container therefore does NOT \
+                            license it: if no edge joins the two rooms, saying `room-a` -> \
+                            `courtyard` -> `room-b` is the same finding as saying `room-a` -> \
+                            `room-b`, and the finding names the whole route. A chain that ends \
+                            BACK WHERE IT STARTED needs no edge at all — nobody moved. THE \
+                            ALTERNATIVE TELLING, still legal (Round 911): let the \
                             COARSE fact (`at` the container) CO-HOLD across the whole visit — one \
                             fact whose canon extent spans it — while the FINE facts inside succeed \
                             each other normally. That overlap is legal only because a \
@@ -2717,6 +2727,24 @@ mod tests {
         assert!(
             containment.contains("unchained_state_pairs"),
             "the limit is that only a DECLARED crossing is checked; say so"
+        );
+        // Round 925 — the run rule, pinned as CLAIMS rather than as words. A
+        // guard that pins the word `chain` passes on prose that says the
+        // opposite; these three fail if the sentence is inverted, dropped or
+        // softened, which is the R917 debt-3 lesson about prose guards.
+        assert!(
+            containment.contains("A CHAIN OF CROSSINGS IS ONE MOVE"),
+            "an author who reads that each crossing is judged alone will launder a \
+             forbidden step through a container"
+        );
+        assert!(
+            containment.contains("does NOT license it"),
+            "the consequence is the whole point: routing through a container licenses nothing"
+        );
+        assert!(
+            containment.contains("BACK WHERE IT STARTED needs no edge at all"),
+            "the equal-endpoint half must be stated too, or an author who steps out and back \
+             will expect a reject and rewrite correct prose"
         );
         // The superseded model must not be re-stated anywhere in the contract —
         // including Round 911's own answer, which Round 913 falsified. An author

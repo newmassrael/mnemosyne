@@ -1192,3 +1192,150 @@ fn store_native_map_edge_cost_semantic_end_to_end() {
     assert_eq!(hit["fact"], "f-loves", "it names the offending fact: {v}");
     assert_eq!(hit["found"], "loves", "and its actual predicate: {v}");
 }
+
+/// Round 925 — the RUN, end-to-end through the real binary: the gate, the JSON
+/// wire, and the human report line an author actually reads.
+///
+/// Two subjects walk the same castle. One goes `room-a -> castle -> room-b`
+/// where no door joins the two rooms — before this round each crossing was
+/// judged alone and that chain was SILENT (R918 M6 reproduced it in a store).
+/// The other goes `room-a -> castle -> room-a` and must stay clean (R918 M7):
+/// she never left the room.
+///
+/// The report line is pinned because it is the only place the three shapes are
+/// counted, and this round added a third. A count derived as "everything that
+/// is not a crossing" would have folded `unmoved` into `lifted` and reported a
+/// lift that was never judged as one — the R924 defect class, one line up.
+fn write_run_workspace(ws: &Path) {
+    fs::create_dir_all(ws.join("docs/.atomic")).unwrap();
+    fs::write(
+        ws.join("mnemosyne.toml"),
+        "[workspace]\n[continuity]\ncanon_order_path = \"canon-order.json\"\n\
+         rules_path = \"narrative-rules.json\"\n",
+    )
+    .unwrap();
+    // room-a — room-c — room-b, with NO room-a—room-b door; all three sit in
+    // the castle, which is the only place in the root scope.
+    let place = |id: &str| (id.to_string(), serde_json::json!({ "kind": "place" }));
+    let mut entities: serde_json::Map<String, serde_json::Value> =
+        ["castle", "room-a", "room-b", "room-c"]
+            .iter()
+            .map(|p| place(p))
+            .collect();
+    entities.insert("her".into(), serde_json::json!({ "kind": "person" }));
+    entities.insert("him".into(), serde_json::json!({ "kind": "person" }));
+    let mut facts = serde_json::Map::new();
+    let mut fact = |id: &str, subject: &str, predicate: &str, object: &str, at: &str, sup| {
+        let mut f = serde_json::json!({
+            "frame": "gt",
+            "entities": [subject, object],
+            "claim": format!("{subject} {predicate} {object}"),
+            "canon_from": at,
+            "evidence": [at],
+            "typed": { "subject": subject, "predicate": predicate,
+                       "object": { "kind": "entity", "id": object } }
+        });
+        if let Some(p) = sup {
+            f["supersedes_in_frame"] = serde_json::Value::String(String::from(p));
+        }
+        facts.insert(id.to_string(), f);
+    };
+    for room in ["room-a", "room-b", "room-c"] {
+        fact(
+            &format!("c-{room}"),
+            "castle",
+            "contains",
+            room,
+            "ch-1",
+            None,
+        );
+    }
+    fact("e-a-c", "room-a", "adjacent", "room-c", "ch-1", None);
+    fact("e-c-b", "room-c", "adjacent", "room-b", "ch-1", None);
+    // The laundered route, and the return trip.
+    fact("h1", "her", "at", "room-a", "ch-1", None);
+    fact("h2", "her", "at", "castle", "ch-2", Some("h1"));
+    fact("h3", "her", "at", "room-b", "ch-3", Some("h2"));
+    fact("m1", "him", "at", "room-a", "ch-1", None);
+    fact("m2", "him", "at", "castle", "ch-2", Some("m1"));
+    fact("m3", "him", "at", "room-a", "ch-3", Some("m2"));
+    let atomic = serde_json::json!({
+        "schema_version": 32,
+        "sections": { "ch-1": {}, "ch-2": {}, "ch-3": {} },
+        "changelog_entries": {},
+        "frames": { "gt": {} },
+        "entity_kinds": { "place": {}, "person": {} },
+        "entities": entities,
+        "predicates": {
+            "adjacent": { "object_kind": "entity", "subject_kind": "place",
+                          "object_entity_kind": "place" },
+            "contains": { "object_kind": "entity" },
+            "at": { "object_kind": "entity" }
+        },
+        "narrative_facts": facts
+    });
+    fs::write(
+        ws.join("docs/.atomic/workspace.atomic.json"),
+        serde_json::to_string_pretty(&atomic).unwrap(),
+    )
+    .unwrap();
+    fs::write(
+        ws.join("canon-order.json"),
+        serde_json::json!({ "schema": "canon-order/v1",
+            "edges": [["ch-1", "ch-2"], ["ch-2", "ch-3"]] })
+        .to_string(),
+    )
+    .unwrap();
+    fs::write(
+        ws.join("narrative-rules.json"),
+        serde_json::json!({ "schema": "narrative-rules/v1", "rules": [
+            { "id": "roads", "class": "transition", "predicate": "at",
+              "adjacency": "adjacent", "undirected": true, "containment": "contains" }
+        ]})
+        .to_string(),
+    )
+    .unwrap();
+}
+
+#[test]
+fn a_laundered_run_gates_and_the_report_counts_every_shape_by_name() {
+    let tmp = TempDir::new().unwrap();
+    write_run_workspace(tmp.path());
+    let out = run(tmp.path(), &["validate-continuity", "--json"]);
+    assert!(
+        !out.status.success(),
+        "the laundered run must gate: {out:?}"
+    );
+    let v: serde_json::Value = serde_json::from_slice(&out.stdout).expect("json output");
+    assert_eq!(
+        v["violation_count"], 1,
+        "and nothing else in the world is: {v}"
+    );
+    let hit = &v["violations"][0];
+    assert_eq!(hit["kind"], "rule_transition_invalid");
+    assert_eq!(
+        (
+            hit["from"].as_str(),
+            hit["to"].as_str(),
+            hit["via"][0].as_str()
+        ),
+        (Some("room-a"), Some("room-b"), Some("castle")),
+        "the wire carries the run's outer endpoints and the route: {v}"
+    );
+    assert_eq!(
+        (hit["predecessor"].as_str(), hit["successor"].as_str()),
+        (Some("h1"), Some("h3")),
+        "the finding spans the whole run: {v}"
+    );
+    // The human line: three shapes counted BY NAME, and the run count beside
+    // them. `him` walked out and back, which is a run and is not a violation.
+    let out = run(tmp.path(), &["validate-continuity"]);
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        stdout.contains(
+            "steps judged: 2 (hierarchy crossing 0 / lifted 1 / unmoved 1, 1 unlicensed; \
+             2 of them RUNS of consecutive crossings)"
+        ),
+        "the report must count each shape by name: {stdout}"
+    );
+}

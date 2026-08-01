@@ -549,6 +549,7 @@ pub fn continuity_actionable(v: &ContinuityViolation) -> ActionableViolation {
             successor,
             from,
             to,
+            via,
             scope,
             lifted_from,
             lifted_to,
@@ -579,7 +580,10 @@ pub fn continuity_actionable(v: &ContinuityViolation) -> ActionableViolation {
              edge at all: entering or leaving a container is allowed outright. The coarse/fine \
              CO-HOLD remains legal as the alternative telling — one coarse fact spanning the \
              visit while the fine facts succeed each other inside it, accepted by a \
-             refinement-aware exclusive rule (one declaring `containment`)."
+             refinement-aware exclusive rule (one declaring `containment`). A CHAIN of \
+             crossings is judged as ONE move between its outer endpoints, so stepping \
+             through a container does not license a step the map forbids — write the \
+             missing edge, not a longer route through the hierarchy."
                 .to_string(),
             {
                 // Round 913 — a step is judged where its endpoints are
@@ -589,10 +593,28 @@ pub fn continuity_actionable(v: &ContinuityViolation) -> ActionableViolation {
                 // cannot fix, since an edge between them would be cross-scope —
                 // and "no edge joins the two districts holding them", which is
                 // the edge to write.
-                let base = format!(
-                    "transition rule `{rule}`: subject `{subject}` steps `{from}` -> `{to}` \
-                     (`{predecessor}` -> `{successor}`) outside the allowed set"
-                );
+                // Round 925 — when the unit judged is a RUN, the message says the
+                // whole route. `from`/`to` are the run's outer endpoints and the
+                // two facts named are the ones that OPEN and CLOSE it, so without
+                // the interior an author reading the two ids would find hops
+                // between them that this finding never mentions.
+                let base = if via.is_empty() {
+                    format!(
+                        "transition rule `{rule}`: subject `{subject}` steps `{from}` -> `{to}` \
+                         (`{predecessor}` -> `{successor}`) outside the allowed set"
+                    )
+                } else {
+                    format!(
+                        "transition rule `{rule}`: subject `{subject}` steps `{from}` -> {} -> \
+                         `{to}` (`{predecessor}` -> `{successor}`) outside the allowed set — a \
+                         run of container crossings is ONE move between its outer endpoints, so \
+                         the interior places do not license it",
+                        via.iter()
+                            .map(|p| format!("`{p}`"))
+                            .collect::<Vec<_>>()
+                            .join(" -> ")
+                    )
+                };
                 if (lifted_from, lifted_to) == (from, to) {
                     base
                 } else {
@@ -1085,9 +1107,14 @@ mod tests {
     /// author rejected on two rooms learns which DISTRICTS need the edge, and the
     /// R911 sentence "do not model it as a succession at all" must be gone — this
     /// round made the crossing a step, so that instruction is now false.
+    ///
+    /// Round 925 — and when the judged unit is a RUN, the ROUTE must reach the
+    /// author. The two facts a run-finding names are the ones that open and close
+    /// it, so an author handed only those two ids would look between them and find
+    /// hops the finding never mentioned.
     #[test]
     fn transition_reject_names_the_scope_it_was_judged_in() {
-        let judged = |scope: &str, lifted_from: &str, lifted_to: &str| {
+        let routed = |scope: &str, lifted_from: &str, lifted_to: &str, via: &[&str]| {
             ContinuityViolation::RuleTransitionInvalid {
                 rule: "roads".into(),
                 predicate: "pred-at".into(),
@@ -1098,10 +1125,14 @@ mod tests {
                 successor: "f-2".into(),
                 from: "ent-gate".into(),
                 to: "ent-shrine".into(),
+                via: via.iter().map(|p| (*p).to_string()).collect(),
                 scope: scope.into(),
                 lifted_from: lifted_from.into(),
                 lifted_to: lifted_to.into(),
             }
+        };
+        let judged = |scope: &str, lifted_from: &str, lifted_to: &str| {
+            routed(scope, lifted_from, lifted_to, &[])
         };
         let lifted = continuity_actionable(&judged("", "ent-gate", "ent-palace"));
         assert!(
@@ -1138,6 +1169,38 @@ mod tests {
         assert!(
             lifted.locus.branch.as_deref() == Some("main"),
             "the judging world reaches the locus"
+        );
+        // Round 925 — a RUN names its whole route, and the interior is the half
+        // an author cannot reconstruct from the two fact ids.
+        let run = continuity_actionable(&routed(
+            "",
+            "ent-gate",
+            "ent-palace",
+            &["ent-courtyard", "ent-cloister"],
+        ));
+        assert!(
+            run.message.contains("`ent-courtyard` -> `ent-cloister`"),
+            "the laundering path must reach the author, in order: {}",
+            run.message
+        );
+        assert!(
+            run.message.contains("ONE move between its outer endpoints"),
+            "and say WHY those interior places did not license it: {}",
+            run.message
+        );
+        // The discriminating half: a single hop carries no route prose, so the
+        // clause above is a description of this finding rather than boilerplate.
+        assert!(
+            !lifted.message.contains("outer endpoints"),
+            "a single-hop reject must not claim to be a run: {}",
+            lifted.message
+        );
+        assert!(
+            lifted
+                .repair_hint
+                .contains("stepping through a container does not license"),
+            "the hint must tell an author that a longer route is not the repair: {}",
+            lifted.repair_hint
         );
     }
 

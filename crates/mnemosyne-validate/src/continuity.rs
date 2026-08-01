@@ -1725,6 +1725,12 @@ pub enum ContinuityViolation {
     /// them", which is the edge the author actually has to write. `branch` is
     /// the world whose hierarchy judged it, or `None` when no `containment` is
     /// declared and the verdict is world-agnostic (the pre-R913 shape).
+    ///
+    /// Round 925 — `from`/`to` are the outer endpoints of the judged UNIT, which
+    /// for a chain of consecutive crossings is the whole RUN rather than its last
+    /// hop, and `via` then names the interior positions it passed through. A
+    /// finding naming only the last hop would point the author at a hop that is
+    /// individually legal (design R918.1).
     RuleTransitionInvalid {
         rule: String,
         predicate: String,
@@ -1736,6 +1742,8 @@ pub enum ContinuityViolation {
         successor: String,
         from: String,
         to: String,
+        #[serde(skip_serializing_if = "Vec::is_empty")]
+        via: Vec<String>,
         scope: String,
         lifted_from: String,
         lifted_to: String,
@@ -3887,6 +3895,7 @@ pub fn scan_continuity(
                             successor: j.successor.clone(),
                             from: j.from.clone(),
                             to: j.to.clone(),
+                            via: j.via.clone(),
                             scope: j.scope.clone().unwrap_or_default(),
                             lifted_from: j.lifted_from.clone().unwrap_or_default(),
                             lifted_to: j.lifted_to.clone().unwrap_or_default(),
@@ -4433,6 +4442,12 @@ enum StepShape<'a> {
         from: &'a str,
         to: &'a str,
     },
+    /// Round 925 — a RUN of crossings that ends where it began: the subject
+    /// went up (or in) and came back down to the same place, so the net
+    /// positional change is zero and no edge is required. Produced ONLY by
+    /// [`classify_run`]; see there for why a lone `a -> a` succession must not
+    /// reach it.
+    Unmoved,
 }
 
 /// Round 913 — classify a declared step `(from → to)` against one containment
@@ -4478,6 +4493,42 @@ fn classify_step<'a>(
             cf[i]
         ),
     }
+}
+
+/// Round 925 — classify a RUN of consecutive hierarchy crossings by its OUTER
+/// endpoints (design R918.1). A crossing changes the GRAIN of a position claim
+/// and not the position (R714/R716, restated by [`StepShape::Hierarchy`]), so a
+/// CHAIN of crossings moves nobody either: the positional move is from the last
+/// place before the run to the first place after it, and THAT pair is what the
+/// map must license.
+///
+/// Without this, a step the map forbids is licensed by writing it through a
+/// container. Measured in a store rather than argued (R918 M6): `room-a ->
+/// room-b` with no door between them is one `rule_transition_invalid`, and
+/// inserting a single `at(her, castle)` fact between them takes the same world
+/// to `violations: 0` with both unchained counters also 0 — the laundering left
+/// no trace anywhere.
+///
+/// **The equal-endpoint clause is part of the decision, not an exception.** A
+/// run that returns to its start is [`StepShape::Unmoved`]: she never left the
+/// room, and demanding an edge from a place to itself would REJECT a corpus
+/// that is correct today (R918 M7, found by probing the proposed repair rather
+/// than reasoning about it — a naive outer-endpoint lift ships a false reject).
+///
+/// It may not move into [`classify_step`], which is why this function exists at
+/// all: there a lone `a -> a` succession — a restatement of one position at one
+/// grain, which R698 owns and rejects as a self-loop — would silently become
+/// legal. A run reaches here only with at least one INTERIOR position, so the
+/// two cases stay distinguishable.
+fn classify_run<'a>(
+    parent: &BTreeMap<&'a str, &'a str>,
+    from: &'a str,
+    to: &'a str,
+) -> StepShape<'a> {
+    if from == to {
+        return StepShape::Unmoved;
+    }
+    classify_step(parent, from, to)
 }
 
 /// Round 923 — the LICENSING set at one coordinate: which places a declared
@@ -4531,14 +4582,26 @@ pub struct StepJudgement {
     /// once against the empty one.
     pub branch: Option<String>,
     pub subject: String,
+    /// The fact stating `from`. For a RUN (see `via`) this is the fact before
+    /// the whole run, not before the last hop.
     pub predecessor: String,
+    /// The fact stating `to` — for a RUN, the fact that CLOSES it (design
+    /// R918.1: a finding naming only the last hop would point the author at a
+    /// hop that is individually legal).
     pub successor: String,
     pub from: String,
     pub to: String,
+    /// Round 925 — the INTERIOR positions this judgement passed through, in
+    /// order, when it covers a maximal run of consecutive hierarchy crossings
+    /// (one positional move, [`classify_run`]). EMPTY for a single hop, which is
+    /// a measured state and not a silence: every judgement carries it.
+    pub via: Vec<String>,
     /// The canon point whose hierarchy was read — the SUCCESSOR's `canon_from`,
-    /// the hierarchy in force at the step (Round 913).
+    /// the hierarchy in force at the step (Round 913). For a run, the point of
+    /// the fact that closes it.
     pub point: String,
-    /// `"hierarchy"` for a descent or an ascent, `"lifted"` otherwise.
+    /// `"hierarchy"` for a descent or an ascent, `"unmoved"` for a run that
+    /// returned to its start (Round 925), `"lifted"` otherwise.
     pub shape: &'static str,
     /// The scope the lift landed in, and the two children compared there.
     /// All three are absent for a hierarchy crossing, which lifts nothing.
@@ -4551,9 +4614,42 @@ pub struct StepJudgement {
     pub licensed: bool,
 }
 
+/// Round 925 — one authored hop of a succession chain: the two position facts
+/// and the two places they name. Assembled before any world judges them, because
+/// a RUN spans hops (design R918.1) and a hop cannot be judged without asking
+/// what the NEXT one is.
+struct Hop<'a> {
+    pid: &'a mnemosyne_core::FactId,
+    sid: &'a mnemosyne_core::FactId,
+    /// The successor fact: its frame, canon point and per-world visibility are
+    /// the coordinate this hop is judged at.
+    s: &'a NarrativeFact,
+    st: &'a mnemosyne_core::TypedClaim,
+    from: &'a str,
+    to: &'a str,
+}
+
+/// Round 925 — the shape of ONE hop at ONE coordinate, read at that hop's own
+/// (world, frame, point). Asked of a hop's NEIGHBOURS as well as of the hop
+/// being emitted, because a run is a chain of hops each judged at its own point,
+/// and the hierarchy in force can differ between them.
+fn hop_shape<'m, 'a: 'm>(
+    memo: &'m SnapshotMemo<'a>,
+    flat: &'m BTreeMap<String, BTreeSet<String>>,
+    containment: Option<&str>,
+    hop: &Hop<'a>,
+    world: Option<&'a mnemosyne_core::BranchId>,
+) -> StepShape<'m> {
+    let snap = match world {
+        Some(w) if containment.is_some() => &memo[&(w, &hop.s.frame, &hop.s.canon_from)],
+        _ => flat,
+    };
+    classify_step(&snapshot_parent(snap), hop.from, hop.to)
+}
+
 /// Round 921 — judge every declared step of one transition rule, emitting one
-/// [`StepJudgement`] per (step, judging world). `emit` returns `false` to stop
-/// judging THAT step's remaining worlds, which is how the gate keeps its
+/// [`StepJudgement`] per (judged unit, judging world). `emit` returns `false` to
+/// stop judging THAT unit's remaining worlds, which is how the gate keeps its
 /// one-finding-per-step behaviour without this function knowing what a finding
 /// is.
 ///
@@ -4562,6 +4658,14 @@ pub struct StepJudgement {
 /// round, produced by re-implementing the classifier beside it (R918's M2) —
 /// corroborated but never executed. R920 measured what that class of instrument
 /// costs.
+///
+/// Round 925 — the judged UNIT is no longer the hop but the RUN: a maximal chain
+/// of consecutive hierarchy crossings for one subject in one (frame, world) is
+/// ONE positional move, judged at its outer endpoints ([`classify_run`]). An
+/// interior hop emits nothing; the run is judged where it CLOSES. Runs are
+/// assembled per world, because a hop's shape is a function of that world's
+/// hierarchy at that hop's point — the same pair can be a crossing in one world
+/// and a lift in another.
 #[allow(clippy::too_many_arguments)]
 fn judge_steps<'a>(
     rule: &NarrativeRule,
@@ -4593,6 +4697,10 @@ fn judge_steps<'a>(
         ),
         BTreeMap<&'a str, BTreeSet<&'a str>>,
     > = BTreeMap::new();
+
+    // PASS 1 — the authored hops, in the order `typed` gives them, which is the
+    // order judgements are emitted in (unchanged since R921).
+    let mut hops: Vec<Hop<'a>> = Vec::new();
     for &(sid, s) in typed {
         let st = s.typed.as_ref().unwrap();
         let Some(pid) = &s.supersedes_in_frame else {
@@ -4607,19 +4715,47 @@ fn judge_steps<'a>(
         if pt.predicate != rule.predicate || pt.subject != st.subject {
             continue;
         }
-        let (from, to) = (typed_object_key(&pt.object), typed_object_key(&st.object));
-        // The worlds this step is judged in: those the successor is VISIBLE in,
-        // each against that world's hierarchy at the step's own canon point.
-        //
-        // Round 923 — the empty-`judged` fallback below is now reachable ONLY by
-        // a successor visible in NO world, for EVERY rule: worlds are walked
-        // whether or not containment is declared, because a road can be
-        // world-scoped where nothing contains anything. R915 said this path is
-        // unconstructible and R917 corrected it — it was the ONLY path for a
-        // container-less rule while those rules skipped the world walk. Both are
-        // now true at once, so the R915 reasoning stands unqualified: a fact is
-        // `In` in its own branch's world, and a fact on an unregistered branch is
-        // rejected by the R440 boundary before the scan.
+        hops.push(Hop {
+            pid,
+            sid,
+            s,
+            st,
+            from: typed_object_key(&pt.object),
+            to: typed_object_key(&st.object),
+        });
+    }
+    // Round 925 — the chain links, both ways. `supersedes_in_frame` is a single
+    // id, so a fact CLOSES at most one hop and the backward walk is
+    // deterministic; several hops may LEAVE one fact (a fork). Succession is
+    // same-frame at the mutate primitive and never crosses a branch, so a chain
+    // built from these links is already the "one subject, one frame" run the
+    // design asks for.
+    let closes: BTreeMap<&'a mnemosyne_core::FactId, usize> =
+        hops.iter().enumerate().map(|(i, h)| (h.sid, i)).collect();
+    let mut opens: BTreeMap<&'a mnemosyne_core::FactId, Vec<usize>> = BTreeMap::new();
+    for (i, h) in hops.iter().enumerate() {
+        opens.entry(h.pid).or_default().push(i);
+    }
+
+    // PASS 2 — the worlds each hop is judged in, and the map read at each of
+    // those coordinates: those the successor is VISIBLE in, each against that
+    // world's hierarchy at the step's own canon point. Filled BEFORE any judging
+    // because a run asks its NEIGHBOUR's shape, which is read at the neighbour's
+    // own point — the reads may not be interleaved with the judging that
+    // consumes them.
+    //
+    // Round 923 — the empty-`judged` fallback below is reachable ONLY by a
+    // successor visible in NO world, for EVERY rule: worlds are walked whether or
+    // not containment is declared, because a road can be world-scoped where
+    // nothing contains anything. R915 said this path is unconstructible and R917
+    // corrected it — it was the ONLY path for a container-less rule while those
+    // rules skipped the world walk. Both are now true at once, so the R915
+    // reasoning stands unqualified: a fact is `In` in its own branch's world, and
+    // a fact on an unregistered branch is rejected by the R440 boundary before
+    // the scan.
+    let mut judged_in: Vec<Vec<Option<&'a mnemosyne_core::BranchId>>> =
+        Vec::with_capacity(hops.len());
+    for h in &hops {
         let mut judged: Vec<Option<&'a mnemosyne_core::BranchId>> = Vec::new();
         for world in worlds {
             let ctx = WorldCtx {
@@ -4628,7 +4764,7 @@ fn judge_steps<'a>(
                 order,
                 successors,
             };
-            if ctx.visibility(s) != Vis::In {
+            if ctx.visibility(h.s) != Vis::In {
                 continue;
             }
             // Round 915 — one containment read per (world, frame, point), shared
@@ -4638,21 +4774,21 @@ fn judge_steps<'a>(
             // world-scoped even where nothing contains anything.
             if let Some(cont) = containment {
                 snapshot_memo
-                    .entry((world, &s.frame, &s.canon_from))
+                    .entry((world, &h.s.frame, &h.s.canon_from))
                     .or_insert_with(|| {
-                        containment_snapshot(&ctx, store, cont, &s.frame, &s.canon_from)
+                        containment_snapshot(&ctx, store, cont, &h.s.frame, &h.s.canon_from)
                     });
             }
             allowed_memo
-                .entry((world, &s.frame, &s.canon_from))
+                .entry((world, &h.s.frame, &h.s.canon_from))
                 .or_insert_with(|| {
                     adjacency_allowed_at(
                         &ctx,
                         store,
                         adjacency,
                         undirected,
-                        &s.frame,
-                        &s.canon_from,
+                        &h.s.frame,
+                        &h.s.canon_from,
                     )
                 });
             judged.push(Some(world));
@@ -4660,45 +4796,124 @@ fn judge_steps<'a>(
         if judged.is_empty() {
             judged.push(None);
         }
-        for world in judged {
-            let snap = match world {
-                Some(w) if containment.is_some() => &snapshot_memo[&(w, &s.frame, &s.canon_from)],
-                _ => &flat_hierarchy,
+        judged_in.push(judged);
+    }
+
+    // PASS 3 — judge. Hop-major and world-inner, the pre-R925 emission order and
+    // the pre-R925 short-circuit: the FIRST world whose map forbids a unit
+    // reports it, and that unit is judged no further.
+    for (i, hop) in hops.iter().enumerate() {
+        for world in judged_in[i].iter().copied() {
+            // Round 925 — the run this hop closes, if it closes one. A lone
+            // crossing keeps its own endpoints and `interior` stays empty.
+            let mut interior: Vec<&'a str> = Vec::new();
+            let mut head = i;
+            let shape = match hop_shape(&snapshot_memo, &flat_hierarchy, containment, hop, world) {
+                StepShape::Hierarchy => {
+                    // Is this crossing INTERIOR to a longer run? The run is
+                    // judged where it CLOSES, so an interior hop emits nothing
+                    // here. A fork whose continuations DIFFER (one a crossing,
+                    // one not) closes the run at both points: both are real
+                    // paths through this hop, and judging only the longer one
+                    // would lose a check the map is owed.
+                    let next = opens.get(hop.sid).map_or(&[][..], Vec::as_slice);
+                    let (mut any, mut all_crossings) = (false, true);
+                    for &j in next {
+                        if !judged_in[j].contains(&world) {
+                            continue;
+                        }
+                        any = true;
+                        all_crossings &= matches!(
+                            hop_shape(
+                                &snapshot_memo,
+                                &flat_hierarchy,
+                                containment,
+                                &hops[j],
+                                world
+                            ),
+                            StepShape::Hierarchy
+                        );
+                    }
+                    if any && all_crossings {
+                        continue;
+                    }
+                    // It closes one: walk BACK over consecutive crossings,
+                    // collecting the interior positions on the way out.
+                    while let Some(&k) = closes.get(hops[head].pid) {
+                        if !judged_in[k].contains(&world)
+                            || !matches!(
+                                hop_shape(
+                                    &snapshot_memo,
+                                    &flat_hierarchy,
+                                    containment,
+                                    &hops[k],
+                                    world
+                                ),
+                                StepShape::Hierarchy
+                            )
+                        {
+                            break;
+                        }
+                        interior.push(hops[head].from);
+                        head = k;
+                    }
+                    if interior.is_empty() {
+                        // A descent or an ascent on its own — the R913 verdict,
+                        // unchanged.
+                        StepShape::Hierarchy
+                    } else {
+                        interior.reverse();
+                        let snap = match world {
+                            Some(w) if containment.is_some() => {
+                                &snapshot_memo[&(w, &hop.s.frame, &hop.s.canon_from)]
+                            }
+                            _ => &flat_hierarchy,
+                        };
+                        // The run is classified at the CLOSING hop's coordinate:
+                        // the hierarchy in force where the move lands, which is
+                        // the R913 rule ("the successor's point") read at the
+                        // unit this round makes the successor of.
+                        classify_run(&snapshot_parent(snap), hops[head].from, hop.to)
+                    }
+                }
+                other => other,
             };
             let allowed = match world {
-                Some(w) => &allowed_memo[&(w, &s.frame, &s.canon_from)],
+                Some(w) => &allowed_memo[&(w, &hop.s.frame, &hop.s.canon_from)],
                 None => &no_edges,
             };
-            let parent = snapshot_parent(snap);
-            let (shape, scope, lifted_from, lifted_to, licensed) =
-                match classify_step(&parent, from, to) {
-                    // A descent or an ascent — entering or leaving. Allowed
-                    // outright, and it lifts nothing, so the three lift fields
-                    // are absent rather than echoing the endpoints.
-                    StepShape::Hierarchy => ("hierarchy", None, None, None, true),
-                    StepShape::Lifted {
-                        scope,
-                        from: lf,
-                        to: lt,
-                    } => (
-                        "lifted",
-                        Some(scope.to_string()),
-                        Some(lf.to_string()),
-                        Some(lt.to_string()),
-                        allowed.get(lf).is_some_and(|next| next.contains(lt)),
-                    ),
-                };
+            let (shape, scope, lifted_from, lifted_to, licensed) = match shape {
+                // A descent or an ascent — entering or leaving. Allowed
+                // outright, and it lifts nothing, so the three lift fields
+                // are absent rather than echoing the endpoints.
+                StepShape::Hierarchy => ("hierarchy", None, None, None, true),
+                // Round 925 — a run that came back to where it started. Nobody
+                // moved, so no edge is required and nothing was lifted.
+                StepShape::Unmoved => ("unmoved", None, None, None, true),
+                StepShape::Lifted {
+                    scope,
+                    from: lf,
+                    to: lt,
+                } => (
+                    "lifted",
+                    Some(scope.to_string()),
+                    Some(lf.to_string()),
+                    Some(lt.to_string()),
+                    allowed.get(lf).is_some_and(|next| next.contains(lt)),
+                ),
+            };
             let keep_judging = emit(StepJudgement {
                 rule: rule.id.clone(),
                 predicate: rule.predicate.clone(),
-                frame: s.frame.to_string(),
+                frame: hop.s.frame.to_string(),
                 branch: world.map(|w| w.to_string()),
-                subject: st.subject.to_string(),
-                predecessor: pid.to_string(),
-                successor: sid.to_string(),
-                from: from.to_string(),
-                to: to.to_string(),
-                point: s.canon_from.to_string(),
+                subject: hop.st.subject.to_string(),
+                predecessor: hops[head].pid.to_string(),
+                successor: hop.sid.to_string(),
+                from: hops[head].from.to_string(),
+                to: hop.to.to_string(),
+                via: interior.iter().map(|p| (*p).to_string()).collect(),
+                point: hop.s.canon_from.to_string(),
                 shape,
                 scope,
                 lifted_from,
@@ -10854,12 +11069,20 @@ mod tests {
     }
 
     /// Round 921 — the crossing-versus-lift split is MEASURED, not a constant.
-    /// Two stores differing by ONE coarse position: the direct one is all lifts
-    /// with the illegal pair caught, the laundered one is two hierarchy
-    /// crossings and catches nothing. All four recorded corpora contain zero
-    /// crossings, so a `hierarchy` count hardcoded to 0 would pass every live
-    /// measurement this arc has — this pair is what forbids that, and it is the
+    /// Three stores over one castle: a direct sibling step is all lifts with the
+    /// illegal pair caught, a lone ascent is a CROSSING, and the laundered route
+    /// is neither. All four recorded corpora contain zero crossings, so a
+    /// `hierarchy` count hardcoded to 0 would pass every live measurement this
+    /// arc has — the lone-ascent arm is what forbids that, and it is the
     /// discriminating input R918's M2 was reported without.
+    ///
+    /// Round 925 — THE LAUNDERED ARM'S VERDICT FLIPPED, on purpose, and this
+    /// fixture is why the flip is worth having: it was written to demonstrate
+    /// that two individually-legal crossings let a forbidden step through
+    /// (`unlicensed 0`), and that is now ONE lifted run reported once, judged
+    /// between the outer endpoints the map never joined. The other two arms are
+    /// unchanged, which is the honesty axis — this round moved the unit of
+    /// judgement, not the classifier under it.
     #[test]
     fn step_judgements_tell_a_crossing_from_a_lift() {
         let map = || {
@@ -10910,7 +11133,31 @@ mod tests {
             d.step_judgements
         );
 
-        // LAUNDERED — the same move, with one coarse position between.
+        // LONE ASCENT — she walks out of the room into the castle and stops
+        // there. One crossing, allowed outright, and the arm that keeps the
+        // `hierarchy` count from being a constant nobody could falsify.
+        let mut leaving = map();
+        leaving.push(typed_fact("p1", "gt", "ch-2", "her", "at", at("room-a")));
+        let mut up = typed_fact("p2", "gt", "ch-3", "her", "at", at("castle"));
+        up.supersedes_in_frame = Some("p1".to_string());
+        leaving.push(up);
+        let a = scan_continuity(&store_with(leaving), &order, &rule()).unwrap();
+        assert_eq!(
+            a.step_judgements
+                .iter()
+                .filter(|j| j.shape == "hierarchy" && j.licensed && j.via.is_empty())
+                .count(),
+            1,
+            "leaving a container is a CROSSING, and the count must see it: {:?}",
+            a.step_judgements
+        );
+
+        // LAUNDERED — the same move as DIRECT, with one coarse position between.
+        // Round 925: the two crossings are ONE positional move, so this is a
+        // single lifted run between `room-a` and `room-b` — the pair the map
+        // never joined. Before this round each hop was judged alone and the
+        // forbidden step passed with `unlicensed 0`, which is the defect R918
+        // measured in a store (M6) and this arm now pins closed.
         let mut laundered = map();
         laundered.push(typed_fact("p1", "gt", "ch-2", "her", "at", at("room-a")));
         let mut mid = typed_fact("pm", "gt", "ch-3", "her", "at", at("castle"));
@@ -10923,16 +11170,17 @@ mod tests {
         assert_eq!(
             l.step_judgements
                 .iter()
-                .filter(|j| j.shape == "hierarchy")
-                .count(),
-            2,
-            "an ascent and a descent are CROSSINGS, and the count must see them: {:?}",
+                .map(|j| (j.shape, j.via.as_slice(), j.licensed))
+                .collect::<Vec<_>>(),
+            vec![("lifted", &["castle".to_string()][..], false)],
+            "two crossings are one move, and the route through the castle licenses \
+             nothing: {:?}",
             l.step_judgements
         );
         assert_eq!(
             l.step_judgements.iter().filter(|j| !j.licensed).count(),
-            0,
-            "each hop is individually allowed — this is the laundering R918 measured"
+            1,
+            "the laundered step is caught exactly once, at the fact that closes the run"
         );
     }
 
@@ -12362,6 +12610,354 @@ mod tests {
             kinds(&scan(riding(), true)),
             vec!["adjacency_cross_scope", "rule_transition_invalid"],
             "a cross-scope edge is rejected AND may no longer license the step along it"
+        );
+    }
+
+    /// Round 925 — the transition findings of one scan, in report order.
+    fn rejects(r: &ContinuityReport) -> Vec<&ContinuityViolation> {
+        r.violations
+            .iter()
+            .filter(|v| matches!(v, ContinuityViolation::RuleTransitionInvalid { .. }))
+            .collect()
+    }
+
+    /// Round 925 (design R918.1) — a CHAIN of crossings is ONE positional move,
+    /// judged between its outer endpoints; and a chain that comes back to where
+    /// it started moves nobody and needs no edge.
+    ///
+    /// Why: a crossing changes the GRAIN of a position claim and not the position
+    /// (R714/R716), so a chain of them changes no position either. Without the
+    /// run, a step the map forbids is licensed by writing it THROUGH a container.
+    /// R918 reproduced that in a store rather than arguing it (M6): one inserted
+    /// `at(her, castle)` fact took a world from one `rule_transition_invalid` to
+    /// `violations: 0`, with `unchained_state_pairs` and
+    /// `unchained_unreachable_pairs` both 0 — nothing anywhere recorded the
+    /// laundering.
+    ///
+    /// The equal-endpoint arm (D) is the other half of the decision and the
+    /// reason the naive repair was not shipped: `room-a -> castle -> room-a` is 0
+    /// violations today and MUST stay 0 (R918 M7) — lifting a run's outer
+    /// endpoints and demanding an edge turns it into a self-pair with no edge, a
+    /// FALSE REJECT. It was found by probing the proposed repair, not by
+    /// reasoning about it.
+    #[test]
+    fn a_chain_of_crossings_is_one_move_and_a_return_trip_moves_nobody() {
+        let order = chain(&["ch-1", "ch-2", "ch-3", "ch-4"]);
+        let rules = [transition_rule(
+            "roads",
+            "pred-at",
+            "adjacent",
+            true,
+            Some("contains"),
+        )];
+        let pos = |id: &str, place: &str, at: &str, sup: Option<&str>| {
+            let mut f = typed_fact(id, "gt", at, "p", "pred-at", holds(place));
+            f.supersedes_in_frame = sup.map(|s| s.to_string());
+            f
+        };
+        // The castle holds three rooms joined room-a — room-c — room-b, with NO
+        // room-a—room-b door: that absence is what every arm below discriminates
+        // on. `wing` is a second container one level down, joined to room-c so
+        // the castle's scope stays connected, and it holds `cell`.
+        let world = || {
+            vec![
+                contains_fact("castle", "room-a"),
+                contains_fact("castle", "room-b"),
+                contains_fact("castle", "room-c"),
+                contains_fact("castle", "wing"),
+                contains_fact("wing", "cell"),
+                map_edge("room-a", "room-c"),
+                map_edge("room-c", "room-b"),
+                map_edge("room-c", "wing"),
+            ]
+        };
+        let places = ["castle", "room-a", "room-b", "room-c", "wing", "cell"];
+        let scan = |facts: Vec<FactImport>| {
+            let store = map_g2_store(facts, &places, &[], Some("place"));
+            scan_continuity(&store, &order, &rules).unwrap()
+        };
+        // Every arm authors ONE subject's chain into the same clean world, so a
+        // non-transition finding would mean the world itself is malformed.
+        let trip = |ids: [&str; 3], route: &[&str]| {
+            let mut f = world();
+            for (n, place) in route.iter().enumerate() {
+                f.push(pos(
+                    ids[n],
+                    place,
+                    ["ch-1", "ch-2", "ch-3"][n],
+                    (n > 0).then(|| ids[n - 1]),
+                ));
+            }
+            f
+        };
+
+        // A — the control (R918 M6). With no door between them, `room-a ->
+        // room-b` written directly is one finding. Everything below is measured
+        // against this one.
+        let direct = scan(trip(["d1", "d2", ""], &["room-a", "room-b"]));
+        assert_eq!(
+            rejects(&direct).len(),
+            1,
+            "no door joins room-a and room-b: {:?}",
+            direct.violations
+        );
+
+        // B — THE LAUNDERING, and the verdict this round changes: the SAME step
+        // written through the castle was 0 violations before, because each
+        // crossing was judged alone.
+        let laundered = scan(trip(["l1", "l2", "l3"], &["room-a", "castle", "room-b"]));
+        assert_eq!(
+            rejects(&laundered).len(),
+            1,
+            "a step through a container is the same step: {:?}",
+            laundered.violations
+        );
+        match rejects(&laundered)[0] {
+            ContinuityViolation::RuleTransitionInvalid {
+                from,
+                to,
+                via,
+                predecessor,
+                successor,
+                scope,
+                lifted_from,
+                lifted_to,
+                ..
+            } => {
+                assert_eq!(
+                    (from.as_str(), to.as_str()),
+                    ("room-a", "room-b"),
+                    "the finding names the run's OUTER endpoints, not the last hop — which \
+                     is individually legal"
+                );
+                assert_eq!(via, &["castle"], "and the route it was laundered through");
+                assert_eq!(
+                    (predecessor.as_str(), successor.as_str()),
+                    ("l1", "l3"),
+                    "the two facts named are the one that OPENS the run and the one that \
+                     CLOSES it"
+                );
+                assert_eq!(
+                    (scope.as_str(), lifted_from.as_str(), lifted_to.as_str()),
+                    ("castle", "room-a", "room-b"),
+                    "the edge the author can actually write"
+                );
+            }
+            other => panic!("expected a transition finding, got {other:?}"),
+        }
+        // ...and it is ONE unit, not two hops each with a row: an interior
+        // crossing is judged as part of the run that closes, never again on its
+        // own.
+        assert_eq!(
+            laundered.step_judgements.len(),
+            1,
+            "two hops, one positional move: {:?}",
+            laundered.step_judgements
+        );
+
+        // C — the non-vacuity half, as a discriminating PAIR with B: the same
+        // SHAPE, through the same container, but with a door between the outer
+        // endpoints — and it passes. Without this, B would show only that the run
+        // form rejects, not that it judges the right pair.
+        let joined = scan(trip(["c1", "c2", "c3"], &["room-a", "castle", "room-c"]));
+        assert!(
+            rejects(&joined).is_empty(),
+            "room-a and room-c ARE joined, so the same chain is licensed: {:?}",
+            joined.violations
+        );
+
+        // D — R918 M7: out and back is not a move. A naive outer-endpoint lift
+        // makes this a self-pair with no edge and REJECTS a correct corpus.
+        let returned = scan(trip(["r1", "r2", "r3"], &["room-a", "castle", "room-a"]));
+        assert!(
+            rejects(&returned).is_empty(),
+            "she never left the room: {:?}",
+            returned.violations
+        );
+        // ...and it is judged as such rather than passing by accident: the unit
+        // says it did not move, and still shows the route it took.
+        let j = &returned.step_judgements;
+        assert_eq!(j.len(), 1, "{j:?}");
+        assert_eq!(
+            (j[0].shape, j[0].via.as_slice()),
+            ("unmoved", &["castle".to_string()][..])
+        );
+        assert!(j[0].licensed && j[0].scope.is_none(), "{:?}", j[0]);
+
+        // E — the equal-endpoint clause did NOT leak into the single hop: a lone
+        // `room-a -> room-a` succession is a restatement of one position at one
+        // grain, which R698 owns and still rejects. This is why `classify_run`
+        // exists as its own function instead of the clause living in
+        // `classify_step`.
+        let self_step = scan(trip(["s1", "s2", ""], &["room-a", "room-a"]));
+        assert_eq!(
+            rejects(&self_step).len(),
+            1,
+            "a self-succession is not a return trip: {:?}",
+            self_step.violations
+        );
+
+        // F — R913.2's two-level descent, now as a real CHAIN of two crossings:
+        // the outer endpoints are STILL in the containment relation, so the run
+        // is a crossing and needs no edge. The run rule may not over-reject the
+        // cases R913 worked.
+        let deep = scan(trip(["f1", "f2", "f3"], &["castle", "wing", "cell"]));
+        assert!(
+            rejects(&deep).is_empty(),
+            "castle contains cell transitively, so descending twice is still a descent: {:?}",
+            deep.violations
+        );
+        assert_eq!(deep.step_judgements[0].shape, "hierarchy");
+
+        // G — a chain of crossings BROKEN by an ordinary step is two units, and
+        // the run stops at the break: the leading crossing pair is judged on its
+        // own outer endpoints, then the flat hop is judged on its own. Without
+        // this, "maximal" would be untested and a greedy walk that swallowed the
+        // whole chain would pass every arm above.
+        let mut broken = world();
+        broken.push(pos("g1", "cell", "ch-1", None));
+        broken.push(pos("g2", "wing", "ch-2", Some("g1")));
+        broken.push(pos("g3", "room-c", "ch-3", Some("g2")));
+        broken.push(pos("g4", "room-b", "ch-4", Some("g3")));
+        let broken = scan(broken);
+        assert!(
+            rejects(&broken).is_empty(),
+            "cell -> wing is an ascent, wing -> room-c and room-c -> room-b are edges: {:?}",
+            broken.violations
+        );
+        assert_eq!(
+            broken
+                .step_judgements
+                .iter()
+                .map(|j| (j.from.as_str(), j.to.as_str(), j.shape))
+                .collect::<Vec<_>>(),
+            vec![
+                ("cell", "wing", "hierarchy"),
+                ("wing", "room-c", "lifted"),
+                ("room-c", "room-b", "lifted"),
+            ],
+            "the run ends where the crossings do"
+        );
+    }
+
+    /// Round 925 — a run is assembled PER WORLD, not once for the store. R918.6
+    /// left this as an open question for the next review ("the run is per
+    /// (subject, frame, world) by construction, but the memo key and the
+    /// first-forbidding-world break were never asserted"); it is cheap to answer
+    /// with data, so it is answered here rather than carried.
+    ///
+    /// ONE authored chain — `room-a -> castle -> room-b` — and two worlds that
+    /// disagree about what the castle is. On `main` nothing contains anything, so
+    /// those are two ordinary steps and the two roads the author drew license
+    /// them. On the fork the castle holds the rooms, so the same two facts are
+    /// crossings, they compose into ONE move, and the map has no `room-a` to
+    /// `room-b` door to license it.
+    ///
+    /// The fork's hierarchy also makes the two inherited flat roads
+    /// container-to-contents (`adjacency_cross_scope`) and leaves its castle
+    /// scope with no road inside it (`map_disconnected`). Both are R716 working,
+    /// not noise this arm hides: a world that declares a hierarchy must redraw
+    /// the roads it inherited. This arm measures the UNIT, so it asserts on the
+    /// transition findings and the judgements.
+    ///
+    /// The fork is taken at the chain's LAST point because a world inherits its
+    /// parent's facts only up to its departure — fork earlier and the chain is
+    /// simply invisible in the fork, which is the first thing this test measured
+    /// and got zero findings from.
+    #[test]
+    fn a_run_is_assembled_per_world_not_once() {
+        let order = chain(&["ch-1", "ch-2", "ch-3", "ch-4"]);
+        let rules = [transition_rule(
+            "roads",
+            "pred-at",
+            "adjacent",
+            true,
+            Some("contains"),
+        )];
+        let on_fork = |mut f: FactImport| {
+            f.branch = Some("nested".to_string());
+            f
+        };
+        let mut facts = vec![
+            // Flat and connected on `main`: the two roads the chain walks.
+            map_edge("room-a", "castle"),
+            map_edge("castle", "room-b"),
+            // The chain itself, on `main`, so BOTH worlds judge it.
+            typed_fact("q1", "gt", "ch-2", "p", "pred-at", holds("room-a")),
+            typed_fact("q2", "gt", "ch-3", "p", "pred-at", holds("castle")),
+            typed_fact("q3", "gt", "ch-4", "p", "pred-at", holds("room-b")),
+        ];
+        facts[3].supersedes_in_frame = Some("q1".to_string());
+        facts[4].supersedes_in_frame = Some("q2".to_string());
+        // Only on the fork: the castle holds the rooms.
+        for f in [
+            contains_fact("castle", "room-a"),
+            contains_fact("castle", "room-b"),
+        ] {
+            facts.push(on_fork(f));
+        }
+        let places = ["castle", "room-a", "room-b"];
+        let mut store = map_g2_store(facts, &places, &[], Some("place"));
+        store.branches.insert(
+            "nested".into(),
+            mnemosyne_core::Branch {
+                description: String::new(),
+                forks_from: Some(mnemosyne_core::BranchFork {
+                    branch: MAIN_BRANCH.into(),
+                    at: "ch-4".into(),
+                }),
+                converges_from: vec![],
+            },
+        );
+        let r = scan_continuity(&store, &order, &rules).unwrap();
+        let rejected = rejects(&r);
+        assert_eq!(
+            rejected.len(),
+            1,
+            "the flat world licenses both steps; only the world with a hierarchy \
+             composes them: {:?}",
+            r.violations
+        );
+        match rejected[0] {
+            ContinuityViolation::RuleTransitionInvalid {
+                branch,
+                from,
+                via,
+                to,
+                ..
+            } => {
+                assert_eq!(branch.as_deref(), Some("nested"));
+                assert_eq!(
+                    (from.as_str(), via.as_slice(), to.as_str()),
+                    ("room-a", &["castle".to_string()][..], "room-b")
+                );
+            }
+            other => panic!("expected a transition finding, got {other:?}"),
+        }
+        // The same two facts are TWO units in one world and ONE in the other —
+        // which is the property R918.6 asked for and the reason the classifier
+        // may not be hoisted out of the world loop.
+        let unit = |b: &str| {
+            r.step_judgements
+                .iter()
+                .filter(|j| j.branch.as_deref() == Some(b))
+                .map(|j| (j.from.as_str(), j.to.as_str(), j.shape, j.licensed))
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(
+            unit("main"),
+            vec![
+                ("room-a", "castle", "lifted", true),
+                ("castle", "room-b", "lifted", true)
+            ],
+            "with no hierarchy these are two ordinary steps: {:?}",
+            r.step_judgements
+        );
+        assert_eq!(
+            unit("nested"),
+            vec![("room-a", "room-b", "lifted", false)],
+            "with one, they are a single move the map never licensed: {:?}",
+            r.step_judgements
         );
     }
 
