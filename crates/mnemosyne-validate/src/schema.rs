@@ -590,8 +590,10 @@ fn manifest_kinds() -> Vec<KindWire> {
                     attaches to), \"n\": positive integer (0 or negative is a free teleport and \
                     rejects), \"unit\": unit id (REGISTERED; add it to `units` first) } — Round \
                     956. Until this wire existed the cost side table was reachable ONLY by the \
-                    `add-edge-cost` verb, so a file-only authoring — which is how the corpora on \
-                    record were written — could not touch it at all. Mnemosyne stores the number \
+                    `add-edge-cost` verb, so a file-only authoring could not touch it at all — \
+                    and the hand-written `side-tables.sh` scripts under \
+                    `phase1-map-corpus-experiment` are the tree's own record of that gap (R959). \
+                    Mnemosyne stores the number \
                     and NEVER adds two \
                     costs together — units are consumer vocabulary, so summing them is the \
                     consumer's arithmetic (invariant 4).",
@@ -1251,9 +1253,10 @@ fn exclusive_key_values() -> Vec<EnumValue> {
                 the thing and this is one holder per thing. Write the same \
                 relation thing-first, `held_by(thing, holder)`, and this value \
                 means one THING per holder, the opposite rule under the same \
-                name. Measured, not supposed: two corpora on record declare \
-                `held_by` with OPPOSITE `per` values and both call it \
-                one-holder-per-thing, so read the legs, never the role words."
+                name. MEASURED AT ROUND 965, not supposed: two corpora then on \
+                record declared `held_by` with OPPOSITE `per` values and both \
+                called it one-holder-per-thing, so read the legs, never the \
+                role words."
             }
         }
     }
@@ -1561,10 +1564,10 @@ fn rule_class_specs() -> Vec<RuleClassSpec> {
                             violation to leave the kinds off, and nothing here rejects you for \
                             it; `validate-continuity` NAMES the rule and predicate whose \
                             completeness went unevaluated, because a gate that evaluated nothing \
-                            must never read like a gate that passed. This is measured, not \
-                            supposed: HALF OF EVERY BLIND AUTHORING ON RECORD — three of six \
-                            corpora, one author per arm across three arms — declared no leg kind \
-                            at all and was never told. A container-less map \
+                            must never read like a gate that passed. THIS WAS MEASURED AT ROUND \
+                            934, not supposed: three of the six corpora then recorded — one \
+                            author per arm across three arms — declared no leg kind \
+                            at all and were never told. A container-less map \
                             degenerates to ONE root scope (the flat Round 702/703 behaviour). \
                             KNOWN LIMIT: two mutually-unreachable TOP-LEVEL containers produce no \
                             finding. Omit for a flat map. \

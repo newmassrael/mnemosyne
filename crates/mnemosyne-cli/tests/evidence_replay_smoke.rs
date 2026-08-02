@@ -2602,73 +2602,340 @@ fn transition_rule_census(root: &Path) -> (Vec<String>, Vec<String>) {
     (u, d)
 }
 
-/// THE CONTRACT MAY NOT HARDCODE A CENSUS OF THE CORPORA IT CANNOT RECOUNT.
+/// Whether an `adjacency` predicate names an entity kind on either leg.
+///
+/// The kinds are declared on the PREDICATE, in the facts manifest beside the
+/// rules artifact — not in the rules artifact that names the predicate — so
+/// this reads the sibling manifests rather than the rules file that sent it
+/// looking. A corpus that declares neither leg cannot be asked which entities
+/// are places, which is the omission the containment paragraph measured.
+fn map_leg_kind_census(root: &Path) -> (Vec<String>, Vec<String>) {
+    fn declared_kinds(dir: &Path) -> std::collections::HashMap<String, bool> {
+        let mut out = std::collections::HashMap::new();
+        let Ok(entries) = std::fs::read_dir(dir) else {
+            return out;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.extension().and_then(|e| e.to_str()) != Some("json") {
+                continue;
+            }
+            let Ok(text) = std::fs::read_to_string(&path) else {
+                continue;
+            };
+            let Ok(v) = serde_json::from_str::<serde_json::Value>(&text) else {
+                continue;
+            };
+            let Some(preds) = v.get("predicates").and_then(|p| p.as_array()) else {
+                continue;
+            };
+            for p in preds {
+                let Some(id) = p.get("predicate_id").and_then(|i| i.as_str()) else {
+                    continue;
+                };
+                let has = p.get("subject_kind").is_some_and(|k| !k.is_null())
+                    || p.get("object_entity_kind").is_some_and(|k| !k.is_null());
+                *out.entry(id.to_string()).or_insert(false) |= has;
+            }
+        }
+        out
+    }
+
+    fn walk(dir: &Path, omitted: &mut Vec<String>, declared: &mut Vec<String>) {
+        let Ok(entries) = std::fs::read_dir(dir) else {
+            return;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            let Ok(kind) = entry.file_type() else {
+                continue;
+            };
+            if kind.is_dir() {
+                walk(&path, omitted, declared);
+                continue;
+            }
+            if path.extension().and_then(|e| e.to_str()) != Some("json") {
+                continue;
+            }
+            let Ok(text) = std::fs::read_to_string(&path) else {
+                continue;
+            };
+            let Ok(v) = serde_json::from_str::<serde_json::Value>(&text) else {
+                continue;
+            };
+            let Some(rules) = v.get("rules").and_then(|r| r.as_array()) else {
+                continue;
+            };
+            let parent = path.parent().expect("a rules file has a directory");
+            let kinds = declared_kinds(parent);
+            for rule in rules {
+                if rule.get("class").and_then(|c| c.as_str()) != Some("transition") {
+                    continue;
+                }
+                // Only a rule that DECLARES an adjacency predicate is in scope:
+                // a transition rule without one has no map, and the claim this
+                // axis refutes is about maps.
+                let Some(adj) = rule.get("adjacency").and_then(|a| a.as_str()) else {
+                    continue;
+                };
+                let name = path.display().to_string();
+                if kinds.get(adj).copied().unwrap_or(false) {
+                    declared.push(name);
+                } else {
+                    omitted.push(name);
+                }
+            }
+        }
+    }
+    let (mut o, mut d) = (Vec::new(), Vec::new());
+    walk(&root.join("claudedocs"), &mut o, &mut d);
+    o.sort();
+    d.sort();
+    (o, d)
+}
+
+/// Recorded run trees split by whether the author dropped to a hand-written
+/// shell script, which is what "file-only authoring" is a claim ABOUT.
+fn authoring_mode_census() -> (Vec<String>, Vec<String>) {
+    let (mut scripted, mut file_only) = (Vec::new(), Vec::new());
+    for f in run_artifacts() {
+        if f.ends_with(".sh") {
+            scripted.push(f);
+        } else if f.ends_with(".json") {
+            file_only.push(f);
+        }
+    }
+    scripted.sort();
+    file_only.sort();
+    (scripted, file_only)
+}
+
+/// The nouns that name the recorded-corpus POPULATION.
+///
+/// Deliberately NOT a list of every plural in the document: this contract
+/// addresses a singular "the author" throughout, and the axis being banned is
+/// a claim about what the corpora on record DID.
+const POPULATION_NOUNS: &[&str] = &[
+    "corpus",
+    "corpora",
+    "author",
+    "authors",
+    "authoring",
+    "authorings",
+    "arm",
+    "arms",
+];
+
+const NUMBER_WORDS: &[&str] = &[
+    "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten", "half",
+];
+
+/// Words a count may run through before it reaches the noun it counts —
+/// "three OF THE six corpora", "one author PER arm".
+const COUNT_MODIFIERS: &[&str] = &["of", "the", "blind", "recorded", "authored", "per"];
+
+const UNIVERSAL_WORDS: &[&str] = &["every", "all", "each", "no", "none"];
+
+const POPULATION_ADJECTIVES: &[&str] = &["blind", "recorded", "authored"];
+
+fn is_number_word(t: &str) -> bool {
+    NUMBER_WORDS.contains(&t) || (!t.is_empty() && t.chars().all(|c| c.is_ascii_digit()))
+}
+
+/// A round pin anywhere in the sentence — `R969` or `Round 969`.
+///
+/// `Round 702/703` is a pin too, so the digits are read as a PREFIX rather than
+/// as a whole token.
+fn carries_round_pin(words: &[String]) -> bool {
+    words.iter().enumerate().any(|(i, w)| {
+        let three_digit_prefix =
+            |t: &str| t.len() >= 3 && t[..3].chars().all(|c| c.is_ascii_digit());
+        if w.starts_with('r') && w.len() >= 4 && three_digit_prefix(&w[1..]) {
+            return true;
+        }
+        w == "round" && words.get(i + 1).is_some_and(|n| three_digit_prefix(n))
+    })
+}
+
+/// The rendered contract, split into sentences and tokenised.
+///
+/// A COLON DOES NOT END A SENTENCE, and that is load-bearing rather than
+/// incidental: this document's measured claims are written "MEASURED AT ROUND
+/// 934, not supposed: three of the six corpora…", so splitting on `:` would
+/// file the pin and the count it dates as two different sentences and report
+/// every dated census as undated.
+fn contract_sentences(doc: &str) -> Vec<Vec<String>> {
+    doc.split(['.', ';'])
+        .map(|s| {
+            s.split_whitespace()
+                .map(|w| {
+                    w.trim_matches(|c: char| !c.is_ascii_alphanumeric())
+                        .to_lowercase()
+                })
+                .filter(|w| !w.is_empty())
+                .collect()
+        })
+        .collect()
+}
+
+/// Every census-shaped claim about the recorded corpora in the rendered
+/// contract: an undated COUNT of them, or a UNIVERSAL over them.
+fn census_claims(doc: &str) -> Vec<String> {
+    let mut found = Vec::new();
+    let pop = |w: &String| POPULATION_NOUNS.contains(&w.as_str());
+    for words in contract_sentences(doc) {
+        let dated = carries_round_pin(&words);
+        for (i, w) in words.iter().enumerate() {
+            if is_number_word(w) && !dated {
+                let mut j = i + 1;
+                while words
+                    .get(j)
+                    .is_some_and(|m| COUNT_MODIFIERS.contains(&m.as_str()) && !is_number_word(m))
+                {
+                    j += 1;
+                }
+                if words.get(j).is_some_and(pop) {
+                    found.push(format!("undated count: `{}`", words[i..=j].join(" ")));
+                }
+            }
+            let mut k = i + 1;
+            while words
+                .get(k)
+                .is_some_and(|m| POPULATION_ADJECTIVES.contains(&m.as_str()))
+            {
+                k += 1;
+            }
+            if UNIVERSAL_WORDS.contains(&w.as_str()) && words.get(k).is_some_and(pop) {
+                found.push(format!("universal: `{}`", words[i..=k].join(" ")));
+            }
+            if w == "the"
+                && words.get(k).is_some_and(pop)
+                && words.get(k + 1).is_some_and(|n| n == "on")
+                && words.get(k + 2).is_some_and(|n| n == "record")
+            {
+                found.push(format!("universal: `{}`", words[i..=k + 2].join(" ")));
+            }
+        }
+    }
+    found
+}
+
+/// One axis of the recorded-corpus population, with the two sides any universal
+/// claim about that axis would have to hold across.
+struct PopulationAxis<'a> {
+    name: &'a str,
+    left_label: &'a str,
+    left: &'a [String],
+    right_label: &'a str,
+    right: &'a [String],
+}
+
+/// THE CONTRACT MAY NOT STATE AN UNDATED CENSUS OF THE CORPORA IT CANNOT
+/// RECOUNT.
 ///
 /// Round 924 wrote "every corpus written against this contract is a DIRECTED
 /// map" into the surfaces a blind author reads. It was TRUE when written. Round
-/// 943's two blind authors declared `undirected: true`, and the sentence has
-/// shipped false ever since — for twenty-five rounds, into Round 961, which
-/// restated it as "every corpus on record has chosen directed" and recorded the
-/// branch as having no authored witness, and from there into Round 968, which
+/// 943's two blind authors declared `undirected: true`, and the sentence shipped
+/// false for twenty-five rounds, into Round 961, which restated it as "every
+/// corpus on record has chosen directed", and from there into Round 968, which
 /// took its baseline from that entry and reported a move from zero.
 ///
-/// This is Round 959's rule applied to a CLAIM rather than a number: a count no
-/// program recomputes must not live in shipping prose, because prose cannot go
-/// stale loudly. So the gate recounts. The census is the load-bearing half — it
-/// proves a counterexample EXISTS, which is why the ban is a measurement and not
-/// a style preference — and the quantifier list is only the anchor by which a
-/// universal claim is recognised in prose.
+/// Round 969 repaired that ONE sentence and left as its own carry that nothing
+/// recounted the other census-shaped claims. THERE WERE THREE, and the two this
+/// gate would not have caught in Round 969's form are the reason it is now over
+/// the WHOLE rendered document rather than two struct fields: the containment
+/// paragraph's "HALF OF EVERY BLIND AUTHORING ON RECORD — three of six corpora"
+/// (three of FIFTEEN when this ran, so the undated form overstated the defect by
+/// two and a half times), and the `edge_costs` row's "which is how the corpora on
+/// record were written" (the tree records ten hand-written shell scripts).
+///
+/// THE RULE IS DATE IT OR DROP IT, which is Round 969's own repair generalised:
+/// a count of the corpora is fine as HISTORY and never as STANDING FACT, so a
+/// count must carry a round pin in its sentence, and a universal — which no
+/// date can rescue, since it claims the population entire — may not be written
+/// at all.
+///
+/// The surface is the RENDERED document (Round 957): the section headings are
+/// prose an author reads and a library cannot see, and they are not in the
+/// struct.
 ///
 /// WHAT THIS CANNOT DO, stated rather than implied (the Round 965 ceiling):
-/// prose can assert a census in words this list does not carry. What is
-/// checkable is that the phrasings which ALREADY went stale here cannot come
-/// back, and that the tree is still able to refute them.
+/// no word list separates a census ("every corpus chose directed") from a RULE
+/// ("every author must register ids first"), and this bans both. That costs
+/// nothing today — measured: this contract writes its rules about "an author"
+/// and "the author" and says "every author" zero times — and the failure is
+/// loud and rephraseable rather than silent. Prose can also assert a census in
+/// words this list does not carry; what is checkable is that the phrasings
+/// which ALREADY went stale here cannot come back.
 #[test]
-fn the_contract_states_no_corpus_census_it_cannot_recount() {
+fn the_contract_states_no_undated_census_of_its_own_corpora() {
     let root = repo_root();
+
+    // NON-VACUITY, and the reason the ban is a measurement rather than a style
+    // preference: a universal over the population is refutable EXACTLY WHEN the
+    // population is heterogeneous on that axis. These are the three axes the
+    // contract has actually made a census claim about, and each is asserted
+    // from both sides — so emptying either side of the corpus fails this test
+    // rather than letting it pass on a tree with nothing left to refute.
     let (undirected, directed) = transition_rule_census(&root);
-
-    // NON-VACUITY, and the reason the ban exists at all: the recorded corpora
-    // already refute any universal claim about which way they chose. Both arms
-    // are asserted, so deleting either side of the corpus makes this test fail
-    // rather than quietly pass on an empty tree.
-    assert!(
-        !undirected.is_empty(),
-        "no corpus on record declares `undirected: true` — if that is really so, \
-         this test's premise is gone and the ban has to be re-argued, not kept"
-    );
-    assert!(
-        !directed.is_empty(),
-        "no corpus on record is directed — the split this test reasons about \
-         does not exist"
-    );
-
-    let c = mnemosyne_validate::schema::describe_schema();
-    let field = c
-        .narrative_rules
-        .iter()
-        .flat_map(|r| r.parameters.iter())
-        .find(|p| p.name == "undirected")
-        .expect("the undirected parameter is still described")
-        .description;
-
-    // A universal quantifier over the corpora, in the two surfaces an author
-    // actually reads. Each of these is a phrasing this contract HAS carried.
-    let quantifiers = ["every corpus", "every recorded corpus", "all corpora"];
-    for surface in [field, c.narrative_rules_wire] {
-        let lower = surface.to_lowercase();
-        for q in quantifiers {
-            assert!(
-                !lower.contains(q),
-                "the contract asserts `{q}` about the corpora, and the tree \
-                 already refutes it: {} of the recorded transition rules are \
-                 undirected and {} are directed. A census belongs in a report \
-                 that is re-run, not in prose that cannot go stale loudly \
-                 (Round 959). First undirected witness: {}",
-                undirected.len(),
-                directed.len(),
-                undirected.first().expect("checked non-empty")
-            );
-        }
+    let (kind_omitted, kind_declared) = map_leg_kind_census(&root);
+    let (scripted, file_only) = authoring_mode_census();
+    let axes = [
+        PopulationAxis {
+            name: "transition rules by `undirected`",
+            left_label: "undirected",
+            left: &undirected,
+            right_label: "directed",
+            right: &directed,
+        },
+        PopulationAxis {
+            name: "map corpora by leg-kind declaration",
+            left_label: "omitted",
+            left: &kind_omitted,
+            right_label: "declared",
+            right: &kind_declared,
+        },
+        PopulationAxis {
+            name: "run trees by authoring mode",
+            left_label: "hand script",
+            left: &scripted,
+            right_label: "file-only",
+            right: &file_only,
+        },
+    ];
+    for axis in axes {
+        assert!(
+            !axis.left.is_empty() && !axis.right.is_empty(),
+            "the recorded corpora are homogeneous on `{}` ({}={}, {}={}), so a \
+             universal claim about that axis is no longer refutable by this tree \
+             and the ban on it has to be re-argued, not kept",
+            axis.name,
+            axis.left_label,
+            axis.left.len(),
+            axis.right_label,
+            axis.right.len()
+        );
     }
+
+    let claims = census_claims(&describe_schema());
+    assert!(
+        claims.is_empty(),
+        "the rendered contract states {} census-shaped claim(s) about its own \
+         corpora: {}. A count belongs in a report that is re-run, or in a \
+         sentence that DATES it; a universal belongs nowhere (Round 959, Round \
+         969). The tree recounts, and already refutes a universal on every axis \
+         this contract has claimed about: {} undirected transition rules against \
+         {} directed, {} map corpora omitting a leg kind against {} declaring \
+         one, {} hand-written scripts under run trees against {} authored files. \
+         First undirected witness: {}",
+        claims.len(),
+        claims.join(", "),
+        undirected.len(),
+        directed.len(),
+        kind_omitted.len(),
+        kind_declared.len(),
+        scripted.len(),
+        file_only.len(),
+        undirected.first().expect("checked non-empty"),
+    );
 }

@@ -5259,11 +5259,10 @@ pub struct PredicateImport {
 /// an `add-edge-cost`, applied through that verb's own core.
 ///
 /// This wire is why the round exists. The cost and guard side tables were
-/// reachable ONLY by verb, so a file-only authoring — which is how the blind
-/// corpora on record were written — could not touch them at all. What the
-/// authors did instead is the tree's own record of the gap: hand-written shell
-/// scripts calling the verbs, one of which says in its header that a manifest
-/// array for these tables is a silent no-op.
+/// reachable ONLY by verb, so a file-only authoring could not touch them at
+/// all. What the authors did instead is the tree's own record of the gap:
+/// hand-written shell scripts calling the verbs, one of which says in its
+/// header that a manifest array for these tables is a silent no-op.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct EdgeCostImport {
@@ -17107,10 +17106,9 @@ mod tests {
     /// A manifest reaches the map-edge side tables, under the SAME enforcement
     /// the standalone verbs apply.
     ///
-    /// Round 956. Both tables were verb-only, so a file-only authoring — which
-    /// is how the blind corpora on record were written — could not touch them,
-    /// and the authors who wanted them reached for a hand-written shell script
-    /// instead.
+    /// Round 956. Both tables were verb-only, so a file-only authoring could
+    /// not touch them, and the authors who wanted them reached for a
+    /// hand-written shell script instead.
     ///
     /// The rejects are the load-bearing half. They are asserted here NOT to
     /// re-test the primitives but to pin the parity: a second copy of these
