@@ -1,5 +1,5 @@
 {
-  "schema": "kit-replay/v2",
+  "schema": "kit-replay/v3",
   "revision_provenance": "derived-upper-bound",
   "derived_in": "Round 882",
   "derivation": "git log --diff-filter=A -1 -- <every input of the replay>: the newest commit that added any of them. A replay needs a tree holding ALL its inputs, so the pin is the max, and each add-commit is AT OR AFTER the run that produced that input.",
@@ -14,6 +14,56 @@
       "path": "run/author/facts.json",
       "role": "replay-input",
       "sha256": "dd7304be34e93b62fab416c5da69c2b2a202c902ede9408bbfec150cdfb298bc"
+    },
+    {
+      "path": "run/author/author-log.md",
+      "role": "run-artifact",
+      "sha256": "22393aaaf011feb711adb292207a519f911b340c4c7c1232c49f2b6bbfa799d4"
+    },
+    {
+      "path": "run/author/order.json",
+      "role": "run-artifact",
+      "sha256": "d86a70c89c1002011d353ed444f7980a6e52b51c3631f6ea297e90af5d6037dd"
+    },
+    {
+      "path": "run/judges/judge-1.md",
+      "role": "run-artifact",
+      "sha256": "297caa236cb6160c7df3868567a72fbf48af7743e204c2552ea6c61353a63752"
+    },
+    {
+      "path": "run/judges/judge-2.md",
+      "role": "run-artifact",
+      "sha256": "9b8660ec0c791bf6fd3c4cd12034c95155e7257b2560dbe78b041068dc967800"
+    },
+    {
+      "path": "run/judges/judge-3.md",
+      "role": "run-artifact",
+      "sha256": "b539f089831703222780d2f3f48f394c5508da4b28d096b855f7a8aa02c9f20a"
+    },
+    {
+      "path": "run/manuscripts/world-act-dig.md",
+      "role": "run-artifact",
+      "sha256": "ef9635995084da107c0955af1f31995daab2ae7c118ebc1f9986c2efb6969409"
+    },
+    {
+      "path": "run/manuscripts/world-act-flee.md",
+      "role": "run-artifact",
+      "sha256": "fef9c52703a6305ba90ad8978af13606234a6bc729640e97876597c6ca3522a1"
+    },
+    {
+      "path": "run/manuscripts/world-expose-deny.md",
+      "role": "run-artifact",
+      "sha256": "0f3be2ba0de97533b08ecc86a82be7c32ccae51a828a399c354fca3c5c37aeb1"
+    },
+    {
+      "path": "run/manuscripts/world-expose-recant.md",
+      "role": "run-artifact",
+      "sha256": "0fc43d05b67cb917a4c9cd5b05a135abc7479357e071dbf5eb32df283247b61f"
+    },
+    {
+      "path": "run/manuscripts/world-hold.md",
+      "role": "run-artifact",
+      "sha256": "f44e12d4d105c52c93dd29e108a98270c6f6007fbddd0313898a8deb7d079d41"
     }
   ],
   "replays": [

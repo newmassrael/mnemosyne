@@ -1,5 +1,5 @@
 {
-  "schema": "kit-replay/v2",
+  "schema": "kit-replay/v3",
   "revision_provenance": "derived-upper-bound",
   "derived_in": "Round 882",
   "derivation": "git log --diff-filter=A -1 -- <every input of the replay>: the newest commit that added any of them. A replay needs a tree holding ALL its inputs, so the pin is the max, and each add-commit is AT OR AFTER the run that produced that input.",
@@ -14,6 +14,106 @@
       "path": "run/extract/facts.json",
       "role": "replay-input",
       "sha256": "0f9e5ee38fcfbcf50532606a7afc3867c105cc47105983498587b9370c22a3e8"
+    },
+    {
+      "path": "run/arms/C-world-confront.md",
+      "role": "run-artifact",
+      "sha256": "dd4c489f5a92560e02c78bb479a6009a0b5f8374757d922a7b10f9b592c65f16"
+    },
+    {
+      "path": "run/arms/C-world-report.md",
+      "role": "run-artifact",
+      "sha256": "9c96b6019e4b755cb58b38312e6e8077aac41b7af66ea80111a7e0ed5d82b1d9"
+    },
+    {
+      "path": "run/arms/C-world-shelter.md",
+      "role": "run-artifact",
+      "sha256": "4d0d0c9c5276f37882f01f19aeb17298dd73109ce298f7d7787360470bc525f6"
+    },
+    {
+      "path": "run/arms/R-world-confront.md",
+      "role": "run-artifact",
+      "sha256": "58aea838b9676ca0e20a4737b1b0f9685c1d7c06a597b5c320679480444ae73f"
+    },
+    {
+      "path": "run/arms/R-world-report.md",
+      "role": "run-artifact",
+      "sha256": "b6cedaeeb89bcadf0ece7f3e1f6c0bdee4756ed5f72b291a02ceddfbe033ff3e"
+    },
+    {
+      "path": "run/arms/R-world-shelter.md",
+      "role": "run-artifact",
+      "sha256": "361f8ac7351ce40b8e55e4e5018c8ff58779534fcd20dc56c366c2d9ac8fda9a"
+    },
+    {
+      "path": "run/extract/extract-log.md",
+      "role": "run-artifact",
+      "sha256": "f5ca4a9e690230c9af4182c3fdf2fad1654e7e0fb0f4ff2ad1d5fbce4f6f46c3"
+    },
+    {
+      "path": "run/extract/vocab.md",
+      "role": "run-artifact",
+      "sha256": "bb7298a69ea71544e6b39256e0224de582389b27a9b96082327ebfca55dd9625"
+    },
+    {
+      "path": "run/judges/judge-1.md",
+      "role": "run-artifact",
+      "sha256": "d8932e3adaae8feee8e2b45609cad9b29cba26e594b59d0f0d322fe2b123413b"
+    },
+    {
+      "path": "run/judges/judge-2.md",
+      "role": "run-artifact",
+      "sha256": "3928a4a3f3525a3a05c2c266bc5fdfa8ff153f406d49a21d18c96d5e30d60f6c"
+    },
+    {
+      "path": "run/judges/judge-3.md",
+      "role": "run-artifact",
+      "sha256": "fb376bf06ab1211d1a33c65a14d94ad9c5f7c025cbe3a5b5e5466f8a30af2c60"
+    },
+    {
+      "path": "run/judges/label-map.md",
+      "role": "run-artifact",
+      "sha256": "086d4e91bc14f0d19052f824301c670924ef1f3b33a20e119060697261e90f43"
+    },
+    {
+      "path": "run/judges/packet-1.md",
+      "role": "run-artifact",
+      "sha256": "c088c5daa0380fa3df76ac2c0194f83d2254d89472ea6253a34473a60882cf7c"
+    },
+    {
+      "path": "run/judges/packet-2.md",
+      "role": "run-artifact",
+      "sha256": "c48b68fb79f712d785f8c1858b5248b4945f0d1661bc72be1594ea69af28a166"
+    },
+    {
+      "path": "run/judges/packet-3.md",
+      "role": "run-artifact",
+      "sha256": "c48b68fb79f712d785f8c1858b5248b4945f0d1661bc72be1594ea69af28a166"
+    },
+    {
+      "path": "run/repair/confront-sc-29.md",
+      "role": "run-artifact",
+      "sha256": "7d23d19a84275c91f52c72ce028df241e27d654d12717587b87e61f994536bff"
+    },
+    {
+      "path": "run/repair/confront-sc-30.md",
+      "role": "run-artifact",
+      "sha256": "67a63d62194fcc3513ee13e270af5716c0ed41df29e1394ee206486b40aea216"
+    },
+    {
+      "path": "run/repair/repair-log.md",
+      "role": "run-artifact",
+      "sha256": "8e22d00140815c671a1c99bdc73edf5f43a805a3b9c0a89a4eb3ec548d6dee5b"
+    },
+    {
+      "path": "run/repair/report-sc-16.md",
+      "role": "run-artifact",
+      "sha256": "1c51115ad5f3d4f1db03df4de42b4934576c57a4608c853315ba0fa439427fef"
+    },
+    {
+      "path": "run/repair/shelter-sc-27.md",
+      "role": "run-artifact",
+      "sha256": "bb534e884b8f4803b649573a4c659a35d306104fc51bca78a7ef4043f91b06b2"
     }
   ],
   "replays": [

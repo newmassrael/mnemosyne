@@ -1,5 +1,5 @@
 {
-  "schema": "kit-replay/v2",
+  "schema": "kit-replay/v3",
   "revision_provenance": "derived-upper-bound",
   "derived_in": "Round 882",
   "derivation": "git log --diff-filter=A -1 -- <every input of the replay>: the newest commit that added any of them. A replay needs a tree holding ALL its inputs, so the pin is the max, and each add-commit is AT OR AFTER the run that produced that input.",
@@ -24,6 +24,76 @@
       "path": "run/extract/reextracted.manifest.json",
       "role": "replay-input",
       "sha256": "7d1f42fdb36a5d9951258e278bb10cd5452c3b7a269ae559df5b988a5a9e759e"
+    },
+    {
+      "path": "run/briefing/quest-briefing.md",
+      "role": "run-artifact",
+      "sha256": "a6f8a2e83ac6da3dad62f0a572e07011b903201e3acdd7ec1529ffd3cfef242d"
+    },
+    {
+      "path": "run/extract/extract-log.md",
+      "role": "run-artifact",
+      "sha256": "2977010752fbcd62f3cc6eb8938e104bd6eddc25221013790cc9e490746ff4e5"
+    },
+    {
+      "path": "run/extract/store/mnemosyne.toml",
+      "role": "run-artifact",
+      "sha256": "434e102c861f994d2aace9114d392dbc162190e00be8fe357d472150ca439614"
+    },
+    {
+      "path": "run/extract/vocab.md",
+      "role": "run-artifact",
+      "sha256": "bf46d5910658f0cd5d701f1f4715daf065438bbc6eaa5af7eb26b078e2b902ae"
+    },
+    {
+      "path": "run/game/loop-log.md",
+      "role": "run-artifact",
+      "sha256": "34ec3ac47f5682c188cf7c04fa596050941efed5da5673158902e5b198cb9baf"
+    },
+    {
+      "path": "run/game/mnemosyne.toml",
+      "role": "run-artifact",
+      "sha256": "434e102c861f994d2aace9114d392dbc162190e00be8fe357d472150ca439614"
+    },
+    {
+      "path": "run/judges/judge-1.md",
+      "role": "run-artifact",
+      "sha256": "f18568d460755063eafa5ff8a6f8ace8e5aa9a04ce3d4186eff9f02ec87b69a9"
+    },
+    {
+      "path": "run/judges/judge-2.md",
+      "role": "run-artifact",
+      "sha256": "f628c0036f0057ef67ec77f12b33a18885eb2fcda8d1076c97620085af31756c"
+    },
+    {
+      "path": "run/judges/judge-3.md",
+      "role": "run-artifact",
+      "sha256": "671f10646ba44f0ec0c37b29bf8bea89a5d9d5ab67c8cdbc949741ce1d0d8ba5"
+    },
+    {
+      "path": "run/manuscripts/world-road-descend.md",
+      "role": "run-artifact",
+      "sha256": "0cab6d1eae3a11c346903d34732cbe3b73800d1ca6edca5764230781cbade4a9"
+    },
+    {
+      "path": "run/render/render-log.md",
+      "role": "run-artifact",
+      "sha256": "910c3239a12b1797f71090f65f6e45b53e24afa36c1875d166cb990ca49fc5fb"
+    },
+    {
+      "path": "run/render/world-road-descend.md",
+      "role": "run-artifact",
+      "sha256": "fe83d2ce28a099d9566fefe8ce4f4b067392d316bfdc0e056f4e673d31fff1e3"
+    },
+    {
+      "path": "run/verify/mnemosyne.toml",
+      "role": "run-artifact",
+      "sha256": "434e102c861f994d2aace9114d392dbc162190e00be8fe357d472150ca439614"
+    },
+    {
+      "path": "run/verify/order.json",
+      "role": "run-artifact",
+      "sha256": "39d923c53084ce8c2f3a356639a852223ac41eb7ec61522af2c7cf4c61006a3d"
     }
   ],
   "replays": [

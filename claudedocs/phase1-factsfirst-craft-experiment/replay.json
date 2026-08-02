@@ -1,0 +1,263 @@
+{
+  "schema": "kit-replay/v3",
+  "no_replay": "This kit produced no sections manifest and no facts manifest, in any arm: its evidence is prose, canon orders and narrative rules. No mutate verb takes any of it, so there is no store for a replay to rebuild and no revision worth pinning to rebuild it at. What the record can do is hold the bytes, which is why every artifact below is declared and sealed.",
+  "note": "Written in Round 953. Until then this kit had no record at all, so not one of its 51 tracked run artifacts was pinned by anything — the worse half of the Round 952 carry, since there was not even a record to declare them in.",
+  "inputs": [
+    {
+      "path": "run/.gitignore",
+      "role": "run-artifact",
+      "sha256": "79240ea057201feca05598893ca335609ceed260218cba3ba620127c07d8f274"
+    },
+    {
+      "path": "run/extract/A-audit.order.json",
+      "role": "run-artifact",
+      "sha256": "ac34ed136e9367b59b4fa0596764385fe67260a8cec619c5168f8a5806f4b308"
+    },
+    {
+      "path": "run/extract/A-burn.order.json",
+      "role": "run-artifact",
+      "sha256": "26f2e2d300339076068c8200eef7a9fa5b30821a19093867127fdd1079028e84"
+    },
+    {
+      "path": "run/extract/A-order.json",
+      "role": "run-artifact",
+      "sha256": "b6b9948bf149f32b2d867d1fa39327bbacafe4df18125bc706ea2f675a668717"
+    },
+    {
+      "path": "run/extract/A-reveal.order.json",
+      "role": "run-artifact",
+      "sha256": "6d4f3fae22c9569c983e21f27093e12cce41242b16dcbc27ae58a29b5ac16e8c"
+    },
+    {
+      "path": "run/extract/A-rules.json",
+      "role": "run-artifact",
+      "sha256": "5c2ff66efabf491d576fb07613311b8e01267ab4a1735f2634f6167c5ce6f503"
+    },
+    {
+      "path": "run/extract/B-burn.order.json",
+      "role": "run-artifact",
+      "sha256": "42698a67a4f05363aacb142ba5a78b8243bf42042868562a31788585659b03c2"
+    },
+    {
+      "path": "run/extract/B-loud-reveal.order.json",
+      "role": "run-artifact",
+      "sha256": "8f752244aff06162f659a281ba3822988fd32dadf928a46f266ce5880812d132"
+    },
+    {
+      "path": "run/extract/B-order.json",
+      "role": "run-artifact",
+      "sha256": "64a19688f43d74666f8cfd5218855d59da565711f872d6d642a389a2416d8564"
+    },
+    {
+      "path": "run/extract/B-quiet-reveal.order.json",
+      "role": "run-artifact",
+      "sha256": "5376ea0dbf6985c843a23f9e9df1be228118d3feac7a5ab12d156daac2f803bb"
+    },
+    {
+      "path": "run/extract/B-rules.json",
+      "role": "run-artifact",
+      "sha256": "93841129845de87752da69917db988477a87eb5e7afb2dff2317cbd0633ef7e5"
+    },
+    {
+      "path": "run/extract/defects-A.md",
+      "role": "run-artifact",
+      "sha256": "854d445036a67e38a187f83e44959450a3c4d6b065692a1b9c6f6fd1fe79bb4b"
+    },
+    {
+      "path": "run/extract/defects-B.md",
+      "role": "run-artifact",
+      "sha256": "1144ff04e3941e816e6432cdfbb3e4c9fa23de7299b7621bcb5d358ee98bc1ab"
+    },
+    {
+      "path": "run/extract/story-A.md",
+      "role": "run-artifact",
+      "sha256": "665480db3d28d39aebe21e5beff3bc8c0e6dc90ebdcf259bbb376c4bdd4bb597"
+    },
+    {
+      "path": "run/extract/story-B.md",
+      "role": "run-artifact",
+      "sha256": "ad74df13f2ab0d3c6ac8e6cd6577b17937f81dec27bb8e29217ba148043a208f"
+    },
+    {
+      "path": "run/factsfirst/canon-order.json",
+      "role": "run-artifact",
+      "sha256": "20bccf4c940c5509bfd2d16cce8dcf543037ccbd358bf49e9877444b66b3d2b3"
+    },
+    {
+      "path": "run/factsfirst/narrative-rules.json",
+      "role": "run-artifact",
+      "sha256": "b6af3f9e61942ff41a71c630a799706c90d6e9121a1c9a93da06a1c02f5965d6"
+    },
+    {
+      "path": "run/factsfirst/story.md",
+      "role": "run-artifact",
+      "sha256": "665480db3d28d39aebe21e5beff3bc8c0e6dc90ebdcf259bbb376c4bdd4bb597"
+    },
+    {
+      "path": "run/judges/j1/W1-confront-reveal__A.md",
+      "role": "run-artifact",
+      "sha256": "a6cc3d5b4d99ab00b0912679e64f99cfc8e59f84a540d4c6300db021db0b551c"
+    },
+    {
+      "path": "run/judges/j1/W1-confront-reveal__B.md",
+      "role": "run-artifact",
+      "sha256": "e6fd6f3c8b1dd1c772e0f1cec346e893d802feb1ba0c923c2068c75685db63bd"
+    },
+    {
+      "path": "run/judges/j1/W2-confront-burn__A.md",
+      "role": "run-artifact",
+      "sha256": "648b9b8a4735f6c93bad74e79b8d358109a3eeaff4253e848ec297d1bb2d0339"
+    },
+    {
+      "path": "run/judges/j1/W2-confront-burn__B.md",
+      "role": "run-artifact",
+      "sha256": "a9cfd4dff0dfa24901d3ce21bdacf6a1ba0fb6a2eb3790ca7ece4d1f6c3f45e4"
+    },
+    {
+      "path": "run/judges/j1/W3-quiet__A.md",
+      "role": "run-artifact",
+      "sha256": "8073726172ab290dd248e43d689474e1546f0ba758f043eea635da61e403d4b6"
+    },
+    {
+      "path": "run/judges/j1/W3-quiet__B.md",
+      "role": "run-artifact",
+      "sha256": "adb6afe5874c4cfa27b8b904602a5948cd7df042dc8c2032abc0d6f889c0230a"
+    },
+    {
+      "path": "run/judges/j1/judge-1.md",
+      "role": "run-artifact",
+      "sha256": "d2f58be3c73fb343b1e7b1e0df706240256c58799eb836bcfff12edc8d4ac793"
+    },
+    {
+      "path": "run/judges/j2/W1-confront-reveal__A.md",
+      "role": "run-artifact",
+      "sha256": "a6cc3d5b4d99ab00b0912679e64f99cfc8e59f84a540d4c6300db021db0b551c"
+    },
+    {
+      "path": "run/judges/j2/W1-confront-reveal__B.md",
+      "role": "run-artifact",
+      "sha256": "e6fd6f3c8b1dd1c772e0f1cec346e893d802feb1ba0c923c2068c75685db63bd"
+    },
+    {
+      "path": "run/judges/j2/W2-confront-burn__A.md",
+      "role": "run-artifact",
+      "sha256": "648b9b8a4735f6c93bad74e79b8d358109a3eeaff4253e848ec297d1bb2d0339"
+    },
+    {
+      "path": "run/judges/j2/W2-confront-burn__B.md",
+      "role": "run-artifact",
+      "sha256": "a9cfd4dff0dfa24901d3ce21bdacf6a1ba0fb6a2eb3790ca7ece4d1f6c3f45e4"
+    },
+    {
+      "path": "run/judges/j2/W3-quiet__A.md",
+      "role": "run-artifact",
+      "sha256": "8073726172ab290dd248e43d689474e1546f0ba758f043eea635da61e403d4b6"
+    },
+    {
+      "path": "run/judges/j2/W3-quiet__B.md",
+      "role": "run-artifact",
+      "sha256": "adb6afe5874c4cfa27b8b904602a5948cd7df042dc8c2032abc0d6f889c0230a"
+    },
+    {
+      "path": "run/judges/j2/judge-2.md",
+      "role": "run-artifact",
+      "sha256": "26b9003e7a4086f51a2314c38a2ce9f589b6760b3fbf3f8fe2c1befb30e63615"
+    },
+    {
+      "path": "run/judges/j3/W1-confront-reveal__A.md",
+      "role": "run-artifact",
+      "sha256": "a6cc3d5b4d99ab00b0912679e64f99cfc8e59f84a540d4c6300db021db0b551c"
+    },
+    {
+      "path": "run/judges/j3/W1-confront-reveal__B.md",
+      "role": "run-artifact",
+      "sha256": "e6fd6f3c8b1dd1c772e0f1cec346e893d802feb1ba0c923c2068c75685db63bd"
+    },
+    {
+      "path": "run/judges/j3/W2-confront-burn__A.md",
+      "role": "run-artifact",
+      "sha256": "648b9b8a4735f6c93bad74e79b8d358109a3eeaff4253e848ec297d1bb2d0339"
+    },
+    {
+      "path": "run/judges/j3/W2-confront-burn__B.md",
+      "role": "run-artifact",
+      "sha256": "a9cfd4dff0dfa24901d3ce21bdacf6a1ba0fb6a2eb3790ca7ece4d1f6c3f45e4"
+    },
+    {
+      "path": "run/judges/j3/W3-quiet__A.md",
+      "role": "run-artifact",
+      "sha256": "8073726172ab290dd248e43d689474e1546f0ba758f043eea635da61e403d4b6"
+    },
+    {
+      "path": "run/judges/j3/W3-quiet__B.md",
+      "role": "run-artifact",
+      "sha256": "adb6afe5874c4cfa27b8b904602a5948cd7df042dc8c2032abc0d6f889c0230a"
+    },
+    {
+      "path": "run/judges/j3/judge-3.md",
+      "role": "run-artifact",
+      "sha256": "d288ba0974a24358fa4eddff64f8636867fd7efd614ffef0eaf1bd40b6b77f5e"
+    },
+    {
+      "path": "run/labels/label-map.json",
+      "role": "run-artifact",
+      "sha256": "ebb6bd90964d74d6aac757f74ac5c95f20c3c558b59c749031c7ae46514cbe20"
+    },
+    {
+      "path": "run/labels/story-A.md",
+      "role": "run-artifact",
+      "sha256": "665480db3d28d39aebe21e5beff3bc8c0e6dc90ebdcf259bbb376c4bdd4bb597"
+    },
+    {
+      "path": "run/labels/story-A.norm.md",
+      "role": "run-artifact",
+      "sha256": "6299fe4c238596dcb4e96a7f6e4e7c0c6824689641a822a06200c987f051dd0b"
+    },
+    {
+      "path": "run/labels/story-B.md",
+      "role": "run-artifact",
+      "sha256": "ad74df13f2ab0d3c6ac8e6cd6577b17937f81dec27bb8e29217ba148043a208f"
+    },
+    {
+      "path": "run/labels/story-B.norm.md",
+      "role": "run-artifact",
+      "sha256": "e51981e21a51264751ac7777369b3346da731498d69c3c88b50f2b435920573b"
+    },
+    {
+      "path": "run/plain/story.md",
+      "role": "run-artifact",
+      "sha256": "ad74df13f2ab0d3c6ac8e6cd6577b17937f81dec27bb8e29217ba148043a208f"
+    },
+    {
+      "path": "run/reading/W1-confront-reveal__A.md",
+      "role": "run-artifact",
+      "sha256": "a6cc3d5b4d99ab00b0912679e64f99cfc8e59f84a540d4c6300db021db0b551c"
+    },
+    {
+      "path": "run/reading/W1-confront-reveal__B.md",
+      "role": "run-artifact",
+      "sha256": "e6fd6f3c8b1dd1c772e0f1cec346e893d802feb1ba0c923c2068c75685db63bd"
+    },
+    {
+      "path": "run/reading/W2-confront-burn__A.md",
+      "role": "run-artifact",
+      "sha256": "648b9b8a4735f6c93bad74e79b8d358109a3eeaff4253e848ec297d1bb2d0339"
+    },
+    {
+      "path": "run/reading/W2-confront-burn__B.md",
+      "role": "run-artifact",
+      "sha256": "a9cfd4dff0dfa24901d3ce21bdacf6a1ba0fb6a2eb3790ca7ece4d1f6c3f45e4"
+    },
+    {
+      "path": "run/reading/W3-quiet__A.md",
+      "role": "run-artifact",
+      "sha256": "8073726172ab290dd248e43d689474e1546f0ba758f043eea635da61e403d4b6"
+    },
+    {
+      "path": "run/reading/W3-quiet__B.md",
+      "role": "run-artifact",
+      "sha256": "adb6afe5874c4cfa27b8b904602a5948cd7df042dc8c2032abc0d6f889c0230a"
+    }
+  ],
+  "replays": []
+}

@@ -1,5 +1,5 @@
 {
-  "schema": "kit-replay/v2",
+  "schema": "kit-replay/v3",
   "revision_provenance": "derived-upper-bound",
   "derived_in": "Round 882",
   "derivation": "git log --diff-filter=A -1 -- <every input of the replay>: the newest commit that added any of them. A replay needs a tree holding ALL its inputs, so the pin is the max, and each add-commit is AT OR AFTER the run that produced that input.",
@@ -14,6 +14,51 @@
       "path": "run/extract-mystery/facts.json",
       "role": "replay-input",
       "sha256": "a2686b81303ea39260f75a9b4f521e98f8f638e4e8acf7c076fc4d5109a10f04"
+    },
+    {
+      "path": "run/extract-mystery/extract-log.md",
+      "role": "run-artifact",
+      "sha256": "3e39a901abd8f32f84c27c30947856ab7ecc159390a1a0b6a8714166c6570fdc"
+    },
+    {
+      "path": "run/extract-mystery/vocab.md",
+      "role": "run-artifact",
+      "sha256": "fb1381b17fd18fcfe62702b4e94ef02bb59fde3c0b248fd5cb7498ef1d409b99"
+    },
+    {
+      "path": "run/judges-v2/judge-1.md",
+      "role": "run-artifact",
+      "sha256": "00f9baaef6780736db903c3ab38afad4beede4c7a96e4d9254bc2e59e612931a"
+    },
+    {
+      "path": "run/judges-v2/judge-2.md",
+      "role": "run-artifact",
+      "sha256": "713ac09980dc7c2e4b458486cd9a6f5f5b9788e695cdb122ba89b620659194a8"
+    },
+    {
+      "path": "run/judges-v2/judge-3.md",
+      "role": "run-artifact",
+      "sha256": "0db8d2d21e231d8bc866cd11d1b301b8a4d3ab9871a78e6e6a59eb014f2a92bf"
+    },
+    {
+      "path": "run/judges-v2/label-map.md",
+      "role": "run-artifact",
+      "sha256": "b770393d276e5e2a67424211d31b0ba187b053f14db03db18958f2d63d5a6194"
+    },
+    {
+      "path": "run/render-mystery/_outline.md",
+      "role": "run-artifact",
+      "sha256": "190ddc3e663c8fa5b71be0d0412b12e4a05eac1afee1cbb0696ff27e4df03856"
+    },
+    {
+      "path": "run/render-mystery/render-log.md",
+      "role": "run-artifact",
+      "sha256": "6836d264a0616df4b6ee639f507af5cb55995fc49022d3739056e5e017d1410c"
+    },
+    {
+      "path": "run/render-mystery/world-planted.md",
+      "role": "run-artifact",
+      "sha256": "988e7711021f35a25fd91a4aeae132f4167faafa35f1fd330c7a239321eeb1fa"
     }
   ],
   "replays": [

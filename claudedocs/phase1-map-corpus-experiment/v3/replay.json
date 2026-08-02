@@ -1,5 +1,5 @@
 {
-  "schema": "kit-replay/v2",
+  "schema": "kit-replay/v3",
   "revision_provenance": "declared-at-run",
   "declared_in": "Round 933",
   "derivation": "Arm C of the map-corpus A/B. Same frozen brief and protocol as v1 and v2; the ONLY variable is contract.txt, regenerated from describe-schema after the R911-R931 hierarchy-crossing arc (218 lines in both arms, 49,193 bytes in arm B against 55,288 here, seven lines differing). The revision is the commit that lands these inputs, recorded at the run — a self-referential pin costs a second commit by construction, exactly as v1 and v2 recorded.",
@@ -64,6 +64,136 @@
       "path": "run/stage-b-first-submission/narrative-rules.json",
       "role": "raw-agent-output",
       "sha256": "2307ea6dcd1e2b89e200f2996f1c0e1a225cb5eddb5f228b6db4518002728407"
+    },
+    {
+      "path": "run/stage-a-first-submission/contract.txt",
+      "role": "run-artifact",
+      "sha256": "f7833afb9f69b8cbc160a3cb871e8620c7689299c6eca544009be6697e241c81"
+    },
+    {
+      "path": "run/stage-a-first-submission/mnemosyne.toml",
+      "role": "run-artifact",
+      "sha256": "5085120f0b773c2b54e975b9c9f604bfa8e95c91653fd8aca546f33408743263"
+    },
+    {
+      "path": "run/stage-a-first-submission/order.json",
+      "role": "run-artifact",
+      "sha256": "c93e3760f83ed6099c031fe9518bcd0d85ca90d5f4a395de15c7530ae75b9290"
+    },
+    {
+      "path": "run/stage-a-first-submission/self-report.md",
+      "role": "run-artifact",
+      "sha256": "42947c2e30cf35a43484d27d140da1b4be286e2a4d2957c3f3a3160ced68d7b8"
+    },
+    {
+      "path": "run/stage-a/continuity.log",
+      "role": "run-artifact",
+      "sha256": "e952b9126bed412e736028ffede2ee167d4de8dc70252af1eb6f9102cd7e7518"
+    },
+    {
+      "path": "run/stage-a/contract.txt",
+      "role": "run-artifact",
+      "sha256": "f7833afb9f69b8cbc160a3cb871e8620c7689299c6eca544009be6697e241c81"
+    },
+    {
+      "path": "run/stage-a/first-import.log",
+      "role": "run-artifact",
+      "sha256": "c04ec0e119fd7eaa7d32f2476e18c20b036257b2d58f6e676598a0d065ee2cd8"
+    },
+    {
+      "path": "run/stage-a/frontier.log",
+      "role": "run-artifact",
+      "sha256": "bd55eccf17a92641fc70eee7ba7027f0730642a24328b3db44a481339fe37ccd"
+    },
+    {
+      "path": "run/stage-a/mnemosyne.toml",
+      "role": "run-artifact",
+      "sha256": "5085120f0b773c2b54e975b9c9f604bfa8e95c91653fd8aca546f33408743263"
+    },
+    {
+      "path": "run/stage-a/order.json",
+      "role": "run-artifact",
+      "sha256": "c93e3760f83ed6099c031fe9518bcd0d85ca90d5f4a395de15c7530ae75b9290"
+    },
+    {
+      "path": "run/stage-a/self-report.md",
+      "role": "run-artifact",
+      "sha256": "42947c2e30cf35a43484d27d140da1b4be286e2a4d2957c3f3a3160ced68d7b8"
+    },
+    {
+      "path": "run/stage-a/transition-map.log",
+      "role": "run-artifact",
+      "sha256": "c9a1622dafbad6b243b422b7136eac02da5091bfac96bee159bdbd9651e3cf41"
+    },
+    {
+      "path": "run/stage-b-first-submission/contract.txt",
+      "role": "run-artifact",
+      "sha256": "f7833afb9f69b8cbc160a3cb871e8620c7689299c6eca544009be6697e241c81"
+    },
+    {
+      "path": "run/stage-b-first-submission/mnemosyne.toml",
+      "role": "run-artifact",
+      "sha256": "5085120f0b773c2b54e975b9c9f604bfa8e95c91653fd8aca546f33408743263"
+    },
+    {
+      "path": "run/stage-b-first-submission/order.json",
+      "role": "run-artifact",
+      "sha256": "ab49002d96f59a537434105062913eddd3e4caec383c4039599f3476c9bcd499"
+    },
+    {
+      "path": "run/stage-b-first-submission/self-report.md",
+      "role": "run-artifact",
+      "sha256": "0047bb1bd49dfc852dd833d08a4feb99aed021cd51f839c622aeb064b1227981"
+    },
+    {
+      "path": "run/stage-b-first-submission/side-tables.sh",
+      "role": "run-artifact",
+      "sha256": "a8e1c527efb2e623afc69863361eb1ebc73a11bc2242970d6c2f75d9933d7784"
+    },
+    {
+      "path": "run/stage-b/continuity.log",
+      "role": "run-artifact",
+      "sha256": "4dac5815d301b2a64b329ca2f67e49d9633320990bd93985ae45932c38e6839e"
+    },
+    {
+      "path": "run/stage-b/contract.txt",
+      "role": "run-artifact",
+      "sha256": "f7833afb9f69b8cbc160a3cb871e8620c7689299c6eca544009be6697e241c81"
+    },
+    {
+      "path": "run/stage-b/first-import.log",
+      "role": "run-artifact",
+      "sha256": "04d9952ab20e7112fadf19d652d97fc5302f770a69ac6314c083aef80f26d75b"
+    },
+    {
+      "path": "run/stage-b/frontier.log",
+      "role": "run-artifact",
+      "sha256": "d67ce03dec416961f42cf79e87cd90e03618f282880351cebd923ca9ca8386c7"
+    },
+    {
+      "path": "run/stage-b/mnemosyne.toml",
+      "role": "run-artifact",
+      "sha256": "5085120f0b773c2b54e975b9c9f604bfa8e95c91653fd8aca546f33408743263"
+    },
+    {
+      "path": "run/stage-b/order.json",
+      "role": "run-artifact",
+      "sha256": "ab49002d96f59a537434105062913eddd3e4caec383c4039599f3476c9bcd499"
+    },
+    {
+      "path": "run/stage-b/self-report.md",
+      "role": "run-artifact",
+      "sha256": "0047bb1bd49dfc852dd833d08a4feb99aed021cd51f839c622aeb064b1227981"
+    },
+    {
+      "path": "run/stage-b/side-tables.sh",
+      "role": "run-artifact",
+      "sha256": "a8e1c527efb2e623afc69863361eb1ebc73a11bc2242970d6c2f75d9933d7784"
+    },
+    {
+      "path": "run/stage-b/transition-map.log",
+      "role": "run-artifact",
+      "sha256": "4ab355767c8d7152eddf0b8995be77f6af5921234d0077e5036ef1d5a5c3d29d"
     }
   ],
   "replays": [

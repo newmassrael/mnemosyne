@@ -1,5 +1,5 @@
 {
-  "schema": "kit-replay/v2",
+  "schema": "kit-replay/v3",
   "revision_provenance": "derived-upper-bound",
   "derived_in": "Round 882",
   "derivation": "git log --diff-filter=A -1 -- <every input of the replay>: the newest commit that added any of them. A replay needs a tree holding ALL its inputs, so the pin is the max, and each add-commit is AT OR AFTER the run that produced that input.",
@@ -14,6 +14,106 @@
       "path": "run/author/facts.json",
       "role": "replay-input",
       "sha256": "cdff36e943860f3496f0630b8782b824627b69e8580b4fefe2abac33f08cd4f8"
+    },
+    {
+      "path": "run/author/author-log.md",
+      "role": "run-artifact",
+      "sha256": "59a506870b55dbfef8f770ba32ffd1dcba1072cf7c0094aefe4937c9b92085f9"
+    },
+    {
+      "path": "run/author/order.json",
+      "role": "run-artifact",
+      "sha256": "4f00af5aeecb2101ccf4a4a32d43af50a901057b94fd57369e2af530138a9824"
+    },
+    {
+      "path": "run/frame-views/frame-bride.txt",
+      "role": "run-artifact",
+      "sha256": "7bf66b15db8986acfca916e9ecb7c81b52844717cb9c55512a6ee24fff7f4ef6"
+    },
+    {
+      "path": "run/frame-views/frame-clerk.txt",
+      "role": "run-artifact",
+      "sha256": "bbf73079f5b2ee85eddbfe10ca13dcc19eb7f0ddeb29a30cbfd3b0d1e4c78a1a"
+    },
+    {
+      "path": "run/frame-views/frame-drover.txt",
+      "role": "run-artifact",
+      "sha256": "1a4f8cee3dd1698df7ecc0971c101d1a75a85a8df4454c4db16e307a15ef8f86"
+    },
+    {
+      "path": "run/frame-views/frame-factor.txt",
+      "role": "run-artifact",
+      "sha256": "7b6f043a8ee5bc965f52b01615976c7a557a48e493f299151566cc178094bdf5"
+    },
+    {
+      "path": "run/frame-views/frame-groom.txt",
+      "role": "run-artifact",
+      "sha256": "feac4014883f4868efd692949194c9830a136db98925e92c57beff8466108fae"
+    },
+    {
+      "path": "run/frame-views/frame-hooded.txt",
+      "role": "run-artifact",
+      "sha256": "d0d6e49467d5503b10bfe2a6e1d08db6b8297eb513c33c4d0b0d4abc9e667db2"
+    },
+    {
+      "path": "run/frame-views/frame-midwife.txt",
+      "role": "run-artifact",
+      "sha256": "c2f2d23fd602a88d1b04695e9720495dd8e56d9a4b321b596a3d20fcdbcb307f"
+    },
+    {
+      "path": "run/frame-views/frame-soldier.txt",
+      "role": "run-artifact",
+      "sha256": "c738e1ed2fdb825cc04e51920a22e1e0e2ae3e1ef2ab39e3440982043928f204"
+    },
+    {
+      "path": "run/frame-views/frame-tinker.txt",
+      "role": "run-artifact",
+      "sha256": "d5f69514910de8f7836077acdae69c5e1234f5adfe5513f2fabf20f9f5f460ff"
+    },
+    {
+      "path": "run/frame-views/frame-trader.txt",
+      "role": "run-artifact",
+      "sha256": "4728ba2a6822573f9088154bd4fae1511a1642e8082db41e172cb5ea0e0d6b08"
+    },
+    {
+      "path": "run/frame-views/frame-warden.txt",
+      "role": "run-artifact",
+      "sha256": "feaa548a89860f6346d897888c311360cb3919a85e4fda905523dfc74ddaa6a6"
+    },
+    {
+      "path": "run/frame-views/frame-wend.txt",
+      "role": "run-artifact",
+      "sha256": "7bf7b66ae425639925116fc81822f5fa67387619ec083211ff4f3cc5904bf218"
+    },
+    {
+      "path": "run/judges/judge-1.md",
+      "role": "run-artifact",
+      "sha256": "35c4d8f5be3fc382aa00e6d95589d4bcefaea12f99ada5ec8c2dbb2b90c22ce5"
+    },
+    {
+      "path": "run/judges/judge-2.md",
+      "role": "run-artifact",
+      "sha256": "6623035700a89e2227e26bb2ff078b08d3839e8a85ee244f98ebf10e7d56b269"
+    },
+    {
+      "path": "run/judges/judge-3.md",
+      "role": "run-artifact",
+      "sha256": "bed7f79318c78a74b6eab2b2ea362019562ffe7a73a40ffc30fd4e561d418f86"
+    },
+    {
+      "path": "run/manuscripts/world-act.md",
+      "role": "run-artifact",
+      "sha256": "78d98dec6ab58e7d31240fe33f15f9cd8c3a8198eb9246b57e7239e101f9bb3d"
+    },
+    {
+      "path": "run/manuscripts/world-hold.md",
+      "role": "run-artifact",
+      "sha256": "ff036a661e316cef38be23ceb16dc7064490843c8da26a4efd70b3cd87126687"
+    },
+    {
+      "path": "run/manuscripts/world-name.md",
+      "role": "run-artifact",
+      "sha256": "4c92d4d7852b792b40c1ff65c88579045f96ee2fbc4d69edf4ab3348fc816548"
     }
   ],
   "replays": [

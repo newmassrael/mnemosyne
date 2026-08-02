@@ -1,5 +1,5 @@
 {
-  "schema": "kit-replay/v2",
+  "schema": "kit-replay/v3",
   "revision_provenance": "derived-upper-bound",
   "derived_in": "Round 882",
   "derivation": "git log --diff-filter=A -1 -- <every input of the replay>: the newest commit that added any of them. A replay needs a tree holding ALL its inputs, so the pin is the max, and each add-commit is AT OR AFTER the run that produced that input.",
@@ -14,6 +14,36 @@
       "path": "run/author/facts.json",
       "role": "replay-input",
       "sha256": "e93593173044cc6b59eea885512ec6117d98fbf418280f6577bab7e4f066dca5"
+    },
+    {
+      "path": "run/author/author-log.md",
+      "role": "run-artifact",
+      "sha256": "efa0120a6fa29c866f3c135e518fe2c07dc3980bb3044501d19c03e015682028"
+    },
+    {
+      "path": "run/author/order.json",
+      "role": "run-artifact",
+      "sha256": "fa56f02d363256d3e6a9af6509065f7ac73818fd7bd595b9ebe3671a4babf289"
+    },
+    {
+      "path": "run/judges/verdicts.md",
+      "role": "run-artifact",
+      "sha256": "dad9c67808fd3c01df2a080299b46337b698307e4a6249c17761e3672cfa7764"
+    },
+    {
+      "path": "run/manuscripts/world-act_alone.md",
+      "role": "run-artifact",
+      "sha256": "b3f4cfe1a9f58bd2b8dd59f1d3bc35e7ac6fa66dd59a67852974c97e8ebd0c4e"
+    },
+    {
+      "path": "run/manuscripts/world-confront.md",
+      "role": "run-artifact",
+      "sha256": "85951a7f88c9d32f6805c61db45fef3da5e115a1fd49231044543fc6466b7508"
+    },
+    {
+      "path": "run/manuscripts/world-expose.md",
+      "role": "run-artifact",
+      "sha256": "8a66bbff195406fa7b5e67281488dc561f4d9d6064db397c67dc5ee5bca23da9"
     }
   ],
   "replays": [

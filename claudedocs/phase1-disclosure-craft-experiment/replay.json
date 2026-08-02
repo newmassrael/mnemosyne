@@ -1,5 +1,5 @@
 {
-  "schema": "kit-replay/v2",
+  "schema": "kit-replay/v3",
   "revision_provenance": "derived-upper-bound",
   "derived_in": "Round 884",
   "derivation": "git log --diff-filter=A -1 -- <every input of the replay>: the newest commit that added any of them. A replay needs a tree holding ALL its inputs, so the pin is the max, and each add-commit is AT OR AFTER the run that produced that input.",
@@ -69,6 +69,226 @@
       "path": "run/extract/B-conflict-proposals.json",
       "role": "replay-input",
       "sha256": "d524a382bad9b647258b7fe58597a2be0592f997dbfb3c449c57826a943fbfd8"
+    },
+    {
+      "path": "run/.gitignore",
+      "role": "run-artifact",
+      "sha256": "79240ea057201feca05598893ca335609ceed260218cba3ba620127c07d8f274"
+    },
+    {
+      "path": "run/disclosure/story.md",
+      "role": "run-artifact",
+      "sha256": "a2549badbd255b9ef1507738acfcbe22851ae31a012a3086854e7ff46ab9d7b9"
+    },
+    {
+      "path": "run/extract/A-order.json",
+      "role": "run-artifact",
+      "sha256": "a03be3136accb0ce12293de3ad50f69eb60dc3dbf923ecd079c54f688349ab70"
+    },
+    {
+      "path": "run/extract/A-order.schema.json",
+      "role": "run-artifact",
+      "sha256": "a62a1fa19657c3a51df46a88f46117407ba4a40f68b716cf917c91ca7caab846"
+    },
+    {
+      "path": "run/extract/A-rules.json",
+      "role": "run-artifact",
+      "sha256": "7036044e3e152e7a84d34cb092684689892c4f67a4b10e27612cfe8a0b34c0a0"
+    },
+    {
+      "path": "run/extract/B-order.json",
+      "role": "run-artifact",
+      "sha256": "61bb265b4b139f495f2572d620c939ff21fe1882d6882ac012b40e5abd63b5e6"
+    },
+    {
+      "path": "run/extract/B-order.schema.json",
+      "role": "run-artifact",
+      "sha256": "e09dfb8ea8ed58847f5400f9835e7aacd69004d3bdac8cda2d2c9f7db464d803"
+    },
+    {
+      "path": "run/extract/B-rules.json",
+      "role": "run-artifact",
+      "sha256": "7036044e3e152e7a84d34cb092684689892c4f67a4b10e27612cfe8a0b34c0a0"
+    },
+    {
+      "path": "run/extract/defects-A.md",
+      "role": "run-artifact",
+      "sha256": "1ad9e95e096f867b1dcec3208c24449d9eb68ce73846f8f6047a967b7db3f403"
+    },
+    {
+      "path": "run/extract/defects-B.md",
+      "role": "run-artifact",
+      "sha256": "f1f3dc94aee0238d0172e9ea9b6e5af220a6ba80c7c8e5f4666e46e98bed5afd"
+    },
+    {
+      "path": "run/extract/story-A.md",
+      "role": "run-artifact",
+      "sha256": "a2549badbd255b9ef1507738acfcbe22851ae31a012a3086854e7ff46ab9d7b9"
+    },
+    {
+      "path": "run/extract/story-B.md",
+      "role": "run-artifact",
+      "sha256": "ad74df13f2ab0d3c6ac8e6cd6577b17937f81dec27bb8e29217ba148043a208f"
+    },
+    {
+      "path": "run/judges/judge-1.md",
+      "role": "run-artifact",
+      "sha256": "8a5693e61e9d32bf013a93c8e21468af29a35a79bc042b62e9cea73c448402a8"
+    },
+    {
+      "path": "run/judges/judge-1.round1-contaminated.md",
+      "role": "run-artifact",
+      "sha256": "f32b89fa8d39216b3f43ab4ecfb6ec531ce69b939f31a032ab2cb49c5f39fbeb"
+    },
+    {
+      "path": "run/judges/judge-2.md",
+      "role": "run-artifact",
+      "sha256": "5f8e3b6a7d7de9d7342eb7fb6fe00ecf316c631612da7858369a36eed2e302df"
+    },
+    {
+      "path": "run/judges/judge-2.round1-contaminated.md",
+      "role": "run-artifact",
+      "sha256": "e33687e00afd85c8ca4865257292a944a44f9f63d1cdef8b0938101f1c9d384a"
+    },
+    {
+      "path": "run/judges/judge-3.md",
+      "role": "run-artifact",
+      "sha256": "59f12761f2e69fdb7c6f88e643a1c9469b9939c36cbb7c0499cd7e6305120ed1"
+    },
+    {
+      "path": "run/judges/judge-3.round1-contaminated.md",
+      "role": "run-artifact",
+      "sha256": "b2791c109174685190fb4af91a415f22af4f7985fba492a2fc11c0e3bf497eac"
+    },
+    {
+      "path": "run/labels/label-map.json",
+      "role": "run-artifact",
+      "sha256": "5496b834d1c220e2427bd087f1bcbe7e2deab065dadb103b383961aa8a242fe4"
+    },
+    {
+      "path": "run/labels/story-A.clean.md",
+      "role": "run-artifact",
+      "sha256": "cbbcc1736e9344fcb71bdb8930e1fd2ff0e27c22f76bf466f158d98f5518d49e"
+    },
+    {
+      "path": "run/labels/story-A.md",
+      "role": "run-artifact",
+      "sha256": "a2549badbd255b9ef1507738acfcbe22851ae31a012a3086854e7ff46ab9d7b9"
+    },
+    {
+      "path": "run/labels/story-A.norm.md",
+      "role": "run-artifact",
+      "sha256": "aa210a1cd40043e6a19c0940e495e6eb3863cb1c3f23da75bbcc6d1a8e779cf2"
+    },
+    {
+      "path": "run/labels/story-B.clean.md",
+      "role": "run-artifact",
+      "sha256": "fdb66fd02d3e85a1445077540717547c819ae37f6e0d289dee2c1903d3d596cf"
+    },
+    {
+      "path": "run/labels/story-B.md",
+      "role": "run-artifact",
+      "sha256": "ad74df13f2ab0d3c6ac8e6cd6577b17937f81dec27bb8e29217ba148043a208f"
+    },
+    {
+      "path": "run/labels/story-B.norm.md",
+      "role": "run-artifact",
+      "sha256": "e61acc803c78bb5a069e2f9ba0b460e0437ea67eeb30017b2555c8648a7cda8a"
+    },
+    {
+      "path": "run/plain/story.md",
+      "role": "run-artifact",
+      "sha256": "ad74df13f2ab0d3c6ac8e6cd6577b17937f81dec27bb8e29217ba148043a208f"
+    },
+    {
+      "path": "run/reading/W1-confront-reveal__A.md",
+      "role": "run-artifact",
+      "sha256": "f4c738dbad02e32b1bb287bebd781654d2ba253fc8aa7fa508b7cfa21dc9c2b8"
+    },
+    {
+      "path": "run/reading/W1-confront-reveal__B.md",
+      "role": "run-artifact",
+      "sha256": "92f57874c8501c3d4388605c304ba906c5bbfec3ffaae0592a393f39d21990c6"
+    },
+    {
+      "path": "run/reading/W2-confront-burn__A.md",
+      "role": "run-artifact",
+      "sha256": "b724ab0bf9d83021bf13e20df15490439907066a3a2ddf63603a2562e57b5e2b"
+    },
+    {
+      "path": "run/reading/W2-confront-burn__B.md",
+      "role": "run-artifact",
+      "sha256": "f0957fac5e0ff9138b6e174df150e23de70277db3f475d5e50f786a8697cd771"
+    },
+    {
+      "path": "run/reading/W3-quiet__A.md",
+      "role": "run-artifact",
+      "sha256": "f9cec8decd1274afb2a81920bd1d2a4ec268c0da2baa54738cc0faee9a89f7a6"
+    },
+    {
+      "path": "run/reading/W3-quiet__B.md",
+      "role": "run-artifact",
+      "sha256": "4428919f22aacfe32e30717f11543e395d25dd5c0b0919c2ee3911d9b2a7b554"
+    },
+    {
+      "path": "v3/run/compliance/story.md",
+      "role": "run-artifact",
+      "sha256": "a2549badbd255b9ef1507738acfcbe22851ae31a012a3086854e7ff46ab9d7b9"
+    },
+    {
+      "path": "v3/run/judges/judge-1.md",
+      "role": "run-artifact",
+      "sha256": "24d55f05638bbffb1ff27ccf5bef8a1c707ea8f75d2e70aacd07d7c7e9eb7b41"
+    },
+    {
+      "path": "v3/run/judges/judge-2.md",
+      "role": "run-artifact",
+      "sha256": "072e7339ed66e5ddbacf3e36dd3f2b94e0c9108ae087ed65948869e14a277992"
+    },
+    {
+      "path": "v3/run/judges/judge-3.md",
+      "role": "run-artifact",
+      "sha256": "37dc4ada2cbfb8366aa21059822f098a2841f74068ff6d8198db09b819606094"
+    },
+    {
+      "path": "v3/run/labels/label-map.json",
+      "role": "run-artifact",
+      "sha256": "28a11e21769fec58c0f185545e85ebba0d21eb98be6d0e4db41ceacb838c6d1c"
+    },
+    {
+      "path": "v3/run/reading/audit__A.md",
+      "role": "run-artifact",
+      "sha256": "5d27e326bb3912df75f675dac06f76d244f9dff0d0c9b7f37617d9a36001d934"
+    },
+    {
+      "path": "v3/run/reading/audit__B.md",
+      "role": "run-artifact",
+      "sha256": "12c760ccad22e0413a874e75b1593068d03d342ad139bb8dcb5366c76c94f0d0"
+    },
+    {
+      "path": "v3/run/reading/burn__A.md",
+      "role": "run-artifact",
+      "sha256": "0945de74108d1b059632a3266a5bb291349ecb2e6ca850f23ca70d42e7236052"
+    },
+    {
+      "path": "v3/run/reading/burn__B.md",
+      "role": "run-artifact",
+      "sha256": "ba87d3af6c6d6d3fa63c03cfdaec20b0a394fff67f91b810704d32f1e191f0b9"
+    },
+    {
+      "path": "v3/run/reading/reveal__A.md",
+      "role": "run-artifact",
+      "sha256": "dfaf4d0fcc648aaf81ffa056ee9c0c4065fc2b46bfd5ed6944a8be8b4a2cdc74"
+    },
+    {
+      "path": "v3/run/reading/reveal__B.md",
+      "role": "run-artifact",
+      "sha256": "dabd8a2768e9d3368a1ba536fc858f7579b58cdba1cc0fc24da159c00f3b354a"
+    },
+    {
+      "path": "v3/run/warm/story.md",
+      "role": "run-artifact",
+      "sha256": "6c3aae45dde25fb07827e27f7fbe81f8f5e2ec3c32f878e39c136c154f0f1810"
     }
   ],
   "replays": [

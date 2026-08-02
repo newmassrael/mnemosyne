@@ -253,7 +253,7 @@ here.
 
 - `disclosed-place-report.md` — E1 (all four sub-answers), E2 (both first-import
   logs verbatim), E3 (the disagreements), and the render output in full.
-- `vN/manifest.json` + `vN/replay.json` (`kit-replay/v2`) listing the Stage B
+- `vN/manifest.json` + `vN/replay.json` (`kit-replay/v3`) listing the Stage B
   manifests as inputs, the landing commit as `revision`, and
   `revision_provenance: "declared-at-run"`. **That string is the gate's
   vocabulary, checked against the code and not invented here**: the accepted set
@@ -270,6 +270,15 @@ here.
 - Declare EVERY tracked file shaped like a mutate verb's input, including the
   frozen first submissions' `sections.json` — anything undeclared fails
   `every_input_a_verb_would_accept_is_declared_exactly_once`.
+- Then declare and seal the REST of the run tree, which is not optional and is
+  not hand work (Round 953): `experiment-harness declare-run-tree --record
+  vN/replay.json` writes a `run-artifact` entry for every tracked file under
+  `vN/run/` that the record does not already name, and `experiment-harness
+  stamp-inputs --record vN/replay.json` then writes each declared input's
+  sha256 into the record, once. Both are idempotent and neither ever rewrites an
+  existing entry. Until this is run, the manuscripts, the judge reports, the
+  label map and the captured logs are pinned by nothing at all — which is the
+  state the whole corpus was in until Round 953 measured it (425 of 552).
 - Register the replay so `evidence_replay_smoke` rebuilds it in CI. A corpus
   nothing loads is the rot this corpus exists to end (Round 873, Round 897).
   Kits are discovered by `git ls-files`, so **stage before running the suite**,

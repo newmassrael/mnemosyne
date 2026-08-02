@@ -1,5 +1,5 @@
 {
-  "schema": "kit-replay/v2",
+  "schema": "kit-replay/v3",
   "revision_provenance": "derived-upper-bound",
   "derived_in": "Round 882",
   "derivation": "git log --diff-filter=A -1 -- <every input of the replay>: the newest commit that added any of them. A replay needs a tree holding ALL its inputs, so the pin is the max, and each add-commit is AT OR AFTER the run that produced that input.",
@@ -14,6 +14,31 @@
       "path": "run/game/facts.json",
       "role": "replay-input",
       "sha256": "c035db52bf27586bba45c0a09064b9a9a208e6312e3cab3339486f8cf7cbc64a"
+    },
+    {
+      "path": "run/game/canon-order.json",
+      "role": "run-artifact",
+      "sha256": "a131c3d5e1102814cfed92910244e939f15b05f1d759dd6e04dc1d64962f3ad7"
+    },
+    {
+      "path": "run/game/loop-log.md",
+      "role": "run-artifact",
+      "sha256": "08fb81d01ed9e39fc3f5313a67488d37d31b3688a9a607dd7e49bf97782c34d0"
+    },
+    {
+      "path": "run/game/mnemosyne.toml",
+      "role": "run-artifact",
+      "sha256": "a151bdd70b633f2c85b1579337f57d163b62f37efd70902ad94654b4df4c7c4d"
+    },
+    {
+      "path": "run/verify/canon-order.json",
+      "role": "run-artifact",
+      "sha256": "a131c3d5e1102814cfed92910244e939f15b05f1d759dd6e04dc1d64962f3ad7"
+    },
+    {
+      "path": "run/verify/mnemosyne.toml",
+      "role": "run-artifact",
+      "sha256": "a151bdd70b633f2c85b1579337f57d163b62f37efd70902ad94654b4df4c7c4d"
     }
   ],
   "replays": [

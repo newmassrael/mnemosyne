@@ -11,6 +11,7 @@
 //! defaults silently.
 
 mod assemble;
+mod declare;
 mod playthrough;
 mod project;
 mod seal;
@@ -35,6 +36,7 @@ USAGE:
   experiment-harness project-world --store <reextracted.atomic.json> --world <name> --out <store.json> [--main-branch <id>]
   experiment-harness splice --base <manuscript.md> --out <md> --replace <scene.md> [--replace <scene.md>...]
   experiment-harness stamp-inputs --record <replay.json> [--record <replay.json>...]
+  experiment-harness declare-run-tree --record <replay.json> [--record <replay.json>...]
 
 assemble
   Render a world's scenes, in playthrough order, into a blind reading copy.
@@ -76,6 +78,14 @@ stamp-inputs
   match is counted, a mismatch is a hard error naming both values. Run it when a
   kit lands, so an input no replay step feeds — a frozen first submission, a
   sealed self-report, an authored rules file — is pinned by something a gate reads.
+
+declare-run-tree
+  Declare every tracked file under a kit's run tree that no record declares yet,
+  as `run-artifact`. Run it before stamp-inputs when a kit lands: the seal only
+  reaches what is declared, and a manuscript, a judge report or a captured log is
+  evidence the contamination bound rests on just as much as a manifest is. Existing
+  entries are never touched, and ownership is computed against every tracked record,
+  so a nested kit's tree cannot be claimed by the record above it.
 ";
 
 fn main() -> ExitCode {
@@ -102,6 +112,7 @@ fn run(args: &[String]) -> HResult<ExitCode> {
         "project-world" => cmd_project_world(&args[1..]),
         "splice" => cmd_splice(&args[1..]),
         "stamp-inputs" => cmd_stamp_inputs(&args[1..]),
+        "declare-run-tree" => cmd_declare_run_tree(&args[1..]),
         "-h" | "--help" | "help" => {
             print!("{USAGE}");
             Ok(ExitCode::SUCCESS)
@@ -184,6 +195,27 @@ fn cmd_stamp_inputs(args: &[String]) -> HResult<ExitCode> {
     eprintln!(
         "{} record(s): {sealed} input(s) newly sealed, {confirmed} re-checked and unchanged",
         records.len()
+    );
+    Ok(ExitCode::SUCCESS)
+}
+
+fn cmd_declare_run_tree(args: &[String]) -> HResult<ExitCode> {
+    let mut p = Flags::new(args);
+    let records = p.take_all("--record");
+    p.finish()?;
+    if records.is_empty() {
+        return Err("declare-run-tree needs at least one --record <replay.json>".to_string());
+    }
+
+    let result = declare::run(&records)?;
+    for entry in &result.added {
+        println!("declared {entry}");
+    }
+    eprintln!(
+        "{} record(s): {} run artifact(s) newly declared, {} already declared",
+        records.len(),
+        result.added.len(),
+        result.already
     );
     Ok(ExitCode::SUCCESS)
 }

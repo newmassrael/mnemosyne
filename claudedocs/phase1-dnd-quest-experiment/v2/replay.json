@@ -1,5 +1,5 @@
 {
-  "schema": "kit-replay/v2",
+  "schema": "kit-replay/v3",
   "revision_provenance": "derived-upper-bound",
   "derived_in": "Round 882",
   "derivation": "git log --diff-filter=A -1 -- <every input of the replay>: the newest commit that added any of them. A replay needs a tree holding ALL its inputs, so the pin is the max, and each add-commit is AT OR AFTER the run that produced that input.",
@@ -24,6 +24,106 @@
       "path": "run/extract/facts.json",
       "role": "replay-input",
       "sha256": "6ec9ff78c8d609ce6b493af2c28daf171323ff6569a6836ac9e43b9883cc5fbf"
+    },
+    {
+      "path": "run/author/author-log.md",
+      "role": "run-artifact",
+      "sha256": "c080ed133a6ae7bb3eec8ab0e410e5aee846704cfdc6f1e59aa25fa50e03436d"
+    },
+    {
+      "path": "run/author/narrative-rules.json",
+      "role": "run-artifact",
+      "sha256": "2ad02bec822a40a5db6c64e0cf15366c3c95ec269696a4a828d2e56dab9929cc"
+    },
+    {
+      "path": "run/author/order.json",
+      "role": "run-artifact",
+      "sha256": "d1cadafe377ecb03fd9655be230a76a8bd95cb66f9e51cb1ab6443321ece39fc"
+    },
+    {
+      "path": "run/briefing/quest-briefing.md",
+      "role": "run-artifact",
+      "sha256": "564460b5672c5d522f16103793d61cc2289c96b8e397d4d48af86b3d7c1b599a"
+    },
+    {
+      "path": "run/extract/extract-log.md",
+      "role": "run-artifact",
+      "sha256": "6688db8779c5e3e7cf8173e3d9edc9dd556d9da1708cf8cc43617f542416ddd2"
+    },
+    {
+      "path": "run/extract/vocab.md",
+      "role": "run-artifact",
+      "sha256": "9bfbf295d8b4a17359c606ff04c27c640d4415b51f796b8df3cb54cf360564fe"
+    },
+    {
+      "path": "run/judges/judge-1.md",
+      "role": "run-artifact",
+      "sha256": "3dda02286849607b63ddc1c2923abe2c4b9c6c250c6ece6a2cf35fed13ca3017"
+    },
+    {
+      "path": "run/judges/judge-2.md",
+      "role": "run-artifact",
+      "sha256": "f9fb1ac5e47760ac2a265dbb8df60a1b7b32efd995baed41605a4c2372dbb618"
+    },
+    {
+      "path": "run/judges/judge-3.md",
+      "role": "run-artifact",
+      "sha256": "ab7268ef6d63902a8959138de09521bcaf0ad1b62b100506740d791bddbdea43"
+    },
+    {
+      "path": "run/judges/label-map.json",
+      "role": "run-artifact",
+      "sha256": "32c09c6872092f04e998d6366204564c8b9c2b2b37d82a3bba4f85eab6ce7b39"
+    },
+    {
+      "path": "run/manuscripts/world-claim.md",
+      "role": "run-artifact",
+      "sha256": "e7d61c98ac515867ab7f099ea859918a34e74206b3e938247b8768c8c51d67ff"
+    },
+    {
+      "path": "run/render/affected-scenes.txt",
+      "role": "run-artifact",
+      "sha256": "c9bc66a18d76826f4f869a286ee903dc42f992d0768f777ca4e4fcc2c225d345"
+    },
+    {
+      "path": "run/render/render-log.md",
+      "role": "run-artifact",
+      "sha256": "4ad790fbe17517670fcb822b00102b5d37a1de116b3011cd87d3a1a9e95fb595"
+    },
+    {
+      "path": "run/render/scenes/sc-05.md",
+      "role": "run-artifact",
+      "sha256": "410351171df24e1b632dee34b26371d5b15b822eca5a322b324071852d2e5575"
+    },
+    {
+      "path": "run/render/scenes/sc-13.md",
+      "role": "run-artifact",
+      "sha256": "5c816627323b7a5039273687f3ae1cf430b83265d1345fb5770762aa78a05326"
+    },
+    {
+      "path": "run/render/scenes/sc-14.md",
+      "role": "run-artifact",
+      "sha256": "0d05ca6ad04dd006311a207473f68c94cea3d5dcee1d63692b80a9b963bbbf9a"
+    },
+    {
+      "path": "run/render/scenes/sc-18.md",
+      "role": "run-artifact",
+      "sha256": "ffe21083e3d75017743a3a373dfea1505eecc2e9d923885e306b28a136920f3e"
+    },
+    {
+      "path": "run/render/scenes/sc-29c.md",
+      "role": "run-artifact",
+      "sha256": "70555b56dde10b3aff2f6c9dfcb08c027858edeec240bd682935dc9bf6b0eb40"
+    },
+    {
+      "path": "run/render/scenes/sc-30c.md",
+      "role": "run-artifact",
+      "sha256": "e96de720c9565c9cfbf558c36eb370288ad3053204a38fe4e9de9a693d19e9ae"
+    },
+    {
+      "path": "run/render/world-claim.md",
+      "role": "run-artifact",
+      "sha256": "82127b26d7f712a24e6b73edf39aaea9481eefc7ac37dd7b0f8e9e874fe34774"
     }
   ],
   "replays": [

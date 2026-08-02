@@ -1,5 +1,5 @@
 {
-  "schema": "kit-replay/v2",
+  "schema": "kit-replay/v3",
   "revision_provenance": "derived-upper-bound",
   "derived_in": "Round 882",
   "derivation": "git log --diff-filter=A -1 -- <every input of the replay>: the newest commit that added any of them. A replay needs a tree holding ALL its inputs, so the pin is the max, and each add-commit is AT OR AFTER the run that produced that input.",
@@ -24,6 +24,76 @@
       "path": "run/extract/facts.json",
       "role": "replay-input",
       "sha256": "9e239f8fab0d9d7092ed9c7b51078200bebdb2c7244415511281a7235fde07d0"
+    },
+    {
+      "path": "run/author/author-log.md",
+      "role": "run-artifact",
+      "sha256": "7933a14368e6219a585936cbf22af04608e39968449229b2d17c2d96d0be6c96"
+    },
+    {
+      "path": "run/author/narrative-rules.json",
+      "role": "run-artifact",
+      "sha256": "20460bd94499638b7d9d7f6a632fbae564f5cb9cb304e91de96c168a91d79a72"
+    },
+    {
+      "path": "run/author/order.json",
+      "role": "run-artifact",
+      "sha256": "de0e060976da2afcacd6435618ece096729208ebed885eec10be4495137ff96d"
+    },
+    {
+      "path": "run/briefing/cross-age-briefing.md",
+      "role": "run-artifact",
+      "sha256": "8c8e045a4b2ebb8ae44330617238eb02a950cc94f1c20489089140a739274a8e"
+    },
+    {
+      "path": "run/extract/extract-log.md",
+      "role": "run-artifact",
+      "sha256": "1f20a63c6a327f229c6e422e01f6ccde077e57740dfe5348ce28f506bac7ba6a"
+    },
+    {
+      "path": "run/extract/vocab.md",
+      "role": "run-artifact",
+      "sha256": "fb1381b17fd18fcfe62702b4e94ef02bb59fde3c0b248fd5cb7498ef1d409b99"
+    },
+    {
+      "path": "run/judges/judge-1.md",
+      "role": "run-artifact",
+      "sha256": "b9e56b4479f4bfb5e651933260855c9975a112b0420164e54d92e5622fc81853"
+    },
+    {
+      "path": "run/judges/judge-2.md",
+      "role": "run-artifact",
+      "sha256": "2ef306fbb101ef243ad230f9b1392454a1d756a09c3c89244c59cb4ed3eaba64"
+    },
+    {
+      "path": "run/judges/judge-3.md",
+      "role": "run-artifact",
+      "sha256": "bd534d3186c0df48abd1238f8c3ffe878a4898ec985c661a27ec445e764ac3b7"
+    },
+    {
+      "path": "run/manuscripts/world-planted.md",
+      "role": "run-artifact",
+      "sha256": "12a58e3300af1add7c8a0fd8041f3f79a3ebaf97a3406c603159a5e6067e905a"
+    },
+    {
+      "path": "run/manuscripts/world-trunk.md",
+      "role": "run-artifact",
+      "sha256": "a7a9b4a4fdbf3b9226abfa1e6521f4022f4b4ed01c598b9f70cb469339b6dcd1"
+    },
+    {
+      "path": "run/render/render-log.md",
+      "role": "run-artifact",
+      "sha256": "70a1c8774bade80ab004cdbb64a04036432058bcce37f885f4b2c2528c058822"
+    },
+    {
+      "path": "run/render/world-planted.md",
+      "role": "run-artifact",
+      "sha256": "e5be696a1ffbd2c6f602a908d5032977b486b5d10f5e4d9642030572ff5cb2fe"
+    },
+    {
+      "path": "run/render/world-trunk.md",
+      "role": "run-artifact",
+      "sha256": "0f0f93bac214bede1d3cc5e4858419650a2433f290b108224a308bf95ede6a14"
     }
   ],
   "replays": [

@@ -48,7 +48,21 @@ use std::process::Command;
 /// What a declared input IS. A closed vocabulary, because the reason a tracked
 /// input is NOT replayed has to be stated somewhere, and this is the one home
 /// for it.
-const INPUT_ROLES: &[&str] = &["replay-input", "raw-agent-output"];
+///
+/// `run-artifact` is the Round 953 member and it deliberately claims LESS than
+/// its siblings. The other two name who produced the bytes; this one says only
+/// that they are part of the kit's frozen run tree and that this record pins
+/// them. That is the whole truth available for most of the tree: a role is a
+/// claim, and 425 provenance claims inferred from one sampled file per class
+/// would be exactly the false-claims-in-a-record Round 952 warned about when it
+/// refused to call `mnemosyne.toml` raw agent output.
+///
+/// It is not a catch-all. The audit's load-bearing provenance — the frozen
+/// first submissions, the sealed self-reports, the authored rules — is already
+/// held by the sharper roles and stays there. `run-artifact` may only be used
+/// under a `run/` tree, which is a constraint neither sibling carries, and no
+/// replay step may feed it.
+const INPUT_ROLES: &[&str] = &["replay-input", "raw-agent-output", "run-artifact"];
 
 /// What a step expects the verb to do. `propose-verdict` probes are negative
 /// controls: the run recorded them as manifests that MUST be rolled back, so a
@@ -66,7 +80,15 @@ const PROVENANCE_KINDS: &[&str] = &["derived-upper-bound", "declared-at-run"];
 /// The record schemas this gate reads. One member today; it is a set so the
 /// version sits in the same table as every other machine-checked literal
 /// instead of being a bare string at its one use site.
-const REPLAY_SCHEMAS: &[&str] = &["kit-replay/v2"];
+///
+/// v3 is Round 953: the accepted document set grew a case v2 could not
+/// describe. A kit whose artifacts no verb can import — `factsfirst-craft`
+/// carries 51 of them and not one sections or facts manifest — has an empty
+/// `replays`, and must then say WHY in `no_replay` and declare no revision
+/// provenance, there being no pin for one to describe. v2 would have accepted
+/// such a record silently, which would exempt a whole kit from the replay half
+/// and leave nothing to notice it.
+const REPLAY_SCHEMAS: &[&str] = &["kit-replay/v3"];
 
 /// Every literal a kit's `replay.json` is checked against, keyed by the field
 /// that carries it. The cells ARE the consts above — a second reader of one
@@ -138,6 +160,37 @@ fn tracked_evidence_files() -> Vec<String> {
         .lines()
         .map(str::to_string)
         .collect()
+}
+
+/// Every tracked file under a kit's `run/` tree.
+///
+/// `run/` is the boundary the kits drew themselves, and it is the right one:
+/// what sits beside it — `report.md`, `runbook.md`, the design notes — is THIS
+/// lineage's analysis, written after the fact and revisable at will. What sits
+/// under it is what the run produced and was handed, and that is what the R469
+/// contamination bound freezes.
+fn run_artifacts() -> Vec<String> {
+    tracked_evidence_files()
+        .into_iter()
+        .filter(|f| f.contains("/run/"))
+        .collect()
+}
+
+/// The record that owns a path: the nearest ancestor directory holding a
+/// `replay.json`. Nearest, not outermost, because kits nest — `disclosure-craft`
+/// has a record at its root and a `v3/` beneath it — and a rule that reached for
+/// the outermost would let a nested kit's artifacts be claimed by a record that
+/// never saw them.
+fn owning_unit(path: &str, units: &BTreeSet<String>) -> Option<String> {
+    let mut dir = Path::new(path).parent();
+    while let Some(d) = dir {
+        let candidate = d.to_string_lossy().into_owned();
+        if units.contains(&candidate) {
+            return Some(candidate);
+        }
+        dir = d.parent();
+    }
+    None
 }
 
 /// Resolve `a/b/../c` without touching the filesystem — the declarations are
@@ -308,6 +361,9 @@ struct Declarations {
     inputs: Vec<Input>,
     replays: Vec<Replay>,
     provenance: BTreeMap<String, String>,
+    /// Per unit: why this kit declares no replay at all, when it declares none.
+    /// Present exactly for the units whose `replays` is empty.
+    no_replay: BTreeMap<String, String>,
 }
 
 fn declarations() -> Declarations {
@@ -315,6 +371,7 @@ fn declarations() -> Declarations {
     let mut inputs = Vec::new();
     let mut replays = Vec::new();
     let mut provenance = BTreeMap::new();
+    let mut no_replay = BTreeMap::new();
     for file in tracked_evidence_files() {
         if !file.ends_with("/replay.json") {
             continue;
@@ -328,17 +385,6 @@ fn declarations() -> Declarations {
             vocabulary("schema").contains(&schema),
             "{file}: unknown record schema `{schema}`"
         );
-        let prov = doc["revision_provenance"]
-            .as_str()
-            .unwrap_or_else(|| panic!("{file} declares no revision_provenance"))
-            .to_string();
-        assert!(
-            vocabulary("revision_provenance").contains(&prov.as_str()),
-            "{file}: unknown revision_provenance `{prov}` — a record whose pin \
-             does not say where it came from cannot be weighed"
-        );
-        provenance.insert(unit.clone(), prov);
-
         for i in doc["inputs"]
             .as_array()
             .unwrap_or_else(|| panic!("{file} declares no inputs"))
@@ -360,10 +406,53 @@ fn declarations() -> Declarations {
                 sha256,
             });
         }
-        for r in doc["replays"]
+        let declared_replays = doc["replays"]
             .as_array()
-            .unwrap_or_else(|| panic!("{file} declares no replays"))
-        {
+            .unwrap_or_else(|| panic!("{file} declares no replays"));
+
+        // A record that pins no revision must not describe where a pin came
+        // from, and a record that pins one must. Round 953: the alternative was
+        // to make `factsfirst-craft` name a provenance for a revision it does
+        // not have, which is a field asserting something about nothing.
+        if declared_replays.is_empty() {
+            assert!(
+                doc.get("revision_provenance").is_none(),
+                "{file} declares no replays, so `revision_provenance` describes \
+                 no pin — remove it"
+            );
+            let why = doc["no_replay"].as_str().unwrap_or_else(|| {
+                panic!(
+                    "{file} declares no replays and does not say why. A kit that \
+                     is silently exempt from the replay half is the one thing \
+                     nothing else here would notice."
+                )
+            });
+            assert!(
+                why.len() > 30,
+                "{file}: `no_replay` must name what cannot be replayed, not just \
+                 say so: {why:?}"
+            );
+            no_replay.insert(unit.clone(), why.to_string());
+        } else {
+            assert!(
+                doc.get("no_replay").is_none(),
+                "{file} declares {} replay(s) AND a `no_replay` reason — one of \
+                 the two is a lie",
+                declared_replays.len()
+            );
+            let prov = doc["revision_provenance"]
+                .as_str()
+                .unwrap_or_else(|| panic!("{file} declares no revision_provenance"))
+                .to_string();
+            assert!(
+                vocabulary("revision_provenance").contains(&prov.as_str()),
+                "{file}: unknown revision_provenance `{prov}` — a record whose pin \
+                 does not say where it came from cannot be weighed"
+            );
+            provenance.insert(unit.clone(), prov);
+        }
+
+        for r in declared_replays {
             let steps = r["steps"]
                 .as_array()
                 .unwrap_or_else(|| panic!("{file}: a replay declares no steps"))
@@ -389,6 +478,7 @@ fn declarations() -> Declarations {
         inputs,
         replays,
         provenance,
+        no_replay,
     }
 }
 
@@ -597,18 +687,94 @@ fn every_declared_input_still_hashes_to_its_sealed_digest() {
     );
 }
 
+/// Every tracked file under a kit's `run/` tree is declared by the record that
+/// owns it, and every `run/` tree has a record to own it.
+///
+/// THE SEAL IS ONLY AS WIDE AS THE DECLARATION. Round 952 gave every declared
+/// input a digest a gate re-checks, and then measured how far that reached: 552
+/// tracked files live under kit `run/` trees and 142 were declared. The other
+/// 410 — the manuscripts the judges read, the judges' own reports, the label map
+/// that made them blind, the briefs the authors were handed, the logs the run
+/// emitted — were pinned by nothing at all, which is the state Round 952
+/// described as the mechanism starting rather than finishing.
+///
+/// Coverage is asserted from the FILESYSTEM SIDE, not from the record's. A gate
+/// that walked the declarations and checked they resolve would pass on a record
+/// declaring one file out of fifty; the question worth asking is the other one,
+/// and it is the R884 lesson restated (a hand-list only looks where it was told
+/// to look).
+#[test]
+fn every_tracked_run_artifact_is_declared_by_its_kit() {
+    let d = declarations();
+    let units: BTreeSet<String> = tracked_evidence_files()
+        .into_iter()
+        .filter(|f| f.ends_with("/replay.json"))
+        .map(|f| f.trim_end_matches("/replay.json").to_string())
+        .collect();
+    let declared: BTreeSet<String> = d
+        .inputs
+        .iter()
+        .map(|i| normalize(&format!("{}/{}", i.unit, i.path)))
+        .collect();
+
+    let artifacts = run_artifacts();
+    assert!(
+        !artifacts.is_empty(),
+        "no run artifacts found at all — this gate would pass vacuously"
+    );
+
+    // One defect with two remedies, reported TOGETHER. An artifact under a
+    // record can be declared in it; an artifact under none needs the record
+    // first. Splitting them into two assertions would report the first
+    // shortfall and hide the second behind it, which teaches a reader the gap
+    // is smaller than it is — the Round 899 failure, one axis over.
+    let mut unowned: Vec<String> = Vec::new();
+    let mut undeclared: Vec<String> = Vec::new();
+    for path in &artifacts {
+        match owning_unit(path, &units) {
+            None => unowned.push(path.clone()),
+            Some(_) if !declared.contains(path) => undeclared.push(path.clone()),
+            Some(_) => {}
+        }
+    }
+    assert!(
+        unowned.is_empty() && undeclared.is_empty(),
+        "{} of {} tracked run artifact(s) are outside the Round 952 seal.\n\
+         {} sit under no kit record at all, so nothing can declare them — write \
+         that kit's `replay.json` first: {unowned:#?}\n\
+         {} have an owning record that does not declare them; run \
+         `experiment-harness declare-run-tree --record <replay.json>` and then \
+         `stamp-inputs` on the same record: {undeclared:#?}",
+        unowned.len() + undeclared.len(),
+        artifacts.len(),
+        unowned.len(),
+        undeclared.len()
+    );
+    println!(
+        "{} tracked run artifact(s) across {} record(s), all declared",
+        artifacts.len(),
+        units.len()
+    );
+}
+
 /// A manifest the record marks as raw agent output is NOT a replay input. The
 /// distinction is recorded because two kits ship both their agent's raw output
 /// and the normalized form, and a census that could not tell them apart
 /// reported a working arm as broken.
 #[test]
-fn roles_are_from_the_declared_vocabulary_and_both_are_used() {
+fn roles_are_from_the_declared_vocabulary_and_every_one_is_used() {
     let d = declarations();
     let roles: BTreeSet<&str> = d.inputs.iter().map(|i| i.role.as_str()).collect();
-    assert!(
-        roles.contains("replay-input") && roles.contains("raw-agent-output"),
-        "both roles must be exercised or the distinction is untested: {roles:?}"
-    );
+    // Asked of the vocabulary, not of a hand-typed pair: a role added to
+    // `INPUT_ROLES` and then used nowhere is a distinction the corpus does not
+    // actually draw, and this is the test that says so.
+    for role in INPUT_ROLES {
+        assert!(
+            roles.contains(role),
+            "role `{role}` is in the vocabulary and used by no record — an \
+             unexercised distinction is untested: {roles:?}"
+        );
+    }
 
     // A role is a claim about use, so it has to agree with the steps: anything
     // a replay feeds is a replay input, and anything marked raw is fed by none.
@@ -632,9 +798,62 @@ fn roles_are_from_the_declared_vocabulary_and_both_are_used() {
                 !fed.contains(&path),
                 "{path} is declared `raw-agent-output` but a replay step feeds it"
             ),
+            // The constraint neither sibling carries, and the reason
+            // `run-artifact` is not a catch-all: it claims membership of the
+            // kit's run tree, so it may not be used anywhere else. A file
+            // outside `run/` has to say what it IS.
+            "run-artifact" => {
+                assert!(
+                    !fed.contains(&path),
+                    "{path} is declared `run-artifact` but a replay step feeds \
+                     it — a fed input is a `replay-input`"
+                );
+                // Beneath the unit, and beneath a `run/` — not necessarily the
+                // unit's own `run/`, because kits nest: `disclosure-craft`
+                // holds the record and `v3/run/` is one of the trees it owns.
+                assert!(
+                    path.starts_with(&format!("{}/", i.unit)) && path.contains("/run/"),
+                    "{path} is declared `run-artifact` but does not sit under a \
+                     run tree of {}",
+                    i.unit
+                );
+            }
             other => panic!("unknown role `{other}`"),
         }
     }
+}
+
+/// A kit that declares no replay says why, and a kit that declares one does not
+/// pretend it also has no replay.
+///
+/// The check lives in `declarations`, which every test here calls; this one
+/// exists to state the rule where a reader looks for it and to keep the
+/// replay-less case from becoming vacuous. If the corpus ever holds no
+/// replay-less kit, the rule above is untested and this says so rather than
+/// passing quietly.
+#[test]
+fn a_kit_with_no_replay_states_why_and_declares_no_pin() {
+    let d = declarations();
+    assert!(
+        !d.no_replay.is_empty(),
+        "no kit declares an empty `replays`, so the rule that such a kit must \
+         explain itself is asserted against nothing"
+    );
+    for unit in d.no_replay.keys() {
+        assert!(
+            !d.replays.iter().any(|r| &r.unit == unit),
+            "{unit} says it has no replay and contributed one"
+        );
+        assert!(
+            !d.provenance.contains_key(unit),
+            "{unit} says it has no replay and still declares a revision provenance"
+        );
+    }
+    println!(
+        "{} kit(s) declare no replay, each with a stated reason: {:?}",
+        d.no_replay.len(),
+        d.no_replay.keys().collect::<Vec<_>>()
+    );
 }
 
 /// Every verb a step names is a verb this CLI actually has. Asked of the binary,

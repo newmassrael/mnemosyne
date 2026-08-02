@@ -1,5 +1,5 @@
 {
-  "schema": "kit-replay/v2",
+  "schema": "kit-replay/v3",
   "revision_provenance": "declared-at-run",
   "derivation": "The revision is the commit that landed these inputs, recorded at the run rather than reconstructed after it. A self-referential pin costs a second commit by construction: a replay's revision must name a tree that already HOLDS its inputs, so the pin can only land after the corpus. Round 942's runbook asked for provenance `exact`; the gate's vocabulary is `derived-upper-bound` and `declared-at-run`, and an unknown value panics — the same correction the map-corpus run had to make against the same word in Round 898's design.",
   "note": "Re-checking runs the declared revision against these manifests UNCHANGED. The manifests are the blind authors' output and are never edited to suit a later tool. Stage B's manifest is the author's own repair of their first submission, made from the verbatim tool error; the first submission itself is preserved beside it and is not replayed, because it does not import by design.",
@@ -73,6 +73,76 @@
       "path": "run/stage-b-first-submission/rules.json",
       "role": "raw-agent-output",
       "sha256": "760784e83e57d8b5da74530deed6c93aa7b70860d8a7a94d984a5995de6b01dc"
+    },
+    {
+      "path": "run/contract.txt",
+      "role": "run-artifact",
+      "sha256": "369bb23f7a221101770e0d5a8aad4081484e5cfcd5ca49e52cf5c4e807c966ad"
+    },
+    {
+      "path": "run/stage-a-first-submission/mnemosyne.toml",
+      "role": "run-artifact",
+      "sha256": "b993e67319f1acd1c7074e8d2d1aae6070d4053f4c38dfe5208ad6db8084efc8"
+    },
+    {
+      "path": "run/stage-a-first-submission/order.json",
+      "role": "run-artifact",
+      "sha256": "c93e3760f83ed6099c031fe9518bcd0d85ca90d5f4a395de15c7530ae75b9290"
+    },
+    {
+      "path": "run/stage-a-first-submission/self-report.md",
+      "role": "run-artifact",
+      "sha256": "65147411310e64b8175bef79591a90375cb679f37672e617315b53f4d7332f4e"
+    },
+    {
+      "path": "run/stage-a/first-import.log",
+      "role": "run-artifact",
+      "sha256": "7ead5cac8ba2b2219e611069c1159b167ae86b3eaed60599b2f7933527a778ab"
+    },
+    {
+      "path": "run/stage-a/mnemosyne.toml",
+      "role": "run-artifact",
+      "sha256": "b993e67319f1acd1c7074e8d2d1aae6070d4053f4c38dfe5208ad6db8084efc8"
+    },
+    {
+      "path": "run/stage-a/order.json",
+      "role": "run-artifact",
+      "sha256": "c93e3760f83ed6099c031fe9518bcd0d85ca90d5f4a395de15c7530ae75b9290"
+    },
+    {
+      "path": "run/stage-b-first-submission/mnemosyne.toml",
+      "role": "run-artifact",
+      "sha256": "a850a6c3fef71633b41fd421a3a99192649f4afd65bcffc9e8389d4e7ac189db"
+    },
+    {
+      "path": "run/stage-b-first-submission/order.json",
+      "role": "run-artifact",
+      "sha256": "6a41829359987947339f7439d2d730987ea98bb25fa4d6b82ffce19bf83ebb19"
+    },
+    {
+      "path": "run/stage-b/first-import.log",
+      "role": "run-artifact",
+      "sha256": "8f7d3e1bc8287ed143680f0866ade2bded1e6083f4e90712e514ba014d582544"
+    },
+    {
+      "path": "run/stage-b/mnemosyne.toml",
+      "role": "run-artifact",
+      "sha256": "a850a6c3fef71633b41fd421a3a99192649f4afd65bcffc9e8389d4e7ac189db"
+    },
+    {
+      "path": "run/stage-b/order.json",
+      "role": "run-artifact",
+      "sha256": "6a41829359987947339f7439d2d730987ea98bb25fa4d6b82ffce19bf83ebb19"
+    },
+    {
+      "path": "run/stage-b/second-import.log",
+      "role": "run-artifact",
+      "sha256": "f6c5b3e9f3b6de4d9322d6fc31b8e306449d7d7e747fe79e3d8d9e8b8addf610"
+    },
+    {
+      "path": "run/stage-b/self-report.md",
+      "role": "run-artifact",
+      "sha256": "e9e43b762175ce53ddeb2c697d11a21f05715d4c6327fa0e5c44a5ef47e1a9f7"
     }
   ],
   "replays": [

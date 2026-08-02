@@ -1,5 +1,5 @@
 {
-  "schema": "kit-replay/v2",
+  "schema": "kit-replay/v3",
   "revision_provenance": "derived-upper-bound",
   "derived_in": "Round 882",
   "derivation": "git log --diff-filter=A -1 -- <every input of the replay>: the newest commit that added any of them. A replay needs a tree holding ALL its inputs, so the pin is the max, and each add-commit is AT OR AFTER the run that produced that input.",
@@ -14,6 +14,21 @@
       "path": "run/author/facts.json",
       "role": "replay-input",
       "sha256": "e793c78c863404639e15fe12b379b25f6c5c2f1a7e500001639b9e0261b05e93"
+    },
+    {
+      "path": "run/author/author-log.md",
+      "role": "run-artifact",
+      "sha256": "37caf58ebdc19297df6a18a13f85f15577b3f6a2f045d7704b5cdd704e9ad3d9"
+    },
+    {
+      "path": "run/author/order.json",
+      "role": "run-artifact",
+      "sha256": "14fb2c2dcc72ea67028f5ce11163db3657a74f5bde7203ad58ed9ef66c9e7423"
+    },
+    {
+      "path": "run/author/rules.json",
+      "role": "run-artifact",
+      "sha256": "9a732c69e22ac8a26e2494be25012cd6d006ca88fb7775b61f4b19a48749b336"
     }
   ],
   "replays": [

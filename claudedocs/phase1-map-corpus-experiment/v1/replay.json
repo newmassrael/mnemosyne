@@ -1,5 +1,5 @@
 {
-  "schema": "kit-replay/v2",
+  "schema": "kit-replay/v3",
   "revision_provenance": "declared-at-run",
   "declared_in": "Round 904",
   "derivation": "The revision is the commit that landed these inputs, recorded at the run rather than reconstructed after it. Round 898's design called this provenance \"exact\"; the gate's vocabulary has no such term, and \"declared-at-run\" is the existing name for the same thing. A self-referential pin costs a second commit by construction: a replay's revision must name a tree that already HOLDS its inputs, so the pin can only land after the corpus.",
@@ -54,6 +54,141 @@
       "path": "run/stage-b-first-submission/narrative-rules.json",
       "role": "raw-agent-output",
       "sha256": "ce522f6277a4d565a0b8bf19e93fca90fea1f1838f5cf2aad723faacde4aa7dd"
+    },
+    {
+      "path": "run/contract.txt",
+      "role": "run-artifact",
+      "sha256": "57be4d1dbeb739505af466f38b9d4d45d3440630a1aa81c09e3ef0240d8aa6ba"
+    },
+    {
+      "path": "run/stage-a-first-submission/mnemosyne.toml",
+      "role": "run-artifact",
+      "sha256": "5085120f0b773c2b54e975b9c9f604bfa8e95c91653fd8aca546f33408743263"
+    },
+    {
+      "path": "run/stage-a-first-submission/order.json",
+      "role": "run-artifact",
+      "sha256": "dd617be432a337086242c4bf5dbfffffc77e024ec67ea1858d50d7aa85afc53a"
+    },
+    {
+      "path": "run/stage-a-first-submission/sections.json",
+      "role": "run-artifact",
+      "sha256": "6b0b3a3e06fec9f5dd5cf55eb9b5be647e612efcb46d69a57dbb5ca4edfa5a3d"
+    },
+    {
+      "path": "run/stage-a-first-submission/self-report.md",
+      "role": "run-artifact",
+      "sha256": "27fc84baf4e734c2dfa872d925cf3686eca02fb4caf1f5100e89d4a5fd1e2690"
+    },
+    {
+      "path": "run/stage-a/continuity.log",
+      "role": "run-artifact",
+      "sha256": "3ada6038a6d40ae38fb5a991049f21d834cb56456540cac51c20c1168a8758a2"
+    },
+    {
+      "path": "run/stage-a/first-import.log",
+      "role": "run-artifact",
+      "sha256": "291d3faf6dde9a101ac00c952ede0596db403b492b2fb4c8d412221be897dacd"
+    },
+    {
+      "path": "run/stage-a/iteration-notes.md",
+      "role": "run-artifact",
+      "sha256": "b9751644f5be082fcef55b7215ed6fbffd93105d3114d630ad9f85492efb57a0"
+    },
+    {
+      "path": "run/stage-a/mnemosyne.toml",
+      "role": "run-artifact",
+      "sha256": "5085120f0b773c2b54e975b9c9f604bfa8e95c91653fd8aca546f33408743263"
+    },
+    {
+      "path": "run/stage-a/order.json",
+      "role": "run-artifact",
+      "sha256": "dd617be432a337086242c4bf5dbfffffc77e024ec67ea1858d50d7aa85afc53a"
+    },
+    {
+      "path": "run/stage-a/self-report.md",
+      "role": "run-artifact",
+      "sha256": "27fc84baf4e734c2dfa872d925cf3686eca02fb4caf1f5100e89d4a5fd1e2690"
+    },
+    {
+      "path": "run/stage-b-first-submission/edge-costs.json",
+      "role": "run-artifact",
+      "sha256": "b9cb64976c554afb342335d0a0f06394f70055b7ee7d4b66c2cd40ef4db2540c"
+    },
+    {
+      "path": "run/stage-b-first-submission/edge-guards.json",
+      "role": "run-artifact",
+      "sha256": "729e9c5439811971a7d16e91bef6c03c6af0fcf008cbc8519b0cf172bec8c73b"
+    },
+    {
+      "path": "run/stage-b-first-submission/mnemosyne.toml",
+      "role": "run-artifact",
+      "sha256": "5085120f0b773c2b54e975b9c9f604bfa8e95c91653fd8aca546f33408743263"
+    },
+    {
+      "path": "run/stage-b-first-submission/order.json",
+      "role": "run-artifact",
+      "sha256": "2b27c99c7a7e9f63b279258e78081519db84ac9610878f4c48fb2983971dd113"
+    },
+    {
+      "path": "run/stage-b-first-submission/sections.json",
+      "role": "run-artifact",
+      "sha256": "8449b15bc54698d8ec8beb6253a7ec50e2048a8e323561e47dca5c512e3746e3"
+    },
+    {
+      "path": "run/stage-b-first-submission/self-report.md",
+      "role": "run-artifact",
+      "sha256": "c55a65345d98a9fd6db175bde16434776d5fce6082fd1bfd0d8c0fde305339c3"
+    },
+    {
+      "path": "run/stage-b/continuity.log",
+      "role": "run-artifact",
+      "sha256": "e4f81719ed3815cba73a9c4aa72f756f51494b99b9c24c94f36750c5814dfea8"
+    },
+    {
+      "path": "run/stage-b/edge-costs.json",
+      "role": "run-artifact",
+      "sha256": "b9cb64976c554afb342335d0a0f06394f70055b7ee7d4b66c2cd40ef4db2540c"
+    },
+    {
+      "path": "run/stage-b/edge-guards.json",
+      "role": "run-artifact",
+      "sha256": "729e9c5439811971a7d16e91bef6c03c6af0fcf008cbc8519b0cf172bec8c73b"
+    },
+    {
+      "path": "run/stage-b/first-import.log",
+      "role": "run-artifact",
+      "sha256": "589eb18fbfcffc25e6dd6f776dd68642b1b5e30a6d584b8a2b727a1c5ae6bf71"
+    },
+    {
+      "path": "run/stage-b/frontier.log",
+      "role": "run-artifact",
+      "sha256": "d3e81466a829afd0f5c9844dd82fcb210e136a531f3a136f62821f3c3ee0ceaa"
+    },
+    {
+      "path": "run/stage-b/iteration-notes.md",
+      "role": "run-artifact",
+      "sha256": "b361b0e2d11c3c91812068d0de08b73d3a03a80d50b8337f2879d850b9699749"
+    },
+    {
+      "path": "run/stage-b/mnemosyne.toml",
+      "role": "run-artifact",
+      "sha256": "5085120f0b773c2b54e975b9c9f604bfa8e95c91653fd8aca546f33408743263"
+    },
+    {
+      "path": "run/stage-b/order.json",
+      "role": "run-artifact",
+      "sha256": "2b27c99c7a7e9f63b279258e78081519db84ac9610878f4c48fb2983971dd113"
+    },
+    {
+      "path": "run/stage-b/self-report.md",
+      "role": "run-artifact",
+      "sha256": "c55a65345d98a9fd6db175bde16434776d5fce6082fd1bfd0d8c0fde305339c3"
+    },
+    {
+      "path": "run/stage-b/transition-map.log",
+      "role": "run-artifact",
+      "sha256": "4ca0284d96bd0a18787b36976851927bd639b470656ee0d8feeab64f7822aec7"
     }
   ],
   "replays": [

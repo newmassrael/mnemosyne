@@ -175,7 +175,7 @@ it. Do not resolve it in the orchestrator's voice — record it.
 
 - `map-corpus-report.md` — E1, E2 (both first-import logs verbatim), E3 (the
   disagreements), C1/C2 (which branches ran, which verbs newly differ).
-- `v1/manifest.json` + `v1/replay.json` (`kit-replay/v2`) listing the Stage B
+- `v1/manifest.json` + `v1/replay.json` (`kit-replay/v3`) listing the Stage B
   manifests as inputs, the landing commit as `revision`, and
   `revision_provenance: "declared-at-run"` — the first kit in this tree that can
   declare its pin at the run rather than derive it after. **That string is the
@@ -189,4 +189,12 @@ it. Do not resolve it in the orchestrator's voice — record it.
   into a runbook, grep the code that reads it.
 - Register the replay so `evidence_replay_smoke` rebuilds it in CI. A corpus
   nothing loads is the rot this corpus exists to end (Round 873, Round 897).
+- Then declare and seal the REST of the run tree, which is not optional and is
+  not hand work (Round 953): `experiment-harness declare-run-tree --record
+  vN/replay.json` writes a `run-artifact` entry for every tracked file under
+  `vN/run/` that the record does not already name, and `experiment-harness
+  stamp-inputs --record vN/replay.json` then writes each declared input's
+  sha256 into the record, once. Both are idempotent and neither ever rewrites an
+  existing entry. Until this is run, the first-import logs, the transition-map
+  dumps and the authored side-table scripts are pinned by nothing at all.
 - One changelog entry, one commit. Push is a separate gate.

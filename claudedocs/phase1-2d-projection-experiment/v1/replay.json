@@ -1,5 +1,5 @@
 {
-  "schema": "kit-replay/v2",
+  "schema": "kit-replay/v3",
   "revision_provenance": "derived-upper-bound",
   "derived_in": "Round 882",
   "derivation": "git log --diff-filter=A -1 -- <every input of the replay>: the newest commit that added any of them. A replay needs a tree holding ALL its inputs, so the pin is the max, and each add-commit is AT OR AFTER the run that produced that input.",
@@ -44,6 +44,76 @@
       "path": "run/extract-vn/facts.json",
       "role": "replay-input",
       "sha256": "b9ca24ba7d5366fa7cc77c354965dc17f27a0281d238f0da69062869094b4dc6"
+    },
+    {
+      "path": "run/author/author-log.md",
+      "role": "run-artifact",
+      "sha256": "c72b22acf82ae579748bf18efbcc045bba4b5c57cf8042e88072c1f674a1fd7a"
+    },
+    {
+      "path": "run/author/narrative-rules.json",
+      "role": "run-artifact",
+      "sha256": "df0fca6e34522d4fd234afc051d20717ab83c508c47f5ac28d61103bee2f5fac"
+    },
+    {
+      "path": "run/author/order.json",
+      "role": "run-artifact",
+      "sha256": "34b1689497eb3f304b7f3a51e2062ae9a5608f2cb9b36bed883d7a5592d14870"
+    },
+    {
+      "path": "run/extract-tsukuru/extract-log.md",
+      "role": "run-artifact",
+      "sha256": "9b87b0af49b7043b66fa07d0516946cc277ee0949de5dce3c2881866858a6b53"
+    },
+    {
+      "path": "run/extract-vn/extract-log.md",
+      "role": "run-artifact",
+      "sha256": "8dbb0277470a411c76e9085cf3453138e52d2a804ff470fd01abd326d8b8335c"
+    },
+    {
+      "path": "run/extract/vocab.md",
+      "role": "run-artifact",
+      "sha256": "35e0ae64fb41baed9e1fedac143f4e7c42609b1802860860f475eec95c016341"
+    },
+    {
+      "path": "run/judges/judge-1.md",
+      "role": "run-artifact",
+      "sha256": "2536b4bb6497fc5c4ddda65fda6599a308cc0f41ec7d78fd4ed7e1c8e5e45126"
+    },
+    {
+      "path": "run/judges/judge-2.md",
+      "role": "run-artifact",
+      "sha256": "0d9965eb61219227e888ea1b898859f527d5bd921696bda45b2f4bfced0be943"
+    },
+    {
+      "path": "run/judges/judge-3.md",
+      "role": "run-artifact",
+      "sha256": "9d38f46ba50431a0f96155905d006447cf0252db00b2bdb9b0d7b423a54f8f9a"
+    },
+    {
+      "path": "run/manuscripts/world-together.md",
+      "role": "run-artifact",
+      "sha256": "de8d124ef8dba0a165bf7028ccffa5fd2de3df8b862e367b76d325b61e163702"
+    },
+    {
+      "path": "run/render-tsukuru/render-log.md",
+      "role": "run-artifact",
+      "sha256": "0e0d7ba11d8e204ad00da4bcda75c34df8cf507712a082cc4bc06e288a10edb5"
+    },
+    {
+      "path": "run/render-tsukuru/world-together.md",
+      "role": "run-artifact",
+      "sha256": "76d2b7835bab2b2d7446434757b272440e72a85d7134f1c07e6f466c4683a8d3"
+    },
+    {
+      "path": "run/render-vn/render-log.md",
+      "role": "run-artifact",
+      "sha256": "1163dd3f168848413930c86e7574f63e0b88fac916df4bd40ddd1f06871988f2"
+    },
+    {
+      "path": "run/render-vn/world-together.md",
+      "role": "run-artifact",
+      "sha256": "c715457ddc63dcec6a5f1bf3194f699ce8c3bedde8e0644cefe898f853a6680b"
     }
   ],
   "replays": [

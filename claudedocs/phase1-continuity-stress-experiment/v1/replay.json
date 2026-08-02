@@ -1,5 +1,5 @@
 {
-  "schema": "kit-replay/v2",
+  "schema": "kit-replay/v3",
   "revision_provenance": "derived-upper-bound",
   "derived_in": "Round 882",
   "derivation": "git log --diff-filter=A -1 -- <every input of the replay>: the newest commit that added any of them. A replay needs a tree holding ALL its inputs, so the pin is the max, and each add-commit is AT OR AFTER the run that produced that input.",
@@ -34,6 +34,31 @@
       "path": "pin2-probes/probe-transition.json",
       "role": "replay-input",
       "sha256": "3cb3a3c6aaccfbe93955ee7070328a0af5abba91cca869b48865912186ffb0be"
+    },
+    {
+      "path": "run/game/canon-order.json",
+      "role": "run-artifact",
+      "sha256": "17df641625de3df485f9aa5dff4f476ea4d556147895d7f4abc98d8fde3e8436"
+    },
+    {
+      "path": "run/game/loop-log.md",
+      "role": "run-artifact",
+      "sha256": "31dd6f017ee162e469826991badda0156ef55a22eeeacaed9447105ce93babb8"
+    },
+    {
+      "path": "run/game/mnemosyne.toml",
+      "role": "run-artifact",
+      "sha256": "ae68b753a952a86fdb22e859127c294c6420957c23711ade3eddac13ab71e843"
+    },
+    {
+      "path": "run/game/narrative-rules.json",
+      "role": "run-artifact",
+      "sha256": "5ab2478d7bbbc5a1abb30321957b0f31d55afa10ff6a4273e469d775587d0d74"
+    },
+    {
+      "path": "run/game/render-work-road.txt",
+      "role": "run-artifact",
+      "sha256": "23602704c5efe37bfe40487cb522f719eea7daa019e951a7f8529e91252fad41"
     }
   ],
   "replays": [
