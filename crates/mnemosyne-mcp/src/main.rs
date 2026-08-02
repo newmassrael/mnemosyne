@@ -3389,6 +3389,8 @@ mod tests {
 
         // 2) import_facts creates a frame + a fact referencing sec-a, atomically.
         let manifest = atomic::FactsManifest {
+            edge_costs: Vec::new(),
+            edge_guards: Vec::new(),
             frames: vec![atomic::FrameImport {
                 frame_id: "gt".to_string(),
                 description: String::new(),

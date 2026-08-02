@@ -5255,6 +5255,42 @@ pub struct PredicateImport {
     pub description: String,
 }
 
+/// One map-edge COST in a [`FactsManifest`] (Round 956) — the manifest form of
+/// an `add-edge-cost`, applied through that verb's own core.
+///
+/// This wire is why the round exists. The cost and guard side tables were
+/// reachable ONLY by verb, so a file-only authoring — which is how every blind
+/// corpus on record was written — could not touch them at all. Round 936
+/// measured the result: five authored corpora, `edge_costs` and `edge_guards`
+/// used zero times, both branches of the map code with no authored witness.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
+pub struct EdgeCostImport {
+    /// The ADJACENT fact the cost attaches to (the `adjacent(a, b)` edge).
+    pub fact_id: String,
+    /// The amount. Must be positive — 0 is a free teleport.
+    pub n: i64,
+    /// A REGISTERED unit id (invariant 4; an unregistered unit rejects).
+    pub unit: String,
+}
+
+/// One map-edge GUARD in a [`FactsManifest`] (Round 956) — the manifest form of
+/// N `add-edge-guard` calls plus an optional `set-edge-guard-threshold`, applied
+/// through those verbs' own cores.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
+pub struct EdgeGuardImport {
+    /// The ADJACENT fact this guard gates.
+    pub fact_id: String,
+    /// The condition facts, ANDed unless `threshold` says otherwise. Each must
+    /// exist and none may be the edge itself.
+    pub conditions: Vec<String>,
+    /// Optional K-of-N: omitted = AND over every condition. `1..=len`; `k == len`
+    /// normalizes to AND, `0` and `k > len` reject.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub threshold: Option<usize>,
+}
+
 /// One diegetic surface in a [`DisclosureOverrideImport`] (Round 590) — the
 /// flat manifest form of [`DisclosureSurface`].
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -5344,6 +5380,14 @@ pub struct FactsManifest {
     pub predicates: Vec<PredicateImport>,
     #[serde(default)]
     pub facts: Vec<FactImport>,
+    /// Map-edge costs (Round 956). Applied AFTER facts — a cost keys off an
+    /// existing edge fact — through `add-edge-cost`'s own core.
+    #[serde(default)]
+    pub edge_costs: Vec<EdgeCostImport>,
+    /// Map-edge guards (Round 956). Applied AFTER facts, through
+    /// `add-edge-guard` / `set-edge-guard-threshold`'s own cores.
+    #[serde(default)]
+    pub edge_guards: Vec<EdgeGuardImport>,
     #[serde(default)]
     pub disclosure_plans: Vec<DisclosurePlanImport>,
 }
@@ -5352,7 +5396,8 @@ pub struct FactsManifest {
 /// single-sourced so the CLI/MCP parse hints cannot drift apart (they had, at
 /// R590: some still said "frames + facts", one omitted `disclosure_plans`).
 pub const FACTS_MANIFEST_SHAPE: &str = "a JSON object with frames / branches / \
-     entity_kinds / units / entities / predicates / facts / disclosure_plans arrays";
+     entity_kinds / units / entities / predicates / facts / edge_costs / edge_guards / \
+     disclosure_plans arrays";
 
 /// Single shared fact builder/validator — both write paths route here
 /// (R305 parity). Enforces the scalar invariants:
@@ -6849,37 +6894,8 @@ pub fn add_edge_cost(
     unit: &str,
 ) -> Result<AtomicMutateReceipt, AtomicMutateError> {
     let id = mnemosyne_core::FactId::from(fact_id.trim());
-    let unit = unit.trim();
-    if !store.narrative_facts.contains_key(&id) {
-        return Err(AtomicMutateError::Validation(format!(
-            "add_edge_cost: fact `{id}` not present (a cost attaches to an existing edge fact; \
-             add the adjacent fact first)"
-        )));
-    }
-    if n <= 0 {
-        return Err(AtomicMutateError::Validation(format!(
-            "add_edge_cost: cost n={n} must be positive (0/negative = a free teleport — \
-             build-map.py's G3)"
-        )));
-    }
-    if !unit_registered(store, unit) {
-        return Err(AtomicMutateError::Validation(format!(
-            "add_edge_cost: unit `{unit}` is not a registered unit (add_unit first; fail-loud — \
-             invariant 4)"
-        )));
-    }
-    let candidate = EdgeCost {
-        n,
-        unit: unit.into(),
-    };
-    let created = stage_registry_entry(
-        &mut store.edge_costs,
-        "add_edge_cost",
-        "edge_cost",
-        &id.as_str().into(),
-        candidate,
-    )
-    .map_err(AtomicMutateError::Validation)?;
+    let created = apply_edge_cost(store, "add_edge_cost", fact_id, n, unit)
+        .map_err(AtomicMutateError::Validation)?;
     registry_receipt(
         store,
         sidecar_path,
@@ -6887,6 +6903,56 @@ pub fn add_edge_cost(
         "edge_cost",
         id.as_str(),
         created,
+    )
+}
+
+/// Stage one edge cost — the whole of [`add_edge_cost`] except the persist, so
+/// the standalone verb and the manifest wire share ONE enforcement (Round 956,
+/// the `apply_disclosure_override` pattern). Returns whether the entry was newly
+/// created; `context` names the caller in every message.
+///
+/// The manifest wire exists because these side tables were reachable ONLY by
+/// verb: Round 936 measured five authored corpora using `edge_costs` and
+/// `edge_guards` zero times, and two blind authors wrote a `commands.sh` /
+/// `side-tables.sh` by hand to get at them — the tree's own record of an
+/// authoring surface being reached for and not found.
+pub(crate) fn apply_edge_cost(
+    store: &mut AtomicStore,
+    context: &str,
+    fact_id: &str,
+    n: i64,
+    unit: &str,
+) -> Result<bool, String> {
+    let id = mnemosyne_core::FactId::from(fact_id.trim());
+    let unit = unit.trim();
+    if !store.narrative_facts.contains_key(&id) {
+        return Err(format!(
+            "{context}: fact `{id}` not present (a cost attaches to an existing edge fact; \
+             add the adjacent fact first)"
+        ));
+    }
+    if n <= 0 {
+        return Err(format!(
+            "{context}: cost n={n} must be positive (0/negative = a free teleport — \
+             build-map.py's G3)"
+        ));
+    }
+    if !unit_registered(store, unit) {
+        return Err(format!(
+            "{context}: unit `{unit}` is not a registered unit (add_unit first; fail-loud — \
+             invariant 4)"
+        ));
+    }
+    let candidate = EdgeCost {
+        n,
+        unit: unit.into(),
+    };
+    stage_registry_entry(
+        &mut store.edge_costs,
+        context,
+        "edge_cost",
+        &id.as_str().into(),
+        candidate,
     )
 }
 
@@ -6965,37 +7031,9 @@ pub fn add_edge_guard(
     condition_fact_id: &str,
 ) -> Result<AtomicMutateReceipt, AtomicMutateError> {
     let edge = mnemosyne_core::FactId::from(edge_fact_id.trim());
-    let condition = mnemosyne_core::FactId::from(condition_fact_id.trim());
-    if !store.narrative_facts.contains_key(&edge) {
-        return Err(AtomicMutateError::Validation(format!(
-            "add_edge_guard: edge fact `{edge}` not present (a guard attaches to an existing \
-             edge fact; add the adjacent fact first)"
-        )));
-    }
-    if !store.narrative_facts.contains_key(&condition) {
-        return Err(AtomicMutateError::Validation(format!(
-            "add_edge_guard: condition fact `{condition}` not present (a guard requires an \
-             existing fact; add the condition fact first — the dangling-ref check)"
-        )));
-    }
-    if edge == condition {
-        return Err(AtomicMutateError::Validation(format!(
-            "add_edge_guard: edge `{edge}` cannot guard itself (a guard references a distinct \
-             condition fact)"
-        )));
-    }
-    // Insert into the edge's condition SET (Round 722). `created` = a genuinely
-    // new member (a re-add of an existing condition is a no-op, like the other
-    // registry adds). Round 723 — the threshold is carried unchanged (a `None`/AND
-    // guard stays AND over the bigger set; a `Some(k)` keeps k, now k-of-(n+1) — the
-    // author's k intent is never silently mutated; `set_edge_guard_threshold` is the
-    // one place k changes).
-    let created = store
-        .edge_guards
-        .entry(edge.clone())
-        .or_default()
-        .conditions
-        .insert(condition);
+    let created =
+        apply_edge_guard_condition(store, "add_edge_guard", edge_fact_id, condition_fact_id)
+            .map_err(AtomicMutateError::Validation)?;
     registry_receipt(
         store,
         sidecar_path,
@@ -7004,6 +7042,49 @@ pub fn add_edge_guard(
         edge.as_str(),
         created,
     )
+}
+
+/// Stage one guard condition — the whole of [`add_edge_guard`] except the
+/// persist, shared with the manifest wire (Round 956). Returns whether the
+/// condition was a genuinely new member of the set.
+pub(crate) fn apply_edge_guard_condition(
+    store: &mut AtomicStore,
+    context: &str,
+    edge_fact_id: &str,
+    condition_fact_id: &str,
+) -> Result<bool, String> {
+    let edge = mnemosyne_core::FactId::from(edge_fact_id.trim());
+    let condition = mnemosyne_core::FactId::from(condition_fact_id.trim());
+    if !store.narrative_facts.contains_key(&edge) {
+        return Err(format!(
+            "{context}: edge fact `{edge}` not present (a guard attaches to an existing \
+             edge fact; add the adjacent fact first)"
+        ));
+    }
+    if !store.narrative_facts.contains_key(&condition) {
+        return Err(format!(
+            "{context}: condition fact `{condition}` not present (a guard requires an \
+             existing fact; add the condition fact first — the dangling-ref check)"
+        ));
+    }
+    if edge == condition {
+        return Err(format!(
+            "{context}: edge `{edge}` cannot guard itself (a guard references a distinct \
+             condition fact)"
+        ));
+    }
+    // Insert into the edge's condition SET (Round 722). `created` = a genuinely
+    // new member (a re-add of an existing condition is a no-op, like the other
+    // registry adds). Round 723 — the threshold is carried unchanged (a `None`/AND
+    // guard stays AND over the bigger set; a `Some(k)` keeps k, now k-of-(n+1) — the
+    // author's k intent is never silently mutated; `set_edge_guard_threshold` is the
+    // one place k changes).
+    Ok(store
+        .edge_guards
+        .entry(edge)
+        .or_default()
+        .conditions
+        .insert(condition))
 }
 
 /// Remove ONE condition from a map edge's guard set (Round 722) — the granular
@@ -7082,32 +7163,8 @@ pub fn set_edge_guard_threshold(
     threshold: Option<usize>,
 ) -> Result<AtomicMutateReceipt, AtomicMutateError> {
     let edge = mnemosyne_core::FactId::from(edge_fact_id.trim());
-    let guard = store.edge_guards.get_mut(&edge).ok_or_else(|| {
-        AtomicMutateError::Validation(format!(
-            "set_edge_guard_threshold: edge `{edge}` has no guard (add a condition with \
-             add_edge_guard first; a threshold is a property of an existing guard set)"
-        ))
-    })?;
-    let len = guard.conditions.len();
-    let normalized = match threshold {
-        None => None,
-        Some(0) => {
-            return Err(AtomicMutateError::Validation(format!(
-                "set_edge_guard_threshold: edge `{edge}` threshold 0 is vacuous (a guard that \
-                 requires none of its conditions guards nothing); use 1..={len}, or clear to AND"
-            )));
-        }
-        Some(k) if k > len => {
-            return Err(AtomicMutateError::Validation(format!(
-                "set_edge_guard_threshold: edge `{edge}` threshold {k} exceeds its {len} \
-                 condition(s) (unsatisfiable); use 1..={len}"
-            )));
-        }
-        // k == len is a redundant AND → the canonical None (review F3).
-        Some(k) if k == len => None,
-        Some(k) => Some(k),
-    };
-    guard.threshold = normalized;
+    apply_edge_guard_threshold(store, "set_edge_guard_threshold", edge_fact_id, threshold)
+        .map_err(AtomicMutateError::Validation)?;
     save_with_receipt(
         store,
         sidecar_path,
@@ -7115,6 +7172,45 @@ pub fn set_edge_guard_threshold(
         "edge_guard",
         edge.as_str(),
     )
+}
+
+/// Set (or clear) a guard's K-of-N threshold — the whole of
+/// [`set_edge_guard_threshold`] except the persist, shared with the manifest
+/// wire (Round 956).
+pub(crate) fn apply_edge_guard_threshold(
+    store: &mut AtomicStore,
+    context: &str,
+    edge_fact_id: &str,
+    threshold: Option<usize>,
+) -> Result<(), String> {
+    let edge = mnemosyne_core::FactId::from(edge_fact_id.trim());
+    let guard = store.edge_guards.get_mut(&edge).ok_or_else(|| {
+        format!(
+            "{context}: edge `{edge}` has no guard (add a condition with \
+             add_edge_guard first; a threshold is a property of an existing guard set)"
+        )
+    })?;
+    let len = guard.conditions.len();
+    let normalized = match threshold {
+        None => None,
+        Some(0) => {
+            return Err(format!(
+                "{context}: edge `{edge}` threshold 0 is vacuous (a guard that \
+                 requires none of its conditions guards nothing); use 1..={len}, or clear to AND"
+            ));
+        }
+        Some(k) if k > len => {
+            return Err(format!(
+                "{context}: edge `{edge}` threshold {k} exceeds its {len} \
+                 condition(s) (unsatisfiable); use 1..={len}"
+            ));
+        }
+        // k == len is a redundant AND → the canonical None (review F3).
+        Some(k) if k == len => None,
+        Some(k) => Some(k),
+    };
+    guard.threshold = normalized;
+    Ok(())
 }
 
 /// Remove a map edge's WHOLE guard set (Round 720) — the symmetric peer of
@@ -9567,6 +9663,61 @@ pub fn apply_facts_manifest(
             }
         }
     }
+    // Map-edge side tables AFTER facts (Round 956) — a cost keys off an existing
+    // edge fact and a guard names two of them, so both need the facts staged.
+    // Same cores as the standalone add-edge-cost / add-edge-guard /
+    // set-edge-guard-threshold (write-path parity), because a second copy of
+    // these checks is a second invariant set on one field.
+    let mut edge_costs_set = 0usize;
+    for (idx, cost) in manifest.edge_costs.iter().enumerate() {
+        let created = apply_edge_cost(store, "import_facts", &cost.fact_id, cost.n, &cost.unit)
+            .map_err(|e| {
+                AtomicMutateError::Validation(format!(
+                    "import_facts: manifest edge_cost {idx}: {e}"
+                ))
+            })?;
+        if created {
+            edge_costs_set += 1;
+        } else {
+            no_op += 1;
+        }
+    }
+    let mut edge_guards_set = 0usize;
+    for (idx, guard) in manifest.edge_guards.iter().enumerate() {
+        // An empty condition list would leave no guard for a threshold to sit
+        // on, and an empty AND guards nothing — the same reason
+        // `remove_edge_guard_condition` deletes the key on the last removal.
+        if guard.conditions.is_empty() {
+            return Err(AtomicMutateError::Validation(format!(
+                "import_facts: manifest edge_guard {idx} on `{}` declares no conditions (an \
+                 empty AND guards nothing; omit the entry instead)",
+                guard.fact_id
+            )));
+        }
+        for condition in &guard.conditions {
+            let created =
+                apply_edge_guard_condition(store, "import_facts", &guard.fact_id, condition)
+                    .map_err(|e| {
+                        AtomicMutateError::Validation(format!(
+                            "import_facts: manifest edge_guard {idx}: {e}"
+                        ))
+                    })?;
+            if created {
+                edge_guards_set += 1;
+            } else {
+                no_op += 1;
+            }
+        }
+        // The threshold is set even when omitted, so a re-import that DROPS a
+        // `threshold` returns the guard to AND instead of silently keeping the
+        // old k — the manifest is the declaration, not a patch.
+        apply_edge_guard_threshold(store, "import_facts", &guard.fact_id, guard.threshold)
+            .map_err(|e| {
+                AtomicMutateError::Validation(format!(
+                    "import_facts: manifest edge_guard {idx}: {e}"
+                ))
+            })?;
+    }
     // Disclosure plans LAST (Round 590) — an override references a fact + needs
     // the typed-fact invariant, so facts must already be staged. Same cores as
     // the standalone add-disclosure-plan / set-disclosure (write-path parity).
@@ -9617,6 +9768,7 @@ pub fn apply_facts_manifest(
         "{frames_created} frames + {branches_created} branches + {entity_kinds_created} \
          entity-kinds + {units_created} units + {entities_created} entities + \
          {predicates_created} predicates + {facts_created} facts + \
+         {edge_costs_set} edge-costs + {edge_guards_set} edge-guard-conditions + \
          {disclosure_plans_created} disclosure-plans + {disclosure_overrides_set} \
          disclosure-overrides created, {no_op} no-op"
     );
@@ -9627,6 +9779,8 @@ pub fn apply_facts_manifest(
         || entities_created != 0
         || predicates_created != 0
         || facts_created != 0
+        || edge_costs_set != 0
+        || edge_guards_set != 0
         || disclosure_plans_created != 0
         || disclosure_overrides_set != 0;
     Ok(FactsApplyOutcome { summary, changed })
@@ -16060,6 +16214,8 @@ mod tests {
             &mut store,
             path,
             &FactsManifest {
+                edge_costs: Vec::new(),
+                edge_guards: Vec::new(),
                 entity_kinds: vec![],
                 units: vec![],
                 disclosure_plans: vec![],
@@ -16472,6 +16628,8 @@ mod tests {
             &mut store,
             path,
             &FactsManifest {
+                edge_costs: Vec::new(),
+                edge_guards: Vec::new(),
                 entity_kinds: vec![],
                 units: vec![],
                 disclosure_plans: vec![],
@@ -16602,6 +16760,8 @@ mod tests {
             &mut store,
             &path,
             &FactsManifest {
+                edge_costs: Vec::new(),
+                edge_guards: Vec::new(),
                 entity_kinds: vec![],
                 units: vec![],
                 disclosure_plans: vec![],
@@ -16924,6 +17084,171 @@ mod tests {
             .contains("no proposals"));
     }
 
+    /// An empty manifest, written out in full ON PURPOSE. This file's fixtures
+    /// list every field deliberately, so a new array cannot be silently ignored
+    /// by a test; keeping ONE exhaustive literal here preserves that while
+    /// sparing the Round 956 tests twelve lines of `vec![]` apiece. A field
+    /// added to `FactsManifest` breaks exactly this function.
+    fn empty_manifest() -> FactsManifest {
+        FactsManifest {
+            frames: vec![],
+            branches: vec![],
+            entity_kinds: vec![],
+            units: vec![],
+            entities: vec![],
+            predicates: vec![],
+            facts: vec![],
+            edge_costs: vec![],
+            edge_guards: vec![],
+            disclosure_plans: vec![],
+        }
+    }
+
+    /// A manifest reaches the map-edge side tables, under the SAME enforcement
+    /// the standalone verbs apply.
+    ///
+    /// Round 956. Both tables were verb-only, so a file-only authoring — which
+    /// is how every blind corpus on record was written — could not touch them:
+    /// Round 936 measured five authored corpora using them ZERO times, and two
+    /// blind authors wrote a shell script by hand to reach them.
+    ///
+    /// The rejects are the load-bearing half. They are asserted here NOT to
+    /// re-test the primitives but to pin the parity: a second copy of these
+    /// checks on one field is the half-enforced-invariant anti-pattern, and the
+    /// only thing that proves the manifest did not grow one is that the same
+    /// bad input is refused through both doors.
+    #[test]
+    fn a_manifest_reaches_the_edge_side_tables_under_the_verbs_own_checks() {
+        let tmp = TempDir::new().unwrap();
+        let path = tmp.path().join(".atomic/workspace.atomic.json");
+        let mut store = AtomicStore::new();
+        seed_chapters(&mut store);
+        let base = |m: &mut FactsManifest| {
+            m.frames = vec![FrameImport {
+                frame_id: "ground-truth".to_string(),
+                description: String::new(),
+            }];
+            m.units = vec![UnitImport {
+                unit_id: "minute".to_string(),
+                description: String::new(),
+            }];
+            m.facts = vec![
+                sample_fact("f-edge", "ground-truth"),
+                sample_fact("f-open", "ground-truth"),
+            ];
+        };
+
+        let mut manifest = empty_manifest();
+        base(&mut manifest);
+        manifest.edge_costs = vec![EdgeCostImport {
+            fact_id: "f-edge".to_string(),
+            n: 4,
+            unit: "minute".to_string(),
+        }];
+        manifest.edge_guards = vec![EdgeGuardImport {
+            fact_id: "f-edge".to_string(),
+            conditions: vec!["f-open".to_string()],
+            threshold: None,
+        }];
+        let receipt = import_facts(&mut store, &path, &manifest).unwrap();
+        assert!(
+            receipt
+                .target_id
+                .contains("1 edge-costs + 1 edge-guard-conditions"),
+            "the summary counts what it wrote: {}",
+            receipt.target_id
+        );
+        assert_eq!(store.edge_costs[&"f-edge".into()].n, 4);
+        assert!(store.edge_guards[&"f-edge".into()]
+            .conditions
+            .contains(&"f-open".into()));
+
+        // The unit check is the verb's, reached through the manifest.
+        let mut bad = empty_manifest();
+        base(&mut bad);
+        // A DIFFERENT edge, carrying no cost yet: with the unit check removed
+        // this input must reach nothing else that would reject it, or the arm
+        // under test could be masked by a divergent-content refusal.
+        bad.edge_costs = vec![EdgeCostImport {
+            fact_id: "f-open".to_string(),
+            n: 4,
+            unit: "furlong".to_string(),
+        }];
+        let err = import_facts(&mut store, &path, &bad)
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("not a registered unit"), "{err}");
+
+        // So is the positive-cost check — a free teleport is refused whichever
+        // door it arrives through.
+        let mut free = empty_manifest();
+        base(&mut free);
+        free.edge_costs = vec![EdgeCostImport {
+            fact_id: "f-open".to_string(),
+            n: 0,
+            unit: "minute".to_string(),
+        }];
+        let err = import_facts(&mut store, &path, &free)
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("must be positive"), "{err}");
+
+        // An empty AND guards nothing, and would leave no guard for a threshold
+        // to sit on.
+        let mut hollow = empty_manifest();
+        base(&mut hollow);
+        hollow.edge_guards = vec![EdgeGuardImport {
+            fact_id: "f-edge".to_string(),
+            conditions: vec![],
+            threshold: None,
+        }];
+        let err = import_facts(&mut store, &path, &hollow)
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("declares no conditions"), "{err}");
+    }
+
+    /// THE MANIFEST IS THE DECLARATION, NOT A PATCH: re-importing a guard with
+    /// `threshold` dropped returns it to AND rather than keeping the old k.
+    ///
+    /// The two-step is the discriminator. Asserting only that a declared
+    /// threshold lands would pass on an implementation that set k once and
+    /// never looked at the field again — which is exactly what a naive
+    /// "apply each condition" loop does.
+    #[test]
+    fn a_dropped_manifest_threshold_returns_the_guard_to_and() {
+        let tmp = TempDir::new().unwrap();
+        let path = tmp.path().join(".atomic/workspace.atomic.json");
+        let mut store = AtomicStore::new();
+        seed_chapters(&mut store);
+        let mut manifest = empty_manifest();
+        manifest.frames = vec![FrameImport {
+            frame_id: "ground-truth".to_string(),
+            description: String::new(),
+        }];
+        manifest.facts = vec![
+            sample_fact("f-edge", "ground-truth"),
+            sample_fact("f-a", "ground-truth"),
+            sample_fact("f-b", "ground-truth"),
+        ];
+        manifest.edge_guards = vec![EdgeGuardImport {
+            fact_id: "f-edge".to_string(),
+            conditions: vec!["f-a".to_string(), "f-b".to_string()],
+            threshold: Some(1),
+        }];
+        import_facts(&mut store, &path, &manifest).unwrap();
+        assert_eq!(store.edge_guards[&"f-edge".into()].threshold, Some(1));
+
+        manifest.edge_guards[0].threshold = None;
+        import_facts(&mut store, &path, &manifest).unwrap();
+        assert_eq!(
+            store.edge_guards[&"f-edge".into()].threshold,
+            None,
+            "a re-import that drops the threshold declares AND, and a stale k \
+             would silently keep gating on 1 of 2"
+        );
+    }
+
     #[test]
     fn import_facts_round_trips_with_forward_succession() {
         let tmp = TempDir::new().unwrap();
@@ -16940,6 +17265,8 @@ mod tests {
         let mut f_old = sample_fact("f-old", "jonathan");
         f_old.canon_to = Some("ch-2".to_string());
         let manifest = FactsManifest {
+            edge_costs: Vec::new(),
+            edge_guards: Vec::new(),
             entity_kinds: vec![],
             units: vec![],
             disclosure_plans: vec![],
@@ -16962,7 +17289,8 @@ mod tests {
         assert_eq!(
             receipt.target_id,
             "2 frames + 0 branches + 0 entity-kinds + 0 units + 0 entities + 0 predicates \
-             + 2 facts + 0 disclosure-plans + 0 disclosure-overrides created, 0 no-op"
+             + 2 facts + 0 edge-costs + 0 edge-guard-conditions + 0 disclosure-plans + 0 \
+             disclosure-overrides created, 0 no-op"
         );
         let reloaded = AtomicStore::load(&path).unwrap();
         assert_eq!(reloaded.schema_version, CURRENT_SCHEMA_VERSION);
@@ -16984,7 +17312,7 @@ mod tests {
         assert_eq!(
             again.target_id,
             "0 frames + 0 branches + 0 entity-kinds + 0 units + 0 entities + 0 predicates \
-             + 0 facts + 0 disclosure-plans + 0 disclosure-overrides created, 4 no-op"
+             + 0 facts + 0 edge-costs + 0 edge-guard-conditions + 0 disclosure-plans + 0 disclosure-overrides created, 4 no-op"
         );
     }
 
@@ -16996,6 +17324,8 @@ mod tests {
         seed_chapters(&mut store);
         // Unknown frame (registry empty).
         let manifest = FactsManifest {
+            edge_costs: Vec::new(),
+            edge_guards: Vec::new(),
             entity_kinds: vec![],
             units: vec![],
             disclosure_plans: vec![],
@@ -17018,6 +17348,8 @@ mod tests {
             &mut store,
             &path,
             &FactsManifest {
+                edge_costs: Vec::new(),
+                edge_guards: Vec::new(),
                 entity_kinds: vec![],
                 units: vec![],
                 disclosure_plans: vec![],
@@ -17040,6 +17372,8 @@ mod tests {
             &mut store,
             &path,
             &FactsManifest {
+                edge_costs: Vec::new(),
+                edge_guards: Vec::new(),
                 entity_kinds: vec![],
                 units: vec![],
                 disclosure_plans: vec![],
@@ -17059,6 +17393,8 @@ mod tests {
             &mut store,
             &path,
             &FactsManifest {
+                edge_costs: Vec::new(),
+                edge_guards: Vec::new(),
                 entity_kinds: vec![],
                 units: vec![],
                 disclosure_plans: vec![],
@@ -17084,6 +17420,8 @@ mod tests {
         let mut successor = sample_fact("f2", "seward");
         successor.supersedes_in_frame = Some("f1".to_string());
         let manifest = FactsManifest {
+            edge_costs: Vec::new(),
+            edge_guards: Vec::new(),
             entity_kinds: vec![],
             units: vec![],
             disclosure_plans: vec![],
@@ -17124,6 +17462,8 @@ mod tests {
             &mut store,
             &path,
             &FactsManifest {
+                edge_costs: Vec::new(),
+                edge_guards: Vec::new(),
                 entity_kinds: vec![],
                 units: vec![],
                 disclosure_plans: vec![],
@@ -17142,6 +17482,8 @@ mod tests {
             &mut store,
             &path,
             &FactsManifest {
+                edge_costs: Vec::new(),
+                edge_guards: Vec::new(),
                 entity_kinds: vec![],
                 units: vec![],
                 disclosure_plans: vec![],
@@ -17271,6 +17613,8 @@ mod tests {
                 &mut store_b,
                 &path_b,
                 &FactsManifest {
+                    edge_costs: Vec::new(),
+                    edge_guards: Vec::new(),
                     entity_kinds: vec![],
                     units: vec![],
                     disclosure_plans: vec![],
@@ -17449,6 +17793,8 @@ mod tests {
                 &mut store_b,
                 &path_b,
                 &FactsManifest {
+                    edge_costs: Vec::new(),
+                    edge_guards: Vec::new(),
                     entity_kinds: vec![],
                     units: vec![],
                     disclosure_plans: vec![],
@@ -20265,6 +20611,8 @@ mod tests {
         // FORWARD ref within ONE manifest: f-a's object points at f-b, declared
         // after it — must be ACCEPTED (visible = store ∪ staged).
         let manifest = FactsManifest {
+            edge_costs: Vec::new(),
+            edge_guards: Vec::new(),
             frames: vec![],
             branches: vec![],
             entity_kinds: vec![],
@@ -20302,6 +20650,8 @@ mod tests {
         // rejects it. This pins that the self-ref guard is load-bearing, not
         // masked by existence.
         let self_manifest = FactsManifest {
+            edge_costs: Vec::new(),
+            edge_guards: Vec::new(),
             frames: vec![],
             branches: vec![],
             entity_kinds: vec![],
@@ -20639,6 +20989,8 @@ mod tests {
                 &mut store_b,
                 &path_b,
                 &FactsManifest {
+                    edge_costs: Vec::new(),
+                    edge_guards: Vec::new(),
                     frames: vec![],
                     branches: vec![],
                     entity_kinds: vec![],
@@ -21081,6 +21433,8 @@ mod tests {
             &mut store,
             &path,
             &FactsManifest {
+                edge_costs: Vec::new(),
+                edge_guards: Vec::new(),
                 entity_kinds: vec![],
                 units: vec![],
                 disclosure_plans: vec![],
@@ -21162,6 +21516,8 @@ mod tests {
             &mut store,
             &path,
             &FactsManifest {
+                edge_costs: Vec::new(),
+                edge_guards: Vec::new(),
                 entity_kinds: vec![],
                 units: vec![],
                 disclosure_plans: vec![],
@@ -21267,6 +21623,8 @@ mod tests {
             &mut store_b,
             &path_b,
             &FactsManifest {
+                edge_costs: Vec::new(),
+                edge_guards: Vec::new(),
                 entity_kinds: vec![],
                 units: vec![],
                 disclosure_plans: vec![],
@@ -21611,6 +21969,8 @@ mod tests {
             ..sample_fact("f-b", "gt")
         };
         let manifest = FactsManifest {
+            edge_costs: Vec::new(),
+            edge_guards: Vec::new(),
             entity_kinds: vec![],
             units: vec![],
             disclosure_plans: vec![],

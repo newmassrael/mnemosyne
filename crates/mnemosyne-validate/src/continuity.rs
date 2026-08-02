@@ -8117,6 +8117,8 @@ mod tests {
             &mut store,
             &path,
             &FactsManifest {
+                edge_costs: Vec::new(),
+                edge_guards: Vec::new(),
                 disclosure_plans: vec![],
                 entity_kinds: vec![],
                 units,
@@ -8684,6 +8686,8 @@ mod tests {
                 &mut st,
                 &path,
                 &FactsManifest {
+                    edge_costs: Vec::new(),
+                    edge_guards: Vec::new(),
                     disclosure_plans: vec![],
                     entity_kinds: vec![mnemosyne_atomic::EntityKindImport {
                         kind_id: "character".to_string(),
@@ -8811,6 +8815,8 @@ mod tests {
             &mut store,
             &path,
             &FactsManifest {
+                edge_costs: Vec::new(),
+                edge_guards: Vec::new(),
                 disclosure_plans: vec![],
                 entity_kinds: vec![],
                 units,
@@ -11682,6 +11688,8 @@ mod tests {
             &mut store,
             &path,
             &FactsManifest {
+                edge_costs: Vec::new(),
+                edge_guards: Vec::new(),
                 disclosure_plans: vec![],
                 // `waypoint` is a SUBKIND of `place` — the R738 resolver must
                 // admit it, or a whole class of authored place silently drops
@@ -16625,6 +16633,8 @@ mod tests {
             &mut store,
             &path,
             &FactsManifest {
+                edge_costs: Vec::new(),
+                edge_guards: Vec::new(),
                 disclosure_plans: vec![],
                 entity_kinds: vec![],
                 units: vec![],
@@ -16865,6 +16875,8 @@ mod tests {
             &mut store,
             &path,
             &FactsManifest {
+                edge_costs: Vec::new(),
+                edge_guards: Vec::new(),
                 disclosure_plans: vec![],
                 entity_kinds: vec![],
                 units: vec![],
@@ -16960,6 +16972,8 @@ mod tests {
             &mut store,
             &path,
             &FactsManifest {
+                edge_costs: Vec::new(),
+                edge_guards: Vec::new(),
                 disclosure_plans: vec![],
                 entity_kinds: vec![],
                 units: vec![],
@@ -17112,6 +17126,8 @@ mod tests {
             &mut store,
             &path,
             &FactsManifest {
+                edge_costs: Vec::new(),
+                edge_guards: Vec::new(),
                 disclosure_plans: vec![],
                 entity_kinds: vec![],
                 units: vec![],
@@ -17340,6 +17356,8 @@ mod tests {
             &mut store,
             &path,
             &FactsManifest {
+                edge_costs: Vec::new(),
+                edge_guards: Vec::new(),
                 disclosure_plans: vec![],
                 entity_kinds: vec![],
                 units: vec![],
@@ -17491,6 +17509,8 @@ mod tests {
             &mut store,
             &path,
             &FactsManifest {
+                edge_costs: Vec::new(),
+                edge_guards: Vec::new(),
                 disclosure_plans: vec![],
                 entity_kinds: vec![],
                 units: vec![],
@@ -17602,6 +17622,8 @@ mod tests {
             &mut store,
             &path,
             &FactsManifest {
+                edge_costs: Vec::new(),
+                edge_guards: Vec::new(),
                 disclosure_plans: vec![],
                 entity_kinds: vec![],
                 units: vec![],
@@ -17897,6 +17919,8 @@ mod tests {
             &mut store,
             &path,
             &FactsManifest {
+                edge_costs: Vec::new(),
+                edge_guards: Vec::new(),
                 disclosure_plans: vec![],
                 entity_kinds: vec![],
                 units: vec![],
@@ -18011,6 +18035,8 @@ mod tests {
             &mut store,
             &path,
             &FactsManifest {
+                edge_costs: Vec::new(),
+                edge_guards: Vec::new(),
                 disclosure_plans: vec![],
                 entity_kinds: vec![],
                 units: vec![],

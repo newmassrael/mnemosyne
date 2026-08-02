@@ -86,7 +86,8 @@ fn import_facts_creates_frames_and_facts_with_forward_succession() {
     assert!(
         stdout.contains(
             "2 frames + 0 branches + 0 entity-kinds + 0 units + 0 entities + 0 predicates \
-             + 2 facts + 0 disclosure-plans + 0 disclosure-overrides created"
+             + 2 facts + 0 edge-costs + 0 edge-guard-conditions + 0 disclosure-plans + 0 \
+             disclosure-overrides created"
         ),
         "{stdout}"
     );
@@ -119,7 +120,7 @@ fn import_facts_creates_frames_and_facts_with_forward_succession() {
     assert!(
         stdout.contains(
             "0 frames + 0 branches + 0 entity-kinds + 0 units + 0 entities + 0 predicates \
-             + 0 facts + 0 disclosure-plans + 0 disclosure-overrides created, 4 no-op"
+             + 0 facts + 0 edge-costs + 0 edge-guard-conditions + 0 disclosure-plans + 0 disclosure-overrides created, 4 no-op"
         ),
         "{stdout}"
     );

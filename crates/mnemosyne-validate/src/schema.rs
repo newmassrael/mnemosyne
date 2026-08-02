@@ -583,6 +583,30 @@ fn manifest_kinds() -> Vec<KindWire> {
                     typed_object_wire), \"quote\"?: string }",
             },
             KindWire {
+                kind: "edge_costs",
+                json_keys: "{ \"fact_id\": fact id (the `adjacent(a, b)` EDGE fact the cost \
+                    attaches to), \"n\": positive integer (0 or negative is a free teleport and \
+                    rejects), \"unit\": unit id (REGISTERED; add it to `units` first) } — Round \
+                    956. Until this wire existed the cost side table was reachable ONLY by the \
+                    `add-edge-cost` verb, so a file-only authoring could not touch it: five \
+                    authored corpora used it ZERO times and two blind authors wrote a shell \
+                    script by hand to reach it. Mnemosyne stores the number and NEVER adds two \
+                    costs together — units are consumer vocabulary, so summing them is the \
+                    consumer's arithmetic (invariant 4).",
+            },
+            KindWire {
+                kind: "edge_guards",
+                json_keys: "{ \"fact_id\": fact id (the EDGE fact this guard gates), \
+                    \"conditions\": [fact id, …] (>= 1; each must EXIST and none may be the edge \
+                    itself — a guard is a SET, ANDed by default), \"threshold\"?: integer (K-of-N: \
+                    omitted = AND over every condition, `1..=len`; `k == len` normalizes to AND, \
+                    and 0 or `k > len` reject) } — Round 956, same verb-only history as \
+                    `edge_costs`. THE MANIFEST IS THE DECLARATION, NOT A PATCH: re-importing an \
+                    entry with `threshold` dropped returns that guard to AND rather than keeping \
+                    the old k. Mnemosyne NEVER evaluates whether a guard holds — the declaration \
+                    is checked, the evaluation is the consumer's (the Round 712 layering line).",
+            },
+            KindWire {
                 kind: "disclosure_plans",
                 json_keys: "{ \"telling_id\": string, \"default_mode\"?: \
                     \"withhold\"|\"state\"|\"hint\"|\"imply\" (omitted = withhold), \
@@ -1742,6 +1766,53 @@ pub(crate) const SUPERSEDED_CROSSING_TELLINGS: &[&str] = &[
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// EVERY manifest array has a contract entry — asked of the TYPE, not of a
+    /// hand-list.
+    ///
+    /// Round 956, and it is a defect this round's own change surfaced. Its
+    /// sibling `manifest_wire_prose_names_every_serde_key` checks that a
+    /// DECLARED kind's prose names every key of it, and nothing at all checked
+    /// that a kind was declared: deleting the whole `edge_costs` row left the
+    /// suite green. A manifest array with no contract entry is invisible to
+    /// `describe-schema`, which is the document every blind author reads, so an
+    /// authoring surface can ship and stay unreachable in practice — which is
+    /// the exact condition this round exists to end.
+    #[test]
+    fn every_manifest_array_has_a_contract_entry() {
+        let empty = serde_json::to_value(mnemosyne_atomic::FactsManifest {
+            frames: vec![],
+            branches: vec![],
+            entity_kinds: vec![],
+            units: vec![],
+            entities: vec![],
+            predicates: vec![],
+            facts: vec![],
+            edge_costs: vec![],
+            edge_guards: vec![],
+            disclosure_plans: vec![],
+        })
+        .expect("a manifest serializes");
+        let keys: Vec<String> = empty
+            .as_object()
+            .expect("a struct serializes to an object")
+            .keys()
+            .cloned()
+            .collect();
+        assert!(!keys.is_empty(), "no manifest keys — nothing asserted");
+        let described: Vec<&str> = manifest_kinds().iter().map(|k| k.kind).collect();
+        let missing: Vec<&String> = keys
+            .iter()
+            .filter(|k| !described.contains(&k.as_str()))
+            .collect();
+        assert!(
+            missing.is_empty(),
+            "manifest array(s) with no entry in the authoring contract, so an \
+             author reading `describe-schema` never learns the slot exists: \
+             {missing:?}"
+        );
+        println!("{} manifest array(s), all described: {keys:?}", keys.len());
+    }
 
     /// The contract names a disclosure surface's two legs as the REGISTRY REFS
     /// the write path rejects on, and not as bare strings.
@@ -3000,6 +3071,16 @@ mod tests {
         // (the shape only — serde does not validate ids, so these need not be a
         // valid store).
         let manifest = mnemosyne_atomic::FactsManifest {
+            edge_costs: vec![mnemosyne_atomic::EdgeCostImport {
+                fact_id: "f".into(),
+                n: 1,
+                unit: "u".into(),
+            }],
+            edge_guards: vec![mnemosyne_atomic::EdgeGuardImport {
+                fact_id: "f".into(),
+                conditions: vec!["f0".into()],
+                threshold: Some(1),
+            }],
             frames: vec![mnemosyne_atomic::FrameImport {
                 frame_id: "gt".into(),
                 description: "d".into(),

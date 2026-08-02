@@ -2332,6 +2332,8 @@ mod tests {
 
     fn manifest(facts: Vec<mnemosyne_atomic::FactImport>) -> mnemosyne_atomic::FactsManifest {
         mnemosyne_atomic::FactsManifest {
+            edge_costs: Vec::new(),
+            edge_guards: Vec::new(),
             frames: vec![],
             branches: vec![],
             entity_kinds: vec![],
