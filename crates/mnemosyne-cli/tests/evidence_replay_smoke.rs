@@ -491,7 +491,25 @@ struct Input {
     /// Why this banner-carrying artifact is NOT reproducible, for the ones no
     /// single command can print. Mutually exclusive with the two fields above:
     /// an artifact is either checked or it says why it cannot be.
+    ///
+    /// It names a MECHANISM — what stops a command from existing — and never a
+    /// count, because a mechanism is true at every revision and a count is
+    /// state that something has to measure. The numbers here have fields:
+    /// `reproduced_exit` and `store_surplus` below.
     unreproducible: Option<String>,
+    /// The ids the recorded run's store held that this unit's replay does not
+    /// create — the state half of a store-shaped excuse (Round 975).
+    ///
+    /// Round 974 excused one transcript in prose, and the sentence was wrong in
+    /// both of its halves: it reported the run as placing 23 sections where the
+    /// run placed 22 of 23, and it called the bytes "evidence of a store the
+    /// record does not describe" when this kit's own sealed iteration notes name
+    /// the extra section, its title, and why it exists. Naming the id instead of
+    /// describing the store lets the check settle both: the id must be created
+    /// by no step of this unit's replay, and it must be found in this unit's own
+    /// sealed evidence — so "the record does not describe it" cannot be written
+    /// about something the record describes.
+    store_surplus: Vec<String>,
 }
 
 struct Declarations {
@@ -587,6 +605,14 @@ fn declarations() -> Declarations {
                     .unwrap_or_default(),
                 reproduced_exit: i["reproduced_exit"].as_i64().unwrap_or(0) as i32,
                 unreproducible: i["unreproducible"].as_str().map(str::to_string),
+                store_surplus: i["store_surplus"]
+                    .as_array()
+                    .map(|a| {
+                        a.iter()
+                            .map(|s| s.as_str().expect("store_surplus id").to_string())
+                            .collect()
+                    })
+                    .unwrap_or_default(),
             });
         }
         let declared_replays = doc["replays"]
@@ -1105,6 +1131,132 @@ fn every_tool_printed_artifact_is_reproduced_or_says_why_not() {
     println!("{banners} tool-printed artifact(s): {reproduced} reproduced, {excused} excused");
 }
 
+/// An excuse names a MECHANISM, and mechanisms do not carry numbers.
+///
+/// Measured before this rule was written: 43 excuses, 4 distinct texts. The
+/// three that are right are structural — a harness this job does not build at a
+/// pinned revision, a runbook that appends an exit code so the verb's stdout is
+/// a prefix of the bytes — and each is true at every revision, so none of them
+/// needs a count. The fourth carried two numbers and BOTH were wrong, in a
+/// sentence nothing reads. That is Round 959's rule (a number no program looks
+/// at does not belong in shipped prose) meeting a field that had no other place
+/// to put one, and the fix is the places: `reproduced_exit` holds a status and
+/// `store_surplus` holds what a store contained.
+#[test]
+fn an_excuse_names_a_mechanism_and_leaves_the_numbers_to_the_fields() {
+    let d = declarations();
+    let mut checked = 0usize;
+    for i in &d.inputs {
+        let Some(why) = &i.unreproducible else {
+            continue;
+        };
+        checked += 1;
+        assert!(
+            !why.chars().any(|c| c.is_ascii_digit()),
+            "{}/{} excuses itself with a number in it:\n  {why}\nAn excuse says \
+             what STOPS a command from existing, which is true at every \
+             revision. A count is state, and state has fields that settle it — \
+             `reproduced_exit` for a status, `store_surplus` for what the run's \
+             store held that the replay does not create. Round 974 wrote both of \
+             this field's numbers wrong and nothing noticed.",
+            i.unit,
+            i.path
+        );
+    }
+    // Non-vacuity: with nothing excused this rule reads as satisfied while
+    // asserting nothing at all.
+    assert!(checked > 0, "no excuse was read — the rule ran on nothing");
+    println!("{checked} excuse(s) name a mechanism and no number");
+}
+
+/// An excuse that blames the store NAMES what was in it, and what it names is
+/// found in this unit's own sealed evidence.
+///
+/// Round 974 diffed one transcript against the rebuilt store, saw a section it
+/// could not account for, and declared the bytes "evidence of a store the record
+/// does not describe". The record describes it exactly: the author's own
+/// iteration notes — a declared, sha-pinned input of the same unit — name the
+/// stray section, its title, the probe that created it, and the fact that no
+/// manifest contains it. Reading the manifests and concluding the record is
+/// silent is the same error as deriving a command from a banner: the answer was
+/// in the kit, in a file the search did not open.
+///
+/// So the excuse's state half is a list of ids, and the two arms make the false
+/// claim unwritable. An id no step creates is what makes a command impossible;
+/// an id found in the unit's sealed evidence is what makes "the record does not
+/// describe it" false about it. An id that fails either is not a surplus — it is
+/// a guess about a store.
+#[test]
+fn an_excuse_that_blames_the_store_names_what_the_record_describes() {
+    let root = repo_root();
+    let d = declarations();
+    let mut checked = 0usize;
+    for i in &d.inputs {
+        if i.store_surplus.is_empty() {
+            continue;
+        }
+        let at = format!("{}/{}", i.unit, i.path);
+        assert!(
+            i.unreproducible.is_some(),
+            "{at} declares `store_surplus` and no `unreproducible` — a store \
+             difference is the REASON an artifact cannot be reproduced, so on \
+             anything else it is a field with no claim behind it"
+        );
+        // "The replay does not rebuild it" needs a replay to be about.
+        assert!(
+            d.replays.iter().any(|r| r.unit == i.unit),
+            "{at} says its run's store held ids this kit's replay does not \
+             create, and {} declares no replay at all",
+            i.unit
+        );
+        let created = ids_a_unit_creates(&root, &d, &i.unit);
+        // Every OTHER declared input of this unit, read once: the evidence the
+        // record consists of, minus the artifact whose own bytes are what is in
+        // question.
+        let evidence: Vec<(&str, String)> = d
+            .inputs
+            .iter()
+            .filter(|o| o.unit == i.unit && o.path != i.path)
+            .map(|o| {
+                let p = normalize(&format!("{}/{}", o.unit, o.path));
+                let text = std::fs::read(root.join(&p))
+                    .map(|b| String::from_utf8_lossy(&b).into_owned())
+                    .unwrap_or_default();
+                (o.path.as_str(), text)
+            })
+            .collect();
+        for id in &i.store_surplus {
+            assert!(
+                !created.contains(id),
+                "{at} calls `{id}` a store surplus, and this kit's replay \
+                 CREATES it — the rebuilt store has it, so whatever stops a \
+                 command from printing these bytes, it is not this id"
+            );
+            let found: Vec<&str> = evidence
+                .iter()
+                .filter(|(_, text)| text.contains(id.as_str()))
+                .map(|(p, _)| *p)
+                .collect();
+            assert!(
+                !found.is_empty(),
+                "{at} calls `{id}` a store surplus, and no other sealed input of \
+                 {} mentions it. Then the record really does not describe that \
+                 store, and the honest declaration is what is missing from the \
+                 kit — not an id this check cannot resolve against anything",
+                i.unit
+            );
+            checked += 1;
+        }
+    }
+    // Non-vacuity: with no surplus declared anywhere, both arms above are
+    // untested and this rule is an alias for "no kit uses the field".
+    assert!(
+        checked > 0,
+        "no store surplus was resolved — the rule ran on nothing"
+    );
+    println!("{checked} declared store surplus id(s) resolved against sealed evidence");
+}
+
 /// A manifest the record marks as raw agent output is NOT a replay input. The
 /// distinction is recorded because two kits ship both their agent's raw output
 /// and the normalized form, and a census that could not tell them apart
@@ -1494,6 +1646,59 @@ fn ids(v: &serde_json::Value, array: &str, field: &str) -> Vec<String> {
         .unwrap_or_default()
 }
 
+/// What one replay step puts in the store, by registry.
+enum Created {
+    Sections(Vec<String>),
+    Facts(Vec<String>),
+    /// A proposal types or connects what an earlier step created and adds no id
+    /// of its own.
+    Nothing,
+}
+
+/// The ids one replay step creates, read off the manifest that step feeds.
+///
+/// ONE resolver, because two rules ask this question and would be free to drift
+/// apart: the citation walk needs the ids in step order, and the surplus check
+/// needs their union. What they would drift about is what a replay puts in the
+/// store, which is the whole of what both rules decide.
+fn ids_a_step_creates(doc: &serde_json::Value, verb: &str, where_: &str) -> Created {
+    match verb {
+        "import-sections" => Created::Sections(
+            doc.as_array()
+                .unwrap_or_else(|| panic!("{where_}: not a JSON array"))
+                .iter()
+                .filter_map(|e| e.get("section_id").and_then(|v| v.as_str()))
+                .map(str::to_string)
+                .collect(),
+        ),
+        "import-facts" | "propose-verdict" => Created::Facts(ids(doc, "facts", "fact_id")),
+        "import-typing-proposals" | "import-edge-proposals" => Created::Nothing,
+        other => panic!("{where_}: no creation rule for verb `{other}`"),
+    }
+}
+
+/// Every id this unit's replays leave in a store, unioned across their steps.
+///
+/// A `reject` step contributes nothing — `propose-verdict` rolls back — so an
+/// id only a rejected step names is genuinely absent from the rebuilt store.
+fn ids_a_unit_creates(root: &Path, d: &Declarations, unit: &str) -> BTreeSet<String> {
+    let mut created = BTreeSet::new();
+    for r in d.replays.iter().filter(|r| r.unit == unit) {
+        for (n, s) in r.steps.iter().enumerate() {
+            if s.expect == "reject" {
+                continue;
+            }
+            let path = normalize(&format!("{}/{}", r.unit, s.input));
+            let where_ = format!("{}/{} step {n} ({})", r.unit, r.name, s.input);
+            match ids_a_step_creates(&read_json(root, &path), &s.verb, &where_) {
+                Created::Sections(v) | Created::Facts(v) => created.extend(v),
+                Created::Nothing => {}
+            }
+        }
+    }
+    created
+}
+
 /// The declared order is not decoration: every step cites ids an earlier step
 /// created, and the store rejects a citation it cannot resolve. Walking the
 /// steps and checking that each reference is already known is the same
@@ -1519,16 +1724,10 @@ fn every_step_cites_only_what_an_earlier_step_created() {
             let doc = read_json(&root, &path);
             let where_ = format!("{}/{} step {n} ({})", r.unit, r.name, s.input);
             match s.verb.as_str() {
-                "import-sections" => {
-                    for id in doc
-                        .as_array()
-                        .unwrap_or_else(|| panic!("{where_}: not a JSON array"))
-                        .iter()
-                        .filter_map(|e| e.get("section_id").and_then(|v| v.as_str()))
-                    {
-                        sections.insert(id.to_string());
-                    }
-                }
+                "import-sections" => match ids_a_step_creates(&doc, &s.verb, &where_) {
+                    Created::Sections(v) => sections.extend(v),
+                    _ => unreachable!("import-sections creates sections"),
+                },
                 "import-facts" | "propose-verdict" => {
                     let entries = doc
                         .get("facts")
@@ -1540,12 +1739,10 @@ fn every_step_cites_only_what_an_earlier_step_created() {
                     // import primitive says so, and `2d-projection`'s author
                     // arm uses it. Only references ACROSS steps are ordered.
                     let mut visible = facts.clone();
-                    visible.extend(
-                        entries
-                            .iter()
-                            .filter_map(|f| f.get("fact_id").and_then(|v| v.as_str()))
-                            .map(str::to_string),
-                    );
+                    match ids_a_step_creates(&doc, &s.verb, &where_) {
+                        Created::Facts(v) => visible.extend(v),
+                        _ => unreachable!("a fact manifest creates facts"),
+                    }
                     for f in &entries {
                         for key in ["canon_from", "canon_to"] {
                             if let Some(cite) = f.get(key).and_then(|v| v.as_str()) {

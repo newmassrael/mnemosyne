@@ -37,7 +37,7 @@ USAGE:
   experiment-harness splice --base <manuscript.md> --out <md> --replace <scene.md> [--replace <scene.md>...]
   experiment-harness stamp-inputs --record <replay.json> [--record <replay.json>...]
   experiment-harness declare-run-tree --record <replay.json> [--record <replay.json>...]
-  experiment-harness set-input-role --record <replay.json> --path <p> [--path <p>...] --role <r> [--after <replay>] [--with <p>...] [--exit <n>] [--unreproducible <why>] [-- <verb> <arg>...]
+  experiment-harness set-input-role --record <replay.json> --path <p> [--path <p>...] --role <r> [--after <replay>] [--with <p>...] [--exit <n>] [--unreproducible <why>] [--surplus <id>...] [-- <verb> <arg>...]
   experiment-harness set-replay-config --record <replay.json> --replay <name> --config <unit-relative toml>
 
 assemble
@@ -98,11 +98,14 @@ set-input-role
   goes after a bare `--` because it carries flags of its own.
   The replay job then regenerates it at the kit's pinned revision instead of
   taking the record's word for it. An artifact no single command can print says
-  so with --unreproducible <why>. Every optional field is rewritten or removed
-  on each call, so a stale command never survives a reassignment. A --path the
-  record does not declare is an error rather than a new entry: creating one is
-  declare-run-tree's job, and doing it here would break the exactly-once rule
-  the coverage gate depends on.
+  so with --unreproducible <why>, which names a MECHANISM. When the mechanism is
+  that the run's store held something the replay does not create, name those ids
+  with --surplus <id>: the gate then reads them off this kit's own sealed
+  evidence instead of taking a sentence's word for what a store contained.
+  Every optional field is rewritten or removed on each call, so a stale command
+  never survives a reassignment. A --path the record does not declare is an
+  error rather than a new entry: creating one is declare-run-tree's job, and
+  doing it here would break the exactly-once rule the coverage gate depends on.
 
 set-replay-config
   Point a declared replay at the `mnemosyne.toml` its run used, so the replay
@@ -254,6 +257,7 @@ fn cmd_set_input_role(args: &[String]) -> HResult<ExitCode> {
     let after = p.optional("--after")?;
     let unreproducible = p.optional("--unreproducible")?;
     let with = p.take_all("--with");
+    let surplus = p.take_all("--surplus");
     let exit = match p.optional("--exit")? {
         Some(v) => Some(
             v.parse::<i64>()
@@ -273,6 +277,7 @@ fn cmd_set_input_role(args: &[String]) -> HResult<ExitCode> {
         unreproducible: unreproducible.as_deref(),
         reproduced_with: &with,
         reproduced_exit: exit,
+        store_surplus: &surplus,
     };
     let result = declare::set_role(&record, &paths, &role, &detail)?;
     for entry in &result.changed {

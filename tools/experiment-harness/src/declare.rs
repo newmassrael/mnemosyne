@@ -43,6 +43,11 @@ pub struct RoleDetail<'a> {
     pub reproduced_with: &'a [String],
     /// The exit status the recorded run ended with, when it was not zero.
     pub reproduced_exit: Option<i64>,
+    /// The ids the recorded run's store held that this kit's replay does not
+    /// create, when THAT is what stops a command from existing (Round 975).
+    /// State a store difference here rather than in the excuse's prose, where
+    /// nothing settles it.
+    pub store_surplus: &'a [String],
 }
 
 /// Rewrite the role of inputs a record ALREADY declares, and nothing else.
@@ -120,6 +125,10 @@ pub fn set_role(
             (
                 "reproduced_exit",
                 detail.reproduced_exit.map(|e| serde_json::json!(e)),
+            ),
+            (
+                "store_surplus",
+                (!detail.store_surplus.is_empty()).then(|| serde_json::json!(detail.store_surplus)),
             ),
         ] {
             match value {

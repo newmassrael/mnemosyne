@@ -87,7 +87,10 @@
       "path": "run/stage-a/continuity.log",
       "role": "run-artifact",
       "sha256": "3ada6038a6d40ae38fb5a991049f21d834cb56456540cac51c20c1168a8758a2",
-      "unreproducible": "printed against a store this kit's declared replay does not rebuild: the recorded run reports 23 placed sections where importing the declared manifests yields 22, so the bytes are evidence of a store the record does not describe"
+      "unreproducible": "printed against a store the declared replay does not rebuild: the run left behind a stray section the author made while probing what a section field would accept, recorded in this kit's own iteration notes and created by no manifest, so no command run against the rebuilt store prints these bytes",
+      "store_surplus": [
+        "sc-probe"
+      ]
     },
     {
       "path": "run/stage-a/first-import.log",
