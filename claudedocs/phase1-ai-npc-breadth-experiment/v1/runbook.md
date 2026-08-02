@@ -10,7 +10,13 @@ orchestrator NEVER authors a fact or judges (R469 firewall — see manifest.json
   crates/mnemosyne-cli --force`). Runs require `mnemosyne.toml` as a CWD ancestor, so
   the author works INSIDE the repo at `run/author/` and uses relative `--sidecar
   store.atomic.json` / `--order order.json` (R538: explicit CLI paths are CWD-relative).
-- The seed store is `schema_version: 23`. The per-NPC dossier verb
+- The seed store's schema version is ASKED FOR, never typed: `SV="$(mnemosyne-cli
+  describe-schema | sed -n '1s/.*schema v\([0-9]\+\).*/\1/p')"`. This bullet named a
+  bare 23 until Round 962. It was right at this kit's pinned revision and wrong at
+  every later one, and wrong in silence — the loader migrates a stale version rather
+  than refusing it, so nothing downstream would have said so. The recipe answers 23
+  at that pin and today's constant here.
+- The per-NPC dossier verb
   `report-frame-view --frame <P> --branch <W> --entity <E> --at <S>` is the breadth-floor
   evidence; confirmed working on a throwaway 5-frame diamond before this round.
 
@@ -25,7 +31,7 @@ orchestrator NEVER authors a fact or judges (R469 firewall — see manifest.json
    + `author-log.md` in `run/author/`. It self-checks with the gates.
 
 2. **Deterministic pins (orchestrator):** rebuild the store FRESH from the author's
-   `sections.json` + `facts.json` + `order.json` into a clean schema-23 seed (not the
+   `sections.json` + `facts.json` + `order.json` into a clean seed at `$SV` (not the
    author's store file), then run PIN-B1 + PIN-B2 (manifest.json `deterministic_pins`)
    with `--order run/author/order.json`. Record every gate line verbatim in `report.md`.
    Dump each person-frame's `report-frame-view` (at its key scene) to

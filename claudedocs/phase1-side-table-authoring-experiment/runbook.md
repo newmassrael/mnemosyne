@@ -82,11 +82,11 @@ MN="$(git rev-parse --show-toplevel)/scripts/mn"
 ```
 
 **The seed's schema version is DERIVED, never typed in.** The runbook this one
-is shaped after seeds `"schema_version":23`; the constant is 44 as of Round 957,
-and a store seeded at 23 still imports because the loader migrates — so the
-stale literal produces no error and nothing would have told the next arm. This
-is Round 944's rule applied to the one literal that arm did not check: ask the
-program.
+is shaped after seeded the version as a bare 23; the constant had moved on by
+Round 957, and a store seeded at 23 still imports because the loader migrates —
+so the stale literal produces no error and nothing would have told the next arm.
+This is Round 944's rule applied to the one literal that arm did not check: ask
+the program.
 
 ```
 cd "$(git rev-parse --show-toplevel)/claudedocs/phase1-side-table-authoring-experiment"

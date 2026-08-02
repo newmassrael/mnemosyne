@@ -64,8 +64,8 @@ MN="$(git rev-parse --show-toplevel)/scripts/mn"
 ```
 cd "$(git rev-parse --show-toplevel)/claudedocs/phase1-disclosed-place-experiment"
 mkdir -p vN/run/stage-a vN/run/stage-b
-# Round 957 — the schema version is ASKED FOR, not typed. This line read
-# `"schema_version":23` while the constant was 44, and a store seeded at 23
+# Round 957 — the schema version is ASKED FOR, not typed. This line seeded the
+# version as a bare 23 while the constant was 44, and a store seeded at 23
 # still imports because the loader migrates, so the stale literal produced no
 # error and nothing would have told the next arm. Round 944's rule ("grep the
 # code that reads a machine-checked literal") applied to the one literal that

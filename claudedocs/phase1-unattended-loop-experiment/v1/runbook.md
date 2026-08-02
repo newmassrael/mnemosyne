@@ -28,8 +28,20 @@ rebuild from the agent's JSON, never read off the agent's own store or log.
   command"), `mnemosyne-cli report-authoring-frontier`. If any is "unknown
   command", `cargo install --path crates/mnemosyne-cli --force` first.
 - Create the blind loop agent's fresh workspace under `run/game/`:
-  `mnemosyne.toml` = `[workspace]`, `docs/.atomic/workspace.atomic.json` =
-  `{ "schema_version": 23, "sections": {}, "changelog_entries": {} }`.
+  `mnemosyne.toml` = `[workspace]`, and a seed store whose schema version is
+  ASKED FOR, never typed —
+
+  ```
+  SV="$(mnemosyne-cli describe-schema | sed -n '1s/.*schema v\([0-9]\+\).*/\1/p')"
+  [ -n "$SV" ] || { echo "could not read the schema version from describe-schema"; exit 1; }
+  printf '{"schema_version":%s,"sections":{},"changelog_entries":{}}' "$SV" \
+    > run/game/docs/.atomic/workspace.atomic.json
+  ```
+
+  This step wrote a bare 23 until Round 962. It was right at this kit's pinned
+  revision and wrong at every later one, and wrong in silence — the loader
+  migrates a stale version rather than refusing it, so nothing downstream would
+  have said so.
 
 ## Step 1 — blind loop agent (the experiment proper)
 

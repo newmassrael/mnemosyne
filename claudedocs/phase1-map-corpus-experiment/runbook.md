@@ -51,8 +51,8 @@ MN="$(git rev-parse --show-toplevel)/scripts/mn"
 cd "$(git rev-parse --show-toplevel)/claudedocs/phase1-map-corpus-experiment"
 mkdir -p vN/run/stage-a vN/run/stage-b
 # seed each stage dir with a store + config, exactly as the dnd kit's rebuild does
-# Round 957 — the schema version is ASKED FOR, not typed. This line read
-# `"schema_version":23` while the constant was 44, and a store seeded at 23 still
+# Round 957 — the schema version is ASKED FOR, not typed. This line seeded the
+# version as a bare 23 while the constant was 44, and a store seeded at 23 still
 # imports because the loader migrates, so the stale literal produced no error and
 # nothing would have told the next arm (Round 944's rule, applied to the one
 # literal that round did not check). The frozen run evidence is untouched.

@@ -19,8 +19,8 @@ the blind author.
 
 0. **(done in R536)** manifest sha-pinned + committed pre-execution; tool contract
    de-risked on a throwaway minimal diamond (the exact confluence incantation folded
-   into the brief); seed schema_version = 23; `--sidecar`/`--order` ABSOLUTE-path rule
-   documented.
+   into the brief); the seed's schema version pinned at 23; `--sidecar`/`--order`
+   ABSOLUTE-path rule documented.
 
 1. **Spawn the blind author.** Hand it `premise.md` + `author-brief.md` only, pointed
    at `claudedocs/phase1-convergence-probe/v2/run/author/` as its work dir. It runs
@@ -28,7 +28,7 @@ the blind author.
    `sections.json`, `facts.json`, `order.json`, `store.atomic.json`, `author-log.md`.
 
 2. **Rebuild fresh + measure (orchestrator, independent of the author's claim).**
-   From an EMPTY schema-23 seed, re-import the author's `sections.json` + `facts.json`,
+   From an EMPTY seed at `$SV`, re-import the author's `sections.json` + `facts.json`,
    then run every gate with the author's `order.json` (ABSOLUTE paths):
    - `validate-continuity --json` — expect 0 violations (PIN_2 / M3a).
    - `report-fork-tree` — expect the DIAMOND: `converges from <parent> at <coord>` x
@@ -54,8 +54,12 @@ the blind author.
 
 ## Gotchas (from the R536 de-risk)
 
-- The empty seed store MUST be `schema_version: 23` (R532 bumped 22->23 for
-  `Branch.converges_from`).
+- The empty seed store's schema version is ASKED FOR, never typed: `SV="$(mnemosyne-cli
+  describe-schema | sed -n '1s/.*schema v\([0-9]\+\).*/\1/p')"`. This line read as a
+  bold MUST on a bare 23 until Round 962 — right at this kit's pinned revision, wrong
+  at every later one, and wrong in silence, because the loader migrates a stale version
+  rather than refusing it. (R532 bumped 22->23 for `Branch.converges_from`; that is
+  what the pin holds, and the recipe returns it there.)
 - `--sidecar` and `--order` given as RELATIVE paths resolve relative to the WORKSPACE
   ROOT, not the CWD — always pass ABSOLUTE paths (a stray repo-root `store.atomic.json`
   is the symptom of getting this wrong).

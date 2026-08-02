@@ -120,6 +120,33 @@ const CHECKED_LITERALS: &[(&str, &[&str])] = &[
 /// cannot quietly become valid and leave the negative half testing nothing.
 const RETIRED_LITERAL: &str = "exact";
 
+/// Number fields the PROGRAM owns, each paired with the constant that owns it.
+/// A runbook may never write one of these next to its key.
+///
+/// This is the other half of the sibling table above, and it needs a different
+/// rule rather than more rows. A word has a fixed accepted set, so a runbook can
+/// hold the right one. A number does not: a kit is replayed at ITS OWN pinned
+/// revision, and the constant there is whatever it was that day. Measured, not
+/// argued — the four kits that seeded `schema_version: 23` pin revisions
+/// (`9184e6f`, `d92e751`, `b8a3f3c`, `f488298`) whose constant IS 23, so what
+/// they typed was right on the day and is wrong now. A typed number is correct
+/// at exactly one revision; the recipe `describe-schema | sed …` is correct at
+/// all of them. The rule here is therefore not "hold today's value" but "hold
+/// no value" — and today's value is not written in this comment either, for the
+/// same reason the runbooks may not write it: the cell below is the constant.
+///
+/// Keyed by FIELD, not by shape, and that is the precision the gate lives or
+/// dies by. Measured over every field-adjacent number in the runbooks on disk:
+/// `schema_version` is the only program-owned one. The rest — `violations: 0`,
+/// `unplaced = 0`, `judges: 3`, `n=2`, `playthrough = 19` — are ORACLES, values
+/// an arm asserts about its own run, and deriving one of those from the program
+/// is exactly what would void it. A blanket "no numbers in a runbook" would fire
+/// on every one of them and be switched off within a round. `the_number_scan_
+/// sees_the_key_shape_and_spares_the_oracles` holds that line as a check rather
+/// than as this sentence.
+const PROGRAM_OWNED_NUMBERS: &[(&str, u32)] =
+    &[("schema_version", mnemosyne_atomic::CURRENT_SCHEMA_VERSION)];
+
 /// The accepted set for one machine-checked field. Panics on a field with no
 /// row: a missing vocabulary must never read as an empty one, because nothing
 /// would then be scanned for it and the answer would come back "no violations".
@@ -153,6 +180,20 @@ fn git(args: &[&str]) -> String {
         String::from_utf8_lossy(&out.stderr)
     );
     String::from_utf8(out.stdout).expect("git output is utf-8")
+}
+
+/// The rendered authoring contract, from the binary the runbooks invoke.
+fn describe_schema() -> String {
+    let out = Command::new(env!("CARGO_BIN_EXE_mnemosyne-cli"))
+        .arg("describe-schema")
+        .output()
+        .expect("run mnemosyne-cli describe-schema");
+    assert!(
+        out.status.success(),
+        "describe-schema must exit 0; stderr={}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    String::from_utf8(out.stdout).expect("describe-schema output is utf-8")
 }
 
 fn tracked_evidence_files() -> Vec<String> {
@@ -1752,6 +1793,68 @@ fn taught_literals(text: &str) -> Vec<Taught> {
     out
 }
 
+/// One `key: <number>` a text writes out — the shape an orchestrator pastes.
+#[derive(Debug)]
+struct TypedNumber {
+    line: usize,
+    field: &'static str,
+    value: String,
+}
+
+/// Every program-owned number a text writes beside its key.
+///
+/// Four spellings, because those are the four the runbooks on disk actually
+/// use and each of them is pasteable: `k: 23`, `"k":23`, `"k": 23`, `k = 23`.
+/// The `=` form is not JSON and still counts — `convergence-probe/v2` carried
+/// the stale version in a "seed schema_version = 23" step, which is copied by
+/// reading just as surely as by selecting.
+///
+/// The boundary rule is the sibling scanner's: a key is only this key when what
+/// precedes it is not part of a longer name, so `store_schema_version` is left
+/// alone while `"schema_version"` is read. Prose that names the number away
+/// from the key — "the seed store's schema version is 23" — is deliberately
+/// invisible here. That is the Round 950 correction form, and it is what lets a
+/// runbook record what it used to say without teaching it again.
+fn typed_numbers(text: &str) -> Vec<TypedNumber> {
+    let mut out = Vec::new();
+    for (n, line) in text.lines().enumerate() {
+        for (field, _) in PROGRAM_OWNED_NUMBERS {
+            let field = *field;
+            let mut from = 0usize;
+            while let Some(at) = line[from..].find(field) {
+                let start = from + at;
+                from = start + field.len();
+                if line[..start]
+                    .chars()
+                    .next_back()
+                    .is_some_and(|c| c.is_alphanumeric() || c == '_')
+                {
+                    continue;
+                }
+                let rest = line[from..].strip_prefix('"').unwrap_or(&line[from..]);
+                let rest = rest.trim_start_matches(' ');
+                let Some(rest) = rest.strip_prefix([':', '=']) else {
+                    continue;
+                };
+                let digits: String = rest
+                    .trim_start_matches(' ')
+                    .chars()
+                    .take_while(char::is_ascii_digit)
+                    .collect();
+                if digits.is_empty() {
+                    continue;
+                }
+                out.push(TypedNumber {
+                    line: n + 1,
+                    field,
+                    value: digits,
+                });
+            }
+        }
+    }
+    out
+}
+
 /// Every runbook on disk, repo-relative, tracked or not.
 ///
 /// Deliberately NOT `git ls-files`. `/claudedocs/*` is ignored by default, so a
@@ -1840,6 +1943,241 @@ fn no_runbook_teaches_a_literal_its_own_gate_rejects() {
         "{} runbook(s), {checked} checked literal(s), all in vocabulary",
         books.len()
     );
+}
+
+/// No runbook writes a number the program owns beside that number's key.
+///
+/// The sibling above is the WORD half: a value out of a closed vocabulary, which
+/// a document can hold correctly forever. This is the NUMBER half, and it cannot
+/// be closed the same way. Round 958 found by hand that three runbooks seeded
+/// `"schema_version":23` while the constant had reached 44, and named the reason
+/// it had gone unseen for so long: the loader MIGRATES a stale version instead
+/// of rejecting it, so the wrong seed produces no error, byte-identical
+/// receipts, and no signal at all to the arm that inherits it. That round fixed
+/// the three it was looking at. Four more were carrying the same literal, one of
+/// them under a bold "MUST".
+///
+/// The remedy the message names is DERIVATION, not correction, and the argument
+/// for it is measured rather than aesthetic: each of those kits is replayed at
+/// its own pinned revision, where the constant is 23, so `describe-schema`
+/// answers 23 there and 44 here while the literal can only ever be one of them.
+/// Rewriting a completed kit's runbook to ask the program therefore changes
+/// nothing about what its replay seeds — which is why Round 958 could do it to
+/// map-corpus and disclosed-place, both long since run, and why it is right for
+/// the rest.
+#[test]
+fn no_runbook_types_a_number_the_program_owns() {
+    let root = repo_root();
+    let books = runbooks(&root);
+    assert!(
+        !books.is_empty(),
+        "no runbooks found under claudedocs/ — this gate would pass vacuously"
+    );
+    let mut violations = Vec::new();
+    let mut discusses: BTreeMap<&str, usize> = PROGRAM_OWNED_NUMBERS
+        .iter()
+        .map(|(field, _)| (*field, 0usize))
+        .collect();
+    for rel in &books {
+        let text =
+            std::fs::read_to_string(root.join(rel)).unwrap_or_else(|e| panic!("read {rel}: {e}"));
+        for t in typed_numbers(&text) {
+            violations.push(format!(
+                "{rel}:{} writes `{}: {}`",
+                t.line, t.field, t.value
+            ));
+        }
+        for (field, _) in PROGRAM_OWNED_NUMBERS {
+            if text.contains(field) {
+                *discusses.get_mut(field).expect("seeded above") += 1;
+            }
+        }
+    }
+    // The clean state here is ZERO hits, so the count that proves this gate is
+    // awake cannot be the hits. It is the corpus: these runbooks DO talk about
+    // the key — they seed stores with it — and the claim is that none of them
+    // pastes a number beside it. A key no runbook mentions would make the scan
+    // above assert nothing while reporting a clean tree.
+    for (field, seen) in &discusses {
+        assert!(
+            *seen > 0,
+            "no runbook mentions `{field}` at all, so scanning for it proves \
+             nothing. Either the field was renamed in the product and this row \
+             is stale, or the corpus stopped being the place the seed is written."
+        );
+    }
+    assert!(
+        violations.is_empty(),
+        "{} site(s) type a number the program owns:\n  {}\n\
+         A runbook is copied from, and a kit is replayed at ITS OWN pinned \
+         revision, where the constant is whatever it was that day — so a typed \
+         number is right at exactly one revision and wrong at every other, and \
+         it is wrong SILENTLY, because the loader migrates a stale version \
+         rather than refusing it. Ask the program instead \
+         (`SV=\"$(mnemosyne-cli describe-schema | sed -n \
+         '1s/.*schema v\\([0-9]\\+\\).*/\\1/p')\"`), which answers correctly at \
+         every revision; or, if the point is to record what a past arm used, \
+         state the number away from its key, where nothing can paste it.",
+        violations.len(),
+        violations.join("\n  ")
+    );
+    println!(
+        "{} runbook(s), none types a program-owned number",
+        books.len()
+    );
+}
+
+/// The scan reads every shape it exists to read, and reads nothing else.
+///
+/// Both halves are load-bearing and the second is the one that keeps this gate
+/// alive. A scan that also fired on `violations: 0` would be reporting an arm's
+/// own oracle as a defect, and the fix for that false positive is to delete the
+/// gate. The probes are built FROM the table, so a row is never checked against
+/// a hand-typed copy of itself.
+#[test]
+fn the_number_scan_sees_the_key_shape_and_spares_the_oracles() {
+    for (field, value) in PROGRAM_OWNED_NUMBERS {
+        for pasteable in [
+            format!("- The seed store is `{field}: {value}`.\n"),
+            format!("  printf '{{\"{field}\":{value},\"sections\":{{}}}}' > store.json\n"),
+            format!("  `{{ \"{field}\": {value}, \"sections\": {{}} }}`.\n"),
+            format!("0. seed {field} = {value}; the ABSOLUTE-path rule documented\n"),
+        ] {
+            let found = typed_numbers(&pasteable);
+            assert_eq!(
+                found.len(),
+                1,
+                "`{field}`: the scan missed a form it exists to read: {pasteable:?} -> {found:?}"
+            );
+            assert_eq!(found[0].value, value.to_string());
+        }
+
+        // The Round 950 correction form: the number named, the key not fed.
+        let recorded = format!("- the seed store's schema version was {value} at that pin\n");
+        assert!(
+            typed_numbers(&recorded).is_empty(),
+            "`{field}`: the scan fires on prose that names the number away from \
+             its key, which is the only form left for recording what a past arm \
+             used: {recorded:?}"
+        );
+
+        // A longer name ending in this key is not this key.
+        let longer = format!("- `store_{field}: {value}` is a different field\n");
+        assert!(
+            typed_numbers(&longer).is_empty(),
+            "`{field}`: the scan reads a longer field name as this one: {longer:?}"
+        );
+
+        // The key with no number beside it is the derived form, which is the
+        // remedy — firing on it would leave nothing to fix.
+        let derived =
+            format!("  printf '{{\"{field}\":%s,\"sections\":{{}}}}' \"$SV\" > store.json\n");
+        assert!(
+            typed_numbers(&derived).is_empty(),
+            "`{field}`: the scan fires on the DERIVED seed, the very form it \
+             asks for: {derived:?}"
+        );
+    }
+
+    // Values an arm asserts about its own run. Deriving any of these from the
+    // program is what would void the experiment, so none of them is a violation
+    // and none may be swept in by widening the scan from keys to shapes.
+    for oracle in [
+        "- `violations: 0` on both stores",
+        "- `unplaced = 0`, `off_path = 0`",
+        "- leaks=0 across the walk",
+        "- judges: 3, blind to each other",
+        "- n=2 authors, one premise",
+        "- playthrough = 19 scenes",
+    ] {
+        let found = typed_numbers(&format!("{oracle}\n"));
+        assert!(
+            found.is_empty(),
+            "the scan fires on an arm's own oracle, which the program must never \
+             own: {oracle:?} -> {found:?}"
+        );
+    }
+}
+
+/// The recipe the runbooks were given actually yields today's constant.
+///
+/// Round 958 replaced a stale literal with a derivation, which moves the failure
+/// but does not remove it: the recipe greps `describe-schema`'s first line, and
+/// that line belongs to the CLI, not to the runbooks. This checks the join from
+/// both ends, and reads the marker OUT of the runbooks rather than restating it
+/// here — a second copy of the thing being checked would agree with itself while
+/// the runbooks drifted.
+///
+/// The second assertion is the silent one. The runbooks' `sed` is greedy
+/// (`.*schema v`), so if the contract's first line ever named a second version
+/// the recipe would quietly return the LAST match. That failure prints no error
+/// and seeds a plausible number, which is the same shape as the defect this
+/// whole family exists to catch.
+#[test]
+fn the_contract_line_the_runbooks_read_yields_todays_constant() {
+    let root = repo_root();
+    let mut markers: BTreeMap<String, Vec<String>> = BTreeMap::new();
+    for rel in runbooks(&root) {
+        let text =
+            std::fs::read_to_string(root.join(&rel)).unwrap_or_else(|e| panic!("read {rel}: {e}"));
+        for (n, line) in text.lines().enumerate() {
+            if !line.contains("describe-schema") {
+                continue;
+            }
+            let Some(script) = line.split("1s/").nth(1) else {
+                continue;
+            };
+            let Some(marker) = script
+                .strip_prefix(".*")
+                .and_then(|s| s.split("\\(").next())
+            else {
+                continue;
+            };
+            markers
+                .entry(marker.to_string())
+                .or_default()
+                .push(format!("{rel}:{}", n + 1));
+        }
+    }
+    assert_eq!(
+        markers.len(),
+        1,
+        "the runbooks grep for {} different markers, so they cannot all be \
+         reading the same line: {markers:?}",
+        markers.len()
+    );
+    let (marker, sites) = markers.into_iter().next().expect("one marker");
+
+    let contract = describe_schema();
+    let first = contract
+        .lines()
+        .next()
+        .expect("describe-schema prints at least one line");
+    let hits: Vec<&str> = first
+        .match_indices(&marker)
+        .map(|(i, _)| &first[i..])
+        .collect();
+    assert_eq!(
+        hits.len(),
+        1,
+        "`{marker}` appears {} time(s) on the contract's first line ({first:?}). \
+         The recipe in {sites:?} is greedy, so anything but exactly one match \
+         makes it return the wrong number without saying so.",
+        hits.len()
+    );
+    let read: String = hits[0][marker.len()..]
+        .chars()
+        .take_while(char::is_ascii_digit)
+        .collect();
+    assert_eq!(
+        read,
+        mnemosyne_atomic::CURRENT_SCHEMA_VERSION.to_string(),
+        "the recipe in {sites:?} reads {read:?} off the contract's first line \
+         ({first:?}), but the constant is {}. Every seed those runbooks write \
+         is that number.",
+        mnemosyne_atomic::CURRENT_SCHEMA_VERSION
+    );
+    println!("{} deriving site(s) read `{marker}` -> {read}", sites.len());
 }
 
 /// Every runbook the scan reads is IN the repository.
