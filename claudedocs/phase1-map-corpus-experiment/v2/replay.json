@@ -1,5 +1,5 @@
 {
-  "schema": "kit-replay/v3",
+  "schema": "kit-replay/v4",
   "revision_provenance": "declared-at-run",
   "declared_in": "Round 910",
   "derivation": "Arm B of the map-corpus A/B. Same frozen brief and protocol as v1; the ONLY variable is contract.txt, regenerated from describe-schema after R906/R908/R909. The revision is the commit that lands these inputs, recorded at the run — a self-referential pin costs a second commit by construction, exactly as v1 recorded.",
@@ -72,8 +72,9 @@
     },
     {
       "path": "run/stage-a-first-submission/contract.txt",
-      "role": "run-artifact",
-      "sha256": "5c04eb68f13536aec7a6a1fe9df9cb5b9aa686f5a20457b44ccb7dbac425da90"
+      "role": "reproduced-output",
+      "sha256": "5c04eb68f13536aec7a6a1fe9df9cb5b9aa686f5a20457b44ccb7dbac425da90",
+      "reproduced_by": "describe-schema"
     },
     {
       "path": "run/stage-a-first-submission/mnemosyne.toml",
@@ -102,8 +103,9 @@
     },
     {
       "path": "run/stage-a/contract.txt",
-      "role": "run-artifact",
-      "sha256": "5c04eb68f13536aec7a6a1fe9df9cb5b9aa686f5a20457b44ccb7dbac425da90"
+      "role": "reproduced-output",
+      "sha256": "5c04eb68f13536aec7a6a1fe9df9cb5b9aa686f5a20457b44ccb7dbac425da90",
+      "reproduced_by": "describe-schema"
     },
     {
       "path": "run/stage-a/first-import.log",
@@ -132,8 +134,9 @@
     },
     {
       "path": "run/stage-b-first-submission/contract.txt",
-      "role": "run-artifact",
-      "sha256": "5c04eb68f13536aec7a6a1fe9df9cb5b9aa686f5a20457b44ccb7dbac425da90"
+      "role": "reproduced-output",
+      "sha256": "5c04eb68f13536aec7a6a1fe9df9cb5b9aa686f5a20457b44ccb7dbac425da90",
+      "reproduced_by": "describe-schema"
     },
     {
       "path": "run/stage-b-first-submission/mnemosyne.toml",
@@ -162,8 +165,9 @@
     },
     {
       "path": "run/stage-b/contract.txt",
-      "role": "run-artifact",
-      "sha256": "5c04eb68f13536aec7a6a1fe9df9cb5b9aa686f5a20457b44ccb7dbac425da90"
+      "role": "reproduced-output",
+      "sha256": "5c04eb68f13536aec7a6a1fe9df9cb5b9aa686f5a20457b44ccb7dbac425da90",
+      "reproduced_by": "describe-schema"
     },
     {
       "path": "run/stage-b/first-import.log",

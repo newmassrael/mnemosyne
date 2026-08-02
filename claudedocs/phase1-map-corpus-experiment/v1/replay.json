@@ -1,5 +1,5 @@
 {
-  "schema": "kit-replay/v3",
+  "schema": "kit-replay/v4",
   "revision_provenance": "declared-at-run",
   "declared_in": "Round 904",
   "derivation": "The revision is the commit that landed these inputs, recorded at the run rather than reconstructed after it. Round 898's design called this provenance \"exact\"; the gate's vocabulary has no such term, and \"declared-at-run\" is the existing name for the same thing. A self-referential pin costs a second commit by construction: a replay's revision must name a tree that already HOLDS its inputs, so the pin can only land after the corpus.",
@@ -57,8 +57,9 @@
     },
     {
       "path": "run/contract.txt",
-      "role": "run-artifact",
-      "sha256": "57be4d1dbeb739505af466f38b9d4d45d3440630a1aa81c09e3ef0240d8aa6ba"
+      "role": "reproduced-output",
+      "sha256": "57be4d1dbeb739505af466f38b9d4d45d3440630a1aa81c09e3ef0240d8aa6ba",
+      "reproduced_by": "describe-schema"
     },
     {
       "path": "run/stage-a-first-submission/mnemosyne.toml",

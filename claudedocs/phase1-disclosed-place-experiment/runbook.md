@@ -261,7 +261,7 @@ here.
 
 - `disclosed-place-report.md` — E1 (all four sub-answers), E2 (both first-import
   logs verbatim), E3 (the disagreements), and the render output in full.
-- `vN/manifest.json` + `vN/replay.json` (`kit-replay/v3`) listing the Stage B
+- `vN/manifest.json` + `vN/replay.json` (`kit-replay/v4`) listing the Stage B
   manifests as inputs, the landing commit as `revision`, and
   `revision_provenance: "declared-at-run"`. **That string is the gate's
   vocabulary, checked against the code and not invented here**: the accepted set
@@ -293,6 +293,11 @@ here.
   existing entry. Until this is run, the manuscripts, the judge reports, the
   label map and the captured logs are pinned by nothing at all — which is the
   state the whole corpus was in until Round 953 measured it (425 of 552).
+- The captured contract is not a `run-artifact`: it is a transcript the tree can
+  regenerate, so say so and let the replay job check it (Round 973).
+  `experiment-harness set-input-role --record <the same path> --path
+  run/contract.txt --role reproduced-output --reproduced-by describe-schema`.
+  The declaration gate names the same command if you forget.
 - Register the replay so `evidence_replay_smoke` rebuilds it in CI. A corpus
   nothing loads is the rot this corpus exists to end (Round 873, Round 897).
   Kits are discovered by `git ls-files`, so **stage before running the suite**,

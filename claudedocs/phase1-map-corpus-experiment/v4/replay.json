@@ -1,5 +1,5 @@
 {
-  "schema": "kit-replay/v3",
+  "schema": "kit-replay/v4",
   "revision_provenance": "declared-at-run",
   "declared_in": "Round 935",
   "derivation": "Arm D of the map-corpus experiment. Round 898's protocol and the arm A brief, both unchanged. TWO author-observable inputs moved, unlike arms B and C which moved one: contract.txt, regenerated after R934 corrected the two surfaces that credited every completeness check to wiring containment (218 lines in both arms, 55,288 bytes in arm C against 56,509 here, four lines differing); and the seeded mnemosyne.toml, from which R934 removed the rules_path line that had made the rules filename a guess. The revision is the commit that lands these inputs, recorded at the run - a self-referential pin costs a second commit by construction, as v1, v2 and v3 each recorded.",
@@ -67,8 +67,9 @@
     },
     {
       "path": "run/stage-a-first-submission/contract.txt",
-      "role": "run-artifact",
-      "sha256": "369bb23f7a221101770e0d5a8aad4081484e5cfcd5ca49e52cf5c4e807c966ad"
+      "role": "reproduced-output",
+      "sha256": "369bb23f7a221101770e0d5a8aad4081484e5cfcd5ca49e52cf5c4e807c966ad",
+      "reproduced_by": "describe-schema"
     },
     {
       "path": "run/stage-a-first-submission/mnemosyne.toml",
@@ -97,8 +98,9 @@
     },
     {
       "path": "run/stage-a/contract.txt",
-      "role": "run-artifact",
-      "sha256": "369bb23f7a221101770e0d5a8aad4081484e5cfcd5ca49e52cf5c4e807c966ad"
+      "role": "reproduced-output",
+      "sha256": "369bb23f7a221101770e0d5a8aad4081484e5cfcd5ca49e52cf5c4e807c966ad",
+      "reproduced_by": "describe-schema"
     },
     {
       "path": "run/stage-a/first-import.log",
@@ -137,8 +139,9 @@
     },
     {
       "path": "run/stage-b-first-submission/contract.txt",
-      "role": "run-artifact",
-      "sha256": "369bb23f7a221101770e0d5a8aad4081484e5cfcd5ca49e52cf5c4e807c966ad"
+      "role": "reproduced-output",
+      "sha256": "369bb23f7a221101770e0d5a8aad4081484e5cfcd5ca49e52cf5c4e807c966ad",
+      "reproduced_by": "describe-schema"
     },
     {
       "path": "run/stage-b-first-submission/mnemosyne.toml",
@@ -167,8 +170,9 @@
     },
     {
       "path": "run/stage-b/contract.txt",
-      "role": "run-artifact",
-      "sha256": "369bb23f7a221101770e0d5a8aad4081484e5cfcd5ca49e52cf5c4e807c966ad"
+      "role": "reproduced-output",
+      "sha256": "369bb23f7a221101770e0d5a8aad4081484e5cfcd5ca49e52cf5c4e807c966ad",
+      "reproduced_by": "describe-schema"
     },
     {
       "path": "run/stage-b/first-import.log",

@@ -1,5 +1,5 @@
 {
-  "schema": "kit-replay/v3",
+  "schema": "kit-replay/v4",
   "revision_provenance": "declared-at-run",
   "derivation": "The revision is the commit that landed these inputs, recorded at the run rather than reconstructed after it. A self-referential pin costs a second commit by construction: a replay's revision must name a tree that already HOLDS its inputs, so the pin can only land after the corpus. Round 942's runbook asked for provenance `exact`; the gate's vocabulary is `derived-upper-bound` and `declared-at-run`, and an unknown value panics — the same correction the map-corpus run had to make against the same word in Round 898's design.",
   "note": "Re-checking runs the declared revision against these manifests UNCHANGED. The manifests are the blind authors' output and are never edited to suit a later tool. Stage B's manifest is the author's own repair of their first submission, made from the verbatim tool error; the first submission itself is preserved beside it and is not replayed, because it does not import by design.",
@@ -76,8 +76,9 @@
     },
     {
       "path": "run/contract.txt",
-      "role": "run-artifact",
-      "sha256": "369bb23f7a221101770e0d5a8aad4081484e5cfcd5ca49e52cf5c4e807c966ad"
+      "role": "reproduced-output",
+      "sha256": "369bb23f7a221101770e0d5a8aad4081484e5cfcd5ca49e52cf5c4e807c966ad",
+      "reproduced_by": "describe-schema"
     },
     {
       "path": "run/stage-a-first-submission/mnemosyne.toml",

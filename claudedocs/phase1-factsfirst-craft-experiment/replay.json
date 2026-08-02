@@ -1,5 +1,5 @@
 {
-  "schema": "kit-replay/v3",
+  "schema": "kit-replay/v4",
   "no_replay": "This kit produced no sections manifest and no facts manifest, in any arm: its evidence is prose, canon orders and narrative rules. No mutate verb takes any of it, so there is no store for a replay to rebuild and no revision worth pinning to rebuild it at. What the record can do is hold the bytes, which is why every artifact below is declared and sealed.",
   "note": "Written in Round 953. Until then this kit had no record at all, so not one of its 51 tracked run artifacts was pinned by anything — the worse half of the Round 952 carry, since there was not even a record to declare them in.",
   "inputs": [

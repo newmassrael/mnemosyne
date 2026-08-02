@@ -182,7 +182,7 @@ it. Do not resolve it in the orchestrator's voice — record it.
 
 - `map-corpus-report.md` — E1, E2 (both first-import logs verbatim), E3 (the
   disagreements), C1/C2 (which branches ran, which verbs newly differ).
-- `v1/manifest.json` + `v1/replay.json` (`kit-replay/v3`) listing the Stage B
+- `v1/manifest.json` + `v1/replay.json` (`kit-replay/v4`) listing the Stage B
   manifests as inputs, the landing commit as `revision`, and
   `revision_provenance: "declared-at-run"` — the first kit in this tree that can
   declare its pin at the run rather than derive it after. **That string is the
@@ -210,4 +210,10 @@ it. Do not resolve it in the orchestrator's voice — record it.
   sha256 into the record, once. Both are idempotent and neither ever rewrites an
   existing entry. Until this is run, the first-import logs, the transition-map
   dumps and the authored side-table scripts are pinned by nothing at all.
+- The captured contracts are not `run-artifact`s: each is a transcript the tree
+  can regenerate, so say so and let the replay job check it (Round 973).
+  `experiment-harness set-input-role --record <the same path> --path
+  run/stage-a/contract.txt --path <the other copies> --role reproduced-output
+  --reproduced-by describe-schema`. The declaration gate names the same command
+  if you forget, and names every copy it found.
 - One changelog entry, one commit. Push is a separate gate.

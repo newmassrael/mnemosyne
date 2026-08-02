@@ -62,7 +62,46 @@ use std::process::Command;
 /// held by the sharper roles and stays there. `run-artifact` may only be used
 /// under a `run/` tree, which is a constraint neither sibling carries, and no
 /// replay step may feed it.
-const INPUT_ROLES: &[&str] = &["replay-input", "raw-agent-output", "run-artifact"];
+///
+/// `reproduced-output` is Round 973, and it is the answer to the vocabulary
+/// question Round 953 left open — sharpened by what a MACHINE can settle rather
+/// than by reading prose. Round 953 rejected orchestrator/judge/tool roles
+/// because assigning them means inferring from a sampled file, and a record
+/// whose value is that its claims are true may not carry inferred ones. That
+/// objection does not reach a claim the tree can discharge: this role says the
+/// bytes are what a named verb PRINTS at the record's pinned revision, and the
+/// replay job runs that verb and compares. Nobody is believed; the claim is
+/// earned every time the job runs.
+///
+/// It therefore carries the constraint the others cannot: a `reproduced_by`
+/// verb from [`REPRODUCIBLE_VERBS`], and a unit that pins a revision to run it
+/// at. Like `run-artifact` it lives under a run tree and no step feeds it — a
+/// transcript is not an input to anything, it is what came back out.
+const INPUT_ROLES: &[&str] = &[
+    "replay-input",
+    "raw-agent-output",
+    "run-artifact",
+    "reproduced-output",
+];
+
+/// The verbs whose output the replay job can regenerate and compare. A closed
+/// set, because a role that names a verb nothing runs is a claim in the record
+/// with no check behind it — exactly the shape this role exists to avoid.
+///
+/// One member today, and the boundary is measured rather than chosen. Of the
+/// 108 tracked run artifacts whose first line is a CLI banner (2026-08-03):
+/// `describe-schema` takes no store and no arguments, so its 16 are settled by
+/// running the verb and nothing else. The 58 report transcripts
+/// (`report-frame-view`, `validate-continuity`, `report-transition-map`,
+/// `report-authoring-frontier`, `report-disclosure-coverage`) need the store a
+/// replay rebuilds AND the arguments the runbook passed, so they need the
+/// record to carry an argument vector before they can be discharged. The 14
+/// `import-*` logs are a shell composition — two verbs, with `exit=$?` appended
+/// by the runbook — so no single command reproduces one. The 20 playthrough
+/// manuscripts come from `tools/experiment-harness`, a workspace this job does
+/// not build at the pinned revision at all. Those 92 stay `run-artifact`, which
+/// says what remains true of them.
+const REPRODUCIBLE_VERBS: &[&str] = &["describe-schema"];
 
 /// What a step expects the verb to do. `propose-verdict` probes are negative
 /// controls: the run recorded them as manifests that MUST be rolled back, so a
@@ -81,14 +120,20 @@ const PROVENANCE_KINDS: &[&str] = &["derived-upper-bound", "declared-at-run"];
 /// version sits in the same table as every other machine-checked literal
 /// instead of being a bare string at its one use site.
 ///
-/// v3 is Round 953: the accepted document set grew a case v2 could not
+/// v3 was Round 953: the accepted document set grew a case v2 could not
 /// describe. A kit whose artifacts no verb can import — `factsfirst-craft`
 /// carries 51 of them and not one sections or facts manifest — has an empty
 /// `replays`, and must then say WHY in `no_replay` and declare no revision
 /// provenance, there being no pin for one to describe. v2 would have accepted
 /// such a record silently, which would exempt a whole kit from the replay half
 /// and leave nothing to notice it.
-const REPLAY_SCHEMAS: &[&str] = &["kit-replay/v3"];
+///
+/// v4 is Round 973, for the same reason and not for a bigger one: an input may
+/// now name the verb that reproduces it (`reproduced_by`), and a v3 reader has
+/// no field to put that in. The version moves because the DOCUMENT changed
+/// shape, so a record written against the old shape is told so instead of
+/// having its new field ignored.
+const REPLAY_SCHEMAS: &[&str] = &["kit-replay/v4"];
 
 /// Every literal a kit's `replay.json` is checked against, keyed by the field
 /// that carries it. The cells ARE the consts above — a second reader of one
@@ -112,6 +157,7 @@ const CHECKED_LITERALS: &[(&str, &[&str])] = &[
     ("revision_provenance", PROVENANCE_KINDS),
     ("role", INPUT_ROLES),
     ("expect", STEP_EXPECTATIONS),
+    ("reproduced_by", REPRODUCIBLE_VERBS),
 ];
 
 /// The value the two runbooks taught until Rounds 944 and 948 removed it. Kept
@@ -396,6 +442,12 @@ struct Input {
     /// the R469 contamination bound rests on, were pinned by nothing until this
     /// field existed. One rule with no exceptions beats two with a seam.
     sha256: String,
+    /// The verb that PRINTS these bytes, on a `reproduced-output` and nowhere
+    /// else (Round 973). Present exactly when the role is that one, which is
+    /// what makes the role a claim the replay job can settle rather than a
+    /// label: the job runs this verb at the unit's pinned revision and compares
+    /// its stdout against `sha256` above.
+    reproduced_by: Option<String>,
 }
 
 struct Declarations {
@@ -440,11 +492,21 @@ fn declarations() -> Declarations {
                     )
                 })
                 .to_string();
+            let reproduced_by = i["reproduced_by"].as_str().map(|v| {
+                assert!(
+                    vocabulary("reproduced_by").contains(&v),
+                    "{file}: input {path} names `{v}` as what reproduces it, and \
+                     this job cannot run that verb — a claim with no check \
+                     behind it is what this role exists to avoid"
+                );
+                v.to_string()
+            });
             inputs.push(Input {
                 unit: unit.clone(),
                 path,
                 role: i["role"].as_str().expect("input role").to_string(),
                 sha256,
+                reproduced_by,
             });
         }
         let declared_replays = doc["replays"]
@@ -798,6 +860,100 @@ fn every_tracked_run_artifact_is_declared_by_its_kit() {
     );
 }
 
+/// The banner `describe-schema` prints, with its schema number replaced by the
+/// wildcard that makes it match at every revision.
+///
+/// DERIVED by running the verb, never typed. This is the Round 962 rule at the
+/// place it bites hardest: the banner carries the schema version, so a literal
+/// copied into this file would be right at today's revision and wrong at the
+/// seven pinned ones the recorded contracts were captured at — and the failure
+/// would be silence, since a pattern that matches nothing reports no
+/// candidates and no violations.
+fn contract_banner_prefix() -> String {
+    let first = describe_schema()
+        .lines()
+        .next()
+        .expect("describe-schema prints a banner")
+        .to_string();
+    let cut = first
+        .find(char::is_numeric)
+        .expect("the banner carries the schema version");
+    first[..cut].to_string()
+}
+
+/// EVERY RECORDED AUTHORING CONTRACT CLAIMS THE ROLE THAT CHECKS IT.
+///
+/// The half that keeps `reproduced-output` from being decoration. Without this,
+/// the role would be discharged wherever a record happened to claim it and
+/// absent wherever nobody bothered — and a reader could not tell a transcript
+/// nobody checked from a file nobody could check. The candidate set is taken
+/// from the EVIDENCE, the way Round 953 took coverage from the filesystem
+/// rather than from the record: a run artifact whose first line is the contract
+/// banner is a captured `describe-schema`, and it has to say so.
+///
+/// WHAT THIS CANNOT DO, measured rather than implied. The banner is the first
+/// line, so a contract captured with a wrapper around it — `echo` before the
+/// command, an orchestrator's own header — is not seen. That failure mode is
+/// real and not hypothetical: the same shape hides two `first-import.log` files
+/// whose run errored (the CLI prints no banner on the failure path) and one
+/// `gate-output.txt` an author wrapped in `===== validate-continuity =====`. It
+/// is why the ROLE's own check is re-execution and not this scan — this only
+/// decides who is asked.
+#[test]
+fn every_recorded_contract_is_declared_as_a_reproduced_transcript() {
+    let root = repo_root();
+    let d = declarations();
+    let banner = contract_banner_prefix();
+
+    let roles: BTreeMap<String, String> = d
+        .inputs
+        .iter()
+        .map(|i| (normalize(&format!("{}/{}", i.unit, i.path)), i.role.clone()))
+        .collect();
+
+    let mut candidates = 0usize;
+    let mut unclaimed: Vec<String> = Vec::new();
+    for path in run_artifacts() {
+        let Ok(bytes) = std::fs::read(root.join(&path)) else {
+            continue;
+        };
+        let first = String::from_utf8_lossy(&bytes);
+        let Some(first) = first.lines().next() else {
+            continue;
+        };
+        if !first.starts_with(&banner) {
+            continue;
+        }
+        candidates += 1;
+        match roles.get(&normalize(&path)) {
+            Some(role) if role == "reproduced-output" => {}
+            Some(role) => unclaimed.push(format!("{path} is declared `{role}`")),
+            None => unclaimed.push(format!("{path} is declared by no record")),
+        }
+    }
+
+    assert!(
+        unclaimed.is_empty(),
+        "{} captured authoring contract(s) do not claim the role that checks \
+         them. Each is a `describe-schema` transcript, so it is declared \
+         `reproduced-output` with `reproduced_by: \"describe-schema\"` — run \
+         `experiment-harness set-input-role --record <replay.json> --path <p> \
+         --role reproduced-output --reproduced-by describe-schema`:\n{}",
+        unclaimed.len(),
+        unclaimed.join("\n")
+    );
+    // Non-vacuity: a banner that matched nothing would satisfy the assertion
+    // above while asking nobody anything, which is precisely how a derived
+    // pattern fails.
+    assert!(
+        candidates > 0,
+        "no run artifact begins with the contract banner `{banner}` — either \
+         the corpus holds no captured contract, or the derivation above stopped \
+         matching the verb's output and this test now asks nothing"
+    );
+    println!("{candidates} captured contract(s), all declared `reproduced-output`");
+}
+
 /// A manifest the record marks as raw agent output is NOT a replay input. The
 /// distinction is recorded because two kits ship both their agent's raw output
 /// and the normalized form, and a census that could not tell them apart
@@ -828,6 +984,36 @@ fn roles_are_from_the_declared_vocabulary_and_every_one_is_used() {
                 .map(move |s| normalize(&format!("{}/{}", r.unit, s.input)))
         })
         .collect();
+    // The units a verb could actually be run at, and the revision to run it at.
+    // A record with an empty `replays` states why (`no_replay`) and pins
+    // nothing, so it has no revision to reproduce anything against; a record
+    // pinning two would leave which one a transcript came from unsettled, and
+    // the check would be choosing rather than reading.
+    let mut pinned: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
+    for r in &d.replays {
+        pinned
+            .entry(r.unit.clone())
+            .or_default()
+            .insert(r.revision.clone());
+    }
+    let pinned: BTreeMap<String, BTreeSet<String>> = pinned;
+
+    // A field belongs to the role that gives it meaning. `reproduced_by` on
+    // anything else would be a verb named where nothing runs it, which reads to
+    // the next author as a checked claim and is not one.
+    for i in &d.inputs {
+        if i.role != "reproduced-output" {
+            assert!(
+                i.reproduced_by.is_none(),
+                "{}/{} is `{}` and names a `reproduced_by` verb — only \
+                 `reproduced-output` is checked against one",
+                i.unit,
+                i.path,
+                i.role
+            );
+        }
+    }
+
     for i in &d.inputs {
         let path = normalize(&format!("{}/{}", i.unit, i.path));
         match i.role.as_str() {
@@ -858,6 +1044,48 @@ fn roles_are_from_the_declared_vocabulary_and_every_one_is_used() {
                      run tree of {}",
                     i.unit
                 );
+            }
+            // The role that has to name its own check. A transcript is not fed
+            // to anything and it lives in the run tree like its sibling, but it
+            // additionally claims the bytes are a verb's output — so it names
+            // the verb, and the unit has to pin a revision for that verb to be
+            // run at. A record with no pin could assert the claim and nothing
+            // would ever test it.
+            "reproduced-output" => {
+                assert!(
+                    !fed.contains(&path),
+                    "{path} is declared `reproduced-output` but a replay step \
+                     feeds it — a transcript is what came out, not what went in"
+                );
+                assert!(
+                    path.starts_with(&format!("{}/", i.unit)) && path.contains("/run/"),
+                    "{path} is declared `reproduced-output` but does not sit \
+                     under a run tree of {}",
+                    i.unit
+                );
+                assert!(
+                    i.reproduced_by.is_some(),
+                    "{path} is declared `reproduced-output` and does not say \
+                     what reproduces it — the role IS the verb's name plus a \
+                     revision to run it at"
+                );
+                match pinned.get(&i.unit) {
+                    None => panic!(
+                        "{path} is declared `reproduced-output` but {} pins no \
+                         revision, so nothing can run the verb — the claim \
+                         would never be tested",
+                        i.unit
+                    ),
+                    Some(revs) => assert!(
+                        revs.len() == 1,
+                        "{path} is declared `reproduced-output` and {} pins {} \
+                         revisions {revs:?} — which one printed these bytes is \
+                         then unsettled, and the check would be choosing rather \
+                         than reading",
+                        i.unit,
+                        revs.len()
+                    ),
+                }
             }
             other => panic!("unknown role `{other}`"),
         }
@@ -1362,12 +1590,61 @@ fn every_replay_rebuilds_the_store_its_record_says_it_does() {
         revisions.len()
     );
 
+    // The transcripts to regenerate while each revision's binary exists, keyed
+    // by that revision. The unit pins exactly one (the cheap gate holds that),
+    // so this reads the pin rather than choosing among several.
+    let mut transcripts: BTreeMap<String, Vec<&Input>> = BTreeMap::new();
+    for i in d.inputs.iter().filter(|i| i.reproduced_by.is_some()) {
+        let rev = d
+            .replays
+            .iter()
+            .find(|r| r.unit == i.unit)
+            .map(|r| r.revision.clone())
+            .expect("a reproduced-output's unit pins a revision");
+        transcripts.entry(rev).or_default().push(i);
+    }
+
     let mut ran = 0usize;
+    let mut reproduced = 0usize;
     let mut blocked_confirmed = 0usize;
     let mut undeclared: Vec<(String, String)> = Vec::new();
     let mut wrong: Vec<String> = Vec::new();
     for rev in &revisions {
         let (tree, _target, cli) = build_revision(&root, rev);
+
+        // THE ROLE IS DISCHARGED HERE, not by anything that reads the file's
+        // text: the verb runs at the revision the record pins, and its stdout
+        // is compared byte for byte against the sha the seal already carries.
+        for i in transcripts.get(rev).into_iter().flatten() {
+            let verb = i.reproduced_by.as_deref().expect("filtered on Some");
+            let out = Command::new(&cli)
+                .arg(verb)
+                .current_dir(tree.path())
+                .output()
+                .expect("cli exec");
+            let name = format!("{}/{}", i.unit, i.path);
+            if !out.status.success() {
+                wrong.push(format!(
+                    "{name}: `{verb}` exits {} at {rev}:\n{}",
+                    out.status,
+                    String::from_utf8_lossy(&out.stderr).trim()
+                ));
+                continue;
+            }
+            let sha = mnemosyne_core::sha256_hex(&out.stdout);
+            if sha == i.sha256 {
+                reproduced += 1;
+            } else {
+                wrong.push(format!(
+                    "{name}: declared `reproduced-output` of `{verb}`, but that \
+                     verb at {rev} prints {sha} and the sealed bytes are {} — \
+                     either the file is not what the record says it is, or the \
+                     revision it names is not the one that printed it",
+                    i.sha256
+                ));
+            }
+        }
+
         for r in d.replays.iter().filter(|r| &r.revision == rev) {
             let name = format!("{}/{}", r.unit, r.name);
             let first = run_replay(&cli, &root, tree.path(), r);
@@ -1435,8 +1712,16 @@ fn every_replay_rebuilds_the_store_its_record_says_it_does() {
         ran > 0,
         "no replay reproduced a declared digest — this test asserted nothing"
     );
+    // The same standard for the half added in Round 973: a corpus that declared
+    // the role nowhere would pass the loop above without running a verb once.
+    assert!(
+        reproduced > 0,
+        "no `reproduced-output` was regenerated — the role is declared nowhere \
+         and its check asserted nothing"
+    );
     println!(
-        "{ran} replays reproduced their declared digest, {blocked_confirmed} blocked as declared"
+        "{ran} replays reproduced their declared digest, {blocked_confirmed} blocked as declared, \
+         {reproduced} transcript(s) regenerated at their pinned revision"
     );
 }
 

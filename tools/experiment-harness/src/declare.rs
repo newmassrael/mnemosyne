@@ -23,6 +23,84 @@ use crate::util::{read_file, write_file, HResult};
 /// it; this is the one member a mechanical walk is entitled to claim.
 const RUN_ARTIFACT: &str = "run-artifact";
 
+/// What [`set_role`] changed on one record.
+#[derive(Debug, Default)]
+pub struct Reassigned {
+    /// `record :: unit-relative path :: old -> new` for each entry rewritten.
+    pub changed: Vec<String>,
+}
+
+/// Rewrite the role of inputs a record ALREADY declares, and nothing else.
+///
+/// Round 973 needed sixteen entries moved from `run-artifact` to
+/// `reproduced-output`, and Round 953 named hand-editing the record as the
+/// place errors hide — a mistyped path in a 468-entry array reads as a
+/// declaration that resolves to nothing. So the edit is a verb: it fails on a
+/// path the record does not declare, rather than adding one, because adding is
+/// [`run`]'s job and silently creating an entry here would defeat the gate that
+/// requires each path exactly once.
+///
+/// The role name is NOT validated against a vocabulary here. There is one home
+/// for that vocabulary — the gate — and a second copy in this workspace would
+/// be a second thing to keep in step. A role this tool cannot spell is rejected
+/// by `cargo test` on the next run, which is where every other record literal
+/// is decided too.
+pub fn set_role(
+    record: &str,
+    paths: &[String],
+    role: &str,
+    reproduced_by: Option<&str>,
+) -> HResult<Reassigned> {
+    let raw = read_file(record)?;
+    let mut doc: serde_json::Value =
+        serde_json::from_str(&raw).map_err(|e| format!("{record} is not JSON: {e}"))?;
+    let inputs = doc
+        .get_mut("inputs")
+        .and_then(|v| v.as_array_mut())
+        .ok_or_else(|| format!("{record} declares no `inputs` array"))?;
+
+    let mut out = Reassigned::default();
+    for want in paths {
+        let entry = inputs
+            .iter_mut()
+            .find(|i| i.get("path").and_then(|p| p.as_str()) == Some(want.as_str()))
+            .ok_or_else(|| {
+                format!(
+                    "{record} declares no input at `{want}` — this verb rewrites \
+                     declarations, it does not create them; run \
+                     `declare-run-tree` first if the file is undeclared"
+                )
+            })?;
+        let was = entry
+            .get("role")
+            .and_then(|r| r.as_str())
+            .unwrap_or("<none>")
+            .to_string();
+        let obj = entry
+            .as_object_mut()
+            .ok_or_else(|| format!("{record}: the input at `{want}` is not an object"))?;
+        obj.insert("role".to_string(), serde_json::json!(role));
+        match reproduced_by {
+            Some(verb) => {
+                obj.insert("reproduced_by".to_string(), serde_json::json!(verb));
+            }
+            // A role that no longer claims a verb must not keep the field: it
+            // would name a command nothing runs, which reads as checked.
+            None => {
+                obj.remove("reproduced_by");
+            }
+        }
+        out.changed
+            .push(format!("{record} :: {want} :: {was} -> {role}"));
+    }
+
+    let mut rendered = serde_json::to_string_pretty(&doc)
+        .map_err(|e| format!("{record}: cannot render the updated record: {e}"))?;
+    rendered.push('\n');
+    write_file(record, &rendered)?;
+    Ok(out)
+}
+
 /// What one call to [`run`] added.
 #[derive(Debug, Default)]
 pub struct Declared {
@@ -207,6 +285,36 @@ mod tests {
         assert_eq!(normalize("a/b/../c"), "a/c");
         assert_eq!(normalize("a/./b"), "a/b");
         assert_eq!(normalize("kit/v1/../shared/x.json"), "kit/shared/x.json");
+    }
+
+    /// A path the record does not declare is refused rather than created. This
+    /// is the whole reason the reassignment is a verb: a mistyped path in a
+    /// 468-entry array would otherwise land as a NEW declaration that resolves
+    /// to nothing, and the coverage gate would then report the real file as
+    /// undeclared while the typo sat there looking like a record.
+    #[test]
+    fn reassigning_an_undeclared_path_is_an_error_and_writes_nothing() {
+        let dir = std::env::temp_dir().join("mn-set-role-undeclared");
+        std::fs::create_dir_all(&dir).expect("mkdir");
+        let record = dir.join("replay.json");
+        let before = r#"{"inputs":[{"path":"run/contract.txt","role":"run-artifact"}]}"#;
+        std::fs::write(&record, before).expect("seed record");
+        let path = record.to_string_lossy().into_owned();
+
+        let err = set_role(
+            &path,
+            &["run/contrakt.txt".to_string()],
+            "reproduced-output",
+            Some("describe-schema"),
+        )
+        .expect_err("an undeclared path must not be accepted");
+        assert!(err.contains("declares no input"), "unhelpful error: {err}");
+        assert_eq!(
+            std::fs::read_to_string(&record).expect("read back"),
+            before,
+            "a refused reassignment must leave the record untouched"
+        );
+        std::fs::remove_dir_all(&dir).ok();
     }
 
     /// Nearest ancestor, not outermost: a nested kit's own record must win, or

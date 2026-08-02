@@ -37,6 +37,7 @@ USAGE:
   experiment-harness splice --base <manuscript.md> --out <md> --replace <scene.md> [--replace <scene.md>...]
   experiment-harness stamp-inputs --record <replay.json> [--record <replay.json>...]
   experiment-harness declare-run-tree --record <replay.json> [--record <replay.json>...]
+  experiment-harness set-input-role --record <replay.json> --path <p> [--path <p>...] --role <r> [--reproduced-by <verb>]
 
 assemble
   Render a world's scenes, in playthrough order, into a blind reading copy.
@@ -86,6 +87,16 @@ declare-run-tree
   evidence the contamination bound rests on just as much as a manifest is. Existing
   entries are never touched, and ownership is computed against every tracked record,
   so a nested kit's tree cannot be claimed by the record above it.
+
+set-input-role
+  Rewrite the role of inputs a record already declares. Use it when a mechanical
+  walk's `run-artifact` turns out to be something the tree can establish — a
+  captured `describe-schema` is `--role reproduced-output --reproduced-by
+  describe-schema`, and the replay job then regenerates it at the kit's pinned
+  revision instead of taking the record's word for it. A --path the record does
+  not declare is an error rather than a new entry: creating one is
+  declare-run-tree's job, and doing it here would break the exactly-once rule
+  the coverage gate depends on.
 ";
 
 fn main() -> ExitCode {
@@ -113,6 +124,7 @@ fn run(args: &[String]) -> HResult<ExitCode> {
         "splice" => cmd_splice(&args[1..]),
         "stamp-inputs" => cmd_stamp_inputs(&args[1..]),
         "declare-run-tree" => cmd_declare_run_tree(&args[1..]),
+        "set-input-role" => cmd_set_input_role(&args[1..]),
         "-h" | "--help" | "help" => {
             print!("{USAGE}");
             Ok(ExitCode::SUCCESS)
@@ -217,6 +229,25 @@ fn cmd_declare_run_tree(args: &[String]) -> HResult<ExitCode> {
         result.added.len(),
         result.already
     );
+    Ok(ExitCode::SUCCESS)
+}
+
+fn cmd_set_input_role(args: &[String]) -> HResult<ExitCode> {
+    let mut p = Flags::new(args);
+    let record = p.require("--record")?;
+    let paths = p.take_all("--path");
+    let role = p.require("--role")?;
+    let reproduced_by = p.optional("--reproduced-by")?;
+    p.finish()?;
+    if paths.is_empty() {
+        return Err("set-input-role needs at least one --path <unit-relative>".to_string());
+    }
+
+    let result = declare::set_role(&record, &paths, &role, reproduced_by.as_deref())?;
+    for entry in &result.changed {
+        println!("{entry}");
+    }
+    eprintln!("{} input(s) reassigned in {record}", result.changed.len());
     Ok(ExitCode::SUCCESS)
 }
 

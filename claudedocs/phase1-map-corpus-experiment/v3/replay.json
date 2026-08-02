@@ -1,5 +1,5 @@
 {
-  "schema": "kit-replay/v3",
+  "schema": "kit-replay/v4",
   "revision_provenance": "declared-at-run",
   "declared_in": "Round 933",
   "derivation": "Arm C of the map-corpus A/B. Same frozen brief and protocol as v1 and v2; the ONLY variable is contract.txt, regenerated from describe-schema after the R911-R931 hierarchy-crossing arc (218 lines in both arms, 49,193 bytes in arm B against 55,288 here, seven lines differing). The revision is the commit that lands these inputs, recorded at the run — a self-referential pin costs a second commit by construction, exactly as v1 and v2 recorded.",
@@ -67,8 +67,9 @@
     },
     {
       "path": "run/stage-a-first-submission/contract.txt",
-      "role": "run-artifact",
-      "sha256": "f7833afb9f69b8cbc160a3cb871e8620c7689299c6eca544009be6697e241c81"
+      "role": "reproduced-output",
+      "sha256": "f7833afb9f69b8cbc160a3cb871e8620c7689299c6eca544009be6697e241c81",
+      "reproduced_by": "describe-schema"
     },
     {
       "path": "run/stage-a-first-submission/mnemosyne.toml",
@@ -92,8 +93,9 @@
     },
     {
       "path": "run/stage-a/contract.txt",
-      "role": "run-artifact",
-      "sha256": "f7833afb9f69b8cbc160a3cb871e8620c7689299c6eca544009be6697e241c81"
+      "role": "reproduced-output",
+      "sha256": "f7833afb9f69b8cbc160a3cb871e8620c7689299c6eca544009be6697e241c81",
+      "reproduced_by": "describe-schema"
     },
     {
       "path": "run/stage-a/first-import.log",
@@ -127,8 +129,9 @@
     },
     {
       "path": "run/stage-b-first-submission/contract.txt",
-      "role": "run-artifact",
-      "sha256": "f7833afb9f69b8cbc160a3cb871e8620c7689299c6eca544009be6697e241c81"
+      "role": "reproduced-output",
+      "sha256": "f7833afb9f69b8cbc160a3cb871e8620c7689299c6eca544009be6697e241c81",
+      "reproduced_by": "describe-schema"
     },
     {
       "path": "run/stage-b-first-submission/mnemosyne.toml",
@@ -157,8 +160,9 @@
     },
     {
       "path": "run/stage-b/contract.txt",
-      "role": "run-artifact",
-      "sha256": "f7833afb9f69b8cbc160a3cb871e8620c7689299c6eca544009be6697e241c81"
+      "role": "reproduced-output",
+      "sha256": "f7833afb9f69b8cbc160a3cb871e8620c7689299c6eca544009be6697e241c81",
+      "reproduced_by": "describe-schema"
     },
     {
       "path": "run/stage-b/first-import.log",

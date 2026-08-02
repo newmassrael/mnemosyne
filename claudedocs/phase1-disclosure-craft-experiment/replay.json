@@ -1,5 +1,5 @@
 {
-  "schema": "kit-replay/v3",
+  "schema": "kit-replay/v4",
   "revision_provenance": "derived-upper-bound",
   "derived_in": "Round 884",
   "derivation": "git log --diff-filter=A -1 -- <every input of the replay>: the newest commit that added any of them. A replay needs a tree holding ALL its inputs, so the pin is the max, and each add-commit is AT OR AFTER the run that produced that input.",

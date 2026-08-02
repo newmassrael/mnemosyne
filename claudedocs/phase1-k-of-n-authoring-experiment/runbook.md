@@ -333,7 +333,7 @@ instance, not a distribution.
 
 - `k-of-n-report.md` — E1 (each sub-answer with its file), E1-C, E2 (all three
   first-import logs verbatim), E3 (the disagreements), and the reads in full.
-- `vN/manifest.json` + `vN/replay.json` (`kit-replay/v3`) listing the three
+- `vN/manifest.json` + `vN/replay.json` (`kit-replay/v4`) listing the three
   stages' manifests as inputs, the landing commit as `revision`, and
   `revision_provenance: "declared-at-run"`. **Both literals were read out of the
   code that panics on them** — `REPLAY_SCHEMAS` and `PROVENANCE_KINDS` in
@@ -362,6 +362,11 @@ instance, not a distribution.
   claudedocs/phase1-k-of-n-authoring-experiment/vN/replay.json`, then
   `experiment-harness stamp-inputs --record <the same path>`. Both are
   idempotent and neither ever rewrites an existing entry (Round 952/953).
+- The captured contract is not a `run-artifact`: it is a transcript the tree can
+  regenerate, so say so and let the replay job check it (Round 973).
+  `experiment-harness set-input-role --record <the same path> --path
+  run/contract.txt --role reproduced-output --reproduced-by describe-schema`.
+  The declaration gate names the same command if you forget.
 - Register the replay so `evidence_replay_smoke` rebuilds it in CI. Kits are
   discovered by `git ls-files`, so **stage before running the suite**, and read
   the count — the run must report MORE replays than before, or the green is

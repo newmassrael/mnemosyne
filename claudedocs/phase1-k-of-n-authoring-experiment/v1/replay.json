@@ -1,5 +1,5 @@
 {
-  "schema": "kit-replay/v3",
+  "schema": "kit-replay/v4",
   "revision_provenance": "declared-at-run",
   "derivation": "The revision is the commit that lands these inputs, recorded at the run rather than reconstructed after it. A self-referential pin costs a second commit by construction: a replay's revision must name a tree that already HOLDS its inputs, and the Round 952/953 declaration gates require the record to land WITH the corpus, so the revision is corrected to the corpus commit in the immediately following commit. Both machine-checked literals here were read out of `crates/mnemosyne-cli/tests/evidence_replay_smoke.rs`, where `REPLAY_SCHEMAS` and `PROVENANCE_KINDS` panic on an unknown value (the Round 944 rule).",
   "note": "Re-checking runs the declared revision against these manifests UNCHANGED. All three authors' first submissions imported green, so each stage's working manifest is byte-identical to its frozen first submission and no file was ever edited — by its author or by the orchestrator. The frozen copies are declared separately anyway, because what makes them evidence is that they were sealed before any output was handed back, not that they differ.",
@@ -141,8 +141,9 @@
     },
     {
       "path": "run/contract.txt",
-      "role": "run-artifact",
-      "sha256": "3da7c9569eb604aefaa20d130815a2313d4d03450d8d27d187b566911f57853f"
+      "role": "reproduced-output",
+      "sha256": "3da7c9569eb604aefaa20d130815a2313d4d03450d8d27d187b566911f57853f",
+      "reproduced_by": "describe-schema"
     },
     {
       "path": "run/stage-a-first-submission/mnemosyne.toml",
