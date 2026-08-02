@@ -924,6 +924,27 @@ pub struct AuthoringFrontierReport {
     /// (withheld by default, R507). Present only when a telling is given.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub never_planned_disclosures: Option<Vec<String>>,
+    /// Disclosures SEATED BEFORE THE FACT IS TRUE (Round 949) — an authored
+    /// `surface.scene` that sits earlier on the fact's own road than its
+    /// `canon_from`. Present only when a telling is given.
+    ///
+    /// Seating a disclosure LATE is the whole point of a telling: the reader
+    /// learns at scene twenty what has been so since scene nine. Seating it
+    /// EARLY has no such reading — it tells the reader something the store
+    /// itself says is not yet so. Round 949 constructed one and measured what
+    /// happened: the store imported it, the renderer printed the fact ten scenes
+    /// before it was true, the same scene then placed one character in two rooms
+    /// at once, and a place withheld until a later scene was named through it —
+    /// while `validate-continuity` read `violations: 0`, coverage said nothing,
+    /// and this report said `0 gap(s)`. The gate judges fact EXTENTS, which were
+    /// never wrong; nothing was reading the SEAT.
+    ///
+    /// A belief held early is not this: that is a frame, and it has its own
+    /// field. Nothing here is inferred — both coordinates are authored, and a
+    /// pair this cannot ORDER (either coordinate off the fact's road) is
+    /// skipped rather than guessed at.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub disclosures_seated_before_truth: Option<Vec<SeatBeforeTruth>>,
     /// The MAP axis's gaps (Round 891) — registered places no declared map
     /// connects, plus costs/guards keyed to a non-edge. Order-free and
     /// telling-free, like the map itself, so it is present unconditionally.
@@ -938,6 +959,19 @@ pub struct AuthoringFrontierReport {
     /// Total distinct gap items across every category — the loop's "work
     /// remaining" gauge (a dangling setup counted once across worlds).
     pub total_gaps: usize,
+}
+
+/// A disclosure whose authored seat sits earlier than the fact it discloses
+/// becomes true (Round 949).
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, serde::Serialize)]
+pub struct SeatBeforeTruth {
+    pub fact_id: String,
+    /// The world whose road ordered the two coordinates — the fact's own branch.
+    pub world: String,
+    /// The authored `surface.scene`.
+    pub seated_at: String,
+    /// The fact's `canon_from` — where the store says it becomes so.
+    pub true_from: String,
 }
 
 /// Compose the authoring-frontier report (Round 589). ONE store load + order
@@ -1041,19 +1075,49 @@ pub fn authoring_frontier_report(
         .collect();
 
     // Telling-scoped gaps (R568 quests + R507 disclosure) only when asked.
-    let (unresolved_quests, never_planned_disclosures) = match telling {
-        Some(t) => {
-            let quests = mnemosyne_validate::continuity::quest_graph(&store, &order, None, t)
-                .map_err(OpError::Other)?;
-            let disclosure = mnemosyne_validate::disclosure::disclosure_coverage(&store, t)
-                .map_err(OpError::Other)?;
-            (
-                Some(quests.unresolved_quests),
-                Some(disclosure.never_planned),
-            )
-        }
-        None => (None, None),
-    };
+    let (unresolved_quests, never_planned_disclosures, disclosures_seated_before_truth) =
+        match telling {
+            Some(t) => {
+                let quests = mnemosyne_validate::continuity::quest_graph(&store, &order, None, t)
+                    .map_err(OpError::Other)?;
+                let disclosure = mnemosyne_validate::disclosure::disclosure_coverage(&store, t)
+                    .map_err(OpError::Other)?;
+                // Round 949 — the seat, ordered against the fact's own road. Both
+                // coordinates are authored; an unorderable pair is skipped, never
+                // guessed.
+                let mut seated_early: Vec<SeatBeforeTruth> = Vec::new();
+                if let Some(plan) = store.disclosure_plans.get(t) {
+                    for (fact_id, ov) in &plan.overrides {
+                        let (Some(surface), Some(fact)) =
+                            (ov.surface.as_ref(), store.narrative_facts.get(fact_id))
+                        else {
+                            continue;
+                        };
+                        let road = order.linearize(&fact.branch);
+                        let at = |s: &str| road.iter().position(|n| n.as_str() == s);
+                        if let (Some(seat), Some(truth)) =
+                            (at(surface.scene.as_str()), at(fact.canon_from.as_str()))
+                        {
+                            if seat < truth {
+                                seated_early.push(SeatBeforeTruth {
+                                    fact_id: fact_id.to_string(),
+                                    world: fact.branch.to_string(),
+                                    seated_at: surface.scene.to_string(),
+                                    true_from: fact.canon_from.to_string(),
+                                });
+                            }
+                        }
+                    }
+                }
+                seated_early.sort();
+                (
+                    Some(quests.unresolved_quests),
+                    Some(disclosure.never_planned),
+                    Some(seated_early),
+                )
+            }
+            None => (None, None, None),
+        };
 
     // Per-world-line ownership density (Round 617, denominator corrected Round
     // 619): main + every registered branch, owned facts over the FULL road the
@@ -1084,6 +1148,7 @@ pub fn authoring_frontier_report(
         + distinct_dangling.len()
         + unresolved_quests.as_ref().map_or(0, Vec::len)
         + never_planned_disclosures.as_ref().map_or(0, Vec::len)
+        + disclosures_seated_before_truth.as_ref().map_or(0, Vec::len)
         + map_frontier.total_gaps;
 
     Ok(AuthoringFrontierReport {
@@ -1097,6 +1162,7 @@ pub fn authoring_frontier_report(
         dangling_setups,
         unresolved_quests,
         never_planned_disclosures,
+        disclosures_seated_before_truth,
         map_frontier,
         total_gaps,
     })
@@ -2405,6 +2471,92 @@ mod tests {
         assert!(r.telling.is_none());
         assert!(r.unresolved_quests.is_none());
         assert!(r.never_planned_disclosures.is_none());
+        assert!(r.disclosures_seated_before_truth.is_none());
+    }
+
+    /// A DISCLOSURE SEATED BEFORE ITS FACT IS TRUE IS A GAP (Round 949).
+    ///
+    /// Seating a disclosure LATE is what a telling is for. Seating it EARLY
+    /// states to the reader something the store itself says is not yet so, and
+    /// until this round nothing read the seat at all: Round 949 built one and
+    /// watched the store import it, the renderer print the fact ten scenes
+    /// before it was true, one character stand in two rooms in one scene, and
+    /// `validate-continuity` answer `violations: 0`.
+    ///
+    /// THE THREE ARMS ARE THE GUARD, in one plan. A seat LATER than `canon_from`
+    /// is the legitimate reveal and must not be flagged — without that arm this
+    /// would pass while flagging every authored surface. A seat EQUAL to it is
+    /// the ordinary case. Only the earlier one is a gap.
+    #[test]
+    fn a_disclosure_seated_before_its_fact_is_true_is_a_gap() {
+        let tmp = TempDir::new().unwrap();
+        let root = tmp.path();
+        std::fs::write(
+            root.join("mnemosyne.toml"),
+            "[workspace]\nroot = \".\"\n\n[atomic]\nsidecar_path = \"store.json\"\n\n             [continuity]\ncanon_order_path = \"canon.json\"\nseverity = \"reject\"\n",
+        )
+        .unwrap();
+        std::fs::write(
+            root.join("canon.json"),
+            r#"{"edges":[["sc-1","sc-2"],["sc-2","sc-3"]],"branches":{}}"#,
+        )
+        .unwrap();
+        // FOUR arms, and every one of them is load-bearing. An earlier draft had
+        // three that were really early/equal/EQUAL, no off-road pair, and a
+        // `total_gaps >= 1` that the zero-fact scenes satisfied on their own —
+        // all three injections against it stayed green.
+        let fact = |id: &str, truth: &str| {
+            format!(
+                r#""{id}":{{"frame":"gt","claim":"a thing is so","canon_from":"{truth}","branch":"main","entities":[],"evidence":["{truth}"]}}"#
+            )
+        };
+        let ovr = |id: &str, seat: &str| {
+            format!(r#""{id}":{{"mode":"state","first_at":{{}},"surface":{{"scene":"{seat}"}}}}"#)
+        };
+        // `sc-4` is a registered section the canon order does NOT place, so a
+        // seat there cannot be ordered against anything — the skip arm.
+        std::fs::write(
+            root.join("store.json"),
+            format!(
+                r#"{{"schema_version":23,"sections":{{"sc-1":{{}},"sc-2":{{}},"sc-3":{{}},"sc-4":{{}}}},"frames":{{"gt":{{}}}},"narrative_facts":{{{},{},{},{}}},"disclosure_plans":{{"t":{{"default_mode":"state","overrides":{{{},{},{},{}}}}}}}}}"#,
+                fact("f-early", "sc-3"),
+                fact("f-at", "sc-3"),
+                fact("f-late", "sc-1"),
+                fact("f-offroad", "sc-3"),
+                ovr("f-early", "sc-1"),
+                ovr("f-at", "sc-3"),
+                ovr("f-late", "sc-3"),
+                ovr("f-offroad", "sc-4"),
+            ),
+        )
+        .unwrap();
+
+        let r = authoring_frontier_report(root, None, None, Some("t"), None).unwrap();
+        let rows = r
+            .disclosures_seated_before_truth
+            .as_ref()
+            .expect("a telling was given");
+        assert_eq!(
+            rows,
+            &vec![SeatBeforeTruth {
+                fact_id: "f-early".to_string(),
+                world: "main".to_string(),
+                seated_at: "sc-1".to_string(),
+                true_from: "sc-3".to_string(),
+            }],
+            "only the seat EARLIER than its fact's truth is a gap"
+        );
+        // EXACT, not `>= 1`: the store's own zero-fact scenes satisfy a floor on
+        // their own, so a floor assertion cannot tell whether the seat was
+        // counted at all. Removing it from the tally must move this number.
+        let without_telling = authoring_frontier_report(root, None, None, None, None)
+            .unwrap()
+            .total_gaps;
+        assert_eq!(
+            r.total_gaps,
+            without_telling + 1,
+            "the seat counts as work remaining, not a footnote"
+        );
     }
 
     /// Round 596 (unattended-loop-experiment/v1 Finding 4): a fact-bearing scene

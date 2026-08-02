@@ -4488,6 +4488,23 @@ fn cmd_report_authoring_frontier(args: &[String]) -> Result<()> {
         Some(d) => list("never-planned disclosures", d),
         None => println!("never-planned disclosures: (pass --telling)"),
     }
+    // Round 949 — a disclosure seated before its fact is true. Each row names
+    // both authored coordinates, because the repair is to move one of them and
+    // the author is the only one who knows which.
+    match &report.disclosures_seated_before_truth {
+        Some(rows) if rows.is_empty() => println!("disclosures seated before truth: none"),
+        Some(rows) => {
+            println!("disclosures seated before truth: {}", rows.len());
+            for r in rows {
+                println!(
+                    "  {}: seated at `{}` on `{}` but true only from `{}` — the telling would \
+                     state it before the store says it is so",
+                    r.fact_id, r.seated_at, r.world, r.true_from
+                );
+            }
+        }
+        None => println!("disclosures seated before truth: (pass --telling)"),
+    }
     // The map axis (Round 891). The no-rule case gets its OWN sentence: a store
     // that cannot know which facts are edges must never render like a store
     // whose map is complete.
