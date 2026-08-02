@@ -177,8 +177,16 @@ it. Do not resolve it in the orchestrator's voice — record it.
   disagreements), C1/C2 (which branches ran, which verbs newly differ).
 - `v1/manifest.json` + `v1/replay.json` (`kit-replay/v2`) listing the Stage B
   manifests as inputs, the landing commit as `revision`, and
-  `revision_provenance: "exact"` — the first kit in this tree that can say
-  exact rather than derived.
+  `revision_provenance: "declared-at-run"` — the first kit in this tree that can
+  declare its pin at the run rather than derive it after. **That string is the
+  gate's vocabulary, checked against the code and not invented here**: the
+  accepted set is `["derived-upper-bound", "declared-at-run"]` in
+  `crates/mnemosyne-cli/tests/evidence_replay_smoke.rs`, and an unknown value
+  panics. This line said `"exact"` until Round 948; the v1 run had already hit
+  that and corrected it in its own `replay.json`, but the correction never came
+  back here, so Round 942 copied the retired word into a second runbook from a
+  design instead of from the gate. Before writing any machine-checked literal
+  into a runbook, grep the code that reads it.
 - Register the replay so `evidence_replay_smoke` rebuilds it in CI. A corpus
   nothing loads is the rot this corpus exists to end (Round 873, Round 897).
 - One changelog entry, one commit. Push is a separate gate.
