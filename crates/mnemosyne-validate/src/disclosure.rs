@@ -100,7 +100,7 @@ pub struct DisclosureCoverageReport {
     pub never_planned: Vec<String>,
     /// A `withhold` override that ALSO carries a `first_at` pin — the pin does
     /// nothing, on either surface, and the author almost certainly meant a late
-    /// reveal (Round 946). Sorted `(fact_id, world, pin)`. Advisory, never gated.
+    /// reveal (Round 946). Sorted. Advisory, never gated.
     ///
     /// The projection drops a withheld fact before it can seat a locator, so no
     /// line ever renders at the pin; the premature-leak gate treats ANY match of
@@ -112,7 +112,31 @@ pub struct DisclosureCoverageReport {
     ///
     /// NOT a reject: the requirement would fail both recorded corpora, which is
     /// the Round 924 measurement that says speak rather than gate.
-    pub inert_reveal_pins: Vec<(String, String, String)>,
+    pub inert_reveal_pins: Vec<InertRevealPin>,
+}
+
+/// A `withhold` override carrying a `first_at` pin — the shape two blind authors
+/// wrote meaning "hidden until here, then told", which the store accepts and no
+/// surface reads (Round 946, sharpened in Round 947).
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+pub struct InertRevealPin {
+    pub fact_id: String,
+    pub world: String,
+    /// The `first_at` coordinate set, joined — what the author pinned.
+    pub pin: String,
+    /// The seat the author ALREADY wrote (`surface.scene`), when they wrote one.
+    ///
+    /// Round 947 measured what actually moves a disclosure: the locator's seat is
+    /// `surface.scene` when authored and `canon_from` otherwise, and `first_at`
+    /// moves NEITHER — it is a premature-leak constraint on re-extracted prose.
+    /// So an author who wants "true from scene nine, told at scene twenty" writes
+    /// `state` with `surface.scene` at twenty. One recorded author wrote exactly
+    /// that seat and lost it, because `withhold` skips the fact before the seat
+    /// can be used: flipping that one field to `state` produces the reveal their
+    /// sealed report described, at the scene they named, with nothing else
+    /// changed. When this is `Some`, the store is one word away from the author's
+    /// stated intent, and the advisory says so instead of giving generic advice.
+    pub authored_seat: Option<String>,
 }
 
 /// Classify every fact under a telling (Round 507). Order-independent (a mode
@@ -133,16 +157,17 @@ pub fn disclosure_coverage(
             continue;
         }
         for (world, reveal) in &ov.first_at {
-            inert_reveal_pins.push((
-                id.to_string(),
-                world.to_string(),
-                reveal
+            inert_reveal_pins.push(InertRevealPin {
+                fact_id: id.to_string(),
+                world: world.to_string(),
+                pin: reveal
                     .coords
                     .iter()
                     .map(std::string::ToString::to_string)
                     .collect::<Vec<_>>()
                     .join("+"),
-            ));
+                authored_seat: ov.surface.as_ref().map(|s| s.scene.to_string()),
+            });
         }
     }
     inert_reveal_pins.sort();
@@ -634,17 +659,74 @@ mod tests {
         let r = disclosure_coverage(&store, "t").unwrap();
         assert_eq!(
             r.inert_reveal_pins,
-            vec![(
-                "f-pinned-hide".to_string(),
-                "main".to_string(),
-                "ch-3".to_string()
-            )],
+            vec![InertRevealPin {
+                fact_id: "f-pinned-hide".to_string(),
+                world: "main".to_string(),
+                pin: "ch-3".to_string(),
+                authored_seat: None,
+            }],
             "only the withheld fact that ALSO pins a reveal is inert"
         );
         // And the classification it already made is untouched — this is an added
         // reading of the same plan, not a re-verdict of it.
         assert_eq!(r.hidden_by_design, 2);
         assert_eq!(r.disclosed, 1);
+    }
+
+    /// THE SEAT THE AUTHOR ALREADY WROTE IS REPORTED BACK TO THEM (Round 947).
+    ///
+    /// `first_at` does not move a disclosure; `surface.scene` does (the locator
+    /// seats there, and at `canon_from` when no surface is authored). A recorded
+    /// author wrote `withhold` + `first_at` + `surface.scene` at the scene their
+    /// sealed report named as the reveal — and `withhold` skipped the fact before
+    /// the seat could be used. Flipping that one field to `state` produces the
+    /// reveal they described, at the scene they named, with nothing else edited.
+    ///
+    /// The pair of arms is the guard: with a surface and without, in one plan.
+    /// Without the second arm, "the seat is reported" and "a seat is invented for
+    /// every row" would look the same.
+    #[test]
+    fn an_inert_pin_reports_the_seat_its_author_already_wrote() {
+        let mut store = AtomicStore::new();
+        for id in ["f-seated", "f-unseated"] {
+            store
+                .narrative_facts
+                .insert(id.into(), nf("gt", "ch-1", Some(typed("pike", id))));
+        }
+        let mut seated = ov(DisclosureMode::Withhold, &[("main", "ch-9")]);
+        seated.surface = Some(mnemosyne_core::DisclosureSurface {
+            scene: "ch-9".into(),
+            object: None,
+        });
+        let mut overrides: BTreeMap<mnemosyne_core::FactId, DisclosureOverride> = BTreeMap::new();
+        overrides.insert("f-seated".into(), seated);
+        overrides.insert(
+            "f-unseated".into(),
+            ov(DisclosureMode::Withhold, &[("main", "ch-9")]),
+        );
+        store
+            .disclosure_plans
+            .insert("t".into(), plan(DisclosureMode::Withhold, overrides));
+
+        let r = disclosure_coverage(&store, "t").unwrap();
+        let seat_of = |id: &str| {
+            r.inert_reveal_pins
+                .iter()
+                .find(|p| p.fact_id == id)
+                .unwrap_or_else(|| panic!("{id} is an inert pin"))
+                .authored_seat
+                .clone()
+        };
+        assert_eq!(
+            seat_of("f-seated"),
+            Some("ch-9".to_string()),
+            "the author's own seat is handed back, not re-derived"
+        );
+        assert_eq!(
+            seat_of("f-unseated"),
+            None,
+            "and no seat is invented for a row that never had one"
+        );
     }
 
     #[test]

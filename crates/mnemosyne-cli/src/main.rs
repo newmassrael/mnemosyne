@@ -4568,13 +4568,28 @@ fn cmd_report_disclosure_coverage(args: &[String]) -> Result<()> {
     // Round 946 — the pin that does nothing. Printed rather than counted,
     // because a count says "something is wrong" and this has to say WHAT TO
     // WRITE INSTEAD: two blind authors wrote this shape meaning a late reveal.
-    for (fact, world, pin) in &report.inert_reveal_pins {
+    for row in &report.inert_reveal_pins {
+        let (fact, world, pin) = (&row.fact_id, &row.world, &row.pin);
         println!(
             "  inert reveal pin: `{fact}` is withheld on `{world}` and pins first_at at `{pin}` \
              — a withheld fact seats no locator, so nothing renders at that pin, and the leak \
-             gate reads any match as a leak whatever the pin says. Use mode `state` with the \
-             same pin to disclose it there instead."
+             gate reads any match as a leak whatever the pin says."
         );
+        // Round 947 — `first_at` does not move the seat, so "use state with the
+        // same pin" would have been wrong advice. The seat is `surface.scene`,
+        // or `canon_from` when no surface is authored.
+        match &row.authored_seat {
+            Some(seat) => println!(
+                "    you already wrote the seat: `surface.scene` = `{seat}`. Change this \
+                 override's mode to `state` and the fact discloses exactly there, with \
+                 nothing else edited."
+            ),
+            None => println!(
+                "    to tell it late, use mode `state` and seat it with `surface.scene` at \
+                 the scene the reader should learn it; `first_at` alone leaves the line at \
+                 the fact's own `canon_from`."
+            ),
+        }
     }
     Ok(())
 }
