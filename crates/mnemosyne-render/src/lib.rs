@@ -52,16 +52,24 @@ pub trait Theme {
     /// Round 945 — before it, a town's false claim that a missing woman took a
     /// boat printed exactly like the room the scene was actually in.
     fn place(&self, place: &DisclosedPlace<'_>, exits: &[&str]) -> String {
-        let mut out = place.place.clone();
-        if place.is_belief() {
-            out.push_str(&format!(" [{}]", place.frame));
-        }
-        if !exits.is_empty() {
-            out.push_str(" -> ");
-            out.push_str(&exits.join(", "));
-        }
-        out
+        let named = if place.is_belief() {
+            format!("{} [{}]", place.place, place.frame)
+        } else {
+            place.place.clone()
+        };
+        place_with_exits(&named, exits)
     }
+}
+
+/// A place and the roads out of it, ignoring style — the shape every theme
+/// shares, so the exits cannot drift between two of them. The belief marking is
+/// deliberately NOT here: that is the part a theme is expected to differ on,
+/// and it is the axis a reader has to be able to see.
+fn place_with_exits(named: &str, exits: &[&str]) -> String {
+    if exits.is_empty() {
+        return named.to_string();
+    }
+    format!("{named} -> {}", exits.join(", "))
 }
 
 /// The default label for a door, ignoring style — the diegetic text a plain
@@ -119,6 +127,27 @@ impl Theme for MarkerTheme {
 
     fn door(&self, door: &Door) -> String {
         format!("> {}", door_label(door))
+    }
+
+    /// The place axis under the SAME belief convention this theme gives a line.
+    ///
+    /// Round 954. Round 945 made a rumoured place distinguishable from the
+    /// world's own, and the default theme names the claiming frame in brackets;
+    /// this theme marks hearsay with `~` and inherited that default, so the one
+    /// axis a reader most has to see arrived two ways inside one theme. A
+    /// consumer starting from this demo would have copied the split.
+    ///
+    /// The frame NAME is kept rather than dropped to match `line`, and the
+    /// asymmetry is deliberate: on the place axis the default established that
+    /// WHOSE claim it is belongs on the page, and a demo that quietly lost it
+    /// would teach the loss. The `~` is what makes the two axes one convention.
+    fn place(&self, place: &DisclosedPlace<'_>, exits: &[&str]) -> String {
+        let named = if place.is_belief() {
+            format!("~ {} [{}]", place.place, place.frame)
+        } else {
+            place.place.clone()
+        };
+        place_with_exits(&named, exits)
     }
 }
 
@@ -548,6 +577,41 @@ mod tests {
         assert!(
             !without.contains("loc-quay"),
             "a store with no declared map prints no place:\n{without}"
+        );
+    }
+
+    /// A theme's OWN place rendering is what reaches the page, and this theme
+    /// marks hearsay there the way it marks it everywhere else.
+    ///
+    /// Until Round 954 the only override this file exercised was the empty one
+    /// (`a_theme_can_refuse_the_place_line`), which a renderer that honoured
+    /// "empty means skip" and then printed the DEFAULT for every non-empty
+    /// answer would satisfy completely. So the discriminator is the pair: the
+    /// same scene and the same map under two themes, with the marked form
+    /// asserted present in one and absent from the other. A whole-output
+    /// `assert_ne!` would not do it — this fixture's second line is belief-
+    /// framed too, so the two renderings differ on the LINE axis whether or not
+    /// the place override was ever called.
+    #[test]
+    fn marker_theme_marks_a_believed_place_and_its_override_reaches_the_page() {
+        let proj = demo_with_a_rumour();
+        let scene = proj.scene("main", "sc-01", &std::collections::HashSet::new());
+        let marked = render_scene(&scene, &town(), &every_road_told(), &MarkerTheme);
+        let plain = render_scene(&scene, &town(), &every_road_told(), &PlainTheme);
+
+        assert!(
+            marked.contains("\n~ loc-quay [frame-bunok] -> loc-ford\n"),
+            "the rumoured place carries this theme's own belief marker:\n{marked}"
+        );
+        assert!(
+            marked.contains("\nloc-quay -> loc-ford\n"),
+            "the world's own place stays unmarked:\n{marked}"
+        );
+        assert!(
+            !plain.contains("~ loc-quay"),
+            "the default theme does not use this theme's marker, so the \
+             assertion above is about the override and not about the \
+             default:\n{plain}"
         );
     }
 
