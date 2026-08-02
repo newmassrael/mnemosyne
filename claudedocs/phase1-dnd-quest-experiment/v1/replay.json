@@ -73,7 +73,8 @@
     {
       "path": "run/manuscripts/world-claim.md",
       "role": "run-artifact",
-      "sha256": "d622de5ef9e8de2ba0715491bc1a899ef1d07d7edfd57aa3a16f793e18c61ade"
+      "sha256": "d622de5ef9e8de2ba0715491bc1a899ef1d07d7edfd57aa3a16f793e18c61ade",
+      "unreproducible": "printed by tools/experiment-harness, a separate workspace this job does not build at a pinned revision"
     },
     {
       "path": "run/render/render-log.md",

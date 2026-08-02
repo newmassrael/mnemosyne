@@ -59,7 +59,9 @@
       "path": "run/contract.txt",
       "role": "reproduced-output",
       "sha256": "57be4d1dbeb739505af466f38b9d4d45d3440630a1aa81c09e3ef0240d8aa6ba",
-      "reproduced_by": "describe-schema"
+      "reproduced_by": [
+        "describe-schema"
+      ]
     },
     {
       "path": "run/stage-a-first-submission/mnemosyne.toml",
@@ -84,7 +86,8 @@
     {
       "path": "run/stage-a/continuity.log",
       "role": "run-artifact",
-      "sha256": "3ada6038a6d40ae38fb5a991049f21d834cb56456540cac51c20c1168a8758a2"
+      "sha256": "3ada6038a6d40ae38fb5a991049f21d834cb56456540cac51c20c1168a8758a2",
+      "unreproducible": "printed against a store this kit's declared replay does not rebuild: the recorded run reports 23 placed sections where importing the declared manifests yields 22, so the bytes are evidence of a store the record does not describe"
     },
     {
       "path": "run/stage-a/first-import.log",
@@ -143,8 +146,13 @@
     },
     {
       "path": "run/stage-b/continuity.log",
-      "role": "run-artifact",
-      "sha256": "e4f81719ed3815cba73a9c4aa72f756f51494b99b9c24c94f36750c5814dfea8"
+      "role": "reproduced-output",
+      "sha256": "e4f81719ed3815cba73a9c4aa72f756f51494b99b9c24c94f36750c5814dfea8",
+      "reproduced_by": [
+        "validate-continuity"
+      ],
+      "reproduced_after": "stage-b-map-asked-in-fiction",
+      "reproduced_exit": 1
     },
     {
       "path": "run/stage-b/edge-costs.json",
@@ -163,8 +171,12 @@
     },
     {
       "path": "run/stage-b/frontier.log",
-      "role": "run-artifact",
-      "sha256": "d3e81466a829afd0f5c9844dd82fcb210e136a531f3a136f62821f3c3ee0ceaa"
+      "role": "reproduced-output",
+      "sha256": "d3e81466a829afd0f5c9844dd82fcb210e136a531f3a136f62821f3c3ee0ceaa",
+      "reproduced_by": [
+        "report-authoring-frontier"
+      ],
+      "reproduced_after": "stage-b-map-asked-in-fiction"
     },
     {
       "path": "run/stage-b/iteration-notes.md",
@@ -188,8 +200,12 @@
     },
     {
       "path": "run/stage-b/transition-map.log",
-      "role": "run-artifact",
-      "sha256": "4ca0284d96bd0a18787b36976851927bd639b470656ee0d8feeab64f7822aec7"
+      "role": "reproduced-output",
+      "sha256": "4ca0284d96bd0a18787b36976851927bd639b470656ee0d8feeab64f7822aec7",
+      "reproduced_by": [
+        "report-transition-map"
+      ],
+      "reproduced_after": "stage-b-map-asked-in-fiction"
     }
   ],
   "replays": [
@@ -206,7 +222,8 @@
           "input": "run/stage-a/facts.json"
         }
       ],
-      "expected_store_sha256": "8fb6ec427adcfecb901fa559e8f4b37a3c683e206414039f166b13015c7e7ad3"
+      "expected_store_sha256": "8fb6ec427adcfecb901fa559e8f4b37a3c683e206414039f166b13015c7e7ad3",
+      "config": "run/stage-a/mnemosyne.toml"
     },
     {
       "name": "stage-b-map-asked-in-fiction",
@@ -221,7 +238,8 @@
           "input": "run/stage-b/facts.json"
         }
       ],
-      "expected_store_sha256": "35e75f4326421326926894bf9f96a61414bfe1e4687b24ba1bc7e667cc5571a6"
+      "expected_store_sha256": "35e75f4326421326926894bf9f96a61414bfe1e4687b24ba1bc7e667cc5571a6",
+      "config": "run/stage-b/mnemosyne.toml"
     }
   ]
 }

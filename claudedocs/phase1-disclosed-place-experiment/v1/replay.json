@@ -78,7 +78,9 @@
       "path": "run/contract.txt",
       "role": "reproduced-output",
       "sha256": "369bb23f7a221101770e0d5a8aad4081484e5cfcd5ca49e52cf5c4e807c966ad",
-      "reproduced_by": "describe-schema"
+      "reproduced_by": [
+        "describe-schema"
+      ]
     },
     {
       "path": "run/stage-a-first-submission/mnemosyne.toml",
@@ -98,7 +100,8 @@
     {
       "path": "run/stage-a/first-import.log",
       "role": "run-artifact",
-      "sha256": "7ead5cac8ba2b2219e611069c1159b167ae86b3eaed60599b2f7933527a778ab"
+      "sha256": "7ead5cac8ba2b2219e611069c1159b167ae86b3eaed60599b2f7933527a778ab",
+      "unreproducible": "a shell composition, not one command: the runbook runs import-sections and import-facts into the same file and appends each exit code, so no single verb prints these bytes"
     },
     {
       "path": "run/stage-a/mnemosyne.toml",
@@ -123,7 +126,8 @@
     {
       "path": "run/stage-b/first-import.log",
       "role": "run-artifact",
-      "sha256": "8f7d3e1bc8287ed143680f0866ade2bded1e6083f4e90712e514ba014d582544"
+      "sha256": "8f7d3e1bc8287ed143680f0866ade2bded1e6083f4e90712e514ba014d582544",
+      "unreproducible": "a shell composition, not one command: the runbook runs import-sections and import-facts into the same file and appends each exit code, so no single verb prints these bytes"
     },
     {
       "path": "run/stage-b/mnemosyne.toml",
@@ -138,7 +142,8 @@
     {
       "path": "run/stage-b/second-import.log",
       "role": "run-artifact",
-      "sha256": "f6c5b3e9f3b6de4d9322d6fc31b8e306449d7d7e747fe79e3d8d9e8b8addf610"
+      "sha256": "f6c5b3e9f3b6de4d9322d6fc31b8e306449d7d7e747fe79e3d8d9e8b8addf610",
+      "unreproducible": "a shell composition, not one command: the runbook runs import-sections and import-facts into the same file and appends each exit code, so no single verb prints these bytes"
     },
     {
       "path": "run/stage-b/self-report.md",

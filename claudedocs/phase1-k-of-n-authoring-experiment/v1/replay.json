@@ -143,7 +143,9 @@
       "path": "run/contract.txt",
       "role": "reproduced-output",
       "sha256": "3da7c9569eb604aefaa20d130815a2313d4d03450d8d27d187b566911f57853f",
-      "reproduced_by": "describe-schema"
+      "reproduced_by": [
+        "describe-schema"
+      ]
     },
     {
       "path": "run/stage-a-first-submission/mnemosyne.toml",
@@ -153,12 +155,17 @@
     {
       "path": "run/stage-a/first-import.log",
       "role": "run-artifact",
-      "sha256": "1667600cb3f3914916a43c3ad024c2cbe171602506fd47472899d3abb620c861"
+      "sha256": "1667600cb3f3914916a43c3ad024c2cbe171602506fd47472899d3abb620c861",
+      "unreproducible": "a shell composition, not one command: the runbook runs import-sections and import-facts into the same file and appends each exit code, so no single verb prints these bytes"
     },
     {
       "path": "run/stage-a/frontier.txt",
-      "role": "run-artifact",
-      "sha256": "86829992b41c070a5ec0fe40a5c59502c407c23cb64b627c90f476cf357131c9"
+      "role": "reproduced-output",
+      "sha256": "86829992b41c070a5ec0fe40a5c59502c407c23cb64b627c90f476cf357131c9",
+      "reproduced_by": [
+        "report-authoring-frontier"
+      ],
+      "reproduced_after": "stage-a-two-of-three-told-no-machinery"
     },
     {
       "path": "run/stage-a/mnemosyne.toml",
@@ -172,13 +179,21 @@
     },
     {
       "path": "run/stage-a/transition-map.txt",
-      "role": "run-artifact",
-      "sha256": "ca7a40bf671ef88fdae75be42da986080b7543a656fdcd360fa4941ce9dbb68e"
+      "role": "reproduced-output",
+      "sha256": "ca7a40bf671ef88fdae75be42da986080b7543a656fdcd360fa4941ce9dbb68e",
+      "reproduced_by": [
+        "report-transition-map"
+      ],
+      "reproduced_after": "stage-a-two-of-three-told-no-machinery"
     },
     {
       "path": "run/stage-a/validate-continuity.txt",
-      "role": "run-artifact",
-      "sha256": "a848ff4a484af07f5db2d89c53e9dcd054bb57a0650a3dea80b744666ec1d14a"
+      "role": "reproduced-output",
+      "sha256": "a848ff4a484af07f5db2d89c53e9dcd054bb57a0650a3dea80b744666ec1d14a",
+      "reproduced_by": [
+        "validate-continuity"
+      ],
+      "reproduced_after": "stage-a-two-of-three-told-no-machinery"
     },
     {
       "path": "run/stage-b-first-submission/mnemosyne.toml",
@@ -188,12 +203,17 @@
     {
       "path": "run/stage-b/first-import.log",
       "role": "run-artifact",
-      "sha256": "04d2c90dcf5df37f86f4c2e6b385c8ce227f5dd4260a772c67068e570304d472"
+      "sha256": "04d2c90dcf5df37f86f4c2e6b385c8ce227f5dd4260a772c67068e570304d472",
+      "unreproducible": "a shell composition, not one command: the runbook runs import-sections and import-facts into the same file and appends each exit code, so no single verb prints these bytes"
     },
     {
       "path": "run/stage-b/frontier.txt",
-      "role": "run-artifact",
-      "sha256": "3bba2c785d496f92c7db584dcc434ba162c2e90dfc2aa133590a7790094e3b90"
+      "role": "reproduced-output",
+      "sha256": "3bba2c785d496f92c7db584dcc434ba162c2e90dfc2aa133590a7790094e3b90",
+      "reproduced_by": [
+        "report-authoring-frontier"
+      ],
+      "reproduced_after": "stage-b-two-of-three-asked-in-fiction"
     },
     {
       "path": "run/stage-b/mnemosyne.toml",
@@ -207,13 +227,21 @@
     },
     {
       "path": "run/stage-b/transition-map.txt",
-      "role": "run-artifact",
-      "sha256": "90a286d9ee1d4c59f28cfb4aa0b9542fb1c8d20b78b25244f6044c3b8a74cf59"
+      "role": "reproduced-output",
+      "sha256": "90a286d9ee1d4c59f28cfb4aa0b9542fb1c8d20b78b25244f6044c3b8a74cf59",
+      "reproduced_by": [
+        "report-transition-map"
+      ],
+      "reproduced_after": "stage-b-two-of-three-asked-in-fiction"
     },
     {
       "path": "run/stage-b/validate-continuity.txt",
-      "role": "run-artifact",
-      "sha256": "0d89c231190b7c99db8721443de0d480213cd7cb3237bdd9607d18b1b532336e"
+      "role": "reproduced-output",
+      "sha256": "0d89c231190b7c99db8721443de0d480213cd7cb3237bdd9607d18b1b532336e",
+      "reproduced_by": [
+        "validate-continuity"
+      ],
+      "reproduced_after": "stage-b-two-of-three-asked-in-fiction"
     },
     {
       "path": "run/stage-c-first-submission/mnemosyne.toml",
@@ -222,23 +250,37 @@
     },
     {
       "path": "run/stage-c/disclosure-coverage.txt",
-      "role": "run-artifact",
-      "sha256": "ef378dfe6d1c812a66d49e3e10275f500d8b3c97236e3db247db357016912473"
+      "role": "reproduced-output",
+      "sha256": "ef378dfe6d1c812a66d49e3e10275f500d8b3c97236e3db247db357016912473",
+      "reproduced_by": [
+        "report-disclosure-coverage",
+        "--telling",
+        "winter-house"
+      ],
+      "reproduced_after": "stage-c-second-of-three-on-the-disclosure-axis"
     },
     {
       "path": "run/stage-c/first-import.log",
       "role": "run-artifact",
-      "sha256": "1049746ef4fe90a5eaece063a9470f05ba28739ae2394ecd6cb43176c90cefb1"
+      "sha256": "1049746ef4fe90a5eaece063a9470f05ba28739ae2394ecd6cb43176c90cefb1",
+      "unreproducible": "a shell composition, not one command: the runbook runs import-sections and import-facts into the same file and appends each exit code, so no single verb prints these bytes"
     },
     {
       "path": "run/stage-c/frontier.txt",
-      "role": "run-artifact",
-      "sha256": "4cb38f3823be6e6ac8c7088d222624fcfeb4cca277f136705586d276b0b8f632"
+      "role": "reproduced-output",
+      "sha256": "4cb38f3823be6e6ac8c7088d222624fcfeb4cca277f136705586d276b0b8f632",
+      "reproduced_by": [
+        "report-authoring-frontier",
+        "--telling",
+        "winter-house"
+      ],
+      "reproduced_after": "stage-c-second-of-three-on-the-disclosure-axis"
     },
     {
       "path": "run/stage-c/manuscript.txt",
       "role": "run-artifact",
-      "sha256": "6f3cda32bd1c2e32d7e8edd5a287effeb24084e420a78b6290886dbf70517e1b"
+      "sha256": "6f3cda32bd1c2e32d7e8edd5a287effeb24084e420a78b6290886dbf70517e1b",
+      "unreproducible": "printed by tools/experiment-harness, a separate workspace this job does not build at a pinned revision"
     },
     {
       "path": "run/stage-c/mnemosyne.toml",
@@ -252,13 +294,21 @@
     },
     {
       "path": "run/stage-c/transition-map.txt",
-      "role": "run-artifact",
-      "sha256": "1b36256e3ceacf0fabee08c39ff92ff015d5115f9dc5a753df7e6387f678c435"
+      "role": "reproduced-output",
+      "sha256": "1b36256e3ceacf0fabee08c39ff92ff015d5115f9dc5a753df7e6387f678c435",
+      "reproduced_by": [
+        "report-transition-map"
+      ],
+      "reproduced_after": "stage-c-second-of-three-on-the-disclosure-axis"
     },
     {
       "path": "run/stage-c/validate-continuity.txt",
-      "role": "run-artifact",
-      "sha256": "b46da5b778f85eb03a078549e7d26df9f5cc5520e3d41d78191f1de2a7402cc4"
+      "role": "reproduced-output",
+      "sha256": "b46da5b778f85eb03a078549e7d26df9f5cc5520e3d41d78191f1de2a7402cc4",
+      "reproduced_by": [
+        "validate-continuity"
+      ],
+      "reproduced_after": "stage-c-second-of-three-on-the-disclosure-axis"
     }
   ],
   "replays": [
@@ -275,7 +325,8 @@
           "input": "run/stage-a/facts.json"
         }
       ],
-      "expected_store_sha256": "5fed3b13d6640dd82d2ff76759b29cae5a9c8282c262985e64db514bc8a24848"
+      "expected_store_sha256": "5fed3b13d6640dd82d2ff76759b29cae5a9c8282c262985e64db514bc8a24848",
+      "config": "run/stage-a/mnemosyne.toml"
     },
     {
       "name": "stage-b-two-of-three-asked-in-fiction",
@@ -290,7 +341,8 @@
           "input": "run/stage-b/facts.json"
         }
       ],
-      "expected_store_sha256": "d76b58861f9da48f061152435f92e3cc5acbe43bf24c90b38aff696f513810cf"
+      "expected_store_sha256": "d76b58861f9da48f061152435f92e3cc5acbe43bf24c90b38aff696f513810cf",
+      "config": "run/stage-b/mnemosyne.toml"
     },
     {
       "name": "stage-c-second-of-three-on-the-disclosure-axis",
@@ -305,7 +357,8 @@
           "input": "run/stage-c/facts.json"
         }
       ],
-      "expected_store_sha256": "b075487f50384a427f5a126f069efd9ebf2853b023b7206f3dfcf6882b91c3c7"
+      "expected_store_sha256": "b075487f50384a427f5a126f069efd9ebf2853b023b7206f3dfcf6882b91c3c7",
+      "config": "run/stage-c/mnemosyne.toml"
     }
   ]
 }

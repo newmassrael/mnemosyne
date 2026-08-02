@@ -43,27 +43,32 @@
     {
       "path": "run/manuscripts/world-act-dig.md",
       "role": "run-artifact",
-      "sha256": "ef9635995084da107c0955af1f31995daab2ae7c118ebc1f9986c2efb6969409"
+      "sha256": "ef9635995084da107c0955af1f31995daab2ae7c118ebc1f9986c2efb6969409",
+      "unreproducible": "printed by tools/experiment-harness, a separate workspace this job does not build at a pinned revision"
     },
     {
       "path": "run/manuscripts/world-act-flee.md",
       "role": "run-artifact",
-      "sha256": "fef9c52703a6305ba90ad8978af13606234a6bc729640e97876597c6ca3522a1"
+      "sha256": "fef9c52703a6305ba90ad8978af13606234a6bc729640e97876597c6ca3522a1",
+      "unreproducible": "printed by tools/experiment-harness, a separate workspace this job does not build at a pinned revision"
     },
     {
       "path": "run/manuscripts/world-expose-deny.md",
       "role": "run-artifact",
-      "sha256": "0f3be2ba0de97533b08ecc86a82be7c32ccae51a828a399c354fca3c5c37aeb1"
+      "sha256": "0f3be2ba0de97533b08ecc86a82be7c32ccae51a828a399c354fca3c5c37aeb1",
+      "unreproducible": "printed by tools/experiment-harness, a separate workspace this job does not build at a pinned revision"
     },
     {
       "path": "run/manuscripts/world-expose-recant.md",
       "role": "run-artifact",
-      "sha256": "0fc43d05b67cb917a4c9cd5b05a135abc7479357e071dbf5eb32df283247b61f"
+      "sha256": "0fc43d05b67cb917a4c9cd5b05a135abc7479357e071dbf5eb32df283247b61f",
+      "unreproducible": "printed by tools/experiment-harness, a separate workspace this job does not build at a pinned revision"
     },
     {
       "path": "run/manuscripts/world-hold.md",
       "role": "run-artifact",
-      "sha256": "f44e12d4d105c52c93dd29e108a98270c6f6007fbddd0313898a8deb7d079d41"
+      "sha256": "f44e12d4d105c52c93dd29e108a98270c6f6007fbddd0313898a8deb7d079d41",
+      "unreproducible": "printed by tools/experiment-harness, a separate workspace this job does not build at a pinned revision"
     }
   ],
   "replays": [

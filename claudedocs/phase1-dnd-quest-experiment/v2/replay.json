@@ -78,7 +78,8 @@
     {
       "path": "run/manuscripts/world-claim.md",
       "role": "run-artifact",
-      "sha256": "e7d61c98ac515867ab7f099ea859918a34e74206b3e938247b8768c8c51d67ff"
+      "sha256": "e7d61c98ac515867ab7f099ea859918a34e74206b3e938247b8768c8c51d67ff",
+      "unreproducible": "printed by tools/experiment-harness, a separate workspace this job does not build at a pinned revision"
     },
     {
       "path": "run/render/affected-scenes.txt",

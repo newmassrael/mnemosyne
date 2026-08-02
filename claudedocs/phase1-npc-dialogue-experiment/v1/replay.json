@@ -68,17 +68,20 @@
     {
       "path": "run/manuscripts/world-confront.md",
       "role": "run-artifact",
-      "sha256": "1b4e260c1f35829fc9e753affa3889a4a362c7921ce1e21f12c50834bc600293"
+      "sha256": "1b4e260c1f35829fc9e753affa3889a4a362c7921ce1e21f12c50834bc600293",
+      "unreproducible": "printed by tools/experiment-harness, a separate workspace this job does not build at a pinned revision"
     },
     {
       "path": "run/manuscripts/world-report.md",
       "role": "run-artifact",
-      "sha256": "9a581c93b48624e0111c16d2a4b083599505e11040db8b8be38da246df4ff7b9"
+      "sha256": "9a581c93b48624e0111c16d2a4b083599505e11040db8b8be38da246df4ff7b9",
+      "unreproducible": "printed by tools/experiment-harness, a separate workspace this job does not build at a pinned revision"
     },
     {
       "path": "run/manuscripts/world-shelter.md",
       "role": "run-artifact",
-      "sha256": "cc8a57bbfe5d5865ceb78552e2079aa097256717908cc0c162c3f05f720a325e"
+      "sha256": "cc8a57bbfe5d5865ceb78552e2079aa097256717908cc0c162c3f05f720a325e",
+      "unreproducible": "printed by tools/experiment-harness, a separate workspace this job does not build at a pinned revision"
     },
     {
       "path": "run/render/render-log.md",

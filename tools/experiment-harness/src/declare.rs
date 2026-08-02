@@ -30,6 +30,21 @@ pub struct Reassigned {
     pub changed: Vec<String>,
 }
 
+/// What a reassignment writes onto an input besides its role (Round 974).
+#[derive(Debug, Default)]
+pub struct RoleDetail<'a> {
+    /// The command that prints these bytes: verb first, then its arguments.
+    pub reproduced_by: &'a [String],
+    /// The replay whose workspace that command runs in.
+    pub reproduced_after: Option<&'a str>,
+    /// Why no single command can print these bytes.
+    pub unreproducible: Option<&'a str>,
+    /// The kit's own declared inputs the command reads beside the store.
+    pub reproduced_with: &'a [String],
+    /// The exit status the recorded run ended with, when it was not zero.
+    pub reproduced_exit: Option<i64>,
+}
+
 /// Rewrite the role of inputs a record ALREADY declares, and nothing else.
 ///
 /// Round 973 needed sixteen entries moved from `run-artifact` to
@@ -49,7 +64,7 @@ pub fn set_role(
     record: &str,
     paths: &[String],
     role: &str,
-    reproduced_by: Option<&str>,
+    detail: &RoleDetail<'_>,
 ) -> HResult<Reassigned> {
     let raw = read_file(record)?;
     let mut doc: serde_json::Value =
@@ -80,14 +95,40 @@ pub fn set_role(
             .as_object_mut()
             .ok_or_else(|| format!("{record}: the input at `{want}` is not an object"))?;
         obj.insert("role".to_string(), serde_json::json!(role));
-        match reproduced_by {
-            Some(verb) => {
-                obj.insert("reproduced_by".to_string(), serde_json::json!(verb));
-            }
-            // A role that no longer claims a verb must not keep the field: it
-            // would name a command nothing runs, which reads as checked.
-            None => {
-                obj.remove("reproduced_by");
+        // Every optional field is written or REMOVED on each call, never left
+        // over from a previous one: a role that no longer claims a command must
+        // not keep the command, which would name something nothing runs and
+        // read as checked.
+        for (key, value) in [
+            (
+                "reproduced_by",
+                (!detail.reproduced_by.is_empty()).then(|| serde_json::json!(detail.reproduced_by)),
+            ),
+            (
+                "reproduced_after",
+                detail.reproduced_after.map(|a| serde_json::json!(a)),
+            ),
+            (
+                "unreproducible",
+                detail.unreproducible.map(|u| serde_json::json!(u)),
+            ),
+            (
+                "reproduced_with",
+                (!detail.reproduced_with.is_empty())
+                    .then(|| serde_json::json!(detail.reproduced_with)),
+            ),
+            (
+                "reproduced_exit",
+                detail.reproduced_exit.map(|e| serde_json::json!(e)),
+            ),
+        ] {
+            match value {
+                Some(v) => {
+                    obj.insert(key.to_string(), v);
+                }
+                None => {
+                    obj.remove(key);
+                }
             }
         }
         out.changed
@@ -99,6 +140,38 @@ pub fn set_role(
     rendered.push('\n');
     write_file(record, &rendered)?;
     Ok(out)
+}
+
+/// Point a declared replay at the configuration its run used.
+///
+/// Round 974 needed this because a report transcript reproduces only in a
+/// workspace that holds the author's `mnemosyne.toml` and the files it names —
+/// `rules_path`, `canon_order_path` — and the replay's `config` field is the
+/// existing mechanism for putting them there. Measured before it was written:
+/// seeding the author's config alongside the manifests does NOT move the store
+/// digest for any of the three k-of-n stages, so declaring it here leaves every
+/// `expected_store_sha256` in the record standing.
+pub fn set_replay_config(record: &str, replay: &str, config: &str) -> HResult<()> {
+    let raw = read_file(record)?;
+    let mut doc: serde_json::Value =
+        serde_json::from_str(&raw).map_err(|e| format!("{record} is not JSON: {e}"))?;
+    let replays = doc
+        .get_mut("replays")
+        .and_then(|v| v.as_array_mut())
+        .ok_or_else(|| format!("{record} declares no `replays` array"))?;
+    let entry = replays
+        .iter_mut()
+        .find(|r| r.get("name").and_then(|n| n.as_str()) == Some(replay))
+        .ok_or_else(|| format!("{record} declares no replay named `{replay}`"))?;
+    entry
+        .as_object_mut()
+        .ok_or_else(|| format!("{record}: the replay `{replay}` is not an object"))?
+        .insert("config".to_string(), serde_json::json!(config));
+
+    let mut rendered = serde_json::to_string_pretty(&doc)
+        .map_err(|e| format!("{record}: cannot render the updated record: {e}"))?;
+    rendered.push('\n');
+    write_file(record, &rendered)
 }
 
 /// What one call to [`run`] added.
@@ -301,11 +374,15 @@ mod tests {
         std::fs::write(&record, before).expect("seed record");
         let path = record.to_string_lossy().into_owned();
 
+        let verb = ["describe-schema".to_string()];
         let err = set_role(
             &path,
             &["run/contrakt.txt".to_string()],
             "reproduced-output",
-            Some("describe-schema"),
+            &RoleDetail {
+                reproduced_by: &verb,
+                ..RoleDetail::default()
+            },
         )
         .expect_err("an undeclared path must not be accepted");
         assert!(err.contains("declares no input"), "unhelpful error: {err}");

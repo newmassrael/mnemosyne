@@ -78,7 +78,9 @@
       "path": "run/contract.txt",
       "role": "reproduced-output",
       "sha256": "331306e7e29b6935ca6b97aa07677c2263f28e56a3e643184f85d0557c8682c0",
-      "reproduced_by": "describe-schema"
+      "reproduced_by": [
+        "describe-schema"
+      ]
     },
     {
       "path": "run/stage-a-first-submission/mnemosyne.toml",
@@ -93,12 +95,17 @@
     {
       "path": "run/stage-a/first-import.log",
       "role": "run-artifact",
-      "sha256": "0cdc11b26086d8d926d1924676e9822de565677bc511b7cc225b5eea144e4307"
+      "sha256": "0cdc11b26086d8d926d1924676e9822de565677bc511b7cc225b5eea144e4307",
+      "unreproducible": "a shell composition, not one command: the runbook runs import-sections and import-facts into the same file and appends each exit code, so no single verb prints these bytes"
     },
     {
       "path": "run/stage-a/frontier.txt",
-      "role": "run-artifact",
-      "sha256": "4c5f730fff6af4480f0861965f5c3916a86161a39a279502618bb1799e105042"
+      "role": "reproduced-output",
+      "sha256": "4c5f730fff6af4480f0861965f5c3916a86161a39a279502618bb1799e105042",
+      "reproduced_by": [
+        "report-authoring-frontier"
+      ],
+      "reproduced_after": "stage-a-no-machinery-named"
     },
     {
       "path": "run/stage-a/mnemosyne.toml",
@@ -117,13 +124,21 @@
     },
     {
       "path": "run/stage-a/transition-map.txt",
-      "role": "run-artifact",
-      "sha256": "fc825a79948ea71a171dd4afdb6b9c915466e39a1166c015e908d6a20b96b9e1"
+      "role": "reproduced-output",
+      "sha256": "fc825a79948ea71a171dd4afdb6b9c915466e39a1166c015e908d6a20b96b9e1",
+      "reproduced_by": [
+        "report-transition-map"
+      ],
+      "reproduced_after": "stage-a-no-machinery-named"
     },
     {
       "path": "run/stage-a/validate-continuity.txt",
-      "role": "run-artifact",
-      "sha256": "6b42f55699a61a970ceef13a40553909c6f783051e8028469c04a3e1c94d469d"
+      "role": "reproduced-output",
+      "sha256": "6b42f55699a61a970ceef13a40553909c6f783051e8028469c04a3e1c94d469d",
+      "reproduced_by": [
+        "validate-continuity"
+      ],
+      "reproduced_after": "stage-a-no-machinery-named"
     },
     {
       "path": "run/stage-b-first-submission/mnemosyne.toml",
@@ -138,12 +153,17 @@
     {
       "path": "run/stage-b/first-import.log",
       "role": "run-artifact",
-      "sha256": "018f6008027c8a5131f5d1307ecbc5c08eddc0b2ecb5acfdf8916db5ccffad37"
+      "sha256": "018f6008027c8a5131f5d1307ecbc5c08eddc0b2ecb5acfdf8916db5ccffad37",
+      "unreproducible": "a shell composition, not one command: the runbook runs import-sections and import-facts into the same file and appends each exit code, so no single verb prints these bytes"
     },
     {
       "path": "run/stage-b/frontier.txt",
-      "role": "run-artifact",
-      "sha256": "cfc6f37aa3f2266eecbd442a6f2b93df22122d15f75dfbcc39d002e13ddf1640"
+      "role": "reproduced-output",
+      "sha256": "cfc6f37aa3f2266eecbd442a6f2b93df22122d15f75dfbcc39d002e13ddf1640",
+      "reproduced_by": [
+        "report-authoring-frontier"
+      ],
+      "reproduced_after": "stage-b-both-properties-asked-in-fiction"
     },
     {
       "path": "run/stage-b/mnemosyne.toml",
@@ -162,13 +182,22 @@
     },
     {
       "path": "run/stage-b/transition-map.txt",
-      "role": "run-artifact",
-      "sha256": "c9680082fb501d6a0bd6620e0708e70634a7155030c22920727bad95e76ebceb"
+      "role": "reproduced-output",
+      "sha256": "c9680082fb501d6a0bd6620e0708e70634a7155030c22920727bad95e76ebceb",
+      "reproduced_by": [
+        "report-transition-map"
+      ],
+      "reproduced_after": "stage-b-both-properties-asked-in-fiction"
     },
     {
       "path": "run/stage-b/validate-continuity.txt",
-      "role": "run-artifact",
-      "sha256": "3b84a7979d523ec71941a91470549aabaa3bab8c80b3c4f17e89a3a72c799135"
+      "role": "reproduced-output",
+      "sha256": "3b84a7979d523ec71941a91470549aabaa3bab8c80b3c4f17e89a3a72c799135",
+      "reproduced_by": [
+        "validate-continuity"
+      ],
+      "reproduced_after": "stage-b-both-properties-asked-in-fiction",
+      "reproduced_exit": 1
     }
   ],
   "replays": [
@@ -185,7 +214,8 @@
           "input": "run/stage-a/facts.json"
         }
       ],
-      "expected_store_sha256": "0aff50d266a88e1ddfdd4cf14311de84fced0dad86ceb4b3c7df894c47ddc418"
+      "expected_store_sha256": "0aff50d266a88e1ddfdd4cf14311de84fced0dad86ceb4b3c7df894c47ddc418",
+      "config": "run/stage-a/mnemosyne.toml"
     },
     {
       "name": "stage-b-both-properties-asked-in-fiction",
@@ -200,7 +230,8 @@
           "input": "run/stage-b/facts.json"
         }
       ],
-      "expected_store_sha256": "20b2c790d70962ca56a1513c766bd3196054a49563b1d1988305b91912b7a416"
+      "expected_store_sha256": "20b2c790d70962ca56a1513c766bd3196054a49563b1d1988305b91912b7a416",
+      "config": "run/stage-b/mnemosyne.toml"
     }
   ]
 }

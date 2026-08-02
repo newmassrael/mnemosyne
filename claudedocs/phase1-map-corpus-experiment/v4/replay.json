@@ -69,7 +69,9 @@
       "path": "run/stage-a-first-submission/contract.txt",
       "role": "reproduced-output",
       "sha256": "369bb23f7a221101770e0d5a8aad4081484e5cfcd5ca49e52cf5c4e807c966ad",
-      "reproduced_by": "describe-schema"
+      "reproduced_by": [
+        "describe-schema"
+      ]
     },
     {
       "path": "run/stage-a-first-submission/mnemosyne.toml",
@@ -94,23 +96,31 @@
     {
       "path": "run/stage-a/continuity.log",
       "role": "run-artifact",
-      "sha256": "c2e5b25e7f8a2b4e4cabdafb7d21e3e017c2566f6c3c7781f7fffa76e0c2d0a1"
+      "sha256": "c2e5b25e7f8a2b4e4cabdafb7d21e3e017c2566f6c3c7781f7fffa76e0c2d0a1",
+      "unreproducible": "a shell composition, not one command: the runbook appends the captured exit code as a final `exit=` line, so the verb's own stdout is a prefix of these bytes and never all of them"
     },
     {
       "path": "run/stage-a/contract.txt",
       "role": "reproduced-output",
       "sha256": "369bb23f7a221101770e0d5a8aad4081484e5cfcd5ca49e52cf5c4e807c966ad",
-      "reproduced_by": "describe-schema"
+      "reproduced_by": [
+        "describe-schema"
+      ]
     },
     {
       "path": "run/stage-a/first-import.log",
       "role": "run-artifact",
-      "sha256": "ebbf36bb73a56be32cc37eefce8f177b22c991a48a6b848fb9c3317628876266"
+      "sha256": "ebbf36bb73a56be32cc37eefce8f177b22c991a48a6b848fb9c3317628876266",
+      "unreproducible": "a shell composition, not one command: the runbook runs import-sections and import-facts into the same file and appends each exit code, so no single verb prints these bytes"
     },
     {
       "path": "run/stage-a/frontier.log",
-      "role": "run-artifact",
-      "sha256": "d8f6d0380bc7a5d360a4f360f7706ce488830c2761c51ab5772303ab331e59bc"
+      "role": "reproduced-output",
+      "sha256": "d8f6d0380bc7a5d360a4f360f7706ce488830c2761c51ab5772303ab331e59bc",
+      "reproduced_by": [
+        "report-authoring-frontier"
+      ],
+      "reproduced_after": "stage-a-no-map-words-corrected-contract"
     },
     {
       "path": "run/stage-a/mnemosyne.toml",
@@ -134,14 +144,20 @@
     },
     {
       "path": "run/stage-a/transition-map.log",
-      "role": "run-artifact",
-      "sha256": "3dbbbb60881c1c2ddcbdc072b371d59814b3654f2e81ed3e4225d03edb917f96"
+      "role": "reproduced-output",
+      "sha256": "3dbbbb60881c1c2ddcbdc072b371d59814b3654f2e81ed3e4225d03edb917f96",
+      "reproduced_by": [
+        "report-transition-map"
+      ],
+      "reproduced_after": "stage-a-no-map-words-corrected-contract"
     },
     {
       "path": "run/stage-b-first-submission/contract.txt",
       "role": "reproduced-output",
       "sha256": "369bb23f7a221101770e0d5a8aad4081484e5cfcd5ca49e52cf5c4e807c966ad",
-      "reproduced_by": "describe-schema"
+      "reproduced_by": [
+        "describe-schema"
+      ]
     },
     {
       "path": "run/stage-b-first-submission/mnemosyne.toml",
@@ -166,23 +182,31 @@
     {
       "path": "run/stage-b/continuity.log",
       "role": "run-artifact",
-      "sha256": "08b0076c633a489f900fb0bfad0610e85bb9f2f7c7a5398781673432b120f878"
+      "sha256": "08b0076c633a489f900fb0bfad0610e85bb9f2f7c7a5398781673432b120f878",
+      "unreproducible": "a shell composition, not one command: the runbook appends the captured exit code as a final `exit=` line, so the verb's own stdout is a prefix of these bytes and never all of them"
     },
     {
       "path": "run/stage-b/contract.txt",
       "role": "reproduced-output",
       "sha256": "369bb23f7a221101770e0d5a8aad4081484e5cfcd5ca49e52cf5c4e807c966ad",
-      "reproduced_by": "describe-schema"
+      "reproduced_by": [
+        "describe-schema"
+      ]
     },
     {
       "path": "run/stage-b/first-import.log",
       "role": "run-artifact",
-      "sha256": "abc682caf34f958d233d05aa7bd2f85e29bebe4fed27ad08d59bbb02da83af62"
+      "sha256": "abc682caf34f958d233d05aa7bd2f85e29bebe4fed27ad08d59bbb02da83af62",
+      "unreproducible": "a shell composition, not one command: the runbook runs import-sections and import-facts into the same file and appends each exit code, so no single verb prints these bytes"
     },
     {
       "path": "run/stage-b/frontier.log",
-      "role": "run-artifact",
-      "sha256": "ba4b36471a7d1ada9f6a7ea8982da6c724ae76e388c6425b4be2a0e7581909ee"
+      "role": "reproduced-output",
+      "sha256": "ba4b36471a7d1ada9f6a7ea8982da6c724ae76e388c6425b4be2a0e7581909ee",
+      "reproduced_by": [
+        "report-authoring-frontier"
+      ],
+      "reproduced_after": "stage-b-engine-must-answer-corrected-contract"
     },
     {
       "path": "run/stage-b/mnemosyne.toml",
@@ -206,8 +230,12 @@
     },
     {
       "path": "run/stage-b/transition-map.log",
-      "role": "run-artifact",
-      "sha256": "c035cfd865b805bed6292423f0c47bf9eb9a9d6b7b524c919f49fa74f0f8e4ba"
+      "role": "reproduced-output",
+      "sha256": "c035cfd865b805bed6292423f0c47bf9eb9a9d6b7b524c919f49fa74f0f8e4ba",
+      "reproduced_by": [
+        "report-transition-map"
+      ],
+      "reproduced_after": "stage-b-engine-must-answer-corrected-contract"
     }
   ],
   "replays": [
@@ -224,7 +252,8 @@
           "input": "run/stage-a/facts.json"
         }
       ],
-      "expected_store_sha256": "54221321703b76eac0546352be87b892e26e68bad939f771fe875829d02bea79"
+      "expected_store_sha256": "54221321703b76eac0546352be87b892e26e68bad939f771fe875829d02bea79",
+      "config": "run/stage-a/mnemosyne.toml"
     },
     {
       "name": "stage-b-engine-must-answer-corrected-contract",
@@ -239,7 +268,8 @@
           "input": "run/stage-b/facts.json"
         }
       ],
-      "expected_store_sha256": "d34b15354d6cc517b3a418baedc71ed648a5f2255babc9c6ad54b3d5e51f1379"
+      "expected_store_sha256": "d34b15354d6cc517b3a418baedc71ed648a5f2255babc9c6ad54b3d5e51f1379",
+      "config": "run/stage-b/mnemosyne.toml"
     }
   ]
 }

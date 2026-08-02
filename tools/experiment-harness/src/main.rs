@@ -37,7 +37,8 @@ USAGE:
   experiment-harness splice --base <manuscript.md> --out <md> --replace <scene.md> [--replace <scene.md>...]
   experiment-harness stamp-inputs --record <replay.json> [--record <replay.json>...]
   experiment-harness declare-run-tree --record <replay.json> [--record <replay.json>...]
-  experiment-harness set-input-role --record <replay.json> --path <p> [--path <p>...] --role <r> [--reproduced-by <verb>]
+  experiment-harness set-input-role --record <replay.json> --path <p> [--path <p>...] --role <r> [--after <replay>] [--with <p>...] [--exit <n>] [--unreproducible <why>] [-- <verb> <arg>...]
+  experiment-harness set-replay-config --record <replay.json> --replay <name> --config <unit-relative toml>
 
 assemble
   Render a world's scenes, in playthrough order, into a blind reading copy.
@@ -91,12 +92,24 @@ declare-run-tree
 set-input-role
   Rewrite the role of inputs a record already declares. Use it when a mechanical
   walk's `run-artifact` turns out to be something the tree can establish — a
-  captured `describe-schema` is `--role reproduced-output --reproduced-by
-  describe-schema`, and the replay job then regenerates it at the kit's pinned
-  revision instead of taking the record's word for it. A --path the record does
-  not declare is an error rather than a new entry: creating one is
+  captured contract is `--role reproduced-output -- describe-schema`, and a
+  report transcript adds its own arguments and the replay it runs after:
+  `--after <replay> -- report-transition-map --rules rules.json`. The command
+  goes after a bare `--` because it carries flags of its own.
+  The replay job then regenerates it at the kit's pinned revision instead of
+  taking the record's word for it. An artifact no single command can print says
+  so with --unreproducible <why>. Every optional field is rewritten or removed
+  on each call, so a stale command never survives a reassignment. A --path the
+  record does not declare is an error rather than a new entry: creating one is
   declare-run-tree's job, and doing it here would break the exactly-once rule
   the coverage gate depends on.
+
+set-replay-config
+  Point a declared replay at the `mnemosyne.toml` its run used, so the replay
+  copies that directory in and a report transcript can be reproduced against the
+  store it rebuilds. Measured before it was built: seeding the author's config
+  alongside the manifests does not move the store digest, so declaring it leaves
+  every expected_store_sha256 standing.
 ";
 
 fn main() -> ExitCode {
@@ -125,6 +138,7 @@ fn run(args: &[String]) -> HResult<ExitCode> {
         "stamp-inputs" => cmd_stamp_inputs(&args[1..]),
         "declare-run-tree" => cmd_declare_run_tree(&args[1..]),
         "set-input-role" => cmd_set_input_role(&args[1..]),
+        "set-replay-config" => cmd_set_replay_config(&args[1..]),
         "-h" | "--help" | "help" => {
             print!("{USAGE}");
             Ok(ExitCode::SUCCESS)
@@ -237,17 +251,46 @@ fn cmd_set_input_role(args: &[String]) -> HResult<ExitCode> {
     let record = p.require("--record")?;
     let paths = p.take_all("--path");
     let role = p.require("--role")?;
-    let reproduced_by = p.optional("--reproduced-by")?;
+    let after = p.optional("--after")?;
+    let unreproducible = p.optional("--unreproducible")?;
+    let with = p.take_all("--with");
+    let exit = match p.optional("--exit")? {
+        Some(v) => Some(
+            v.parse::<i64>()
+                .map_err(|_| format!("--exit takes an integer, not `{v}`"))?,
+        ),
+        None => None,
+    };
+    let argv: Vec<String> = p.rest().to_vec();
     p.finish()?;
     if paths.is_empty() {
         return Err("set-input-role needs at least one --path <unit-relative>".to_string());
     }
 
-    let result = declare::set_role(&record, &paths, &role, reproduced_by.as_deref())?;
+    let detail = declare::RoleDetail {
+        reproduced_by: &argv,
+        reproduced_after: after.as_deref(),
+        unreproducible: unreproducible.as_deref(),
+        reproduced_with: &with,
+        reproduced_exit: exit,
+    };
+    let result = declare::set_role(&record, &paths, &role, &detail)?;
     for entry in &result.changed {
         println!("{entry}");
     }
     eprintln!("{} input(s) reassigned in {record}", result.changed.len());
+    Ok(ExitCode::SUCCESS)
+}
+
+fn cmd_set_replay_config(args: &[String]) -> HResult<ExitCode> {
+    let mut p = Flags::new(args);
+    let record = p.require("--record")?;
+    let replay = p.require("--replay")?;
+    let config = p.require("--config")?;
+    p.finish()?;
+
+    declare::set_replay_config(&record, &replay, &config)?;
+    eprintln!("{record}: replay `{replay}` now runs under {config}");
     Ok(ExitCode::SUCCESS)
 }
 
@@ -350,6 +393,12 @@ struct Flags {
     opts: Vec<(String, String)>,
     positionals: Vec<String>,
     unconsumed_flags: Vec<String>,
+    /// Everything after a bare `--`, verbatim. A command this tool records for
+    /// something else to run carries its own flags — `report-frame-view --frame
+    /// carter` — and every one of them would otherwise be read as a flag of
+    /// THIS tool. The terminator is the only shape that can carry them without
+    /// this parser having to know which they are.
+    rest: Vec<String>,
 }
 
 impl Flags {
@@ -357,9 +406,14 @@ impl Flags {
         let mut opts = Vec::new();
         let mut positionals = Vec::new();
         let mut unconsumed_flags = Vec::new();
+        let mut rest = Vec::new();
         let mut i = 0;
         while i < args.len() {
             let a = &args[i];
+            if a == "--" {
+                rest.extend_from_slice(&args[i + 1..]);
+                break;
+            }
             if let Some(name) = a.strip_prefix("--") {
                 let name = format!("--{name}");
                 if i + 1 < args.len() && !args[i + 1].starts_with("--") {
@@ -380,7 +434,13 @@ impl Flags {
             opts,
             positionals,
             unconsumed_flags,
+            rest,
         }
+    }
+
+    /// The verbatim tail after `--`.
+    fn rest(&self) -> &[String] {
+        &self.rest
     }
 
     fn take(&mut self, name: &str) -> Option<String> {

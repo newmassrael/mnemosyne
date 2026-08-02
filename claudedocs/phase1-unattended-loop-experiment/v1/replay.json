@@ -73,7 +73,8 @@
     {
       "path": "run/manuscripts/world-road-descend.md",
       "role": "run-artifact",
-      "sha256": "0cab6d1eae3a11c346903d34732cbe3b73800d1ca6edca5764230781cbade4a9"
+      "sha256": "0cab6d1eae3a11c346903d34732cbe3b73800d1ca6edca5764230781cbade4a9",
+      "unreproducible": "printed by tools/experiment-harness, a separate workspace this job does not build at a pinned revision"
     },
     {
       "path": "run/render/render-log.md",

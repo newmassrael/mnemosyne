@@ -27,63 +27,262 @@
     },
     {
       "path": "run/frame-views/frame-carter.txt",
-      "role": "run-artifact",
-      "sha256": "2ff2f61896cc9141b2d2f204ba598d15dd8b5da5913d02f108176c2d3d9b92de"
+      "role": "reproduced-output",
+      "sha256": "2ff2f61896cc9141b2d2f204ba598d15dd8b5da5913d02f108176c2d3d9b92de",
+      "reproduced_by": [
+        "report-frame-view",
+        "--frame",
+        "carter",
+        "--branch",
+        "main",
+        "--at",
+        "sc-02",
+        "--entity",
+        "carter"
+      ],
+      "reproduced_after": "author-facts"
     },
     {
       "path": "run/frame-views/frame-chaplain.txt",
-      "role": "run-artifact",
-      "sha256": "332682812487db329cca34162ad354fff62be6692986b43cd5b762e573906251"
+      "role": "reproduced-output",
+      "sha256": "332682812487db329cca34162ad354fff62be6692986b43cd5b762e573906251",
+      "reproduced_by": [
+        "report-frame-view",
+        "--frame",
+        "chaplain",
+        "--branch",
+        "settle",
+        "--at",
+        "sc-59",
+        "--entity",
+        "chaplain",
+        "--order",
+        "order.json"
+      ],
+      "reproduced_after": "author-facts",
+      "reproduced_with": [
+        "run/author/order.json"
+      ]
     },
     {
       "path": "run/frame-views/frame-child.txt",
-      "role": "run-artifact",
-      "sha256": "f015fac3a93a315f495d768b8d1bcead9cb6df7ebc573f066055f7e24cc939ee"
+      "role": "reproduced-output",
+      "sha256": "f015fac3a93a315f495d768b8d1bcead9cb6df7ebc573f066055f7e24cc939ee",
+      "reproduced_by": [
+        "report-frame-view",
+        "--frame",
+        "child",
+        "--branch",
+        "ration",
+        "--at",
+        "sc-86",
+        "--entity",
+        "child",
+        "--order",
+        "order.json"
+      ],
+      "reproduced_after": "author-facts",
+      "reproduced_with": [
+        "run/author/order.json"
+      ]
     },
     {
       "path": "run/frame-views/frame-clerk.txt",
-      "role": "run-artifact",
-      "sha256": "a0aa5fbbf332bbbb6911a49170e02c7e73620cb1b48fce80911f113950ce9806"
+      "role": "reproduced-output",
+      "sha256": "a0aa5fbbf332bbbb6911a49170e02c7e73620cb1b48fce80911f113950ce9806",
+      "reproduced_by": [
+        "report-frame-view",
+        "--frame",
+        "clerk",
+        "--branch",
+        "law",
+        "--at",
+        "sc-51",
+        "--entity",
+        "clerk",
+        "--order",
+        "order.json"
+      ],
+      "reproduced_after": "author-facts",
+      "reproduced_with": [
+        "run/author/order.json"
+      ]
     },
     {
       "path": "run/frame-views/frame-coll.txt",
-      "role": "run-artifact",
-      "sha256": "64c0f222248eedc6d3c3e30a5931fb8c66f8100b5aa047485902d581c68a922a"
+      "role": "reproduced-output",
+      "sha256": "64c0f222248eedc6d3c3e30a5931fb8c66f8100b5aa047485902d581c68a922a",
+      "reproduced_by": [
+        "report-frame-view",
+        "--frame",
+        "coll",
+        "--branch",
+        "ration",
+        "--at",
+        "sc-95",
+        "--entity",
+        "coll",
+        "--order",
+        "order.json"
+      ],
+      "reproduced_after": "author-facts",
+      "reproduced_with": [
+        "run/author/order.json"
+      ]
     },
     {
       "path": "run/frame-views/frame-collier.txt",
-      "role": "run-artifact",
-      "sha256": "86fdb3971804a02af619a6b9e61518d99e388768792a5c18693bac361cf2faf1"
+      "role": "reproduced-output",
+      "sha256": "86fdb3971804a02af619a6b9e61518d99e388768792a5c18693bac361cf2faf1",
+      "reproduced_by": [
+        "report-frame-view",
+        "--frame",
+        "collier",
+        "--branch",
+        "ration",
+        "--at",
+        "sc-80",
+        "--entity",
+        "collier",
+        "--order",
+        "order.json"
+      ],
+      "reproduced_after": "author-facts",
+      "reproduced_with": [
+        "run/author/order.json"
+      ]
     },
     {
       "path": "run/frame-views/frame-factor.txt",
-      "role": "run-artifact",
-      "sha256": "1afc4db31f7f8fe2c9cdab7afbfd4d9eeb142acd572fe416f9c84e5b128d7775"
+      "role": "reproduced-output",
+      "sha256": "1afc4db31f7f8fe2c9cdab7afbfd4d9eeb142acd572fe416f9c84e5b128d7775",
+      "reproduced_by": [
+        "report-frame-view",
+        "--frame",
+        "factor",
+        "--branch",
+        "ration",
+        "--at",
+        "sc-93",
+        "--entity",
+        "factor",
+        "--order",
+        "order.json"
+      ],
+      "reproduced_after": "author-facts",
+      "reproduced_with": [
+        "run/author/order.json"
+      ]
     },
     {
       "path": "run/frame-views/frame-herbwife.txt",
-      "role": "run-artifact",
-      "sha256": "65811002e745179e26e06ef22c5cdd954abbc7551dde5aadff158e45def647be"
+      "role": "reproduced-output",
+      "sha256": "65811002e745179e26e06ef22c5cdd954abbc7551dde5aadff158e45def647be",
+      "reproduced_by": [
+        "report-frame-view",
+        "--frame",
+        "herbwife",
+        "--branch",
+        "ration",
+        "--at",
+        "sc-89",
+        "--entity",
+        "herbwife",
+        "--order",
+        "order.json"
+      ],
+      "reproduced_after": "author-facts",
+      "reproduced_with": [
+        "run/author/order.json"
+      ]
     },
     {
       "path": "run/frame-views/frame-keeper.txt",
-      "role": "run-artifact",
-      "sha256": "7f6d6495ade0f5f3041e2aa2fa5cfc4cea54e31d70262cf7c8e2a4cd5c7de2dd"
+      "role": "reproduced-output",
+      "sha256": "7f6d6495ade0f5f3041e2aa2fa5cfc4cea54e31d70262cf7c8e2a4cd5c7de2dd",
+      "reproduced_by": [
+        "report-frame-view",
+        "--frame",
+        "keeper",
+        "--branch",
+        "ration",
+        "--at",
+        "sc-84",
+        "--entity",
+        "keeper",
+        "--order",
+        "order.json"
+      ],
+      "reproduced_after": "author-facts",
+      "reproduced_with": [
+        "run/author/order.json"
+      ]
     },
     {
       "path": "run/frame-views/frame-prospector.txt",
-      "role": "run-artifact",
-      "sha256": "ee613f8b106f8a83caf2bc99a57732ae1d7b5bbab939b4498ceddd0ff3a9833c"
+      "role": "reproduced-output",
+      "sha256": "ee613f8b106f8a83caf2bc99a57732ae1d7b5bbab939b4498ceddd0ff3a9833c",
+      "reproduced_by": [
+        "report-frame-view",
+        "--frame",
+        "prospector",
+        "--branch",
+        "village",
+        "--at",
+        "sc-73",
+        "--entity",
+        "prospector",
+        "--order",
+        "order.json"
+      ],
+      "reproduced_after": "author-facts",
+      "reproduced_with": [
+        "run/author/order.json"
+      ]
     },
     {
       "path": "run/frame-views/frame-soldier.txt",
-      "role": "run-artifact",
-      "sha256": "68fc1c2d044929b99b093a64611e7f0dbc950d7fa9be8e283634895e0fab374f"
+      "role": "reproduced-output",
+      "sha256": "68fc1c2d044929b99b093a64611e7f0dbc950d7fa9be8e283634895e0fab374f",
+      "reproduced_by": [
+        "report-frame-view",
+        "--frame",
+        "soldier",
+        "--branch",
+        "village",
+        "--at",
+        "sc-72",
+        "--entity",
+        "soldier",
+        "--order",
+        "order.json"
+      ],
+      "reproduced_after": "author-facts",
+      "reproduced_with": [
+        "run/author/order.json"
+      ]
     },
     {
       "path": "run/frame-views/frame-widow.txt",
-      "role": "run-artifact",
-      "sha256": "0bfe9780a0dba5cefba207942a462c5f0f63de3e7d888e2fdfd2eedb1a5a8bdb"
+      "role": "reproduced-output",
+      "sha256": "0bfe9780a0dba5cefba207942a462c5f0f63de3e7d888e2fdfd2eedb1a5a8bdb",
+      "reproduced_by": [
+        "report-frame-view",
+        "--frame",
+        "widow",
+        "--branch",
+        "ration",
+        "--at",
+        "sc-91",
+        "--entity",
+        "widow",
+        "--order",
+        "order.json"
+      ],
+      "reproduced_after": "author-facts",
+      "reproduced_with": [
+        "run/author/order.json"
+      ]
     },
     {
       "path": "run/judges/judge-1.md",
@@ -103,22 +302,26 @@
     {
       "path": "run/manuscripts/world-law.md",
       "role": "run-artifact",
-      "sha256": "b4fac1a6676b4c9fa306868184fb5f88764cff3c6ec8e3abfb8e5425a74dabb7"
+      "sha256": "b4fac1a6676b4c9fa306868184fb5f88764cff3c6ec8e3abfb8e5425a74dabb7",
+      "unreproducible": "printed by tools/experiment-harness, a separate workspace this job does not build at a pinned revision"
     },
     {
       "path": "run/manuscripts/world-ration.md",
       "role": "run-artifact",
-      "sha256": "9209035d6c0a5bea4d02221d9388c47d777a61f1570978f33e9202c211d0646d"
+      "sha256": "9209035d6c0a5bea4d02221d9388c47d777a61f1570978f33e9202c211d0646d",
+      "unreproducible": "printed by tools/experiment-harness, a separate workspace this job does not build at a pinned revision"
     },
     {
       "path": "run/manuscripts/world-settle.md",
       "role": "run-artifact",
-      "sha256": "b5d115c57e349a1d0218aca9d078eec8a036f743dcac55efb313e88ed5d6ec40"
+      "sha256": "b5d115c57e349a1d0218aca9d078eec8a036f743dcac55efb313e88ed5d6ec40",
+      "unreproducible": "printed by tools/experiment-harness, a separate workspace this job does not build at a pinned revision"
     },
     {
       "path": "run/manuscripts/world-village.md",
       "role": "run-artifact",
-      "sha256": "73d81c7b269e0cf0484ebde477d1520ea46c0f5d2c81aed0f04e579d6fa60d59"
+      "sha256": "73d81c7b269e0cf0484ebde477d1520ea46c0f5d2c81aed0f04e579d6fa60d59",
+      "unreproducible": "printed by tools/experiment-harness, a separate workspace this job does not build at a pinned revision"
     }
   ],
   "replays": [
