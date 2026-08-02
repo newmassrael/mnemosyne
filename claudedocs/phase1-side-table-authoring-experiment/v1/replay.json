@@ -173,7 +173,7 @@
   "replays": [
     {
       "name": "stage-a-no-machinery-named",
-      "revision": "18cfbfaf8ff1dacca58792a3ba9d6f28fb12b1bd",
+      "revision": "47a6e56173686e33899b8aa68d8fc20820ca6dbe",
       "steps": [
         {
           "verb": "import-sections",
@@ -188,7 +188,7 @@
     },
     {
       "name": "stage-b-both-properties-asked-in-fiction",
-      "revision": "18cfbfaf8ff1dacca58792a3ba9d6f28fb12b1bd",
+      "revision": "47a6e56173686e33899b8aa68d8fc20820ca6dbe",
       "steps": [
         {
           "verb": "import-sections",
