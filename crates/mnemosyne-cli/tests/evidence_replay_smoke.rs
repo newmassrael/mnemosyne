@@ -1759,7 +1759,13 @@ fn taught_literals(text: &str) -> Vec<Taught> {
 /// `.gitignore` exception — Round 898 found its own runbook in exactly that
 /// state. Discovery by tracking would be blind for the whole window in which a
 /// runbook is being read and copied from, which is the window this check is
-/// for. Measured on this tree, not assumed: 23 runbooks on disk, 22 tracked.
+/// for.
+///
+/// How many of them are tracked is NOT a number in this comment. It was one
+/// until Round 960 ("23 runbooks on disk, 22 tracked"), it was stale within
+/// eight rounds, and no program checked it — the shape Round 958 named. The
+/// fact now has one home that cannot go stale:
+/// `every_runbook_on_disk_is_in_the_repository` asserts that all of them are.
 ///
 /// CI sees only the tracked ones, so this reaches further locally than there —
 /// which is the right direction, because the writing moment is where catching
@@ -1806,17 +1812,8 @@ fn no_runbook_teaches_a_literal_its_own_gate_rejects() {
         !books.is_empty(),
         "no runbooks found under claudedocs/ — this gate would pass vacuously"
     );
-    let tracked: BTreeSet<String> = git(&["ls-files", "claudedocs"])
-        .lines()
-        .map(str::to_string)
-        .collect();
-
     let mut checked = 0usize;
-    let mut untracked = 0usize;
     for rel in &books {
-        if !tracked.contains(rel) {
-            untracked += 1;
-        }
         let text =
             std::fs::read_to_string(root.join(rel)).unwrap_or_else(|e| panic!("read {rel}: {e}"));
         for t in taught_literals(&text) {
@@ -1840,10 +1837,56 @@ fn no_runbook_teaches_a_literal_its_own_gate_rejects() {
         books.len()
     );
     println!(
-        "{} runbook(s) ({untracked} untracked, invisible to CI), {checked} \
-         checked literal(s), all in vocabulary",
+        "{} runbook(s), {checked} checked literal(s), all in vocabulary",
         books.len()
     );
+}
+
+/// Every runbook the scan reads is IN the repository.
+///
+/// The sibling gate above walks the filesystem on purpose: a runbook is
+/// untracked from the moment it is written, and that window is exactly when it
+/// is copied from. What nothing asked until Round 960 is whether the window ever
+/// CLOSES. Round 958's ledger entry says it FROZE the side-table protocol — the
+/// file was never added, so what it froze lived in one working tree, and CI, a
+/// fresh clone and any replay would have proceeded without it. Round 950 saw the
+/// same state one kit over, counted it, printed it, and moved on; a count that
+/// only prints is how a defect becomes a fixture.
+///
+/// REACH, stated rather than implied: in CI an untracked file does not exist, so
+/// the walk finds only tracked runbooks and this passes VACUOUSLY there. It
+/// bites where the defect is born — the tree that wrote the runbook, on the
+/// `cargo test` a round already runs. CI is structurally unable to catch this
+/// one, which is the argument for catching it at the writing moment rather than
+/// an argument for a second gate that cannot see further.
+#[test]
+fn every_runbook_on_disk_is_in_the_repository() {
+    let root = repo_root();
+    let books = runbooks(&root);
+    assert!(
+        !books.is_empty(),
+        "no runbooks found under claudedocs/ — this gate would pass vacuously"
+    );
+    let tracked: BTreeSet<String> = git(&["ls-files", "claudedocs"])
+        .lines()
+        .map(str::to_string)
+        .collect();
+    let missing: Vec<&str> = books
+        .iter()
+        .filter(|rel| !tracked.contains(*rel))
+        .map(String::as_str)
+        .collect();
+    assert!(
+        missing.is_empty(),
+        "{} runbook(s) on disk are not in the repository: {missing:?}. \
+         `/claudedocs/*` is ignored by default, so a new kit needs its \
+         `.gitignore` exception landed IN THE ROUND THAT WRITES THE RUNBOOK — \
+         until then the protocol a future run is told to follow exists in one \
+         working tree only, and the round that says it froze the protocol has \
+         frozen nothing.",
+        missing.len()
+    );
+    println!("{} runbook(s) on disk, all tracked", books.len());
 }
 
 /// The scan can see every vocabulary the parser enforces, and does not fire on

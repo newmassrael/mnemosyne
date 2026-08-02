@@ -75,3 +75,17 @@ Cargo.lock.bak
 /claudedocs/phase1-disclosed-place-experiment/**/*.atomic.json
 /claudedocs/phase1-disclosed-place-experiment/**/*.playthrough.json
 /claudedocs/phase1-disclosed-place-experiment/*/run/*/contract.txt
+# Round 960 — the A/B kit's own runbook was the one Round 950 counted as
+# untracked and left that way. Its manifest sha256 is pinned in the R469/R470
+# ledger entries, so the kit is frozen evidence the tree cites, not scratch.
+!/claudedocs/phase1-ab-experiment/
+/claudedocs/phase1-ab-experiment/**/*.atomic.json
+/claudedocs/phase1-ab-experiment/**/*.playthrough.json
+# Round 959 — the side-table runbook was authored at Round 958 and left
+# untracked, so the protocol it says it FROZE existed in one working tree
+# only. The exception goes in when the runbook is written, not when the arm
+# runs: an untracked runbook is invisible to CI and to a fresh clone.
+!/claudedocs/phase1-side-table-authoring-experiment/
+/claudedocs/phase1-side-table-authoring-experiment/**/*.atomic.json
+/claudedocs/phase1-side-table-authoring-experiment/**/*.playthrough.json
+/claudedocs/phase1-side-table-authoring-experiment/*/run/*/contract.txt

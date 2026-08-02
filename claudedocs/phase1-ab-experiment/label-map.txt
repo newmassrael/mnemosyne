@@ -1,0 +1,2 @@
+story-A = plain
+story-B = loop

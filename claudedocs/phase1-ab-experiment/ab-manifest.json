@@ -1,0 +1,104 @@
+{
+  "manifest": "ab-authoring-experiment/v1",
+  "designed": "2026-06-11 (R469 design round; sha256 pinned in the R469 ledger entry BEFORE any execution session). AMENDED R470 (same day, still pre-execution, session review): grading.preference.reading_copies rewritten — the R469 wording was ambiguous about which store backs the loop story's copy and asymmetric across arms; the amended pin supersedes fd18e42593c128fdd9a128edc439ad70544790e1c9fc2a2c2c9983b1124d1086, new sha256 in the R470 ledger entry.",
+  "question": {
+    "primary": "Does a Mnemosyne-loop authoring agent produce a long branching story with fewer deterministic consistency defects than a plain LLM agent given the identical premise and budget? (the floor hypothesis)",
+    "secondary": "Do blind judges prefer either output? (the ceiling/fun hypothesis — no directional pin, sec 10 honest bounds: ceiling stays with the model)",
+    "tertiary": "What is the token/time overhead of the loop? (authoring economics — measured, not pinned)"
+  },
+  "design_lineage": "blind protocol = R453 trap-corpus pattern (sha256 pre-commit, design/execution session separation); grading interface = R466 report-playthrough-manuscript (per-world linear reading copies); outcome-pinning discipline = R464 V9 lesson (pin the deterministic half only; LLM-judged legs get pinned PROCEDURE, never pinned outcomes)",
+
+  "premise": {
+    "title": "Saltglass",
+    "text": "A remote island lighthouse town, 1923. The keeper, Edran Voss, is found dead at the foot of the lamp tower the morning after a storm. Insurance investigator Mara Quill arrives expecting to certify an accident — but the lamp log for the storm night is missing a page, the keeper's daughter Liss swears the light never went dark, and the wreck of the coaster Periwinkle on the shoals says otherwise. READER-KNOWN SECRETS (the story must show these to the reader early while keeping them from Mara): (S1) harbormaster Caul forged the Periwinkle's manifest — she carried no cargo, she carried passengers; (S2) Liss was at the lamp that night, not asleep — she knows who climbed the stairs, and lies to protect them. Who climbed the stairs, what the passengers were fleeing, and what Mara certifies in the end are the author's to decide — differently per world-line if the forks demand it.",
+    "required_setups": [
+      "the missing log page (custody of it is a trackable object state)",
+      "the manifest discrepancy",
+      "Liss's dry boots (she claims she slept through the storm)",
+      "the lamp's replacement mantle, ordered weeks before it should have worn out",
+      "a passenger-list name that matches a gravestone in the island cemetery",
+      "Voss's unsent letter"
+    ],
+    "required_structure": {
+      "scenes_total_min": 24,
+      "scene_prose_words": "150-400 per scene",
+      "fork_points": 2,
+      "fork_1": "around scene 8: Mara CONFRONTS Caul with the manifest discrepancy, or QUIETLY traces the passengers instead",
+      "fork_2": "around scene 16 on one declared limb: Liss REVEALS what she saw, or DESTROYS the missing log page",
+      "world_lines_min": 3,
+      "endings_min": 3,
+      "epistemic_frames_min": 2,
+      "frames_note": "ground truth vs at least one named character's belief (Mara's working theory is the natural second frame); the reader-known secrets S1/S2 must create at least one dramatic-irony window (reader knows, Mara does not)",
+      "deliverable_format": "numbered scenes with stable ids (sc-01...), fork points marked 'CHOICE:' with labeled options and which scene each option continues to, endings marked; plain text/markdown"
+    }
+  },
+
+  "agents": {
+    "shared_constraints": "same model tier, 3 authoring sessions each, fresh context per session, same scene budget per session (s1: scenes 1-8 incl fork-1 declaration; s2: scenes 9-16 incl both fork-1 limbs and the fork-2 declaration; s3: scenes 17 to >=24, all remaining limbs and endings). Each session's full token usage is recorded. No internet. The author agents never see this manifest, the rubric, the predictions, or each other's output.",
+    "agent_plain_prompt": "You are writing a branching mystery novella. [PREMISE + REQUIRED_STRUCTURE + REQUIRED_SETUPS inserted verbatim]. Write it across 3 sessions; in continuation sessions you receive the premise, this brief, and everything you have written so far. Keep the story consistent: character knowledge, object locations, who is alive, what has been revealed on each branch. Every required setup must pay off in every world-line where it appears (a payoff may differ per world-line). Deliver scenes in the required format.",
+    "agent_loop_prompt": "You are writing a branching mystery novella using the Mnemosyne narrative substrate as your working memory. [PREMISE + REQUIRED_STRUCTURE + REQUIRED_SETUPS inserted verbatim]. Author store-first as you write: register frames/branches/entities/predicates, record facts with canon coordinates and evidence as you commit each scene, declare succession edges for every state change and belief revision, declare fork points with forks_from/forks_at, mark required setups payoff_expectation=expected and credit pays_off when paid, maintain a narrative-rules file (exclusive/transition classes only) for the story's own state predicates, and run validate-continuity + report-payoff-coverage at least at every session end — repair what the gates catch BEFORE delivering the session's scenes, and log each catch+repair (these are counted as prevented defects). In continuation sessions you receive the premise, this brief, your prose so far, and your store (use query/report verbs freely; report-playthrough-manuscript per world to re-read your own structure). Deliver the same scene format as the brief requires.",
+    "delivery_note": "the graded deliverable for BOTH agents is the prose scene network alone; the loop agent's store is its tool and is NOT the graded artifact (see grading.deterministic.why_reextract)"
+  },
+
+  "grading": {
+    "shuffle": "before any grading session, an orchestration step renames the two deliverables story-A/story-B by coin flip; the mapping is written to label-map.txt and its sha256 recorded immediately in the run log; revealed only in the reveal round",
+    "deterministic": {
+      "why_reextract": "grading the loop agent's own store would let its referee grade its own match AND would leave the plain story ungraded; instead ONE blind extractor session re-extracts BOTH proses into fresh stores under the identical procedure — the graded artifact is the re-extraction, symmetric by construction",
+      "extraction_procedure": "per story (A then B, same session or twin sessions, same prompts): (1) register frames per the story's evident knowledge structure (ground truth + named-character belief frames actually used); (2) entities/predicates via report-typing-candidates -> import-typing-proposals loop (R458/R459 verbs, dry-run review, declared vocabulary only); (3) facts via import-facts manifests built scene by scene from explicit story text only — no inference beyond the page (B-1; what the text states, with the scene id as canon coordinate and quote evidence); (4) edges via report-edge-candidates -> import-edge-proposals (R462/R463, two-sided claim-sha, fill-blanks only); (5) canon order declared from the story's OWN explicit scene graph (fork options' continuation pointers), interleaved composition at forks per the R445-F5 lesson; (6) branches with forks_from/forks_at = last shared scene (R445 convention)",
+      "rule_derivation": "extractor derives at most 8 rules per story, ratified classes only (exclusive/transition), by fixed recipe applied identically to both: one alive-arc transition rule per character who dies on any limb; one exclusive-custody rule per unique physical object two parties hold (the log page at minimum); one location-exclusive rule per principal character if the text asserts simultaneous presence; nothing else",
+      "defect_metrics": {
+        "D1": "gated rule violations (rule_transition_invalid + rule_exclusive_overlap), all worlds",
+        "D2": "unchained_state_pairs, all worlds",
+        "D3": "dangling among the 6 REQUIRED setups at story end, per world-line where the setup appears (other dangling = craft signal, recorded, NOT counted)",
+        "D4": "fork-boundary faults: succession_cross_branch + SuccessionCycle findings",
+        "primary_endpoint": "D1+D2+D3+D4 summed per story",
+        "recorded_not_counted": "payoffs_to_unmarked, payoff_before_setup, cross_scope_pairs (data/craft surfaces, never defects), undecidable/unknown counts (B-1 honesty, reported alongside)"
+      },
+      "prevented_defects": "from the loop agent's session logs: gate catches it repaired before delivery — reported as a separate economics row, never mixed into the defect endpoint"
+    },
+    "preference": {
+      "reading_copies": "per matched world-line, a linear reading copy assembled by ONE procedure for BOTH stories (amended R470 for symmetry): the world's scene sequence comes from report-playthrough-manuscript run on that story's blind RE-EXTRACTED store (never the loop agent's working store — the same referee that grades defects orders the reading; the R466 verb is the order/membership authority and its honesty surfaces, undeclared_adjacencies/unplaced/undecidable, are recorded into the run log for both arms alike), and each scene's prose is injected by scene id from the original deliverable; formatting normalized (plain titled scenes, ids/tool artifacts stripped). Extraction step 5 declares order from each story's own explicit scene graph, so the manuscript walk is faithful to the author's declared structure for both arms. World-lines are matched across stories by fork-choice correspondence (confront/quiet x reveal/destroy); the spine = confront+reveal path if structures diverge",
+      "judges": "3 fresh LLM judge sessions, no experiment context, labels A/B only; optional owner read as judge 4 (recorded separately)",
+      "rubric_per_matched_pair": [
+        "continuity errors you noticed (count them and cite scene ids)",
+        "setup/payoff satisfaction 1-5",
+        "stakes and tension 1-5",
+        "character-knowledge believability (does anyone act on what they cannot know) 1-5",
+        "overall forced choice: A or B, one paragraph why"
+      ],
+      "judge_prompt": "You are judging two versions (A and B) of the same branching mystery, one world-line at a time. Read both linear versions of the matched world-line, then answer the rubric. Do not speculate about how either was produced.",
+      "outcome_pin": "NONE (V9 discipline). Procedure pinned; any preference direction is an honest headline."
+    },
+    "untyped_residue_bridge": "judge-cited continuity errors NOT matched by any D-metric finding estimate the V7/V8 untyped-miss residue on real authored prose — the quantified LLM-discovery measure on this corpus, reported per story"
+  },
+
+  "predictions_preregistered": {
+    "PRED-1_floor": "the plain story's re-extracted store shows >= 3 primary-endpoint defects; the loop story shows fewer than the plain story (directional: loop < plain). This is the only pinned outcome.",
+    "PRED-2_ceiling": "no pin; recorded expectation = near-tie, judges weighting prose voice over structural correctness",
+    "PRED-3_economics": "loop total tokens 1.5x-4x plain per delivered scene; record actual ratio + prevented-defect count",
+    "PRED-4_residue": "judges will cite >= 1 continuity error in the plain story that no D-metric caught (untyped residue exists on free prose)"
+  },
+
+  "validity_conditions": {
+    "quota": "both deliverables meet scenes_total_min/fork_points/world_lines_min/endings_min and contain all 6 required setups; a quota failure is itself an economics finding — report it, run the deterministic leg on what exists, skip the preference leg if scales are incomparable",
+    "extraction_parity": "identical prompts/verbs/recipe across A and B, labels blind, claim-sha pins intact, all-or-nothing imports only",
+    "no_manifest_contact": "author/extractor/judge sessions never receive this manifest; their prompts are extracted from it verbatim by the orchestrator"
+  },
+
+  "honesty_bounds_recorded": [
+    "n=1 premise, one model family — existence evidence, not a distribution (the genre-rhythm backlog entry is the distribution path)",
+    "designer == orchestrator == premise author knows the hypothesis (R453 analog: the pin + blinding cover tampering and peeking, not design-stage selection bias)",
+    "extraction is LLM work; only the gates after it are deterministic — parity + pins mitigate, variance does not vanish (R464 lesson)",
+    "prose style may fingerprint the loop agent to judges despite normalization (recorded; no stronger mitigation without rewriting both, which would corrupt the artifact)",
+    "the loop agent's in-session repairs mean the floor comparison measures the LOOP (agent+gates as a system) vs plain agent — exactly the question, but not a model-capability comparison"
+  ],
+
+  "session_map_runbook": [
+    "S0 (this design round, R469): manifest authored, sha256 pinned in ledger",
+    "S1-S3: agent-plain authoring sessions 1-3",
+    "S4-S6: agent-loop authoring sessions 1-3 (order of S1-3 vs S4-6 irrelevant; no shared context)",
+    "S7: shuffle labels; blind extraction of story-A and story-B; deterministic defect tables",
+    "S8-S10: judge sessions 1-3 (parallel, independent)",
+    "S11 (reveal round): unblind label-map, grade PRED-1/3/4 against this manifest, compile report (SSOT claudedocs/phase1-ab-experiment/ab-report.md), ledger entry restates the table (R452 self-containment)"
+  ]
+}
