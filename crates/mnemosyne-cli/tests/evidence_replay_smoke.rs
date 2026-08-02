@@ -2694,6 +2694,107 @@ fn map_leg_kind_census(root: &Path) -> (Vec<String>, Vec<String>) {
     (o, d)
 }
 
+/// Cost-carrying corpora split by whether ANY way is priced differently in its
+/// two directions.
+///
+/// Round 972. A manifest whose cost rows cannot be RESOLVED to a fact's two
+/// legs is neither side: it is UNMEASURABLE, and counting it as symmetric would
+/// be the R925 trap — a filter that does not match reading as a result. The
+/// recorded case is real, `phase1-map-corpus-experiment/v1` stage-b, whose costs
+/// live in their own file with no facts beside them.
+fn edge_cost_direction_census(root: &Path) -> (Vec<String>, Vec<String>) {
+    fn walk(dir: &Path, asymmetric: &mut Vec<String>, symmetric: &mut Vec<String>) {
+        let Ok(entries) = std::fs::read_dir(dir) else {
+            return;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            let Ok(kind) = entry.file_type() else {
+                continue;
+            };
+            if kind.is_dir() {
+                walk(&path, asymmetric, symmetric);
+                continue;
+            }
+            if path.extension().and_then(|e| e.to_str()) != Some("json") {
+                continue;
+            }
+            let Ok(text) = std::fs::read_to_string(&path) else {
+                continue;
+            };
+            let Ok(v) = serde_json::from_str::<serde_json::Value>(&text) else {
+                continue;
+            };
+            let Some(costs) = v.get("edge_costs").and_then(|c| c.as_array()) else {
+                continue;
+            };
+            if costs.is_empty() {
+                continue;
+            }
+            // fact id -> the pair of places the edge fact joins.
+            let mut legs: std::collections::HashMap<&str, (String, String)> =
+                std::collections::HashMap::new();
+            for fact in v
+                .get("facts")
+                .and_then(|f| f.as_array())
+                .into_iter()
+                .flatten()
+            {
+                let typed = fact.get("typed");
+                let subject = typed
+                    .and_then(|t| t.get("subject"))
+                    .and_then(|s| s.as_str());
+                let object = typed
+                    .and_then(|t| t.get("object"))
+                    .and_then(|o| o.get("id"))
+                    .and_then(|i| i.as_str());
+                if let (Some(id), Some(s), Some(o)) = (
+                    fact.get("fact_id").and_then(|i| i.as_str()),
+                    subject,
+                    object,
+                ) {
+                    legs.insert(id, (s.to_string(), o.to_string()));
+                }
+            }
+            // Keyed by the UNORDERED pair, valued by each direction's number.
+            let mut priced: std::collections::HashMap<(String, String), Vec<i64>> =
+                std::collections::HashMap::new();
+            for c in costs {
+                let Some(id) = c.get("fact_id").and_then(|i| i.as_str()) else {
+                    continue;
+                };
+                let Some((a, b)) = legs.get(id) else { continue };
+                let Some(n) = c.get("n").and_then(serde_json::Value::as_i64) else {
+                    continue;
+                };
+                let key = if a <= b {
+                    (a.clone(), b.clone())
+                } else {
+                    (b.clone(), a.clone())
+                };
+                priced.entry(key).or_default().push(n);
+            }
+            if priced.is_empty() {
+                continue; // unmeasurable, and that is not the same as symmetric
+            }
+            let name = path.display().to_string();
+            if priced
+                .values()
+                .any(|ns| ns.len() > 1 && ns.iter().any(|n| n != &ns[0]))
+            {
+                asymmetric.push(name);
+            } else {
+                symmetric.push(name);
+            }
+        }
+    }
+    let (mut a, mut s) = (Vec::new(), Vec::new());
+    walk(&root.join("claudedocs"), &mut a, &mut s);
+    a.sort();
+    s.sort();
+    (a, s)
+}
+
 /// Recorded run trees split by whether the author dropped to a hand-written
 /// shell script, which is what "file-only authoring" is a claim ABOUT.
 fn authoring_mode_census() -> (Vec<String>, Vec<String>) {
@@ -2879,6 +2980,7 @@ fn the_contract_states_no_undated_census_of_its_own_corpora() {
     // rather than letting it pass on a tree with nothing left to refute.
     let (undirected, directed) = transition_rule_census(&root);
     let (kind_omitted, kind_declared) = map_leg_kind_census(&root);
+    let (priced_by_direction, priced_one_way_only) = edge_cost_direction_census(&root);
     let (scripted, file_only) = authoring_mode_census();
     let axes = [
         PopulationAxis {
@@ -2894,6 +2996,13 @@ fn the_contract_states_no_undated_census_of_its_own_corpora() {
             left: &kind_omitted,
             right_label: "declared",
             right: &kind_declared,
+        },
+        PopulationAxis {
+            name: "cost-carrying corpora by direction-dependent pricing",
+            left_label: "prices a way by direction",
+            left: &priced_by_direction,
+            right_label: "prices no way by direction",
+            right: &priced_one_way_only,
         },
         PopulationAxis {
             name: "run trees by authoring mode",
@@ -2926,16 +3035,21 @@ fn the_contract_states_no_undated_census_of_its_own_corpora() {
          969). The tree recounts, and already refutes a universal on every axis \
          this contract has claimed about: {} undirected transition rules against \
          {} directed, {} map corpora omitting a leg kind against {} declaring \
-         one, {} hand-written scripts under run trees against {} authored files. \
-         First undirected witness: {}",
+         one, {} cost-carrying corpora pricing a way by direction against {} \
+         pricing none, {} hand-written scripts under run trees against {} \
+         authored files. First undirected witness: {}. First \
+         direction-priced witness: {}",
         claims.len(),
         claims.join(", "),
         undirected.len(),
         directed.len(),
         kind_omitted.len(),
         kind_declared.len(),
+        priced_by_direction.len(),
+        priced_one_way_only.len(),
         scripted.len(),
         file_only.len(),
         undirected.first().expect("checked non-empty"),
+        priced_by_direction.first().expect("checked non-empty"),
     );
 }
