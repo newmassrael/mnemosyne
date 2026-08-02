@@ -7,11 +7,13 @@
   "inputs": [
     {
       "path": "run/author/sections.json",
-      "role": "replay-input"
+      "role": "replay-input",
+      "sha256": "b6638bbd427a031de448e4ed5c5857084aa396ddd739c8985a721295d4cc4f6f"
     },
     {
       "path": "run/author/facts.json",
-      "role": "replay-input"
+      "role": "replay-input",
+      "sha256": "e93593173044cc6b59eea885512ec6117d98fbf418280f6577bab7e4f066dca5"
     }
   ],
   "replays": [

@@ -7,27 +7,33 @@
   "inputs": [
     {
       "path": "run/game/sections.json",
-      "role": "replay-input"
+      "role": "replay-input",
+      "sha256": "a65cbc97f8ab9e1176178ed4f5b5d962a80d28b212296e3c9b1aaba5d89f8b10"
     },
     {
       "path": "render-reextracted-facts.json",
-      "role": "replay-input"
+      "role": "replay-input",
+      "sha256": "4183188e4a3f9829c8767ac836344b2572a58358c448b73d877f2ca47def5aa9"
     },
     {
       "path": "run/game/facts.json",
-      "role": "replay-input"
+      "role": "replay-input",
+      "sha256": "cdbea4a560fcc9afffa13a76c2795c6f5714ae8300acf803cf010e31f614bf3a"
     },
     {
       "path": "pin2-probes/probe-exclusive.json",
-      "role": "replay-input"
+      "role": "replay-input",
+      "sha256": "531cb1c079aadcc84bed2394fb2bda90a08987ddbf89a6cd88b34387e4d915df"
     },
     {
       "path": "pin2-probes/probe-interval.json",
-      "role": "replay-input"
+      "role": "replay-input",
+      "sha256": "e649226f3290a3379e0e3886727addfeb9550ba7745ef0b6d462b10b6533add2"
     },
     {
       "path": "pin2-probes/probe-transition.json",
-      "role": "replay-input"
+      "role": "replay-input",
+      "sha256": "3cb3a3c6aaccfbe93955ee7070328a0af5abba91cca869b48865912186ffb0be"
     }
   ],
   "replays": [

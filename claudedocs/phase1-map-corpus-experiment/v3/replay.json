@@ -7,35 +7,63 @@
   "inputs": [
     {
       "path": "run/stage-a/sections.json",
-      "role": "replay-input"
+      "role": "replay-input",
+      "sha256": "e8beaf9ba905d595fb1f3fa2425446821f9aabe36fd6cc0d1e2cb97bd737471b"
     },
     {
       "path": "run/stage-a/facts.json",
-      "role": "replay-input"
+      "role": "replay-input",
+      "sha256": "521603d7c8647cca83390cdca83b6dc4ed85c4a5a6eff8ee99d6904d88e3f9f4"
     },
     {
       "path": "run/stage-b/sections.json",
-      "role": "replay-input"
+      "role": "replay-input",
+      "sha256": "7de38f475788074a2ca1492c17fa9c64d5e4ca63289e603ac234d93f104f2a95"
     },
     {
       "path": "run/stage-b/facts.json",
-      "role": "replay-input"
+      "role": "replay-input",
+      "sha256": "7d6710b65177c7633d488f669aff3529ed202c6bc0530051cfd6e12ef2e5f1e7"
     },
     {
       "path": "run/stage-a-first-submission/sections.json",
-      "role": "raw-agent-output"
+      "role": "raw-agent-output",
+      "sha256": "e8beaf9ba905d595fb1f3fa2425446821f9aabe36fd6cc0d1e2cb97bd737471b"
     },
     {
       "path": "run/stage-a-first-submission/facts.json",
-      "role": "raw-agent-output"
+      "role": "raw-agent-output",
+      "sha256": "521603d7c8647cca83390cdca83b6dc4ed85c4a5a6eff8ee99d6904d88e3f9f4"
     },
     {
       "path": "run/stage-b-first-submission/sections.json",
-      "role": "raw-agent-output"
+      "role": "raw-agent-output",
+      "sha256": "7de38f475788074a2ca1492c17fa9c64d5e4ca63289e603ac234d93f104f2a95"
     },
     {
       "path": "run/stage-b-first-submission/facts.json",
-      "role": "raw-agent-output"
+      "role": "raw-agent-output",
+      "sha256": "7d6710b65177c7633d488f669aff3529ed202c6bc0530051cfd6e12ef2e5f1e7"
+    },
+    {
+      "path": "run/stage-a/rules.json",
+      "role": "raw-agent-output",
+      "sha256": "05ca51aa6561bdf11b015fc5c8c8e11ff934ad24dcb37dc8564f4bbd9055d584"
+    },
+    {
+      "path": "run/stage-b/narrative-rules.json",
+      "role": "raw-agent-output",
+      "sha256": "2307ea6dcd1e2b89e200f2996f1c0e1a225cb5eddb5f228b6db4518002728407"
+    },
+    {
+      "path": "run/stage-a-first-submission/rules.json",
+      "role": "raw-agent-output",
+      "sha256": "05ca51aa6561bdf11b015fc5c8c8e11ff934ad24dcb37dc8564f4bbd9055d584"
+    },
+    {
+      "path": "run/stage-b-first-submission/narrative-rules.json",
+      "role": "raw-agent-output",
+      "sha256": "2307ea6dcd1e2b89e200f2996f1c0e1a225cb5eddb5f228b6db4518002728407"
     }
   ],
   "replays": [

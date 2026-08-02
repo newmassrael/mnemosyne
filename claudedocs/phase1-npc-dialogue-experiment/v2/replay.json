@@ -7,11 +7,13 @@
   "inputs": [
     {
       "path": "run/extract/sections.json",
-      "role": "replay-input"
+      "role": "replay-input",
+      "sha256": "4a190d43f03d67596826f955c503ca501dbf8f9b1e3364ce91f27dad53712dc9"
     },
     {
       "path": "run/extract/facts.json",
-      "role": "replay-input"
+      "role": "replay-input",
+      "sha256": "0f9e5ee38fcfbcf50532606a7afc3867c105cc47105983498587b9370c22a3e8"
     }
   ],
   "replays": [

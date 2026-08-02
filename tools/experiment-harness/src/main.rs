@@ -34,6 +34,7 @@ USAGE:
   experiment-harness cast-sustainment --facts <facts.json> --order <order.json> [--ground-frame <id>] [--principals <n>] [--min-active <n>] [--min-nonprincipal <n>] [--min-frames <n>]
   experiment-harness project-world --store <reextracted.atomic.json> --world <name> --out <store.json> [--main-branch <id>]
   experiment-harness splice --base <manuscript.md> --out <md> --replace <scene.md> [--replace <scene.md>...]
+  experiment-harness stamp-inputs --record <replay.json> [--record <replay.json>...]
 
 assemble
   Render a world's scenes, in playthrough order, into a blind reading copy.
@@ -68,6 +69,13 @@ splice
   Replace named `## sc-NN` scene blocks in --base with the re-rendered --replace
   files (one scene each), leaving every other byte untouched. An unmatched scene id
   is a hard error — the localization of a targeted repair is mechanically guaranteed.
+
+stamp-inputs
+  Write the sha256 of every input a kit's replay record declares INTO that record,
+  once. An input that already carries a digest is re-checked, never rewritten: a
+  match is counted, a mismatch is a hard error naming both values. Run it when a
+  kit lands, so an input no replay step feeds — a frozen first submission, a
+  sealed self-report, an authored rules file — is pinned by something a gate reads.
 ";
 
 fn main() -> ExitCode {
@@ -93,6 +101,7 @@ fn run(args: &[String]) -> HResult<ExitCode> {
         "cast-sustainment" => cmd_cast_sustainment(&args[1..]),
         "project-world" => cmd_project_world(&args[1..]),
         "splice" => cmd_splice(&args[1..]),
+        "stamp-inputs" => cmd_stamp_inputs(&args[1..]),
         "-h" | "--help" | "help" => {
             print!("{USAGE}");
             Ok(ExitCode::SUCCESS)
@@ -152,6 +161,31 @@ fn cmd_verify_seal(args: &[String]) -> HResult<ExitCode> {
         eprintln!("  expected {}", expected.trim().to_lowercase());
         Ok(ExitCode::from(1))
     }
+}
+
+fn cmd_stamp_inputs(args: &[String]) -> HResult<ExitCode> {
+    let mut p = Flags::new(args);
+    let records = p.take_all("--record");
+    p.finish()?;
+    if records.is_empty() {
+        return Err("stamp-inputs needs at least one --record <replay.json>".to_string());
+    }
+
+    let mut sealed = 0usize;
+    let mut confirmed = 0usize;
+    for record in &records {
+        let result = seal::stamp_inputs(record)?;
+        for path in &result.sealed {
+            println!("sealed {record} :: {path}");
+        }
+        sealed += result.sealed.len();
+        confirmed += result.confirmed;
+    }
+    eprintln!(
+        "{} record(s): {sealed} input(s) newly sealed, {confirmed} re-checked and unchanged",
+        records.len()
+    );
+    Ok(ExitCode::SUCCESS)
 }
 
 fn cmd_cast_sustainment(args: &[String]) -> HResult<ExitCode> {

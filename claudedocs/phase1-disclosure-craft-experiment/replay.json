@@ -7,55 +7,68 @@
   "inputs": [
     {
       "path": "run/extract/A-sections.json",
-      "role": "replay-input"
+      "role": "replay-input",
+      "sha256": "d0766371affc60edf2b63df851a0cd20fca2eb47f3764f624ce17f40dd673362"
     },
     {
       "path": "run/extract/A-facts.json",
-      "role": "replay-input"
+      "role": "replay-input",
+      "sha256": "17bd00b4ad7c881cbf01af48df2c757c886df4d8fb4e1f43991ea1a119f2d1bf"
     },
     {
       "path": "run/extract/A-facts-add.json",
-      "role": "replay-input"
+      "role": "replay-input",
+      "sha256": "7d29aa6cc0bdf497fbb1bd4e8808e53184d3b80a3a127b08608f4b12e810b0b5"
     },
     {
       "path": "run/extract/A-typing-proposals.json",
-      "role": "replay-input"
+      "role": "replay-input",
+      "sha256": "e0a80a049dd3f38f6bdce8586142e1be5785b67ba675d502dbb47995418e708a"
     },
     {
       "path": "run/extract/A-edge-proposals.json",
-      "role": "replay-input"
+      "role": "replay-input",
+      "sha256": "11cad237d6ce384d2d8b163024d217481146d936d0c1bdf6cfa45a08408936f5"
     },
     {
       "path": "run/extract/A-conflict-proposals.json",
-      "role": "replay-input"
+      "role": "replay-input",
+      "sha256": "3f45b6838e73181a8b2936f09003765ef901223d67ff68dcae655e918b186663"
     },
     {
       "path": "run/extract/B-sections.json",
-      "role": "replay-input"
+      "role": "replay-input",
+      "sha256": "f5ecdff79a907bafc60f266d26c348a79102baab7b7849377f7b739f5dca9af6"
     },
     {
       "path": "run/extract/B-facts.json",
-      "role": "replay-input"
+      "role": "replay-input",
+      "sha256": "8e12defc22b54f6885cdbeb451720014ca59fcb58e5dffd753c874ee73059a04"
     },
     {
       "path": "run/extract/B-facts-add.json",
-      "role": "replay-input"
+      "role": "replay-input",
+      "sha256": "a0b60243c736837d731b435d06a8cd0db1beb569b66a35ba9d24bbf4b6042bcd"
     },
     {
       "path": "run/extract/B-facts-payoff.json",
-      "role": "replay-input"
+      "role": "replay-input",
+      "sha256": "733bfb1ba48f5ce5b2db61953598b169023b5e84c410c1962efd776ac391ab57"
     },
     {
       "path": "run/extract/B-typing-proposals.json",
-      "role": "replay-input"
+      "role": "replay-input",
+      "sha256": "c8ac24a4192720179704421dfb2fb489b11c43de589e31381058d51c8648d799"
     },
     {
       "path": "run/extract/B-edge-proposals.json",
-      "role": "replay-input"
+      "role": "replay-input",
+      "sha256": "39a773fab610c0c8c3951a0a538594d891cf84b24f4179e674193128fc979527"
     },
     {
       "path": "run/extract/B-conflict-proposals.json",
-      "role": "replay-input"
+      "role": "replay-input",
+      "sha256": "d524a382bad9b647258b7fe58597a2be0592f997dbfb3c449c57826a943fbfd8"
     }
   ],
   "replays": [

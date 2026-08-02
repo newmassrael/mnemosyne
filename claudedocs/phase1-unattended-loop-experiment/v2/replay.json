@@ -7,11 +7,13 @@
   "inputs": [
     {
       "path": "run/game/sections.json",
-      "role": "replay-input"
+      "role": "replay-input",
+      "sha256": "33ebbf26211d4cb420c9769e62b792d95f1b607e622949487ccaf5937a6bcfbe"
     },
     {
       "path": "run/game/facts.json",
-      "role": "replay-input"
+      "role": "replay-input",
+      "sha256": "c035db52bf27586bba45c0a09064b9a9a208e6312e3cab3339486f8cf7cbc64a"
     }
   ],
   "replays": [

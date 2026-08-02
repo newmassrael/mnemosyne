@@ -7,35 +7,43 @@
   "inputs": [
     {
       "path": "run/author/sections.json",
-      "role": "replay-input"
+      "role": "replay-input",
+      "sha256": "8b23a964906cf5a3aff4ecb21ec98d48a6af8fca0da3acc23974b4272fcf8c00"
     },
     {
       "path": "run/author/facts.json",
-      "role": "replay-input"
+      "role": "replay-input",
+      "sha256": "32b1c187b5a6b3e7f0d913647753e2b54c7df6b8f496abfab3c3749efed5002c"
     },
     {
       "path": "run/extract-tsukuru/sections.json",
-      "role": "raw-agent-output"
+      "role": "raw-agent-output",
+      "sha256": "106097fc54913ff243f662bb8dc4faeb03c1aabdd311bc4149bee16a3d11aa59"
     },
     {
       "path": "run/extract-tsukuru/facts.json",
-      "role": "raw-agent-output"
+      "role": "raw-agent-output",
+      "sha256": "c9ad46eb78393d493524b700b4f690ad4ca960adb6f04ee4ebb7878875395da9"
     },
     {
       "path": "run/extract-tsukuru/sections.norm.json",
-      "role": "replay-input"
+      "role": "replay-input",
+      "sha256": "d7d9bc72cbf3d2868be6d342477f26269bb7ed4fbeaf210ee3a84b717e1aef89"
     },
     {
       "path": "run/extract-tsukuru/facts.norm.json",
-      "role": "replay-input"
+      "role": "replay-input",
+      "sha256": "59992424b25969998c8d57792210cb68ce01baa71deb1c736fd52e97688e1f18"
     },
     {
       "path": "run/extract-vn/sections.json",
-      "role": "replay-input"
+      "role": "replay-input",
+      "sha256": "dd12f00ba179d3dd4a8bf3420b479664433a628af5e25664016ca5100dbc41eb"
     },
     {
       "path": "run/extract-vn/facts.json",
-      "role": "replay-input"
+      "role": "replay-input",
+      "sha256": "b9ca24ba7d5366fa7cc77c354965dc17f27a0281d238f0da69062869094b4dc6"
     }
   ],
   "replays": [

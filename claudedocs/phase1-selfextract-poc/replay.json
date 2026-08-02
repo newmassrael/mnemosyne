@@ -7,15 +7,18 @@
   "inputs": [
     {
       "path": "section-manifest.json",
-      "role": "replay-input"
+      "role": "replay-input",
+      "sha256": "514bdd468bdc0971b39797d88c77ec4fe3bbf8a74ff09ec8ccdf1cfcb25a2bb7"
     },
     {
       "path": "facts-extracted.json",
-      "role": "replay-input"
+      "role": "replay-input",
+      "sha256": "a7716507e41e031376aa4a289beddc7b1ce08cd4b63a82a282001ba4ad629545"
     },
     {
       "path": "facts-inferred.json",
-      "role": "replay-input"
+      "role": "replay-input",
+      "sha256": "ef510693074d3a70cfe03030f67e87563039f116fd1bf7c5c8657dbec9ba9d9c"
     }
   ],
   "replays": [

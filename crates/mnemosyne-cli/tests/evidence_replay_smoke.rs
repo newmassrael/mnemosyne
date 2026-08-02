@@ -290,6 +290,18 @@ struct Input {
     unit: String,
     path: String,
     role: String,
+    /// sha256 of the declared bytes, written once by `experiment-harness
+    /// stamp-inputs` when the kit lands (Round 952).
+    ///
+    /// Required on EVERY input, including the ones a replay step feeds. Those
+    /// are already pinned transitively — change a facts manifest and the store
+    /// it builds stops matching `expected_store_sha256` — but that pin is only
+    /// paid in the twelve-minute replay job, and it says nothing at all about
+    /// an input NO step feeds. Every `raw-agent-output` is in that second
+    /// class: the frozen first submissions and the sealed self-reports, which
+    /// the R469 contamination bound rests on, were pinned by nothing until this
+    /// field existed. One rule with no exceptions beats two with a seam.
+    sha256: String,
 }
 
 struct Declarations {
@@ -331,10 +343,21 @@ fn declarations() -> Declarations {
             .as_array()
             .unwrap_or_else(|| panic!("{file} declares no inputs"))
         {
+            let path = i["path"].as_str().expect("input path").to_string();
+            let sha256 = i["sha256"]
+                .as_str()
+                .unwrap_or_else(|| {
+                    panic!(
+                        "{file}: input {path} declares no sha256 — run \
+                         `experiment-harness stamp-inputs --record {file}`"
+                    )
+                })
+                .to_string();
             inputs.push(Input {
                 unit: unit.clone(),
-                path: i["path"].as_str().expect("input path").to_string(),
+                path,
                 role: i["role"].as_str().expect("input role").to_string(),
+                sha256,
             });
         }
         for r in doc["replays"]
@@ -526,6 +549,52 @@ fn every_declared_revision_resolves_and_derived_ones_still_match() {
         "no derived pin was re-derived — the comparison above ran on nothing"
     );
     println!("{} replays, {checked_derived} re-derived", d.replays.len());
+}
+
+/// Every declared input still hashes to the digest recorded when it landed.
+///
+/// THE FREEZE WAS AN INSTRUCTION UNTIL THIS TEST. A kit's `deterministic_pins`
+/// is a pre-committed claim about what a BLIND AUTHOR produced, and the R469
+/// contamination bound forbids editing that output until it suits a later tool
+/// — but the only thing that could detect such an edit was
+/// `expected_store_sha256`, which covers what a replay step FEEDS. Everything
+/// else the record declares was pinned by nobody: the frozen first submissions,
+/// the sealed self-reports, and — Round 951 — the authored `rules.json` that is
+/// the map half of both map-declaring corpora and was not even declared. Round
+/// 943 wrote the same sentence about the self-report seal one axis over: a rule
+/// nobody can check is a backup, not a seal.
+///
+/// The digest is written ONCE, by `experiment-harness stamp-inputs`, which
+/// refuses to overwrite one that is already there. A tool that re-sealed on
+/// demand would let any later edit launder itself, and this gate would then be
+/// asserting that the evidence equals whatever the evidence currently is.
+#[test]
+fn every_declared_input_still_hashes_to_its_sealed_digest() {
+    let root = repo_root();
+    let d = declarations();
+    assert!(
+        !d.inputs.is_empty(),
+        "no inputs declared at all — this gate would pass vacuously"
+    );
+
+    let mut by_role: BTreeMap<&str, usize> = BTreeMap::new();
+    for i in &d.inputs {
+        let path = normalize(&format!("{}/{}", i.unit, i.path));
+        let bytes = std::fs::read(root.join(&path))
+            .unwrap_or_else(|e| panic!("{}: cannot read declared input {path}: {e}", i.unit));
+        let computed = mnemosyne_core::sha256_hex(&bytes);
+        assert_eq!(
+            computed, i.sha256,
+            "{path} no longer hashes to the digest sealed with it. If the \
+             evidence was edited, that is the R469 bound broken and the edit is \
+             what has to be undone — not this digest."
+        );
+        *by_role.entry(i.role.as_str()).or_default() += 1;
+    }
+    println!(
+        "{} declared input(s) still sealed: {by_role:?}",
+        d.inputs.len()
+    );
 }
 
 /// A manifest the record marks as raw agent output is NOT a replay input. The

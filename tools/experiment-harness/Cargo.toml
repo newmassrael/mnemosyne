@@ -30,5 +30,9 @@ path = "src/main.rs"
 
 [dependencies]
 serde = { version = "1", features = ["derive"] }
-serde_json = "1"
+# `preserve_order` so `stamp-inputs` rewrites a replay record with its keys in
+# the order a person wrote them. Without it every stamped record would come back
+# alphabetised, and a diff that reorders the whole file hides the one line the
+# change actually added.
+serde_json = { version = "1", features = ["preserve_order"] }
 sha2 = "0.10"

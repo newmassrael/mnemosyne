@@ -7,11 +7,13 @@
   "inputs": [
     {
       "path": "section-manifest.json",
-      "role": "replay-input"
+      "role": "replay-input",
+      "sha256": "75757c7f65b8e641a8fda26ad38c3e759e57dfa311c84db343f8f2d5430c679e"
     },
     {
       "path": "facts-manifest.json",
-      "role": "replay-input"
+      "role": "replay-input",
+      "sha256": "316e00e2da467f7ac8efcfc535e9627137dedb6f77fd41a82a4096afa4260b75"
     }
   ],
   "replays": [

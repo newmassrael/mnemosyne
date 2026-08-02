@@ -2,40 +2,68 @@
   "schema": "kit-replay/v2",
   "revision_provenance": "declared-at-run",
   "declared_in": "Round 910",
-  "derivation": "Arm B of the map-corpus A/B. Same frozen brief and protocol as v1; the ONLY variable is contract.txt, regenerated from describe-schema after R906/R908/R909. The revision is the commit that lands these inputs, recorded at the run \u2014 a self-referential pin costs a second commit by construction, exactly as v1 recorded.",
+  "derivation": "Arm B of the map-corpus A/B. Same frozen brief and protocol as v1; the ONLY variable is contract.txt, regenerated from describe-schema after R906/R908/R909. The revision is the commit that lands these inputs, recorded at the run — a self-referential pin costs a second commit by construction, exactly as v1 recorded.",
   "note": "Both first submissions imported clean (exit 0), so the -first-submission trees are byte-identical to the iterated ones: there was no iteration, and that is arm B's E2 result. It also explains why this kit declares two more inputs than v1's: arm A's first-submission sections.json was a malformed object and classified as no verb's input, while arm B's are valid Sections manifests and therefore must be declared.",
   "inputs": [
     {
       "path": "run/stage-a/sections.json",
-      "role": "replay-input"
+      "role": "replay-input",
+      "sha256": "8c4c8b84c8611b0e20afb27d56ae27c3ec9a64b5a8e7595f4043c6284a6be3cf"
     },
     {
       "path": "run/stage-a/facts.json",
-      "role": "replay-input"
+      "role": "replay-input",
+      "sha256": "2f160df657d10654ba01d8c484202bf5146a29f05e686df1ae886b2ff95a67ec"
     },
     {
       "path": "run/stage-b/sections.json",
-      "role": "replay-input"
+      "role": "replay-input",
+      "sha256": "db7dba3297fbd45eaa5327c246335f24f3c5d5d87ed3fd40fa20f9b2e00ca69b"
     },
     {
       "path": "run/stage-b/facts.json",
-      "role": "replay-input"
+      "role": "replay-input",
+      "sha256": "e3f82be3bd2d42149911c0bb9250a9f895b98c53434f7cda5a89ec08fd0377d9"
     },
     {
       "path": "run/stage-a-first-submission/facts.json",
-      "role": "raw-agent-output"
+      "role": "raw-agent-output",
+      "sha256": "2f160df657d10654ba01d8c484202bf5146a29f05e686df1ae886b2ff95a67ec"
     },
     {
       "path": "run/stage-b-first-submission/facts.json",
-      "role": "raw-agent-output"
+      "role": "raw-agent-output",
+      "sha256": "e3f82be3bd2d42149911c0bb9250a9f895b98c53434f7cda5a89ec08fd0377d9"
     },
     {
       "path": "run/stage-a-first-submission/sections.json",
-      "role": "raw-agent-output"
+      "role": "raw-agent-output",
+      "sha256": "8c4c8b84c8611b0e20afb27d56ae27c3ec9a64b5a8e7595f4043c6284a6be3cf"
     },
     {
       "path": "run/stage-b-first-submission/sections.json",
-      "role": "raw-agent-output"
+      "role": "raw-agent-output",
+      "sha256": "db7dba3297fbd45eaa5327c246335f24f3c5d5d87ed3fd40fa20f9b2e00ca69b"
+    },
+    {
+      "path": "run/stage-a/rules.json",
+      "role": "raw-agent-output",
+      "sha256": "33dcf58e6c2611508c0d23e4790851047b638a9c1adfb9d19ef52b8aaee403f5"
+    },
+    {
+      "path": "run/stage-b/rules.json",
+      "role": "raw-agent-output",
+      "sha256": "2ace5ce790c1de8533f29bae8699a564e96fa4880d31a38c79f8b7c171c5eb46"
+    },
+    {
+      "path": "run/stage-a-first-submission/rules.json",
+      "role": "raw-agent-output",
+      "sha256": "33dcf58e6c2611508c0d23e4790851047b638a9c1adfb9d19ef52b8aaee403f5"
+    },
+    {
+      "path": "run/stage-b-first-submission/rules.json",
+      "role": "raw-agent-output",
+      "sha256": "2ace5ce790c1de8533f29bae8699a564e96fa4880d31a38c79f8b7c171c5eb46"
     }
   ],
   "replays": [

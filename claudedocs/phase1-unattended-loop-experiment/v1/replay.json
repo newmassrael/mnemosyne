@@ -7,19 +7,23 @@
   "inputs": [
     {
       "path": "run/game/sections.json",
-      "role": "replay-input"
+      "role": "replay-input",
+      "sha256": "5a3556ad3d624a1ec6123d4250bc4f48540758a0630425758e54dad22a919f8a"
     },
     {
       "path": "run/game/facts.json",
-      "role": "replay-input"
+      "role": "replay-input",
+      "sha256": "8b05b93db70d29c36158b2a0ab19db367007bb472f4ac151aaa0b64dc574ed40"
     },
     {
       "path": "run/extract/reextracted.facts.json",
-      "role": "raw-agent-output"
+      "role": "raw-agent-output",
+      "sha256": "4176536d32df3f5afd4e8ec1633664a2f8b5684e6c23348b064102b05f2b183c"
     },
     {
       "path": "run/extract/reextracted.manifest.json",
-      "role": "replay-input"
+      "role": "replay-input",
+      "sha256": "7d1f42fdb36a5d9951258e278bb10cd5452c3b7a269ae559df5b988a5a9e759e"
     }
   ],
   "replays": [
