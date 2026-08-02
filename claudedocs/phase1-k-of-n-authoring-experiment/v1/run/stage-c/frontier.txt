@@ -1,0 +1,10 @@
+=== authoring frontier — telling winter-house — 0 gap(s) ===
+zero-fact scenes: none
+unplaced scenes: none
+unordered scenes: none
+dangling setups: none
+unresolved quests: none
+never-planned disclosures: none
+disclosures seated before truth: none
+unconnected places [house-movement]: none
+branch density [main]: 63 owned fact(s) over 15 traversed scene(s) = 4.20

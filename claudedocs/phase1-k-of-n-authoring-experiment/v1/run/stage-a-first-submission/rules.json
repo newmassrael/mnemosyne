@@ -1,0 +1,33 @@
+{
+  "schema": "narrative-rules/v1",
+  "comment": "Saltgate Post. One place per person; every move follows a way that the store itself declares; one holder per token; one state of the river at a time.",
+  "rules": [
+    {
+      "id": "one-place-per-person",
+      "predicate": "at",
+      "class": "exclusive",
+      "per": "subject",
+      "containment": "contains"
+    },
+    {
+      "id": "moves-follow-the-ways",
+      "predicate": "at",
+      "class": "transition",
+      "adjacency": "adjacent",
+      "undirected": true,
+      "containment": "contains"
+    },
+    {
+      "id": "one-holder-per-token",
+      "predicate": "holds",
+      "class": "exclusive",
+      "per": "object"
+    },
+    {
+      "id": "one-state-of-the-river",
+      "predicate": "water_state",
+      "class": "exclusive",
+      "per": "subject"
+    }
+  ]
+}

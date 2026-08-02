@@ -1,0 +1,2 @@
+=== disclosure coverage — telling `winter-house` — 63 fact(s) ===
+disclosed=56 hidden_by_design=7 never_planned=0

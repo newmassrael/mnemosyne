@@ -1,0 +1,5 @@
+[workspace]
+[continuity]
+canon_order_path = "order.json"
+rules_path = "rules.json"
+interval_severity = "reject"

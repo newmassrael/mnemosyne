@@ -1,0 +1,35 @@
+{
+  "schema": "narrative-rules/v1",
+  "comment": "Ashfell Post. The map is the `adjacent` facts, scoped by the `contains` facts; the ways that are SHUT are the edge_guards in facts.json, which this file does not and cannot evaluate.",
+  "rules": [
+    {
+      "id": "one-place-per-person",
+      "predicate": "at",
+      "class": "exclusive",
+      "per": "subject",
+      "containment": "contains"
+    },
+    {
+      "id": "one-holder-per-thing",
+      "predicate": "holds",
+      "class": "exclusive",
+      "per": "object"
+    },
+    {
+      "id": "movement-follows-the-ways",
+      "predicate": "at",
+      "class": "transition",
+      "adjacency": "adjacent",
+      "undirected": true,
+      "containment": "contains"
+    },
+    {
+      "id": "lock-opens-short-of-every-seal",
+      "predicate": "seals_cut",
+      "class": "interval",
+      "right": "seals_required",
+      "op": "ge",
+      "bound": { "const": 1 }
+    }
+  ]
+}

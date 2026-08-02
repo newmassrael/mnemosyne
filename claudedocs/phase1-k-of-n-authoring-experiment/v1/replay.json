@@ -1,0 +1,307 @@
+{
+  "schema": "kit-replay/v3",
+  "revision_provenance": "declared-at-run",
+  "derivation": "The revision is the commit that lands these inputs, recorded at the run rather than reconstructed after it. A self-referential pin costs a second commit by construction: a replay's revision must name a tree that already HOLDS its inputs, and the Round 952/953 declaration gates require the record to land WITH the corpus, so the revision is corrected to the corpus commit in the immediately following commit. Both machine-checked literals here were read out of `crates/mnemosyne-cli/tests/evidence_replay_smoke.rs`, where `REPLAY_SCHEMAS` and `PROVENANCE_KINDS` panic on an unknown value (the Round 944 rule).",
+  "note": "Re-checking runs the declared revision against these manifests UNCHANGED. All three authors' first submissions imported green, so each stage's working manifest is byte-identical to its frozen first submission and no file was ever edited — by its author or by the orchestrator. The frozen copies are declared separately anyway, because what makes them evidence is that they were sealed before any output was handed back, not that they differ.",
+  "inputs": [
+    {
+      "path": "run/stage-a/sections.json",
+      "role": "replay-input",
+      "sha256": "c2cf4550fa520192c17672ede59d9759d96ecbd6a5a7752595a6d1e1a7a9e29b"
+    },
+    {
+      "path": "run/stage-a/facts.json",
+      "role": "replay-input",
+      "sha256": "fac8dea2bd73e0a101ba18ed4c5fd473e75960bd3cea4b15f8edd33075864714"
+    },
+    {
+      "path": "run/stage-b/sections.json",
+      "role": "replay-input",
+      "sha256": "c9d20b7a493a6f82916357465557886d3facc0f85f47ce0662a80b4c909dc701"
+    },
+    {
+      "path": "run/stage-b/facts.json",
+      "role": "replay-input",
+      "sha256": "5aac5c3a6b2f9233b640e6ddc32acde0a371a305ae9eea9adeaa3d158b8bbd8a"
+    },
+    {
+      "path": "run/stage-c/sections.json",
+      "role": "replay-input",
+      "sha256": "887556f173ff8a7366045761f4adfc8fadb30e6039be7a233f551222a6304a44"
+    },
+    {
+      "path": "run/stage-c/facts.json",
+      "role": "replay-input",
+      "sha256": "23d8e582fbc547d56bcc9496f35618b7b5652558af0725005c63a0cb4bb3e279"
+    },
+    {
+      "path": "run/stage-a-first-submission/sections.json",
+      "role": "raw-agent-output",
+      "sha256": "c2cf4550fa520192c17672ede59d9759d96ecbd6a5a7752595a6d1e1a7a9e29b"
+    },
+    {
+      "path": "run/stage-a-first-submission/facts.json",
+      "role": "raw-agent-output",
+      "sha256": "fac8dea2bd73e0a101ba18ed4c5fd473e75960bd3cea4b15f8edd33075864714"
+    },
+    {
+      "path": "run/stage-a-first-submission/rules.json",
+      "role": "raw-agent-output",
+      "sha256": "7b102da6afe82001c67bd96edf7cdbf19035895558e24ea45fb2e5d1c84d8112"
+    },
+    {
+      "path": "run/stage-a-first-submission/order.json",
+      "role": "raw-agent-output",
+      "sha256": "c93e3760f83ed6099c031fe9518bcd0d85ca90d5f4a395de15c7530ae75b9290"
+    },
+    {
+      "path": "run/stage-a-first-submission/self-report.md",
+      "role": "raw-agent-output",
+      "sha256": "b64e61613293ed9109b46d5c54d44e29678d7177634c9135699224e0d1757b68"
+    },
+    {
+      "path": "run/stage-a/rules.json",
+      "role": "raw-agent-output",
+      "sha256": "7b102da6afe82001c67bd96edf7cdbf19035895558e24ea45fb2e5d1c84d8112"
+    },
+    {
+      "path": "run/stage-a/order.json",
+      "role": "raw-agent-output",
+      "sha256": "c93e3760f83ed6099c031fe9518bcd0d85ca90d5f4a395de15c7530ae75b9290"
+    },
+    {
+      "path": "run/stage-b-first-submission/sections.json",
+      "role": "raw-agent-output",
+      "sha256": "c9d20b7a493a6f82916357465557886d3facc0f85f47ce0662a80b4c909dc701"
+    },
+    {
+      "path": "run/stage-b-first-submission/facts.json",
+      "role": "raw-agent-output",
+      "sha256": "5aac5c3a6b2f9233b640e6ddc32acde0a371a305ae9eea9adeaa3d158b8bbd8a"
+    },
+    {
+      "path": "run/stage-b-first-submission/rules.json",
+      "role": "raw-agent-output",
+      "sha256": "ee5af3b8243c59e185bb54476d24a2e85d51e67b7532249ea05659da25f9f2c4"
+    },
+    {
+      "path": "run/stage-b-first-submission/order.json",
+      "role": "raw-agent-output",
+      "sha256": "d38347b9e9a8a256fa1341303b885a05e43aa3a533bd1b59cc1c61674dfd90f8"
+    },
+    {
+      "path": "run/stage-b-first-submission/self-report.md",
+      "role": "raw-agent-output",
+      "sha256": "0578e22a79b015a67efc0efac252daad3a06e904719baaba0d967b47fe212419"
+    },
+    {
+      "path": "run/stage-b/rules.json",
+      "role": "raw-agent-output",
+      "sha256": "ee5af3b8243c59e185bb54476d24a2e85d51e67b7532249ea05659da25f9f2c4"
+    },
+    {
+      "path": "run/stage-b/order.json",
+      "role": "raw-agent-output",
+      "sha256": "d38347b9e9a8a256fa1341303b885a05e43aa3a533bd1b59cc1c61674dfd90f8"
+    },
+    {
+      "path": "run/stage-c-first-submission/sections.json",
+      "role": "raw-agent-output",
+      "sha256": "887556f173ff8a7366045761f4adfc8fadb30e6039be7a233f551222a6304a44"
+    },
+    {
+      "path": "run/stage-c-first-submission/facts.json",
+      "role": "raw-agent-output",
+      "sha256": "23d8e582fbc547d56bcc9496f35618b7b5652558af0725005c63a0cb4bb3e279"
+    },
+    {
+      "path": "run/stage-c-first-submission/rules.json",
+      "role": "raw-agent-output",
+      "sha256": "65cab6f701f1be781bccfcdfd6c0a8bc5e1f802db167010e2c3b879b14cd04ed"
+    },
+    {
+      "path": "run/stage-c-first-submission/order.json",
+      "role": "raw-agent-output",
+      "sha256": "1350b49a81219e9e200321a876786a5a8b8d5bc075b617a9545782d1b24407e0"
+    },
+    {
+      "path": "run/stage-c-first-submission/self-report.md",
+      "role": "raw-agent-output",
+      "sha256": "d27c36e4f8e8f0d4cf6b68a44bf5ac757550ed9897d0e0be33863e4130251eaf"
+    },
+    {
+      "path": "run/stage-c/rules.json",
+      "role": "raw-agent-output",
+      "sha256": "65cab6f701f1be781bccfcdfd6c0a8bc5e1f802db167010e2c3b879b14cd04ed"
+    },
+    {
+      "path": "run/stage-c/order.json",
+      "role": "raw-agent-output",
+      "sha256": "1350b49a81219e9e200321a876786a5a8b8d5bc075b617a9545782d1b24407e0"
+    },
+    {
+      "path": "run/contract.txt",
+      "role": "run-artifact",
+      "sha256": "3da7c9569eb604aefaa20d130815a2313d4d03450d8d27d187b566911f57853f"
+    },
+    {
+      "path": "run/stage-a-first-submission/mnemosyne.toml",
+      "role": "run-artifact",
+      "sha256": "a850a6c3fef71633b41fd421a3a99192649f4afd65bcffc9e8389d4e7ac189db"
+    },
+    {
+      "path": "run/stage-a/first-import.log",
+      "role": "run-artifact",
+      "sha256": "1667600cb3f3914916a43c3ad024c2cbe171602506fd47472899d3abb620c861"
+    },
+    {
+      "path": "run/stage-a/frontier.txt",
+      "role": "run-artifact",
+      "sha256": "86829992b41c070a5ec0fe40a5c59502c407c23cb64b627c90f476cf357131c9"
+    },
+    {
+      "path": "run/stage-a/mnemosyne.toml",
+      "role": "run-artifact",
+      "sha256": "a850a6c3fef71633b41fd421a3a99192649f4afd65bcffc9e8389d4e7ac189db"
+    },
+    {
+      "path": "run/stage-a/self-report.md",
+      "role": "run-artifact",
+      "sha256": "b64e61613293ed9109b46d5c54d44e29678d7177634c9135699224e0d1757b68"
+    },
+    {
+      "path": "run/stage-a/transition-map.txt",
+      "role": "run-artifact",
+      "sha256": "ca7a40bf671ef88fdae75be42da986080b7543a656fdcd360fa4941ce9dbb68e"
+    },
+    {
+      "path": "run/stage-a/validate-continuity.txt",
+      "role": "run-artifact",
+      "sha256": "a848ff4a484af07f5db2d89c53e9dcd054bb57a0650a3dea80b744666ec1d14a"
+    },
+    {
+      "path": "run/stage-b-first-submission/mnemosyne.toml",
+      "role": "run-artifact",
+      "sha256": "b993e67319f1acd1c7074e8d2d1aae6070d4053f4c38dfe5208ad6db8084efc8"
+    },
+    {
+      "path": "run/stage-b/first-import.log",
+      "role": "run-artifact",
+      "sha256": "04d2c90dcf5df37f86f4c2e6b385c8ce227f5dd4260a772c67068e570304d472"
+    },
+    {
+      "path": "run/stage-b/frontier.txt",
+      "role": "run-artifact",
+      "sha256": "3bba2c785d496f92c7db584dcc434ba162c2e90dfc2aa133590a7790094e3b90"
+    },
+    {
+      "path": "run/stage-b/mnemosyne.toml",
+      "role": "run-artifact",
+      "sha256": "b993e67319f1acd1c7074e8d2d1aae6070d4053f4c38dfe5208ad6db8084efc8"
+    },
+    {
+      "path": "run/stage-b/self-report.md",
+      "role": "run-artifact",
+      "sha256": "0578e22a79b015a67efc0efac252daad3a06e904719baaba0d967b47fe212419"
+    },
+    {
+      "path": "run/stage-b/transition-map.txt",
+      "role": "run-artifact",
+      "sha256": "90a286d9ee1d4c59f28cfb4aa0b9542fb1c8d20b78b25244f6044c3b8a74cf59"
+    },
+    {
+      "path": "run/stage-b/validate-continuity.txt",
+      "role": "run-artifact",
+      "sha256": "0d89c231190b7c99db8721443de0d480213cd7cb3237bdd9607d18b1b532336e"
+    },
+    {
+      "path": "run/stage-c-first-submission/mnemosyne.toml",
+      "role": "run-artifact",
+      "sha256": "a850a6c3fef71633b41fd421a3a99192649f4afd65bcffc9e8389d4e7ac189db"
+    },
+    {
+      "path": "run/stage-c/disclosure-coverage.txt",
+      "role": "run-artifact",
+      "sha256": "ef378dfe6d1c812a66d49e3e10275f500d8b3c97236e3db247db357016912473"
+    },
+    {
+      "path": "run/stage-c/first-import.log",
+      "role": "run-artifact",
+      "sha256": "1049746ef4fe90a5eaece063a9470f05ba28739ae2394ecd6cb43176c90cefb1"
+    },
+    {
+      "path": "run/stage-c/frontier.txt",
+      "role": "run-artifact",
+      "sha256": "4cb38f3823be6e6ac8c7088d222624fcfeb4cca277f136705586d276b0b8f632"
+    },
+    {
+      "path": "run/stage-c/manuscript.txt",
+      "role": "run-artifact",
+      "sha256": "6f3cda32bd1c2e32d7e8edd5a287effeb24084e420a78b6290886dbf70517e1b"
+    },
+    {
+      "path": "run/stage-c/mnemosyne.toml",
+      "role": "run-artifact",
+      "sha256": "a850a6c3fef71633b41fd421a3a99192649f4afd65bcffc9e8389d4e7ac189db"
+    },
+    {
+      "path": "run/stage-c/self-report.md",
+      "role": "run-artifact",
+      "sha256": "d27c36e4f8e8f0d4cf6b68a44bf5ac757550ed9897d0e0be33863e4130251eaf"
+    },
+    {
+      "path": "run/stage-c/transition-map.txt",
+      "role": "run-artifact",
+      "sha256": "1b36256e3ceacf0fabee08c39ff92ff015d5115f9dc5a753df7e6387f678c435"
+    },
+    {
+      "path": "run/stage-c/validate-continuity.txt",
+      "role": "run-artifact",
+      "sha256": "b46da5b778f85eb03a078549e7d26df9f5cc5520e3d41d78191f1de2a7402cc4"
+    }
+  ],
+  "replays": [
+    {
+      "name": "stage-a-two-of-three-told-no-machinery",
+      "revision": "PENDING",
+      "steps": [
+        {
+          "verb": "import-sections",
+          "input": "run/stage-a/sections.json"
+        },
+        {
+          "verb": "import-facts",
+          "input": "run/stage-a/facts.json"
+        }
+      ]
+    },
+    {
+      "name": "stage-b-two-of-three-asked-in-fiction",
+      "revision": "PENDING",
+      "steps": [
+        {
+          "verb": "import-sections",
+          "input": "run/stage-b/sections.json"
+        },
+        {
+          "verb": "import-facts",
+          "input": "run/stage-b/facts.json"
+        }
+      ]
+    },
+    {
+      "name": "stage-c-second-of-three-on-the-disclosure-axis",
+      "revision": "PENDING",
+      "steps": [
+        {
+          "verb": "import-sections",
+          "input": "run/stage-c/sections.json"
+        },
+        {
+          "verb": "import-facts",
+          "input": "run/stage-c/facts.json"
+        }
+      ]
+    }
+  ]
+}

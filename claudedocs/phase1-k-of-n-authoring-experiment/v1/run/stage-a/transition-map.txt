@@ -1,0 +1,16 @@
+=== declared maps — 1 transition rule(s) ===
+map `moves-follow-the-ways` (adjacency `adjacent`, undirected): 12 node(s), 14 edge(s)
+  e-counting-hall -> e-strongroom 1 minute (f-way-counting-strongroom) [guard 2-of-3: f-seal-ready-hesper, f-seal-ready-orrin, f-seal-ready-vale]
+  e-counting-hall -> e-tally-office 1 minute (f-way-counting-tally) [guard all: f-key-ready-nissa]
+  e-gatehouse-yard -> e-market-square 3 minute (f-way-yard-market)
+  e-gatehouse-yard -> e-wardens-walk 4 minute (f-way-yard-walk)
+  e-market-square -> e-caravanserai 3 minute (f-way-market-caravanserai)
+  e-market-square -> e-counting-hall 3 minute (f-way-market-counting)
+  e-market-square -> e-weighbridge 2 minute (f-way-market-weighbridge)
+  e-outer-gate -> e-gatehouse-yard 2 minute (f-way-gate-yard)
+  e-river-wharf -> e-water-stair 6 minute (f-way-wharf-stair) [guard all: f-cond-low-water]
+  e-wardens-walk -> e-counting-hall 4 minute (f-way-walk-counting)
+  e-warehouse-row -> e-caravanserai 3 minute (f-way-warehouse-caravanserai)
+  e-warehouse-row -> e-river-wharf 4 minute (f-way-warehouse-wharf)
+  e-water-stair -> e-wardens-walk 5 minute (f-way-stair-walk)
+  e-weighbridge -> e-warehouse-row 2 minute (f-way-weighbridge-warehouse)

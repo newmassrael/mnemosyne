@@ -1,0 +1,17 @@
+=== declared maps — 1 transition rule(s) ===
+map `movement-follows-the-ways` (adjacency `adjacent`, undirected): 12 node(s), 15 edge(s)
+  pl-caravan-yard -> pl-granary 3 minute (f-way-caravan-granary)
+  pl-caravan-yard -> pl-market-row 3 minute (f-way-caravan-row)
+  pl-caravan-yard -> pl-stables 2 minute (f-way-caravan-stables)
+  pl-council-hall -> pl-strongroom 1 minute (f-way-hall-strongroom) [guard 2-of-3: f-term-seal-iron, f-term-seal-oak, f-term-seal-salt]
+  pl-gate-yard -> pl-caravan-yard 2 minute (f-way-yard-caravan)
+  pl-gate-yard -> pl-council-hall 4 minute (f-way-yard-hall)
+  pl-gate-yard -> pl-market-row 3 minute (f-way-yard-row)
+  pl-granary -> pl-weigh-house 3 minute (f-way-granary-weigh)
+  pl-market-row -> pl-council-hall 3 minute (f-way-row-hall)
+  pl-market-row -> pl-water-stair 4 minute (f-way-row-stair)
+  pl-market-row -> pl-weigh-house 2 minute (f-way-row-weigh)
+  pl-north-gate -> pl-gate-yard 2 minute (f-way-gate-yard)
+  pl-stables -> pl-granary 2 minute (f-way-stables-granary)
+  pl-water-stair -> pl-river-quay 5 minute (f-way-stair-quay) [guard all: f-term-low-water]
+  pl-weigh-house -> pl-tally-office 1 minute (f-way-weigh-tally) [guard all: f-term-clerk-key]

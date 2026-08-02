@@ -1,0 +1,8 @@
+=== continuity gate (reject) ===
+  facts=101 order_nodes=20/20 sections conflict_pairs=1 cross_scope(data)=1 unordered=0
+  rules=4 rule_unordered=0 unchained_state_pairs=0 (no route joins 0) interval_unverifiable=not-declared interval_severity=off
+  steps judged: 33 (hierarchy crossing 0 / lifted 33 / unmoved 0, 0 unlicensed; 0 of them RUNS of consecutive crossings) — --json carries each one with its scope, route and judging coordinate
+  evidence reviews: 0 ref(s) with prose but no affirmation (import-evidence-reviews records one; an unaffirmed claim cannot go stale)
+  fact quotes: 0 unverifiable (an evidence section holds no prose, so the quote could live exactly there)
+  ladder rungs: 0 coordinate(s) resolved against current prose, and each ladder's declared order and distinctness judged against it (a stranded rung, an out-of-order ladder, or two rungs at one anchor is reported as a violation)
+  violations: 0 (structural=0 interval=0)

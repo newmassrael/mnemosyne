@@ -1,0 +1,322 @@
+{
+  "frames": [
+    { "frame_id": "ground-truth", "description": "what is so at Ashfell Post" },
+    { "frame_id": "house-terms", "description": "the standing terms each shut way of the post opens on. A fact here is a CONDITION the house requires, not a record of any one day; the edge_guards below name these facts, and a runtime evaluates whether each holds at play time." },
+    { "frame_id": "mira", "description": "what Mira the caravan-master takes to be so" }
+  ],
+  "branches": [
+    {
+      "branch_id": "dry-seal",
+      "forks_from": "main",
+      "forks_at": "sc-13",
+      "description": "the world-line in which the ebb never comes: the third warden cannot climb the water stair, only one seal reaches the council lock, and the strongroom stays shut. `main` continues as the other road (the ebb comes, two seals are set, the door gives)."
+    }
+  ],
+  "entity_kinds": [
+    { "kind_id": "place", "description": "a named location inside the wall" },
+    { "kind_id": "settlement", "description": "a walled post; the container the places sit in" },
+    { "kind_id": "character", "description": "a person" },
+    { "kind_id": "item", "description": "a portable thing" },
+    { "kind_id": "seal", "parents": ["item"], "description": "a warden's council seal" }
+  ],
+  "units": [
+    { "unit_id": "minute", "description": "map minutes on foot; the edge costs below are in these" },
+    { "unit_id": "seal", "description": "a count of warden seals" }
+  ],
+  "entities": [
+    { "entity_id": "pl-post", "kind": "settlement", "description": "Ashfell Post, a walled trading post on the tidal reach" },
+
+    { "entity_id": "pl-north-gate", "kind": "place", "description": "the landward gate through the wall" },
+    { "entity_id": "pl-gate-yard", "kind": "place", "description": "the yard inside the north gate" },
+    { "entity_id": "pl-caravan-yard", "kind": "place", "description": "where carts are unhitched and crates set down" },
+    { "entity_id": "pl-stables", "kind": "place", "description": "the mule stalls under the east wall" },
+    { "entity_id": "pl-granary", "kind": "place", "description": "the grain store" },
+    { "entity_id": "pl-weigh-house", "kind": "place", "description": "the public scales" },
+    { "entity_id": "pl-tally-office", "kind": "place", "description": "the clerk's room off the weigh house; kept locked" },
+    { "entity_id": "pl-market-row", "kind": "place", "description": "the trading row, the post's crossroads" },
+    { "entity_id": "pl-council-hall", "kind": "place", "description": "the wardens' hall" },
+    { "entity_id": "pl-strongroom", "kind": "place", "description": "the vault behind the council hall, shut by the old council lock" },
+    { "entity_id": "pl-water-stair", "kind": "place", "description": "the cut stair down the river wall; drowned at high water" },
+    { "entity_id": "pl-river-quay", "kind": "place", "description": "the landing at the foot of the water stair; reached from the post by that stair alone" },
+
+    { "entity_id": "ch-havel", "kind": "character", "description": "Warden Havel, who keeps the gate and the oak seal" },
+    { "entity_id": "ch-brannoc", "kind": "character", "description": "Warden Brannoc, the third warden, mostly downriver at Kelder's Ford" },
+    { "entity_id": "ch-imre", "kind": "character", "description": "Warden Imre of the salt weirs, who comes up only by water" },
+    { "entity_id": "ch-ansel", "kind": "character", "description": "Ansel, clerk of the tally office" },
+    { "entity_id": "ch-mira", "kind": "character", "description": "Mira, caravan-master, carrying a bond chest to lodge" },
+    { "entity_id": "ch-orrin", "kind": "character", "description": "Orrin, porter to Mira's caravan" },
+    { "entity_id": "ch-sula", "kind": "character", "description": "Sula, ferry-woman, who reads the water" },
+
+    { "entity_id": "it-council-lock", "kind": "item", "description": "the old council lock on the strongroom door" },
+    { "entity_id": "it-clerk-key", "kind": "item", "description": "the house key to the tally office" },
+    { "entity_id": "it-bond-chest", "kind": "item", "description": "Mira's bond chest" },
+    { "entity_id": "it-seal-oak", "kind": "seal", "description": "the oak seal, Havel's" },
+    { "entity_id": "it-seal-iron", "kind": "seal", "description": "the iron seal, Brannoc's" },
+    { "entity_id": "it-seal-salt", "kind": "seal", "description": "the salt seal, Imre's" }
+  ],
+  "predicates": [
+    {
+      "predicate_id": "adjacent",
+      "object_kind": "entity",
+      "subject_kind": "place",
+      "object_entity_kind": "place",
+      "description": "a way runs between these two places. The transition rule reads these facts as the map's edges; the rule is declared undirected, so one fact is one two-way way."
+    },
+    {
+      "predicate_id": "contains",
+      "object_kind": "entity",
+      "subject_kind": "settlement",
+      "object_entity_kind": "place",
+      "description": "this settlement holds this place inside its wall; the containment tree that scopes the map"
+    },
+    {
+      "predicate_id": "at",
+      "object_kind": "entity",
+      "subject_kind": "character",
+      "object_entity_kind": "place",
+      "description": "this person stands in this place"
+    },
+    {
+      "predicate_id": "holds",
+      "object_kind": "entity",
+      "subject_kind": "character",
+      "object_entity_kind": "item",
+      "description": "holder-first custody: this person has this thing"
+    },
+    {
+      "predicate_id": "seal_set",
+      "object_kind": "entity",
+      "subject_kind": "seal",
+      "object_entity_kind": "item",
+      "description": "this seal is set in this lock"
+    },
+    {
+      "predicate_id": "key_turned",
+      "object_kind": "entity",
+      "subject_kind": "item",
+      "object_entity_kind": "place",
+      "description": "this key is turned in the door of this place"
+    },
+    {
+      "predicate_id": "water_state",
+      "object_kind": "token",
+      "object_tokens": ["low", "high"],
+      "subject_kind": "place",
+      "description": "the state of the river against this place"
+    },
+    {
+      "predicate_id": "door_state",
+      "object_kind": "token",
+      "object_tokens": ["shut", "open"],
+      "subject_kind": "place",
+      "description": "whether the way into this place stands open"
+    },
+    {
+      "predicate_id": "fitted_to",
+      "object_kind": "entity",
+      "subject_kind": "item",
+      "object_entity_kind": "place",
+      "description": "this lock is fitted to the door of this place"
+    },
+    {
+      "predicate_id": "seals_required",
+      "object_kind": "quantity",
+      "subject_kind": "item",
+      "description": "how many warden seals this lock opens to"
+    },
+    {
+      "predicate_id": "seals_cut",
+      "object_kind": "quantity",
+      "subject_kind": "item",
+      "description": "how many warden seals were ever cut for this lock"
+    }
+  ],
+  "facts": [
+    { "fact_id": "f-in-north-gate", "frame": "ground-truth", "claim": "the north gate stands in the wall of Ashfell Post", "canon_from": "sc-01", "evidence": ["sc-01"], "entities": ["pl-post", "pl-north-gate"], "typed": { "subject": "pl-post", "predicate": "contains", "object": { "kind": "entity", "id": "pl-north-gate" } } },
+    { "fact_id": "f-in-gate-yard", "frame": "ground-truth", "claim": "the gate yard lies inside Ashfell Post", "canon_from": "sc-01", "evidence": ["sc-01"], "entities": ["pl-post", "pl-gate-yard"], "typed": { "subject": "pl-post", "predicate": "contains", "object": { "kind": "entity", "id": "pl-gate-yard" } } },
+    { "fact_id": "f-in-caravan-yard", "frame": "ground-truth", "claim": "the caravan yard lies inside Ashfell Post", "canon_from": "sc-01", "evidence": ["sc-01"], "entities": ["pl-post", "pl-caravan-yard"], "typed": { "subject": "pl-post", "predicate": "contains", "object": { "kind": "entity", "id": "pl-caravan-yard" } } },
+    { "fact_id": "f-in-stables", "frame": "ground-truth", "claim": "the stables lie inside Ashfell Post", "canon_from": "sc-01", "evidence": ["sc-01"], "entities": ["pl-post", "pl-stables"], "typed": { "subject": "pl-post", "predicate": "contains", "object": { "kind": "entity", "id": "pl-stables" } } },
+    { "fact_id": "f-in-granary", "frame": "ground-truth", "claim": "the granary lies inside Ashfell Post", "canon_from": "sc-01", "evidence": ["sc-01"], "entities": ["pl-post", "pl-granary"], "typed": { "subject": "pl-post", "predicate": "contains", "object": { "kind": "entity", "id": "pl-granary" } } },
+    { "fact_id": "f-in-weigh-house", "frame": "ground-truth", "claim": "the weigh house lies inside Ashfell Post", "canon_from": "sc-01", "evidence": ["sc-01"], "entities": ["pl-post", "pl-weigh-house"], "typed": { "subject": "pl-post", "predicate": "contains", "object": { "kind": "entity", "id": "pl-weigh-house" } } },
+    { "fact_id": "f-in-tally-office", "frame": "ground-truth", "claim": "the tally office lies inside Ashfell Post", "canon_from": "sc-01", "evidence": ["sc-01"], "entities": ["pl-post", "pl-tally-office"], "typed": { "subject": "pl-post", "predicate": "contains", "object": { "kind": "entity", "id": "pl-tally-office" } } },
+    { "fact_id": "f-in-market-row", "frame": "ground-truth", "claim": "market row lies inside Ashfell Post", "canon_from": "sc-01", "evidence": ["sc-01"], "entities": ["pl-post", "pl-market-row"], "typed": { "subject": "pl-post", "predicate": "contains", "object": { "kind": "entity", "id": "pl-market-row" } } },
+    { "fact_id": "f-in-council-hall", "frame": "ground-truth", "claim": "the council hall lies inside Ashfell Post", "canon_from": "sc-01", "evidence": ["sc-01"], "entities": ["pl-post", "pl-council-hall"], "typed": { "subject": "pl-post", "predicate": "contains", "object": { "kind": "entity", "id": "pl-council-hall" } } },
+    { "fact_id": "f-in-strongroom", "frame": "ground-truth", "claim": "the strongroom lies inside Ashfell Post", "canon_from": "sc-01", "evidence": ["sc-01"], "entities": ["pl-post", "pl-strongroom"], "typed": { "subject": "pl-post", "predicate": "contains", "object": { "kind": "entity", "id": "pl-strongroom" } } },
+    { "fact_id": "f-in-water-stair", "frame": "ground-truth", "claim": "the water stair is cut through the river wall of Ashfell Post", "canon_from": "sc-01", "evidence": ["sc-01"], "entities": ["pl-post", "pl-water-stair"], "typed": { "subject": "pl-post", "predicate": "contains", "object": { "kind": "entity", "id": "pl-water-stair" } } },
+    { "fact_id": "f-in-river-quay", "frame": "ground-truth", "claim": "the river quay belongs to Ashfell Post", "canon_from": "sc-01", "evidence": ["sc-01"], "entities": ["pl-post", "pl-river-quay"], "typed": { "subject": "pl-post", "predicate": "contains", "object": { "kind": "entity", "id": "pl-river-quay" } } },
+
+    { "fact_id": "f-way-gate-yard", "frame": "ground-truth", "claim": "the north gate opens on the gate yard", "canon_from": "sc-01", "evidence": ["sc-01"], "entities": ["pl-north-gate", "pl-gate-yard"], "typed": { "subject": "pl-north-gate", "predicate": "adjacent", "object": { "kind": "entity", "id": "pl-gate-yard" } } },
+    { "fact_id": "f-way-yard-row", "frame": "ground-truth", "claim": "a lane runs from the gate yard into market row", "canon_from": "sc-01", "evidence": ["sc-01"], "entities": ["pl-gate-yard", "pl-market-row"], "typed": { "subject": "pl-gate-yard", "predicate": "adjacent", "object": { "kind": "entity", "id": "pl-market-row" } } },
+    { "fact_id": "f-way-yard-caravan", "frame": "ground-truth", "claim": "the gate yard gives onto the caravan yard", "canon_from": "sc-01", "evidence": ["sc-01"], "entities": ["pl-gate-yard", "pl-caravan-yard"], "typed": { "subject": "pl-gate-yard", "predicate": "adjacent", "object": { "kind": "entity", "id": "pl-caravan-yard" } } },
+    { "fact_id": "f-way-yard-hall", "frame": "ground-truth", "claim": "the hall steps come down into the gate yard", "canon_from": "sc-01", "evidence": ["sc-01"], "entities": ["pl-gate-yard", "pl-council-hall"], "typed": { "subject": "pl-gate-yard", "predicate": "adjacent", "object": { "kind": "entity", "id": "pl-council-hall" } } },
+    { "fact_id": "f-way-caravan-row", "frame": "ground-truth", "claim": "the caravan yard opens on market row", "canon_from": "sc-01", "evidence": ["sc-01"], "entities": ["pl-caravan-yard", "pl-market-row"], "typed": { "subject": "pl-caravan-yard", "predicate": "adjacent", "object": { "kind": "entity", "id": "pl-market-row" } } },
+    { "fact_id": "f-way-caravan-stables", "frame": "ground-truth", "claim": "the stable doors give on the caravan yard", "canon_from": "sc-01", "evidence": ["sc-01"], "entities": ["pl-caravan-yard", "pl-stables"], "typed": { "subject": "pl-caravan-yard", "predicate": "adjacent", "object": { "kind": "entity", "id": "pl-stables" } } },
+    { "fact_id": "f-way-caravan-granary", "frame": "ground-truth", "claim": "a cart track runs from the caravan yard to the granary", "canon_from": "sc-01", "evidence": ["sc-01"], "entities": ["pl-caravan-yard", "pl-granary"], "typed": { "subject": "pl-caravan-yard", "predicate": "adjacent", "object": { "kind": "entity", "id": "pl-granary" } } },
+    { "fact_id": "f-way-stables-granary", "frame": "ground-truth", "claim": "a hay passage joins the stables to the granary", "canon_from": "sc-01", "evidence": ["sc-01"], "entities": ["pl-stables", "pl-granary"], "typed": { "subject": "pl-stables", "predicate": "adjacent", "object": { "kind": "entity", "id": "pl-granary" } } },
+    { "fact_id": "f-way-granary-weigh", "frame": "ground-truth", "claim": "the granary door faces the weigh house across the flags", "canon_from": "sc-01", "evidence": ["sc-01"], "entities": ["pl-granary", "pl-weigh-house"], "typed": { "subject": "pl-granary", "predicate": "adjacent", "object": { "kind": "entity", "id": "pl-weigh-house" } } },
+    { "fact_id": "f-way-row-weigh", "frame": "ground-truth", "claim": "the weigh house stands open on market row", "canon_from": "sc-01", "evidence": ["sc-01"], "entities": ["pl-market-row", "pl-weigh-house"], "typed": { "subject": "pl-market-row", "predicate": "adjacent", "object": { "kind": "entity", "id": "pl-weigh-house" } } },
+    { "fact_id": "f-way-row-hall", "frame": "ground-truth", "claim": "market row runs up to the council hall", "canon_from": "sc-01", "evidence": ["sc-01"], "entities": ["pl-market-row", "pl-council-hall"], "typed": { "subject": "pl-market-row", "predicate": "adjacent", "object": { "kind": "entity", "id": "pl-council-hall" } } },
+    { "fact_id": "f-way-row-stair", "frame": "ground-truth", "claim": "the head of the water stair opens off market row", "canon_from": "sc-01", "evidence": ["sc-01"], "entities": ["pl-market-row", "pl-water-stair"], "typed": { "subject": "pl-market-row", "predicate": "adjacent", "object": { "kind": "entity", "id": "pl-water-stair" } } },
+    { "fact_id": "f-way-weigh-tally", "frame": "ground-truth", "claim": "the clerk's door joins the weigh house to the tally office", "canon_from": "sc-01", "evidence": ["sc-01"], "entities": ["pl-weigh-house", "pl-tally-office"], "typed": { "subject": "pl-weigh-house", "predicate": "adjacent", "object": { "kind": "entity", "id": "pl-tally-office" } } },
+    { "fact_id": "f-way-hall-strongroom", "frame": "ground-truth", "claim": "the strongroom door at the back of the council hall joins the hall to the strongroom", "canon_from": "sc-01", "evidence": ["sc-01"], "entities": ["pl-council-hall", "pl-strongroom"], "typed": { "subject": "pl-council-hall", "predicate": "adjacent", "object": { "kind": "entity", "id": "pl-strongroom" } } },
+    { "fact_id": "f-way-stair-quay", "frame": "ground-truth", "claim": "the water stair runs down from the river wall to the river quay", "canon_from": "sc-01", "evidence": ["sc-01"], "entities": ["pl-water-stair", "pl-river-quay"], "typed": { "subject": "pl-water-stair", "predicate": "adjacent", "object": { "kind": "entity", "id": "pl-river-quay" } } },
+
+    { "fact_id": "f-lock-fitted", "frame": "ground-truth", "claim": "the old council lock is fitted to the strongroom door", "canon_from": "sc-01", "evidence": ["sc-01"], "entities": ["it-council-lock", "pl-strongroom"], "typed": { "subject": "it-council-lock", "predicate": "fitted_to", "object": { "kind": "entity", "id": "pl-strongroom" } } },
+    { "fact_id": "f-lock-seals-required", "frame": "ground-truth", "claim": "the old council lock draws its bolt on two warden seals set together", "canon_from": "sc-02", "evidence": ["sc-02"], "entities": ["it-council-lock", "pl-strongroom"], "typed": { "subject": "it-council-lock", "predicate": "seals_required", "object": { "kind": "quantity", "n": 2, "unit": "seal" } } },
+    { "fact_id": "f-lock-seals-cut", "frame": "ground-truth", "claim": "three warden seals were ever cut for the council lock", "canon_from": "sc-02", "evidence": ["sc-02"], "entities": ["it-council-lock", "pl-strongroom"], "typed": { "subject": "it-council-lock", "predicate": "seals_cut", "object": { "kind": "quantity", "n": 3, "unit": "seal" } } },
+
+    { "fact_id": "f-term-seal-oak", "frame": "house-terms", "claim": "the oak seal is set in the council lock", "canon_from": "sc-02", "evidence": ["sc-02"], "entities": ["it-seal-oak", "it-council-lock"], "typed": { "subject": "it-seal-oak", "predicate": "seal_set", "object": { "kind": "entity", "id": "it-council-lock" } } },
+    { "fact_id": "f-term-seal-iron", "frame": "house-terms", "claim": "the iron seal is set in the council lock", "canon_from": "sc-02", "evidence": ["sc-02"], "entities": ["it-seal-iron", "it-council-lock"], "typed": { "subject": "it-seal-iron", "predicate": "seal_set", "object": { "kind": "entity", "id": "it-council-lock" } } },
+    { "fact_id": "f-term-seal-salt", "frame": "house-terms", "claim": "the salt seal is set in the council lock", "canon_from": "sc-02", "evidence": ["sc-02"], "entities": ["it-seal-salt", "it-council-lock"], "typed": { "subject": "it-seal-salt", "predicate": "seal_set", "object": { "kind": "entity", "id": "it-council-lock" } } },
+    { "fact_id": "f-term-clerk-key", "frame": "house-terms", "claim": "the clerk's house key is turned in the tally office door", "canon_from": "sc-02", "evidence": ["sc-02"], "entities": ["it-clerk-key", "pl-tally-office"], "typed": { "subject": "it-clerk-key", "predicate": "key_turned", "object": { "kind": "entity", "id": "pl-tally-office" } } },
+    { "fact_id": "f-term-low-water", "frame": "house-terms", "claim": "the river stands at low water on the water stair", "canon_from": "sc-02", "evidence": ["sc-02"], "entities": ["pl-water-stair"], "typed": { "subject": "pl-water-stair", "predicate": "water_state", "object": { "kind": "token", "token": "low" } } },
+
+    { "fact_id": "f-hold-chest-mira", "frame": "ground-truth", "claim": "Mira has the bond chest in her own keeping", "canon_from": "sc-01", "evidence": ["sc-01"], "entities": ["ch-mira", "it-bond-chest"], "payoff_expectation": "expected", "typed": { "subject": "ch-mira", "predicate": "holds", "object": { "kind": "entity", "id": "it-bond-chest" } } },
+    { "fact_id": "f-hold-seal-oak", "frame": "ground-truth", "claim": "Havel carries the oak seal on her belt", "canon_from": "sc-02", "evidence": ["sc-02"], "entities": ["ch-havel", "it-seal-oak"], "typed": { "subject": "ch-havel", "predicate": "holds", "object": { "kind": "entity", "id": "it-seal-oak" } } },
+    { "fact_id": "f-hold-seal-iron", "frame": "ground-truth", "claim": "Brannoc carries the iron seal", "canon_from": "sc-02", "evidence": ["sc-02"], "entities": ["ch-brannoc", "it-seal-iron"], "typed": { "subject": "ch-brannoc", "predicate": "holds", "object": { "kind": "entity", "id": "it-seal-iron" } } },
+    { "fact_id": "f-hold-seal-salt", "frame": "ground-truth", "claim": "Imre carries the salt seal", "canon_from": "sc-02", "evidence": ["sc-02"], "entities": ["ch-imre", "it-seal-salt"], "typed": { "subject": "ch-imre", "predicate": "holds", "object": { "kind": "entity", "id": "it-seal-salt" } } },
+    { "fact_id": "f-hold-key-ansel", "frame": "ground-truth", "claim": "Ansel keeps the tally office key on a cord at his neck", "canon_from": "sc-06", "evidence": ["sc-06"], "entities": ["ch-ansel", "it-clerk-key"], "typed": { "subject": "ch-ansel", "predicate": "holds", "object": { "kind": "entity", "id": "it-clerk-key" } } },
+
+    { "fact_id": "f-brannoc-away", "frame": "ground-truth", "claim": "Brannoc is three days downriver at Kelder's Ford with the iron seal", "canon_from": "sc-02", "evidence": ["sc-02"], "entities": ["ch-brannoc", "it-seal-iron"], "payoff_expectation": "expected" },
+    { "fact_id": "f-imre-downriver", "frame": "ground-truth", "claim": "Imre can come up to the post from the salt weirs by water alone", "canon_from": "sc-02", "evidence": ["sc-02"], "entities": ["ch-imre", "pl-river-quay"], "payoff_expectation": "expected" },
+    { "fact_id": "f-mira-belief", "frame": "mira", "claim": "Mira takes it that the warden of the gate can open the strongroom on her own seal", "canon_from": "sc-02", "evidence": ["sc-02"], "entities": ["ch-mira", "ch-havel", "it-council-lock"] },
+
+    { "fact_id": "f-at-mira-01", "frame": "ground-truth", "claim": "Mira stands at the north gate", "canon_from": "sc-01", "evidence": ["sc-01"], "entities": ["ch-mira", "pl-north-gate"], "typed": { "subject": "ch-mira", "predicate": "at", "object": { "kind": "entity", "id": "pl-north-gate" } } },
+    { "fact_id": "f-at-orrin-01", "frame": "ground-truth", "claim": "Orrin stands at the north gate with the lead mule", "canon_from": "sc-01", "evidence": ["sc-01"], "entities": ["ch-orrin", "pl-north-gate"], "typed": { "subject": "ch-orrin", "predicate": "at", "object": { "kind": "entity", "id": "pl-north-gate" } } },
+    { "fact_id": "f-at-havel-01", "frame": "ground-truth", "claim": "Havel stands at the north gate to work the wicket", "canon_from": "sc-01", "evidence": ["sc-01"], "entities": ["ch-havel", "pl-north-gate"], "typed": { "subject": "ch-havel", "predicate": "at", "object": { "kind": "entity", "id": "pl-north-gate" } } },
+    { "fact_id": "f-gate-opened", "frame": "ground-truth", "claim": "Havel walks the wicket back at first bell to let the caravan through the wall", "canon_from": "sc-01", "evidence": ["sc-01"], "entities": ["ch-havel", "pl-north-gate", "ch-mira"] },
+
+    { "fact_id": "f-at-mira-02", "frame": "ground-truth", "claim": "Mira comes into the gate yard", "canon_from": "sc-02", "evidence": ["sc-02"], "entities": ["ch-mira", "pl-gate-yard"], "supersedes_in_frame": "f-at-mira-01", "typed": { "subject": "ch-mira", "predicate": "at", "object": { "kind": "entity", "id": "pl-gate-yard" } } },
+    { "fact_id": "f-at-orrin-02", "frame": "ground-truth", "claim": "Orrin brings the mules into the gate yard", "canon_from": "sc-02", "evidence": ["sc-02"], "entities": ["ch-orrin", "pl-gate-yard"], "supersedes_in_frame": "f-at-orrin-01", "typed": { "subject": "ch-orrin", "predicate": "at", "object": { "kind": "entity", "id": "pl-gate-yard" } } },
+    { "fact_id": "f-at-havel-02", "frame": "ground-truth", "claim": "Havel follows into the gate yard", "canon_from": "sc-02", "evidence": ["sc-02"], "entities": ["ch-havel", "pl-gate-yard"], "supersedes_in_frame": "f-at-havel-01", "typed": { "subject": "ch-havel", "predicate": "at", "object": { "kind": "entity", "id": "pl-gate-yard" } } },
+    { "fact_id": "f-havel-names-ways", "frame": "ground-truth", "claim": "Havel names for Mira the three ways of the post that are shut and what opens each", "canon_from": "sc-02", "evidence": ["sc-02"], "entities": ["ch-havel", "ch-mira", "pl-gate-yard"] },
+
+    { "fact_id": "f-at-mira-03", "frame": "ground-truth", "claim": "Mira comes through to the caravan yard", "canon_from": "sc-03", "evidence": ["sc-03"], "entities": ["ch-mira", "pl-caravan-yard"], "supersedes_in_frame": "f-at-mira-02", "typed": { "subject": "ch-mira", "predicate": "at", "object": { "kind": "entity", "id": "pl-caravan-yard" } } },
+    { "fact_id": "f-at-orrin-03", "frame": "ground-truth", "claim": "Orrin brings the carts into the caravan yard", "canon_from": "sc-03", "evidence": ["sc-03"], "entities": ["ch-orrin", "pl-caravan-yard"], "supersedes_in_frame": "f-at-orrin-02", "typed": { "subject": "ch-orrin", "predicate": "at", "object": { "kind": "entity", "id": "pl-caravan-yard" } } },
+    { "fact_id": "f-carts-unhitched", "frame": "ground-truth", "claim": "the bond chest is set down on the stones of the caravan yard", "canon_from": "sc-03", "evidence": ["sc-03"], "entities": ["pl-caravan-yard", "it-bond-chest", "ch-orrin"] },
+
+    { "fact_id": "f-at-orrin-04", "frame": "ground-truth", "claim": "Orrin takes the mules through into the stables", "canon_from": "sc-04", "evidence": ["sc-04"], "entities": ["ch-orrin", "pl-stables"], "supersedes_in_frame": "f-at-orrin-03", "typed": { "subject": "ch-orrin", "predicate": "at", "object": { "kind": "entity", "id": "pl-stables" } } },
+    { "fact_id": "f-mules-stalled", "frame": "ground-truth", "claim": "the mules are stalled in the stables before the second bell", "canon_from": "sc-04", "evidence": ["sc-04"], "entities": ["pl-stables", "ch-orrin"] },
+
+    { "fact_id": "f-at-orrin-05", "frame": "ground-truth", "claim": "Orrin carries the grain share along the hay passage into the granary", "canon_from": "sc-05", "evidence": ["sc-05"], "entities": ["ch-orrin", "pl-granary"], "supersedes_in_frame": "f-at-orrin-04", "typed": { "subject": "ch-orrin", "predicate": "at", "object": { "kind": "entity", "id": "pl-granary" } } },
+    { "fact_id": "f-grain-measured", "frame": "ground-truth", "claim": "the caravan's grain share is measured off in the granary against the post's own bushel", "canon_from": "sc-05", "evidence": ["sc-05"], "entities": ["pl-granary", "ch-orrin"] },
+
+    { "fact_id": "f-at-orrin-06", "frame": "ground-truth", "claim": "Orrin crosses the flags into the weigh house", "canon_from": "sc-06", "evidence": ["sc-06"], "entities": ["ch-orrin", "pl-weigh-house"], "supersedes_in_frame": "f-at-orrin-05", "typed": { "subject": "ch-orrin", "predicate": "at", "object": { "kind": "entity", "id": "pl-weigh-house" } } },
+    { "fact_id": "f-at-ansel-06", "frame": "ground-truth", "claim": "Ansel keeps the beam in the weigh house", "canon_from": "sc-06", "evidence": ["sc-06"], "entities": ["ch-ansel", "pl-weigh-house"], "typed": { "subject": "ch-ansel", "predicate": "at", "object": { "kind": "entity", "id": "pl-weigh-house" } } },
+    { "fact_id": "f-chest-weighed", "frame": "ground-truth", "claim": "the bond chest is weighed on the public beam at eleven stone and four", "canon_from": "sc-06", "evidence": ["sc-06"], "entities": ["pl-weigh-house", "it-bond-chest", "ch-ansel"] },
+
+    { "fact_id": "f-at-ansel-07", "frame": "ground-truth", "claim": "Ansel goes through into the tally office", "canon_from": "sc-07", "evidence": ["sc-07"], "entities": ["ch-ansel", "pl-tally-office"], "supersedes_in_frame": "f-at-ansel-06", "typed": { "subject": "ch-ansel", "predicate": "at", "object": { "kind": "entity", "id": "pl-tally-office" } } },
+    { "fact_id": "f-key-turned-today", "frame": "ground-truth", "claim": "Ansel turns the house key in the tally office door", "canon_from": "sc-07", "evidence": ["sc-06", "sc-07"], "entities": ["it-clerk-key", "pl-tally-office", "ch-ansel"], "typed": { "subject": "it-clerk-key", "predicate": "key_turned", "object": { "kind": "entity", "id": "pl-tally-office" } } },
+    { "fact_id": "f-weight-written", "frame": "ground-truth", "claim": "the chest's weight is written into the day's tally in the tally office", "canon_from": "sc-07", "evidence": ["sc-07"], "entities": ["pl-tally-office", "ch-ansel", "it-bond-chest"] },
+
+    { "fact_id": "f-at-mira-08", "frame": "ground-truth", "claim": "Mira walks out of the caravan yard onto market row", "canon_from": "sc-08", "evidence": ["sc-08"], "entities": ["ch-mira", "pl-market-row"], "supersedes_in_frame": "f-at-mira-03", "typed": { "subject": "ch-mira", "predicate": "at", "object": { "kind": "entity", "id": "pl-market-row" } } },
+    { "fact_id": "f-row-thin", "frame": "ground-truth", "claim": "market row is trading thin because no bond has been lodged since the last quarter day", "canon_from": "sc-08", "evidence": ["sc-08"], "entities": ["pl-market-row", "ch-mira"] },
+
+    { "fact_id": "f-at-mira-09", "frame": "ground-truth", "claim": "Mira goes up market row to the council hall", "canon_from": "sc-09", "evidence": ["sc-09"], "entities": ["ch-mira", "pl-council-hall"], "supersedes_in_frame": "f-at-mira-08", "typed": { "subject": "ch-mira", "predicate": "at", "object": { "kind": "entity", "id": "pl-council-hall" } } },
+    { "fact_id": "f-at-havel-09", "frame": "ground-truth", "claim": "Havel comes up the hall steps from the gate yard into the council hall", "canon_from": "sc-09", "evidence": ["sc-09"], "entities": ["ch-havel", "pl-council-hall"], "supersedes_in_frame": "f-at-havel-02", "typed": { "subject": "ch-havel", "predicate": "at", "object": { "kind": "entity", "id": "pl-council-hall" } } },
+    { "fact_id": "f-strongroom-shut", "frame": "ground-truth", "claim": "the strongroom door stands shut behind the council hall", "canon_from": "sc-09", "evidence": ["sc-09"], "entities": ["pl-strongroom", "it-council-lock"], "typed": { "subject": "pl-strongroom", "predicate": "door_state", "object": { "kind": "token", "token": "shut" } } },
+    { "fact_id": "f-custom-spoken", "frame": "ground-truth", "claim": "Havel tells Mira in the council hall that no one warden has ever drawn that bolt alone", "canon_from": "sc-09", "evidence": ["sc-02", "sc-09"], "entities": ["ch-havel", "ch-mira", "it-council-lock", "pl-council-hall"] },
+
+    { "fact_id": "f-at-sula-10", "frame": "ground-truth", "claim": "Sula waits at the head of the water stair", "canon_from": "sc-10", "evidence": ["sc-10"], "entities": ["ch-sula", "pl-water-stair"], "typed": { "subject": "ch-sula", "predicate": "at", "object": { "kind": "entity", "id": "pl-water-stair" } } },
+    { "fact_id": "f-tide-high", "frame": "ground-truth", "claim": "the flood covers the water stair to the ninth step", "canon_from": "sc-10", "evidence": ["sc-10"], "entities": ["pl-water-stair", "ch-sula"], "payoff_expectation": "expected", "typed": { "subject": "pl-water-stair", "predicate": "water_state", "object": { "kind": "token", "token": "high" } } },
+
+    { "fact_id": "f-at-imre-11", "frame": "ground-truth", "claim": "Imre puts in at the river quay with the salt seal in his coat", "canon_from": "sc-11", "evidence": ["sc-11"], "entities": ["ch-imre", "pl-river-quay"], "typed": { "subject": "ch-imre", "predicate": "at", "object": { "kind": "entity", "id": "pl-river-quay" } } },
+    { "fact_id": "f-imre-cannot-climb", "frame": "ground-truth", "claim": "Imre cannot climb from the quay while the flood is on the stair", "canon_from": "sc-11", "evidence": ["sc-10", "sc-11"], "entities": ["ch-imre", "pl-water-stair", "pl-river-quay"] },
+
+    { "fact_id": "f-at-orrin-12", "frame": "ground-truth", "claim": "Orrin comes out of the weigh house onto market row", "canon_from": "sc-12", "evidence": ["sc-12"], "entities": ["ch-orrin", "pl-market-row"], "supersedes_in_frame": "f-at-orrin-06", "typed": { "subject": "ch-orrin", "predicate": "at", "object": { "kind": "entity", "id": "pl-market-row" } } },
+    { "fact_id": "f-word-carried", "frame": "ground-truth", "claim": "word runs up market row that a warden is standing on the quay below the stair", "canon_from": "sc-12", "evidence": ["sc-11", "sc-12"], "entities": ["pl-market-row", "ch-orrin", "ch-imre"] },
+
+    { "fact_id": "f-ebb-not-begun", "frame": "ground-truth", "claim": "at the third bell the ebb has not begun and the stair is still under water", "canon_from": "sc-13", "evidence": ["sc-10", "sc-13"], "entities": ["pl-water-stair", "ch-havel", "pl-council-hall"] },
+
+    { "fact_id": "f-low-water", "frame": "ground-truth", "claim": "the water stair stands clear to its lowest step on the ebb", "canon_from": "sc-14", "evidence": ["sc-10", "sc-14"], "entities": ["pl-water-stair", "ch-sula"], "pays_off": ["f-tide-high"], "supersedes_in_frame": "f-tide-high", "typed": { "subject": "pl-water-stair", "predicate": "water_state", "object": { "kind": "token", "token": "low" } } },
+    { "fact_id": "f-at-imre-14", "frame": "ground-truth", "claim": "Imre climbs the water stair from the quay", "canon_from": "sc-14", "evidence": ["sc-11", "sc-14"], "entities": ["ch-imre", "pl-water-stair"], "supersedes_in_frame": "f-at-imre-11", "typed": { "subject": "ch-imre", "predicate": "at", "object": { "kind": "entity", "id": "pl-water-stair" } } },
+
+    { "fact_id": "f-at-imre-15", "frame": "ground-truth", "claim": "Imre comes off the stair head onto market row", "canon_from": "sc-15", "evidence": ["sc-15"], "entities": ["ch-imre", "pl-market-row"], "supersedes_in_frame": "f-at-imre-14", "typed": { "subject": "ch-imre", "predicate": "at", "object": { "kind": "entity", "id": "pl-market-row" } } },
+    { "fact_id": "f-row-turns", "frame": "ground-truth", "claim": "market row turns to watch the second warden go up to the hall", "canon_from": "sc-15", "evidence": ["sc-15"], "entities": ["pl-market-row", "ch-imre"] },
+
+    { "fact_id": "f-at-imre-16", "frame": "ground-truth", "claim": "Imre reaches the council hall", "canon_from": "sc-16", "evidence": ["sc-16"], "entities": ["ch-imre", "pl-council-hall"], "supersedes_in_frame": "f-at-imre-15", "typed": { "subject": "ch-imre", "predicate": "at", "object": { "kind": "entity", "id": "pl-council-hall" } } },
+    { "fact_id": "f-seal-oak-set", "frame": "ground-truth", "claim": "Havel sets the oak seal into the council lock", "canon_from": "sc-16", "evidence": ["sc-02", "sc-16"], "entities": ["it-seal-oak", "it-council-lock", "ch-havel"], "typed": { "subject": "it-seal-oak", "predicate": "seal_set", "object": { "kind": "entity", "id": "it-council-lock" } } },
+    { "fact_id": "f-seal-salt-set", "frame": "ground-truth", "claim": "Imre sets the salt seal into the council lock beside the oak", "canon_from": "sc-16", "evidence": ["sc-02", "sc-16"], "entities": ["it-seal-salt", "it-council-lock", "ch-imre"], "pays_off": ["f-imre-downriver"], "typed": { "subject": "it-seal-salt", "predicate": "seal_set", "object": { "kind": "entity", "id": "it-council-lock" } } },
+    { "fact_id": "f-mira-learns", "frame": "mira", "claim": "Mira takes it that the lock wants two seals and will not answer one", "canon_from": "sc-16", "evidence": ["sc-09", "sc-16"], "entities": ["ch-mira", "it-council-lock"], "supersedes_in_frame": "f-mira-belief" },
+
+    { "fact_id": "f-strongroom-open", "frame": "ground-truth", "claim": "the strongroom door swings in when the council lock draws its bolt to the two seals", "canon_from": "sc-17", "evidence": ["sc-02", "sc-17"], "entities": ["pl-strongroom", "it-council-lock"], "pays_off": ["f-brannoc-away"], "supersedes_in_frame": "f-strongroom-shut", "typed": { "subject": "pl-strongroom", "predicate": "door_state", "object": { "kind": "token", "token": "open" } } },
+    { "fact_id": "f-at-havel-17", "frame": "ground-truth", "claim": "Havel steps through into the strongroom", "canon_from": "sc-17", "evidence": ["sc-17"], "entities": ["ch-havel", "pl-strongroom"], "supersedes_in_frame": "f-at-havel-09", "typed": { "subject": "ch-havel", "predicate": "at", "object": { "kind": "entity", "id": "pl-strongroom" } } },
+    { "fact_id": "f-at-imre-17", "frame": "ground-truth", "claim": "Imre steps through into the strongroom after her", "canon_from": "sc-17", "evidence": ["sc-17"], "entities": ["ch-imre", "pl-strongroom"], "supersedes_in_frame": "f-at-imre-16", "typed": { "subject": "ch-imre", "predicate": "at", "object": { "kind": "entity", "id": "pl-strongroom" } } },
+    { "fact_id": "f-chest-in-strongroom", "frame": "ground-truth", "claim": "Havel takes the bond chest into the keeping of the post on the strongroom shelf", "canon_from": "sc-17", "evidence": ["sc-01", "sc-17"], "entities": ["ch-havel", "it-bond-chest", "pl-strongroom"], "pays_off": ["f-hold-chest-mira"], "supersedes_in_frame": "f-hold-chest-mira", "typed": { "subject": "ch-havel", "predicate": "holds", "object": { "kind": "entity", "id": "it-bond-chest" } } },
+
+    { "fact_id": "f-at-havel-18", "frame": "ground-truth", "claim": "Havel comes back out into the council hall", "canon_from": "sc-18", "evidence": ["sc-18"], "entities": ["ch-havel", "pl-council-hall"], "supersedes_in_frame": "f-at-havel-17", "typed": { "subject": "ch-havel", "predicate": "at", "object": { "kind": "entity", "id": "pl-council-hall" } } },
+    { "fact_id": "f-at-imre-18", "frame": "ground-truth", "claim": "Imre comes back out into the council hall", "canon_from": "sc-18", "evidence": ["sc-18"], "entities": ["ch-imre", "pl-council-hall"], "supersedes_in_frame": "f-at-imre-17", "typed": { "subject": "ch-imre", "predicate": "at", "object": { "kind": "entity", "id": "pl-council-hall" } } },
+    { "fact_id": "f-seals-lifted", "frame": "ground-truth", "claim": "both seals are lifted back out of the council lock", "canon_from": "sc-18", "evidence": ["sc-16", "sc-18"], "entities": ["it-council-lock", "pl-strongroom", "ch-havel", "ch-imre"] },
+
+    { "fact_id": "f-at-mira-19", "frame": "ground-truth", "claim": "Mira comes down the hall steps into the gate yard", "canon_from": "sc-19", "evidence": ["sc-19"], "entities": ["ch-mira", "pl-gate-yard"], "supersedes_in_frame": "f-at-mira-09", "typed": { "subject": "ch-mira", "predicate": "at", "object": { "kind": "entity", "id": "pl-gate-yard" } } },
+    { "fact_id": "f-at-orrin-19", "frame": "ground-truth", "claim": "Orrin brings the mules down the lane into the gate yard", "canon_from": "sc-19", "evidence": ["sc-19"], "entities": ["ch-orrin", "pl-gate-yard"], "supersedes_in_frame": "f-at-orrin-12", "typed": { "subject": "ch-orrin", "predicate": "at", "object": { "kind": "entity", "id": "pl-gate-yard" } } },
+    { "fact_id": "f-receipt-given", "frame": "ground-truth", "claim": "the post's receipt for the lodged bond is put into Mira's hand in the gate yard", "canon_from": "sc-19", "evidence": ["sc-17", "sc-19"], "entities": ["ch-mira", "pl-gate-yard", "it-bond-chest"] },
+
+    { "fact_id": "f-at-mira-20", "frame": "ground-truth", "claim": "Mira passes out through the north gate", "canon_from": "sc-20", "evidence": ["sc-20"], "entities": ["ch-mira", "pl-north-gate"], "supersedes_in_frame": "f-at-mira-19", "typed": { "subject": "ch-mira", "predicate": "at", "object": { "kind": "entity", "id": "pl-north-gate" } } },
+    { "fact_id": "f-at-orrin-20", "frame": "ground-truth", "claim": "Orrin takes the mules out through the north gate", "canon_from": "sc-20", "evidence": ["sc-20"], "entities": ["ch-orrin", "pl-north-gate"], "supersedes_in_frame": "f-at-orrin-19", "typed": { "subject": "ch-orrin", "predicate": "at", "object": { "kind": "entity", "id": "pl-north-gate" } } },
+    { "fact_id": "f-gate-barred", "frame": "ground-truth", "claim": "the north gate is barred behind the caravan at dusk", "canon_from": "sc-20", "evidence": ["sc-20"], "entities": ["pl-north-gate", "ch-havel"] },
+
+    { "fact_id": "f-tide-holds", "frame": "ground-truth", "branch": "dry-seal", "claim": "the water stands high on the stair past the last bell", "canon_from": "sc-14b", "evidence": ["sc-10", "sc-14b"], "entities": ["pl-water-stair", "ch-sula"], "pays_off": ["f-tide-high"], "supersedes_in_frame": "f-tide-high", "typed": { "subject": "pl-water-stair", "predicate": "water_state", "object": { "kind": "token", "token": "high" } } },
+    { "fact_id": "f-imre-stays", "frame": "ground-truth", "branch": "dry-seal", "claim": "the salt seal never leaves Imre's coat on the quay that evening", "canon_from": "sc-14b", "evidence": ["sc-11", "sc-14b"], "entities": ["ch-imre", "pl-river-quay", "it-seal-salt"], "pays_off": ["f-imre-downriver"] },
+
+    { "fact_id": "f-seal-oak-set-alone", "frame": "ground-truth", "branch": "dry-seal", "claim": "Havel sets the oak seal into the council lock with no second seal to set beside it", "canon_from": "sc-15b", "evidence": ["sc-02", "sc-15b"], "entities": ["it-seal-oak", "it-council-lock", "ch-havel"], "typed": { "subject": "it-seal-oak", "predicate": "seal_set", "object": { "kind": "entity", "id": "it-council-lock" } } },
+    { "fact_id": "f-strongroom-stays-shut", "frame": "ground-truth", "branch": "dry-seal", "claim": "the strongroom door stays shut because the council lock will not draw its bolt to one seal", "canon_from": "sc-15b", "evidence": ["sc-09", "sc-15b"], "entities": ["pl-strongroom", "it-council-lock"], "pays_off": ["f-brannoc-away"], "supersedes_in_frame": "f-strongroom-shut", "typed": { "subject": "pl-strongroom", "predicate": "door_state", "object": { "kind": "token", "token": "shut" } } },
+    { "fact_id": "f-mira-learns-branch", "frame": "mira", "branch": "dry-seal", "claim": "Mira takes it that the lock wants two seals and will not answer one", "canon_from": "sc-15b", "evidence": ["sc-09", "sc-15b"], "entities": ["ch-mira", "it-council-lock"], "supersedes_in_frame": "f-mira-belief" },
+
+    { "fact_id": "f-at-orrin-16b", "frame": "ground-truth", "branch": "dry-seal", "claim": "Orrin carries the bond chest back off market row into the weigh house", "canon_from": "sc-16b", "evidence": ["sc-16b"], "entities": ["ch-orrin", "pl-weigh-house"], "supersedes_in_frame": "f-at-orrin-12", "typed": { "subject": "ch-orrin", "predicate": "at", "object": { "kind": "entity", "id": "pl-weigh-house" } } },
+    { "fact_id": "f-chest-reweighed", "frame": "ground-truth", "branch": "dry-seal", "claim": "the bond chest is set down again on the weigh house floor to wait out the night", "canon_from": "sc-16b", "evidence": ["sc-06", "sc-16b"], "entities": ["pl-weigh-house", "it-bond-chest", "ch-orrin"] },
+
+    { "fact_id": "f-at-orrin-17b", "frame": "ground-truth", "branch": "dry-seal", "claim": "Orrin goes through the clerk's door into the tally office with the chest", "canon_from": "sc-17b", "evidence": ["sc-17b"], "entities": ["ch-orrin", "pl-tally-office"], "supersedes_in_frame": "f-at-orrin-16b", "typed": { "subject": "ch-orrin", "predicate": "at", "object": { "kind": "entity", "id": "pl-tally-office" } } },
+    { "fact_id": "f-chest-in-tally", "frame": "ground-truth", "branch": "dry-seal", "claim": "Ansel takes the bond chest into the clerk's strongbox in the tally office under a lesser bond", "canon_from": "sc-17b", "evidence": ["sc-01", "sc-17b"], "entities": ["ch-ansel", "it-bond-chest", "pl-tally-office"], "pays_off": ["f-hold-chest-mira"], "supersedes_in_frame": "f-hold-chest-mira", "typed": { "subject": "ch-ansel", "predicate": "holds", "object": { "kind": "entity", "id": "it-bond-chest" } } }
+  ],
+  "edge_costs": [
+    { "fact_id": "f-way-gate-yard", "n": 2, "unit": "minute" },
+    { "fact_id": "f-way-yard-row", "n": 3, "unit": "minute" },
+    { "fact_id": "f-way-yard-caravan", "n": 2, "unit": "minute" },
+    { "fact_id": "f-way-yard-hall", "n": 4, "unit": "minute" },
+    { "fact_id": "f-way-caravan-row", "n": 3, "unit": "minute" },
+    { "fact_id": "f-way-caravan-stables", "n": 2, "unit": "minute" },
+    { "fact_id": "f-way-caravan-granary", "n": 3, "unit": "minute" },
+    { "fact_id": "f-way-stables-granary", "n": 2, "unit": "minute" },
+    { "fact_id": "f-way-granary-weigh", "n": 3, "unit": "minute" },
+    { "fact_id": "f-way-row-weigh", "n": 2, "unit": "minute" },
+    { "fact_id": "f-way-row-hall", "n": 3, "unit": "minute" },
+    { "fact_id": "f-way-row-stair", "n": 4, "unit": "minute" },
+    { "fact_id": "f-way-weigh-tally", "n": 1, "unit": "minute" },
+    { "fact_id": "f-way-hall-strongroom", "n": 1, "unit": "minute" },
+    { "fact_id": "f-way-stair-quay", "n": 5, "unit": "minute" }
+  ],
+  "edge_guards": [
+    {
+      "fact_id": "f-way-hall-strongroom",
+      "conditions": ["f-term-seal-oak", "f-term-seal-iron", "f-term-seal-salt"],
+      "threshold": 2
+    },
+    {
+      "fact_id": "f-way-weigh-tally",
+      "conditions": ["f-term-clerk-key"]
+    },
+    {
+      "fact_id": "f-way-stair-quay",
+      "conditions": ["f-term-low-water"]
+    }
+  ],
+  "disclosure_plans": [
+    {
+      "telling_id": "plain",
+      "default_mode": "state",
+      "description": "the plain telling of the day at Ashfell Post",
+      "overrides": [
+        {
+          "fact_id": "f-lock-seals-required",
+          "mode": "state",
+          "surface": { "scene": "sc-09", "object": "it-council-lock" }
+        },
+        {
+          "fact_id": "f-hold-seal-iron",
+          "mode": "withhold"
+        }
+      ]
+    }
+  ]
+}

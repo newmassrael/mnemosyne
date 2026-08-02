@@ -1,0 +1,714 @@
+{
+  "frames": [
+    { "frame_id": "ground-truth", "description": "what is so in the house, held by no one in particular" },
+    { "frame_id": "household", "description": "what the house presents as so, and hands to a visitor" },
+    { "frame_id": "ellis", "description": "Ellis Varn's belief" },
+    { "frame_id": "adela", "description": "Adela Varn's belief" },
+    { "frame_id": "marget", "description": "Marget Hale's belief" },
+    { "frame_id": "jonas", "description": "Jonas Varn's belief" },
+    { "frame_id": "reader", "description": "the reader's running belief as the discourse order is walked; a frame like any other, non-privileged" }
+  ],
+
+  "entity_kinds": [
+    { "kind_id": "character", "description": "a person the story can name" },
+    { "kind_id": "household-member", "parents": ["character"], "description": "one of the five who winter in the house" },
+    { "kind_id": "place", "description": "a location on the map" },
+    { "kind_id": "item", "description": "an object the story can put in a hand" },
+    { "kind_id": "audience", "description": "the one who walks the discourse order" }
+  ],
+
+  "units": [
+    { "unit_id": "year", "description": "a year of age" },
+    { "unit_id": "pound", "description": "pounds sterling" },
+    { "unit_id": "minute", "description": "minutes of travel on one map edge" }
+  ],
+
+  "entities": [
+    { "entity_id": "e-ellis", "kind": "household-member", "description": "Ellis Varn, master of the house" },
+    { "entity_id": "e-adela", "kind": "household-member", "description": "Adela Varn, his wife" },
+    { "entity_id": "e-jonas", "kind": "household-member", "description": "Jonas Varn, the elder son, nineteen" },
+    { "entity_id": "e-tobin", "kind": "household-member", "description": "Tobin Varn, the youngest son, nine" },
+    { "entity_id": "e-marget", "kind": "household-member", "description": "Marget Hale, housekeeper, in the house twenty years" },
+    { "entity_id": "e-callender", "kind": "character", "description": "Rhodes Callender, land agent, wintered here ten years ago; never on the page" },
+    { "entity_id": "e-reader", "kind": "audience", "description": "the reader" },
+    { "entity_id": "e-portrait", "kind": "item", "description": "the portrait of the master's father" },
+    { "entity_id": "e-ledger", "kind": "item", "description": "the old house ledger, the one before the current book" },
+    { "entity_id": "p-lane", "kind": "place", "description": "the lane between the house and the road" },
+    { "entity_id": "p-house", "kind": "place", "description": "the house itself" },
+    { "entity_id": "p-hall", "kind": "place", "description": "the hall, where the portrait hangs" },
+    { "entity_id": "p-parlour", "kind": "place", "description": "the parlour, with the window on the lane" },
+    { "entity_id": "p-study", "kind": "place", "description": "the master's study, where the ledgers are kept" },
+    { "entity_id": "p-kitchen", "kind": "place", "description": "the kitchen, Marget's" },
+    { "entity_id": "p-nursery", "kind": "place", "description": "the nursery, Tobin's room" }
+  ],
+
+  "predicates": [
+    { "predicate_id": "adjacent", "object_kind": "entity", "subject_kind": "place", "object_entity_kind": "place", "description": "a passable way from one place to another; the map edges" },
+    { "predicate_id": "contains", "object_kind": "entity", "subject_kind": "place", "object_entity_kind": "place", "description": "a place holds another place inside it" },
+    { "predicate_id": "at", "object_kind": "entity", "subject_kind": "household-member", "object_entity_kind": "place", "description": "where a person is" },
+    { "predicate_id": "sired_by", "object_kind": "entity", "subject_kind": "household-member", "object_entity_kind": "character", "description": "who fathered this person" },
+    { "predicate_id": "knows_that", "object_kind": "fact", "description": "this person holds that other fact of this store" },
+    { "predicate_id": "reader_stance", "object_kind": "token", "object_tokens": ["unquestioned", "unsettled", "held", "confirmed"], "description": "how firmly the reader stands toward the withheld truth about the youngest son" },
+    { "predicate_id": "family_likeness", "object_kind": "token", "object_tokens": ["marked", "faint", "absent"], "description": "how much of the Varn face this person carries" },
+    { "predicate_id": "hangs_in", "object_kind": "entity", "subject_kind": "item", "object_entity_kind": "place", "description": "where an object hangs" },
+    { "predicate_id": "records_settlement_to", "object_kind": "entity", "subject_kind": "item", "object_entity_kind": "character", "description": "a book carries a settlement paid to this person" },
+    { "predicate_id": "settlement_amount", "object_kind": "quantity", "description": "the sum of the settlement the book carries" },
+    { "predicate_id": "breaks_off_about", "object_kind": "entity", "description": "this person stops a sentence rather than finish it, and it was about that one" },
+    { "predicate_id": "road_state", "object_kind": "token", "object_tokens": ["open", "thawing", "shut"], "subject_kind": "place", "description": "whether a way can be travelled" },
+    { "predicate_id": "age", "object_kind": "quantity", "description": "how old this person is this winter" }
+  ],
+
+  "facts": [
+    {
+      "fact_id": "f-truth",
+      "frame": "ground-truth",
+      "claim": "Tobin was fathered by Rhodes Callender.",
+      "canon_from": "sc-01",
+      "evidence": ["sc-01"],
+      "entities": ["e-tobin", "e-callender", "e-ellis"],
+      "payoff_expectation": "expected",
+      "typed": { "subject": "e-tobin", "predicate": "sired_by", "object": { "kind": "entity", "id": "e-callender" } }
+    },
+    {
+      "fact_id": "f-supposition",
+      "frame": "household",
+      "claim": "Tobin is the master's youngest son.",
+      "canon_from": "sc-01",
+      "evidence": ["sc-01"],
+      "entities": ["e-tobin", "e-ellis"],
+      "conflicts_with": ["f-truth"],
+      "typed": { "subject": "e-tobin", "predicate": "sired_by", "object": { "kind": "entity", "id": "e-ellis" } }
+    },
+    {
+      "fact_id": "f-jonas-sired",
+      "frame": "ground-truth",
+      "claim": "Jonas was fathered by Ellis Varn.",
+      "canon_from": "sc-01",
+      "evidence": ["sc-01"],
+      "entities": ["e-jonas", "e-ellis"],
+      "typed": { "subject": "e-jonas", "predicate": "sired_by", "object": { "kind": "entity", "id": "e-ellis" } }
+    },
+    {
+      "fact_id": "f-tobin-age",
+      "frame": "ground-truth",
+      "claim": "Tobin is nine years old this winter.",
+      "canon_from": "sc-01",
+      "evidence": ["sc-01"],
+      "entities": ["e-tobin"],
+      "typed": { "subject": "e-tobin", "predicate": "age", "object": { "kind": "quantity", "n": 9, "unit": "year" } }
+    },
+    {
+      "fact_id": "f-ellis-knows",
+      "frame": "ellis",
+      "claim": "Ellis has known since the spring he paid the agent off.",
+      "canon_from": "sc-01",
+      "evidence": ["sc-01"],
+      "entities": ["e-ellis", "e-tobin"],
+      "typed": { "subject": "e-ellis", "predicate": "knows_that", "object": { "kind": "fact", "id": "f-truth" } }
+    },
+    {
+      "fact_id": "f-adela-knows",
+      "frame": "adela",
+      "claim": "Adela has known from the beginning and has never said it aloud in this house.",
+      "canon_from": "sc-01",
+      "evidence": ["sc-01"],
+      "entities": ["e-adela", "e-tobin"],
+      "typed": { "subject": "e-adela", "predicate": "knows_that", "object": { "kind": "fact", "id": "f-truth" } }
+    },
+    {
+      "fact_id": "f-marget-knows",
+      "frame": "marget",
+      "claim": "Marget was in the house the night Tobin was born and has known since.",
+      "canon_from": "sc-01",
+      "evidence": ["sc-01"],
+      "entities": ["e-marget", "e-tobin"],
+      "typed": { "subject": "e-marget", "predicate": "knows_that", "object": { "kind": "fact", "id": "f-truth" } }
+    },
+    {
+      "fact_id": "f-jonas-supposes",
+      "frame": "jonas",
+      "claim": "Jonas takes Tobin for his brother by blood.",
+      "canon_from": "sc-01",
+      "evidence": ["sc-01"],
+      "entities": ["e-jonas", "e-tobin"],
+      "typed": { "subject": "e-jonas", "predicate": "knows_that", "object": { "kind": "fact", "id": "f-supposition" } }
+    },
+
+    {
+      "fact_id": "f-contains-hall",
+      "frame": "ground-truth",
+      "claim": "The hall is inside the house.",
+      "canon_from": "sc-01",
+      "evidence": ["sc-01"],
+      "entities": ["p-house", "p-hall"],
+      "typed": { "subject": "p-house", "predicate": "contains", "object": { "kind": "entity", "id": "p-hall" } }
+    },
+    {
+      "fact_id": "f-contains-parlour",
+      "frame": "ground-truth",
+      "claim": "The parlour is inside the house.",
+      "canon_from": "sc-01",
+      "evidence": ["sc-01"],
+      "entities": ["p-house", "p-parlour"],
+      "typed": { "subject": "p-house", "predicate": "contains", "object": { "kind": "entity", "id": "p-parlour" } }
+    },
+    {
+      "fact_id": "f-contains-study",
+      "frame": "ground-truth",
+      "claim": "The study is inside the house.",
+      "canon_from": "sc-01",
+      "evidence": ["sc-01"],
+      "entities": ["p-house", "p-study"],
+      "typed": { "subject": "p-house", "predicate": "contains", "object": { "kind": "entity", "id": "p-study" } }
+    },
+    {
+      "fact_id": "f-contains-kitchen",
+      "frame": "ground-truth",
+      "claim": "The kitchen is inside the house.",
+      "canon_from": "sc-01",
+      "evidence": ["sc-01"],
+      "entities": ["p-house", "p-kitchen"],
+      "typed": { "subject": "p-house", "predicate": "contains", "object": { "kind": "entity", "id": "p-kitchen" } }
+    },
+    {
+      "fact_id": "f-contains-nursery",
+      "frame": "ground-truth",
+      "claim": "The nursery is inside the house.",
+      "canon_from": "sc-01",
+      "evidence": ["sc-01"],
+      "entities": ["p-house", "p-nursery"],
+      "typed": { "subject": "p-house", "predicate": "contains", "object": { "kind": "entity", "id": "p-nursery" } }
+    },
+
+    {
+      "fact_id": "f-adj-lane-house",
+      "frame": "ground-truth",
+      "claim": "The lane runs up to the house door.",
+      "canon_from": "sc-01",
+      "evidence": ["sc-01"],
+      "entities": ["p-lane", "p-house"],
+      "typed": { "subject": "p-lane", "predicate": "adjacent", "object": { "kind": "entity", "id": "p-house" } }
+    },
+    {
+      "fact_id": "f-adj-hall-parlour",
+      "frame": "ground-truth",
+      "claim": "The parlour opens off the hall.",
+      "canon_from": "sc-01",
+      "evidence": ["sc-01"],
+      "entities": ["p-hall", "p-parlour"],
+      "typed": { "subject": "p-hall", "predicate": "adjacent", "object": { "kind": "entity", "id": "p-parlour" } }
+    },
+    {
+      "fact_id": "f-adj-hall-study",
+      "frame": "ground-truth",
+      "claim": "The study opens off the hall.",
+      "canon_from": "sc-01",
+      "evidence": ["sc-01"],
+      "entities": ["p-hall", "p-study"],
+      "typed": { "subject": "p-hall", "predicate": "adjacent", "object": { "kind": "entity", "id": "p-study" } }
+    },
+    {
+      "fact_id": "f-adj-hall-kitchen",
+      "frame": "ground-truth",
+      "claim": "The kitchen passage runs from the hall.",
+      "canon_from": "sc-01",
+      "evidence": ["sc-01"],
+      "entities": ["p-hall", "p-kitchen"],
+      "typed": { "subject": "p-hall", "predicate": "adjacent", "object": { "kind": "entity", "id": "p-kitchen" } }
+    },
+    {
+      "fact_id": "f-adj-hall-nursery",
+      "frame": "ground-truth",
+      "claim": "The stair from the hall goes up to the nursery.",
+      "canon_from": "sc-01",
+      "evidence": ["sc-01"],
+      "entities": ["p-hall", "p-nursery"],
+      "typed": { "subject": "p-hall", "predicate": "adjacent", "object": { "kind": "entity", "id": "p-nursery" } }
+    },
+
+    {
+      "fact_id": "f-lane-open-first",
+      "frame": "ground-truth",
+      "claim": "The lane is still open when the first snow comes.",
+      "canon_from": "sc-01",
+      "evidence": ["sc-01"],
+      "entities": ["p-lane"],
+      "typed": { "subject": "p-lane", "predicate": "road_state", "object": { "kind": "token", "token": "open" } }
+    },
+
+    {
+      "fact_id": "f-at-ellis-1",
+      "frame": "ground-truth",
+      "claim": "Ellis is in the study when the snow starts.",
+      "canon_from": "sc-01",
+      "evidence": ["sc-01"],
+      "entities": ["e-ellis", "p-study"],
+      "typed": { "subject": "e-ellis", "predicate": "at", "object": { "kind": "entity", "id": "p-study" } }
+    },
+    {
+      "fact_id": "f-at-ellis-2",
+      "frame": "ground-truth",
+      "claim": "Ellis comes out to the hall to meet his elder son.",
+      "canon_from": "sc-05",
+      "evidence": ["sc-05"],
+      "entities": ["e-ellis", "p-hall"],
+      "supersedes_in_frame": "f-at-ellis-1",
+      "typed": { "subject": "e-ellis", "predicate": "at", "object": { "kind": "entity", "id": "p-hall" } }
+    },
+    {
+      "fact_id": "f-at-ellis-3",
+      "frame": "ground-truth",
+      "claim": "Ellis keeps to the study through the accounts weeks.",
+      "canon_from": "sc-07",
+      "evidence": ["sc-07"],
+      "entities": ["e-ellis", "p-study"],
+      "supersedes_in_frame": "f-at-ellis-2",
+      "typed": { "subject": "e-ellis", "predicate": "at", "object": { "kind": "entity", "id": "p-study" } }
+    },
+    {
+      "fact_id": "f-at-ellis-4",
+      "frame": "ground-truth",
+      "claim": "Ellis stands in the hall with the study door shut behind him.",
+      "canon_from": "sc-13",
+      "evidence": ["sc-13"],
+      "entities": ["e-ellis", "p-hall"],
+      "supersedes_in_frame": "f-at-ellis-3",
+      "typed": { "subject": "e-ellis", "predicate": "at", "object": { "kind": "entity", "id": "p-hall" } }
+    },
+    {
+      "fact_id": "f-at-ellis-5",
+      "frame": "ground-truth",
+      "claim": "Ellis keeps Candlemas in the parlour with the rest of them.",
+      "canon_from": "sc-14",
+      "evidence": ["sc-14"],
+      "entities": ["e-ellis", "p-parlour"],
+      "supersedes_in_frame": "f-at-ellis-4",
+      "typed": { "subject": "e-ellis", "predicate": "at", "object": { "kind": "entity", "id": "p-parlour" } }
+    },
+
+    {
+      "fact_id": "f-at-adela-1",
+      "frame": "ground-truth",
+      "claim": "Adela takes the hall herself when the lamps are lit early.",
+      "canon_from": "sc-02",
+      "evidence": ["sc-02"],
+      "entities": ["e-adela", "p-hall"],
+      "typed": { "subject": "e-adela", "predicate": "at", "object": { "kind": "entity", "id": "p-hall" } }
+    },
+    {
+      "fact_id": "f-at-adela-2",
+      "frame": "ground-truth",
+      "claim": "Adela moves her chair into the parlour for the shut-in weeks.",
+      "canon_from": "sc-06",
+      "evidence": ["sc-06"],
+      "entities": ["e-adela", "p-parlour"],
+      "supersedes_in_frame": "f-at-adela-1",
+      "typed": { "subject": "e-adela", "predicate": "at", "object": { "kind": "entity", "id": "p-parlour" } }
+    },
+    {
+      "fact_id": "f-at-adela-3",
+      "frame": "ground-truth",
+      "claim": "Adela comes back out to the hall the evening the study door is shut.",
+      "canon_from": "sc-13",
+      "evidence": ["sc-13"],
+      "entities": ["e-adela", "p-hall"],
+      "supersedes_in_frame": "f-at-adela-2",
+      "typed": { "subject": "e-adela", "predicate": "at", "object": { "kind": "entity", "id": "p-hall" } }
+    },
+
+    {
+      "fact_id": "f-at-tobin-1",
+      "frame": "ground-truth",
+      "claim": "Tobin is up in the nursery when the snow starts.",
+      "canon_from": "sc-01",
+      "evidence": ["sc-01"],
+      "entities": ["e-tobin", "p-nursery"],
+      "typed": { "subject": "e-tobin", "predicate": "at", "object": { "kind": "entity", "id": "p-nursery" } }
+    },
+    {
+      "fact_id": "f-at-tobin-2",
+      "frame": "ground-truth",
+      "claim": "Tobin is brought down to the hall while the portrait is rehung.",
+      "canon_from": "sc-03",
+      "evidence": ["sc-03"],
+      "entities": ["e-tobin", "p-hall"],
+      "supersedes_in_frame": "f-at-tobin-1",
+      "typed": { "subject": "e-tobin", "predicate": "at", "object": { "kind": "entity", "id": "p-hall" } }
+    },
+    {
+      "fact_id": "f-at-tobin-3",
+      "frame": "ground-truth",
+      "claim": "Tobin goes back up to the nursery and keeps to it.",
+      "canon_from": "sc-06",
+      "evidence": ["sc-06"],
+      "entities": ["e-tobin", "p-nursery"],
+      "supersedes_in_frame": "f-at-tobin-2",
+      "typed": { "subject": "e-tobin", "predicate": "at", "object": { "kind": "entity", "id": "p-nursery" } }
+    },
+    {
+      "fact_id": "f-at-tobin-4",
+      "frame": "ground-truth",
+      "claim": "Tobin comes down to the hall the day his brother asks about the portrait.",
+      "canon_from": "sc-10",
+      "evidence": ["sc-10"],
+      "entities": ["e-tobin", "p-hall"],
+      "supersedes_in_frame": "f-at-tobin-3",
+      "typed": { "subject": "e-tobin", "predicate": "at", "object": { "kind": "entity", "id": "p-hall" } }
+    },
+    {
+      "fact_id": "f-at-tobin-5",
+      "frame": "ground-truth",
+      "claim": "Tobin sits in the kitchen where it is warm.",
+      "canon_from": "sc-12",
+      "evidence": ["sc-12"],
+      "entities": ["e-tobin", "p-kitchen"],
+      "supersedes_in_frame": "f-at-tobin-4",
+      "typed": { "subject": "e-tobin", "predicate": "at", "object": { "kind": "entity", "id": "p-kitchen" } }
+    },
+
+    {
+      "fact_id": "f-at-marget-1",
+      "frame": "ground-truth",
+      "claim": "Marget is in the kitchen when the snow starts.",
+      "canon_from": "sc-01",
+      "evidence": ["sc-01"],
+      "entities": ["e-marget", "p-kitchen"],
+      "typed": { "subject": "e-marget", "predicate": "at", "object": { "kind": "entity", "id": "p-kitchen" } }
+    },
+    {
+      "fact_id": "f-at-marget-2",
+      "frame": "ground-truth",
+      "claim": "Marget carries the ash out through the hall.",
+      "canon_from": "sc-04",
+      "evidence": ["sc-04"],
+      "entities": ["e-marget", "p-hall"],
+      "supersedes_in_frame": "f-at-marget-1",
+      "typed": { "subject": "e-marget", "predicate": "at", "object": { "kind": "entity", "id": "p-hall" } }
+    },
+    {
+      "fact_id": "f-at-marget-3",
+      "frame": "ground-truth",
+      "claim": "Marget goes back to the kitchen and does not leave it again that month.",
+      "canon_from": "sc-09",
+      "evidence": ["sc-09"],
+      "entities": ["e-marget", "p-kitchen"],
+      "supersedes_in_frame": "f-at-marget-2",
+      "typed": { "subject": "e-marget", "predicate": "at", "object": { "kind": "entity", "id": "p-kitchen" } }
+    },
+
+    {
+      "fact_id": "f-at-jonas-1",
+      "frame": "ground-truth",
+      "claim": "Jonas comes up the lane on the last day it can be ridden.",
+      "canon_from": "sc-05",
+      "evidence": ["sc-05"],
+      "entities": ["e-jonas", "p-lane"],
+      "typed": { "subject": "e-jonas", "predicate": "at", "object": { "kind": "entity", "id": "p-lane" } }
+    },
+    {
+      "fact_id": "f-at-jonas-2",
+      "frame": "ground-truth",
+      "claim": "Jonas is in the hall with his coat still on.",
+      "canon_from": "sc-06",
+      "evidence": ["sc-06"],
+      "entities": ["e-jonas", "p-hall"],
+      "supersedes_in_frame": "f-at-jonas-1",
+      "typed": { "subject": "e-jonas", "predicate": "at", "object": { "kind": "entity", "id": "p-hall" } }
+    },
+    {
+      "fact_id": "f-at-jonas-3",
+      "frame": "ground-truth",
+      "claim": "Jonas sits in the study with the old books his father gave him.",
+      "canon_from": "sc-08",
+      "evidence": ["sc-08"],
+      "entities": ["e-jonas", "p-study"],
+      "supersedes_in_frame": "f-at-jonas-2",
+      "typed": { "subject": "e-jonas", "predicate": "at", "object": { "kind": "entity", "id": "p-study" } }
+    },
+    {
+      "fact_id": "f-at-jonas-4",
+      "frame": "ground-truth",
+      "claim": "Jonas stands in the hall under the portrait for a long while.",
+      "canon_from": "sc-10",
+      "evidence": ["sc-10"],
+      "entities": ["e-jonas", "p-hall"],
+      "supersedes_in_frame": "f-at-jonas-3",
+      "typed": { "subject": "e-jonas", "predicate": "at", "object": { "kind": "entity", "id": "p-hall" } }
+    },
+    {
+      "fact_id": "f-at-jonas-5",
+      "frame": "ground-truth",
+      "claim": "Jonas is out on the lane the morning it can be ridden again.",
+      "canon_from": "sc-15",
+      "evidence": ["sc-15"],
+      "entities": ["e-jonas", "p-lane"],
+      "supersedes_in_frame": "f-at-jonas-4",
+      "typed": { "subject": "e-jonas", "predicate": "at", "object": { "kind": "entity", "id": "p-lane" } }
+    },
+
+    {
+      "fact_id": "f-lamps",
+      "frame": "ground-truth",
+      "claim": "Adela has the hall lamps lit at three in the afternoon from the second day on.",
+      "canon_from": "sc-02",
+      "evidence": ["sc-02"],
+      "entities": ["e-adela", "p-hall"]
+    },
+    {
+      "fact_id": "f-portrait-hangs",
+      "frame": "ground-truth",
+      "claim": "The portrait of the master's father is rehung in the hall for the winter.",
+      "canon_from": "sc-02",
+      "evidence": ["sc-02"],
+      "entities": ["e-portrait", "p-hall"],
+      "typed": { "subject": "e-portrait", "predicate": "hangs_in", "object": { "kind": "entity", "id": "p-hall" } }
+    },
+
+    {
+      "fact_id": "f-likeness-jonas",
+      "frame": "ground-truth",
+      "claim": "Jonas carries the Varn face of the portrait plainly.",
+      "canon_from": "sc-03",
+      "evidence": ["sc-02", "sc-03"],
+      "entities": ["e-jonas", "e-portrait"],
+      "typed": { "subject": "e-jonas", "predicate": "family_likeness", "object": { "kind": "token", "token": "marked" } }
+    },
+    {
+      "fact_id": "f-likeness-tobin",
+      "frame": "ground-truth",
+      "claim": "Tobin carries none of the Varn face at all.",
+      "canon_from": "sc-03",
+      "evidence": ["sc-02", "sc-03"],
+      "entities": ["e-tobin", "e-portrait"],
+      "pays_off": ["f-truth"],
+      "quote": "Jonas had his grandfather's jaw to the inch. Tobin, held up beside it, had a face out of nowhere at all, and Adela set him down again and asked whether the lamps were wanted.",
+      "typed": { "subject": "e-tobin", "predicate": "family_likeness", "object": { "kind": "token", "token": "absent" } }
+    },
+
+    {
+      "fact_id": "f-bread",
+      "frame": "ground-truth",
+      "claim": "Marget bakes for a fortnight ahead against the weeks of being shut in.",
+      "canon_from": "sc-04",
+      "evidence": ["sc-04"],
+      "entities": ["e-marget"]
+    },
+    {
+      "fact_id": "f-jonas-returns",
+      "frame": "ground-truth",
+      "claim": "Jonas comes home from the town to winter in the house.",
+      "canon_from": "sc-05",
+      "evidence": ["sc-05"],
+      "entities": ["e-jonas"]
+    },
+    {
+      "fact_id": "f-tobin-window",
+      "frame": "ground-truth",
+      "claim": "Tobin keeps the nursery sill swept clear of snow every morning.",
+      "canon_from": "sc-06",
+      "evidence": ["sc-06"],
+      "entities": ["e-tobin", "p-nursery"]
+    },
+    {
+      "fact_id": "f-accounts",
+      "frame": "ground-truth",
+      "claim": "Ellis sets Jonas to the winter accounts and gives him the run of the old ledgers.",
+      "canon_from": "sc-07",
+      "evidence": ["sc-07"],
+      "entities": ["e-ellis", "e-jonas", "e-ledger"],
+      "payoff_expectation": "expected"
+    },
+
+    {
+      "fact_id": "f-settlement",
+      "frame": "ground-truth",
+      "claim": "The old ledger carries a settlement paid to Rhodes Callender in the spring before Tobin was born, entered as leaving no further claim upon the house.",
+      "canon_from": "sc-08",
+      "evidence": ["sc-07", "sc-08"],
+      "entities": ["e-ledger", "e-callender", "e-ellis"],
+      "pays_off": ["f-truth", "f-accounts"],
+      "quote": "Item, to Mr Rhodes Callender, four hundred pounds, the spring of ninety-one: settled, and no further claim upon this house. The hand was his father's and the ink had gone brown, and Jonas turned the page and then turned it back.",
+      "typed": { "subject": "e-ledger", "predicate": "records_settlement_to", "object": { "kind": "entity", "id": "e-callender" } }
+    },
+    {
+      "fact_id": "f-settlement-sum",
+      "frame": "ground-truth",
+      "claim": "The settlement in the old ledger is four hundred pounds.",
+      "canon_from": "sc-08",
+      "evidence": ["sc-08"],
+      "entities": ["e-ledger"],
+      "typed": { "subject": "e-ledger", "predicate": "settlement_amount", "object": { "kind": "quantity", "n": 400, "unit": "pound" } }
+    },
+
+    {
+      "fact_id": "f-thaw",
+      "frame": "ground-truth",
+      "claim": "A thaw comes in over the lane and runs for two days.",
+      "canon_from": "sc-09",
+      "evidence": ["sc-09"],
+      "entities": ["p-lane"],
+      "supersedes_in_frame": "f-lane-open-first",
+      "typed": { "subject": "p-lane", "predicate": "road_state", "object": { "kind": "token", "token": "thawing" } }
+    },
+    {
+      "fact_id": "f-lane-shut",
+      "frame": "ground-truth",
+      "claim": "The lane closes under the drift and the house is shut in.",
+      "canon_from": "sc-10",
+      "evidence": ["sc-09", "sc-10"],
+      "entities": ["p-lane"],
+      "supersedes_in_frame": "f-thaw",
+      "payoff_expectation": "expected",
+      "typed": { "subject": "p-lane", "predicate": "road_state", "object": { "kind": "token", "token": "shut" } }
+    },
+    {
+      "fact_id": "f-jonas-asks",
+      "frame": "ground-truth",
+      "claim": "Jonas asks when the portrait was last taken down, and the answer he is sent back is about the damp.",
+      "canon_from": "sc-10",
+      "evidence": ["sc-03", "sc-10"],
+      "entities": ["e-jonas", "e-adela", "e-portrait"]
+    },
+    {
+      "fact_id": "f-adela-watches",
+      "frame": "ground-truth",
+      "claim": "Adela watches the shut lane from the parlour window for an hour at a time.",
+      "canon_from": "sc-11",
+      "evidence": ["sc-11"],
+      "entities": ["e-adela", "p-lane", "p-parlour"]
+    },
+
+    {
+      "fact_id": "f-marget-stops",
+      "frame": "ground-truth",
+      "claim": "Marget breaks off a sentence about the night Tobin was born and will not finish it.",
+      "canon_from": "sc-12",
+      "evidence": ["sc-12"],
+      "entities": ["e-marget", "e-tobin"],
+      "pays_off": ["f-truth"],
+      "quote": "'When the boy was born the master was not—' Marget said, and then she said the fire wanted coal, and got up and saw to it, and did not sit down again.",
+      "typed": { "subject": "e-marget", "predicate": "breaks_off_about", "object": { "kind": "entity", "id": "e-tobin" } }
+    },
+
+    {
+      "fact_id": "f-study-door",
+      "frame": "ground-truth",
+      "claim": "Ellis shuts the study door on his elder son for the first time that winter.",
+      "canon_from": "sc-13",
+      "evidence": ["sc-13"],
+      "entities": ["e-ellis", "e-jonas", "p-study"]
+    },
+    {
+      "fact_id": "f-candlemas",
+      "frame": "ground-truth",
+      "claim": "The house keeps Candlemas, and it is the first year in nine that the five of them do not keep it in one room.",
+      "canon_from": "sc-14",
+      "evidence": ["sc-14"],
+      "entities": ["e-ellis", "e-adela", "e-jonas", "e-tobin", "e-marget"]
+    },
+    {
+      "fact_id": "f-lane-reopened",
+      "frame": "ground-truth",
+      "claim": "The lane opens again at the end of the winter.",
+      "canon_from": "sc-15",
+      "evidence": ["sc-15"],
+      "entities": ["p-lane"],
+      "supersedes_in_frame": "f-lane-shut",
+      "pays_off": ["f-lane-shut"],
+      "typed": { "subject": "p-lane", "predicate": "road_state", "object": { "kind": "token", "token": "open" } }
+    },
+    {
+      "fact_id": "f-jonas-leaves",
+      "frame": "ground-truth",
+      "claim": "Jonas rides out the morning the lane opens and does not say why he is early.",
+      "canon_from": "sc-15",
+      "evidence": ["sc-15"],
+      "entities": ["e-jonas"]
+    },
+
+    {
+      "fact_id": "f-reader-1",
+      "frame": "reader",
+      "claim": "The reader takes the household's account of the youngest son and does not question it.",
+      "canon_from": "sc-01",
+      "evidence": ["sc-01"],
+      "entities": ["e-reader", "e-tobin"],
+      "typed": { "subject": "e-reader", "predicate": "reader_stance", "object": { "kind": "token", "token": "unquestioned" } }
+    },
+    {
+      "fact_id": "f-reader-2",
+      "frame": "reader",
+      "claim": "One of the three brushes has been passed; the reader is unsettled and can still put it down to nothing.",
+      "canon_from": "sc-03",
+      "evidence": ["sc-03"],
+      "entities": ["e-reader", "e-tobin"],
+      "supersedes_in_frame": "f-reader-1",
+      "typed": { "subject": "e-reader", "predicate": "reader_stance", "object": { "kind": "token", "token": "unsettled" } }
+    },
+    {
+      "fact_id": "f-reader-3",
+      "frame": "reader",
+      "claim": "At the second of the three brushes the withheld truth becomes the reader's own.",
+      "canon_from": "sc-08",
+      "evidence": ["sc-03", "sc-08"],
+      "entities": ["e-reader", "e-tobin"],
+      "supersedes_in_frame": "f-reader-2",
+      "typed": { "subject": "e-reader", "predicate": "reader_stance", "object": { "kind": "token", "token": "held" } }
+    },
+    {
+      "fact_id": "f-reader-4",
+      "frame": "reader",
+      "claim": "The third brush adds nothing the reader did not already hold; it only confirms it.",
+      "canon_from": "sc-12",
+      "evidence": ["sc-03", "sc-08", "sc-12"],
+      "entities": ["e-reader", "e-tobin"],
+      "supersedes_in_frame": "f-reader-3",
+      "typed": { "subject": "e-reader", "predicate": "reader_stance", "object": { "kind": "token", "token": "confirmed" } }
+    }
+  ],
+
+  "edge_costs": [
+    { "fact_id": "f-adj-lane-house", "n": 20, "unit": "minute" },
+    { "fact_id": "f-adj-hall-parlour", "n": 1, "unit": "minute" },
+    { "fact_id": "f-adj-hall-study", "n": 1, "unit": "minute" },
+    { "fact_id": "f-adj-hall-kitchen", "n": 1, "unit": "minute" },
+    { "fact_id": "f-adj-hall-nursery", "n": 2, "unit": "minute" }
+  ],
+
+  "edge_guards": [
+    {
+      "fact_id": "f-adj-lane-house",
+      "conditions": ["f-lane-open-first", "f-lane-reopened"],
+      "threshold": 1
+    }
+  ],
+
+  "disclosure_plans": [
+    {
+      "telling_id": "winter-house",
+      "default_mode": "state",
+      "description": "The winter as told. Everything on the page is told outright except the one thing the house is built on, which is only ever implied by three objects, and except the frames that would give it away if rendered.",
+      "overrides": [
+        {
+          "fact_id": "f-truth",
+          "mode": "imply",
+          "surface": { "scene": "sc-08", "object": "e-ledger" },
+          "first_at": [
+            {
+              "branch": "main",
+              "coords": ["sc-03", "sc-08", "sc-12"],
+              "threshold": 2
+            }
+          ]
+        },
+        { "fact_id": "f-ellis-knows", "mode": "withhold" },
+        { "fact_id": "f-adela-knows", "mode": "withhold" },
+        { "fact_id": "f-marget-knows", "mode": "withhold" },
+        { "fact_id": "f-reader-1", "mode": "withhold" },
+        { "fact_id": "f-reader-2", "mode": "withhold" },
+        { "fact_id": "f-reader-3", "mode": "withhold" },
+        { "fact_id": "f-reader-4", "mode": "withhold" }
+      ]
+    }
+  ]
+}

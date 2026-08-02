@@ -1,0 +1,102 @@
+=== playthrough manuscript — 63 fact(s), 1 world(s) ===
+world `main`: 15 scene(s), undeclared adjacencies=0, unplaced=0, undecidable=0, off road=0
+  sc-01 — The First Snow [begins=23 ends=0 holding=23]
+    + f-adela-knows (adela) [withhold]: Adela has known from the beginning and has never said it aloud in this house.
+    + f-adj-hall-kitchen (ground-truth) [state]: The kitchen passage runs from the hall.
+    + f-adj-hall-nursery (ground-truth) [state]: The stair from the hall goes up to the nursery.
+    + f-adj-hall-parlour (ground-truth) [state]: The parlour opens off the hall.
+    + f-adj-hall-study (ground-truth) [state]: The study opens off the hall.
+    + f-adj-lane-house (ground-truth) [state]: The lane runs up to the house door.
+    + f-at-ellis-1 (ground-truth) [state]: Ellis is in the study when the snow starts.
+    + f-at-marget-1 (ground-truth) [state]: Marget is in the kitchen when the snow starts.
+    + f-at-tobin-1 (ground-truth) [state]: Tobin is up in the nursery when the snow starts.
+    + f-contains-hall (ground-truth) [state]: The hall is inside the house.
+    + f-contains-kitchen (ground-truth) [state]: The kitchen is inside the house.
+    + f-contains-nursery (ground-truth) [state]: The nursery is inside the house.
+    + f-contains-parlour (ground-truth) [state]: The parlour is inside the house.
+    + f-contains-study (ground-truth) [state]: The study is inside the house.
+    + f-ellis-knows (ellis) [withhold]: Ellis has known since the spring he paid the agent off.
+    + f-jonas-sired (ground-truth) [state]: Jonas was fathered by Ellis Varn.
+    + f-jonas-supposes (jonas) [state]: Jonas takes Tobin for his brother by blood.
+    + f-lane-open-first (ground-truth) [state]: The lane is still open when the first snow comes.
+    + f-marget-knows (marget) [withhold]: Marget was in the house the night Tobin was born and has known since.
+    + f-reader-1 (reader) [withhold]: The reader takes the household's account of the youngest son and does not question it.
+    + f-supposition (household) [state]: Tobin is the master's youngest son.
+    + f-tobin-age (ground-truth) [state]: Tobin is nine years old this winter.
+    + f-truth (ground-truth) [imply first_at={sc-03,sc-08,sc-12} k=2 via sc-08/e-ledger]: Tobin was fathered by Rhodes Callender.
+  sc-02 — Lamps Lit at Three [begins=3 ends=0 holding=26]
+    + f-at-adela-1 (ground-truth) [state]: Adela takes the hall herself when the lamps are lit early.
+    + f-lamps (ground-truth) [state]: Adela has the hall lamps lit at three in the afternoon from the second day on.
+    + f-portrait-hangs (ground-truth) [state]: The portrait of the master's father is rehung in the hall for the winter.
+  sc-03 — The Likeness [begins=4 ends=2 holding=28]
+    + f-at-tobin-2 (ground-truth) [state]: Tobin is brought down to the hall while the portrait is rehung.
+    + f-likeness-jonas (ground-truth) [state]: Jonas carries the Varn face of the portrait plainly.
+    + f-likeness-tobin (ground-truth) [state]: Tobin carries none of the Varn face at all.
+    + f-reader-2 (reader) [withhold]: One of the three brushes has been passed; the reader is unsettled and can still put it down to nothing.
+    - f-at-tobin-1 (ground-truth): superseded by f-at-tobin-2
+    - f-reader-1 (reader): superseded by f-reader-2
+  sc-04 — Bread and Ash [begins=2 ends=1 holding=29]
+    + f-at-marget-2 (ground-truth) [state]: Marget carries the ash out through the hall.
+    + f-bread (ground-truth) [state]: Marget bakes for a fortnight ahead against the weeks of being shut in.
+    - f-at-marget-1 (ground-truth): superseded by f-at-marget-2
+  sc-05 — The Elder Son on the Lane [begins=3 ends=1 holding=31]
+    + f-at-ellis-2 (ground-truth) [state]: Ellis comes out to the hall to meet his elder son.
+    + f-at-jonas-1 (ground-truth) [state]: Jonas comes up the lane on the last day it can be ridden.
+    + f-jonas-returns (ground-truth) [state]: Jonas comes home from the town to winter in the house.
+    - f-at-ellis-1 (ground-truth): superseded by f-at-ellis-2
+  sc-06 — Snow on the Nursery Sill [begins=4 ends=3 holding=32]
+    + f-at-adela-2 (ground-truth) [state]: Adela moves her chair into the parlour for the shut-in weeks.
+    + f-at-jonas-2 (ground-truth) [state]: Jonas is in the hall with his coat still on.
+    + f-at-tobin-3 (ground-truth) [state]: Tobin goes back up to the nursery and keeps to it.
+    + f-tobin-window (ground-truth) [state]: Tobin keeps the nursery sill swept clear of snow every morning.
+    - f-at-adela-1 (ground-truth): superseded by f-at-adela-2
+    - f-at-jonas-1 (ground-truth): superseded by f-at-jonas-2
+    - f-at-tobin-2 (ground-truth): superseded by f-at-tobin-3
+  sc-07 — Winter Accounts [begins=2 ends=1 holding=33]
+    + f-accounts (ground-truth) [state]: Ellis sets Jonas to the winter accounts and gives him the run of the old ledgers.
+    + f-at-ellis-3 (ground-truth) [state]: Ellis keeps to the study through the accounts weeks.
+    - f-at-ellis-2 (ground-truth): superseded by f-at-ellis-3
+  sc-08 — A Settlement, Nine Years Old [begins=4 ends=2 holding=35]
+    + f-at-jonas-3 (ground-truth) [state]: Jonas sits in the study with the old books his father gave him.
+    + f-reader-3 (reader) [withhold]: At the second of the three brushes the withheld truth becomes the reader's own.
+    + f-settlement (ground-truth) [state]: The old ledger carries a settlement paid to Rhodes Callender in the spring before Tobin was born, entered as leaving no further claim upon the house.
+    + f-settlement-sum (ground-truth) [state]: The settlement in the old ledger is four hundred pounds.
+    - f-at-jonas-2 (ground-truth): superseded by f-at-jonas-3
+    - f-reader-2 (reader): superseded by f-reader-3
+  sc-09 — The Thaw That Did Not Hold [begins=2 ends=2 holding=35]
+    + f-at-marget-3 (ground-truth) [state]: Marget goes back to the kitchen and does not leave it again that month.
+    + f-thaw (ground-truth) [state]: A thaw comes in over the lane and runs for two days.
+    - f-at-marget-2 (ground-truth): superseded by f-at-marget-3
+    - f-lane-open-first (ground-truth): superseded by f-thaw
+  sc-10 — Jonas Asks After the Portrait [begins=4 ends=3 holding=36]
+    + f-at-jonas-4 (ground-truth) [state]: Jonas stands in the hall under the portrait for a long while.
+    + f-at-tobin-4 (ground-truth) [state]: Tobin comes down to the hall the day his brother asks about the portrait.
+    + f-jonas-asks (ground-truth) [state]: Jonas asks when the portrait was last taken down, and the answer he is sent back is about the damp.
+    + f-lane-shut (ground-truth) [state]: The lane closes under the drift and the house is shut in.
+    - f-at-jonas-3 (ground-truth): superseded by f-at-jonas-4
+    - f-at-tobin-3 (ground-truth): superseded by f-at-tobin-4
+    - f-thaw (ground-truth): superseded by f-lane-shut
+  sc-11 — Adela at the Parlour Window [begins=1 ends=0 holding=37]
+    + f-adela-watches (ground-truth) [state]: Adela watches the shut lane from the parlour window for an hour at a time.
+  sc-12 — What Marget Did Not Say [begins=3 ends=2 holding=38]
+    + f-at-tobin-5 (ground-truth) [state]: Tobin sits in the kitchen where it is warm.
+    + f-marget-stops (ground-truth) [state]: Marget breaks off a sentence about the night Tobin was born and will not finish it.
+    + f-reader-4 (reader) [withhold]: The third brush adds nothing the reader did not already hold; it only confirms it.
+    - f-at-tobin-4 (ground-truth): superseded by f-at-tobin-5
+    - f-reader-3 (reader): superseded by f-reader-4
+  sc-13 — The Study Door [begins=3 ends=2 holding=39]
+    + f-at-adela-3 (ground-truth) [state]: Adela comes back out to the hall the evening the study door is shut.
+    + f-at-ellis-4 (ground-truth) [state]: Ellis stands in the hall with the study door shut behind him.
+    + f-study-door (ground-truth) [state]: Ellis shuts the study door on his elder son for the first time that winter.
+    - f-at-adela-2 (ground-truth): superseded by f-at-adela-3
+    - f-at-ellis-3 (ground-truth): superseded by f-at-ellis-4
+  sc-14 — Candlemas [begins=2 ends=1 holding=40]
+    + f-at-ellis-5 (ground-truth) [state]: Ellis keeps Candlemas in the parlour with the rest of them.
+    + f-candlemas (ground-truth) [state]: The house keeps Candlemas, and it is the first year in nine that the five of them do not keep it in one room.
+    - f-at-ellis-4 (ground-truth): superseded by f-at-ellis-5
+  sc-15 — The Lane Opens [begins=3 ends=2 holding=41]
+    + f-at-jonas-5 (ground-truth) [state]: Jonas is out on the lane the morning it can be ridden again.
+    + f-jonas-leaves (ground-truth) [state]: Jonas rides out the morning the lane opens and does not say why he is early.
+    + f-lane-reopened (ground-truth) [state]: The lane opens again at the end of the winter.
+    - f-at-jonas-4 (ground-truth): superseded by f-at-jonas-5
+    - f-lane-shut (ground-truth): superseded by f-lane-reopened

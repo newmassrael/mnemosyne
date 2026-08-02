@@ -1,0 +1,27 @@
+{
+  "schema": "narrative-rules/v1",
+  "comment": "Three rules. one-father-per-child is the load-bearing one: it makes the ground-truth reading of the youngest son and the household's reading of him mutually exclusive claims about the same slot, so the two are a real contradiction rather than two compatible sentences — and it does not fire, because they are held in different frames, which is exactly the shape of a house keeping something from itself. The two map rules keep the winter honest: nobody is in two rooms at once, and nobody crosses between rooms the house has no way between.",
+  "rules": [
+    {
+      "id": "one-father-per-child",
+      "predicate": "sired_by",
+      "class": "exclusive",
+      "per": "subject"
+    },
+    {
+      "id": "one-place-per-person",
+      "predicate": "at",
+      "class": "exclusive",
+      "per": "subject",
+      "containment": "contains"
+    },
+    {
+      "id": "house-movement",
+      "predicate": "at",
+      "class": "transition",
+      "adjacency": "adjacent",
+      "undirected": true,
+      "containment": "contains"
+    }
+  ]
+}

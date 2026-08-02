@@ -1,0 +1,7 @@
+=== declared maps — 1 transition rule(s) ===
+map `house-movement` (adjacency `adjacent`, undirected): 7 node(s), 5 edge(s)
+  p-hall -> p-kitchen 1 minute (f-adj-hall-kitchen)
+  p-hall -> p-nursery 2 minute (f-adj-hall-nursery)
+  p-hall -> p-parlour 1 minute (f-adj-hall-parlour)
+  p-hall -> p-study 1 minute (f-adj-hall-study)
+  p-lane -> p-house 20 minute (f-adj-lane-house) [guard 1-of-2: f-lane-open-first, f-lane-reopened]
