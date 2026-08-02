@@ -579,9 +579,9 @@ fn manifest_kinds() -> Vec<KindWire> {
                     attaches to), \"n\": positive integer (0 or negative is a free teleport and \
                     rejects), \"unit\": unit id (REGISTERED; add it to `units` first) } — Round \
                     956. Until this wire existed the cost side table was reachable ONLY by the \
-                    `add-edge-cost` verb, so a file-only authoring could not touch it: five \
-                    authored corpora used it ZERO times and two blind authors wrote a shell \
-                    script by hand to reach it. Mnemosyne stores the number and NEVER adds two \
+                    `add-edge-cost` verb, so a file-only authoring — which is how the corpora on \
+                    record were written — could not touch it at all. Mnemosyne stores the number \
+                    and NEVER adds two \
                     costs together — units are consumer vocabulary, so summing them is the \
                     consumer's arithmetic (invariant 4).",
             },
@@ -738,9 +738,9 @@ fn verb_only_wire(registries: &[RegistrySpec], manifest: &ManifestWireSpec) -> S
          `edge_costs` AND `edge_guards` ARE NO LONGER AMONG THEM (Round 956): both are fact-manifest \
          arrays now — their rows, with the shapes, are in the roster above — and both keep their \
          verbs, so a file and a verb are two doors onto one enforcement. This paragraph asserted \
-         the opposite for as long as the wire was missing, and that was not a harmless silence: \
-         two blind authors hand-wrote a shell script to reach these tables (R943) and five \
-         authored corpora used them zero times (R936). \
+         the opposite for as long as the wire was missing, and that was not a harmless silence — \
+         a table reachable only by verb is a table a file-only authoring cannot reach, whatever \
+         this document says about it. \
          The verbs, with their arguments: \
          `add-edge-cost --fact <adjacent-fact-id> --n <positive-int> --unit <registered-unit>` \
          (travel time on one edge; the unit must be registered first, and n must be POSITIVE \
@@ -2609,7 +2609,7 @@ mod tests {
             assert!(
                 !claimed.contains(&t),
                 "on the roster today, `{t}` must NOT be claimed verb-only — this is the state \
-                 that sent two blind authors to hand-written shell scripts (R943)"
+                 that put these tables out of a file-only authoring's reach (R956)"
             );
         }
 

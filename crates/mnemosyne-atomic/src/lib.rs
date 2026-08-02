@@ -5259,10 +5259,11 @@ pub struct PredicateImport {
 /// an `add-edge-cost`, applied through that verb's own core.
 ///
 /// This wire is why the round exists. The cost and guard side tables were
-/// reachable ONLY by verb, so a file-only authoring — which is how every blind
-/// corpus on record was written — could not touch them at all. Round 936
-/// measured the result: five authored corpora, `edge_costs` and `edge_guards`
-/// used zero times, both branches of the map code with no authored witness.
+/// reachable ONLY by verb, so a file-only authoring — which is how the blind
+/// corpora on record were written — could not touch them at all. What the
+/// authors did instead is the tree's own record of the gap: hand-written shell
+/// scripts calling the verbs, one of which says in its header that a manifest
+/// array for these tables is a silent no-op.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct EdgeCostImport {
@@ -6912,10 +6913,9 @@ pub fn add_edge_cost(
 /// created; `context` names the caller in every message.
 ///
 /// The manifest wire exists because these side tables were reachable ONLY by
-/// verb: Round 936 measured five authored corpora using `edge_costs` and
-/// `edge_guards` zero times, and two blind authors wrote a `commands.sh` /
-/// `side-tables.sh` by hand to get at them — the tree's own record of an
-/// authoring surface being reached for and not found.
+/// verb, so a file-only authoring could not reach them. Blind authors wrote a
+/// `commands.sh` / `side-tables.sh` by hand to get at them — the tree's own
+/// record of an authoring surface being reached for and not found.
 pub(crate) fn apply_edge_cost(
     store: &mut AtomicStore,
     context: &str,
@@ -17108,9 +17108,9 @@ mod tests {
     /// the standalone verbs apply.
     ///
     /// Round 956. Both tables were verb-only, so a file-only authoring — which
-    /// is how every blind corpus on record was written — could not touch them:
-    /// Round 936 measured five authored corpora using them ZERO times, and two
-    /// blind authors wrote a shell script by hand to reach them.
+    /// is how the blind corpora on record were written — could not touch them,
+    /// and the authors who wanted them reached for a hand-written shell script
+    /// instead.
     ///
     /// The rejects are the load-bearing half. They are asserted here NOT to
     /// re-test the primitives but to pin the parity: a second copy of these

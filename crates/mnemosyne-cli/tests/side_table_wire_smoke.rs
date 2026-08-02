@@ -79,9 +79,9 @@ fn the_one_statement_sits_with_the_list_that_scopes_it() {
         assert!(
             line.contains(&format!("`{table}`")),
             "the consequence is stated without naming `{table}`, one of the tables it applies \
-             to. Stated bare, it reads as applying to every keyed side table — which is what \
-             sent two blind authors to hand-written shell scripts for `edge_costs` and \
-             `edge_guards` (R943), and those two are manifest arrays now (R956)."
+             to. Stated bare, it reads as applying to every keyed side table — which is the \
+             claim that put `edge_costs` and `edge_guards` out of a file-only authoring's \
+             reach, and those two are manifest arrays now (R956)."
         );
     }
     // Which tables belong on that list is NOT decided here — the derivation and
