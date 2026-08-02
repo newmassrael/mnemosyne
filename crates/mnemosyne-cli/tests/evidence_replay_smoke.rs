@@ -2544,3 +2544,131 @@ fn the_runbook_scan_can_see_every_checked_vocabulary() {
          would force the correction record out of the runbooks that carry it"
     );
 }
+
+/// Every `class: transition` rule in the recorded corpora, split by `undirected`.
+///
+/// Parsed, not grepped: a rules artifact is a JSON object with a `rules` array,
+/// so a store (which has no such array) contributes nothing and cannot be
+/// miscounted as a map. That distinction is the Round 951 lesson — a map is
+/// declared in a rules file and never lives in the store — and it is exactly
+/// what the instrument this test replaces did not have.
+fn transition_rule_census(root: &Path) -> (Vec<String>, Vec<String>) {
+    fn walk(dir: &Path, undirected: &mut Vec<String>, directed: &mut Vec<String>) {
+        let Ok(entries) = std::fs::read_dir(dir) else {
+            return;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            let Ok(kind) = entry.file_type() else {
+                continue;
+            };
+            if kind.is_dir() {
+                walk(&path, undirected, directed);
+                continue;
+            }
+            if path.extension().and_then(|e| e.to_str()) != Some("json") {
+                continue;
+            }
+            let Ok(text) = std::fs::read_to_string(&path) else {
+                continue;
+            };
+            let Ok(v) = serde_json::from_str::<serde_json::Value>(&text) else {
+                continue;
+            };
+            let Some(rules) = v.get("rules").and_then(|r| r.as_array()) else {
+                continue;
+            };
+            for rule in rules {
+                if rule.get("class").and_then(|c| c.as_str()) != Some("transition") {
+                    continue;
+                }
+                let name = path.display().to_string();
+                if rule
+                    .get("undirected")
+                    .and_then(serde_json::Value::as_bool)
+                    .unwrap_or(false)
+                {
+                    undirected.push(name);
+                } else {
+                    directed.push(name);
+                }
+            }
+        }
+    }
+    let (mut u, mut d) = (Vec::new(), Vec::new());
+    walk(&root.join("claudedocs"), &mut u, &mut d);
+    u.sort();
+    d.sort();
+    (u, d)
+}
+
+/// THE CONTRACT MAY NOT HARDCODE A CENSUS OF THE CORPORA IT CANNOT RECOUNT.
+///
+/// Round 924 wrote "every corpus written against this contract is a DIRECTED
+/// map" into the surfaces a blind author reads. It was TRUE when written. Round
+/// 943's two blind authors declared `undirected: true`, and the sentence has
+/// shipped false ever since — for twenty-five rounds, into Round 961, which
+/// restated it as "every corpus on record has chosen directed" and recorded the
+/// branch as having no authored witness, and from there into Round 968, which
+/// took its baseline from that entry and reported a move from zero.
+///
+/// This is Round 959's rule applied to a CLAIM rather than a number: a count no
+/// program recomputes must not live in shipping prose, because prose cannot go
+/// stale loudly. So the gate recounts. The census is the load-bearing half — it
+/// proves a counterexample EXISTS, which is why the ban is a measurement and not
+/// a style preference — and the quantifier list is only the anchor by which a
+/// universal claim is recognised in prose.
+///
+/// WHAT THIS CANNOT DO, stated rather than implied (the Round 965 ceiling):
+/// prose can assert a census in words this list does not carry. What is
+/// checkable is that the phrasings which ALREADY went stale here cannot come
+/// back, and that the tree is still able to refute them.
+#[test]
+fn the_contract_states_no_corpus_census_it_cannot_recount() {
+    let root = repo_root();
+    let (undirected, directed) = transition_rule_census(&root);
+
+    // NON-VACUITY, and the reason the ban exists at all: the recorded corpora
+    // already refute any universal claim about which way they chose. Both arms
+    // are asserted, so deleting either side of the corpus makes this test fail
+    // rather than quietly pass on an empty tree.
+    assert!(
+        !undirected.is_empty(),
+        "no corpus on record declares `undirected: true` — if that is really so, \
+         this test's premise is gone and the ban has to be re-argued, not kept"
+    );
+    assert!(
+        !directed.is_empty(),
+        "no corpus on record is directed — the split this test reasons about \
+         does not exist"
+    );
+
+    let c = mnemosyne_validate::schema::describe_schema();
+    let field = c
+        .narrative_rules
+        .iter()
+        .flat_map(|r| r.parameters.iter())
+        .find(|p| p.name == "undirected")
+        .expect("the undirected parameter is still described")
+        .description;
+
+    // A universal quantifier over the corpora, in the two surfaces an author
+    // actually reads. Each of these is a phrasing this contract HAS carried.
+    let quantifiers = ["every corpus", "every recorded corpus", "all corpora"];
+    for surface in [field, c.narrative_rules_wire] {
+        let lower = surface.to_lowercase();
+        for q in quantifiers {
+            assert!(
+                !lower.contains(q),
+                "the contract asserts `{q}` about the corpora, and the tree \
+                 already refutes it: {} of the recorded transition rules are \
+                 undirected and {} are directed. A census belongs in a report \
+                 that is re-run, not in prose that cannot go stale loudly \
+                 (Round 959). First undirected witness: {}",
+                undirected.len(),
+                directed.len(),
+                undirected.first().expect("checked non-empty")
+            );
+        }
+    }
+}

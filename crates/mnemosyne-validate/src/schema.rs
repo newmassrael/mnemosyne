@@ -432,11 +432,13 @@ pub fn describe_schema() -> SchemaContract {
              transition → \"adjacency\": <predicate id> (Round 697: its facts ARE the edges \
              — `adjacent(a,b)` admits (a,b); this is how movement between PLACES is gated, the \
              store-native map — the edges are FACTS, not a file list) + \"undirected\"?: bool \
-             (Round 924 — this declares EDGE SYMMETRY and nothing else: true = one fact admits \
-             both directions; absent/false = one fact is one way, so a two-way road is two facts \
-             and a way that costs more upward than downward is sayable. It does NOT declare \
-             whether your rule is a map or a lifecycle — every recorded corpus is a DIRECTED map \
-             — and no check reads it as though it did) + \"containment\"?: <predicate id> (Round 716, \
+             (Round 924 — this declares EDGE SYMMETRY and nothing else, so choose it by what you \
+             need to say about the WAY: true = one fact admits both directions, and the two can \
+             then never differ; absent/false = one fact is one way, which is what lets a way cost \
+             more upward than downward. That a two-way road is then two facts is a PRICE, not a \
+             reason — the fact count says nothing about the way. It does NOT declare \
+             whether your rule is a map or a lifecycle, and no check reads it as though it did) \
+             + \"containment\"?: <predicate id> (Round 716, \
              superseding R703's grouping model: its facts are `contains(container, contained)` and \
              they PARTITION the map into SCOPES — an adjacency edge may only join SIBLINGS (same \
              direct container), a non-sibling edge is `adjacency_cross_scope`, and a container \
@@ -1508,18 +1510,22 @@ fn rule_class_specs() -> Vec<RuleClassSpec> {
                         ty: "bool (default false)",
                         required: false,
                         description: "Round 697: EDGE SYMMETRY, and Round 924: that is ALL it \
-                            declares. true = an `adjacent(a, b)` fact admits BOTH (a, b) and \
-                            (b, a), so one fact per edge is the SSOT. Absent/false = one fact is \
-                            ONE WAY, so a two-way road is two facts and a way that costs more \
-                            upward than downward is sayable (`alive → dead` must not admit the \
-                            reverse either — the same knob serves both). THIS DOES NOT DECLARE \
-                            WHETHER YOUR RULE IS A MAP OR A LIFECYCLE. It used to be read that \
-                            way by two checks, and every corpus written against this contract is \
-                            a DIRECTED map, so those checks asked four maps a question and heard \
-                            `state machine` (Round 918). Nothing reads it that way now: a map's \
-                            islands are named and its unreachable pairs counted whichever value \
-                            you set, and you set it purely by whether one fact means one \
-                            direction or two.",
+                            declares. CHOOSE IT BY WHAT YOU NEED TO SAY ABOUT THE WAY. true = an \
+                            `adjacent(a, b)` fact admits BOTH (a, b) and (b, a), and the two \
+                            directions can then never differ. Absent/false = one fact is ONE WAY, \
+                            which is what lets a way cost more upward than downward — `edge_costs` \
+                            keys on the FACT, so a symmetric edge carries exactly one cost for \
+                            both directions and there is no second place to put the other number \
+                            — and what keeps `alive → dead` from admitting the reverse (the same \
+                            knob serves both). THAT A TWO-WAY ROAD IS THEN TWO FACTS IS A PRICE, \
+                            NOT A REASON: the fact count is the one consideration that says \
+                            nothing about the way, and picking symmetry to halve it trades a \
+                            capability for bookkeeping. THIS DOES NOT DECLARE WHETHER YOUR RULE \
+                            IS A MAP OR A LIFECYCLE. Two checks used to read it that way and were \
+                            wrong about the maps they exempted (Round 918); nothing reads it that \
+                            way now — a map's islands are named and its unreachable pairs counted \
+                            whichever value you set, and you set it purely by whether one fact \
+                            means one direction or two.",
                     },
                     FieldSpec {
                         name: "containment",
@@ -2972,10 +2978,12 @@ mod tests {
     ///
     /// Both surfaces said the true value was "the MAP" and the false value "a
     /// state machine". Two checks read the field that way, and R918 measured what
-    /// it cost: every corpus written against this contract declares
+    /// it cost: the four corpora on record AT THAT TIME all declared
     /// `undirected: false` — because a road per direction is how an author says a
     /// way costs more upward than downward — so four MAPS were exempted from the
-    /// connectivity walk and the route count. The behaviour is pinned in
+    /// connectivity walk and the route count. That count is dated on purpose: it
+    /// stopped being true at Round 943 and the undated version of it shipped in
+    /// the contract for twenty-five rounds (Round 969). The behaviour is pinned in
     /// `continuity.rs` (`genre_is_not_inferable_from_any_declared_field`); what is
     /// pinned here is that the author is not told the retired story, because the
     /// author's copy is the one that produced the corpora.

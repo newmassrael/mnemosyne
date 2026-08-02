@@ -1177,9 +1177,11 @@ struct NarrativeRuleWire {
     ///
     /// Round 924 — this doc used to gloss the two values as "the map" and "a
     /// state machine", which is the reading two checks then made of the field and
-    /// R918 measured to be wrong: every recorded corpus is a DIRECTED map, one
-    /// fact per direction. A directed map is not a state machine, and no declared
-    /// field tells the two apart.
+    /// R918 measured to be wrong: every corpus on record AT R918 was a DIRECTED
+    /// map, one fact per direction. A directed map is not a state machine, and no
+    /// declared field tells the two apart. The date matters — corpora recorded
+    /// since then declare symmetry, and the undated form of this count shipped in
+    /// the contract as a present-tense fact until Round 969 found it stale.
     #[serde(default)]
     undirected: Option<bool>,
     /// The containment-source predicate for a transition rule (Round 703): its
@@ -11845,8 +11847,9 @@ mod tests {
     /// connectivity walk. The walk symmetrizes every edge, so it has always asked
     /// for WEAK connectivity, and a one-way road still joins its two places —
     /// there was never a question about one-wayness here. What the gate actually
-    /// excluded was every recorded corpus, all four of them directed maps (R918),
-    /// which is the whole of the authored evidence this check exists to serve.
+    /// excluded was the four corpora on record at R918, all of them directed
+    /// maps, which was the whole of the authored evidence this check existed to
+    /// serve at that time (the count is dated — Round 969).
     ///
     /// The second scan is the discriminating half: the same places, one road
     /// added, no finding. So this measures CONNECTIVITY and not merely "a
