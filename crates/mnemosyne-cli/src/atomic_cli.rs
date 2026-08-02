@@ -107,6 +107,37 @@ fn parse_bullets_file(path: &str) -> Result<Vec<String>> {
     Ok(bullets)
 }
 
+/// A prose field handed over a FILE rather than an inline shell argument.
+///
+/// Round 971. A changelog entry's three bullet fields have always been
+/// file-fed and are therefore out of the shell's reach; `decision_summary` was
+/// the one that was not, and it is the one the shell corrupted three times —
+/// Round 819 (caught at readback, the append discarded and re-authored), Round
+/// 907 (caught at readback, the store reverted to the previous commit and
+/// re-appended through a heredoc), Round 969 (NOT caught, and the ledger is
+/// append-only so the damage is permanent). A backtick inside a double-quoted
+/// shell argument is command substitution: what reaches this primitive is the
+/// substitution's OUTPUT, so no invariant it could enforce would ever see the
+/// loss. Round 819 wrote the rule in prose — "an id belongs in a file passed
+/// to the primitive, never inline in a shell argument" — and the field had no
+/// file to be passed in for another hundred and fifty rounds.
+///
+/// The ONE thing this boundary can still check is the shape the failure takes:
+/// silent emptiness. An all-whitespace file is rejected rather than stored.
+fn parse_prose_file(path: &str) -> Result<String> {
+    let content = fs::read_to_string(path)
+        .with_context(|| format!("prose-file recovery failed: {}", path))?;
+    let prose = content.trim_end();
+    if prose.trim().is_empty() {
+        return Err(anyhow!(
+            "prose-file is empty after trim: {path} — silent emptiness is the shape \
+             the shell-substitution failure takes, so a blank prose field is a \
+             reject here, never a stored value"
+        ));
+    }
+    Ok(prose.to_string())
+}
+
 fn parse_alternatives_file(path: &str) -> Result<Vec<RejectedAlternative>> {
     let content = fs::read_to_string(path)
         .with_context(|| format!("alternatives-file recovery failed: {}", path))?;
@@ -4449,7 +4480,7 @@ fn finalize_mutate(
 
 pub fn cmd_append_changelog_entry(workspace_root: &Path, args: &[String]) -> Result<(), CliError> {
     let mut entry_id: Option<String> = None;
-    let mut decision_summary: Option<String> = None;
+    let mut decision_file: Option<String> = None;
     let mut changes_file: Option<String> = None;
     let mut verification_file: Option<String> = None;
     let mut impact_csv: Option<String> = None;
@@ -4466,10 +4497,10 @@ pub fn cmd_append_changelog_entry(workspace_root: &Path, args: &[String]) -> Res
                         .clone(),
                 )
             }
-            "--decision" => {
-                decision_summary = Some(
+            "--decision-file" => {
+                decision_file = Some(
                     iter.next()
-                        .ok_or_else(|| anyhow!("--decision missing"))?
+                        .ok_or_else(|| anyhow!("--decision-file missing"))?
                         .clone(),
                 )
             }
@@ -4513,6 +4544,7 @@ pub fn cmd_append_changelog_entry(workspace_root: &Path, args: &[String]) -> Res
         }
     }
     let entry_id = entry_id.ok_or_else(|| anyhow!("--entry-id arg required"))?;
+    let decision_summary = decision_file.as_deref().map(parse_prose_file).transpose()?;
     let changes = changes_file
         .as_deref()
         .map(parse_bullets_file)

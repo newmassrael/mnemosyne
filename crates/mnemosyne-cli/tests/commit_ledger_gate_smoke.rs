@@ -38,13 +38,15 @@ fn seed_ledger_entry(dir: &std::path::Path, entry_id: &str) {
     fs::write(&changes, "x\n").unwrap();
     let verify = dir.join("verify.txt");
     fs::write(&verify, "v\n").unwrap();
+    let decision = dir.join("decision.txt");
+    fs::write(&decision, "seed\n").unwrap();
     let out = Command::new(cli_binary())
         .args([
             "append-changelog-entry",
             "--entry-id",
             entry_id,
-            "--decision",
-            "seed",
+            "--decision-file",
+            decision.to_str().unwrap(),
             "--changes-file",
             changes.to_str().unwrap(),
             "--verification-file",

@@ -1000,7 +1000,7 @@ sections:
 ```bash
 mnemosyne-cli append-changelog-entry \
   --entry-id "Rev 2026-05-01" \
-  --decision "W3C SCXML §3.13 rev 2026-03-01 → 2026-05-01 — semantic delta on Y" \
+  --decision-file /tmp/rev-decision.txt \
   --changes-file /tmp/rev-changes.txt \
   --verification-file /tmp/rev-verify.txt \
   --impact "scxml-3.13,scxml-3.14" \

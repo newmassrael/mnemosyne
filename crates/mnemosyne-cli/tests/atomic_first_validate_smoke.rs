@@ -76,6 +76,8 @@ fn validate_workspace_passes_on_clean_store() {
     fs::write(&changes_path, "x\n").unwrap();
     let verify_path = tmp.path().join("verify.txt");
     fs::write(&verify_path, "v\n").unwrap();
+    let decision_path = tmp.path().join("decision.txt");
+    fs::write(&decision_path, "atomic-first sync test\n").unwrap();
 
     // §1 must exist in the store for the entry's impact_ref to resolve.
     add_section(tmp.path(), "1");
@@ -86,8 +88,8 @@ fn validate_workspace_passes_on_clean_store() {
             "append-changelog-entry",
             "--entry-id",
             "Round 999",
-            "--decision",
-            "atomic-first sync test",
+            "--decision-file",
+            decision_path.to_str().unwrap(),
             "--changes-file",
             changes_path.to_str().unwrap(),
             "--verification-file",
@@ -133,6 +135,8 @@ fn validate_workspace_rejects_atomic_orphan_ref() {
     fs::write(&changes_path, "x\n").unwrap();
     let verify_path = tmp.path().join("verify.txt");
     fs::write(&verify_path, "v\n").unwrap();
+    let decision_path = tmp.path().join("decision.txt");
+    fs::write(&decision_path, "orphan ref test\n").unwrap();
 
     // Append entry with impact_ref to a non-existent section §99.
     Command::new(cli_binary())
@@ -140,8 +144,8 @@ fn validate_workspace_rejects_atomic_orphan_ref() {
             "append-changelog-entry",
             "--entry-id",
             "Round 999",
-            "--decision",
-            "orphan ref test",
+            "--decision-file",
+            decision_path.to_str().unwrap(),
             "--changes-file",
             changes_path.to_str().unwrap(),
             "--verification-file",

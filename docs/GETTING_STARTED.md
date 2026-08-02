@@ -129,7 +129,7 @@ cargo run -p mnemosyne-cli -- set-section-decision-status \
 
 # Append a structured changelog entry (atomic, audit-trail).
 cargo run -p mnemosyne-cli -- append-changelog-entry \
- --entry-id "Round 8" --decision "Adopt Argon2id over bcrypt" \
+ --entry-id "Round 8" --decision-file ./round8-decision.txt \
  --changes-file ./round8-changes.txt \
  --verification-file ./round8-verification.txt \
  --impact §3,§7 --carry-file ./round8-carry.txt

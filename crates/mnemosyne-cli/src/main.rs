@@ -1284,7 +1284,7 @@ static COMMANDS: &[Command] = &[
         aliases: &[],
         group: Some(&GROUP_ATOMIC_MUTATE),
         blank_before: false,
-        usage: &["append-changelog-entry --entry-id \"Round N\" --decision <text> --changes-file <path> --verification-file <path> --impact §A,§B --carry-file <path> [--sidecar <path>] [--json]"],
+        usage: &["append-changelog-entry --entry-id \"Round N\" --decision-file <path> --changes-file <path> --verification-file <path> --impact §A,§B --carry-file <path> [--sidecar <path>] [--json]"],
         notes: &[],
         run: |c| atomic_cli::cmd_append_changelog_entry(&c.anchor()?, c.rest()),
     },
@@ -2225,7 +2225,7 @@ fn print_commit_ledger_drift_surface(
             // guesses which class a number belongs to.
             println!(
                 "  hint: if R{n} is THIS workspace's round, backfill it — `mnemosyne-cli \
-  append-changelog-entry --entry-id \"Round {n} — ...\" --decision <text> \
+  append-changelog-entry --entry-id \"Round {n} — ...\" --decision-file <path> \
   --changes-file <path> --verification-file <path> --impact §A,§B --carry-file <path>` \
   (Round 293 backfill flow).",
                 n = report
