@@ -591,8 +591,18 @@ fn manifest_kinds() -> Vec<KindWire> {
                     (>= 1; the first-reached trigger SET — a non-linear reader reveals the fact at \
                     the EARLIEST coord reached), \"threshold\"?: integer (K-of-N; omitted = \
                     first-reached, 2..=len selects the k-th-earliest, len = last-reached) }, … ] (a \
-                    list of per-world reveal triggers), \"surface\"?: {\"scene\": string, \
-                    \"object\"?: string} } ] }",
+                    list of per-world reveal triggers), \"surface\"?: { \"scene\": section id, \
+                    \"object\"?: entity id } (Round 955 — WHERE the reader meets the fact, and the \
+                    only slot that moves it. The seat is DERIVED (R643): omit `surface` and it is \
+                    the fact's own `canon_from`; author one and it OVERRIDES that, and the \
+                    `map_locator` a runtime dereferences resolves your `scene` against the world's \
+                    walk. `first_at` is the other axis and moves nothing — it pins WHEN a withheld \
+                    fact is revealed, which is the confusion Round 947 measured on authored data. \
+                    BOTH LEGS ARE REGISTRY REFS, not free text: `scene` must be a registered \
+                    section and `object` a registered entity, and either unregistered is a write \
+                    REJECT. Seating a fact EARLIER than its own `canon_from` puts a truth on the \
+                    page before it is true — legal to write, and counted by \
+                    `report-authoring-frontier` as `disclosures_seated_before_truth`.) } ] }",
             },
     ]
 }
@@ -1732,6 +1742,48 @@ pub(crate) const SUPERSEDED_CROSSING_TELLINGS: &[&str] = &[
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The contract names a disclosure surface's two legs as the REGISTRY REFS
+    /// the write path rejects on, and not as bare strings.
+    ///
+    /// Round 955. Both legs are checked at write time against `sections` and
+    /// `entities` — that enforcement has tests of its own in `mnemosyne-atomic`
+    /// — and until this round the contract every blind author reads described
+    /// them as `string`, two slots away from a `first_at` that spells out
+    /// `branch id` and `[section id, …]`. An author reading `string` has been
+    /// told the slot takes free text, and the only thing that corrects them is
+    /// a reject they have to earn by running.
+    ///
+    /// Pinned here rather than left to prose review because the failure mode is
+    /// silent reversion: nothing else in this tree reads the sentence.
+    #[test]
+    fn the_contract_types_a_disclosure_surface_as_registry_refs() {
+        let wire = manifest_kinds()
+            .into_iter()
+            .find(|k| k.kind == "disclosure_plans")
+            .expect("the contract describes disclosure_plans");
+        let surface = wire
+            .json_keys
+            .split_once("\"surface\"")
+            .expect("the disclosure wire describes a surface")
+            .1;
+        assert!(
+            surface.contains("\"scene\": section id"),
+            "the surface scene is a registered section, and the contract must \
+             say so: {surface}"
+        );
+        assert!(
+            surface.contains("\"object\"?: entity id"),
+            "the surface object is a registered entity, and the contract must \
+             say so: {surface}"
+        );
+        // The negative half: `string` here is exactly what this round removed,
+        // so a revert must be red rather than merely unpinned.
+        assert!(
+            !surface.starts_with("?: {\"scene\": string"),
+            "the surface legs are back to bare strings: {surface}"
+        );
+    }
 
     /// Round 636 — the published quest object rule is stated twice (machine +
     /// prose); this binds them, making R631's "cannot drift" claim true.
