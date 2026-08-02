@@ -64,10 +64,18 @@ MN="$(git rev-parse --show-toplevel)/scripts/mn"
 ```
 cd "$(git rev-parse --show-toplevel)/claudedocs/phase1-disclosed-place-experiment"
 mkdir -p vN/run/stage-a vN/run/stage-b
+# Round 957 — the schema version is ASKED FOR, not typed. This line read
+# `"schema_version":23` while the constant was 44, and a store seeded at 23
+# still imports because the loader migrates, so the stale literal produced no
+# error and nothing would have told the next arm. Round 944's rule ("grep the
+# code that reads a machine-checked literal") applied to the one literal that
+# round did not check. v1's frozen evidence is untouched.
+SV="$("$MN" describe-schema | sed -n '1s/.*schema v\([0-9]\+\).*/\1/p')"
+[ -n "$SV" ] || { echo "could not read the schema version from describe-schema"; exit 1; }
 for d in vN/run/stage-a vN/run/stage-b; do
   mkdir -p $d/docs/.atomic
   printf '[workspace]\n[continuity]\ncanon_order_path = "order.json"\n' > $d/mnemosyne.toml
-  printf '{"schema_version":23,"sections":{},"changelog_entries":{}}' > $d/docs/.atomic/workspace.atomic.json
+  printf '{"schema_version":%s,"sections":{},"changelog_entries":{}}' "$SV" > $d/docs/.atomic/workspace.atomic.json
   "$MN" describe-schema > $d/contract.txt
 done
 "$MN" describe-schema > vN/run/contract.txt   # the tracked copy; the per-stage
