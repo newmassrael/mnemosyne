@@ -1229,12 +1229,20 @@ fn exclusive_key_values() -> Vec<EnumValue> {
     fn gloss(k: ExclusiveKey) -> &'static str {
         match k {
             ExclusiveKey::Subject => {
-                "at most one co-holding value per SUBJECT (location exclusivity: \
-                one place per person)"
+                "key on the SUBJECT leg: at most one co-holding OBJECT value per \
+                subject. That is location exclusivity when the predicate reads \
+                `at(person, place)` — one place per person."
             }
             ExclusiveKey::Object => {
-                "at most one holder per OBJECT (conservation/custody: one \
-                holder per thing)"
+                "key on the OBJECT leg: at most one co-holding SUBJECT value per \
+                object. That is custody/conservation ONLY when the predicate is \
+                written holder-first, `holds(holder, thing)` — then the object IS \
+                the thing and this is one holder per thing. Write the same \
+                relation thing-first, `held_by(thing, holder)`, and this value \
+                means one THING per holder, the opposite rule under the same \
+                name. Measured, not supposed: two corpora on record declare \
+                `held_by` with OPPOSITE `per` values and both call it \
+                one-holder-per-thing, so read the legs, never the role words."
             }
         }
     }
@@ -1434,10 +1442,14 @@ fn rule_class_specs() -> Vec<RuleClassSpec> {
         match c {
             RuleClass::Exclusive => RuleClassSpec {
                 class: "exclusive",
-                description: "At most one co-holding value per subject (`per: subject` — \
-                    location exclusivity) or one holder per object (`per: object` — \
-                    conservation/custody) within one (frame x world). Overlapping typed legs \
-                    that violate this are a continuity-gate reject.",
+                description: "At most one co-holding value on the leg the rule does NOT key \
+                    on, per value of the leg it does, within one (frame x world). \
+                    `per: subject` keys on the subject (one object value per subject); \
+                    `per: object` keys on the object (one subject value per object). Which \
+                    of those is location exclusivity and which is custody depends on how \
+                    YOUR predicate orders its legs, not on the rule's name — see \
+                    `exclusive_key`. Overlapping typed legs that violate this are a \
+                    continuity-gate reject.",
                 parameters: vec![
                     FieldSpec {
                         name: "per",
@@ -3343,6 +3355,49 @@ mod tests {
                 canon.contains(&format!("\"{key}\"")),
                 "canon-order structural key `{key}` is not named in the canon-order prose"
             );
+        }
+    }
+
+    /// Every `exclusive_key` gloss names BOTH legs, in the enum's own words.
+    ///
+    /// The failure this exists for is not a missing sentence but a role word
+    /// standing in for a leg. Until Round 965 the `object` gloss read "at most
+    /// one HOLDER per OBJECT (one holder per thing)": it named the leg it keys
+    /// on and described the other leg by the role it plays when the predicate
+    /// happens to be written holder-first. An author who writes the same
+    /// relation the other way round — `held_by(thing, holder)` instead of
+    /// `holds(holder, thing)` — reads that sentence, agrees with it, and gets
+    /// the inverted rule. Measured over every exclusive rule on record: the
+    /// predicate `held_by` appears with `per: subject` in one corpus and
+    /// `per: object` in another, and both name the rule one-holder-per-thing.
+    ///
+    /// So the checkable property is that each gloss names both legs, and the
+    /// leg names are not typed here — they ARE the variants, read off the enum.
+    #[test]
+    fn every_exclusive_key_gloss_names_both_legs() {
+        let keys = super::exclusive_key_values();
+        assert_eq!(
+            keys.len(),
+            2,
+            "this check reads `both legs` as `every variant`, which is only the \
+             right rule while `ExclusiveKey` is a pair. A third key needs the \
+             property restated, not this assertion relaxed."
+        );
+        for key in &keys {
+            let text = key.description.to_lowercase();
+            for other in &keys {
+                assert!(
+                    text.contains(other.value),
+                    "the `{}` gloss never names the `{}` leg, so it can only be \
+                     describing that leg by the ROLE it plays under one \
+                     predicate ordering — the exact reading that put `held_by` \
+                     on record with opposite `per` values in two corpora. \
+                     Gloss: {:?}",
+                    key.value,
+                    other.value,
+                    key.description
+                );
+            }
         }
     }
 }
