@@ -4565,6 +4565,17 @@ fn cmd_report_disclosure_coverage(args: &[String]) -> Result<()> {
     for id in &report.never_planned {
         println!("  never-planned: {id}");
     }
+    // Round 946 — the pin that does nothing. Printed rather than counted,
+    // because a count says "something is wrong" and this has to say WHAT TO
+    // WRITE INSTEAD: two blind authors wrote this shape meaning a late reveal.
+    for (fact, world, pin) in &report.inert_reveal_pins {
+        println!(
+            "  inert reveal pin: `{fact}` is withheld on `{world}` and pins first_at at `{pin}` \
+             — a withheld fact seats no locator, so nothing renders at that pin, and the leak \
+             gate reads any match as a leak whatever the pin says. Use mode `state` with the \
+             same pin to disclose it there instead."
+        );
+    }
     Ok(())
 }
 

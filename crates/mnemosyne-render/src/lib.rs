@@ -43,6 +43,9 @@ pub trait Theme {
     /// `exits` is what the DECLARATION allows, not what is passable now: a road
     /// whose guard does not hold is still here, because evaluating a guard is
     /// the consumer's (the kernel's R712 line, kept whole through the surface).
+    /// It is also what the READER has been told (Round 946): a road the telling
+    /// never disclosed is not among them, so a theme cannot print one.
+    ///
     /// A BELIEVED place is named as believed. The kernel carries the frame and
     /// refuses to decide whether a rumour is worth showing; the default theme
     /// refuses to show it as a fact, which is the same refusal one layer up.
@@ -123,7 +126,12 @@ impl Theme for MarkerTheme {
 /// numbered interactive doors — each element styled by `theme`. The layout is
 /// the renderer's; the per-element look is the theme's (the style override).
 #[must_use]
-pub fn render_scene(scene: &SceneView, map: &MapProjection, theme: &impl Theme) -> String {
+pub fn render_scene(
+    scene: &SceneView,
+    map: &MapProjection,
+    told: &std::collections::HashSet<String>,
+    theme: &impl Theme,
+) -> String {
     let mut out = String::new();
     if let Some(title) = &scene.title {
         out.push_str(&theme.heading(title));
@@ -134,9 +142,13 @@ pub fn render_scene(scene: &SceneView, map: &MapProjection, theme: &impl Theme) 
     // common and correct case for a store that declares no map at all: the
     // projection then holds no maps and this loop does not run.
     for here in map.places_disclosed_in(scene) {
+        // THE ROADS A READER HAS BEEN TOLD ABOUT, not every road the town has
+        // (Round 946). The map is ground truth because the gate needs it whole;
+        // printing it here disclosed by the back door what the telling withheld,
+        // which is the same leak `places_disclosed_in` refuses one line above.
         let exits: Vec<&str> = here
             .map
-            .steps_from(&here.place)
+            .steps_disclosed_from(&here.place, told)
             .into_iter()
             .map(|(_, to)| to)
             .collect();
@@ -171,12 +183,17 @@ pub fn render_playthrough(
     // anything. The empty set states that rather than leaving it unasked
     // (Round 779), and filters nothing, freshness being a set difference.
     let holds_nothing = std::collections::HashSet::new();
+    // What the reader has been TOLD, accumulated as the walk goes (Round 946).
+    // This is not the same set as `holds_nothing` above: that one is freshness,
+    // which a whole-playthrough layout has no reader partway through to compute.
+    // This one is disclosure, and it only ever grows — a road named in scene two
+    // is still known in scene twenty. Scenes are added BEFORE the scene renders,
+    // so a road disclosed in this very scene is a road this scene may show.
+    let mut told: std::collections::HashSet<String> = std::collections::HashSet::new();
     for section in projection.walk(world) {
-        out.push_str(&render_scene(
-            &projection.scene(world, section, &holds_nothing),
-            map,
-            theme,
-        ));
+        let scene = projection.scene(world, section, &holds_nothing);
+        told.extend(scene.lines.iter().map(|l| l.fact_id().to_string()));
+        out.push_str(&render_scene(&scene, map, &told, theme));
         out.push('\n');
     }
     out
@@ -305,6 +322,98 @@ mod tests {
         })
     }
 
+    /// A ROAD THE TELLING NEVER DISCLOSED IS NOT AN EXIT (Round 946).
+    ///
+    /// Round 943 measured a corpus that withheld all thirteen of its roads and
+    /// printed every one of them anyway, byte-identically under the withholding
+    /// telling and the open one — the place honoured the telling and the roads
+    /// out of it did not.
+    ///
+    /// The pair is the guard: the SAME scene and the SAME map, rendered once with
+    /// the road told and once without. Without the pair, "no exits" would also be
+    /// what a renderer that lost the map entirely produces, and the assertion
+    /// would be vacuous.
+    #[test]
+    fn an_undisclosed_road_is_not_offered_as_an_exit() {
+        let proj = demo();
+        let scene = proj.scene("main", "sc-01", &std::collections::HashSet::new());
+
+        let told = render_scene(&scene, &town(), &every_road_told(), &PlainTheme);
+        assert!(
+            told.contains("loc-quay -> loc-ford"),
+            "the told half must show the road, or the untold half proves nothing:\n{told}"
+        );
+
+        let untold = render_scene(
+            &scene,
+            &town(),
+            &std::collections::HashSet::new(),
+            &PlainTheme,
+        );
+        assert!(
+            untold.contains("loc-quay"),
+            "the PLACE is still disclosed — only the road was withheld:\n{untold}"
+        );
+        assert!(
+            !untold.contains("loc-ford"),
+            "a road the reader was never told about is not an exit:\n{untold}"
+        );
+        assert!(
+            !untold.contains("->"),
+            "and no empty arrow is left behind:\n{untold}"
+        );
+    }
+
+    /// The walk accumulates: a road disclosed in an EARLIER scene is still an
+    /// exit later. Round 946 — disclosure only ever grows, and a renderer that
+    /// asked "was this road named in THIS scene" would blink the town's roads on
+    /// and off as the reader moved through it.
+    #[test]
+    fn a_road_told_once_stays_told_for_the_rest_of_the_walk() {
+        let placed = |fact_id: &str, place: &str| LinePart {
+            typed_predicate: Some("at".to_string().into()),
+            entities: vec!["ent-bunok".into(), place.to_string().into()].into(),
+            ..line(fact_id, "Bunok stands there", "ground-truth", None, None)
+        };
+        let proj = PlayableProjection::from_parts(ProjectionParts {
+            telling: "reader".into(),
+            by_world: vec![(
+                "main".into(),
+                vec![
+                    // Scene one names the road itself; scene two names nobody's
+                    // road at all and must still be able to show it.
+                    (
+                        "sc-01".into(),
+                        vec![
+                            line("f-adj", "a lane joins the quay to the ford", "", None, None),
+                            placed("f-at-1", "loc-quay"),
+                        ],
+                    ),
+                    ("sc-02".into(), vec![placed("f-at-2", "loc-quay")]),
+                ],
+            )],
+            walks: vec![("main".into(), vec!["sc-01".into(), "sc-02".into()])],
+            titles: vec![
+                ("sc-01".into(), "One".into()),
+                ("sc-02".into(), "Two".into()),
+            ],
+            cast: Vec::new(),
+            forks: Vec::new(),
+            divergent_endings: Vec::new(),
+            interactivity: Interactivity::default(),
+            choice_entity_refs: Vec::new(),
+            ask_doors: Vec::new(),
+            journal_offers: Vec::new(),
+        });
+
+        let out = render_playthrough(&proj, &town(), "main", &PlainTheme);
+        assert_eq!(
+            out.matches("loc-quay -> loc-ford").count(),
+            2,
+            "the road is an exit in both scenes, not only the one that named it:\n{out}"
+        );
+    }
+
     /// THE RENDERED PLACE SAYS WHOSE IT IS (Round 945).
     ///
     /// Round 943 watched a blind author's false rumour print exactly like the
@@ -321,6 +430,7 @@ mod tests {
         let out = render_scene(
             &proj.scene("main", "sc-01", &std::collections::HashSet::new()),
             &town(),
+            &every_road_told(),
             &PlainTheme,
         );
 
@@ -345,6 +455,7 @@ mod tests {
         let out = render_scene(
             &proj.scene("main", "sc-01", &std::collections::HashSet::new()),
             &no_map(),
+            &every_road_told(),
             &PlainTheme,
         );
         assert!(out.contains("Dawn"));
@@ -361,6 +472,7 @@ mod tests {
         let out = render_scene(
             &proj.scene("main", "sc-01", &std::collections::HashSet::new()),
             &no_map(),
+            &every_road_told(),
             &MarkerTheme,
         );
         // ground truth stays plain; belief is set apart; quote wrapped; count shown.
@@ -369,6 +481,13 @@ mod tests {
         assert!(out.contains("\"I crossed at two\"")); // verbatim quote wrapped
         assert!(out.contains("x3")); // count annotated
         assert!(out.contains("[1] > run")); // door -> "> label"
+    }
+
+    /// Every road `town()` declares, disclosed. The tests that assert EXITS are
+    /// about exits, not about disclosure, so they hand the reader the road
+    /// explicitly rather than inheriting a default (Round 946).
+    fn every_road_told() -> std::collections::HashSet<String> {
+        ["f-adj".to_string()].into_iter().collect()
     }
 
     /// A store that declares no transition rule — the inert place axis. Built
@@ -419,13 +538,13 @@ mod tests {
         let proj = demo();
         let scene = proj.scene("main", "sc-01", &std::collections::HashSet::new());
 
-        let with = render_scene(&scene, &town(), &PlainTheme);
+        let with = render_scene(&scene, &town(), &every_road_told(), &PlainTheme);
         assert!(with.contains("loc-quay -> loc-ford"), "{with}");
         let place_at = with.find("loc-quay").expect("the place line");
         let prose_at = with.find("the tide pulls out").expect("the prose");
         assert!(place_at < prose_at, "a reader orients, then reads:\n{with}");
 
-        let without = render_scene(&scene, &no_map(), &PlainTheme);
+        let without = render_scene(&scene, &no_map(), &every_road_told(), &PlainTheme);
         assert!(
             !without.contains("loc-quay"),
             "a store with no declared map prints no place:\n{without}"
@@ -450,7 +569,7 @@ mod tests {
         }
         let proj = demo();
         let scene = proj.scene("main", "sc-01", &std::collections::HashSet::new());
-        let out = render_scene(&scene, &town(), &Placeless);
+        let out = render_scene(&scene, &town(), &every_road_told(), &Placeless);
         assert!(!out.contains("loc-quay"), "{out}");
         assert!(
             out.contains("the tide pulls out"),
@@ -465,7 +584,7 @@ mod tests {
         // string must cost exactly one nothing.
         assert_eq!(
             out,
-            render_scene(&scene, &no_map(), &Placeless),
+            render_scene(&scene, &no_map(), &every_road_told(), &Placeless),
             "a refused place line left a blank line behind:\n{out}"
         );
     }

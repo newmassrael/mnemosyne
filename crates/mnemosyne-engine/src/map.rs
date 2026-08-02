@@ -173,6 +173,42 @@ impl DeclaredMapView {
             })
             .collect()
     }
+
+    /// The roads leadable from `node` THAT THE READER HAS BEEN TOLD ABOUT — the
+    /// same question as [`steps_from`](Self::steps_from), asked on the telling's
+    /// side of the wall.
+    ///
+    /// `told` is the set of fact ids a reading surface has disclosed so far. A
+    /// road is shown when the fact that DECLARES it is in that set, and the test
+    /// is set membership on authored ids: nothing is inferred, nothing is
+    /// evaluated, and a road is never invented for a reader who was not told.
+    ///
+    /// # Why this exists (Round 946)
+    ///
+    /// The map a store declares is ground truth, and it must be — the continuity
+    /// gate judges every step against the whole of it. But
+    /// [`MapProjection::from_workspace`] takes no telling, so a reading surface
+    /// that printed exits straight off the map disclosed the town's whole shape
+    /// to a reader who had been told none of it. Round 943 measured that on
+    /// authored data: one corpus withheld all thirteen of its roads and all seven
+    /// of its containments, and its exits printed byte-identically under the
+    /// withholding telling and the open one. The place honoured the telling; the
+    /// roads out of it did not.
+    ///
+    /// Direction is NOT re-decided here — this filters what `steps_from` already
+    /// resolved, so `undirected` cannot come to mean one thing for a gate and
+    /// another for a reader.
+    #[must_use]
+    pub fn steps_disclosed_from<'m>(
+        &'m self,
+        node: &str,
+        told: &std::collections::HashSet<String>,
+    ) -> Vec<(&'m MapEdgeView, &'m str)> {
+        self.steps_from(node)
+            .into_iter()
+            .filter(|(edge, _)| told.contains(edge.fact_id.as_str()))
+            .collect()
+    }
 }
 
 /// Every map the store declares — the kernel's PLACE axis.

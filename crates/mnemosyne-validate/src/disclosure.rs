@@ -98,6 +98,21 @@ pub struct DisclosureCoverageReport {
     /// No override under a withhold-default telling — withheld by default, no
     /// explicit decision (the todo signal). Sorted, never gated.
     pub never_planned: Vec<String>,
+    /// A `withhold` override that ALSO carries a `first_at` pin — the pin does
+    /// nothing, on either surface, and the author almost certainly meant a late
+    /// reveal (Round 946). Sorted `(fact_id, world, pin)`. Advisory, never gated.
+    ///
+    /// The projection drops a withheld fact before it can seat a locator, so no
+    /// line ever renders at the pin; the premature-leak gate treats ANY match of
+    /// a withheld fact as a leak and records `first_at: None`, so the pin does
+    /// not move that verdict either. Two blind authors (Round 943) independently
+    /// wrote `withhold` + `first_at` meaning "hidden until here, then told", and
+    /// the store accepted the coordinate and did nothing with it. `state` with
+    /// the same pin is the shape that discloses late.
+    ///
+    /// NOT a reject: the requirement would fail both recorded corpora, which is
+    /// the Round 924 measurement that says speak rather than gate.
+    pub inert_reveal_pins: Vec<(String, String, String)>,
 }
 
 /// Classify every fact under a telling (Round 507). Order-independent (a mode
@@ -112,6 +127,25 @@ pub fn disclosure_coverage(
     let mut disclosed = 0;
     let mut hidden_by_design = 0;
     let mut never_planned = Vec::new();
+    let mut inert_reveal_pins = Vec::new();
+    for (id, ov) in &plan.overrides {
+        if ov.mode != DisclosureMode::Withhold {
+            continue;
+        }
+        for (world, reveal) in &ov.first_at {
+            inert_reveal_pins.push((
+                id.to_string(),
+                world.to_string(),
+                reveal
+                    .coords
+                    .iter()
+                    .map(std::string::ToString::to_string)
+                    .collect::<Vec<_>>()
+                    .join("+"),
+            ));
+        }
+    }
+    inert_reveal_pins.sort();
     for id in store.narrative_facts.keys() {
         // The single resolver (Round 510) — coverage cannot drift from the
         // carrier on the override-vs-default rule.
@@ -127,6 +161,7 @@ pub fn disclosure_coverage(
         disclosed,
         hidden_by_design,
         never_planned,
+        inert_reveal_pins,
     })
 }
 
@@ -554,6 +589,62 @@ mod tests {
         assert_eq!(r.hidden_by_design, 1);
         assert_eq!(r.never_planned, vec!["f-bare".to_string()]);
         assert!(disclosure_coverage(&store, "nope").is_err());
+        assert!(
+            r.inert_reveal_pins.is_empty(),
+            "no override here carries a pin at all: {:?}",
+            r.inert_reveal_pins
+        );
+    }
+
+    /// A `withhold` OVERRIDE CARRYING A `first_at` PIN IS NAMED (Round 946).
+    ///
+    /// The pin does nothing on either surface: a withheld fact seats no locator,
+    /// so no line renders at it, and the leak gate reports any match of a
+    /// withheld fact as a leak with `first_at: None` regardless. Two blind
+    /// authors (Round 943) independently wrote this shape meaning "hidden until
+    /// here, then told", and the store took the coordinate and did nothing.
+    ///
+    /// THE THREE ARMS ARE THE GUARD. A withheld fact WITHOUT a pin and a `state`
+    /// fact WITH one must both stay off the list, or "everything is inert" and
+    /// "the pinned withholds are inert" are indistinguishable — and the second
+    /// arm is the one that matters, because `state` + the same pin is exactly the
+    /// shape this advisory tells the author to write instead.
+    #[test]
+    fn a_withheld_fact_that_also_pins_a_reveal_is_named_as_inert() {
+        let mut store = AtomicStore::new();
+        for id in ["f-pinned-hide", "f-plain-hide", "f-pinned-state"] {
+            store
+                .narrative_facts
+                .insert(id.into(), nf("gt", "ch-1", Some(typed("pike", id))));
+        }
+        let mut overrides: BTreeMap<mnemosyne_core::FactId, DisclosureOverride> = BTreeMap::new();
+        overrides.insert(
+            "f-pinned-hide".into(),
+            ov(DisclosureMode::Withhold, &[("main", "ch-3")]),
+        );
+        overrides.insert("f-plain-hide".into(), ov(DisclosureMode::Withhold, &[]));
+        overrides.insert(
+            "f-pinned-state".into(),
+            ov(DisclosureMode::State, &[("main", "ch-3")]),
+        );
+        store
+            .disclosure_plans
+            .insert("t".into(), plan(DisclosureMode::Withhold, overrides));
+
+        let r = disclosure_coverage(&store, "t").unwrap();
+        assert_eq!(
+            r.inert_reveal_pins,
+            vec![(
+                "f-pinned-hide".to_string(),
+                "main".to_string(),
+                "ch-3".to_string()
+            )],
+            "only the withheld fact that ALSO pins a reveal is inert"
+        );
+        // And the classification it already made is untouched — this is an added
+        // reading of the same plan, not a re-verdict of it.
+        assert_eq!(r.hidden_by_design, 2);
+        assert_eq!(r.disclosed, 1);
     }
 
     #[test]
