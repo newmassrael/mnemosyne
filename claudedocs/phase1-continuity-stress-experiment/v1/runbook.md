@@ -8,11 +8,16 @@ re-derived on a fresh rebuild + a deterministic negative control.
 
 ## Step 0 — preflight (orchestrator)
 
-- CLI is current: `mnemosyne-cli describe-schema` shows a "narrative-rule classes"
-  section (exclusive / transition / interval). If not, `cargo install --path
-  crates/mnemosyne-cli --force`.
+- **The CLI is `$MN`, never a PATH copy**: `MN="$(git rev-parse --show-toplevel)/scripts/mn"`
+  builds this tree's source on every call, so a verb is present exactly when the source has
+  it. This bullet told the orchestrator to install the binary into `~/.cargo/bin` until
+  Round 963 — a slot shared with the consumer checkouts on this machine, where overwriting
+  a sibling's pinned build has already happened once (Round 823). Smoke check:
+  `"$MN" describe-schema` shows a "narrative-rule classes" section (exclusive /
+  transition / interval).
 - Create the fresh loop workspace `run/game/`: `mnemosyne.toml` = `[workspace]`,
-  `docs/.atomic/workspace.atomic.json` = the empty schema-23 seed. Do NOT
+  `docs/.atomic/workspace.atomic.json` = an empty seed at the version
+  `describe-schema` reports. Do NOT
   pre-wire any `[continuity].rules_path` — the agent must discover + do that
   itself (the surface under test).
 

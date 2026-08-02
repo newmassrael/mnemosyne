@@ -6,8 +6,12 @@ NEVER authors a fact or judges (R469 firewall — see manifest.json).
 
 ## Tool prerequisites (de-risked at the R540/R544 manifest rounds)
 
-- `mnemosyne-cli` on PATH is rebuilt to current head (schema 23; `cargo install --path
-  crates/mnemosyne-cli --force` if skewed). Runs require `mnemosyne.toml` as a CWD
+- **The CLI is `$MN`, never a PATH copy**: `MN="$(git rev-parse --show-toplevel)/scripts/mn"`
+  builds this tree's source on every call, so it is this checkout's CLI by construction.
+  This bullet told the orchestrator to install the binary into `~/.cargo/bin` until
+  Round 963 — a slot shared with the consumer checkouts on this machine, where overwriting
+  a sibling's pinned build has already happened once (Round 823). Runs require
+  `mnemosyne.toml` as a CWD
   ancestor, so the author works INSIDE the repo at `run/author/` and uses relative
   `--sidecar store.atomic.json` / `--order order.json` (R538: explicit CLI paths are
   CWD-relative).

@@ -22,10 +22,13 @@ bound).
 ## Step 0 — preflight (orchestrator)
 
 - `git config core.hooksPath .githooks` is set; working tree clean.
-- **Reinstall the CLI** so `report-playable-world` (R557) is present:
-  `cargo install --path crates/mnemosyne-cli --force` (and restart mnemosyne-mcp
-  if used). Confirm: `mnemosyne-cli report-playable-world --telling x` errors on
-  the store, NOT on `unknown command`.
+- **The CLI is `$MN`, never a PATH copy**: `MN="$(git rev-parse --show-toplevel)/scripts/mn"`
+  builds this tree's source on every call, so `report-playable-world` (R557) is present
+  exactly when the source has it. This bullet told the orchestrator to install the binary
+  into `~/.cargo/bin` until Round 963 — a slot shared with the consumer checkouts on this
+  machine, where overwriting a sibling's pinned build has already happened once (Round 823).
+  Confirm: `"$MN" report-playable-world --telling x` errors on the store, NOT on
+  `unknown command`.
 - Create `run/{author,manuscripts,briefing,render,extract,judges}/`.
 
 ## Step 1 — blind author A
@@ -38,7 +41,8 @@ manifest, the pins, and the later stages.
 
 ## Step 2 — PIN-1 / PIN-2 / PIN-3 (orchestrator, deterministic)
 
-- Rebuild FRESH: empty schema-23 seed -> `import-sections` -> `import-facts`.
+- Rebuild FRESH: an empty seed at the version `describe-schema` reports ->
+  `import-sections` -> `import-facts`.
   Re-run from author-A's JSON (the JSON is the source of truth, not the store).
 - PIN-1: run every gate in the manifest's PIN-1 criteria; record verbatim.
 - PIN-2: scan `facts.json` for `kind:quest` entities; for each, find its typed

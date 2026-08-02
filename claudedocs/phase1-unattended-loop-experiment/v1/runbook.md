@@ -23,16 +23,20 @@ rebuild from the agent's JSON, never read off the agent's own store or log.
 ## Step 0 — preflight (orchestrator)
 
 - `git config core.hooksPath .githooks` set; working tree clean.
-- CLI carries the loop verbs: `mnemosyne-cli describe-schema | head -1`,
-  `mnemosyne-cli propose-verdict` (errs on missing `--manifest`, not "unknown
-  command"), `mnemosyne-cli report-authoring-frontier`. If any is "unknown
-  command", `cargo install --path crates/mnemosyne-cli --force` first.
+- **The CLI is `$MN`, never a PATH copy**: `MN="$(git rev-parse --show-toplevel)/scripts/mn"`
+  builds this tree's source on every call, so the loop verbs are present exactly when the
+  source has them. This bullet told the orchestrator to install the binary into
+  `~/.cargo/bin` until Round 963 — a slot shared with the consumer checkouts on this
+  machine, where overwriting a sibling's pinned build has already happened once
+  (Round 823). Smoke check: `"$MN" describe-schema | head -1`, `"$MN" propose-verdict`
+  (errs on missing `--manifest`, not "unknown command"), `"$MN"
+  report-authoring-frontier`.
 - Create the blind loop agent's fresh workspace under `run/game/`:
   `mnemosyne.toml` = `[workspace]`, and a seed store whose schema version is
   ASKED FOR, never typed —
 
   ```
-  SV="$(mnemosyne-cli describe-schema | sed -n '1s/.*schema v\([0-9]\+\).*/\1/p')"
+  SV="$("$MN" describe-schema | sed -n '1s/.*schema v\([0-9]\+\).*/\1/p')"
   [ -n "$SV" ] || { echo "could not read the schema version from describe-schema"; exit 1; }
   printf '{"schema_version":%s,"sections":{},"changelog_entries":{}}' "$SV" \
     > run/game/docs/.atomic/workspace.atomic.json
@@ -55,7 +59,7 @@ The orchestrator does not help it — no hints, no repairs.
 
 ## Step 2 — PIN-1 (orchestrator, deterministic; self-report NOT trusted)
 
-- Rebuild FRESH into `run/verify/`: empty schema-23 seed → `import-sections`
+- Rebuild FRESH into `run/verify/`: an empty seed at `$SV` → `import-sections`
   (agent's `sections.json`) → `import-facts` each of the agent's `facts*.json`
   in the order the loop-log applied them. The JSON is the source of truth, not
   the agent's store.

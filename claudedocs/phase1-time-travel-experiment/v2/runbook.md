@@ -22,7 +22,8 @@ judge).
 ## Step 0 — preflight
 - `git config core.hooksPath .githooks` set; working tree clean. CLI current (post-R568).
 - Rebuild v1's frozen base FRESH from `../v1/run/author/{sections,facts,order,narrative-rules}.json`
-  (+ carry the disclosure plan from v1's store): empty schema-23 seed -> import-sections
+  (+ carry the disclosure plan from v1's store): an empty seed at the version
+  `describe-schema` reports -> import-sections
   -> import-facts -> copy `disclosure_plans` over. (This is exactly the R571 Step-2 rebuild.)
 - Create `run/{render-mystery,extract-mystery,judges-v2}/`.
 

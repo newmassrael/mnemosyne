@@ -7,12 +7,16 @@ trusted (R500): the pins are re-derived on a fresh rebuild.
 
 ## Step 0 — preflight (orchestrator)
 
-- CLI carries R595/R596: `mnemosyne-cli describe-schema` shows a "manifest wire
-  format" section + a "canon order" section; `report-authoring-frontier` on an
-  orderless fact-bearing store reports `unordered scenes`. If not, `cargo install
-  --path crates/mnemosyne-cli --force`.
+- **The CLI is `$MN`, never a PATH copy**: `MN="$(git rev-parse --show-toplevel)/scripts/mn"`
+  builds this tree's source on every call, so R595/R596 are carried exactly when the source
+  carries them. This bullet told the orchestrator to install the binary into `~/.cargo/bin`
+  until Round 963 — a slot shared with the consumer checkouts on this machine, where
+  overwriting a sibling's pinned build has already happened once (Round 823). Smoke check:
+  `"$MN" describe-schema` shows a "manifest wire format" section + a "canon order" section;
+  `report-authoring-frontier` on an orderless fact-bearing store reports `unordered scenes`.
 - Create the fresh loop workspace `run/game/`: `mnemosyne.toml` = `[workspace]`,
-  `docs/.atomic/workspace.atomic.json` = the empty schema-23 seed.
+  `docs/.atomic/workspace.atomic.json` = an empty seed at the version
+  `describe-schema` reports.
 
 ## Step 1 — blind loop agent
 

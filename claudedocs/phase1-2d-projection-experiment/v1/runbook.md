@@ -26,10 +26,13 @@ bound). EXECUTION IS A CONSENT GATE (the owner's `실험` / `experiment` /
 ## Step 0 — preflight (orchestrator)
 
 - `git config core.hooksPath .githooks` is set; working tree clean.
-- **Reinstall the CLI** so `report-playable-world` (R557), `validate-disclosure-leak`,
-  and `validate-render-fidelity` are present:
-  `cargo install --path crates/mnemosyne-cli --force` (restart mnemosyne-mcp if
-  used). Confirm a verb runs against a store, NOT `unknown command`.
+- **The CLI is `$MN`, never a PATH copy**: `MN="$(git rev-parse --show-toplevel)/scripts/mn"`
+  builds this tree's source on every call, so `report-playable-world` (R557),
+  `validate-disclosure-leak` and `validate-render-fidelity` are present exactly when the
+  source has them. This bullet told the orchestrator to install the binary into
+  `~/.cargo/bin` until Round 963 — a slot shared with the consumer checkouts on this
+  machine, where overwriting a sibling's pinned build has already happened once
+  (Round 823). Confirm a verb runs against a store, NOT `unknown command`.
 - Create `run/{author,manuscripts,render-vn,render-tsukuru,extract,extract-vn,extract-tsukuru,judges}/`.
 
 ## Step 1 — blind author
@@ -42,7 +45,8 @@ pins, the two-axis projection, and every later stage.
 
 ## Step 2 — PIN-1 / PIN-2 / PIN-3 (orchestrator, deterministic)
 
-- Rebuild FRESH: empty schema-23 seed -> `import-sections` -> `import-facts` from
+- Rebuild FRESH: an empty seed at the version `describe-schema` reports ->
+  `import-sections` -> `import-facts` from
   the author's JSON (the JSON is the source of truth, not the store file).
 - PIN-1: run every gate in the manifest's PIN-1 criteria; record verbatim.
 - PIN-2: scan `facts.json` — `kind:place` entities + `adjacent` typed facts

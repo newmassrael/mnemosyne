@@ -7,13 +7,16 @@ firewall — see manifest.json). Six blind subagents do that work, each fresh-co
 
 ## Tool prerequisites
 
-- `mnemosyne-cli` on PATH at schema 23 (`cargo install --path crates/mnemosyne-cli
-  --force` if skewed). Runs require `mnemosyne.toml` as a CWD ancestor; subagents work
-  INSIDE the repo under `run/<stage>/` with relative `--sidecar` / `--order`.
+- **The CLI is `$MN`, never a PATH copy**: `MN="$(git rev-parse --show-toplevel)/scripts/mn"`
+  builds this tree's source on every call, so a verb is present exactly when the source has
+  it and there is nothing to skew. This bullet told the orchestrator to install the binary
+  into `~/.cargo/bin` until Round 963 — a slot shared with the consumer checkouts on this
+  machine, where overwriting a sibling's pinned build has already happened once (Round 823).
+  Runs require `mnemosyne.toml` as a CWD ancestor; subagents work INSIDE the repo under
+  `run/<stage>/` with relative `--sidecar` / `--order`.
 - Confirm the render-acceptance verbs exist before Stage 3:
-  `mnemosyne-cli validate-disclosure-leak --help` and
-  `mnemosyne-cli validate-render-fidelity --help` (R507/R508). Reinstall + restart MCP
-  if skewed (the binary-skew lesson).
+  `"$MN" validate-disclosure-leak --help` and
+  `"$MN" validate-render-fidelity --help` (R507/R508).
 
 ## Sequence
 
@@ -27,7 +30,7 @@ firewall — see manifest.json). Six blind subagents do that work, each fresh-co
    (telling `holm`) + `author-log.md` in `run/author/`.
 
 2. **PIN-1 + PIN-2 (orchestrator):** rebuild the store FRESH from the author's
-   `sections.json` + `facts.json` + `order.json` into a clean schema-23 seed (NOT the
+   `sections.json` + `facts.json` + `order.json` into a clean seed at the version `describe-schema` reports (NOT the
    author's store file), import the disclosure plan, then:
    - **PIN-1** — run `validate-continuity --order --rules`, `report-fork-tree`,
      `report-timeline-gaps --world W`, `report-payoff-coverage`,

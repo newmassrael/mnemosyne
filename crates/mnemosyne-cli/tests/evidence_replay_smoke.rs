@@ -1793,12 +1793,36 @@ fn taught_literals(text: &str) -> Vec<Taught> {
     out
 }
 
-/// One `key: <number>` a text writes out — the shape an orchestrator pastes.
+/// How a text wrote a program-owned number.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum NumberShape {
+    /// `k: 23`, `"k":23`, `"k": 23`, `k = 23` — pasteable as data.
+    Key,
+    /// The key's first segment carrying the number in prose: `schema-23`,
+    /// `schema 23`. Round 962's entry recorded this shape as out of machine
+    /// reach and left it as a carry; measuring it one round later found EIGHT
+    /// live sites and NOT ONE false positive, every hit an instruction of the
+    /// form "empty schema-23 seed -> `import-sections`". The carry was written
+    /// without measuring, which writes a defect smaller than it is.
+    Prose,
+}
+
+/// One program-owned number a text writes out, and the shape it used.
 #[derive(Debug)]
 struct TypedNumber {
     line: usize,
     field: &'static str,
     value: String,
+    shape: NumberShape,
+}
+
+/// The key's prose stem: everything before the first `_`.
+///
+/// Derived from the key rather than listed beside it. A hand-written alias
+/// column is a second copy of the same fact, free to disagree with the row it
+/// belongs to.
+fn prose_stem(field: &str) -> &str {
+    field.split('_').next().unwrap_or(field)
 }
 
 /// Every program-owned number a text writes beside its key.
@@ -1848,6 +1872,37 @@ fn typed_numbers(text: &str) -> Vec<TypedNumber> {
                     line: n + 1,
                     field,
                     value: digits,
+                    shape: NumberShape::Key,
+                });
+            }
+
+            // The prose shape. `-` joins the boundary set here so that
+            // `describe-schema 23` is not read as the stem `schema`, and `_`
+            // keeps `schema_version: 23` from being counted a second time.
+            let stem = prose_stem(field);
+            let mut from = 0usize;
+            while let Some(at) = line[from..].find(stem) {
+                let start = from + at;
+                from = start + stem.len();
+                if line[..start]
+                    .chars()
+                    .next_back()
+                    .is_some_and(|c| c.is_alphanumeric() || c == '_' || c == '-')
+                {
+                    continue;
+                }
+                let Some(rest) = line[from..].strip_prefix([' ', '-']) else {
+                    continue;
+                };
+                let digits: String = rest.chars().take_while(char::is_ascii_digit).collect();
+                if digits.is_empty() {
+                    continue;
+                }
+                out.push(TypedNumber {
+                    line: n + 1,
+                    field,
+                    value: digits,
+                    shape: NumberShape::Prose,
                 });
             }
         }
@@ -1982,10 +2037,11 @@ fn no_runbook_types_a_number_the_program_owns() {
         let text =
             std::fs::read_to_string(root.join(rel)).unwrap_or_else(|e| panic!("read {rel}: {e}"));
         for t in typed_numbers(&text) {
-            violations.push(format!(
-                "{rel}:{} writes `{}: {}`",
-                t.line, t.field, t.value
-            ));
+            let written = match t.shape {
+                NumberShape::Key => format!("`{}: {}`", t.field, t.value),
+                NumberShape::Prose => format!("`{}-{}` in prose", prose_stem(t.field), t.value),
+            };
+            violations.push(format!("{rel}:{} writes {written}", t.line));
         }
         for (field, _) in PROGRAM_OWNED_NUMBERS {
             if text.contains(field) {
@@ -2052,6 +2108,40 @@ fn the_number_scan_sees_the_key_shape_and_spares_the_oracles() {
             assert_eq!(found[0].value, value.to_string());
         }
 
+        // The prose shape, which Round 962 called out of reach and Round 963
+        // measured at eight live sites with no false positive.
+        let stem = prose_stem(field);
+        for prose in [
+            format!("- Rebuild FRESH: empty {stem}-{value} seed -> `import-sections`\n"),
+            format!("- the workspace store = the empty {stem} {value} seed\n"),
+        ] {
+            let found = typed_numbers(&prose);
+            assert_eq!(
+                found.len(),
+                1,
+                "`{field}`: the scan missed the prose shape: {prose:?} -> {found:?}"
+            );
+            assert_eq!(found[0].shape, NumberShape::Prose);
+            assert_eq!(found[0].value, value.to_string());
+        }
+
+        // A verb whose name ENDS in the stem is not the stem.
+        let verb = format!("- confirm `describe-{stem} {value}` is not a command\n");
+        assert!(
+            typed_numbers(&verb).is_empty(),
+            "`{field}`: the scan reads a hyphenated verb name as the prose \
+             shape: {verb:?}"
+        );
+
+        // The key shape is counted ONCE, not once per shape.
+        let both = format!("- `{field}: {value}`\n");
+        let found = typed_numbers(&both);
+        assert_eq!(
+            found.len(),
+            1,
+            "`{field}`: the key shape is double-counted by the prose scan: {found:?}"
+        );
+
         // The Round 950 correction form: the number named, the key not fed.
         let recorded = format!("- the seed store's schema version was {value} at that pin\n");
         assert!(
@@ -2097,6 +2187,92 @@ fn the_number_scan_sees_the_key_shape_and_spares_the_oracles() {
              own: {oracle:?} -> {found:?}"
         );
     }
+}
+
+/// No runbook tells its orchestrator to install this CLI into the shared slot.
+///
+/// The third member of the family, and the only one whose failure reaches OUT
+/// of this repository. `~/.cargo/bin/mnemosyne-cli` is one slot shared with the
+/// consumer checkouts on this machine, and `scripts/mn`'s header records the
+/// collision as fact, not risk: on 2026-07-29 an install from this repo replaced
+/// a consumer's pinned build with an uncommitted local one. `RULEBOOK.md` has
+/// forbidden it since Round 823 — and NINE runbooks went on prescribing it, in
+/// every case as the remedy for a CLI that looks stale, which is exactly the
+/// moment an orchestrator reaches for it.
+///
+/// `scripts/mn` is the one resolver and it dissolves the question those bullets
+/// were asking: it builds this working tree's source on every call, so a verb is
+/// present exactly when the source has it and there is nothing to skew. The
+/// existence of that script is asserted here, because a gate whose message names
+/// a remedy should fail if the remedy is gone.
+///
+/// The crate name comes from cargo, not from a string here — this test lives in
+/// the crate it is protecting. The `cargo install` part is named literally: it
+/// is another tool's command, the way `git ls-files` is named literally above.
+#[test]
+fn no_runbook_installs_the_cli_into_the_shared_slot() {
+    let root = repo_root();
+    let resolver = root.join("scripts/mn");
+    assert!(
+        resolver.is_file(),
+        "scripts/mn is missing, so the remedy this gate names does not exist"
+    );
+    let books = runbooks(&root);
+    assert!(
+        !books.is_empty(),
+        "no runbooks found under claudedocs/ — this gate would pass vacuously"
+    );
+    let crate_name = env!("CARGO_PKG_NAME");
+    let mut violations = Vec::new();
+    for rel in &books {
+        let text =
+            std::fs::read_to_string(root.join(rel)).unwrap_or_else(|e| panic!("read {rel}: {e}"));
+        let lines: Vec<&str> = text.lines().collect();
+        for (n, line) in lines.iter().enumerate() {
+            if !line.contains("cargo install") {
+                continue;
+            }
+            // The extent is the CODE SPAN, not a fixed line window. Most of the
+            // runbooks that carried this wrapped the command across two lines,
+            // so a one-line look misses the crate; but a two-line window was
+            // measured wrong in the other direction — injecting an install of
+            // an unrelated tool directly above ours reported BOTH as
+            // violations, because the window swept in the next line's crate.
+            // Markdown's own delimiter answers it: the command runs from
+            // `cargo install` to the backtick that closes the span.
+            let at = line.find("cargo install").expect("checked above");
+            let mut span = String::from(&line[at..]);
+            let mut k = n;
+            while !span.contains('`') && k + 1 < lines.len() && k < n + 4 {
+                k += 1;
+                span.push(' ');
+                span.push_str(lines[k]);
+            }
+            let span = span.split('`').next().unwrap_or(&span);
+            if span.contains(crate_name) {
+                violations.push(format!("{rel}:{}", n + 1));
+            }
+        }
+    }
+    assert!(
+        violations.is_empty(),
+        "{} site(s) tell an orchestrator to install `{crate_name}` into \
+         ~/.cargo/bin:\n  {}\n\
+         That slot is SHARED with the consumer checkouts on this machine, and \
+         writing it has already replaced a sibling's pinned build with an \
+         uncommitted local one (scripts/mn's header records the date). Use the \
+         one resolver instead: `MN=\"$(git rev-parse --show-toplevel)/scripts/mn\"` \
+         builds this tree's source on every call, so there is nothing to skew \
+         and nothing to reinstall. If the point is to record that a past arm \
+         did install it, describe that in words — this gate reads the command, \
+         which is the shape that gets pasted.",
+        violations.len(),
+        violations.join("\n  ")
+    );
+    println!(
+        "{} runbook(s), none installs into the shared slot",
+        books.len()
+    );
 }
 
 /// The recipe the runbooks were given actually yields today's constant.
