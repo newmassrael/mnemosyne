@@ -1,0 +1,22 @@
+=== declared maps — 1 transition rule(s) ===
+map `coldharrow-map` (adjacency `adjacent`, directed): 13 node(s), 20 edge(s)
+  d-harbour -> d-market 9 minute (fe-ramp-up)
+  d-harbour -> p-mussel-rock 12 minute (fe-gate-out) [guard all: f-tide-out]
+  d-market -> d-harbour 5 minute (fe-ramp-down)
+  d-market -> d-upper 14 minute (fe-stair-up)
+  d-upper -> d-market 6 minute (fe-stair-down)
+  p-beacon-yard -> p-cistern-court 4 minute (fe-yard-cistern)
+  p-chapel -> p-cistern-court 3 minute (fe-chapel-cistern)
+  p-cistern-court -> p-beacon-yard 4 minute (fe-cistern-yard)
+  p-cistern-court -> p-chapel 3 minute (fe-cistern-chapel)
+  p-cloth-row -> p-fish-row 1 minute (fe-cloth-fish)
+  p-cloth-row -> p-weigh-house 2 minute (fe-cloth-weigh)
+  p-counting-house -> p-quay 2 minute (fe-counting-quay)
+  p-fish-row -> p-cloth-row 1 minute (fe-fish-cloth)
+  p-fish-row -> p-weigh-house 2 minute (fe-fish-weigh)
+  p-mussel-rock -> d-harbour 12 minute (fe-gate-back) [guard all: f-tide-out]
+  p-net-loft -> p-quay 2 minute (fe-loft-quay)
+  p-quay -> p-counting-house 2 minute (fe-quay-counting) [guard all: f-key-verrick]
+  p-quay -> p-net-loft 2 minute (fe-quay-loft)
+  p-weigh-house -> p-cloth-row 2 minute (fe-weigh-cloth)
+  p-weigh-house -> p-fish-row 2 minute (fe-weigh-fish)

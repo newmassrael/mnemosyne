@@ -1,0 +1,11 @@
+=== authoring frontier — telling (none) — 1 gap(s) ===
+zero-fact scenes: none
+unplaced scenes: none
+unordered scenes: none
+dangling setups [shut-gate] (1): f-ev-17
+unresolved quests: (pass --telling)
+never-planned disclosures: (pass --telling)
+disclosures seated before truth: (pass --telling)
+unconnected places [coldharrow-map]: none
+branch density [main]: 81 owned fact(s) over 20 traversed scene(s) = 4.05
+branch density [shut-gate]: 3 owned fact(s) over 20 traversed scene(s) = 0.15

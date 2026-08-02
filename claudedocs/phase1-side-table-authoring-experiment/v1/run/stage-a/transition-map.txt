@@ -1,0 +1,20 @@
+=== declared maps — 1 transition rule(s) ===
+map `movement-follows-the-town-map` (adjacency `adjacent`, directed): 13 node(s), 18 edge(s)
+  p-almshouse -> p-bell-tower 2 minute (f-adj-alms-tower)
+  p-bell-tower -> p-almshouse 2 minute (f-adj-tower-alms)
+  p-counting-house -> p-north-row 1 minute (f-adj-ch-nrow)
+  p-fish-shed -> p-quay 3 minute (f-adj-shed-quay)
+  p-lower-terrace -> p-market-terrace 7 minute (f-adj-lt-mt)
+  p-lower-terrace -> p-sea-gate 3 minute (f-adj-lt-sg)
+  p-market-terrace -> p-lower-terrace 4 minute (f-adj-mt-lt)
+  p-market-terrace -> p-upper-terrace 15 minute (f-adj-mt-ut)
+  p-net-loft -> p-quay 2 minute (f-adj-loft-quay)
+  p-north-row -> p-counting-house 1 minute (f-adj-nrow-ch) [guard all: f-maren-key]
+  p-north-row -> p-south-row 1 minute (f-adj-nrow-srow)
+  p-quay -> p-fish-shed 3 minute (f-adj-quay-shed)
+  p-quay -> p-net-loft 2 minute (f-adj-quay-loft)
+  p-sea-gate -> p-lower-terrace 3 minute (f-adj-sg-lt)
+  p-sea-gate -> p-strand 4 minute (f-adj-sg-st) [guard all: f-tide-low]
+  p-south-row -> p-north-row 1 minute (f-adj-srow-nrow)
+  p-strand -> p-sea-gate 5 minute (f-adj-st-sg) [guard all: f-tide-low]
+  p-upper-terrace -> p-market-terrace 6 minute (f-adj-ut-mt)

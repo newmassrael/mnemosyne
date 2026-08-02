@@ -1,0 +1,27 @@
+{
+  "schema": "narrative-rules/v1",
+  "comment": "Coldharrow: the terraced town map (directed, three terrace scopes) plus custody exclusivity.",
+  "rules": [
+    {
+      "id": "one-place-per-person",
+      "predicate": "at",
+      "class": "exclusive",
+      "per": "subject",
+      "containment": "contains"
+    },
+    {
+      "id": "one-holder-per-thing",
+      "predicate": "held_by",
+      "class": "exclusive",
+      "per": "object"
+    },
+    {
+      "id": "coldharrow-map",
+      "predicate": "at",
+      "class": "transition",
+      "adjacency": "adjacent",
+      "containment": "contains",
+      "undirected": false
+    }
+  ]
+}

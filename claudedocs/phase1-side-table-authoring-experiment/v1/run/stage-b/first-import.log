@@ -1,0 +1,14 @@
+=== mnemosyne-cli import_sections ===
+primitive: import_sections
+target_kind: section
+target_id: 21 created, 0 no-op
+sidecar_path: /home/coin/mnemosyne/claudedocs/phase1-side-table-authoring-experiment/v1/run/stage-b/docs/.atomic/workspace.atomic.json
+written_bytes: 3176
+exit=0
+=== mnemosyne-cli import_facts ===
+primitive: import_facts
+target_kind: narrative_fact
+target_id: 2 frames + 1 branches + 4 entity-kinds + 1 units + 22 entities + 5 predicates + 84 facts + 20 edge-costs + 3 edge-guard-conditions + 0 disclosure-plans + 0 disclosure-overrides created, 0 no-op
+sidecar_path: /home/coin/mnemosyne/claudedocs/phase1-side-table-authoring-experiment/v1/run/stage-b/docs/.atomic/workspace.atomic.json
+written_bytes: 48313
+exit=0

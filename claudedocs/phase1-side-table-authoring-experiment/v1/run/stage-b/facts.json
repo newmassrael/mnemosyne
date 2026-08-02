@@ -1,0 +1,641 @@
+{
+  "frames": [
+    { "frame_id": "ground-truth", "description": "how Coldharrow stands, told flat" },
+    { "frame_id": "mella", "description": "what the messenger Mella Vane takes to be so" }
+  ],
+
+  "branches": [
+    {
+      "branch_id": "shut-gate",
+      "description": "the world-line in which the flood beats Mella to the sea gate and the causeway is shut",
+      "forks_from": "main",
+      "forks_at": "sc-19"
+    }
+  ],
+
+  "entity_kinds": [
+    { "kind_id": "place", "description": "a node of the town map: a terrace or a site on one" },
+    { "kind_id": "character", "description": "a person of Coldharrow" },
+    { "kind_id": "item", "description": "a carried thing" },
+    { "kind_id": "phenomenon", "description": "a standing condition of the world, such as the tide" }
+  ],
+
+  "units": [
+    { "unit_id": "minute", "description": "one minute of walking time, as a messenger reckons it" }
+  ],
+
+  "entities": [
+    { "entity_id": "d-upper", "kind": "place", "description": "the Upper Terrace, highest of the three shelves of Coldharrow" },
+    { "entity_id": "d-market", "kind": "place", "description": "the Market Terrace, the middle shelf, two rows of stalls and a weigh house" },
+    { "entity_id": "d-harbour", "kind": "place", "description": "the Harbour Terrace, the lowest shelf, inside the sea wall" },
+
+    { "entity_id": "p-beacon-yard", "kind": "place", "description": "the Beacon Yard on the Upper Terrace, where the coal light is kept" },
+    { "entity_id": "p-cistern-court", "kind": "place", "description": "the Cistern Court, the Upper Terrace's water" },
+    { "entity_id": "p-chapel", "kind": "place", "description": "the Chapel of Saint Mear, upper terrace, whose bell is rung for the turn of the tide" },
+
+    { "entity_id": "p-fish-row", "kind": "place", "description": "Fish Row, the seaward market row" },
+    { "entity_id": "p-cloth-row", "kind": "place", "description": "Cloth Row, the landward market row, one lane over from Fish Row" },
+    { "entity_id": "p-weigh-house", "kind": "place", "description": "the Weigh House at the head of the Market Terrace" },
+
+    { "entity_id": "p-quay", "kind": "place", "description": "the Long Quay along the harbour front" },
+    { "entity_id": "p-counting-house", "kind": "place", "description": "the Counting House on the quay, kept locked" },
+    { "entity_id": "p-net-loft", "kind": "place", "description": "the Net Loft above the quay's east end" },
+
+    { "entity_id": "p-mussel-rock", "kind": "place", "description": "Mussel Rock, the tidal islet beyond the sea gate, with the old lamp on it" },
+
+    { "entity_id": "e-mella", "kind": "character", "description": "Mella Vane, the town's messenger" },
+    { "entity_id": "e-verrick", "kind": "character", "description": "Verrick Sowle, factor of the counting house" },
+    { "entity_id": "e-ivane", "kind": "character", "description": "Ivane Cobb, net-mender" },
+    { "entity_id": "e-serah", "kind": "character", "description": "Serah Marrow, clerk of the Weigh House" },
+    { "entity_id": "e-tomsen", "kind": "character", "description": "Old Tomsen, keeper of the beacon" },
+
+    { "entity_id": "e-letter", "kind": "item", "description": "the harbour master's sealed letter for the beacon-keeper" },
+    { "entity_id": "e-ledger", "kind": "item", "description": "the harbour ledger" },
+    { "entity_id": "e-key", "kind": "item", "description": "the counting-house key" },
+
+    { "entity_id": "e-tide", "kind": "phenomenon", "description": "the tide over the Mussel Rock causeway" }
+  ],
+
+  "predicates": [
+    {
+      "predicate_id": "adjacent",
+      "object_kind": "entity",
+      "subject_kind": "place",
+      "object_entity_kind": "place",
+      "description": "a one-way way from one place to another; a two-way way is two facts"
+    },
+    {
+      "predicate_id": "contains",
+      "object_kind": "entity",
+      "subject_kind": "place",
+      "object_entity_kind": "place",
+      "description": "a terrace holds a site: the containment tree that scopes the map"
+    },
+    {
+      "predicate_id": "at",
+      "object_kind": "entity",
+      "subject_kind": "character",
+      "object_entity_kind": "place",
+      "description": "where a person is"
+    },
+    {
+      "predicate_id": "held_by",
+      "object_kind": "entity",
+      "subject_kind": "item",
+      "object_entity_kind": "character",
+      "description": "custody of a carried thing"
+    },
+    {
+      "predicate_id": "tide_state",
+      "object_kind": "token",
+      "object_tokens": ["low", "high"],
+      "subject_kind": "phenomenon",
+      "description": "the state of the water over the causeway"
+    }
+  ],
+
+  "facts": [
+    { "fact_id": "fc-upper-beacon", "frame": "ground-truth",
+      "claim": "the Beacon Yard stands on the Upper Terrace",
+      "canon_from": "sc-01", "evidence": ["sc-01"],
+      "entities": ["d-upper", "p-beacon-yard"],
+      "typed": { "subject": "d-upper", "predicate": "contains", "object": { "kind": "entity", "id": "p-beacon-yard" } } },
+
+    { "fact_id": "fc-upper-cistern", "frame": "ground-truth",
+      "claim": "the Cistern Court stands on the Upper Terrace",
+      "canon_from": "sc-01", "evidence": ["sc-01"],
+      "entities": ["d-upper", "p-cistern-court"],
+      "typed": { "subject": "d-upper", "predicate": "contains", "object": { "kind": "entity", "id": "p-cistern-court" } } },
+
+    { "fact_id": "fc-upper-chapel", "frame": "ground-truth",
+      "claim": "the Chapel of Saint Mear stands on the Upper Terrace",
+      "canon_from": "sc-01", "evidence": ["sc-01"],
+      "entities": ["d-upper", "p-chapel"],
+      "typed": { "subject": "d-upper", "predicate": "contains", "object": { "kind": "entity", "id": "p-chapel" } } },
+
+    { "fact_id": "fc-market-fish", "frame": "ground-truth",
+      "claim": "Fish Row lies on the Market Terrace",
+      "canon_from": "sc-01", "evidence": ["sc-01"],
+      "entities": ["d-market", "p-fish-row"],
+      "typed": { "subject": "d-market", "predicate": "contains", "object": { "kind": "entity", "id": "p-fish-row" } } },
+
+    { "fact_id": "fc-market-cloth", "frame": "ground-truth",
+      "claim": "Cloth Row lies on the Market Terrace",
+      "canon_from": "sc-01", "evidence": ["sc-01"],
+      "entities": ["d-market", "p-cloth-row"],
+      "typed": { "subject": "d-market", "predicate": "contains", "object": { "kind": "entity", "id": "p-cloth-row" } } },
+
+    { "fact_id": "fc-market-weigh", "frame": "ground-truth",
+      "claim": "the Weigh House stands on the Market Terrace",
+      "canon_from": "sc-01", "evidence": ["sc-01"],
+      "entities": ["d-market", "p-weigh-house"],
+      "typed": { "subject": "d-market", "predicate": "contains", "object": { "kind": "entity", "id": "p-weigh-house" } } },
+
+    { "fact_id": "fc-harbour-quay", "frame": "ground-truth",
+      "claim": "the Long Quay runs along the Harbour Terrace",
+      "canon_from": "sc-01", "evidence": ["sc-01"],
+      "entities": ["d-harbour", "p-quay"],
+      "typed": { "subject": "d-harbour", "predicate": "contains", "object": { "kind": "entity", "id": "p-quay" } } },
+
+    { "fact_id": "fc-harbour-counting", "frame": "ground-truth",
+      "claim": "the Counting House stands on the Harbour Terrace",
+      "canon_from": "sc-01", "evidence": ["sc-01"],
+      "entities": ["d-harbour", "p-counting-house"],
+      "typed": { "subject": "d-harbour", "predicate": "contains", "object": { "kind": "entity", "id": "p-counting-house" } } },
+
+    { "fact_id": "fc-harbour-loft", "frame": "ground-truth",
+      "claim": "the Net Loft stands on the Harbour Terrace",
+      "canon_from": "sc-01", "evidence": ["sc-01"],
+      "entities": ["d-harbour", "p-net-loft"],
+      "typed": { "subject": "d-harbour", "predicate": "contains", "object": { "kind": "entity", "id": "p-net-loft" } } },
+
+    { "fact_id": "fe-stair-up", "frame": "ground-truth",
+      "claim": "the Long Stair climbs from the Market Terrace to the Upper Terrace",
+      "canon_from": "sc-01", "evidence": ["sc-01"],
+      "entities": ["d-market", "d-upper"],
+      "typed": { "subject": "d-market", "predicate": "adjacent", "object": { "kind": "entity", "id": "d-upper" } } },
+
+    { "fact_id": "fe-stair-down", "frame": "ground-truth",
+      "claim": "the Long Stair falls from the Upper Terrace to the Market Terrace",
+      "canon_from": "sc-01", "evidence": ["sc-01"],
+      "entities": ["d-upper", "d-market"],
+      "typed": { "subject": "d-upper", "predicate": "adjacent", "object": { "kind": "entity", "id": "d-market" } } },
+
+    { "fact_id": "fe-ramp-up", "frame": "ground-truth",
+      "claim": "the Windlass Ramp climbs from the Harbour Terrace to the Market Terrace",
+      "canon_from": "sc-01", "evidence": ["sc-01"],
+      "entities": ["d-harbour", "d-market"],
+      "typed": { "subject": "d-harbour", "predicate": "adjacent", "object": { "kind": "entity", "id": "d-market" } } },
+
+    { "fact_id": "fe-ramp-down", "frame": "ground-truth",
+      "claim": "the Windlass Ramp falls from the Market Terrace to the Harbour Terrace",
+      "canon_from": "sc-01", "evidence": ["sc-01"],
+      "entities": ["d-market", "d-harbour"],
+      "typed": { "subject": "d-market", "predicate": "adjacent", "object": { "kind": "entity", "id": "d-harbour" } } },
+
+    { "fact_id": "fe-gate-out", "frame": "ground-truth",
+      "claim": "the sea gate in the harbour wall opens on the causeway out to Mussel Rock",
+      "canon_from": "sc-01", "evidence": ["sc-01"],
+      "entities": ["d-harbour", "p-mussel-rock"],
+      "typed": { "subject": "d-harbour", "predicate": "adjacent", "object": { "kind": "entity", "id": "p-mussel-rock" } } },
+
+    { "fact_id": "fe-gate-back", "frame": "ground-truth",
+      "claim": "the causeway runs back from Mussel Rock to the sea gate in the harbour wall",
+      "canon_from": "sc-01", "evidence": ["sc-01"],
+      "entities": ["p-mussel-rock", "d-harbour"],
+      "typed": { "subject": "p-mussel-rock", "predicate": "adjacent", "object": { "kind": "entity", "id": "d-harbour" } } },
+
+    { "fact_id": "fe-yard-cistern", "frame": "ground-truth",
+      "claim": "a path runs from the Beacon Yard to the Cistern Court",
+      "canon_from": "sc-01", "evidence": ["sc-01"],
+      "entities": ["p-beacon-yard", "p-cistern-court"],
+      "typed": { "subject": "p-beacon-yard", "predicate": "adjacent", "object": { "kind": "entity", "id": "p-cistern-court" } } },
+
+    { "fact_id": "fe-cistern-yard", "frame": "ground-truth",
+      "claim": "a path runs from the Cistern Court to the Beacon Yard",
+      "canon_from": "sc-01", "evidence": ["sc-01"],
+      "entities": ["p-cistern-court", "p-beacon-yard"],
+      "typed": { "subject": "p-cistern-court", "predicate": "adjacent", "object": { "kind": "entity", "id": "p-beacon-yard" } } },
+
+    { "fact_id": "fe-cistern-chapel", "frame": "ground-truth",
+      "claim": "a walk runs from the Cistern Court to the chapel door",
+      "canon_from": "sc-01", "evidence": ["sc-01"],
+      "entities": ["p-cistern-court", "p-chapel"],
+      "typed": { "subject": "p-cistern-court", "predicate": "adjacent", "object": { "kind": "entity", "id": "p-chapel" } } },
+
+    { "fact_id": "fe-chapel-cistern", "frame": "ground-truth",
+      "claim": "a walk runs from the chapel door to the Cistern Court",
+      "canon_from": "sc-01", "evidence": ["sc-01"],
+      "entities": ["p-chapel", "p-cistern-court"],
+      "typed": { "subject": "p-chapel", "predicate": "adjacent", "object": { "kind": "entity", "id": "p-cistern-court" } } },
+
+    { "fact_id": "fe-fish-cloth", "frame": "ground-truth",
+      "claim": "the lane between the market rows leads from Fish Row into Cloth Row",
+      "canon_from": "sc-01", "evidence": ["sc-01"],
+      "entities": ["p-fish-row", "p-cloth-row"],
+      "typed": { "subject": "p-fish-row", "predicate": "adjacent", "object": { "kind": "entity", "id": "p-cloth-row" } } },
+
+    { "fact_id": "fe-cloth-fish", "frame": "ground-truth",
+      "claim": "the lane between the market rows leads from Cloth Row into Fish Row",
+      "canon_from": "sc-01", "evidence": ["sc-01"],
+      "entities": ["p-cloth-row", "p-fish-row"],
+      "typed": { "subject": "p-cloth-row", "predicate": "adjacent", "object": { "kind": "entity", "id": "p-fish-row" } } },
+
+    { "fact_id": "fe-cloth-weigh", "frame": "ground-truth",
+      "claim": "Cloth Row runs up to the Weigh House door",
+      "canon_from": "sc-01", "evidence": ["sc-01"],
+      "entities": ["p-cloth-row", "p-weigh-house"],
+      "typed": { "subject": "p-cloth-row", "predicate": "adjacent", "object": { "kind": "entity", "id": "p-weigh-house" } } },
+
+    { "fact_id": "fe-weigh-cloth", "frame": "ground-truth",
+      "claim": "the Weigh House door gives back onto Cloth Row",
+      "canon_from": "sc-01", "evidence": ["sc-01"],
+      "entities": ["p-weigh-house", "p-cloth-row"],
+      "typed": { "subject": "p-weigh-house", "predicate": "adjacent", "object": { "kind": "entity", "id": "p-cloth-row" } } },
+
+    { "fact_id": "fe-fish-weigh", "frame": "ground-truth",
+      "claim": "Fish Row runs up to the Weigh House door",
+      "canon_from": "sc-01", "evidence": ["sc-01"],
+      "entities": ["p-fish-row", "p-weigh-house"],
+      "typed": { "subject": "p-fish-row", "predicate": "adjacent", "object": { "kind": "entity", "id": "p-weigh-house" } } },
+
+    { "fact_id": "fe-weigh-fish", "frame": "ground-truth",
+      "claim": "the Weigh House door gives back onto Fish Row",
+      "canon_from": "sc-01", "evidence": ["sc-01"],
+      "entities": ["p-weigh-house", "p-fish-row"],
+      "typed": { "subject": "p-weigh-house", "predicate": "adjacent", "object": { "kind": "entity", "id": "p-fish-row" } } },
+
+    { "fact_id": "fe-quay-loft", "frame": "ground-truth",
+      "claim": "the quay steps run up to the Net Loft",
+      "canon_from": "sc-01", "evidence": ["sc-01"],
+      "entities": ["p-quay", "p-net-loft"],
+      "typed": { "subject": "p-quay", "predicate": "adjacent", "object": { "kind": "entity", "id": "p-net-loft" } } },
+
+    { "fact_id": "fe-loft-quay", "frame": "ground-truth",
+      "claim": "the Net Loft stair comes down onto the Long Quay",
+      "canon_from": "sc-01", "evidence": ["sc-01"],
+      "entities": ["p-net-loft", "p-quay"],
+      "typed": { "subject": "p-net-loft", "predicate": "adjacent", "object": { "kind": "entity", "id": "p-quay" } } },
+
+    { "fact_id": "fe-quay-counting", "frame": "ground-truth",
+      "claim": "the counting-house door opens off the Long Quay",
+      "canon_from": "sc-01", "evidence": ["sc-01"],
+      "entities": ["p-quay", "p-counting-house"],
+      "typed": { "subject": "p-quay", "predicate": "adjacent", "object": { "kind": "entity", "id": "p-counting-house" } } },
+
+    { "fact_id": "fe-counting-quay", "frame": "ground-truth",
+      "claim": "the counting house lets out onto the Long Quay",
+      "canon_from": "sc-01", "evidence": ["sc-01"],
+      "entities": ["p-counting-house", "p-quay"],
+      "typed": { "subject": "p-counting-house", "predicate": "adjacent", "object": { "kind": "entity", "id": "p-quay" } } },
+
+    { "fact_id": "f-tide-out", "frame": "ground-truth",
+      "claim": "the tide stands at low water and the Mussel Rock causeway lies bare",
+      "canon_from": "sc-01", "evidence": ["sc-01"],
+      "entities": ["e-tide", "p-mussel-rock"],
+      "typed": { "subject": "e-tide", "predicate": "tide_state", "object": { "kind": "token", "token": "low" } } },
+
+    { "fact_id": "f-key-verrick", "frame": "ground-truth",
+      "claim": "Verrick Sowle carries the counting-house key on his belt",
+      "canon_from": "sc-01", "evidence": ["sc-01"],
+      "entities": ["e-key", "e-verrick"],
+      "typed": { "subject": "e-key", "predicate": "held_by", "object": { "kind": "entity", "id": "e-verrick" } } },
+
+    { "fact_id": "f-at-01", "frame": "ground-truth",
+      "claim": "Mella Vane is on the Long Quay",
+      "canon_from": "sc-01", "evidence": ["sc-01"],
+      "entities": ["e-mella", "p-quay"],
+      "typed": { "subject": "e-mella", "predicate": "at", "object": { "kind": "entity", "id": "p-quay" } } },
+
+    { "fact_id": "f-at-02", "frame": "ground-truth",
+      "claim": "Mella Vane is in the Net Loft",
+      "canon_from": "sc-02", "evidence": ["sc-02"],
+      "entities": ["e-mella", "p-net-loft"],
+      "supersedes_in_frame": "f-at-01",
+      "typed": { "subject": "e-mella", "predicate": "at", "object": { "kind": "entity", "id": "p-net-loft" } } },
+
+    { "fact_id": "f-at-03", "frame": "ground-truth",
+      "claim": "Mella Vane is back on the Long Quay",
+      "canon_from": "sc-03", "evidence": ["sc-03"],
+      "entities": ["e-mella", "p-quay"],
+      "supersedes_in_frame": "f-at-02",
+      "typed": { "subject": "e-mella", "predicate": "at", "object": { "kind": "entity", "id": "p-quay" } } },
+
+    { "fact_id": "f-at-04", "frame": "ground-truth",
+      "claim": "Mella Vane is inside the counting house",
+      "canon_from": "sc-04", "evidence": ["sc-04"],
+      "entities": ["e-mella", "p-counting-house"],
+      "supersedes_in_frame": "f-at-03",
+      "typed": { "subject": "e-mella", "predicate": "at", "object": { "kind": "entity", "id": "p-counting-house" } } },
+
+    { "fact_id": "f-at-05", "frame": "ground-truth",
+      "claim": "Mella Vane is out on the Long Quay again",
+      "canon_from": "sc-05", "evidence": ["sc-05"],
+      "entities": ["e-mella", "p-quay"],
+      "supersedes_in_frame": "f-at-04",
+      "typed": { "subject": "e-mella", "predicate": "at", "object": { "kind": "entity", "id": "p-quay" } } },
+
+    { "fact_id": "f-at-06", "frame": "ground-truth",
+      "claim": "Mella Vane is on the Harbour Terrace at the foot of the Windlass Ramp",
+      "canon_from": "sc-06", "evidence": ["sc-06"],
+      "entities": ["e-mella", "d-harbour"],
+      "supersedes_in_frame": "f-at-05",
+      "typed": { "subject": "e-mella", "predicate": "at", "object": { "kind": "entity", "id": "d-harbour" } } },
+
+    { "fact_id": "f-at-07", "frame": "ground-truth",
+      "claim": "Mella Vane is on the Market Terrace",
+      "canon_from": "sc-07", "evidence": ["sc-07"],
+      "entities": ["e-mella", "d-market"],
+      "supersedes_in_frame": "f-at-06",
+      "typed": { "subject": "e-mella", "predicate": "at", "object": { "kind": "entity", "id": "d-market" } } },
+
+    { "fact_id": "f-at-08", "frame": "ground-truth",
+      "claim": "Mella Vane is in Fish Row",
+      "canon_from": "sc-08", "evidence": ["sc-08"],
+      "entities": ["e-mella", "p-fish-row"],
+      "supersedes_in_frame": "f-at-07",
+      "typed": { "subject": "e-mella", "predicate": "at", "object": { "kind": "entity", "id": "p-fish-row" } } },
+
+    { "fact_id": "f-at-09", "frame": "ground-truth",
+      "claim": "Mella Vane is in Cloth Row",
+      "canon_from": "sc-09", "evidence": ["sc-09"],
+      "entities": ["e-mella", "p-cloth-row"],
+      "supersedes_in_frame": "f-at-08",
+      "typed": { "subject": "e-mella", "predicate": "at", "object": { "kind": "entity", "id": "p-cloth-row" } } },
+
+    { "fact_id": "f-at-10", "frame": "ground-truth",
+      "claim": "Mella Vane is in the Weigh House",
+      "canon_from": "sc-10", "evidence": ["sc-10"],
+      "entities": ["e-mella", "p-weigh-house"],
+      "supersedes_in_frame": "f-at-09",
+      "typed": { "subject": "e-mella", "predicate": "at", "object": { "kind": "entity", "id": "p-weigh-house" } } },
+
+    { "fact_id": "f-at-11", "frame": "ground-truth",
+      "claim": "Mella Vane is on the Market Terrace at the foot of the Long Stair",
+      "canon_from": "sc-11", "evidence": ["sc-11"],
+      "entities": ["e-mella", "d-market"],
+      "supersedes_in_frame": "f-at-10",
+      "typed": { "subject": "e-mella", "predicate": "at", "object": { "kind": "entity", "id": "d-market" } } },
+
+    { "fact_id": "f-at-12", "frame": "ground-truth",
+      "claim": "Mella Vane is on the Upper Terrace",
+      "canon_from": "sc-12", "evidence": ["sc-12"],
+      "entities": ["e-mella", "d-upper"],
+      "supersedes_in_frame": "f-at-11",
+      "typed": { "subject": "e-mella", "predicate": "at", "object": { "kind": "entity", "id": "d-upper" } } },
+
+    { "fact_id": "f-at-13", "frame": "ground-truth",
+      "claim": "Mella Vane is in the Cistern Court",
+      "canon_from": "sc-13", "evidence": ["sc-13"],
+      "entities": ["e-mella", "p-cistern-court"],
+      "supersedes_in_frame": "f-at-12",
+      "typed": { "subject": "e-mella", "predicate": "at", "object": { "kind": "entity", "id": "p-cistern-court" } } },
+
+    { "fact_id": "f-at-14", "frame": "ground-truth",
+      "claim": "Mella Vane is at the chapel door",
+      "canon_from": "sc-14", "evidence": ["sc-14"],
+      "entities": ["e-mella", "p-chapel"],
+      "supersedes_in_frame": "f-at-13",
+      "typed": { "subject": "e-mella", "predicate": "at", "object": { "kind": "entity", "id": "p-chapel" } } },
+
+    { "fact_id": "f-at-15", "frame": "ground-truth",
+      "claim": "Mella Vane is back in the Cistern Court",
+      "canon_from": "sc-15", "evidence": ["sc-15"],
+      "entities": ["e-mella", "p-cistern-court"],
+      "supersedes_in_frame": "f-at-14",
+      "typed": { "subject": "e-mella", "predicate": "at", "object": { "kind": "entity", "id": "p-cistern-court" } } },
+
+    { "fact_id": "f-at-16", "frame": "ground-truth",
+      "claim": "Mella Vane is in the Beacon Yard",
+      "canon_from": "sc-16", "evidence": ["sc-16"],
+      "entities": ["e-mella", "p-beacon-yard"],
+      "supersedes_in_frame": "f-at-15",
+      "typed": { "subject": "e-mella", "predicate": "at", "object": { "kind": "entity", "id": "p-beacon-yard" } } },
+
+    { "fact_id": "f-at-17", "frame": "ground-truth",
+      "claim": "Mella Vane is out on the Upper Terrace with the beacon behind her",
+      "canon_from": "sc-17", "evidence": ["sc-17"],
+      "entities": ["e-mella", "d-upper"],
+      "supersedes_in_frame": "f-at-16",
+      "typed": { "subject": "e-mella", "predicate": "at", "object": { "kind": "entity", "id": "d-upper" } } },
+
+    { "fact_id": "f-at-18", "frame": "ground-truth",
+      "claim": "Mella Vane is on the Market Terrace, down the Long Stair",
+      "canon_from": "sc-18", "evidence": ["sc-18"],
+      "entities": ["e-mella", "d-market"],
+      "supersedes_in_frame": "f-at-17",
+      "typed": { "subject": "e-mella", "predicate": "at", "object": { "kind": "entity", "id": "d-market" } } },
+
+    { "fact_id": "f-at-19", "frame": "ground-truth",
+      "claim": "Mella Vane is on the Harbour Terrace at the sea gate",
+      "canon_from": "sc-19", "evidence": ["sc-19"],
+      "entities": ["e-mella", "d-harbour"],
+      "supersedes_in_frame": "f-at-18",
+      "typed": { "subject": "e-mella", "predicate": "at", "object": { "kind": "entity", "id": "d-harbour" } } },
+
+    { "fact_id": "f-at-20", "frame": "ground-truth",
+      "claim": "Mella Vane is out on Mussel Rock",
+      "canon_from": "sc-20", "evidence": ["sc-20"],
+      "entities": ["e-mella", "p-mussel-rock"],
+      "supersedes_in_frame": "f-at-19",
+      "typed": { "subject": "e-mella", "predicate": "at", "object": { "kind": "entity", "id": "p-mussel-rock" } } },
+
+    { "fact_id": "f-at-21", "frame": "ground-truth", "branch": "shut-gate",
+      "claim": "Mella Vane is up in the Net Loft, waiting out the flood",
+      "canon_from": "sc-21", "evidence": ["sc-21"],
+      "entities": ["e-mella", "p-net-loft"],
+      "supersedes_in_frame": "f-at-19",
+      "typed": { "subject": "e-mella", "predicate": "at", "object": { "kind": "entity", "id": "p-net-loft" } } },
+
+    { "fact_id": "f-vat-a", "frame": "ground-truth",
+      "claim": "Verrick Sowle is up at the Weigh House over the week's tallies",
+      "canon_from": "sc-01", "evidence": ["sc-01"],
+      "entities": ["e-verrick", "p-weigh-house"],
+      "typed": { "subject": "e-verrick", "predicate": "at", "object": { "kind": "entity", "id": "p-weigh-house" } } },
+
+    { "fact_id": "f-vat-b", "frame": "ground-truth",
+      "claim": "Verrick Sowle is out on the Market Terrace, coming down",
+      "canon_from": "sc-03", "evidence": ["sc-03"],
+      "entities": ["e-verrick", "d-market"],
+      "supersedes_in_frame": "f-vat-a",
+      "typed": { "subject": "e-verrick", "predicate": "at", "object": { "kind": "entity", "id": "d-market" } } },
+
+    { "fact_id": "f-vat-c", "frame": "ground-truth",
+      "claim": "Verrick Sowle is inside the counting house",
+      "canon_from": "sc-04", "evidence": ["sc-04"],
+      "entities": ["e-verrick", "p-counting-house"],
+      "supersedes_in_frame": "f-vat-b",
+      "typed": { "subject": "e-verrick", "predicate": "at", "object": { "kind": "entity", "id": "p-counting-house" } } },
+
+    { "fact_id": "f-vat-d", "frame": "ground-truth",
+      "claim": "Verrick Sowle is out on the Long Quay",
+      "canon_from": "sc-05", "evidence": ["sc-05"],
+      "entities": ["e-verrick", "p-quay"],
+      "supersedes_in_frame": "f-vat-c",
+      "typed": { "subject": "e-verrick", "predicate": "at", "object": { "kind": "entity", "id": "p-quay" } } },
+
+    { "fact_id": "f-iat", "frame": "ground-truth",
+      "claim": "Ivane Cobb works in the Net Loft",
+      "canon_from": "sc-02", "evidence": ["sc-02"],
+      "entities": ["e-ivane", "p-net-loft"],
+      "typed": { "subject": "e-ivane", "predicate": "at", "object": { "kind": "entity", "id": "p-net-loft" } } },
+
+    { "fact_id": "f-sat", "frame": "ground-truth",
+      "claim": "Serah Marrow keeps the Weigh House",
+      "canon_from": "sc-10", "evidence": ["sc-10"],
+      "entities": ["e-serah", "p-weigh-house"],
+      "typed": { "subject": "e-serah", "predicate": "at", "object": { "kind": "entity", "id": "p-weigh-house" } } },
+
+    { "fact_id": "f-tat", "frame": "ground-truth",
+      "claim": "Old Tomsen keeps the Beacon Yard",
+      "canon_from": "sc-16", "evidence": ["sc-16"],
+      "entities": ["e-tomsen", "p-beacon-yard"],
+      "typed": { "subject": "e-tomsen", "predicate": "at", "object": { "kind": "entity", "id": "p-beacon-yard" } } },
+
+    { "fact_id": "f-ev-01", "frame": "ground-truth",
+      "claim": "the harbour master's sealed letter for the beacon-keeper passes into Mella Vane's hand on the Long Quay",
+      "canon_from": "sc-01", "evidence": ["sc-01"],
+      "entities": ["e-letter", "e-mella", "e-tomsen"],
+      "payoff_expectation": "expected",
+      "typed": { "subject": "e-letter", "predicate": "held_by", "object": { "kind": "entity", "id": "e-mella" } } },
+
+    { "fact_id": "f-ev-02", "frame": "ground-truth",
+      "claim": "Ivane Cobb, mending a seine in the Net Loft, tells Mella the counting-house door has been fast all week",
+      "canon_from": "sc-02", "evidence": ["sc-02"],
+      "entities": ["e-ivane", "e-mella", "p-counting-house"] },
+
+    { "fact_id": "f-ev-03", "frame": "ground-truth",
+      "claim": "Mella finds the counting-house door will not give under her hand",
+      "canon_from": "sc-03", "evidence": ["sc-03"],
+      "entities": ["e-mella", "p-counting-house"] },
+
+    { "fact_id": "f-m-belief-1", "frame": "mella",
+      "claim": "the counting house has been shut since the spring and nobody in Coldharrow holds its key",
+      "canon_from": "sc-03", "evidence": ["sc-03"],
+      "entities": ["p-counting-house", "e-key"] },
+
+    { "fact_id": "f-ev-04", "frame": "ground-truth",
+      "claim": "Verrick Sowle turns the key in the counting-house door and lets Mella in ahead of him",
+      "canon_from": "sc-04", "evidence": ["sc-04"],
+      "entities": ["e-verrick", "e-mella", "e-key", "p-counting-house"] },
+
+    { "fact_id": "f-m-belief-2", "frame": "mella",
+      "claim": "the counting-house key hangs on Verrick Sowle's belt, and the door opens for him whenever he likes",
+      "canon_from": "sc-04", "evidence": ["sc-04"],
+      "entities": ["e-key", "e-verrick"],
+      "supersedes_in_frame": "f-m-belief-1",
+      "typed": { "subject": "e-key", "predicate": "held_by", "object": { "kind": "entity", "id": "e-verrick" } } },
+
+    { "fact_id": "f-ev-ledger", "frame": "ground-truth",
+      "claim": "the harbour ledger lies open on the counting-house desk under Verrick Sowle's hand",
+      "canon_from": "sc-04", "evidence": ["sc-04"],
+      "entities": ["e-ledger", "e-verrick"],
+      "typed": { "subject": "e-ledger", "predicate": "held_by", "object": { "kind": "entity", "id": "e-verrick" } } },
+
+    { "fact_id": "f-ev-05", "frame": "ground-truth",
+      "claim": "Verrick walks Mella back out and locks the counting-house door behind the pair of them",
+      "canon_from": "sc-05", "evidence": ["sc-05"],
+      "entities": ["e-verrick", "e-mella", "p-counting-house"] },
+
+    { "fact_id": "f-ev-06", "frame": "ground-truth",
+      "claim": "the windlass is hauling barrels up off the Harbour Terrace and Mella waits her turn at the ramp foot",
+      "canon_from": "sc-06", "evidence": ["sc-06"],
+      "entities": ["e-mella", "d-harbour"] },
+
+    { "fact_id": "f-ev-07", "frame": "ground-truth",
+      "claim": "Mella comes up onto the Market Terrace at the height of the morning trade",
+      "canon_from": "sc-07", "evidence": ["sc-07"],
+      "entities": ["e-mella", "d-market"] },
+
+    { "fact_id": "f-ev-08", "frame": "ground-truth",
+      "claim": "a crate of herring goes over in Fish Row and the gulls come down off the roofs",
+      "canon_from": "sc-08", "evidence": ["sc-08"],
+      "entities": ["p-fish-row", "e-mella"] },
+
+    { "fact_id": "f-ev-09", "frame": "ground-truth",
+      "claim": "Mella crosses the lane out of Fish Row into Cloth Row in the space of four steps",
+      "canon_from": "sc-09", "evidence": ["sc-09"],
+      "entities": ["e-mella", "p-fish-row", "p-cloth-row"] },
+
+    { "fact_id": "f-ev-10", "frame": "ground-truth",
+      "claim": "Serah Marrow enters the week's tally in the Weigh House book and stamps it for the harbour master",
+      "canon_from": "sc-10", "evidence": ["sc-10"],
+      "entities": ["e-serah", "p-weigh-house"] },
+
+    { "fact_id": "f-ev-11", "frame": "ground-truth",
+      "claim": "Mella stands at the foot of the Long Stair and counts the flights before starting up",
+      "canon_from": "sc-11", "evidence": ["sc-11"],
+      "entities": ["e-mella", "d-market", "d-upper"] },
+
+    { "fact_id": "f-ev-12", "frame": "ground-truth",
+      "claim": "Mella comes out onto the Upper Terrace winded, with the sea wind full in her face",
+      "canon_from": "sc-12", "evidence": ["sc-12"],
+      "entities": ["e-mella", "d-upper"] },
+
+    { "fact_id": "f-ev-13", "frame": "ground-truth",
+      "claim": "the cistern is drawn down to its green line after a dry month",
+      "canon_from": "sc-13", "evidence": ["sc-13"],
+      "entities": ["p-cistern-court", "e-mella"] },
+
+    { "fact_id": "f-ev-14", "frame": "ground-truth",
+      "claim": "the chapel bell is rung for the turn of the tide",
+      "canon_from": "sc-14", "evidence": ["sc-14"],
+      "entities": ["p-chapel", "e-tide", "e-mella"] },
+
+    { "fact_id": "f-ev-15", "frame": "ground-truth",
+      "claim": "Mella fills her flask at the cistern before going on to the beacon",
+      "canon_from": "sc-15", "evidence": ["sc-15"],
+      "entities": ["e-mella", "p-cistern-court"] },
+
+    { "fact_id": "f-ev-16", "frame": "ground-truth",
+      "claim": "the sealed letter passes from Mella Vane into Old Tomsen's hand in the Beacon Yard",
+      "canon_from": "sc-16", "evidence": ["sc-16"],
+      "entities": ["e-letter", "e-tomsen", "e-mella", "p-beacon-yard"],
+      "supersedes_in_frame": "f-ev-01",
+      "pays_off": ["f-ev-01"],
+      "typed": { "subject": "e-letter", "predicate": "held_by", "object": { "kind": "entity", "id": "e-tomsen" } } },
+
+    { "fact_id": "f-ev-17", "frame": "ground-truth",
+      "claim": "Old Tomsen's word follows Mella out onto the Upper Terrace: the Mussel Rock lamp is out and wants relighting before dark",
+      "canon_from": "sc-17", "evidence": ["sc-17"],
+      "entities": ["e-tomsen", "e-mella", "p-mussel-rock"],
+      "payoff_expectation": "expected" },
+
+    { "fact_id": "f-ev-18", "frame": "ground-truth",
+      "claim": "Mella goes down the Long Stair two steps at a time with the lamp oil in her satchel",
+      "canon_from": "sc-18", "evidence": ["sc-18"],
+      "entities": ["e-mella", "d-market", "d-upper"] },
+
+    { "fact_id": "f-ev-19", "frame": "ground-truth",
+      "claim": "Mella reaches the sea gate in the harbour wall and looks out along the causeway",
+      "canon_from": "sc-19", "evidence": ["sc-19"],
+      "entities": ["e-mella", "d-harbour", "p-mussel-rock"] },
+
+    { "fact_id": "f-ev-20", "frame": "ground-truth",
+      "claim": "Mella walks the bared causeway and relights the Mussel Rock lamp",
+      "canon_from": "sc-20", "evidence": ["sc-20", "sc-17"],
+      "entities": ["e-mella", "p-mussel-rock"],
+      "pays_off": ["f-ev-17"] },
+
+    { "fact_id": "f-tide-high", "frame": "ground-truth", "branch": "shut-gate",
+      "claim": "the flood has come in over the causeway and the sea gate is shut for the next six hours",
+      "canon_from": "sc-21", "evidence": ["sc-19", "sc-21"],
+      "entities": ["e-tide", "p-mussel-rock"],
+      "supersedes_in_frame": "f-tide-out",
+      "typed": { "subject": "e-tide", "predicate": "tide_state", "object": { "kind": "token", "token": "high" } } },
+
+    { "fact_id": "f-ev-21", "frame": "ground-truth", "branch": "shut-gate",
+      "claim": "Mella sits out the flood in the Net Loft with the lamp oil still in her satchel and Mussel Rock dark across the water",
+      "canon_from": "sc-21", "evidence": ["sc-21"],
+      "entities": ["e-mella", "p-net-loft", "p-mussel-rock"] }
+  ],
+
+  "edge_costs": [
+    { "fact_id": "fe-stair-up",       "n": 14, "unit": "minute" },
+    { "fact_id": "fe-stair-down",     "n": 6,  "unit": "minute" },
+    { "fact_id": "fe-ramp-up",        "n": 9,  "unit": "minute" },
+    { "fact_id": "fe-ramp-down",      "n": 5,  "unit": "minute" },
+    { "fact_id": "fe-gate-out",       "n": 12, "unit": "minute" },
+    { "fact_id": "fe-gate-back",      "n": 12, "unit": "minute" },
+    { "fact_id": "fe-yard-cistern",   "n": 4,  "unit": "minute" },
+    { "fact_id": "fe-cistern-yard",   "n": 4,  "unit": "minute" },
+    { "fact_id": "fe-cistern-chapel", "n": 3,  "unit": "minute" },
+    { "fact_id": "fe-chapel-cistern", "n": 3,  "unit": "minute" },
+    { "fact_id": "fe-fish-cloth",     "n": 1,  "unit": "minute" },
+    { "fact_id": "fe-cloth-fish",     "n": 1,  "unit": "minute" },
+    { "fact_id": "fe-cloth-weigh",    "n": 2,  "unit": "minute" },
+    { "fact_id": "fe-weigh-cloth",    "n": 2,  "unit": "minute" },
+    { "fact_id": "fe-fish-weigh",     "n": 2,  "unit": "minute" },
+    { "fact_id": "fe-weigh-fish",     "n": 2,  "unit": "minute" },
+    { "fact_id": "fe-quay-loft",      "n": 2,  "unit": "minute" },
+    { "fact_id": "fe-loft-quay",      "n": 2,  "unit": "minute" },
+    { "fact_id": "fe-quay-counting",  "n": 2,  "unit": "minute" },
+    { "fact_id": "fe-counting-quay",  "n": 2,  "unit": "minute" }
+  ],
+
+  "edge_guards": [
+    { "fact_id": "fe-gate-out",      "conditions": ["f-tide-out"] },
+    { "fact_id": "fe-gate-back",     "conditions": ["f-tide-out"] },
+    { "fact_id": "fe-quay-counting", "conditions": ["f-key-verrick"] }
+  ]
+}

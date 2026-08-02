@@ -1,0 +1,205 @@
+{
+  "schema": "kit-replay/v3",
+  "revision_provenance": "declared-at-run",
+  "derivation": "The revision is the commit that lands these inputs, recorded at the run rather than reconstructed after it. A self-referential pin costs a second commit by construction: a replay's revision must name a tree that already HOLDS its inputs. Round 943 could land the corpus first and the record second because the declaration gates did not exist yet; Rounds 952 and 953 closed that, so the record must land WITH the corpus and its revision is corrected to the corpus commit in the immediately following commit. Both machine-checked literals here were read out of `crates/mnemosyne-cli/tests/evidence_replay_smoke.rs`, where `REPLAY_SCHEMAS` and `PROVENANCE_KINDS` panic on an unknown value (the Round 944 rule).",
+  "note": "Re-checking runs the declared revision against these manifests UNCHANGED. Both authors' first submissions imported green, so each stage's working manifest is byte-identical to its frozen first submission and neither was ever edited — by its author or by the orchestrator. The frozen copies are preserved and declared separately anyway, because what makes them evidence is that they were sealed before any output was handed back, not that they differ.",
+  "inputs": [
+    {
+      "path": "run/stage-a/sections.json",
+      "role": "replay-input",
+      "sha256": "1f731be7a9dffdadc631b75bb5c55b2aa1c1138b4c1223f238efe6cd590c2571"
+    },
+    {
+      "path": "run/stage-a/facts.json",
+      "role": "replay-input",
+      "sha256": "9a487b7614f651f3aec9f7f2081632ff9e3f0cc50d06d042e3f1973d33162bb1"
+    },
+    {
+      "path": "run/stage-b/sections.json",
+      "role": "replay-input",
+      "sha256": "1425997befd2d7b324bfdf1ceacb1eeb807cca975afc00daa9f18b7f1cf89429"
+    },
+    {
+      "path": "run/stage-b/facts.json",
+      "role": "replay-input",
+      "sha256": "21dd2917293579d81661abeb7a20b90ee31ff39e7ac89f726135c41f72f4c0cc"
+    },
+    {
+      "path": "run/stage-a-first-submission/sections.json",
+      "role": "raw-agent-output",
+      "sha256": "1f731be7a9dffdadc631b75bb5c55b2aa1c1138b4c1223f238efe6cd590c2571"
+    },
+    {
+      "path": "run/stage-a-first-submission/facts.json",
+      "role": "raw-agent-output",
+      "sha256": "9a487b7614f651f3aec9f7f2081632ff9e3f0cc50d06d042e3f1973d33162bb1"
+    },
+    {
+      "path": "run/stage-b-first-submission/sections.json",
+      "role": "raw-agent-output",
+      "sha256": "1425997befd2d7b324bfdf1ceacb1eeb807cca975afc00daa9f18b7f1cf89429"
+    },
+    {
+      "path": "run/stage-b-first-submission/facts.json",
+      "role": "raw-agent-output",
+      "sha256": "21dd2917293579d81661abeb7a20b90ee31ff39e7ac89f726135c41f72f4c0cc"
+    },
+    {
+      "path": "run/stage-a-first-submission/self-report.md",
+      "role": "raw-agent-output",
+      "sha256": "28e64e257f8614602a36a37946f8c2b9ee1c80d657ad932f3f3fc7f23f022892"
+    },
+    {
+      "path": "run/stage-b-first-submission/self-report.md",
+      "role": "raw-agent-output",
+      "sha256": "68a222d2b06f3750bdbb55016371fbbc514d86b27a1a66b024d9b1f887706302"
+    },
+    {
+      "path": "run/stage-a-first-submission/rules.json",
+      "role": "raw-agent-output",
+      "sha256": "d009760876bdecea263f9bbe874383112954f1d8e82edcbe7e8cb08e25f3c2a9"
+    },
+    {
+      "path": "run/stage-b-first-submission/rules.json",
+      "role": "raw-agent-output",
+      "sha256": "a834da17d220cbfe936192dacf4362b46a339e9371478f645007f0f7e3148b4a"
+    },
+    {
+      "path": "run/stage-a/rules.json",
+      "role": "raw-agent-output",
+      "sha256": "d009760876bdecea263f9bbe874383112954f1d8e82edcbe7e8cb08e25f3c2a9"
+    },
+    {
+      "path": "run/stage-b/rules.json",
+      "role": "raw-agent-output",
+      "sha256": "a834da17d220cbfe936192dacf4362b46a339e9371478f645007f0f7e3148b4a"
+    },
+    {
+      "path": "run/contract.txt",
+      "role": "run-artifact",
+      "sha256": "331306e7e29b6935ca6b97aa07677c2263f28e56a3e643184f85d0557c8682c0"
+    },
+    {
+      "path": "run/stage-a-first-submission/mnemosyne.toml",
+      "role": "run-artifact",
+      "sha256": "a850a6c3fef71633b41fd421a3a99192649f4afd65bcffc9e8389d4e7ac189db"
+    },
+    {
+      "path": "run/stage-a-first-submission/order.json",
+      "role": "run-artifact",
+      "sha256": "6a41829359987947339f7439d2d730987ea98bb25fa4d6b82ffce19bf83ebb19"
+    },
+    {
+      "path": "run/stage-a/first-import.log",
+      "role": "run-artifact",
+      "sha256": "0cdc11b26086d8d926d1924676e9822de565677bc511b7cc225b5eea144e4307"
+    },
+    {
+      "path": "run/stage-a/frontier.txt",
+      "role": "run-artifact",
+      "sha256": "4c5f730fff6af4480f0861965f5c3916a86161a39a279502618bb1799e105042"
+    },
+    {
+      "path": "run/stage-a/mnemosyne.toml",
+      "role": "run-artifact",
+      "sha256": "a850a6c3fef71633b41fd421a3a99192649f4afd65bcffc9e8389d4e7ac189db"
+    },
+    {
+      "path": "run/stage-a/order.json",
+      "role": "run-artifact",
+      "sha256": "6a41829359987947339f7439d2d730987ea98bb25fa4d6b82ffce19bf83ebb19"
+    },
+    {
+      "path": "run/stage-a/self-report.md",
+      "role": "run-artifact",
+      "sha256": "28e64e257f8614602a36a37946f8c2b9ee1c80d657ad932f3f3fc7f23f022892"
+    },
+    {
+      "path": "run/stage-a/transition-map.txt",
+      "role": "run-artifact",
+      "sha256": "fc825a79948ea71a171dd4afdb6b9c915466e39a1166c015e908d6a20b96b9e1"
+    },
+    {
+      "path": "run/stage-a/validate-continuity.txt",
+      "role": "run-artifact",
+      "sha256": "6b42f55699a61a970ceef13a40553909c6f783051e8028469c04a3e1c94d469d"
+    },
+    {
+      "path": "run/stage-b-first-submission/mnemosyne.toml",
+      "role": "run-artifact",
+      "sha256": "a850a6c3fef71633b41fd421a3a99192649f4afd65bcffc9e8389d4e7ac189db"
+    },
+    {
+      "path": "run/stage-b-first-submission/order.json",
+      "role": "run-artifact",
+      "sha256": "1a720440aa6b31ed398948bc03891820d71b696450429d6749786da337563f46"
+    },
+    {
+      "path": "run/stage-b/first-import.log",
+      "role": "run-artifact",
+      "sha256": "018f6008027c8a5131f5d1307ecbc5c08eddc0b2ecb5acfdf8916db5ccffad37"
+    },
+    {
+      "path": "run/stage-b/frontier.txt",
+      "role": "run-artifact",
+      "sha256": "cfc6f37aa3f2266eecbd442a6f2b93df22122d15f75dfbcc39d002e13ddf1640"
+    },
+    {
+      "path": "run/stage-b/mnemosyne.toml",
+      "role": "run-artifact",
+      "sha256": "a850a6c3fef71633b41fd421a3a99192649f4afd65bcffc9e8389d4e7ac189db"
+    },
+    {
+      "path": "run/stage-b/order.json",
+      "role": "run-artifact",
+      "sha256": "1a720440aa6b31ed398948bc03891820d71b696450429d6749786da337563f46"
+    },
+    {
+      "path": "run/stage-b/self-report.md",
+      "role": "run-artifact",
+      "sha256": "68a222d2b06f3750bdbb55016371fbbc514d86b27a1a66b024d9b1f887706302"
+    },
+    {
+      "path": "run/stage-b/transition-map.txt",
+      "role": "run-artifact",
+      "sha256": "c9680082fb501d6a0bd6620e0708e70634a7155030c22920727bad95e76ebceb"
+    },
+    {
+      "path": "run/stage-b/validate-continuity.txt",
+      "role": "run-artifact",
+      "sha256": "3b84a7979d523ec71941a91470549aabaa3bab8c80b3c4f17e89a3a72c799135"
+    }
+  ],
+  "replays": [
+    {
+      "name": "stage-a-no-machinery-named",
+      "revision": "18cfbfaf8ff1dacca58792a3ba9d6f28fb12b1bd",
+      "steps": [
+        {
+          "verb": "import-sections",
+          "input": "run/stage-a/sections.json"
+        },
+        {
+          "verb": "import-facts",
+          "input": "run/stage-a/facts.json"
+        }
+      ],
+      "expected_store_sha256": "0aff50d266a88e1ddfdd4cf14311de84fced0dad86ceb4b3c7df894c47ddc418"
+    },
+    {
+      "name": "stage-b-both-properties-asked-in-fiction",
+      "revision": "18cfbfaf8ff1dacca58792a3ba9d6f28fb12b1bd",
+      "steps": [
+        {
+          "verb": "import-sections",
+          "input": "run/stage-b/sections.json"
+        },
+        {
+          "verb": "import-facts",
+          "input": "run/stage-b/facts.json"
+        }
+      ],
+      "expected_store_sha256": "20b2c790d70962ca56a1513c766bd3196054a49563b1d1988305b91912b7a416"
+    }
+  ]
+}

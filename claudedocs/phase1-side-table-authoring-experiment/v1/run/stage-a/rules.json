@@ -1,0 +1,27 @@
+{
+  "schema": "narrative-rules/v1",
+  "comment": "Corrieholm: one place per person, movement over the store-native town map, one holder per carried thing.",
+  "rules": [
+    {
+      "id": "one-place-per-person",
+      "predicate": "at",
+      "class": "exclusive",
+      "per": "subject",
+      "containment": "contains"
+    },
+    {
+      "id": "movement-follows-the-town-map",
+      "predicate": "at",
+      "class": "transition",
+      "adjacency": "adjacent",
+      "undirected": false,
+      "containment": "contains"
+    },
+    {
+      "id": "one-holder-per-thing",
+      "predicate": "holds",
+      "class": "exclusive",
+      "per": "object"
+    }
+  ]
+}

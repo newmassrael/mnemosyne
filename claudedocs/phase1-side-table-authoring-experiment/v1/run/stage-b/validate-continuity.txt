@@ -1,0 +1,14 @@
+=== continuity gate (reject) ===
+  facts=84 order_nodes=21/21 sections conflict_pairs=0 cross_scope(data)=0 unordered=0
+  rules=3 rule_unordered=0 unchained_state_pairs=0 (no route joins 0) interval_unverifiable=not-declared interval_severity=off
+  steps judged: 44 (hierarchy crossing 13 / lifted 31 / unmoved 0, 0 unlicensed; 0 of them RUNS of consecutive crossings) — --json carries each one with its scope, route and judging coordinate
+  evidence reviews: 0 ref(s) with prose but no affirmation (import-evidence-reviews records one; an unaffirmed claim cannot go stale)
+  fact quotes: 0 unverifiable (an evidence section holds no prose, so the quote could live exactly there)
+  ladder rungs: 0 coordinate(s) resolved against current prose, and each ladder's declared order and distinctness judged against it (a stranded rung, an out-of-order ladder, or two rungs at one anchor is reported as a violation)
+  violations: 2 (structural=2 interval=0)
+  {"kind":"rule_exclusive_overlap","rule":"one-holder-per-thing","predicate":"held_by","frame":"ground-truth","branch":"main","fact_a":"f-ev-ledger","fact_b":"f-key-verrick","at":"sc-04"}
+    exclusive rule `one-holder-per-thing`: facts `f-ev-ledger` and `f-key-verrick` co-hold conflicting `held_by` at `sc-04` (frame `ground-truth`, branch `main`)
+  {"kind":"rule_exclusive_overlap","rule":"one-holder-per-thing","predicate":"held_by","frame":"ground-truth","branch":"shut-gate","fact_a":"f-ev-ledger","fact_b":"f-key-verrick","at":"sc-04"}
+    exclusive rule `one-holder-per-thing`: facts `f-ev-ledger` and `f-key-verrick` co-hold conflicting `held_by` at `sc-04` (frame `ground-truth`, branch `shut-gate`)
+  repair hints (1 finding kind(s) above; one hint each, not one per finding):
+    rule_exclusive_overlap — supersede one claim so they no longer co-hold, or separate them across world-lines or canon extents
