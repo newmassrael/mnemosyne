@@ -2275,6 +2275,103 @@ fn no_runbook_installs_the_cli_into_the_shared_slot() {
     );
 }
 
+/// The path prefix a kit record must be named by, read OUT of the harness.
+///
+/// `declare.rs` matches a record's parent directory against the output of
+/// `git ls-files <glob>`, and git prints repo-root-relative paths — so the glob
+/// IS the rule, and restating it here would be a second copy free to drift from
+/// the tool it describes.
+fn kit_record_prefix(root: &Path) -> String {
+    let src = std::fs::read_to_string(root.join("tools/experiment-harness/src/declare.rs"))
+        .expect("read the harness source that owns this rule");
+    let glob = src
+        .split("\"ls-files\", \"")
+        .nth(1)
+        .and_then(|s| s.split('"').next())
+        .expect("declare.rs globs the kit records with `git ls-files <glob>`");
+    glob.split('*')
+        .next()
+        .expect("the glob has a literal prefix")
+        .to_string()
+}
+
+/// Every `--record` a runbook hands the harness is named from the repo root.
+///
+/// The fourth member of this family and the last one without a check. Rounds 944
+/// and 948 caught a runbook teaching a retired WORD, Round 958 a stale NUMBER,
+/// and Round 961 recorded a runbook teaching a PATH the tool rejects — then left
+/// it. Measured here rather than repeated: it is three runbooks, and running the
+/// tool both ways settles it. The taught shape answers `error: v1/replay.json is
+/// not a tracked kit record`; the repo-root-relative shape declares against the
+/// real record and leaves the tree unchanged.
+///
+/// What makes it worth a gate rather than a fix is that the pair DISAGREES.
+/// `stamp-inputs` accepts the kit-relative form — it never consults git, so it
+/// resolves paths against the record's own parent — while `declare-run-tree`
+/// refuses it. A runbook that teaches one shape for both verbs therefore half
+/// works, and a half-working instruction is read as a different problem.
+#[test]
+fn every_record_a_runbook_names_is_rooted_at_the_repo() {
+    let root = repo_root();
+    let prefix = kit_record_prefix(&root);
+    let books = runbooks(&root);
+    assert!(
+        !books.is_empty(),
+        "no runbooks found under claudedocs/ — this gate would pass vacuously"
+    );
+    let mut checked = 0usize;
+    let mut violations = Vec::new();
+    for rel in &books {
+        let text =
+            std::fs::read_to_string(root.join(rel)).unwrap_or_else(|e| panic!("read {rel}: {e}"));
+        // Two of the three runbooks that carried this wrapped the flag away
+        // from its value, so the argument is looked for on this line and the
+        // next. Unlike the shared-slot scan there is no false-positive risk in
+        // reading ahead: the token taken is the FIRST after the flag, so a
+        // second command on the following line can never be reached unless the
+        // flag genuinely had no value.
+        let lines: Vec<&str> = text.lines().collect();
+        for (n, line) in lines.iter().enumerate() {
+            for (i, _) in line.match_indices("--record") {
+                let mut rest = String::from(&line[i + "--record".len()..]);
+                if n + 1 < lines.len() {
+                    rest.push(' ');
+                    rest.push_str(lines[n + 1]);
+                }
+                let Some(arg) = rest.split_whitespace().next() else {
+                    continue;
+                };
+                let arg = arg.trim_matches('`');
+                if arg.is_empty() || arg.starts_with('<') {
+                    continue; // a `<placeholder>`, not a path
+                }
+                checked += 1;
+                if !arg.starts_with(&prefix) {
+                    violations.push(format!("{rel}:{} names `{arg}`", n + 1));
+                }
+            }
+        }
+    }
+    assert!(
+        checked > 0,
+        "read {} runbook(s) and found no `--record` argument — the scan asserted \
+         nothing",
+        books.len()
+    );
+    assert!(
+        violations.is_empty(),
+        "{} `--record` argument(s) are not named from the repo root:\n  {}\n\
+         The harness matches a record's parent against `git ls-files {prefix}*`, \
+         and git prints repo-root-relative paths, so a kit-relative name is not \
+         a tracked kit record and `declare-run-tree` refuses it. `stamp-inputs` \
+         ACCEPTS the same name — it never consults git — so a runbook teaching \
+         one shape for both verbs half works, which reads as a different problem.",
+        violations.len(),
+        violations.join("\n  ")
+    );
+    println!("{checked} `--record` argument(s), all rooted at `{prefix}`");
+}
+
 /// The recipe the runbooks were given actually yields today's constant.
 ///
 /// Round 958 replaced a stale literal with a derivation, which moves the failure

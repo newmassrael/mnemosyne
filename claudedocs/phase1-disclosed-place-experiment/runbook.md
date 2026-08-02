@@ -279,10 +279,16 @@ here.
   frozen first submissions' `sections.json` — anything undeclared fails
   `every_input_a_verb_would_accept_is_declared_exactly_once`.
 - Then declare and seal the REST of the run tree, which is not optional and is
-  not hand work (Round 953): `experiment-harness declare-run-tree --record
-  vN/replay.json` writes a `run-artifact` entry for every tracked file under
+  not hand work (Round 953). **Run both FROM THE REPO ROOT and name the record
+  from there** — the harness matches a record's parent against `git ls-files`,
+  whose output is repo-root-relative, so a kit-relative name is not a tracked
+  kit record. `experiment-harness declare-run-tree --record
+  claudedocs/phase1-disclosed-place-experiment/vN/replay.json` writes a
+  `run-artifact` entry for every tracked file under
   `vN/run/` that the record does not already name, and `experiment-harness
-  stamp-inputs --record vN/replay.json` then writes each declared input's
+  stamp-inputs --record
+  claudedocs/phase1-disclosed-place-experiment/vN/replay.json` then writes each
+  declared input's
   sha256 into the record, once. Both are idempotent and neither ever rewrites an
   existing entry. Until this is run, the manuscripts, the judge reports, the
   label map and the captured logs are pinned by nothing at all — which is the

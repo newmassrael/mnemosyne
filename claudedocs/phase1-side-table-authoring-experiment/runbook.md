@@ -272,10 +272,15 @@ premise, one lineage orchestrating. One instance, not a distribution.
   frozen first submissions' `sections.json` — anything undeclared fails
   `every_input_a_verb_would_accept_is_declared_exactly_once`.
 - Then declare and seal the REST of the run tree, which is not optional and is
-  not hand work: `experiment-harness declare-run-tree --record vN/replay.json`
+  not hand work. **Run both FROM THE REPO ROOT and name the record from there**
+  — the harness matches a record's parent against `git ls-files`, whose output
+  is repo-root-relative, so a kit-relative name is not a tracked kit record.
+  `experiment-harness declare-run-tree --record
+  claudedocs/phase1-side-table-authoring-experiment/vN/replay.json`
   writes a `run-artifact` entry for every tracked file under `vN/run/` the
   record does not already name, and `experiment-harness stamp-inputs --record
-  vN/replay.json` writes each declared input's sha256 once. Both are idempotent
+  claudedocs/phase1-side-table-authoring-experiment/vN/replay.json`
+  writes each declared input's sha256 once. Both are idempotent
   and neither ever rewrites an existing entry (Round 952/953).
 - Register the replay so `evidence_replay_smoke` rebuilds it in CI. Kits are
   discovered by `git ls-files`, so **stage before running the suite**, and read
