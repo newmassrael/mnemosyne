@@ -4261,7 +4261,10 @@ fn cmd_describe_schema(args: &[String]) -> Result<()> {
     println!("{}", w.example_json);
     println!("\n-- sections wire (import-sections; author these FIRST, facts name them) --");
     println!("  {}", c.sections_wire);
-    println!("\n-- side tables (verb-only; a manifest array for these is a silent no-op) --");
+    // Round 957 — the heading no longer states WHICH tables are verb-only. That
+    // set is derived and lives in the paragraph itself; a heading asserting it
+    // is a second home for one datum, and it was wrong for a round.
+    println!("\n-- keyed side tables (how to write each one) --");
     println!("  {}", c.side_table_wire);
     println!("\n-- canon order (required for a renderable store) --");
     println!("  {}", c.canon_order);

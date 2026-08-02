@@ -91,17 +91,26 @@ pub struct SchemaContract {
     /// name sections in `canon_from` / `evidence`, so sections are authored
     /// FIRST; without this an author reverse-engineers them from parse errors.
     pub sections_wire: &'static str,
-    /// How to author the KEYED SIDE TABLES (Round 909) — the registries that are
-    /// NOT manifest arrays. They are reached only through their own CLI verbs,
-    /// and an author who guesses a manifest array for them gets `exit 0`, a
-    /// receipt that never mentions their kind, and NOTHING BUILT (the deliberate
+    /// How to author the KEYED SIDE TABLES (Round 909) — and, since Round 957,
+    /// WHICH of them a manifest cannot reach is DERIVED from the manifest's own
+    /// kind roster rather than asserted alongside it.
+    ///
+    /// A table outside that roster is reachable only through its own CLI verb;
+    /// an author who guesses a manifest array for it gets `exit 0`, a receipt
+    /// that never mentions their kind, and NOTHING BUILT (the deliberate
     /// unknown-key leniency, doing exactly what `manifest_wire.overview` warns
-    /// it does). Measured: writing `edge_costs` / `edge_guards` into a facts
-    /// manifest is silently a no-op, so the two brief requirements "some
-    /// journeys take longer" and "one way is shut until something is true" were
-    /// unreachable from a file, and the contract named the verbs without ever
-    /// giving their arguments.
-    pub side_table_wire: &'static str,
+    /// it does).
+    ///
+    /// Round 957 — THIS FIELD SPENT A ROUND TEACHING THE MODEL THE WIRE HAD
+    /// ALREADY KILLED. Round 956 wired `edge_costs` and `edge_guards` into the
+    /// fact manifest, and this paragraph went on naming exactly those two as its
+    /// examples of a silent no-op, closing with "nothing in a manifest will tell
+    /// you so" — sending any author who came looking for them to the verbs. That
+    /// is not a hypothetical cost: it is the misdirection that already produced
+    /// two hand-written shell scripts from blind authors (R943) and left R936's
+    /// five corpora at zero uses. Generating the claim from the roster is what
+    /// stops a wire and its documentation from disagreeing again.
+    pub side_table_wire: String,
     /// The canon ORDER a store needs to be RENDERABLE (Round 596,
     /// unattended-loop-experiment/v1 Finding 4) — a SEPARATE authoring artifact,
     /// NOT part of the fact manifest, that the read projections require. Without
@@ -293,6 +302,11 @@ pub struct Invariant {
 
 /// Build the authoring contract (R587). Pure — no store, no order, no I/O.
 pub fn describe_schema() -> SchemaContract {
+    // Built before the literal so the side-table paragraph can be DERIVED from
+    // the manifest roster (Round 957) rather than written out beside it.
+    let registries = registries();
+    let manifest_wire = manifest_wire();
+    let side_table_wire = verb_only_wire(&registries, &manifest_wire);
     SchemaContract {
         schema_version: mnemosyne_atomic::CURRENT_SCHEMA_VERSION,
         overview: "A store is a set of multi-axis narrative FACTS (ARCHITECTURE sec 1.1): each \
@@ -306,7 +320,7 @@ pub fn describe_schema() -> SchemaContract {
             reading, authored in the same act as the prose (never NLP-derived) — the typed \
             subset is what the deterministic rule gate covers. Nothing fiction-shaped is \
             enforced: entity kinds, token vocabularies, and units are consumer vocabulary (sec 6 inv4).",
-        registries: registries(),
+        registries,
         fact: fact_spec(),
         typed_claim: typed_claim_spec(),
         vocabularies: vocabularies(),
@@ -323,7 +337,7 @@ pub fn describe_schema() -> SchemaContract {
              (hallucinated-ref, wrong-branch, orphan) ARE these hard invariants — not a separate \
              optional check. `propose-verdict` runs the same gate over a candidate batch and \
              returns each as an actionable violation.",
-        manifest_wire: manifest_wire(),
+        manifest_wire,
         sections_wire:
             "Creating the structure SECTIONS a fact's `canon_from` / `evidence` point at — the \
              FIRST authoring step, because a fact naming an unregistered section is rejected. \
@@ -351,30 +365,7 @@ pub fn describe_schema() -> SchemaContract {
              revise). A manifest of only no-ops does not write, and reports `0 created`. NOTE the \
              asymmetry with the fact manifest: this one is a bare array of REQUIRED-field objects, \
              that one is an object of optional arrays.",
-        side_table_wire:
-            "The KEYED SIDE TABLES are NOT manifest arrays and there is no file wire for them — \
-             each is reached ONLY through its own verb, keyed by an existing fact. Writing \
-             `\"edge_costs\"` or `\"edge_guards\"` (or any of the others) into a facts manifest is \
-             a SILENT NO-OP: the manifest parses, `exit 0`, and the receipt simply never mentions \
-             that kind, because unknown manifest keys are ignored by design (see the manifest \
-             overview). The verbs, with their arguments: \
-             `add-edge-cost --fact <adjacent-fact-id> --n <positive-int> --unit <registered-unit>` \
-             (travel time on one edge; the unit must be registered first, and n must be POSITIVE \
-             — 0 is a free teleport). \
-             `add-edge-guard --fact <adjacent-fact-id> --condition <condition-fact-id>` (call it \
-             once per condition; the set is ANDed) plus \
-             `set-edge-guard-threshold --fact <edge-fact-id> (--threshold <k> | --clear)` for \
-             K-of-N. \
-             `add-parameter --parameter <id>`, then \
-             `add-parameter-delta --fact <beat-fact-id> --parameter <registered-id> --delta \
-             <nonzero-int>` and \
-             `add-parameter-gate --fact <choice-fact-id> --parameter <registered-id> --op \
-             <ge|le|eq|gt|lt> --threshold <int>`. \
-             `add-fact-count --fact <fact-id> --count <positive-int>`. \
-             Each verb takes `[--sidecar <path>] [--json]` like every other mutate. So an authoring \
-             run that must express \"this journey takes longer\" or \"this way is shut until \
-             something is true\" writes its facts to a file and then makes these calls — the two \
-             halves are not one artifact, and nothing in a manifest will tell you so.",
+        side_table_wire,
         canon_order:
             "The canon ORDER — the discourse sequence of the sections — is a SEPARATE artifact \
              from the fact manifest, and a store needs it to be RENDERABLE: the read projections \
@@ -700,6 +691,76 @@ const MANIFEST_EXAMPLE_JSON: &str = r#"{
     }
   ]
 }"#;
+
+/// The keyed side tables a fact manifest CANNOT reach (Round 957) — derived by
+/// differencing the registry roster against the manifest's own kinds, never
+/// hand-listed beside it.
+///
+/// `sections` is excluded deliberately: it is outside the fact manifest too, but
+/// it has its own file wire ([`SchemaContract::sections_wire`]), so calling it
+/// verb-only would be its own false claim.
+///
+/// Deriving this is the entire point of the function. Round 956 wired two of
+/// these tables and the prose next to them went on calling them verb-only,
+/// which is the shape that sends a blind author to a hand-written shell script.
+fn verb_only_registries<'a>(
+    registries: &'a [RegistrySpec],
+    manifest: &ManifestWireSpec,
+) -> Vec<&'a str> {
+    let wired: std::collections::BTreeSet<&str> = manifest.kinds.iter().map(|k| k.kind).collect();
+    registries
+        .iter()
+        .map(|r| r.name)
+        .filter(|n| *n != "sections" && !wired.contains(n))
+        .collect()
+}
+
+/// The side-table authoring paragraph (Round 909 content, Round 957 derivation).
+///
+/// The opening claim names [`verb_only_registries`] and nothing else, so a table
+/// that gains a manifest wire leaves the claim in the same change that wires it.
+/// The verb reference block below stays hand-written: those argument strings are
+/// CLI-parser knowledge, and inventing them for verbs this round did not read
+/// would be the same class of false documentation this round exists to remove.
+fn verb_only_wire(registries: &[RegistrySpec], manifest: &ManifestWireSpec) -> String {
+    let named = verb_only_registries(registries, manifest)
+        .iter()
+        .map(|n| format!("`{n}`"))
+        .collect::<Vec<_>>()
+        .join(", ");
+    format!(
+        "Reached ONLY through their own verb, keyed by an existing fact: {named}. Writing one of \
+         THOSE as a manifest array is a SILENT NO-OP: the manifest parses, `exit 0`, and the \
+         receipt simply never mentions that kind, because unknown manifest keys are ignored by \
+         design (see the manifest overview). That list is DERIVED from the manifest's own kind \
+         roster (Round 957), so wiring one of these tables retires its place here in the same \
+         change, instead of leaving this paragraph to contradict the wire. \
+         `edge_costs` AND `edge_guards` ARE NO LONGER AMONG THEM (Round 956): both are fact-manifest \
+         arrays now — their rows, with the shapes, are in the roster above — and both keep their \
+         verbs, so a file and a verb are two doors onto one enforcement. This paragraph asserted \
+         the opposite for as long as the wire was missing, and that was not a harmless silence: \
+         two blind authors hand-wrote a shell script to reach these tables (R943) and five \
+         authored corpora used them zero times (R936). \
+         The verbs, with their arguments: \
+         `add-edge-cost --fact <adjacent-fact-id> --n <positive-int> --unit <registered-unit>` \
+         (travel time on one edge; the unit must be registered first, and n must be POSITIVE \
+         — 0 is a free teleport). \
+         `add-edge-guard --fact <adjacent-fact-id> --condition <condition-fact-id>` (call it \
+         once per condition; the set is ANDed) plus \
+         `set-edge-guard-threshold --fact <edge-fact-id> (--threshold <k> | --clear)` for \
+         K-of-N. \
+         `add-parameter --parameter <id>`, then \
+         `add-parameter-delta --fact <beat-fact-id> --parameter <registered-id> --delta \
+         <nonzero-int>` and \
+         `add-parameter-gate --fact <choice-fact-id> --parameter <registered-id> --op \
+         <ge|le|eq|gt|lt> --threshold <int>`. \
+         `add-fact-count --fact <fact-id> --count <positive-int>`. \
+         Each verb takes `[--sidecar <path>] [--json]` like every other mutate. So an authoring \
+         run that must express \"this journey takes longer\" or \"this way is shut until \
+         something is true\" now says BOTH in the fact manifest — the tables named at the top of \
+         this paragraph are what still needs the second artifact."
+    )
+}
 
 fn registries() -> Vec<RegistrySpec> {
     vec![
@@ -2470,10 +2531,10 @@ mod tests {
         for r in side {
             // `sections` has its own file wire; everything else is a keyed side
             // table reached by verb.
-            let home = if r.name == "sections" {
+            let home: &str = if r.name == "sections" {
                 c.sections_wire
             } else {
-                c.side_table_wire
+                &c.side_table_wire
             };
             assert!(
                 home.contains(r.add_op),
@@ -2490,6 +2551,94 @@ mod tests {
         assert!(
             c.side_table_wire.contains("SILENT NO-OP"),
             "the failure mode is silence, so the contract has to say so"
+        );
+    }
+
+    /// Round 957 — WHICH tables are verb-only is derived from the manifest
+    /// roster, so wiring one retires the claim in the same change.
+    ///
+    /// Round 956 gave `edge_costs` and `edge_guards` a fact-manifest wire and
+    /// this paragraph went on naming exactly those two as its examples of a
+    /// silent no-op, closing with "nothing in a manifest will tell you so" —
+    /// pointing every author who came looking straight back at the verbs. The
+    /// R909 gate above could not see it, because that check is ONE-DIRECTIONAL:
+    /// it requires each verb-only registry's verb to be NAMED here, and nothing
+    /// forbade the prose from calling a manifest array verb-only. Measured on a
+    /// scratch store before this round changed anything: a facts manifest
+    /// carrying `edge_costs` and `edge_guards` imports them (`1 edge-costs +
+    /// 1 edge-guard-conditions created`) and `report-transition-map` hands both
+    /// back on the edge — so the wire worked and only the document was wrong.
+    #[test]
+    fn the_verb_only_claim_follows_the_manifest_roster_and_not_a_hand_list() {
+        let regs = registries();
+        let roster_now = manifest_wire();
+
+        let claimed = verb_only_registries(&regs, &roster_now);
+        assert!(
+            claimed.len() >= 4,
+            "only {} table(s) fell outside the manifest — an empty difference would assert \
+             nothing at all",
+            claimed.len()
+        );
+
+        // `sections` sits outside the fact manifest too, but it has a file wire
+        // of its own, so calling it verb-only would be this paragraph's own
+        // false claim. This fires if the exclusion is dropped.
+        assert!(
+            !claimed.contains(&"sections"),
+            "`sections` has its own file wire and must never be called verb-only"
+        );
+
+        // THE DISCRIMINATING ARM. The same registries differenced against a
+        // roster WITHOUT the two arrays Round 956 wired IS the pre-956 world,
+        // and the claim has to move between the two. Asserting that today's
+        // claim omits them would be vacuous on its own — the function filters
+        // on exactly that — so what is checked is that the ROSTER is what
+        // decides.
+        let mut roster_pre_956 = manifest_wire();
+        roster_pre_956
+            .kinds
+            .retain(|k| k.kind != "edge_costs" && k.kind != "edge_guards");
+        let claimed_pre = verb_only_registries(&regs, &roster_pre_956);
+        for t in ["edge_costs", "edge_guards"] {
+            assert!(
+                claimed_pre.contains(&t),
+                "off the roster, `{t}` must be claimed verb-only — otherwise the difference is \
+                 not what decides and this is a hand list wearing a derivation"
+            );
+            assert!(
+                !claimed.contains(&t),
+                "on the roster today, `{t}` must NOT be claimed verb-only — this is the state \
+                 that sent two blind authors to hand-written shell scripts (R943)"
+            );
+        }
+
+        // The rendered paragraph must EMBED the derived list, not merely compute
+        // it — the Round 956 failure shape of a value set once and never read.
+        let wire = verb_only_wire(&regs, &roster_now);
+        for name in &claimed {
+            assert!(
+                wire.contains(&format!("`{name}`")),
+                "derived table `{name}` never reaches the rendered paragraph"
+            );
+        }
+        let wire_pre = verb_only_wire(&regs, &roster_pre_956);
+        assert!(
+            wire_pre.contains("`edge_costs`") && wire_pre.contains("`edge_guards`"),
+            "the pre-956 rendering must name the tables its roster cannot reach"
+        );
+        assert_ne!(
+            wire, wire_pre,
+            "the paragraph must differ between the two rosters, or nothing here is derived"
+        );
+
+        // Exactly one statement of the consequence: a second one is a second
+        // home for one datum, and the section HEADING that carried one asserted
+        // `verb-only` for a whole round after it stopped being true.
+        assert_eq!(
+            wire.matches("SILENT NO-OP").count(),
+            1,
+            "the consequence belongs in the derived claim and nowhere else"
         );
     }
 
