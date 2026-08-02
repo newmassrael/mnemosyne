@@ -206,9 +206,38 @@ a finding, and this is the answer it got.
   one world premise, so their agreement is weaker evidence than two premises
   would be. One instance, not a distribution.
 - The `undirected` count moved to 3 as a **side effect** — no brief asked for
-  symmetry, and none of the three self-reports gives a reason for choosing it, so
-  unlike Round 961's directed corpora this arm has the choice without the
-  rationale. It is a witness, not an explanation.
+  symmetry.
+
+  ★ **CORRECTION, made before this record was pushed.** This section first said
+  "none of the three self-reports gives a reason for choosing it". That was
+  wrong, and it was wrong because the question was never asked: the sweep that
+  produced it searched the self-reports for the *encoding* alternatives and not
+  for `undirected` at all, so the silence it reported was the silence of a
+  question nobody put. Re-measured, per stage:
+
+  - **Stage A** gives a reason, and it is authoring economy: *"One fact is the
+    whole way, in both directions … so a way does not have to be written
+    twice."*
+  - **Stage B** gives the same reason in the same currency: *"one fact is one
+    two-way way; fifteen facts are fifteen ways, not thirty."*
+  - **Stage C** gives none — `undirected` appears only in its inventory of the
+    three rules it wired.
+
+  So two of three chose symmetry to halve the fact count, which is not what the
+  field declares. Round 924's contract text says `undirected` "declares EDGE
+  SYMMETRY and nothing else", and Round 961's author declined it for the
+  capability the other setting buys: *"the stair costs more going up than coming
+  down and an undirected edge cannot say so."* Both of these worlds contain a
+  water-stair carrying a single cost for both directions, and **no self-report on
+  any arm mentions a way that should cost differently by direction** (0 of 3).
+
+  Whether that is a loss these authors would have minded is NOT measured here,
+  and neither is whether the contract's own sentence invites the economy reading
+  — it introduces the directed setting with "a two-way road is two facts", which
+  states the cost of directed before the capability it buys. Both are the next
+  round's question, and the Round 968 ledger entry carries the uncorrected claim,
+  since that ledger is append-only and supersession there is stated in prose by a
+  later entry.
 - Stage C's map and access-axis threshold are outside its brief entirely; they
   are recorded because they are on record, not because this arm set out to
   measure them.

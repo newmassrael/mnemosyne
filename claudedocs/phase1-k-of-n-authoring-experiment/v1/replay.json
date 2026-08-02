@@ -263,7 +263,7 @@
   "replays": [
     {
       "name": "stage-a-two-of-three-told-no-machinery",
-      "revision": "PENDING",
+      "revision": "9e7096a739a06beec837fa961918317e84c61980",
       "steps": [
         {
           "verb": "import-sections",
@@ -273,11 +273,12 @@
           "verb": "import-facts",
           "input": "run/stage-a/facts.json"
         }
-      ]
+      ],
+      "expected_store_sha256": "5fed3b13d6640dd82d2ff76759b29cae5a9c8282c262985e64db514bc8a24848"
     },
     {
       "name": "stage-b-two-of-three-asked-in-fiction",
-      "revision": "PENDING",
+      "revision": "9e7096a739a06beec837fa961918317e84c61980",
       "steps": [
         {
           "verb": "import-sections",
@@ -287,11 +288,12 @@
           "verb": "import-facts",
           "input": "run/stage-b/facts.json"
         }
-      ]
+      ],
+      "expected_store_sha256": "d76b58861f9da48f061152435f92e3cc5acbe43bf24c90b38aff696f513810cf"
     },
     {
       "name": "stage-c-second-of-three-on-the-disclosure-axis",
-      "revision": "PENDING",
+      "revision": "9e7096a739a06beec837fa961918317e84c61980",
       "steps": [
         {
           "verb": "import-sections",
@@ -301,7 +303,8 @@
           "verb": "import-facts",
           "input": "run/stage-c/facts.json"
         }
-      ]
+      ],
+      "expected_store_sha256": "b075487f50384a427f5a126f069efd9ebf2853b023b7206f3dfcf6882b91c3c7"
     }
   ]
 }
