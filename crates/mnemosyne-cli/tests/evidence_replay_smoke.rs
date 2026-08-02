@@ -63,6 +63,54 @@ const STEP_EXPECTATIONS: &[&str] = &["apply", "reject"];
 
 const PROVENANCE_KINDS: &[&str] = &["derived-upper-bound", "declared-at-run"];
 
+/// The record schemas this gate reads. One member today; it is a set so the
+/// version sits in the same table as every other machine-checked literal
+/// instead of being a bare string at its one use site.
+const REPLAY_SCHEMAS: &[&str] = &["kit-replay/v2"];
+
+/// Every literal a kit's `replay.json` is checked against, keyed by the field
+/// that carries it. The cells ARE the consts above — a second reader of one
+/// vocabulary, never a second copy of it.
+///
+/// Two things read this table, and that is the whole point of it existing.
+/// `declarations` consults it to accept a record. `no_runbook_teaches_a_literal_
+/// its_own_gate_rejects` consults it to reject a runbook that would tell the
+/// next orchestrator to write a word the parser panics on. Round 942 wrote
+/// `revision_provenance: "exact"` into a runbook by copying a design instead of
+/// the gate; Round 944 fixed that runbook, and Round 948 then found the same
+/// word still instructing from a second one. Nobody reasoned their way to the
+/// retired value either time — they copied it, so the defence belongs at the
+/// shape that gets copied.
+///
+/// A field that gains a parser check without gaining a row here is caught by
+/// `vocabulary`, which panics rather than letting an unscanned field report no
+/// violations.
+const CHECKED_LITERALS: &[(&str, &[&str])] = &[
+    ("schema", REPLAY_SCHEMAS),
+    ("revision_provenance", PROVENANCE_KINDS),
+    ("role", INPUT_ROLES),
+    ("expect", STEP_EXPECTATIONS),
+];
+
+/// The value the two runbooks taught until Rounds 944 and 948 removed it. Kept
+/// as the probe for the scan's own liveness because it is the word that
+/// actually recurred; the probes assert it is outside every vocabulary, so it
+/// cannot quietly become valid and leave the negative half testing nothing.
+const RETIRED_LITERAL: &str = "exact";
+
+/// The accepted set for one machine-checked field. Panics on a field with no
+/// row: a missing vocabulary must never read as an empty one, because nothing
+/// would then be scanned for it and the answer would come back "no violations".
+fn vocabulary(field: &str) -> &'static [&'static str] {
+    CHECKED_LITERALS
+        .iter()
+        .find(|(name, _)| *name == field)
+        .unwrap_or_else(|| {
+            panic!("`{field}` is checked by this gate but has no row in CHECKED_LITERALS")
+        })
+        .1
+}
+
 fn repo_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
         .ancestors()
@@ -263,13 +311,17 @@ fn declarations() -> Declarations {
         let doc: serde_json::Value =
             serde_json::from_str(&std::fs::read_to_string(root.join(&file)).expect("read replay"))
                 .unwrap_or_else(|e| panic!("{file} is not JSON: {e}"));
-        assert_eq!(doc["schema"], "kit-replay/v2", "{file}");
+        let schema = doc["schema"].as_str().unwrap_or_default();
+        assert!(
+            vocabulary("schema").contains(&schema),
+            "{file}: unknown record schema `{schema}`"
+        );
         let prov = doc["revision_provenance"]
             .as_str()
             .unwrap_or_else(|| panic!("{file} declares no revision_provenance"))
             .to_string();
         assert!(
-            PROVENANCE_KINDS.contains(&prov.as_str()),
+            vocabulary("revision_provenance").contains(&prov.as_str()),
             "{file}: unknown revision_provenance `{prov}` — a record whose pin \
              does not say where it came from cannot be weighed"
         );
@@ -338,7 +390,7 @@ fn every_input_a_verb_would_accept_is_declared_exactly_once() {
     let mut declared_replayable: BTreeSet<String> = BTreeSet::new();
     for i in &d.inputs {
         assert!(
-            INPUT_ROLES.contains(&i.role.as_str()),
+            vocabulary("role").contains(&i.role.as_str()),
             "{}: unknown input role `{}`",
             i.unit,
             i.role
@@ -570,7 +622,7 @@ fn replays_are_ordered_sequences_over_their_own_inputs() {
         assert!(!r.steps.is_empty(), "{}/{}: no steps", r.unit, r.name);
         for s in &r.steps {
             assert!(
-                STEP_EXPECTATIONS.contains(&s.expect.as_str()),
+                vocabulary("expect").contains(&s.expect.as_str()),
                 "{}/{}: unknown expectation `{}`",
                 r.unit,
                 r.name,
@@ -1355,4 +1407,198 @@ fn every_job_that_could_run_these_gates_checks_out_full_history() {
          command shapes changed or `could_run_this_file` stopped matching"
     );
     println!("{checked} job(s) run these gates, all with full history");
+}
+
+/// One `field: "value"` a text writes out — the shape a reader copies.
+#[derive(Debug)]
+struct Taught {
+    line: usize,
+    field: &'static str,
+    value: String,
+}
+
+/// Every machine-checked literal a text writes in the copyable `field: "value"`
+/// form.
+///
+/// THE FORM IS THE DISCRIMINATOR, and it is deliberately narrower than the
+/// instruction-versus-explanation question Round 948 answered by reading. A
+/// runbook may NAME a retired word — both of the ones that carried this defect
+/// now do, recording what they used to say — but it may not write it in the
+/// shape whose only use is to be pasted into a file. That is what actually
+/// happened twice: nobody reasoned their way to `exact`, they copied it.
+///
+/// It is also why a kit's report is out of scope. The disclosed-place report
+/// writes the retired value in exactly this form, on purpose, to record that it
+/// does not exist — and evidence is frozen (fix the runbook, never the record,
+/// the Round 934 rule), so a check that reached it could only be satisfied by
+/// editing the thing it is supposed to preserve.
+fn taught_literals(text: &str) -> Vec<Taught> {
+    let mut out = Vec::new();
+    for (n, line) in text.lines().enumerate() {
+        for (field, _) in CHECKED_LITERALS {
+            let field = *field;
+            let mut from = 0usize;
+            while let Some(at) = line[from..].find(field) {
+                let start = from + at;
+                from = start + field.len();
+                // `first_role` is not `role`.
+                if line[..start]
+                    .chars()
+                    .next_back()
+                    .is_some_and(|c| c.is_alphanumeric() || c == '_')
+                {
+                    continue;
+                }
+                let Some(rest) = line[from..].strip_prefix(": \"") else {
+                    continue;
+                };
+                let Some(end) = rest.find('"') else { continue };
+                out.push(Taught {
+                    line: n + 1,
+                    field,
+                    value: rest[..end].to_string(),
+                });
+            }
+        }
+    }
+    out
+}
+
+/// Every runbook on disk, repo-relative, tracked or not.
+///
+/// Deliberately NOT `git ls-files`. `/claudedocs/*` is ignored by default, so a
+/// runbook is untracked from the moment it is written until someone lands a
+/// `.gitignore` exception — Round 898 found its own runbook in exactly that
+/// state. Discovery by tracking would be blind for the whole window in which a
+/// runbook is being read and copied from, which is the window this check is
+/// for. Measured on this tree, not assumed: 23 runbooks on disk, 22 tracked.
+///
+/// CI sees only the tracked ones, so this reaches further locally than there —
+/// which is the right direction, because the writing moment is where catching
+/// it is cheapest, and a file CI does not have cannot make CI red.
+fn runbooks(root: &Path) -> Vec<String> {
+    fn walk(dir: &Path, root: &Path, out: &mut Vec<String>) {
+        let entries =
+            std::fs::read_dir(dir).unwrap_or_else(|e| panic!("read_dir {}: {e}", dir.display()));
+        for entry in entries {
+            let entry = entry.unwrap_or_else(|e| panic!("dir entry under {}: {e}", dir.display()));
+            let kind = entry
+                .file_type()
+                .unwrap_or_else(|e| panic!("file type of {}: {e}", entry.path().display()));
+            if kind.is_dir() {
+                walk(&entry.path(), root, out);
+            } else if kind.is_file() && entry.file_name() == "runbook.md" {
+                let path = entry.path();
+                let rel = path
+                    .strip_prefix(root)
+                    .unwrap_or_else(|_| panic!("{} is outside the repo", path.display()));
+                out.push(rel.to_string_lossy().into_owned());
+            }
+        }
+    }
+    let mut out = Vec::new();
+    walk(&root.join("claudedocs"), root, &mut out);
+    out.sort();
+    out
+}
+
+/// No runbook tells the next run to write a literal this gate would reject.
+///
+/// The carry Round 948 left after removing the retired word's third home: the
+/// runbooks agreed with the gate on that one literal, and nothing checked that
+/// they stayed that way. The word's FIRST home is the Round 898 changelog
+/// entry, which the frozen ledger cannot fix and this test therefore cannot
+/// cover — the design that seeds the copy is permanent, so the check has to sit
+/// at the artifact the copy lands in.
+#[test]
+fn no_runbook_teaches_a_literal_its_own_gate_rejects() {
+    let root = repo_root();
+    let books = runbooks(&root);
+    assert!(
+        !books.is_empty(),
+        "no runbooks found under claudedocs/ — this gate would pass vacuously"
+    );
+    let tracked: BTreeSet<String> = git(&["ls-files", "claudedocs"])
+        .lines()
+        .map(str::to_string)
+        .collect();
+
+    let mut checked = 0usize;
+    let mut untracked = 0usize;
+    for rel in &books {
+        if !tracked.contains(rel) {
+            untracked += 1;
+        }
+        let text =
+            std::fs::read_to_string(root.join(rel)).unwrap_or_else(|e| panic!("read {rel}: {e}"));
+        for t in taught_literals(&text) {
+            checked += 1;
+            assert!(
+                vocabulary(t.field).contains(&t.value.as_str()),
+                "{rel}:{} instructs `{}: \"{}\"`, which this gate rejects — \
+                 accepted: {:?}. A runbook is copied from, so a value the \
+                 parser panics on is a run spent to reach a panic.",
+                t.line,
+                t.field,
+                t.value,
+                vocabulary(t.field)
+            );
+        }
+    }
+    assert!(
+        checked > 0,
+        "read {} runbook(s) and found no checked literal in any of them — the \
+         scan asserted nothing",
+        books.len()
+    );
+    println!(
+        "{} runbook(s) ({untracked} untracked, invisible to CI), {checked} \
+         checked literal(s), all in vocabulary",
+        books.len()
+    );
+}
+
+/// The scan can see every vocabulary the parser enforces, and does not fire on
+/// a runbook that merely names a retired value.
+///
+/// Per row, because a table is exactly the thing that grows a cell the scanner
+/// cannot reach and then reports zero violations for it. The probes are built
+/// FROM the table, so a row is never checked against a hand-typed copy of
+/// itself.
+#[test]
+fn the_runbook_scan_can_see_every_checked_vocabulary() {
+    for (field, vocab) in CHECKED_LITERALS {
+        assert!(
+            !vocab.is_empty(),
+            "`{field}` has an empty vocabulary — it would accept nothing"
+        );
+        let accepted = format!("- write `{field}: \"{}\"` into the record\n", vocab[0]);
+        let found = taught_literals(&accepted);
+        assert_eq!(
+            found.len(),
+            1,
+            "`{field}`: the scan missed the form it exists to read: {found:?}"
+        );
+        assert_eq!(found[0].value, vocab[0]);
+        assert!(vocabulary(field).contains(&found[0].value.as_str()));
+
+        let rejected = format!("- write `{field}: \"{RETIRED_LITERAL}\"` into the record\n");
+        let found = taught_literals(&rejected);
+        assert_eq!(found.len(), 1, "`{field}`: the scan missed the bad form");
+        assert!(
+            !vocabulary(field).contains(&found[0].value.as_str()),
+            "`{field}`: the probe value is IN the vocabulary, so the negative \
+             half of this check tests nothing — pick another probe"
+        );
+    }
+
+    // The word is not the defect; the copyable shape is. A runbook recording
+    // that it used to ask for a retired value must stay green, which is what
+    // both corrected runbooks now do.
+    let naming = format!("This line said `\"{RETIRED_LITERAL}\"` until Round 948.\n");
+    assert!(
+        taught_literals(&naming).is_empty(),
+        "the scan fires on a runbook that merely NAMES a retired value, which \
+         would force the correction record out of the runbooks that carry it"
+    );
 }
