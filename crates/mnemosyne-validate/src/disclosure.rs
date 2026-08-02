@@ -729,6 +729,97 @@ mod tests {
         );
     }
 
+    /// THE CONTRACT MAY NOT TEACH THE SHAPE THIS MODULE REPORTS AS INERT (Round 966).
+    ///
+    /// Round 946 built the advisory and Round 947 sharpened it, and the
+    /// `describe-schema` paragraph a blind author lands on went on presenting the
+    /// flagged shape as THE idiom — "leave the mode `withhold` and pin `first_at`
+    /// for THAT road only … never a non-withhold mode". That is Round 957's
+    /// finding one axis over: the document teaching a model the tree had already
+    /// retired, in the one paragraph an author reads. It is also the measured
+    /// CAUSE of the advisory's own evidence — the two blind authors of Round 943
+    /// who wrote `withhold` + `first_at` were reading this paragraph.
+    ///
+    /// THE ORACLE IS THIS MODULE, NOT A WORD LIST (the Round 907 pattern): both
+    /// shapes go through `disclosure_coverage`, and the prose is held to what came
+    /// back. If the classifier's verdict ever changes, these arms go red and force
+    /// the paragraph to be re-read rather than silently diverging again.
+    ///
+    /// THE VERDICT WORD IS DERIVED FROM THE REPORT'S OWN FIELD NAME, not typed
+    /// here (the Round 963 stem rule): rename `inert_reveal_pins` and the contract
+    /// must follow it. Neither derived token — the verdict stem nor the seat field
+    /// — appeared anywhere in the pre-repair paragraph, which is what makes this
+    /// gate non-vacuous rather than a restatement of today's wording.
+    ///
+    /// WHAT THIS CANNOT DO, stated rather than implied: prose cannot be prevented
+    /// from carrying a bad recipe alongside a good one. This holds the paragraph
+    /// to naming the classifier's verdict and the field that actually seats a
+    /// line; it cannot decide that every sentence around them is sound.
+    #[test]
+    fn the_contract_does_not_teach_the_shape_this_module_reports_as_inert() {
+        // ARM 1 and ARM 2 in one plan: the shape the paragraph used to recommend,
+        // and the shape the advisory recommends instead.
+        let mut store = AtomicStore::new();
+        for id in ["f-pinned-hide", "f-seated-state"] {
+            store
+                .narrative_facts
+                .insert(id.into(), nf("gt", "ch-1", Some(typed("pike", id))));
+        }
+        let mut seated = ov(DisclosureMode::State, &[("main", "ch-9")]);
+        seated.surface = Some(mnemosyne_core::DisclosureSurface {
+            scene: "ch-9".into(),
+            object: None,
+        });
+        let mut overrides: BTreeMap<mnemosyne_core::FactId, DisclosureOverride> = BTreeMap::new();
+        overrides.insert(
+            "f-pinned-hide".into(),
+            ov(DisclosureMode::Withhold, &[("main", "ch-9")]),
+        );
+        overrides.insert("f-seated-state".into(), seated);
+        store
+            .disclosure_plans
+            .insert("t".into(), plan(DisclosureMode::Withhold, overrides));
+
+        let r = disclosure_coverage(&store, "t").unwrap();
+        assert_eq!(
+            r.inert_reveal_pins
+                .iter()
+                .map(|p| p.fact_id.as_str())
+                .collect::<Vec<_>>(),
+            vec!["f-pinned-hide"],
+            "the withhold + first_at shape is the one this module calls inert"
+        );
+        assert_eq!(
+            r.disclosed, 1,
+            "and the disclosing mode is the one that reaches the reader"
+        );
+
+        // The verdict word, read off the report's own key rather than retyped.
+        let json = serde_json::to_value(&r).expect("the report serializes");
+        let key = json
+            .as_object()
+            .expect("a JSON object")
+            .keys()
+            .find(|k| k.ends_with("_reveal_pins"))
+            .expect("the report still carries the reveal-pin roster")
+            .clone();
+        let verdict = key.split('_').next().expect("a non-empty key").to_string();
+
+        let prose = crate::schema::describe_schema().disclosure_encoding;
+        let lower = prose.to_lowercase();
+        assert!(
+            lower.contains(&verdict),
+            "the paragraph must name the verdict `{verdict}` an author will get \
+             back from the coverage report, or the report is the first place they \
+             learn their reveal does nothing"
+        );
+        assert!(
+            prose.contains("surface.scene"),
+            "and it must name the field that actually seats the line, since that \
+             is the repair the advisory hands back"
+        );
+    }
+
     #[test]
     fn leak_gate_catches_withhold_and_early_passes_clean_and_belief() {
         let mut authored = AtomicStore::new();

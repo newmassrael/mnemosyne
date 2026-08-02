@@ -392,16 +392,25 @@ pub fn describe_schema() -> SchemaContract {
              chapter nine — NOT by citing chapter nine as evidence, which is a forward reference and \
              fails the gate (see the fact's `evidence` field). Two blind authors (R910) reached for \
              the evidence field because this surface described itself only as follows. \
-             Encoding a per-ROAD secret without leaking it — the `withhold` + `first_at` reveal \
-             idiom. A telling's disclosure `mode` is world-INDEPENDENT (one decision per fact × \
-             telling); only `first_at` is per-world. So a fact set to `state`/`hint`/`imply` is \
+             Encoding a per-ROAD secret, and the shape that does NOT encode one. A telling's \
+             disclosure `mode` is world-INDEPENDENT (one decision per fact × telling), and so is \
+             `surface`; only `first_at` is per-world. So a fact set to `state`/`hint`/`imply` is \
              disclosed on EVERY world-line — reaching for `state` to reveal a secret on one road \
-             LEAKS it on the others. To reveal a fact on the reveal-road yet keep it hidden \
-             elsewhere, leave the mode `withhold` and pin `first_at` for THAT road only (e.g. \
-             `first_at: [{branch: reveal-road, coords: [reveal-scene]}]` — the coords are a \
-             first-reached trigger SET, Round 752); a road with no pin stays withheld. The \
-             secrecy is the withhold default; the reveal is the per-world timing pin — never a \
-             non-withhold mode. IMPORTANT: a clean `report-authoring-frontier` does NOT certify a \
+             LEAKS it on the others. THE OBVIOUS REPAIR REVEALS IT ON NO ROAD, and this paragraph \
+             taught it as the idiom for as long as the shape existed: `withhold` plus a per-world \
+             `first_at` discloses nothing, anywhere. A withheld fact is dropped before it can seat \
+             a locator, so no line renders at the pin on ANY world-line, and the premature-leak \
+             gate reads any match of a withheld fact as a leak whatever the pin says. \
+             `report-disclosure-coverage` names this exact shape an INERT reveal pin, and two \
+             blind authors (Round 943) wrote it independently meaning `hidden until here, then \
+             told`. TO TELL A FACT LATE on a road the reader walks, the mode must DISCLOSE: \
+             `state` (or `hint`/`imply`) plus `surface.scene` at the scene they should learn it. \
+             The SEAT is what moves a disclosure — `surface.scene` when authored, the fact's own \
+             `canon_from` otherwise; `first_at` is a premature-leak CONSTRAINT on the re-extracted \
+             prose (a first-reached trigger SET, Round 752) and moves no line. TO KEEP A FACT OFF \
+             ANOTHER ROAD ENTIRELY, put the FACT on that branch: a branch-scoped fact is disclosed \
+             only on the world-lines that contain it, and that is the per-road mechanism this \
+             substrate has. IMPORTANT: a clean `report-authoring-frontier` does NOT certify a \
              correct telling — the frontier counts any fact carrying an override as `planned` and \
              never reads prose, so frontier-clean is necessary-but-NOT-sufficient. A premature \
              leak or early reveal is a RENDER property, caught only by the render-acceptance gates \
@@ -2336,10 +2345,19 @@ mod tests {
 
     /// Round 601 (unattended-loop-experiment/v2 gap B + Finding 2) — the two
     /// hand-authored prose fixes must carry their load-bearing concepts: the
-    /// disclosure-encoding idiom names the `withhold`+`first_at` reveal and the
+    /// disclosure-encoding paragraph names both halves of the pair and the
     /// frontier-is-not-the-leak-gate caveat; the `branches` registry names the
     /// dead-prefix dangling trap. Prose (tier-3, not serde-guarded), so this
     /// pins the concepts an agent must find, not the exact wording.
+    ///
+    /// Round 966 — THIS COMMENT USED TO CALL THE PAIR "the `withhold`+`first_at`
+    /// reveal",
+    /// which is the shape Round 946 measured as INERT and Round 947 sharpened.
+    /// The assertions below never said the paragraph RECOMMENDS the pair — only
+    /// that both words appear, which a paragraph naming the pair as the trap
+    /// satisfies too. So the repair left every assertion standing and only the
+    /// sentence describing them had to go; the sibling test below is the one
+    /// that holds the prose to what the classifier actually does.
     #[test]
     fn disclosure_encoding_and_fork_lineage_trap_are_documented() {
         let c = describe_schema();
