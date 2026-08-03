@@ -16,6 +16,10 @@ Cargo.lock.bak
 !.claude/skills/mnemosyne-init/
 # Claude working scratch (RFC drafts, maintainer replies) — local only
 /claudedocs/*
+# Exception: the population census is a GENERATED report whose whole value is
+# its history — what an axis said at round N, answerable from `git log -p`
+# instead of from a frozen sentence. Untracked it would answer nothing.
+!/claudedocs/population-census.txt
 # Exception: experiment evidence is permanent audit record (not transient
 # scratch) — preserved as git SSOT so conclusions stay re-checkable. The
 # scratch .atomic.json stores stay out (R404 seeded-fixture rule); the

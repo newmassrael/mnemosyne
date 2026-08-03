@@ -3327,270 +3327,417 @@ fn the_runbook_scan_can_see_every_checked_vocabulary() {
     );
 }
 
-/// Every `class: transition` rule in the recorded corpora, split by `undirected`.
+/// THE RECOUNT OF THE RECORDED POPULATION, AND THE ONLY DOOR ONTO IT.
 ///
-/// Parsed, not grepped: a rules artifact is a JSON object with a `rules` array,
-/// so a store (which has no such array) contributes nothing and cannot be
-/// miscounted as a map. That distinction is the Round 951 lesson — a map is
-/// declared in a rules file and never lives in the store — and it is exactly
-/// what the instrument this test replaces did not have.
-fn transition_rule_census(root: &Path) -> (Vec<String>, Vec<String>) {
-    fn walk(dir: &Path, undirected: &mut Vec<String>, directed: &mut Vec<String>) {
-        let Ok(entries) = std::fs::read_dir(dir) else {
-            return;
-        };
-        for entry in entries.flatten() {
-            let path = entry.path();
-            let Ok(kind) = entry.file_type() else {
-                continue;
-            };
-            if kind.is_dir() {
-                walk(&path, undirected, directed);
-                continue;
-            }
-            if path.extension().and_then(|e| e.to_str()) != Some("json") {
-                continue;
-            }
-            let Ok(text) = std::fs::read_to_string(&path) else {
-                continue;
-            };
-            let Ok(v) = serde_json::from_str::<serde_json::Value>(&text) else {
-                continue;
-            };
-            let Some(rules) = v.get("rules").and_then(|r| r.as_array()) else {
-                continue;
-            };
-            for rule in rules {
-                if rule.get("class").and_then(|c| c.as_str()) != Some("transition") {
-                    continue;
-                }
-                let name = path.display().to_string();
-                if rule
-                    .get("undirected")
-                    .and_then(serde_json::Value::as_bool)
-                    .unwrap_or(false)
-                {
-                    undirected.push(name);
-                } else {
-                    directed.push(name);
-                }
-            }
+/// Every axis here answers one question about what the corpora on record
+/// actually did, by walking them. Rounds 970 and 972 built these one at a time
+/// as loose functions and each new consumer called whichever it wanted; Round
+/// 976 added a second consumer and the four walks had three callers between
+/// them. The walks are PRIVATE to this module and [`axes`] is the only thing
+/// that leaves it, so "what does the tree say about this axis" has exactly one
+/// answer and the compiler is what enforces that — not a convention a later
+/// round has to notice.
+///
+/// WHY THIS IS NOT IN THE HARNESS, which is where a pure data transform over
+/// the experiment artifacts otherwise belongs: `tools/experiment-harness`
+/// declares its own `[workspace]` precisely so the root workspace's build, CI
+/// and pre-commit gates never compile it, and every consumer of these axes is a
+/// root-workspace gate. Moving them would make a root gate compile the harness
+/// to satisfy a reader that does not exist yet.
+mod census {
+    use super::run_artifacts;
+    use std::path::Path;
+
+    /// One axis of the recorded-corpus population, with the two sides any
+    /// universal claim about that axis would have to hold across.
+    ///
+    /// A universal is refutable EXACTLY WHEN the population is heterogeneous on
+    /// its axis, so an axis with an empty side has stopped being evidence —
+    /// which is why both sides are carried rather than a single count.
+    pub struct PopulationAxis {
+        pub id: &'static str,
+        pub left_label: &'static str,
+        pub left: Vec<String>,
+        pub right_label: &'static str,
+        pub right: Vec<String>,
+    }
+
+    impl PopulationAxis {
+        /// The axis as one line, for a report a round reads instead of taking a
+        /// baseline from an entry's prose.
+        pub fn line(&self) -> String {
+            format!(
+                "{}: {}={} {}={} (first {}: {})",
+                self.id,
+                self.left_label,
+                self.left.len(),
+                self.right_label,
+                self.right.len(),
+                self.left_label,
+                self.left.first().map_or("—", String::as_str),
+            )
         }
     }
-    let (mut u, mut d) = (Vec::new(), Vec::new());
-    walk(&root.join("claudedocs"), &mut u, &mut d);
-    u.sort();
-    d.sort();
-    (u, d)
-}
 
-/// Whether an `adjacency` predicate names an entity kind on either leg.
-///
-/// The kinds are declared on the PREDICATE, in the facts manifest beside the
-/// rules artifact — not in the rules artifact that names the predicate — so
-/// this reads the sibling manifests rather than the rules file that sent it
-/// looking. A corpus that declares neither leg cannot be asked which entities
-/// are places, which is the omission the containment paragraph measured.
-fn map_leg_kind_census(root: &Path) -> (Vec<String>, Vec<String>) {
-    fn declared_kinds(dir: &Path) -> std::collections::HashMap<String, bool> {
-        let mut out = std::collections::HashMap::new();
-        let Ok(entries) = std::fs::read_dir(dir) else {
-            return out;
-        };
-        for entry in entries.flatten() {
-            let path = entry.path();
-            if path.extension().and_then(|e| e.to_str()) != Some("json") {
-                continue;
-            }
-            let Ok(text) = std::fs::read_to_string(&path) else {
-                continue;
-            };
-            let Ok(v) = serde_json::from_str::<serde_json::Value>(&text) else {
-                continue;
-            };
-            let Some(preds) = v.get("predicates").and_then(|p| p.as_array()) else {
-                continue;
-            };
-            for p in preds {
-                let Some(id) = p.get("predicate_id").and_then(|i| i.as_str()) else {
-                    continue;
-                };
-                let has = p.get("subject_kind").is_some_and(|k| !k.is_null())
-                    || p.get("object_entity_kind").is_some_and(|k| !k.is_null());
-                *out.entry(id.to_string()).or_insert(false) |= has;
-            }
+    /// The whole census as the bytes of the tracked report.
+    pub fn report(root: &Path) -> String {
+        let mut out = String::from(
+            "# population census — what the recorded corpora actually did.\n\
+             #\n\
+             # GENERATED by `census::report`, checked in so that WHAT AN AXIS SAID\n\
+             # AT ROUND N is answerable from this file's history instead of from a\n\
+             # frozen sentence. Regenerate with:\n\
+             #   MNEMOSYNE_BLESS_CENSUS=1 cargo test -p mnemosyne-cli \\\n\
+             #     --test evidence_replay_smoke the_tracked_census\n",
+        );
+        for axis in axes(root) {
+            out.push_str(&axis.line());
+            out.push('\n');
         }
         out
     }
 
-    fn walk(dir: &Path, omitted: &mut Vec<String>, declared: &mut Vec<String>) {
-        let Ok(entries) = std::fs::read_dir(dir) else {
-            return;
-        };
-        for entry in entries.flatten() {
-            let path = entry.path();
-            let Ok(kind) = entry.file_type() else {
-                continue;
+    /// Witness paths as REPO-RELATIVE.
+    ///
+    /// Three of the four walks build their names by joining `root`, and the
+    /// fourth asks git, so the census printed absolute and relative paths side
+    /// by side and read differently on every machine. That was invisible while
+    /// the numbers only ever appeared in a failure message, and it surfaced the
+    /// moment the census became bytes something compares.
+    fn relative(root: &Path, paths: Vec<String>) -> Vec<String> {
+        let prefix = format!("{}/", root.display());
+        paths
+            .into_iter()
+            .map(|p| match p.strip_prefix(&prefix) {
+                Some(rest) => rest.to_string(),
+                None => p,
+            })
+            .collect()
+    }
+
+    /// Every axis the recorded population can be recounted on today.
+    pub fn axes(root: &Path) -> Vec<PopulationAxis> {
+        let (undirected, directed) = transition_rule_census(root);
+        let (kind_omitted, kind_declared) = map_leg_kind_census(root);
+        let (priced_by_direction, priced_one_way_only) = edge_cost_direction_census(root);
+        let (scripted, file_only) = authoring_mode_census();
+        let (undirected, directed) = (relative(root, undirected), relative(root, directed));
+        let (kind_omitted, kind_declared) =
+            (relative(root, kind_omitted), relative(root, kind_declared));
+        let (priced_by_direction, priced_one_way_only) = (
+            relative(root, priced_by_direction),
+            relative(root, priced_one_way_only),
+        );
+        let (scripted, file_only) = (relative(root, scripted), relative(root, file_only));
+        vec![
+            PopulationAxis {
+                id: "transition rules by `undirected`",
+                left_label: "undirected",
+                left: undirected,
+                right_label: "directed",
+                right: directed,
+            },
+            PopulationAxis {
+                id: "map corpora by leg-kind declaration",
+                left_label: "omitted",
+                left: kind_omitted,
+                right_label: "declared",
+                right: kind_declared,
+            },
+            PopulationAxis {
+                id: "cost-carrying corpora by direction-dependent pricing",
+                left_label: "prices a way by direction",
+                left: priced_by_direction,
+                right_label: "prices no way by direction",
+                right: priced_one_way_only,
+            },
+            PopulationAxis {
+                id: "run trees by authoring mode",
+                left_label: "hand script",
+                left: scripted,
+                right_label: "file-only",
+                right: file_only,
+            },
+        ]
+    }
+
+    /// The one axis a citation names, or a panic that says it does not exist.
+    pub fn axis<'a>(axes: &'a [PopulationAxis], id: &str) -> &'a PopulationAxis {
+        axes.iter().find(|a| a.id == id).unwrap_or_else(|| {
+            panic!(
+                "no axis `{id}` is recounted by this tree, so a claim keyed to \
+                 it rests on nothing. Recounted axes: {:?}",
+                axes.iter().map(|a| a.id).collect::<Vec<_>>()
+            )
+        })
+    }
+
+    /// Every `class: transition` rule in the recorded corpora, split by
+    /// `undirected`.
+    ///
+    /// Parsed, not grepped: a rules artifact is a JSON object with a `rules`
+    /// array, so a store (which has no such array) contributes nothing and
+    /// cannot be miscounted as a map. That distinction is the Round 951 lesson
+    /// — a map is declared in a rules file and never lives in the store — and
+    /// it is exactly what the instrument this test replaces did not have.
+    fn transition_rule_census(root: &Path) -> (Vec<String>, Vec<String>) {
+        fn walk(dir: &Path, undirected: &mut Vec<String>, directed: &mut Vec<String>) {
+            let Ok(entries) = std::fs::read_dir(dir) else {
+                return;
             };
-            if kind.is_dir() {
-                walk(&path, omitted, declared);
-                continue;
-            }
-            if path.extension().and_then(|e| e.to_str()) != Some("json") {
-                continue;
-            }
-            let Ok(text) = std::fs::read_to_string(&path) else {
-                continue;
-            };
-            let Ok(v) = serde_json::from_str::<serde_json::Value>(&text) else {
-                continue;
-            };
-            let Some(rules) = v.get("rules").and_then(|r| r.as_array()) else {
-                continue;
-            };
-            let parent = path.parent().expect("a rules file has a directory");
-            let kinds = declared_kinds(parent);
-            for rule in rules {
-                if rule.get("class").and_then(|c| c.as_str()) != Some("transition") {
-                    continue;
-                }
-                // Only a rule that DECLARES an adjacency predicate is in scope:
-                // a transition rule without one has no map, and the claim this
-                // axis refutes is about maps.
-                let Some(adj) = rule.get("adjacency").and_then(|a| a.as_str()) else {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                let Ok(kind) = entry.file_type() else {
                     continue;
                 };
+                if kind.is_dir() {
+                    walk(&path, undirected, directed);
+                    continue;
+                }
+                if path.extension().and_then(|e| e.to_str()) != Some("json") {
+                    continue;
+                }
+                let Ok(text) = std::fs::read_to_string(&path) else {
+                    continue;
+                };
+                let Ok(v) = serde_json::from_str::<serde_json::Value>(&text) else {
+                    continue;
+                };
+                let Some(rules) = v.get("rules").and_then(|r| r.as_array()) else {
+                    continue;
+                };
+                for rule in rules {
+                    if rule.get("class").and_then(|c| c.as_str()) != Some("transition") {
+                        continue;
+                    }
+                    let name = path.display().to_string();
+                    if rule
+                        .get("undirected")
+                        .and_then(serde_json::Value::as_bool)
+                        .unwrap_or(false)
+                    {
+                        undirected.push(name);
+                    } else {
+                        directed.push(name);
+                    }
+                }
+            }
+        }
+        let (mut u, mut d) = (Vec::new(), Vec::new());
+        walk(&root.join("claudedocs"), &mut u, &mut d);
+        u.sort();
+        d.sort();
+        (u, d)
+    }
+
+    /// Whether an `adjacency` predicate names an entity kind on either leg.
+    ///
+    /// The kinds are declared on the PREDICATE, in the facts manifest beside the
+    /// rules artifact — not in the rules artifact that names the predicate — so
+    /// this reads the sibling manifests rather than the rules file that sent it
+    /// looking. A corpus that declares neither leg cannot be asked which entities
+    /// are places, which is the omission the containment paragraph measured.
+    fn map_leg_kind_census(root: &Path) -> (Vec<String>, Vec<String>) {
+        fn declared_kinds(dir: &Path) -> std::collections::HashMap<String, bool> {
+            let mut out = std::collections::HashMap::new();
+            let Ok(entries) = std::fs::read_dir(dir) else {
+                return out;
+            };
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.extension().and_then(|e| e.to_str()) != Some("json") {
+                    continue;
+                }
+                let Ok(text) = std::fs::read_to_string(&path) else {
+                    continue;
+                };
+                let Ok(v) = serde_json::from_str::<serde_json::Value>(&text) else {
+                    continue;
+                };
+                let Some(preds) = v.get("predicates").and_then(|p| p.as_array()) else {
+                    continue;
+                };
+                for p in preds {
+                    let Some(id) = p.get("predicate_id").and_then(|i| i.as_str()) else {
+                        continue;
+                    };
+                    let has = p.get("subject_kind").is_some_and(|k| !k.is_null())
+                        || p.get("object_entity_kind").is_some_and(|k| !k.is_null());
+                    *out.entry(id.to_string()).or_insert(false) |= has;
+                }
+            }
+            out
+        }
+
+        fn walk(dir: &Path, omitted: &mut Vec<String>, declared: &mut Vec<String>) {
+            let Ok(entries) = std::fs::read_dir(dir) else {
+                return;
+            };
+            for entry in entries.flatten() {
+                let path = entry.path();
+                let Ok(kind) = entry.file_type() else {
+                    continue;
+                };
+                if kind.is_dir() {
+                    walk(&path, omitted, declared);
+                    continue;
+                }
+                if path.extension().and_then(|e| e.to_str()) != Some("json") {
+                    continue;
+                }
+                let Ok(text) = std::fs::read_to_string(&path) else {
+                    continue;
+                };
+                let Ok(v) = serde_json::from_str::<serde_json::Value>(&text) else {
+                    continue;
+                };
+                let Some(rules) = v.get("rules").and_then(|r| r.as_array()) else {
+                    continue;
+                };
+                let parent = path.parent().expect("a rules file has a directory");
+                let kinds = declared_kinds(parent);
+                for rule in rules {
+                    if rule.get("class").and_then(|c| c.as_str()) != Some("transition") {
+                        continue;
+                    }
+                    // Only a rule that DECLARES an adjacency predicate is in scope:
+                    // a transition rule without one has no map, and the claim this
+                    // axis refutes is about maps.
+                    let Some(adj) = rule.get("adjacency").and_then(|a| a.as_str()) else {
+                        continue;
+                    };
+                    let name = path.display().to_string();
+                    if kinds.get(adj).copied().unwrap_or(false) {
+                        declared.push(name);
+                    } else {
+                        omitted.push(name);
+                    }
+                }
+            }
+        }
+        let (mut o, mut d) = (Vec::new(), Vec::new());
+        walk(&root.join("claudedocs"), &mut o, &mut d);
+        o.sort();
+        d.sort();
+        (o, d)
+    }
+
+    /// Cost-carrying corpora split by whether ANY way is priced differently in its
+    /// two directions.
+    ///
+    /// Round 972. A manifest whose cost rows cannot be RESOLVED to a fact's two
+    /// legs is neither side: it is UNMEASURABLE, and counting it as symmetric would
+    /// be the R925 trap — a filter that does not match reading as a result. The
+    /// recorded case is real, `phase1-map-corpus-experiment/v1` stage-b, whose costs
+    /// live in their own file with no facts beside them.
+    fn edge_cost_direction_census(root: &Path) -> (Vec<String>, Vec<String>) {
+        fn walk(dir: &Path, asymmetric: &mut Vec<String>, symmetric: &mut Vec<String>) {
+            let Ok(entries) = std::fs::read_dir(dir) else {
+                return;
+            };
+            for entry in entries.flatten() {
+                let path = entry.path();
+                let Ok(kind) = entry.file_type() else {
+                    continue;
+                };
+                if kind.is_dir() {
+                    walk(&path, asymmetric, symmetric);
+                    continue;
+                }
+                if path.extension().and_then(|e| e.to_str()) != Some("json") {
+                    continue;
+                }
+                let Ok(text) = std::fs::read_to_string(&path) else {
+                    continue;
+                };
+                let Ok(v) = serde_json::from_str::<serde_json::Value>(&text) else {
+                    continue;
+                };
+                let Some(costs) = v.get("edge_costs").and_then(|c| c.as_array()) else {
+                    continue;
+                };
+                if costs.is_empty() {
+                    continue;
+                }
+                // fact id -> the pair of places the edge fact joins.
+                let mut legs: std::collections::HashMap<&str, (String, String)> =
+                    std::collections::HashMap::new();
+                for fact in v
+                    .get("facts")
+                    .and_then(|f| f.as_array())
+                    .into_iter()
+                    .flatten()
+                {
+                    let typed = fact.get("typed");
+                    let subject = typed
+                        .and_then(|t| t.get("subject"))
+                        .and_then(|s| s.as_str());
+                    let object = typed
+                        .and_then(|t| t.get("object"))
+                        .and_then(|o| o.get("id"))
+                        .and_then(|i| i.as_str());
+                    if let (Some(id), Some(s), Some(o)) = (
+                        fact.get("fact_id").and_then(|i| i.as_str()),
+                        subject,
+                        object,
+                    ) {
+                        legs.insert(id, (s.to_string(), o.to_string()));
+                    }
+                }
+                // Keyed by the UNORDERED pair, valued by each direction's number.
+                let mut priced: std::collections::HashMap<(String, String), Vec<i64>> =
+                    std::collections::HashMap::new();
+                for c in costs {
+                    let Some(id) = c.get("fact_id").and_then(|i| i.as_str()) else {
+                        continue;
+                    };
+                    let Some((a, b)) = legs.get(id) else { continue };
+                    let Some(n) = c.get("n").and_then(serde_json::Value::as_i64) else {
+                        continue;
+                    };
+                    let key = if a <= b {
+                        (a.clone(), b.clone())
+                    } else {
+                        (b.clone(), a.clone())
+                    };
+                    priced.entry(key).or_default().push(n);
+                }
+                if priced.is_empty() {
+                    continue; // unmeasurable, and that is not the same as symmetric
+                }
                 let name = path.display().to_string();
-                if kinds.get(adj).copied().unwrap_or(false) {
-                    declared.push(name);
+                if priced
+                    .values()
+                    .any(|ns| ns.len() > 1 && ns.iter().any(|n| n != &ns[0]))
+                {
+                    asymmetric.push(name);
                 } else {
-                    omitted.push(name);
+                    symmetric.push(name);
                 }
             }
         }
+        let (mut a, mut s) = (Vec::new(), Vec::new());
+        walk(&root.join("claudedocs"), &mut a, &mut s);
+        a.sort();
+        s.sort();
+        (a, s)
     }
-    let (mut o, mut d) = (Vec::new(), Vec::new());
-    walk(&root.join("claudedocs"), &mut o, &mut d);
-    o.sort();
-    d.sort();
-    (o, d)
-}
 
-/// Cost-carrying corpora split by whether ANY way is priced differently in its
-/// two directions.
-///
-/// Round 972. A manifest whose cost rows cannot be RESOLVED to a fact's two
-/// legs is neither side: it is UNMEASURABLE, and counting it as symmetric would
-/// be the R925 trap — a filter that does not match reading as a result. The
-/// recorded case is real, `phase1-map-corpus-experiment/v1` stage-b, whose costs
-/// live in their own file with no facts beside them.
-fn edge_cost_direction_census(root: &Path) -> (Vec<String>, Vec<String>) {
-    fn walk(dir: &Path, asymmetric: &mut Vec<String>, symmetric: &mut Vec<String>) {
-        let Ok(entries) = std::fs::read_dir(dir) else {
-            return;
-        };
-        for entry in entries.flatten() {
-            let path = entry.path();
-            let Ok(kind) = entry.file_type() else {
-                continue;
-            };
-            if kind.is_dir() {
-                walk(&path, asymmetric, symmetric);
-                continue;
-            }
-            if path.extension().and_then(|e| e.to_str()) != Some("json") {
-                continue;
-            }
-            let Ok(text) = std::fs::read_to_string(&path) else {
-                continue;
-            };
-            let Ok(v) = serde_json::from_str::<serde_json::Value>(&text) else {
-                continue;
-            };
-            let Some(costs) = v.get("edge_costs").and_then(|c| c.as_array()) else {
-                continue;
-            };
-            if costs.is_empty() {
-                continue;
-            }
-            // fact id -> the pair of places the edge fact joins.
-            let mut legs: std::collections::HashMap<&str, (String, String)> =
-                std::collections::HashMap::new();
-            for fact in v
-                .get("facts")
-                .and_then(|f| f.as_array())
-                .into_iter()
-                .flatten()
-            {
-                let typed = fact.get("typed");
-                let subject = typed
-                    .and_then(|t| t.get("subject"))
-                    .and_then(|s| s.as_str());
-                let object = typed
-                    .and_then(|t| t.get("object"))
-                    .and_then(|o| o.get("id"))
-                    .and_then(|i| i.as_str());
-                if let (Some(id), Some(s), Some(o)) = (
-                    fact.get("fact_id").and_then(|i| i.as_str()),
-                    subject,
-                    object,
-                ) {
-                    legs.insert(id, (s.to_string(), o.to_string()));
-                }
-            }
-            // Keyed by the UNORDERED pair, valued by each direction's number.
-            let mut priced: std::collections::HashMap<(String, String), Vec<i64>> =
-                std::collections::HashMap::new();
-            for c in costs {
-                let Some(id) = c.get("fact_id").and_then(|i| i.as_str()) else {
-                    continue;
-                };
-                let Some((a, b)) = legs.get(id) else { continue };
-                let Some(n) = c.get("n").and_then(serde_json::Value::as_i64) else {
-                    continue;
-                };
-                let key = if a <= b {
-                    (a.clone(), b.clone())
-                } else {
-                    (b.clone(), a.clone())
-                };
-                priced.entry(key).or_default().push(n);
-            }
-            if priced.is_empty() {
-                continue; // unmeasurable, and that is not the same as symmetric
-            }
-            let name = path.display().to_string();
-            if priced
-                .values()
-                .any(|ns| ns.len() > 1 && ns.iter().any(|n| n != &ns[0]))
-            {
-                asymmetric.push(name);
-            } else {
-                symmetric.push(name);
+    /// Recorded run trees split by whether the author dropped to a hand-written
+    /// shell script, which is what "file-only authoring" is a claim ABOUT.
+    fn authoring_mode_census() -> (Vec<String>, Vec<String>) {
+        let (mut scripted, mut file_only) = (Vec::new(), Vec::new());
+        for f in run_artifacts() {
+            if f.ends_with(".sh") {
+                scripted.push(f);
+            } else if f.ends_with(".json") {
+                file_only.push(f);
             }
         }
+        scripted.sort();
+        file_only.sort();
+        (scripted, file_only)
     }
-    let (mut a, mut s) = (Vec::new(), Vec::new());
-    walk(&root.join("claudedocs"), &mut a, &mut s);
-    a.sort();
-    s.sort();
-    (a, s)
-}
-
-/// Recorded run trees split by whether the author dropped to a hand-written
-/// shell script, which is what "file-only authoring" is a claim ABOUT.
-fn authoring_mode_census() -> (Vec<String>, Vec<String>) {
-    let (mut scripted, mut file_only) = (Vec::new(), Vec::new());
-    for f in run_artifacts() {
-        if f.ends_with(".sh") {
-            scripted.push(f);
-        } else if f.ends_with(".json") {
-            file_only.push(f);
-        }
-    }
-    scripted.sort();
-    file_only.sort();
-    (scripted, file_only)
 }
 
 /// The nouns that name the recorded-corpus POPULATION.
@@ -3703,14 +3850,92 @@ fn census_claims(doc: &str) -> Vec<String> {
     found
 }
 
-/// One axis of the recorded-corpus population, with the two sides any universal
-/// claim about that axis would have to hold across.
-struct PopulationAxis<'a> {
-    name: &'a str,
-    left_label: &'a str,
-    left: &'a [String],
-    right_label: &'a str,
-    right: &'a [String],
+/// THE RECOUNT IS SOMETHING A ROUND CAN RUN, AND EVERY AXIS STILL REFUTES A
+/// UNIVERSAL.
+///
+/// `cargo test -p mnemosyne-cli --test evidence_replay_smoke population_census
+/// -- --nocapture` prints the current census. That command exists because of
+/// what the record shows rounds actually do when they need one: Round 968 took
+/// its baseline from Round 961's sentence and reported a move from zero when
+/// the truth was two to five; Round 915 took one from Round 914's sentence;
+/// Rounds 970, 972 and 976 each measured an axis by hand because there was
+/// nothing to run. The numbers here are the gate's own — the same
+/// [`census::axes`] the contract gate and the ledger bindings read — so a round
+/// that runs this cannot get a different answer than CI does.
+///
+/// It gates as well as reports, and the assertion is the one Round 970's ban
+/// rests on: a universal over a population is refutable EXACTLY WHEN that
+/// population is heterogeneous on its axis, so an axis with an empty side has
+/// stopped being evidence and the ban on that axis would have to be re-argued
+/// rather than kept. This is the single home for that invariant; the contract
+/// gate states the ban and this states what makes it true.
+#[test]
+fn the_population_census_runs_and_every_axis_still_refutes_a_universal() {
+    let axes = census::axes(&repo_root());
+    assert!(
+        !axes.is_empty(),
+        "no axis is recounted at all, so every census claim in the contract and \
+         the ledger rests on nothing a program reads"
+    );
+    let mut report = String::from("population census (recounted now)\n");
+    for axis in &axes {
+        report.push_str("  ");
+        report.push_str(&axis.line());
+        report.push('\n');
+    }
+    println!("{report}");
+    for axis in &axes {
+        assert!(
+            !axis.left.is_empty() && !axis.right.is_empty(),
+            "the recorded corpora are homogeneous on `{}` ({}={}, {}={}), so a \
+             universal claim about that axis is no longer refutable by this tree \
+             and the ban on it has to be re-argued, not kept\n{report}",
+            axis.id,
+            axis.left_label,
+            axis.left.len(),
+            axis.right_label,
+            axis.right.len()
+        );
+    }
+}
+
+/// WHAT AN AXIS SAID AT ROUND N IS ANSWERABLE FROM A FILE'S HISTORY, NOT FROM A
+/// FROZEN SENTENCE.
+///
+/// The runnable census answers "what does this axis say NOW". The other half of
+/// what the record keeps needing is "what did it say WHEN THAT WAS WRITTEN" —
+/// the question that separates a claim which was WRONG WHEN WRITTEN from one
+/// that WENT STALE UNDER a growing population. Round 970 had to settle it by
+/// reasoning ("Round 934 measured truly; the sentence went stale under it") for
+/// three claims, because nothing recorded the value at the time.
+///
+/// A checked-in report settles it: every change to the population lands in the
+/// same commit as the change that caused it, so `git log -p` on this file is the
+/// axis's own history. That only holds if the file cannot drift, which is what
+/// this gate is — and it is the reason the file may not be hand-edited: its
+/// bytes are a program's output, not a claim.
+///
+/// This is deliberately NOT a store field. A field would carry the same number
+/// with no program deriving it — a hand-typed count in a new place, which is the
+/// thing Round 959 banned and Round 975 fixed by giving the number a program to
+/// come from.
+#[test]
+fn the_tracked_census_is_what_the_axes_say_now() {
+    let root = repo_root();
+    let path = root.join("claudedocs/population-census.txt");
+    let fresh = census::report(&root);
+    if std::env::var_os("MNEMOSYNE_BLESS_CENSUS").is_some() {
+        std::fs::write(&path, &fresh).expect("write the census report");
+    }
+    let tracked = std::fs::read_to_string(&path).unwrap_or_default();
+    assert_eq!(
+        tracked, fresh,
+        "`claudedocs/population-census.txt` is not what the axes say now, so \
+         this file's history has stopped being the record of what each axis \
+         said when. Regenerate it in the SAME commit as the change that moved \
+         the population: MNEMOSYNE_BLESS_CENSUS=1 cargo test -p mnemosyne-cli \
+         --test evidence_replay_smoke the_tracked_census"
+    );
 }
 
 /// THE CONTRACT MAY NOT STATE AN UNDATED CENSUS OF THE CORPORA IT CANNOT
@@ -3752,61 +3977,17 @@ struct PopulationAxis<'a> {
 /// which ALREADY went stale here cannot come back.
 #[test]
 fn the_contract_states_no_undated_census_of_its_own_corpora() {
-    let root = repo_root();
-
-    // NON-VACUITY, and the reason the ban is a measurement rather than a style
-    // preference: a universal over the population is refutable EXACTLY WHEN the
-    // population is heterogeneous on that axis. These are the three axes the
-    // contract has actually made a census claim about, and each is asserted
-    // from both sides — so emptying either side of the corpus fails this test
-    // rather than letting it pass on a tree with nothing left to refute.
-    let (undirected, directed) = transition_rule_census(&root);
-    let (kind_omitted, kind_declared) = map_leg_kind_census(&root);
-    let (priced_by_direction, priced_one_way_only) = edge_cost_direction_census(&root);
-    let (scripted, file_only) = authoring_mode_census();
-    let axes = [
-        PopulationAxis {
-            name: "transition rules by `undirected`",
-            left_label: "undirected",
-            left: &undirected,
-            right_label: "directed",
-            right: &directed,
-        },
-        PopulationAxis {
-            name: "map corpora by leg-kind declaration",
-            left_label: "omitted",
-            left: &kind_omitted,
-            right_label: "declared",
-            right: &kind_declared,
-        },
-        PopulationAxis {
-            name: "cost-carrying corpora by direction-dependent pricing",
-            left_label: "prices a way by direction",
-            left: &priced_by_direction,
-            right_label: "prices no way by direction",
-            right: &priced_one_way_only,
-        },
-        PopulationAxis {
-            name: "run trees by authoring mode",
-            left_label: "hand script",
-            left: &scripted,
-            right_label: "file-only",
-            right: &file_only,
-        },
-    ];
-    for axis in axes {
-        assert!(
-            !axis.left.is_empty() && !axis.right.is_empty(),
-            "the recorded corpora are homogeneous on `{}` ({}={}, {}={}), so a \
-             universal claim about that axis is no longer refutable by this tree \
-             and the ban on it has to be re-argued, not kept",
-            axis.name,
-            axis.left_label,
-            axis.left.len(),
-            axis.right_label,
-            axis.right.len()
-        );
-    }
+    // The recount comes through the one door, and NON-VACUITY — the reason this
+    // ban is a measurement rather than a style preference — is asserted by
+    // `the_population_census_runs_and_every_axis_still_refutes_a_universal`,
+    // which is its single home. This test states the ban; that one states what
+    // makes it true. Two homes for one invariant is what Round 970 deleted the
+    // previous gate to avoid.
+    let recount = census::axes(&repo_root())
+        .iter()
+        .map(census::PopulationAxis::line)
+        .collect::<Vec<_>>()
+        .join("; ");
 
     let claims = census_claims(&describe_schema());
     assert!(
@@ -3815,24 +3996,10 @@ fn the_contract_states_no_undated_census_of_its_own_corpora() {
          corpora: {}. A count belongs in a report that is re-run, or in a \
          sentence that DATES it; a universal belongs nowhere (Round 959, Round \
          969). The tree recounts, and already refutes a universal on every axis \
-         this contract has claimed about: {} undirected transition rules against \
-         {} directed, {} map corpora omitting a leg kind against {} declaring \
-         one, {} cost-carrying corpora pricing a way by direction against {} \
-         pricing none, {} hand-written scripts under run trees against {} \
-         authored files. First undirected witness: {}. First \
-         direction-priced witness: {}",
+         this contract has claimed about — {}",
         claims.len(),
         claims.join(", "),
-        undirected.len(),
-        directed.len(),
-        kind_omitted.len(),
-        kind_declared.len(),
-        priced_by_direction.len(),
-        priced_one_way_only.len(),
-        scripted.len(),
-        file_only.len(),
-        undirected.first().expect("checked non-empty"),
-        priced_by_direction.first().expect("checked non-empty"),
+        recount,
     );
 }
 
@@ -4040,12 +4207,13 @@ fn no_reading_of_ledger_prose_separates_a_census_from_a_distributive_each() {
 /// need one counterexample, and `half` needs the smaller side to stay smaller.
 #[test]
 fn the_ledger_census_claims_this_tree_can_recount_are_recounted() {
-    let root = repo_root();
     let prose = ledger_prose();
+    let axes = census::axes(&repo_root());
 
     // "every corpus on record has chosen directed" — Round 961, promoted from
     // Round 936's count of five and inherited by Round 968 as a zero baseline.
-    let (undirected, directed) = transition_rule_census(&root);
+    let directedness = census::axis(&axes, "transition rules by `undirected`");
+    let (undirected, directed) = (&directedness.left, &directedness.right);
     for (round, fragment) in [
         (961, "every corpus on record has chosen directed"),
         (967, "every recorded corpus chose directed"),
@@ -4065,7 +4233,8 @@ fn the_ledger_census_claims_this_tree_can_recount_are_recounted() {
     // "which is how every blind corpus on record was written" — Round 956, the
     // same universal Round 970 removed from the contract's `edge_costs` row and
     // left standing here.
-    let (scripted, file_only) = authoring_mode_census();
+    let mode = census::axis(&axes, "run trees by authoring mode");
+    let (scripted, file_only) = (&mode.left, &mode.right);
     let fragment = "which is how every blind corpus on record was written";
     ledger_unit(&prose, 956, fragment);
     assert!(
@@ -4078,7 +4247,8 @@ fn the_ledger_census_claims_this_tree_can_recount_are_recounted() {
 
     // "Half of every blind authoring on record" — Round 934, the sentence Round
     // 970 recounted in the contract as three of FIFTEEN and repaired there only.
-    let (omitted, declared) = map_leg_kind_census(&root);
+    let leg_kind = census::axis(&axes, "map corpora by leg-kind declaration");
+    let (omitted, declared) = (&leg_kind.left, &leg_kind.right);
     let fragment = "Half of every blind authoring on record";
     ledger_unit(&prose, 934, fragment);
     assert!(
