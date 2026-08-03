@@ -33309,6 +33309,82 @@
         "THE CORRECTION TO ROUND 972's SENTENCE CANNOT BE APPLIED WHERE THE SENTENCE IS. The ledger is append-only, so \"30 directed\" stands in that entry forever and this entry is the only correction possible — the same shape Round 969 and Round 972 themselves had to use. Round 976's binding covers the three claims a program refutes; this one is a fourth, and it is deliberately NOT added to that test, because what refutes it is not an axis disagreeing with a universal but a count that was taken over the wrong population.",
         "THE FIELD ROUND 977 SEQUENCED IS STILL NEXT AND IS NOW BETTER FOUNDED. An entry carrying `{axis, left, right}` derived from `census::report` would have made this contamination visible as data rather than as prose, since the stamped number and a later recount would disagree in a queryable way. What is still undecided is where it is checked; the store primitive cannot walk `claudedocs`."
       ]
+    },
+    "Round 979": {
+      "decision_summary": "A round's census reaches the frozen ledger as data, and no wire into it accepts a number. Round 976 refused a word-list gate on census prose and named the reopen condition: a census carried in a FIELD, the way Round 975 gave `store_surplus` one, so what a later round inherits is data rather than a sentence. Round 977 built the recount and the tracked report FIRST, on the argument that a field with no program behind it is a hand-typed count in a new place. This is the other half, built so that the order Round 977 insisted on cannot be undone later: `AtomicChangelogEntry.population_census` holds `{axis, left_label, left, right_label, right}` per axis, audit-only with no publishable twin, and BOTH wires take a boolean. `append-changelog-entry --record-census` and the MCP tool's `record_census` read the counts from the `[census] report` the workspace declares in `mnemosyne.toml`; there is deliberately no flag, in either wire, through which a count can be typed. The tracked report is now the serialization of the store's own `PopulationCensus` type, so the file format is not a second contract that could drift from the field.",
+      "changes_bullets": [
+        "`PopulationCensus` + `AtomicChangelogEntry.population_census` (schema v44 to v45, declarative new-field-default: no migration arm, a pre-v45 entry re-serializes byte-identically). Self-describing on purpose — the ledger is frozen and the program that recounts an axis is not, so `10` against `27` means nothing once the labels are gone. That is Round 452 self-containment applied to a struct. Audit-only with NO publishable twin: the publishable layer exists so prose can be redacted, there is no prose here, and a mutable copy of a count is exactly the hand-typed number the field exists to make impossible.",
+        "`check_population_census` at the primitive, the shared enforcement surface for both wires (the Round 305 lesson: two writers with one invariant set each is a field with no invariants). Rejects a blank or untrimmed axis, a blank side label, and one axis stated twice. The COUNTS are deliberately unvalidated — a universal is true exactly when one side is empty, so rejecting a zero side would refuse the reading a census is most often taken to settle.",
+        "`[census] report` in the workspace config, read by BOTH the gate that blesses the report and the append path that fills the field, so the path is one datum. `ops::render_population_census` / `ops::workspace_population_census` are the single render and the single resolver; the CLI and MCP wires call the resolver and pass a boolean, which is why there is no second reading to diverge from. `claudedocs/population-census.txt` becomes `population-census.json` (typed, `.gitignore` exception retargeted); the one-line-per-axis rendering survives as `PopulationAxis::line` for messages.",
+        "`validate-workspace` gains the contemporaneity gate, and its question is narrow because only the narrow one has a right answer: not \"does every recorded census match today\" (which would fail on every honest older entry) but \"does the census this commit is ADDING match this tree\". Decidable via `git show HEAD:` on the sidecar; every way of not knowing — no `[census]`, no git, no HEAD, an unreadable committed store — yields no violation rather than a guess."
+      ],
+      "verification_bullets": [
+        "Measured before building, and the demand was on the record: Rounds 970, 972 and 976 each measured an axis by hand, Round 968 took its baseline from Round 961's sentence and reported a move from zero when the truth was two to five, Round 915 took one from Round 914's sentence. The inheritance chain Round 924 to Round 936 to Round 961 to Round 968 is the harm end to end.",
+        "The new ledger gate is RED ON TODAY'S TREE WITHOUT ANY INJECTION and names exactly what is missing: `every_axis_the_ledger_recorded_is_one_this_tree_still_recounts` fails with \"no ledger entry records a population census, so this gate passes without reading anything\" until this entry lands. That is the non-vacuity floor asserting itself rather than being claimed.",
+        "5 primitive invariant tests (blank axis / blank side label / untrimmed axis / an axis stated twice reject; an EMPTY SIDE is accepted, which is the assertion that keeps the counts unvalidated on purpose; the field round-trips through serialization and does not read as a publishable divergence; an entry that records nothing writes no key).",
+        "6 wire tests through the REAL binary: the recorded rows equal the report's `axes` verbatim (compared against bytes this test renders through `render_population_census`, never against literals — a hand-typed expectation passes whenever the wire and the test make the same mistake); an append that does not ask records nothing; a missing `[census]`, a non-JSON report and a report with no axes each refuse AND leave no entry behind.",
+        "The contemporaneity gate is tested in the order the defect happens: append against the current report (clean) — move a count while the entry is still uncommitted (REJECTS, naming the entry and the axis) — commit, move a count again (CLEAN, because history is supposed to disagree with a population that moved on). Either half alone is the wrong gate.",
+        "`both_wires_take_their_census_from_the_one_resolver` reads both wires' sources with the site count asserted, because a check that silently found nothing would report \"parity holds\" for a tree in which nobody writes the field.",
+        "Two structural gates already in the tree caught this change and were answered rather than worked around: `ref_field_classification` demanded all three new string places be classified, and `docs_match_reality_smoke` demanded `[census]` be documented in both schema guides."
+      ],
+      "carry_forward_bullets": [
+        "WHAT THIS DOES NOT REACH IS AN AXIS THAT HAS NO PROGRAM. Round 976 counted 25 census claims in the ledger at its tightest reading and three that could be recounted at all; the rest — no corpus has ever declared an exit, no authored corpus registers a meter, no author produced both a map and a telling — name axes nobody has written a walk for, and `--record-census` can only file what `census::axes` can count. The resume condition is unchanged and is now cheaper to act on: a round that needs one of those baselines writes the walk, and the field files it from that moment on.",
+        "THE FOUR SENTENCES ROUND 976 BOUND BY HAND STAY BOUND BY HAND, and that is a property of the freeze rather than an omission. Rounds 934, 956, 961 and 967 cannot grow a field, so `the_ledger_census_claims_this_tree_can_recount_are_recounted` remains the only way to make leaning on them fail. Two homes for \"which ledger claims are bound\" is the cost the append-only ledger charges, and it stops growing here: every claim from this round forward can carry its own.",
+        "THE CONTEMPORANEITY GATE PASSES VACUOUSLY IN CI, by construction — nothing is uncommitted there — so it bites only in the tree that wrote the entry, on the `validate-workspace` the pre-commit hook already runs. That is the same reach as the runbook-tracking gate and for the same reason: a defect that can only exist before a commit has to be caught before the commit. A workspace that commits its store without running the hook gets no protection, and nothing here tells it so.",
+        "THE REPORT'S FIRST-WITNESS RENDERING IS GONE, deliberately. Round 977's line carried \"(first <label>: <path>)\" as a convenience; the report is now exactly the type the field stores, and adding the witness back would put an arbitrary sorted-first path into every entry that records a census. Round 977's own resume condition for widening to witnesses is unchanged: the first time a count moves inexplicably."
+      ],
+      "population_census": [
+        {
+          "axis": "transition rules by `undirected`",
+          "left_label": "undirected",
+          "left": 10,
+          "right_label": "directed",
+          "right": 27
+        },
+        {
+          "axis": "map corpora by leg-kind declaration",
+          "left_label": "omitted",
+          "left": 6,
+          "right_label": "declared",
+          "right": 24
+        },
+        {
+          "axis": "cost-carrying corpora by direction-dependent pricing",
+          "left_label": "prices a way by direction",
+          "left": 4,
+          "right_label": "prices no way by direction",
+          "right": 6
+        },
+        {
+          "axis": "run trees by authoring mode",
+          "left_label": "hand script",
+          "left": 10,
+          "right_label": "file-only",
+          "right": 239
+        }
+      ],
+      "publishable_decision_summary": "A round's census reaches the frozen ledger as data, and no wire into it accepts a number. Round 976 refused a word-list gate on census prose and named the reopen condition: a census carried in a FIELD, the way Round 975 gave `store_surplus` one, so what a later round inherits is data rather than a sentence. Round 977 built the recount and the tracked report FIRST, on the argument that a field with no program behind it is a hand-typed count in a new place. This is the other half, built so that the order Round 977 insisted on cannot be undone later: `AtomicChangelogEntry.population_census` holds `{axis, left_label, left, right_label, right}` per axis, audit-only with no publishable twin, and BOTH wires take a boolean. `append-changelog-entry --record-census` and the MCP tool's `record_census` read the counts from the `[census] report` the workspace declares in `mnemosyne.toml`; there is deliberately no flag, in either wire, through which a count can be typed. The tracked report is now the serialization of the store's own `PopulationCensus` type, so the file format is not a second contract that could drift from the field.",
+      "publishable_changes_bullets": [
+        "`PopulationCensus` + `AtomicChangelogEntry.population_census` (schema v44 to v45, declarative new-field-default: no migration arm, a pre-v45 entry re-serializes byte-identically). Self-describing on purpose — the ledger is frozen and the program that recounts an axis is not, so `10` against `27` means nothing once the labels are gone. That is Round 452 self-containment applied to a struct. Audit-only with NO publishable twin: the publishable layer exists so prose can be redacted, there is no prose here, and a mutable copy of a count is exactly the hand-typed number the field exists to make impossible.",
+        "`check_population_census` at the primitive, the shared enforcement surface for both wires (the Round 305 lesson: two writers with one invariant set each is a field with no invariants). Rejects a blank or untrimmed axis, a blank side label, and one axis stated twice. The COUNTS are deliberately unvalidated — a universal is true exactly when one side is empty, so rejecting a zero side would refuse the reading a census is most often taken to settle.",
+        "`[census] report` in the workspace config, read by BOTH the gate that blesses the report and the append path that fills the field, so the path is one datum. `ops::render_population_census` / `ops::workspace_population_census` are the single render and the single resolver; the CLI and MCP wires call the resolver and pass a boolean, which is why there is no second reading to diverge from. `claudedocs/population-census.txt` becomes `population-census.json` (typed, `.gitignore` exception retargeted); the one-line-per-axis rendering survives as `PopulationAxis::line` for messages.",
+        "`validate-workspace` gains the contemporaneity gate, and its question is narrow because only the narrow one has a right answer: not \"does every recorded census match today\" (which would fail on every honest older entry) but \"does the census this commit is ADDING match this tree\". Decidable via `git show HEAD:` on the sidecar; every way of not knowing — no `[census]`, no git, no HEAD, an unreadable committed store — yields no violation rather than a guess."
+      ],
+      "publishable_verification_bullets": [
+        "Measured before building, and the demand was on the record: Rounds 970, 972 and 976 each measured an axis by hand, Round 968 took its baseline from Round 961's sentence and reported a move from zero when the truth was two to five, Round 915 took one from Round 914's sentence. The inheritance chain Round 924 to Round 936 to Round 961 to Round 968 is the harm end to end.",
+        "The new ledger gate is RED ON TODAY'S TREE WITHOUT ANY INJECTION and names exactly what is missing: `every_axis_the_ledger_recorded_is_one_this_tree_still_recounts` fails with \"no ledger entry records a population census, so this gate passes without reading anything\" until this entry lands. That is the non-vacuity floor asserting itself rather than being claimed.",
+        "5 primitive invariant tests (blank axis / blank side label / untrimmed axis / an axis stated twice reject; an EMPTY SIDE is accepted, which is the assertion that keeps the counts unvalidated on purpose; the field round-trips through serialization and does not read as a publishable divergence; an entry that records nothing writes no key).",
+        "6 wire tests through the REAL binary: the recorded rows equal the report's `axes` verbatim (compared against bytes this test renders through `render_population_census`, never against literals — a hand-typed expectation passes whenever the wire and the test make the same mistake); an append that does not ask records nothing; a missing `[census]`, a non-JSON report and a report with no axes each refuse AND leave no entry behind.",
+        "The contemporaneity gate is tested in the order the defect happens: append against the current report (clean) — move a count while the entry is still uncommitted (REJECTS, naming the entry and the axis) — commit, move a count again (CLEAN, because history is supposed to disagree with a population that moved on). Either half alone is the wrong gate.",
+        "`both_wires_take_their_census_from_the_one_resolver` reads both wires' sources with the site count asserted, because a check that silently found nothing would report \"parity holds\" for a tree in which nobody writes the field.",
+        "Two structural gates already in the tree caught this change and were answered rather than worked around: `ref_field_classification` demanded all three new string places be classified, and `docs_match_reality_smoke` demanded `[census]` be documented in both schema guides."
+      ],
+      "publishable_carry_forward_bullets": [
+        "WHAT THIS DOES NOT REACH IS AN AXIS THAT HAS NO PROGRAM. Round 976 counted 25 census claims in the ledger at its tightest reading and three that could be recounted at all; the rest — no corpus has ever declared an exit, no authored corpus registers a meter, no author produced both a map and a telling — name axes nobody has written a walk for, and `--record-census` can only file what `census::axes` can count. The resume condition is unchanged and is now cheaper to act on: a round that needs one of those baselines writes the walk, and the field files it from that moment on.",
+        "THE FOUR SENTENCES ROUND 976 BOUND BY HAND STAY BOUND BY HAND, and that is a property of the freeze rather than an omission. Rounds 934, 956, 961 and 967 cannot grow a field, so `the_ledger_census_claims_this_tree_can_recount_are_recounted` remains the only way to make leaning on them fail. Two homes for \"which ledger claims are bound\" is the cost the append-only ledger charges, and it stops growing here: every claim from this round forward can carry its own.",
+        "THE CONTEMPORANEITY GATE PASSES VACUOUSLY IN CI, by construction — nothing is uncommitted there — so it bites only in the tree that wrote the entry, on the `validate-workspace` the pre-commit hook already runs. That is the same reach as the runbook-tracking gate and for the same reason: a defect that can only exist before a commit has to be caught before the commit. A workspace that commits its store without running the hook gets no protection, and nothing here tells it so.",
+        "THE REPORT'S FIRST-WITNESS RENDERING IS GONE, deliberately. Round 977's line carried \"(first <label>: <path>)\" as a convenience; the report is now exactly the type the field stores, and adding the witness back would put an arbitrary sorted-first path into every entry that records a census. Round 977's own resume condition for widening to witnesses is unchanged: the first time a count moves inexplicably."
+      ]
     }
   },
   "inventory_entries": {},
@@ -33327,5 +33403,5 @@
   "parameter_deltas": {},
   "parameter_gates": {},
   "fact_counts": {},
-  "schema_version": 44
+  "schema_version": 45
 }

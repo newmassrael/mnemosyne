@@ -1,0 +1,33 @@
+{
+  "generated": "These counts are a program's output, not a claim. Do not hand-edit them: regenerate the report in the SAME commit as the change that moved the population, so this file's history is what each axis said when.",
+  "axes": [
+    {
+      "axis": "transition rules by `undirected`",
+      "left_label": "undirected",
+      "left": 10,
+      "right_label": "directed",
+      "right": 27
+    },
+    {
+      "axis": "map corpora by leg-kind declaration",
+      "left_label": "omitted",
+      "left": 6,
+      "right_label": "declared",
+      "right": 24
+    },
+    {
+      "axis": "cost-carrying corpora by direction-dependent pricing",
+      "left_label": "prices a way by direction",
+      "left": 4,
+      "right_label": "prices no way by direction",
+      "right": 6
+    },
+    {
+      "axis": "run trees by authoring mode",
+      "left_label": "hand script",
+      "left": 10,
+      "right_label": "file-only",
+      "right": 239
+    }
+  ]
+}

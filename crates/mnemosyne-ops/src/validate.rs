@@ -73,6 +73,10 @@ pub struct ValidateWorkspaceReport {
     /// axis tightens and this one loosens, so a wrong verdict here un-gates real
     /// citations, and the count is what keeps that from being silent.
     pub scan_numbering_origin: Option<mnemosyne_validate::code_refs::NumberingOriginReport>,
+    /// Round 979 — census rows recorded by entries this commit is ADDING that
+    /// do not match the workspace's report. Empty on any tree where the answer
+    /// cannot be known (see [`uncommitted_census_disagreements`]).
+    pub census_stale: Vec<String>,
     pub failed: bool,
     pub failure_reasons: Vec<String>,
 }
@@ -450,9 +454,19 @@ pub fn validate_workspace(workspace_root: &Path) -> Result<ValidateWorkspaceRepo
             publishable_unmatched.len()
         ));
     }
+    // Round 979 — a census an UNCOMMITTED entry records must be what the
+    // workspace's report says right now.
+    let census_stale = uncommitted_census_disagreements(workspace_root, &atomic_store)?;
+    if !census_stale.is_empty() {
+        failure_reasons.push(format!(
+            "{} uncommitted entry census row(s) disagree with the workspace's [census] report",
+            census_stale.len()
+        ));
+    }
     let failed = !failure_reasons.is_empty();
 
     Ok(ValidateWorkspaceReport {
+        census_stale,
         orphan_actual,
         orphan_ledger: orphan_ledger_view,
         orphan_new,
@@ -487,6 +501,99 @@ pub fn validate_workspace(workspace_root: &Path) -> Result<ValidateWorkspaceRepo
         failed,
         failure_reasons,
     })
+}
+
+/// THE CENSUS AN ENTRY IS ABOUT TO FREEZE MUST BE THE ONE THE TREE HOLDS NOW.
+///
+/// `--record-census` reads the workspace's report, so the number in an entry is
+/// derived and never typed. What derivation alone cannot close is ORDER: a round
+/// that appends its entry, then moves the population and re-blesses the report,
+/// freezes a count that was true one step earlier. Nothing downstream can tell
+/// that apart from a count that simply aged — an entry is history, and history
+/// is supposed to disagree with the present.
+///
+/// It IS decidable at exactly one moment: while the entry is still uncommitted.
+/// So the question this asks is narrow on purpose — not "does every recorded
+/// census match today" (which would fail on every honest older entry) but "does
+/// the census this commit is ADDING match what this tree says", which is the
+/// only version of the question with a right answer.
+///
+/// REACH, stated rather than implied: in CI nothing is uncommitted, so the
+/// entry set is empty and this passes VACUOUSLY there. It bites in the tree that
+/// wrote the entry, on the `validate-workspace` the pre-commit hook already
+/// runs. That is the same shape as the runbook-tracking gate, and for the same
+/// reason: a defect that can only exist before a commit has to be caught before
+/// the commit.
+///
+/// Every way of NOT KNOWING yields an empty answer rather than a violation: no
+/// `[census]` table, no git, no `HEAD` (the first commit of a repository), an
+/// unreadable committed store. A gate that guessed here would reject a
+/// legitimate workspace for the shape of its history.
+fn uncommitted_census_disagreements(
+    workspace_root: &Path,
+    store: &mnemosyne_atomic::AtomicStore,
+) -> Result<Vec<String>, OpError> {
+    let recording: Vec<(&String, &Vec<mnemosyne_atomic::PopulationCensus>)> = store
+        .changelog_entries
+        .iter()
+        .filter(|(_, e)| !e.population_census.is_empty())
+        .map(|(id, e)| (id, &e.population_census))
+        .collect();
+    if recording.is_empty() {
+        return Ok(Vec::new());
+    }
+    let sidecar = crate::resolve_sidecar(workspace_root, None)?;
+    let (Some(dir), Some(name)) = (sidecar.parent(), sidecar.file_name()) else {
+        return Ok(Vec::new());
+    };
+    let out = std::process::Command::new("git")
+        .args(["show", &format!("HEAD:./{}", name.to_string_lossy())])
+        .current_dir(dir)
+        .output();
+    let Ok(out) = out else {
+        return Ok(Vec::new());
+    };
+    if !out.status.success() {
+        return Ok(Vec::new());
+    }
+    let Ok(committed) = serde_json::from_slice::<serde_json::Value>(&out.stdout) else {
+        return Ok(Vec::new());
+    };
+    let already: BTreeSet<String> = committed
+        .get("changelog_entries")
+        .and_then(|v| v.as_object())
+        .map(|o| o.keys().cloned().collect())
+        .unwrap_or_default();
+
+    let mut stale = Vec::new();
+    let mut report: Option<Vec<mnemosyne_atomic::PopulationCensus>> = None;
+    for (id, rows) in recording {
+        if already.contains(id) {
+            continue;
+        }
+        // Resolved once, and only for a tree that has something to check — a
+        // workspace with no `[census]` table cannot have recorded one either,
+        // so reaching here with an unreadable report is a real defect and says
+        // so rather than passing quietly.
+        let axes = match &report {
+            Some(a) => a,
+            None => {
+                report = Some(crate::workspace_population_census(workspace_root)?);
+                report.as_ref().expect("just resolved")
+            }
+        };
+        for row in rows {
+            if !axes.contains(row) {
+                stale.push(format!(
+                    "{id}: `{}` recorded as {}={} {}={}, which is not what the \
+                     workspace's census report says — re-bless the report and \
+                     append the entry after it, in that order",
+                    row.axis, row.left_label, row.left, row.right_label, row.right
+                ));
+            }
+        }
+    }
+    Ok(stale)
 }
 
 impl ValidateWorkspaceReport {
@@ -673,6 +780,9 @@ impl ValidateWorkspaceReport {
         );
         for u in &self.publishable_unmatched {
             let _ = writeln!(out, "  {}", u);
+        }
+        for s in &self.census_stale {
+            let _ = writeln!(out, "  census (Round 979): {}", s);
         }
         if self.failed {
             let _ = writeln!(out, "FAILED:");

@@ -4486,6 +4486,7 @@ pub fn cmd_append_changelog_entry(workspace_root: &Path, args: &[String]) -> Res
     let mut impact_csv: Option<String> = None;
     let mut carry_file: Option<String> = None;
     let mut sidecar: Option<String> = None;
+    let mut record_census = false;
     let mut json = false;
     let mut iter = args.iter();
     while let Some(arg) = iter.next() {
@@ -4539,6 +4540,10 @@ pub fn cmd_append_changelog_entry(workspace_root: &Path, args: &[String]) -> Res
                         .clone(),
                 )
             }
+            // Round 979 — a BOOLEAN, never a count. The numbers come from the
+            // workspace's census report; a flag that took them would be a flag
+            // through which a hand-typed population enters the frozen ledger.
+            "--record-census" => record_census = true,
             "--json" => json = true,
             other => return Err(anyhow!("unknown flag `{}`", other).into()),
         }
@@ -4574,6 +4579,13 @@ pub fn cmd_append_changelog_entry(workspace_root: &Path, args: &[String]) -> Res
     // single shared path (CLI + MCP parity).
     let entry_id_prefix =
         mnemosyne_ops::workspace_entry_id_prefix(workspace_root).map_err(|e| anyhow!("{}", e))?;
+    // Round 979 — resolved through the one shared path, so this wire and the
+    // MCP wire cannot record different populations from the same tree.
+    let population_census = if record_census {
+        mnemosyne_ops::workspace_population_census(workspace_root).map_err(|e| anyhow!("{}", e))?
+    } else {
+        Vec::new()
+    };
     let mut store = AtomicStore::load(&sidecar_path).map_err(|e| anyhow!("{}", e))?;
     finalize_mutate(
         append_changelog_entry(
@@ -4589,6 +4601,7 @@ pub fn cmd_append_changelog_entry(workspace_root: &Path, args: &[String]) -> Res
                     .map(|s| mnemosyne_core::SectionId::from(s.as_str()))
                     .collect::<Vec<_>>(),
                 carry_forward_bullets: &carry_forward,
+                population_census: &population_census,
             },
             &entry_id_prefix,
         ),

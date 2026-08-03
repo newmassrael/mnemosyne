@@ -17,8 +17,10 @@ pub mod validate;
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
-use mnemosyne_atomic::{AtomicMutateError, AtomicMutateReceipt, AtomicStore, ContentExcerpt};
-use serde::Serialize;
+use mnemosyne_atomic::{
+    AtomicMutateError, AtomicMutateReceipt, AtomicStore, ContentExcerpt, PopulationCensus,
+};
+use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 pub use cascade::{validate_atomic_store, AtomicValidationSummary};
@@ -174,6 +176,110 @@ pub fn workspace_entry_id_prefix(workspace_root: &Path) -> Result<String, OpErro
         .schema
         .map(|s| s.entry_id_prefix)
         .unwrap_or_else(|| mnemosyne_config::SchemaSection::mnemosyne_preset().entry_id_prefix))
+}
+
+/// The tracked recorded-population report: a program's output, with the
+/// sentence that says so stored beside the numbers (Round 979).
+///
+/// The wrapper exists so a reader who opens the file learns what it is without
+/// having to find the gate that writes it. `axes` is the payload, and it is
+/// exactly `Vec<PopulationCensus>` — the same type the store field holds — so
+/// the file format is not a second contract that could drift from the field: it
+/// IS the field's serialization, and the compiler owns the correspondence.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PopulationCensusReport {
+    /// Why these bytes may not be hand-edited.
+    pub generated: String,
+    pub axes: Vec<PopulationCensus>,
+}
+
+/// The sentence [`render_population_census`] stamps into every report.
+const CENSUS_REPORT_NOTE: &str =
+    "These counts are a program's output, not a claim. Do not hand-edit \
+     them: regenerate the report in the SAME commit as the change that moved \
+     the population, so this file's history is what each axis said when.";
+
+/// Render the tracked report for a recount (Round 979).
+///
+/// One home for the bytes, shared by the gate that blesses the file and by any
+/// reader that compares against it, so "what does a current report look like"
+/// has one answer.
+pub fn render_population_census(axes: &[PopulationCensus]) -> Result<String, OpError> {
+    let report = PopulationCensusReport {
+        generated: CENSUS_REPORT_NOTE.to_string(),
+        axes: axes.to_vec(),
+    };
+    let mut out = serde_json::to_string_pretty(&report)
+        .map_err(|e| OpError::Other(format!("render population census: {}", e)))?;
+    out.push('\n');
+    Ok(out)
+}
+
+/// Where this workspace keeps its recorded-population report, or `None` when it
+/// keeps none (Round 979).
+///
+/// Resolved through the config so the gate that writes the file and the append
+/// path that reads counts out of it cannot end up on different paths.
+pub fn workspace_census_report_path(workspace_root: &Path) -> Result<Option<PathBuf>, OpError> {
+    let Some(loaded) = mnemosyne_config::discover_config(workspace_root)? else {
+        return Ok(None);
+    };
+    Ok(loaded
+        .config
+        .census
+        .map(|c| loaded.workspace_root.join(c.report)))
+}
+
+/// The recorded population this workspace's report states, for an append that
+/// asked to record it (Round 979).
+///
+/// SINGLE RESOLUTION PATH, shared by the CLI and the MCP server. The reason is
+/// the one `CLAUDE.md` states as an anti-pattern: two write paths into one
+/// field, each enforcing its own idea of what the field may hold, is a field
+/// with no invariant at all. Here both wires take a BOOLEAN and land here, so
+/// there is no second reading of the report to diverge from this one — and no
+/// wire through which a caller could supply a count of their own.
+///
+/// Every failure is loud. A workspace that declares no report, or declares one
+/// that is missing or unparseable, cannot record a census, and saying so beats
+/// appending an entry whose census is silently empty — an absent field reads as
+/// "this round made no census claim", which would be a lie the store keeps.
+pub fn workspace_population_census(
+    workspace_root: &Path,
+) -> Result<Vec<PopulationCensus>, OpError> {
+    let path = workspace_census_report_path(workspace_root)?.ok_or_else(|| {
+        OpError::Other(
+            "this workspace declares no [census] report, so there is no recount \
+             to record — add `[census] report = \"<path>\"` to mnemosyne.toml, or \
+             append without recording a census"
+                .to_string(),
+        )
+    })?;
+    let raw = std::fs::read_to_string(&path).map_err(|e| {
+        OpError::Other(format!(
+            "read the census report at {}: {} — the report is written by the \
+             workspace's own recount, so a missing file means the recount has \
+             never been run here",
+            path.display(),
+            e
+        ))
+    })?;
+    let report: PopulationCensusReport = serde_json::from_str(&raw).map_err(|e| {
+        OpError::Other(format!(
+            "parse the census report at {}: {}",
+            path.display(),
+            e
+        ))
+    })?;
+    if report.axes.is_empty() {
+        return Err(OpError::Other(format!(
+            "the census report at {} states no axis, so recording it would file \
+             an empty population under this entry",
+            path.display()
+        )));
+    }
+    Ok(report.axes)
 }
 
 /// Load the atomic store at the resolved sidecar path.

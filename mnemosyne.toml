@@ -33,6 +33,15 @@ entry_id_prefix = "Round "
 anchor_convention = "section_number"
 medium_name = "design_doc"
 
+# Round 979 — where this workspace's recorded-population report lives. The
+# file is written by the recount in `evidence_replay_smoke.rs` and read by
+# `append-changelog-entry --record-census`, which fills an entry's
+# `population_census` from it. Declared here so those two resolve ONE path:
+# a literal in either place would be a second home for it, and the day they
+# disagreed the gate would be blessing a file nothing reads.
+[census]
+report = "claudedocs/population-census.json"
+
 # Round 145 — style rule i18n + threshold tuning. `locale` selects the
 # sentence-boundary recognition profile. `thresholds` overrides per-rule
 # char-count caps without forking the validator (deeper locale wiring +

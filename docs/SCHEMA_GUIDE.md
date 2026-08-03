@@ -1143,6 +1143,35 @@ severity = "reject"            # default; warn | info
 # canon_order_sha256 = "<64-hex>"  # optional pin; loud mismatch on load
 ```
 
+### Recorded-population report (`[census]`, Round 979)
+
+Points at a JSON report your own gate writes when it recounts the
+corpora/artifacts your ledger makes claims about. Two things read this
+one key, which is why it is declared here and not in either of them:
+the gate that blesses the report, and
+`append-changelog-entry --record-census`, which fills an entry's
+`population_census` from it.
+
+The field exists because of a measured failure mode: a round needs a
+baseline, finds no program to run, and takes the number out of an
+earlier round's sentence — after which a count that was true when
+written is inherited long past the point where it stopped being true.
+`--record-census` is a **boolean**; there is deliberately no flag,
+anywhere, through which a count can be typed. Without the table the
+flag has nothing to read and says so (opt-in).
+
+```toml
+[census]
+report = "claudedocs/population-census.json"
+```
+
+The report is a JSON array of
+`{axis, left_label, left, right_label, right}` under an `axes` key —
+the serialization of the store's own `PopulationCensus`, so the file
+format and the field cannot drift apart. What the axes ARE is yours:
+the substrate holds the shape and never decides which questions your
+population should be counted by.
+
 ## What stays fixed
 
 The store entity types — Section / CrossRef / ChangelogEntry /

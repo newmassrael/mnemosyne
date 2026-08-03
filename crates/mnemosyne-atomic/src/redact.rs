@@ -511,6 +511,7 @@ mod tests {
                 verification_bullets: &["XYZ123 in verify".into()],
                 impact_refs: &["43".into()],
                 carry_forward_bullets: &["XYZ123 in carry".into()],
+                population_census: &[],
             },
             "Round ",
         )
@@ -614,6 +615,7 @@ mod tests {
                 verification_bullets: &["v".into()],
                 impact_refs: &[],
                 carry_forward_bullets: &["c".into()],
+                population_census: &[],
             },
             "Round ",
         )

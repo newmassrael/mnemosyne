@@ -1163,6 +1163,12 @@ pub struct AppendChangelogEntryArgs {
     /// Carry-forward items for next round.
     #[serde(default)]
     pub carry_forward_bullets: Vec<String>,
+    /// Record what the workspace's recorded population says right now, so a
+    /// later round inherits data instead of this entry's sentences (Round 979).
+    /// The counts are read from the `[census] report` this workspace declares —
+    /// there is deliberately no way to supply them here.
+    #[serde(default)]
+    pub record_census: bool,
 }
 
 #[derive(Clone)]
@@ -2769,6 +2775,17 @@ impl MnemosyneServer {
             Ok(p) => p,
             Err(e) => return self.op_error(e),
         };
+        // Round 979 — the same resolver the CLI calls. Two wires into one field
+        // must enforce one invariant set, and the way this one does it is by
+        // having no second reading of the report to diverge from.
+        let population_census = if args.0.record_census {
+            match ops::workspace_population_census(&self.workspace) {
+                Ok(c) => c,
+                Err(e) => return self.op_error(e),
+            }
+        } else {
+            Vec::new()
+        };
         let outcome = self.run_mutate(|store, path| {
             atomic::append_changelog_entry(
                 store,
@@ -2783,6 +2800,7 @@ impl MnemosyneServer {
                         .map(|s| mnemosyne_core::SectionId::from(s.as_str()))
                         .collect::<Vec<_>>(),
                     carry_forward_bullets: &carry,
+                    population_census: &population_census,
                 },
                 &entry_id_prefix,
             )

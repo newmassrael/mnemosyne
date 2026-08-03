@@ -182,6 +182,34 @@ pub struct WorkspaceConfig {
     /// existed before this section did.
     #[serde(default)]
     pub tool: Option<ToolSection>,
+
+    /// `[census]` — where this workspace's recorded-population report lives
+    /// (Round 979). Absent → `append-changelog-entry --record-census` has
+    /// nothing to read and says so, which is every workspace that keeps no
+    /// such report.
+    #[serde(default)]
+    pub census: Option<CensusSection>,
+}
+
+/// `[census]` table — the workspace's recorded-population report (Round 979).
+///
+/// The report is a program's output, never a claim: some gate in the workspace
+/// recounts its own corpora and writes this file, and a drift check keeps the
+/// bytes equal to what the recount says now. Declaring the path HERE rather
+/// than in each consumer is what keeps it a single datum — the gate that
+/// blesses the file and the append path that reads counts out of it resolve the
+/// same key, so the two cannot drift onto different files.
+///
+/// The substrate deliberately owns only the SHAPE. Which axes exist, and what
+/// walking them means, is the workspace's own question — the same division
+/// `schema.entry_id_prefix` already draws, where the store enforces that an id
+/// carries the prefix and never decides what the prefix should be.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(deny_unknown_fields)]
+pub struct CensusSection {
+    /// Workspace-relative path to the report: a JSON array of
+    /// `{axis, left_label, left, right_label, right}` objects.
+    pub report: String,
 }
 
 /// `[tool]` table — the tool pin (Round 825).

@@ -173,6 +173,7 @@ not the whole schema — `WorkspaceConfig` also carries these, and a gate
 |---|---|
 | `[atomic]` | `sidecar_path` — where the store lives, when not the default |
 | `[continuity]` | **the narrative gate's config**: `canon_order_path`, `rules_path` (+`rules_sha256`), `severity`, `interval_severity`. Without this, `validate-continuity` has no canon order and declared interval rules never gate |
+| `[census]` | **where your recorded-population report lives**: `report`. A round that states a census of its own corpora appends with `--record-census`, and the counts are read from this file rather than typed — the flag is a boolean, and there is no wire anywhere through which a number can be supplied. Without this, `--record-census` has nothing to read and says so |
 | `[plugins]` | the code-citation defense (`[plugins.set_equality_validator]`) |
 | `[spec_drift]` | external-spec revision drift (RFC-001 UC-1) |
 | `[content_drift]` | EPUB-as-content-SSOT integrity (R404) |

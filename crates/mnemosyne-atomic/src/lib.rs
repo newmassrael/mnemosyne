@@ -570,6 +570,44 @@ pub struct ExcerptHashBackfillReport {
     pub excerpts_examined: usize,
 }
 
+/// One axis of the recorded population, as it stood when an entry was
+/// appended.
+///
+/// WHY THE ENTRY CARRIES THIS AT ALL. The measured harm this closes is
+/// INHERITANCE: a round needs a baseline, finds no program to run, and takes
+/// the number out of an earlier round's sentence. Round 924 to Round 936 to
+/// Round 961 to Round 968 is that chain measured end to end, and Round 914 to
+/// Round 915 is a second instance of the same shape. Round 976 measured that no
+/// word list can tell a census sentence from a rule at append time and refused
+/// to gate the prose; what it left as the reopen condition was this — a census
+/// carried in a FIELD, so what a later round inherits is data rather than a
+/// sentence.
+///
+/// WHY IT IS SELF-DESCRIBING RATHER THAN A BARE PAIR OF COUNTS. The ledger is
+/// frozen and the program that recounts an axis is not: an axis can be renamed,
+/// re-scoped or dropped by a later round, and `10` against `27` means nothing
+/// once the labels that gave the sides their sense are gone. Carrying the
+/// labels is the Round 452 self-containment rule applied to a struct — the
+/// entry has to still say what it measured when nothing else does.
+///
+/// WHY NO NUMBER HERE IS EVER TYPED BY A HAND. A field with no program behind
+/// it is a hand-typed count in a new place, which is exactly what Round 959
+/// banned from shipped prose; Round 977 built the recount and the tracked
+/// report before this field existed precisely so that this order could hold.
+/// Both write paths — CLI and MCP — take a BOOLEAN and read the numbers from
+/// the workspace's census report, so neither wire accepts a count at all.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PopulationCensus {
+    /// The question this axis answers about the recorded population.
+    pub axis: String,
+    /// What the left side counts, in the axis's own words.
+    pub left_label: String,
+    pub left: u64,
+    /// What the right side counts, in the axis's own words.
+    pub right_label: String,
+    pub right: u64,
+}
+
 /// ChangelogEntry atomic typed fields.
 ///
 /// Round 294 — schema_version 4 splits the body into two parallel layers:
@@ -605,6 +643,15 @@ pub struct AtomicChangelogEntry {
     pub impact_refs: Vec<mnemosyne_core::SectionId>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub carry_forward_bullets: Vec<String>,
+
+    /// Round 979 — what the recorded population looked like when this entry
+    /// was appended. Audit half, and DELIBERATELY WITHOUT A PUBLISHABLE TWIN:
+    /// the publishable layer exists so prose can be redacted or corrected
+    /// (R294/R295), and there is no prose here to redact — a mutable copy of
+    /// these counts would be a number an author could set by hand, which is the
+    /// one thing [`PopulationCensus`] exists to make impossible.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub population_census: Vec<PopulationCensus>,
 
     /// Round 294 — publishable half. Mutable view layer; default = audit
     /// clone at append time. T2 jaccard does NOT compare these. R295
@@ -1690,7 +1737,18 @@ pub enum AtomicStoreError {
 // it writes an EMPTY affirmation, never the live excerpt hash (seeding would
 // assert reviews that never happened). A pre-R806 binary reading a v44 store
 // hits the monotone `> CURRENT` guard.
-pub const CURRENT_SCHEMA_VERSION: u32 = 44;
+// v44→v45 adds `AtomicChangelogEntry.population_census` (Round 979 — what the
+// recorded population said at the moment an entry was appended, so a later
+// round inherits DATA rather than a sentence). Same declarative
+// new-field-default pattern as v40→v41 and v42→v43: the field is a `Vec` with
+// `#[serde(default, skip_serializing_if = "Vec::is_empty")]`, so a pre-v45 entry
+// has no key, loads as empty, and re-serializes byte-identically. There is
+// deliberately NO `schema_version < 45` arm and no migration report — back-filling
+// it would mean writing today's counts under yesterday's round, which is the
+// stale-baseline defect the field exists to end. A pre-R979 binary reading a v45
+// store hits the monotone `> CURRENT` guard rather than silently dropping the
+// key on save.
+pub const CURRENT_SCHEMA_VERSION: u32 = 45;
 const DEFAULT_SIDECAR_REL: &str = "docs/.atomic/workspace.atomic.json";
 
 /// Round 738 (v37→v38 migration): rewrite each `EntityKind`'s legacy single
@@ -2475,6 +2533,56 @@ fn check_changelog_entry_required(
     check_required_bullets("verification_bullets", verification_bullets)?;
     check_optional_bullets("impact_refs", impact_refs)?;
     check_optional_bullets("carry_forward_bullets", carry_forward_bullets)?;
+    Ok(())
+}
+
+/// Round 979 — the invariants every write path to `population_census` shares.
+///
+/// This lives at the PRIMITIVE and not in either wire because a field with two
+/// writers and one set of invariants per writer is a field with no invariants:
+/// data that entered through one path violates what the other enforces, and the
+/// store is then silently broken. Round 305 found that exact shape on
+/// `publishable_decision_summary` (a setter capped at 200 characters over an
+/// append path capped at nothing), and this is the same field with two wires.
+///
+/// The counts themselves are unvalidated ON PURPOSE: any pair of numbers is a
+/// legitimate population, including a zero side — a universal is TRUE exactly
+/// when one side is empty, so rejecting that would reject the very reading a
+/// census exists to record. What is checkable is that the axis is named, that
+/// its sides are labelled, and that one entry does not state the same axis
+/// twice with different numbers.
+fn check_population_census(census: &[PopulationCensus]) -> Result<(), AtomicMutateError> {
+    let mut seen: BTreeSet<&str> = BTreeSet::new();
+    for (i, c) in census.iter().enumerate() {
+        for (field, value) in [
+            ("axis", &c.axis),
+            ("left_label", &c.left_label),
+            ("right_label", &c.right_label),
+        ] {
+            if value.trim().is_empty() {
+                return Err(AtomicMutateError::Validation(format!(
+                    "population_census[{}].{} is blank — an axis with no name or \
+  no side labels records a pair of numbers nothing can read (Round 979)",
+                    i, field
+                )));
+            }
+            if value.trim() != value {
+                return Err(AtomicMutateError::Validation(format!(
+                    "population_census[{}].{} has leading or trailing whitespace \
+  (`{}`) — the axis name is matched against the recount, so a stray space makes \
+  a recorded claim resolve to nothing (Round 979)",
+                    i, field, value
+                )));
+            }
+        }
+        if !seen.insert(c.axis.as_str()) {
+            return Err(AtomicMutateError::Validation(format!(
+                "population_census states axis `{}` twice — one entry is one \
+  moment, so two counts for one axis cannot both be what it said (Round 979)",
+                c.axis
+            )));
+        }
+    }
     Ok(())
 }
 
@@ -4511,6 +4619,10 @@ pub struct ChangelogEntryDraft<'a> {
     pub impact_refs: &'a [mnemosyne_core::SectionId],
     /// Carry-forward items for the next round.
     pub carry_forward_bullets: &'a [String],
+    /// Round 979 — the recorded population as of this append. Never authored:
+    /// both wires derive it from the workspace's census report, so the only
+    /// decision a caller makes is WHETHER to record it.
+    pub population_census: &'a [PopulationCensus],
 }
 
 /// `append_changelog_entry` primitive — atomic-aware changelog append.
@@ -4537,6 +4649,7 @@ pub fn append_changelog_entry(
         verification_bullets,
         impact_refs,
         carry_forward_bullets,
+        population_census,
     } = draft;
     if entry_id.trim().is_empty() {
         return Err(AtomicMutateError::Validation(
@@ -4597,6 +4710,7 @@ pub fn append_changelog_entry(
         impact_refs,
         carry_forward_bullets,
     )?;
+    check_population_census(population_census)?;
     // Round 294 — initialize publishable_* = audit_* clone. The two halves
     // diverge later via R295 publishable setters (paired with the R296
     // [[publishable_override_ledger]] gate). Default-equal at append time so
@@ -4607,6 +4721,7 @@ pub fn append_changelog_entry(
         verification_bullets: verification_bullets.to_vec(),
         impact_refs: impact_refs.to_vec(),
         carry_forward_bullets: carry_forward_bullets.to_vec(),
+        population_census: population_census.to_vec(),
         ..Default::default()
     };
     entry.clone_audit_into_publishable();
@@ -11910,6 +12025,7 @@ mod tests {
                 verification_bullets: &["verify 1".into()],
                 impact_refs: &["43".into()],
                 carry_forward_bullets: &["carry 1".into()],
+                population_census: &[],
             },
             "Round ",
         )
@@ -11924,6 +12040,7 @@ mod tests {
                 verification_bullets: &[],
                 impact_refs: &[],
                 carry_forward_bullets: &[],
+                population_census: &[],
             },
             "Round ",
         )
@@ -12427,6 +12544,7 @@ mod tests {
                 verification_bullets: &["appended verify".into()],
                 impact_refs: &["43".into()],
                 carry_forward_bullets: &["appended carry".into()],
+                population_census: &[],
             },
             "Round ",
         )
@@ -12463,6 +12581,7 @@ mod tests {
                 verification_bullets: &[],
                 impact_refs: &[],
                 carry_forward_bullets: &[],
+                population_census: &[],
             },
             "Round ",
         )
@@ -12512,6 +12631,7 @@ mod tests {
                 verification_bullets: &["verify".into()],
                 impact_refs: &[],
                 carry_forward_bullets: &[],
+                population_census: &[],
             },
             "Round ",
         )
@@ -12539,6 +12659,7 @@ mod tests {
                 verification_bullets: &[],
                 impact_refs: &[],
                 carry_forward_bullets: &[],
+                population_census: &[],
             },
             "Round ",
         )
@@ -12566,6 +12687,7 @@ mod tests {
                 verification_bullets: &["verify".into()],
                 impact_refs: &[],
                 carry_forward_bullets: &[],
+                population_census: &[],
             },
             "Round ",
         )
@@ -12596,6 +12718,7 @@ mod tests {
                 verification_bullets: &["verify".into()],
                 impact_refs: &["".into()],
                 carry_forward_bullets: &[],
+                population_census: &[],
             },
             "Round ",
         )
@@ -12633,6 +12756,7 @@ mod tests {
                 verification_bullets: &["verify".into()],
                 impact_refs: &[],
                 carry_forward_bullets: &[],
+                population_census: &[],
             },
             entry_id_prefix,
         )
@@ -14666,6 +14790,7 @@ mod tests {
                 verification_bullets: &["verify".into()],
                 impact_refs: &[],
                 carry_forward_bullets: &["carry".into()],
+                population_census: &[],
             },
             "Round ",
         )
@@ -14687,6 +14812,7 @@ mod tests {
                 verification_bullets: &["audit verify".into()],
                 impact_refs: &["43".into()],
                 carry_forward_bullets: &["audit carry".into()],
+                population_census: &[],
             },
             "Round ",
         )
@@ -14842,6 +14968,7 @@ mod tests {
                 verification_bullets: &["v".into()],
                 impact_refs: &["1".into()],
                 carry_forward_bullets: &["cf".into()],
+                population_census: &[],
             },
             "Round ",
         )
@@ -14886,6 +15013,7 @@ mod tests {
                     .map(|b| b.as_str().into())
                     .collect::<Vec<_>>(),
                 carry_forward_bullets: &bullets,
+                population_census: &[],
             },
             "Round ",
         )
@@ -14922,6 +15050,163 @@ mod tests {
             &bullets,
         )
         .expect("publishable carry_forward setter must mirror append's cap-0 invariant");
+    }
+
+    // ============ Round 979 population census ============
+
+    /// Append an entry whose only interesting field is its census, into a
+    /// throwaway store, and hand back both the outcome and the store so a
+    /// caller can read what landed.
+    fn append_census_into(
+        store: &mut AtomicStore,
+        path: &Path,
+        census: &[PopulationCensus],
+    ) -> Result<AtomicMutateReceipt, AtomicMutateError> {
+        let bullets = vec!["b".to_string()];
+        append_changelog_entry(
+            store,
+            path,
+            ChangelogEntryDraft {
+                entry_id: "Round 9979",
+                decision_summary: Some("a round that states a census"),
+                changes_bullets: &bullets,
+                verification_bullets: &bullets,
+                impact_refs: &[],
+                carry_forward_bullets: &[],
+                population_census: census,
+            },
+            "Round ",
+        )
+    }
+
+    fn one_axis() -> PopulationCensus {
+        PopulationCensus {
+            axis: "transition rules by `undirected`".to_string(),
+            left_label: "undirected".to_string(),
+            left: 10,
+            right_label: "directed".to_string(),
+            right: 27,
+        }
+    }
+
+    fn append_census(
+        census: &[PopulationCensus],
+    ) -> Result<AtomicMutateReceipt, AtomicMutateError> {
+        let tmp = TempDir::new().unwrap();
+        let path = tmp.path().join(".atomic/workspace.atomic.json");
+        let mut store = AtomicStore::new();
+        append_census_into(&mut store, &path, census)
+    }
+
+    /// An axis with no name, or a side with no label, records a pair of numbers
+    /// that nothing can read back. The ledger is frozen, so "unreadable" is
+    /// permanent — the reject belongs at the write, which is the only moment it
+    /// can be fixed.
+    #[test]
+    fn population_census_rejects_a_row_nothing_could_read_back() {
+        for (what, mutate) in [
+            (
+                "blank axis",
+                Box::new(|c: &mut PopulationCensus| c.axis = "  ".to_string())
+                    as Box<dyn Fn(&mut PopulationCensus)>,
+            ),
+            (
+                "blank left label",
+                Box::new(|c: &mut PopulationCensus| c.left_label = String::new()),
+            ),
+            (
+                "blank right label",
+                Box::new(|c: &mut PopulationCensus| c.right_label = String::new()),
+            ),
+            (
+                "untrimmed axis",
+                Box::new(|c: &mut PopulationCensus| c.axis = " transition rules ".to_string()),
+            ),
+        ] {
+            let mut row = one_axis();
+            mutate(&mut row);
+            let err = append_census(&[row])
+                .expect_err(&format!("`{what}` was accepted into the frozen ledger"));
+            match err {
+                AtomicMutateError::Validation(_) => {}
+                other => panic!("`{what}`: expected Validation, got {other:?}"),
+            }
+        }
+    }
+
+    /// One entry is one moment, so two counts for one axis cannot both be what
+    /// that axis said — and the reader has no way to choose between them.
+    #[test]
+    fn population_census_rejects_two_counts_for_one_axis() {
+        let mut second = one_axis();
+        second.left = 11;
+        let err = append_census(&[one_axis(), second])
+            .expect_err("two counts for one axis were accepted");
+        match err {
+            AtomicMutateError::Validation(m) => assert!(
+                m.contains("twice"),
+                "the message does not say what is wrong: {m}"
+            ),
+            other => panic!("expected Validation, got {other:?}"),
+        }
+    }
+
+    /// A ZERO SIDE IS DATA, NOT AN ERROR, and this is the assertion that keeps
+    /// the counts unvalidated on purpose. A universal over a population is TRUE
+    /// exactly when one side is empty; rejecting that shape would refuse to
+    /// record the one reading a census is most often taken to settle.
+    #[test]
+    fn population_census_accepts_an_empty_side() {
+        let mut row = one_axis();
+        row.left = 0;
+        append_census(&[row]).expect("an axis with an empty side must be recordable");
+    }
+
+    /// What the wire handed the primitive is what the store holds, and the
+    /// publishable half stays out of it: there is no prose here to redact, and a
+    /// mutable twin would be a count an author could set by hand.
+    #[test]
+    fn population_census_lands_verbatim_and_has_no_publishable_twin() {
+        let tmp = TempDir::new().unwrap();
+        let path = tmp.path().join(".atomic/workspace.atomic.json");
+        let mut store = AtomicStore::new();
+        let rows = vec![one_axis()];
+        append_census_into(&mut store, &path, &rows).expect("append");
+
+        let entry = store.changelog_entries.get("Round 9979").expect("entry");
+        assert_eq!(entry.population_census, rows);
+        assert!(
+            entry.publishable_matches_audit(),
+            "recording a census must not read as a publishable divergence"
+        );
+
+        let reloaded = AtomicStore::load(&path).expect("reload");
+        assert_eq!(
+            reloaded
+                .changelog_entries
+                .get("Round 9979")
+                .expect("entry survives the round trip")
+                .population_census,
+            rows,
+            "the census did not survive serialization, so what a later round \
+             reads is not what the round wrote"
+        );
+    }
+
+    /// An entry that records nothing serializes exactly as it did before the
+    /// field existed — the v44→v45 claim, asserted rather than assumed.
+    #[test]
+    fn an_entry_with_no_census_carries_no_key() {
+        let tmp = TempDir::new().unwrap();
+        let path = tmp.path().join(".atomic/workspace.atomic.json");
+        let mut store = AtomicStore::new();
+        append_census_into(&mut store, &path, &[]).expect("append");
+        let raw = std::fs::read_to_string(&path).expect("read back");
+        assert!(
+            !raw.contains("population_census"),
+            "an entry that recorded no census still writes the key, so every \
+             pre-Round-979 store would re-serialize differently: {raw}"
+        );
     }
 
     // ============ Round 296 publishable hash anchoring ============

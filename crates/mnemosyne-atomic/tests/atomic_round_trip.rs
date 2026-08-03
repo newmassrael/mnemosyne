@@ -58,6 +58,7 @@ fn atomic_changelog_entry_frozen_on_duplicate_append() {
             verification_bullets: &["verify A".into()],
             impact_refs: &[],
             carry_forward_bullets: &[],
+            population_census: &[],
         },
         "Round ",
     )
@@ -73,6 +74,7 @@ fn atomic_changelog_entry_frozen_on_duplicate_append() {
             verification_bullets: &[],
             impact_refs: &[],
             carry_forward_bullets: &[],
+            population_census: &[],
         },
         "Round ",
     );
