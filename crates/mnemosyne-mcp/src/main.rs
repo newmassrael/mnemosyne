@@ -3611,6 +3611,93 @@ mod tests {
         }
     }
 
+    /// A REFUSED IMPORT LEAVES THE STORE EXACTLY AS IT FOUND IT.
+    ///
+    /// `import_facts` earns its place in the contract by being all-or-nothing —
+    /// "N separate `add_*` calls are non-atomic, so a mid-sequence failure
+    /// leaves a partial store". Round 993 proved every one of its ten sections
+    /// arrives and wrote in its own carry that nothing tested the atomicity,
+    /// down to the shape the test should take. That is a design in a sentence
+    /// rather than a test, which is the thing this session keeps finding.
+    ///
+    /// The manifest here is valid up to its last fact, which names a canon
+    /// coordinate that does not exist. A handler that applied sections as it
+    /// went would leave the frames, the kinds, the entities, the predicate and
+    /// the first fact behind; the assertion is that the store is BYTE-IDENTICAL
+    /// to what it was before the call.
+    ///
+    /// NON-VACUITY: the same manifest with the bad coordinate repaired must
+    /// land, so the refusal is about that one row and not about a manifest this
+    /// workspace could never accept.
+    #[tokio::test]
+    async fn a_refused_import_leaves_the_store_untouched() {
+        let manifest = |canon_from: &str| {
+            serde_json::json!({
+                "frames": [{"frame_id": "ground-truth"}],
+                "entity_kinds": [{"kind_id": "place"}],
+                "entities": [{"entity_id": "p-a", "kind": "place"}],
+                "predicates": [{"predicate_id": "condition", "object_kind": "token",
+                                "object_tokens": ["lit"], "subject_kind": "place"}],
+                "facts": [
+                    {"fact_id": "f-good", "frame": "ground-truth", "claim": "the lamp is lit",
+                     "canon_from": "sc-01", "evidence": ["sc-01"], "entities": ["p-a"]},
+                    {"fact_id": "f-last", "frame": "ground-truth", "claim": "the last row",
+                     "canon_from": canon_from, "evidence": ["sc-01"], "entities": ["p-a"]},
+                ],
+            })
+        };
+
+        for (what, canon_from, refused) in [
+            (
+                "a manifest whose last fact names no such scene",
+                "sc-nonexistent",
+                true,
+            ),
+            ("the same manifest with that row repaired", "sc-01", false),
+        ] {
+            let tmp = agent_workspace();
+            let ws = tmp.path();
+            let server = MnemosyneServer::new(ws.to_path_buf()).expect("server");
+            let sections: ImportSectionsArgs = serde_json::from_value(serde_json::json!({
+                "sections": [{"section_id": "sc-01", "parent_doc": "spec", "title": "scene one"}],
+            }))
+            .expect("sections parse");
+            assert!(
+                server.import_sections(Parameters(sections)).await.is_error != Some(true),
+                "seeding the canon coordinate failed"
+            );
+
+            let store_path = ws.join("docs/.atomic/workspace.atomic.json");
+            let before = std::fs::read_to_string(&store_path).expect("read the store");
+            let args: atomic::FactsManifest =
+                serde_json::from_value(manifest(canon_from)).expect("manifest parse");
+            let result = server.import_facts(Parameters(args)).await;
+            let after = std::fs::read_to_string(&store_path).expect("read the store");
+
+            assert_eq!(
+                result.is_error == Some(true),
+                refused,
+                "{what}: the import was {} — {:?}",
+                if refused { "accepted" } else { "refused" },
+                result.content
+            );
+            if refused {
+                assert_eq!(
+                    before, after,
+                    "{what}: the store changed. A refused import must leave \
+                     nothing behind, and the rows before the bad one are exactly \
+                     what a non-atomic handler would have kept"
+                );
+            } else {
+                assert_ne!(
+                    before, after,
+                    "{what}: the store did not change, so the refusal above says \
+                     nothing about atomicity"
+                );
+            }
+        }
+    }
+
     /// Everything a tool said, joined — the read-side counterpart of the store
     /// bytes.
     fn answer_text(result: &CallToolResult) -> String {
@@ -3796,25 +3883,66 @@ mod tests {
                     // way is that the value this case NAMES moved — which is
                     // stricter than the whole-text difference asserted below,
                     // because that one passes on any change at all.
-                    assert_ne!(
-                        after, before,
-                        "`{}` occurs {before} time(s) in the {} {} produced \
-                         WITHOUT `{}` and {after} time(s) with it, so what the \
-                         agent sent did not reach it",
-                        $needle,
-                        stringify!($oracle),
-                        stringify!($tool),
-                        $field
-                    );
-                    assert_ne!(
-                        written[0], written[1],
-                        "the {} is byte-identical with and without `{}`, so {} does \
-                         not read it and what the agent sent changed nothing while the \
-                         call reported success",
-                        stringify!($oracle),
-                        $field,
-                        stringify!($tool)
-                    );
+                    // WHAT THE TEST CAN AND CANNOT TELL APART (Round 996).
+                    // Round 995 hit a needle that did not move while the
+                    // argument HAD reached the store:
+                    // `set_edge_guard_threshold` normalises a threshold equal
+                    // to the condition count to `None`, so a correct handler
+                    // left nothing to count and both arms came out identical.
+                    // The message then said "what the agent sent did not reach
+                    // it" and sent the reader to the handler. Round 995 called
+                    // that "loud rather than silent" and left it; loud is not a
+                    // defence when the noise names the wrong file.
+                    //
+                    // The honest split is narrow. When the two observations
+                    // DIFFER, the argument demonstrably arrived and the needle
+                    // is simply the wrong thing to watch — that is the case's
+                    // defect and is stated as one. When they are IDENTICAL the
+                    // test cannot tell an ignored argument from a value the
+                    // store declines to represent, so it names both and gives
+                    // the two commands that separate them rather than picking.
+                    if after == before {
+                        assert_eq!(
+                            written[0], written[1],
+                            "`{}` occurs {before} time(s) in the {} {} produced \
+                             WITHOUT `{}` and {after} with it — but the {} DID \
+                             change, so the argument arrived and this needle is \
+                             not what moved. THE DEFECT IS IN THIS CASE: name a \
+                             needle that follows the value",
+                            $needle,
+                            stringify!($oracle),
+                            stringify!($tool),
+                            $field,
+                            stringify!($oracle)
+                        );
+                        panic!(
+                            "`{}` occurs {before} time(s) in the {} {} produced \
+                             WITHOUT `{}` and {after} with it, and the {} is \
+                             identical either way. TWO CAUSES LOOK LIKE THIS AND \
+                             THIS TEST CANNOT TELL THEM APART: (1) {} ignores \
+                             `{}`, or (2) it reads it and the store declines to \
+                             represent THIS VALUE — a value equal to a default \
+                             is normalised away (Round 995: a K-of-N threshold \
+                             equal to the condition count is stored as `None`). \
+                             Separate them by running the CLI twin on a scratch \
+                             workspace with two different values and seeing \
+                             which one survives; if the value is the normalised \
+                             one, the defect is in this case",
+                            $needle,
+                            stringify!($oracle),
+                            stringify!($tool),
+                            $field,
+                            stringify!($oracle),
+                            stringify!($tool),
+                            $field
+                        );
+                    }
+                    // The whole-observation difference used to be asserted here
+                    // beside the needle. It is gone rather than kept: a needle
+                    // count that moved implies the observations differ, so the
+                    // assertion could not fail and a check that cannot fail is
+                    // decoration. The identical-observation case it used to
+                    // catch is the branch above, which now says more.
                 }
             )*
         };

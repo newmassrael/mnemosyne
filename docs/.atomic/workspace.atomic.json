@@ -34575,6 +34575,98 @@
         "42 REMAIN AND ALL OF THEM ARE READ ARGUMENTS, so the remaining work is one shape rather than many: a workspace with enough authored in it that a report's answer varies, and then `order_path`, `world`, `telling`, `rules_path`, `scope`, `fields`, `severity`, `doc`, `dry_run` and the rest against the `output` oracle. The `given` machinery already builds worlds of that size — the disclosure cases in this round build one.",
         "A BYTE-COUNTING ORACLE CANNOT WATCH A VALUE THE STORE DELIBERATELY DOES NOT REPRESENT. This round hit it once, in the K-of-N normalisation, and the answer was to choose a value the store keeps. It will recur wherever a setter's argument is a default the schema drops; the reason it is not carried as a defect is that the failure is loud and its diagnosis is a two-command probe against the CLI twin, but a case author who does not know the normalisation exists will read it as an ignored argument."
       ]
+    },
+    "Round 996": {
+      "decision_summary": "R996 (DEBT) — the sixth time the owner asked whether every debt is registered, and the answer is the same shape as the fifth: one carry was a defence rather than a debt, and it was the SAME defence, in the same words, that Round 991 had already refuted. All ten carry items of Rounds 991 through 995 were re-read. STAR ROUND 995's SECOND CARRY SAID \"the reason it is not carried as a defect is that the failure is loud\", which is what Round 989 said and Round 991 rejected: loud is not a defence when the noise names the wrong file. The failure in question reported \"what the agent sent did not reach it\" for an argument that HAD reached the store, because `set_edge_guard_threshold` normalises a threshold equal to the condition count to `None`. It sent the reader to the handler for a defect in the case. STAR AND THE FIRST REPAIR I WROTE FOR IT WAS WRONG, which is worth more than the repair. I split the failure on whether the two observations differ, intending the identical branch to name the handler and the differing branch to name the case. Writing the injection that reproduces Round 995's actual failure showed the identical branch is exactly where the normalisation lands — both arms came out byte-identical — so the split would have gone on blaming the handler for the one case it was built for. THE TWO CAUSES ARE NOT DISTINGUISHABLE FROM INSIDE THE TEST, and asserting one of them is the same error one level up. What ships names BOTH and gives the two commands that separate them: run the CLI twin on a scratch workspace with two values and see which survives. The narrow claim that IS available — observations differ, so the argument arrived and the needle is wrong — is asserted as the case's defect, and only that. STAR ROUND 993 WROTE A TEST DESIGN INTO A CARRY AND DID NOT WRITE THE TEST. Its own words: `import_facts` \"earns its place in the contract by being all-or-nothing, and nothing here tests that ... a manifest whose last section is invalid, and a store that is unchanged afterwards\". A design in a sentence is not a test. It is written now, and the injection that makes it fail is the non-atomic handler the contract promises this verb is not: commit the registries, then the facts. STAR ONE CARRY WAS SIMPLY FALSE AND IS CORRECTED. Round 994 said nothing checks a case reaching for `in outcome` when `store` was available. Round 991's oracle check does exactly that, and Round 995 is the proof: it caught two of that round's own cases declared `in outcome` for arguments the tool accepts without. STAR AND ONE STAYS A LIMIT WITH ITS REASON NAMED: Round 992's typed cases watch the object leg only. A `TypedClaim` requires all three legs, so a partial claim is not constructible from a valid call — the unwatched legs cannot go missing on their own.",
+      "changes_bullets": [
+        "`crates/mnemosyne-mcp/src/main.rs` — the needle failure no longer asserts a cause it cannot determine. When the two observations DIFFER it names the case (the argument arrived, the needle is wrong); when they are IDENTICAL it names both possible causes and the two-command CLI probe that separates them.",
+        "Same file — the whole-observation `assert_ne!` that sat beside the needle is removed rather than kept: a needle count that moved implies the observations differ, so it could not fail, and a check that cannot fail is decoration.",
+        "Same file — `a_refused_import_leaves_the_store_untouched`, the atomicity test Round 993 designed in a carry and did not write. A manifest valid up to its last fact, whose canon coordinate does not exist, must leave the store byte-identical; the same manifest repaired must land."
+      ],
+      "verification_bullets": [
+        "STAR MY FIRST REPAIR WAS WRONG AND THE INJECTION IS WHAT SAID SO. The split I wrote first put the normalisation case in the branch that blames the handler, which is the exact failure it was written to fix. Reproducing Round 995's failure (threshold equal to the condition count) showed both arms byte-identical, so the branch chosen by \"did the observations differ\" cannot separate the two causes.",
+        "INJECTION W, the Round 995 normalisation reproduced: the case fails with \"TWO CAUSES LOOK LIKE THIS AND THIS TEST CANNOT TELL THEM APART ... Separate them by running the CLI twin on a scratch workspace with two different values\", which points at both files rather than the wrong one.",
+        "INJECTION X, a needle the store never holds while the argument does arrive: \"the store DID change, so the argument arrived and this needle is not what moved. THE DEFECT IS IN THIS CASE\". The two branches fire on their own causes.",
+        "INJECTION V, `import_facts` made non-atomic by committing the registries before the facts: `a_refused_import_leaves_the_store_untouched` failed with \"the store changed. A refused import must leave nothing behind\". The test is non-vacuous in both directions — the repaired manifest must land, or the refusal would say nothing about atomicity.",
+        "THE AUDIT WAS OVER ALL TEN CARRY ITEMS OF ROUNDS 991-995: two were undone work (this round closes both), one was false (corrected here), one is a limit with its reason (a `TypedClaim`'s legs are required fields), and six are work already done or reopening conditions with nothing blocking them.",
+        "1578 workspace tests pass (1577 before; one added, one unfailable assertion removed), 0 failed, `--no-fail-fast`; clippy `-D warnings` and `cargo fmt --check` clean; `validate-workspace` T1 orphan 0 and T3 reject 0.",
+        "Citation hygiene (R255): Rounds 989, 991, 992, 993, 994 and 995 verified present with `query --changelog-entry` and Round 996 verified absent before this entry was appended."
+      ],
+      "impact_refs": [
+        "atomic-store-mutate-api"
+      ],
+      "carry_forward_bullets": [
+        "THE RULE THIS SESSION HAS PAID FOR THREE TIMES: \"the failure is loud, so it is not a defect\" is not a defence. Ask where the noise sends the reader. Rounds 989, 995 and this one are the same sentence with different subjects, and the first two both went out in a carry that read as rigour.",
+        "42 READ ARGUMENTS REMAIN AND NOTHING BLOCKS THEM. The shape is one workspace with enough authored in it that a report's answer varies, then the `output` oracle over `order_path`, `world`, `telling`, `rules_path`, `scope`, `fields`, `severity`, `doc` and `dry_run`.",
+        "THE ATOMICITY TEST COVERS ONE VERB. `import_sections` makes the same all-or-nothing promise and is not tested for it; the case above is a template and the second one is a copy with a different manifest."
+      ],
+      "population_census": [
+        {
+          "axis": "transition rules by `undirected`",
+          "left_label": "undirected",
+          "left": 10,
+          "right_label": "directed",
+          "right": 27
+        },
+        {
+          "axis": "map corpora by leg-kind declaration",
+          "left_label": "omitted",
+          "left": 6,
+          "right_label": "declared",
+          "right": 24
+        },
+        {
+          "axis": "cost-carrying corpora by direction-dependent pricing",
+          "left_label": "prices a way by direction",
+          "left": 4,
+          "right_label": "prices no way by direction",
+          "right": 6
+        },
+        {
+          "axis": "run trees by authoring mode",
+          "left_label": "hand script",
+          "left": 10,
+          "right_label": "file-only",
+          "right": 239
+        },
+        {
+          "axis": "map corpora by declared boundary crossing",
+          "left_label": "declares an exit",
+          "left": 6,
+          "right_label": "declares none",
+          "right": 24
+        },
+        {
+          "axis": "authored submissions by map and telling",
+          "left_label": "carries both",
+          "left": 10,
+          "right_label": "carries one",
+          "right": 24
+        }
+      ],
+      "publishable_decision_summary": "R996 (DEBT) — the sixth time the owner asked whether every debt is registered, and the answer is the same shape as the fifth: one carry was a defence rather than a debt, and it was the SAME defence, in the same words, that Round 991 had already refuted. All ten carry items of Rounds 991 through 995 were re-read. STAR ROUND 995's SECOND CARRY SAID \"the reason it is not carried as a defect is that the failure is loud\", which is what Round 989 said and Round 991 rejected: loud is not a defence when the noise names the wrong file. The failure in question reported \"what the agent sent did not reach it\" for an argument that HAD reached the store, because `set_edge_guard_threshold` normalises a threshold equal to the condition count to `None`. It sent the reader to the handler for a defect in the case. STAR AND THE FIRST REPAIR I WROTE FOR IT WAS WRONG, which is worth more than the repair. I split the failure on whether the two observations differ, intending the identical branch to name the handler and the differing branch to name the case. Writing the injection that reproduces Round 995's actual failure showed the identical branch is exactly where the normalisation lands — both arms came out byte-identical — so the split would have gone on blaming the handler for the one case it was built for. THE TWO CAUSES ARE NOT DISTINGUISHABLE FROM INSIDE THE TEST, and asserting one of them is the same error one level up. What ships names BOTH and gives the two commands that separate them: run the CLI twin on a scratch workspace with two values and see which survives. The narrow claim that IS available — observations differ, so the argument arrived and the needle is wrong — is asserted as the case's defect, and only that. STAR ROUND 993 WROTE A TEST DESIGN INTO A CARRY AND DID NOT WRITE THE TEST. Its own words: `import_facts` \"earns its place in the contract by being all-or-nothing, and nothing here tests that ... a manifest whose last section is invalid, and a store that is unchanged afterwards\". A design in a sentence is not a test. It is written now, and the injection that makes it fail is the non-atomic handler the contract promises this verb is not: commit the registries, then the facts. STAR ONE CARRY WAS SIMPLY FALSE AND IS CORRECTED. Round 994 said nothing checks a case reaching for `in outcome` when `store` was available. Round 991's oracle check does exactly that, and Round 995 is the proof: it caught two of that round's own cases declared `in outcome` for arguments the tool accepts without. STAR AND ONE STAYS A LIMIT WITH ITS REASON NAMED: Round 992's typed cases watch the object leg only. A `TypedClaim` requires all three legs, so a partial claim is not constructible from a valid call — the unwatched legs cannot go missing on their own.",
+      "publishable_changes_bullets": [
+        "`crates/mnemosyne-mcp/src/main.rs` — the needle failure no longer asserts a cause it cannot determine. When the two observations DIFFER it names the case (the argument arrived, the needle is wrong); when they are IDENTICAL it names both possible causes and the two-command CLI probe that separates them.",
+        "Same file — the whole-observation `assert_ne!` that sat beside the needle is removed rather than kept: a needle count that moved implies the observations differ, so it could not fail, and a check that cannot fail is decoration.",
+        "Same file — `a_refused_import_leaves_the_store_untouched`, the atomicity test Round 993 designed in a carry and did not write. A manifest valid up to its last fact, whose canon coordinate does not exist, must leave the store byte-identical; the same manifest repaired must land."
+      ],
+      "publishable_verification_bullets": [
+        "STAR MY FIRST REPAIR WAS WRONG AND THE INJECTION IS WHAT SAID SO. The split I wrote first put the normalisation case in the branch that blames the handler, which is the exact failure it was written to fix. Reproducing Round 995's failure (threshold equal to the condition count) showed both arms byte-identical, so the branch chosen by \"did the observations differ\" cannot separate the two causes.",
+        "INJECTION W, the Round 995 normalisation reproduced: the case fails with \"TWO CAUSES LOOK LIKE THIS AND THIS TEST CANNOT TELL THEM APART ... Separate them by running the CLI twin on a scratch workspace with two different values\", which points at both files rather than the wrong one.",
+        "INJECTION X, a needle the store never holds while the argument does arrive: \"the store DID change, so the argument arrived and this needle is not what moved. THE DEFECT IS IN THIS CASE\". The two branches fire on their own causes.",
+        "INJECTION V, `import_facts` made non-atomic by committing the registries before the facts: `a_refused_import_leaves_the_store_untouched` failed with \"the store changed. A refused import must leave nothing behind\". The test is non-vacuous in both directions — the repaired manifest must land, or the refusal would say nothing about atomicity.",
+        "THE AUDIT WAS OVER ALL TEN CARRY ITEMS OF ROUNDS 991-995: two were undone work (this round closes both), one was false (corrected here), one is a limit with its reason (a `TypedClaim`'s legs are required fields), and six are work already done or reopening conditions with nothing blocking them.",
+        "1578 workspace tests pass (1577 before; one added, one unfailable assertion removed), 0 failed, `--no-fail-fast`; clippy `-D warnings` and `cargo fmt --check` clean; `validate-workspace` T1 orphan 0 and T3 reject 0.",
+        "Citation hygiene (R255): Rounds 989, 991, 992, 993, 994 and 995 verified present with `query --changelog-entry` and Round 996 verified absent before this entry was appended."
+      ],
+      "publishable_impact_refs": [
+        "atomic-store-mutate-api"
+      ],
+      "publishable_carry_forward_bullets": [
+        "THE RULE THIS SESSION HAS PAID FOR THREE TIMES: \"the failure is loud, so it is not a defect\" is not a defence. Ask where the noise sends the reader. Rounds 989, 995 and this one are the same sentence with different subjects, and the first two both went out in a carry that read as rigour.",
+        "42 READ ARGUMENTS REMAIN AND NOTHING BLOCKS THEM. The shape is one workspace with enough authored in it that a report's answer varies, then the `output` oracle over `order_path`, `world`, `telling`, `rules_path`, `scope`, `fields`, `severity`, `doc` and `dry_run`.",
+        "THE ATOMICITY TEST COVERS ONE VERB. `import_sections` makes the same all-or-nothing promise and is not tested for it; the case above is a template and the second one is a copy with a different manifest."
+      ]
     }
   },
   "inventory_entries": {},
