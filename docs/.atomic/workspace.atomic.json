@@ -1164,6 +1164,94 @@
         "23 READ-SIDE ARGUMENTS REMAIN in the Round 986 accounting, unchanged by this round."
       ]
     },
+    "Round 1012": {
+      "decision_summary": "R1012 (MEASURE -> BUILD) — the sweep Round 1011 named as \"the shape Round 974's replay already has and does not do\", and what it found is bigger than the question it was built to answer: a third of the recorded corpora cannot be loaded by today's substrate at all. STAR THE SWEEP ITSELF: every tracked directory declaring rules is rebuilt from the manifests the record holds with TODAY's binary and scanned with the rules it declares. 27 rebuild and scan; 5 of the 32 continuity rules trip. Against Round 1011's 8 that appear in recorded output, the sweep is SMALLER — and every rule it trips is one Round 1011 already saw. STAR THE GAP IS NOT A GAP IN THE SWEEP, IT IS THE RECORD GOING OUT OF REACH. 11 corpora are REFUSED by the current binary: eight carry the `value`/`scalar` object shape Round 708 removed, two carry a `sections.json` written as a map where the importer wants an array, one fails a disclosure validation. Those are corpora whose gate output is IN the record — the three rules Round 1011 saw and this sweep cannot — so the evidence exists and the substrate that produced it no longer does. A further 6 directories have nothing to scan and are counted separately, because conflating \"was never a corpus\" with \"cannot be read\" would inflate the number that matters. STAR SO NEITHER COUNT IS AN UPPER BOUND, and this round can say why rather than suspect it. Round 1011's 8 is what authors tripped in arms those rounds chose to run. This 5 is what today's substrate can still be made to trip over corpora it can still read. The union is 8, and the difference between them is exactly the reach of a schema change. STAR THE SWEEP NEEDS NO PINNED REVISION, which is why it is cheap enough to run in the normal suite: Round 974's replay rebuilds each kit at the revision that produced it, and that is the right instrument for reproducing bytes. This asks a different question — what can be tripped NOW — and today's binary is the correct one for it.",
+      "changes_bullets": [
+        "`crates/mnemosyne-cli/tests/evidence_replay_smoke.rs` — `the_recorded_corpora_are_swept_for_every_rule_they_can_trip`, rebuilding every rules-declaring corpus with today's binary and scanning it. Prints the rules tripped, the corpora refused with the reason each gave, and the directories with nothing to scan.",
+        "Same file — `corpus_dirs_with_rules` and `rebuild_corpus`, the sweep's two halves: which directories a continuity scan has anything to say about, and how one is rebuilt into a scratch workspace.",
+        "Same file — a refusal is classified: \"no facts manifest\" / \"no rules artifact\" is a directory that was never a corpus, anything else is a corpus the substrate refuses. The two are counted apart."
+      ],
+      "verification_bullets": [
+        "STAR 27 SWEPT, 11 REFUSED, 6 WITH NOTHING TO SCAN; 5 of 32 rules tripped. Every rule the sweep trips is one Round 1011 already found in recorded output, so the sweep adds no rule and subtracts three — which is the measurement, not a shortfall.",
+        "STAR THE ELEVEN REFUSALS CARRY THEIR OWN REASONS, printed: eight are the Round 708 `value`/`scalar` removal, two are a `sections.json` map where an array is wanted, one is a disclosure validation. The record holds gate output from corpora the current binary cannot load.",
+        "THE SPLIT BETWEEN \"REFUSED\" AND \"NOTHING TO SCAN\" WAS ADDED AFTER THE FIRST RUN reported 17 unbuildable — six of which were directories with no facts manifest at all. Conflating them would have inflated the serious number by half.",
+        "THE COUNTS ARE PRINTED, NOT PINNED, for the reason Round 1011 gave: a threshold rots the day a corpus is migrated or authored.",
+        "1606 workspace tests pass (1605 before), 0 failed, `--no-fail-fast`; clippy `-D warnings` and `cargo fmt --check` clean; `validate-workspace` T1 orphan 0 and T3 reject 0.",
+        "Citation hygiene (R255): Rounds 708, 974 and 1011 verified present with `query --changelog-entry` and Round 1012 verified absent before this entry was appended."
+      ],
+      "impact_refs": [
+        "atomic-store-mutate-api"
+      ],
+      "carry_forward_bullets": [
+        "STAR ELEVEN RECORDED CORPORA CANNOT BE LOADED BY TODAY'S BINARY, and that is now measured rather than suspected. Eight are one schema change (Round 708). Whether they should be MIGRATED — the record is sealed evidence, so rewriting a manifest is the contamination bound Round 469 set — or whether the substrate should keep a reader for the shape it removed, is a decision this round does not take. It is the largest single fact this session has surfaced and it is not an argument-coverage question.",
+        "THE DECLARED TRACK HAS NOT MOVED IN FIVE ROUNDS. The Round 986 accounting stood at 99 of 122 when Round 1007 closed and stands at 99 now; Rounds 1008 through 1012 were audit rounds that each found a real defect elsewhere. The findings are real and growing rather than shrinking, but they are not the track, and nothing said so until here."
+      ],
+      "population_census": [
+        {
+          "axis": "transition rules by `undirected`",
+          "left_label": "undirected",
+          "left": 10,
+          "right_label": "directed",
+          "right": 27
+        },
+        {
+          "axis": "map corpora by leg-kind declaration",
+          "left_label": "omitted",
+          "left": 6,
+          "right_label": "declared",
+          "right": 24
+        },
+        {
+          "axis": "cost-carrying corpora by direction-dependent pricing",
+          "left_label": "prices a way by direction",
+          "left": 4,
+          "right_label": "prices no way by direction",
+          "right": 6
+        },
+        {
+          "axis": "run trees by authoring mode",
+          "left_label": "hand script",
+          "left": 10,
+          "right_label": "file-only",
+          "right": 239
+        },
+        {
+          "axis": "map corpora by declared boundary crossing",
+          "left_label": "declares an exit",
+          "left": 6,
+          "right_label": "declares none",
+          "right": 24
+        },
+        {
+          "axis": "authored submissions by map and telling",
+          "left_label": "carries both",
+          "left": 10,
+          "right_label": "carries one",
+          "right": 24
+        }
+      ],
+      "publishable_decision_summary": "R1012 (MEASURE -> BUILD) — the sweep Round 1011 named as \"the shape Round 974's replay already has and does not do\", and what it found is bigger than the question it was built to answer: a third of the recorded corpora cannot be loaded by today's substrate at all. STAR THE SWEEP ITSELF: every tracked directory declaring rules is rebuilt from the manifests the record holds with TODAY's binary and scanned with the rules it declares. 27 rebuild and scan; 5 of the 32 continuity rules trip. Against Round 1011's 8 that appear in recorded output, the sweep is SMALLER — and every rule it trips is one Round 1011 already saw. STAR THE GAP IS NOT A GAP IN THE SWEEP, IT IS THE RECORD GOING OUT OF REACH. 11 corpora are REFUSED by the current binary: eight carry the `value`/`scalar` object shape Round 708 removed, two carry a `sections.json` written as a map where the importer wants an array, one fails a disclosure validation. Those are corpora whose gate output is IN the record — the three rules Round 1011 saw and this sweep cannot — so the evidence exists and the substrate that produced it no longer does. A further 6 directories have nothing to scan and are counted separately, because conflating \"was never a corpus\" with \"cannot be read\" would inflate the number that matters. STAR SO NEITHER COUNT IS AN UPPER BOUND, and this round can say why rather than suspect it. Round 1011's 8 is what authors tripped in arms those rounds chose to run. This 5 is what today's substrate can still be made to trip over corpora it can still read. The union is 8, and the difference between them is exactly the reach of a schema change. STAR THE SWEEP NEEDS NO PINNED REVISION, which is why it is cheap enough to run in the normal suite: Round 974's replay rebuilds each kit at the revision that produced it, and that is the right instrument for reproducing bytes. This asks a different question — what can be tripped NOW — and today's binary is the correct one for it.",
+      "publishable_changes_bullets": [
+        "`crates/mnemosyne-cli/tests/evidence_replay_smoke.rs` — `the_recorded_corpora_are_swept_for_every_rule_they_can_trip`, rebuilding every rules-declaring corpus with today's binary and scanning it. Prints the rules tripped, the corpora refused with the reason each gave, and the directories with nothing to scan.",
+        "Same file — `corpus_dirs_with_rules` and `rebuild_corpus`, the sweep's two halves: which directories a continuity scan has anything to say about, and how one is rebuilt into a scratch workspace.",
+        "Same file — a refusal is classified: \"no facts manifest\" / \"no rules artifact\" is a directory that was never a corpus, anything else is a corpus the substrate refuses. The two are counted apart."
+      ],
+      "publishable_verification_bullets": [
+        "STAR 27 SWEPT, 11 REFUSED, 6 WITH NOTHING TO SCAN; 5 of 32 rules tripped. Every rule the sweep trips is one Round 1011 already found in recorded output, so the sweep adds no rule and subtracts three — which is the measurement, not a shortfall.",
+        "STAR THE ELEVEN REFUSALS CARRY THEIR OWN REASONS, printed: eight are the Round 708 `value`/`scalar` removal, two are a `sections.json` map where an array is wanted, one is a disclosure validation. The record holds gate output from corpora the current binary cannot load.",
+        "THE SPLIT BETWEEN \"REFUSED\" AND \"NOTHING TO SCAN\" WAS ADDED AFTER THE FIRST RUN reported 17 unbuildable — six of which were directories with no facts manifest at all. Conflating them would have inflated the serious number by half.",
+        "THE COUNTS ARE PRINTED, NOT PINNED, for the reason Round 1011 gave: a threshold rots the day a corpus is migrated or authored.",
+        "1606 workspace tests pass (1605 before), 0 failed, `--no-fail-fast`; clippy `-D warnings` and `cargo fmt --check` clean; `validate-workspace` T1 orphan 0 and T3 reject 0.",
+        "Citation hygiene (R255): Rounds 708, 974 and 1011 verified present with `query --changelog-entry` and Round 1012 verified absent before this entry was appended."
+      ],
+      "publishable_impact_refs": [
+        "atomic-store-mutate-api"
+      ],
+      "publishable_carry_forward_bullets": [
+        "STAR ELEVEN RECORDED CORPORA CANNOT BE LOADED BY TODAY'S BINARY, and that is now measured rather than suspected. Eight are one schema change (Round 708). Whether they should be MIGRATED — the record is sealed evidence, so rewriting a manifest is the contamination bound Round 469 set — or whether the substrate should keep a reader for the shape it removed, is a decision this round does not take. It is the largest single fact this session has surfaced and it is not an argument-coverage question.",
+        "THE DECLARED TRACK HAS NOT MOVED IN FIVE ROUNDS. The Round 986 accounting stood at 99 of 122 when Round 1007 closed and stands at 99 now; Rounds 1008 through 1012 were audit rounds that each found a real defect elsewhere. The findings are real and growing rather than shrinking, but they are not the track, and nothing said so until here."
+      ]
+    },
     "Round 252": {
       "decision_summary": "Parser CommonMark conformance — recognize indented fenced code blocks (§98) and require whitespace after ATX hash sequence (§62)",
       "changes_bullets": [

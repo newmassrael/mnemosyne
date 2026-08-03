@@ -4910,6 +4910,182 @@ fn the_record_says_which_gate_rules_authors_have_actually_tripped() {
     }
 }
 
+/// WHICH GATE RULES THE RECORDED CORPORA CAN TRIP AT ALL — THE SWEEP.
+///
+/// Round 1011 counted the rules that appear in recorded tool output and said
+/// plainly what that is: a LOWER bound. Those artifacts are the arms those
+/// rounds chose to run, not a sweep, so a rule absent from them may simply
+/// never have been asked. It then named the upper bound as needing "the replay
+/// to scan every recorded corpus with every rule enabled, which is the shape
+/// Round 974's replay already has and does not do" — a shape that exists is
+/// work, not a limit.
+///
+/// This is the sweep, and it needs no pinned revision: every corpus is
+/// rebuilt with TODAY's binary from the manifests the record holds, and
+/// scanned with the rules that corpus declares. What comes out is what these
+/// corpora CAN trip, against which Round 1011's count is what they DID.
+///
+/// A corpus that cannot be rebuilt is counted and named rather than skipped
+/// silently — a sweep that quietly walks half the record is the population
+/// defect this repository has now found five times.
+#[test]
+fn the_recorded_corpora_are_swept_for_every_rule_they_can_trip() {
+    let mut fired: BTreeSet<String> = BTreeSet::new();
+    let (mut swept, mut unbuildable) = (0usize, Vec::new());
+    let mut not_a_corpus: Vec<String> = Vec::new();
+
+    for dir in corpus_dirs_with_rules() {
+        let tmp = match rebuild_corpus(&dir) {
+            Ok(t) => t,
+            Err(why) => {
+                // A DIRECTORY THAT WAS NEVER A CORPUS IS NOT A CORPUS THIS
+                // BINARY CANNOT READ, and conflating them would inflate the
+                // more serious number. "no facts manifest" / "no rules
+                // artifact" mean this directory has nothing to scan; anything
+                // else means the record holds a corpus today's substrate
+                // REFUSES.
+                if why.starts_with("no facts") || why.starts_with("no rules") {
+                    not_a_corpus.push(dir.clone());
+                } else {
+                    unbuildable.push(format!("{dir}: {why}"));
+                }
+                continue;
+            }
+        };
+        swept += 1;
+        let out = Command::new(env!("CARGO_BIN_EXE_mnemosyne-cli"))
+            .args(["validate-continuity", "--json"])
+            .current_dir(tmp.path())
+            .output()
+            .expect("cli exec");
+        let said = String::from_utf8_lossy(&out.stdout).into_owned()
+            + &String::from_utf8_lossy(&out.stderr);
+        for rule in mnemosyne_validate::verdict::ViolationRule::ALL {
+            if rule.as_str() != "shape-invariant" && said.contains(rule.as_str()) {
+                fired.insert(rule.as_str().to_string());
+            }
+        }
+    }
+
+    println!(
+        "sweep: {} corpus(es) rebuilt and scanned, {} REFUSED by today's \
+         substrate, {} directories with nothing to scan; {} of {} rules tripped",
+        swept,
+        unbuildable.len(),
+        not_a_corpus.len(),
+        fired.len(),
+        mnemosyne_validate::verdict::ViolationRule::ALL.len() - 1
+    );
+    for r in &fired {
+        println!("  trips: {r}");
+    }
+    for u in &unbuildable {
+        println!("  refused: {u}");
+    }
+    for n in &not_a_corpus {
+        println!("  nothing to scan: {n}");
+    }
+    assert!(
+        swept > 5,
+        "only {swept} corpus(es) were swept, so this measures almost nothing"
+    );
+    assert!(
+        !fired.is_empty(),
+        "the sweep tripped no rule at all, which would mean the scan never ran"
+    );
+}
+
+/// Every tracked directory that declares a transition or exclusive rule — the
+/// corpora a continuity scan has anything to say about.
+fn corpus_dirs_with_rules() -> BTreeSet<String> {
+    let mut out = BTreeSet::new();
+    for path in git(&["ls-files", "claudedocs"]).lines() {
+        if !path.ends_with(".json") {
+            continue;
+        }
+        let Ok(text) = std::fs::read_to_string(repo_root().join(path)) else {
+            continue;
+        };
+        let Ok(v) = serde_json::from_str::<serde_json::Value>(&text) else {
+            continue;
+        };
+        if v.get("rules")
+            .and_then(|r| r.as_array())
+            .is_some_and(|r| !r.is_empty())
+        {
+            if let Some(d) = std::path::Path::new(path).parent() {
+                out.insert(d.to_string_lossy().into_owned());
+            }
+        }
+    }
+    out
+}
+
+/// Rebuild one recorded corpus into a scratch workspace with today's binary.
+fn rebuild_corpus(dir: &str) -> Result<TempDir, String> {
+    let src = repo_root().join(dir);
+    let tmp = TempDir::new().map_err(|e| e.to_string())?;
+    let ws = tmp.path();
+    std::fs::create_dir_all(ws.join("docs/.atomic")).map_err(|e| e.to_string())?;
+    let mut toml = String::from("[workspace]\n[continuity]\nseverity = \"warn\"\n");
+    let mut have_rules = false;
+    let mut have_order = false;
+    for name in ["rules.json", "narrative-rules.json"] {
+        if src.join(name).is_file() && !have_rules {
+            std::fs::copy(src.join(name), ws.join(name)).map_err(|e| e.to_string())?;
+            toml.push_str(&format!("rules_path = \"{name}\"\n"));
+            have_rules = true;
+        }
+    }
+    for name in ["order.json", "canon-order.json"] {
+        if src.join(name).is_file() && !have_order {
+            std::fs::copy(src.join(name), ws.join(name)).map_err(|e| e.to_string())?;
+            toml.push_str(&format!("canon_order_path = \"{name}\"\n"));
+            have_order = true;
+        }
+    }
+    if !have_rules {
+        return Err("no rules artifact beside the manifests".into());
+    }
+    std::fs::write(ws.join("mnemosyne.toml"), toml).map_err(|e| e.to_string())?;
+    std::fs::write(
+        ws.join("docs/.atomic/workspace.atomic.json"),
+        format!(
+            "{{\"schema_version\":{},\"sections\":{{}},\"changelog_entries\":{{}}}}",
+            mnemosyne_atomic::CURRENT_SCHEMA_VERSION
+        ),
+    )
+    .map_err(|e| e.to_string())?;
+
+    let run = |args: &[&str]| -> Result<(), String> {
+        let out = Command::new(env!("CARGO_BIN_EXE_mnemosyne-cli"))
+            .args(args)
+            .current_dir(ws)
+            .output()
+            .map_err(|e| e.to_string())?;
+        if out.status.success() {
+            Ok(())
+        } else {
+            Err(String::from_utf8_lossy(&out.stderr)
+                .lines()
+                .last()
+                .unwrap_or("failed")
+                .to_string())
+        }
+    };
+    if src.join("sections.json").is_file() {
+        std::fs::copy(src.join("sections.json"), ws.join("sections.json"))
+            .map_err(|e| e.to_string())?;
+        run(&["import-sections", "--manifest", "sections.json"])?;
+    }
+    if !src.join("facts.json").is_file() {
+        return Err("no facts manifest".into());
+    }
+    std::fs::copy(src.join("facts.json"), ws.join("facts.json")).map_err(|e| e.to_string())?;
+    run(&["import-facts", "--manifest", "facts.json"])?;
+    Ok(tmp)
+}
+
 /// NO LIBRARY DECIDES A PATH FROM THE PROCESS'S WORKING DIRECTORY.
 ///
 /// Round 998 found an agent's path argument reading a file beside this source:
