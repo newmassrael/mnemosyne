@@ -33869,6 +33869,100 @@
         "THE DIFFERENTIAL PATTERN PROVES AN ARGUMENT IS READ, NOT THAT IT IS READ CORRECTLY. The needle assertion narrows it — the value has to appear in the bytes — but a handler writing it into a neighbouring field would still pass. Where a tool has a CLI twin, that twin's answer is the stronger oracle, and Round 981's bespoke case is the example of using it.",
         "`EXERCISED_BESPOKE` IS THE ONE PLACE THE COMPILER IS NOT HOLDING THE CLAIM. It has one entry today. If it grows, the reason is that the macro is missing an ability, and the answer is to give the macro that ability rather than to add a line here."
       ]
+    },
+    "Round 988": {
+      "decision_summary": "R988 (BUILD) — the silent set goes from 116 to 102, and the two changes that made it possible are both about what the test can express rather than about how many were written. Round 987 tied each `EXERCISED` row to the test that earns it, and left the remainder needing two things the macro did not have. STAR THE FIRST IS A SETUP CALL, because most optional arguments are REFS: `add_entity.kind` names a registered entity kind, `add_section.parent_section` names an existing section, and neither can be sent at all until something else exists. The macro now takes any number of bracketed `given` calls that run on the same server before the tool under test, IN BOTH ARMS, so the difference the test asserts is the argument and never the setup. STAR THE SECOND IS THAT WHAT THE AGENT SENDS AND WHAT THE STORE SHOULD SHOW ARE NOT THE SAME STRING, and pretending they were is what a list-valued argument exposed: `parents` is sent as `[\"place\"]` and lands as `place`. They are now separate — the value is what goes on the wire, the needle is what has to appear in the bytes — and separating them is more honest even where they coincide, since an id an agent sends can be normalised before it is stored. STAR AND SPLITTING THEM SURFACED A VACUITY THAT WOULD HAVE SHIPPED. The needle was asserted as PRESENT in the with-argument store, which discriminates for fresh prose and asserts NOTHING for a ref: the setup call has already written `place` into the registry, so `contains` is true in both arms and only the byte-difference was carrying the test. Six of the cases landed in this round are that shape. The assertion is now that the needle occurs MORE times with the argument than without — once for the registration, twice once something references it — which discriminates for both shapes. The injection says it plainly: with `add_entity_kind` stopped from reading `parents`, the failure reads \"`place` occurs 1 time(s) without and 1 time(s) with\". STAR FOURTEEN ARGUMENTS LEFT THE SILENT SET, all of them writes into the agent's own memory: the kind an entity is registered under, the parent a section is filed beneath, the symbol a binding names, the reason an inventory entry was closed, the refs and carried items an appended round states. What remains is 102 and it is the same table one line at a time.",
+      "changes_bullets": [
+        "`crates/mnemosyne-mcp/src/main.rs` — `exercised!` takes bracketed `given` setup calls, run on the same server in both arms before the tool under test. Most optional arguments are refs and cannot be sent until the thing they name exists; without this the macro could only reach arguments that need nothing.",
+        "Same file — the case grammar separates the VALUE sent from the NEEDLE expected in the store (`.\"parents\" = [\"place\"] seen \"place\"`), because a list-valued argument does not land as the string it was sent as, and an id can be normalised on the way in.",
+        "Same file — the needle assertion counts occurrences instead of asking whether the needle is present. A ref-shaped argument names something the setup already registered, so presence is true in both arms and asserts nothing.",
+        "Same file — fourteen further cases: `add_entity.kind`, `add_entity_kind.parents`, `add_section.parent_section`, `set_entity_kind_parents.parents`, `add_predicate.description`, `add_predicate.subject_kind`, `add_disclosure_plan.description`, `add_inventory_entry.reason`, `add_inventory_entry.source`, `set_inventory_status.reason`, `set_section_parent_section.parent_section`, `add_section_binding.symbol`, `append_changelog_entry.impact_refs`, `append_changelog_entry.carry_forward_bullets`. The count is 20 exercised against 102."
+      ],
+      "verification_bullets": [
+        "STAR THE VACUITY WAS FOUND BY WRITING THE REF CASES, NOT BY REVIEWING THEM. Presence of the needle is true in both arms whenever the setup registered the id, which is every ref-shaped argument — six of this round's cases. The assertion was changed to compare occurrence counts before any of them landed.",
+        "INJECTION L, `add_entity_kind` stops reading `parents`: the case failed with \"`place` occurs 1 time(s) in the store add_entity_kind wrote WITHOUT `parents` and 1 time(s) with it\", which is the same evidence that the presence check would have passed. The other 25 tests stayed green.",
+        "THE INJECTION'S FIRST ANCHOR MATCHED TWO SITES AND WAS REFUSED RATHER THAN APPLIED TO BOTH — `add_entity_kind` and `set_entity_kind_parents` share a line — so it was re-targeted at the handler by position. A `count == 1` assertion is what made that visible instead of injecting two defects and reading one result.",
+        "FOUR CASES FAILED ON THEIR FIRST RUN BECAUSE THE FIXTURE USED VOCABULARY THE TOOLS REJECT, and each tool named the closed set in its own error (`default_mode` expects withhold|state|hint|imply; inventory status expects active|deprecated|reserved). The fixtures were corrected to the tools' vocabulary rather than the checks loosened.",
+        "THE GATE'S \"DECLARED TWICE\" ARM FIRED TWICE DURING THE ROUND, once per batch, while the moved pairs were still listed as unexercised — so the union of the three lists is checked rather than assumed.",
+        "1517 workspace tests pass (1503 before), 0 failed, `--no-fail-fast`; clippy `-D warnings` and `cargo fmt --check` clean; `validate-workspace` T1 orphan 0 and T3 reject 0.",
+        "Citation hygiene (R255): Round 987 verified present with `query --changelog-entry` and Round 988 verified absent before this entry was appended."
+      ],
+      "impact_refs": [
+        "atomic-store-mutate-api"
+      ],
+      "carry_forward_bullets": [
+        "102 OF 122 REMAIN AND THE MACRO NOW REACHES ALL OF THEM. What is left needs no new ability: `add_fact` and `amend_fact` carry ten optional arguments each and want a frame, a section and a predicate registered first, which is four `given` lines; the threshold and disclosure arguments want an edge or a plan. It is a table to fill.",
+        "COUNTING OCCURRENCES IS STRONGER THAN PRESENCE AND STILL NOT AN EQUALITY. A handler that wrote the argument into a neighbouring field of the same record would raise the count and pass. Where a tool has a CLI twin the twin's answer is the exact oracle, as Round 981's bespoke case uses; that is the upgrade path for any argument where the count proves too coarse.",
+        "THE `given` CALLS ARE NOT THEMSELVES EXERCISED BY THE CASE THEY SET UP. If a setup call silently ignored one of ITS optional arguments the case would still pass, since both arms run the same setup. That is correct — each argument is proven by its own case — but it means a `given` line is not evidence about the tool it invokes."
+      ],
+      "population_census": [
+        {
+          "axis": "transition rules by `undirected`",
+          "left_label": "undirected",
+          "left": 10,
+          "right_label": "directed",
+          "right": 27
+        },
+        {
+          "axis": "map corpora by leg-kind declaration",
+          "left_label": "omitted",
+          "left": 6,
+          "right_label": "declared",
+          "right": 24
+        },
+        {
+          "axis": "cost-carrying corpora by direction-dependent pricing",
+          "left_label": "prices a way by direction",
+          "left": 4,
+          "right_label": "prices no way by direction",
+          "right": 6
+        },
+        {
+          "axis": "run trees by authoring mode",
+          "left_label": "hand script",
+          "left": 10,
+          "right_label": "file-only",
+          "right": 239
+        },
+        {
+          "axis": "map corpora by declared boundary crossing",
+          "left_label": "declares an exit",
+          "left": 6,
+          "right_label": "declares none",
+          "right": 24
+        },
+        {
+          "axis": "authored submissions by map and telling",
+          "left_label": "carries both",
+          "left": 10,
+          "right_label": "carries one",
+          "right": 24
+        }
+      ],
+      "publishable_decision_summary": "R988 (BUILD) — the silent set goes from 116 to 102, and the two changes that made it possible are both about what the test can express rather than about how many were written. Round 987 tied each `EXERCISED` row to the test that earns it, and left the remainder needing two things the macro did not have. STAR THE FIRST IS A SETUP CALL, because most optional arguments are REFS: `add_entity.kind` names a registered entity kind, `add_section.parent_section` names an existing section, and neither can be sent at all until something else exists. The macro now takes any number of bracketed `given` calls that run on the same server before the tool under test, IN BOTH ARMS, so the difference the test asserts is the argument and never the setup. STAR THE SECOND IS THAT WHAT THE AGENT SENDS AND WHAT THE STORE SHOULD SHOW ARE NOT THE SAME STRING, and pretending they were is what a list-valued argument exposed: `parents` is sent as `[\"place\"]` and lands as `place`. They are now separate — the value is what goes on the wire, the needle is what has to appear in the bytes — and separating them is more honest even where they coincide, since an id an agent sends can be normalised before it is stored. STAR AND SPLITTING THEM SURFACED A VACUITY THAT WOULD HAVE SHIPPED. The needle was asserted as PRESENT in the with-argument store, which discriminates for fresh prose and asserts NOTHING for a ref: the setup call has already written `place` into the registry, so `contains` is true in both arms and only the byte-difference was carrying the test. Six of the cases landed in this round are that shape. The assertion is now that the needle occurs MORE times with the argument than without — once for the registration, twice once something references it — which discriminates for both shapes. The injection says it plainly: with `add_entity_kind` stopped from reading `parents`, the failure reads \"`place` occurs 1 time(s) without and 1 time(s) with\". STAR FOURTEEN ARGUMENTS LEFT THE SILENT SET, all of them writes into the agent's own memory: the kind an entity is registered under, the parent a section is filed beneath, the symbol a binding names, the reason an inventory entry was closed, the refs and carried items an appended round states. What remains is 102 and it is the same table one line at a time.",
+      "publishable_changes_bullets": [
+        "`crates/mnemosyne-mcp/src/main.rs` — `exercised!` takes bracketed `given` setup calls, run on the same server in both arms before the tool under test. Most optional arguments are refs and cannot be sent until the thing they name exists; without this the macro could only reach arguments that need nothing.",
+        "Same file — the case grammar separates the VALUE sent from the NEEDLE expected in the store (`.\"parents\" = [\"place\"] seen \"place\"`), because a list-valued argument does not land as the string it was sent as, and an id can be normalised on the way in.",
+        "Same file — the needle assertion counts occurrences instead of asking whether the needle is present. A ref-shaped argument names something the setup already registered, so presence is true in both arms and asserts nothing.",
+        "Same file — fourteen further cases: `add_entity.kind`, `add_entity_kind.parents`, `add_section.parent_section`, `set_entity_kind_parents.parents`, `add_predicate.description`, `add_predicate.subject_kind`, `add_disclosure_plan.description`, `add_inventory_entry.reason`, `add_inventory_entry.source`, `set_inventory_status.reason`, `set_section_parent_section.parent_section`, `add_section_binding.symbol`, `append_changelog_entry.impact_refs`, `append_changelog_entry.carry_forward_bullets`. The count is 20 exercised against 102."
+      ],
+      "publishable_verification_bullets": [
+        "STAR THE VACUITY WAS FOUND BY WRITING THE REF CASES, NOT BY REVIEWING THEM. Presence of the needle is true in both arms whenever the setup registered the id, which is every ref-shaped argument — six of this round's cases. The assertion was changed to compare occurrence counts before any of them landed.",
+        "INJECTION L, `add_entity_kind` stops reading `parents`: the case failed with \"`place` occurs 1 time(s) in the store add_entity_kind wrote WITHOUT `parents` and 1 time(s) with it\", which is the same evidence that the presence check would have passed. The other 25 tests stayed green.",
+        "THE INJECTION'S FIRST ANCHOR MATCHED TWO SITES AND WAS REFUSED RATHER THAN APPLIED TO BOTH — `add_entity_kind` and `set_entity_kind_parents` share a line — so it was re-targeted at the handler by position. A `count == 1` assertion is what made that visible instead of injecting two defects and reading one result.",
+        "FOUR CASES FAILED ON THEIR FIRST RUN BECAUSE THE FIXTURE USED VOCABULARY THE TOOLS REJECT, and each tool named the closed set in its own error (`default_mode` expects withhold|state|hint|imply; inventory status expects active|deprecated|reserved). The fixtures were corrected to the tools' vocabulary rather than the checks loosened.",
+        "THE GATE'S \"DECLARED TWICE\" ARM FIRED TWICE DURING THE ROUND, once per batch, while the moved pairs were still listed as unexercised — so the union of the three lists is checked rather than assumed.",
+        "1517 workspace tests pass (1503 before), 0 failed, `--no-fail-fast`; clippy `-D warnings` and `cargo fmt --check` clean; `validate-workspace` T1 orphan 0 and T3 reject 0.",
+        "Citation hygiene (R255): Round 987 verified present with `query --changelog-entry` and Round 988 verified absent before this entry was appended."
+      ],
+      "publishable_impact_refs": [
+        "atomic-store-mutate-api"
+      ],
+      "publishable_carry_forward_bullets": [
+        "102 OF 122 REMAIN AND THE MACRO NOW REACHES ALL OF THEM. What is left needs no new ability: `add_fact` and `amend_fact` carry ten optional arguments each and want a frame, a section and a predicate registered first, which is four `given` lines; the threshold and disclosure arguments want an edge or a plan. It is a table to fill.",
+        "COUNTING OCCURRENCES IS STRONGER THAN PRESENCE AND STILL NOT AN EQUALITY. A handler that wrote the argument into a neighbouring field of the same record would raise the count and pass. Where a tool has a CLI twin the twin's answer is the exact oracle, as Round 981's bespoke case uses; that is the upgrade path for any argument where the count proves too coarse.",
+        "THE `given` CALLS ARE NOT THEMSELVES EXERCISED BY THE CASE THEY SET UP. If a setup call silently ignored one of ITS optional arguments the case would still pass, since both arms run the same setup. That is correct — each argument is proven by its own case — but it means a `given` line is not evidence about the tool it invokes."
+      ]
     }
   },
   "inventory_entries": {},

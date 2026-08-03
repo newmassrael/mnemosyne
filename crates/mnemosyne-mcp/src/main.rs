@@ -3455,9 +3455,6 @@ mod tests {
         ("add_confirmation_event", "spec_sha256"),
         ("add_confirmation_event", "symbol"),
         ("add_confirmation_event", "test_sha256"),
-        ("add_disclosure_plan", "description"),
-        ("add_entity", "kind"),
-        ("add_entity_kind", "parents"),
         ("add_fact", "branch"),
         ("add_fact", "canon_to"),
         ("add_fact", "conflicts_with"),
@@ -3468,15 +3465,9 @@ mod tests {
         ("add_fact", "quote"),
         ("add_fact", "supersedes_in_frame"),
         ("add_fact", "typed"),
-        ("add_inventory_entry", "reason"),
         ("add_inventory_entry", "section_ref"),
-        ("add_inventory_entry", "source"),
-        ("add_predicate", "description"),
         ("add_predicate", "object_entity_kind"),
         ("add_predicate", "object_tokens"),
-        ("add_predicate", "subject_kind"),
-        ("add_section", "parent_section"),
-        ("add_section_binding", "symbol"),
         ("amend_fact", "branch"),
         ("amend_fact", "canon_to"),
         ("amend_fact", "conflicts_with"),
@@ -3487,8 +3478,6 @@ mod tests {
         ("amend_fact", "quote"),
         ("amend_fact", "supersedes_in_frame"),
         ("amend_fact", "typed"),
-        ("append_changelog_entry", "carry_forward_bullets"),
-        ("append_changelog_entry", "impact_refs"),
         ("emit_publishable_override_ledger_draft", "kind"),
         ("import_edge_proposals", "dry_run"),
         ("import_facts", "branches"),
@@ -3544,17 +3533,14 @@ mod tests {
         ("set_disclosure", "surface_scene"),
         ("set_disclosure_reveal_threshold", "threshold"),
         ("set_edge_guard_threshold", "threshold"),
-        ("set_entity_kind_parents", "parents"),
         ("set_inventory_section_ref", "clear"),
         ("set_inventory_section_ref", "section_ref"),
-        ("set_inventory_status", "reason"),
         ("set_predicate", "object_entity_kind"),
         ("set_predicate", "object_tokens"),
         ("set_predicate", "subject_kind"),
         ("set_section_binding_kind", "symbol"),
         ("set_section_decision_status", "resolving"),
         ("set_section_decision_status", "superseding"),
-        ("set_section_parent_section", "parent_section"),
         ("style_check", "doc"),
         ("style_check", "severity"),
         ("validate_continuity", "order_path"),
@@ -3724,7 +3710,9 @@ mod tests {
     /// without the row, and the compiler is what holds the two together.
     macro_rules! exercised {
         ($(
-            $test:ident : $tool:ident($args:ty) $base:tt . $field:literal = $needle:literal;
+            $test:ident :
+            $( [$setup:ident($setup_args:ty) $setup_base:tt] )*
+            $tool:ident($args:ty) $base:tt . $field:literal = $value:tt seen $needle:literal;
         )*) => {
             const EXERCISED: &[(&str, &str)] = &[$((stringify!($tool), $field)),*];
             $(
@@ -3735,12 +3723,29 @@ mod tests {
                         let tmp = agent_workspace();
                         let mut json = serde_json::json!($base);
                         if with {
-                            json[$field] = serde_json::json!($needle);
+                            json[$field] = serde_json::json!($value);
                         }
                         let args: $args = serde_json::from_value(json)
                             .expect("the agent-facing shape must parse this call");
                         let server =
                             MnemosyneServer::new(tmp.path().to_path_buf()).expect("server");
+                        // WHAT THE ARGUMENT NEEDS TO EXIST BEFORE IT CAN BE
+                        // SENT. Run in BOTH arms, so the difference the test
+                        // asserts is the argument and never the setup.
+                        $(
+                            let setup: $setup_args =
+                                serde_json::from_value(serde_json::json!($setup_base))
+                                    .expect("the setup call's shape must parse");
+                            let ready = server.$setup(Parameters(setup)).await;
+                            assert!(
+                                ready.is_error != Some(true),
+                                "the `given` call {} failed, so {} was never \
+                                 reached: {:?}",
+                                stringify!($setup),
+                                stringify!($tool),
+                                ready.content
+                            );
+                        )*
                         let result = server.$tool(Parameters(args)).await;
                         assert!(
                             result.is_error != Some(true),
@@ -3756,11 +3761,24 @@ mod tests {
                             .expect("read the store"),
                         );
                     }
+                    // MORE OCCURRENCES, NOT MERELY PRESENT. A ref-shaped
+                    // argument names something the setup already registered, so
+                    // `contains` is true in BOTH arms and asserts nothing; the
+                    // id appears once for the registration and twice once
+                    // something references it. Counting discriminates for both
+                    // shapes, where presence discriminates only for fresh prose.
+                    let (before, after) = (
+                        written[0].matches($needle).count(),
+                        written[1].matches($needle).count(),
+                    );
                     assert!(
-                        written[1].contains($needle),
-                        "what the agent sent as `{}` is nowhere in the store {} wrote",
-                        $field,
-                        stringify!($tool)
+                        after > before,
+                        "`{}` occurs {before} time(s) in the store {} wrote \
+                         WITHOUT `{}` and {after} time(s) with it, so what the \
+                         agent sent did not reach the store",
+                        $needle,
+                        stringify!($tool),
+                        $field
                     );
                     assert_ne!(
                         written[0], written[1],
@@ -3778,19 +3796,71 @@ mod tests {
     exercised! {
         add_entity_description_reaches_the_store:
             add_entity(AddEntityArgs) {"entity_id": "e-her"}
-            ."description" = "the one who waits";
+            ."description" = "the one who waits" seen "the one who waits";
         add_entity_kind_description_reaches_the_store:
             add_entity_kind(AddEntityKindArgs) {"kind_id": "place"}
-            ."description" = "anywhere a person can be";
+            ."description" = "anywhere a person can be" seen "anywhere a person can be";
         add_frame_description_reaches_the_store:
             add_frame(AddFrameArgs) {"frame_id": "ground-truth"}
-            ."description" = "what is so in the town";
+            ."description" = "what is so in the town" seen "what is so in the town";
         add_parameter_description_reaches_the_store:
             add_parameter(AddParameterArgs) {"parameter_id": "affection"}
-            ."description" = "how warmly she reads him";
+            ."description" = "how warmly she reads him" seen "how warmly she reads him";
         add_unit_description_reaches_the_store:
             add_unit(AddUnitArgs) {"unit_id": "day"}
-            ."description" = "a day of the flood";
+            ."description" = "a day of the flood" seen "a day of the flood";
+        add_entity_kind_reaches_the_store:
+            [add_entity_kind(AddEntityKindArgs) {"kind_id": "place"}]
+            add_entity(AddEntityArgs) {"entity_id": "p-shrine"}
+            ."kind" = "place" seen "place";
+        add_entity_kind_parents_reaches_the_store:
+            [add_entity_kind(AddEntityKindArgs) {"kind_id": "place"}]
+            add_entity_kind(AddEntityKindArgs) {"kind_id": "quarter"}
+            ."parents" = ["place"] seen "place";
+        add_section_parent_section_reaches_the_store:
+            [add_section(AddSectionArgs) {"section_id": "40", "parent_doc": "spec", "title": "the parent"}]
+            add_section(AddSectionArgs) {"section_id": "41", "parent_doc": "spec", "title": "the child"}
+            ."parent_section" = "40" seen "40";
+        add_predicate_description_reaches_the_store:
+            add_predicate(AddPredicateArgs) {"predicate_id": "does", "object_kind": "token", "object_tokens": ["waits"]}
+            ."description" = "what a person is doing" seen "what a person is doing";
+        add_predicate_subject_kind_reaches_the_store:
+            [add_entity_kind(AddEntityKindArgs) {"kind_id": "character"}]
+            add_predicate(AddPredicateArgs) {"predicate_id": "does", "object_kind": "token", "object_tokens": ["waits"]}
+            ."subject_kind" = "character" seen "character";
+        add_disclosure_plan_description_reaches_the_store:
+            add_disclosure_plan(AddDisclosurePlanArgs) {"telling_id": "default", "default_mode": "state"}
+            ."description" = "what the reader is told" seen "what the reader is told";
+        add_inventory_entry_reason_reaches_the_store:
+            add_inventory_entry(AddInventoryEntryArgs) {"inventory_id": "inv-1", "status": "active"}
+            ."reason" = "why it is open" seen "why it is open";
+        add_inventory_entry_source_reaches_the_store:
+            add_inventory_entry(AddInventoryEntryArgs) {"inventory_id": "inv-1", "status": "active"}
+            ."source" = "the review that found it" seen "the review that found it";
+        set_inventory_status_reason_reaches_the_store:
+            [add_inventory_entry(AddInventoryEntryArgs) {"inventory_id": "inv-1", "status": "active"}]
+            set_inventory_status(SetInventoryStatusArgs) {"inventory_id": "inv-1", "status": "deprecated"}
+            ."reason" = "closed by the round that found it" seen "closed by the round that found it";
+        set_section_parent_section_reaches_the_store:
+            [add_section(AddSectionArgs) {"section_id": "40", "parent_doc": "spec", "title": "the parent"}]
+            [add_section(AddSectionArgs) {"section_id": "41", "parent_doc": "spec", "title": "the child"}]
+            set_section_parent_section(SetSectionParentSectionArgs) {"section_id": "41"}
+            ."parent_section" = "40" seen "40";
+        add_section_binding_symbol_reaches_the_store:
+            [add_section(AddSectionArgs) {"section_id": "40", "parent_doc": "spec", "title": "the parent"}]
+            add_section_binding(AddSectionBindingArgs) {"section_id": "40", "file": "src/lib.rs", "kind": "implements"}
+            ."symbol" = "the_bound_symbol" seen "the_bound_symbol";
+        append_changelog_entry_impact_refs_reaches_the_store:
+            append_changelog_entry(AppendChangelogEntryArgs) {"entry_id": "Round 1", "decision_summary": "a decision", "changes_bullets": ["a change"], "verification_bullets": ["a check"]}
+            ."impact_refs" = ["the-impacted-ref"] seen "the-impacted-ref";
+        append_changelog_entry_carry_forward_reaches_the_store:
+            append_changelog_entry(AppendChangelogEntryArgs) {"entry_id": "Round 1", "decision_summary": "a decision", "changes_bullets": ["a change"], "verification_bullets": ["a check"]}
+            ."carry_forward_bullets" = ["the carried item"] seen "the carried item";
+        set_entity_kind_parents_reaches_the_store:
+            [add_entity_kind(AddEntityKindArgs) {"kind_id": "place"}]
+            [add_entity_kind(AddEntityKindArgs) {"kind_id": "quarter"}]
+            set_entity_kind_parents(SetEntityKindParentsArgs) {"kind_id": "quarter"}
+            ."parents" = ["place"] seen "place";
     }
 
     /// An agent can only call what the schema shows it (Round 981) — the Round
