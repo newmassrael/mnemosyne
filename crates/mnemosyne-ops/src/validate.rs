@@ -15,7 +15,7 @@ use mnemosyne_validate::{validator::scan_store_prose_cross_ref_orphans, Validati
 use serde::Serialize;
 
 use crate::cascade::validate_atomic_store;
-use crate::{query::load_workspace, OpError};
+use crate::{query::load_workspace, OpError, PopulationCensusReport};
 
 #[derive(Debug, Clone, Serialize)]
 pub struct ValidateWorkspaceReport {
@@ -534,9 +534,16 @@ pub enum CensusReach {
     Measured {
         /// Entries in the store that record a census at all.
         recorded: usize,
-        /// Of those, the ones this commit is adding — the only ones decidable.
+        /// Of those, the ones this commit is adding, checked against the report
+        /// in the working tree.
         uncommitted: usize,
-        /// Census rows compared against the workspace's report.
+        /// Of those, the ones the TIP commit added, checked against the report as
+        /// that commit left it — the arm that needs no hook and runs in CI.
+        landed_at_head: usize,
+        /// Older entries: what the report said when they landed is behind more
+        /// history than a bounded check will walk.
+        out_of_reach: usize,
+        /// Census rows compared against a report.
         rows_checked: usize,
     },
 }
@@ -616,25 +623,53 @@ fn census_contemporaneity(
         .map(|o| o.keys().cloned().collect())
         .unwrap_or_default();
 
+    // Round 982 — the entries the TIP COMMIT added, and the report as that
+    // commit left it. This is the arm that needs no pre-commit hook: a consumer
+    // who never installed one still gets every round checked by CI, on the push
+    // that lands it. Bounded to one commit back on purpose — asking "what did
+    // the report say when THIS entry landed" for an arbitrary entry is a pickaxe
+    // walk over every revision of a multi-megabyte store, and a gate that costs
+    // that gets turned off.
+    let previous: Option<BTreeSet<String>> = git_store_entries(dir, name, "HEAD~1");
+    let head_report: Option<Vec<mnemosyne_atomic::PopulationCensus>> =
+        git_census_report(workspace_root, "HEAD");
+
     let recorded = recording.len();
     let mut uncommitted = 0usize;
+    let mut landed_at_head = 0usize;
+    let mut out_of_reach = 0usize;
     let mut rows_checked = 0usize;
     let mut stale = Vec::new();
     let mut report: Option<Vec<mnemosyne_atomic::PopulationCensus>> = None;
     for (id, rows) in recording {
-        if already.contains(id) {
+        let at_head = already.contains(id);
+        let landed_here = at_head && previous.as_ref().is_some_and(|p| !p.contains(id));
+        if at_head && !landed_here {
+            out_of_reach += 1;
             continue;
         }
-        uncommitted += 1;
         // Resolved once, and only for a tree that has something to check — a
         // workspace with no `[census]` table cannot have recorded one either,
         // so reaching here with an unreadable report is a real defect and says
         // so rather than passing quietly.
-        let axes = match &report {
-            Some(a) => a,
-            None => {
-                report = Some(crate::workspace_population_census(workspace_root)?);
-                report.as_ref().expect("just resolved")
+        let axes = if landed_here {
+            landed_at_head += 1;
+            match &head_report {
+                Some(a) => a,
+                None => {
+                    out_of_reach += 1;
+                    landed_at_head -= 1;
+                    continue;
+                }
+            }
+        } else {
+            uncommitted += 1;
+            match &report {
+                Some(a) => a,
+                None => {
+                    report = Some(crate::workspace_population_census(workspace_root)?);
+                    report.as_ref().expect("just resolved")
+                }
             }
         };
         for row in rows {
@@ -642,8 +677,8 @@ fn census_contemporaneity(
             if !axes.contains(row) {
                 stale.push(format!(
                     "{id}: `{}` recorded as {}={} {}={}, which is not what the \
-                     workspace's census report says — re-bless the report and \
-                     append the entry after it, in that order",
+                     census report it was filed against says — re-bless the \
+                     report and append the entry after it, in that order",
                     row.axis, row.left_label, row.left, row.right_label, row.right
                 ));
             }
@@ -653,10 +688,54 @@ fn census_contemporaneity(
         CensusReach::Measured {
             recorded,
             uncommitted,
+            landed_at_head,
+            out_of_reach,
             rows_checked,
         },
         stale,
     ))
+}
+
+/// The changelog entry ids a committed store holds at `rev`, or `None` when
+/// that revision has no readable store (Round 982).
+fn git_store_entries(dir: &Path, name: &std::ffi::OsStr, rev: &str) -> Option<BTreeSet<String>> {
+    let out = std::process::Command::new("git")
+        .args(["show", &format!("{rev}:./{}", name.to_string_lossy())])
+        .current_dir(dir)
+        .output()
+        .ok()?;
+    if !out.status.success() {
+        return None;
+    }
+    let store: serde_json::Value = serde_json::from_slice(&out.stdout).ok()?;
+    Some(
+        store
+            .get("changelog_entries")
+            .and_then(|v| v.as_object())
+            .map(|o| o.keys().cloned().collect())
+            .unwrap_or_default(),
+    )
+}
+
+/// The census report as `rev` left it, or `None` when that revision has none
+/// (Round 982) — a workspace that declared `[census]` later, a shallow clone, a
+/// report tracked under a different path back then.
+fn git_census_report(
+    workspace_root: &Path,
+    rev: &str,
+) -> Option<Vec<mnemosyne_atomic::PopulationCensus>> {
+    let path = crate::workspace_census_report_path(workspace_root).ok()??;
+    let (dir, name) = (path.parent()?, path.file_name()?);
+    let out = std::process::Command::new("git")
+        .args(["show", &format!("{rev}:./{}", name.to_string_lossy())])
+        .current_dir(dir)
+        .output()
+        .ok()?;
+    if !out.status.success() {
+        return None;
+    }
+    let report: PopulationCensusReport = serde_json::from_slice(&out.stdout).ok()?;
+    Some(report.axes)
 }
 
 impl ValidateWorkspaceReport {
@@ -846,8 +925,9 @@ impl ValidateWorkspaceReport {
         }
         let _ = writeln!(
             out,
-            "census contemporaneity: {} (Round 979; the check reaches only \
-             UNCOMMITTED entries, and passes vacuously where nothing is)",
+            "census contemporaneity: {} (Round 982; reaches what this commit is \
+             adding and what the tip commit added, and says so when it reaches \
+             neither)",
             match &self.census_reach {
                 CensusReach::NotDeclared =>
                     "off — this workspace declares no [census] report".to_string(),
@@ -857,10 +937,13 @@ impl ValidateWorkspaceReport {
                 CensusReach::Measured {
                     recorded,
                     uncommitted,
+                    landed_at_head,
+                    out_of_reach,
                     rows_checked,
                 } => format!(
                     "{recorded} entry(ies) record one, {uncommitted} uncommitted, \
-                     {rows_checked} row(s) checked against the report"
+                     {landed_at_head} landed at HEAD, {out_of_reach} older than \
+                     this check walks, {rows_checked} row(s) checked against a report"
                 ),
             }
         );

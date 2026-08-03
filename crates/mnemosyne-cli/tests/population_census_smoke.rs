@@ -314,10 +314,45 @@ fn a_census_being_added_must_match_the_tree_and_a_committed_one_need_not() {
         "the rejection names neither the entry nor the axis: {said}"
     );
 
-    // Phase 3 — once committed, that same entry is history, and history is
-    // supposed to disagree with a population that has moved on since.
+    // Phase 3 — the round lands the way it is supposed to: the report put back
+    // in agreement, and BOTH committed together. Round 982's arm reads this one
+    // against the report as that commit left it, which needs no hook and is what
+    // CI runs.
+    fs::write(ws.join("reports/population-census.json"), census_report()).unwrap();
     commit_all(ws, "the round");
+    let out = run(ws, &["validate-workspace"]);
+    let said = String::from_utf8_lossy(&out.stdout).into_owned();
+    assert!(
+        out.status.success(),
+        "an entry committed together with the report it was filed against was \
+         rejected: {said}{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert!(
+        said.contains("1 landed at HEAD"),
+        "the entry was not read through the landed-at-HEAD arm, so this phase \
+         proves nothing about the check that needs no hook: {said}"
+    );
+
+    // Phase 3b — the report moves in the WORKING TREE and is not committed. The
+    // landed entry is read against the report AS THAT COMMIT LEFT IT, so an
+    // uncommitted edit cannot retroactively make a finished round wrong. Without
+    // this phase the whole test passes just as well against a check that reads
+    // the working tree for every entry — measured: swapping the tip comparison
+    // to the working-tree report left all eight tests green until this ran.
     move_a_count(ws);
+    let out = run(ws, &["validate-workspace"]);
+    assert!(
+        out.status.success(),
+        "an entry that landed with a matching report was rejected because the \
+         working tree has since been edited: {}{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+
+    // Phase 4 — the same move, now committed. The entry is history, and history
+    // is supposed to disagree with a population that moved on since.
+    commit_all(ws, "a later round moves the population");
     let out = run(ws, &["validate-workspace"]);
     assert!(
         out.status.success(),
@@ -325,6 +360,45 @@ fn a_census_being_added_must_match_the_tree_and_a_committed_one_need_not() {
          moved after it: {}{}",
         String::from_utf8_lossy(&out.stdout),
         String::from_utf8_lossy(&out.stderr)
+    );
+}
+
+/// A ROUND THAT COMMITS THE ENTRY AND A DISAGREEING REPORT TOGETHER IS CAUGHT
+/// WITHOUT ANY HOOK.
+///
+/// This is the sequence Round 979 named as the window derivation alone cannot
+/// close — append, then move the population, then commit both — and the window
+/// it could not reach, because at commit time the pre-commit gate compared
+/// against the working tree and the two agreed there. Round 982's arm asks the
+/// TIP COMMIT instead, so the round is caught by whoever runs
+/// `validate-workspace` next, hook or no hook, which in a consumer's repository
+/// means CI.
+#[test]
+fn a_round_that_lands_a_disagreeing_report_is_caught_after_the_commit() {
+    let tmp = TempDir::new().unwrap();
+    let ws = tmp.path();
+    write_workspace(ws, true);
+    write_prose(ws);
+    git(ws, &["init", "--quiet"]);
+    commit_all(ws, "baseline");
+
+    assert!(append(ws, "Round 979", &["--record-census"])
+        .status
+        .success());
+    move_a_count(ws);
+    commit_all(ws, "the round, with the population moved after the append");
+
+    let out = run(ws, &["validate-workspace"]);
+    let said =
+        String::from_utf8_lossy(&out.stdout).into_owned() + &String::from_utf8_lossy(&out.stderr);
+    assert!(
+        !out.status.success(),
+        "the entry and a report it does not match landed in one commit and \
+         nothing said so: {said}"
+    );
+    assert!(
+        said.contains("Round 979") && said.contains("transition rules"),
+        "the rejection names neither the entry nor the axis: {said}"
     );
 }
 
