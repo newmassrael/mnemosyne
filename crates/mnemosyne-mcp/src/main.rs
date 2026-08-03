@@ -2572,7 +2572,7 @@ impl MnemosyneServer {
     }
 
     #[tool(
-        description = "Propose-verdict (R588, DRY RUN): the generate-gate-repair loop's atomic gate. Reads a candidate import-facts manifest from manifest_path, applies it to a THROWAWAY in-memory clone of the store, runs the shape invariants + the continuity gate, and returns verdict=commit|rollback plus actionable violations (each carries rule + locus {facts,field,frame,branch,at} + expected + repair_hint + message). The real store is NEVER written — on commit, apply for real via the import-facts CLI. Deterministic, AI out of the gate. Fail-loud on an unreadable/unparseable manifest."
+        description = "Propose-verdict (R588, DRY RUN): the generate-gate-repair loop's atomic gate. Reads a candidate import-facts manifest from manifest_path, applies it to a THROWAWAY in-memory clone of the store, runs the shape invariants + the continuity gate, and returns verdict=commit|rollback plus actionable violations. THE TWO CAN DISAGREE: `verdict` reflects only violations your workspace's `[continuity] severity` makes GATING, so a workspace that declares none gets `commit` with `violation_count` non-zero beside it (Round 1004). Read `violations`, not `verdict` alone (each carries rule + locus {facts,field,frame,branch,at} + expected + repair_hint + message). The real store is NEVER written — on commit, apply for real via the import-facts CLI. Deterministic, AI out of the gate. Fail-loud on an unreadable/unparseable manifest."
     )]
     async fn propose_verdict(&self, args: Parameters<ProposeVerdictArgs>) -> CallToolResult {
         // Round 1001 — an agent's manifest path goes through the same wire
@@ -4331,21 +4331,48 @@ mod tests {
             .expect("args parse")
         };
 
-        let refused = answer_text(
-            &server
-                .propose_verdict(Parameters(verdict_on(stepping, "stepping.json")))
-                .await,
-        );
-        assert!(
-            refused.contains("rollback"),
-            "a beat that walks where no way runs came back without `rollback`, \
-             so an agent acting on this verdict would write it for real: {refused}"
-        );
-        assert!(
-            refused.contains("moves-follow-the-map"),
-            "the verdict refuses without naming the rule that refused, which is \
-             what an agent repairs against: {refused}"
-        );
+        // A SECOND FAMILY REACHING THE SAME FIELD (Round 1005). Round 1004
+        // closed by naming what one refusing rule does not cover — "the
+        // structural invariants ... reach the same verdict field by other
+        // paths" — and called the fix "a table away". This is the table: the
+        // rule that names the refusal is the one the agent repairs against, so
+        // each row asserts its own name and not just the word `rollback`.
+        let unregistered = serde_json::json!({
+            "facts": [{
+                "fact_id": "f-ghost", "frame": "ground-truth", "claim": "someone unregistered",
+                "canon_from": "sc-02", "evidence": ["sc-02"], "entities": ["e-nobody"],
+            }],
+        });
+        for (what, manifest, name, rule) in [
+            (
+                "a beat that walks where no way runs",
+                stepping,
+                "stepping.json",
+                "moves-follow-the-map",
+            ),
+            (
+                "a beat naming an entity the registry never registered",
+                unregistered,
+                "unregistered.json",
+                "e-nobody",
+            ),
+        ] {
+            let refused = answer_text(
+                &server
+                    .propose_verdict(Parameters(verdict_on(manifest, name)))
+                    .await,
+            );
+            assert!(
+                refused.contains("rollback"),
+                "{what} came back without `rollback`, so an agent acting on this \
+                 verdict would write it for real: {refused}"
+            );
+            assert!(
+                refused.contains(rule),
+                "{what} refuses without naming `{rule}`, which is what an agent \
+                 repairs against: {refused}"
+            );
+        }
 
         let accepted = answer_text(
             &server

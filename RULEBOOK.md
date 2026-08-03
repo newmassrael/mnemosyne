@@ -69,6 +69,16 @@ until a gate.
   clean; commit per `COMMIT_FORMAT.md` (no `Co-Authored-By`; ≤ 72-byte lines;
   1–3 contiguous bullets; English); update the RESUME memory + the topic memory
   + `MEMORY.md`; update the scratch design-doc section.
+- **Carry test (R1005)** — before appending, read each carry bullet and answer:
+  *could I do this now?* If the bullet is concrete enough to describe the work —
+  "a manifest whose last row is invalid", "the shape is a table away", "the type
+  is now there for them" — then it is not a limit, it is undone work, and the
+  round is not finished. Rounds 993, 996, 1000, 1001 and 1004 each shipped a
+  carry that the NEXT round could close by reading it, five times in one
+  session; the phrasings that gave it away were "a later round could", "the
+  failure is loud so it is not a defect", and a test written out in prose.
+  A carry that survives this test says WHAT THE WORLD DOES NOT ALLOW, not what
+  was not attempted.
 - **Bar** — textbook (cost no object) is the owner standard. A hack, a smell, or
   a silent-fail is a defect, not an acceptable carry.
 

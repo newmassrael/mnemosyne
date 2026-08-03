@@ -532,6 +532,94 @@
         "33 READ-SIDE ARGUMENTS REMAIN in the Round 986 accounting, unchanged by this round."
       ]
     },
+    "Round 1005": {
+      "decision_summary": "R1005 (DEBT) — the tenth audit, and this time the finding is the audits themselves. Round 1004's two carries were both work described in prose, which makes five rounds in one session: Round 993 wrote out an atomicity test and did not write it, Round 996 said \"the second one is a copy with a different manifest\", Round 1000 said \"the type is now there for them\", Round 1001 wrote a verdict test in a sentence, Round 1004 said \"the shape is a table away\" and \"a question this round did not take\". Every one was closed by the NEXT round simply reading it. STAR SO THE ROUND CHECKLIST GAINS A CARRY TEST, because a rule that lives only in a lesson is the thing this repository already knows does not hold. Before appending: read each carry bullet and ask whether it could be done NOW. If the bullet is concrete enough to describe the work, it is not a limit — it is undone work, and the round is not finished. A carry that survives says what the WORLD does not allow, not what was not attempted. The tells are recorded with it: \"a later round could\", \"the failure is loud so it is not a defect\", and a test written out in prose. STAR THE TWO CARRIES ARE CLOSED IN THE SAME BREATH. `propose_verdict`'s verdict is now asserted over a TABLE of rule families rather than one: a continuity rule that refuses a step the map forbids, and a structural invariant that refuses a fact naming an entity the registry never registered. Each row asserts the NAME the refusal carries, because that name is what an agent repairs against, and the second row was checked to fire on its own with the first removed. STAR AND THE TOOL'S DESCRIPTION NO LONGER PROMISES SOMETHING IT DOES NOT MEAN. It said \"returns verdict=commit|rollback plus actionable violations\" and stopped there, while Round 1004 measured that the two can disagree: on a workspace declaring no `[continuity] severity`, a refused candidate comes back `commit` with the violation listed beside it. The description now says so, and says to read `violations` rather than `verdict` alone. That is the surface an agent decides from, and it was the half of Round 1004's finding that was mine to fix rather than to pin.",
+      "changes_bullets": [
+        "`RULEBOOK.md` — a CARRY TEST in the per-round checklist: before appending, each carry bullet must answer \"could I do this now?\", and a bullet concrete enough to describe the work is undone work rather than a limit. The five rounds it comes from are named with it, as are the phrasings that gave each away.",
+        "`mnemosyne-mcp` — `propose_verdict_says_rollback_with_the_rule_and_commit_without` asserts over a table of rule families: the continuity rule that refuses a forbidden step, and the structural invariant that refuses an unregistered entity. Each row names the rule the refusal must carry.",
+        "Same file — the `propose_verdict` description says the verdict and the violations can disagree, why (`[continuity] severity` decides what gates), and that an agent should read `violations` rather than `verdict` alone."
+      ],
+      "verification_bullets": [
+        "STAR THE SECOND TABLE ROW WAS CHECKED TO FIRE ON ITS OWN: with the first row deleted and the verdict forced to `commit`, the test still fails. A row that only ever fails behind another row is a decoration, which is the rule Round 998 set when it deleted six cases.",
+        "THE TABLE'S ROWS ASSERT DIFFERENT NAMES, not just `rollback` twice — `moves-follow-the-map` for the continuity rule and the unregistered entity id for the structural one — so a wire that answered `rollback` for everything would fail both.",
+        "1592 workspace tests pass, 0 failed, `--no-fail-fast`; clippy `-D warnings` and `cargo fmt --check` clean; `validate-workspace` T1 orphan 0 and T3 reject 0.",
+        "THE FIVE ROUNDS THE CARRY TEST COMES FROM WERE READ BACK, not remembered: Rounds 993, 996, 1000, 1001 and 1004 each carry a bullet that the following round closed by reading it, and each is verified present with `query --changelog-entry`.",
+        "Citation hygiene (R255): Rounds 993, 996, 998, 1000, 1001 and 1004 verified present with `query --changelog-entry` and Round 1005 verified absent before this entry was appended."
+      ],
+      "impact_refs": [
+        "atomic-store-mutate-api"
+      ],
+      "carry_forward_bullets": [
+        "THE CARRY TEST IS A PROCEDURE AND NOTHING ENFORCES IT. Round 976 measured that a word-list gate over ledger prose has stable recall and unstable precision and refused to build one; the tells recorded here (\"a later round could\", a test written in prose) are exactly such a word list, so they are guidance in the checklist rather than a gate. The honest reopening condition is an instrument that does not decide from a word list — the same one Round 983 named and did not find.",
+        "THE VERDICT TABLE HAS TWO ROWS AND THE VERB HAS MORE FAMILIES: interval rules and the disclosure gates reach the same field by paths neither row travels. Adding a row is now a line, which is what \"a table away\" should have meant.",
+        "33 READ-SIDE ARGUMENTS REMAIN in the Round 986 accounting, unchanged."
+      ],
+      "population_census": [
+        {
+          "axis": "transition rules by `undirected`",
+          "left_label": "undirected",
+          "left": 10,
+          "right_label": "directed",
+          "right": 27
+        },
+        {
+          "axis": "map corpora by leg-kind declaration",
+          "left_label": "omitted",
+          "left": 6,
+          "right_label": "declared",
+          "right": 24
+        },
+        {
+          "axis": "cost-carrying corpora by direction-dependent pricing",
+          "left_label": "prices a way by direction",
+          "left": 4,
+          "right_label": "prices no way by direction",
+          "right": 6
+        },
+        {
+          "axis": "run trees by authoring mode",
+          "left_label": "hand script",
+          "left": 10,
+          "right_label": "file-only",
+          "right": 239
+        },
+        {
+          "axis": "map corpora by declared boundary crossing",
+          "left_label": "declares an exit",
+          "left": 6,
+          "right_label": "declares none",
+          "right": 24
+        },
+        {
+          "axis": "authored submissions by map and telling",
+          "left_label": "carries both",
+          "left": 10,
+          "right_label": "carries one",
+          "right": 24
+        }
+      ],
+      "publishable_decision_summary": "R1005 (DEBT) — the tenth audit, and this time the finding is the audits themselves. Round 1004's two carries were both work described in prose, which makes five rounds in one session: Round 993 wrote out an atomicity test and did not write it, Round 996 said \"the second one is a copy with a different manifest\", Round 1000 said \"the type is now there for them\", Round 1001 wrote a verdict test in a sentence, Round 1004 said \"the shape is a table away\" and \"a question this round did not take\". Every one was closed by the NEXT round simply reading it. STAR SO THE ROUND CHECKLIST GAINS A CARRY TEST, because a rule that lives only in a lesson is the thing this repository already knows does not hold. Before appending: read each carry bullet and ask whether it could be done NOW. If the bullet is concrete enough to describe the work, it is not a limit — it is undone work, and the round is not finished. A carry that survives says what the WORLD does not allow, not what was not attempted. The tells are recorded with it: \"a later round could\", \"the failure is loud so it is not a defect\", and a test written out in prose. STAR THE TWO CARRIES ARE CLOSED IN THE SAME BREATH. `propose_verdict`'s verdict is now asserted over a TABLE of rule families rather than one: a continuity rule that refuses a step the map forbids, and a structural invariant that refuses a fact naming an entity the registry never registered. Each row asserts the NAME the refusal carries, because that name is what an agent repairs against, and the second row was checked to fire on its own with the first removed. STAR AND THE TOOL'S DESCRIPTION NO LONGER PROMISES SOMETHING IT DOES NOT MEAN. It said \"returns verdict=commit|rollback plus actionable violations\" and stopped there, while Round 1004 measured that the two can disagree: on a workspace declaring no `[continuity] severity`, a refused candidate comes back `commit` with the violation listed beside it. The description now says so, and says to read `violations` rather than `verdict` alone. That is the surface an agent decides from, and it was the half of Round 1004's finding that was mine to fix rather than to pin.",
+      "publishable_changes_bullets": [
+        "`RULEBOOK.md` — a CARRY TEST in the per-round checklist: before appending, each carry bullet must answer \"could I do this now?\", and a bullet concrete enough to describe the work is undone work rather than a limit. The five rounds it comes from are named with it, as are the phrasings that gave each away.",
+        "`mnemosyne-mcp` — `propose_verdict_says_rollback_with_the_rule_and_commit_without` asserts over a table of rule families: the continuity rule that refuses a forbidden step, and the structural invariant that refuses an unregistered entity. Each row names the rule the refusal must carry.",
+        "Same file — the `propose_verdict` description says the verdict and the violations can disagree, why (`[continuity] severity` decides what gates), and that an agent should read `violations` rather than `verdict` alone."
+      ],
+      "publishable_verification_bullets": [
+        "STAR THE SECOND TABLE ROW WAS CHECKED TO FIRE ON ITS OWN: with the first row deleted and the verdict forced to `commit`, the test still fails. A row that only ever fails behind another row is a decoration, which is the rule Round 998 set when it deleted six cases.",
+        "THE TABLE'S ROWS ASSERT DIFFERENT NAMES, not just `rollback` twice — `moves-follow-the-map` for the continuity rule and the unregistered entity id for the structural one — so a wire that answered `rollback` for everything would fail both.",
+        "1592 workspace tests pass, 0 failed, `--no-fail-fast`; clippy `-D warnings` and `cargo fmt --check` clean; `validate-workspace` T1 orphan 0 and T3 reject 0.",
+        "THE FIVE ROUNDS THE CARRY TEST COMES FROM WERE READ BACK, not remembered: Rounds 993, 996, 1000, 1001 and 1004 each carry a bullet that the following round closed by reading it, and each is verified present with `query --changelog-entry`.",
+        "Citation hygiene (R255): Rounds 993, 996, 998, 1000, 1001 and 1004 verified present with `query --changelog-entry` and Round 1005 verified absent before this entry was appended."
+      ],
+      "publishable_impact_refs": [
+        "atomic-store-mutate-api"
+      ],
+      "publishable_carry_forward_bullets": [
+        "THE CARRY TEST IS A PROCEDURE AND NOTHING ENFORCES IT. Round 976 measured that a word-list gate over ledger prose has stable recall and unstable precision and refused to build one; the tells recorded here (\"a later round could\", a test written in prose) are exactly such a word list, so they are guidance in the checklist rather than a gate. The honest reopening condition is an instrument that does not decide from a word list — the same one Round 983 named and did not find.",
+        "THE VERDICT TABLE HAS TWO ROWS AND THE VERB HAS MORE FAMILIES: interval rules and the disclosure gates reach the same field by paths neither row travels. Adding a row is now a line, which is what \"a table away\" should have meant.",
+        "33 READ-SIDE ARGUMENTS REMAIN in the Round 986 accounting, unchanged."
+      ]
+    },
     "Round 252": {
       "decision_summary": "Parser CommonMark conformance — recognize indented fenced code blocks (§98) and require whitespace after ATX hash sequence (§62)",
       "changes_bullets": [
