@@ -3272,6 +3272,7 @@ fn parse_workspace_arg() -> anyhow::Result<PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::collections::BTreeSet;
 
     /// R680 — the MCP-surface smoke the cost-audit found missing (#4). The R669
     /// blind spot was that a green unit suite NEVER verified a tool was actually
@@ -3280,10 +3281,15 @@ mod tests {
     /// test. This asserts the router routes the authoring tools an AI-first
     /// agent needs — the four added this session plus pre-existing anchors — so
     /// a tool that compiles but is never routed fails HERE, not in an adopter's
-    /// hands. A full stdio/JSON-RPC round-trip is deliberately not built: the
-    /// tools are thin `run_mutate` wrappers over CLI-exercised atomic paths, so
-    /// routing presence is the proportionate surface check (the blind spot was
-    /// presence, not protocol).
+    /// hands.
+    ///
+    /// ROUTING PRESENCE IS NOT THE WHOLE SURFACE CHECK, and this comment used
+    /// to say it was: "the tools are thin `run_mutate` wrappers over
+    /// CLI-exercised atomic paths". Round 981 found a wrapper whose argument
+    /// was never read, and Round 986 measured that neither the compiler nor any
+    /// test would have said so. Thin is not the same as faithful. What covers
+    /// the rest is [`every_optional_tool_argument_is_declared_exercised_or_not`]
+    /// — presence here, behaviour there.
     #[test]
     fn mcp_router_exposes_the_authoring_tools() {
         let router = MnemosyneServer::tool_router();
@@ -3414,6 +3420,329 @@ mod tests {
                 .population_census
                 .is_empty(),
             "an append that never asked for a census recorded one anyway"
+        );
+    }
+
+    /// Every (tool, optional argument) pair a differential test proves the
+    /// handler actually READS. Growing this list is the point; it may never
+    /// shrink without the round that shrinks it saying why.
+    const EXERCISED: &[(&str, &str)] = &[
+        ("append_changelog_entry", "record_census"), // R981
+        ("add_entity", "description"),               // R986
+    ];
+
+    /// Every (tool, optional argument) pair that NOTHING proves the handler
+    /// reads. Each line is a live instance of the Round 981 defect: an agent
+    /// sends the argument, the tool answers success, and whether it did
+    /// anything is unknown.
+    const UNEXERCISED: &[(&str, &str)] = &[
+        ("add_branch", "converges_from"),
+        ("add_branch", "description"),
+        ("add_branch", "forks_at"),
+        ("add_branch", "forks_from"),
+        ("add_confirmation_event", "code_sha256"),
+        ("add_confirmation_event", "file"),
+        ("add_confirmation_event", "spec_sha256"),
+        ("add_confirmation_event", "symbol"),
+        ("add_confirmation_event", "test_sha256"),
+        ("add_disclosure_plan", "description"),
+        ("add_entity", "kind"),
+        ("add_entity_kind", "description"),
+        ("add_entity_kind", "parents"),
+        ("add_fact", "branch"),
+        ("add_fact", "canon_to"),
+        ("add_fact", "conflicts_with"),
+        ("add_fact", "entities"),
+        ("add_fact", "evidence"),
+        ("add_fact", "payoff_expectation"),
+        ("add_fact", "pays_off"),
+        ("add_fact", "quote"),
+        ("add_fact", "supersedes_in_frame"),
+        ("add_fact", "typed"),
+        ("add_frame", "description"),
+        ("add_inventory_entry", "reason"),
+        ("add_inventory_entry", "section_ref"),
+        ("add_inventory_entry", "source"),
+        ("add_parameter", "description"),
+        ("add_predicate", "description"),
+        ("add_predicate", "object_entity_kind"),
+        ("add_predicate", "object_tokens"),
+        ("add_predicate", "subject_kind"),
+        ("add_section", "parent_section"),
+        ("add_section_binding", "symbol"),
+        ("add_unit", "description"),
+        ("amend_fact", "branch"),
+        ("amend_fact", "canon_to"),
+        ("amend_fact", "conflicts_with"),
+        ("amend_fact", "entities"),
+        ("amend_fact", "evidence"),
+        ("amend_fact", "payoff_expectation"),
+        ("amend_fact", "pays_off"),
+        ("amend_fact", "quote"),
+        ("amend_fact", "supersedes_in_frame"),
+        ("amend_fact", "typed"),
+        ("append_changelog_entry", "carry_forward_bullets"),
+        ("append_changelog_entry", "impact_refs"),
+        ("emit_publishable_override_ledger_draft", "kind"),
+        ("import_edge_proposals", "dry_run"),
+        ("import_facts", "branches"),
+        ("import_facts", "disclosure_plans"),
+        ("import_facts", "edge_costs"),
+        ("import_facts", "edge_guards"),
+        ("import_facts", "entities"),
+        ("import_facts", "entity_kinds"),
+        ("import_facts", "facts"),
+        ("import_facts", "frames"),
+        ("import_facts", "predicates"),
+        ("import_facts", "units"),
+        ("import_typing_proposals", "dry_run"),
+        ("list_changelog", "limit"),
+        ("propose_verdict", "order_path"),
+        ("propose_verdict", "rules_path"),
+        ("query_section", "include_changelog"),
+        ("query_section", "include_related"),
+        ("query_term", "case_insensitive"),
+        ("query_term", "fields"),
+        ("query_term", "regex"),
+        ("query_term", "scope"),
+        ("redact_term", "case_insensitive"),
+        ("redact_term", "dry_run"),
+        ("redact_term", "kind"),
+        ("redact_term", "regex"),
+        ("redact_term", "scope"),
+        ("remove_section_binding", "symbol"),
+        ("report_authoring_frontier", "order_path"),
+        ("report_authoring_frontier", "rules_path"),
+        ("report_authoring_frontier", "telling"),
+        ("report_edge_candidates", "order_path"),
+        ("report_fork_tree", "order_path"),
+        ("report_frame_view", "branch"),
+        ("report_frame_view", "entity"),
+        ("report_frame_view", "order_path"),
+        ("report_irony_intervals", "order_path"),
+        ("report_payoff_coverage", "order_path"),
+        ("report_payoff_substantiation", "order_path"),
+        ("report_playable_world", "order_path"),
+        ("report_playable_world", "world"),
+        ("report_playthrough_manuscript", "order_path"),
+        ("report_playthrough_manuscript", "reading_walk"),
+        ("report_playthrough_manuscript", "telling"),
+        ("report_playthrough_manuscript", "world"),
+        ("report_quest_graph", "order_path"),
+        ("report_quest_graph", "world"),
+        ("report_timeline_gaps", "order_path"),
+        ("report_timeline_gaps", "rules_path"),
+        ("report_transition_map", "rules_path"),
+        ("set_disclosure", "first_at"),
+        ("set_disclosure", "surface_object"),
+        ("set_disclosure", "surface_scene"),
+        ("set_disclosure_reveal_threshold", "threshold"),
+        ("set_edge_guard_threshold", "threshold"),
+        ("set_entity_kind_parents", "parents"),
+        ("set_inventory_section_ref", "clear"),
+        ("set_inventory_section_ref", "section_ref"),
+        ("set_inventory_status", "reason"),
+        ("set_predicate", "object_entity_kind"),
+        ("set_predicate", "object_tokens"),
+        ("set_predicate", "subject_kind"),
+        ("set_section_binding_kind", "symbol"),
+        ("set_section_decision_status", "resolving"),
+        ("set_section_decision_status", "superseding"),
+        ("set_section_parent_section", "parent_section"),
+        ("style_check", "doc"),
+        ("style_check", "severity"),
+        ("validate_continuity", "order_path"),
+        ("validate_continuity", "rules_path"),
+        ("validate_disclosure_leak", "order_path"),
+        ("validate_projection", "refresh"),
+        ("validate_render_fidelity", "order_path"),
+    ];
+
+    /// The optional arguments of every routed tool, taken from the ROUTER'S OWN
+    /// SCHEMA — the same bytes an agent is shown.
+    fn optional_arguments() -> Vec<(String, String)> {
+        let mut out = Vec::new();
+        for tool in MnemosyneServer::tool_router().list_all() {
+            let required: BTreeSet<&str> = tool
+                .input_schema
+                .get("required")
+                .and_then(|r| r.as_array())
+                .into_iter()
+                .flatten()
+                .filter_map(|v| v.as_str())
+                .collect();
+            for key in tool
+                .input_schema
+                .get("properties")
+                .and_then(|p| p.as_object())
+                .into_iter()
+                .flatten()
+                .map(|(k, _)| k)
+            {
+                if !required.contains(key.as_str()) {
+                    out.push((tool.name.to_string(), key.clone()));
+                }
+            }
+        }
+        out.sort();
+        out
+    }
+
+    /// NO AGENT-FACING OPTIONAL ARGUMENT IS UNACCOUNTED FOR, AND THE POPULATION
+    /// IS THE ROUTER'S RATHER THAN A LIST SOMEBODY TYPED.
+    ///
+    /// Round 981 found that `population_census` had two write paths and that the
+    /// second had never been executed — a source scan cannot see an argument
+    /// that deserializes and is then read into nothing. Round 986 measured how
+    /// wide that is and how much of it something else already catches. The
+    /// answer to the second half is NOTHING:
+    ///
+    /// - THE COMPILER DOES NOT CATCH IT. Dropping the read of one field while
+    ///   its siblings are still read leaves `cargo clippy -D warnings` at exit
+    ///   0. Removing `Debug` from the derive does not change that, because
+    ///   `Deserialize` constructs the field and rustc counts that as a use, so
+    ///   `dead_code` never fires. The compiler only speaks when the field was
+    ///   the handler's ONLY read, and then it complains about `args`.
+    /// - NO TEST CATCHES IT. With `query_term` stopped from reading
+    ///   `case_insensitive`, the whole suite stays green: an agent asking for a
+    ///   case-insensitive search gets a case-sensitive one, reported as success.
+    ///
+    /// So this is the accounting that makes the population impossible to lose.
+    /// A new tool, or a new optional argument on an old one, lands in neither
+    /// list and FAILS HERE — it cannot join the silent set by being added. The
+    /// two lists are printed on every run, because a check that reports only
+    /// violations reads exactly like one that has nothing to report (Round 854).
+    ///
+    /// It also refutes, in place, the reason the R680 router smoke gave for
+    /// stopping at presence: "the tools are thin `run_mutate` wrappers over
+    /// CLI-exercised atomic paths". Thin is not the same as faithful, and the
+    /// wire Round 981 found broken-by-construction was one of these.
+    #[test]
+    fn every_optional_tool_argument_is_declared_exercised_or_not() {
+        let population = optional_arguments();
+        assert!(
+            !population.is_empty(),
+            "the router exposes no optional argument at all, so this gate is \
+             reading nothing and its silence proves nothing"
+        );
+        assert!(
+            !EXERCISED.is_empty(),
+            "no pair is claimed exercised, so the accounting has no floor"
+        );
+
+        let declared: BTreeSet<(&str, &str)> =
+            EXERCISED.iter().chain(UNEXERCISED).copied().collect();
+        assert_eq!(
+            declared.len(),
+            EXERCISED.len() + UNEXERCISED.len(),
+            "a pair is declared twice, so one of the two lists is lying about it"
+        );
+
+        let live: BTreeSet<(&str, &str)> = population
+            .iter()
+            .map(|(t, a)| (t.as_str(), a.as_str()))
+            .collect();
+        let undeclared: Vec<&(&str, &str)> =
+            declared.iter().filter(|p| !live.contains(*p)).collect();
+        assert!(
+            undeclared.is_empty(),
+            "{} declared pair(s) are not optional arguments of any routed tool, \
+             so this accounting describes a surface that no longer exists: \
+             {undeclared:?}",
+            undeclared.len()
+        );
+
+        let unaccounted: Vec<&(&str, &str)> =
+            live.iter().filter(|p| !declared.contains(*p)).collect();
+        assert!(
+            unaccounted.is_empty(),
+            "{} of {} agent-facing optional argument(s) are in neither list. An \
+             argument that nothing proves the handler reads must be named as \
+             such, not left to be discovered by an agent whose call quietly did \
+             less than it asked for: {unaccounted:?}",
+            unaccounted.len(),
+            live.len()
+        );
+
+        println!(
+            "MCP optional arguments: {} exercised / {} unexercised, of {} on the router",
+            EXERCISED.len(),
+            UNEXERCISED.len(),
+            live.len()
+        );
+        for (tool, arg) in UNEXERCISED {
+            println!("  unexercised: {tool}.{arg}");
+        }
+    }
+
+    /// A workspace with an empty store, for driving a tool the way an agent
+    /// does.
+    fn agent_workspace() -> tempfile::TempDir {
+        let tmp = tempfile::TempDir::new().expect("tempdir");
+        std::fs::create_dir_all(tmp.path().join("docs/.atomic")).expect("atomic dir");
+        std::fs::write(tmp.path().join("mnemosyne.toml"), "[workspace]\n").expect("config");
+        std::fs::write(
+            tmp.path().join("docs/.atomic/workspace.atomic.json"),
+            format!(
+                "{{\"schema_version\":{},\"sections\":{{}},\"changelog_entries\":{{}}}}",
+                atomic::CURRENT_SCHEMA_VERSION
+            ),
+        )
+        .expect("store");
+        tmp
+    }
+
+    /// AN OPTIONAL ARGUMENT AN AGENT SENDS CHANGES WHAT LANDS IN THE STORE.
+    ///
+    /// The pattern every entry in `EXERCISED` has to follow, and the reason it
+    /// is DIFFERENTIAL rather than a single call: a tool that ignores the
+    /// argument still succeeds and still writes a record, so asserting on one
+    /// store proves only that the tool ran. Two workspaces, identical but for
+    /// the argument, must not end up with the same bytes.
+    ///
+    /// `add_entity.description` is the shape at its plainest — the argument is
+    /// authored prose, and a handler that drops it loses what the agent wrote
+    /// while telling the agent it was saved.
+    #[tokio::test]
+    async fn add_entity_description_reaches_the_store() {
+        let bytes = |with: bool| {
+            let tmp = agent_workspace();
+            let ws = tmp.path().to_path_buf();
+            let mut json = serde_json::json!({"entity_id": "e-her"});
+            if with {
+                json["description"] = serde_json::json!("the one who waits");
+            }
+            let args: AddEntityArgs =
+                serde_json::from_value(json).expect("the agent-facing shape must parse");
+            (ws, tmp, args)
+        };
+
+        let mut written = Vec::new();
+        for with in [false, true] {
+            let (ws, tmp, args) = bytes(with);
+            let server = MnemosyneServer::new(ws.clone()).expect("server");
+            let result = server.add_entity(Parameters(args)).await;
+            assert!(
+                result.is_error != Some(true),
+                "add_entity failed with description={with}: {:?}",
+                result.content
+            );
+            written.push(
+                std::fs::read_to_string(ws.join("docs/.atomic/workspace.atomic.json"))
+                    .expect("read the store"),
+            );
+            drop(tmp);
+        }
+
+        assert!(
+            written[1].contains("the one who waits"),
+            "the description an agent sent is nowhere in the store it wrote"
+        );
+        assert_ne!(
+            written[0], written[1],
+            "the store is byte-identical with and without `description`, so \
+             the handler does not read it and the agent's prose was dropped \
+             while the call reported success"
         );
     }
 

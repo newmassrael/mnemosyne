@@ -33671,6 +33671,108 @@
         "A SUBMISSION IS A FACTS MANIFEST, WHICH COUNTS A STAGE AND ITS FIRST SUBMISSION AS TWO. That is deliberate — both are artifacts an author handed in and the record holds both — but it means the map-and-telling axis is not a count of AUTHORS. The claim it refutes is about what was produced, so the shape fits; a claim about how many authors did it would need a different denominator and does not have one today.",
         "THE METER AXIS IS REFUSED RATHER THAN DEFERRED, and the resume condition is the failure of a named test rather than a line here. Round 941 already stated what would change it — an authored corpus that registers a meter — and that requires `FactsManifest` to grow the slot first. Nothing about this is waiting on effort."
       ]
+    },
+    "Round 986": {
+      "decision_summary": "R986 (MEASURE -> BUILD) — the agent-facing surface has 122 optional arguments, one of which anything proves the handler reads, and the reason nobody knew is that neither the compiler nor any test can say. Round 981 found that `population_census` had two write paths and that the second had never been executed, naming the failure a source scan cannot see: an argument that deserializes and is then read into nothing. It closed that one wire and left the shape of the rest unmeasured. This round measured it and built the accounting that makes it impossible to lose again. STAR THE COMPILER DOES NOT CATCH IT, PROVED RATHER THAN ASSUMED. Stopping one handler from reading one of its fields while the siblings are still read leaves `cargo clippy -D warnings` at exit 0. Removing `Debug` from the derive does not change that: `Deserialize` constructs the field and rustc counts construction as a use, so `dead_code` never fires. The compiler speaks only when the dropped field was the handler's ONLY read, and then it complains about the unused `args` binding rather than about the argument. STAR AND NO TEST CATCHES IT. With `query_term` stopped from reading `case_insensitive` the whole suite stays green — an agent asking for a case-insensitive search gets a case-sensitive one, reported as success, and the store or the answer it acts on is wrong with nothing anywhere saying so. That is the live form of the Round 981 defect and it is the reason this is a store-integrity question and not a tidiness one: the store is the agent's memory, and a mutation that silently does less than it was asked writes a wrong memory that reads as a right one. STAR THE POPULATION IS THE ROUTER'S OWN SCHEMA, NOT A LIST SOMEBODY TYPED, and that mattered immediately: reading the source for `#[serde(default)]` counts 88, while the schema an agent is actually shown carries 122, because an `Option` field is optional on the wire whether or not it carries the attribute. The gate walks `ToolRouter::list_all()` and takes every property absent from `required`, so the population cannot drift from what agents can send. STAR EVERY PAIR IS DECLARED EXERCISED OR NOT, AND NEITHER LIST MAY BE WRONG. A pair in neither list fails, so a new tool or a new optional argument cannot join the silent set by being added; a declared pair the router no longer exposes fails too, so the accounting cannot describe a surface that has gone. Both lists print on every run, because a check that reports only violations reads exactly like one with nothing to report (Round 854). Today that is 2 exercised against 120. STAR THE EXERCISED HALF IS DIFFERENTIAL BY CONSTRUCTION. A tool that ignores an argument still succeeds and still writes a record, so asserting on one store proves only that the tool ran; the pattern is two workspaces identical but for the argument, which must not end up with the same bytes. `add_entity.description` is that shape at its plainest — the argument is authored prose and a handler that drops it loses what the agent wrote while telling the agent it was saved. STAR AND THE COMMENT THAT ARGUED THIS WAS ENOUGH IS RE-POINTED IN THE SAME CHANGE. The Round 680 router smoke justified stopping at presence because \"the tools are thin `run_mutate` wrappers over CLI-exercised atomic paths\". Round 981 found a wrapper whose argument was never read. Thin is not the same as faithful, and a guard that goes on asserting a superseded reason is worse than no guard.",
+      "changes_bullets": [
+        "`crates/mnemosyne-mcp/src/main.rs` — `every_optional_tool_argument_is_declared_exercised_or_not`, the accounting. The population is walked out of `ToolRouter::list_all()`, so it is the schema an agent is shown rather than a list that can go stale; a pair in neither list fails, and so does a declared pair the router no longer exposes.",
+        "Same file — `EXERCISED` and `UNEXERCISED`, the two lists, printed on every run. `UNEXERCISED` is 120 live instances of the Round 981 defect, each named. It was generated from the gate's own output rather than typed, and every line is asserted to be a real optional argument of a routed tool.",
+        "Same file — `add_entity_description_reaches_the_store`, the differential pattern the exercised half has to follow: two workspaces identical but for the argument, which may not end up with the same store bytes. A single-store assertion would pass against a handler that ignores the argument entirely.",
+        "Same file — `agent_workspace`, the one fixture the behavioural tests build on, so filling the list in later rounds is a per-argument case rather than per-argument scaffolding.",
+        "Same file — the Round 680 router smoke's doc comment no longer argues that routing presence is the proportionate check because the tools are thin wrappers. It names what covers behaviour instead."
+      ],
+      "verification_bullets": [
+        "STAR THE TWO NEGATIVE FINDINGS WERE PROBED, NOT REASONED ABOUT. Dropping `query_term`'s read of `case_insensitive` while its siblings stayed read: `cargo clippy -D warnings` exit 0 and the whole suite green. Dropping `Debug` from the same args derive: still exit 0, so `dead_code` is masked by `Deserialize`'s construction and not by the `Debug` read. Dropping `validate_projection`'s only read: the compiler DOES speak, and it speaks about the unused `args` binding rather than the argument — which is why the single-field case is the only one it covers.",
+        "INJECTION I, the handler stops passing `description` through: `add_entity_description_reaches_the_store` failed with \"the description an agent sent is nowhere in the store it wrote\", and the other seven tests stayed green — which is the measurement of how invisible this class is without the differential case.",
+        "INJECTION G, one pair removed from `UNEXERCISED` to stand in for a newly added argument: the gate failed naming it, \"1 of 122 agent-facing optional argument(s) are in neither list\".",
+        "INJECTION H, a declared pair the router does not expose: the gate failed naming it, so the accounting cannot outlive the surface it describes.",
+        "THE POPULATION NUMBER IS THE PROGRAM'S AND IT CORRECTED MINE. A source scan for `#[serde(default)]` gave 88 across 48 tools; the router's schema gives 122, because an `Option` field is optional on the wire without the attribute. The gate ships the schema's answer.",
+        "NON-VACUITY IS ASSERTED IN BOTH DIRECTIONS: the population may not be empty, `EXERCISED` may not be empty, and no pair may appear in both lists.",
+        "1499 workspace tests pass (1497 before), 0 failed, `--no-fail-fast`; clippy `-D warnings` and `cargo fmt --check` clean; `validate-workspace` T1 orphan 0 and T3 reject 0; `validate-code-refs` violations 0.",
+        "Every injection was reverted by restoring a COPY taken before it, never by `git checkout`, and each was applied by a script asserting its anchor occurs exactly once.",
+        "Citation hygiene (R255): Rounds 680, 854 and 981 verified present with `query --changelog-entry`, and Round 986 verified absent, before this entry was appended and before the round references in the code landed."
+      ],
+      "impact_refs": [
+        "atomic-store-mutate-api"
+      ],
+      "carry_forward_bullets": [
+        "STAR 120 OF 122 AGENT-FACING OPTIONAL ARGUMENTS ARE STILL UNPROVEN, AND THAT IS THE WORK RATHER THAN A LIMIT. Each is one differential case of the shape this round shipped, and the fixture they share is built. The list is in the tree, named line by line and printed on every run, so the next round picks up where this one stopped without anyone having to rediscover the population. Nothing about it is waiting on a decision.",
+        "THE ACCOUNTING PROVES A HANDLER READS AN ARGUMENT, NOT THAT IT READS IT CORRECTLY. A differential case fails when the argument changes nothing; it passes when it changes anything. A handler that wired `description` into the wrong field would satisfy it. That is deliberate — the class measured here is the silent no-op — and a stronger oracle for a given tool is the CLI twin's answer, which is what Round 981 used and what a later round should reach for where the twin exists.",
+        "THE UNEXERCISED LIST IS NOT AN EXEMPTION AND MUST NOT BECOME ONE. It cannot grow silently, since an argument in neither list fails the gate, but nothing stops a round from moving a pair INTO it. If that ever happens it should be with the same sentence a deletion would need, because the difference between this list and an allow-list is only that this one is meant to empty.",
+        "WHAT WOULD KILL THE CLASS RATHER THAN COUNT IT is one declaration driving both the CLI and the MCP wire, so there is no second forwarding to drift. That is a large refactor across a hundred verbs and it is not proposed here; what makes it thinkable later is exactly this list, since a refactor needs the differential cases first to show it changed nothing."
+      ],
+      "population_census": [
+        {
+          "axis": "transition rules by `undirected`",
+          "left_label": "undirected",
+          "left": 10,
+          "right_label": "directed",
+          "right": 27
+        },
+        {
+          "axis": "map corpora by leg-kind declaration",
+          "left_label": "omitted",
+          "left": 6,
+          "right_label": "declared",
+          "right": 24
+        },
+        {
+          "axis": "cost-carrying corpora by direction-dependent pricing",
+          "left_label": "prices a way by direction",
+          "left": 4,
+          "right_label": "prices no way by direction",
+          "right": 6
+        },
+        {
+          "axis": "run trees by authoring mode",
+          "left_label": "hand script",
+          "left": 10,
+          "right_label": "file-only",
+          "right": 239
+        },
+        {
+          "axis": "map corpora by declared boundary crossing",
+          "left_label": "declares an exit",
+          "left": 6,
+          "right_label": "declares none",
+          "right": 24
+        },
+        {
+          "axis": "authored submissions by map and telling",
+          "left_label": "carries both",
+          "left": 10,
+          "right_label": "carries one",
+          "right": 24
+        }
+      ],
+      "publishable_decision_summary": "R986 (MEASURE -> BUILD) — the agent-facing surface has 122 optional arguments, one of which anything proves the handler reads, and the reason nobody knew is that neither the compiler nor any test can say. Round 981 found that `population_census` had two write paths and that the second had never been executed, naming the failure a source scan cannot see: an argument that deserializes and is then read into nothing. It closed that one wire and left the shape of the rest unmeasured. This round measured it and built the accounting that makes it impossible to lose again. STAR THE COMPILER DOES NOT CATCH IT, PROVED RATHER THAN ASSUMED. Stopping one handler from reading one of its fields while the siblings are still read leaves `cargo clippy -D warnings` at exit 0. Removing `Debug` from the derive does not change that: `Deserialize` constructs the field and rustc counts construction as a use, so `dead_code` never fires. The compiler speaks only when the dropped field was the handler's ONLY read, and then it complains about the unused `args` binding rather than about the argument. STAR AND NO TEST CATCHES IT. With `query_term` stopped from reading `case_insensitive` the whole suite stays green — an agent asking for a case-insensitive search gets a case-sensitive one, reported as success, and the store or the answer it acts on is wrong with nothing anywhere saying so. That is the live form of the Round 981 defect and it is the reason this is a store-integrity question and not a tidiness one: the store is the agent's memory, and a mutation that silently does less than it was asked writes a wrong memory that reads as a right one. STAR THE POPULATION IS THE ROUTER'S OWN SCHEMA, NOT A LIST SOMEBODY TYPED, and that mattered immediately: reading the source for `#[serde(default)]` counts 88, while the schema an agent is actually shown carries 122, because an `Option` field is optional on the wire whether or not it carries the attribute. The gate walks `ToolRouter::list_all()` and takes every property absent from `required`, so the population cannot drift from what agents can send. STAR EVERY PAIR IS DECLARED EXERCISED OR NOT, AND NEITHER LIST MAY BE WRONG. A pair in neither list fails, so a new tool or a new optional argument cannot join the silent set by being added; a declared pair the router no longer exposes fails too, so the accounting cannot describe a surface that has gone. Both lists print on every run, because a check that reports only violations reads exactly like one with nothing to report (Round 854). Today that is 2 exercised against 120. STAR THE EXERCISED HALF IS DIFFERENTIAL BY CONSTRUCTION. A tool that ignores an argument still succeeds and still writes a record, so asserting on one store proves only that the tool ran; the pattern is two workspaces identical but for the argument, which must not end up with the same bytes. `add_entity.description` is that shape at its plainest — the argument is authored prose and a handler that drops it loses what the agent wrote while telling the agent it was saved. STAR AND THE COMMENT THAT ARGUED THIS WAS ENOUGH IS RE-POINTED IN THE SAME CHANGE. The Round 680 router smoke justified stopping at presence because \"the tools are thin `run_mutate` wrappers over CLI-exercised atomic paths\". Round 981 found a wrapper whose argument was never read. Thin is not the same as faithful, and a guard that goes on asserting a superseded reason is worse than no guard.",
+      "publishable_changes_bullets": [
+        "`crates/mnemosyne-mcp/src/main.rs` — `every_optional_tool_argument_is_declared_exercised_or_not`, the accounting. The population is walked out of `ToolRouter::list_all()`, so it is the schema an agent is shown rather than a list that can go stale; a pair in neither list fails, and so does a declared pair the router no longer exposes.",
+        "Same file — `EXERCISED` and `UNEXERCISED`, the two lists, printed on every run. `UNEXERCISED` is 120 live instances of the Round 981 defect, each named. It was generated from the gate's own output rather than typed, and every line is asserted to be a real optional argument of a routed tool.",
+        "Same file — `add_entity_description_reaches_the_store`, the differential pattern the exercised half has to follow: two workspaces identical but for the argument, which may not end up with the same store bytes. A single-store assertion would pass against a handler that ignores the argument entirely.",
+        "Same file — `agent_workspace`, the one fixture the behavioural tests build on, so filling the list in later rounds is a per-argument case rather than per-argument scaffolding.",
+        "Same file — the Round 680 router smoke's doc comment no longer argues that routing presence is the proportionate check because the tools are thin wrappers. It names what covers behaviour instead."
+      ],
+      "publishable_verification_bullets": [
+        "STAR THE TWO NEGATIVE FINDINGS WERE PROBED, NOT REASONED ABOUT. Dropping `query_term`'s read of `case_insensitive` while its siblings stayed read: `cargo clippy -D warnings` exit 0 and the whole suite green. Dropping `Debug` from the same args derive: still exit 0, so `dead_code` is masked by `Deserialize`'s construction and not by the `Debug` read. Dropping `validate_projection`'s only read: the compiler DOES speak, and it speaks about the unused `args` binding rather than the argument — which is why the single-field case is the only one it covers.",
+        "INJECTION I, the handler stops passing `description` through: `add_entity_description_reaches_the_store` failed with \"the description an agent sent is nowhere in the store it wrote\", and the other seven tests stayed green — which is the measurement of how invisible this class is without the differential case.",
+        "INJECTION G, one pair removed from `UNEXERCISED` to stand in for a newly added argument: the gate failed naming it, \"1 of 122 agent-facing optional argument(s) are in neither list\".",
+        "INJECTION H, a declared pair the router does not expose: the gate failed naming it, so the accounting cannot outlive the surface it describes.",
+        "THE POPULATION NUMBER IS THE PROGRAM'S AND IT CORRECTED MINE. A source scan for `#[serde(default)]` gave 88 across 48 tools; the router's schema gives 122, because an `Option` field is optional on the wire without the attribute. The gate ships the schema's answer.",
+        "NON-VACUITY IS ASSERTED IN BOTH DIRECTIONS: the population may not be empty, `EXERCISED` may not be empty, and no pair may appear in both lists.",
+        "1499 workspace tests pass (1497 before), 0 failed, `--no-fail-fast`; clippy `-D warnings` and `cargo fmt --check` clean; `validate-workspace` T1 orphan 0 and T3 reject 0; `validate-code-refs` violations 0.",
+        "Every injection was reverted by restoring a COPY taken before it, never by `git checkout`, and each was applied by a script asserting its anchor occurs exactly once.",
+        "Citation hygiene (R255): Rounds 680, 854 and 981 verified present with `query --changelog-entry`, and Round 986 verified absent, before this entry was appended and before the round references in the code landed."
+      ],
+      "publishable_impact_refs": [
+        "atomic-store-mutate-api"
+      ],
+      "publishable_carry_forward_bullets": [
+        "STAR 120 OF 122 AGENT-FACING OPTIONAL ARGUMENTS ARE STILL UNPROVEN, AND THAT IS THE WORK RATHER THAN A LIMIT. Each is one differential case of the shape this round shipped, and the fixture they share is built. The list is in the tree, named line by line and printed on every run, so the next round picks up where this one stopped without anyone having to rediscover the population. Nothing about it is waiting on a decision.",
+        "THE ACCOUNTING PROVES A HANDLER READS AN ARGUMENT, NOT THAT IT READS IT CORRECTLY. A differential case fails when the argument changes nothing; it passes when it changes anything. A handler that wired `description` into the wrong field would satisfy it. That is deliberate — the class measured here is the silent no-op — and a stronger oracle for a given tool is the CLI twin's answer, which is what Round 981 used and what a later round should reach for where the twin exists.",
+        "THE UNEXERCISED LIST IS NOT AN EXEMPTION AND MUST NOT BECOME ONE. It cannot grow silently, since an argument in neither list fails the gate, but nothing stops a round from moving a pair INTO it. If that ever happens it should be with the same sentence a deletion would need, because the difference between this list and an allow-list is only that this one is meant to empty.",
+        "WHAT WOULD KILL THE CLASS RATHER THAN COUNT IT is one declaration driving both the CLI and the MCP wire, so there is no second forwarding to drift. That is a large refactor across a hundred verbs and it is not proposed here; what makes it thinkable later is exactly this list, since a refactor needs the differential cases first to show it changed nothing."
+      ]
     }
   },
   "inventory_entries": {},
