@@ -3456,13 +3456,9 @@ mod tests {
         ("add_confirmation_event", "symbol"),
         ("add_confirmation_event", "test_sha256"),
         ("add_fact", "branch"),
-        ("add_fact", "canon_to"),
         ("add_fact", "conflicts_with"),
-        ("add_fact", "entities"),
-        ("add_fact", "evidence"),
         ("add_fact", "payoff_expectation"),
         ("add_fact", "pays_off"),
-        ("add_fact", "quote"),
         ("add_fact", "supersedes_in_frame"),
         ("add_fact", "typed"),
         ("add_inventory_entry", "section_ref"),
@@ -3471,11 +3467,9 @@ mod tests {
         ("amend_fact", "branch"),
         ("amend_fact", "canon_to"),
         ("amend_fact", "conflicts_with"),
-        ("amend_fact", "entities"),
         ("amend_fact", "evidence"),
         ("amend_fact", "payoff_expectation"),
         ("amend_fact", "pays_off"),
-        ("amend_fact", "quote"),
         ("amend_fact", "supersedes_in_frame"),
         ("amend_fact", "typed"),
         ("emit_publishable_override_ledger_draft", "kind"),
@@ -3838,6 +3832,42 @@ mod tests {
             [append_changelog_entry(AppendChangelogEntryArgs) {"entry_id": "Round 2", "decision_summary": "the second", "changes_bullets": ["a change"], "verification_bullets": ["a check"]}]
             list_changelog(ListChangelogArgs) {}
             ."limit" = 1 seen "Round 1" in output;
+        add_fact_quote_reaches_the_store:
+            [add_frame(AddFrameArgs) {"frame_id": "ground-truth"}]
+            [add_section(AddSectionArgs) {"section_id": "sc-01", "parent_doc": "spec", "title": "scene one"}]
+            add_fact(atomic::FactImport) {"fact_id": "f-1", "frame": "ground-truth", "claim": "she waits", "canon_from": "sc-01", "evidence": ["sc-01"]}
+            ."quote" = "she waits by the door" seen "she waits by the door" in store;
+        add_fact_evidence_reaches_the_store:
+            [add_frame(AddFrameArgs) {"frame_id": "ground-truth"}]
+            [add_section(AddSectionArgs) {"section_id": "sc-01", "parent_doc": "spec", "title": "scene one"}]
+            [add_section(AddSectionArgs) {"section_id": "sc-02", "parent_doc": "spec", "title": "scene two"}]
+            add_fact(atomic::FactImport) {"fact_id": "f-1", "frame": "ground-truth", "claim": "she waits", "canon_from": "sc-01", "evidence": ["sc-01"]}
+            ."evidence" = ["sc-01", "sc-02"] seen "sc-02" in store;
+        add_fact_entities_reaches_the_store:
+            [add_frame(AddFrameArgs) {"frame_id": "ground-truth"}]
+            [add_section(AddSectionArgs) {"section_id": "sc-01", "parent_doc": "spec", "title": "scene one"}]
+            [add_entity(AddEntityArgs) {"entity_id": "e-her"}]
+            add_fact(atomic::FactImport) {"fact_id": "f-1", "frame": "ground-truth", "claim": "she waits", "canon_from": "sc-01", "evidence": ["sc-01"]}
+            ."entities" = ["e-her"] seen "e-her" in store;
+        add_fact_canon_to_reaches_the_store:
+            [add_frame(AddFrameArgs) {"frame_id": "ground-truth"}]
+            [add_section(AddSectionArgs) {"section_id": "sc-01", "parent_doc": "spec", "title": "scene one"}]
+            [add_section(AddSectionArgs) {"section_id": "sc-02", "parent_doc": "spec", "title": "scene two"}]
+            add_fact(atomic::FactImport) {"fact_id": "f-1", "frame": "ground-truth", "claim": "she waits", "canon_from": "sc-01", "evidence": ["sc-01"]}
+            ."canon_to" = "sc-02" seen "sc-02" in store;
+        amend_fact_quote_reaches_the_store:
+            [add_frame(AddFrameArgs) {"frame_id": "ground-truth"}]
+            [add_section(AddSectionArgs) {"section_id": "sc-01", "parent_doc": "spec", "title": "scene one"}]
+            [add_fact(atomic::FactImport) {"fact_id": "f-1", "frame": "ground-truth", "claim": "she waits", "canon_from": "sc-01", "evidence": ["sc-01"]}]
+            amend_fact(AmendFactArgs) {"fact_id": "f-1", "frame": "ground-truth", "claim": "she waits still", "canon_from": "sc-01", "evidence": ["sc-01"], "reason": "revised"}
+            ."quote" = "she waits by the door" seen "she waits by the door" in store;
+        amend_fact_entities_reaches_the_store:
+            [add_frame(AddFrameArgs) {"frame_id": "ground-truth"}]
+            [add_section(AddSectionArgs) {"section_id": "sc-01", "parent_doc": "spec", "title": "scene one"}]
+            [add_entity(AddEntityArgs) {"entity_id": "e-her"}]
+            [add_fact(atomic::FactImport) {"fact_id": "f-1", "frame": "ground-truth", "claim": "she waits", "canon_from": "sc-01", "evidence": ["sc-01"]}]
+            amend_fact(AmendFactArgs) {"fact_id": "f-1", "frame": "ground-truth", "claim": "she waits still", "canon_from": "sc-01", "evidence": ["sc-01"], "reason": "revised"}
+            ."entities" = ["e-her"] seen "e-her" in store;
         add_entity_description_reaches_the_store:
             add_entity(AddEntityArgs) {"entity_id": "e-her"}
             ."description" = "the one who waits" seen "the one who waits" in store;

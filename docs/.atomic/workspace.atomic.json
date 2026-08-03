@@ -34057,6 +34057,90 @@
         "AN OUTPUT ORACLE IS WEAKER THAN A STORE ORACLE IN ONE WAY WORTH SAYING: a read tool that took the argument and used it wrongly still changes its answer, so the case passes. The store side has the same limit at one remove. Where a CLI twin exists its answer is the exact oracle, which is what Round 981's bespoke case uses and what any argument too coarse for a count should move to.",
         "THE ORACLE IS DECLARED PER CASE AND NOTHING CHECKS IT AGAINST THE TOOL. Writing `in store` for a read tool yields two identical observations and a failure that reads as a defect in the handler rather than in the case. That is loud rather than silent, so it is not carried as a risk, but a later round could derive the oracle from whether the handler mutates instead of taking the author's word."
       ]
+    },
+    "Round 990": {
+      "decision_summary": "R990 (BUILD) — the fact verbs are where an agent writes what a world is, and none of their optional arguments had ever been proven to arrive; six now are, and writing them found the agent-facing schema telling an agent something the write path refuses. `add_fact` and `amend_fact` carry ten optional arguments each, a fifth of everything left, and they are the highest-consequence ones on the surface: what a fact quotes, which scenes evidence it, which entities it is about, where in the canon it stops. STAR THE SCHEMA SAYS `evidence` IS OPTIONAL AND THE WRITE PATH SAYS IT IS MANDATORY. Every fact case failed on its first run with \"fact `f-1`: evidence mandatory (>= 1 structure-section ref; a claim without provenance is unauditable)\" — which is the right rule and the wrong advertisement. An agent constructing a call from the tool's own schema, which is the only thing it has, will build one the store always rejects. That is not the class this arc is closing (an argument silently ignored) but its mirror: an argument the schema says may be omitted that never may be. It was found by writing a case rather than by reading either side, because neither side is wrong on its own. STAR THE CASES ARE THEREFORE WRITTEN AROUND A FACT THAT IS ALREADY VALID, and the `evidence` case moves from one section ref to two rather than from absent to present. That is the shape the count assertion was made for two rounds ago — what matters is that the value the case NAMES moved, not that the argument went from missing to supplied. STAR SIX ARGUMENTS ON THE TWO FACT VERBS ARE NOW PROVEN TO ARRIVE: quote, evidence, entities and canon_to on `add_fact`, quote and entities on `amend_fact`. The injection reads the way the harm would: with `add_fact` stopped from carrying the quote, \"`she waits by the door` occurs 0 time(s) without and 0 time(s) with\", and the other thirty-five tests stay green. The count is 30 exercised against 92.",
+      "changes_bullets": [
+        "`crates/mnemosyne-mcp/src/main.rs` — six cases on the fact verbs: `add_fact.quote`, `add_fact.evidence`, `add_fact.entities`, `add_fact.canon_to`, `amend_fact.quote`, `amend_fact.entities`. Each builds its world first through `given` calls (a frame, the sections its canon coordinates name, the entities it is about) and then differs by one argument.",
+        "Same file — every fact case's base carries `evidence`, because the write path requires it whatever the schema says. The `evidence` case therefore moves from one ref to two, which the count assertion reads as well as it reads absent-to-present."
+      ],
+      "verification_bullets": [
+        "STAR A MISMATCH BETWEEN THE AGENT-FACING SCHEMA AND THE WRITE PATH WAS FOUND BY WRITING THE CASE. `evidence` is optional in the schema the router shows and mandatory at the write path; four cases failed identically until every base carried it. An agent has only the schema to build from, so this is a call the store always rejects and nothing warns about. It is recorded rather than fixed here: the fix is a decision about which side moves, and this round is not the place to take it.",
+        "INJECTION O, `add_fact` stops carrying the quote: `add_fact_quote_reaches_the_store` failed with \"`she waits by the door` occurs 0 time(s) in the store add_fact produced WITHOUT `quote` and 0 time(s) with it\", and the other thirty-five tests stayed green.",
+        "THE TOOLS NAMED THEIR OWN CONSTRAINTS AND THE FIXTURES WERE CORRECTED TO THEM, never the assertions loosened — the same discipline the previous two rounds needed for `default_mode` and inventory status.",
+        "1527 workspace tests pass (1521 before), 0 failed, `--no-fail-fast`; clippy `-D warnings` and `cargo fmt --check` clean; `validate-workspace` T1 orphan 0 and T3 reject 0.",
+        "Citation hygiene (R255): Round 990 verified absent with `query --changelog-entry` before this entry was appended."
+      ],
+      "impact_refs": [
+        "atomic-store-mutate-api"
+      ],
+      "carry_forward_bullets": [
+        "THE SCHEMA-VERSUS-WRITE-PATH MISMATCH IS A CLASS AND ONLY ONE INSTANCE IS KNOWN. An argument the schema calls optional that the write path requires is discoverable the same way this one was — call each mutating tool with its required arguments only and read what it says — but a failure there is ambiguous, since a tool can also refuse for want of a prerequisite this arc supplies through `given`. Measuring it needs that ambiguity resolved first, and it is a different question from the one this arc is answering.",
+        "92 OF 122 REMAIN AND FOURTEEN OF THEM ARE THE REST OF THE TWO FACT VERBS — branch, supersedes_in_frame, conflicts_with, typed, payoff_expectation, pays_off — each wanting one more `given` than the six landed here. Nothing about them is blocked."
+      ],
+      "population_census": [
+        {
+          "axis": "transition rules by `undirected`",
+          "left_label": "undirected",
+          "left": 10,
+          "right_label": "directed",
+          "right": 27
+        },
+        {
+          "axis": "map corpora by leg-kind declaration",
+          "left_label": "omitted",
+          "left": 6,
+          "right_label": "declared",
+          "right": 24
+        },
+        {
+          "axis": "cost-carrying corpora by direction-dependent pricing",
+          "left_label": "prices a way by direction",
+          "left": 4,
+          "right_label": "prices no way by direction",
+          "right": 6
+        },
+        {
+          "axis": "run trees by authoring mode",
+          "left_label": "hand script",
+          "left": 10,
+          "right_label": "file-only",
+          "right": 239
+        },
+        {
+          "axis": "map corpora by declared boundary crossing",
+          "left_label": "declares an exit",
+          "left": 6,
+          "right_label": "declares none",
+          "right": 24
+        },
+        {
+          "axis": "authored submissions by map and telling",
+          "left_label": "carries both",
+          "left": 10,
+          "right_label": "carries one",
+          "right": 24
+        }
+      ],
+      "publishable_decision_summary": "R990 (BUILD) — the fact verbs are where an agent writes what a world is, and none of their optional arguments had ever been proven to arrive; six now are, and writing them found the agent-facing schema telling an agent something the write path refuses. `add_fact` and `amend_fact` carry ten optional arguments each, a fifth of everything left, and they are the highest-consequence ones on the surface: what a fact quotes, which scenes evidence it, which entities it is about, where in the canon it stops. STAR THE SCHEMA SAYS `evidence` IS OPTIONAL AND THE WRITE PATH SAYS IT IS MANDATORY. Every fact case failed on its first run with \"fact `f-1`: evidence mandatory (>= 1 structure-section ref; a claim without provenance is unauditable)\" — which is the right rule and the wrong advertisement. An agent constructing a call from the tool's own schema, which is the only thing it has, will build one the store always rejects. That is not the class this arc is closing (an argument silently ignored) but its mirror: an argument the schema says may be omitted that never may be. It was found by writing a case rather than by reading either side, because neither side is wrong on its own. STAR THE CASES ARE THEREFORE WRITTEN AROUND A FACT THAT IS ALREADY VALID, and the `evidence` case moves from one section ref to two rather than from absent to present. That is the shape the count assertion was made for two rounds ago — what matters is that the value the case NAMES moved, not that the argument went from missing to supplied. STAR SIX ARGUMENTS ON THE TWO FACT VERBS ARE NOW PROVEN TO ARRIVE: quote, evidence, entities and canon_to on `add_fact`, quote and entities on `amend_fact`. The injection reads the way the harm would: with `add_fact` stopped from carrying the quote, \"`she waits by the door` occurs 0 time(s) without and 0 time(s) with\", and the other thirty-five tests stay green. The count is 30 exercised against 92.",
+      "publishable_changes_bullets": [
+        "`crates/mnemosyne-mcp/src/main.rs` — six cases on the fact verbs: `add_fact.quote`, `add_fact.evidence`, `add_fact.entities`, `add_fact.canon_to`, `amend_fact.quote`, `amend_fact.entities`. Each builds its world first through `given` calls (a frame, the sections its canon coordinates name, the entities it is about) and then differs by one argument.",
+        "Same file — every fact case's base carries `evidence`, because the write path requires it whatever the schema says. The `evidence` case therefore moves from one ref to two, which the count assertion reads as well as it reads absent-to-present."
+      ],
+      "publishable_verification_bullets": [
+        "STAR A MISMATCH BETWEEN THE AGENT-FACING SCHEMA AND THE WRITE PATH WAS FOUND BY WRITING THE CASE. `evidence` is optional in the schema the router shows and mandatory at the write path; four cases failed identically until every base carried it. An agent has only the schema to build from, so this is a call the store always rejects and nothing warns about. It is recorded rather than fixed here: the fix is a decision about which side moves, and this round is not the place to take it.",
+        "INJECTION O, `add_fact` stops carrying the quote: `add_fact_quote_reaches_the_store` failed with \"`she waits by the door` occurs 0 time(s) in the store add_fact produced WITHOUT `quote` and 0 time(s) with it\", and the other thirty-five tests stayed green.",
+        "THE TOOLS NAMED THEIR OWN CONSTRAINTS AND THE FIXTURES WERE CORRECTED TO THEM, never the assertions loosened — the same discipline the previous two rounds needed for `default_mode` and inventory status.",
+        "1527 workspace tests pass (1521 before), 0 failed, `--no-fail-fast`; clippy `-D warnings` and `cargo fmt --check` clean; `validate-workspace` T1 orphan 0 and T3 reject 0.",
+        "Citation hygiene (R255): Round 990 verified absent with `query --changelog-entry` before this entry was appended."
+      ],
+      "publishable_impact_refs": [
+        "atomic-store-mutate-api"
+      ],
+      "publishable_carry_forward_bullets": [
+        "THE SCHEMA-VERSUS-WRITE-PATH MISMATCH IS A CLASS AND ONLY ONE INSTANCE IS KNOWN. An argument the schema calls optional that the write path requires is discoverable the same way this one was — call each mutating tool with its required arguments only and read what it says — but a failure there is ambiguous, since a tool can also refuse for want of a prerequisite this arc supplies through `given`. Measuring it needs that ambiguity resolved first, and it is a different question from the one this arc is answering.",
+        "92 OF 122 REMAIN AND FOURTEEN OF THEM ARE THE REST OF THE TWO FACT VERBS — branch, supersedes_in_frame, conflicts_with, typed, payoff_expectation, pays_off — each wanting one more `given` than the six landed here. Nothing about them is blocked."
+      ]
     }
   },
   "inventory_entries": {},
