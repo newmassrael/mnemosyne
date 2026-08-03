@@ -620,6 +620,96 @@
         "33 READ-SIDE ARGUMENTS REMAIN in the Round 986 accounting, unchanged."
       ]
     },
+    "Round 1006": {
+      "decision_summary": "R1006 (BUILD) — the manuscript verb's whole optional surface, four arguments in one round, and the reason it was one round rather than four is the diagnostic Round 1003 built. `report_playthrough_manuscript` is the narrative render — what a reader would actually be shown — so its arguments decide which world is told, through whose telling, in what order, and whether the telling follows the reading or the canon. STAR THREE OF THE FOUR NEEDLES WERE FOUND BY THE FAILURE MESSAGE ON THE FIRST TRY, and none by printing anything. `reading_walk`: \"without: `\\\"section\\\": \\\"sc-02\\\"` / with: nothing this side carries alone\" — the walk DROPS a section, so the needle is what it drops. `telling`: \"without: `\\\"mode\\\": \\\"state\\\"` / with: `\\\"mode\\\": \\\"withhold\\\"`\" — the needle is the mode the other telling brings. Round 998 wrote seven report cases and kept one, hand-printing outputs to find needles; this round wrote four and kept four. STAR THE SELECTOR PATTERN HELD AGAIN: `world` is watched by the world it DISPLACES, exactly as in Round 1003, and passed first time on the world that round built. Two verbs and now a third share one branched story; a new report argument costs a case, not a fixture. STAR ONE NEW FIXTURE WAS NEEDED AND IT IS A SECOND TELLING. `telling` cannot discriminate against a world with one, so the shared story gained `t-hidden`, whose default mode withholds — which is also the axis this project's disclosure layer exists for, so the world is now closer to what the north star actually authors. STAR THE COUNT IS 93 OF 122, and every remaining argument is on a report whose world has not been built yet.",
+      "changes_bullets": [
+        "`mnemosyne-mcp` — the shared branched story gains a second telling, `t-hidden`, whose default mode withholds. One argument could not be discriminated without it.",
+        "Same file — four cases completing `report_playthrough_manuscript`: `world` (watched by the world it displaces), `telling` (by the mode the other telling brings), `reading_walk` (by the section the walk drops) and `order_path` (by the scene the second order adds)."
+      ],
+      "verification_bullets": [
+        "STAR THE ROUND 1003 DIAGNOSTIC FOUND THREE OF FOUR NEEDLES ON THE FIRST FAILURE, with no output printed by hand. `reading_walk` and `telling` were each decided by one line of the message naming what moved.",
+        "INJECTION AL, the manuscript stops reading `reading_walk`: the case fails, and the two observations become identical — the shape that is indistinguishable without the case.",
+        "INJECTION AM, the manuscript stops reading `telling`: the case fails.",
+        "`world` AND `order_path` PASSED FIRST TIME on the world Round 1003 built, which is what a reusable world is for; three verbs now share it.",
+        "1596 workspace tests pass (1592 before), 0 failed, `--no-fail-fast`; clippy `-D warnings` and `cargo fmt --check` clean; `validate-workspace` T1 orphan 0 and T3 reject 0.",
+        "The push of Round 1004 landed green: validate and MSRV both success, annotations empty on both.",
+        "Citation hygiene (R255): Rounds 998 and 1003 verified present with `query --changelog-entry` and Round 1006 verified absent before this entry was appended.",
+        "CARRY TEST (Round 1005): each bullet below was read against \"could I do this now?\". The remaining arguments need worlds their reports can see, which is authoring rather than a sentence; the disclosure-plan gap is named as a world that does not exist yet rather than as a test not written."
+      ],
+      "impact_refs": [
+        "atomic-store-mutate-api"
+      ],
+      "carry_forward_bullets": [
+        "29 REMAIN AND EACH NEEDS A WORLD ITS REPORT CAN SEE. The shared story answers for three verbs because it has a map, a branch, two tellings and a character who moves; the reports still uncovered want things it does not have — payoffs to cover, irony intervals, edge candidates, a frontier to sit at, a second telling's leak to validate against. Each is a world to author.",
+        "THE MANUSCRIPT CASES WATCH WHAT CHANGED, NOT WHETHER IT IS RIGHT. `reading_walk` drops a section and the case asserts the drop; nothing asserts that the section it drops is the RIGHT one, which is a claim about the disclosure model rather than about the wire. Round 1004's verdict table is the shape that claim would take."
+      ],
+      "population_census": [
+        {
+          "axis": "transition rules by `undirected`",
+          "left_label": "undirected",
+          "left": 10,
+          "right_label": "directed",
+          "right": 27
+        },
+        {
+          "axis": "map corpora by leg-kind declaration",
+          "left_label": "omitted",
+          "left": 6,
+          "right_label": "declared",
+          "right": 24
+        },
+        {
+          "axis": "cost-carrying corpora by direction-dependent pricing",
+          "left_label": "prices a way by direction",
+          "left": 4,
+          "right_label": "prices no way by direction",
+          "right": 6
+        },
+        {
+          "axis": "run trees by authoring mode",
+          "left_label": "hand script",
+          "left": 10,
+          "right_label": "file-only",
+          "right": 239
+        },
+        {
+          "axis": "map corpora by declared boundary crossing",
+          "left_label": "declares an exit",
+          "left": 6,
+          "right_label": "declares none",
+          "right": 24
+        },
+        {
+          "axis": "authored submissions by map and telling",
+          "left_label": "carries both",
+          "left": 10,
+          "right_label": "carries one",
+          "right": 24
+        }
+      ],
+      "publishable_decision_summary": "R1006 (BUILD) — the manuscript verb's whole optional surface, four arguments in one round, and the reason it was one round rather than four is the diagnostic Round 1003 built. `report_playthrough_manuscript` is the narrative render — what a reader would actually be shown — so its arguments decide which world is told, through whose telling, in what order, and whether the telling follows the reading or the canon. STAR THREE OF THE FOUR NEEDLES WERE FOUND BY THE FAILURE MESSAGE ON THE FIRST TRY, and none by printing anything. `reading_walk`: \"without: `\\\"section\\\": \\\"sc-02\\\"` / with: nothing this side carries alone\" — the walk DROPS a section, so the needle is what it drops. `telling`: \"without: `\\\"mode\\\": \\\"state\\\"` / with: `\\\"mode\\\": \\\"withhold\\\"`\" — the needle is the mode the other telling brings. Round 998 wrote seven report cases and kept one, hand-printing outputs to find needles; this round wrote four and kept four. STAR THE SELECTOR PATTERN HELD AGAIN: `world` is watched by the world it DISPLACES, exactly as in Round 1003, and passed first time on the world that round built. Two verbs and now a third share one branched story; a new report argument costs a case, not a fixture. STAR ONE NEW FIXTURE WAS NEEDED AND IT IS A SECOND TELLING. `telling` cannot discriminate against a world with one, so the shared story gained `t-hidden`, whose default mode withholds — which is also the axis this project's disclosure layer exists for, so the world is now closer to what the north star actually authors. STAR THE COUNT IS 93 OF 122, and every remaining argument is on a report whose world has not been built yet.",
+      "publishable_changes_bullets": [
+        "`mnemosyne-mcp` — the shared branched story gains a second telling, `t-hidden`, whose default mode withholds. One argument could not be discriminated without it.",
+        "Same file — four cases completing `report_playthrough_manuscript`: `world` (watched by the world it displaces), `telling` (by the mode the other telling brings), `reading_walk` (by the section the walk drops) and `order_path` (by the scene the second order adds)."
+      ],
+      "publishable_verification_bullets": [
+        "STAR THE ROUND 1003 DIAGNOSTIC FOUND THREE OF FOUR NEEDLES ON THE FIRST FAILURE, with no output printed by hand. `reading_walk` and `telling` were each decided by one line of the message naming what moved.",
+        "INJECTION AL, the manuscript stops reading `reading_walk`: the case fails, and the two observations become identical — the shape that is indistinguishable without the case.",
+        "INJECTION AM, the manuscript stops reading `telling`: the case fails.",
+        "`world` AND `order_path` PASSED FIRST TIME on the world Round 1003 built, which is what a reusable world is for; three verbs now share it.",
+        "1596 workspace tests pass (1592 before), 0 failed, `--no-fail-fast`; clippy `-D warnings` and `cargo fmt --check` clean; `validate-workspace` T1 orphan 0 and T3 reject 0.",
+        "The push of Round 1004 landed green: validate and MSRV both success, annotations empty on both.",
+        "Citation hygiene (R255): Rounds 998 and 1003 verified present with `query --changelog-entry` and Round 1006 verified absent before this entry was appended.",
+        "CARRY TEST (Round 1005): each bullet below was read against \"could I do this now?\". The remaining arguments need worlds their reports can see, which is authoring rather than a sentence; the disclosure-plan gap is named as a world that does not exist yet rather than as a test not written."
+      ],
+      "publishable_impact_refs": [
+        "atomic-store-mutate-api"
+      ],
+      "publishable_carry_forward_bullets": [
+        "29 REMAIN AND EACH NEEDS A WORLD ITS REPORT CAN SEE. The shared story answers for three verbs because it has a map, a branch, two tellings and a character who moves; the reports still uncovered want things it does not have — payoffs to cover, irony intervals, edge candidates, a frontier to sit at, a second telling's leak to validate against. Each is a world to author.",
+        "THE MANUSCRIPT CASES WATCH WHAT CHANGED, NOT WHETHER IT IS RIGHT. `reading_walk` drops a section and the case asserts the drop; nothing asserts that the section it drops is the RIGHT one, which is a claim about the disclosure model rather than about the wire. Round 1004's verdict table is the shape that claim would take."
+      ]
+    },
     "Round 252": {
       "decision_summary": "Parser CommonMark conformance — recognize indented fenced code blocks (§98) and require whitespace after ATX hash sequence (§62)",
       "changes_bullets": [
