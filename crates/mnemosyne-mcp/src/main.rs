@@ -3720,6 +3720,9 @@ mod tests {
                 #[tokio::test]
                 async fn $test() {
                     let mut written = Vec::new();
+                    // Whether the tool itself wrote anything, observed rather
+                    // than taken from the case's word for it.
+                    let mut wrote = false;
                     for with in [false, true] {
                         let tmp = agent_workspace();
                         let mut json = serde_json::json!($base);
@@ -3747,6 +3750,9 @@ mod tests {
                                 ready.content
                             );
                         )*
+                        let store_path = tmp.path().join("docs/.atomic/workspace.atomic.json");
+                        let before_call =
+                            std::fs::read_to_string(&store_path).expect("read the store");
                         let result = server.$tool(Parameters(args)).await;
                         assert!(
                             result.is_error != Some(true),
@@ -3755,22 +3761,48 @@ mod tests {
                             $field,
                             result.content
                         );
+                        wrote |= std::fs::read_to_string(&store_path)
+                            .expect("read the store")
+                            != before_call;
                         // WHICH ORACLE. A mutating tool is judged by what it
                         // left in the store; a READ tool never touches the
                         // store, so the only thing an argument can change is
                         // the answer, and asking the store about it would
                         // compare two identical files forever.
                         written.push(match stringify!($oracle) {
-                            "store" => std::fs::read_to_string(
-                                tmp.path().join("docs/.atomic/workspace.atomic.json"),
-                            )
-                            .expect("read the store"),
+                            "store" => std::fs::read_to_string(&store_path)
+                                .expect("read the store"),
                             "output" => answer_text(&result),
                             other => panic!(
                                 "`{other}` is not an oracle this macro knows; \
                                  write `store` or `output`"
                             ),
                         });
+                    }
+                    // THE DECLARED ORACLE IS CHECKED AGAINST WHAT THE TOOL
+                    // ACTUALLY DID (Round 991). Round 989 made the oracle a word
+                    // the case author writes and left it unchecked, calling the
+                    // wrong choice "loud rather than silent" — but the noise it
+                    // makes is a failure that reads as a defect in the HANDLER
+                    // when it is a defect in the CASE, which is the most
+                    // expensive kind of wrong message. It is observable, so it
+                    // is observed.
+                    match stringify!($oracle) {
+                        "store" => assert!(
+                            wrote,
+                            "{} is declared `in store` and wrote nothing in \
+                             either arm, so this case compares two identical \
+                             files and can only ever fail",
+                            stringify!($tool)
+                        ),
+                        "output" => assert!(
+                            !wrote,
+                            "{} is declared `in output` and DOES write the \
+                             store, so the store is the stronger oracle and \
+                             this case is using the weaker one",
+                            stringify!($tool)
+                        ),
+                        other => panic!("`{other}` is not an oracle this macro knows"),
                     }
                     // MORE OCCURRENCES, NOT MERELY PRESENT. A ref-shaped
                     // argument names something the setup already registered, so

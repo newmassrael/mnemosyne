@@ -34141,6 +34141,92 @@
         "THE SCHEMA-VERSUS-WRITE-PATH MISMATCH IS A CLASS AND ONLY ONE INSTANCE IS KNOWN. An argument the schema calls optional that the write path requires is discoverable the same way this one was — call each mutating tool with its required arguments only and read what it says — but a failure there is ambiguous, since a tool can also refuse for want of a prerequisite this arc supplies through `given`. Measuring it needs that ambiguity resolved first, and it is a different question from the one this arc is answering.",
         "92 OF 122 REMAIN AND FOURTEEN OF THEM ARE THE REST OF THE TWO FACT VERBS — branch, supersedes_in_frame, conflicts_with, typed, payoff_expectation, pays_off — each wanting one more `given` than the six landed here. Nothing about them is blocked."
       ]
+    },
+    "Round 991": {
+      "decision_summary": "R991 (DEBT) — the owner asked for the fifth time whether every debt this session created is registered, and for the fifth time the answer was that one of them was not a registration at all. All twenty carry items from Rounds 985 through 990 were re-read against the rule this repository has been paying for since Round 979: a carry that names a LIMIT is usually a thing not yet done wearing a limit's clothes. Nineteen held. STAR THE ONE THAT DID NOT IS ROUND 989's THIRD CARRY, AND ITS OWN WORDING IS THE TELL: \"the oracle is declared per case and nothing checks it against the tool ... that is loud rather than silent, so it is not carried as a risk, but a later round could derive the oracle from whether the handler mutates\". A sentence that says a later round COULD do something is a sentence saying this round chose not to. STAR AND THE HEDGE WAS WRONG ON ITS OWN TERMS. \"Loud rather than silent\" was offered as the reason it was safe, but the noise a wrong oracle makes is a failure that reads as a defect in the HANDLER when it is a defect in the CASE — the most expensive kind of wrong message, because it sends the next reader to the wrong file. Declaring `in store` for a read tool compares two identical files and fails saying the argument changed nothing; declaring `in output` for a mutating tool quietly uses the weaker of two available oracles and nothing says so at all, which is not loud in any sense. STAR WHETHER A TOOL WRITES IS OBSERVABLE, SO IT IS NOW OBSERVED. The store is read immediately before and after the tool call in each arm, and the declared oracle is checked against what happened: `in store` demands the tool wrote in at least one arm, `in output` demands it wrote in neither. That is the same move as every other repair in this arc — the question was answerable by the program and was being answered by the author instead. STAR ALL THIRTY EXISTING CASES PASS THE NEW CHECK UNCHANGED, so the declaration has been right so far and the check is a floor rather than a repair of live wrongness; the injections are what make it evidence.",
+      "changes_bullets": [
+        "`crates/mnemosyne-mcp/src/main.rs` — the `exercised!` macro reads the store immediately before and after the tool call in each arm and records whether the tool wrote anything, which is what makes the oracle checkable instead of taken on the case author's word.",
+        "Same file — the declared oracle is asserted against that observation: `in store` requires the tool to have written in at least one arm, `in output` requires it to have written in neither. A wrong declaration now names itself instead of failing as though the handler were broken."
+      ],
+      "verification_bullets": [
+        "STAR THE AUDIT WAS OVER ALL TWENTY CARRY ITEMS OF ROUNDS 985 TO 990, not over memory. Nineteen are limits of the world or decisions already taken and are recorded as such; the twentieth said \"a later round could\", which is this repository's known phrasing for work deferred without a reason.",
+        "ALL THIRTY EXISTING CASES PASS THE NEW ASSERTION WITHOUT CHANGE, so no case was declaring the wrong oracle and this is a floor rather than a repair.",
+        "INJECTION P, a mutating case declared `in output`: \"add_entity is declared `in output` and DOES write the store, so the store is the stronger oracle and this case is using the weaker one\".",
+        "INJECTION Q, a read case declared `in store`: \"query_term is declared `in store` and wrote nothing in either arm, so this case compares two identical files and can only ever fail\". Both arms of the check fire, which is what a passing floor needs before it can be believed.",
+        "1527 workspace tests pass, 0 failed, `--no-fail-fast`; clippy `-D warnings` and `cargo fmt --check` clean; `validate-workspace` T1 orphan 0 and T3 reject 0.",
+        "Citation hygiene (R255): Round 989 verified present with `query --changelog-entry` and Round 991 verified absent before this entry was appended."
+      ],
+      "impact_refs": [
+        "atomic-store-mutate-api"
+      ],
+      "carry_forward_bullets": [
+        "THE OTHER NINETEEN CARRIES OF THIS SESSION WERE CLASSIFIED AND NONE IS UNDONE WORK. The limits: the exit walk's frame scoping cannot be tested until the record holds a corpus whose position facts cross frames; a submission is a facts manifest, so the map-and-telling axis is not a count of authors; a differential case proves an argument is read and not that it is read correctly; the meter axis has no door in `FactsManifest`. The decisions: `UNEXERCISED` may shrink but never grow silently, `EXERCISED_BESPOKE` stays short by giving the macro the missing ability rather than adding a line, and the CLI/MCP single-declaration refactor is named and deliberately not proposed. The remaining 92 arguments are work with nothing blocking them.",
+        "THE SCHEMA-VERSUS-WRITE-PATH CLASS IS THE ONE ITEM WHOSE REOPENING CONDITION IS NOW SHARPER THAN WHEN IT WAS WRITTEN. Round 990 deferred measuring it because a tool refusing a minimal call is ambiguous between \"the schema lies\" and \"a prerequisite is missing. Every case in this file supplies exactly those prerequisites, so the ambiguity disappears for any tool that has one: reopen when the table has a case per mutating tool, and probe from there."
+      ],
+      "population_census": [
+        {
+          "axis": "transition rules by `undirected`",
+          "left_label": "undirected",
+          "left": 10,
+          "right_label": "directed",
+          "right": 27
+        },
+        {
+          "axis": "map corpora by leg-kind declaration",
+          "left_label": "omitted",
+          "left": 6,
+          "right_label": "declared",
+          "right": 24
+        },
+        {
+          "axis": "cost-carrying corpora by direction-dependent pricing",
+          "left_label": "prices a way by direction",
+          "left": 4,
+          "right_label": "prices no way by direction",
+          "right": 6
+        },
+        {
+          "axis": "run trees by authoring mode",
+          "left_label": "hand script",
+          "left": 10,
+          "right_label": "file-only",
+          "right": 239
+        },
+        {
+          "axis": "map corpora by declared boundary crossing",
+          "left_label": "declares an exit",
+          "left": 6,
+          "right_label": "declares none",
+          "right": 24
+        },
+        {
+          "axis": "authored submissions by map and telling",
+          "left_label": "carries both",
+          "left": 10,
+          "right_label": "carries one",
+          "right": 24
+        }
+      ],
+      "publishable_decision_summary": "R991 (DEBT) — the owner asked for the fifth time whether every debt this session created is registered, and for the fifth time the answer was that one of them was not a registration at all. All twenty carry items from Rounds 985 through 990 were re-read against the rule this repository has been paying for since Round 979: a carry that names a LIMIT is usually a thing not yet done wearing a limit's clothes. Nineteen held. STAR THE ONE THAT DID NOT IS ROUND 989's THIRD CARRY, AND ITS OWN WORDING IS THE TELL: \"the oracle is declared per case and nothing checks it against the tool ... that is loud rather than silent, so it is not carried as a risk, but a later round could derive the oracle from whether the handler mutates\". A sentence that says a later round COULD do something is a sentence saying this round chose not to. STAR AND THE HEDGE WAS WRONG ON ITS OWN TERMS. \"Loud rather than silent\" was offered as the reason it was safe, but the noise a wrong oracle makes is a failure that reads as a defect in the HANDLER when it is a defect in the CASE — the most expensive kind of wrong message, because it sends the next reader to the wrong file. Declaring `in store` for a read tool compares two identical files and fails saying the argument changed nothing; declaring `in output` for a mutating tool quietly uses the weaker of two available oracles and nothing says so at all, which is not loud in any sense. STAR WHETHER A TOOL WRITES IS OBSERVABLE, SO IT IS NOW OBSERVED. The store is read immediately before and after the tool call in each arm, and the declared oracle is checked against what happened: `in store` demands the tool wrote in at least one arm, `in output` demands it wrote in neither. That is the same move as every other repair in this arc — the question was answerable by the program and was being answered by the author instead. STAR ALL THIRTY EXISTING CASES PASS THE NEW CHECK UNCHANGED, so the declaration has been right so far and the check is a floor rather than a repair of live wrongness; the injections are what make it evidence.",
+      "publishable_changes_bullets": [
+        "`crates/mnemosyne-mcp/src/main.rs` — the `exercised!` macro reads the store immediately before and after the tool call in each arm and records whether the tool wrote anything, which is what makes the oracle checkable instead of taken on the case author's word.",
+        "Same file — the declared oracle is asserted against that observation: `in store` requires the tool to have written in at least one arm, `in output` requires it to have written in neither. A wrong declaration now names itself instead of failing as though the handler were broken."
+      ],
+      "publishable_verification_bullets": [
+        "STAR THE AUDIT WAS OVER ALL TWENTY CARRY ITEMS OF ROUNDS 985 TO 990, not over memory. Nineteen are limits of the world or decisions already taken and are recorded as such; the twentieth said \"a later round could\", which is this repository's known phrasing for work deferred without a reason.",
+        "ALL THIRTY EXISTING CASES PASS THE NEW ASSERTION WITHOUT CHANGE, so no case was declaring the wrong oracle and this is a floor rather than a repair.",
+        "INJECTION P, a mutating case declared `in output`: \"add_entity is declared `in output` and DOES write the store, so the store is the stronger oracle and this case is using the weaker one\".",
+        "INJECTION Q, a read case declared `in store`: \"query_term is declared `in store` and wrote nothing in either arm, so this case compares two identical files and can only ever fail\". Both arms of the check fire, which is what a passing floor needs before it can be believed.",
+        "1527 workspace tests pass, 0 failed, `--no-fail-fast`; clippy `-D warnings` and `cargo fmt --check` clean; `validate-workspace` T1 orphan 0 and T3 reject 0.",
+        "Citation hygiene (R255): Round 989 verified present with `query --changelog-entry` and Round 991 verified absent before this entry was appended."
+      ],
+      "publishable_impact_refs": [
+        "atomic-store-mutate-api"
+      ],
+      "publishable_carry_forward_bullets": [
+        "THE OTHER NINETEEN CARRIES OF THIS SESSION WERE CLASSIFIED AND NONE IS UNDONE WORK. The limits: the exit walk's frame scoping cannot be tested until the record holds a corpus whose position facts cross frames; a submission is a facts manifest, so the map-and-telling axis is not a count of authors; a differential case proves an argument is read and not that it is read correctly; the meter axis has no door in `FactsManifest`. The decisions: `UNEXERCISED` may shrink but never grow silently, `EXERCISED_BESPOKE` stays short by giving the macro the missing ability rather than adding a line, and the CLI/MCP single-declaration refactor is named and deliberately not proposed. The remaining 92 arguments are work with nothing blocking them.",
+        "THE SCHEMA-VERSUS-WRITE-PATH CLASS IS THE ONE ITEM WHOSE REOPENING CONDITION IS NOW SHARPER THAN WHEN IT WAS WRITTEN. Round 990 deferred measuring it because a tool refusing a minimal call is ambiguous between \"the schema lies\" and \"a prerequisite is missing. Every case in this file supplies exactly those prerequisites, so the ambiguity disappears for any tool that has one: reopen when the table has a case per mutating tool, and probe from there."
+      ]
     }
   },
   "inventory_entries": {},
