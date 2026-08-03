@@ -3448,6 +3448,8 @@ mod census {
         let (kind_omitted, kind_declared) = map_leg_kind_census(root);
         let (priced_by_direction, priced_one_way_only) = edge_cost_direction_census(root);
         let (scripted, file_only) = authoring_mode_census();
+        let (leaves_a_container, never_leaves) = boundary_crossing_census(root);
+        let (both_halves, one_half) = map_and_telling_census(root);
         vec![
             PopulationAxis {
                 id: "transition rules by `undirected`",
@@ -3476,6 +3478,20 @@ mod census {
                 left: scripted,
                 right_label: "file-only",
                 right: file_only,
+            },
+            PopulationAxis {
+                id: "map corpora by declared boundary crossing",
+                left_label: "declares an exit",
+                left: leaves_a_container,
+                right_label: "declares none",
+                right: never_leaves,
+            },
+            PopulationAxis {
+                id: "authored submissions by map and telling",
+                left_label: "carries both",
+                left: both_halves,
+                right_label: "carries one",
+                right: one_half,
             },
         ]
     }
@@ -3677,6 +3693,235 @@ mod census {
         scripted.sort();
         file_only.sort();
         (scripted, file_only)
+    }
+
+    /// Recorded map corpora split by whether the author ever declared a step
+    /// that LEAVES a container — an ASCENT in Round 913's four-case
+    /// classification of a declared step.
+    ///
+    /// THERE IS NO RESOLVER TO BORROW FOR THIS QUESTION, which is why it is a
+    /// walk rather than a call into the gate. `continuity.rs` classifies a
+    /// declared step against this same containment relation, but it collapses
+    /// ascent and descent into ONE `Hierarchy` arm on purpose: Round 915 settled
+    /// that leaving crosses nothing and needs no parent-scope edge, so the gate
+    /// has no reason to tell the two directions apart and does not. Rounds 913
+    /// and 914 could therefore only answer "has anyone declared one" by looking,
+    /// and the answer they recorded — nobody ever has — is what this recounts.
+    ///
+    /// THE RELATION IS DECLARED, NOT GUESSED: a transition rule names both the
+    /// predicate that states a position and the predicate that states
+    /// containment, and this reads the ones that rule names.
+    fn boundary_crossing_census(root: &Path) -> (Vec<String>, Vec<String>) {
+        let corpus = tracked_corpus_json(root);
+        // The facts a corpus declares live beside the rules artifact rather
+        // than inside it, the way `map_leg_kind_census` reads its predicates.
+        let mut facts_by_dir: std::collections::HashMap<String, Vec<&serde_json::Value>> =
+            std::collections::HashMap::new();
+        for (path, value) in &corpus {
+            for fact in value
+                .get("facts")
+                .and_then(|f| f.as_array())
+                .into_iter()
+                .flatten()
+            {
+                facts_by_dir
+                    .entry(manifest_dir(path))
+                    .or_default()
+                    .push(fact);
+            }
+        }
+        let (mut leaves, mut never) = (Vec::new(), Vec::new());
+        for (path, value) in &corpus {
+            let Some(rules) = value.get("rules").and_then(|r| r.as_array()) else {
+                continue;
+            };
+            let facts = facts_by_dir
+                .get(&manifest_dir(path))
+                .cloned()
+                .unwrap_or_default();
+            for rule in rules {
+                if rule.get("class").and_then(|c| c.as_str()) != Some("transition") {
+                    continue;
+                }
+                // A rule that declares no containment has one flat scope, so no
+                // step under it can cross a boundary and it is not in scope for
+                // a claim about crossings.
+                let (Some(position), Some(containment)) = (
+                    rule.get("predicate").and_then(|p| p.as_str()),
+                    rule.get("containment").and_then(|c| c.as_str()),
+                ) else {
+                    continue;
+                };
+                if declares_an_ascent(&facts, position, containment) {
+                    leaves.push(path.clone());
+                } else {
+                    never.push(path.clone());
+                }
+            }
+        }
+        leaves.sort();
+        never.sort();
+        (leaves, never)
+    }
+
+    /// Whether any declared step under `position` moves a subject OUT of a
+    /// container declared by `containment`.
+    ///
+    /// A step is a position fact that SUPERSEDES another one in the same frame
+    /// — the author's own claim "this is one move" (Round 913) — and it is an
+    /// ascent exactly when the place it arrives at transitively contains the
+    /// place it left. Containment is read PER FRAME, matching the
+    /// per-(frame, world, point) snapshot the gate judges a step against.
+    ///
+    /// NOTHING HERE TESTS THE FRAME SCOPING, and that is measured rather than
+    /// overlooked. Both readings were run over the record before this one was
+    /// chosen and they return the same population; deleting the frame match
+    /// afterwards left all 34 tests in this file green. So the scoping is
+    /// chosen for agreement with the gate's semantics, and a later round must
+    /// not read it as a protected property — the record would have to hold a
+    /// corpus whose position facts cross frames before any test could tell the
+    /// two readings apart.
+    fn declares_an_ascent(facts: &[&serde_json::Value], position: &str, containment: &str) -> bool {
+        let typed = |f: &serde_json::Value, key: &str| -> Option<String> {
+            f.get("typed")
+                .and_then(|t| t.get(key))
+                .and_then(|v| v.as_str())
+                .map(str::to_string)
+        };
+        let object = |f: &serde_json::Value| -> Option<String> {
+            f.get("typed")
+                .and_then(|t| t.get("object"))
+                .and_then(|o| o.get("id"))
+                .and_then(|i| i.as_str())
+                .map(str::to_string)
+        };
+        let frame = |f: &serde_json::Value| -> String {
+            f.get("frame")
+                .and_then(|s| s.as_str())
+                .unwrap_or_default()
+                .to_string()
+        };
+
+        // (frame, child) -> the place that contains it in that frame.
+        let mut parent: std::collections::HashMap<(String, String), String> =
+            std::collections::HashMap::new();
+        // fact id -> (frame, place, the position fact this one supersedes)
+        let mut at: std::collections::HashMap<String, (String, String, Option<String>)> =
+            std::collections::HashMap::new();
+        for fact in facts {
+            let predicate = typed(fact, "predicate");
+            if predicate.as_deref() == Some(containment) {
+                if let (Some(container), Some(inside)) = (typed(fact, "subject"), object(fact)) {
+                    parent.insert((frame(fact), inside), container);
+                }
+            } else if predicate.as_deref() == Some(position) {
+                let (Some(id), Some(place)) =
+                    (fact.get("fact_id").and_then(|i| i.as_str()), object(fact))
+                else {
+                    continue;
+                };
+                at.insert(
+                    id.to_string(),
+                    (
+                        frame(fact),
+                        place,
+                        fact.get("supersedes_in_frame")
+                            .and_then(|s| s.as_str())
+                            .map(str::to_string),
+                    ),
+                );
+            }
+        }
+
+        at.values().any(|(frame_of, to, superseded)| {
+            let Some((prev_frame, from, _)) = superseded.as_ref().and_then(|p| at.get(p)) else {
+                return false;
+            };
+            // A restatement of one position at another grain is not a move, and
+            // a step is only a step within one frame.
+            if prev_frame != frame_of || from == to {
+                return false;
+            }
+            // Walking OUT: the arrival transitively contains the departure. The
+            // walk carries its own visited set, because a gate may not depend on
+            // another gate having rejected a containment cycle first (Round 913).
+            let mut seen: std::collections::HashSet<&str> = std::collections::HashSet::new();
+            let mut current = from.as_str();
+            while let Some(up) = parent.get(&(frame_of.clone(), current.to_string())) {
+                if up == to {
+                    return true;
+                }
+                if !seen.insert(up.as_str()) {
+                    return false;
+                }
+                current = up.as_str();
+            }
+            false
+        })
+    }
+
+    /// Authored submissions split by whether one of them carries BOTH halves of
+    /// the disclosed-place join: a map to place a character on, and a telling
+    /// that decides what a reader is told about where they are.
+    ///
+    /// THE POPULATION IS THE SUBMISSIONS THE RECORD HOLDS, and that is the
+    /// correction this walk carries rather than an incidental choice. Round 942
+    /// measured this cell over "all 90 stores on disk" and found it empty; the
+    /// record holds ONE store, so what that measured was the authoring machine's
+    /// population and not the record's — the defect Round 978 found in Round
+    /// 972's counts, in a second place. What the record does hold is the
+    /// SUBMISSIONS: a facts manifest is the artifact an author hands in, and the
+    /// map it was written against is the rules artifact beside it.
+    fn map_and_telling_census(root: &Path) -> (Vec<String>, Vec<String>) {
+        let corpus = tracked_corpus_json(root);
+        let mapped: std::collections::HashSet<String> = corpus
+            .iter()
+            .filter(|(_, value)| {
+                value
+                    .get("rules")
+                    .and_then(|r| r.as_array())
+                    .is_some_and(|rules| rules.iter().any(|r| r.get("adjacency").is_some()))
+            })
+            .map(|(path, _)| manifest_dir(path))
+            .collect();
+        let (mut both, mut one) = (Vec::new(), Vec::new());
+        for (path, value) in &corpus {
+            // A submission is a manifest that declares facts: the rules artifact
+            // beside it states the map, and neither is a submission on its own.
+            let Some(facts) = value.get("facts").and_then(|f| f.as_array()) else {
+                continue;
+            };
+            if facts.is_empty() {
+                continue;
+            }
+            match (
+                mapped.contains(&manifest_dir(path)),
+                declares_a_telling(value),
+            ) {
+                (true, true) => both.push(path.clone()),
+                (true, false) | (false, true) => one.push(path.clone()),
+                // Neither half: outside the population this axis is about.
+                (false, false) => {}
+            }
+        }
+        both.sort();
+        one.sort();
+        (both, one)
+    }
+
+    /// Whether an artifact registers a telling.
+    ///
+    /// The shape differs by artifact — a submission manifest carries a LIST of
+    /// plans and a store carries a MAP keyed by telling — so both are read.
+    /// An empty one of either is no telling at all, which is the distinction
+    /// Round 942 turned on: every store it found with a map carried
+    /// `disclosure_plans: {}`.
+    fn declares_a_telling(value: &serde_json::Value) -> bool {
+        match value.get("disclosure_plans") {
+            Some(serde_json::Value::Array(plans)) => !plans.is_empty(),
+            Some(serde_json::Value::Object(plans)) => !plans.is_empty(),
+            _ => false,
+        }
     }
 }
 
@@ -4332,6 +4577,214 @@ fn the_ledger_census_claims_this_tree_can_recount_are_recounted() {
          left bound here",
         omitted.len(),
         declared.len()
+    );
+
+    // "no corpus in this tree has ever declared an exit" — Rounds 913, 914 and
+    // 915. Round 976 filed this one as unfalsifiable by any program that
+    // exists, which was true of the tree as it stood and not of the question:
+    // the walk that settles it is thirty lines, and the corpora authored since
+    // have declared six.
+    let crossings = census::axis(&axes, "map corpora by declared boundary crossing");
+    let (leaves, never) = (&crossings.left, &crossings.right);
+    for (round, fragment) in [
+        (
+            913,
+            "no corpus in this tree has ever declared an exit either",
+        ),
+        (914, "No corpus in this tree has ever declared an exit"),
+        (915, "no corpus in this tree has ever declared an exit"),
+    ] {
+        ledger_unit(&prose, round, fragment);
+        assert!(
+            !leaves.is_empty(),
+            "Round {round} states `{fragment}` and the tree recounts {} map \
+             corpora declaring a step that leaves a container against {} \
+             declaring none. With none on record the sentence would be true \
+             again and this binding would be asserting nothing",
+            leaves.len(),
+            never.len()
+        );
+    }
+
+    // "The both-axes cell is zero" — Round 942, which designed an arm to fill
+    // that cell. The arm ran; the sentence stayed. It is bound here rather than
+    // treated as history because it is written in the present tense about the
+    // record, and Round 968 is the measured case of a later round taking such a
+    // sentence as its baseline.
+    let join = census::axis(&axes, "authored submissions by map and telling");
+    let (both, one_half) = (&join.left, &join.right);
+    let fragment = "The both-axes cell is zero";
+    ledger_unit(&prose, 942, fragment);
+    assert!(
+        !both.is_empty(),
+        "Round 942 states `{fragment}` and the tree recounts {} recorded \
+         submissions carrying both a map and a telling against {} carrying one",
+        both.len(),
+        one_half.len()
+    );
+}
+
+/// THE MEASUREMENT THAT REFUSED THE THIRD AXIS, KEPT AS THE CONDITION THAT
+/// WOULD REOPEN IT.
+///
+/// Round 976 listed three census claims the ledger shipped with nothing behind
+/// them and said each "names an axis a later round could give a program". Two
+/// of them turned out to be not merely walkable but already refuted, and this
+/// file now recounts both. The third — Round 941's "no authored corpus
+/// registers a meter" — is different in kind, and the difference is worth more
+/// than the axis would have been: an authored corpus CANNOT register one.
+/// `FactsManifest` is the whole of what a submission may declare, and the only
+/// door onto the parameter registry is the `add-parameter` primitive, which is
+/// an operator's call rather than an author's artifact.
+///
+/// A census on that axis would report zero out of every corpus on record and
+/// read as a finding about what authors chose, when it is a fact about the
+/// manifest schema. That is Round 854's rule — a zero over a population with no
+/// door is not a clean bill — in the exact form it would have shipped in.
+///
+/// SO THE AXIS IS REFUSED, AND THE REOPENING CONDITION IS THIS TEST RATHER THAN
+/// A SENTENCE IN A CARRY. It asserts the door is shut BY RUNNING THE WIRE, not
+/// by reading the struct: a manifest that declares a meter is imported through
+/// the real binary, and the store it produces registers none. Both halves of
+/// the non-vacuity are asserted with it — the manifest's FACTS do land, so the
+/// silence is about meters and not about a rejected import, and `add-parameter`
+/// does register one, so the zero belongs to the authoring path and not to the
+/// store. The day `FactsManifest` grows the slot, this fails; that is the day
+/// the census becomes worth building, and nothing else has to remember.
+#[test]
+fn no_authored_manifest_can_register_a_meter_which_is_why_that_axis_is_refused() {
+    let tmp = TempDir::new().expect("tempdir");
+    let ws = tmp.path();
+    std::fs::create_dir_all(ws.join("docs/.atomic")).expect("mkdir");
+    std::fs::write(ws.join("mnemosyne.toml"), "[workspace]\n").expect("config");
+    std::fs::write(
+        ws.join("docs/.atomic/workspace.atomic.json"),
+        serde_json::json!({
+            "schema_version": mnemosyne_atomic::CURRENT_SCHEMA_VERSION,
+            "sections": {},
+            "changelog_entries": {},
+        })
+        .to_string(),
+    )
+    .expect("seed");
+
+    std::fs::write(
+        ws.join("sections.json"),
+        serde_json::json!([{
+            "section_id": "sc-01", "parent_doc": "story", "title": "sc-01",
+            "coverage_expectation": "informational",
+        }])
+        .to_string(),
+    )
+    .expect("sections");
+    let sections = Command::new(env!("CARGO_BIN_EXE_mnemosyne-cli"))
+        .args(["import-sections", "--manifest", "sections.json"])
+        .current_dir(ws)
+        .output()
+        .expect("cli exec");
+    assert!(
+        sections.status.success(),
+        "seeding the canon coordinate failed: {}{}",
+        String::from_utf8_lossy(&sections.stdout),
+        String::from_utf8_lossy(&sections.stderr)
+    );
+
+    // A submission that tries every spelling an author might reach for. If any
+    // of them were a door, the registry below would not be empty.
+    std::fs::write(
+        ws.join("facts.json"),
+        serde_json::json!({
+            "frames": [{"frame_id": "ground-truth", "description": "what is so"}],
+            "entity_kinds": [
+                {"kind_id": "character", "description": "a person"},
+                {"kind_id": "place", "description": "anywhere a person can be"},
+            ],
+            "entities": [
+                {"entity_id": "e-her", "kind": "character", "description": "her"},
+                {"entity_id": "p-room", "kind": "place", "description": "the room"},
+            ],
+            "predicates": [{"predicate_id": "at", "subject_kind": "character",
+                            "object_kind": "entity", "object_entity_kind": "place"}],
+            "facts": [{
+                "fact_id": "f-1", "frame": "ground-truth", "claim": "she waits in the room",
+                "canon_from": "sc-01", "evidence": ["sc-01"],
+                "entities": ["e-her", "p-room"],
+                "typed": {"subject": "e-her", "predicate": "at",
+                          "object": {"kind": "entity", "id": "p-room"}},
+            }],
+            "parameters": {"affection": {"description": "how warmly she reads him"}},
+            "parameter_deltas": [{"fact": "f-1", "parameter": "affection", "delta": 1}],
+        })
+        .to_string(),
+    )
+    .expect("manifest");
+
+    let import = Command::new(env!("CARGO_BIN_EXE_mnemosyne-cli"))
+        .args(["import-facts", "--manifest", "facts.json"])
+        .current_dir(ws)
+        .output()
+        .expect("cli exec");
+    assert!(
+        import.status.success(),
+        "the submission was rejected outright, so its silence about meters \
+         proves nothing about the manifest's slots: {}{}",
+        String::from_utf8_lossy(&import.stdout),
+        String::from_utf8_lossy(&import.stderr)
+    );
+
+    let store = |ws: &Path| -> serde_json::Value {
+        serde_json::from_str(
+            &std::fs::read_to_string(ws.join("docs/.atomic/workspace.atomic.json"))
+                .expect("read the store"),
+        )
+        .expect("parse the store")
+    };
+
+    // ONE READER FOR BOTH ASSERTIONS. Counting through a pointer used only for
+    // the zero would report zero for a store that spells the registry
+    // differently, and the whole finding would rest on a typo; the same
+    // expression has to return one below.
+    let registered_meters = |store: &serde_json::Value| -> usize {
+        store
+            .get("parameters")
+            .and_then(|p| p.as_object())
+            .map_or(0, serde_json::Map::len)
+    };
+
+    let after_import = store(ws);
+    assert!(
+        after_import.pointer("/narrative_facts/f-1").is_some(),
+        "the manifest's fact did not land, so this workspace shows nothing \
+         about what a landed submission may declare"
+    );
+    let registered = registered_meters(&after_import);
+    assert_eq!(
+        registered, 0,
+        "an authored manifest registered {registered} meter(s), so the axis \
+         Round 941 could not measure now HAS a population door and the census \
+         `authored corpora by meter registration` is worth building — which is \
+         the whole reason this assertion exists"
+    );
+
+    // The zero belongs to the AUTHORING path, not to the store: the operator's
+    // door fills the very registry the assertion above read as empty.
+    let added = Command::new(env!("CARGO_BIN_EXE_mnemosyne-cli"))
+        .args(["add-parameter", "--parameter", "affection"])
+        .current_dir(ws)
+        .output()
+        .expect("cli exec");
+    assert!(
+        added.status.success(),
+        "`add-parameter` failed, so this test cannot tell a shut authoring door \
+         from a store that holds no meters at all: {}{}",
+        String::from_utf8_lossy(&added.stdout),
+        String::from_utf8_lossy(&added.stderr)
+    );
+    assert_eq!(
+        registered_meters(&store(ws)),
+        1,
+        "the operator's door registered nothing THIS READER CAN SEE, so the \
+         zero above is a fact about the reader and not about the manifest"
     );
 }
 

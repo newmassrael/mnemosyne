@@ -28,6 +28,20 @@
       "left": 10,
       "right_label": "file-only",
       "right": 239
+    },
+    {
+      "axis": "map corpora by declared boundary crossing",
+      "left_label": "declares an exit",
+      "left": 6,
+      "right_label": "declares none",
+      "right": 24
+    },
+    {
+      "axis": "authored submissions by map and telling",
+      "left_label": "carries both",
+      "left": 10,
+      "right_label": "carries one",
+      "right": 24
     }
   ]
 }
