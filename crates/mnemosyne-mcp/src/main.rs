@@ -3455,23 +3455,9 @@ mod tests {
         ("add_confirmation_event", "spec_sha256"),
         ("add_confirmation_event", "symbol"),
         ("add_confirmation_event", "test_sha256"),
-        ("add_fact", "branch"),
-        ("add_fact", "conflicts_with"),
-        ("add_fact", "payoff_expectation"),
-        ("add_fact", "pays_off"),
-        ("add_fact", "supersedes_in_frame"),
-        ("add_fact", "typed"),
         ("add_inventory_entry", "section_ref"),
         ("add_predicate", "object_entity_kind"),
         ("add_predicate", "object_tokens"),
-        ("amend_fact", "branch"),
-        ("amend_fact", "canon_to"),
-        ("amend_fact", "conflicts_with"),
-        ("amend_fact", "evidence"),
-        ("amend_fact", "payoff_expectation"),
-        ("amend_fact", "pays_off"),
-        ("amend_fact", "supersedes_in_frame"),
-        ("amend_fact", "typed"),
         ("emit_publishable_override_ledger_draft", "kind"),
         ("import_edge_proposals", "dry_run"),
         ("import_facts", "branches"),
@@ -3864,6 +3850,104 @@ mod tests {
             [append_changelog_entry(AppendChangelogEntryArgs) {"entry_id": "Round 2", "decision_summary": "the second", "changes_bullets": ["a change"], "verification_bullets": ["a check"]}]
             list_changelog(ListChangelogArgs) {}
             ."limit" = 1 seen "Round 1" in output;
+        add_fact_branch_reaches_the_store:
+            [add_frame(AddFrameArgs) {"frame_id": "ground-truth"}]
+            [add_section(AddSectionArgs) {"section_id": "sc-01", "parent_doc": "spec", "title": "scene one"}]
+            [add_branch(AddBranchArgs) {"branch_id": "b-what-if"}]
+            add_fact(atomic::FactImport) {"fact_id": "f-1", "frame": "ground-truth", "claim": "she waits", "canon_from": "sc-01", "evidence": ["sc-01"]}
+            ."branch" = "b-what-if" seen "b-what-if" in store;
+        add_fact_supersedes_in_frame_reaches_the_store:
+            [add_frame(AddFrameArgs) {"frame_id": "ground-truth"}]
+            [add_section(AddSectionArgs) {"section_id": "sc-01", "parent_doc": "spec", "title": "scene one"}]
+            [add_fact(atomic::FactImport) {"fact_id": "f-0", "frame": "ground-truth", "claim": "she arrives", "canon_from": "sc-01", "evidence": ["sc-01"]}]
+            add_fact(atomic::FactImport) {"fact_id": "f-1", "frame": "ground-truth", "claim": "she waits", "canon_from": "sc-01", "evidence": ["sc-01"]}
+            ."supersedes_in_frame" = "f-0" seen "f-0" in store;
+        add_fact_conflicts_with_reaches_the_store:
+            [add_frame(AddFrameArgs) {"frame_id": "ground-truth"}]
+            [add_section(AddSectionArgs) {"section_id": "sc-01", "parent_doc": "spec", "title": "scene one"}]
+            [add_fact(atomic::FactImport) {"fact_id": "f-0", "frame": "ground-truth", "claim": "she arrives", "canon_from": "sc-01", "evidence": ["sc-01"]}]
+            add_fact(atomic::FactImport) {"fact_id": "f-1", "frame": "ground-truth", "claim": "she waits", "canon_from": "sc-01", "evidence": ["sc-01"]}
+            ."conflicts_with" = ["f-0"] seen "f-0" in store;
+        add_fact_payoff_expectation_reaches_the_store:
+            [add_frame(AddFrameArgs) {"frame_id": "ground-truth"}]
+            [add_section(AddSectionArgs) {"section_id": "sc-01", "parent_doc": "spec", "title": "scene one"}]
+            add_fact(atomic::FactImport) {"fact_id": "f-1", "frame": "ground-truth", "claim": "she waits", "canon_from": "sc-01", "evidence": ["sc-01"]}
+            ."payoff_expectation" = "expected" seen "expected" in store;
+        add_fact_pays_off_reaches_the_store:
+            [add_frame(AddFrameArgs) {"frame_id": "ground-truth"}]
+            [add_section(AddSectionArgs) {"section_id": "sc-01", "parent_doc": "spec", "title": "scene one"}]
+            [add_fact(atomic::FactImport) {"fact_id": "f-0", "frame": "ground-truth", "claim": "she arrives", "canon_from": "sc-01", "evidence": ["sc-01"]}]
+            add_fact(atomic::FactImport) {"fact_id": "f-1", "frame": "ground-truth", "claim": "she waits", "canon_from": "sc-01", "evidence": ["sc-01"]}
+            ."pays_off" = ["f-0"] seen "f-0" in store;
+        amend_fact_canon_to_reaches_the_store:
+            [add_frame(AddFrameArgs) {"frame_id": "ground-truth"}]
+            [add_section(AddSectionArgs) {"section_id": "sc-01", "parent_doc": "spec", "title": "scene one"}]
+            [add_section(AddSectionArgs) {"section_id": "sc-02", "parent_doc": "spec", "title": "scene two"}]
+            [add_fact(atomic::FactImport) {"fact_id": "f-1", "frame": "ground-truth", "claim": "she waits", "canon_from": "sc-01", "evidence": ["sc-01"]}]
+            amend_fact(AmendFactArgs) {"fact_id": "f-1", "frame": "ground-truth", "claim": "she waits still", "canon_from": "sc-01", "evidence": ["sc-01"], "reason": "revised"}
+            ."canon_to" = "sc-02" seen "sc-02" in store;
+        amend_fact_payoff_expectation_reaches_the_store:
+            [add_frame(AddFrameArgs) {"frame_id": "ground-truth"}]
+            [add_section(AddSectionArgs) {"section_id": "sc-01", "parent_doc": "spec", "title": "scene one"}]
+            [add_fact(atomic::FactImport) {"fact_id": "f-1", "frame": "ground-truth", "claim": "she waits", "canon_from": "sc-01", "evidence": ["sc-01"]}]
+            amend_fact(AmendFactArgs) {"fact_id": "f-1", "frame": "ground-truth", "claim": "she waits still", "canon_from": "sc-01", "evidence": ["sc-01"], "reason": "revised"}
+            ."payoff_expectation" = "expected" seen "expected" in store;
+        amend_fact_branch_reaches_the_store:
+            [add_frame(AddFrameArgs) {"frame_id": "ground-truth"}]
+            [add_section(AddSectionArgs) {"section_id": "sc-01", "parent_doc": "spec", "title": "scene one"}]
+            [add_branch(AddBranchArgs) {"branch_id": "b-what-if"}]
+            [add_fact(atomic::FactImport) {"fact_id": "f-1", "frame": "ground-truth", "claim": "she waits", "canon_from": "sc-01", "evidence": ["sc-01"]}]
+            amend_fact(AmendFactArgs) {"fact_id": "f-1", "frame": "ground-truth", "claim": "she waits still", "canon_from": "sc-01", "evidence": ["sc-01"], "reason": "revised"}
+            ."branch" = "b-what-if" seen "b-what-if" in store;
+        amend_fact_supersedes_in_frame_reaches_the_store:
+            [add_frame(AddFrameArgs) {"frame_id": "ground-truth"}]
+            [add_section(AddSectionArgs) {"section_id": "sc-01", "parent_doc": "spec", "title": "scene one"}]
+            [add_fact(atomic::FactImport) {"fact_id": "f-0", "frame": "ground-truth", "claim": "she arrives", "canon_from": "sc-01", "evidence": ["sc-01"]}]
+            [add_fact(atomic::FactImport) {"fact_id": "f-1", "frame": "ground-truth", "claim": "she waits", "canon_from": "sc-01", "evidence": ["sc-01"]}]
+            amend_fact(AmendFactArgs) {"fact_id": "f-1", "frame": "ground-truth", "claim": "she waits still", "canon_from": "sc-01", "evidence": ["sc-01"], "reason": "revised"}
+            ."supersedes_in_frame" = "f-0" seen "f-0" in store;
+        amend_fact_conflicts_with_reaches_the_store:
+            [add_frame(AddFrameArgs) {"frame_id": "ground-truth"}]
+            [add_section(AddSectionArgs) {"section_id": "sc-01", "parent_doc": "spec", "title": "scene one"}]
+            [add_fact(atomic::FactImport) {"fact_id": "f-0", "frame": "ground-truth", "claim": "she arrives", "canon_from": "sc-01", "evidence": ["sc-01"]}]
+            [add_fact(atomic::FactImport) {"fact_id": "f-1", "frame": "ground-truth", "claim": "she waits", "canon_from": "sc-01", "evidence": ["sc-01"]}]
+            amend_fact(AmendFactArgs) {"fact_id": "f-1", "frame": "ground-truth", "claim": "she waits still", "canon_from": "sc-01", "evidence": ["sc-01"], "reason": "revised"}
+            ."conflicts_with" = ["f-0"] seen "f-0" in store;
+        amend_fact_pays_off_reaches_the_store:
+            [add_frame(AddFrameArgs) {"frame_id": "ground-truth"}]
+            [add_section(AddSectionArgs) {"section_id": "sc-01", "parent_doc": "spec", "title": "scene one"}]
+            [add_fact(atomic::FactImport) {"fact_id": "f-0", "frame": "ground-truth", "claim": "she arrives", "canon_from": "sc-01", "evidence": ["sc-01"]}]
+            [add_fact(atomic::FactImport) {"fact_id": "f-1", "frame": "ground-truth", "claim": "she waits", "canon_from": "sc-01", "evidence": ["sc-01"]}]
+            amend_fact(AmendFactArgs) {"fact_id": "f-1", "frame": "ground-truth", "claim": "she waits still", "canon_from": "sc-01", "evidence": ["sc-01"], "reason": "revised"}
+            ."pays_off" = ["f-0"] seen "f-0" in store;
+        amend_fact_evidence_reaches_the_store:
+            [add_frame(AddFrameArgs) {"frame_id": "ground-truth"}]
+            [add_section(AddSectionArgs) {"section_id": "sc-01", "parent_doc": "spec", "title": "scene one"}]
+            [add_section(AddSectionArgs) {"section_id": "sc-02", "parent_doc": "spec", "title": "scene two"}]
+            [add_fact(atomic::FactImport) {"fact_id": "f-1", "frame": "ground-truth", "claim": "she waits", "canon_from": "sc-01", "evidence": ["sc-01"]}]
+            amend_fact(AmendFactArgs) {"fact_id": "f-1", "frame": "ground-truth", "claim": "she waits still", "canon_from": "sc-01", "evidence": ["sc-01"], "reason": "revised"}
+            ."evidence" = ["sc-01", "sc-02"] seen "sc-02" in store;
+        add_fact_typed_reaches_the_store:
+            [add_frame(AddFrameArgs) {"frame_id": "ground-truth"}]
+            [add_section(AddSectionArgs) {"section_id": "sc-01", "parent_doc": "spec", "title": "scene one"}]
+            [add_entity_kind(AddEntityKindArgs) {"kind_id": "character"}]
+            [add_entity_kind(AddEntityKindArgs) {"kind_id": "place"}]
+            [add_entity(AddEntityArgs) {"entity_id": "e-her", "kind": "character"}]
+            [add_entity(AddEntityArgs) {"entity_id": "p-room", "kind": "place"}]
+            [add_predicate(AddPredicateArgs) {"predicate_id": "at", "object_kind": "entity", "subject_kind": "character", "object_entity_kind": "place"}]
+            add_fact(atomic::FactImport) {"fact_id": "f-1", "frame": "ground-truth", "claim": "she waits", "canon_from": "sc-01", "evidence": ["sc-01"], "entities": ["e-her", "p-room"]}
+            ."typed" = {"subject": "e-her", "predicate": "at", "object": {"kind": "entity", "id": "p-room"}} seen "p-room" in store;
+        amend_fact_typed_reaches_the_store:
+            [add_frame(AddFrameArgs) {"frame_id": "ground-truth"}]
+            [add_section(AddSectionArgs) {"section_id": "sc-01", "parent_doc": "spec", "title": "scene one"}]
+            [add_entity_kind(AddEntityKindArgs) {"kind_id": "character"}]
+            [add_entity_kind(AddEntityKindArgs) {"kind_id": "place"}]
+            [add_entity(AddEntityArgs) {"entity_id": "e-her", "kind": "character"}]
+            [add_entity(AddEntityArgs) {"entity_id": "p-room", "kind": "place"}]
+            [add_predicate(AddPredicateArgs) {"predicate_id": "at", "object_kind": "entity", "subject_kind": "character", "object_entity_kind": "place"}]
+            [add_fact(atomic::FactImport) {"fact_id": "f-1", "frame": "ground-truth", "claim": "she waits", "canon_from": "sc-01", "evidence": ["sc-01"], "entities": ["e-her", "p-room"]}]
+            amend_fact(AmendFactArgs) {"fact_id": "f-1", "frame": "ground-truth", "claim": "she waits still", "canon_from": "sc-01", "evidence": ["sc-01"], "entities": ["e-her", "p-room"], "reason": "revised"}
+            ."typed" = {"subject": "e-her", "predicate": "at", "object": {"kind": "entity", "id": "p-room"}} seen "p-room" in store;
         add_fact_quote_reaches_the_store:
             [add_frame(AddFrameArgs) {"frame_id": "ground-truth"}]
             [add_section(AddSectionArgs) {"section_id": "sc-01", "parent_doc": "spec", "title": "scene one"}]

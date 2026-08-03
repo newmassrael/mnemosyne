@@ -34227,6 +34227,92 @@
         "THE OTHER NINETEEN CARRIES OF THIS SESSION WERE CLASSIFIED AND NONE IS UNDONE WORK. The limits: the exit walk's frame scoping cannot be tested until the record holds a corpus whose position facts cross frames; a submission is a facts manifest, so the map-and-telling axis is not a count of authors; a differential case proves an argument is read and not that it is read correctly; the meter axis has no door in `FactsManifest`. The decisions: `UNEXERCISED` may shrink but never grow silently, `EXERCISED_BESPOKE` stays short by giving the macro the missing ability rather than adding a line, and the CLI/MCP single-declaration refactor is named and deliberately not proposed. The remaining 92 arguments are work with nothing blocking them.",
         "THE SCHEMA-VERSUS-WRITE-PATH CLASS IS THE ONE ITEM WHOSE REOPENING CONDITION IS NOW SHARPER THAN WHEN IT WAS WRITTEN. Round 990 deferred measuring it because a tool refusing a minimal call is ambiguous between \"the schema lies\" and \"a prerequisite is missing. Every case in this file supplies exactly those prerequisites, so the ambiguity disappears for any tool that has one: reopen when the table has a case per mutating tool, and probe from there."
       ]
+    },
+    "Round 992": {
+      "decision_summary": "R992 (BUILD) — both fact verbs are now covered end to end: every one of the twenty optional arguments an agent can send to `add_fact` or `amend_fact` is proven to arrive. These are the arguments that decide what a world IS — which branch a claim lives on, which earlier fact it supersedes, which it contradicts, what it pays off, and the typed triple that turns prose into something a gate can read — and until this round not one of them had been shown to survive the wire. STAR THE TYPED CLAIM IS THE CASE WORTH NAMING, because it is the argument the rest of the system reads. A fact's `typed` leg is what every narrative rule keys on; a handler that dropped it would leave the store full of claims that look authored and are invisible to every gate. Its case builds the world the claim needs first — two entity kinds, two entities, the predicate with both leg kinds declared — which is six `given` lines, and that is the shape the macro was extended for two rounds ago. STAR AND ITS INJECTION IS THE THIRD DEMONSTRATION THAT COUNTING BEATS PRESENCE. With `add_fact` stopped from carrying the typed claim, the failure reads \"`p-room` occurs 2 time(s) without and 2 time(s) with\" — the place id is already in the store twice over, once as a registered entity and once in the fact's own entity list, so a presence check would have passed a handler that discarded the entire typed leg. STAR TWO MORE CLOSED VOCABULARIES NAMED THEMSELVES rather than being guessed: `payoff_expectation` takes `unmarked` or `expected` and nothing else. Every round in this arc has had a fixture corrected by the tool's own error message, and every time the correction was to the fixture. STAR THE COUNT IS 44 OF 122, and what is left of the fact family is `import_facts`, whose ten arguments are the manifest sections of a whole scene authored in one transaction.",
+      "changes_bullets": [
+        "`crates/mnemosyne-mcp/src/main.rs` — fourteen cases completing both fact verbs: `branch`, `supersedes_in_frame`, `conflicts_with`, `payoff_expectation`, `pays_off` and `typed` on `add_fact`, and `branch`, `supersedes_in_frame`, `conflicts_with`, `pays_off`, `evidence`, `canon_to`, `payoff_expectation` and `typed` on `amend_fact`.",
+        "Same file — the typed-claim cases build the world their argument refers to before sending it: two entity kinds, two entities, and the predicate with both leg kinds declared, so the claim is one the write path will accept rather than one it rejects for want of a referent."
+      ],
+      "verification_bullets": [
+        "ALL TWENTY OPTIONAL ARGUMENTS OF `add_fact` AND `amend_fact` ARE NOW EXERCISED, which is the whole of the two verbs' optional surface rather than a sample of it.",
+        "INJECTION R, `add_fact` stops carrying the typed claim: `add_fact_typed_reaches_the_store` failed with \"`p-room` occurs 2 time(s) in the store add_fact produced WITHOUT `typed` and 2 time(s) with it\". That is the third case in this arc where a presence check would have passed and the count did not — the id is already in the store as a registered entity and in the fact's own entity list.",
+        "THE INJECTION'S FIRST ANCHOR DID NOT MATCH AND THE GREEN WAS DISCARDED, for the third round running. The handler binds `let fact = args.0;` and the anchor assumed `let mut fact`; it was re-read from the source and re-run.",
+        "`payoff_expectation` NAMED ITS OWN CLOSED SET when the fixture guessed prose: \"unknown payoff_expectation `the door opens later` (expected one of: unmarked, expected)\". The fixture was corrected to the vocabulary, not the assertion loosened.",
+        "1541 workspace tests pass (1527 before), 0 failed, `--no-fail-fast`; clippy `-D warnings` and `cargo fmt --check` clean; `validate-workspace` T1 orphan 0 and T3 reject 0.",
+        "Citation hygiene (R255): Round 992 verified absent with `query --changelog-entry` before this entry was appended."
+      ],
+      "impact_refs": [
+        "atomic-store-mutate-api"
+      ],
+      "carry_forward_bullets": [
+        "78 OF 122 REMAIN AND THE NEXT COHERENT FAMILY IS `import_facts`, whose ten arguments are the sections of a manifest — frames, branches, entity kinds, units, entities, predicates, facts, edge costs, edge guards, disclosure plans. It is the transactional way an agent authors a scene, so an argument silently dropped there loses a whole class of a submission rather than one field of one fact.",
+        "THE TYPED CASES PROVE THE CLAIM ARRIVES, NOT THAT IT ARRIVES INTACT. The needle is the object's entity id, so a handler that kept the object and dropped the predicate would still raise the count. Every leg of a typed claim has its own way of going missing, and the case as written watches one of them."
+      ],
+      "population_census": [
+        {
+          "axis": "transition rules by `undirected`",
+          "left_label": "undirected",
+          "left": 10,
+          "right_label": "directed",
+          "right": 27
+        },
+        {
+          "axis": "map corpora by leg-kind declaration",
+          "left_label": "omitted",
+          "left": 6,
+          "right_label": "declared",
+          "right": 24
+        },
+        {
+          "axis": "cost-carrying corpora by direction-dependent pricing",
+          "left_label": "prices a way by direction",
+          "left": 4,
+          "right_label": "prices no way by direction",
+          "right": 6
+        },
+        {
+          "axis": "run trees by authoring mode",
+          "left_label": "hand script",
+          "left": 10,
+          "right_label": "file-only",
+          "right": 239
+        },
+        {
+          "axis": "map corpora by declared boundary crossing",
+          "left_label": "declares an exit",
+          "left": 6,
+          "right_label": "declares none",
+          "right": 24
+        },
+        {
+          "axis": "authored submissions by map and telling",
+          "left_label": "carries both",
+          "left": 10,
+          "right_label": "carries one",
+          "right": 24
+        }
+      ],
+      "publishable_decision_summary": "R992 (BUILD) — both fact verbs are now covered end to end: every one of the twenty optional arguments an agent can send to `add_fact` or `amend_fact` is proven to arrive. These are the arguments that decide what a world IS — which branch a claim lives on, which earlier fact it supersedes, which it contradicts, what it pays off, and the typed triple that turns prose into something a gate can read — and until this round not one of them had been shown to survive the wire. STAR THE TYPED CLAIM IS THE CASE WORTH NAMING, because it is the argument the rest of the system reads. A fact's `typed` leg is what every narrative rule keys on; a handler that dropped it would leave the store full of claims that look authored and are invisible to every gate. Its case builds the world the claim needs first — two entity kinds, two entities, the predicate with both leg kinds declared — which is six `given` lines, and that is the shape the macro was extended for two rounds ago. STAR AND ITS INJECTION IS THE THIRD DEMONSTRATION THAT COUNTING BEATS PRESENCE. With `add_fact` stopped from carrying the typed claim, the failure reads \"`p-room` occurs 2 time(s) without and 2 time(s) with\" — the place id is already in the store twice over, once as a registered entity and once in the fact's own entity list, so a presence check would have passed a handler that discarded the entire typed leg. STAR TWO MORE CLOSED VOCABULARIES NAMED THEMSELVES rather than being guessed: `payoff_expectation` takes `unmarked` or `expected` and nothing else. Every round in this arc has had a fixture corrected by the tool's own error message, and every time the correction was to the fixture. STAR THE COUNT IS 44 OF 122, and what is left of the fact family is `import_facts`, whose ten arguments are the manifest sections of a whole scene authored in one transaction.",
+      "publishable_changes_bullets": [
+        "`crates/mnemosyne-mcp/src/main.rs` — fourteen cases completing both fact verbs: `branch`, `supersedes_in_frame`, `conflicts_with`, `payoff_expectation`, `pays_off` and `typed` on `add_fact`, and `branch`, `supersedes_in_frame`, `conflicts_with`, `pays_off`, `evidence`, `canon_to`, `payoff_expectation` and `typed` on `amend_fact`.",
+        "Same file — the typed-claim cases build the world their argument refers to before sending it: two entity kinds, two entities, and the predicate with both leg kinds declared, so the claim is one the write path will accept rather than one it rejects for want of a referent."
+      ],
+      "publishable_verification_bullets": [
+        "ALL TWENTY OPTIONAL ARGUMENTS OF `add_fact` AND `amend_fact` ARE NOW EXERCISED, which is the whole of the two verbs' optional surface rather than a sample of it.",
+        "INJECTION R, `add_fact` stops carrying the typed claim: `add_fact_typed_reaches_the_store` failed with \"`p-room` occurs 2 time(s) in the store add_fact produced WITHOUT `typed` and 2 time(s) with it\". That is the third case in this arc where a presence check would have passed and the count did not — the id is already in the store as a registered entity and in the fact's own entity list.",
+        "THE INJECTION'S FIRST ANCHOR DID NOT MATCH AND THE GREEN WAS DISCARDED, for the third round running. The handler binds `let fact = args.0;` and the anchor assumed `let mut fact`; it was re-read from the source and re-run.",
+        "`payoff_expectation` NAMED ITS OWN CLOSED SET when the fixture guessed prose: \"unknown payoff_expectation `the door opens later` (expected one of: unmarked, expected)\". The fixture was corrected to the vocabulary, not the assertion loosened.",
+        "1541 workspace tests pass (1527 before), 0 failed, `--no-fail-fast`; clippy `-D warnings` and `cargo fmt --check` clean; `validate-workspace` T1 orphan 0 and T3 reject 0.",
+        "Citation hygiene (R255): Round 992 verified absent with `query --changelog-entry` before this entry was appended."
+      ],
+      "publishable_impact_refs": [
+        "atomic-store-mutate-api"
+      ],
+      "publishable_carry_forward_bullets": [
+        "78 OF 122 REMAIN AND THE NEXT COHERENT FAMILY IS `import_facts`, whose ten arguments are the sections of a manifest — frames, branches, entity kinds, units, entities, predicates, facts, edge costs, edge guards, disclosure plans. It is the transactional way an agent authors a scene, so an argument silently dropped there loses a whole class of a submission rather than one field of one fact.",
+        "THE TYPED CASES PROVE THE CLAIM ARRIVES, NOT THAT IT ARRIVES INTACT. The needle is the object's entity id, so a handler that kept the object and dropped the predicate would still raise the count. Every leg of a typed claim has its own way of going missing, and the case as written watches one of them."
+      ]
     }
   },
   "inventory_entries": {},
