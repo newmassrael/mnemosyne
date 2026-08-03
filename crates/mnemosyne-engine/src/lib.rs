@@ -104,6 +104,8 @@ pub use map::{
     MapSelfLoopView,
 };
 pub use mnemosyne_core::{DisclosureMode, Modality, TypedObject, MAIN_BRANCH};
+/// The kernel door onto a resolved path override (Round 1000).
+pub use mnemosyne_ops::AbsolutePath;
 // The typed-claim row travels with its object shape (Round 940), so a consumer
 // dispatching on that shape gets both from the kernel and needs no `ops` or
 // `core` dependency of its own. The parameter-economy rows travel for the same
@@ -341,7 +343,7 @@ pub fn projection_inputs(
 /// cannot be resolved.
 pub fn transition_map_inputs(
     workspace_root: &std::path::Path,
-    rules_override: Option<&str>,
+    rules_override: Option<&AbsolutePath>,
 ) -> Result<Vec<std::path::PathBuf>, EngineError> {
     mnemosyne_ops::transition_map_inputs(workspace_root, None, rules_override)
         .map_err(|e| EngineError::Projection(e.to_string()))

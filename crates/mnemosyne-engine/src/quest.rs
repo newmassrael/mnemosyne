@@ -28,6 +28,7 @@
 //!
 //! [`journal_predicates`]: crate::EngineOverrides::journal_predicates
 
+use mnemosyne_ops::AbsolutePath;
 use std::collections::BTreeMap;
 use std::path::Path;
 
@@ -175,7 +176,7 @@ impl QuestProjection {
     pub fn from_workspace(
         workspace_root: &Path,
         telling: &str,
-        order_override: Option<&str>,
+        order_override: Option<&AbsolutePath>,
         overrides: &impl EngineOverrides,
     ) -> Result<Self, EngineError> {
         let report =

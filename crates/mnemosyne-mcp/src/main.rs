@@ -1391,6 +1391,27 @@ impl MnemosyneServer {
 }
 
 /// Render a warm-projection validation result as a plain-text summary.
+/// WHERE AN AGENT'S PATH IS RESOLVED (Round 1000).
+///
+/// Behaviour-preserving: until Round 1000 the shared library joined the process
+/// working directory for every explicit override, so that is what this does and
+/// nothing about what an agent sees has changed. What HAS changed is that the
+/// choice is now made here, at the wire that received the path, instead of
+/// inside a library shared with the CLI — and this is the ONE LINE a later
+/// round would move to `self.workspace`, which is the only base an MCP caller
+/// can see (Round 998 measured the consequence; Round 999 documented it). That
+/// move is a contract change and waits on the owner; this line does not cite a
+/// round for it, because the round does not exist yet and a citation to it
+/// would be the hallucination the code-citation gate is there to refuse.
+fn mcp_path(raw: Option<&str>) -> Result<Option<ops::AbsolutePath>, String> {
+    let Some(raw) = raw else { return Ok(None) };
+    let cwd =
+        std::env::current_dir().map_err(|e| format!("CWD lookup for a path argument: {e}"))?;
+    ops::AbsolutePath::resolve(&cwd, raw)
+        .map(Some)
+        .map_err(|e| e.to_string())
+}
+
 fn render_projection_validation(v: &ProjectionValidation) -> String {
     let status = |ok: bool| if ok { "ok" } else { "VIOLATIONS" };
     format!(
@@ -2505,8 +2526,16 @@ impl MnemosyneServer {
         match ops::continuity_scan(
             &self.workspace,
             None,
-            args.0.order_path.as_deref(),
-            args.0.rules_path.as_deref(),
+            match mcp_path(args.0.order_path.as_deref()) {
+                Ok(v) => v,
+                Err(e) => return Self::tool_error(e),
+            }
+            .as_ref(),
+            match mcp_path(args.0.rules_path.as_deref()) {
+                Ok(v) => v,
+                Err(e) => return Self::tool_error(e),
+            }
+            .as_ref(),
         ) {
             Ok(report) => self.tool_json(&report),
             Err(e) => self.op_error(e),
@@ -2536,8 +2565,16 @@ impl MnemosyneServer {
         match ops::propose_verdict(
             &self.workspace,
             None,
-            args.0.order_path.as_deref(),
-            args.0.rules_path.as_deref(),
+            match mcp_path(args.0.order_path.as_deref()) {
+                Ok(v) => v,
+                Err(e) => return Self::tool_error(e),
+            }
+            .as_ref(),
+            match mcp_path(args.0.rules_path.as_deref()) {
+                Ok(v) => v,
+                Err(e) => return Self::tool_error(e),
+            }
+            .as_ref(),
             &manifest,
         ) {
             Ok(report) => self.tool_json(&report),
@@ -2556,7 +2593,11 @@ impl MnemosyneServer {
             args.0.branch.as_deref(),
             args.0.entity.as_deref(),
             &args.0.at,
-            args.0.order_path.as_deref(),
+            match mcp_path(args.0.order_path.as_deref()) {
+                Ok(v) => v,
+                Err(e) => return Self::tool_error(e),
+            }
+            .as_ref(),
         ) {
             Ok(view) => self.tool_json(&view),
             Err(e) => self.op_error(e),
@@ -2570,7 +2611,15 @@ impl MnemosyneServer {
         &self,
         args: Parameters<ReportPayoffCoverageArgs>,
     ) -> CallToolResult {
-        match ops::payoff_coverage_report(&self.workspace, None, args.0.order_path.as_deref()) {
+        match ops::payoff_coverage_report(
+            &self.workspace,
+            None,
+            match mcp_path(args.0.order_path.as_deref()) {
+                Ok(v) => v,
+                Err(e) => return Self::tool_error(e),
+            }
+            .as_ref(),
+        ) {
             Ok(report) => self.tool_json(&report),
             Err(e) => self.op_error(e),
         }
@@ -2622,8 +2671,15 @@ impl MnemosyneServer {
         &self,
         args: Parameters<ReportPayoffCoverageArgs>,
     ) -> CallToolResult {
-        match ops::payoff_substantiation_report(&self.workspace, None, args.0.order_path.as_deref())
-        {
+        match ops::payoff_substantiation_report(
+            &self.workspace,
+            None,
+            match mcp_path(args.0.order_path.as_deref()) {
+                Ok(v) => v,
+                Err(e) => return Self::tool_error(e),
+            }
+            .as_ref(),
+        ) {
             Ok(report) => self.tool_json(&report),
             Err(e) => self.op_error(e),
         }
@@ -2639,8 +2695,16 @@ impl MnemosyneServer {
         match ops::timeline_gaps_report(
             &self.workspace,
             None,
-            args.0.order_path.as_deref(),
-            args.0.rules_path.as_deref(),
+            match mcp_path(args.0.order_path.as_deref()) {
+                Ok(v) => v,
+                Err(e) => return Self::tool_error(e),
+            }
+            .as_ref(),
+            match mcp_path(args.0.rules_path.as_deref()) {
+                Ok(v) => v,
+                Err(e) => return Self::tool_error(e),
+            }
+            .as_ref(),
         ) {
             Ok(report) => self.tool_json(&report),
             Err(e) => self.op_error(e),
@@ -2654,7 +2718,15 @@ impl MnemosyneServer {
         &self,
         args: Parameters<ReportTransitionMapArgs>,
     ) -> CallToolResult {
-        match ops::transition_map_report(&self.workspace, None, args.0.rules_path.as_deref()) {
+        match ops::transition_map_report(
+            &self.workspace,
+            None,
+            match mcp_path(args.0.rules_path.as_deref()) {
+                Ok(v) => v,
+                Err(e) => return Self::tool_error(e),
+            }
+            .as_ref(),
+        ) {
             Ok(report) => self.tool_json(&report),
             Err(e) => self.op_error(e),
         }
@@ -2667,7 +2739,15 @@ impl MnemosyneServer {
         &self,
         args: Parameters<ReportEdgeCandidatesArgs>,
     ) -> CallToolResult {
-        match ops::edge_candidates_report(&self.workspace, None, args.0.order_path.as_deref()) {
+        match ops::edge_candidates_report(
+            &self.workspace,
+            None,
+            match mcp_path(args.0.order_path.as_deref()) {
+                Ok(v) => v,
+                Err(e) => return Self::tool_error(e),
+            }
+            .as_ref(),
+        ) {
             Ok(report) => self.tool_json(&report),
             Err(e) => self.op_error(e),
         }
@@ -2709,7 +2789,15 @@ impl MnemosyneServer {
         &self,
         args: Parameters<ReportIronyIntervalsArgs>,
     ) -> CallToolResult {
-        match ops::irony_intervals_report(&self.workspace, None, args.0.order_path.as_deref()) {
+        match ops::irony_intervals_report(
+            &self.workspace,
+            None,
+            match mcp_path(args.0.order_path.as_deref()) {
+                Ok(v) => v,
+                Err(e) => return Self::tool_error(e),
+            }
+            .as_ref(),
+        ) {
             Ok(report) => self.tool_json(&report),
             Err(e) => self.op_error(e),
         }
@@ -2726,7 +2814,11 @@ impl MnemosyneServer {
             &self.workspace,
             None,
             args.0.world.as_deref(),
-            args.0.order_path.as_deref(),
+            match mcp_path(args.0.order_path.as_deref()) {
+                Ok(v) => v,
+                Err(e) => return Self::tool_error(e),
+            }
+            .as_ref(),
             args.0.telling.as_deref(),
             args.0.reading_walk,
         ) {
@@ -2739,7 +2831,15 @@ impl MnemosyneServer {
         description = "Fork tree (R497, read-only): the cross-world choice graph — every registered world-line with its divergence coordinate (parent + fork point + the branch description = the CYOA choice label), the fork point resolved against the parent's composed order (at_placed; false = surfaced in unplaced_fork_points, never dropped). The per-world manuscripts (R466) stitched at the fork points. `converges` = the merges flowing INTO a world-line; `rejoins` = the confluences it flows OUT into (R836, derived by inverting the merges — a branch that rejoins is not a permanent divergence, and its record alone would not say so). Fail-loud on a fork whose parent is neither `main` nor registered. Reading surface, never gated."
     )]
     async fn report_fork_tree(&self, args: Parameters<ReportForkTreeArgs>) -> CallToolResult {
-        match ops::fork_tree_report(&self.workspace, None, args.0.order_path.as_deref()) {
+        match ops::fork_tree_report(
+            &self.workspace,
+            None,
+            match mcp_path(args.0.order_path.as_deref()) {
+                Ok(v) => v,
+                Err(e) => return Self::tool_error(e),
+            }
+            .as_ref(),
+        ) {
             Ok(report) => self.tool_json(&report),
             Err(e) => self.op_error(e),
         }
@@ -2756,7 +2856,11 @@ impl MnemosyneServer {
             &self.workspace,
             None,
             args.0.world.as_deref(),
-            args.0.order_path.as_deref(),
+            match mcp_path(args.0.order_path.as_deref()) {
+                Ok(v) => v,
+                Err(e) => return Self::tool_error(e),
+            }
+            .as_ref(),
             &args.0.telling,
         ) {
             Ok(report) => self.tool_json(&report),
@@ -2772,7 +2876,11 @@ impl MnemosyneServer {
             &self.workspace,
             None,
             args.0.world.as_deref(),
-            args.0.order_path.as_deref(),
+            match mcp_path(args.0.order_path.as_deref()) {
+                Ok(v) => v,
+                Err(e) => return Self::tool_error(e),
+            }
+            .as_ref(),
             &args.0.telling,
         ) {
             Ok(report) => self.tool_json(&report),
@@ -2797,9 +2905,17 @@ impl MnemosyneServer {
         match ops::authoring_frontier_report(
             &self.workspace,
             None,
-            args.0.order_path.as_deref(),
+            match mcp_path(args.0.order_path.as_deref()) {
+                Ok(v) => v,
+                Err(e) => return Self::tool_error(e),
+            }
+            .as_ref(),
             args.0.telling.as_deref(),
-            args.0.rules_path.as_deref(),
+            match mcp_path(args.0.rules_path.as_deref()) {
+                Ok(v) => v,
+                Err(e) => return Self::tool_error(e),
+            }
+            .as_ref(),
         ) {
             Ok(report) => self.tool_json(&report),
             Err(e) => self.op_error(e),
@@ -2831,7 +2947,11 @@ impl MnemosyneServer {
             &self.workspace,
             None,
             std::path::Path::new(&a.against),
-            a.order_path.as_deref(),
+            match mcp_path(a.order_path.as_deref()) {
+                Ok(v) => v,
+                Err(e) => return Self::tool_error(e),
+            }
+            .as_ref(),
             &a.telling,
             &a.world,
             &a.truth_frame,
@@ -2853,7 +2973,11 @@ impl MnemosyneServer {
             &self.workspace,
             None,
             std::path::Path::new(&a.against),
-            a.order_path.as_deref(),
+            match mcp_path(a.order_path.as_deref()) {
+                Ok(v) => v,
+                Err(e) => return Self::tool_error(e),
+            }
+            .as_ref(),
             &a.world,
         ) {
             Ok(report) => self.tool_json(&report),

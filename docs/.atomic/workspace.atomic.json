@@ -60,6 +60,108 @@
     }
   },
   "changelog_entries": {
+    "Round 1000": {
+      "decision_summary": "R1000 (BUILD) — no crate that two wires share decides a path from the process's working directory any more, and the same argument no longer means two things. Round 998 found an agent's `order_path` reading a file beside this source; Round 999 verified the premise and found the rule deliberate — Round 538 made an explicit override CWD-relative to match `--sidecar` and `--manifest` — and documented it. STAR THE DEFECT WAS NEVER WHICH BASE TO PICK. It was that a raw path string is ambiguous by construction, so the answer got deferred INTO a library, and the only thing a library has to guess with is ambient process state. `resolve_canon_order_file` called `std::env::current_dir()`; so did `resolve_sidecar`; so did `discover_config` for a relative start. One function, two callers, two different worlds. STAR SO THE TYPE ANSWERS IT: `AbsolutePath` cannot be constructed without naming a base, and every path override crossing into `ops` is now one. Round 538's rule is unchanged and lives where it belongs — the CLI reads the working directory because a path typed at a prompt is relative to where the user stands — and the MCP wire answers for itself. Measured end to end: from a subdirectory, `--order order.json` still resolves beside the user, and from the workspace root the same name still resolves there and fails naming that path. Nothing an operator sees has moved. STAR AND THE SWEEP FOUND A SECOND, QUIETER SPLIT. `--rules` was joined to the WORKSPACE ROOT while `--order` was joined to the WORKING DIRECTORY, in the same command, in adjacent functions. Nothing said so and nothing could have caught it, because each was locally reasonable. Both now use the base their own wire named. STAR THE PROPERTY IS GATED RATHER THAN ANNOUNCED. `no_library_crate_resolves_a_path_from_the_working_directory` walks every tracked library source and exempts the two wires BY NAME, since a wire is exactly the place that may read it. It is one grep away from coming back the next time an override needs resolving somewhere convenient. STAR THE DEAD HELPER IS GONE, not left as a convenience: `resolve_explicit_cli_path` had one caller, that caller was the CWD branch, and when the branch went the function went with it. STAR THIS ROUND CHANGES NO BEHAVIOUR. The MCP wire still resolves against the working directory, in one line that now sits at the wire and says what it is; moving it to the workspace is Round 1001 and lands alone so it can be reverted alone.",
+      "changes_bullets": [
+        "`mnemosyne-config` — `AbsolutePath`, a path already resolved against a base the CALLER named. `resolve` applies a named base and refuses a relative one; there is no constructor that guesses. Re-exported by `mnemosyne-ops` and `mnemosyne-engine` so a consumer talks to its kernel rather than past it.",
+        "`mnemosyne-ops` — every path override parameter is `Option<&AbsolutePath>`: 35 sidecar signatures plus the order and rules families. `resolve_sidecar` and `resolve_canon_order_file` no longer read the working directory; `resolve_explicit_cli_path` had no caller left and is deleted with its test.",
+        "`mnemosyne-ops` — `narrative_rules_path` no longer joins the workspace root to an explicit override. It was doing that while `--order` joined the working directory, in the same command.",
+        "`mnemosyne-config` — `discover_config` refuses a relative start instead of joining the working directory to it.",
+        "`mnemosyne-cli` — `cli_path`, the one place the CLI reads its working directory, applied at 68 call sites. Round 538's rule, at the boundary that owns it.",
+        "`mnemosyne-mcp` — `mcp_path`, the one line that decides what an agent's relative path means. It still says the working directory, so nothing an agent sees has changed; it is the line Round 1001 would move.",
+        "`crates/mnemosyne-cli/tests/evidence_replay_smoke.rs` — `no_library_crate_resolves_a_path_from_the_working_directory`, which exempts the two wires by name."
+      ],
+      "verification_bullets": [
+        "STAR BEHAVIOUR IS UNCHANGED AND WAS MEASURED END TO END, not argued: from `ws/sub`, `report-fork-tree --order order.json` finds the file beside the user; from `ws`, the same name resolves to `ws/order.json` and the error names that path. That is exactly Round 538's rule before this round.",
+        "1587 workspace tests pass, 0 failed, `--no-fail-fast`. The count is unchanged because one test was deleted with the dead helper and one merged: the R538 property is now asserted in its new home, over `AbsolutePath::resolve` plus `resolve_sidecar`, including that the override never resolves under the anchor.",
+        "INJECTION AD, a library reaching for the working directory again: the new gate fails naming the site, \"1 library site(s) resolve a path from the process's working directory ... crates/mnemosyne-ops/src/lib.rs:496\".",
+        "THE COMPILER DROVE THE WHOLE SWEEP, one error list at a time, which is why a type was the right instrument: every site that threads a path override had to answer, and none could be missed by a reader.",
+        "A BULK REPLACEMENT DAMAGED NINE CALL SITES AND THE BUILD SAID SO IMMEDIATELY — `sidecar_override.as_deref()` also matched `a.sidecar_override.as_deref()`, leaving `a.atomic_cli::cli_path(...)`. Repaired by anchoring on the damaged text. This is the regex hazard this repository already bans for large files; the compiler caught it here, which a prose file would not have.",
+        "`validate-code-refs` REJECTED THIS ROUND'S CITATIONS BEFORE THIS ENTRY EXISTED, 13 `missing` violations for `Round 1000` — the R255 gate doing its job, and the reason the entry is appended before the commit.",
+        "clippy `-D warnings` and `cargo fmt --check` clean; `validate-workspace` T1 orphan 0 and T3 reject 0.",
+        "Citation hygiene (R255): Rounds 538, 998 and 999 verified present with `query --changelog-entry` and Round 1000 verified absent before this entry was appended."
+      ],
+      "impact_refs": [
+        "atomic-store-mutate-api"
+      ],
+      "carry_forward_bullets": [
+        "ROUND 1001 IS ONE LINE AND IT IS THE OWNER'S: `mcp_path` joins the working directory; joining `self.workspace` instead would make a relative path mean the only base an agent can see. It lands alone, so it reverts alone. Everything else about the shape is in place.",
+        "THE MANIFEST ARGUMENTS ARE NOT YET TYPED. `--manifest` and `propose_verdict.manifest_path` are read with `std::fs::read_to_string` at the wire rather than resolved through `ops`, so they never went through the guessing library and are not part of this defect. They are the same ambiguity for an agent, and the type is now there for them.",
+        "`AbsolutePath` DOES NOT CANONICALISE. It joins and checks absoluteness; it does not resolve `..`, symlinks, or a non-existent parent. That is deliberate — canonicalisation touches the filesystem and would fail for a path being created — but it means two `AbsolutePath`s can name one file and compare unequal."
+      ],
+      "population_census": [
+        {
+          "axis": "transition rules by `undirected`",
+          "left_label": "undirected",
+          "left": 10,
+          "right_label": "directed",
+          "right": 27
+        },
+        {
+          "axis": "map corpora by leg-kind declaration",
+          "left_label": "omitted",
+          "left": 6,
+          "right_label": "declared",
+          "right": 24
+        },
+        {
+          "axis": "cost-carrying corpora by direction-dependent pricing",
+          "left_label": "prices a way by direction",
+          "left": 4,
+          "right_label": "prices no way by direction",
+          "right": 6
+        },
+        {
+          "axis": "run trees by authoring mode",
+          "left_label": "hand script",
+          "left": 10,
+          "right_label": "file-only",
+          "right": 239
+        },
+        {
+          "axis": "map corpora by declared boundary crossing",
+          "left_label": "declares an exit",
+          "left": 6,
+          "right_label": "declares none",
+          "right": 24
+        },
+        {
+          "axis": "authored submissions by map and telling",
+          "left_label": "carries both",
+          "left": 10,
+          "right_label": "carries one",
+          "right": 24
+        }
+      ],
+      "publishable_decision_summary": "R1000 (BUILD) — no crate that two wires share decides a path from the process's working directory any more, and the same argument no longer means two things. Round 998 found an agent's `order_path` reading a file beside this source; Round 999 verified the premise and found the rule deliberate — Round 538 made an explicit override CWD-relative to match `--sidecar` and `--manifest` — and documented it. STAR THE DEFECT WAS NEVER WHICH BASE TO PICK. It was that a raw path string is ambiguous by construction, so the answer got deferred INTO a library, and the only thing a library has to guess with is ambient process state. `resolve_canon_order_file` called `std::env::current_dir()`; so did `resolve_sidecar`; so did `discover_config` for a relative start. One function, two callers, two different worlds. STAR SO THE TYPE ANSWERS IT: `AbsolutePath` cannot be constructed without naming a base, and every path override crossing into `ops` is now one. Round 538's rule is unchanged and lives where it belongs — the CLI reads the working directory because a path typed at a prompt is relative to where the user stands — and the MCP wire answers for itself. Measured end to end: from a subdirectory, `--order order.json` still resolves beside the user, and from the workspace root the same name still resolves there and fails naming that path. Nothing an operator sees has moved. STAR AND THE SWEEP FOUND A SECOND, QUIETER SPLIT. `--rules` was joined to the WORKSPACE ROOT while `--order` was joined to the WORKING DIRECTORY, in the same command, in adjacent functions. Nothing said so and nothing could have caught it, because each was locally reasonable. Both now use the base their own wire named. STAR THE PROPERTY IS GATED RATHER THAN ANNOUNCED. `no_library_crate_resolves_a_path_from_the_working_directory` walks every tracked library source and exempts the two wires BY NAME, since a wire is exactly the place that may read it. It is one grep away from coming back the next time an override needs resolving somewhere convenient. STAR THE DEAD HELPER IS GONE, not left as a convenience: `resolve_explicit_cli_path` had one caller, that caller was the CWD branch, and when the branch went the function went with it. STAR THIS ROUND CHANGES NO BEHAVIOUR. The MCP wire still resolves against the working directory, in one line that now sits at the wire and says what it is; moving it to the workspace is Round 1001 and lands alone so it can be reverted alone.",
+      "publishable_changes_bullets": [
+        "`mnemosyne-config` — `AbsolutePath`, a path already resolved against a base the CALLER named. `resolve` applies a named base and refuses a relative one; there is no constructor that guesses. Re-exported by `mnemosyne-ops` and `mnemosyne-engine` so a consumer talks to its kernel rather than past it.",
+        "`mnemosyne-ops` — every path override parameter is `Option<&AbsolutePath>`: 35 sidecar signatures plus the order and rules families. `resolve_sidecar` and `resolve_canon_order_file` no longer read the working directory; `resolve_explicit_cli_path` had no caller left and is deleted with its test.",
+        "`mnemosyne-ops` — `narrative_rules_path` no longer joins the workspace root to an explicit override. It was doing that while `--order` joined the working directory, in the same command.",
+        "`mnemosyne-config` — `discover_config` refuses a relative start instead of joining the working directory to it.",
+        "`mnemosyne-cli` — `cli_path`, the one place the CLI reads its working directory, applied at 68 call sites. Round 538's rule, at the boundary that owns it.",
+        "`mnemosyne-mcp` — `mcp_path`, the one line that decides what an agent's relative path means. It still says the working directory, so nothing an agent sees has changed; it is the line Round 1001 would move.",
+        "`crates/mnemosyne-cli/tests/evidence_replay_smoke.rs` — `no_library_crate_resolves_a_path_from_the_working_directory`, which exempts the two wires by name."
+      ],
+      "publishable_verification_bullets": [
+        "STAR BEHAVIOUR IS UNCHANGED AND WAS MEASURED END TO END, not argued: from `ws/sub`, `report-fork-tree --order order.json` finds the file beside the user; from `ws`, the same name resolves to `ws/order.json` and the error names that path. That is exactly Round 538's rule before this round.",
+        "1587 workspace tests pass, 0 failed, `--no-fail-fast`. The count is unchanged because one test was deleted with the dead helper and one merged: the R538 property is now asserted in its new home, over `AbsolutePath::resolve` plus `resolve_sidecar`, including that the override never resolves under the anchor.",
+        "INJECTION AD, a library reaching for the working directory again: the new gate fails naming the site, \"1 library site(s) resolve a path from the process's working directory ... crates/mnemosyne-ops/src/lib.rs:496\".",
+        "THE COMPILER DROVE THE WHOLE SWEEP, one error list at a time, which is why a type was the right instrument: every site that threads a path override had to answer, and none could be missed by a reader.",
+        "A BULK REPLACEMENT DAMAGED NINE CALL SITES AND THE BUILD SAID SO IMMEDIATELY — `sidecar_override.as_deref()` also matched `a.sidecar_override.as_deref()`, leaving `a.atomic_cli::cli_path(...)`. Repaired by anchoring on the damaged text. This is the regex hazard this repository already bans for large files; the compiler caught it here, which a prose file would not have.",
+        "`validate-code-refs` REJECTED THIS ROUND'S CITATIONS BEFORE THIS ENTRY EXISTED, 13 `missing` violations for `Round 1000` — the R255 gate doing its job, and the reason the entry is appended before the commit.",
+        "clippy `-D warnings` and `cargo fmt --check` clean; `validate-workspace` T1 orphan 0 and T3 reject 0.",
+        "Citation hygiene (R255): Rounds 538, 998 and 999 verified present with `query --changelog-entry` and Round 1000 verified absent before this entry was appended."
+      ],
+      "publishable_impact_refs": [
+        "atomic-store-mutate-api"
+      ],
+      "publishable_carry_forward_bullets": [
+        "ROUND 1001 IS ONE LINE AND IT IS THE OWNER'S: `mcp_path` joins the working directory; joining `self.workspace` instead would make a relative path mean the only base an agent can see. It lands alone, so it reverts alone. Everything else about the shape is in place.",
+        "THE MANIFEST ARGUMENTS ARE NOT YET TYPED. `--manifest` and `propose_verdict.manifest_path` are read with `std::fs::read_to_string` at the wire rather than resolved through `ops`, so they never went through the guessing library and are not part of this defect. They are the same ambiguity for an agent, and the type is now there for them.",
+        "`AbsolutePath` DOES NOT CANONICALISE. It joins and checks absoluteness; it does not resolve `..`, symlinks, or a non-existent parent. That is deliberate — canonicalisation touches the filesystem and would fail for a path being created — but it means two `AbsolutePath`s can name one file and compare unequal."
+      ]
+    },
     "Round 252": {
       "decision_summary": "Parser CommonMark conformance — recognize indented fenced code blocks (§98) and require whitespace after ATX hash sequence (§62)",
       "changes_bullets": [

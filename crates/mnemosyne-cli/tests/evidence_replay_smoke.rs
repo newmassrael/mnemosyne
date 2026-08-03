@@ -4788,6 +4788,62 @@ fn no_authored_manifest_can_register_a_meter_which_is_why_that_axis_is_refused()
     );
 }
 
+/// NO LIBRARY DECIDES A PATH FROM THE PROCESS'S WORKING DIRECTORY.
+///
+/// Round 998 found an agent's path argument reading a file beside this source:
+/// `ops` resolved every explicit override against `std::env::current_dir()`,
+/// which is the user's own choice on the CLI and belongs to an unseen host over
+/// MCP. Round 1000 moved that decision to each wire — the CLI reads the working
+/// directory because a path typed at a prompt is relative to where the user
+/// stands (Round 538), and the MCP wire answers for itself — and the shared
+/// crates now take an `AbsolutePath` that a caller cannot build without saying
+/// what its base is.
+///
+/// THE PROPERTY IS "A LIBRARY MAY NOT ASK", and it is one grep away from coming
+/// back the next time an override needs resolving somewhere convenient. The
+/// binaries are exempt BY NAME rather than by pattern: a wire is exactly the
+/// place that may read it.
+#[test]
+fn no_library_crate_resolves_a_path_from_the_working_directory() {
+    // The wires. Everything else is a library two wires share.
+    const WIRES: &[&str] = &["crates/mnemosyne-cli/", "crates/mnemosyne-mcp/"];
+    let mut scanned = 0usize;
+    let mut asking = Vec::new();
+    for path in git(&["ls-files", "crates"]).lines() {
+        if !path.ends_with(".rs") || !path.contains("/src/") {
+            continue;
+        }
+        if WIRES.iter().any(|w| path.starts_with(w)) {
+            continue;
+        }
+        let Ok(text) = std::fs::read_to_string(repo_root().join(path)) else {
+            continue;
+        };
+        scanned += 1;
+        for (i, line) in text.lines().enumerate() {
+            // A doc comment explaining the rule is not asking for it.
+            if line.trim_start().starts_with("//") {
+                continue;
+            }
+            if line.contains("env::current_dir") {
+                asking.push(format!("{path}:{}", i + 1));
+            }
+        }
+    }
+    assert!(
+        scanned > 10,
+        "only {scanned} library source file(s) were read, so this gate is \
+         looking at almost nothing"
+    );
+    assert!(
+        asking.is_empty(),
+        "{} library site(s) resolve a path from the process's working \
+         directory. A crate two wires share cannot know what a caller's path is \
+         relative to; take an `AbsolutePath` and let the wire answer: {asking:?}",
+        asking.len()
+    );
+}
+
 /// EVERY COUNT THE LEDGER STATES IS DATED BY THE ENTRY'S OWN KEY.
 ///
 /// This is the fact that lets the count half of Round 970's "date it or drop

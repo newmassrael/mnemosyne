@@ -271,7 +271,7 @@ pub fn emit_quest_projection(
 /// failure; the consumer's runtime never sees them.
 pub fn emit_map_projection(
     workspace_root: &Path,
-    rules_override: Option<&str>,
+    rules_override: Option<&mnemosyne_engine::AbsolutePath>,
 ) -> Result<String, EngineError> {
     for input in mnemosyne_engine::transition_map_inputs(workspace_root, rules_override)? {
         println!("cargo:rerun-if-changed={}", input.display());

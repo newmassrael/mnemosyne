@@ -175,7 +175,12 @@ fn a_map_bake_declares_the_rules_file_it_reads() {
 
     // An explicit override is what gets READ when one is passed, so it is what
     // must get DECLARED — the two decisions come from one resolver.
-    let overridden = mnemosyne_engine::transition_map_inputs(tmp.path(), Some("other-rules.json"))
+    // Round 1000 — the override arrives already resolved against a base the
+    // caller names, so the test names one too rather than leaving it to the
+    // process's working directory.
+    let over = mnemosyne_engine::AbsolutePath::resolve(tmp.path(), "other-rules.json")
+        .expect("resolve the override against this workspace");
+    let overridden = mnemosyne_engine::transition_map_inputs(tmp.path(), Some(&over))
         .expect("the declared inputs resolve under an override");
     assert!(overridden.contains(&tmp.path().join("other-rules.json")));
     assert!(

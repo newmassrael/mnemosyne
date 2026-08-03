@@ -14,6 +14,11 @@ pub mod query;
 pub mod style;
 pub mod validate;
 
+/// Re-exported so a consumer talks to its kernel rather than past it into the
+/// config crate (Round 1000): every path override crossing into `ops` is one
+/// of these, and constructing one is where a caller says what its path is
+/// relative to.
+pub use mnemosyne_config::AbsolutePath;
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
@@ -84,9 +89,8 @@ pub struct RedactTermInput {
 /// start; workspace-relative paths join the config-declared `[workspace]
 /// root` (see [`cascade::workspace_root_from`]), so this delegates fully to
 /// the anchor-aware cascade resolver rather than joining to `anchor`.
-pub fn resolve_sidecar(anchor: &Path, sidecar: Option<&Path>) -> anyhow::Result<PathBuf> {
-    let s = sidecar.map(|p| p.to_string_lossy().into_owned());
-    cascade::resolve_sidecar(anchor, s.as_deref())
+pub fn resolve_sidecar(anchor: &Path, sidecar: Option<&AbsolutePath>) -> anyhow::Result<PathBuf> {
+    cascade::resolve_sidecar(anchor, sidecar)
 }
 
 /// The FILES a store projection reads, resolved (Round 772) — the discovered
@@ -112,7 +116,7 @@ pub fn resolve_sidecar(anchor: &Path, sidecar: Option<&Path>) -> anyhow::Result<
 /// the same failures the projection would hit, raised before it runs.
 pub fn projection_inputs(
     workspace_root: &Path,
-    sidecar: Option<&Path>,
+    sidecar: Option<&AbsolutePath>,
 ) -> Result<Vec<PathBuf>, OpError> {
     let mut inputs = Vec::new();
     match mnemosyne_config::discover_config(workspace_root)? {
@@ -144,7 +148,7 @@ pub fn projection_inputs(
 /// only artifact, so there is nothing further to regenerate.
 pub fn run_atomic_mutate<F>(
     workspace_root: &Path,
-    sidecar: Option<&Path>,
+    sidecar: Option<&AbsolutePath>,
     primitive: F,
 ) -> Result<MutateOutcome, OpError>
 where
@@ -291,7 +295,7 @@ pub fn workspace_population_census(
 /// `unwrap_or_default` masked corruption as a clean empty store).
 pub fn load_atomic_store(
     workspace_root: &Path,
-    sidecar: Option<&Path>,
+    sidecar: Option<&AbsolutePath>,
 ) -> Result<AtomicStore, OpError> {
     let sidecar_path = resolve_sidecar(workspace_root, sidecar)?;
     AtomicStore::load(&sidecar_path).map_err(|e| OpError::Other(format!("{}", e)))
@@ -309,7 +313,7 @@ pub fn load_atomic_store(
 /// [`OpError`] if the store (or its sidecar) cannot be read.
 pub fn entity_kinds(
     workspace_root: &Path,
-    sidecar: Option<&Path>,
+    sidecar: Option<&AbsolutePath>,
 ) -> Result<BTreeMap<String, String>, OpError> {
     let store = load_atomic_store(workspace_root, sidecar)?;
     Ok(store
@@ -375,7 +379,7 @@ pub struct TypedClaimRow {
 /// [`OpError`] if the store (or its sidecar) cannot be read.
 pub fn typed_claims(
     workspace_root: &Path,
-    sidecar: Option<&Path>,
+    sidecar: Option<&AbsolutePath>,
 ) -> Result<BTreeMap<String, Vec<TypedClaimRow>>, OpError> {
     let store = load_atomic_store(workspace_root, sidecar)?;
     let mut by_predicate: BTreeMap<String, Vec<TypedClaimRow>> = BTreeMap::new();
@@ -408,7 +412,7 @@ pub fn typed_claims(
 /// [`OpError`] if the store (or its sidecar) cannot be read.
 pub fn section_content_excerpts(
     workspace_root: &Path,
-    sidecar: Option<&Path>,
+    sidecar: Option<&AbsolutePath>,
 ) -> Result<BTreeMap<String, ContentExcerpt>, OpError> {
     let store = load_atomic_store(workspace_root, sidecar)?;
     Ok(store
@@ -432,7 +436,7 @@ pub fn section_content_excerpts(
 /// [`OpError`] if the store (or its sidecar) cannot be read.
 pub fn section_ladders(
     workspace_root: &Path,
-    sidecar: Option<&Path>,
+    sidecar: Option<&AbsolutePath>,
 ) -> Result<BTreeMap<String, mnemosyne_atomic::SectionLadder>, OpError> {
     let store = load_atomic_store(workspace_root, sidecar)?;
     Ok(store
@@ -472,7 +476,7 @@ fn continuity_policy(workspace_root: &Path) -> Result<ContinuityPolicy, OpError>
 /// per-branch composition needs the fork ancestry (Round 438).
 fn resolve_canon_order_file(
     policy: &ContinuityPolicy,
-    order_override: Option<&str>,
+    order_override: Option<&AbsolutePath>,
 ) -> Result<mnemosyne_validate::continuity::CanonOrderFile, OpError> {
     use mnemosyne_validate::continuity::{load_canon_order, CanonOrderFile};
     let cont = policy.continuity.as_ref();
@@ -480,16 +484,12 @@ fn resolve_canon_order_file(
         order_override,
         cont.and_then(|c| c.canon_order_path.as_ref()),
     ) {
-        // R538 — an explicit `--order` CLI override is CWD-relative (the same
-        // rule as `--sidecar` / `--manifest`; the config-declared path below
-        // stays workspace-rooted). Bypasses the sha256 pin (the pin claims
-        // nothing about a different file — the R428 `--catalog` rule).
-        (Some(p), _) => {
-            let cwd = std::env::current_dir()
-                .map_err(|e| OpError::Other(format!("CWD lookup for --order resolution: {e}")))?;
-            load_canon_order(&cascade::resolve_explicit_cli_path(&cwd, p), None)
-                .map_err(OpError::Other)
-        }
+        // Round 1000 — the override arrives already resolved against a base
+        // its own wire named (R538's rule now lives in the CLI, where the
+        // working directory is the user's own choice). Bypasses the sha256 pin
+        // (the pin claims nothing about a different file — the R428
+        // `--catalog` rule).
+        (Some(p), _) => load_canon_order(p.as_path(), None).map_err(OpError::Other),
         (None, Some(p)) => load_canon_order(
             &policy.root.join(p),
             cont.and_then(|c| c.canon_order_sha256.as_deref()),
@@ -507,7 +507,7 @@ fn resolve_canon_order_file(
 /// alone).
 fn resolve_narrative_rules(
     policy: &ContinuityPolicy,
-    rules_override: Option<&str>,
+    rules_override: Option<&AbsolutePath>,
 ) -> Result<mnemosyne_validate::continuity::NarrativeRulesFile, OpError> {
     use mnemosyne_validate::continuity::{load_narrative_rules, NarrativeRulesFile};
     let cont = policy.continuity.as_ref();
@@ -535,14 +535,21 @@ fn resolve_narrative_rules(
 /// built against a stale rules file is not slightly wrong, it is a different map.
 fn narrative_rules_path(
     policy: &ContinuityPolicy,
-    rules_override: Option<&str>,
+    rules_override: Option<&AbsolutePath>,
 ) -> Option<PathBuf> {
-    let declared = rules_override.map(str::to_string).or_else(|| {
-        policy
-            .continuity
-            .as_ref()
-            .and_then(|c| c.rules_path.clone())
-    })?;
+    // Round 1000 — an explicit override is already absolute and is used as
+    // given; only the CONFIG-declared path joins the workspace root. Before
+    // this the override was joined to the root here while `--order`'s was
+    // joined to the working directory in `resolve_canon_order_file`: two
+    // explicit overrides on one command resolving against different bases,
+    // which nothing said and nothing could have caught.
+    if let Some(p) = rules_override {
+        return Some(p.as_path().to_path_buf());
+    }
+    let declared = policy
+        .continuity
+        .as_ref()
+        .and_then(|c| c.rules_path.clone())?;
     Some(policy.root.join(declared))
 }
 
@@ -555,8 +562,8 @@ fn narrative_rules_path(
 /// [`OpError`] if the workspace config or the sidecar cannot be resolved.
 pub fn transition_map_inputs(
     workspace_root: &Path,
-    sidecar: Option<&Path>,
-    rules_override: Option<&str>,
+    sidecar: Option<&AbsolutePath>,
+    rules_override: Option<&AbsolutePath>,
 ) -> Result<Vec<PathBuf>, OpError> {
     let mut inputs = projection_inputs(workspace_root, sidecar)?;
     let policy = continuity_policy(workspace_root)?;
@@ -592,8 +599,8 @@ fn compose_canon_order(
 /// to pass `--order` or declare `[continuity].canon_order_path`.
 fn world_scoped_inputs(
     workspace_root: &Path,
-    sidecar: Option<&Path>,
-    order_override: Option<&str>,
+    sidecar: Option<&AbsolutePath>,
+    order_override: Option<&AbsolutePath>,
     read: &str,
 ) -> Result<(AtomicStore, mnemosyne_validate::continuity::CanonOrder), OpError> {
     let policy = continuity_policy(workspace_root)?;
@@ -697,9 +704,9 @@ pub struct ContinuityScanReport {
 /// resolution (rules = Round 449).
 pub fn continuity_scan(
     workspace_root: &Path,
-    sidecar: Option<&Path>,
-    order_override: Option<&str>,
-    rules_override: Option<&str>,
+    sidecar: Option<&AbsolutePath>,
+    order_override: Option<&AbsolutePath>,
+    rules_override: Option<&AbsolutePath>,
 ) -> Result<ContinuityScanReport, OpError> {
     let policy = continuity_policy(workspace_root)?;
     let decl = resolve_canon_order_file(&policy, order_override)?;
@@ -823,9 +830,9 @@ pub struct ProposeVerdictReport {
 /// THEN applies for real via `import-facts`.
 pub fn propose_verdict(
     workspace_root: &Path,
-    sidecar: Option<&Path>,
-    order_override: Option<&str>,
-    rules_override: Option<&str>,
+    sidecar: Option<&AbsolutePath>,
+    order_override: Option<&AbsolutePath>,
+    rules_override: Option<&AbsolutePath>,
     manifest: &mnemosyne_atomic::FactsManifest,
 ) -> Result<ProposeVerdictReport, OpError> {
     let policy = continuity_policy(workspace_root)?;
@@ -1088,10 +1095,10 @@ pub struct SeatBeforeTruth {
 /// pure read JOIN, never gated.
 pub fn authoring_frontier_report(
     workspace_root: &Path,
-    sidecar: Option<&Path>,
-    order_override: Option<&str>,
+    sidecar: Option<&AbsolutePath>,
+    order_override: Option<&AbsolutePath>,
     telling: Option<&str>,
-    rules_override: Option<&str>,
+    rules_override: Option<&AbsolutePath>,
 ) -> Result<AuthoringFrontierReport, OpError> {
     let policy = continuity_policy(workspace_root)?;
     let decl = resolve_canon_order_file(&policy, order_override)?;
@@ -1296,12 +1303,12 @@ pub struct FrameViewReport {
 /// the shared order resolution. `branch` omitted = the default world-line.
 pub fn continuity_frame_view(
     workspace_root: &Path,
-    sidecar: Option<&Path>,
+    sidecar: Option<&AbsolutePath>,
     frame: &str,
     branch: Option<&str>,
     entity: Option<&str>,
     at: &str,
-    order_override: Option<&str>,
+    order_override: Option<&AbsolutePath>,
 ) -> Result<FrameViewReport, OpError> {
     let policy = continuity_policy(workspace_root)?;
     let decl = resolve_canon_order_file(&policy, order_override)?;
@@ -1340,8 +1347,8 @@ pub fn continuity_frame_view(
 /// report finding (the author's todo list), deliberately never gated.
 pub fn payoff_coverage_report(
     workspace_root: &Path,
-    sidecar: Option<&Path>,
-    order_override: Option<&str>,
+    sidecar: Option<&AbsolutePath>,
+    order_override: Option<&AbsolutePath>,
 ) -> Result<mnemosyne_validate::continuity::PayoffCoverageReport, OpError> {
     let (store, order) =
         world_scoped_inputs(workspace_root, sidecar, order_override, "payoff coverage")?;
@@ -1354,7 +1361,7 @@ pub fn payoff_coverage_report(
 /// not of any canon declaration), so no order resolution runs.
 pub fn typing_candidates_report(
     workspace_root: &Path,
-    sidecar: Option<&Path>,
+    sidecar: Option<&AbsolutePath>,
 ) -> Result<mnemosyne_validate::continuity::TypingCandidatesReport, OpError> {
     let store = load_atomic_store(workspace_root, sidecar)?;
     mnemosyne_validate::continuity::typing_candidates(&store).map_err(OpError::Other)
@@ -1370,7 +1377,7 @@ pub fn typing_candidates_report(
 /// mutate lock.
 pub fn import_typing_proposals_report(
     workspace_root: &Path,
-    sidecar: Option<&Path>,
+    sidecar: Option<&AbsolutePath>,
     proposals_path: &Path,
     dry_run: bool,
 ) -> Result<mnemosyne_atomic::TypingImportReport, OpError> {
@@ -1394,8 +1401,8 @@ pub fn import_typing_proposals_report(
 /// all-deterministic redesign that replaced the R481 drift-verdict surface).
 pub fn payoff_substantiation_report(
     workspace_root: &Path,
-    sidecar: Option<&Path>,
-    order_override: Option<&str>,
+    sidecar: Option<&AbsolutePath>,
+    order_override: Option<&AbsolutePath>,
 ) -> Result<mnemosyne_validate::continuity::PayoffSubstantiationReport, OpError> {
     let policy = continuity_policy(workspace_root)?;
     let decl = resolve_canon_order_file(&policy, order_override)?;
@@ -1410,9 +1417,9 @@ pub fn payoff_substantiation_report(
 /// (`continuity_scan`); only `interval` rules contribute.
 pub fn timeline_gaps_report(
     workspace_root: &Path,
-    sidecar: Option<&Path>,
-    order_override: Option<&str>,
-    rules_override: Option<&str>,
+    sidecar: Option<&AbsolutePath>,
+    order_override: Option<&AbsolutePath>,
+    rules_override: Option<&AbsolutePath>,
 ) -> Result<mnemosyne_validate::continuity::TimelineGapsReport, OpError> {
     let policy = continuity_policy(workspace_root)?;
     let decl = resolve_canon_order_file(&policy, order_override)?;
@@ -1434,8 +1441,8 @@ pub fn timeline_gaps_report(
 /// scoping this read does not perform.
 pub fn transition_map_report(
     workspace_root: &Path,
-    sidecar: Option<&Path>,
-    rules_override: Option<&str>,
+    sidecar: Option<&AbsolutePath>,
+    rules_override: Option<&AbsolutePath>,
 ) -> Result<mnemosyne_validate::continuity::TransitionMapReport, OpError> {
     let policy = continuity_policy(workspace_root)?;
     let rules = resolve_narrative_rules(&policy, rules_override)?;
@@ -1450,7 +1457,7 @@ pub fn transition_map_report(
 /// import_typing_proposals_report shape).
 pub fn import_edge_proposals_report(
     workspace_root: &Path,
-    sidecar: Option<&Path>,
+    sidecar: Option<&AbsolutePath>,
     proposals_path: &Path,
     dry_run: bool,
 ) -> Result<mnemosyne_atomic::EdgeImportReport, OpError> {
@@ -1474,8 +1481,8 @@ pub fn import_edge_proposals_report(
 /// (the hints need world visibility; the facts table never degrades).
 pub fn edge_candidates_report(
     workspace_root: &Path,
-    sidecar: Option<&Path>,
-    order_override: Option<&str>,
+    sidecar: Option<&AbsolutePath>,
+    order_override: Option<&AbsolutePath>,
 ) -> Result<mnemosyne_validate::continuity::EdgeCandidatesReport, OpError> {
     let policy = continuity_policy(workspace_root)?;
     let decl = resolve_canon_order_file(&policy, order_override)?;
@@ -1490,8 +1497,8 @@ pub fn edge_candidates_report(
 /// query world. Craft signal, deliberately never gated.
 pub fn irony_intervals_report(
     workspace_root: &Path,
-    sidecar: Option<&Path>,
-    order_override: Option<&str>,
+    sidecar: Option<&AbsolutePath>,
+    order_override: Option<&AbsolutePath>,
 ) -> Result<mnemosyne_validate::continuity::IronyIntervalsReport, OpError> {
     let policy = continuity_policy(workspace_root)?;
     let decl = resolve_canon_order_file(&policy, order_override)?;
@@ -1507,9 +1514,9 @@ pub fn irony_intervals_report(
 /// fact events placed on it. Reading surface, deliberately never gated.
 pub fn playthrough_manuscript_report(
     workspace_root: &Path,
-    sidecar: Option<&Path>,
+    sidecar: Option<&AbsolutePath>,
     world: Option<&str>,
-    order_override: Option<&str>,
+    order_override: Option<&AbsolutePath>,
     telling: Option<&str>,
     reading_walk: bool,
 ) -> Result<mnemosyne_validate::continuity::PlaythroughManuscriptReport, OpError> {
@@ -1551,8 +1558,8 @@ pub fn playthrough_manuscript_report(
 /// order. Pure read projection, deliberately never gated.
 pub fn fork_tree_report(
     workspace_root: &Path,
-    sidecar: Option<&Path>,
-    order_override: Option<&str>,
+    sidecar: Option<&AbsolutePath>,
+    order_override: Option<&AbsolutePath>,
 ) -> Result<mnemosyne_validate::continuity::ForkTreeReport, OpError> {
     let policy = continuity_policy(workspace_root)?;
     let decl = resolve_canon_order_file(&policy, order_override)?;
@@ -1570,9 +1577,9 @@ pub fn fork_tree_report(
 /// never gated. `world` filters the per-world map (the fork tree stays full).
 pub fn playable_world_report(
     workspace_root: &Path,
-    sidecar: Option<&Path>,
+    sidecar: Option<&AbsolutePath>,
     world: Option<&str>,
-    order_override: Option<&str>,
+    order_override: Option<&AbsolutePath>,
     telling: &str,
 ) -> Result<mnemosyne_validate::continuity::PlayableWorldReport, OpError> {
     let (store, order) = world_scoped_inputs(
@@ -1597,9 +1604,9 @@ pub fn playable_world_report(
 /// the per-world map (the fork tree stays full).
 pub fn quest_graph_report(
     workspace_root: &Path,
-    sidecar: Option<&Path>,
+    sidecar: Option<&AbsolutePath>,
     world: Option<&str>,
-    order_override: Option<&str>,
+    order_override: Option<&AbsolutePath>,
     telling: &str,
 ) -> Result<mnemosyne_validate::continuity::QuestGraphReport, OpError> {
     let (store, order) =
@@ -1625,7 +1632,7 @@ pub fn describe_schema() -> mnemosyne_validate::schema::SchemaContract {
 /// read projection, order-independent, never gated.
 pub fn disclosure_coverage_report(
     workspace_root: &Path,
-    sidecar: Option<&Path>,
+    sidecar: Option<&AbsolutePath>,
     telling: &str,
 ) -> Result<mnemosyne_validate::disclosure::DisclosureCoverageReport, OpError> {
     let store = load_atomic_store(workspace_root, sidecar)?;
@@ -1638,9 +1645,9 @@ pub fn disclosure_coverage_report(
 /// `truth_frame` against the frame registry before running.
 pub fn disclosure_leak_report(
     workspace_root: &Path,
-    sidecar: Option<&Path>,
+    sidecar: Option<&AbsolutePath>,
     against: &Path,
-    order_override: Option<&str>,
+    order_override: Option<&AbsolutePath>,
     telling: &str,
     world: &str,
     truth_frame: &str,
@@ -1683,9 +1690,9 @@ pub fn disclosure_leak_report(
 /// registry before running.
 pub fn render_fidelity_report(
     workspace_root: &Path,
-    sidecar: Option<&Path>,
+    sidecar: Option<&AbsolutePath>,
     against: &Path,
-    order_override: Option<&str>,
+    order_override: Option<&AbsolutePath>,
     world: &str,
 ) -> Result<mnemosyne_validate::disclosure::RenderFidelityReport, OpError> {
     let policy = continuity_policy(workspace_root)?;
@@ -1764,7 +1771,7 @@ pub struct EntityKindMigration {
 
 pub fn entity_kind_migration(
     workspace_root: &Path,
-    sidecar: Option<&Path>,
+    sidecar: Option<&AbsolutePath>,
 ) -> Result<EntityKindMigration, OpError> {
     let store = load_atomic_store(workspace_root, sidecar)?;
     let mut by_kind: BTreeMap<String, Vec<String>> = BTreeMap::new();
@@ -1859,7 +1866,7 @@ pub struct ParameterEconomyReport {
 
 pub fn parameter_economy_report(
     workspace_root: &Path,
-    sidecar: Option<&Path>,
+    sidecar: Option<&AbsolutePath>,
 ) -> Result<ParameterEconomyReport, OpError> {
     let store = load_atomic_store(workspace_root, sidecar)?;
     let meters = store
@@ -1944,7 +1951,7 @@ pub struct BindingKindMigration {
 /// serializable [`BindingKindMigration`].
 pub fn binding_kind_migration(
     workspace_root: &Path,
-    sidecar: Option<&Path>,
+    sidecar: Option<&AbsolutePath>,
 ) -> Result<BindingKindMigration, OpError> {
     let store = load_atomic_store(workspace_root, sidecar)?;
     Ok(match store.kind_migration_report() {
@@ -1982,7 +1989,7 @@ pub struct EntityDossier {
 
 pub fn entity_dossier(
     workspace_root: &Path,
-    sidecar: Option<&Path>,
+    sidecar: Option<&AbsolutePath>,
     entity_id: &str,
 ) -> Result<EntityDossier, OpError> {
     let store = load_atomic_store(workspace_root, sidecar)?;
@@ -2026,7 +2033,7 @@ pub fn entity_dossier(
 /// report instead of printing it.
 pub fn redact_term(
     workspace_root: &Path,
-    sidecar: Option<&Path>,
+    sidecar: Option<&AbsolutePath>,
     regenerate: bool,
     input: &RedactTermInput,
 ) -> Result<(mnemosyne_atomic::RedactionReport, bool), OpError> {
@@ -2121,7 +2128,7 @@ pub fn inventory_decay_scan(
 /// publishable half currently diverges from the audit half (R300).
 pub fn emit_publishable_override_ledger_draft(
     workspace_root: &Path,
-    sidecar: Option<&Path>,
+    sidecar: Option<&AbsolutePath>,
     entry_id: &str,
     reason: &str,
     applied_in: &str,

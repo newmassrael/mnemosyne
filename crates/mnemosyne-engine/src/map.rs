@@ -55,6 +55,7 @@
 //! a side-table value keyed by a fact that is no map edge is NAMED, because an
 //! authored cost that simply vanishes from a baked map reads as never authored.
 
+use mnemosyne_ops::AbsolutePath;
 use std::path::Path;
 
 use mnemosyne_validate::continuity::TransitionMapReport;
@@ -243,7 +244,7 @@ impl MapProjection {
     /// not register, or a side-table entry the store-registry boundary rejects.
     pub fn from_workspace(
         workspace_root: &Path,
-        rules_override: Option<&str>,
+        rules_override: Option<&AbsolutePath>,
     ) -> Result<Self, EngineError> {
         let report = mnemosyne_ops::transition_map_report(workspace_root, None, rules_override)
             .map_err(|e| EngineError::Projection(e.to_string()))?;

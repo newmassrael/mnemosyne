@@ -2876,9 +2876,9 @@ fn cmd_validate_continuity(args: &[String]) -> Result<()> {
         .unwrap_or_else(|| loaded.workspace_root.clone());
     let mut report = mnemosyne_ops::continuity_scan(
         &anchor,
-        sidecar_override.as_deref().map(std::path::Path::new),
-        order_override.as_deref(),
-        rules_override.as_deref(),
+        atomic_cli::cli_path(sidecar_override.as_deref())?.as_ref(),
+        atomic_cli::cli_path(order_override.as_deref())?.as_ref(),
+        atomic_cli::cli_path(rules_override.as_deref())?.as_ref(),
     )
     .map_err(|e| anyhow!("{e}"))?;
     if let Some(s) = &severity_override {
@@ -3256,12 +3256,12 @@ fn cmd_report_frame_view(args: &[String]) -> Result<()> {
         .unwrap_or_else(|| loaded.workspace_root.clone());
     let view = mnemosyne_ops::continuity_frame_view(
         &anchor,
-        sidecar_override.as_deref().map(std::path::Path::new),
+        atomic_cli::cli_path(sidecar_override.as_deref())?.as_ref(),
         &frame,
         branch.as_deref(),
         entity.as_deref(),
         &at,
-        order_override.as_deref(),
+        atomic_cli::cli_path(order_override.as_deref())?.as_ref(),
     )
     .map_err(|e| anyhow!("{e}"))?;
     if json {
@@ -3345,7 +3345,7 @@ fn cmd_report_entity(args: &[String]) -> Result<()> {
         .unwrap_or_else(|| loaded.workspace_root.clone());
     let dossier = mnemosyne_ops::entity_dossier(
         &anchor,
-        sidecar_override.as_deref().map(std::path::Path::new),
+        atomic_cli::cli_path(sidecar_override.as_deref())?.as_ref(),
         &entity,
     )
     .map_err(|e| anyhow!("{e}"))?;
@@ -3408,7 +3408,7 @@ fn cmd_report_entity_kind_migration(args: &[String]) -> Result<()> {
         .unwrap_or_else(|| loaded.workspace_root.clone());
     let report = mnemosyne_ops::entity_kind_migration(
         &anchor,
-        sidecar_override.as_deref().map(std::path::Path::new),
+        atomic_cli::cli_path(sidecar_override.as_deref())?.as_ref(),
     )
     .map_err(|e| anyhow!("{e}"))?;
     if json {
@@ -3477,7 +3477,7 @@ fn cmd_report_parameter_economy(args: &[String]) -> Result<()> {
         .unwrap_or_else(|| loaded.workspace_root.clone());
     let report = mnemosyne_ops::parameter_economy_report(
         &anchor,
-        sidecar_override.as_deref().map(std::path::Path::new),
+        atomic_cli::cli_path(sidecar_override.as_deref())?.as_ref(),
     )
     .map_err(|e| anyhow!("{e}"))?;
     if json {
@@ -3621,8 +3621,8 @@ fn cmd_report_payoff_coverage(args: &[String]) -> Result<()> {
     let json = a.json;
     let report = mnemosyne_ops::payoff_coverage_report(
         &a.anchor,
-        a.sidecar_override.as_deref().map(std::path::Path::new),
-        a.order_override.as_deref(),
+        atomic_cli::cli_path(a.sidecar_override.as_deref())?.as_ref(),
+        atomic_cli::cli_path(a.order_override.as_deref())?.as_ref(),
     )
     .map_err(|e| anyhow!("{e}"))?;
     if json {
@@ -3690,8 +3690,8 @@ fn cmd_report_irony_intervals(args: &[String]) -> Result<()> {
     let json = a.json;
     let report = mnemosyne_ops::irony_intervals_report(
         &a.anchor,
-        a.sidecar_override.as_deref().map(std::path::Path::new),
-        a.order_override.as_deref(),
+        atomic_cli::cli_path(a.sidecar_override.as_deref())?.as_ref(),
+        atomic_cli::cli_path(a.order_override.as_deref())?.as_ref(),
     )
     .map_err(|e| anyhow!("{e}"))?;
     if json {
@@ -3792,9 +3792,9 @@ fn cmd_report_playthrough_manuscript(args: &[String]) -> Result<()> {
     )?;
     let report = mnemosyne_ops::playthrough_manuscript_report(
         &a.anchor,
-        a.sidecar_override.as_deref().map(std::path::Path::new),
+        atomic_cli::cli_path(a.sidecar_override.as_deref())?.as_ref(),
         a.world.as_deref(),
-        a.order_override.as_deref(),
+        atomic_cli::cli_path(a.order_override.as_deref())?.as_ref(),
         a.telling.as_deref(),
         a.reading_walk,
     )
@@ -3913,8 +3913,8 @@ fn cmd_report_fork_tree(args: &[String]) -> Result<()> {
     let a = parse_narrative_report_args(args, NarrativeFlags::default())?;
     let report = mnemosyne_ops::fork_tree_report(
         &a.anchor,
-        a.sidecar_override.as_deref().map(std::path::Path::new),
-        a.order_override.as_deref(),
+        atomic_cli::cli_path(a.sidecar_override.as_deref())?.as_ref(),
+        atomic_cli::cli_path(a.order_override.as_deref())?.as_ref(),
     )
     .map_err(|e| anyhow!("{e}"))?;
     if a.json {
@@ -4005,9 +4005,9 @@ fn cmd_report_playable_world(args: &[String]) -> Result<()> {
         .ok_or_else(|| anyhow!("--telling arg required"))?;
     let report = mnemosyne_ops::playable_world_report(
         &a.anchor,
-        a.sidecar_override.as_deref().map(std::path::Path::new),
+        atomic_cli::cli_path(a.sidecar_override.as_deref())?.as_ref(),
         a.world.as_deref(),
-        a.order_override.as_deref(),
+        atomic_cli::cli_path(a.order_override.as_deref())?.as_ref(),
         telling,
     )
     .map_err(|e| anyhow!("{e}"))?;
@@ -4084,9 +4084,9 @@ fn cmd_report_quest_graph(args: &[String]) -> Result<()> {
         .ok_or_else(|| anyhow!("--telling arg required"))?;
     let report = mnemosyne_ops::quest_graph_report(
         &a.anchor,
-        a.sidecar_override.as_deref().map(std::path::Path::new),
+        atomic_cli::cli_path(a.sidecar_override.as_deref())?.as_ref(),
         a.world.as_deref(),
-        a.order_override.as_deref(),
+        atomic_cli::cli_path(a.order_override.as_deref())?.as_ref(),
         telling,
     )
     .map_err(|e| anyhow!("{e}"))?;
@@ -4345,9 +4345,9 @@ fn cmd_propose_verdict(args: &[String]) -> Result<()> {
         .unwrap_or_else(|| loaded.workspace_root.clone());
     let report = mnemosyne_ops::propose_verdict(
         &anchor,
-        sidecar_override.as_deref().map(std::path::Path::new),
-        order_override.as_deref(),
-        rules_override.as_deref(),
+        atomic_cli::cli_path(sidecar_override.as_deref())?.as_ref(),
+        atomic_cli::cli_path(order_override.as_deref())?.as_ref(),
+        atomic_cli::cli_path(rules_override.as_deref())?.as_ref(),
         &manifest,
     )
     .map_err(|e| anyhow!("{e}"))?;
@@ -4447,10 +4447,10 @@ fn cmd_report_authoring_frontier(args: &[String]) -> Result<()> {
         .unwrap_or_else(|| loaded.workspace_root.clone());
     let report = mnemosyne_ops::authoring_frontier_report(
         &anchor,
-        sidecar_override.as_deref().map(std::path::Path::new),
-        order_override.as_deref(),
+        atomic_cli::cli_path(sidecar_override.as_deref())?.as_ref(),
+        atomic_cli::cli_path(order_override.as_deref())?.as_ref(),
         telling.as_deref(),
-        rules_override.as_deref(),
+        atomic_cli::cli_path(rules_override.as_deref())?.as_ref(),
     )
     .map_err(|e| anyhow!("{e}"))?;
     if json {
@@ -4564,7 +4564,7 @@ fn cmd_report_disclosure_coverage(args: &[String]) -> Result<()> {
         .ok_or_else(|| anyhow!("--telling arg required"))?;
     let report = mnemosyne_ops::disclosure_coverage_report(
         &a.anchor,
-        a.sidecar_override.as_deref().map(std::path::Path::new),
+        atomic_cli::cli_path(a.sidecar_override.as_deref())?.as_ref(),
         telling,
     )
     .map_err(|e| anyhow!("{e}"))?;
@@ -4696,9 +4696,9 @@ fn cmd_validate_disclosure_leak(args: &[String]) -> Result<()> {
     let anchor = report_anchor()?;
     let report = mnemosyne_ops::disclosure_leak_report(
         &anchor,
-        sidecar.as_deref().map(std::path::Path::new),
+        atomic_cli::cli_path(sidecar.as_deref())?.as_ref(),
         std::path::Path::new(&against),
-        order_override.as_deref(),
+        atomic_cli::cli_path(order_override.as_deref())?.as_ref(),
         &telling,
         &world,
         &truth_frame,
@@ -4823,9 +4823,9 @@ fn cmd_validate_render_fidelity(args: &[String]) -> Result<()> {
     let anchor = report_anchor()?;
     let report = mnemosyne_ops::render_fidelity_report(
         &anchor,
-        sidecar.as_deref().map(std::path::Path::new),
+        atomic_cli::cli_path(sidecar.as_deref())?.as_ref(),
         std::path::Path::new(&against),
-        order_override.as_deref(),
+        atomic_cli::cli_path(order_override.as_deref())?.as_ref(),
         &world,
     )
     .map_err(|e| anyhow!("{e}"))?;
@@ -4893,7 +4893,7 @@ fn cmd_report_typing_candidates(args: &[String]) -> Result<()> {
         .unwrap_or_else(|| loaded.workspace_root.clone());
     let report = mnemosyne_ops::typing_candidates_report(
         &anchor,
-        sidecar_override.as_deref().map(std::path::Path::new),
+        atomic_cli::cli_path(sidecar_override.as_deref())?.as_ref(),
     )
     .map_err(|e| anyhow!("{e}"))?;
     if json {
@@ -4961,7 +4961,7 @@ fn cmd_import_typing_proposals(args: &[String]) -> Result<()> {
         .unwrap_or_else(|| loaded.workspace_root.clone());
     let report = mnemosyne_ops::import_typing_proposals_report(
         &anchor,
-        sidecar_override.as_deref().map(std::path::Path::new),
+        atomic_cli::cli_path(sidecar_override.as_deref())?.as_ref(),
         std::path::Path::new(&proposals),
         dry_run,
     )
@@ -5003,8 +5003,8 @@ fn cmd_report_payoff_substantiation(args: &[String]) -> Result<()> {
     let a = parse_narrative_report_args(args, NarrativeFlags::default())?;
     let report = mnemosyne_ops::payoff_substantiation_report(
         &a.anchor,
-        a.sidecar_override.as_deref().map(std::path::Path::new),
-        a.order_override.as_deref(),
+        atomic_cli::cli_path(a.sidecar_override.as_deref())?.as_ref(),
+        atomic_cli::cli_path(a.order_override.as_deref())?.as_ref(),
     )
     .map_err(|e| anyhow!("{e}"))?;
     if a.json {
@@ -5082,8 +5082,8 @@ fn cmd_report_transition_map(args: &[String]) -> Result<()> {
         .unwrap_or_else(|| loaded.workspace_root.clone());
     let report = mnemosyne_ops::transition_map_report(
         &anchor,
-        sidecar_override.as_deref().map(std::path::Path::new),
-        rules_override.as_deref(),
+        atomic_cli::cli_path(sidecar_override.as_deref())?.as_ref(),
+        atomic_cli::cli_path(rules_override.as_deref())?.as_ref(),
     )
     .map_err(|e| anyhow!("{e}"))?;
     if json {
@@ -5206,9 +5206,9 @@ fn cmd_report_timeline_gaps(args: &[String]) -> Result<()> {
         .unwrap_or_else(|| loaded.workspace_root.clone());
     let report = mnemosyne_ops::timeline_gaps_report(
         &anchor,
-        sidecar_override.as_deref().map(std::path::Path::new),
-        order_override.as_deref(),
-        rules_override.as_deref(),
+        atomic_cli::cli_path(sidecar_override.as_deref())?.as_ref(),
+        atomic_cli::cli_path(order_override.as_deref())?.as_ref(),
+        atomic_cli::cli_path(rules_override.as_deref())?.as_ref(),
     )
     .map_err(|e| anyhow!("{e}"))?;
     if json {
@@ -5317,7 +5317,7 @@ fn cmd_import_edge_proposals(args: &[String]) -> Result<()> {
         .unwrap_or_else(|| loaded.workspace_root.clone());
     let report = mnemosyne_ops::import_edge_proposals_report(
         &anchor,
-        sidecar_override.as_deref().map(std::path::Path::new),
+        atomic_cli::cli_path(sidecar_override.as_deref())?.as_ref(),
         std::path::Path::new(&proposals),
         dry_run,
     )
@@ -5359,8 +5359,8 @@ fn cmd_report_edge_candidates(args: &[String]) -> Result<()> {
     let json = a.json;
     let report = mnemosyne_ops::edge_candidates_report(
         &a.anchor,
-        a.sidecar_override.as_deref().map(std::path::Path::new),
-        a.order_override.as_deref(),
+        atomic_cli::cli_path(a.sidecar_override.as_deref())?.as_ref(),
+        atomic_cli::cli_path(a.order_override.as_deref())?.as_ref(),
     )
     .map_err(|e| anyhow!("{e}"))?;
     if json {

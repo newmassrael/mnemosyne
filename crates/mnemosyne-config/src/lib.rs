@@ -1835,6 +1835,88 @@ pub fn load_config(config_path: &Path) -> Result<LoadedConfig> {
     })
 }
 
+/// A path that has already been resolved against a base the CALLER chose.
+///
+/// WHY A TYPE AND NOT A `&Path` (Round 1000). A raw path argument is ambiguous
+/// — relative to WHAT? — and the only place that can answer is the wire that
+/// received it. When the answer is deferred into a shared library instead, the
+/// library has to guess, and the only thing available to guess with is the
+/// process's working directory. That is how `resolve_canon_order_file` came to
+/// call `std::env::current_dir()`: the same argument then meant one thing on
+/// the CLI, where the working directory is the user's own choice, and another
+/// over MCP, where it belongs to whatever host launched the server and the
+/// caller cannot see it (Round 998 found an agent's path reading a file beside
+/// this source).
+///
+/// The rule Round 538 set is unchanged and now lives where it belongs: a path
+/// typed on the command line is relative to where the user stands, so the CLI
+/// resolves against its own working directory. What changes is that the
+/// library can no longer resolve anything — a caller that has not said what
+/// its path is relative to cannot construct this type at all.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct AbsolutePath(PathBuf);
+
+impl AbsolutePath {
+    /// Resolve `raw` against a base the caller names. An absolute `raw` ignores
+    /// the base, which is the Round 538 rule for an explicit override.
+    ///
+    /// # Errors
+    ///
+    /// If `base` is itself relative — a relative base cannot make an absolute
+    /// path, and silently falling back to the working directory is the defect
+    /// this type exists to remove.
+    pub fn resolve(base: &Path, raw: &str) -> Result<Self> {
+        let raw = PathBuf::from(raw);
+        if raw.is_absolute() {
+            return Ok(Self(raw));
+        }
+        if !base.is_absolute() {
+            bail!(
+                "cannot resolve `{}` against the relative base `{}` — name an \
+                 absolute base (the workspace root, or the process's working \
+                 directory if that is what the path is relative to)",
+                raw.display(),
+                base.display()
+            );
+        }
+        Ok(Self(base.join(raw)))
+    }
+
+    /// Wrap a path that is already absolute.
+    ///
+    /// # Errors
+    ///
+    /// If it is not absolute.
+    pub fn new(path: impl Into<PathBuf>) -> Result<Self> {
+        let path = path.into();
+        if path.is_absolute() {
+            Ok(Self(path))
+        } else {
+            bail!(
+                "`{}` is not absolute; resolve it against a named base first",
+                path.display()
+            )
+        }
+    }
+
+    #[must_use]
+    pub fn as_path(&self) -> &Path {
+        &self.0
+    }
+}
+
+impl AsRef<Path> for AbsolutePath {
+    fn as_ref(&self) -> &Path {
+        &self.0
+    }
+}
+
+impl std::fmt::Display for AbsolutePath {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.0.display().fmt(f)
+    }
+}
+
 const PRIMARY_FILENAME: &str = "mnemosyne.toml";
 const FALLBACK_FILENAME: &str = ".mnemosyne/config.toml";
 
@@ -1842,11 +1924,18 @@ const FALLBACK_FILENAME: &str = ".mnemosyne/config.toml";
 /// `.mnemosyne/config.toml`. Returns the first match (load + validate) or
 /// `None` if the entire ancestor chain has no config file.
 pub fn discover_config(start: &Path) -> Result<Option<LoadedConfig>> {
-    let mut cursor = if start.is_absolute() {
-        start.to_path_buf()
-    } else {
-        std::env::current_dir().context("CWD lookup")?.join(start)
-    };
+    // Round 1000 — a relative start used to be joined to the process's working
+    // directory here, which made config DISCOVERY depend on ambient state in a
+    // library two wires share. It is refused instead: the caller knows what its
+    // path is relative to and this crate does not.
+    if !start.is_absolute() {
+        bail!(
+            "config discovery needs an absolute start; `{}` is relative and this \
+             crate will not guess a base for it",
+            start.display()
+        );
+    }
+    let mut cursor = start.to_path_buf();
 
     loop {
         for candidate_name in [PRIMARY_FILENAME, FALLBACK_FILENAME] {
