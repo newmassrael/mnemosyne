@@ -162,6 +162,102 @@
         "`AbsolutePath` DOES NOT CANONICALISE. It joins and checks absoluteness; it does not resolve `..`, symlinks, or a non-existent parent. That is deliberate — canonicalisation touches the filesystem and would fail for a path being created — but it means two `AbsolutePath`s can name one file and compare unequal."
       ]
     },
+    "Round 1001": {
+      "decision_summary": "R1001 (DEBT) — the eighth audit, and the finding is that Round 1000 typed the paths that went THROUGH the library and left the ones the wire opens itself, which is the half-cleanup this repository bans by name. Its own carry said so: \"the manifest arguments are not yet typed ... they are the same ambiguity for an agent, and the type is now there for them\" — a sentence describing work, in the round that built the type. STAR THE AMBIGUITY IS IDENTICAL AND THE MECHANISM IS THE SAME. `read_to_string(relative)` resolves against the process's working directory by the operating system's rule, which is exactly what the library used to do explicitly. So `propose_verdict.manifest_path`, the CLI's `--manifest` at three sites, and both `proposals_path` arguments now go through their own wire's resolver. One line still decides what a relative path means to an agent, and now it decides for EVERY path an agent sends rather than for some of them. STAR AN INJECTION FOUND A HOLE THE AUDIT DID NOT. Replacing `propose_verdict`'s manifest path with a fixed nonsense string left all 96 tests green: nothing in this repository had ever run that tool. It is the generate-gate-repair loop's gate — the one the contract tells an agent to call BEFORE writing for real — so a wire reading the wrong file would hand back a verdict about something the agent never sent. It has a test now, in both directions: the verdict must name what is wrong with THE MANIFEST THE AGENT NAMED, and a path naming nothing must be refused rather than answered. STAR AND THAT SAME INJECTION SHOWED THE ERROR MESSAGE NAMING THE WRONG FILE. `read manifest {}` printed the ARGUMENT while `read_to_string` had opened something else; the two agree in production, so this was a trap rather than a defect — the message a reader would trust in the one situation where it is wrong. It names the file that was actually opened. STAR ROUND 999's REASONING WAS PUT TO A RUN AND HELD. It argued that a mid-manifest failure is the same class as a last-row one because both verbs commit through one primitive. The middle-row arm is written; it fires independently on the row-at-a-time injection, and no injection separates it from the last-row arm. The argument was right, and it is now a measurement rather than an argument. STAR ONE CORRECTION IS TO THIS SESSION'S OWN PROSE: Round 1000 wrote \"Round 1001 would move it\" into a doc comment and the code-citation gate refused it, correctly — and the same pre-assignment survived in the ledger and the resume memory, where no gate reads. A round number for unwritten work is a citation to something that does not exist wherever it is written.",
+      "changes_bullets": [
+        "`mnemosyne-mcp` — `propose_verdict.manifest_path` and both `import_*_proposals.proposals_path` go through `mcp_path`, the same wire resolver as every other path an agent sends. The proposals resolution is hoisted above the mutate-lock closure, since a `return` inside a closure leaves the closure rather than the tool call.",
+        "`mnemosyne-cli` — `--manifest` at three sites goes through `cli_path`. Behaviour is unchanged: the operating system was already resolving these against the working directory, which is what `cli_path` does.",
+        "`mnemosyne-mcp` — the read-failure message names the file that was OPENED rather than the argument that was received.",
+        "`mnemosyne-mcp` — `propose_verdict_reads_the_manifest_the_agent_named`, the tool's first test.",
+        "`mnemosyne-mcp` — `a_refused_section_import_leaves_the_store_untouched` gains a middle-row arm."
+      ],
+      "verification_bullets": [
+        "STAR INJECTION AF FOUND AN UNTESTED TOOL, NOT A BROKEN ONE: with `propose_verdict`'s manifest path replaced by a fixed string, all 96 tests stayed green. That is the measurement that the tool had never been executed here.",
+        "INJECTION AF, re-run after the new test: it fails with \"the verdict says nothing about the manifest the agent named, so this tool may be reading some other file\".",
+        "THE SAME FAILURE MESSAGE EXPOSED THE ERROR NAMING THE WRONG FILE — it printed the agent's path while the read had used the injected one. Fixed to name what was opened.",
+        "INJECTION AE, `import_sections` made row-at-a-time: the middle-row arm fires INDEPENDENTLY, verified by deleting the last-row arm and re-running. No injection I could construct separates the two, so Round 999's reasoning is confirmed rather than merely repeated.",
+        "A PROBE OF MINE DID NOT APPLY AND ITS RESULT WAS DISCARDED: the first attempt to delete the last-row arm missed because rustfmt had wrapped the tuple across lines. Re-anchored on the formatted text and re-run. Fifth time in this session that an assertion caught an unapplied edit.",
+        "1588 workspace tests pass (1587 before), 0 failed, `--no-fail-fast`; clippy `-D warnings` and `cargo fmt --check` clean; `validate-workspace` T1 orphan 0 and T3 reject 0.",
+        "Citation hygiene (R255): Rounds 999 and 1000 verified present with `query --changelog-entry` and Round 1001 verified absent before this entry was appended."
+      ],
+      "impact_refs": [
+        "atomic-store-mutate-api"
+      ],
+      "carry_forward_bullets": [
+        "THE OWNER'S ONE-LINE DECISION IS UNCHANGED AND NOW COVERS MORE: `mcp_path` joins the working directory; joining the workspace instead would make every relative path an agent sends mean the only base it can see. It is one line, it lands alone, and it reverts alone. This round is why it is now ONE line rather than one line plus four scattered reads.",
+        "DO NOT PRE-ASSIGN A ROUND NUMBER TO UNWRITTEN WORK. Round 1000 wrote \"Round 1001 would move it\" and the code-citation gate refused it; the same sentence survived in prose the gate does not read. A round that does not exist cannot be cited anywhere, and naming a future one in the ledger is the same claim with no gate behind it.",
+        "`propose_verdict` HAS ONE TEST AND NEEDS MORE. This round asserts which FILE it read; nothing yet asserts the verdict itself — that a manifest which would violate a continuity rule comes back `rollback` with the rule named, and a clean one comes back `commit`. That is the contract an agent acts on and it is unexercised."
+      ],
+      "population_census": [
+        {
+          "axis": "transition rules by `undirected`",
+          "left_label": "undirected",
+          "left": 10,
+          "right_label": "directed",
+          "right": 27
+        },
+        {
+          "axis": "map corpora by leg-kind declaration",
+          "left_label": "omitted",
+          "left": 6,
+          "right_label": "declared",
+          "right": 24
+        },
+        {
+          "axis": "cost-carrying corpora by direction-dependent pricing",
+          "left_label": "prices a way by direction",
+          "left": 4,
+          "right_label": "prices no way by direction",
+          "right": 6
+        },
+        {
+          "axis": "run trees by authoring mode",
+          "left_label": "hand script",
+          "left": 10,
+          "right_label": "file-only",
+          "right": 239
+        },
+        {
+          "axis": "map corpora by declared boundary crossing",
+          "left_label": "declares an exit",
+          "left": 6,
+          "right_label": "declares none",
+          "right": 24
+        },
+        {
+          "axis": "authored submissions by map and telling",
+          "left_label": "carries both",
+          "left": 10,
+          "right_label": "carries one",
+          "right": 24
+        }
+      ],
+      "publishable_decision_summary": "R1001 (DEBT) — the eighth audit, and the finding is that Round 1000 typed the paths that went THROUGH the library and left the ones the wire opens itself, which is the half-cleanup this repository bans by name. Its own carry said so: \"the manifest arguments are not yet typed ... they are the same ambiguity for an agent, and the type is now there for them\" — a sentence describing work, in the round that built the type. STAR THE AMBIGUITY IS IDENTICAL AND THE MECHANISM IS THE SAME. `read_to_string(relative)` resolves against the process's working directory by the operating system's rule, which is exactly what the library used to do explicitly. So `propose_verdict.manifest_path`, the CLI's `--manifest` at three sites, and both `proposals_path` arguments now go through their own wire's resolver. One line still decides what a relative path means to an agent, and now it decides for EVERY path an agent sends rather than for some of them. STAR AN INJECTION FOUND A HOLE THE AUDIT DID NOT. Replacing `propose_verdict`'s manifest path with a fixed nonsense string left all 96 tests green: nothing in this repository had ever run that tool. It is the generate-gate-repair loop's gate — the one the contract tells an agent to call BEFORE writing for real — so a wire reading the wrong file would hand back a verdict about something the agent never sent. It has a test now, in both directions: the verdict must name what is wrong with THE MANIFEST THE AGENT NAMED, and a path naming nothing must be refused rather than answered. STAR AND THAT SAME INJECTION SHOWED THE ERROR MESSAGE NAMING THE WRONG FILE. `read manifest {}` printed the ARGUMENT while `read_to_string` had opened something else; the two agree in production, so this was a trap rather than a defect — the message a reader would trust in the one situation where it is wrong. It names the file that was actually opened. STAR ROUND 999's REASONING WAS PUT TO A RUN AND HELD. It argued that a mid-manifest failure is the same class as a last-row one because both verbs commit through one primitive. The middle-row arm is written; it fires independently on the row-at-a-time injection, and no injection separates it from the last-row arm. The argument was right, and it is now a measurement rather than an argument. STAR ONE CORRECTION IS TO THIS SESSION'S OWN PROSE: Round 1000 wrote \"Round 1001 would move it\" into a doc comment and the code-citation gate refused it, correctly — and the same pre-assignment survived in the ledger and the resume memory, where no gate reads. A round number for unwritten work is a citation to something that does not exist wherever it is written.",
+      "publishable_changes_bullets": [
+        "`mnemosyne-mcp` — `propose_verdict.manifest_path` and both `import_*_proposals.proposals_path` go through `mcp_path`, the same wire resolver as every other path an agent sends. The proposals resolution is hoisted above the mutate-lock closure, since a `return` inside a closure leaves the closure rather than the tool call.",
+        "`mnemosyne-cli` — `--manifest` at three sites goes through `cli_path`. Behaviour is unchanged: the operating system was already resolving these against the working directory, which is what `cli_path` does.",
+        "`mnemosyne-mcp` — the read-failure message names the file that was OPENED rather than the argument that was received.",
+        "`mnemosyne-mcp` — `propose_verdict_reads_the_manifest_the_agent_named`, the tool's first test.",
+        "`mnemosyne-mcp` — `a_refused_section_import_leaves_the_store_untouched` gains a middle-row arm."
+      ],
+      "publishable_verification_bullets": [
+        "STAR INJECTION AF FOUND AN UNTESTED TOOL, NOT A BROKEN ONE: with `propose_verdict`'s manifest path replaced by a fixed string, all 96 tests stayed green. That is the measurement that the tool had never been executed here.",
+        "INJECTION AF, re-run after the new test: it fails with \"the verdict says nothing about the manifest the agent named, so this tool may be reading some other file\".",
+        "THE SAME FAILURE MESSAGE EXPOSED THE ERROR NAMING THE WRONG FILE — it printed the agent's path while the read had used the injected one. Fixed to name what was opened.",
+        "INJECTION AE, `import_sections` made row-at-a-time: the middle-row arm fires INDEPENDENTLY, verified by deleting the last-row arm and re-running. No injection I could construct separates the two, so Round 999's reasoning is confirmed rather than merely repeated.",
+        "A PROBE OF MINE DID NOT APPLY AND ITS RESULT WAS DISCARDED: the first attempt to delete the last-row arm missed because rustfmt had wrapped the tuple across lines. Re-anchored on the formatted text and re-run. Fifth time in this session that an assertion caught an unapplied edit.",
+        "1588 workspace tests pass (1587 before), 0 failed, `--no-fail-fast`; clippy `-D warnings` and `cargo fmt --check` clean; `validate-workspace` T1 orphan 0 and T3 reject 0.",
+        "Citation hygiene (R255): Rounds 999 and 1000 verified present with `query --changelog-entry` and Round 1001 verified absent before this entry was appended."
+      ],
+      "publishable_impact_refs": [
+        "atomic-store-mutate-api"
+      ],
+      "publishable_carry_forward_bullets": [
+        "THE OWNER'S ONE-LINE DECISION IS UNCHANGED AND NOW COVERS MORE: `mcp_path` joins the working directory; joining the workspace instead would make every relative path an agent sends mean the only base it can see. It is one line, it lands alone, and it reverts alone. This round is why it is now ONE line rather than one line plus four scattered reads.",
+        "DO NOT PRE-ASSIGN A ROUND NUMBER TO UNWRITTEN WORK. Round 1000 wrote \"Round 1001 would move it\" and the code-citation gate refused it; the same sentence survived in prose the gate does not read. A round that does not exist cannot be cited anywhere, and naming a future one in the ledger is the same claim with no gate behind it.",
+        "`propose_verdict` HAS ONE TEST AND NEEDS MORE. This round asserts which FILE it read; nothing yet asserts the verdict itself — that a manifest which would violate a continuity rule comes back `rollback` with the rule named, and a clean one comes back `commit`. That is the contract an agent acts on and it is unexercised."
+      ]
+    },
     "Round 252": {
       "decision_summary": "Parser CommonMark conformance — recognize indented fenced code blocks (§98) and require whitespace after ATX hash sequence (§62)",
       "changes_bullets": [

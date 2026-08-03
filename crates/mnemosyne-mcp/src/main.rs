@@ -2546,11 +2546,18 @@ impl MnemosyneServer {
         description = "Propose-verdict (R588, DRY RUN): the generate-gate-repair loop's atomic gate. Reads a candidate import-facts manifest from manifest_path, applies it to a THROWAWAY in-memory clone of the store, runs the shape invariants + the continuity gate, and returns verdict=commit|rollback plus actionable violations (each carries rule + locus {facts,field,frame,branch,at} + expected + repair_hint + message). The real store is NEVER written — on commit, apply for real via the import-facts CLI. Deterministic, AI out of the gate. Fail-loud on an unreadable/unparseable manifest."
     )]
     async fn propose_verdict(&self, args: Parameters<ProposeVerdictArgs>) -> CallToolResult {
-        let raw = match std::fs::read_to_string(&args.0.manifest_path) {
+        // Round 1001 — an agent's manifest path goes through the same wire
+        // resolver as every other path it sends. Round 1000 typed the
+        // overrides that passed through `ops` and left the ones the wire
+        // opens itself, which is the half-cleanup this repository bans:
+        // the ambiguity an agent faces is identical either way.
+        let manifest_path = match mcp_path(Some(&args.0.manifest_path)) {
+            Ok(p) => p.expect("a Some input yields a Some path"),
+            Err(e) => return Self::tool_error(e),
+        };
+        let raw = match std::fs::read_to_string(manifest_path.as_path()) {
             Ok(r) => r,
-            Err(e) => {
-                return Self::tool_error(format!("read manifest {}: {e}", args.0.manifest_path))
-            }
+            Err(e) => return Self::tool_error(format!("read manifest {manifest_path}: {e}")),
         };
         let manifest = match mnemosyne_atomic::parse_facts_manifest(&raw) {
             Ok(m) => m,
@@ -2644,11 +2651,17 @@ impl MnemosyneServer {
     ) -> CallToolResult {
         // Verdict-report mutate: same single lock site as every other
         // mutate (Round 460 — with_mutate_lock), report-shaped return.
+        // Resolved BEFORE the lock closure: a `return` inside a closure
+        // leaves the closure, not the tool call.
+        let proposals_path = match mcp_path(Some(&args.0.proposals_path)) {
+            Ok(p) => p.expect("a Some input yields a Some path"),
+            Err(e) => return Self::tool_error(e),
+        };
         match self.with_mutate_lock(|| {
             ops::import_typing_proposals_report(
                 &self.workspace,
                 None,
-                std::path::Path::new(&args.0.proposals_path),
+                proposals_path.as_path(),
                 args.0.dry_run,
             )
         }) {
@@ -2762,11 +2775,17 @@ impl MnemosyneServer {
     ) -> CallToolResult {
         // Verdict-report mutate: same single lock site as every other
         // mutate (Round 460 — with_mutate_lock), report-shaped return.
+        // Resolved BEFORE the lock closure: a `return` inside a closure
+        // leaves the closure, not the tool call.
+        let proposals_path = match mcp_path(Some(&args.0.proposals_path)) {
+            Ok(p) => p.expect("a Some input yields a Some path"),
+            Err(e) => return Self::tool_error(e),
+        };
         match self.with_mutate_lock(|| {
             ops::import_edge_proposals_report(
                 &self.workspace,
                 None,
-                std::path::Path::new(&args.0.proposals_path),
+                proposals_path.as_path(),
                 args.0.dry_run,
             )
         }) {
@@ -4023,6 +4042,11 @@ mod tests {
                 "no-such-section",
                 true,
             ),
+            (
+                "a manifest whose MIDDLE row names no such parent",
+                "middle",
+                true,
+            ),
             ("the same manifest with that row repaired", "40", false),
         ] {
             let tmp = agent_workspace();
@@ -4031,14 +4055,29 @@ mod tests {
             let store_path = ws.join("docs/.atomic/workspace.atomic.json");
             let before = std::fs::read_to_string(&store_path).expect("read the store");
 
-            let args: ImportSectionsArgs = serde_json::from_value(serde_json::json!({
-                "sections": [
+            // Round 1001 — a bad row in the MIDDLE as well as at the end.
+            // Round 999 argued the two are the same because both verbs commit
+            // through one primitive; this session's own lesson is that an
+            // argument about behaviour is not a run of it, and the middle case
+            // is the one where a row-at-a-time handler leaves rows on BOTH
+            // sides of the failure.
+            let sections = if parent == "middle" {
+                serde_json::json!([
+                    {"section_id": "40", "parent_doc": "spec", "title": "the first"},
+                    {"section_id": "41", "parent_doc": "spec", "title": "the middle",
+                     "parent_section": "no-such-section"},
+                    {"section_id": "42", "parent_doc": "spec", "title": "the last"},
+                ])
+            } else {
+                serde_json::json!([
                     {"section_id": "40", "parent_doc": "spec", "title": "the first"},
                     {"section_id": "41", "parent_doc": "spec", "title": "the last",
                      "parent_section": parent},
-                ],
-            }))
-            .expect("manifest parse");
+                ])
+            };
+            let args: ImportSectionsArgs =
+                serde_json::from_value(serde_json::json!({ "sections": sections }))
+                    .expect("manifest parse");
             let result = server.import_sections(Parameters(args)).await;
             let after = std::fs::read_to_string(&store_path).expect("read the store");
 
@@ -4063,6 +4102,68 @@ mod tests {
                 );
             }
         }
+    }
+
+    /// THE MANIFEST PATH AN AGENT SENDS IS THE ONE THAT GETS READ.
+    ///
+    /// Found by injection while closing Round 1000's carry: replacing
+    /// `propose_verdict`'s manifest path with a fixed nonsense string left the
+    /// whole suite green, because nothing in this repository had ever run that
+    /// tool. It is the generate-gate-repair loop's gate — the one an agent is
+    /// told to call before writing for real — so a wire that read the wrong
+    /// file would hand back a verdict about something the agent never sent.
+    ///
+    /// Both directions: the manifest the agent named is what the verdict is
+    /// about, and a path that names nothing fails loud rather than answering.
+    #[tokio::test]
+    async fn propose_verdict_reads_the_manifest_the_agent_named() {
+        let tmp = agent_workspace();
+        let ws = tmp.path();
+        let server = MnemosyneServer::new(ws.to_path_buf()).expect("server");
+        let sections: ImportSectionsArgs = serde_json::from_value(serde_json::json!({
+            "sections": [{"section_id": "sc-01", "parent_doc": "spec", "title": "scene one"}],
+        }))
+        .expect("sections parse");
+        assert!(server.import_sections(Parameters(sections)).await.is_error != Some(true));
+
+        // A manifest whose only fact names a canon coordinate that does not
+        // exist: the gate must say so, and saying so proves it read THIS file.
+        std::fs::write(
+            ws.join("candidate.json"),
+            serde_json::json!({
+                "frames": [{"frame_id": "ground-truth"}],
+                "facts": [{"fact_id": "f-1", "frame": "ground-truth", "claim": "she waits",
+                           "canon_from": "sc-nowhere", "evidence": ["sc-01"]}],
+            })
+            .to_string(),
+        )
+        .expect("write the candidate manifest");
+
+        let named: ProposeVerdictArgs = serde_json::from_value(serde_json::json!({
+            "manifest_path": ws.join("candidate.json").to_string_lossy(),
+        }))
+        .expect("args parse");
+        let said = answer_text(&server.propose_verdict(Parameters(named)).await);
+        assert!(
+            said.contains("sc-nowhere"),
+            "the verdict says nothing about the manifest the agent named, so \
+             this tool may be reading some other file: {said}"
+        );
+
+        // Non-vacuity in the other direction: a path naming nothing is refused
+        // rather than answered, so the assertion above is about WHICH file was
+        // read and not about the tool always mentioning its input.
+        let missing: ProposeVerdictArgs = serde_json::from_value(serde_json::json!({
+            "manifest_path": ws.join("no-such-manifest.json").to_string_lossy(),
+        }))
+        .expect("args parse");
+        let result = server.propose_verdict(Parameters(missing)).await;
+        assert_eq!(
+            result.is_error,
+            Some(true),
+            "a manifest path naming nothing was answered instead of refused: {:?}",
+            result.content
+        );
     }
 
     /// Everything a tool said, joined — the read-side counterpart of the store

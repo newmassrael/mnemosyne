@@ -4326,8 +4326,11 @@ fn cmd_propose_verdict(args: &[String]) -> Result<()> {
         }
     }
     let manifest_path = manifest_path.ok_or_else(|| anyhow!("--manifest <path> arg required"))?;
-    let raw = std::fs::read_to_string(&manifest_path)
-        .with_context(|| format!("read manifest {}", manifest_path))?;
+    // Round 1001 — the same boundary as every other CLI path.
+    let manifest_path =
+        atomic_cli::cli_path(Some(&manifest_path))?.expect("a Some input yields a Some path");
+    let raw = std::fs::read_to_string(manifest_path.as_path())
+        .with_context(|| format!("read manifest {manifest_path}"))?;
     let manifest = mnemosyne_atomic::parse_facts_manifest(&raw)
         .map_err(|e| anyhow!("{}", e))
         .with_context(|| {
