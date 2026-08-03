@@ -2538,18 +2538,63 @@ fn covering_roots(files: &BTreeSet<PathBuf>, root: &Path) -> Vec<PathBuf> {
 /// which degrades rather than aborting when `git` cannot answer.
 #[must_use]
 pub fn vcs_ignored_among(root: &Path, files: &BTreeSet<PathBuf>) -> VcsIgnoreAxis {
-    let read_set = files;
+    match ls_files_others_among(root, files, &["--ignored"]) {
+        Ok(ignored) => VcsIgnoreAxis::Measured {
+            considered: files.len(),
+            ignored_extensions: extension_histogram(&ignored),
+            ignored,
+        },
+        Err(reason) => VcsIgnoreAxis::NotDetermined { reason },
+    }
+}
+
+/// WHAT THE RECORD DOES NOT HOLD, AMONG THE FILES THE GATE READ (Round 984).
+///
+/// A sibling of [`vcs_ignored_among`] with ONE argument different, and the
+/// difference is the whole point: that axis asks which read files the VCS calls
+/// BUILD OUTPUT (`--others --ignored`), and a work-in-progress source is neither
+/// ignored nor in the record, so it is invisible there. This asks which read
+/// files are simply ABSENT FROM THE RECORD (`--others`, ignore-respecting), which
+/// is the population question — Round 978 established that a count reported off
+/// the disk is one nobody with a clone can reproduce, and `validate-workspace`
+/// prints this gate's file counts.
+///
+/// ADVISORY, AND THE DIRECTION IS WHY. Reading an untracked source is not a
+/// defect: it is the gate biting at the writing moment, before the file is
+/// staged, which is the cheapest place to catch a hallucinated citation. A
+/// superset can only scan more, never miss. What was wrong was that the printed
+/// count did not say how much of itself a clone would not have.
+#[must_use]
+pub fn vcs_absent_from_record_among(root: &Path, files: &BTreeSet<PathBuf>) -> VcsRecordAxis {
+    match ls_files_others_among(root, files, &[]) {
+        Ok(absent) => VcsRecordAxis::Measured {
+            considered: files.len(),
+            absent_extensions: extension_histogram(&absent),
+            absent,
+        },
+        Err(reason) => VcsRecordAxis::NotDetermined { reason },
+    }
+}
+
+/// `git ls-files --others [extra] --exclude-standard` intersected with `files`.
+///
+/// ONE query site for both axes. Two hand-copied bodies differing by a single
+/// flag is how one of them silently stops matching the other's scoping or its
+/// `-z` handling; the flag is the argument because the flag is the only thing
+/// that differs.
+fn ls_files_others_among(
+    root: &Path,
+    files: &BTreeSet<PathBuf>,
+    extra: &[&str],
+) -> Result<Vec<PathBuf>, String> {
     // Scope the query, so a workspace inside a large monorepo does not pay for
-    // its siblings' build output.
+    // its siblings' untracked files.
     let pathspecs = covering_roots(files, root);
+    let mut args = vec!["ls-files", "--others"];
+    args.extend_from_slice(extra);
+    args.extend_from_slice(&["--exclude-standard", "-z"]);
     let output = std::process::Command::new("git")
-        .args([
-            "ls-files",
-            "--others",
-            "--ignored",
-            "--exclude-standard",
-            "-z",
-        ])
+        .args(&args)
         .arg("--")
         .args(&pathspecs)
         .current_dir(root)
@@ -2564,39 +2609,52 @@ pub fn vcs_ignored_among(root: &Path, files: &BTreeSet<PathBuf>) -> VcsIgnoreAxi
                 .unwrap_or("no message")
                 .trim()
                 .to_string();
-            return VcsIgnoreAxis::NotDetermined {
-                reason: format!("git exited {}: {first}", o.status),
-            };
+            return Err(format!("git exited {}: {first}", o.status));
         }
-        Err(e) => {
-            return VcsIgnoreAxis::NotDetermined {
-                reason: format!("git could not be run: {e}"),
-            };
-        }
+        Err(e) => return Err(format!("git could not be run: {e}")),
     };
     // `-z`, because a path may contain a newline and a line-split report would
     // then name a file that does not exist. Paths arrive relative to the cwd the
     // command ran in, which is `root`.
-    let mut ignored: Vec<PathBuf> = String::from_utf8_lossy(&output.stdout)
+    let mut hit: Vec<PathBuf> = String::from_utf8_lossy(&output.stdout)
         .split('\0')
         .filter(|s| !s.is_empty())
         .map(|s| root.join(s))
-        .filter(|p| read_set.contains(p))
+        .filter(|p| files.contains(p))
         .collect();
-    ignored.sort();
-    ignored.dedup();
-    let mut ignored_extensions: BTreeMap<String, usize> = BTreeMap::new();
-    for p in &ignored {
+    hit.sort();
+    hit.dedup();
+    Ok(hit)
+}
+
+fn extension_histogram(paths: &[PathBuf]) -> BTreeMap<String, usize> {
+    let mut out: BTreeMap<String, usize> = BTreeMap::new();
+    for p in paths {
         let ext = p
             .extension()
             .map_or_else(|| "<none>".to_string(), |e| e.to_string_lossy().to_string());
-        *ignored_extensions.entry(ext).or_insert(0) += 1;
+        *out.entry(ext).or_insert(0) += 1;
     }
-    VcsIgnoreAxis::Measured {
-        considered: read_set.len(),
-        ignored,
-        ignored_extensions,
-    }
+    out
+}
+
+/// What the tree's own version control says is ABSENT FROM THE RECORD among a
+/// set of files (Round 984). Three states for the Round 856 reason: "none
+/// absent" and "nobody asked" are different facts.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum VcsRecordAxis {
+    Measured {
+        /// Files the caller handed in — here, the set the citation gate read.
+        considered: usize,
+        /// Of those, the ones no clone of this repository would have.
+        absent: Vec<PathBuf>,
+        /// Extension → count for those.
+        absent_extensions: BTreeMap<String, usize>,
+    },
+    NotDetermined {
+        reason: String,
+    },
 }
 
 /// Which subtrees speak ANOTHER document's `§N.M` numbering (Round 867).

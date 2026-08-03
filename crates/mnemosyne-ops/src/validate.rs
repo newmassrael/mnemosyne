@@ -64,6 +64,11 @@ pub struct ValidateWorkspaceReport {
     /// consumer ledger measures 9591 of 13685 here. Advisory, and reported in
     /// all three states for the Round 856 reason.
     pub scan_excluded_vcs: mnemosyne_validate::code_refs::VcsIgnoreAxis,
+    /// Round 984 — how much of what the gate READ a clone would not have. The
+    /// counts above are printed off the disk; this is what makes them
+    /// decomposable, and it is advisory because reading an untracked source is
+    /// the gate biting at the writing moment, not a defect.
+    pub scan_read_record: mnemosyne_validate::code_refs::VcsRecordAxis,
     /// Round 840 — citations an exclusion removed from the gate entirely.
     pub scan_swallowed_citations: Vec<String>,
     /// Round 867 — which subtrees the tree's own VCS says belong to ANOTHER
@@ -366,6 +371,13 @@ pub fn validate_workspace(workspace_root: &Path) -> Result<ValidateWorkspaceRepo
     let excluded_vcs =
         mnemosyne_validate::code_refs::vcs_ignored_among(code_root, &scan.excluded_files);
 
+    // Round 984 — the same question asked of the READ set, with the predicate
+    // that matters for a COUNT: not "is this build output" but "would a clone
+    // have it". The gate's file counts are printed, and Round 978 established
+    // that a count read off the disk is one nobody else can reproduce.
+    let scan_read_record =
+        mnemosyne_validate::code_refs::vcs_absent_from_record_among(code_root, &scan.scanned_files);
+
     // Round 867 — this axis LOOSENS where its siblings tighten, so it counts out
     // loud. The set is BOTH sides the swallowed answer is read out of: the read
     // set decides `still_seen` and the excluded set decides what is found, so a
@@ -522,6 +534,7 @@ pub fn validate_workspace(workspace_root: &Path) -> Result<ValidateWorkspaceRepo
         scan_gate_files: scan.scanned_files.len(),
         scan_excluded_files: scan.excluded_files.len(),
         scan_excluded_vcs: excluded_vcs,
+        scan_read_record,
         scan_swallowed_citations: swallowed,
         scan_numbering_origin: numbering_origin,
         failed,
@@ -899,6 +912,33 @@ impl ValidateWorkspaceReport {
             self.scan_gate_files,
             self.scan_excluded_files,
         );
+        // Round 984 — printed under the coverage counts it decomposes, in both
+        // states: "none absent" and "nobody asked" are different facts, and a
+        // reader comparing this run against CI needs to know which they have.
+        match &self.scan_read_record {
+            mnemosyne_validate::code_refs::VcsRecordAxis::Measured {
+                considered,
+                absent,
+                absent_extensions,
+            } => {
+                let _ = writeln!(
+                    out,
+                    "  record axis (advisory, Round 984): {} of {} read file(s) are \
+                     absent from the record {} — a clone counts {}",
+                    absent.len(),
+                    considered,
+                    mnemosyne_validate::code_refs::summarize_extensions(absent_extensions, 5),
+                    considered - absent.len()
+                );
+            }
+            mnemosyne_validate::code_refs::VcsRecordAxis::NotDetermined { reason } => {
+                let _ = writeln!(
+                    out,
+                    "  record axis (advisory, Round 984): not determined — {reason}; \
+                     the file counts above are this machine's"
+                );
+            }
+        }
         // Round 866 — printed in all three states directly under the count it
         // qualifies, because the reader deciding whether to trust "0 swallowed"
         // is reading that line right now.
@@ -1174,6 +1214,72 @@ mod tests {
         assert!(
             off_line.contains("OFF"),
             "the off state does not name itself: {off_line}"
+        );
+    }
+
+    /// THE PRINTED FILE COUNTS SAY HOW MUCH OF THEMSELVES A CLONE WOULD HAVE
+    /// (Round 984).
+    ///
+    /// The fixture makes one of the two read files UNTRACKED, because a tree
+    /// where everything is tracked reports zero absent and would pass against an
+    /// axis that answered zero unconditionally — which is the shape of the
+    /// defect, not the shape of a clean tree.
+    #[test]
+    fn the_read_set_says_how_much_of_it_the_record_holds() {
+        let (tmp, toml_dir) = nested_ledger_workspace();
+        let repo = tmp.path();
+        let out = std::process::Command::new("git")
+            .args(["init", "--quiet"])
+            .current_dir(repo)
+            .output()
+            .expect("git must be runnable to test the record axis");
+        assert!(out.status.success());
+        // The fixture's own sources, one committed and one never added.
+        let out = std::process::Command::new("git")
+            .args(["add", "crates/alpha/src/lib.rs"])
+            .current_dir(repo)
+            .output()
+            .expect("git add");
+        assert!(out.status.success());
+        // AN UNTRACKED FILE THE WALK SKIPS, inside the directory the query
+        // covers. Without it this test also passes against a query that never
+        // intersects its answer with the caller's set — measured: deleting the
+        // intersection left every test green until this file existed. `target`
+        // is skipped by the walk and is not ignored in this fixture, so git
+        // reports it and the axis must not.
+        fs::create_dir_all(repo.join("crates/alpha/src/target")).expect("target dir");
+        fs::write(repo.join("crates/alpha/src/target/junk.rs"), "// built\n").expect("junk");
+
+        let report = validate_workspace(&toml_dir).expect("validate-workspace");
+        let mnemosyne_validate::code_refs::VcsRecordAxis::Measured {
+            considered, absent, ..
+        } = &report.scan_read_record
+        else {
+            panic!(
+                "a git workspace must be measurable: {:?}",
+                report.scan_read_record
+            );
+        };
+        assert_eq!(
+            *considered, 2,
+            "the axis must be asked about the set the gate READ, not some other set"
+        );
+        assert_eq!(
+            absent.len(),
+            1,
+            "the untracked source is not reported as absent from the record, so              the printed count cannot be decomposed: {absent:?}"
+        );
+        assert!(absent[0].ends_with("impl.cpp"), "wrong file: {absent:?}");
+
+        let line = report
+            .render_plain()
+            .lines()
+            .find(|l| l.contains("record axis"))
+            .expect("the report says nothing about the record axis")
+            .to_string();
+        assert!(
+            line.contains("1 of 2") && line.contains("a clone counts 1"),
+            "the line does not decompose the count it qualifies: {line}"
         );
     }
 
