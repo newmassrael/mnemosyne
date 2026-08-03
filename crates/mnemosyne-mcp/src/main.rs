@@ -4002,10 +4002,7 @@ mod tests {
         ("emit_publishable_override_ledger_draft", "applied_in"),
         ("emit_publishable_override_ledger_draft", "entry_id"),
         ("emit_publishable_override_ledger_draft", "reason"),
-        ("import_edge_proposals", "proposals_path"),
         ("import_sections", "sections"),
-        ("import_typing_proposals", "proposals_path"),
-        ("propose_verdict", "manifest_path"),
         ("query_changelog_entry", "entry_id"),
         ("query_inventory", "inventory_id"),
         ("query_section", "section_id"),
@@ -4099,7 +4096,6 @@ mod tests {
         ("set_section_verification_expectation", "expectation"),
         ("set_section_verification_expectation", "reason"),
         ("set_section_verification_expectation", "section_id"),
-        ("validate_disclosure_leak", "against"),
         ("validate_disclosure_leak", "telling"),
         ("validate_disclosure_leak", "truth_frame"),
         ("validate_disclosure_leak", "world"),
@@ -4401,8 +4397,68 @@ mod tests {
             silent.len(),
             live.len()
         );
+        let mut by_type: std::collections::BTreeMap<String, usize> = Default::default();
         for (tool, arg) in silent {
-            println!("  unexercised ({half}): {tool}.{arg}");
+            let ty = declared_type(tool, arg);
+            *by_type.entry(ty.clone()).or_default() += 1;
+            println!("  unexercised ({half}): {tool}.{arg} : {ty}");
+        }
+        if !by_type.is_empty() {
+            println!(
+                "  by declared type: {}",
+                by_type
+                    .iter()
+                    .map(|(t, n)| format!("{t} {n}"))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            );
+        }
+    }
+
+    /// The JSON type the ROUTER'S OWN SCHEMA declares for one argument, printed
+    /// beside every unexercised row.
+    ///
+    /// Round 1020 shipped the required population with a carry saying it was not
+    /// known how many of the 171 could be given two values without new world
+    /// content. That is a question about the schema, so the schema answers it
+    /// and the program prints the answer instead of a later round guessing: a
+    /// `boolean` has two values by construction, and a `string` that names a
+    /// registered thing needs two of them to exist first — the `given` line the
+    /// exercised cases already carry. Derived rather than tabulated, so it
+    /// cannot drift from what an agent is shown.
+    fn declared_type(tool: &str, arg: &str) -> String {
+        let Some(found) = agent_facing_tools().into_iter().find(|t| t.name == tool) else {
+            return "no such tool".to_string();
+        };
+        let Some(property) = found
+            .input_schema
+            .get("properties")
+            .and_then(|p| p.as_object())
+            .and_then(|p| p.get(arg))
+        else {
+            return "no such property".to_string();
+        };
+        // A PATH IS CALLED OUT WITHIN ITS TYPE, because that is the class Round
+        // 1014's defect belonged to: `against` is a required string that is a
+        // path, and being a path is exactly what the two gates keyed on the NAME
+        // `*_path` could not see. Counting them says how many more places that
+        // same defect could still live.
+        if property.get("format").and_then(|f| f.as_str()) == Some(AGENT_PATH_FORMAT) {
+            return format!("string({AGENT_PATH_FORMAT})");
+        }
+        match property.get("type") {
+            Some(serde_json::Value::String(s)) => s.clone(),
+            // A nullable or union type is written as a list, and an argument
+            // whose type comes from a `$ref` or a composition has no `type` key
+            // at all; both are reported as they are rather than flattened, since
+            // the point is to say what the agent is shown.
+            Some(serde_json::Value::Array(items)) => items
+                .iter()
+                .filter_map(|v| v.as_str())
+                .collect::<Vec<_>>()
+                .join("|"),
+            Some(other) => other.to_string(),
+            None => "composed".to_string(),
         }
     }
 
@@ -5934,6 +5990,45 @@ mod tests {
             )
             validate_render_fidelity(RenderFidelityArgs) {"against": "one-fact.json", "world": "main", "order_path": "order-b.json"}
             ."against" = "two-facts.json" seen "\"reextracted_facts\": 2" in output;
+        // THE FOUR REMAINING REQUIRED PATHS, WHICH ARE THE CLASS ROUND 1014's
+        // DEFECT BELONGED TO. `against` is a required string that IS a path, and
+        // being a path is exactly what the two gates keyed on the NAME `*_path`
+        // could not see; the accounting now prints the declared format, and it
+        // said four more arguments sit in that class. Each names a file, so each
+        // case names TWO and the answer has to change.
+        validate_disclosure_leak_against_reaches_the_answer:
+            @branch_story
+            (store "revealed-early.json" =
+                [import_sections(ImportSectionsArgs) {"sections": [{"section_id": "sc-01", "parent_doc": "spec", "title": "one"}, {"section_id": "sc-02", "parent_doc": "spec", "title": "two"}, {"section_id": "sc-03", "parent_doc": "spec", "title": "three"}]}]
+                [import_facts(atomic::FactsManifest) {"frames": [{"frame_id": "ground-truth"}], "entity_kinds": [{"kind_id": "place"}, {"kind_id": "character"}], "entities": [{"entity_id": "p-b", "kind": "place"}, {"entity_id": "e-her", "kind": "character"}], "predicates": [{"predicate_id": "at", "object_kind": "entity", "subject_kind": "character", "object_entity_kind": "place"}], "facts": [{"fact_id": "r-at-b", "frame": "ground-truth", "claim": "the prose already put her at b", "canon_from": "sc-01", "evidence": ["sc-01"], "entities": ["e-her", "p-b"], "typed": {"subject": "e-her", "predicate": "at", "object": {"kind": "entity", "id": "p-b"}}}]}]
+            )
+            (store "revealed-on-time.json" =
+                [import_sections(ImportSectionsArgs) {"sections": [{"section_id": "sc-01", "parent_doc": "spec", "title": "one"}, {"section_id": "sc-02", "parent_doc": "spec", "title": "two"}, {"section_id": "sc-03", "parent_doc": "spec", "title": "three"}]}]
+                [import_facts(atomic::FactsManifest) {"frames": [{"frame_id": "ground-truth"}], "entity_kinds": [{"kind_id": "place"}, {"kind_id": "character"}], "entities": [{"entity_id": "p-b", "kind": "place"}, {"entity_id": "e-her", "kind": "character"}], "predicates": [{"predicate_id": "at", "object_kind": "entity", "subject_kind": "character", "object_entity_kind": "place"}], "facts": [{"fact_id": "r-at-b", "frame": "ground-truth", "claim": "the prose puts her at b where the plan does", "canon_from": "sc-03", "evidence": ["sc-03"], "entities": ["e-her", "p-b"], "typed": {"subject": "e-her", "predicate": "at", "object": {"kind": "entity", "id": "p-b"}}}]}]
+            )
+            [set_disclosure(SetDisclosureArgs) {"telling_id": "t-quiet", "fact_id": "f-at-b", "mode": "state", "first_at": [{"branch": "main", "coords": ["sc-03"]}]}]
+            validate_disclosure_leak(DisclosureLeakArgs) {"telling": "t-quiet", "against": "revealed-early.json", "world": "main", "truth_frame": "ground-truth", "order_path": "order-b.json"}
+            ."against" = "revealed-on-time.json" seen "\"leaks\": []" in output;
+        propose_verdict_manifest_path_reaches_the_answer:
+            @branch_story
+            {"rules-directed.json" = {"schema": "narrative-rules/v1", "rules": [{"id": "one-way-only", "predicate": "at", "class": "transition", "adjacency": "at", "undirected": false}]}}
+            {"return-trip.json" = {"facts": [{"fact_id": "f-back", "frame": "ground-truth", "claim": "she returns", "canon_from": "sc-03", "evidence": ["sc-03"], "entities": ["e-her", "p-a"], "supersedes_in_frame": "f-at-b", "typed": {"subject": "e-her", "predicate": "at", "object": {"kind": "entity", "id": "p-a"}}}]}}
+            {"stays-put.json" = {"facts": [{"fact_id": "f-stays", "frame": "ground-truth", "claim": "she stays where she is", "canon_from": "sc-03", "evidence": ["sc-03"], "entities": ["e-her", "p-b"]}]}}
+            propose_verdict(ProposeVerdictArgs) {"manifest_path": "return-trip.json", "rules_path": "rules-directed.json", "order_path": "order-b.json"}
+            ."manifest_path" = "stays-put.json" seen "\"violation_count\": 2" in output;
+        import_typing_proposals_proposals_path_reaches_the_store:
+            @branch_story
+            {"types-the-way.json" = {"schema": "typing-proposals/v1", "proposals": [{"fact": "f-way-back", "typed": {"subject": "p-b", "predicate": "adjacent", "object": {"kind": "entity", "id": "p-a"}}, "claim_sha256": "a3e95230db5ab9cd352aa4aacd956c52c02f74020c8be66dcc82bf865b881c53", "rationale": "the prose names both ends of one way"}]}}
+            {"types-the-move.json" = {"schema": "typing-proposals/v1", "proposals": [{"fact": "f-she-moved", "typed": {"subject": "e-her", "predicate": "at", "object": {"kind": "entity", "id": "p-b"}}, "claim_sha256": "503b9a85fd31cd820771da6e4477cc77b67cb9c21fa13a74497556b881ac0c45", "rationale": "the prose says where she ends up"}]}}
+            [import_facts(atomic::FactsManifest) {"facts": [{"fact_id": "f-way-back", "frame": "ground-truth", "claim": "the way runs back as well", "canon_from": "sc-01", "evidence": ["sc-01"], "entities": ["p-b", "p-a"]}, {"fact_id": "f-she-moved", "frame": "ground-truth", "claim": "she crossed over", "canon_from": "sc-03", "evidence": ["sc-03"], "entities": ["e-her", "p-b"]}]}]
+            import_typing_proposals(ImportTypingProposalsArgs) {"proposals_path": "types-the-way.json"}
+            ."proposals_path" = "types-the-move.json" seen "\"subject\": \"p-b\"" in store;
+        import_edge_proposals_proposals_path_reaches_the_store:
+            @branch_story
+            {"alt-conflicts.json" = {"schema": "edge-proposals/v1", "conflicts": [{"fact": "f-alt", "target": "f-at-b", "fact_claim_sha256": "934b712828d0c69368eb8082c9251c5190cceb939a964b8b0bed953bb2da7e9f", "target_claim_sha256": "686eb0e864b28d0c6a918e55d5233ec3a18a9e02e030c3538bf55b14e6cfcc21", "rationale": "one places her at a and the other at b, in the same frame"}]}}
+            {"quest-conflicts.json" = {"schema": "edge-proposals/v1", "conflicts": [{"fact": "f-quest-done", "target": "f-alt", "fact_claim_sha256": "2496954133070e3e5795def5eae4528054f8dbdd6713dc16f01e33b4cf7d01b2", "target_claim_sha256": "934b712828d0c69368eb8082c9251c5190cceb939a964b8b0bed953bb2da7e9f", "rationale": "the crossing cannot be made by someone who never left"}]}}
+            import_edge_proposals(ImportEdgeProposalsArgs) {"proposals_path": "alt-conflicts.json"}
+            ."proposals_path" = "quest-conflicts.json" seen "\"target\": \"f-alt\"" in store;
         validate_disclosure_leak_order_path_reaches_the_answer:
             @branch_story
             (store "blind.json" =
