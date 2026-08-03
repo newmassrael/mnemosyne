@@ -4232,7 +4232,7 @@ mod tests {
         // forbids.
         std::fs::write(
             ws.join("mnemosyne.toml"),
-            "[workspace]\n[continuity]\nseverity = \"reject\"\n",
+            "[workspace]\n[continuity]\nseverity = \"reject\"\ninterval_severity = \"reject\"\n",
         )
         .expect("config");
         let server = MnemosyneServer::new(ws.to_path_buf()).expect("server");
@@ -4260,7 +4260,12 @@ mod tests {
                  "subject_kind": "place", "object_entity_kind": "place"},
                 {"predicate_id": "at", "object_kind": "entity",
                  "subject_kind": "character", "object_entity_kind": "place"},
+                {"predicate_id": "rose_on_day", "object_kind": "quantity",
+                 "subject_kind": "character"},
+                {"predicate_id": "fell_on_day", "object_kind": "quantity",
+                 "subject_kind": "character"},
             ],
+            "units": [{"unit_id": "day"}],
             "facts": [{
                 "fact_id": "f-at-a", "frame": "ground-truth", "claim": "she is at a",
                 "canon_from": "sc-01", "evidence": ["sc-01"], "entities": ["e-her", "p-a"],
@@ -4276,7 +4281,10 @@ mod tests {
                 "schema": "narrative-rules/v1",
                 "rules": [{"id": "moves-follow-the-map", "predicate": "at",
                            "class": "transition", "adjacency": "adjacent",
-                           "undirected": true}],
+                           "undirected": true},
+                          {"id": "falls-after-it-rises", "predicate": "fell_on_day",
+                           "class": "interval", "right": "rose_on_day", "op": "ge",
+                           "bound": {"const": 1}}],
             })
             .to_string(),
         )
@@ -4327,6 +4335,19 @@ mod tests {
         // paths" — and called the fix "a table away". This is the table: the
         // rule that names the refusal is the one the agent repairs against, so
         // each row asserts its own name and not just the word `rollback`.
+        // A third family: an interval rule whose bound the candidate breaks.
+        let backwards = serde_json::json!({
+            "facts": [
+                {"fact_id": "f-rose", "frame": "ground-truth", "claim": "it rose on day 5",
+                 "canon_from": "sc-02", "evidence": ["sc-02"], "entities": ["e-her"],
+                 "typed": {"subject": "e-her", "predicate": "rose_on_day",
+                           "object": {"kind": "quantity", "n": 5, "unit": "day"}}},
+                {"fact_id": "f-fell", "frame": "ground-truth", "claim": "it fell on day 1",
+                 "canon_from": "sc-02", "evidence": ["sc-02"], "entities": ["e-her"],
+                 "typed": {"subject": "e-her", "predicate": "fell_on_day",
+                           "object": {"kind": "quantity", "n": 1, "unit": "day"}}},
+            ],
+        });
         let unregistered = serde_json::json!({
             "facts": [{
                 "fact_id": "f-ghost", "frame": "ground-truth", "claim": "someone unregistered",
@@ -4345,6 +4366,12 @@ mod tests {
                 unregistered,
                 "unregistered.json",
                 "e-nobody",
+            ),
+            (
+                "a pair of beats an interval rule orders the other way",
+                backwards,
+                "backwards.json",
+                "falls-after-it-rises",
             ),
         ] {
             let refused = answer_text(

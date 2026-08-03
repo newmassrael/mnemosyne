@@ -798,6 +798,98 @@
         "`style_check.doc` PROVES THE FILTER REACHES THE REPORT, NOT THAT IT FILTERS. The stronger case wants a section whose prose violates a style rule so the finding set varies with the doc; that is a world this round did not author, and the case says so in place rather than reading as more than it is."
       ]
     },
+    "Round 1008": {
+      "decision_summary": "R1008 (DEBT) — the eleventh audit, and the finding is that the round which INVENTED the carry test shipped a carry that fails it. Round 1005 added a rule to the checklist — read each carry and ask whether it could be done now — and then closed with \"adding a row is now a line, which is what 'a table away' should have meant\". A line is not a limit. The procedure did not catch its own author in the round that wrote it, which is worth more than the row it left undone: a checklist item is only run by whoever remembers to run it, and I did not, one paragraph after writing it down. STAR THE ROWS ARE ADDED. `propose_verdict`'s verdict now answers for three rule families rather than two: a transition rule refusing a step the map forbids, a structural invariant refusing an unregistered entity, and an interval rule refusing a pair of beats ordered the other way. Each row asserts the NAME its refusal carries. STAR AND THE THIRD ROW FOUND A SECOND SEVERITY KNOB. The interval violation was FOUND and did not gate: structural violations gate under `[continuity] severity` and interval ones under `interval_severity`, separately. An agent that sets one and not the other gets `commit` beside a violation it asked to be gated on — the same sharp edge Round 1004 pinned, now known to have two independent switches rather than one. The test declares both. STAR THE OTHER CARRY WAS TRIED AND IS A MEASURED LIMIT, not a deferral. `style_check.doc` is watched by the filter the report echoes; the stronger case wants the finding set to vary, and it cannot be authored through this surface. `max_sentence_length` fires at 200 characters and `set_section_intent` caps the field at 200, so the write path forbids exactly what the rule flags; no MCP tool writes a section body; and a store written OUT OF BAND with a longer intent still produced no finding. Three routes, none of which is \"I did not try\". The case says in place what it proves.",
+      "changes_bullets": [
+        "`mnemosyne-mcp` — a third row in the verdict table: an interval rule whose bound the candidate breaks, asserting `falls-after-it-rises` by name. Its two predicates and unit are registered in the BASE world, because a rules artifact naming an unregistered predicate is refused before any candidate is judged.",
+        "Same file — the verdict test's workspace declares `interval_severity` as well as `severity`. Structural and interval violations gate under separate knobs, so declaring one left the interval row reporting its violation without gating on it."
+      ],
+      "verification_bullets": [
+        "STAR THE CARRY TEST WAS FAILED BY THE ROUND THAT WROTE IT. Round 1005's own carry said \"adding a row is now a line\"; a line is work. Recorded as the finding rather than as an aside, because it is evidence about the instrument: a checklist item is run by whoever remembers it.",
+        "INJECTION AP, the verdict forced to `commit`: the table fails on its first row. Each row was reached in turn during development — the map row, then the registry row, then the interval row — and each failed for its own reason before passing.",
+        "STAR THE INTERVAL ROW EXPOSED A SECOND SEVERITY KNOB by failing for the right reason: `rule_interval_violation` present, `gating_violation_count: 0`. Structural and interval severities are independent, which nothing in this test suite had said.",
+        "`style_check.doc` WAS TRIED THREE WAYS AND STAYS AN ECHO CASE: the intent cap equals the rule threshold (200), no MCP tool writes a section body, and an out-of-band store with a longer intent produced no finding.",
+        "1602 workspace tests pass, 0 failed, `--no-fail-fast`; clippy `-D warnings` and `cargo fmt --check` clean; `validate-workspace` T1 orphan 0 and T3 reject 0.",
+        "The push of Rounds 1005-1007 landed green: validate and MSRV both success, annotations empty on both.",
+        "Citation hygiene (R255): Rounds 1004, 1005 and 1007 verified present with `query --changelog-entry` and Round 1008 verified absent before this entry was appended.",
+        "CARRY TEST (Round 1005), run this time: each bullet below was read against \"could I do this now?\"."
+      ],
+      "impact_refs": [
+        "atomic-store-mutate-api"
+      ],
+      "carry_forward_bullets": [
+        "THE VERDICT TABLE HAS THREE FAMILIES AND THE DISCLOSURE GATES ARE THE FOURTH. They reach the same field by a path no row travels, and unlike the three here they need a telling and a withheld fact in the base world — which is a world this round did not author, not a line.",
+        "`style_check`'s FINDING SET CANNOT BE MADE TO VARY THROUGH ANY SURFACE THIS REPOSITORY EXPOSES, measured three ways above. The reopening condition is a section body writer or a style rule whose threshold sits under the field cap, neither of which exists.",
+        "23 READ-SIDE ARGUMENTS REMAIN, unchanged by this round."
+      ],
+      "population_census": [
+        {
+          "axis": "transition rules by `undirected`",
+          "left_label": "undirected",
+          "left": 10,
+          "right_label": "directed",
+          "right": 27
+        },
+        {
+          "axis": "map corpora by leg-kind declaration",
+          "left_label": "omitted",
+          "left": 6,
+          "right_label": "declared",
+          "right": 24
+        },
+        {
+          "axis": "cost-carrying corpora by direction-dependent pricing",
+          "left_label": "prices a way by direction",
+          "left": 4,
+          "right_label": "prices no way by direction",
+          "right": 6
+        },
+        {
+          "axis": "run trees by authoring mode",
+          "left_label": "hand script",
+          "left": 10,
+          "right_label": "file-only",
+          "right": 239
+        },
+        {
+          "axis": "map corpora by declared boundary crossing",
+          "left_label": "declares an exit",
+          "left": 6,
+          "right_label": "declares none",
+          "right": 24
+        },
+        {
+          "axis": "authored submissions by map and telling",
+          "left_label": "carries both",
+          "left": 10,
+          "right_label": "carries one",
+          "right": 24
+        }
+      ],
+      "publishable_decision_summary": "R1008 (DEBT) — the eleventh audit, and the finding is that the round which INVENTED the carry test shipped a carry that fails it. Round 1005 added a rule to the checklist — read each carry and ask whether it could be done now — and then closed with \"adding a row is now a line, which is what 'a table away' should have meant\". A line is not a limit. The procedure did not catch its own author in the round that wrote it, which is worth more than the row it left undone: a checklist item is only run by whoever remembers to run it, and I did not, one paragraph after writing it down. STAR THE ROWS ARE ADDED. `propose_verdict`'s verdict now answers for three rule families rather than two: a transition rule refusing a step the map forbids, a structural invariant refusing an unregistered entity, and an interval rule refusing a pair of beats ordered the other way. Each row asserts the NAME its refusal carries. STAR AND THE THIRD ROW FOUND A SECOND SEVERITY KNOB. The interval violation was FOUND and did not gate: structural violations gate under `[continuity] severity` and interval ones under `interval_severity`, separately. An agent that sets one and not the other gets `commit` beside a violation it asked to be gated on — the same sharp edge Round 1004 pinned, now known to have two independent switches rather than one. The test declares both. STAR THE OTHER CARRY WAS TRIED AND IS A MEASURED LIMIT, not a deferral. `style_check.doc` is watched by the filter the report echoes; the stronger case wants the finding set to vary, and it cannot be authored through this surface. `max_sentence_length` fires at 200 characters and `set_section_intent` caps the field at 200, so the write path forbids exactly what the rule flags; no MCP tool writes a section body; and a store written OUT OF BAND with a longer intent still produced no finding. Three routes, none of which is \"I did not try\". The case says in place what it proves.",
+      "publishable_changes_bullets": [
+        "`mnemosyne-mcp` — a third row in the verdict table: an interval rule whose bound the candidate breaks, asserting `falls-after-it-rises` by name. Its two predicates and unit are registered in the BASE world, because a rules artifact naming an unregistered predicate is refused before any candidate is judged.",
+        "Same file — the verdict test's workspace declares `interval_severity` as well as `severity`. Structural and interval violations gate under separate knobs, so declaring one left the interval row reporting its violation without gating on it."
+      ],
+      "publishable_verification_bullets": [
+        "STAR THE CARRY TEST WAS FAILED BY THE ROUND THAT WROTE IT. Round 1005's own carry said \"adding a row is now a line\"; a line is work. Recorded as the finding rather than as an aside, because it is evidence about the instrument: a checklist item is run by whoever remembers it.",
+        "INJECTION AP, the verdict forced to `commit`: the table fails on its first row. Each row was reached in turn during development — the map row, then the registry row, then the interval row — and each failed for its own reason before passing.",
+        "STAR THE INTERVAL ROW EXPOSED A SECOND SEVERITY KNOB by failing for the right reason: `rule_interval_violation` present, `gating_violation_count: 0`. Structural and interval severities are independent, which nothing in this test suite had said.",
+        "`style_check.doc` WAS TRIED THREE WAYS AND STAYS AN ECHO CASE: the intent cap equals the rule threshold (200), no MCP tool writes a section body, and an out-of-band store with a longer intent produced no finding.",
+        "1602 workspace tests pass, 0 failed, `--no-fail-fast`; clippy `-D warnings` and `cargo fmt --check` clean; `validate-workspace` T1 orphan 0 and T3 reject 0.",
+        "The push of Rounds 1005-1007 landed green: validate and MSRV both success, annotations empty on both.",
+        "Citation hygiene (R255): Rounds 1004, 1005 and 1007 verified present with `query --changelog-entry` and Round 1008 verified absent before this entry was appended.",
+        "CARRY TEST (Round 1005), run this time: each bullet below was read against \"could I do this now?\"."
+      ],
+      "publishable_impact_refs": [
+        "atomic-store-mutate-api"
+      ],
+      "publishable_carry_forward_bullets": [
+        "THE VERDICT TABLE HAS THREE FAMILIES AND THE DISCLOSURE GATES ARE THE FOURTH. They reach the same field by a path no row travels, and unlike the three here they need a telling and a withheld fact in the base world — which is a world this round did not author, not a line.",
+        "`style_check`'s FINDING SET CANNOT BE MADE TO VARY THROUGH ANY SURFACE THIS REPOSITORY EXPOSES, measured three ways above. The reopening condition is a section body writer or a style rule whose threshold sits under the field cap, neither of which exists.",
+        "23 READ-SIDE ARGUMENTS REMAIN, unchanged by this round."
+      ]
+    },
     "Round 252": {
       "decision_summary": "Parser CommonMark conformance — recognize indented fenced code blocks (§98) and require whitespace after ATX hash sequence (§62)",
       "changes_bullets": [
