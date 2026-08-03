@@ -3918,16 +3918,15 @@ mod tests {
     /// reads. Each line is a live instance of the Round 981 defect: an agent
     /// sends the argument, the tool answers success, and whether it did
     /// anything is unknown.
-    const UNEXERCISED: &[(&str, &str)] = &[
-        ("import_edge_proposals", "dry_run"),
-        ("import_typing_proposals", "dry_run"),
-        ("propose_verdict", "order_path"),
-        ("report_authoring_frontier", "telling"),
-        ("report_frame_view", "branch"),
-        ("report_frame_view", "entity"),
-        ("validate_disclosure_leak", "order_path"),
-        ("validate_render_fidelity", "order_path"),
-    ];
+    ///
+    /// IT IS EMPTY, AND IT STAYS RATHER THAN GOING. Round 986 found one pair of
+    /// a hundred and twenty-two with anything behind it; every one of them now
+    /// has a differential case. An empty list is not a list with no purpose:
+    /// the accounting refuses any pair that is in NEITHER list, so this is
+    /// where the next optional argument added to any tool lands, by name and
+    /// on the round that adds it, instead of joining a silent set. Deleting it
+    /// would make that failure impossible to express.
+    const UNEXERCISED: &[(&str, &str)] = &[];
 
     /// The REQUIRED arguments of every routed tool — the half of the surface
     /// the exercised/unexercised accounting does not cover, counted so the
@@ -4738,6 +4737,7 @@ mod tests {
             $test:ident :
             $( @ $world:ident )?
             $( {$file:literal = $contents:tt} )*
+            $( (store $blind:literal = $( [$blind_call:ident($blind_args:ty) $blind_base:tt] )* ) )*
             $( [$setup:ident($setup_args:ty) $setup_base:tt] )*
             $tool:ident($args:ty) $base:tt . $field:literal = $value:tt seen $needle:literal in $oracle:ident;
         )*) => {
@@ -4788,6 +4788,47 @@ mod tests {
                                     .expect("the given file must serialize"),
                             )
                             .unwrap_or_else(|e| panic!("write {}: {e}", $file));
+                        )*
+                        // A STORE FILE THE TOOL READS, BUILT BY A SECOND SERVER
+                        // RATHER THAN WRITTEN AS A LITERAL. The two
+                        // render-acceptance gates take `against` — a BLIND
+                        // re-extracted prose store, whose whole point is that it
+                        // was produced independently of the authored one. A JSON
+                        // literal could stand in for it only by hand-copying the
+                        // store schema into this file, which is the fixture this
+                        // repository keeps deleting and which drifts silently the
+                        // next time the schema moves. So the case names the CALLS
+                        // that build it and a second server writes it, exactly as
+                        // Round 1014's bespoke test does by hand.
+                        $(
+                            {
+                                let blind_ws = agent_workspace();
+                                let blind = MnemosyneServer::new(
+                                    blind_ws.path().to_path_buf(),
+                                )
+                                .expect("the second server");
+                                $(
+                                    let seed: $blind_args = serde_json::from_value(
+                                        serde_json::json!($blind_base),
+                                    )
+                                    .expect("the blind store call's shape must parse");
+                                    let built = blind.$blind_call(Parameters(seed)).await;
+                                    assert!(
+                                        built.is_error != Some(true),
+                                        "building the blind store `{}` failed at {}, \
+                                         so the gate under test would be reading an \
+                                         empty one: {:?}",
+                                        $blind,
+                                        stringify!($blind_call),
+                                        built.content
+                                    );
+                                )*
+                                std::fs::copy(
+                                    blind_ws.path().join("docs/.atomic/workspace.atomic.json"),
+                                    tmp.path().join($blind),
+                                )
+                                .unwrap_or_else(|e| panic!("seed {}: {e}", $blind));
+                            }
                         )*
                         $(
                             let setup: $setup_args =
@@ -5589,6 +5630,57 @@ mod tests {
             [import_facts(atomic::FactsManifest) {"units": [{"unit_id": "day"}], "predicates": [{"predicate_id": "rose_on_day", "object_kind": "quantity", "subject_kind": "character"}, {"predicate_id": "fell_on_day", "object_kind": "quantity", "subject_kind": "character"}], "facts": [{"fact_id": "f-rose", "frame": "ground-truth", "claim": "it rose on day 5", "canon_from": "sc-01", "evidence": ["sc-01"], "entities": ["e-her"], "typed": {"subject": "e-her", "predicate": "rose_on_day", "object": {"kind": "quantity", "n": 5, "unit": "day"}}}, {"fact_id": "f-fell", "frame": "ground-truth", "claim": "it fell on day 3", "canon_from": "sc-03", "evidence": ["sc-03"], "entities": ["e-her"], "typed": {"subject": "e-her", "predicate": "fell_on_day", "object": {"kind": "quantity", "n": 3, "unit": "day"}}}]}]
             report_timeline_gaps(ReportTimelineGapsArgs) {"rules_path": "rules-interval.json", "order_path": "order-b.json"}
             ."order_path" = "order-c.json" seen "\"kind\": \"violated\"" in output;
+        report_frame_view_branch_reaches_the_answer:
+            @branch_story
+            report_frame_view(ReportFrameViewArgs) {"frame": "ground-truth", "at": "sc-03", "order_path": "order-b.json"}
+            ."branch" = "b-alt" seen "\"f-alt\"" in output;
+        report_frame_view_entity_reaches_the_answer:
+            @branch_story
+            report_frame_view(ReportFrameViewArgs) {"frame": "ground-truth", "at": "sc-03", "order_path": "order-b.json"}
+            ."entity" = "e-her" seen "\"f-way\"" in output;
+        report_authoring_frontier_telling_reaches_the_answer:
+            @branch_story
+            report_authoring_frontier(ReportAuthoringFrontierArgs) {"order_path": "order-b.json"}
+            ."telling" = "t-quiet" seen "\"unresolved_quests\"" in output;
+        propose_verdict_order_path_reaches_the_answer:
+            @branch_story
+            {"rules-directed.json" = {"schema": "narrative-rules/v1", "rules": [{"id": "one-way-only", "predicate": "at", "class": "transition", "adjacency": "at", "undirected": false}]}}
+            {"return-trip.json" = {"facts": [{"fact_id": "f-back", "frame": "ground-truth", "claim": "she returns", "canon_from": "sc-03", "evidence": ["sc-03"], "entities": ["e-her", "p-a"], "supersedes_in_frame": "f-at-b", "typed": {"subject": "e-her", "predicate": "at", "object": {"kind": "entity", "id": "p-a"}}}]}}
+            propose_verdict(ProposeVerdictArgs) {"manifest_path": "return-trip.json", "rules_path": "rules-directed.json", "order_path": "order-b.json"}
+            ."order_path" = "order-c.json" seen "\"dangling_setups\": {}" in output;
+        // THE `claim_sha256` PINS ARE THE ARTIFACT'S OWN CONTRACT, not a
+        // fixture shortcut: a proposal is judged against the claim text the
+        // proposer read, and an amend since then must fail loud as stale. They
+        // are sha256 of the claim strings the world declares, so editing that
+        // prose without editing these makes the import say `stale`, by design.
+        import_typing_proposals_dry_run_reaches_the_store:
+            @branch_story
+            {"typing.json" = {"schema": "typing-proposals/v1", "proposals": [{"fact": "f-way-back", "typed": {"subject": "p-b", "predicate": "adjacent", "object": {"kind": "entity", "id": "p-a"}}, "claim_sha256": "a3e95230db5ab9cd352aa4aacd956c52c02f74020c8be66dcc82bf865b881c53", "rationale": "the prose names both ends of one way, so the typed leg is the other direction"}]}}
+            [import_facts(atomic::FactsManifest) {"facts": [{"fact_id": "f-way-back", "frame": "ground-truth", "claim": "the way runs back as well", "canon_from": "sc-01", "evidence": ["sc-01"], "entities": ["p-b", "p-a"]}]}]
+            import_typing_proposals(ImportTypingProposalsArgs) {"proposals_path": "typing.json"}
+            ."dry_run" = true seen "\"subject\": \"p-b\"" in store;
+        import_edge_proposals_dry_run_reaches_the_store:
+            @branch_story
+            {"edges.json" = {"schema": "edge-proposals/v1", "conflicts": [{"fact": "f-alt", "target": "f-at-b", "fact_claim_sha256": "934b712828d0c69368eb8082c9251c5190cceb939a964b8b0bed953bb2da7e9f", "target_claim_sha256": "686eb0e864b28d0c6a918e55d5233ec3a18a9e02e030c3538bf55b14e6cfcc21", "rationale": "one places her at a and the other places her at b, in the same frame"}]}}
+            import_edge_proposals(ImportEdgeProposalsArgs) {"proposals_path": "edges.json"}
+            ."dry_run" = true seen "\"target\": \"f-at-b\"" in store;
+        validate_render_fidelity_order_path_reaches_the_answer:
+            @branch_story
+            (store "blind.json" =
+                [import_sections(ImportSectionsArgs) {"sections": [{"section_id": "sc-01", "parent_doc": "spec", "title": "one"}, {"section_id": "sc-02", "parent_doc": "spec", "title": "two"}, {"section_id": "sc-03", "parent_doc": "spec", "title": "three"}]}]
+                [import_facts(atomic::FactsManifest) {"frames": [{"frame_id": "ground-truth"}], "entity_kinds": [{"kind_id": "place"}, {"kind_id": "character"}], "entities": [{"entity_id": "p-a", "kind": "place"}, {"entity_id": "p-b", "kind": "place"}, {"entity_id": "e-her", "kind": "character"}], "predicates": [{"predicate_id": "at", "object_kind": "entity", "subject_kind": "character", "object_entity_kind": "place"}], "facts": [{"fact_id": "r-at-a", "frame": "ground-truth", "claim": "the prose puts her at a", "canon_from": "sc-01", "evidence": ["sc-01"], "entities": ["e-her", "p-a"], "typed": {"subject": "e-her", "predicate": "at", "object": {"kind": "entity", "id": "p-a"}}}, {"fact_id": "r-at-b", "frame": "ground-truth", "claim": "the prose puts her at b", "canon_from": "sc-03", "evidence": ["sc-03"], "entities": ["e-her", "p-b"], "typed": {"subject": "e-her", "predicate": "at", "object": {"kind": "entity", "id": "p-b"}}}]}]
+            )
+            validate_render_fidelity(RenderFidelityArgs) {"against": "blind.json", "world": "main", "order_path": "order-b.json"}
+            ."order_path" = "order-c.json" seen "\"reached_terminal\": false" in output;
+        validate_disclosure_leak_order_path_reaches_the_answer:
+            @branch_story
+            (store "blind.json" =
+                [import_sections(ImportSectionsArgs) {"sections": [{"section_id": "sc-01", "parent_doc": "spec", "title": "one"}, {"section_id": "sc-02", "parent_doc": "spec", "title": "two"}, {"section_id": "sc-03", "parent_doc": "spec", "title": "three"}]}]
+                [import_facts(atomic::FactsManifest) {"frames": [{"frame_id": "ground-truth"}], "entity_kinds": [{"kind_id": "place"}, {"kind_id": "character"}], "entities": [{"entity_id": "p-b", "kind": "place"}, {"entity_id": "e-her", "kind": "character"}], "predicates": [{"predicate_id": "at", "object_kind": "entity", "subject_kind": "character", "object_entity_kind": "place"}], "facts": [{"fact_id": "r-at-b", "frame": "ground-truth", "claim": "the prose already put her at b", "canon_from": "sc-01", "evidence": ["sc-01"], "entities": ["e-her", "p-b"], "typed": {"subject": "e-her", "predicate": "at", "object": {"kind": "entity", "id": "p-b"}}}]}]
+            )
+            [set_disclosure(SetDisclosureArgs) {"telling_id": "t-quiet", "fact_id": "f-at-b", "mode": "state", "first_at": [{"branch": "main", "coords": ["sc-03"]}]}]
+            validate_disclosure_leak(DisclosureLeakArgs) {"telling": "t-quiet", "against": "blind.json", "world": "main", "truth_frame": "ground-truth", "order_path": "order-c.json"}
+            ."order_path" = "order-b.json" seen "\"kind\": \"early\"" in output;
     }
 
     /// An agent can only call what the schema shows it (Round 981) — the Round
