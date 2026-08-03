@@ -3728,14 +3728,10 @@ mod tests {
     /// sends the argument, the tool answers success, and whether it did
     /// anything is unknown.
     const UNEXERCISED: &[(&str, &str)] = &[
-        ("emit_publishable_override_ledger_draft", "kind"),
         ("import_edge_proposals", "dry_run"),
         ("import_typing_proposals", "dry_run"),
         ("propose_verdict", "order_path"),
         ("propose_verdict", "rules_path"),
-        ("query_term", "fields"),
-        ("redact_term", "kind"),
-        ("redact_term", "scope"),
         ("report_authoring_frontier", "order_path"),
         ("report_authoring_frontier", "rules_path"),
         ("report_authoring_frontier", "telling"),
@@ -3751,8 +3747,6 @@ mod tests {
         ("report_timeline_gaps", "order_path"),
         ("report_timeline_gaps", "rules_path"),
         ("report_transition_map", "rules_path"),
-        ("style_check", "doc"),
-        ("style_check", "severity"),
         ("validate_continuity", "order_path"),
         ("validate_continuity", "rules_path"),
         ("validate_disclosure_leak", "order_path"),
@@ -4740,6 +4734,32 @@ mod tests {
             [import_facts(atomic::FactsManifest) {"frames": [{"frame_id": "ground-truth"}], "entity_kinds": [{"kind_id": "place"}, {"kind_id": "character"}], "entities": [{"entity_id": "p-a", "kind": "place"}, {"entity_id": "p-b", "kind": "place"}, {"entity_id": "e-her", "kind": "character"}], "predicates": [{"predicate_id": "adjacent", "object_kind": "entity", "subject_kind": "place", "object_entity_kind": "place"}, {"predicate_id": "at", "object_kind": "entity", "subject_kind": "character", "object_entity_kind": "place"}], "facts": [{"fact_id": "f-way", "frame": "ground-truth", "claim": "a way runs", "canon_from": "sc-01", "evidence": ["sc-01"], "entities": ["p-a", "p-b"], "typed": {"subject": "p-a", "predicate": "adjacent", "object": {"kind": "entity", "id": "p-b"}}}, {"fact_id": "f-at-a", "frame": "ground-truth", "claim": "she is at a", "canon_from": "sc-01", "evidence": ["sc-01"], "entities": ["e-her", "p-a"], "typed": {"subject": "e-her", "predicate": "at", "object": {"kind": "entity", "id": "p-a"}}}, {"fact_id": "f-at-b", "frame": "ground-truth", "claim": "she is at b", "canon_from": "sc-03", "evidence": ["sc-03"], "entities": ["e-her", "p-b"], "supersedes_in_frame": "f-at-a", "typed": {"subject": "e-her", "predicate": "at", "object": {"kind": "entity", "id": "p-b"}}}], "disclosure_plans": [{"telling_id": "t-quiet", "default_mode": "state"}, {"telling_id": "t-hidden", "default_mode": "withhold"}]}]
             report_playable_world(ReportPlayableWorldArgs) {"telling": "t-quiet", "order_path": "{ws}/order-a.json"}
             ."order_path" = "order-b.json" seen "sc-03" in output;
+        style_check_doc_reaches_the_answer:
+            [add_section(AddSectionArgs) {"section_id": "40", "parent_doc": "spec", "title": "the section"}]
+            [add_section(AddSectionArgs) {"section_id": "41", "parent_doc": "other", "title": "the other"}]
+            style_check(StyleCheckArgs) {}
+            ."doc" = "spec" seen "doc_filter\": \"spec" in output;
+        query_term_fields_reaches_the_answer:
+            [append_changelog_entry(AppendChangelogEntryArgs) {"entry_id": "Round 1", "decision_summary": "the decision names Waits", "changes_bullets": ["a change"], "verification_bullets": ["a check"]}]
+            query_term(QueryTermArgs) {"pattern": "Waits"}
+            ."fields" = ["changes_bullets"] seen "Round 1" in output;
+        redact_term_scope_reaches_the_answer:
+            [append_changelog_entry(AppendChangelogEntryArgs) {"entry_id": "Round 1", "decision_summary": "the decision names Waits", "changes_bullets": ["a change"], "verification_bullets": ["a check"]}]
+            redact_term(RedactTermArgs) {"pattern": "Waits", "replacement": "lingers", "reason": "word", "applied_in": "Round 1", "dry_run": true}
+            ."scope" = "changes_bullets" seen "Round 1" in output;
+        redact_term_kind_reaches_the_answer:
+            [append_changelog_entry(AppendChangelogEntryArgs) {"entry_id": "Round 1", "decision_summary": "the decision names Waits", "changes_bullets": ["a change"], "verification_bullets": ["a check"]}]
+            redact_term(RedactTermArgs) {"pattern": "Waits", "replacement": "lingers", "reason": "word", "applied_in": "Round 1", "dry_run": true}
+            ."kind" = "correction" seen "correction" in output;
+        emit_publishable_override_ledger_draft_kind_reaches_the_answer:
+            [append_changelog_entry(AppendChangelogEntryArgs) {"entry_id": "Round 1", "decision_summary": "the decision names Waits", "changes_bullets": ["a change"], "verification_bullets": ["a check"]}]
+            [set_changelog_publishable_decision_summary(SetChangelogPublishableStringArgs) {"entry_id": "Round 1", "value": "the published line names Waits"}]
+            emit_publishable_override_ledger_draft(EmitPublishableOverrideLedgerDraftArgs) {"entry_id": "Round 1", "reason": "word", "applied_in": "Round 1", "pattern": "Waits", "replacement": "lingers"}
+            ."kind" = "correction" seen "correction" in output;
+        style_check_severity_reaches_the_answer:
+            [add_section(AddSectionArgs) {"section_id": "40", "parent_doc": "spec", "title": "the section"}]
+            style_check(StyleCheckArgs) {}
+            ."severity" = "warn" seen "warn" in output;
         query_term_scope_reaches_the_answer:
             [import_sections(ImportSectionsArgs) {"sections": [{"section_id": "40", "parent_doc": "spec", "title": "the section"}, {"section_id": "41", "parent_doc": "spec", "title": "the other"}]}]
             [append_changelog_entry(AppendChangelogEntryArgs) {"entry_id": "Round 1", "decision_summary": "the one who Waits", "changes_bullets": ["a change"], "verification_bullets": ["a check"]}]

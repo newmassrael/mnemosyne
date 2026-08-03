@@ -710,6 +710,94 @@
         "THE MANUSCRIPT CASES WATCH WHAT CHANGED, NOT WHETHER IT IS RIGHT. `reading_walk` drops a section and the case asserts the drop; nothing asserts that the section it drops is the RIGHT one, which is a claim about the disclosure model rather than about the wire. Round 1004's verdict table is the shape that claim would take."
       ]
     },
+    "Round 1007": {
+      "decision_summary": "R1007 (BUILD) — six arguments that needed no authored world at all, and one classification of mine that was wrong. Round 1006 left 29, and I sorted them by what each needs; the first bundle was supposed to be eight arguments answerable over a ledger entry and two sections. Six were. STAR THE SIX ARE THE PROSE-SIDE SURFACE: which fields a term search reads, which half a redaction touches and what it labels its draft, what an override draft calls itself, and the two filters a style check takes. None wants a map or a telling — a changelog entry and a pair of sections is the whole world — which is why they were worth doing before the report families. STAR TWO WERE MISCLASSIFIED AND THE TOOL SAID SO IMMEDIATELY: `import_typing_proposals.dry_run` and its edge sibling refuse an empty proposals list, so exercising them needs a real proposal — a fact with an untyped claim and a sha pin over its text. That is a world, and a small one, but it is not \"no world\". They go back in the queue with the report families rather than being counted as done. STAR ONE CASE PROVES SOMETHING NARROWER THAN THE OTHERS AND SAYS SO. `style_check.doc` is watched by the report ECHOING its own filter (`doc_filter` moves from null to the value), because neither of this world's two docs carries a style violation and so the finding set does not vary. That satisfies what this accounting claims — the handler reads the argument — and not more. The stronger case wants a section whose prose actually violates a style rule. STAR THE DIAGNOSTIC KEEPS PAYING: `style_check.doc` and `emit_publishable_override_ledger_draft.kind` were both decided by the failure naming what moved, and the second one only after it named that NOTHING moved — no draft was emitted at all, because the pattern sat in the audit half while the verb reads the publishable one. The fix was one more setup call, not a new theory. The count is 99 of 122.",
+      "changes_bullets": [
+        "`mnemosyne-mcp` — six cases over a ledger entry and two sections: `query_term.fields`, `redact_term.scope`, `redact_term.kind`, `emit_publishable_override_ledger_draft.kind`, `style_check.severity`, `style_check.doc`.",
+        "Same file — the override-draft case sets the entry's PUBLISHABLE decision summary first. The verb reads that half, so a pattern living only in the audit half produced no draft at all and nothing to watch.",
+        "Same file — `style_check.doc` is watched by the `doc_filter` the report echoes, which is stated in the case rather than implied: neither doc here carries a style violation, so the filtered finding set does not vary."
+      ],
+      "verification_bullets": [
+        "INJECTION AO, `query_term` stops reading `fields`: the case fails.",
+        "INJECTION AN DID NOT APPLY AND ITS GREEN WAS DISCARDED — the anchor guessed `args.0.doc.as_deref()` where the handler writes `doc: args.0.doc.clone()`. Re-read from the source and re-run: `style_check` stopped reading `doc` fails the case. SIXTH time in this session that an anchor assertion caught an unapplied injection.",
+        "TWO ARGUMENTS WERE REMOVED FROM THIS ROUND AFTER BEING TRIED: both `dry_run` importers refuse an empty proposals list, so they need an authored proposal and belong with the report families. Counting them here would have been a claim this round did not earn.",
+        "1602 workspace tests pass (1596 before), 0 failed, `--no-fail-fast`; clippy `-D warnings` and `cargo fmt --check` clean; `validate-workspace` T1 orphan 0 and T3 reject 0.",
+        "Citation hygiene (R255): Round 1007 verified absent with `query --changelog-entry` before this entry was appended.",
+        "CARRY TEST (Round 1005): the bullets below were read against \"could I do this now?\". The style-violation world and the proposals world are authoring, not sentences; the narrower claim of the `doc` case is stated as what it proves rather than deferred."
+      ],
+      "impact_refs": [
+        "atomic-store-mutate-api"
+      ],
+      "carry_forward_bullets": [
+        "23 REMAIN AND THE SORTING IS NOW MEASURED RATHER THAN GUESSED: two want a proposals world (a fact with an untyped claim and a sha pin), and the rest want a report world each — payoffs, irony intervals, edge candidates, a frontier, a second telling to leak against, and the rules-path family's second artifact.",
+        "`style_check.doc` PROVES THE FILTER REACHES THE REPORT, NOT THAT IT FILTERS. The stronger case wants a section whose prose violates a style rule so the finding set varies with the doc; that is a world this round did not author, and the case says so in place rather than reading as more than it is."
+      ],
+      "population_census": [
+        {
+          "axis": "transition rules by `undirected`",
+          "left_label": "undirected",
+          "left": 10,
+          "right_label": "directed",
+          "right": 27
+        },
+        {
+          "axis": "map corpora by leg-kind declaration",
+          "left_label": "omitted",
+          "left": 6,
+          "right_label": "declared",
+          "right": 24
+        },
+        {
+          "axis": "cost-carrying corpora by direction-dependent pricing",
+          "left_label": "prices a way by direction",
+          "left": 4,
+          "right_label": "prices no way by direction",
+          "right": 6
+        },
+        {
+          "axis": "run trees by authoring mode",
+          "left_label": "hand script",
+          "left": 10,
+          "right_label": "file-only",
+          "right": 239
+        },
+        {
+          "axis": "map corpora by declared boundary crossing",
+          "left_label": "declares an exit",
+          "left": 6,
+          "right_label": "declares none",
+          "right": 24
+        },
+        {
+          "axis": "authored submissions by map and telling",
+          "left_label": "carries both",
+          "left": 10,
+          "right_label": "carries one",
+          "right": 24
+        }
+      ],
+      "publishable_decision_summary": "R1007 (BUILD) — six arguments that needed no authored world at all, and one classification of mine that was wrong. Round 1006 left 29, and I sorted them by what each needs; the first bundle was supposed to be eight arguments answerable over a ledger entry and two sections. Six were. STAR THE SIX ARE THE PROSE-SIDE SURFACE: which fields a term search reads, which half a redaction touches and what it labels its draft, what an override draft calls itself, and the two filters a style check takes. None wants a map or a telling — a changelog entry and a pair of sections is the whole world — which is why they were worth doing before the report families. STAR TWO WERE MISCLASSIFIED AND THE TOOL SAID SO IMMEDIATELY: `import_typing_proposals.dry_run` and its edge sibling refuse an empty proposals list, so exercising them needs a real proposal — a fact with an untyped claim and a sha pin over its text. That is a world, and a small one, but it is not \"no world\". They go back in the queue with the report families rather than being counted as done. STAR ONE CASE PROVES SOMETHING NARROWER THAN THE OTHERS AND SAYS SO. `style_check.doc` is watched by the report ECHOING its own filter (`doc_filter` moves from null to the value), because neither of this world's two docs carries a style violation and so the finding set does not vary. That satisfies what this accounting claims — the handler reads the argument — and not more. The stronger case wants a section whose prose actually violates a style rule. STAR THE DIAGNOSTIC KEEPS PAYING: `style_check.doc` and `emit_publishable_override_ledger_draft.kind` were both decided by the failure naming what moved, and the second one only after it named that NOTHING moved — no draft was emitted at all, because the pattern sat in the audit half while the verb reads the publishable one. The fix was one more setup call, not a new theory. The count is 99 of 122.",
+      "publishable_changes_bullets": [
+        "`mnemosyne-mcp` — six cases over a ledger entry and two sections: `query_term.fields`, `redact_term.scope`, `redact_term.kind`, `emit_publishable_override_ledger_draft.kind`, `style_check.severity`, `style_check.doc`.",
+        "Same file — the override-draft case sets the entry's PUBLISHABLE decision summary first. The verb reads that half, so a pattern living only in the audit half produced no draft at all and nothing to watch.",
+        "Same file — `style_check.doc` is watched by the `doc_filter` the report echoes, which is stated in the case rather than implied: neither doc here carries a style violation, so the filtered finding set does not vary."
+      ],
+      "publishable_verification_bullets": [
+        "INJECTION AO, `query_term` stops reading `fields`: the case fails.",
+        "INJECTION AN DID NOT APPLY AND ITS GREEN WAS DISCARDED — the anchor guessed `args.0.doc.as_deref()` where the handler writes `doc: args.0.doc.clone()`. Re-read from the source and re-run: `style_check` stopped reading `doc` fails the case. SIXTH time in this session that an anchor assertion caught an unapplied injection.",
+        "TWO ARGUMENTS WERE REMOVED FROM THIS ROUND AFTER BEING TRIED: both `dry_run` importers refuse an empty proposals list, so they need an authored proposal and belong with the report families. Counting them here would have been a claim this round did not earn.",
+        "1602 workspace tests pass (1596 before), 0 failed, `--no-fail-fast`; clippy `-D warnings` and `cargo fmt --check` clean; `validate-workspace` T1 orphan 0 and T3 reject 0.",
+        "Citation hygiene (R255): Round 1007 verified absent with `query --changelog-entry` before this entry was appended.",
+        "CARRY TEST (Round 1005): the bullets below were read against \"could I do this now?\". The style-violation world and the proposals world are authoring, not sentences; the narrower claim of the `doc` case is stated as what it proves rather than deferred."
+      ],
+      "publishable_impact_refs": [
+        "atomic-store-mutate-api"
+      ],
+      "publishable_carry_forward_bullets": [
+        "23 REMAIN AND THE SORTING IS NOW MEASURED RATHER THAN GUESSED: two want a proposals world (a fact with an untyped claim and a sha pin), and the rest want a report world each — payoffs, irony intervals, edge candidates, a frontier, a second telling to leak against, and the rules-path family's second artifact.",
+        "`style_check.doc` PROVES THE FILTER REACHES THE REPORT, NOT THAT IT FILTERS. The stronger case wants a section whose prose violates a style rule so the finding set varies with the doc; that is a world this round did not author, and the case says so in place rather than reading as more than it is."
+      ]
+    },
     "Round 252": {
       "decision_summary": "Parser CommonMark conformance — recognize indented fenced code blocks (§98) and require whitespace after ATX hash sequence (§62)",
       "changes_bullets": [
