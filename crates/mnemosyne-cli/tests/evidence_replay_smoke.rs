@@ -4820,6 +4820,96 @@ fn the_cli_help_says_what_a_typed_path_is_relative_to() {
     }
 }
 
+/// WHICH GATE RULES THE RECORD HAS EVER ACTUALLY PRODUCED.
+///
+/// Round 1010 typed every rule a verdict can name and proved the mapping total
+/// over one hand-built shape per variant, then carried the honest caveat: those
+/// shapes are plausible, not real, and nothing said whether the SCANNER emits a
+/// given rule against an authored store. It called the answer "a corpus per
+/// variant".
+///
+/// It is cheaper than that, because the record already holds the scanner's own
+/// output: the sealed run trees carry `validate-continuity` and `propose-verdict`
+/// artifacts from the rounds that ran them. Counting the rule ids in those is a
+/// measurement over what authors actually tripped, not over what a fixture can
+/// construct.
+///
+/// THIS PRINTS ITS POPULATION EVERY RUN rather than only failing (Round 854): a
+/// rule the record has never produced is not a defect — most gates exist for
+/// authoring nobody has attempted yet — but a reader who is told only "0
+/// violations" cannot tell that from "this walked nothing".
+#[test]
+fn the_record_says_which_gate_rules_authors_have_actually_tripped() {
+    let rules: Vec<&str> = mnemosyne_validate::verdict::ViolationRule::ALL
+        .iter()
+        .map(|r| r.as_str())
+        .collect();
+    let mut seen: BTreeSet<&str> = BTreeSet::new();
+    let mut artifacts = 0usize;
+    let mut tracked = 0usize;
+    for path in git(&["ls-files", "claudedocs"]).lines() {
+        let Ok(text) = std::fs::read_to_string(repo_root().join(path)) else {
+            continue;
+        };
+        // TOOL OUTPUT ONLY, and the distinction is the whole measurement: a
+        // changelog entry or a runbook MENTIONING `map_disconnected` is not the
+        // scanner having produced it. Round 973 established that a recorded
+        // artifact which is tool output opens with the CLI banner, so that is
+        // the filter — a superset would count prose and make "fired" mean
+        // "written about".
+        tracked += 1;
+        if !text.starts_with("=== ") {
+            continue;
+        }
+        artifacts += 1;
+        for rule in &rules {
+            // `shape-invariant` is not a scanner rule; it is what a write-time
+            // rejection is labelled, and it reaches the record through a
+            // different verb's output.
+            if *rule != "shape-invariant" && text.contains(rule) {
+                seen.insert(rule);
+            }
+        }
+    }
+    assert!(
+        artifacts > 50,
+        "only {artifacts} recorded tool output(s) were read, so this \
+         measurement describes almost nothing"
+    );
+    // THE FILTER MUST BE DOING WORK. Widen it by accident and the number
+    // silently becomes "rules the record WRITES ABOUT", which reads as more
+    // gates firing than do — measured: 8 of 32 over tool output against 12 of
+    // 32 over everything tracked.
+    assert!(
+        artifacts * 2 < tracked,
+        "the tool-output filter kept {artifacts} of {tracked} tracked files, \
+         which is not a filter; the count below would then mean `mentioned` \
+         rather than `produced`"
+    );
+    assert!(
+        !seen.is_empty(),
+        "no gate rule appears anywhere in the record, which would mean either \
+         that no gate has ever fired on authored data or that this walk reads \
+         the wrong files"
+    );
+    let never: Vec<&&str> = rules
+        .iter()
+        .filter(|r| **r != "shape-invariant" && !seen.contains(*r))
+        .collect();
+    println!(
+        "gate rules the record has produced: {} of {} ({} artifact(s) read)",
+        seen.len(),
+        rules.len() - 1,
+        artifacts
+    );
+    for r in &seen {
+        println!("  fired: {r}");
+    }
+    for r in &never {
+        println!("  never: {r}");
+    }
+}
+
 /// NO LIBRARY DECIDES A PATH FROM THE PROCESS'S WORKING DIRECTORY.
 ///
 /// Round 998 found an agent's path argument reading a file beside this source:

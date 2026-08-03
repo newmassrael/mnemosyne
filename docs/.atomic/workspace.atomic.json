@@ -1076,6 +1076,94 @@
         "23 READ-SIDE ARGUMENTS REMAIN in the Round 986 accounting, unchanged by this round."
       ]
     },
+    "Round 1011": {
+      "decision_summary": "R1011 (MEASURE -> BUILD) — the fourteenth audit, and Round 1010's caveat is now a number instead of a caveat. It had typed every rule a verdict can name, proved the mapping total over one hand-built shape per variant, and closed honestly: those shapes are plausible, not real, and nothing says whether the SCANNER emits a given rule against an authored store — \"a corpus per variant\". STAR IT IS NOT A CORPUS PER VARIANT, BECAUSE THE RECORD ALREADY HOLDS THE SCANNER'S OWN OUTPUT. The sealed run trees carry the gate artifacts of the rounds that ran them, so counting rule ids there measures what AUTHORS TRIPPED rather than what a fixture can construct. Measured: 8 of the 32 continuity rules appear in recorded tool output. STAR THE FIRST READING SAID 12 AND WAS THE WRONG POPULATION, which is the same defect this repository has now caught four times in different clothes. Scanning every tracked file counts a changelog entry that MENTIONS `map_disconnected` as the scanner having produced it. Filtered to artifacts opening with the CLI banner — Round 973's own convention for tool output — it is 8 of 32 over 108 artifacts, and 108 is exactly the count Round 973 arrived at independently. The four that are written about but never produced are `confluence_evidence_unreconciled`, `fact_canon_off_branch`, `rule_interval_violation` and `succession_cross_branch`. STAR TWENTY-FOUR GATES HAVE NEVER FIRED ON AUTHORED DATA, and that is a fact about the record rather than a verdict on the gates: a rule nobody has tripped may be one nobody has yet had occasion to trip. What it does say is which half of the gate surface has evidence behind it, and the ladder family, the conflict-edge family and the containment family are entirely in the other half. STAR THE MEASUREMENT PRINTS ITS POPULATION EVERY RUN and asserts that its filter is a filter — widen it by accident and the number silently becomes \"rules the record writes about\", which reads as more gates firing than do.",
+      "changes_bullets": [
+        "`crates/mnemosyne-cli/tests/evidence_replay_smoke.rs` — `the_record_says_which_gate_rules_authors_have_actually_tripped`, walking the recorded tool output for rule ids and printing the fired and never-fired sets every run.",
+        "Same file — the walk is filtered to artifacts opening with the CLI banner, and asserts the filter kept a minority of tracked files. Without that, \"produced\" silently becomes \"mentioned\"."
+      ],
+      "verification_bullets": [
+        "STAR THE ANSWER IS 8 OF 32, and the population is 108 recorded tool outputs — the same 108 Round 973 counted independently when it classified banner-carrying artifacts.",
+        "STAR THE UNFILTERED READING WAS 12 OF 32 OVER 880 FILES and would have been wrong in the direction that flatters: four rules are written about in the ledger and runbooks and produced by nothing.",
+        "INJECTION AS, the tool-output filter removed: the test fails with \"the tool-output filter kept 880 of 880 tracked files, which is not a filter\". The first version of this test did NOT fail under that injection — it printed 12 and passed — and the assertion was added because of it.",
+        "THE COUNT IS PRINTED, NOT PINNED. A threshold on 8 would rot the day a new corpus trips a ninth gate; what is asserted is that the walk read something, that the filter filtered, and that at least one rule fired.",
+        "1605 workspace tests pass (1604 before), 0 failed, `--no-fail-fast`; clippy `-D warnings` and `cargo fmt --check` clean; `validate-workspace` T1 orphan 0 and T3 reject 0.",
+        "Citation hygiene (R255): Rounds 854, 973 and 1010 verified present with `query --changelog-entry` and Round 1011 verified absent before this entry was appended.",
+        "CARRY TEST (Round 1005): the bullets below were read against \"could I do this now?\" — the predecessor's caveat was measurable and is measured here rather than carried a second time."
+      ],
+      "impact_refs": [
+        "atomic-store-mutate-api"
+      ],
+      "carry_forward_bullets": [
+        "WHAT FIRED IS A LOWER BOUND ON WHAT THE SCANNER CAN PRODUCE, not an upper one. A gate absent from the record may simply never have been run against authoring that would trip it — the recorded outputs are the arms those rounds chose to run, not a sweep. Turning it into an upper bound needs the replay to scan every recorded corpus with every rule enabled, which is the shape Round 974's replay already has and does not do.",
+        "23 READ-SIDE ARGUMENTS REMAIN in the Round 986 accounting, unchanged by this round."
+      ],
+      "population_census": [
+        {
+          "axis": "transition rules by `undirected`",
+          "left_label": "undirected",
+          "left": 10,
+          "right_label": "directed",
+          "right": 27
+        },
+        {
+          "axis": "map corpora by leg-kind declaration",
+          "left_label": "omitted",
+          "left": 6,
+          "right_label": "declared",
+          "right": 24
+        },
+        {
+          "axis": "cost-carrying corpora by direction-dependent pricing",
+          "left_label": "prices a way by direction",
+          "left": 4,
+          "right_label": "prices no way by direction",
+          "right": 6
+        },
+        {
+          "axis": "run trees by authoring mode",
+          "left_label": "hand script",
+          "left": 10,
+          "right_label": "file-only",
+          "right": 239
+        },
+        {
+          "axis": "map corpora by declared boundary crossing",
+          "left_label": "declares an exit",
+          "left": 6,
+          "right_label": "declares none",
+          "right": 24
+        },
+        {
+          "axis": "authored submissions by map and telling",
+          "left_label": "carries both",
+          "left": 10,
+          "right_label": "carries one",
+          "right": 24
+        }
+      ],
+      "publishable_decision_summary": "R1011 (MEASURE -> BUILD) — the fourteenth audit, and Round 1010's caveat is now a number instead of a caveat. It had typed every rule a verdict can name, proved the mapping total over one hand-built shape per variant, and closed honestly: those shapes are plausible, not real, and nothing says whether the SCANNER emits a given rule against an authored store — \"a corpus per variant\". STAR IT IS NOT A CORPUS PER VARIANT, BECAUSE THE RECORD ALREADY HOLDS THE SCANNER'S OWN OUTPUT. The sealed run trees carry the gate artifacts of the rounds that ran them, so counting rule ids there measures what AUTHORS TRIPPED rather than what a fixture can construct. Measured: 8 of the 32 continuity rules appear in recorded tool output. STAR THE FIRST READING SAID 12 AND WAS THE WRONG POPULATION, which is the same defect this repository has now caught four times in different clothes. Scanning every tracked file counts a changelog entry that MENTIONS `map_disconnected` as the scanner having produced it. Filtered to artifacts opening with the CLI banner — Round 973's own convention for tool output — it is 8 of 32 over 108 artifacts, and 108 is exactly the count Round 973 arrived at independently. The four that are written about but never produced are `confluence_evidence_unreconciled`, `fact_canon_off_branch`, `rule_interval_violation` and `succession_cross_branch`. STAR TWENTY-FOUR GATES HAVE NEVER FIRED ON AUTHORED DATA, and that is a fact about the record rather than a verdict on the gates: a rule nobody has tripped may be one nobody has yet had occasion to trip. What it does say is which half of the gate surface has evidence behind it, and the ladder family, the conflict-edge family and the containment family are entirely in the other half. STAR THE MEASUREMENT PRINTS ITS POPULATION EVERY RUN and asserts that its filter is a filter — widen it by accident and the number silently becomes \"rules the record writes about\", which reads as more gates firing than do.",
+      "publishable_changes_bullets": [
+        "`crates/mnemosyne-cli/tests/evidence_replay_smoke.rs` — `the_record_says_which_gate_rules_authors_have_actually_tripped`, walking the recorded tool output for rule ids and printing the fired and never-fired sets every run.",
+        "Same file — the walk is filtered to artifacts opening with the CLI banner, and asserts the filter kept a minority of tracked files. Without that, \"produced\" silently becomes \"mentioned\"."
+      ],
+      "publishable_verification_bullets": [
+        "STAR THE ANSWER IS 8 OF 32, and the population is 108 recorded tool outputs — the same 108 Round 973 counted independently when it classified banner-carrying artifacts.",
+        "STAR THE UNFILTERED READING WAS 12 OF 32 OVER 880 FILES and would have been wrong in the direction that flatters: four rules are written about in the ledger and runbooks and produced by nothing.",
+        "INJECTION AS, the tool-output filter removed: the test fails with \"the tool-output filter kept 880 of 880 tracked files, which is not a filter\". The first version of this test did NOT fail under that injection — it printed 12 and passed — and the assertion was added because of it.",
+        "THE COUNT IS PRINTED, NOT PINNED. A threshold on 8 would rot the day a new corpus trips a ninth gate; what is asserted is that the walk read something, that the filter filtered, and that at least one rule fired.",
+        "1605 workspace tests pass (1604 before), 0 failed, `--no-fail-fast`; clippy `-D warnings` and `cargo fmt --check` clean; `validate-workspace` T1 orphan 0 and T3 reject 0.",
+        "Citation hygiene (R255): Rounds 854, 973 and 1010 verified present with `query --changelog-entry` and Round 1011 verified absent before this entry was appended.",
+        "CARRY TEST (Round 1005): the bullets below were read against \"could I do this now?\" — the predecessor's caveat was measurable and is measured here rather than carried a second time."
+      ],
+      "publishable_impact_refs": [
+        "atomic-store-mutate-api"
+      ],
+      "publishable_carry_forward_bullets": [
+        "WHAT FIRED IS A LOWER BOUND ON WHAT THE SCANNER CAN PRODUCE, not an upper one. A gate absent from the record may simply never have been run against authoring that would trip it — the recorded outputs are the arms those rounds chose to run, not a sweep. Turning it into an upper bound needs the replay to scan every recorded corpus with every rule enabled, which is the shape Round 974's replay already has and does not do.",
+        "23 READ-SIDE ARGUMENTS REMAIN in the Round 986 accounting, unchanged by this round."
+      ]
+    },
     "Round 252": {
       "decision_summary": "Parser CommonMark conformance — recognize indented fenced code blocks (§98) and require whitespace after ATX hash sequence (§62)",
       "changes_bullets": [
