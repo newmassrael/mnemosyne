@@ -306,6 +306,38 @@ pub fn load_atomic_store(
     AtomicStore::load(&sidecar_path).map_err(|e| OpError::Other(format!("{}", e)))
 }
 
+/// Load a store the CALLER NAMED, refusing a path that is not there.
+///
+/// The counterpart to [`load_atomic_store`] and deliberately the opposite
+/// policy on one point. `AtomicStore::load` answers a missing path with an
+/// empty store, which is what the workspace's own sidecar needs: a store that
+/// has not been written yet is the bootstrap state, not an error. A store the
+/// caller named is the other case — the caller is asserting the file exists,
+/// and an empty store stands in for it silently.
+///
+/// That silence is the whole of the difference. Both render-acceptance gates
+/// report ABSENCE of findings as their pass signal (`off_path` / `leaks`
+/// empty), so an unreadable `against` produced a clean verdict from a gate
+/// that had evaluated nothing — the failure mode the contract names in its own
+/// words, that a gate which evaluated NOTHING must never read the same as one
+/// that PASSED.
+///
+/// # Errors
+///
+/// [`OpError`] if the file is absent, or if it is present and will not parse.
+pub fn load_named_store(named: &AbsolutePath, what: &str) -> Result<AtomicStore, OpError> {
+    let path = named.as_path();
+    if !path.exists() {
+        return Err(OpError::Other(format!(
+            "{what} `{}` does not exist. A store named by the caller must be \
+             there to be read: an absent one would otherwise load as an EMPTY \
+             store and this gate reports emptiness as a pass",
+            path.display()
+        )));
+    }
+    AtomicStore::load(path).map_err(|e| OpError::Other(format!("{}", e)))
+}
+
 /// Every registered entity's declared kind — `entity_id -> kind` over the whole
 /// registry, read straight from `AtomicStore.entities`. The bulk companion to
 /// [`entity_dossier`] (which answers one entity): a consumer that owns a kind
@@ -1651,7 +1683,7 @@ pub fn disclosure_coverage_report(
 pub fn disclosure_leak_report(
     workspace_root: &Path,
     sidecar: Option<&AbsolutePath>,
-    against: &Path,
+    against: &AbsolutePath,
     order_override: Option<&AbsolutePath>,
     telling: &str,
     world: &str,
@@ -1677,7 +1709,7 @@ pub fn disclosure_leak_report(
             "truth_frame `{truth_frame}` not present in the frame registry (fail-loud)"
         )));
     }
-    let reextracted = AtomicStore::load(against).map_err(|e| OpError::Other(format!("{}", e)))?;
+    let reextracted = load_named_store(against, "the re-extracted prose store `against`")?;
     mnemosyne_validate::disclosure::disclosure_leak(
         &authored,
         &reextracted,
@@ -1696,7 +1728,7 @@ pub fn disclosure_leak_report(
 pub fn render_fidelity_report(
     workspace_root: &Path,
     sidecar: Option<&AbsolutePath>,
-    against: &Path,
+    against: &AbsolutePath,
     order_override: Option<&AbsolutePath>,
     world: &str,
 ) -> Result<mnemosyne_validate::disclosure::RenderFidelityReport, OpError> {
@@ -1711,7 +1743,7 @@ pub fn render_fidelity_report(
             "world `{world}` not present in the branch registry (fail-loud)"
         )));
     }
-    let reextracted = AtomicStore::load(against).map_err(|e| OpError::Other(format!("{}", e)))?;
+    let reextracted = load_named_store(against, "the re-extracted prose store `against`")?;
     Ok(mnemosyne_validate::disclosure::render_fidelity(
         &reextracted,
         &order,

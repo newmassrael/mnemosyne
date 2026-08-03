@@ -803,63 +803,33 @@ pub struct AddFactConflictArgs {
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct ValidateContinuityArgs {
-    /// PATH RESOLUTION: a relative path is resolved against the WORKSPACE ROOT
-    /// (Round 1002), which is the only base an MCP caller can see. An absolute
-    /// path is used as given. The CLI resolves its own explicit paths against
-    /// the working directory instead (Round 538), because there the caller
-    /// chose that directory; here it belongs to whatever host launched the
-    /// server.
     /// Canon-order declaration path override (workspace-relative; bypasses
     /// the configured sha256 pin — the R428 rule). Omit to use
     /// `[continuity].canon_order_path`.
     #[serde(default)]
-    pub order_path: Option<String>,
-    /// PATH RESOLUTION: a relative path is resolved against the WORKSPACE ROOT
-    /// (Round 1002), which is the only base an MCP caller can see. An absolute
-    /// path is used as given. The CLI resolves its own explicit paths against
-    /// the working directory instead (Round 538), because there the caller
-    /// chose that directory; here it belongs to whatever host launched the
-    /// server.
+    pub order_path: Option<AgentPath>,
     /// `narrative-rules/v1` declaration path override (Round 449;
     /// workspace-relative, bypasses the configured sha256 pin). Omit to
     /// use `[continuity].rules_path`.
     #[serde(default)]
-    pub rules_path: Option<String>,
+    pub rules_path: Option<AgentPath>,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct ProposeVerdictArgs {
-    /// PATH RESOLUTION: a relative path is resolved against the WORKSPACE ROOT
-    /// (Round 1002), which is the only base an MCP caller can see. An absolute
-    /// path is used as given. The CLI resolves its own explicit paths against
-    /// the working directory instead (Round 538), because there the caller
-    /// chose that directory; here it belongs to whatever host launched the
-    /// server.
     /// Path to the candidate `import-facts` manifest (a JSON object with
     /// `frames`/`branches`/`entities`/`predicates`/`facts`/`disclosure_plans`
     /// arrays). The agent writes the candidate batch to this file, then calls
     /// the tool; the file is only READ (dry run).
-    pub manifest_path: String,
-    /// PATH RESOLUTION: a relative path is resolved against the WORKSPACE ROOT
-    /// (Round 1002), which is the only base an MCP caller can see. An absolute
-    /// path is used as given. The CLI resolves its own explicit paths against
-    /// the working directory instead (Round 538), because there the caller
-    /// chose that directory; here it belongs to whatever host launched the
-    /// server.
+    pub manifest_path: AgentPath,
     /// Canon-order declaration path override (bypasses the pin). Omit to use
     /// `[continuity].canon_order_path`.
     #[serde(default)]
-    pub order_path: Option<String>,
-    /// PATH RESOLUTION: a relative path is resolved against the WORKSPACE ROOT
-    /// (Round 1002), which is the only base an MCP caller can see. An absolute
-    /// path is used as given. The CLI resolves its own explicit paths against
-    /// the working directory instead (Round 538), because there the caller
-    /// chose that directory; here it belongs to whatever host launched the
-    /// server.
+    pub order_path: Option<AgentPath>,
     /// `narrative-rules/v1` declaration path override. Omit to use
     /// `[continuity].rules_path`.
     #[serde(default)]
-    pub rules_path: Option<String>,
+    pub rules_path: Option<AgentPath>,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
@@ -869,66 +839,36 @@ pub struct ReportAuthoringFrontierArgs {
     /// gaps only (zero-fact scenes, per-scene coverage, dangling setups).
     #[serde(default)]
     pub telling: Option<String>,
-    /// PATH RESOLUTION: a relative path is resolved against the WORKSPACE ROOT
-    /// (Round 1002), which is the only base an MCP caller can see. An absolute
-    /// path is used as given. The CLI resolves its own explicit paths against
-    /// the working directory instead (Round 538), because there the caller
-    /// chose that directory; here it belongs to whatever host launched the
-    /// server.
     /// Canon-order declaration path override (bypasses the pin). Omit to use
     /// `[continuity].canon_order_path`.
     #[serde(default)]
-    pub order_path: Option<String>,
-    /// PATH RESOLUTION: a relative path is resolved against the WORKSPACE ROOT
-    /// (Round 1002), which is the only base an MCP caller can see. An absolute
-    /// path is used as given. The CLI resolves its own explicit paths against
-    /// the working directory instead (Round 538), because there the caller
-    /// chose that directory; here it belongs to whatever host launched the
-    /// server.
+    pub order_path: Option<AgentPath>,
     /// `narrative-rules/v1` declaration path override (Round 891; the
     /// transition rules that declare the map). Omit to use
     /// `[continuity].rules_path`.
     #[serde(default)]
-    pub rules_path: Option<String>,
+    pub rules_path: Option<AgentPath>,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct ReportTimelineGapsArgs {
-    /// PATH RESOLUTION: a relative path is resolved against the WORKSPACE ROOT
-    /// (Round 1002), which is the only base an MCP caller can see. An absolute
-    /// path is used as given. The CLI resolves its own explicit paths against
-    /// the working directory instead (Round 538), because there the caller
-    /// chose that directory; here it belongs to whatever host launched the
-    /// server.
     /// Canon-order declaration path override (bypasses the pin).
     #[serde(default)]
-    pub order_path: Option<String>,
-    /// PATH RESOLUTION: a relative path is resolved against the WORKSPACE ROOT
-    /// (Round 1002), which is the only base an MCP caller can see. An absolute
-    /// path is used as given. The CLI resolves its own explicit paths against
-    /// the working directory instead (Round 538), because there the caller
-    /// chose that directory; here it belongs to whatever host launched the
-    /// server.
+    pub order_path: Option<AgentPath>,
     /// `narrative-rules/v1` declaration path override (Round 490; the
     /// interval rules). Omit to use `[continuity].rules_path`.
     #[serde(default)]
-    pub rules_path: Option<String>,
+    pub rules_path: Option<AgentPath>,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct ReportTransitionMapArgs {
-    /// PATH RESOLUTION: a relative path is resolved against the WORKSPACE ROOT
-    /// (Round 1002), which is the only base an MCP caller can see. An absolute
-    /// path is used as given. The CLI resolves its own explicit paths against
-    /// the working directory instead (Round 538), because there the caller
-    /// chose that directory; here it belongs to whatever host launched the
-    /// server.
     /// `narrative-rules/v1` declaration path override (Round 875; the
     /// transition rules DECLARE which predicate names a map edge). Omit to use
     /// `[continuity].rules_path`. No canon-order override — the map is read
     /// flat, exactly as the gate evaluates it.
     #[serde(default)]
-    pub rules_path: Option<String>,
+    pub rules_path: Option<AgentPath>,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
@@ -944,41 +884,23 @@ pub struct ReportFrameViewArgs {
     pub entity: Option<String>,
     /// Canon point (structure-section id).
     pub at: String,
-    /// PATH RESOLUTION: a relative path is resolved against the WORKSPACE ROOT
-    /// (Round 1002), which is the only base an MCP caller can see. An absolute
-    /// path is used as given. The CLI resolves its own explicit paths against
-    /// the working directory instead (Round 538), because there the caller
-    /// chose that directory; here it belongs to whatever host launched the
-    /// server.
     /// Canon-order declaration path override (bypasses the pin).
     #[serde(default)]
-    pub order_path: Option<String>,
+    pub order_path: Option<AgentPath>,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct ReportPayoffCoverageArgs {
-    /// PATH RESOLUTION: a relative path is resolved against the WORKSPACE ROOT
-    /// (Round 1002), which is the only base an MCP caller can see. An absolute
-    /// path is used as given. The CLI resolves its own explicit paths against
-    /// the working directory instead (Round 538), because there the caller
-    /// chose that directory; here it belongs to whatever host launched the
-    /// server.
     /// Canon-order declaration path override (bypasses the pin).
     #[serde(default)]
-    pub order_path: Option<String>,
+    pub order_path: Option<AgentPath>,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct ReportIronyIntervalsArgs {
-    /// PATH RESOLUTION: a relative path is resolved against the WORKSPACE ROOT
-    /// (Round 1002), which is the only base an MCP caller can see. An absolute
-    /// path is used as given. The CLI resolves its own explicit paths against
-    /// the working directory instead (Round 538), because there the caller
-    /// chose that directory; here it belongs to whatever host launched the
-    /// server.
     /// Canon-order declaration path override (bypasses the pin).
     #[serde(default)]
-    pub order_path: Option<String>,
+    pub order_path: Option<AgentPath>,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
@@ -987,15 +909,9 @@ pub struct ReportPlaythroughManuscriptArgs {
     /// every query world. Fail-loud on an unregistered id.
     #[serde(default)]
     pub world: Option<String>,
-    /// PATH RESOLUTION: a relative path is resolved against the WORKSPACE ROOT
-    /// (Round 1002), which is the only base an MCP caller can see. An absolute
-    /// path is used as given. The CLI resolves its own explicit paths against
-    /// the working directory instead (Round 538), because there the caller
-    /// chose that directory; here it belongs to whatever host launched the
-    /// server.
     /// Canon-order declaration path override (bypasses the pin).
     #[serde(default)]
-    pub order_path: Option<String>,
+    pub order_path: Option<AgentPath>,
     /// Disclosure telling id (R506 render-brief carrier): annotate each
     /// begins-event with its disclosure decision (mode/first_at/surface) under
     /// the named telling. Fail-loud on a typo'd id.
@@ -1009,15 +925,9 @@ pub struct ReportPlaythroughManuscriptArgs {
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct ReportForkTreeArgs {
-    /// PATH RESOLUTION: a relative path is resolved against the WORKSPACE ROOT
-    /// (Round 1002), which is the only base an MCP caller can see. An absolute
-    /// path is used as given. The CLI resolves its own explicit paths against
-    /// the working directory instead (Round 538), because there the caller
-    /// chose that directory; here it belongs to whatever host launched the
-    /// server.
     /// Canon-order declaration path override (bypasses the pin).
     #[serde(default)]
-    pub order_path: Option<String>,
+    pub order_path: Option<AgentPath>,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
@@ -1036,15 +946,9 @@ pub struct ReportPlayableWorldArgs {
     /// unregistered id.
     #[serde(default)]
     pub world: Option<String>,
-    /// PATH RESOLUTION: a relative path is resolved against the WORKSPACE ROOT
-    /// (Round 1002), which is the only base an MCP caller can see. An absolute
-    /// path is used as given. The CLI resolves its own explicit paths against
-    /// the working directory instead (Round 538), because there the caller
-    /// chose that directory; here it belongs to whatever host launched the
-    /// server.
     /// Canon-order declaration path override (bypasses the pin).
     #[serde(default)]
-    pub order_path: Option<String>,
+    pub order_path: Option<AgentPath>,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
@@ -1057,15 +961,9 @@ pub struct ReportQuestGraphArgs {
     /// unregistered id.
     #[serde(default)]
     pub world: Option<String>,
-    /// PATH RESOLUTION: a relative path is resolved against the WORKSPACE ROOT
-    /// (Round 1002), which is the only base an MCP caller can see. An absolute
-    /// path is used as given. The CLI resolves its own explicit paths against
-    /// the working directory instead (Round 538), because there the caller
-    /// chose that directory; here it belongs to whatever host launched the
-    /// server.
     /// Canon-order declaration path override (bypasses the pin).
     #[serde(default)]
-    pub order_path: Option<String>,
+    pub order_path: Option<AgentPath>,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
@@ -1073,50 +971,32 @@ pub struct DisclosureLeakArgs {
     /// Telling id whose plan is the gate's authored side.
     pub telling: String,
     /// Path to the BLIND RE-EXTRACTED prose store to check.
-    pub against: String,
+    pub against: AgentPath,
     /// The world-line the re-extracted prose represents.
     pub world: String,
     /// The frame whose re-extracted facts count as reader-established truth.
     pub truth_frame: String,
-    /// PATH RESOLUTION: a relative path is resolved against the WORKSPACE ROOT
-    /// (Round 1002), which is the only base an MCP caller can see. An absolute
-    /// path is used as given. The CLI resolves its own explicit paths against
-    /// the working directory instead (Round 538), because there the caller
-    /// chose that directory; here it belongs to whatever host launched the
-    /// server.
     /// Canon-order declaration path override (bypasses the pin).
     #[serde(default)]
-    pub order_path: Option<String>,
+    pub order_path: Option<AgentPath>,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct RenderFidelityArgs {
     /// Path to the BLIND RE-EXTRACTED prose store to check.
-    pub against: String,
+    pub against: AgentPath,
     /// The assigned world-line the prose was rendered for.
     pub world: String,
-    /// PATH RESOLUTION: a relative path is resolved against the WORKSPACE ROOT
-    /// (Round 1002), which is the only base an MCP caller can see. An absolute
-    /// path is used as given. The CLI resolves its own explicit paths against
-    /// the working directory instead (Round 538), because there the caller
-    /// chose that directory; here it belongs to whatever host launched the
-    /// server.
     /// Canon-order declaration path override (bypasses the pin).
     #[serde(default)]
-    pub order_path: Option<String>,
+    pub order_path: Option<AgentPath>,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct ImportTypingProposalsArgs {
-    /// PATH RESOLUTION: a relative path is resolved against the WORKSPACE ROOT
-    /// (Round 1002), which is the only base an MCP caller can see. An absolute
-    /// path is used as given. The CLI resolves its own explicit paths against
-    /// the working directory instead (Round 538), because there the caller
-    /// chose that directory; here it belongs to whatever host launched the
-    /// server.
     /// Path to a `typing-proposals/v1` JSON artifact (workspace-relative
     /// or absolute).
-    pub proposals_path: String,
+    pub proposals_path: AgentPath,
     /// Validate only — full verdicts, nothing written.
     #[serde(default)]
     pub dry_run: bool,
@@ -1124,28 +1004,16 @@ pub struct ImportTypingProposalsArgs {
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct ReportEdgeCandidatesArgs {
-    /// PATH RESOLUTION: a relative path is resolved against the WORKSPACE ROOT
-    /// (Round 1002), which is the only base an MCP caller can see. An absolute
-    /// path is used as given. The CLI resolves its own explicit paths against
-    /// the working directory instead (Round 538), because there the caller
-    /// chose that directory; here it belongs to whatever host launched the
-    /// server.
     /// Canon-order declaration path override (bypasses the pin).
     #[serde(default)]
-    pub order_path: Option<String>,
+    pub order_path: Option<AgentPath>,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct ImportEdgeProposalsArgs {
-    /// PATH RESOLUTION: a relative path is resolved against the WORKSPACE ROOT
-    /// (Round 1002), which is the only base an MCP caller can see. An absolute
-    /// path is used as given. The CLI resolves its own explicit paths against
-    /// the working directory instead (Round 538), because there the caller
-    /// chose that directory; here it belongs to whatever host launched the
-    /// server.
     /// Path to an `edge-proposals/v1` JSON artifact (workspace-relative
     /// or absolute).
-    pub proposals_path: String,
+    pub proposals_path: AgentPath,
     /// Validate only — full verdicts, nothing written.
     #[serde(default)]
     pub dry_run: bool,
@@ -1432,12 +1300,121 @@ impl MnemosyneServer {
 /// one — as it had to before this — is unaffected.
 fn mcp_path(
     workspace: &std::path::Path,
-    raw: Option<&str>,
+    raw: Option<&AgentPath>,
 ) -> Result<Option<ops::AbsolutePath>, String> {
     let Some(raw) = raw else { return Ok(None) };
-    ops::AbsolutePath::resolve(workspace, raw)
-        .map(Some)
-        .map_err(|e| e.to_string())
+    raw.resolve(workspace).map(Some)
+}
+
+/// The `format` a workspace-rooted path carries in the agent-facing schema.
+///
+/// This is what makes the population of path arguments DERIVED rather than
+/// guessed. Round 999 wrote the resolution rule into the field descriptions and
+/// gated it by asking whether the property's NAME ends in `_path`; `against` is
+/// a path that is not called one, so it sat in the same struct as an obedient
+/// `order_path`, silent and unresolved, invisible to that gate and to the
+/// library gate that exempts this crate by name. A name is a convention. A type
+/// is not.
+const AGENT_PATH_FORMAT: &str = "mnemosyne-workspace-path";
+
+/// The resolution rule, in the words an agent reads, in ONE place.
+///
+/// Stamped into every marked property by [`agent_facing_tools`] rather than
+/// re-typed into each field's doc comment, which is where it lived until this
+/// round — twenty-four copies of one sentence, policed by a gate that could
+/// only see the ones whose names it recognised.
+const AGENT_PATH_RULE: &str = "PATH RESOLUTION: a relative path is resolved against the WORKSPACE \
+     ROOT (Round 1002), which is the only base an MCP caller can see. An \
+     absolute path is used as given. The CLI resolves its own explicit paths \
+     against the working directory instead (Round 538), because there the \
+     caller chose that directory; here it belongs to whatever host launched \
+     the server.";
+
+/// A FILESYSTEM PATH AN AGENT SENDS — whose base is not the agent's to choose.
+///
+/// The type exists so that the base cannot be left unnamed. Its only way out is
+/// [`AgentPath::resolve`], which demands the workspace; there is no `as_str`,
+/// no `Deref`, and so no way to hand the raw string to `Path::new` and let the
+/// OS resolve it against a working directory that belongs to whatever host
+/// launched this server. That is not a hypothetical: it is what
+/// `validate_disclosure_leak` and `validate_render_fidelity` did with
+/// `against`, and because the store loader answers a missing path with an EMPTY
+/// store, both gates returned the shape of a clean pass for a file they had
+/// never opened.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(transparent)]
+pub struct AgentPath(String);
+
+impl AgentPath {
+    /// Resolve against the workspace the server was handed — the one base an
+    /// MCP caller can see (Round 1002).
+    fn resolve(&self, workspace: &std::path::Path) -> Result<ops::AbsolutePath, String> {
+        ops::AbsolutePath::resolve(workspace, &self.0).map_err(|e| e.to_string())
+    }
+}
+
+impl schemars::JsonSchema for AgentPath {
+    fn schema_name() -> std::borrow::Cow<'static, str> {
+        "AgentPath".into()
+    }
+
+    fn schema_id() -> std::borrow::Cow<'static, str> {
+        concat!(module_path!(), "::AgentPath").into()
+    }
+
+    /// Inlined, so the marker lands on the PROPERTY an agent reads rather than
+    /// behind a `$ref` the gate and the client would each have to follow.
+    fn inline_schema() -> bool {
+        true
+    }
+
+    fn json_schema(_generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        schemars::json_schema!({
+            "type": "string",
+            "format": AGENT_PATH_FORMAT,
+        })
+    }
+}
+
+/// The tools an agent is shown, with the path-resolution rule stamped into
+/// every argument whose TYPE says it is one.
+///
+/// THE ONE READER OF THE ROUTER for anything agent-facing: `list_tools` and
+/// `get_tool` both come through here, and so does the gate, because a rule that
+/// two readers apply differently is the half-enforced invariant this codebase
+/// forbids.
+///
+/// Stamping rather than asserting is the point. A gate over hand-written
+/// descriptions can only ever report that somebody forgot; generating them
+/// means a new path argument is born saying what it resolves against, and the
+/// author cannot forget because there is nothing to remember.
+fn agent_facing_tools() -> Vec<rmcp::model::Tool> {
+    let mut tools = MnemosyneServer::tool_router().list_all();
+    for tool in &mut tools {
+        let schema = std::sync::Arc::make_mut(&mut tool.input_schema);
+        let Some(props) = schema.get_mut("properties").and_then(|p| p.as_object_mut()) else {
+            continue;
+        };
+        for (_, property) in props.iter_mut() {
+            let Some(property) = property.as_object_mut() else {
+                continue;
+            };
+            if property.get("format").and_then(|f| f.as_str()) != Some(AGENT_PATH_FORMAT) {
+                continue;
+            }
+            let described = property
+                .get("description")
+                .and_then(|d| d.as_str())
+                .unwrap_or_default();
+            let stamped = if described.is_empty() {
+                AGENT_PATH_RULE.to_string()
+            } else {
+                format!("{described}\n\n{AGENT_PATH_RULE}")
+            };
+            property.insert("description".to_string(), serde_json::Value::from(stamped));
+        }
+    }
+    tools
 }
 
 /// Render a warm-projection validation result as a plain-text summary.
@@ -2555,12 +2532,12 @@ impl MnemosyneServer {
         match ops::continuity_scan(
             &self.workspace,
             None,
-            match mcp_path(&self.workspace, args.0.order_path.as_deref()) {
+            match mcp_path(&self.workspace, args.0.order_path.as_ref()) {
                 Ok(v) => v,
                 Err(e) => return Self::tool_error(e),
             }
             .as_ref(),
-            match mcp_path(&self.workspace, args.0.rules_path.as_deref()) {
+            match mcp_path(&self.workspace, args.0.rules_path.as_ref()) {
                 Ok(v) => v,
                 Err(e) => return Self::tool_error(e),
             }
@@ -2591,22 +2568,26 @@ impl MnemosyneServer {
         let manifest = match mnemosyne_atomic::parse_facts_manifest(&raw) {
             Ok(m) => m,
             Err(e) => {
+                // The RESOLVED path, matching the read error above: Round 1001
+                // found this message naming the argument received rather than
+                // the file opened, which is identical in production and
+                // misleading in exactly the case where it is wrong.
                 return Self::tool_error(format!(
                     "parse manifest {} ({}): {e}",
-                    args.0.manifest_path,
+                    manifest_path,
                     mnemosyne_atomic::FACTS_MANIFEST_SHAPE
-                ))
+                ));
             }
         };
         match ops::propose_verdict(
             &self.workspace,
             None,
-            match mcp_path(&self.workspace, args.0.order_path.as_deref()) {
+            match mcp_path(&self.workspace, args.0.order_path.as_ref()) {
                 Ok(v) => v,
                 Err(e) => return Self::tool_error(e),
             }
             .as_ref(),
-            match mcp_path(&self.workspace, args.0.rules_path.as_deref()) {
+            match mcp_path(&self.workspace, args.0.rules_path.as_ref()) {
                 Ok(v) => v,
                 Err(e) => return Self::tool_error(e),
             }
@@ -2629,7 +2610,7 @@ impl MnemosyneServer {
             args.0.branch.as_deref(),
             args.0.entity.as_deref(),
             &args.0.at,
-            match mcp_path(&self.workspace, args.0.order_path.as_deref()) {
+            match mcp_path(&self.workspace, args.0.order_path.as_ref()) {
                 Ok(v) => v,
                 Err(e) => return Self::tool_error(e),
             }
@@ -2650,7 +2631,7 @@ impl MnemosyneServer {
         match ops::payoff_coverage_report(
             &self.workspace,
             None,
-            match mcp_path(&self.workspace, args.0.order_path.as_deref()) {
+            match mcp_path(&self.workspace, args.0.order_path.as_ref()) {
                 Ok(v) => v,
                 Err(e) => return Self::tool_error(e),
             }
@@ -2716,7 +2697,7 @@ impl MnemosyneServer {
         match ops::payoff_substantiation_report(
             &self.workspace,
             None,
-            match mcp_path(&self.workspace, args.0.order_path.as_deref()) {
+            match mcp_path(&self.workspace, args.0.order_path.as_ref()) {
                 Ok(v) => v,
                 Err(e) => return Self::tool_error(e),
             }
@@ -2737,12 +2718,12 @@ impl MnemosyneServer {
         match ops::timeline_gaps_report(
             &self.workspace,
             None,
-            match mcp_path(&self.workspace, args.0.order_path.as_deref()) {
+            match mcp_path(&self.workspace, args.0.order_path.as_ref()) {
                 Ok(v) => v,
                 Err(e) => return Self::tool_error(e),
             }
             .as_ref(),
-            match mcp_path(&self.workspace, args.0.rules_path.as_deref()) {
+            match mcp_path(&self.workspace, args.0.rules_path.as_ref()) {
                 Ok(v) => v,
                 Err(e) => return Self::tool_error(e),
             }
@@ -2763,7 +2744,7 @@ impl MnemosyneServer {
         match ops::transition_map_report(
             &self.workspace,
             None,
-            match mcp_path(&self.workspace, args.0.rules_path.as_deref()) {
+            match mcp_path(&self.workspace, args.0.rules_path.as_ref()) {
                 Ok(v) => v,
                 Err(e) => return Self::tool_error(e),
             }
@@ -2784,7 +2765,7 @@ impl MnemosyneServer {
         match ops::edge_candidates_report(
             &self.workspace,
             None,
-            match mcp_path(&self.workspace, args.0.order_path.as_deref()) {
+            match mcp_path(&self.workspace, args.0.order_path.as_ref()) {
                 Ok(v) => v,
                 Err(e) => return Self::tool_error(e),
             }
@@ -2840,7 +2821,7 @@ impl MnemosyneServer {
         match ops::irony_intervals_report(
             &self.workspace,
             None,
-            match mcp_path(&self.workspace, args.0.order_path.as_deref()) {
+            match mcp_path(&self.workspace, args.0.order_path.as_ref()) {
                 Ok(v) => v,
                 Err(e) => return Self::tool_error(e),
             }
@@ -2862,7 +2843,7 @@ impl MnemosyneServer {
             &self.workspace,
             None,
             args.0.world.as_deref(),
-            match mcp_path(&self.workspace, args.0.order_path.as_deref()) {
+            match mcp_path(&self.workspace, args.0.order_path.as_ref()) {
                 Ok(v) => v,
                 Err(e) => return Self::tool_error(e),
             }
@@ -2882,7 +2863,7 @@ impl MnemosyneServer {
         match ops::fork_tree_report(
             &self.workspace,
             None,
-            match mcp_path(&self.workspace, args.0.order_path.as_deref()) {
+            match mcp_path(&self.workspace, args.0.order_path.as_ref()) {
                 Ok(v) => v,
                 Err(e) => return Self::tool_error(e),
             }
@@ -2904,7 +2885,7 @@ impl MnemosyneServer {
             &self.workspace,
             None,
             args.0.world.as_deref(),
-            match mcp_path(&self.workspace, args.0.order_path.as_deref()) {
+            match mcp_path(&self.workspace, args.0.order_path.as_ref()) {
                 Ok(v) => v,
                 Err(e) => return Self::tool_error(e),
             }
@@ -2924,7 +2905,7 @@ impl MnemosyneServer {
             &self.workspace,
             None,
             args.0.world.as_deref(),
-            match mcp_path(&self.workspace, args.0.order_path.as_deref()) {
+            match mcp_path(&self.workspace, args.0.order_path.as_ref()) {
                 Ok(v) => v,
                 Err(e) => return Self::tool_error(e),
             }
@@ -2953,13 +2934,13 @@ impl MnemosyneServer {
         match ops::authoring_frontier_report(
             &self.workspace,
             None,
-            match mcp_path(&self.workspace, args.0.order_path.as_deref()) {
+            match mcp_path(&self.workspace, args.0.order_path.as_ref()) {
                 Ok(v) => v,
                 Err(e) => return Self::tool_error(e),
             }
             .as_ref(),
             args.0.telling.as_deref(),
-            match mcp_path(&self.workspace, args.0.rules_path.as_deref()) {
+            match mcp_path(&self.workspace, args.0.rules_path.as_ref()) {
                 Ok(v) => v,
                 Err(e) => return Self::tool_error(e),
             }
@@ -2991,11 +2972,15 @@ impl MnemosyneServer {
         args: Parameters<DisclosureLeakArgs>,
     ) -> CallToolResult {
         let a = args.0;
+        let against = match mcp_path(&self.workspace, Some(&a.against)) {
+            Ok(p) => p.expect("a Some input yields a Some path"),
+            Err(e) => return Self::tool_error(e),
+        };
         match ops::disclosure_leak_report(
             &self.workspace,
             None,
-            std::path::Path::new(&a.against),
-            match mcp_path(&self.workspace, a.order_path.as_deref()) {
+            &against,
+            match mcp_path(&self.workspace, a.order_path.as_ref()) {
                 Ok(v) => v,
                 Err(e) => return Self::tool_error(e),
             }
@@ -3017,11 +3002,15 @@ impl MnemosyneServer {
         args: Parameters<RenderFidelityArgs>,
     ) -> CallToolResult {
         let a = args.0;
+        let against = match mcp_path(&self.workspace, Some(&a.against)) {
+            Ok(p) => p.expect("a Some input yields a Some path"),
+            Err(e) => return Self::tool_error(e),
+        };
         match ops::render_fidelity_report(
             &self.workspace,
             None,
-            std::path::Path::new(&a.against),
-            match mcp_path(&self.workspace, a.order_path.as_deref()) {
+            &against,
+            match mcp_path(&self.workspace, a.order_path.as_ref()) {
                 Ok(v) => v,
                 Err(e) => return Self::tool_error(e),
             }
@@ -3429,6 +3418,29 @@ impl MnemosyneServer {
 
 #[tool_handler]
 impl ServerHandler for MnemosyneServer {
+    /// The tool list an agent is shown. Overridden — the macro would hand back
+    /// the router's own schema, which is the one place the path-resolution rule
+    /// has not yet been stamped in.
+    async fn list_tools(
+        &self,
+        _request: Option<rmcp::model::PaginatedRequestParams>,
+        _context: rmcp::service::RequestContext<rmcp::RoleServer>,
+    ) -> Result<rmcp::model::ListToolsResult, rmcp::ErrorData> {
+        Ok(rmcp::model::ListToolsResult {
+            tools: agent_facing_tools(),
+            meta: None,
+            next_cursor: None,
+        })
+    }
+
+    /// One tool, from the SAME reader as the list. A client that fetches a tool
+    /// singly must not be told something different from one that lists them —
+    /// two readers of one rule with different answers is the half-enforced
+    /// invariant this codebase bans.
+    fn get_tool(&self, name: &str) -> Option<rmcp::model::Tool> {
+        agent_facing_tools().into_iter().find(|t| t.name == name)
+    }
+
     fn get_info(&self) -> ServerInfo {
         ServerInfo::new(
             ServerCapabilities::builder()
@@ -3705,6 +3717,185 @@ mod tests {
         );
     }
 
+    /// A RELATIVE `against` NAMES A FILE IN THE WORKSPACE THE AGENT WAS HANDED.
+    ///
+    /// Round 1002 decided this for every path an agent sends, and Round 1001
+    /// swept the wires to make it true. `against` was missed, and the two gates
+    /// that should have caught it are both keyed on the NAME `*_path`: the
+    /// schema-doc gate skips any property not ending in `_path`, and the
+    /// library gate exempts the wire crate by name. `against` is a path that is
+    /// not called one, so it was invisible to both while sitting in the same
+    /// struct as an `order_path` that obeys the rule.
+    ///
+    /// The blind store is BUILT BY THE SERVER rather than written as a literal,
+    /// so the fixture cannot drift from the store schema.
+    ///
+    /// NON-VACUITY: the absolute arm must succeed and must report the fact the
+    /// file contains, so a failure in the relative arm is about the BASE and
+    /// not about a file this workspace could never read.
+    #[tokio::test]
+    async fn a_relative_against_path_names_a_file_in_the_agents_workspace() {
+        let sections = || {
+            serde_json::from_value::<ImportSectionsArgs>(serde_json::json!({
+                "sections": [
+                    {"section_id": "sc-01", "parent_doc": "spec", "title": "one"},
+                    {"section_id": "sc-02", "parent_doc": "spec", "title": "two"},
+                ],
+            }))
+            .expect("sections parse")
+        };
+
+        // The re-extracted store, produced by the same writer that produces a
+        // real one.
+        let blind_ws = agent_workspace();
+        let blind = MnemosyneServer::new(blind_ws.path().to_path_buf()).expect("server");
+        assert!(blind.import_sections(Parameters(sections())).await.is_error != Some(true));
+        let facts: atomic::FactsManifest = serde_json::from_value(serde_json::json!({
+            "frames": [{"frame_id": "ground-truth"}],
+            "entity_kinds": [{"kind_id": "place"}],
+            "entities": [{"entity_id": "p-a", "kind": "place"}],
+            "facts": [{
+                "fact_id": "f-blind", "frame": "ground-truth", "claim": "the prose said so",
+                "canon_from": "sc-01", "evidence": ["sc-01"], "entities": ["p-a"],
+            }],
+        }))
+        .expect("blind facts parse");
+        assert!(blind.import_facts(Parameters(facts)).await.is_error != Some(true));
+        let blind_bytes =
+            std::fs::read_to_string(blind_ws.path().join("docs/.atomic/workspace.atomic.json"))
+                .expect("the blind store");
+
+        let ws = agent_workspace();
+        std::fs::write(ws.path().join("blind.json"), &blind_bytes).expect("blind store");
+        std::fs::write(
+            ws.path().join("order.json"),
+            serde_json::json!({"schema": "canon-order/v1", "edges": [["sc-01", "sc-02"]]})
+                .to_string(),
+        )
+        .expect("order");
+        let server = MnemosyneServer::new(ws.path().to_path_buf()).expect("server");
+        assert!(
+            server
+                .import_sections(Parameters(sections()))
+                .await
+                .is_error
+                != Some(true)
+        );
+
+        let fidelity = |against: String| {
+            serde_json::from_value::<RenderFidelityArgs>(serde_json::json!({
+                "against": against,
+                "world": "main",
+                "order_path": "order.json",
+            }))
+            .expect("args parse")
+        };
+        let absolute = answer_text(
+            &server
+                .validate_render_fidelity(Parameters(fidelity(
+                    ws.path().join("blind.json").display().to_string(),
+                )))
+                .await,
+        );
+        assert!(
+            absolute.contains("\"reextracted_facts\": 1"),
+            "the absolute arm did not read the one fact the blind store holds, \
+             so the relative arm below would be measuring the fixture rather \
+             than the base: {absolute}"
+        );
+
+        let relative = answer_text(
+            &server
+                .validate_render_fidelity(Parameters(fidelity("blind.json".to_string())))
+                .await,
+        );
+        assert_eq!(
+            relative, absolute,
+            "`against: \"blind.json\"` did not reach the file of that name in \
+             the workspace the agent was handed. A relative path an agent sends \
+             is resolved against the WORKSPACE ROOT (Round 1002) — the server \
+             process's working directory belongs to whatever host launched it \
+             and the agent can neither see nor choose it"
+        );
+    }
+
+    /// A BLIND-ACCEPTANCE GATE MUST NOT PASS A FILE THAT IS NOT THERE.
+    ///
+    /// `AtomicStore::load` answers a MISSING path with an EMPTY STORE, which is
+    /// right for the workspace's own sidecar — a store that does not exist yet
+    /// is the bootstrap state, and `load_atomic_store_missing_sidecar_is_empty`
+    /// pins that. It is the opposite of right for a store the CALLER NAMED:
+    /// both render-acceptance gates read `against` that way, so a path that
+    /// does not resolve comes back `reextracted_facts: 0`, `off_path: []`,
+    /// `leaks: []` — the shape of a clean pass, from a gate that evaluated
+    /// nothing. That is the failure the contract already names in its own
+    /// words: a gate that evaluated NOTHING must never read the same as a gate
+    /// that PASSED.
+    ///
+    /// The paths here are ABSOLUTE, so this is about the file's absence and not
+    /// about which base a relative path resolves against (the sibling defect,
+    /// asserted above). Both wires share these two ops functions, so the CLI
+    /// twins are covered by the same repair.
+    #[tokio::test]
+    async fn a_gate_handed_a_store_that_is_not_there_refuses_instead_of_passing() {
+        let ws = agent_workspace();
+        std::fs::write(
+            ws.path().join("order.json"),
+            serde_json::json!({"schema": "canon-order/v1", "edges": [["sc-01", "sc-02"]]})
+                .to_string(),
+        )
+        .expect("order");
+        let server = MnemosyneServer::new(ws.path().to_path_buf()).expect("server");
+        let sections: ImportSectionsArgs = serde_json::from_value(serde_json::json!({
+            "sections": [
+                {"section_id": "sc-01", "parent_doc": "spec", "title": "one"},
+                {"section_id": "sc-02", "parent_doc": "spec", "title": "two"},
+            ],
+        }))
+        .expect("sections parse");
+        assert!(server.import_sections(Parameters(sections)).await.is_error != Some(true));
+        let facts: atomic::FactsManifest = serde_json::from_value(serde_json::json!({
+            "frames": [{"frame_id": "ground-truth"}],
+            "disclosure_plans": [{"telling_id": "t-quiet", "default_mode": "state"}],
+        }))
+        .expect("facts parse");
+        assert!(server.import_facts(Parameters(facts)).await.is_error != Some(true));
+
+        let absent = ws.path().join("never-written.json").display().to_string();
+        assert!(
+            !std::path::Path::new(&absent).exists(),
+            "the fixture's premise is that this file does not exist"
+        );
+
+        let fidelity: RenderFidelityArgs = serde_json::from_value(serde_json::json!({
+            "against": absent, "world": "main", "order_path": "order.json",
+        }))
+        .expect("args parse");
+        let answered = server.validate_render_fidelity(Parameters(fidelity)).await;
+        assert_eq!(
+            answered.is_error,
+            Some(true),
+            "the fidelity gate answered a store that is not there instead of \
+             refusing it, and the answer an agent gets is the shape of a pass: \
+             {}",
+            answer_text(&answered)
+        );
+
+        let leak: DisclosureLeakArgs = serde_json::from_value(serde_json::json!({
+            "telling": "t-quiet", "against": absent, "world": "main",
+            "truth_frame": "ground-truth", "order_path": "order.json",
+        }))
+        .expect("args parse");
+        let answered = server.validate_disclosure_leak(Parameters(leak)).await;
+        assert_eq!(
+            answered.is_error,
+            Some(true),
+            "the leak gate answered a store that is not there instead of \
+             refusing it: {}",
+            answer_text(&answered)
+        );
+    }
+
     /// Every (tool, optional argument) pair a differential test proves the
     /// handler actually READS — generated from the same invocations that
     /// generate the tests, so a pair cannot be claimed without one existing.
@@ -3753,11 +3944,32 @@ mod tests {
         ("validate_render_fidelity", "order_path"),
     ];
 
+    /// The REQUIRED arguments of every routed tool — the half of the surface
+    /// the exercised/unexercised accounting does not cover, counted so the
+    /// ratio it prints cannot read as coverage of the whole.
+    fn required_arguments() -> Vec<(String, String)> {
+        let mut out = Vec::new();
+        for tool in agent_facing_tools() {
+            for key in tool
+                .input_schema
+                .get("required")
+                .and_then(|r| r.as_array())
+                .into_iter()
+                .flatten()
+                .filter_map(|v| v.as_str())
+            {
+                out.push((tool.name.to_string(), key.to_string()));
+            }
+        }
+        out.sort();
+        out
+    }
+
     /// The optional arguments of every routed tool, taken from the ROUTER'S OWN
     /// SCHEMA — the same bytes an agent is shown.
     fn optional_arguments() -> Vec<(String, String)> {
         let mut out = Vec::new();
-        for tool in MnemosyneServer::tool_router().list_all() {
+        for tool in agent_facing_tools() {
             let required: BTreeSet<&str> = tool
                 .input_schema
                 .get("required")
@@ -3800,14 +4012,29 @@ mod tests {
     /// schema never said it, so the one caller who cannot see the working
     /// directory was also the one not told it mattered.
     ///
-    /// The rule now lives in the field descriptions, which is what an agent
-    /// reads, and this asserts it stays there — a new path argument that does
-    /// not say where it resolves fails here rather than in an agent's hands.
+    /// Round 999 put the rule in the field descriptions and asked, of each
+    /// property, whether its NAME ended in `_path`. THE POPULATION WAS A NAMING
+    /// CONVENTION, and `against` is a path that is not called one: it sat in
+    /// `DisclosureLeakArgs` beside an `order_path` that obeyed the rule, was
+    /// never resolved against anything, and this gate counted 22 arguments and
+    /// called them all of them. What it could not see, an agent could — every
+    /// relative `against` an agent sent landed on the host's working directory,
+    /// and because a missing store loads as an EMPTY one, both gates answered
+    /// with the shape of a pass.
+    ///
+    /// So the population is now the TYPE's. `AgentPath` marks itself in the
+    /// schema, the marker travels with the field wherever it is declared and
+    /// whatever it is called, and the rule is STAMPED IN by
+    /// [`agent_facing_tools`] rather than re-typed per field. What is left to
+    /// assert is that the stamping reaches every marked property of the surface
+    /// an agent actually reads — which is why this walks the same function the
+    /// server answers `tools/list` from, and not the raw router.
     #[test]
     fn every_path_argument_says_what_it_resolves_against() {
         let mut checked = 0usize;
         let mut silent = Vec::new();
-        for tool in MnemosyneServer::tool_router().list_all() {
+        let mut by_name = 0usize;
+        for tool in agent_facing_tools() {
             let Some(props) = tool
                 .input_schema
                 .get("properties")
@@ -3816,7 +4043,10 @@ mod tests {
                 continue;
             };
             for (key, schema) in props {
-                if !key.ends_with("_path") {
+                if key.ends_with("_path") {
+                    by_name += 1;
+                }
+                if schema.get("format").and_then(|f| f.as_str()) != Some(AGENT_PATH_FORMAT) {
                     continue;
                 }
                 checked += 1;
@@ -3831,7 +4061,7 @@ mod tests {
         }
         assert!(
             checked > 0,
-            "no tool exposes a `*_path` argument, so this gate reads nothing"
+            "no argument is typed `AgentPath`, so this gate reads nothing"
         );
         assert!(
             silent.is_empty(),
@@ -3839,6 +4069,20 @@ mod tests {
              relative to. Since Round 1002 that is the workspace root, which is \
              the only base an MCP caller can see: {silent:?}",
             silent.len()
+        );
+        // THE TWO POPULATIONS, PRINTED SIDE BY SIDE EVERY RUN (Round 854). The
+        // gap is the measurement: it is how many paths the old name-matched
+        // population could never have reached, and a future path argument that
+        // is not named `*_path` widens it rather than hiding in it.
+        println!(
+            "agent-facing paths: {checked} typed `AgentPath`, of which {by_name} are \
+             also named `*_path` — {} would have been invisible to a gate keyed on the name",
+            checked.saturating_sub(by_name)
+        );
+        assert!(
+            checked >= by_name,
+            "{by_name} argument(s) are named `*_path` but only {checked} are TYPED as one, \
+             so a path is being resolved by hand somewhere this gate cannot see it"
         );
     }
 
@@ -3922,8 +4166,20 @@ mod tests {
             live.len()
         );
 
+        // WHAT THIS DENOMINATOR LEAVES OUT, PRINTED BESIDE IT. The accounting
+        // is over OPTIONAL arguments, because Round 981's defect was an
+        // argument an agent could send and the handler could ignore while
+        // answering success. A REQUIRED argument cannot be omitted, so it
+        // cannot hide that way — but it can still be read wrongly, and Round
+        // 1014's defect was exactly that: `against` is required, so it was
+        // never in this population, and it reached `Path::new` unresolved while
+        // this line reported a coverage figure that had nothing to say about
+        // it. A ratio whose denominator excludes where the last bug lived must
+        // print the exclusion (Round 854).
+        let required = required_arguments().len();
         println!(
-            "MCP optional arguments: {} exercised / {} unexercised, of {} on the router",
+            "MCP optional arguments: {} exercised / {} unexercised, of {} on the router \
+             ({required} REQUIRED argument(s) are outside this accounting entirely)",
             EXERCISED.len() + EXERCISED_BESPOKE.len(),
             UNEXERCISED.len(),
             live.len()

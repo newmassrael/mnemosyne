@@ -4711,7 +4711,12 @@ fn cmd_validate_disclosure_leak(args: &[String]) -> Result<()> {
     let report = mnemosyne_ops::disclosure_leak_report(
         &anchor,
         atomic_cli::cli_path(sidecar.as_deref())?.as_ref(),
-        std::path::Path::new(&against),
+        // The CLI's own explicit paths resolve against the WORKING
+        // DIRECTORY (Round 538) — there the caller chose it. The type is
+        // what makes that a decision rather than an omission.
+        atomic_cli::cli_path(Some(&against))?
+            .as_ref()
+            .expect("a Some input yields a Some path"),
         atomic_cli::cli_path(order_override.as_deref())?.as_ref(),
         &telling,
         &world,
@@ -4838,7 +4843,12 @@ fn cmd_validate_render_fidelity(args: &[String]) -> Result<()> {
     let report = mnemosyne_ops::render_fidelity_report(
         &anchor,
         atomic_cli::cli_path(sidecar.as_deref())?.as_ref(),
-        std::path::Path::new(&against),
+        // The CLI's own explicit paths resolve against the WORKING
+        // DIRECTORY (Round 538) — there the caller chose it. The type is
+        // what makes that a decision rather than an omission.
+        atomic_cli::cli_path(Some(&against))?
+            .as_ref()
+            .expect("a Some input yields a Some path"),
         atomic_cli::cli_path(order_override.as_deref())?.as_ref(),
         &world,
     )
