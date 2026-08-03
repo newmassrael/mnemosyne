@@ -324,6 +324,15 @@ fn print_help(prog: &str) {
         env!("BUILD_GIT_HASH")
     );
     println!();
+    // Round 1004 — the CLI's own users were never told this either. The MCP
+    // schema has said it since Round 999 and a gate holds it there; here 96
+    // flag mentions said nothing, which left the deliberate asymmetry between
+    // the two wires documented on one side only.
+    println!("paths: a path you TYPE (--sidecar / --order / --rules / --manifest) is relative");
+    println!("       to your current directory. A path DECLARED in mnemosyne.toml is relative");
+    println!("       to the workspace root. The MCP server resolves an agent's paths against");
+    println!("       the workspace instead, because an agent cannot see a working directory.");
+    println!();
     println!("usage:");
 
     let mut current: Option<&str> = None;

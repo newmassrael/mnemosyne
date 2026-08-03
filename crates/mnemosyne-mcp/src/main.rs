@@ -4219,6 +4219,174 @@ mod tests {
         (unique(a, b), unique(b, a))
     }
 
+    /// THE VERDICT IS THE CONTRACT AN AGENT ACTS ON.
+    ///
+    /// Round 1001 gave `propose_verdict` its first test and closed by naming
+    /// what that test does NOT cover: "nothing yet asserts the verdict itself —
+    /// that a manifest which would violate a continuity rule comes back
+    /// `rollback` with the rule named, and a clean one comes back `commit`".
+    /// That is a test written in prose, which this session has now paid for
+    /// four times.
+    ///
+    /// The whole point of this verb is that an agent runs it BEFORE writing for
+    /// real and believes the answer. A wire that always said `commit` would
+    /// pass Round 1001's test — it reads the right file either way.
+    #[tokio::test]
+    async fn propose_verdict_says_rollback_with_the_rule_and_commit_without() {
+        let tmp = agent_workspace();
+        let ws = tmp.path();
+        // THE VERDICT IS SEVERITY-DEPENDENT AND THAT IS WORTH KNOWING: with no
+        // `[continuity] severity`, this manifest comes back `commit` WITH the
+        // violation listed — asserted at the end, because an agent that reads
+        // only `verdict` on such a workspace would write a beat the map
+        // forbids.
+        std::fs::write(
+            ws.join("mnemosyne.toml"),
+            "[workspace]\n[continuity]\nseverity = \"reject\"\n",
+        )
+        .expect("config");
+        let server = MnemosyneServer::new(ws.to_path_buf()).expect("server");
+        let sections: ImportSectionsArgs = serde_json::from_value(serde_json::json!({
+            "sections": [
+                {"section_id": "sc-01", "parent_doc": "spec", "title": "one"},
+                {"section_id": "sc-02", "parent_doc": "spec", "title": "two"},
+            ],
+        }))
+        .expect("sections parse");
+        assert!(server.import_sections(Parameters(sections)).await.is_error != Some(true));
+
+        // A world with a map: two places, no way between them.
+        let world = serde_json::json!({
+            "frames": [{"frame_id": "ground-truth"}],
+            "entity_kinds": [{"kind_id": "place"}, {"kind_id": "character"}],
+            "entities": [
+                {"entity_id": "p-a", "kind": "place"},
+                {"entity_id": "p-b", "kind": "place"},
+                {"entity_id": "e-her", "kind": "character"},
+                {"entity_id": "e-him", "kind": "character"},
+            ],
+            "predicates": [
+                {"predicate_id": "adjacent", "object_kind": "entity",
+                 "subject_kind": "place", "object_entity_kind": "place"},
+                {"predicate_id": "at", "object_kind": "entity",
+                 "subject_kind": "character", "object_entity_kind": "place"},
+            ],
+            "facts": [{
+                "fact_id": "f-at-a", "frame": "ground-truth", "claim": "she is at a",
+                "canon_from": "sc-01", "evidence": ["sc-01"], "entities": ["e-her", "p-a"],
+                "typed": {"subject": "e-her", "predicate": "at",
+                          "object": {"kind": "entity", "id": "p-a"}},
+            }],
+        });
+        let base: atomic::FactsManifest = serde_json::from_value(world).expect("world parse");
+        assert!(server.import_facts(Parameters(base)).await.is_error != Some(true));
+        std::fs::write(
+            ws.join("rules.json"),
+            serde_json::json!({
+                "schema": "narrative-rules/v1",
+                "rules": [{"id": "moves-follow-the-map", "predicate": "at",
+                           "class": "transition", "adjacency": "adjacent",
+                           "undirected": true}],
+            })
+            .to_string(),
+        )
+        .expect("rules");
+        std::fs::write(
+            ws.join("order.json"),
+            serde_json::json!({"schema": "canon-order/v1", "edges": [["sc-01", "sc-02"]]})
+                .to_string(),
+        )
+        .expect("order");
+
+        // A step to a place no way reaches — the map rule must refuse it.
+        let stepping = serde_json::json!({
+            "facts": [{
+                "fact_id": "f-at-b", "frame": "ground-truth", "claim": "she is at b",
+                "canon_from": "sc-02", "evidence": ["sc-02"], "entities": ["e-her", "p-b"],
+                "supersedes_in_frame": "f-at-a",
+                "typed": {"subject": "e-her", "predicate": "at",
+                          "object": {"kind": "entity", "id": "p-b"}},
+            }],
+        });
+        // A beat that is not a STEP at all: someone else, standing where she
+        // already is, superseding nothing. The map has nothing to judge, so a
+        // rollback here would mean the refusal above was about something other
+        // than the rule.
+        let staying = serde_json::json!({
+            "facts": [{
+                "fact_id": "f-at-him", "frame": "ground-truth", "claim": "he is at a too",
+                "canon_from": "sc-02", "evidence": ["sc-02"], "entities": ["e-him", "p-a"],
+                "typed": {"subject": "e-him", "predicate": "at",
+                          "object": {"kind": "entity", "id": "p-a"}},
+            }],
+        });
+
+        let verdict_on = |manifest: serde_json::Value, name: &str| {
+            std::fs::write(ws.join(name), manifest.to_string()).expect("write candidate");
+            serde_json::from_value::<ProposeVerdictArgs>(serde_json::json!({
+                "manifest_path": name,
+                "order_path": "order.json",
+                "rules_path": "rules.json",
+            }))
+            .expect("args parse")
+        };
+
+        let refused = answer_text(
+            &server
+                .propose_verdict(Parameters(verdict_on(stepping, "stepping.json")))
+                .await,
+        );
+        assert!(
+            refused.contains("rollback"),
+            "a beat that walks where no way runs came back without `rollback`, \
+             so an agent acting on this verdict would write it for real: {refused}"
+        );
+        assert!(
+            refused.contains("moves-follow-the-map"),
+            "the verdict refuses without naming the rule that refused, which is \
+             what an agent repairs against: {refused}"
+        );
+
+        let accepted = answer_text(
+            &server
+                .propose_verdict(Parameters(verdict_on(staying, "staying.json")))
+                .await,
+        );
+        assert!(
+            accepted.contains("commit"),
+            "a beat the map has no objection to did not come back `commit`, so \
+             the refusal above says nothing about the rule: {accepted}"
+        );
+        assert!(
+            !accepted.contains("rollback"),
+            "the clean manifest came back with a rollback too: {accepted}"
+        );
+
+        // THE SHARP EDGE, ASSERTED RATHER THAN LEFT TO BE DISCOVERED: on a
+        // workspace that declares no continuity severity, the SAME refused
+        // manifest comes back `commit` with the violation listed beside it.
+        // An agent that reads `verdict` alone there writes a beat the map
+        // forbids, and nothing in the answer is untrue.
+        std::fs::write(ws.join("mnemosyne.toml"), "[workspace]\n").expect("config");
+        let unset = MnemosyneServer::new(ws.to_path_buf()).expect("server");
+        // The SAME file, unrewritten: `verdict_on` writes the manifest, so
+        // reusing it here would clobber the very candidate under test.
+        let same_candidate: ProposeVerdictArgs = serde_json::from_value(serde_json::json!({
+            "manifest_path": "stepping.json",
+            "order_path": "order.json",
+            "rules_path": "rules.json",
+        }))
+        .expect("args parse");
+        let lenient = answer_text(&unset.propose_verdict(Parameters(same_candidate)).await);
+        assert!(
+            lenient.contains("\"verdict\": \"commit\"")
+                && lenient.contains("rule_transition_invalid"),
+            "with no declared severity the refused manifest was expected to come \
+             back `commit` WITH its violation listed; if that has changed, this \
+             comment and the tool's description both need re-reading: {lenient}"
+        );
+    }
+
     /// Everything a tool said, joined — the read-side counterpart of the store
     /// bytes.
     fn answer_text(result: &CallToolResult) -> String {

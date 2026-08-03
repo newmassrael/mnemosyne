@@ -4788,6 +4788,38 @@ fn no_authored_manifest_can_register_a_meter_which_is_why_that_axis_is_refused()
     );
 }
 
+/// THE CLI TELLS ITS OWN USER WHAT A TYPED PATH IS RELATIVE TO.
+///
+/// The MCP schema has said this since Round 999 and a gate holds it there. The
+/// CLI said nothing across 96 flag mentions, which left a DELIBERATE asymmetry
+/// between the two wires — typed paths resolve against the working directory,
+/// an agent's against the workspace — documented on one side only. The half
+/// that was documented was the half whose caller could not have guessed; the
+/// half left silent is the one whose caller can guess WRONG, since a
+/// config-declared path in the same file resolves differently.
+///
+/// Asserted against the real binary's `--help`, not against the source, because
+/// what matters is what a user is shown.
+#[test]
+fn the_cli_help_says_what_a_typed_path_is_relative_to() {
+    let out = Command::new(env!("CARGO_BIN_EXE_mnemosyne-cli"))
+        .arg("--help")
+        .output()
+        .expect("cli exec");
+    let help = String::from_utf8_lossy(&out.stdout);
+    for needle in [
+        "current directory", // where a typed path resolves
+        "workspace root",    // where a declared one does
+        "MCP",               // and that the other wire differs
+    ] {
+        assert!(
+            help.contains(needle),
+            "`--help` never says `{needle}`, so a user typing a path is not told \
+             what it is relative to while an agent is: {help}"
+        );
+    }
+}
+
 /// NO LIBRARY DECIDES A PATH FROM THE PROCESS'S WORKING DIRECTORY.
 ///
 /// Round 998 found an agent's path argument reading a file beside this source:

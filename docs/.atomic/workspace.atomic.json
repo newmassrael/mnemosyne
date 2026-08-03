@@ -438,6 +438,100 @@
         "`first_difference` REPORTS ONE LINE, NOT A DIFF. Where two observations differ in many places it names the first and says nothing about the rest, which was enough here and will not always be. It is deliberately not a diff library."
       ]
     },
+    "Round 1004": {
+      "decision_summary": "R1004 (DEBT) — the ninth audit. Two carries were work described in prose, and one of them was about the verb an agent is told to trust before it writes anything. STAR ROUND 1001 WROTE THE TEST AND DID NOT WRITE IT: \"nothing yet asserts the verdict itself — that a manifest which would violate a continuity rule comes back `rollback` with the rule named, and a clean one comes back `commit`\". That is the fourth time this session a carry has described a test in enough detail to write it. It is written: a world with a map and no way between two places, a candidate that walks between them, and the same world's clean candidate beside it. STAR AND WRITING IT FOUND THE SHARP EDGE OF THE VERB. On a workspace that declares no `[continuity] severity`, the refused candidate comes back `verdict: commit` WITH the violation listed underneath — `violation_count: 1`, `gating_violation_count: 0`. Nothing in that answer is untrue and an agent reading `verdict` alone would write a beat the map forbids. That is now asserted, not discovered later: the test drives the same manifest through both configurations and pins both answers. STAR AN INJECTION OF MINE WENT GREEN AND THE GREEN WAS THROWN AWAY. Zeroing `gating_violation_count` changed nothing, because the verdict is decided by a separate `gate.gates` and the count is only reported. Re-injected at the decision — always-commit and always-rollback — and both fire. A green under an injection that never reached the code path is not evidence, which is this session's most-repeated lesson and the first time it has caught me picking the wrong line rather than the wrong anchor. STAR THE SECOND CARRY WAS A DOCUMENTED ASYMMETRY DOCUMENTED ON ONE SIDE. Since Round 999 the MCP schema must say what a path resolves against and a gate holds it there; the CLI said nothing across 96 flag mentions. The half that was documented was the half whose caller could not have guessed. The half left silent is the one whose caller can guess WRONG — a typed path resolves against the working directory while a path declared in the same project's `mnemosyne.toml` resolves against the workspace root, and nothing said so. Four lines of `--help`, gated against the real binary's output.",
+      "changes_bullets": [
+        "`mnemosyne-mcp` — `propose_verdict_says_rollback_with_the_rule_and_commit_without`: a map with no way between two places, a candidate that steps between them, and a clean candidate that is not a step at all. Both arms, plus the rule name the agent repairs against.",
+        "Same file — the same refused manifest is driven a third time through a workspace with no declared severity, pinning the answer an agent gets there: `commit`, with the violation listed.",
+        "`mnemosyne-cli` — `--help` states where a typed path, a declared path, and an agent's path each resolve.",
+        "`crates/mnemosyne-cli/tests/evidence_replay_smoke.rs` — `the_cli_help_says_what_a_typed_path_is_relative_to`, asserted against the real binary's output rather than the source, because what matters is what a user is shown."
+      ],
+      "verification_bullets": [
+        "STAR MY FIRST INJECTION WENT GREEN AND I DISCARDED IT RATHER THAN THE TEST. Zeroing `gating_violation_count` left both cases passing, because the verdict is decided by `gate.gates` and that count is only reported beside it. Re-injected at the decision: always-commit fails the rollback arm, always-rollback fails the commit arm. Both directions.",
+        "INJECTION AI, the help stops naming the base: the new gate fails with \"`--help` never says `current directory`\".",
+        "STAR THE SEVERITY EDGE WAS FOUND BY THE TEST FAILING FOR THE RIGHT REASON. The first run came back `commit` with `violation_count: 1` and `gating_violation_count: 0`; the cause was the workspace declaring no continuity severity. The test now pins both configurations rather than only the one that suited it.",
+        "TWO FIXTURE MISTAKES OF MINE WERE CAUGHT BY THE TEST ITSELF: a \"clean\" candidate that was a self-step (rejected by the Round 698 self-loop rule, so it proved nothing about the map), and a helper that REWROTE the manifest file it was asked to re-check, clobbering the candidate under test.",
+        "1592 workspace tests pass (1590 before), 0 failed, `--no-fail-fast`; clippy `-D warnings` and `cargo fmt --check` clean; `validate-workspace` T1 orphan 0 and T3 reject 0.",
+        "The push of Rounds 1001-1003 landed green: validate and MSRV both success, annotations empty on both.",
+        "Citation hygiene (R255): Rounds 999, 1001 and 1002 verified present with `query --changelog-entry` and Round 1004 verified absent before this entry was appended."
+      ],
+      "impact_refs": [
+        "atomic-store-mutate-api"
+      ],
+      "carry_forward_bullets": [
+        "`propose_verdict` IS NOW EXERCISED ON THE ANSWER IT GIVES, NOT ON EVERY RULE THAT COULD GIVE IT. One continuity rule refuses and one clean candidate passes; the structural invariants, the interval rules and the disclosure gates all reach the same verdict field by other paths and none of them is exercised here. The shape is a table away.",
+        "THE SEVERITY EDGE IS PINNED, NOT FIXED. An agent on a workspace with no declared severity still gets `commit` beside a violation, which is the designed behaviour of a policy knob. Whether the tool's DESCRIPTION should say so is a question this round did not take: it currently promises \"verdict=commit|rollback plus actionable violations\" without saying the two can disagree.",
+        "33 READ-SIDE ARGUMENTS REMAIN in the Round 986 accounting, unchanged by this round."
+      ],
+      "population_census": [
+        {
+          "axis": "transition rules by `undirected`",
+          "left_label": "undirected",
+          "left": 10,
+          "right_label": "directed",
+          "right": 27
+        },
+        {
+          "axis": "map corpora by leg-kind declaration",
+          "left_label": "omitted",
+          "left": 6,
+          "right_label": "declared",
+          "right": 24
+        },
+        {
+          "axis": "cost-carrying corpora by direction-dependent pricing",
+          "left_label": "prices a way by direction",
+          "left": 4,
+          "right_label": "prices no way by direction",
+          "right": 6
+        },
+        {
+          "axis": "run trees by authoring mode",
+          "left_label": "hand script",
+          "left": 10,
+          "right_label": "file-only",
+          "right": 239
+        },
+        {
+          "axis": "map corpora by declared boundary crossing",
+          "left_label": "declares an exit",
+          "left": 6,
+          "right_label": "declares none",
+          "right": 24
+        },
+        {
+          "axis": "authored submissions by map and telling",
+          "left_label": "carries both",
+          "left": 10,
+          "right_label": "carries one",
+          "right": 24
+        }
+      ],
+      "publishable_decision_summary": "R1004 (DEBT) — the ninth audit. Two carries were work described in prose, and one of them was about the verb an agent is told to trust before it writes anything. STAR ROUND 1001 WROTE THE TEST AND DID NOT WRITE IT: \"nothing yet asserts the verdict itself — that a manifest which would violate a continuity rule comes back `rollback` with the rule named, and a clean one comes back `commit`\". That is the fourth time this session a carry has described a test in enough detail to write it. It is written: a world with a map and no way between two places, a candidate that walks between them, and the same world's clean candidate beside it. STAR AND WRITING IT FOUND THE SHARP EDGE OF THE VERB. On a workspace that declares no `[continuity] severity`, the refused candidate comes back `verdict: commit` WITH the violation listed underneath — `violation_count: 1`, `gating_violation_count: 0`. Nothing in that answer is untrue and an agent reading `verdict` alone would write a beat the map forbids. That is now asserted, not discovered later: the test drives the same manifest through both configurations and pins both answers. STAR AN INJECTION OF MINE WENT GREEN AND THE GREEN WAS THROWN AWAY. Zeroing `gating_violation_count` changed nothing, because the verdict is decided by a separate `gate.gates` and the count is only reported. Re-injected at the decision — always-commit and always-rollback — and both fire. A green under an injection that never reached the code path is not evidence, which is this session's most-repeated lesson and the first time it has caught me picking the wrong line rather than the wrong anchor. STAR THE SECOND CARRY WAS A DOCUMENTED ASYMMETRY DOCUMENTED ON ONE SIDE. Since Round 999 the MCP schema must say what a path resolves against and a gate holds it there; the CLI said nothing across 96 flag mentions. The half that was documented was the half whose caller could not have guessed. The half left silent is the one whose caller can guess WRONG — a typed path resolves against the working directory while a path declared in the same project's `mnemosyne.toml` resolves against the workspace root, and nothing said so. Four lines of `--help`, gated against the real binary's output.",
+      "publishable_changes_bullets": [
+        "`mnemosyne-mcp` — `propose_verdict_says_rollback_with_the_rule_and_commit_without`: a map with no way between two places, a candidate that steps between them, and a clean candidate that is not a step at all. Both arms, plus the rule name the agent repairs against.",
+        "Same file — the same refused manifest is driven a third time through a workspace with no declared severity, pinning the answer an agent gets there: `commit`, with the violation listed.",
+        "`mnemosyne-cli` — `--help` states where a typed path, a declared path, and an agent's path each resolve.",
+        "`crates/mnemosyne-cli/tests/evidence_replay_smoke.rs` — `the_cli_help_says_what_a_typed_path_is_relative_to`, asserted against the real binary's output rather than the source, because what matters is what a user is shown."
+      ],
+      "publishable_verification_bullets": [
+        "STAR MY FIRST INJECTION WENT GREEN AND I DISCARDED IT RATHER THAN THE TEST. Zeroing `gating_violation_count` left both cases passing, because the verdict is decided by `gate.gates` and that count is only reported beside it. Re-injected at the decision: always-commit fails the rollback arm, always-rollback fails the commit arm. Both directions.",
+        "INJECTION AI, the help stops naming the base: the new gate fails with \"`--help` never says `current directory`\".",
+        "STAR THE SEVERITY EDGE WAS FOUND BY THE TEST FAILING FOR THE RIGHT REASON. The first run came back `commit` with `violation_count: 1` and `gating_violation_count: 0`; the cause was the workspace declaring no continuity severity. The test now pins both configurations rather than only the one that suited it.",
+        "TWO FIXTURE MISTAKES OF MINE WERE CAUGHT BY THE TEST ITSELF: a \"clean\" candidate that was a self-step (rejected by the Round 698 self-loop rule, so it proved nothing about the map), and a helper that REWROTE the manifest file it was asked to re-check, clobbering the candidate under test.",
+        "1592 workspace tests pass (1590 before), 0 failed, `--no-fail-fast`; clippy `-D warnings` and `cargo fmt --check` clean; `validate-workspace` T1 orphan 0 and T3 reject 0.",
+        "The push of Rounds 1001-1003 landed green: validate and MSRV both success, annotations empty on both.",
+        "Citation hygiene (R255): Rounds 999, 1001 and 1002 verified present with `query --changelog-entry` and Round 1004 verified absent before this entry was appended."
+      ],
+      "publishable_impact_refs": [
+        "atomic-store-mutate-api"
+      ],
+      "publishable_carry_forward_bullets": [
+        "`propose_verdict` IS NOW EXERCISED ON THE ANSWER IT GIVES, NOT ON EVERY RULE THAT COULD GIVE IT. One continuity rule refuses and one clean candidate passes; the structural invariants, the interval rules and the disclosure gates all reach the same verdict field by other paths and none of them is exercised here. The shape is a table away.",
+        "THE SEVERITY EDGE IS PINNED, NOT FIXED. An agent on a workspace with no declared severity still gets `commit` beside a violation, which is the designed behaviour of a policy knob. Whether the tool's DESCRIPTION should say so is a question this round did not take: it currently promises \"verdict=commit|rollback plus actionable violations\" without saying the two can disagree.",
+        "33 READ-SIDE ARGUMENTS REMAIN in the Round 986 accounting, unchanged by this round."
+      ]
+    },
     "Round 252": {
       "decision_summary": "Parser CommonMark conformance — recognize indented fenced code blocks (§98) and require whitespace after ATX hash sequence (§62)",
       "changes_bullets": [
