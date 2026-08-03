@@ -34667,6 +34667,96 @@
         "42 READ ARGUMENTS REMAIN AND NOTHING BLOCKS THEM. The shape is one workspace with enough authored in it that a report's answer varies, then the `output` oracle over `order_path`, `world`, `telling`, `rules_path`, `scope`, `fields`, `severity`, `doc` and `dry_run`.",
         "THE ATOMICITY TEST COVERS ONE VERB. `import_sections` makes the same all-or-nothing promise and is not tested for it; the case above is a template and the second one is a copy with a different manifest."
       ]
+    },
+    "Round 997": {
+      "decision_summary": "R997 (BUILD) — the read side opens: six of its arguments proven, and the two things that unlocked it are a new kind of setup and a lesson about what a summary report can be watched by. Every argument left after Round 995 belongs to a tool that never touches the store, so the store oracle is blind to all of them and the answer is the only observable. STAR THE MACRO NOW TAKES FILE SETUPS, `{\"path\" = {...}}`, written after the server exists and before the tool runs. Two kinds of argument need them and neither could be reached without: the ones that NAME a file (`order_path`, `rules_path`, `proposals_path` — most of what remains), and `validate_projection.refresh`, whose whole purpose is to pick up a change made OUT OF BAND. A setup that goes through a tool is by construction not out of band, so the only way to exercise `refresh` is to write the store behind the server's back — which is exactly what an operator doing it by hand would do. STAR AND THE THREE FAILURES THIS ROUND PRODUCED WERE EACH DIAGNOSED BY THE MESSAGE ROUND 996 WROTE. `query_section.include_related` failed with \"the output DID change, so the argument arrived and this needle is not what moved\" — a case defect, fixed by watching the word the report prints rather than the id it does not. `redact_term` failed the Round 991 oracle check with \"declared `in output` and DOES write the store\" — my classification of it as a read tool was wrong for the `dry_run` arm. `validate_projection` failed with the two-causes message, and the cause was the third one neither branch names: the fixture was not producing a violation at all. STAR THAT LAST DIAGNOSIS IS WORTH THE ROUND ON ITS OWN. `validate_projection` prints a fixed summary — counts and `ok`/`VIOLATIONS`, never an id — so the only needle available is the word that changes, and it only changes if the reloaded store actually violates something. A section marked `superseded` WITH its `superseded_by` ref is not a violation; my hand-written store carried the ref, so a correct refresh produced an identical report. Probing the CLI found the shape, and there is no CLI twin for this verb, so the probe ran against the primitives that build the state instead. STAR THE COUNT IS 86 OF 122.",
+      "changes_bullets": [
+        "`crates/mnemosyne-mcp/src/main.rs` — `exercised!` takes file setups, `{\"path\" = {json}}`, written after the server is constructed and before the tool runs, in both arms. They reach the two kinds of argument no tool call can set up: a file the argument names, and a change made out of band.",
+        "Same file — six read cases: `query_term.scope`, `query_section.include_related`, `redact_term.dry_run`, `.case_insensitive`, `.regex`, and `validate_projection.refresh`.",
+        "Same file — `redact_term.dry_run` is a `store` case, not an `output` one: the verb writes when the flag is absent, which is what the flag is for. Its two sibling arguments keep `dry_run` on and are watched by the answer."
+      ],
+      "verification_bullets": [
+        "STAR ROUND 996's MESSAGES DIAGNOSED EVERY FAILURE THIS ROUND PRODUCED, which is the first evidence they point at the right file. `query_section.include_related`: \"the output DID change ... THE DEFECT IS IN THIS CASE\" — the needle was an id the report never prints. `redact_term.dry_run`: \"declared `in output` and DOES write the store\". `validate_projection.refresh`: the two-causes message, and the cause was the fixture.",
+        "STAR THE `refresh` FIXTURE WAS WRONG IN A WAY ONLY THE STORE'S OWN RULE EXPLAINS. A section marked `superseded` WITH a `superseded_by` ref is not a violation — the cascade rule is \"superseded and no outbound decision cross-ref\". The hand-written out-of-band store carried the ref, so a correct reload produced a byte-identical report. Removing it made the case pass and the injection fail.",
+        "INJECTION Y, `validate_projection` stops reading `refresh`: the case fails with the two-causes message, so the out-of-band setup genuinely carries the test.",
+        "INJECTION Z, `redact_term` stops reading `case_insensitive`: its case fails. This is the SECOND wire of the same flag — Round 986 demonstrated the class on `query_term.case_insensitive` — and both are now watched.",
+        "THERE IS NO CLI TWIN FOR `validate_projection`, so the probe Round 996's message prescribes ran against the primitives that build the state instead of the verb itself. The prescription held; only the tool it names was unavailable.",
+        "1584 workspace tests pass (1578 before), 0 failed, `--no-fail-fast`; clippy `-D warnings` and `cargo fmt --check` clean; `validate-workspace` T1 orphan 0 and T3 reject 0.",
+        "Citation hygiene (R255): Rounds 986, 991, 995 and 996 verified present with `query --changelog-entry` and Round 997 verified absent before this entry was appended."
+      ],
+      "impact_refs": [
+        "atomic-store-mutate-api"
+      ],
+      "carry_forward_bullets": [
+        "36 REMAIN AND THEY ARE THE REPORT ARGUMENTS: `order_path`, `world`, `telling`, `rules_path` across the ten `report_*` verbs, plus `style_check`'s pair, `query_term.fields`, the two `dry_run` importers and `emit_publishable_override_ledger_draft.kind`. The file setup this round added is what they were waiting for; what they still need is a workspace with a canon order and enough authored facts that a report's answer varies, which is one `import_facts` given of the size Round 995 already writes.",
+        "A SUMMARY REPORT CAN ONLY BE WATCHED BY WHAT IT PRINTS. `validate_projection` prints counts and a status word and never an id, so a case against it can only watch the status word — which means it can only be written against a state that actually violates something. That is a property of the report rather than of the harness, and it will recur for any verb whose answer is an aggregate."
+      ],
+      "population_census": [
+        {
+          "axis": "transition rules by `undirected`",
+          "left_label": "undirected",
+          "left": 10,
+          "right_label": "directed",
+          "right": 27
+        },
+        {
+          "axis": "map corpora by leg-kind declaration",
+          "left_label": "omitted",
+          "left": 6,
+          "right_label": "declared",
+          "right": 24
+        },
+        {
+          "axis": "cost-carrying corpora by direction-dependent pricing",
+          "left_label": "prices a way by direction",
+          "left": 4,
+          "right_label": "prices no way by direction",
+          "right": 6
+        },
+        {
+          "axis": "run trees by authoring mode",
+          "left_label": "hand script",
+          "left": 10,
+          "right_label": "file-only",
+          "right": 239
+        },
+        {
+          "axis": "map corpora by declared boundary crossing",
+          "left_label": "declares an exit",
+          "left": 6,
+          "right_label": "declares none",
+          "right": 24
+        },
+        {
+          "axis": "authored submissions by map and telling",
+          "left_label": "carries both",
+          "left": 10,
+          "right_label": "carries one",
+          "right": 24
+        }
+      ],
+      "publishable_decision_summary": "R997 (BUILD) — the read side opens: six of its arguments proven, and the two things that unlocked it are a new kind of setup and a lesson about what a summary report can be watched by. Every argument left after Round 995 belongs to a tool that never touches the store, so the store oracle is blind to all of them and the answer is the only observable. STAR THE MACRO NOW TAKES FILE SETUPS, `{\"path\" = {...}}`, written after the server exists and before the tool runs. Two kinds of argument need them and neither could be reached without: the ones that NAME a file (`order_path`, `rules_path`, `proposals_path` — most of what remains), and `validate_projection.refresh`, whose whole purpose is to pick up a change made OUT OF BAND. A setup that goes through a tool is by construction not out of band, so the only way to exercise `refresh` is to write the store behind the server's back — which is exactly what an operator doing it by hand would do. STAR AND THE THREE FAILURES THIS ROUND PRODUCED WERE EACH DIAGNOSED BY THE MESSAGE ROUND 996 WROTE. `query_section.include_related` failed with \"the output DID change, so the argument arrived and this needle is not what moved\" — a case defect, fixed by watching the word the report prints rather than the id it does not. `redact_term` failed the Round 991 oracle check with \"declared `in output` and DOES write the store\" — my classification of it as a read tool was wrong for the `dry_run` arm. `validate_projection` failed with the two-causes message, and the cause was the third one neither branch names: the fixture was not producing a violation at all. STAR THAT LAST DIAGNOSIS IS WORTH THE ROUND ON ITS OWN. `validate_projection` prints a fixed summary — counts and `ok`/`VIOLATIONS`, never an id — so the only needle available is the word that changes, and it only changes if the reloaded store actually violates something. A section marked `superseded` WITH its `superseded_by` ref is not a violation; my hand-written store carried the ref, so a correct refresh produced an identical report. Probing the CLI found the shape, and there is no CLI twin for this verb, so the probe ran against the primitives that build the state instead. STAR THE COUNT IS 86 OF 122.",
+      "publishable_changes_bullets": [
+        "`crates/mnemosyne-mcp/src/main.rs` — `exercised!` takes file setups, `{\"path\" = {json}}`, written after the server is constructed and before the tool runs, in both arms. They reach the two kinds of argument no tool call can set up: a file the argument names, and a change made out of band.",
+        "Same file — six read cases: `query_term.scope`, `query_section.include_related`, `redact_term.dry_run`, `.case_insensitive`, `.regex`, and `validate_projection.refresh`.",
+        "Same file — `redact_term.dry_run` is a `store` case, not an `output` one: the verb writes when the flag is absent, which is what the flag is for. Its two sibling arguments keep `dry_run` on and are watched by the answer."
+      ],
+      "publishable_verification_bullets": [
+        "STAR ROUND 996's MESSAGES DIAGNOSED EVERY FAILURE THIS ROUND PRODUCED, which is the first evidence they point at the right file. `query_section.include_related`: \"the output DID change ... THE DEFECT IS IN THIS CASE\" — the needle was an id the report never prints. `redact_term.dry_run`: \"declared `in output` and DOES write the store\". `validate_projection.refresh`: the two-causes message, and the cause was the fixture.",
+        "STAR THE `refresh` FIXTURE WAS WRONG IN A WAY ONLY THE STORE'S OWN RULE EXPLAINS. A section marked `superseded` WITH a `superseded_by` ref is not a violation — the cascade rule is \"superseded and no outbound decision cross-ref\". The hand-written out-of-band store carried the ref, so a correct reload produced a byte-identical report. Removing it made the case pass and the injection fail.",
+        "INJECTION Y, `validate_projection` stops reading `refresh`: the case fails with the two-causes message, so the out-of-band setup genuinely carries the test.",
+        "INJECTION Z, `redact_term` stops reading `case_insensitive`: its case fails. This is the SECOND wire of the same flag — Round 986 demonstrated the class on `query_term.case_insensitive` — and both are now watched.",
+        "THERE IS NO CLI TWIN FOR `validate_projection`, so the probe Round 996's message prescribes ran against the primitives that build the state instead of the verb itself. The prescription held; only the tool it names was unavailable.",
+        "1584 workspace tests pass (1578 before), 0 failed, `--no-fail-fast`; clippy `-D warnings` and `cargo fmt --check` clean; `validate-workspace` T1 orphan 0 and T3 reject 0.",
+        "Citation hygiene (R255): Rounds 986, 991, 995 and 996 verified present with `query --changelog-entry` and Round 997 verified absent before this entry was appended."
+      ],
+      "publishable_impact_refs": [
+        "atomic-store-mutate-api"
+      ],
+      "publishable_carry_forward_bullets": [
+        "36 REMAIN AND THEY ARE THE REPORT ARGUMENTS: `order_path`, `world`, `telling`, `rules_path` across the ten `report_*` verbs, plus `style_check`'s pair, `query_term.fields`, the two `dry_run` importers and `emit_publishable_override_ledger_draft.kind`. The file setup this round added is what they were waiting for; what they still need is a workspace with a canon order and enough authored facts that a report's answer varies, which is one `import_facts` given of the size Round 995 already writes.",
+        "A SUMMARY REPORT CAN ONLY BE WATCHED BY WHAT IT PRINTS. `validate_projection` prints counts and a status word and never an id, so a case against it can only watch the status word — which means it can only be written against a state that actually violates something. That is a property of the report rather than of the harness, and it will recur for any verb whose answer is an aggregate."
+      ]
     }
   },
   "inventory_entries": {},

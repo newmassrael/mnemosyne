@@ -3451,13 +3451,8 @@ mod tests {
         ("import_typing_proposals", "dry_run"),
         ("propose_verdict", "order_path"),
         ("propose_verdict", "rules_path"),
-        ("query_section", "include_related"),
         ("query_term", "fields"),
-        ("query_term", "scope"),
-        ("redact_term", "case_insensitive"),
-        ("redact_term", "dry_run"),
         ("redact_term", "kind"),
-        ("redact_term", "regex"),
         ("redact_term", "scope"),
         ("report_authoring_frontier", "order_path"),
         ("report_authoring_frontier", "rules_path"),
@@ -3486,7 +3481,6 @@ mod tests {
         ("validate_continuity", "order_path"),
         ("validate_continuity", "rules_path"),
         ("validate_disclosure_leak", "order_path"),
-        ("validate_projection", "refresh"),
         ("validate_render_fidelity", "order_path"),
     ];
 
@@ -3749,6 +3743,7 @@ mod tests {
     macro_rules! exercised {
         ($(
             $test:ident :
+            $( {$file:literal = $contents:tt} )*
             $( [$setup:ident($setup_args:ty) $setup_base:tt] )*
             $tool:ident($args:ty) $base:tt . $field:literal = $value:tt seen $needle:literal in $oracle:ident;
         )*) => {
@@ -3773,6 +3768,19 @@ mod tests {
                         // WHAT THE ARGUMENT NEEDS TO EXIST BEFORE IT CAN BE
                         // SENT. Run in BOTH arms, so the difference the test
                         // asserts is the argument and never the setup.
+                        // FILES THE ARGUMENT NAMES OR THE TOOL READS BEHIND
+                        // THE STORE — a canon order, a rules artifact, a
+                        // proposals file, or a store edited OUT OF BAND, which
+                        // is the only thing `refresh` has to pick up. Written
+                        // before the setup calls and in both arms.
+                        $(
+                            std::fs::write(
+                                tmp.path().join($file),
+                                serde_json::to_string(&serde_json::json!($contents))
+                                    .expect("the given file must serialize"),
+                            )
+                            .unwrap_or_else(|e| panic!("write {}: {e}", $file));
+                        )*
                         $(
                             let setup: $setup_args =
                                 serde_json::from_value(serde_json::json!($setup_base))
@@ -3949,6 +3957,39 @@ mod tests {
     }
 
     exercised! {
+        query_term_scope_reaches_the_answer:
+            [import_sections(ImportSectionsArgs) {"sections": [{"section_id": "40", "parent_doc": "spec", "title": "the section"}, {"section_id": "41", "parent_doc": "spec", "title": "the other"}]}]
+            [append_changelog_entry(AppendChangelogEntryArgs) {"entry_id": "Round 1", "decision_summary": "the one who Waits", "changes_bullets": ["a change"], "verification_bullets": ["a check"]}]
+            query_term(QueryTermArgs) {"pattern": "Waits"}
+            ."scope" = "sections" seen "Round 1" in output;
+        query_section_include_related_reaches_the_answer:
+            [import_sections(ImportSectionsArgs) {"sections": [{"section_id": "40", "parent_doc": "spec", "title": "the section"}, {"section_id": "41", "parent_doc": "spec", "title": "the other"}]}]
+            [set_section_parent_section(SetSectionParentSectionArgs) {"section_id": "41", "parent_section": "40"}]
+            query_section(QuerySectionArgs) {"section_id": "40"}
+            ."include_related" = true seen "related" in output;
+        redact_term_dry_run_reaches_the_answer:
+            [append_changelog_entry(AppendChangelogEntryArgs) {"entry_id": "Round 1", "decision_summary": "the one who Waits", "changes_bullets": ["a change"], "verification_bullets": ["a check"]}]
+            redact_term(RedactTermArgs) {"pattern": "Waits", "replacement": "waits", "reason": "case", "applied_in": "Round 1"}
+            ."dry_run" = true seen "waits" in store;
+        redact_term_case_insensitive_reaches_the_answer:
+            [append_changelog_entry(AppendChangelogEntryArgs) {"entry_id": "Round 1", "decision_summary": "the one who Waits", "changes_bullets": ["a change"], "verification_bullets": ["a check"]}]
+            redact_term(RedactTermArgs) {"pattern": "waits", "replacement": "lingers", "reason": "word", "applied_in": "Round 1", "dry_run": true}
+            ."case_insensitive" = true seen "Round 1" in output;
+        redact_term_regex_reaches_the_answer:
+            [append_changelog_entry(AppendChangelogEntryArgs) {"entry_id": "Round 1", "decision_summary": "the one who Waits", "changes_bullets": ["a change"], "verification_bullets": ["a check"]}]
+            redact_term(RedactTermArgs) {"pattern": "W.its", "replacement": "lingers", "reason": "word", "applied_in": "Round 1", "dry_run": true}
+            ."regex" = true seen "Round 1" in output;
+        validate_projection_refresh_reaches_the_answer:
+            {"docs/.atomic/workspace.atomic.json" = {
+                "schema_version": atomic::CURRENT_SCHEMA_VERSION,
+                "changelog_entries": {},
+                "sections": {"40": {
+                    "section_id": "40", "parent_doc": "spec", "title": "the section",
+                    "decision_status": "superseded"
+                }}
+            }}
+            validate_projection(ValidateProjectionArgs) {}
+            ."refresh" = true seen "VIOLATIONS" in output;
         query_term_case_insensitive_reaches_the_answer:
             [append_changelog_entry(AppendChangelogEntryArgs) {"entry_id": "Round 1", "decision_summary": "the one who Waits", "changes_bullets": ["a change"], "verification_bullets": ["a check"]}]
             query_term(QueryTermArgs) {"pattern": "waits"}
