@@ -3923,14 +3923,8 @@ mod tests {
         ("import_typing_proposals", "dry_run"),
         ("propose_verdict", "order_path"),
         ("report_authoring_frontier", "telling"),
-        ("report_edge_candidates", "order_path"),
-        ("report_fork_tree", "order_path"),
         ("report_frame_view", "branch"),
         ("report_frame_view", "entity"),
-        ("report_irony_intervals", "order_path"),
-        ("report_payoff_substantiation", "order_path"),
-        ("report_quest_graph", "order_path"),
-        ("report_timeline_gaps", "order_path"),
         ("validate_disclosure_leak", "order_path"),
         ("validate_render_fidelity", "order_path"),
     ];
@@ -4264,28 +4258,6 @@ mod tests {
                      nothing about atomicity"
                 );
             }
-        }
-    }
-
-    /// Replace `{ws}` with the workspace root everywhere in a value.
-    fn substitute_workspace(value: &mut serde_json::Value, root: &std::path::Path) {
-        match value {
-            serde_json::Value::String(s) => {
-                if s.contains("{ws}") {
-                    *s = s.replace("{ws}", &root.to_string_lossy());
-                }
-            }
-            serde_json::Value::Array(items) => {
-                for item in items {
-                    substitute_workspace(item, root);
-                }
-            }
-            serde_json::Value::Object(map) => {
-                for (_, v) in map.iter_mut() {
-                    substitute_workspace(v, root);
-                }
-            }
-            _ => {}
         }
     }
 
@@ -4783,13 +4755,16 @@ mod tests {
                         if with {
                             json[$field] = serde_json::json!($value);
                         }
-                        // `{ws}` IN ANY STRING BECOMES THE WORKSPACE ROOT. A
-                        // path argument is resolved by the tool against the
-                        // SERVER PROCESS's working directory and not against
-                        // the workspace it was handed, so a relative literal
-                        // here would read a file beside this source rather than
-                        // the one the setup wrote.
-                        substitute_workspace(&mut json, tmp.path());
+                        // A PATH ARGUMENT IS WRITTEN AS A PLAIN RELATIVE NAME,
+                        // because Round 1002 made a relative path an agent
+                        // sends resolve against the WORKSPACE IT WAS HANDED.
+                        // Before that it resolved against the server process's
+                        // working directory, which an agent can neither see nor
+                        // choose, and these cases carried a `{ws}` substitution
+                        // to spell the workspace root out. That helper is gone
+                        // rather than kept: it existed only to work around the
+                        // rule Round 1002 replaced, and a case still using it
+                        // would be proving the old contract.
                         let args: $args = serde_json::from_value(json)
                             .expect("the agent-facing shape must parse this call");
                         let server =
@@ -5046,11 +5021,41 @@ mod tests {
         // it, and two tellings that disclose differently. Three verbs already
         // share it, and each new report argument that stands here is a line
         // rather than a world.
+        //
+        // IT ALSO BELIEVES AND IT ALSO WANTS, because five reports had nothing
+        // to say without that. Round 1017 read six order-keyed reports as
+        // order-INSENSITIVE when what they actually returned was `windows: []`,
+        // `setups_total: 0`, `quests: []` — a report with an empty body cannot
+        // be moved by ANY argument, and an argument tested against one is
+        // untestable rather than unread. So the world gained the two things
+        // those reports read: a SECOND FRAME that holds the way shut while
+        // ground truth holds it open (the cross-frame divergence irony is
+        // measured over), and a QUEST taken up in the first scene and completed
+        // in the third (the credited setup payoff substantiation classifies and
+        // the reserved `pursues`/`completed_by` roles the quest graph derives
+        // from). Both are what the north star authors, not scaffolding for a
+        // test.
         branch_story:
             {"order-a.json" = {"schema": "canon-order/v1", "edges": [["sc-01", "sc-02"]]}}
             {"order-b.json" = {"schema": "canon-order/v1", "edges": [["sc-01", "sc-02"], ["sc-02", "sc-03"]]}}
+            // THE THIRD ORDER READS THE SAME SCENES IN A DIFFERENT SEQUENCE, and
+            // that is a distinct discriminator rather than a third fixture.
+            // `order-a` and `order-b` differ by MEMBERSHIP — b admits `sc-03` and
+            // a does not — so a report keyed on WHICH SCENES EXIST tells them
+            // apart while a report keyed on WHICH CAME FIRST cannot. Round 1017
+            // wrote six cases against a-vs-b, watched them come back
+            // byte-identical, and deleted them. Against `order-c` the membership
+            // is b's and only the sequence moves: `sc-03` is read FIRST, so the
+            // fact it establishes (`f-at-b`, which supersedes `f-at-a`) now lands
+            // before the fact it supersedes.
+            {"order-c.json" = {"schema": "canon-order/v1", "edges": [["sc-03", "sc-01"], ["sc-01", "sc-02"]]}}
+            // A ROAD THAT NEVER REACHES THE FORK POINT. `b-alt` forks at
+            // `sc-02`, so an order that omits `sc-02` leaves the fork UNPLACED —
+            // the one thing the fork tree reads the order for. `order-a` also
+            // omits a scene, but not that one.
+            {"order-d.json" = {"schema": "canon-order/v1", "edges": [["sc-01", "sc-03"]]}}
             [import_sections(ImportSectionsArgs) {"sections": [{"section_id": "sc-01", "parent_doc": "spec", "title": "one"}, {"section_id": "sc-02", "parent_doc": "spec", "title": "two"}, {"section_id": "sc-03", "parent_doc": "spec", "title": "three"}]}]
-            [import_facts(atomic::FactsManifest) {"frames": [{"frame_id": "ground-truth"}], "entity_kinds": [{"kind_id": "place"}, {"kind_id": "character"}], "entities": [{"entity_id": "p-a", "kind": "place"}, {"entity_id": "p-b", "kind": "place"}, {"entity_id": "e-her", "kind": "character"}], "predicates": [{"predicate_id": "adjacent", "object_kind": "entity", "subject_kind": "place", "object_entity_kind": "place"}, {"predicate_id": "at", "object_kind": "entity", "subject_kind": "character", "object_entity_kind": "place"}], "facts": [{"fact_id": "f-way", "frame": "ground-truth", "claim": "a way runs", "canon_from": "sc-01", "evidence": ["sc-01"], "entities": ["p-a", "p-b"], "typed": {"subject": "p-a", "predicate": "adjacent", "object": {"kind": "entity", "id": "p-b"}}}, {"fact_id": "f-at-a", "frame": "ground-truth", "claim": "she is at a", "canon_from": "sc-01", "evidence": ["sc-01"], "entities": ["e-her", "p-a"], "typed": {"subject": "e-her", "predicate": "at", "object": {"kind": "entity", "id": "p-a"}}}, {"fact_id": "f-at-b", "frame": "ground-truth", "claim": "she is at b", "canon_from": "sc-03", "evidence": ["sc-03"], "entities": ["e-her", "p-b"], "supersedes_in_frame": "f-at-a", "typed": {"subject": "e-her", "predicate": "at", "object": {"kind": "entity", "id": "p-b"}}}], "disclosure_plans": [{"telling_id": "t-quiet", "default_mode": "state"}, {"telling_id": "t-hidden", "default_mode": "withhold"}], "branches": [{"branch_id": "b-alt", "forks_from": "main", "forks_at": "sc-02"}]}]
+            [import_facts(atomic::FactsManifest) {"frames": [{"frame_id": "ground-truth"}, {"frame_id": "she-believes"}], "entity_kinds": [{"kind_id": "place"}, {"kind_id": "character"}, {"kind_id": "quest"}], "entities": [{"entity_id": "p-a", "kind": "place"}, {"entity_id": "p-b", "kind": "place"}, {"entity_id": "e-her", "kind": "character"}, {"entity_id": "q-cross", "kind": "quest"}], "predicates": [{"predicate_id": "adjacent", "object_kind": "entity", "subject_kind": "place", "object_entity_kind": "place"}, {"predicate_id": "at", "object_kind": "entity", "subject_kind": "character", "object_entity_kind": "place"}, {"predicate_id": "pursues", "object_kind": "entity", "subject_kind": "character", "object_entity_kind": "quest"}, {"predicate_id": "completed_by", "object_kind": "entity", "subject_kind": "quest", "object_entity_kind": "character"}], "facts": [{"fact_id": "f-way", "frame": "ground-truth", "claim": "a way runs", "canon_from": "sc-01", "evidence": ["sc-01"], "entities": ["p-a", "p-b"], "typed": {"subject": "p-a", "predicate": "adjacent", "object": {"kind": "entity", "id": "p-b"}}}, {"fact_id": "f-at-a", "frame": "ground-truth", "claim": "she is at a", "canon_from": "sc-01", "evidence": ["sc-01"], "entities": ["e-her", "p-a"], "typed": {"subject": "e-her", "predicate": "at", "object": {"kind": "entity", "id": "p-a"}}}, {"fact_id": "f-at-b", "frame": "ground-truth", "claim": "she is at b", "canon_from": "sc-03", "evidence": ["sc-03"], "entities": ["e-her", "p-b"], "supersedes_in_frame": "f-at-a", "typed": {"subject": "e-her", "predicate": "at", "object": {"kind": "entity", "id": "p-b"}}}, {"fact_id": "f-believes-shut", "frame": "she-believes", "claim": "she believes no way runs", "canon_from": "sc-01", "evidence": ["sc-01"], "entities": ["p-a", "p-b"], "conflicts_with": ["f-way"]}, {"fact_id": "f-quest-given", "frame": "ground-truth", "claim": "she takes up the crossing", "canon_from": "sc-01", "evidence": ["sc-01"], "entities": ["e-her", "q-cross"], "payoff_expectation": "expected", "typed": {"subject": "e-her", "predicate": "pursues", "object": {"kind": "entity", "id": "q-cross"}}}, {"fact_id": "f-quest-done", "frame": "ground-truth", "claim": "the crossing is made", "canon_from": "sc-03", "evidence": ["sc-03"], "entities": ["q-cross", "e-her"], "pays_off": ["f-quest-given"], "typed": {"subject": "q-cross", "predicate": "completed_by", "object": {"kind": "entity", "id": "e-her"}}}], "disclosure_plans": [{"telling_id": "t-quiet", "default_mode": "state"}, {"telling_id": "t-hidden", "default_mode": "withhold"}], "branches": [{"branch_id": "b-alt", "forks_from": "main", "forks_at": "sc-02"}]}]
             [add_fact(atomic::FactImport) {"fact_id": "f-alt", "frame": "ground-truth", "branch": "b-alt", "claim": "she never left", "canon_from": "sc-03", "evidence": ["sc-03"], "entities": ["e-her", "p-a"], "typed": {"subject": "e-her", "predicate": "at", "object": {"kind": "entity", "id": "p-a"}}}]
         ;
     }
@@ -5081,11 +5086,8 @@ mod tests {
             report_playable_world(ReportPlayableWorldArgs) {"telling": "t-quiet", "order_path": "order-b.json"}
             ."world" = "b-alt" seen "main" in output;
         report_playable_world_order_path_reaches_the_answer:
-            {"order-a.json" = {"schema": "canon-order/v1", "edges": [["sc-01", "sc-02"]]}}
-            {"order-b.json" = {"schema": "canon-order/v1", "edges": [["sc-01", "sc-02"], ["sc-02", "sc-03"]]}}
-            [import_sections(ImportSectionsArgs) {"sections": [{"section_id": "sc-01", "parent_doc": "spec", "title": "one"}, {"section_id": "sc-02", "parent_doc": "spec", "title": "two"}, {"section_id": "sc-03", "parent_doc": "spec", "title": "three"}]}]
-            [import_facts(atomic::FactsManifest) {"frames": [{"frame_id": "ground-truth"}], "entity_kinds": [{"kind_id": "place"}, {"kind_id": "character"}], "entities": [{"entity_id": "p-a", "kind": "place"}, {"entity_id": "p-b", "kind": "place"}, {"entity_id": "e-her", "kind": "character"}], "predicates": [{"predicate_id": "adjacent", "object_kind": "entity", "subject_kind": "place", "object_entity_kind": "place"}, {"predicate_id": "at", "object_kind": "entity", "subject_kind": "character", "object_entity_kind": "place"}], "facts": [{"fact_id": "f-way", "frame": "ground-truth", "claim": "a way runs", "canon_from": "sc-01", "evidence": ["sc-01"], "entities": ["p-a", "p-b"], "typed": {"subject": "p-a", "predicate": "adjacent", "object": {"kind": "entity", "id": "p-b"}}}, {"fact_id": "f-at-a", "frame": "ground-truth", "claim": "she is at a", "canon_from": "sc-01", "evidence": ["sc-01"], "entities": ["e-her", "p-a"], "typed": {"subject": "e-her", "predicate": "at", "object": {"kind": "entity", "id": "p-a"}}}, {"fact_id": "f-at-b", "frame": "ground-truth", "claim": "she is at b", "canon_from": "sc-03", "evidence": ["sc-03"], "entities": ["e-her", "p-b"], "supersedes_in_frame": "f-at-a", "typed": {"subject": "e-her", "predicate": "at", "object": {"kind": "entity", "id": "p-b"}}}], "disclosure_plans": [{"telling_id": "t-quiet", "default_mode": "state"}, {"telling_id": "t-hidden", "default_mode": "withhold"}]}]
-            report_playable_world(ReportPlayableWorldArgs) {"telling": "t-quiet", "order_path": "{ws}/order-a.json"}
+            @branch_story
+            report_playable_world(ReportPlayableWorldArgs) {"telling": "t-quiet", "order_path": "order-a.json"}
             ."order_path" = "order-b.json" seen "sc-03" in output;
         style_check_doc_reaches_the_answer:
             [add_section(AddSectionArgs) {"section_id": "40", "parent_doc": "spec", "title": "the section"}]
@@ -5560,7 +5562,33 @@ mod tests {
         report_frame_view_order_path_reaches_the_answer:
             @branch_story
             report_frame_view(ReportFrameViewArgs) {"frame": "ground-truth", "at": "sc-01", "order_path": "order-a.json"}
-            ."order_path" = "order-b.json" seen "\"not_holding\": 1" in output;
+            ."order_path" = "order-b.json" seen "\"not_holding\": 2" in output;
+        report_fork_tree_order_path_reaches_the_answer:
+            @branch_story
+            report_fork_tree(ReportForkTreeArgs) {"order_path": "order-b.json"}
+            ."order_path" = "order-d.json" seen "\"at_placed\": false" in output;
+        report_edge_candidates_order_path_reaches_the_answer:
+            @branch_story
+            report_edge_candidates(ReportEdgeCandidatesArgs) {"order_path": "order-b.json"}
+            ."order_path" = "order-c.json" seen "\"fact_b\": \"f-at-b\"" in output;
+        report_irony_intervals_order_path_reaches_the_answer:
+            @branch_story
+            report_irony_intervals(ReportIronyIntervalsArgs) {"order_path": "order-b.json"}
+            ."order_path" = "order-c.json" seen "\"sc-03\"" in output;
+        report_payoff_substantiation_order_path_reaches_the_answer:
+            @branch_story
+            report_payoff_substantiation(ReportPayoffCoverageArgs) {"order_path": "order-b.json"}
+            ."order_path" = "order-c.json" seen "\"unsubstantiated\": []" in output;
+        report_quest_graph_order_path_reaches_the_answer:
+            @branch_story
+            report_quest_graph(ReportQuestGraphArgs) {"telling": "t-quiet", "order_path": "order-b.json"}
+            ."order_path" = "order-c.json" seen "\"state\": \"open\"" in output;
+        report_timeline_gaps_order_path_reaches_the_answer:
+            @branch_story
+            {"rules-interval.json" = {"schema": "narrative-rules/v1", "rules": [{"id": "falls-after-it-rises", "predicate": "fell_on_day", "class": "interval", "right": "rose_on_day", "op": "ge", "bound": {"const": 1}}]}}
+            [import_facts(atomic::FactsManifest) {"units": [{"unit_id": "day"}], "predicates": [{"predicate_id": "rose_on_day", "object_kind": "quantity", "subject_kind": "character"}, {"predicate_id": "fell_on_day", "object_kind": "quantity", "subject_kind": "character"}], "facts": [{"fact_id": "f-rose", "frame": "ground-truth", "claim": "it rose on day 5", "canon_from": "sc-01", "evidence": ["sc-01"], "entities": ["e-her"], "typed": {"subject": "e-her", "predicate": "rose_on_day", "object": {"kind": "quantity", "n": 5, "unit": "day"}}}, {"fact_id": "f-fell", "frame": "ground-truth", "claim": "it fell on day 3", "canon_from": "sc-03", "evidence": ["sc-03"], "entities": ["e-her"], "typed": {"subject": "e-her", "predicate": "fell_on_day", "object": {"kind": "quantity", "n": 3, "unit": "day"}}}]}]
+            report_timeline_gaps(ReportTimelineGapsArgs) {"rules_path": "rules-interval.json", "order_path": "order-b.json"}
+            ."order_path" = "order-c.json" seen "\"kind\": \"violated\"" in output;
     }
 
     /// An agent can only call what the schema shows it (Round 981) — the Round
