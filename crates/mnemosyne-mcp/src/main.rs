@@ -3928,6 +3928,184 @@ mod tests {
     /// would make that failure impossible to express.
     const UNEXERCISED: &[(&str, &str)] = &[];
 
+    /// The same admission for the REQUIRED half. Generated from this gate's own
+    /// failure output rather than transcribed, the way Round 986 produced the
+    /// optional list — a hand-copied population is the defect the accounting
+    /// exists to stop.
+    const UNEXERCISED_REQUIRED: &[(&str, &str)] = &[
+        ("add_branch", "branch_id"),
+        ("add_confirmation_event", "authoring_run"),
+        ("add_confirmation_event", "confirmer_id"),
+        ("add_confirmation_event", "confirmer_kind"),
+        ("add_confirmation_event", "confirmer_version"),
+        ("add_confirmation_event", "confirming_run"),
+        ("add_confirmation_event", "method"),
+        ("add_confirmation_event", "rationale"),
+        ("add_confirmation_event", "section_id"),
+        ("add_confirmation_event", "timestamp"),
+        ("add_confirmation_event", "verdict"),
+        ("add_disclosure_plan", "default_mode"),
+        ("add_disclosure_plan", "telling_id"),
+        ("add_disclosure_reveal_coord", "branch"),
+        ("add_disclosure_reveal_coord", "coord"),
+        ("add_disclosure_reveal_coord", "fact_id"),
+        ("add_disclosure_reveal_coord", "telling_id"),
+        ("add_edge_cost", "fact_id"),
+        ("add_edge_cost", "n"),
+        ("add_edge_cost", "unit"),
+        ("add_edge_guard", "condition"),
+        ("add_edge_guard", "fact_id"),
+        ("add_entity", "entity_id"),
+        ("add_entity_kind", "kind_id"),
+        ("add_fact", "canon_from"),
+        ("add_fact", "claim"),
+        ("add_fact", "fact_id"),
+        ("add_fact", "frame"),
+        ("add_fact_conflict", "conflicts_with"),
+        ("add_fact_conflict", "fact_id"),
+        ("add_fact_count", "count"),
+        ("add_fact_count", "fact_id"),
+        ("add_frame", "frame_id"),
+        ("add_inventory_entry", "inventory_id"),
+        ("add_inventory_entry", "status"),
+        ("add_parameter", "parameter_id"),
+        ("add_parameter_delta", "delta"),
+        ("add_parameter_delta", "fact_id"),
+        ("add_parameter_delta", "parameter"),
+        ("add_parameter_gate", "fact_id"),
+        ("add_parameter_gate", "op"),
+        ("add_parameter_gate", "parameter"),
+        ("add_parameter_gate", "threshold"),
+        ("add_predicate", "object_kind"),
+        ("add_predicate", "predicate_id"),
+        ("add_section", "parent_doc"),
+        ("add_section", "section_id"),
+        ("add_section", "title"),
+        ("add_section_binding", "file"),
+        ("add_section_binding", "kind"),
+        ("add_section_binding", "section_id"),
+        ("add_section_caveat", "bullet"),
+        ("add_section_caveat", "section_id"),
+        ("add_section_example", "code"),
+        ("add_section_example", "language"),
+        ("add_section_example", "section_id"),
+        ("add_unit", "unit_id"),
+        ("amend_fact", "canon_from"),
+        ("amend_fact", "claim"),
+        ("amend_fact", "fact_id"),
+        ("amend_fact", "frame"),
+        ("amend_fact", "reason"),
+        ("append_changelog_entry", "changes_bullets"),
+        ("append_changelog_entry", "decision_summary"),
+        ("append_changelog_entry", "entry_id"),
+        ("append_changelog_entry", "verification_bullets"),
+        ("emit_publishable_override_ledger_draft", "applied_in"),
+        ("emit_publishable_override_ledger_draft", "entry_id"),
+        ("emit_publishable_override_ledger_draft", "reason"),
+        ("import_edge_proposals", "proposals_path"),
+        ("import_sections", "sections"),
+        ("import_typing_proposals", "proposals_path"),
+        ("propose_verdict", "manifest_path"),
+        ("query_changelog_entry", "entry_id"),
+        ("query_inventory", "inventory_id"),
+        ("query_section", "section_id"),
+        ("query_term", "pattern"),
+        ("redact_term", "applied_in"),
+        ("redact_term", "pattern"),
+        ("redact_term", "reason"),
+        ("redact_term", "replacement"),
+        ("remove_disclosure", "fact_id"),
+        ("remove_disclosure", "reason"),
+        ("remove_disclosure", "telling_id"),
+        ("remove_disclosure_reveal_coord", "branch"),
+        ("remove_disclosure_reveal_coord", "coord"),
+        ("remove_disclosure_reveal_coord", "fact_id"),
+        ("remove_disclosure_reveal_coord", "telling_id"),
+        ("remove_edge_cost", "fact_id"),
+        ("remove_edge_guard", "fact_id"),
+        ("remove_edge_guard_condition", "condition"),
+        ("remove_edge_guard_condition", "fact_id"),
+        ("remove_entity_kind", "kind_id"),
+        ("remove_fact_count", "fact_id"),
+        ("remove_inventory_entry", "inventory_id"),
+        ("remove_inventory_entry", "reason"),
+        ("remove_parameter_delta", "fact_id"),
+        ("remove_parameter_delta", "parameter"),
+        ("remove_parameter_gate", "fact_id"),
+        ("remove_predicate", "predicate_id"),
+        ("remove_section", "reason"),
+        ("remove_section", "section_id"),
+        ("remove_section_binding", "file"),
+        ("remove_section_binding", "reason"),
+        ("remove_section_binding", "section_id"),
+        ("report_disclosure_coverage", "telling"),
+        ("report_entity", "entity_id"),
+        ("report_frame_view", "at"),
+        ("report_frame_view", "frame"),
+        ("report_playable_world", "telling"),
+        ("report_quest_graph", "telling"),
+        ("retract_fact", "fact_id"),
+        ("retract_fact", "reason"),
+        ("set_changelog_publishable_carry_forward", "bullets"),
+        ("set_changelog_publishable_carry_forward", "entry_id"),
+        ("set_changelog_publishable_changes", "bullets"),
+        ("set_changelog_publishable_changes", "entry_id"),
+        ("set_changelog_publishable_decision_summary", "entry_id"),
+        ("set_changelog_publishable_decision_summary", "value"),
+        ("set_changelog_publishable_impact_refs", "bullets"),
+        ("set_changelog_publishable_impact_refs", "entry_id"),
+        ("set_changelog_publishable_verification", "bullets"),
+        ("set_changelog_publishable_verification", "entry_id"),
+        ("set_disclosure", "fact_id"),
+        ("set_disclosure", "mode"),
+        ("set_disclosure", "telling_id"),
+        ("set_disclosure_reveal_threshold", "branch"),
+        ("set_disclosure_reveal_threshold", "fact_id"),
+        ("set_disclosure_reveal_threshold", "telling_id"),
+        ("set_edge_guard_threshold", "fact_id"),
+        ("set_entity_kind_parents", "kind_id"),
+        ("set_inventory_section_ref", "inventory_id"),
+        ("set_inventory_status", "inventory_id"),
+        ("set_inventory_status", "status"),
+        ("set_predicate", "description"),
+        ("set_predicate", "object_kind"),
+        ("set_predicate", "predicate_id"),
+        ("set_section_alternatives", "bullets"),
+        ("set_section_alternatives", "section_id"),
+        ("set_section_binding_kind", "file"),
+        ("set_section_binding_kind", "kind"),
+        ("set_section_binding_kind", "reason"),
+        ("set_section_binding_kind", "section_id"),
+        ("set_section_coverage_expectation", "expectation"),
+        ("set_section_coverage_expectation", "reason"),
+        ("set_section_coverage_expectation", "section_id"),
+        ("set_section_decision_status", "section_id"),
+        ("set_section_decision_status", "status"),
+        ("set_section_impact_scope", "refs"),
+        ("set_section_impact_scope", "section_id"),
+        ("set_section_inputs", "bullets"),
+        ("set_section_inputs", "section_id"),
+        ("set_section_intent", "section_id"),
+        ("set_section_intent", "text"),
+        ("set_section_outputs", "bullets"),
+        ("set_section_outputs", "section_id"),
+        ("set_section_parent_doc", "section_id"),
+        ("set_section_parent_doc", "text"),
+        ("set_section_parent_section", "section_id"),
+        ("set_section_rationale", "bullets"),
+        ("set_section_rationale", "section_id"),
+        ("set_section_title", "section_id"),
+        ("set_section_title", "text"),
+        ("set_section_verification_expectation", "expectation"),
+        ("set_section_verification_expectation", "reason"),
+        ("set_section_verification_expectation", "section_id"),
+        ("validate_disclosure_leak", "against"),
+        ("validate_disclosure_leak", "telling"),
+        ("validate_disclosure_leak", "truth_frame"),
+        ("validate_disclosure_leak", "world"),
+        ("validate_render_fidelity", "world"),
+    ];
+
     /// The REQUIRED arguments of every routed tool — the half of the surface
     /// the exercised/unexercised accounting does not cover, counted so the
     /// ratio it prints cannot read as coverage of the whole.
@@ -4101,10 +4279,44 @@ mod tests {
     /// wire Round 981 found broken-by-construction was one of these.
     #[test]
     fn every_optional_tool_argument_is_declared_exercised_or_not() {
-        let population = optional_arguments();
+        account_for("optional", optional_arguments(), UNEXERCISED);
+    }
+
+    /// THE OTHER HALF, ON THE SAME TERMS. Round 1014's defect lived here and the
+    /// optional accounting could only print that it was excluded.
+    ///
+    /// A REQUIRED ARGUMENT CANNOT BE OMITTED, SO IT CANNOT BE IGNORED THE WAY
+    /// ROUND 981's WAS — the call would not parse. What it CAN be is READ WRONG,
+    /// and the failure looks like success just as squarely: `against` reached
+    /// `Path::new` unresolved, missed the file, and came back `off_path: []`,
+    /// `leaks: []` from a gate that had opened nothing.
+    ///
+    /// Rounds 1017 and 1019 both carried the guess that a differential could not
+    /// catch that, "because both arms fail". IT IS FALSE, and the reason is the
+    /// same `AtomicStore::load` behaviour that made the bug invisible: a missing
+    /// path loaded as an EMPTY store, so both arms SUCCEEDED and answered
+    /// identically. Two values that must produce two answers is exactly what
+    /// separates them, which is why the population is being named rather than
+    /// argued about (`validate_render_fidelity_against_reaches_the_answer` is
+    /// the first case, and the injection that reconstructs Round 1014's defect
+    /// turns it red).
+    #[test]
+    fn every_required_tool_argument_is_declared_exercised_or_not() {
+        account_for("required", required_arguments(), UNEXERCISED_REQUIRED);
+    }
+
+    /// One accounting, run once per half of the surface.
+    ///
+    /// `EXERCISED` is generated over BOTH halves, because a case proves a
+    /// handler reads an argument whether the schema calls that argument required
+    /// or optional. It is the ROUTER that decides which half a pair belongs to,
+    /// so a pair is checked against the half it actually lives in and is ignored
+    /// by the other — a second generated const would need the macro to know a
+    /// fact about the schema rather than about the case.
+    fn account_for(half: &str, population: Vec<(String, String)>, silent: &[(&str, &str)]) {
         assert!(
             !population.is_empty(),
-            "the router exposes no optional argument at all, so this gate is \
+            "the router exposes no {half} argument at all, so this gate is \
              reading nothing and its silence proves nothing"
         );
         assert!(
@@ -4112,37 +4324,66 @@ mod tests {
             "no pair is claimed exercised, so the accounting has no floor"
         );
 
-        let declared: BTreeSet<(&str, &str)> = EXERCISED
-            .iter()
-            .chain(EXERCISED_BESPOKE)
-            .chain(UNEXERCISED)
-            .copied()
-            .collect();
-        assert_eq!(
-            declared.len(),
-            EXERCISED.len() + EXERCISED_BESPOKE.len() + UNEXERCISED.len(),
-            "a pair is declared twice, so one of the two lists is lying about it"
-        );
-
         let live: BTreeSet<(&str, &str)> = population
             .iter()
             .map(|(t, a)| (t.as_str(), a.as_str()))
             .collect();
-        let undeclared: Vec<&(&str, &str)> =
-            declared.iter().filter(|p| !live.contains(*p)).collect();
+        let claims: Vec<(&str, &str)> = EXERCISED
+            .iter()
+            .chain(EXERCISED_BESPOKE)
+            .chain(silent)
+            .copied()
+            .collect();
+
+        let mine: Vec<(&str, &str)> = claims
+            .iter()
+            .copied()
+            .filter(|p| live.contains(p))
+            .collect();
+        let deduped: BTreeSet<(&str, &str)> = mine.iter().copied().collect();
+        assert_eq!(
+            deduped.len(),
+            mine.len(),
+            "a pair is declared twice, so one of the two lists is lying about it"
+        );
+
+        // A PAIR THE ROUTER DOES NOT EXPOSE AT ALL is a claim about a surface
+        // that no longer exists. Belonging to the OTHER half is not that — the
+        // other gate owns it — so the exclusion is by half, not by list.
+        let other = other_half(half);
+        let elsewhere: BTreeSet<(&str, &str)> = other
+            .iter()
+            .map(|(t, a)| (t.as_str(), a.as_str()))
+            .collect();
+        let unroutable: Vec<(&str, &str)> = silent
+            .iter()
+            .copied()
+            .filter(|p| !live.contains(p))
+            .collect();
         assert!(
-            undeclared.is_empty(),
-            "{} declared pair(s) are not optional arguments of any routed tool, \
-             so this accounting describes a surface that no longer exists: \
-             {undeclared:?}",
-            undeclared.len()
+            unroutable.is_empty(),
+            "{} pair(s) named in the {half} silent set are not {half} arguments \
+             of any routed tool, so this accounting describes a surface that no \
+             longer exists: {unroutable:?}",
+            unroutable.len()
+        );
+        let nowhere: Vec<(&str, &str)> = claims
+            .iter()
+            .copied()
+            .filter(|p| !live.contains(p) && !elsewhere.contains(p))
+            .collect();
+        assert!(
+            nowhere.is_empty(),
+            "{} declared pair(s) are arguments of no routed tool at all: \
+             {nowhere:?}",
+            nowhere.len()
         );
 
         let unaccounted: Vec<&(&str, &str)> =
-            live.iter().filter(|p| !declared.contains(*p)).collect();
+            live.iter().filter(|p| !deduped.contains(*p)).collect();
         assert!(
             unaccounted.is_empty(),
-            "{} of {} agent-facing optional argument(s) are in neither list. An \
+            "{} of {} agent-facing {half} argument(s) are in neither list. An \
              argument that nothing proves the handler reads must be named as \
              such, not left to be discovered by an agent whose call quietly did \
              less than it asked for: {unaccounted:?}",
@@ -4150,26 +4391,28 @@ mod tests {
             live.len()
         );
 
-        // WHAT THIS DENOMINATOR LEAVES OUT, PRINTED BESIDE IT. The accounting
-        // is over OPTIONAL arguments, because Round 981's defect was an
-        // argument an agent could send and the handler could ignore while
-        // answering success. A REQUIRED argument cannot be omitted, so it
-        // cannot hide that way — but it can still be read wrongly, and Round
-        // 1014's defect was exactly that: `against` is required, so it was
-        // never in this population, and it reached `Path::new` unresolved while
-        // this line reported a coverage figure that had nothing to say about
-        // it. A ratio whose denominator excludes where the last bug lived must
-        // print the exclusion (Round 854).
-        let required = required_arguments().len();
+        // BOTH RATIOS ARE PRINTED EVERY RUN, because a check that reports only
+        // violations reads exactly like one that has nothing to report (Round
+        // 854) — and because the optional half read as coverage of the whole
+        // surface for as long as the required half had no gate to print.
         println!(
-            "MCP optional arguments: {} exercised / {} unexercised, of {} on the router \
-             ({required} REQUIRED argument(s) are outside this accounting entirely)",
-            EXERCISED.len() + EXERCISED_BESPOKE.len(),
-            UNEXERCISED.len(),
+            "MCP {half} arguments: {} exercised / {} unexercised, of {} on the router",
+            deduped.len() - silent.iter().filter(|p| live.contains(*p)).count(),
+            silent.len(),
             live.len()
         );
-        for (tool, arg) in UNEXERCISED {
-            println!("  unexercised: {tool}.{arg}");
+        for (tool, arg) in silent {
+            println!("  unexercised ({half}): {tool}.{arg}");
+        }
+    }
+
+    /// The population the OTHER gate owns — so each gate can tell "this pair
+    /// moved to the other half" from "this pair is gone".
+    fn other_half(half: &str) -> Vec<(String, String)> {
+        match half {
+            "optional" => required_arguments(),
+            "required" => optional_arguments(),
+            other => panic!("`{other}` is not a half of the argument surface"),
         }
     }
 
@@ -5672,6 +5915,25 @@ mod tests {
             )
             validate_render_fidelity(RenderFidelityArgs) {"against": "blind.json", "world": "main", "order_path": "order-b.json"}
             ."order_path" = "order-c.json" seen "\"reached_terminal\": false" in output;
+        // A REQUIRED ARGUMENT IS JUDGED BY TWO VALUES, WHICH THE MACRO ALREADY
+        // EXPRESSES. Every case above differs by an argument being ABSENT or
+        // PRESENT, and a required argument has no absent arm — but the base
+        // already carries a value and the `=` supplies a second, so the two arms
+        // differ by WHICH STORE the gate was pointed at. Round 1014's defect is
+        // the reason to want this: `against` is required, so it sat outside the
+        // optional accounting entirely while reaching `Path::new` unresolved.
+        validate_render_fidelity_against_reaches_the_answer:
+            @branch_story
+            (store "one-fact.json" =
+                [import_sections(ImportSectionsArgs) {"sections": [{"section_id": "sc-01", "parent_doc": "spec", "title": "one"}, {"section_id": "sc-02", "parent_doc": "spec", "title": "two"}, {"section_id": "sc-03", "parent_doc": "spec", "title": "three"}]}]
+                [import_facts(atomic::FactsManifest) {"frames": [{"frame_id": "ground-truth"}], "entity_kinds": [{"kind_id": "place"}, {"kind_id": "character"}], "entities": [{"entity_id": "p-a", "kind": "place"}, {"entity_id": "e-her", "kind": "character"}], "predicates": [{"predicate_id": "at", "object_kind": "entity", "subject_kind": "character", "object_entity_kind": "place"}], "facts": [{"fact_id": "r-at-a", "frame": "ground-truth", "claim": "the prose puts her at a", "canon_from": "sc-01", "evidence": ["sc-01"], "entities": ["e-her", "p-a"], "typed": {"subject": "e-her", "predicate": "at", "object": {"kind": "entity", "id": "p-a"}}}]}]
+            )
+            (store "two-facts.json" =
+                [import_sections(ImportSectionsArgs) {"sections": [{"section_id": "sc-01", "parent_doc": "spec", "title": "one"}, {"section_id": "sc-02", "parent_doc": "spec", "title": "two"}, {"section_id": "sc-03", "parent_doc": "spec", "title": "three"}]}]
+                [import_facts(atomic::FactsManifest) {"frames": [{"frame_id": "ground-truth"}], "entity_kinds": [{"kind_id": "place"}, {"kind_id": "character"}], "entities": [{"entity_id": "p-a", "kind": "place"}, {"entity_id": "p-b", "kind": "place"}, {"entity_id": "e-her", "kind": "character"}], "predicates": [{"predicate_id": "at", "object_kind": "entity", "subject_kind": "character", "object_entity_kind": "place"}], "facts": [{"fact_id": "r-at-a", "frame": "ground-truth", "claim": "the prose puts her at a", "canon_from": "sc-01", "evidence": ["sc-01"], "entities": ["e-her", "p-a"], "typed": {"subject": "e-her", "predicate": "at", "object": {"kind": "entity", "id": "p-a"}}}, {"fact_id": "r-at-b", "frame": "ground-truth", "claim": "the prose puts her at b", "canon_from": "sc-03", "evidence": ["sc-03"], "entities": ["e-her", "p-b"], "typed": {"subject": "e-her", "predicate": "at", "object": {"kind": "entity", "id": "p-b"}}}]}]
+            )
+            validate_render_fidelity(RenderFidelityArgs) {"against": "one-fact.json", "world": "main", "order_path": "order-b.json"}
+            ."against" = "two-facts.json" seen "\"reextracted_facts\": 2" in output;
         validate_disclosure_leak_order_path_reaches_the_answer:
             @branch_story
             (store "blind.json" =
