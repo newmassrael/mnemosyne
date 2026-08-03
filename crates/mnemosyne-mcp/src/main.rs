@@ -3460,16 +3460,6 @@ mod tests {
         ("add_predicate", "object_tokens"),
         ("emit_publishable_override_ledger_draft", "kind"),
         ("import_edge_proposals", "dry_run"),
-        ("import_facts", "branches"),
-        ("import_facts", "disclosure_plans"),
-        ("import_facts", "edge_costs"),
-        ("import_facts", "edge_guards"),
-        ("import_facts", "entities"),
-        ("import_facts", "entity_kinds"),
-        ("import_facts", "facts"),
-        ("import_facts", "frames"),
-        ("import_facts", "predicates"),
-        ("import_facts", "units"),
         ("import_typing_proposals", "dry_run"),
         ("propose_verdict", "order_path"),
         ("propose_verdict", "rules_path"),
@@ -3948,6 +3938,39 @@ mod tests {
             [add_fact(atomic::FactImport) {"fact_id": "f-1", "frame": "ground-truth", "claim": "she waits", "canon_from": "sc-01", "evidence": ["sc-01"], "entities": ["e-her", "p-room"]}]
             amend_fact(AmendFactArgs) {"fact_id": "f-1", "frame": "ground-truth", "claim": "she waits still", "canon_from": "sc-01", "evidence": ["sc-01"], "entities": ["e-her", "p-room"], "reason": "revised"}
             ."typed" = {"subject": "e-her", "predicate": "at", "object": {"kind": "entity", "id": "p-room"}} seen "p-room" in store;
+        import_facts_edge_costs_reaches_the_store:
+            [import_sections(ImportSectionsArgs) {"sections": [{"section_id": "sc-01", "parent_doc": "spec", "title": "scene one"}]}]
+            import_facts(atomic::FactsManifest) {"frames": [{"frame_id": "ground-truth"}], "units": [{"unit_id": "minute"}], "entity_kinds": [{"kind_id": "place"}], "entities": [{"entity_id": "p-a", "kind": "place"}, {"entity_id": "p-b", "kind": "place"}], "predicates": [{"predicate_id": "adjacent", "object_kind": "entity", "subject_kind": "place", "object_entity_kind": "place"}], "facts": [{"fact_id": "f-way", "frame": "ground-truth", "claim": "a way runs from a to b", "canon_from": "sc-01", "evidence": ["sc-01"], "entities": ["p-a", "p-b"], "typed": {"subject": "p-a", "predicate": "adjacent", "object": {"kind": "entity", "id": "p-b"}}}, {"fact_id": "f-lamp", "frame": "ground-truth", "claim": "the lamp is lit", "canon_from": "sc-01", "evidence": ["sc-01"]}]}
+            ."edge_costs" = [{"fact_id": "f-way", "n": 2, "unit": "minute"}] seen "minute" in store;
+        import_facts_edge_guards_reaches_the_store:
+            [import_sections(ImportSectionsArgs) {"sections": [{"section_id": "sc-01", "parent_doc": "spec", "title": "scene one"}]}]
+            import_facts(atomic::FactsManifest) {"frames": [{"frame_id": "ground-truth"}], "units": [{"unit_id": "minute"}], "entity_kinds": [{"kind_id": "place"}], "entities": [{"entity_id": "p-a", "kind": "place"}, {"entity_id": "p-b", "kind": "place"}], "predicates": [{"predicate_id": "adjacent", "object_kind": "entity", "subject_kind": "place", "object_entity_kind": "place"}], "facts": [{"fact_id": "f-way", "frame": "ground-truth", "claim": "a way runs from a to b", "canon_from": "sc-01", "evidence": ["sc-01"], "entities": ["p-a", "p-b"], "typed": {"subject": "p-a", "predicate": "adjacent", "object": {"kind": "entity", "id": "p-b"}}}, {"fact_id": "f-lamp", "frame": "ground-truth", "claim": "the lamp is lit", "canon_from": "sc-01", "evidence": ["sc-01"]}]}
+            ."edge_guards" = [{"fact_id": "f-way", "conditions": ["f-lamp"], "threshold": 1}] seen "f-lamp" in store;
+        import_facts_frames_reaches_the_store:
+            import_facts(atomic::FactsManifest) {"units": [{"unit_id": "u-base"}]}
+            ."frames" = [{"frame_id": "ground-truth"}] seen "ground-truth" in store;
+        import_facts_units_reaches_the_store:
+            import_facts(atomic::FactsManifest) {"frames": [{"frame_id": "ground-truth"}]}
+            ."units" = [{"unit_id": "day"}] seen "day" in store;
+        import_facts_branches_reaches_the_store:
+            import_facts(atomic::FactsManifest) {"frames": [{"frame_id": "ground-truth"}]}
+            ."branches" = [{"branch_id": "b-what-if"}] seen "b-what-if" in store;
+        import_facts_entity_kinds_reaches_the_store:
+            import_facts(atomic::FactsManifest) {"frames": [{"frame_id": "ground-truth"}]}
+            ."entity_kinds" = [{"kind_id": "place"}] seen "place" in store;
+        import_facts_entities_reaches_the_store:
+            import_facts(atomic::FactsManifest) {"frames": [{"frame_id": "ground-truth"}]}
+            ."entities" = [{"entity_id": "e-her"}] seen "e-her" in store;
+        import_facts_predicates_reaches_the_store:
+            import_facts(atomic::FactsManifest) {"frames": [{"frame_id": "ground-truth"}]}
+            ."predicates" = [{"predicate_id": "does", "object_kind": "token", "object_tokens": ["waits"]}] seen "does" in store;
+        import_facts_disclosure_plans_reaches_the_store:
+            import_facts(atomic::FactsManifest) {"frames": [{"frame_id": "ground-truth"}]}
+            ."disclosure_plans" = [{"telling_id": "t-quiet", "default_mode": "state"}] seen "t-quiet" in store;
+        import_facts_facts_reaches_the_store:
+            [import_sections(ImportSectionsArgs) {"sections": [{"section_id": "sc-01", "parent_doc": "spec", "title": "scene one"}]}]
+            import_facts(atomic::FactsManifest) {"frames": [{"frame_id": "ground-truth"}]}
+            ."facts" = [{"fact_id": "f-1", "frame": "ground-truth", "claim": "she waits", "canon_from": "sc-01", "evidence": ["sc-01"]}] seen "f-1" in store;
         add_fact_quote_reaches_the_store:
             [add_frame(AddFrameArgs) {"frame_id": "ground-truth"}]
             [add_section(AddSectionArgs) {"section_id": "sc-01", "parent_doc": "spec", "title": "scene one"}]

@@ -34313,6 +34313,90 @@
         "78 OF 122 REMAIN AND THE NEXT COHERENT FAMILY IS `import_facts`, whose ten arguments are the sections of a manifest — frames, branches, entity kinds, units, entities, predicates, facts, edge costs, edge guards, disclosure plans. It is the transactional way an agent authors a scene, so an argument silently dropped there loses a whole class of a submission rather than one field of one fact.",
         "THE TYPED CASES PROVE THE CLAIM ARRIVES, NOT THAT IT ARRIVES INTACT. The needle is the object's entity id, so a handler that kept the object and dropped the predicate would still raise the count. Every leg of a typed claim has its own way of going missing, and the case as written watches one of them."
       ]
+    },
+    "Round 993": {
+      "decision_summary": "R993 (BUILD) — the transactional authoring surface is closed: all ten sections of the manifest `import_facts` takes are proven to arrive. This is the verb the contract tells an agent to prefer — N separate `add_*` calls are non-atomic, so a mid-sequence failure leaves a partial store, and this one is all-or-nothing — which means it is the path a scene actually gets authored down, and a section silently dropped here loses a whole CLASS of a submission rather than one field of one fact. Frames, branches, entity kinds, units, entities, predicates, facts, edge costs, edge guards, disclosure plans: every one of them was an argument no test had ever shown to survive the wire. STAR THE TWO EDGE SECTIONS ARE WHERE THE CASE HAD TO BUILD A WORLD RATHER THAN A FIXTURE, because a cost or a guard keys off an EXISTING edge fact. Each of those cases sends, in one manifest, the frame, the unit, the place kind, two places, the adjacency predicate with both leg kinds declared, the edge fact joining them and a second fact for the guard's condition to name — and only then the section under test. That is the argument being exercised in the shape an author would actually send it. STAR AND THE INJECTION IS THE FOURTH TIME COUNTING BEAT PRESENCE, in the plainest form yet: with the edge-cost section quietly cleared, \"`minute` occurs 1 time(s) without and 1 time(s) with\" — the unit is already registered by the same manifest, so a presence check would have confirmed an import that threw the costs away. STAR EIGHT OF THE TEN PASSED ON THEIR FIRST RUN, which is worth recording because the previous four rounds each had a fixture corrected by a tool's own error message. The manifest sections are independent by design, and that showed. The count is 54 of 122.",
+      "changes_bullets": [
+        "`crates/mnemosyne-mcp/src/main.rs` — ten cases covering every section of the manifest `import_facts` accepts: `frames`, `branches`, `entity_kinds`, `units`, `entities`, `predicates`, `facts`, `disclosure_plans`, `edge_costs`, `edge_guards`.",
+        "Same file — the `edge_costs` and `edge_guards` cases send a whole small world in one manifest (a frame, a unit, a place kind, two places, the adjacency predicate, the edge fact and a condition fact) because a cost or a guard keys off an edge fact that has to exist. The section under test is the only thing that differs between the two arms."
+      ],
+      "verification_bullets": [
+        "ALL TEN SECTIONS OF THE MANIFEST ARE NOW EXERCISED, which is the whole optional surface of `import_facts` rather than a sample. It is the verb the contract tells an agent to prefer over N separate `add_*` calls.",
+        "INJECTION S, `import_facts` silently clears the edge-cost section: `import_facts_edge_costs_reaches_the_store` failed with \"`minute` occurs 1 time(s) in the store import_facts produced WITHOUT `edge_costs` and 1 time(s) with it\". The unit is registered by the same manifest, so a presence check would have confirmed an import that discarded the costs — the fourth such case in this arc.",
+        "EIGHT OF THE TEN CASES PASSED ON THEIR FIRST RUN, unlike every previous round in this arc, where a tool's own error named a closed vocabulary the fixture had guessed at. The manifest's sections are independent by design and the fixtures did not have to be corrected to a hidden rule.",
+        "1551 workspace tests pass (1541 before), 0 failed, `--no-fail-fast`; clippy `-D warnings` and `cargo fmt --check` clean; `validate-workspace` T1 orphan 0 and T3 reject 0.",
+        "Citation hygiene (R255): Round 993 verified absent with `query --changelog-entry` before this entry was appended."
+      ],
+      "impact_refs": [
+        "atomic-store-mutate-api"
+      ],
+      "carry_forward_bullets": [
+        "68 OF 122 REMAIN AND THE MUTATING SIDE IS NEARLY DONE: what is left there is the disclosure and edge setters, the section-binding and decision-status arguments, the inventory section ref and the confirmation-event hashes. The bulk of the remainder — 46 of it — is the read side, where the oracle is the tool's answer and the setup is a workspace with enough in it for a report to say anything at all.",
+        "A CASE PROVES A SECTION ARRIVES, NOT THAT THE IMPORT IS ATOMIC. `import_facts` earns its place in the contract by being all-or-nothing, and nothing here tests that: a handler that applied nine sections and dropped the tenth on an error would pass every case above. That is a different property from the one this arc is proving and it wants its own test — a manifest whose last section is invalid, and a store that is unchanged afterwards."
+      ],
+      "population_census": [
+        {
+          "axis": "transition rules by `undirected`",
+          "left_label": "undirected",
+          "left": 10,
+          "right_label": "directed",
+          "right": 27
+        },
+        {
+          "axis": "map corpora by leg-kind declaration",
+          "left_label": "omitted",
+          "left": 6,
+          "right_label": "declared",
+          "right": 24
+        },
+        {
+          "axis": "cost-carrying corpora by direction-dependent pricing",
+          "left_label": "prices a way by direction",
+          "left": 4,
+          "right_label": "prices no way by direction",
+          "right": 6
+        },
+        {
+          "axis": "run trees by authoring mode",
+          "left_label": "hand script",
+          "left": 10,
+          "right_label": "file-only",
+          "right": 239
+        },
+        {
+          "axis": "map corpora by declared boundary crossing",
+          "left_label": "declares an exit",
+          "left": 6,
+          "right_label": "declares none",
+          "right": 24
+        },
+        {
+          "axis": "authored submissions by map and telling",
+          "left_label": "carries both",
+          "left": 10,
+          "right_label": "carries one",
+          "right": 24
+        }
+      ],
+      "publishable_decision_summary": "R993 (BUILD) — the transactional authoring surface is closed: all ten sections of the manifest `import_facts` takes are proven to arrive. This is the verb the contract tells an agent to prefer — N separate `add_*` calls are non-atomic, so a mid-sequence failure leaves a partial store, and this one is all-or-nothing — which means it is the path a scene actually gets authored down, and a section silently dropped here loses a whole CLASS of a submission rather than one field of one fact. Frames, branches, entity kinds, units, entities, predicates, facts, edge costs, edge guards, disclosure plans: every one of them was an argument no test had ever shown to survive the wire. STAR THE TWO EDGE SECTIONS ARE WHERE THE CASE HAD TO BUILD A WORLD RATHER THAN A FIXTURE, because a cost or a guard keys off an EXISTING edge fact. Each of those cases sends, in one manifest, the frame, the unit, the place kind, two places, the adjacency predicate with both leg kinds declared, the edge fact joining them and a second fact for the guard's condition to name — and only then the section under test. That is the argument being exercised in the shape an author would actually send it. STAR AND THE INJECTION IS THE FOURTH TIME COUNTING BEAT PRESENCE, in the plainest form yet: with the edge-cost section quietly cleared, \"`minute` occurs 1 time(s) without and 1 time(s) with\" — the unit is already registered by the same manifest, so a presence check would have confirmed an import that threw the costs away. STAR EIGHT OF THE TEN PASSED ON THEIR FIRST RUN, which is worth recording because the previous four rounds each had a fixture corrected by a tool's own error message. The manifest sections are independent by design, and that showed. The count is 54 of 122.",
+      "publishable_changes_bullets": [
+        "`crates/mnemosyne-mcp/src/main.rs` — ten cases covering every section of the manifest `import_facts` accepts: `frames`, `branches`, `entity_kinds`, `units`, `entities`, `predicates`, `facts`, `disclosure_plans`, `edge_costs`, `edge_guards`.",
+        "Same file — the `edge_costs` and `edge_guards` cases send a whole small world in one manifest (a frame, a unit, a place kind, two places, the adjacency predicate, the edge fact and a condition fact) because a cost or a guard keys off an edge fact that has to exist. The section under test is the only thing that differs between the two arms."
+      ],
+      "publishable_verification_bullets": [
+        "ALL TEN SECTIONS OF THE MANIFEST ARE NOW EXERCISED, which is the whole optional surface of `import_facts` rather than a sample. It is the verb the contract tells an agent to prefer over N separate `add_*` calls.",
+        "INJECTION S, `import_facts` silently clears the edge-cost section: `import_facts_edge_costs_reaches_the_store` failed with \"`minute` occurs 1 time(s) in the store import_facts produced WITHOUT `edge_costs` and 1 time(s) with it\". The unit is registered by the same manifest, so a presence check would have confirmed an import that discarded the costs — the fourth such case in this arc.",
+        "EIGHT OF THE TEN CASES PASSED ON THEIR FIRST RUN, unlike every previous round in this arc, where a tool's own error named a closed vocabulary the fixture had guessed at. The manifest's sections are independent by design and the fixtures did not have to be corrected to a hidden rule.",
+        "1551 workspace tests pass (1541 before), 0 failed, `--no-fail-fast`; clippy `-D warnings` and `cargo fmt --check` clean; `validate-workspace` T1 orphan 0 and T3 reject 0.",
+        "Citation hygiene (R255): Round 993 verified absent with `query --changelog-entry` before this entry was appended."
+      ],
+      "publishable_impact_refs": [
+        "atomic-store-mutate-api"
+      ],
+      "publishable_carry_forward_bullets": [
+        "68 OF 122 REMAIN AND THE MUTATING SIDE IS NEARLY DONE: what is left there is the disclosure and edge setters, the section-binding and decision-status arguments, the inventory section ref and the confirmation-event hashes. The bulk of the remainder — 46 of it — is the read side, where the oracle is the tool's answer and the setup is a workspace with enough in it for a report to say anything at all.",
+        "A CASE PROVES A SECTION ARRIVES, NOT THAT THE IMPORT IS ATOMIC. `import_facts` earns its place in the contract by being all-or-nothing, and nothing here tests that: a handler that applied nine sections and dropped the tenth on an error would pass every case above. That is a different property from the one this arc is proving and it wants its own test — a manifest whose last section is invalid, and a store that is unchanged afterwards."
+      ]
     }
   },
   "inventory_entries": {},
