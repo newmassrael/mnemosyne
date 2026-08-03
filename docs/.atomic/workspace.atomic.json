@@ -350,6 +350,94 @@
         "35 READ-SIDE ARGUMENTS REMAIN UNEXERCISED in the Round 986 accounting, and they are the reason this whole path arc surfaced: reaching them needs report worlds, and reaching THOSE needed paths that work. The mechanisms are built."
       ]
     },
+    "Round 1003": {
+      "decision_summary": "R1003 (BUILD) — the read side's first real world, and the thing that made it affordable was teaching the failure to say WHAT moved rather than only THAT something did. Round 998 wrote seven report cases and kept one; the six it removed were removed after hand-printing outputs to find a needle. STAR THE MESSAGE NOW CARRIES THE FIRST LINE OF CONTENT EACH SIDE HAS ALONE. A case author told only that the answer changed has to go and print both; told what changed, the diagnosis is usually finished. `report_playable_world.world` took three attempts and the third was decided by one line of the message: WITHOUT the argument the report carries `\"main\": {` and WITH it does not — so `world` SELECTS which world is reported, and the needle is the world it displaces rather than the world it names. Both earlier guesses (`b-alt`, then a fact only on that branch) appear on both sides, because the report lists every world's registry either way. STAR LINE-BY-LINE \"FIRST DIFFERENCE\" WAS USELESS AND SAYING SO IS THE POINT: on a pretty-printed report the first disagreement is a closing brace. What a case author needs is the first line of CONTENT one side carries alone, which is what ships. STAR THE WORLD ITSELF IS A BRANCHED STORY, not a fixture: a fork at the second scene, a fact that exists only on that branch, a map, a character who moves along it, and a telling. That is what a report argument needs to have anything to be about, and it is now reusable — `report_quest_graph.world` is the same world with a different verb and passed first time. STAR ONE CASE WAS REMOVED RATHER THAN KEPT: `report_quest_graph.order_path` answers identically under both orders, because nothing in this world hangs a quest off the scene the two orders differ by. The world is the wrong shape for that argument, which is a world to build and not a limit. The count is 89 of 122.",
+      "changes_bullets": [
+        "`mnemosyne-mcp` — `first_difference`, the first line of substance each observation carries alone, printed by the needle-did-not-move failure. Punctuation-only lines are skipped because on a pretty-printed report the first raw disagreement is a brace.",
+        "Same file — a branched world reused by both new cases: a fork at the second scene, a fact only on that branch, a map, a moving character and a telling.",
+        "Same file — `report_playable_world.world` and `report_quest_graph.world`. The needle is the world the argument DISPLACES, since the report lists every world's registry either way."
+      ],
+      "verification_bullets": [
+        "STAR THE DIAGNOSTIC PAID FOR ITSELF IN THE ROUND THAT ADDED IT. Two needles were wrong before it existed and both looked identical from the outside; with it, the third was decided by one line: \"without: `\\\"main\\\": {`  with: <nothing this side carries alone>\".",
+        "INJECTION AH, `report_playable_world` stops reading `world`: the case fails. The report then carries `main` five times either way, which is exactly the shape the first two needles could not tell apart.",
+        "`report_quest_graph.world` PASSED ON ITS FIRST RUN against the same world, which is what a reusable world is for.",
+        "ONE CASE WAS REMOVED AFTER BEING WRITTEN: `report_quest_graph.order_path` does not discriminate in this world. Keeping it would have moved the pair out of the silent set while proving nothing.",
+        "1590 workspace tests pass (1588 before), 0 failed, `--no-fail-fast`; clippy `-D warnings` and `cargo fmt --check` clean; `validate-workspace` T1 orphan 0 and T3 reject 0.",
+        "Citation hygiene (R255): Round 998 verified present with `query --changelog-entry` and Round 1003 verified absent before this entry was appended."
+      ],
+      "impact_refs": [
+        "atomic-store-mutate-api"
+      ],
+      "carry_forward_bullets": [
+        "33 REMAIN AND THE BOTTLENECK IS NAMED: each needs a world its report can see. This round built one that two verbs share; the remaining families want their own — payoffs for the coverage reports, irony intervals, edge candidates, a second telling to leak against, a manuscript walk. The mechanisms are all built and so is the diagnostic that makes finding a needle cheap.",
+        "`first_difference` REPORTS ONE LINE, NOT A DIFF. Where two observations differ in many places it names the first and says nothing about the rest, which was enough here and will not always be. It is deliberately not a diff library."
+      ],
+      "population_census": [
+        {
+          "axis": "transition rules by `undirected`",
+          "left_label": "undirected",
+          "left": 10,
+          "right_label": "directed",
+          "right": 27
+        },
+        {
+          "axis": "map corpora by leg-kind declaration",
+          "left_label": "omitted",
+          "left": 6,
+          "right_label": "declared",
+          "right": 24
+        },
+        {
+          "axis": "cost-carrying corpora by direction-dependent pricing",
+          "left_label": "prices a way by direction",
+          "left": 4,
+          "right_label": "prices no way by direction",
+          "right": 6
+        },
+        {
+          "axis": "run trees by authoring mode",
+          "left_label": "hand script",
+          "left": 10,
+          "right_label": "file-only",
+          "right": 239
+        },
+        {
+          "axis": "map corpora by declared boundary crossing",
+          "left_label": "declares an exit",
+          "left": 6,
+          "right_label": "declares none",
+          "right": 24
+        },
+        {
+          "axis": "authored submissions by map and telling",
+          "left_label": "carries both",
+          "left": 10,
+          "right_label": "carries one",
+          "right": 24
+        }
+      ],
+      "publishable_decision_summary": "R1003 (BUILD) — the read side's first real world, and the thing that made it affordable was teaching the failure to say WHAT moved rather than only THAT something did. Round 998 wrote seven report cases and kept one; the six it removed were removed after hand-printing outputs to find a needle. STAR THE MESSAGE NOW CARRIES THE FIRST LINE OF CONTENT EACH SIDE HAS ALONE. A case author told only that the answer changed has to go and print both; told what changed, the diagnosis is usually finished. `report_playable_world.world` took three attempts and the third was decided by one line of the message: WITHOUT the argument the report carries `\"main\": {` and WITH it does not — so `world` SELECTS which world is reported, and the needle is the world it displaces rather than the world it names. Both earlier guesses (`b-alt`, then a fact only on that branch) appear on both sides, because the report lists every world's registry either way. STAR LINE-BY-LINE \"FIRST DIFFERENCE\" WAS USELESS AND SAYING SO IS THE POINT: on a pretty-printed report the first disagreement is a closing brace. What a case author needs is the first line of CONTENT one side carries alone, which is what ships. STAR THE WORLD ITSELF IS A BRANCHED STORY, not a fixture: a fork at the second scene, a fact that exists only on that branch, a map, a character who moves along it, and a telling. That is what a report argument needs to have anything to be about, and it is now reusable — `report_quest_graph.world` is the same world with a different verb and passed first time. STAR ONE CASE WAS REMOVED RATHER THAN KEPT: `report_quest_graph.order_path` answers identically under both orders, because nothing in this world hangs a quest off the scene the two orders differ by. The world is the wrong shape for that argument, which is a world to build and not a limit. The count is 89 of 122.",
+      "publishable_changes_bullets": [
+        "`mnemosyne-mcp` — `first_difference`, the first line of substance each observation carries alone, printed by the needle-did-not-move failure. Punctuation-only lines are skipped because on a pretty-printed report the first raw disagreement is a brace.",
+        "Same file — a branched world reused by both new cases: a fork at the second scene, a fact only on that branch, a map, a moving character and a telling.",
+        "Same file — `report_playable_world.world` and `report_quest_graph.world`. The needle is the world the argument DISPLACES, since the report lists every world's registry either way."
+      ],
+      "publishable_verification_bullets": [
+        "STAR THE DIAGNOSTIC PAID FOR ITSELF IN THE ROUND THAT ADDED IT. Two needles were wrong before it existed and both looked identical from the outside; with it, the third was decided by one line: \"without: `\\\"main\\\": {`  with: <nothing this side carries alone>\".",
+        "INJECTION AH, `report_playable_world` stops reading `world`: the case fails. The report then carries `main` five times either way, which is exactly the shape the first two needles could not tell apart.",
+        "`report_quest_graph.world` PASSED ON ITS FIRST RUN against the same world, which is what a reusable world is for.",
+        "ONE CASE WAS REMOVED AFTER BEING WRITTEN: `report_quest_graph.order_path` does not discriminate in this world. Keeping it would have moved the pair out of the silent set while proving nothing.",
+        "1590 workspace tests pass (1588 before), 0 failed, `--no-fail-fast`; clippy `-D warnings` and `cargo fmt --check` clean; `validate-workspace` T1 orphan 0 and T3 reject 0.",
+        "Citation hygiene (R255): Round 998 verified present with `query --changelog-entry` and Round 1003 verified absent before this entry was appended."
+      ],
+      "publishable_impact_refs": [
+        "atomic-store-mutate-api"
+      ],
+      "publishable_carry_forward_bullets": [
+        "33 REMAIN AND THE BOTTLENECK IS NAMED: each needs a world its report can see. This round built one that two verbs share; the remaining families want their own — payoffs for the coverage reports, irony intervals, edge candidates, a second telling to leak against, a manuscript walk. The mechanisms are all built and so is the diagnostic that makes finding a needle cheap.",
+        "`first_difference` REPORTS ONE LINE, NOT A DIFF. Where two observations differ in many places it names the first and says nothing about the rest, which was enough here and will not always be. It is deliberately not a diff library."
+      ]
+    },
     "Round 252": {
       "decision_summary": "Parser CommonMark conformance — recognize indented fenced code blocks (§98) and require whitespace after ATX hash sequence (§62)",
       "changes_bullets": [
