@@ -33963,6 +33963,100 @@
         "COUNTING OCCURRENCES IS STRONGER THAN PRESENCE AND STILL NOT AN EQUALITY. A handler that wrote the argument into a neighbouring field of the same record would raise the count and pass. Where a tool has a CLI twin the twin's answer is the exact oracle, as Round 981's bespoke case uses; that is the upgrade path for any argument where the count proves too coarse.",
         "THE `given` CALLS ARE NOT THEMSELVES EXERCISED BY THE CASE THEY SET UP. If a setup call silently ignored one of ITS optional arguments the case would still pass, since both arms run the same setup. That is correct — each argument is proven by its own case — but it means a `given` line is not evidence about the tool it invokes."
       ]
+    },
+    "Round 989": {
+      "decision_summary": "R989 (MEASURE -> BUILD) — half of what was left could never have been reached by the test this arc had been writing, and measuring that before writing more of them is what this round is. Round 988 left 102 optional arguments unproven and the obvious next move was more of the same case. STAR THE SPLIT WAS MEASURED FIRST AND IT SAID OTHERWISE: 46 of the 102, across 25 tools, are arguments of READ tools — `query_term`, `list_changelog`, every `report_*` and `validate_*`. A read tool never touches the store, so the store-differential oracle compares two identical files for it and can only ever pass. Writing forty more store cases would have left those 46 sitting in the list looking like work not yet done when they were work the instrument could not do. STAR SO THE CASE NOW DECLARES ITS ORACLE, `store` or `output`, and an unknown word is a panic rather than a default. A mutating tool is judged by what it left behind; a read tool is judged by its answer, which is the only thing its arguments can change. The oracle is spelled in every case rather than inferred from the tool name, because whether a tool writes is not something the test should be guessing. STAR AND THE FIRST READ CASE IS THE ONE ROUND 986 USED TO SHOW THE HOLE. That round demonstrated the class by stopping `query_term` from reading `case_insensitive` and recording that the whole suite stayed green — an agent asking for a case-insensitive search gets a case-sensitive one, reported as success. The same injection now fails, naming the argument. STAR A FILTER ARGUMENT TAKES AWAY FROM WHAT IS OBSERVED AND THE ASSERTION HAD ASSUMED GROWTH. `limit` drops rows, so the needle it names goes from present to absent, and the round-987 assertion — more occurrences with the argument than without — false-rejected it. It now demands that the count DIFFER. That is still strictly stronger than the whole-observation difference asserted beside it, because it names which value moved rather than accepting any change at all; and it is the second time in three rounds that writing a new shape of case corrected the assertion rather than the code.",
+      "changes_bullets": [
+        "`crates/mnemosyne-mcp/src/main.rs` — every `exercised!` case ends `in store` or `in output`, and an oracle the macro does not know is a panic. Read tools never write the store, so without this their 46 arguments were unreachable by any case this arc could write.",
+        "Same file — `answer_text`, the read-side counterpart of the store bytes: everything the tool said, joined.",
+        "Same file — the needle assertion demands the count DIFFER rather than grow, because a filter argument such as `limit` takes rows away. It still names which value moved, which the whole-observation difference beside it does not.",
+        "Same file — four read cases: `query_term.case_insensitive`, `query_term.regex`, `query_section.include_changelog`, `list_changelog.limit`. The count is 24 exercised against 98."
+      ],
+      "verification_bullets": [
+        "STAR THE MEASUREMENT CAME BEFORE THE WRITING AND CHANGED WHAT WAS WRITTEN. Splitting the 102 remaining pairs by whether their handler mutates: 56 on 15 mutating tools, 46 on 25 read tools. The read half needed a second oracle, not more cases.",
+        "INJECTION M, `query_term` stops reading `case_insensitive`: `query_term_case_insensitive_reaches_the_answer` failed naming it. This is the exact injection Round 986 ran to demonstrate that nothing in the repository caught the class, and it recorded the whole suite staying green.",
+        "INJECTION N, `list_changelog` stops reading `limit`: the case failed with \"`Round 1` occurs 1 time(s) without and 1 time(s) with\", which is the filter direction the growth assertion could not express.",
+        "INJECTION N DID NOT APPLY ON ITS FIRST RUN AND THE GREEN WAS DISCARDED — the anchor named a struct field that the handler does not spell that way. It was re-read from the source and re-run. This is the second round running in which the `count == 1` assertion caught an injection that would otherwise have been read as evidence.",
+        "THE FIRST TWO READ CASES FAILED HONESTLY BEFORE THEY PASSED: `query_term` does not search entity descriptions, so the fixture's corpus was moved to ledger prose, which is what the tool actually reads. The fixture was corrected rather than the assertion weakened.",
+        "1521 workspace tests pass (1517 before), 0 failed, `--no-fail-fast`; clippy `-D warnings` and `cargo fmt --check` clean; `validate-workspace` T1 orphan 0 and T3 reject 0.",
+        "Citation hygiene (R255): Rounds 986, 987 and 988 verified present with `query --changelog-entry` and Round 989 verified absent before this entry was appended."
+      ],
+      "impact_refs": [
+        "atomic-store-mutate-api"
+      ],
+      "carry_forward_bullets": [
+        "98 OF 122 REMAIN AND BOTH ORACLES NOW EXIST, so nothing left is blocked on an instrument. The read side wants a workspace with enough content for a report to say anything — most `report_*` arguments are an `order_path` or a `world`, which need a canon order and facts before the answer varies at all, and that is several `given` lines rather than a new ability.",
+        "AN OUTPUT ORACLE IS WEAKER THAN A STORE ORACLE IN ONE WAY WORTH SAYING: a read tool that took the argument and used it wrongly still changes its answer, so the case passes. The store side has the same limit at one remove. Where a CLI twin exists its answer is the exact oracle, which is what Round 981's bespoke case uses and what any argument too coarse for a count should move to.",
+        "THE ORACLE IS DECLARED PER CASE AND NOTHING CHECKS IT AGAINST THE TOOL. Writing `in store` for a read tool yields two identical observations and a failure that reads as a defect in the handler rather than in the case. That is loud rather than silent, so it is not carried as a risk, but a later round could derive the oracle from whether the handler mutates instead of taking the author's word."
+      ],
+      "population_census": [
+        {
+          "axis": "transition rules by `undirected`",
+          "left_label": "undirected",
+          "left": 10,
+          "right_label": "directed",
+          "right": 27
+        },
+        {
+          "axis": "map corpora by leg-kind declaration",
+          "left_label": "omitted",
+          "left": 6,
+          "right_label": "declared",
+          "right": 24
+        },
+        {
+          "axis": "cost-carrying corpora by direction-dependent pricing",
+          "left_label": "prices a way by direction",
+          "left": 4,
+          "right_label": "prices no way by direction",
+          "right": 6
+        },
+        {
+          "axis": "run trees by authoring mode",
+          "left_label": "hand script",
+          "left": 10,
+          "right_label": "file-only",
+          "right": 239
+        },
+        {
+          "axis": "map corpora by declared boundary crossing",
+          "left_label": "declares an exit",
+          "left": 6,
+          "right_label": "declares none",
+          "right": 24
+        },
+        {
+          "axis": "authored submissions by map and telling",
+          "left_label": "carries both",
+          "left": 10,
+          "right_label": "carries one",
+          "right": 24
+        }
+      ],
+      "publishable_decision_summary": "R989 (MEASURE -> BUILD) — half of what was left could never have been reached by the test this arc had been writing, and measuring that before writing more of them is what this round is. Round 988 left 102 optional arguments unproven and the obvious next move was more of the same case. STAR THE SPLIT WAS MEASURED FIRST AND IT SAID OTHERWISE: 46 of the 102, across 25 tools, are arguments of READ tools — `query_term`, `list_changelog`, every `report_*` and `validate_*`. A read tool never touches the store, so the store-differential oracle compares two identical files for it and can only ever pass. Writing forty more store cases would have left those 46 sitting in the list looking like work not yet done when they were work the instrument could not do. STAR SO THE CASE NOW DECLARES ITS ORACLE, `store` or `output`, and an unknown word is a panic rather than a default. A mutating tool is judged by what it left behind; a read tool is judged by its answer, which is the only thing its arguments can change. The oracle is spelled in every case rather than inferred from the tool name, because whether a tool writes is not something the test should be guessing. STAR AND THE FIRST READ CASE IS THE ONE ROUND 986 USED TO SHOW THE HOLE. That round demonstrated the class by stopping `query_term` from reading `case_insensitive` and recording that the whole suite stayed green — an agent asking for a case-insensitive search gets a case-sensitive one, reported as success. The same injection now fails, naming the argument. STAR A FILTER ARGUMENT TAKES AWAY FROM WHAT IS OBSERVED AND THE ASSERTION HAD ASSUMED GROWTH. `limit` drops rows, so the needle it names goes from present to absent, and the round-987 assertion — more occurrences with the argument than without — false-rejected it. It now demands that the count DIFFER. That is still strictly stronger than the whole-observation difference asserted beside it, because it names which value moved rather than accepting any change at all; and it is the second time in three rounds that writing a new shape of case corrected the assertion rather than the code.",
+      "publishable_changes_bullets": [
+        "`crates/mnemosyne-mcp/src/main.rs` — every `exercised!` case ends `in store` or `in output`, and an oracle the macro does not know is a panic. Read tools never write the store, so without this their 46 arguments were unreachable by any case this arc could write.",
+        "Same file — `answer_text`, the read-side counterpart of the store bytes: everything the tool said, joined.",
+        "Same file — the needle assertion demands the count DIFFER rather than grow, because a filter argument such as `limit` takes rows away. It still names which value moved, which the whole-observation difference beside it does not.",
+        "Same file — four read cases: `query_term.case_insensitive`, `query_term.regex`, `query_section.include_changelog`, `list_changelog.limit`. The count is 24 exercised against 98."
+      ],
+      "publishable_verification_bullets": [
+        "STAR THE MEASUREMENT CAME BEFORE THE WRITING AND CHANGED WHAT WAS WRITTEN. Splitting the 102 remaining pairs by whether their handler mutates: 56 on 15 mutating tools, 46 on 25 read tools. The read half needed a second oracle, not more cases.",
+        "INJECTION M, `query_term` stops reading `case_insensitive`: `query_term_case_insensitive_reaches_the_answer` failed naming it. This is the exact injection Round 986 ran to demonstrate that nothing in the repository caught the class, and it recorded the whole suite staying green.",
+        "INJECTION N, `list_changelog` stops reading `limit`: the case failed with \"`Round 1` occurs 1 time(s) without and 1 time(s) with\", which is the filter direction the growth assertion could not express.",
+        "INJECTION N DID NOT APPLY ON ITS FIRST RUN AND THE GREEN WAS DISCARDED — the anchor named a struct field that the handler does not spell that way. It was re-read from the source and re-run. This is the second round running in which the `count == 1` assertion caught an injection that would otherwise have been read as evidence.",
+        "THE FIRST TWO READ CASES FAILED HONESTLY BEFORE THEY PASSED: `query_term` does not search entity descriptions, so the fixture's corpus was moved to ledger prose, which is what the tool actually reads. The fixture was corrected rather than the assertion weakened.",
+        "1521 workspace tests pass (1517 before), 0 failed, `--no-fail-fast`; clippy `-D warnings` and `cargo fmt --check` clean; `validate-workspace` T1 orphan 0 and T3 reject 0.",
+        "Citation hygiene (R255): Rounds 986, 987 and 988 verified present with `query --changelog-entry` and Round 989 verified absent before this entry was appended."
+      ],
+      "publishable_impact_refs": [
+        "atomic-store-mutate-api"
+      ],
+      "publishable_carry_forward_bullets": [
+        "98 OF 122 REMAIN AND BOTH ORACLES NOW EXIST, so nothing left is blocked on an instrument. The read side wants a workspace with enough content for a report to say anything — most `report_*` arguments are an `order_path` or a `world`, which need a canon order and facts before the answer varies at all, and that is several `given` lines rather than a new ability.",
+        "AN OUTPUT ORACLE IS WEAKER THAN A STORE ORACLE IN ONE WAY WORTH SAYING: a read tool that took the argument and used it wrongly still changes its answer, so the case passes. The store side has the same limit at one remove. Where a CLI twin exists its answer is the exact oracle, which is what Round 981's bespoke case uses and what any argument too coarse for a count should move to.",
+        "THE ORACLE IS DECLARED PER CASE AND NOTHING CHECKS IT AGAINST THE TOOL. Writing `in store` for a read tool yields two identical observations and a failure that reads as a defect in the handler rather than in the case. That is loud rather than silent, so it is not carried as a risk, but a later round could derive the oracle from whether the handler mutates instead of taking the author's word."
+      ]
     }
   },
   "inventory_entries": {},

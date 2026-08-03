@@ -3491,14 +3491,10 @@ mod tests {
         ("import_facts", "predicates"),
         ("import_facts", "units"),
         ("import_typing_proposals", "dry_run"),
-        ("list_changelog", "limit"),
         ("propose_verdict", "order_path"),
         ("propose_verdict", "rules_path"),
-        ("query_section", "include_changelog"),
         ("query_section", "include_related"),
-        ("query_term", "case_insensitive"),
         ("query_term", "fields"),
-        ("query_term", "regex"),
         ("query_term", "scope"),
         ("redact_term", "case_insensitive"),
         ("redact_term", "dry_run"),
@@ -3671,6 +3667,17 @@ mod tests {
         }
     }
 
+    /// Everything a tool said, joined — the read-side counterpart of the store
+    /// bytes.
+    fn answer_text(result: &CallToolResult) -> String {
+        result
+            .content
+            .iter()
+            .filter_map(|c| c.as_text().map(|t| t.text.clone()))
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+
     /// A workspace with an empty store, for driving a tool the way an agent
     /// does.
     fn agent_workspace() -> tempfile::TempDir {
@@ -3712,7 +3719,7 @@ mod tests {
         ($(
             $test:ident :
             $( [$setup:ident($setup_args:ty) $setup_base:tt] )*
-            $tool:ident($args:ty) $base:tt . $field:literal = $value:tt seen $needle:literal;
+            $tool:ident($args:ty) $base:tt . $field:literal = $value:tt seen $needle:literal in $oracle:ident;
         )*) => {
             const EXERCISED: &[(&str, &str)] = &[$((stringify!($tool), $field)),*];
             $(
@@ -3754,12 +3761,22 @@ mod tests {
                             $field,
                             result.content
                         );
-                        written.push(
-                            std::fs::read_to_string(
+                        // WHICH ORACLE. A mutating tool is judged by what it
+                        // left in the store; a READ tool never touches the
+                        // store, so the only thing an argument can change is
+                        // the answer, and asking the store about it would
+                        // compare two identical files forever.
+                        written.push(match stringify!($oracle) {
+                            "store" => std::fs::read_to_string(
                                 tmp.path().join("docs/.atomic/workspace.atomic.json"),
                             )
                             .expect("read the store"),
-                        );
+                            "output" => answer_text(&result),
+                            other => panic!(
+                                "`{other}` is not an oracle this macro knows; \
+                                 write `store` or `output`"
+                            ),
+                        });
                     }
                     // MORE OCCURRENCES, NOT MERELY PRESENT. A ref-shaped
                     // argument names something the setup already registered, so
@@ -3771,20 +3788,29 @@ mod tests {
                         written[0].matches($needle).count(),
                         written[1].matches($needle).count(),
                     );
-                    assert!(
-                        after > before,
-                        "`{}` occurs {before} time(s) in the store {} wrote \
+                    // DIFFERENT, NOT MORE. An argument may ADD to what is
+                    // observed (a description reaching the store) or take away
+                    // from it (a `limit` dropping a row), so demanding growth
+                    // false-rejects every filter. What has to be true either
+                    // way is that the value this case NAMES moved — which is
+                    // stricter than the whole-text difference asserted below,
+                    // because that one passes on any change at all.
+                    assert_ne!(
+                        after, before,
+                        "`{}` occurs {before} time(s) in the {} {} produced \
                          WITHOUT `{}` and {after} time(s) with it, so what the \
-                         agent sent did not reach the store",
+                         agent sent did not reach it",
                         $needle,
+                        stringify!($oracle),
                         stringify!($tool),
                         $field
                     );
                     assert_ne!(
                         written[0], written[1],
-                        "the store is byte-identical with and without `{}`, so {} does \
-                         not read it and what the agent sent was dropped while the call \
-                         reported success",
+                        "the {} is byte-identical with and without `{}`, so {} does \
+                         not read it and what the agent sent changed nothing while the \
+                         call reported success",
+                        stringify!($oracle),
                         $field,
                         stringify!($tool)
                     );
@@ -3794,73 +3820,91 @@ mod tests {
     }
 
     exercised! {
+        query_term_case_insensitive_reaches_the_answer:
+            [append_changelog_entry(AppendChangelogEntryArgs) {"entry_id": "Round 1", "decision_summary": "the one who Waits", "changes_bullets": ["a change"], "verification_bullets": ["a check"]}]
+            query_term(QueryTermArgs) {"pattern": "waits"}
+            ."case_insensitive" = true seen "Round 1" in output;
+        query_term_regex_reaches_the_answer:
+            [append_changelog_entry(AppendChangelogEntryArgs) {"entry_id": "Round 1", "decision_summary": "the one who Waits", "changes_bullets": ["a change"], "verification_bullets": ["a check"]}]
+            query_term(QueryTermArgs) {"pattern": "W.its"}
+            ."regex" = true seen "Round 1" in output;
+        query_section_include_changelog_reaches_the_answer:
+            [add_section(AddSectionArgs) {"section_id": "40", "parent_doc": "spec", "title": "the section"}]
+            [append_changelog_entry(AppendChangelogEntryArgs) {"entry_id": "Round 1", "decision_summary": "a decision naming the section", "changes_bullets": ["a change"], "verification_bullets": ["a check"], "impact_refs": ["40"]}]
+            query_section(QuerySectionArgs) {"section_id": "40"}
+            ."include_changelog" = true seen "Round 1" in output;
+        list_changelog_limit_reaches_the_answer:
+            [append_changelog_entry(AppendChangelogEntryArgs) {"entry_id": "Round 1", "decision_summary": "the first", "changes_bullets": ["a change"], "verification_bullets": ["a check"]}]
+            [append_changelog_entry(AppendChangelogEntryArgs) {"entry_id": "Round 2", "decision_summary": "the second", "changes_bullets": ["a change"], "verification_bullets": ["a check"]}]
+            list_changelog(ListChangelogArgs) {}
+            ."limit" = 1 seen "Round 1" in output;
         add_entity_description_reaches_the_store:
             add_entity(AddEntityArgs) {"entity_id": "e-her"}
-            ."description" = "the one who waits" seen "the one who waits";
+            ."description" = "the one who waits" seen "the one who waits" in store;
         add_entity_kind_description_reaches_the_store:
             add_entity_kind(AddEntityKindArgs) {"kind_id": "place"}
-            ."description" = "anywhere a person can be" seen "anywhere a person can be";
+            ."description" = "anywhere a person can be" seen "anywhere a person can be" in store;
         add_frame_description_reaches_the_store:
             add_frame(AddFrameArgs) {"frame_id": "ground-truth"}
-            ."description" = "what is so in the town" seen "what is so in the town";
+            ."description" = "what is so in the town" seen "what is so in the town" in store;
         add_parameter_description_reaches_the_store:
             add_parameter(AddParameterArgs) {"parameter_id": "affection"}
-            ."description" = "how warmly she reads him" seen "how warmly she reads him";
+            ."description" = "how warmly she reads him" seen "how warmly she reads him" in store;
         add_unit_description_reaches_the_store:
             add_unit(AddUnitArgs) {"unit_id": "day"}
-            ."description" = "a day of the flood" seen "a day of the flood";
+            ."description" = "a day of the flood" seen "a day of the flood" in store;
         add_entity_kind_reaches_the_store:
             [add_entity_kind(AddEntityKindArgs) {"kind_id": "place"}]
             add_entity(AddEntityArgs) {"entity_id": "p-shrine"}
-            ."kind" = "place" seen "place";
+            ."kind" = "place" seen "place" in store;
         add_entity_kind_parents_reaches_the_store:
             [add_entity_kind(AddEntityKindArgs) {"kind_id": "place"}]
             add_entity_kind(AddEntityKindArgs) {"kind_id": "quarter"}
-            ."parents" = ["place"] seen "place";
+            ."parents" = ["place"] seen "place" in store;
         add_section_parent_section_reaches_the_store:
             [add_section(AddSectionArgs) {"section_id": "40", "parent_doc": "spec", "title": "the parent"}]
             add_section(AddSectionArgs) {"section_id": "41", "parent_doc": "spec", "title": "the child"}
-            ."parent_section" = "40" seen "40";
+            ."parent_section" = "40" seen "40" in store;
         add_predicate_description_reaches_the_store:
             add_predicate(AddPredicateArgs) {"predicate_id": "does", "object_kind": "token", "object_tokens": ["waits"]}
-            ."description" = "what a person is doing" seen "what a person is doing";
+            ."description" = "what a person is doing" seen "what a person is doing" in store;
         add_predicate_subject_kind_reaches_the_store:
             [add_entity_kind(AddEntityKindArgs) {"kind_id": "character"}]
             add_predicate(AddPredicateArgs) {"predicate_id": "does", "object_kind": "token", "object_tokens": ["waits"]}
-            ."subject_kind" = "character" seen "character";
+            ."subject_kind" = "character" seen "character" in store;
         add_disclosure_plan_description_reaches_the_store:
             add_disclosure_plan(AddDisclosurePlanArgs) {"telling_id": "default", "default_mode": "state"}
-            ."description" = "what the reader is told" seen "what the reader is told";
+            ."description" = "what the reader is told" seen "what the reader is told" in store;
         add_inventory_entry_reason_reaches_the_store:
             add_inventory_entry(AddInventoryEntryArgs) {"inventory_id": "inv-1", "status": "active"}
-            ."reason" = "why it is open" seen "why it is open";
+            ."reason" = "why it is open" seen "why it is open" in store;
         add_inventory_entry_source_reaches_the_store:
             add_inventory_entry(AddInventoryEntryArgs) {"inventory_id": "inv-1", "status": "active"}
-            ."source" = "the review that found it" seen "the review that found it";
+            ."source" = "the review that found it" seen "the review that found it" in store;
         set_inventory_status_reason_reaches_the_store:
             [add_inventory_entry(AddInventoryEntryArgs) {"inventory_id": "inv-1", "status": "active"}]
             set_inventory_status(SetInventoryStatusArgs) {"inventory_id": "inv-1", "status": "deprecated"}
-            ."reason" = "closed by the round that found it" seen "closed by the round that found it";
+            ."reason" = "closed by the round that found it" seen "closed by the round that found it" in store;
         set_section_parent_section_reaches_the_store:
             [add_section(AddSectionArgs) {"section_id": "40", "parent_doc": "spec", "title": "the parent"}]
             [add_section(AddSectionArgs) {"section_id": "41", "parent_doc": "spec", "title": "the child"}]
             set_section_parent_section(SetSectionParentSectionArgs) {"section_id": "41"}
-            ."parent_section" = "40" seen "40";
+            ."parent_section" = "40" seen "40" in store;
         add_section_binding_symbol_reaches_the_store:
             [add_section(AddSectionArgs) {"section_id": "40", "parent_doc": "spec", "title": "the parent"}]
             add_section_binding(AddSectionBindingArgs) {"section_id": "40", "file": "src/lib.rs", "kind": "implements"}
-            ."symbol" = "the_bound_symbol" seen "the_bound_symbol";
+            ."symbol" = "the_bound_symbol" seen "the_bound_symbol" in store;
         append_changelog_entry_impact_refs_reaches_the_store:
             append_changelog_entry(AppendChangelogEntryArgs) {"entry_id": "Round 1", "decision_summary": "a decision", "changes_bullets": ["a change"], "verification_bullets": ["a check"]}
-            ."impact_refs" = ["the-impacted-ref"] seen "the-impacted-ref";
+            ."impact_refs" = ["the-impacted-ref"] seen "the-impacted-ref" in store;
         append_changelog_entry_carry_forward_reaches_the_store:
             append_changelog_entry(AppendChangelogEntryArgs) {"entry_id": "Round 1", "decision_summary": "a decision", "changes_bullets": ["a change"], "verification_bullets": ["a check"]}
-            ."carry_forward_bullets" = ["the carried item"] seen "the carried item";
+            ."carry_forward_bullets" = ["the carried item"] seen "the carried item" in store;
         set_entity_kind_parents_reaches_the_store:
             [add_entity_kind(AddEntityKindArgs) {"kind_id": "place"}]
             [add_entity_kind(AddEntityKindArgs) {"kind_id": "quarter"}]
             set_entity_kind_parents(SetEntityKindParentsArgs) {"kind_id": "quarter"}
-            ."parents" = ["place"] seen "place";
+            ."parents" = ["place"] seen "place" in store;
     }
 
     /// An agent can only call what the schema shows it (Round 981) — the Round
