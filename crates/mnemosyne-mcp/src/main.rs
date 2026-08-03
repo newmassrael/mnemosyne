@@ -3446,12 +3446,6 @@ mod tests {
     /// sends the argument, the tool answers success, and whether it did
     /// anything is unknown.
     const UNEXERCISED: &[(&str, &str)] = &[
-        ("add_branch", "converges_from"),
-        ("add_confirmation_event", "code_sha256"),
-        ("add_confirmation_event", "file"),
-        ("add_confirmation_event", "spec_sha256"),
-        ("add_confirmation_event", "symbol"),
-        ("add_confirmation_event", "test_sha256"),
         ("emit_publishable_override_ledger_draft", "kind"),
         ("import_edge_proposals", "dry_run"),
         ("import_typing_proposals", "dry_run"),
@@ -3487,12 +3481,6 @@ mod tests {
         ("report_timeline_gaps", "order_path"),
         ("report_timeline_gaps", "rules_path"),
         ("report_transition_map", "rules_path"),
-        ("set_disclosure", "first_at"),
-        ("set_disclosure", "surface_object"),
-        ("set_disclosure", "surface_scene"),
-        ("set_disclosure_reveal_threshold", "threshold"),
-        ("set_edge_guard_threshold", "threshold"),
-        ("set_section_decision_status", "resolving"),
         ("style_check", "doc"),
         ("style_check", "severity"),
         ("validate_continuity", "order_path"),
@@ -3987,6 +3975,62 @@ mod tests {
             [import_sections(ImportSectionsArgs) {"sections": [{"section_id": "40", "parent_doc": "spec", "title": "the section"}, {"section_id": "41", "parent_doc": "spec", "title": "the other"}]}]
             set_section_decision_status(SetSectionDecisionStatusArgs) {"section_id": "40", "status": "Superseded", "reason": "overtaken"}
             ."superseding" = "41" seen "superseding" in outcome;
+        add_confirmation_event_file_reaches_the_store:
+            [import_sections(ImportSectionsArgs) {"sections": [{"section_id": "40", "parent_doc": "spec", "title": "the section"}]}]
+            add_confirmation_event(AddConfirmationEventArgs) {"section_id": "40", "confirmer_kind": "tool", "confirmer_id": "reviewer", "confirmer_version": "1", "method": "semantic_review", "verdict": "confirm", "authoring_run": "run-a", "confirming_run": "run-b", "rationale": "checked it", "timestamp": "2026-08-03T00:00:00Z"}
+            ."file" = "src/lib.rs" seen "src/lib.rs" in store;
+        add_confirmation_event_symbol_reaches_the_store:
+            [import_sections(ImportSectionsArgs) {"sections": [{"section_id": "40", "parent_doc": "spec", "title": "the section"}]}]
+            add_confirmation_event(AddConfirmationEventArgs) {"section_id": "40", "file": "src/lib.rs", "confirmer_kind": "tool", "confirmer_id": "reviewer", "confirmer_version": "1", "method": "semantic_review", "verdict": "confirm", "authoring_run": "run-a", "confirming_run": "run-b", "rationale": "checked it", "timestamp": "2026-08-03T00:00:00Z"}
+            ."symbol" = "the_symbol" seen "the_symbol" in store;
+        add_confirmation_event_code_sha256_reaches_the_store:
+            [import_sections(ImportSectionsArgs) {"sections": [{"section_id": "40", "parent_doc": "spec", "title": "the section"}]}]
+            add_confirmation_event(AddConfirmationEventArgs) {"section_id": "40", "file": "src/lib.rs", "confirmer_kind": "tool", "confirmer_id": "reviewer", "confirmer_version": "1", "method": "semantic_review", "verdict": "confirm", "authoring_run": "run-a", "confirming_run": "run-b", "rationale": "checked it", "timestamp": "2026-08-03T00:00:00Z"}
+            ."code_sha256" = ["aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"] seen "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" in store;
+        add_confirmation_event_test_sha256_reaches_the_store:
+            [import_sections(ImportSectionsArgs) {"sections": [{"section_id": "40", "parent_doc": "spec", "title": "the section"}]}]
+            add_confirmation_event(AddConfirmationEventArgs) {"section_id": "40", "file": "src/lib.rs", "confirmer_kind": "tool", "confirmer_id": "reviewer", "confirmer_version": "1", "method": "semantic_review", "verdict": "confirm", "authoring_run": "run-a", "confirming_run": "run-b", "rationale": "checked it", "timestamp": "2026-08-03T00:00:00Z"}
+            ."test_sha256" = ["bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"] seen "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" in store;
+        add_confirmation_event_spec_sha256_reaches_the_store:
+            [import_sections(ImportSectionsArgs) {"sections": [{"section_id": "40", "parent_doc": "spec", "title": "the section"}]}]
+            add_confirmation_event(AddConfirmationEventArgs) {"section_id": "40", "file": "src/lib.rs", "confirmer_kind": "tool", "confirmer_id": "reviewer", "confirmer_version": "1", "method": "semantic_review", "verdict": "confirm", "authoring_run": "run-a", "confirming_run": "run-b", "rationale": "checked it", "timestamp": "2026-08-03T00:00:00Z"}
+            ."spec_sha256" = "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc" seen "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc" in store;
+        set_edge_guard_threshold_reaches_the_store:
+            [import_sections(ImportSectionsArgs) {"sections": [{"section_id": "sc-01", "parent_doc": "spec", "title": "scene one"}, {"section_id": "sc-02", "parent_doc": "spec", "title": "scene two"}]}]
+            [import_facts(atomic::FactsManifest) {"frames": [{"frame_id": "ground-truth"}], "units": [{"unit_id": "minute"}], "entity_kinds": [{"kind_id": "place"}], "entities": [{"entity_id": "p-a", "kind": "place"}, {"entity_id": "p-b", "kind": "place"}], "predicates": [{"predicate_id": "adjacent", "object_kind": "entity", "subject_kind": "place", "object_entity_kind": "place"}, {"predicate_id": "condition", "object_kind": "token", "object_tokens": ["lit"], "subject_kind": "place"}], "facts": [{"fact_id": "f-way", "frame": "ground-truth", "claim": "a way runs", "canon_from": "sc-01", "evidence": ["sc-01"], "entities": ["p-a", "p-b"], "typed": {"subject": "p-a", "predicate": "adjacent", "object": {"kind": "entity", "id": "p-b"}}}, {"fact_id": "f-lamp", "frame": "ground-truth", "claim": "the lamp is lit", "canon_from": "sc-01", "evidence": ["sc-01"], "entities": ["p-a"], "typed": {"subject": "p-a", "predicate": "condition", "object": {"kind": "token", "token": "lit"}}}, {"fact_id": "f-door", "frame": "ground-truth", "claim": "the door is open", "canon_from": "sc-01", "evidence": ["sc-01"], "entities": ["p-b"], "typed": {"subject": "p-b", "predicate": "condition", "object": {"kind": "token", "token": "lit"}}}], "disclosure_plans": [{"telling_id": "t-quiet", "default_mode": "state"}], "edge_guards": [{"fact_id": "f-way", "conditions": ["f-lamp", "f-door"], "threshold": 1}]}]
+            set_edge_guard_threshold(SetEdgeGuardThresholdArgs) {"fact_id": "f-way"}
+            ."threshold" = 1 seen "threshold" in store;
+        set_disclosure_surface_scene_reaches_the_store:
+            [import_sections(ImportSectionsArgs) {"sections": [{"section_id": "sc-01", "parent_doc": "spec", "title": "scene one"}, {"section_id": "sc-02", "parent_doc": "spec", "title": "scene two"}]}]
+            [import_facts(atomic::FactsManifest) {"frames": [{"frame_id": "ground-truth"}], "units": [{"unit_id": "minute"}], "entity_kinds": [{"kind_id": "place"}], "entities": [{"entity_id": "p-a", "kind": "place"}, {"entity_id": "p-b", "kind": "place"}], "predicates": [{"predicate_id": "adjacent", "object_kind": "entity", "subject_kind": "place", "object_entity_kind": "place"}, {"predicate_id": "condition", "object_kind": "token", "object_tokens": ["lit"], "subject_kind": "place"}], "facts": [{"fact_id": "f-way", "frame": "ground-truth", "claim": "a way runs", "canon_from": "sc-01", "evidence": ["sc-01"], "entities": ["p-a", "p-b"], "typed": {"subject": "p-a", "predicate": "adjacent", "object": {"kind": "entity", "id": "p-b"}}}, {"fact_id": "f-lamp", "frame": "ground-truth", "claim": "the lamp is lit", "canon_from": "sc-01", "evidence": ["sc-01"], "entities": ["p-a"], "typed": {"subject": "p-a", "predicate": "condition", "object": {"kind": "token", "token": "lit"}}}, {"fact_id": "f-door", "frame": "ground-truth", "claim": "the door is open", "canon_from": "sc-01", "evidence": ["sc-01"], "entities": ["p-b"], "typed": {"subject": "p-b", "predicate": "condition", "object": {"kind": "token", "token": "lit"}}}], "disclosure_plans": [{"telling_id": "t-quiet", "default_mode": "state"}], "edge_guards": [{"fact_id": "f-way", "conditions": ["f-lamp", "f-door"], "threshold": 1}]}]
+            set_disclosure(SetDisclosureArgs) {"telling_id": "t-quiet", "fact_id": "f-lamp", "mode": "withhold"}
+            ."surface_scene" = "sc-02" seen "sc-02" in store;
+        set_disclosure_surface_object_reaches_the_store:
+            [import_sections(ImportSectionsArgs) {"sections": [{"section_id": "sc-01", "parent_doc": "spec", "title": "scene one"}, {"section_id": "sc-02", "parent_doc": "spec", "title": "scene two"}]}]
+            [import_facts(atomic::FactsManifest) {"frames": [{"frame_id": "ground-truth"}], "units": [{"unit_id": "minute"}], "entity_kinds": [{"kind_id": "place"}], "entities": [{"entity_id": "p-a", "kind": "place"}, {"entity_id": "p-b", "kind": "place"}], "predicates": [{"predicate_id": "adjacent", "object_kind": "entity", "subject_kind": "place", "object_entity_kind": "place"}, {"predicate_id": "condition", "object_kind": "token", "object_tokens": ["lit"], "subject_kind": "place"}], "facts": [{"fact_id": "f-way", "frame": "ground-truth", "claim": "a way runs", "canon_from": "sc-01", "evidence": ["sc-01"], "entities": ["p-a", "p-b"], "typed": {"subject": "p-a", "predicate": "adjacent", "object": {"kind": "entity", "id": "p-b"}}}, {"fact_id": "f-lamp", "frame": "ground-truth", "claim": "the lamp is lit", "canon_from": "sc-01", "evidence": ["sc-01"], "entities": ["p-a"], "typed": {"subject": "p-a", "predicate": "condition", "object": {"kind": "token", "token": "lit"}}}, {"fact_id": "f-door", "frame": "ground-truth", "claim": "the door is open", "canon_from": "sc-01", "evidence": ["sc-01"], "entities": ["p-b"], "typed": {"subject": "p-b", "predicate": "condition", "object": {"kind": "token", "token": "lit"}}}], "disclosure_plans": [{"telling_id": "t-quiet", "default_mode": "state"}], "edge_guards": [{"fact_id": "f-way", "conditions": ["f-lamp", "f-door"], "threshold": 1}]}]
+            set_disclosure(SetDisclosureArgs) {"telling_id": "t-quiet", "fact_id": "f-lamp", "mode": "withhold", "surface_scene": "sc-02"}
+            ."surface_object" = "p-b" seen "p-b" in store;
+        set_disclosure_first_at_reaches_the_store:
+            [import_sections(ImportSectionsArgs) {"sections": [{"section_id": "sc-01", "parent_doc": "spec", "title": "scene one"}, {"section_id": "sc-02", "parent_doc": "spec", "title": "scene two"}]}]
+            [import_facts(atomic::FactsManifest) {"frames": [{"frame_id": "ground-truth"}], "units": [{"unit_id": "minute"}], "entity_kinds": [{"kind_id": "place"}], "entities": [{"entity_id": "p-a", "kind": "place"}, {"entity_id": "p-b", "kind": "place"}], "predicates": [{"predicate_id": "adjacent", "object_kind": "entity", "subject_kind": "place", "object_entity_kind": "place"}, {"predicate_id": "condition", "object_kind": "token", "object_tokens": ["lit"], "subject_kind": "place"}], "facts": [{"fact_id": "f-way", "frame": "ground-truth", "claim": "a way runs", "canon_from": "sc-01", "evidence": ["sc-01"], "entities": ["p-a", "p-b"], "typed": {"subject": "p-a", "predicate": "adjacent", "object": {"kind": "entity", "id": "p-b"}}}, {"fact_id": "f-lamp", "frame": "ground-truth", "claim": "the lamp is lit", "canon_from": "sc-01", "evidence": ["sc-01"], "entities": ["p-a"], "typed": {"subject": "p-a", "predicate": "condition", "object": {"kind": "token", "token": "lit"}}}, {"fact_id": "f-door", "frame": "ground-truth", "claim": "the door is open", "canon_from": "sc-01", "evidence": ["sc-01"], "entities": ["p-b"], "typed": {"subject": "p-b", "predicate": "condition", "object": {"kind": "token", "token": "lit"}}}], "disclosure_plans": [{"telling_id": "t-quiet", "default_mode": "state"}], "edge_guards": [{"fact_id": "f-way", "conditions": ["f-lamp", "f-door"], "threshold": 1}]}]
+            set_disclosure(SetDisclosureArgs) {"telling_id": "t-quiet", "fact_id": "f-lamp", "mode": "withhold"}
+            ."first_at" = [{"branch": "main", "coords": ["sc-02"]}] seen "sc-02" in store;
+        set_disclosure_reveal_threshold_reaches_the_store:
+            [import_sections(ImportSectionsArgs) {"sections": [{"section_id": "sc-01", "parent_doc": "spec", "title": "scene one"}, {"section_id": "sc-02", "parent_doc": "spec", "title": "scene two"}]}]
+            [import_facts(atomic::FactsManifest) {"frames": [{"frame_id": "ground-truth"}], "units": [{"unit_id": "minute"}], "entity_kinds": [{"kind_id": "place"}], "entities": [{"entity_id": "p-a", "kind": "place"}, {"entity_id": "p-b", "kind": "place"}], "predicates": [{"predicate_id": "adjacent", "object_kind": "entity", "subject_kind": "place", "object_entity_kind": "place"}, {"predicate_id": "condition", "object_kind": "token", "object_tokens": ["lit"], "subject_kind": "place"}], "facts": [{"fact_id": "f-way", "frame": "ground-truth", "claim": "a way runs", "canon_from": "sc-01", "evidence": ["sc-01"], "entities": ["p-a", "p-b"], "typed": {"subject": "p-a", "predicate": "adjacent", "object": {"kind": "entity", "id": "p-b"}}}, {"fact_id": "f-lamp", "frame": "ground-truth", "claim": "the lamp is lit", "canon_from": "sc-01", "evidence": ["sc-01"], "entities": ["p-a"], "typed": {"subject": "p-a", "predicate": "condition", "object": {"kind": "token", "token": "lit"}}}, {"fact_id": "f-door", "frame": "ground-truth", "claim": "the door is open", "canon_from": "sc-01", "evidence": ["sc-01"], "entities": ["p-b"], "typed": {"subject": "p-b", "predicate": "condition", "object": {"kind": "token", "token": "lit"}}}], "disclosure_plans": [{"telling_id": "t-quiet", "default_mode": "state"}], "edge_guards": [{"fact_id": "f-way", "conditions": ["f-lamp", "f-door"], "threshold": 1}]}]
+            [set_disclosure(SetDisclosureArgs) {"telling_id": "t-quiet", "fact_id": "f-lamp", "mode": "withhold", "first_at": [{"branch": "main", "coords": ["sc-01", "sc-02"]}]}]
+            set_disclosure_reveal_threshold(SetDisclosureRevealThresholdArgs) {"telling_id": "t-quiet", "fact_id": "f-lamp", "branch": "main"}
+            ."threshold" = 2 seen "threshold" in store;
+        add_branch_converges_from_reaches_the_store:
+            [import_sections(ImportSectionsArgs) {"sections": [{"section_id": "40", "parent_doc": "spec", "title": "the section"}, {"section_id": "41", "parent_doc": "spec", "title": "the other"}, {"section_id": "sc-01", "parent_doc": "spec", "title": "scene one"}]}]
+            [add_branch(AddBranchArgs) {"branch_id": "b-other", "forks_from": "main", "forks_at": "sc-01"}]
+            [add_branch(AddBranchArgs) {"branch_id": "b-third", "forks_from": "main", "forks_at": "sc-01"}]
+            add_branch(AddBranchArgs) {"branch_id": "b-what-if"}
+            ."converges_from" = [{"branch": "b-other", "at": "sc-01"}, {"branch": "b-third", "at": "sc-01"}] seen "b-third" in store;
+        set_section_decision_status_resolving_reaches_the_store:
+            [import_sections(ImportSectionsArgs) {"sections": [{"section_id": "40", "parent_doc": "spec", "title": "the section"}, {"section_id": "41", "parent_doc": "spec", "title": "the other"}, {"section_id": "sc-01", "parent_doc": "spec", "title": "scene one"}]}]
+            set_section_decision_status(SetSectionDecisionStatusArgs) {"section_id": "40", "status": "Open", "reason": "reopened"}
+            ."resolving" = "41" seen "41" in store;
         add_branch_description_reaches_the_store:
             add_branch(AddBranchArgs) {"branch_id": "b-what-if"}
             ."description" = "the road not taken" seen "the road not taken" in store;

@@ -34485,6 +34485,96 @@
         "`in outcome` PROVES THE ARGUMENT CHANGES WHETHER THE CALL IS TAKEN, NOT WHERE ITS VALUE LANDED. For `clear` that is the whole of what the argument does, so the two coincide; for another argument they would not, and a case reaching for this oracle when `store` was available would be using the weakest of the three. Nothing checks that today — Round 991's oracle-versus-behaviour check exempts `outcome` — and the reason it is exempt is that an accepted call may legitimately write.",
         "54 OF 122 REMAIN: eight on the mutating side (the confirmation-event hashes, the disclosure setter's three arguments, the two thresholds) and 46 on the read side. The read side is the larger half and wants a workspace with enough authored in it for a report to vary at all, which is the same `given` machinery pointed at a fuller world."
       ]
+    },
+    "Round 995": {
+      "decision_summary": "R995 (BUILD) — every argument an agent can send to a tool that WRITES the store is now proven to arrive: zero mutating pairs remain unexercised, and the 42 that are left are all read tools. The batch closing it is the audit and disclosure surface — the confirmation event's file, symbol and three hash sets, the disclosure setter's reveal coordinates and surface pair, the two K-of-N thresholds, a branch's confluence parents and the section that resolves an open decision. STAR THE TOOLS TAUGHT THIS ROUND FIVE OF THEIR OWN RULES AND EVERY FIXTURE MOVED TO MEET THEM: `confirmer_kind` is `tool` or `model` and not `human`; `method` is `linkage_check|semantic_review|coverage_attestation`; `verdict` is `confirm` or `refute`; a binding `kind` is `implements|references|verifies`; a confluence \"merges >= 2 parent world-lines\" and is never also a fork-child. Not one assertion was loosened to accommodate a guess. STAR THE HARDEST CASE WAS NOT A RULE BUT A NORMALISATION, and it is the sharpest thing this round found. `set_edge_guard_threshold` with a threshold equal to the condition count STORES NOTHING — `threshold == Some(len)` is plain AND, so the store normalises it to `None`, which the type's own doc comment states. My fixture picked exactly that value, so the argument reached the store and left no trace, and the case failed reporting zero occurrences in both arms. It reads identically to a handler that ignores the argument. The probe that separated them ran the CLI twin on a scratch workspace and watched `threshold: 1` land and `threshold: 2` vanish against two conditions. STAR THAT IS THE LIMIT OF A BYTE-COUNTING ORACLE STATED PRECISELY: a value that the store deliberately does not represent cannot be watched by looking for it, and the fix is to choose a value the store keeps — not to weaken the check. STAR AND ROUND 991's ORACLE CHECK EARNED ITS KEEP THIS ROUND. Two cases were written `in outcome` on the assumption that their argument could not be omitted; the check answered that the call succeeds without it, so both moved to `in store`. A round-994 addition caught a round-995 mistake in the round that made it. The count is 80 of 122.",
+      "changes_bullets": [
+        "`crates/mnemosyne-mcp/src/main.rs` — twelve cases closing the mutating surface: `add_confirmation_event.file`, `.symbol`, `.code_sha256`, `.test_sha256`, `.spec_sha256`; `set_disclosure.first_at`, `.surface_scene`, `.surface_object`; `set_disclosure_reveal_threshold.threshold`; `set_edge_guard_threshold.threshold`; `add_branch.converges_from`; `set_section_decision_status.resolving`.",
+        "Same file — the disclosure and threshold cases build their world through one `import_facts` given: two places, an adjacency predicate, the edge fact, a typed condition fact the disclosure gate requires, a telling, and a guard with two conditions so a K-of-N threshold has room to be K.",
+        "Same file — the two threshold cases are `in store` and not `in outcome`: both tools accept the call without the argument (it clears the threshold), which Round 991's oracle check reported rather than letting the wrong declaration stand."
+      ],
+      "verification_bullets": [
+        "STAR NO MUTATING TOOL HAS AN UNEXERCISED OPTIONAL ARGUMENT LEFT. Classifying the remaining 42 pairs by whether their handler calls `run_mutate`: 0 mutating, 42 read. Every argument that can change what the store holds is now proven to reach it.",
+        "STAR A NORMALISATION READ EXACTLY LIKE AN IGNORED ARGUMENT AND WAS SEPARATED BY PROBING THE CLI TWIN. `set_edge_guard_threshold` normalises a threshold equal to the condition count to `None` (the type's doc comment says so at `EdgeGuard`), so the fixture's value left no bytes and the case reported zero occurrences in both arms. Run against a scratch workspace, `--threshold 1` of two conditions lands and `--threshold 2` vanishes. The fixture moved to a value the store keeps.",
+        "INJECTION U, `add_confirmation_event` drops the code hashes: the case failed naming the hash that never arrived, and the other eighty-five tests stayed green.",
+        "ROUND 991's ORACLE CHECK CAUGHT TWO WRONG DECLARATIONS IN THIS ROUND'S OWN CASES, both written `in outcome` on the assumption the argument could not be omitted: \"declared `in outcome` ... at threshold=false it did the opposite\".",
+        "FIVE CLOSED VOCABULARIES AND TWO STRUCTURAL RULES WERE NAMED BY THE TOOLS AND THE FIXTURES MOVED TO THEM: `confirmer_kind`, `method`, `verdict`, binding `kind`, and that a confluence merges at least two parents and is never also a fork-child.",
+        "1577 workspace tests pass (1565 before), 0 failed, `--no-fail-fast`; clippy `-D warnings` and `cargo fmt --check` clean; `validate-workspace` T1 orphan 0 and T3 reject 0.",
+        "Citation hygiene (R255): Rounds 991 and 994 verified present with `query --changelog-entry` and Round 995 verified absent before this entry was appended."
+      ],
+      "impact_refs": [
+        "atomic-store-mutate-api"
+      ],
+      "carry_forward_bullets": [
+        "42 REMAIN AND ALL OF THEM ARE READ ARGUMENTS, so the remaining work is one shape rather than many: a workspace with enough authored in it that a report's answer varies, and then `order_path`, `world`, `telling`, `rules_path`, `scope`, `fields`, `severity`, `doc`, `dry_run` and the rest against the `output` oracle. The `given` machinery already builds worlds of that size — the disclosure cases in this round build one.",
+        "A BYTE-COUNTING ORACLE CANNOT WATCH A VALUE THE STORE DELIBERATELY DOES NOT REPRESENT. This round hit it once, in the K-of-N normalisation, and the answer was to choose a value the store keeps. It will recur wherever a setter's argument is a default the schema drops; the reason it is not carried as a defect is that the failure is loud and its diagnosis is a two-command probe against the CLI twin, but a case author who does not know the normalisation exists will read it as an ignored argument."
+      ],
+      "population_census": [
+        {
+          "axis": "transition rules by `undirected`",
+          "left_label": "undirected",
+          "left": 10,
+          "right_label": "directed",
+          "right": 27
+        },
+        {
+          "axis": "map corpora by leg-kind declaration",
+          "left_label": "omitted",
+          "left": 6,
+          "right_label": "declared",
+          "right": 24
+        },
+        {
+          "axis": "cost-carrying corpora by direction-dependent pricing",
+          "left_label": "prices a way by direction",
+          "left": 4,
+          "right_label": "prices no way by direction",
+          "right": 6
+        },
+        {
+          "axis": "run trees by authoring mode",
+          "left_label": "hand script",
+          "left": 10,
+          "right_label": "file-only",
+          "right": 239
+        },
+        {
+          "axis": "map corpora by declared boundary crossing",
+          "left_label": "declares an exit",
+          "left": 6,
+          "right_label": "declares none",
+          "right": 24
+        },
+        {
+          "axis": "authored submissions by map and telling",
+          "left_label": "carries both",
+          "left": 10,
+          "right_label": "carries one",
+          "right": 24
+        }
+      ],
+      "publishable_decision_summary": "R995 (BUILD) — every argument an agent can send to a tool that WRITES the store is now proven to arrive: zero mutating pairs remain unexercised, and the 42 that are left are all read tools. The batch closing it is the audit and disclosure surface — the confirmation event's file, symbol and three hash sets, the disclosure setter's reveal coordinates and surface pair, the two K-of-N thresholds, a branch's confluence parents and the section that resolves an open decision. STAR THE TOOLS TAUGHT THIS ROUND FIVE OF THEIR OWN RULES AND EVERY FIXTURE MOVED TO MEET THEM: `confirmer_kind` is `tool` or `model` and not `human`; `method` is `linkage_check|semantic_review|coverage_attestation`; `verdict` is `confirm` or `refute`; a binding `kind` is `implements|references|verifies`; a confluence \"merges >= 2 parent world-lines\" and is never also a fork-child. Not one assertion was loosened to accommodate a guess. STAR THE HARDEST CASE WAS NOT A RULE BUT A NORMALISATION, and it is the sharpest thing this round found. `set_edge_guard_threshold` with a threshold equal to the condition count STORES NOTHING — `threshold == Some(len)` is plain AND, so the store normalises it to `None`, which the type's own doc comment states. My fixture picked exactly that value, so the argument reached the store and left no trace, and the case failed reporting zero occurrences in both arms. It reads identically to a handler that ignores the argument. The probe that separated them ran the CLI twin on a scratch workspace and watched `threshold: 1` land and `threshold: 2` vanish against two conditions. STAR THAT IS THE LIMIT OF A BYTE-COUNTING ORACLE STATED PRECISELY: a value that the store deliberately does not represent cannot be watched by looking for it, and the fix is to choose a value the store keeps — not to weaken the check. STAR AND ROUND 991's ORACLE CHECK EARNED ITS KEEP THIS ROUND. Two cases were written `in outcome` on the assumption that their argument could not be omitted; the check answered that the call succeeds without it, so both moved to `in store`. A round-994 addition caught a round-995 mistake in the round that made it. The count is 80 of 122.",
+      "publishable_changes_bullets": [
+        "`crates/mnemosyne-mcp/src/main.rs` — twelve cases closing the mutating surface: `add_confirmation_event.file`, `.symbol`, `.code_sha256`, `.test_sha256`, `.spec_sha256`; `set_disclosure.first_at`, `.surface_scene`, `.surface_object`; `set_disclosure_reveal_threshold.threshold`; `set_edge_guard_threshold.threshold`; `add_branch.converges_from`; `set_section_decision_status.resolving`.",
+        "Same file — the disclosure and threshold cases build their world through one `import_facts` given: two places, an adjacency predicate, the edge fact, a typed condition fact the disclosure gate requires, a telling, and a guard with two conditions so a K-of-N threshold has room to be K.",
+        "Same file — the two threshold cases are `in store` and not `in outcome`: both tools accept the call without the argument (it clears the threshold), which Round 991's oracle check reported rather than letting the wrong declaration stand."
+      ],
+      "publishable_verification_bullets": [
+        "STAR NO MUTATING TOOL HAS AN UNEXERCISED OPTIONAL ARGUMENT LEFT. Classifying the remaining 42 pairs by whether their handler calls `run_mutate`: 0 mutating, 42 read. Every argument that can change what the store holds is now proven to reach it.",
+        "STAR A NORMALISATION READ EXACTLY LIKE AN IGNORED ARGUMENT AND WAS SEPARATED BY PROBING THE CLI TWIN. `set_edge_guard_threshold` normalises a threshold equal to the condition count to `None` (the type's doc comment says so at `EdgeGuard`), so the fixture's value left no bytes and the case reported zero occurrences in both arms. Run against a scratch workspace, `--threshold 1` of two conditions lands and `--threshold 2` vanishes. The fixture moved to a value the store keeps.",
+        "INJECTION U, `add_confirmation_event` drops the code hashes: the case failed naming the hash that never arrived, and the other eighty-five tests stayed green.",
+        "ROUND 991's ORACLE CHECK CAUGHT TWO WRONG DECLARATIONS IN THIS ROUND'S OWN CASES, both written `in outcome` on the assumption the argument could not be omitted: \"declared `in outcome` ... at threshold=false it did the opposite\".",
+        "FIVE CLOSED VOCABULARIES AND TWO STRUCTURAL RULES WERE NAMED BY THE TOOLS AND THE FIXTURES MOVED TO THEM: `confirmer_kind`, `method`, `verdict`, binding `kind`, and that a confluence merges at least two parents and is never also a fork-child.",
+        "1577 workspace tests pass (1565 before), 0 failed, `--no-fail-fast`; clippy `-D warnings` and `cargo fmt --check` clean; `validate-workspace` T1 orphan 0 and T3 reject 0.",
+        "Citation hygiene (R255): Rounds 991 and 994 verified present with `query --changelog-entry` and Round 995 verified absent before this entry was appended."
+      ],
+      "publishable_impact_refs": [
+        "atomic-store-mutate-api"
+      ],
+      "publishable_carry_forward_bullets": [
+        "42 REMAIN AND ALL OF THEM ARE READ ARGUMENTS, so the remaining work is one shape rather than many: a workspace with enough authored in it that a report's answer varies, and then `order_path`, `world`, `telling`, `rules_path`, `scope`, `fields`, `severity`, `doc`, `dry_run` and the rest against the `output` oracle. The `given` machinery already builds worlds of that size — the disclosure cases in this round build one.",
+        "A BYTE-COUNTING ORACLE CANNOT WATCH A VALUE THE STORE DELIBERATELY DOES NOT REPRESENT. This round hit it once, in the K-of-N normalisation, and the answer was to choose a value the store keeps. It will recur wherever a setter's argument is a default the schema drops; the reason it is not carried as a defect is that the failure is loud and its diagnosis is a two-command probe against the CLI twin, but a case author who does not know the normalisation exists will read it as an ignored argument."
+      ]
     }
   },
   "inventory_entries": {},
