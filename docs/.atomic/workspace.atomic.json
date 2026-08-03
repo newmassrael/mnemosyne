@@ -258,6 +258,98 @@
         "`propose_verdict` HAS ONE TEST AND NEEDS MORE. This round asserts which FILE it read; nothing yet asserts the verdict itself — that a manifest which would violate a continuity rule comes back `rollback` with the rule named, and a clean one comes back `commit`. That is the contract an agent acts on and it is unexercised."
       ]
     },
+    "Round 1002": {
+      "decision_summary": "R1002 (BUILD) — the one line, on the owner's word: a relative path an agent sends now means the workspace it was handed, not a directory it has never seen. This is the change Round 998 measured the need for, Round 999 documented rather than made, Round 1000 isolated so it could be made alone, and Round 1001 widened to cover every path an agent sends rather than some of them. STAR THE ASYMMETRY IS THE WHOLE POINT AND IT IS NOT AN INCONSISTENCY. The CLI still resolves an explicit path against the working directory, because there the caller CHOSE that directory — Round 538's rule, which was right and stays. Over MCP the working directory belongs to whatever host launched the server: the agent cannot read it, cannot choose it, and gets a different one from every host. Two wires, two callers, two different things a caller can see; the rule follows what the caller knows rather than what the argument is called. STAR AN ABSOLUTE PATH IS UNAFFECTED, which is what makes this safe to land: an agent that already sends one — as it had to, because a relative path could not work — sees no change at all. STAR THE PROOF IS AN EXISTING CASE MADE RELATIVE. `report_playable_world.order_path` was proven in Round 998 with an absolute path built by a test-only helper, which was itself the evidence that the surface was unusable: if the harness needed to build absolute paths, so did every consumer. That case now sends `order-b.json`, plain, and passes. Reverting the one line kills it. STAR THE SCHEMA SAYS THE NEW RULE AND A GATE HOLDS IT THERE. All 23 path arguments now tell an agent they resolve against the workspace root, and Round 999's gate — which required them to say what they resolve against — required its needle changed with them, so the accounting could not drift from the behaviour by a round.",
+      "changes_bullets": [
+        "`mnemosyne-mcp` — `mcp_path` resolves against the workspace instead of the process's working directory. That is the change; everything else in this round follows from it.",
+        "Same file — all 23 path-argument descriptions state the new rule, and `every_path_argument_says_what_it_resolves_against` requires it, so the schema an agent reads cannot drift from what the wire does.",
+        "Same file — `report_playable_world.order_path` sends a RELATIVE path, which is the end-to-end proof: it could not have worked before this round.",
+        "Same file — the doc comment Round 1000's insertion had stolen from `render_projection_validation` is given back to it."
+      ],
+      "verification_bullets": [
+        "INJECTION AG, `mcp_path` put back on the working directory: `report_playable_world_order_path_reaches_the_answer` fails. The relative path in that case is the whole evidence and it is one line away from being untrue.",
+        "THE CLI IS UNTOUCHED AND STAYS MEASURED: Round 1000's end-to-end check still holds — from a subdirectory `--order order.json` resolves beside the user, and from the workspace root the same name resolves there. Nothing in this round goes near `cli_path`.",
+        "1588 workspace tests pass, 0 failed, `--no-fail-fast`; clippy `-D warnings` and `cargo fmt --check` clean; `validate-workspace` T1 orphan 0 and T3 reject 0.",
+        "CLIPPY CAUGHT A BLANK LINE MY LINE-RANGE EDIT LEFT between a doc comment and its function — the second time in two rounds that moving that block by position rather than by text left something behind. The first time it stole a doc comment; both are repaired.",
+        "THE GATE'S NEEDLE WAS CASE-SENSITIVE AND THE FIELDS SPELL THE BASE IN CAPS, so the first run reported all 23 as silent. Compared lowercased rather than the text changed, since the emphasis is deliberate.",
+        "Citation hygiene (R255): Rounds 538, 998, 999, 1000 and 1001 verified present with `query --changelog-entry` and Round 1002 verified absent before this entry was appended."
+      ],
+      "impact_refs": [
+        "atomic-store-mutate-api"
+      ],
+      "carry_forward_bullets": [
+        "AN AGENT THAT WAS SENDING ABSOLUTE PATHS KEEPS WORKING AND ONE SENDING RELATIVE PATHS STARTS WORKING, so there is no migration. What does change silently is an agent that sent a relative path and got a file from the host's directory BY ACCIDENT — it now gets the workspace one. That is the intended fix, and it is the only way this round can surprise anyone.",
+        "THE CLI AND MCP NOW SPELL THE SAME ARGUMENT WITH DIFFERENT BASES, deliberately, and the only thing keeping that legible is the schema text plus this entry. A third consumer would have to be told; the type makes it answer the question, but not with the same answer.",
+        "35 READ-SIDE ARGUMENTS REMAIN UNEXERCISED in the Round 986 accounting, and they are the reason this whole path arc surfaced: reaching them needs report worlds, and reaching THOSE needed paths that work. The mechanisms are built."
+      ],
+      "population_census": [
+        {
+          "axis": "transition rules by `undirected`",
+          "left_label": "undirected",
+          "left": 10,
+          "right_label": "directed",
+          "right": 27
+        },
+        {
+          "axis": "map corpora by leg-kind declaration",
+          "left_label": "omitted",
+          "left": 6,
+          "right_label": "declared",
+          "right": 24
+        },
+        {
+          "axis": "cost-carrying corpora by direction-dependent pricing",
+          "left_label": "prices a way by direction",
+          "left": 4,
+          "right_label": "prices no way by direction",
+          "right": 6
+        },
+        {
+          "axis": "run trees by authoring mode",
+          "left_label": "hand script",
+          "left": 10,
+          "right_label": "file-only",
+          "right": 239
+        },
+        {
+          "axis": "map corpora by declared boundary crossing",
+          "left_label": "declares an exit",
+          "left": 6,
+          "right_label": "declares none",
+          "right": 24
+        },
+        {
+          "axis": "authored submissions by map and telling",
+          "left_label": "carries both",
+          "left": 10,
+          "right_label": "carries one",
+          "right": 24
+        }
+      ],
+      "publishable_decision_summary": "R1002 (BUILD) — the one line, on the owner's word: a relative path an agent sends now means the workspace it was handed, not a directory it has never seen. This is the change Round 998 measured the need for, Round 999 documented rather than made, Round 1000 isolated so it could be made alone, and Round 1001 widened to cover every path an agent sends rather than some of them. STAR THE ASYMMETRY IS THE WHOLE POINT AND IT IS NOT AN INCONSISTENCY. The CLI still resolves an explicit path against the working directory, because there the caller CHOSE that directory — Round 538's rule, which was right and stays. Over MCP the working directory belongs to whatever host launched the server: the agent cannot read it, cannot choose it, and gets a different one from every host. Two wires, two callers, two different things a caller can see; the rule follows what the caller knows rather than what the argument is called. STAR AN ABSOLUTE PATH IS UNAFFECTED, which is what makes this safe to land: an agent that already sends one — as it had to, because a relative path could not work — sees no change at all. STAR THE PROOF IS AN EXISTING CASE MADE RELATIVE. `report_playable_world.order_path` was proven in Round 998 with an absolute path built by a test-only helper, which was itself the evidence that the surface was unusable: if the harness needed to build absolute paths, so did every consumer. That case now sends `order-b.json`, plain, and passes. Reverting the one line kills it. STAR THE SCHEMA SAYS THE NEW RULE AND A GATE HOLDS IT THERE. All 23 path arguments now tell an agent they resolve against the workspace root, and Round 999's gate — which required them to say what they resolve against — required its needle changed with them, so the accounting could not drift from the behaviour by a round.",
+      "publishable_changes_bullets": [
+        "`mnemosyne-mcp` — `mcp_path` resolves against the workspace instead of the process's working directory. That is the change; everything else in this round follows from it.",
+        "Same file — all 23 path-argument descriptions state the new rule, and `every_path_argument_says_what_it_resolves_against` requires it, so the schema an agent reads cannot drift from what the wire does.",
+        "Same file — `report_playable_world.order_path` sends a RELATIVE path, which is the end-to-end proof: it could not have worked before this round.",
+        "Same file — the doc comment Round 1000's insertion had stolen from `render_projection_validation` is given back to it."
+      ],
+      "publishable_verification_bullets": [
+        "INJECTION AG, `mcp_path` put back on the working directory: `report_playable_world_order_path_reaches_the_answer` fails. The relative path in that case is the whole evidence and it is one line away from being untrue.",
+        "THE CLI IS UNTOUCHED AND STAYS MEASURED: Round 1000's end-to-end check still holds — from a subdirectory `--order order.json` resolves beside the user, and from the workspace root the same name resolves there. Nothing in this round goes near `cli_path`.",
+        "1588 workspace tests pass, 0 failed, `--no-fail-fast`; clippy `-D warnings` and `cargo fmt --check` clean; `validate-workspace` T1 orphan 0 and T3 reject 0.",
+        "CLIPPY CAUGHT A BLANK LINE MY LINE-RANGE EDIT LEFT between a doc comment and its function — the second time in two rounds that moving that block by position rather than by text left something behind. The first time it stole a doc comment; both are repaired.",
+        "THE GATE'S NEEDLE WAS CASE-SENSITIVE AND THE FIELDS SPELL THE BASE IN CAPS, so the first run reported all 23 as silent. Compared lowercased rather than the text changed, since the emphasis is deliberate.",
+        "Citation hygiene (R255): Rounds 538, 998, 999, 1000 and 1001 verified present with `query --changelog-entry` and Round 1002 verified absent before this entry was appended."
+      ],
+      "publishable_impact_refs": [
+        "atomic-store-mutate-api"
+      ],
+      "publishable_carry_forward_bullets": [
+        "AN AGENT THAT WAS SENDING ABSOLUTE PATHS KEEPS WORKING AND ONE SENDING RELATIVE PATHS STARTS WORKING, so there is no migration. What does change silently is an agent that sent a relative path and got a file from the host's directory BY ACCIDENT — it now gets the workspace one. That is the intended fix, and it is the only way this round can surprise anyone.",
+        "THE CLI AND MCP NOW SPELL THE SAME ARGUMENT WITH DIFFERENT BASES, deliberately, and the only thing keeping that legible is the schema text plus this entry. A third consumer would have to be told; the type makes it answer the question, but not with the same answer.",
+        "35 READ-SIDE ARGUMENTS REMAIN UNEXERCISED in the Round 986 accounting, and they are the reason this whole path arc surfaced: reaching them needs report worlds, and reaching THOSE needed paths that work. The mechanisms are built."
+      ]
+    },
     "Round 252": {
       "decision_summary": "Parser CommonMark conformance — recognize indented fenced code blocks (§98) and require whitespace after ATX hash sequence (§62)",
       "changes_bullets": [

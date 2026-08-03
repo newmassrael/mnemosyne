@@ -803,21 +803,23 @@ pub struct AddFactConflictArgs {
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct ValidateContinuityArgs {
-    /// PATH RESOLUTION: an explicit path override is resolved against the
-    /// SERVER PROCESS's working directory, not this workspace (Round 538 —
-    /// the same rule as `--sidecar` / `--manifest`; only the config-declared
-    /// path is workspace-rooted). An MCP caller cannot see that directory,
-    /// so send an ABSOLUTE path.
+    /// PATH RESOLUTION: a relative path is resolved against the WORKSPACE ROOT
+    /// (Round 1002), which is the only base an MCP caller can see. An absolute
+    /// path is used as given. The CLI resolves its own explicit paths against
+    /// the working directory instead (Round 538), because there the caller
+    /// chose that directory; here it belongs to whatever host launched the
+    /// server.
     /// Canon-order declaration path override (workspace-relative; bypasses
     /// the configured sha256 pin — the R428 rule). Omit to use
     /// `[continuity].canon_order_path`.
     #[serde(default)]
     pub order_path: Option<String>,
-    /// PATH RESOLUTION: an explicit path override is resolved against the
-    /// SERVER PROCESS's working directory, not this workspace (Round 538 —
-    /// the same rule as `--sidecar` / `--manifest`; only the config-declared
-    /// path is workspace-rooted). An MCP caller cannot see that directory,
-    /// so send an ABSOLUTE path.
+    /// PATH RESOLUTION: a relative path is resolved against the WORKSPACE ROOT
+    /// (Round 1002), which is the only base an MCP caller can see. An absolute
+    /// path is used as given. The CLI resolves its own explicit paths against
+    /// the working directory instead (Round 538), because there the caller
+    /// chose that directory; here it belongs to whatever host launched the
+    /// server.
     /// `narrative-rules/v1` declaration path override (Round 449;
     /// workspace-relative, bypasses the configured sha256 pin). Omit to
     /// use `[continuity].rules_path`.
@@ -827,30 +829,33 @@ pub struct ValidateContinuityArgs {
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct ProposeVerdictArgs {
-    /// PATH RESOLUTION: an explicit path override is resolved against the
-    /// SERVER PROCESS's working directory, not this workspace (Round 538 —
-    /// the same rule as `--sidecar` / `--manifest`; only the config-declared
-    /// path is workspace-rooted). An MCP caller cannot see that directory,
-    /// so send an ABSOLUTE path.
+    /// PATH RESOLUTION: a relative path is resolved against the WORKSPACE ROOT
+    /// (Round 1002), which is the only base an MCP caller can see. An absolute
+    /// path is used as given. The CLI resolves its own explicit paths against
+    /// the working directory instead (Round 538), because there the caller
+    /// chose that directory; here it belongs to whatever host launched the
+    /// server.
     /// Path to the candidate `import-facts` manifest (a JSON object with
     /// `frames`/`branches`/`entities`/`predicates`/`facts`/`disclosure_plans`
     /// arrays). The agent writes the candidate batch to this file, then calls
     /// the tool; the file is only READ (dry run).
     pub manifest_path: String,
-    /// PATH RESOLUTION: an explicit path override is resolved against the
-    /// SERVER PROCESS's working directory, not this workspace (Round 538 —
-    /// the same rule as `--sidecar` / `--manifest`; only the config-declared
-    /// path is workspace-rooted). An MCP caller cannot see that directory,
-    /// so send an ABSOLUTE path.
+    /// PATH RESOLUTION: a relative path is resolved against the WORKSPACE ROOT
+    /// (Round 1002), which is the only base an MCP caller can see. An absolute
+    /// path is used as given. The CLI resolves its own explicit paths against
+    /// the working directory instead (Round 538), because there the caller
+    /// chose that directory; here it belongs to whatever host launched the
+    /// server.
     /// Canon-order declaration path override (bypasses the pin). Omit to use
     /// `[continuity].canon_order_path`.
     #[serde(default)]
     pub order_path: Option<String>,
-    /// PATH RESOLUTION: an explicit path override is resolved against the
-    /// SERVER PROCESS's working directory, not this workspace (Round 538 —
-    /// the same rule as `--sidecar` / `--manifest`; only the config-declared
-    /// path is workspace-rooted). An MCP caller cannot see that directory,
-    /// so send an ABSOLUTE path.
+    /// PATH RESOLUTION: a relative path is resolved against the WORKSPACE ROOT
+    /// (Round 1002), which is the only base an MCP caller can see. An absolute
+    /// path is used as given. The CLI resolves its own explicit paths against
+    /// the working directory instead (Round 538), because there the caller
+    /// chose that directory; here it belongs to whatever host launched the
+    /// server.
     /// `narrative-rules/v1` declaration path override. Omit to use
     /// `[continuity].rules_path`.
     #[serde(default)]
@@ -864,20 +869,22 @@ pub struct ReportAuthoringFrontierArgs {
     /// gaps only (zero-fact scenes, per-scene coverage, dangling setups).
     #[serde(default)]
     pub telling: Option<String>,
-    /// PATH RESOLUTION: an explicit path override is resolved against the
-    /// SERVER PROCESS's working directory, not this workspace (Round 538 —
-    /// the same rule as `--sidecar` / `--manifest`; only the config-declared
-    /// path is workspace-rooted). An MCP caller cannot see that directory,
-    /// so send an ABSOLUTE path.
+    /// PATH RESOLUTION: a relative path is resolved against the WORKSPACE ROOT
+    /// (Round 1002), which is the only base an MCP caller can see. An absolute
+    /// path is used as given. The CLI resolves its own explicit paths against
+    /// the working directory instead (Round 538), because there the caller
+    /// chose that directory; here it belongs to whatever host launched the
+    /// server.
     /// Canon-order declaration path override (bypasses the pin). Omit to use
     /// `[continuity].canon_order_path`.
     #[serde(default)]
     pub order_path: Option<String>,
-    /// PATH RESOLUTION: an explicit path override is resolved against the
-    /// SERVER PROCESS's working directory, not this workspace (Round 538 —
-    /// the same rule as `--sidecar` / `--manifest`; only the config-declared
-    /// path is workspace-rooted). An MCP caller cannot see that directory,
-    /// so send an ABSOLUTE path.
+    /// PATH RESOLUTION: a relative path is resolved against the WORKSPACE ROOT
+    /// (Round 1002), which is the only base an MCP caller can see. An absolute
+    /// path is used as given. The CLI resolves its own explicit paths against
+    /// the working directory instead (Round 538), because there the caller
+    /// chose that directory; here it belongs to whatever host launched the
+    /// server.
     /// `narrative-rules/v1` declaration path override (Round 891; the
     /// transition rules that declare the map). Omit to use
     /// `[continuity].rules_path`.
@@ -887,19 +894,21 @@ pub struct ReportAuthoringFrontierArgs {
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct ReportTimelineGapsArgs {
-    /// PATH RESOLUTION: an explicit path override is resolved against the
-    /// SERVER PROCESS's working directory, not this workspace (Round 538 —
-    /// the same rule as `--sidecar` / `--manifest`; only the config-declared
-    /// path is workspace-rooted). An MCP caller cannot see that directory,
-    /// so send an ABSOLUTE path.
+    /// PATH RESOLUTION: a relative path is resolved against the WORKSPACE ROOT
+    /// (Round 1002), which is the only base an MCP caller can see. An absolute
+    /// path is used as given. The CLI resolves its own explicit paths against
+    /// the working directory instead (Round 538), because there the caller
+    /// chose that directory; here it belongs to whatever host launched the
+    /// server.
     /// Canon-order declaration path override (bypasses the pin).
     #[serde(default)]
     pub order_path: Option<String>,
-    /// PATH RESOLUTION: an explicit path override is resolved against the
-    /// SERVER PROCESS's working directory, not this workspace (Round 538 —
-    /// the same rule as `--sidecar` / `--manifest`; only the config-declared
-    /// path is workspace-rooted). An MCP caller cannot see that directory,
-    /// so send an ABSOLUTE path.
+    /// PATH RESOLUTION: a relative path is resolved against the WORKSPACE ROOT
+    /// (Round 1002), which is the only base an MCP caller can see. An absolute
+    /// path is used as given. The CLI resolves its own explicit paths against
+    /// the working directory instead (Round 538), because there the caller
+    /// chose that directory; here it belongs to whatever host launched the
+    /// server.
     /// `narrative-rules/v1` declaration path override (Round 490; the
     /// interval rules). Omit to use `[continuity].rules_path`.
     #[serde(default)]
@@ -908,11 +917,12 @@ pub struct ReportTimelineGapsArgs {
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct ReportTransitionMapArgs {
-    /// PATH RESOLUTION: an explicit path override is resolved against the
-    /// SERVER PROCESS's working directory, not this workspace (Round 538 —
-    /// the same rule as `--sidecar` / `--manifest`; only the config-declared
-    /// path is workspace-rooted). An MCP caller cannot see that directory,
-    /// so send an ABSOLUTE path.
+    /// PATH RESOLUTION: a relative path is resolved against the WORKSPACE ROOT
+    /// (Round 1002), which is the only base an MCP caller can see. An absolute
+    /// path is used as given. The CLI resolves its own explicit paths against
+    /// the working directory instead (Round 538), because there the caller
+    /// chose that directory; here it belongs to whatever host launched the
+    /// server.
     /// `narrative-rules/v1` declaration path override (Round 875; the
     /// transition rules DECLARE which predicate names a map edge). Omit to use
     /// `[continuity].rules_path`. No canon-order override — the map is read
@@ -934,11 +944,12 @@ pub struct ReportFrameViewArgs {
     pub entity: Option<String>,
     /// Canon point (structure-section id).
     pub at: String,
-    /// PATH RESOLUTION: an explicit path override is resolved against the
-    /// SERVER PROCESS's working directory, not this workspace (Round 538 —
-    /// the same rule as `--sidecar` / `--manifest`; only the config-declared
-    /// path is workspace-rooted). An MCP caller cannot see that directory,
-    /// so send an ABSOLUTE path.
+    /// PATH RESOLUTION: a relative path is resolved against the WORKSPACE ROOT
+    /// (Round 1002), which is the only base an MCP caller can see. An absolute
+    /// path is used as given. The CLI resolves its own explicit paths against
+    /// the working directory instead (Round 538), because there the caller
+    /// chose that directory; here it belongs to whatever host launched the
+    /// server.
     /// Canon-order declaration path override (bypasses the pin).
     #[serde(default)]
     pub order_path: Option<String>,
@@ -946,11 +957,12 @@ pub struct ReportFrameViewArgs {
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct ReportPayoffCoverageArgs {
-    /// PATH RESOLUTION: an explicit path override is resolved against the
-    /// SERVER PROCESS's working directory, not this workspace (Round 538 —
-    /// the same rule as `--sidecar` / `--manifest`; only the config-declared
-    /// path is workspace-rooted). An MCP caller cannot see that directory,
-    /// so send an ABSOLUTE path.
+    /// PATH RESOLUTION: a relative path is resolved against the WORKSPACE ROOT
+    /// (Round 1002), which is the only base an MCP caller can see. An absolute
+    /// path is used as given. The CLI resolves its own explicit paths against
+    /// the working directory instead (Round 538), because there the caller
+    /// chose that directory; here it belongs to whatever host launched the
+    /// server.
     /// Canon-order declaration path override (bypasses the pin).
     #[serde(default)]
     pub order_path: Option<String>,
@@ -958,11 +970,12 @@ pub struct ReportPayoffCoverageArgs {
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct ReportIronyIntervalsArgs {
-    /// PATH RESOLUTION: an explicit path override is resolved against the
-    /// SERVER PROCESS's working directory, not this workspace (Round 538 —
-    /// the same rule as `--sidecar` / `--manifest`; only the config-declared
-    /// path is workspace-rooted). An MCP caller cannot see that directory,
-    /// so send an ABSOLUTE path.
+    /// PATH RESOLUTION: a relative path is resolved against the WORKSPACE ROOT
+    /// (Round 1002), which is the only base an MCP caller can see. An absolute
+    /// path is used as given. The CLI resolves its own explicit paths against
+    /// the working directory instead (Round 538), because there the caller
+    /// chose that directory; here it belongs to whatever host launched the
+    /// server.
     /// Canon-order declaration path override (bypasses the pin).
     #[serde(default)]
     pub order_path: Option<String>,
@@ -974,11 +987,12 @@ pub struct ReportPlaythroughManuscriptArgs {
     /// every query world. Fail-loud on an unregistered id.
     #[serde(default)]
     pub world: Option<String>,
-    /// PATH RESOLUTION: an explicit path override is resolved against the
-    /// SERVER PROCESS's working directory, not this workspace (Round 538 —
-    /// the same rule as `--sidecar` / `--manifest`; only the config-declared
-    /// path is workspace-rooted). An MCP caller cannot see that directory,
-    /// so send an ABSOLUTE path.
+    /// PATH RESOLUTION: a relative path is resolved against the WORKSPACE ROOT
+    /// (Round 1002), which is the only base an MCP caller can see. An absolute
+    /// path is used as given. The CLI resolves its own explicit paths against
+    /// the working directory instead (Round 538), because there the caller
+    /// chose that directory; here it belongs to whatever host launched the
+    /// server.
     /// Canon-order declaration path override (bypasses the pin).
     #[serde(default)]
     pub order_path: Option<String>,
@@ -995,11 +1009,12 @@ pub struct ReportPlaythroughManuscriptArgs {
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct ReportForkTreeArgs {
-    /// PATH RESOLUTION: an explicit path override is resolved against the
-    /// SERVER PROCESS's working directory, not this workspace (Round 538 —
-    /// the same rule as `--sidecar` / `--manifest`; only the config-declared
-    /// path is workspace-rooted). An MCP caller cannot see that directory,
-    /// so send an ABSOLUTE path.
+    /// PATH RESOLUTION: a relative path is resolved against the WORKSPACE ROOT
+    /// (Round 1002), which is the only base an MCP caller can see. An absolute
+    /// path is used as given. The CLI resolves its own explicit paths against
+    /// the working directory instead (Round 538), because there the caller
+    /// chose that directory; here it belongs to whatever host launched the
+    /// server.
     /// Canon-order declaration path override (bypasses the pin).
     #[serde(default)]
     pub order_path: Option<String>,
@@ -1021,11 +1036,12 @@ pub struct ReportPlayableWorldArgs {
     /// unregistered id.
     #[serde(default)]
     pub world: Option<String>,
-    /// PATH RESOLUTION: an explicit path override is resolved against the
-    /// SERVER PROCESS's working directory, not this workspace (Round 538 —
-    /// the same rule as `--sidecar` / `--manifest`; only the config-declared
-    /// path is workspace-rooted). An MCP caller cannot see that directory,
-    /// so send an ABSOLUTE path.
+    /// PATH RESOLUTION: a relative path is resolved against the WORKSPACE ROOT
+    /// (Round 1002), which is the only base an MCP caller can see. An absolute
+    /// path is used as given. The CLI resolves its own explicit paths against
+    /// the working directory instead (Round 538), because there the caller
+    /// chose that directory; here it belongs to whatever host launched the
+    /// server.
     /// Canon-order declaration path override (bypasses the pin).
     #[serde(default)]
     pub order_path: Option<String>,
@@ -1041,11 +1057,12 @@ pub struct ReportQuestGraphArgs {
     /// unregistered id.
     #[serde(default)]
     pub world: Option<String>,
-    /// PATH RESOLUTION: an explicit path override is resolved against the
-    /// SERVER PROCESS's working directory, not this workspace (Round 538 —
-    /// the same rule as `--sidecar` / `--manifest`; only the config-declared
-    /// path is workspace-rooted). An MCP caller cannot see that directory,
-    /// so send an ABSOLUTE path.
+    /// PATH RESOLUTION: a relative path is resolved against the WORKSPACE ROOT
+    /// (Round 1002), which is the only base an MCP caller can see. An absolute
+    /// path is used as given. The CLI resolves its own explicit paths against
+    /// the working directory instead (Round 538), because there the caller
+    /// chose that directory; here it belongs to whatever host launched the
+    /// server.
     /// Canon-order declaration path override (bypasses the pin).
     #[serde(default)]
     pub order_path: Option<String>,
@@ -1061,11 +1078,12 @@ pub struct DisclosureLeakArgs {
     pub world: String,
     /// The frame whose re-extracted facts count as reader-established truth.
     pub truth_frame: String,
-    /// PATH RESOLUTION: an explicit path override is resolved against the
-    /// SERVER PROCESS's working directory, not this workspace (Round 538 —
-    /// the same rule as `--sidecar` / `--manifest`; only the config-declared
-    /// path is workspace-rooted). An MCP caller cannot see that directory,
-    /// so send an ABSOLUTE path.
+    /// PATH RESOLUTION: a relative path is resolved against the WORKSPACE ROOT
+    /// (Round 1002), which is the only base an MCP caller can see. An absolute
+    /// path is used as given. The CLI resolves its own explicit paths against
+    /// the working directory instead (Round 538), because there the caller
+    /// chose that directory; here it belongs to whatever host launched the
+    /// server.
     /// Canon-order declaration path override (bypasses the pin).
     #[serde(default)]
     pub order_path: Option<String>,
@@ -1077,11 +1095,12 @@ pub struct RenderFidelityArgs {
     pub against: String,
     /// The assigned world-line the prose was rendered for.
     pub world: String,
-    /// PATH RESOLUTION: an explicit path override is resolved against the
-    /// SERVER PROCESS's working directory, not this workspace (Round 538 —
-    /// the same rule as `--sidecar` / `--manifest`; only the config-declared
-    /// path is workspace-rooted). An MCP caller cannot see that directory,
-    /// so send an ABSOLUTE path.
+    /// PATH RESOLUTION: a relative path is resolved against the WORKSPACE ROOT
+    /// (Round 1002), which is the only base an MCP caller can see. An absolute
+    /// path is used as given. The CLI resolves its own explicit paths against
+    /// the working directory instead (Round 538), because there the caller
+    /// chose that directory; here it belongs to whatever host launched the
+    /// server.
     /// Canon-order declaration path override (bypasses the pin).
     #[serde(default)]
     pub order_path: Option<String>,
@@ -1089,11 +1108,12 @@ pub struct RenderFidelityArgs {
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct ImportTypingProposalsArgs {
-    /// PATH RESOLUTION: an explicit path override is resolved against the
-    /// SERVER PROCESS's working directory, not this workspace (Round 538 —
-    /// the same rule as `--sidecar` / `--manifest`; only the config-declared
-    /// path is workspace-rooted). An MCP caller cannot see that directory,
-    /// so send an ABSOLUTE path.
+    /// PATH RESOLUTION: a relative path is resolved against the WORKSPACE ROOT
+    /// (Round 1002), which is the only base an MCP caller can see. An absolute
+    /// path is used as given. The CLI resolves its own explicit paths against
+    /// the working directory instead (Round 538), because there the caller
+    /// chose that directory; here it belongs to whatever host launched the
+    /// server.
     /// Path to a `typing-proposals/v1` JSON artifact (workspace-relative
     /// or absolute).
     pub proposals_path: String,
@@ -1104,11 +1124,12 @@ pub struct ImportTypingProposalsArgs {
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct ReportEdgeCandidatesArgs {
-    /// PATH RESOLUTION: an explicit path override is resolved against the
-    /// SERVER PROCESS's working directory, not this workspace (Round 538 —
-    /// the same rule as `--sidecar` / `--manifest`; only the config-declared
-    /// path is workspace-rooted). An MCP caller cannot see that directory,
-    /// so send an ABSOLUTE path.
+    /// PATH RESOLUTION: a relative path is resolved against the WORKSPACE ROOT
+    /// (Round 1002), which is the only base an MCP caller can see. An absolute
+    /// path is used as given. The CLI resolves its own explicit paths against
+    /// the working directory instead (Round 538), because there the caller
+    /// chose that directory; here it belongs to whatever host launched the
+    /// server.
     /// Canon-order declaration path override (bypasses the pin).
     #[serde(default)]
     pub order_path: Option<String>,
@@ -1116,11 +1137,12 @@ pub struct ReportEdgeCandidatesArgs {
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct ImportEdgeProposalsArgs {
-    /// PATH RESOLUTION: an explicit path override is resolved against the
-    /// SERVER PROCESS's working directory, not this workspace (Round 538 —
-    /// the same rule as `--sidecar` / `--manifest`; only the config-declared
-    /// path is workspace-rooted). An MCP caller cannot see that directory,
-    /// so send an ABSOLUTE path.
+    /// PATH RESOLUTION: a relative path is resolved against the WORKSPACE ROOT
+    /// (Round 1002), which is the only base an MCP caller can see. An absolute
+    /// path is used as given. The CLI resolves its own explicit paths against
+    /// the working directory instead (Round 538), because there the caller
+    /// chose that directory; here it belongs to whatever host launched the
+    /// server.
     /// Path to an `edge-proposals/v1` JSON artifact (workspace-relative
     /// or absolute).
     pub proposals_path: String,
@@ -1390,28 +1412,35 @@ impl MnemosyneServer {
     }
 }
 
-/// Render a warm-projection validation result as a plain-text summary.
-/// WHERE AN AGENT'S PATH IS RESOLVED (Round 1000).
+/// WHERE AN AGENT'S PATH IS RESOLVED: THE WORKSPACE (Round 1002).
 ///
-/// Behaviour-preserving: until Round 1000 the shared library joined the process
-/// working directory for every explicit override, so that is what this does and
-/// nothing about what an agent sees has changed. What HAS changed is that the
-/// choice is now made here, at the wire that received the path, instead of
-/// inside a library shared with the CLI — and this is the ONE LINE a later
-/// round would move to `self.workspace`, which is the only base an MCP caller
-/// can see (Round 998 measured the consequence; Round 999 documented it). That
-/// move is a contract change and waits on the owner; this line does not cite a
-/// round for it, because the round does not exist yet and a citation to it
-/// would be the hallucination the code-citation gate is there to refuse.
-fn mcp_path(raw: Option<&str>) -> Result<Option<ops::AbsolutePath>, String> {
+/// A relative path is relative to something, and over MCP the only something
+/// the caller can see is the workspace it was handed. The process's working
+/// directory belongs to whatever host launched this server: an agent cannot
+/// read it, cannot choose it, and gets a different one from every host. It was
+/// nonetheless the base until this round, inherited from the CLI — where the
+/// working directory IS the caller's own choice, the rule Round 538 set for a
+/// path typed at a prompt, correct there and only there.
+///
+/// Round 998 measured the consequence: an order written into the workspace and
+/// named by the agent was read from beside this source file. Round 999
+/// documented it in the schema, which made the surface honest without making it
+/// usable. Round 1000 moved the decision out of the shared library to this one
+/// line so it could be changed alone. This is that change.
+///
+/// An ABSOLUTE path still passes through untouched, so an agent already sending
+/// one — as it had to before this — is unaffected.
+fn mcp_path(
+    workspace: &std::path::Path,
+    raw: Option<&str>,
+) -> Result<Option<ops::AbsolutePath>, String> {
     let Some(raw) = raw else { return Ok(None) };
-    let cwd =
-        std::env::current_dir().map_err(|e| format!("CWD lookup for a path argument: {e}"))?;
-    ops::AbsolutePath::resolve(&cwd, raw)
+    ops::AbsolutePath::resolve(workspace, raw)
         .map(Some)
         .map_err(|e| e.to_string())
 }
 
+/// Render a warm-projection validation result as a plain-text summary.
 fn render_projection_validation(v: &ProjectionValidation) -> String {
     let status = |ok: bool| if ok { "ok" } else { "VIOLATIONS" };
     format!(
@@ -2526,12 +2555,12 @@ impl MnemosyneServer {
         match ops::continuity_scan(
             &self.workspace,
             None,
-            match mcp_path(args.0.order_path.as_deref()) {
+            match mcp_path(&self.workspace, args.0.order_path.as_deref()) {
                 Ok(v) => v,
                 Err(e) => return Self::tool_error(e),
             }
             .as_ref(),
-            match mcp_path(args.0.rules_path.as_deref()) {
+            match mcp_path(&self.workspace, args.0.rules_path.as_deref()) {
                 Ok(v) => v,
                 Err(e) => return Self::tool_error(e),
             }
@@ -2551,7 +2580,7 @@ impl MnemosyneServer {
         // overrides that passed through `ops` and left the ones the wire
         // opens itself, which is the half-cleanup this repository bans:
         // the ambiguity an agent faces is identical either way.
-        let manifest_path = match mcp_path(Some(&args.0.manifest_path)) {
+        let manifest_path = match mcp_path(&self.workspace, Some(&args.0.manifest_path)) {
             Ok(p) => p.expect("a Some input yields a Some path"),
             Err(e) => return Self::tool_error(e),
         };
@@ -2572,12 +2601,12 @@ impl MnemosyneServer {
         match ops::propose_verdict(
             &self.workspace,
             None,
-            match mcp_path(args.0.order_path.as_deref()) {
+            match mcp_path(&self.workspace, args.0.order_path.as_deref()) {
                 Ok(v) => v,
                 Err(e) => return Self::tool_error(e),
             }
             .as_ref(),
-            match mcp_path(args.0.rules_path.as_deref()) {
+            match mcp_path(&self.workspace, args.0.rules_path.as_deref()) {
                 Ok(v) => v,
                 Err(e) => return Self::tool_error(e),
             }
@@ -2600,7 +2629,7 @@ impl MnemosyneServer {
             args.0.branch.as_deref(),
             args.0.entity.as_deref(),
             &args.0.at,
-            match mcp_path(args.0.order_path.as_deref()) {
+            match mcp_path(&self.workspace, args.0.order_path.as_deref()) {
                 Ok(v) => v,
                 Err(e) => return Self::tool_error(e),
             }
@@ -2621,7 +2650,7 @@ impl MnemosyneServer {
         match ops::payoff_coverage_report(
             &self.workspace,
             None,
-            match mcp_path(args.0.order_path.as_deref()) {
+            match mcp_path(&self.workspace, args.0.order_path.as_deref()) {
                 Ok(v) => v,
                 Err(e) => return Self::tool_error(e),
             }
@@ -2653,7 +2682,7 @@ impl MnemosyneServer {
         // mutate (Round 460 — with_mutate_lock), report-shaped return.
         // Resolved BEFORE the lock closure: a `return` inside a closure
         // leaves the closure, not the tool call.
-        let proposals_path = match mcp_path(Some(&args.0.proposals_path)) {
+        let proposals_path = match mcp_path(&self.workspace, Some(&args.0.proposals_path)) {
             Ok(p) => p.expect("a Some input yields a Some path"),
             Err(e) => return Self::tool_error(e),
         };
@@ -2687,7 +2716,7 @@ impl MnemosyneServer {
         match ops::payoff_substantiation_report(
             &self.workspace,
             None,
-            match mcp_path(args.0.order_path.as_deref()) {
+            match mcp_path(&self.workspace, args.0.order_path.as_deref()) {
                 Ok(v) => v,
                 Err(e) => return Self::tool_error(e),
             }
@@ -2708,12 +2737,12 @@ impl MnemosyneServer {
         match ops::timeline_gaps_report(
             &self.workspace,
             None,
-            match mcp_path(args.0.order_path.as_deref()) {
+            match mcp_path(&self.workspace, args.0.order_path.as_deref()) {
                 Ok(v) => v,
                 Err(e) => return Self::tool_error(e),
             }
             .as_ref(),
-            match mcp_path(args.0.rules_path.as_deref()) {
+            match mcp_path(&self.workspace, args.0.rules_path.as_deref()) {
                 Ok(v) => v,
                 Err(e) => return Self::tool_error(e),
             }
@@ -2734,7 +2763,7 @@ impl MnemosyneServer {
         match ops::transition_map_report(
             &self.workspace,
             None,
-            match mcp_path(args.0.rules_path.as_deref()) {
+            match mcp_path(&self.workspace, args.0.rules_path.as_deref()) {
                 Ok(v) => v,
                 Err(e) => return Self::tool_error(e),
             }
@@ -2755,7 +2784,7 @@ impl MnemosyneServer {
         match ops::edge_candidates_report(
             &self.workspace,
             None,
-            match mcp_path(args.0.order_path.as_deref()) {
+            match mcp_path(&self.workspace, args.0.order_path.as_deref()) {
                 Ok(v) => v,
                 Err(e) => return Self::tool_error(e),
             }
@@ -2777,7 +2806,7 @@ impl MnemosyneServer {
         // mutate (Round 460 — with_mutate_lock), report-shaped return.
         // Resolved BEFORE the lock closure: a `return` inside a closure
         // leaves the closure, not the tool call.
-        let proposals_path = match mcp_path(Some(&args.0.proposals_path)) {
+        let proposals_path = match mcp_path(&self.workspace, Some(&args.0.proposals_path)) {
             Ok(p) => p.expect("a Some input yields a Some path"),
             Err(e) => return Self::tool_error(e),
         };
@@ -2811,7 +2840,7 @@ impl MnemosyneServer {
         match ops::irony_intervals_report(
             &self.workspace,
             None,
-            match mcp_path(args.0.order_path.as_deref()) {
+            match mcp_path(&self.workspace, args.0.order_path.as_deref()) {
                 Ok(v) => v,
                 Err(e) => return Self::tool_error(e),
             }
@@ -2833,7 +2862,7 @@ impl MnemosyneServer {
             &self.workspace,
             None,
             args.0.world.as_deref(),
-            match mcp_path(args.0.order_path.as_deref()) {
+            match mcp_path(&self.workspace, args.0.order_path.as_deref()) {
                 Ok(v) => v,
                 Err(e) => return Self::tool_error(e),
             }
@@ -2853,7 +2882,7 @@ impl MnemosyneServer {
         match ops::fork_tree_report(
             &self.workspace,
             None,
-            match mcp_path(args.0.order_path.as_deref()) {
+            match mcp_path(&self.workspace, args.0.order_path.as_deref()) {
                 Ok(v) => v,
                 Err(e) => return Self::tool_error(e),
             }
@@ -2875,7 +2904,7 @@ impl MnemosyneServer {
             &self.workspace,
             None,
             args.0.world.as_deref(),
-            match mcp_path(args.0.order_path.as_deref()) {
+            match mcp_path(&self.workspace, args.0.order_path.as_deref()) {
                 Ok(v) => v,
                 Err(e) => return Self::tool_error(e),
             }
@@ -2895,7 +2924,7 @@ impl MnemosyneServer {
             &self.workspace,
             None,
             args.0.world.as_deref(),
-            match mcp_path(args.0.order_path.as_deref()) {
+            match mcp_path(&self.workspace, args.0.order_path.as_deref()) {
                 Ok(v) => v,
                 Err(e) => return Self::tool_error(e),
             }
@@ -2924,13 +2953,13 @@ impl MnemosyneServer {
         match ops::authoring_frontier_report(
             &self.workspace,
             None,
-            match mcp_path(args.0.order_path.as_deref()) {
+            match mcp_path(&self.workspace, args.0.order_path.as_deref()) {
                 Ok(v) => v,
                 Err(e) => return Self::tool_error(e),
             }
             .as_ref(),
             args.0.telling.as_deref(),
-            match mcp_path(args.0.rules_path.as_deref()) {
+            match mcp_path(&self.workspace, args.0.rules_path.as_deref()) {
                 Ok(v) => v,
                 Err(e) => return Self::tool_error(e),
             }
@@ -2966,7 +2995,7 @@ impl MnemosyneServer {
             &self.workspace,
             None,
             std::path::Path::new(&a.against),
-            match mcp_path(a.order_path.as_deref()) {
+            match mcp_path(&self.workspace, a.order_path.as_deref()) {
                 Ok(v) => v,
                 Err(e) => return Self::tool_error(e),
             }
@@ -2992,7 +3021,7 @@ impl MnemosyneServer {
             &self.workspace,
             None,
             std::path::Path::new(&a.against),
-            match mcp_path(a.order_path.as_deref()) {
+            match mcp_path(&self.workspace, a.order_path.as_deref()) {
                 Ok(v) => v,
                 Err(e) => return Self::tool_error(e),
             }
@@ -3807,7 +3836,7 @@ mod tests {
                     .get("description")
                     .and_then(|d| d.as_str())
                     .unwrap_or_default();
-                if !described.contains("working directory") {
+                if !described.to_lowercase().contains("workspace root") {
                     silent.push(format!("{}.{key}", tool.name));
                 }
             }
@@ -3819,8 +3848,8 @@ mod tests {
         assert!(
             silent.is_empty(),
             "{} of {checked} path argument(s) do not tell an agent what they are \
-             relative to, and an MCP caller cannot see the server's working \
-             directory: {silent:?}",
+             relative to. Since Round 1002 that is the workspace root, which is \
+             the only base an MCP caller can see: {silent:?}",
             silent.len()
         );
     }
@@ -4444,7 +4473,7 @@ mod tests {
             [import_sections(ImportSectionsArgs) {"sections": [{"section_id": "sc-01", "parent_doc": "spec", "title": "one"}, {"section_id": "sc-02", "parent_doc": "spec", "title": "two"}, {"section_id": "sc-03", "parent_doc": "spec", "title": "three"}]}]
             [import_facts(atomic::FactsManifest) {"frames": [{"frame_id": "ground-truth"}], "entity_kinds": [{"kind_id": "place"}, {"kind_id": "character"}], "entities": [{"entity_id": "p-a", "kind": "place"}, {"entity_id": "p-b", "kind": "place"}, {"entity_id": "e-her", "kind": "character"}], "predicates": [{"predicate_id": "adjacent", "object_kind": "entity", "subject_kind": "place", "object_entity_kind": "place"}, {"predicate_id": "at", "object_kind": "entity", "subject_kind": "character", "object_entity_kind": "place"}], "facts": [{"fact_id": "f-way", "frame": "ground-truth", "claim": "a way runs", "canon_from": "sc-01", "evidence": ["sc-01"], "entities": ["p-a", "p-b"], "typed": {"subject": "p-a", "predicate": "adjacent", "object": {"kind": "entity", "id": "p-b"}}}, {"fact_id": "f-at-a", "frame": "ground-truth", "claim": "she is at a", "canon_from": "sc-01", "evidence": ["sc-01"], "entities": ["e-her", "p-a"], "typed": {"subject": "e-her", "predicate": "at", "object": {"kind": "entity", "id": "p-a"}}}, {"fact_id": "f-at-b", "frame": "ground-truth", "claim": "she is at b", "canon_from": "sc-03", "evidence": ["sc-03"], "entities": ["e-her", "p-b"], "supersedes_in_frame": "f-at-a", "typed": {"subject": "e-her", "predicate": "at", "object": {"kind": "entity", "id": "p-b"}}}], "disclosure_plans": [{"telling_id": "t-quiet", "default_mode": "state"}]}]
             report_playable_world(ReportPlayableWorldArgs) {"telling": "t-quiet", "order_path": "{ws}/order-a.json"}
-            ."order_path" = "{ws}/order-b.json" seen "sc-03" in output;
+            ."order_path" = "order-b.json" seen "sc-03" in output;
         query_term_scope_reaches_the_answer:
             [import_sections(ImportSectionsArgs) {"sections": [{"section_id": "40", "parent_doc": "spec", "title": "the section"}, {"section_id": "41", "parent_doc": "spec", "title": "the other"}]}]
             [append_changelog_entry(AppendChangelogEntryArgs) {"entry_id": "Round 1", "decision_summary": "the one who Waits", "changes_bullets": ["a change"], "verification_bullets": ["a check"]}]
