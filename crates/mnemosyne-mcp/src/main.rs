@@ -3447,17 +3447,11 @@ mod tests {
     /// anything is unknown.
     const UNEXERCISED: &[(&str, &str)] = &[
         ("add_branch", "converges_from"),
-        ("add_branch", "description"),
-        ("add_branch", "forks_at"),
-        ("add_branch", "forks_from"),
         ("add_confirmation_event", "code_sha256"),
         ("add_confirmation_event", "file"),
         ("add_confirmation_event", "spec_sha256"),
         ("add_confirmation_event", "symbol"),
         ("add_confirmation_event", "test_sha256"),
-        ("add_inventory_entry", "section_ref"),
-        ("add_predicate", "object_entity_kind"),
-        ("add_predicate", "object_tokens"),
         ("emit_publishable_override_ledger_draft", "kind"),
         ("import_edge_proposals", "dry_run"),
         ("import_typing_proposals", "dry_run"),
@@ -3471,7 +3465,6 @@ mod tests {
         ("redact_term", "kind"),
         ("redact_term", "regex"),
         ("redact_term", "scope"),
-        ("remove_section_binding", "symbol"),
         ("report_authoring_frontier", "order_path"),
         ("report_authoring_frontier", "rules_path"),
         ("report_authoring_frontier", "telling"),
@@ -3499,14 +3492,7 @@ mod tests {
         ("set_disclosure", "surface_scene"),
         ("set_disclosure_reveal_threshold", "threshold"),
         ("set_edge_guard_threshold", "threshold"),
-        ("set_inventory_section_ref", "clear"),
-        ("set_inventory_section_ref", "section_ref"),
-        ("set_predicate", "object_entity_kind"),
-        ("set_predicate", "object_tokens"),
-        ("set_predicate", "subject_kind"),
-        ("set_section_binding_kind", "symbol"),
         ("set_section_decision_status", "resolving"),
-        ("set_section_decision_status", "superseding"),
         ("style_check", "doc"),
         ("style_check", "severity"),
         ("validate_continuity", "order_path"),
@@ -3730,13 +3716,34 @@ mod tests {
                         let before_call =
                             std::fs::read_to_string(&store_path).expect("read the store");
                         let result = server.$tool(Parameters(args)).await;
-                        assert!(
-                            result.is_error != Some(true),
-                            "{} failed with {}={with}: {:?}",
-                            stringify!($tool),
-                            $field,
-                            result.content
-                        );
+                        // AN ARGUMENT THE TOOL'S OWN CONTRACT MAKES CONDITIONAL
+                        // CANNOT BE OMITTED AND STILL LEAVE A VALID CALL — one
+                        // half of an exactly-one-of pair has no arm without it.
+                        // `in outcome` is that case: the call WITHOUT the
+                        // argument must be refused and the call with it must
+                        // succeed, so the argument is still what the two arms
+                        // differ by.
+                        if stringify!($oracle) == "outcome" {
+                            assert_eq!(
+                                result.is_error == Some(true),
+                                !with,
+                                "{} is declared `in outcome`, which means the \
+                                 call is refused without `{}` and accepted with \
+                                 it; at {}={with} it did the opposite: {:?}",
+                                stringify!($tool),
+                                $field,
+                                $field,
+                                result.content
+                            );
+                        } else {
+                            assert!(
+                                result.is_error != Some(true),
+                                "{} failed with {}={with}: {:?}",
+                                stringify!($tool),
+                                $field,
+                                result.content
+                            );
+                        }
                         wrote |= std::fs::read_to_string(&store_path)
                             .expect("read the store")
                             != before_call;
@@ -3748,7 +3755,7 @@ mod tests {
                         written.push(match stringify!($oracle) {
                             "store" => std::fs::read_to_string(&store_path)
                                 .expect("read the store"),
-                            "output" => answer_text(&result),
+                            "output" | "outcome" => answer_text(&result),
                             other => panic!(
                                 "`{other}` is not an oracle this macro knows; \
                                  write `store` or `output`"
@@ -3771,6 +3778,10 @@ mod tests {
                              files and can only ever fail",
                             stringify!($tool)
                         ),
+                        // `outcome` is judged on the answer, and the arm that
+                        // succeeds may well write; nothing more is asserted
+                        // about it than that the two arms differ in acceptance.
+                        "outcome" => {}
                         "output" => assert!(
                             !wrote,
                             "{} is declared `in output` and DOES write the \
@@ -3946,6 +3957,69 @@ mod tests {
             [import_sections(ImportSectionsArgs) {"sections": [{"section_id": "sc-01", "parent_doc": "spec", "title": "scene one"}]}]
             import_facts(atomic::FactsManifest) {"frames": [{"frame_id": "ground-truth"}], "units": [{"unit_id": "minute"}], "entity_kinds": [{"kind_id": "place"}], "entities": [{"entity_id": "p-a", "kind": "place"}, {"entity_id": "p-b", "kind": "place"}], "predicates": [{"predicate_id": "adjacent", "object_kind": "entity", "subject_kind": "place", "object_entity_kind": "place"}], "facts": [{"fact_id": "f-way", "frame": "ground-truth", "claim": "a way runs from a to b", "canon_from": "sc-01", "evidence": ["sc-01"], "entities": ["p-a", "p-b"], "typed": {"subject": "p-a", "predicate": "adjacent", "object": {"kind": "entity", "id": "p-b"}}}, {"fact_id": "f-lamp", "frame": "ground-truth", "claim": "the lamp is lit", "canon_from": "sc-01", "evidence": ["sc-01"]}]}
             ."edge_guards" = [{"fact_id": "f-way", "conditions": ["f-lamp"], "threshold": 1}] seen "f-lamp" in store;
+        remove_section_binding_symbol_reaches_the_store:
+            [import_sections(ImportSectionsArgs) {"sections": [{"section_id": "40", "parent_doc": "spec", "title": "the section"}, {"section_id": "41", "parent_doc": "spec", "title": "the other"}]}]
+            [add_section_binding(AddSectionBindingArgs) {"section_id": "40", "file": "src/lib.rs", "kind": "implements"}]
+            [add_section_binding(AddSectionBindingArgs) {"section_id": "40", "file": "src/lib.rs", "symbol": "the_symbol", "kind": "implements"}]
+            remove_section_binding(RemoveSectionBindingArgs) {"section_id": "40", "file": "src/lib.rs", "reason": "no longer bound"}
+            ."symbol" = "the_symbol" seen "the_symbol" in store;
+        set_section_binding_kind_symbol_reaches_the_store:
+            [import_sections(ImportSectionsArgs) {"sections": [{"section_id": "40", "parent_doc": "spec", "title": "the section"}, {"section_id": "41", "parent_doc": "spec", "title": "the other"}]}]
+            [add_section_binding(AddSectionBindingArgs) {"section_id": "40", "file": "src/lib.rs", "kind": "implements"}]
+            [add_section_binding(AddSectionBindingArgs) {"section_id": "40", "file": "src/lib.rs", "symbol": "the_symbol", "kind": "verifies"}]
+            set_section_binding_kind(SetSectionBindingKindArgs) {"section_id": "40", "file": "src/lib.rs", "kind": "references", "reason": "re-pointed"}
+            ."symbol" = "the_symbol" seen "verifies" in store;
+        add_inventory_entry_section_ref_reaches_the_store:
+            [import_sections(ImportSectionsArgs) {"sections": [{"section_id": "40", "parent_doc": "spec", "title": "the section"}, {"section_id": "41", "parent_doc": "spec", "title": "the other"}]}]
+            add_inventory_entry(AddInventoryEntryArgs) {"inventory_id": "inv-1", "status": "active"}
+            ."section_ref" = "40" seen "40" in store;
+        set_inventory_section_ref_reaches_the_store:
+            [import_sections(ImportSectionsArgs) {"sections": [{"section_id": "40", "parent_doc": "spec", "title": "the section"}, {"section_id": "41", "parent_doc": "spec", "title": "the other"}]}]
+            [add_inventory_entry(AddInventoryEntryArgs) {"inventory_id": "inv-1", "status": "active"}]
+            set_inventory_section_ref(SetInventorySectionRefArgs) {"inventory_id": "inv-1", "section_ref": "40", "reason": "filed"}
+            ."section_ref" = "41" seen "41" in store;
+        set_inventory_section_ref_clear_reaches_the_store:
+            [import_sections(ImportSectionsArgs) {"sections": [{"section_id": "40", "parent_doc": "spec", "title": "the section"}, {"section_id": "41", "parent_doc": "spec", "title": "the other"}]}]
+            [add_inventory_entry(AddInventoryEntryArgs) {"inventory_id": "inv-1", "status": "active", "section_ref": "40"}]
+            set_inventory_section_ref(SetInventorySectionRefArgs) {"inventory_id": "inv-1", "reason": "unfiled"}
+            ."clear" = true seen "inv-1" in outcome;
+        set_section_decision_status_superseding_reaches_the_store:
+            [import_sections(ImportSectionsArgs) {"sections": [{"section_id": "40", "parent_doc": "spec", "title": "the section"}, {"section_id": "41", "parent_doc": "spec", "title": "the other"}]}]
+            set_section_decision_status(SetSectionDecisionStatusArgs) {"section_id": "40", "status": "Superseded", "reason": "overtaken"}
+            ."superseding" = "41" seen "superseding" in outcome;
+        add_branch_description_reaches_the_store:
+            add_branch(AddBranchArgs) {"branch_id": "b-what-if"}
+            ."description" = "the road not taken" seen "the road not taken" in store;
+        add_branch_forks_from_reaches_the_store:
+            [import_sections(ImportSectionsArgs) {"sections": [{"section_id": "sc-01", "parent_doc": "spec", "title": "scene one"}]}]
+            [add_branch(AddBranchArgs) {"branch_id": "b-other", "forks_from": "main", "forks_at": "sc-01"}]
+            add_branch(AddBranchArgs) {"branch_id": "b-what-if", "forks_from": "main", "forks_at": "sc-01"}
+            ."forks_from" = "b-other" seen "b-other" in store;
+        add_branch_forks_at_reaches_the_store:
+            [import_sections(ImportSectionsArgs) {"sections": [{"section_id": "sc-01", "parent_doc": "spec", "title": "scene one"}, {"section_id": "sc-02", "parent_doc": "spec", "title": "scene two"}]}]
+            add_branch(AddBranchArgs) {"branch_id": "b-what-if", "forks_from": "main", "forks_at": "sc-01"}
+            ."forks_at" = "sc-02" seen "sc-02" in store;
+        add_predicate_object_entity_kind_reaches_the_store:
+            [add_entity_kind(AddEntityKindArgs) {"kind_id": "place"}]
+            add_predicate(AddPredicateArgs) {"predicate_id": "at", "object_kind": "entity"}
+            ."object_entity_kind" = "place" seen "place" in store;
+        add_predicate_object_tokens_reaches_the_store:
+            add_predicate(AddPredicateArgs) {"predicate_id": "does", "object_kind": "token", "object_tokens": ["waits"]}
+            ."object_tokens" = ["waits", "sleeps"] seen "sleeps" in store;
+        set_predicate_subject_kind_reaches_the_store:
+            [add_entity_kind(AddEntityKindArgs) {"kind_id": "place"}]
+            [add_predicate(AddPredicateArgs) {"predicate_id": "does", "object_kind": "token", "object_tokens": ["waits"]}]
+            set_predicate(SetPredicateArgs) {"predicate_id": "does", "object_kind": "token", "object_tokens": ["waits"], "description": "what a person does"}
+            ."subject_kind" = "place" seen "place" in store;
+        set_predicate_object_tokens_reaches_the_store:
+            [add_predicate(AddPredicateArgs) {"predicate_id": "does", "object_kind": "token", "object_tokens": ["waits"]}]
+            set_predicate(SetPredicateArgs) {"predicate_id": "does", "object_kind": "token", "object_tokens": ["waits"], "description": "what a person does"}
+            ."object_tokens" = ["waits", "sleeps"] seen "sleeps" in store;
+        set_predicate_object_entity_kind_reaches_the_store:
+            [add_entity_kind(AddEntityKindArgs) {"kind_id": "place"}]
+            [add_predicate(AddPredicateArgs) {"predicate_id": "at", "object_kind": "entity"}]
+            set_predicate(SetPredicateArgs) {"predicate_id": "at", "object_kind": "entity", "description": "where a thing is"}
+            ."object_entity_kind" = "place" seen "place" in store;
         import_facts_frames_reaches_the_store:
             import_facts(atomic::FactsManifest) {"units": [{"unit_id": "u-base"}]}
             ."frames" = [{"frame_id": "ground-truth"}] seen "ground-truth" in store;

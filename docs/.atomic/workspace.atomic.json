@@ -34397,6 +34397,94 @@
         "68 OF 122 REMAIN AND THE MUTATING SIDE IS NEARLY DONE: what is left there is the disclosure and edge setters, the section-binding and decision-status arguments, the inventory section ref and the confirmation-event hashes. The bulk of the remainder — 46 of it — is the read side, where the oracle is the tool's answer and the setup is a workspace with enough in it for a report to say anything at all.",
         "A CASE PROVES A SECTION ARRIVES, NOT THAT THE IMPORT IS ATOMIC. `import_facts` earns its place in the contract by being all-or-nothing, and nothing here tests that: a handler that applied nine sections and dropped the tenth on an error would pass every case above. That is a different property from the one this arc is proving and it wants its own test — a manifest whose last section is invalid, and a store that is unchanged afterwards."
       ]
+    },
+    "Round 994": {
+      "decision_summary": "R994 (BUILD) — fourteen more arguments proven, and one of them could not be proven the way all sixty-seven before it were, which is the finding. The batch is the registry and audit setters: what a branch forks from and at, what a predicate's legs and tokens are, which binding a symbol selects, where an inventory entry is filed, which section supersedes another. STAR SOME ARGUMENTS HAVE NO ARM WITHOUT THEM, and the tools said so themselves. `forks_from` and `forks_at` \"must be given together\", so neither has a valid call missing it; `superseding` is \"mandatory for active → superseded\"; `section_ref` and `clear` are \"exactly one of\". An absent-versus-present pair does not exist for any of these — the arm without the argument is not a call the tool will take. STAR THREE OF THE FOUR WERE ANSWERED BY VARYING THE VALUE RATHER THAN ITS PRESENCE, which is what the split between the value sent and the needle expected was for: a branch that forks at scene one against one that forks at scene two, a predicate whose tokens are one word against two, an entry filed under section 40 against 41. STAR THE FOURTH NEEDED A THIRD ORACLE AND GETS ONE. `clear` is a boolean and one half of an exactly-one-of pair, so there is no other value to vary and no valid call without it: it cannot be exercised against the store or the answer. `in outcome` says what is true instead — the call is REFUSED without the argument and ACCEPTED with it — so the two arms still differ by exactly the argument, and the tool's own refusal is the observation. That is a narrower claim than the other two oracles make and it is stated as one. STAR THE NEEDLE FOR A REFUSAL COMES FROM THE REFUSAL. `set_section_decision_status.superseding` is watched by the word `superseding` appearing in what the tool says when it is missing and not when it is supplied — the tool's own sentence about its own rule, which is the same discipline as taking a closed vocabulary from the error that names it. STAR THE COUNT IS 68 OF 122, and the mutating side is down to the confirmation-event hashes and the disclosure and threshold setters.",
+      "changes_bullets": [
+        "`crates/mnemosyne-mcp/src/main.rs` — a third oracle, `in outcome`: the call without the argument must be REFUSED and the call with it ACCEPTED. It exists for an argument the tool's own contract makes conditional, where no valid call omits it and no other value can be varied — `set_inventory_section_ref.clear` is the case that needed it.",
+        "Same file — fourteen cases: `add_branch.description`, `.forks_from`, `.forks_at`; `add_predicate.object_entity_kind`, `.object_tokens`; `set_predicate.subject_kind`, `.object_entity_kind`, `.object_tokens`; `remove_section_binding.symbol`; `set_section_binding_kind.symbol`; `add_inventory_entry.section_ref`; `set_inventory_section_ref.section_ref`, `.clear`; `set_section_decision_status.superseding`.",
+        "Same file — the paired and mutually exclusive arguments are exercised by varying the VALUE, not its presence: `forks_at` moves between two scenes, `object_tokens` between one word and two, `section_ref` between two sections. The selector arguments (`symbol` on the two binding verbs) are watched by what the OTHER binding still says, since a selector changes which record moved rather than adding a value."
+      ],
+      "verification_bullets": [
+        "STAR FOUR ARGUMENTS TURNED OUT TO HAVE NO ABSENT ARM AND EACH TOOL NAMED ITS OWN RULE: \"forks_from and forks_at must be given together\", \"superseding section_id mandatory for active → superseded transition\", \"exactly one of section_ref or clear must be supplied\". Three were answered by varying the value; the fourth needed the new oracle.",
+        "INJECTION T, `set_inventory_section_ref` stops reading `clear`: the case failed with \"declared `in outcome`, which means the call is refused without `clear` and accepted with it; at clear=true it did the opposite\", which is the arm the new oracle exists for.",
+        "`kind` NAMED ITS CLOSED SET when the fixture guessed `documents`: \"kind must be `implements`, `references`, or `verifies`\". `set_predicate` named a required field the schema shows as required and the fixture had omitted. Both fixtures were corrected to the tools, not the assertions loosened.",
+        "THE ORACLE-VERSUS-BEHAVIOUR CHECK FROM ROUND 991 STILL HOLDS FOR ALL 68 CASES, and `outcome` is exempted from it deliberately: an accepted call may or may not write, and the claim being made is about acceptance rather than about where the effect landed.",
+        "1565 workspace tests pass (1551 before), 0 failed, `--no-fail-fast`; clippy `-D warnings` and `cargo fmt --check` clean; `validate-workspace` T1 orphan 0 and T3 reject 0.",
+        "Citation hygiene (R255): Rounds 991 and 993 verified present with `query --changelog-entry` and Round 994 verified absent before this entry was appended."
+      ],
+      "impact_refs": [
+        "atomic-store-mutate-api"
+      ],
+      "carry_forward_bullets": [
+        "`in outcome` PROVES THE ARGUMENT CHANGES WHETHER THE CALL IS TAKEN, NOT WHERE ITS VALUE LANDED. For `clear` that is the whole of what the argument does, so the two coincide; for another argument they would not, and a case reaching for this oracle when `store` was available would be using the weakest of the three. Nothing checks that today — Round 991's oracle-versus-behaviour check exempts `outcome` — and the reason it is exempt is that an accepted call may legitimately write.",
+        "54 OF 122 REMAIN: eight on the mutating side (the confirmation-event hashes, the disclosure setter's three arguments, the two thresholds) and 46 on the read side. The read side is the larger half and wants a workspace with enough authored in it for a report to vary at all, which is the same `given` machinery pointed at a fuller world."
+      ],
+      "population_census": [
+        {
+          "axis": "transition rules by `undirected`",
+          "left_label": "undirected",
+          "left": 10,
+          "right_label": "directed",
+          "right": 27
+        },
+        {
+          "axis": "map corpora by leg-kind declaration",
+          "left_label": "omitted",
+          "left": 6,
+          "right_label": "declared",
+          "right": 24
+        },
+        {
+          "axis": "cost-carrying corpora by direction-dependent pricing",
+          "left_label": "prices a way by direction",
+          "left": 4,
+          "right_label": "prices no way by direction",
+          "right": 6
+        },
+        {
+          "axis": "run trees by authoring mode",
+          "left_label": "hand script",
+          "left": 10,
+          "right_label": "file-only",
+          "right": 239
+        },
+        {
+          "axis": "map corpora by declared boundary crossing",
+          "left_label": "declares an exit",
+          "left": 6,
+          "right_label": "declares none",
+          "right": 24
+        },
+        {
+          "axis": "authored submissions by map and telling",
+          "left_label": "carries both",
+          "left": 10,
+          "right_label": "carries one",
+          "right": 24
+        }
+      ],
+      "publishable_decision_summary": "R994 (BUILD) — fourteen more arguments proven, and one of them could not be proven the way all sixty-seven before it were, which is the finding. The batch is the registry and audit setters: what a branch forks from and at, what a predicate's legs and tokens are, which binding a symbol selects, where an inventory entry is filed, which section supersedes another. STAR SOME ARGUMENTS HAVE NO ARM WITHOUT THEM, and the tools said so themselves. `forks_from` and `forks_at` \"must be given together\", so neither has a valid call missing it; `superseding` is \"mandatory for active → superseded\"; `section_ref` and `clear` are \"exactly one of\". An absent-versus-present pair does not exist for any of these — the arm without the argument is not a call the tool will take. STAR THREE OF THE FOUR WERE ANSWERED BY VARYING THE VALUE RATHER THAN ITS PRESENCE, which is what the split between the value sent and the needle expected was for: a branch that forks at scene one against one that forks at scene two, a predicate whose tokens are one word against two, an entry filed under section 40 against 41. STAR THE FOURTH NEEDED A THIRD ORACLE AND GETS ONE. `clear` is a boolean and one half of an exactly-one-of pair, so there is no other value to vary and no valid call without it: it cannot be exercised against the store or the answer. `in outcome` says what is true instead — the call is REFUSED without the argument and ACCEPTED with it — so the two arms still differ by exactly the argument, and the tool's own refusal is the observation. That is a narrower claim than the other two oracles make and it is stated as one. STAR THE NEEDLE FOR A REFUSAL COMES FROM THE REFUSAL. `set_section_decision_status.superseding` is watched by the word `superseding` appearing in what the tool says when it is missing and not when it is supplied — the tool's own sentence about its own rule, which is the same discipline as taking a closed vocabulary from the error that names it. STAR THE COUNT IS 68 OF 122, and the mutating side is down to the confirmation-event hashes and the disclosure and threshold setters.",
+      "publishable_changes_bullets": [
+        "`crates/mnemosyne-mcp/src/main.rs` — a third oracle, `in outcome`: the call without the argument must be REFUSED and the call with it ACCEPTED. It exists for an argument the tool's own contract makes conditional, where no valid call omits it and no other value can be varied — `set_inventory_section_ref.clear` is the case that needed it.",
+        "Same file — fourteen cases: `add_branch.description`, `.forks_from`, `.forks_at`; `add_predicate.object_entity_kind`, `.object_tokens`; `set_predicate.subject_kind`, `.object_entity_kind`, `.object_tokens`; `remove_section_binding.symbol`; `set_section_binding_kind.symbol`; `add_inventory_entry.section_ref`; `set_inventory_section_ref.section_ref`, `.clear`; `set_section_decision_status.superseding`.",
+        "Same file — the paired and mutually exclusive arguments are exercised by varying the VALUE, not its presence: `forks_at` moves between two scenes, `object_tokens` between one word and two, `section_ref` between two sections. The selector arguments (`symbol` on the two binding verbs) are watched by what the OTHER binding still says, since a selector changes which record moved rather than adding a value."
+      ],
+      "publishable_verification_bullets": [
+        "STAR FOUR ARGUMENTS TURNED OUT TO HAVE NO ABSENT ARM AND EACH TOOL NAMED ITS OWN RULE: \"forks_from and forks_at must be given together\", \"superseding section_id mandatory for active → superseded transition\", \"exactly one of section_ref or clear must be supplied\". Three were answered by varying the value; the fourth needed the new oracle.",
+        "INJECTION T, `set_inventory_section_ref` stops reading `clear`: the case failed with \"declared `in outcome`, which means the call is refused without `clear` and accepted with it; at clear=true it did the opposite\", which is the arm the new oracle exists for.",
+        "`kind` NAMED ITS CLOSED SET when the fixture guessed `documents`: \"kind must be `implements`, `references`, or `verifies`\". `set_predicate` named a required field the schema shows as required and the fixture had omitted. Both fixtures were corrected to the tools, not the assertions loosened.",
+        "THE ORACLE-VERSUS-BEHAVIOUR CHECK FROM ROUND 991 STILL HOLDS FOR ALL 68 CASES, and `outcome` is exempted from it deliberately: an accepted call may or may not write, and the claim being made is about acceptance rather than about where the effect landed.",
+        "1565 workspace tests pass (1551 before), 0 failed, `--no-fail-fast`; clippy `-D warnings` and `cargo fmt --check` clean; `validate-workspace` T1 orphan 0 and T3 reject 0.",
+        "Citation hygiene (R255): Rounds 991 and 993 verified present with `query --changelog-entry` and Round 994 verified absent before this entry was appended."
+      ],
+      "publishable_impact_refs": [
+        "atomic-store-mutate-api"
+      ],
+      "publishable_carry_forward_bullets": [
+        "`in outcome` PROVES THE ARGUMENT CHANGES WHETHER THE CALL IS TAKEN, NOT WHERE ITS VALUE LANDED. For `clear` that is the whole of what the argument does, so the two coincide; for another argument they would not, and a case reaching for this oracle when `store` was available would be using the weakest of the three. Nothing checks that today — Round 991's oracle-versus-behaviour check exempts `outcome` — and the reason it is exempt is that an accepted call may legitimately write.",
+        "54 OF 122 REMAIN: eight on the mutating side (the confirmation-event hashes, the disclosure setter's three arguments, the two thresholds) and 46 on the read side. The read side is the larger half and wants a workspace with enough authored in it for a report to vary at all, which is the same `given` machinery pointed at a fuller world."
+      ]
     }
   },
   "inventory_entries": {},
