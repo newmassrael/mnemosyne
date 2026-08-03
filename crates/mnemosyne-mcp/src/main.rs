@@ -3465,7 +3465,6 @@ mod tests {
         ("report_irony_intervals", "order_path"),
         ("report_payoff_coverage", "order_path"),
         ("report_payoff_substantiation", "order_path"),
-        ("report_playable_world", "order_path"),
         ("report_playable_world", "world"),
         ("report_playthrough_manuscript", "order_path"),
         ("report_playthrough_manuscript", "reading_walk"),
@@ -3692,6 +3691,28 @@ mod tests {
         }
     }
 
+    /// Replace `{ws}` with the workspace root everywhere in a value.
+    fn substitute_workspace(value: &mut serde_json::Value, root: &std::path::Path) {
+        match value {
+            serde_json::Value::String(s) => {
+                if s.contains("{ws}") {
+                    *s = s.replace("{ws}", &root.to_string_lossy());
+                }
+            }
+            serde_json::Value::Array(items) => {
+                for item in items {
+                    substitute_workspace(item, root);
+                }
+            }
+            serde_json::Value::Object(map) => {
+                for (_, v) in map.iter_mut() {
+                    substitute_workspace(v, root);
+                }
+            }
+            _ => {}
+        }
+    }
+
     /// Everything a tool said, joined — the read-side counterpart of the store
     /// bytes.
     fn answer_text(result: &CallToolResult) -> String {
@@ -3761,6 +3782,13 @@ mod tests {
                         if with {
                             json[$field] = serde_json::json!($value);
                         }
+                        // `{ws}` IN ANY STRING BECOMES THE WORKSPACE ROOT. A
+                        // path argument is resolved by the tool against the
+                        // SERVER PROCESS's working directory and not against
+                        // the workspace it was handed, so a relative literal
+                        // here would read a file beside this source rather than
+                        // the one the setup wrote.
+                        substitute_workspace(&mut json, tmp.path());
                         let args: $args = serde_json::from_value(json)
                             .expect("the agent-facing shape must parse this call");
                         let server =
@@ -3957,6 +3985,13 @@ mod tests {
     }
 
     exercised! {
+        report_playable_world_order_path_reaches_the_answer:
+            {"order-a.json" = {"schema": "canon-order/v1", "edges": [["sc-01", "sc-02"]]}}
+            {"order-b.json" = {"schema": "canon-order/v1", "edges": [["sc-01", "sc-02"], ["sc-02", "sc-03"]]}}
+            [import_sections(ImportSectionsArgs) {"sections": [{"section_id": "sc-01", "parent_doc": "spec", "title": "one"}, {"section_id": "sc-02", "parent_doc": "spec", "title": "two"}, {"section_id": "sc-03", "parent_doc": "spec", "title": "three"}]}]
+            [import_facts(atomic::FactsManifest) {"frames": [{"frame_id": "ground-truth"}], "entity_kinds": [{"kind_id": "place"}, {"kind_id": "character"}], "entities": [{"entity_id": "p-a", "kind": "place"}, {"entity_id": "p-b", "kind": "place"}, {"entity_id": "e-her", "kind": "character"}], "predicates": [{"predicate_id": "adjacent", "object_kind": "entity", "subject_kind": "place", "object_entity_kind": "place"}, {"predicate_id": "at", "object_kind": "entity", "subject_kind": "character", "object_entity_kind": "place"}], "facts": [{"fact_id": "f-way", "frame": "ground-truth", "claim": "a way runs", "canon_from": "sc-01", "evidence": ["sc-01"], "entities": ["p-a", "p-b"], "typed": {"subject": "p-a", "predicate": "adjacent", "object": {"kind": "entity", "id": "p-b"}}}, {"fact_id": "f-at-a", "frame": "ground-truth", "claim": "she is at a", "canon_from": "sc-01", "evidence": ["sc-01"], "entities": ["e-her", "p-a"], "typed": {"subject": "e-her", "predicate": "at", "object": {"kind": "entity", "id": "p-a"}}}, {"fact_id": "f-at-b", "frame": "ground-truth", "claim": "she is at b", "canon_from": "sc-03", "evidence": ["sc-03"], "entities": ["e-her", "p-b"], "supersedes_in_frame": "f-at-a", "typed": {"subject": "e-her", "predicate": "at", "object": {"kind": "entity", "id": "p-b"}}}], "disclosure_plans": [{"telling_id": "t-quiet", "default_mode": "state"}]}]
+            report_playable_world(ReportPlayableWorldArgs) {"telling": "t-quiet", "order_path": "{ws}/order-a.json"}
+            ."order_path" = "{ws}/order-b.json" seen "sc-03" in output;
         query_term_scope_reaches_the_answer:
             [import_sections(ImportSectionsArgs) {"sections": [{"section_id": "40", "parent_doc": "spec", "title": "the section"}, {"section_id": "41", "parent_doc": "spec", "title": "the other"}]}]
             [append_changelog_entry(AppendChangelogEntryArgs) {"entry_id": "Round 1", "decision_summary": "the one who Waits", "changes_bullets": ["a change"], "verification_bullets": ["a check"]}]

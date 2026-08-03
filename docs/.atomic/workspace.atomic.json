@@ -34757,6 +34757,92 @@
         "36 REMAIN AND THEY ARE THE REPORT ARGUMENTS: `order_path`, `world`, `telling`, `rules_path` across the ten `report_*` verbs, plus `style_check`'s pair, `query_term.fields`, the two `dry_run` importers and `emit_publishable_override_ledger_draft.kind`. The file setup this round added is what they were waiting for; what they still need is a workspace with a canon order and enough authored facts that a report's answer varies, which is one `import_facts` given of the size Round 995 already writes.",
         "A SUMMARY REPORT CAN ONLY BE WATCHED BY WHAT IT PRINTS. `validate_projection` prints counts and a status word and never an id, so a case against it can only watch the status word — which means it can only be written against a state that actually violates something. That is a property of the report rather than of the harness, and it will recur for any verb whose answer is an aggregate."
       ]
+    },
+    "Round 998": {
+      "decision_summary": "R998 (BUILD) — the report arguments are reachable now, and getting there found that a path an agent sends is resolved against the wrong directory. Every argument left belongs to a read tool, and a third of them name a FILE: a canon order, a rules artifact, a proposals file. STAR A RELATIVE PATH ARGUMENT IS RESOLVED AGAINST THE SERVER PROCESS'S WORKING DIRECTORY, NOT THE WORKSPACE. The first `order_path` case wrote its order into the workspace, passed the name, and got \"canon-order read crates/mnemosyne-mcp/order-a.json: No such file or directory\" — the test process's own directory. An MCP server is launched by a host with a working directory the agent never sees and does not control, while the workspace is the one location it was told about; a relative path is therefore the one thing an agent has no way to write correctly. It fails loud, so this is not the silent class this arc closes, and it is recorded rather than changed here because whether a relative path should resolve against the workspace is a decision about the tool contract and not a test. The cases pass an absolute path built from the workspace root, through a `{ws}` substitution the macro performs on any string in the call. STAR WHAT A REPORT ARGUMENT NEEDS IS A WORLD, NOT A FIXTURE. `report_playable_world.order_path` is proven against two canon orders that differ by one scene, over a store carrying a map, a character who moves along it, and a telling — the argument moves the answer because the extra scene is where the second position fact sits. STAR AND SIX SIBLING CASES WERE REMOVED RATHER THAN WEAKENED. `report_payoff_coverage`, `report_irony_intervals` and `report_edge_candidates` answer identically under both orders in this world: their reports say nothing that this world's difference reaches. `validate_continuity` DID change its answer and the needle did not move, so the case was wrong and is not kept on the strength of the whole-output difference alone. `report_quest_graph` and `validate_disclosure_leak` want arguments this world does not yet carry. Each of those is a world to build, not a limit — and a case that passes without discriminating is worse than no case, which is the whole premise of this arc.",
+      "changes_bullets": [
+        "`crates/mnemosyne-mcp/src/main.rs` — `{ws}` in any string of a case's call is replaced with the workspace root. A path argument is resolved by the tool against the server process's working directory, so a relative literal in a case reads a file beside this source rather than the one the setup wrote.",
+        "Same file — `report_playable_world.order_path`, proven against two canon orders differing by one scene over a world with a map, a moving character and a telling.",
+        "Same file — six sibling cases were written and REMOVED: three whose reports answer identically under both orders, one whose needle did not follow the value, and two whose tools want arguments this world does not carry."
+      ],
+      "verification_bullets": [
+        "STAR THE PATH-RESOLUTION FINDING CAME FROM A FAILING CASE, not from reading either side: \"canon-order read crates/mnemosyne-mcp/order-a.json: No such file or directory\" names the test process's directory, not the workspace the server was constructed with.",
+        "INJECTION AA, `report_playable_world` stops passing `order_path` through: the case fails. THE FIRST ATTEMPT MATCHED THREE SITES AND WAS REFUSED BY ITS OWN `count == 1` ASSERTION — the same line appears in three report handlers — so it was re-scoped to that function's body and re-run. The green under the unapplied injection was discarded; this is the fourth round in this session where that assertion caught one.",
+        "SIX CASES WERE REMOVED AFTER BEING WRITTEN, and the reason each was removed is recorded above. A case that passes without discriminating would have moved its pair out of the silent set while proving nothing, which is the exact failure Round 987 built the generated list to prevent.",
+        "1585 workspace tests pass (1584 before), 0 failed, `--no-fail-fast`; clippy `-D warnings` and `cargo fmt --check` clean; `validate-workspace` T1 orphan 0 and T3 reject 0.",
+        "Citation hygiene (R255): Round 987 verified present with `query --changelog-entry` and Round 998 verified absent before this entry was appended."
+      ],
+      "impact_refs": [
+        "atomic-store-mutate-api"
+      ],
+      "carry_forward_bullets": [
+        "SHOULD A RELATIVE PATH ARGUMENT RESOLVE AGAINST THE WORKSPACE? That is the open question this round found and did not answer, because it changes what the tools do rather than what the tests know. Today an agent must send an absolute path or the call reads a file from a directory it cannot see. The argument for changing it: the workspace is the only location the agent is told about. The argument against: the CLI resolves against the working directory and the two wires would then differ. It needs the owner's call, not more measurement.",
+        "35 REMAIN AND EACH WANTS A WORLD ITS REPORT CAN SEE. This round proved the shape on `report_playable_world` and removed six siblings that the same world could not discriminate; the next ones need worlds with payoffs, with irony intervals, with edge candidates, with a second telling to leak against. That is per-report authoring rather than a new mechanism, and the mechanisms — file setups, `{ws}`, three oracles — are all in place."
+      ],
+      "population_census": [
+        {
+          "axis": "transition rules by `undirected`",
+          "left_label": "undirected",
+          "left": 10,
+          "right_label": "directed",
+          "right": 27
+        },
+        {
+          "axis": "map corpora by leg-kind declaration",
+          "left_label": "omitted",
+          "left": 6,
+          "right_label": "declared",
+          "right": 24
+        },
+        {
+          "axis": "cost-carrying corpora by direction-dependent pricing",
+          "left_label": "prices a way by direction",
+          "left": 4,
+          "right_label": "prices no way by direction",
+          "right": 6
+        },
+        {
+          "axis": "run trees by authoring mode",
+          "left_label": "hand script",
+          "left": 10,
+          "right_label": "file-only",
+          "right": 239
+        },
+        {
+          "axis": "map corpora by declared boundary crossing",
+          "left_label": "declares an exit",
+          "left": 6,
+          "right_label": "declares none",
+          "right": 24
+        },
+        {
+          "axis": "authored submissions by map and telling",
+          "left_label": "carries both",
+          "left": 10,
+          "right_label": "carries one",
+          "right": 24
+        }
+      ],
+      "publishable_decision_summary": "R998 (BUILD) — the report arguments are reachable now, and getting there found that a path an agent sends is resolved against the wrong directory. Every argument left belongs to a read tool, and a third of them name a FILE: a canon order, a rules artifact, a proposals file. STAR A RELATIVE PATH ARGUMENT IS RESOLVED AGAINST THE SERVER PROCESS'S WORKING DIRECTORY, NOT THE WORKSPACE. The first `order_path` case wrote its order into the workspace, passed the name, and got \"canon-order read crates/mnemosyne-mcp/order-a.json: No such file or directory\" — the test process's own directory. An MCP server is launched by a host with a working directory the agent never sees and does not control, while the workspace is the one location it was told about; a relative path is therefore the one thing an agent has no way to write correctly. It fails loud, so this is not the silent class this arc closes, and it is recorded rather than changed here because whether a relative path should resolve against the workspace is a decision about the tool contract and not a test. The cases pass an absolute path built from the workspace root, through a `{ws}` substitution the macro performs on any string in the call. STAR WHAT A REPORT ARGUMENT NEEDS IS A WORLD, NOT A FIXTURE. `report_playable_world.order_path` is proven against two canon orders that differ by one scene, over a store carrying a map, a character who moves along it, and a telling — the argument moves the answer because the extra scene is where the second position fact sits. STAR AND SIX SIBLING CASES WERE REMOVED RATHER THAN WEAKENED. `report_payoff_coverage`, `report_irony_intervals` and `report_edge_candidates` answer identically under both orders in this world: their reports say nothing that this world's difference reaches. `validate_continuity` DID change its answer and the needle did not move, so the case was wrong and is not kept on the strength of the whole-output difference alone. `report_quest_graph` and `validate_disclosure_leak` want arguments this world does not yet carry. Each of those is a world to build, not a limit — and a case that passes without discriminating is worse than no case, which is the whole premise of this arc.",
+      "publishable_changes_bullets": [
+        "`crates/mnemosyne-mcp/src/main.rs` — `{ws}` in any string of a case's call is replaced with the workspace root. A path argument is resolved by the tool against the server process's working directory, so a relative literal in a case reads a file beside this source rather than the one the setup wrote.",
+        "Same file — `report_playable_world.order_path`, proven against two canon orders differing by one scene over a world with a map, a moving character and a telling.",
+        "Same file — six sibling cases were written and REMOVED: three whose reports answer identically under both orders, one whose needle did not follow the value, and two whose tools want arguments this world does not carry."
+      ],
+      "publishable_verification_bullets": [
+        "STAR THE PATH-RESOLUTION FINDING CAME FROM A FAILING CASE, not from reading either side: \"canon-order read crates/mnemosyne-mcp/order-a.json: No such file or directory\" names the test process's directory, not the workspace the server was constructed with.",
+        "INJECTION AA, `report_playable_world` stops passing `order_path` through: the case fails. THE FIRST ATTEMPT MATCHED THREE SITES AND WAS REFUSED BY ITS OWN `count == 1` ASSERTION — the same line appears in three report handlers — so it was re-scoped to that function's body and re-run. The green under the unapplied injection was discarded; this is the fourth round in this session where that assertion caught one.",
+        "SIX CASES WERE REMOVED AFTER BEING WRITTEN, and the reason each was removed is recorded above. A case that passes without discriminating would have moved its pair out of the silent set while proving nothing, which is the exact failure Round 987 built the generated list to prevent.",
+        "1585 workspace tests pass (1584 before), 0 failed, `--no-fail-fast`; clippy `-D warnings` and `cargo fmt --check` clean; `validate-workspace` T1 orphan 0 and T3 reject 0.",
+        "Citation hygiene (R255): Round 987 verified present with `query --changelog-entry` and Round 998 verified absent before this entry was appended."
+      ],
+      "publishable_impact_refs": [
+        "atomic-store-mutate-api"
+      ],
+      "publishable_carry_forward_bullets": [
+        "SHOULD A RELATIVE PATH ARGUMENT RESOLVE AGAINST THE WORKSPACE? That is the open question this round found and did not answer, because it changes what the tools do rather than what the tests know. Today an agent must send an absolute path or the call reads a file from a directory it cannot see. The argument for changing it: the workspace is the only location the agent is told about. The argument against: the CLI resolves against the working directory and the two wires would then differ. It needs the owner's call, not more measurement.",
+        "35 REMAIN AND EACH WANTS A WORLD ITS REPORT CAN SEE. This round proved the shape on `report_playable_world` and removed six siblings that the same world could not discriminate; the next ones need worlds with payoffs, with irony intervals, with edge candidates, with a second telling to leak against. That is per-report authoring rather than a new mechanism, and the mechanisms — file setups, `{ws}`, three oracles — are all in place."
+      ]
     }
   },
   "inventory_entries": {},
