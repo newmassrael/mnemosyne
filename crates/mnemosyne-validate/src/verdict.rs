@@ -85,14 +85,185 @@ impl ViolationSource {
     }
 }
 
+/// EVERY RULE A VERDICT CAN NAME, AS A TYPE (Round 1010).
+///
+/// It was a `String`, so "these are the rules an agent can be handed" was a
+/// claim only a reader could settle — the same shape Round 1009 removed from
+/// `source` after Round 1008 got a read-derived claim wrong twice. The set
+/// here was not typed out: the compiler located all 32 sites once the slot
+/// demanded a type, and each variant is the literal that site already passed.
+///
+/// The wire is unchanged — every variant serializes to its existing id.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+#[serde(into = "String")]
+pub enum ViolationRule {
+    /// `shape-invariant` — a write-time invariant, which has no continuity kind.
+    ShapeInvariant,
+    /// `frame_conflict_overlap`
+    FrameConflictOverlap,
+    /// `fact_canon_off_branch`
+    FactCanonOffBranch,
+    /// `evidence_unreachable`
+    EvidenceUnreachable,
+    /// `confluence_evidence_unreconciled`
+    ConfluenceEvidenceUnreconciled,
+    /// `succession_contradiction`
+    SuccessionContradiction,
+    /// `succession_cross_frame`
+    SuccessionCrossFrame,
+    /// `succession_cross_branch`
+    SuccessionCrossBranch,
+    /// `conflict_target_missing`
+    ConflictTargetMissing,
+    /// `conflict_edge_stale`
+    ConflictEdgeStale,
+    /// `evidence_stale`
+    EvidenceStale,
+    /// `evidence_review_unanchored`
+    EvidenceReviewUnanchored,
+    /// `fact_quote_absent_from_evidence`
+    FactQuoteAbsentFromEvidence,
+    /// `ladder_unanchored`
+    LadderUnanchored,
+    /// `ladder_rung_stranded`
+    LadderRungStranded,
+    /// `ladder_duplicate_anchor`
+    LadderDuplicateAnchor,
+    /// `ladder_rungs_out_of_prose_order`
+    LadderRungsOutOfProseOrder,
+    /// `succession_target_missing`
+    SuccessionTargetMissing,
+    /// `succession_cycle`
+    SuccessionCycle,
+    /// `payoff_target_missing`
+    PayoffTargetMissing,
+    /// `rule_exclusive_overlap`
+    RuleExclusiveOverlap,
+    /// `rule_transition_invalid`
+    RuleTransitionInvalid,
+    /// `rule_interval_violation`
+    RuleIntervalViolation,
+    /// `adjacency_self_loop`
+    AdjacencySelfLoop,
+    /// `adjacency_reverse_duplicate`
+    AdjacencyReverseDuplicate,
+    /// `map_disconnected`
+    MapDisconnected,
+    /// `map_invented_place`
+    MapInventedPlace,
+    /// `adjacency_cross_scope`
+    AdjacencyCrossScope,
+    /// `map_contained_off_map`
+    MapContainedOffMap,
+    /// `edge_cost_not_an_edge`
+    EdgeCostNotAnEdge,
+    /// `edge_guard_not_an_edge`
+    EdgeGuardNotAnEdge,
+    /// `containment_multiple_parents`
+    ContainmentMultipleParents,
+    /// `containment_cycle`
+    ContainmentCycle,
+}
+
+impl ViolationRule {
+    /// Every rule a verdict can name — what a test asserting coverage walks.
+    pub const ALL: &'static [ViolationRule] = &[
+        Self::ShapeInvariant,
+        Self::FrameConflictOverlap,
+        Self::FactCanonOffBranch,
+        Self::EvidenceUnreachable,
+        Self::ConfluenceEvidenceUnreconciled,
+        Self::SuccessionContradiction,
+        Self::SuccessionCrossFrame,
+        Self::SuccessionCrossBranch,
+        Self::ConflictTargetMissing,
+        Self::ConflictEdgeStale,
+        Self::EvidenceStale,
+        Self::EvidenceReviewUnanchored,
+        Self::FactQuoteAbsentFromEvidence,
+        Self::LadderUnanchored,
+        Self::LadderRungStranded,
+        Self::LadderDuplicateAnchor,
+        Self::LadderRungsOutOfProseOrder,
+        Self::SuccessionTargetMissing,
+        Self::SuccessionCycle,
+        Self::PayoffTargetMissing,
+        Self::RuleExclusiveOverlap,
+        Self::RuleTransitionInvalid,
+        Self::RuleIntervalViolation,
+        Self::AdjacencySelfLoop,
+        Self::AdjacencyReverseDuplicate,
+        Self::MapDisconnected,
+        Self::MapInventedPlace,
+        Self::AdjacencyCrossScope,
+        Self::MapContainedOffMap,
+        Self::EdgeCostNotAnEdge,
+        Self::EdgeGuardNotAnEdge,
+        Self::ContainmentMultipleParents,
+        Self::ContainmentCycle,
+    ];
+
+    #[must_use]
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::ShapeInvariant => "shape-invariant",
+            Self::FrameConflictOverlap => "frame_conflict_overlap",
+            Self::FactCanonOffBranch => "fact_canon_off_branch",
+            Self::EvidenceUnreachable => "evidence_unreachable",
+            Self::ConfluenceEvidenceUnreconciled => "confluence_evidence_unreconciled",
+            Self::SuccessionContradiction => "succession_contradiction",
+            Self::SuccessionCrossFrame => "succession_cross_frame",
+            Self::SuccessionCrossBranch => "succession_cross_branch",
+            Self::ConflictTargetMissing => "conflict_target_missing",
+            Self::ConflictEdgeStale => "conflict_edge_stale",
+            Self::EvidenceStale => "evidence_stale",
+            Self::EvidenceReviewUnanchored => "evidence_review_unanchored",
+            Self::FactQuoteAbsentFromEvidence => "fact_quote_absent_from_evidence",
+            Self::LadderUnanchored => "ladder_unanchored",
+            Self::LadderRungStranded => "ladder_rung_stranded",
+            Self::LadderDuplicateAnchor => "ladder_duplicate_anchor",
+            Self::LadderRungsOutOfProseOrder => "ladder_rungs_out_of_prose_order",
+            Self::SuccessionTargetMissing => "succession_target_missing",
+            Self::SuccessionCycle => "succession_cycle",
+            Self::PayoffTargetMissing => "payoff_target_missing",
+            Self::RuleExclusiveOverlap => "rule_exclusive_overlap",
+            Self::RuleTransitionInvalid => "rule_transition_invalid",
+            Self::RuleIntervalViolation => "rule_interval_violation",
+            Self::AdjacencySelfLoop => "adjacency_self_loop",
+            Self::AdjacencyReverseDuplicate => "adjacency_reverse_duplicate",
+            Self::MapDisconnected => "map_disconnected",
+            Self::MapInventedPlace => "map_invented_place",
+            Self::AdjacencyCrossScope => "adjacency_cross_scope",
+            Self::MapContainedOffMap => "map_contained_off_map",
+            Self::EdgeCostNotAnEdge => "edge_cost_not_an_edge",
+            Self::EdgeGuardNotAnEdge => "edge_guard_not_an_edge",
+            Self::ContainmentMultipleParents => "containment_multiple_parents",
+            Self::ContainmentCycle => "containment_cycle",
+        }
+    }
+}
+
+impl From<ViolationRule> for String {
+    fn from(r: ViolationRule) -> Self {
+        r.as_str().to_string()
+    }
+}
+
+impl std::fmt::Display for ViolationRule {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
 /// One gate finding an agent can repair without parsing prose (R588).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct ActionableViolation {
     /// Which gate produced it.
     pub source: ViolationSource,
-    /// The stable machine rule id — the [`ContinuityViolation`] `kind`, or
-    /// `shape-invariant`.
-    pub rule: String,
+    /// The stable machine rule id, as a type (Round 1010) — every value it can
+    /// take is a [`ViolationRule`] variant, so what an agent can be handed is
+    /// enumerable rather than only readable.
+    pub rule: ViolationRule,
     /// Where the violation is anchored.
     pub locus: ViolationLocus,
     /// What the substrate expected to hold.
@@ -112,7 +283,7 @@ impl ActionableViolation {
     pub fn shape(message: String) -> Self {
         ActionableViolation {
             source: ViolationSource::Shape,
-            rule: "shape-invariant".to_string(),
+            rule: ViolationRule::ShapeInvariant,
             locus: ViolationLocus::default(),
             expected: "the batch must satisfy every write-time invariant \
                        (see `describe-schema` invariants)"
@@ -132,13 +303,13 @@ fn short_sha(s: &str) -> &str {
 /// — a new continuity variant will not compile until it is given a
 /// rule/locus/expected/repair here.
 pub fn continuity_actionable(v: &ContinuityViolation) -> ActionableViolation {
-    let action = |rule: &str,
+    let action = |rule: ViolationRule,
                   locus: ViolationLocus,
                   expected: String,
                   repair_hint: String,
                   message: String| ActionableViolation {
         source: ViolationSource::Continuity,
-        rule: rule.to_string(),
+        rule,
         locus,
         expected,
         repair_hint,
@@ -152,7 +323,7 @@ pub fn continuity_actionable(v: &ContinuityViolation) -> ActionableViolation {
             fact_b,
             at,
         } => action(
-            "frame_conflict_overlap",
+            ViolationRule::FrameConflictOverlap,
             ViolationLocus {
                 facts: vec![fact_a.clone(), fact_b.clone()],
                 frame: Some(frame.clone()),
@@ -176,7 +347,7 @@ pub fn continuity_actionable(v: &ContinuityViolation) -> ActionableViolation {
             branch,
             coord,
         } => action(
-            "fact_canon_off_branch",
+            ViolationRule::FactCanonOffBranch,
             ViolationLocus {
                 facts: vec![fact.clone()],
                 field: Some("branch".to_string()),
@@ -196,7 +367,7 @@ pub fn continuity_actionable(v: &ContinuityViolation) -> ActionableViolation {
             evidence,
             canon_from,
         } => action(
-            "evidence_unreachable",
+            ViolationRule::EvidenceUnreachable,
             ViolationLocus {
                 facts: vec![fact.clone()],
                 field: Some("evidence".to_string()),
@@ -222,7 +393,7 @@ pub fn continuity_actionable(v: &ContinuityViolation) -> ActionableViolation {
             evidence,
             canon_from,
         } => action(
-            "confluence_evidence_unreconciled",
+            ViolationRule::ConfluenceEvidenceUnreconciled,
             ViolationLocus {
                 facts: vec![fact.clone()],
                 field: Some("evidence".to_string()),
@@ -247,7 +418,7 @@ pub fn continuity_actionable(v: &ContinuityViolation) -> ActionableViolation {
             stored_to,
             successor_from,
         } => action(
-            "succession_contradiction",
+            ViolationRule::SuccessionContradiction,
             ViolationLocus {
                 facts: vec![predecessor.clone(), successor.clone()],
                 field: Some("canon_to".to_string()),
@@ -270,7 +441,7 @@ pub fn continuity_actionable(v: &ContinuityViolation) -> ActionableViolation {
             successor_frame,
             predecessor_frame,
         } => action(
-            "succession_cross_frame",
+            ViolationRule::SuccessionCrossFrame,
             ViolationLocus {
                 facts: vec![successor.clone(), predecessor.clone()],
                 field: Some("supersedes_in_frame".to_string()),
@@ -290,7 +461,7 @@ pub fn continuity_actionable(v: &ContinuityViolation) -> ActionableViolation {
             successor_branch,
             predecessor_branch,
         } => action(
-            "succession_cross_branch",
+            ViolationRule::SuccessionCrossBranch,
             ViolationLocus {
                 facts: vec![successor.clone(), predecessor.clone()],
                 field: Some("supersedes_in_frame".to_string()),
@@ -308,7 +479,7 @@ pub fn continuity_actionable(v: &ContinuityViolation) -> ActionableViolation {
             ),
         ),
         ContinuityViolation::ConflictTargetMissing { fact_id, target } => action(
-            "conflict_target_missing",
+            ViolationRule::ConflictTargetMissing,
             ViolationLocus {
                 facts: vec![fact_id.clone(), target.clone()],
                 field: Some("conflicts_with".to_string()),
@@ -324,7 +495,7 @@ pub fn continuity_actionable(v: &ContinuityViolation) -> ActionableViolation {
             stamped_sha256,
             current_sha256,
         } => action(
-            "conflict_edge_stale",
+            ViolationRule::ConflictEdgeStale,
             ViolationLocus {
                 facts: vec![fact_id.clone(), target.clone()],
                 field: Some("conflicts_with".to_string()),
@@ -346,7 +517,7 @@ pub fn continuity_actionable(v: &ContinuityViolation) -> ActionableViolation {
             reviewed_sha256,
             current_sha256,
         } => action(
-            "evidence_stale",
+            ViolationRule::EvidenceStale,
             ViolationLocus {
                 facts: vec![fact_id.clone()],
                 field: Some("evidence".to_string()),
@@ -367,7 +538,7 @@ pub fn continuity_actionable(v: &ContinuityViolation) -> ActionableViolation {
             ),
         ),
         ContinuityViolation::EvidenceReviewUnanchored { fact_id, section } => action(
-            "evidence_review_unanchored",
+            ViolationRule::EvidenceReviewUnanchored,
             ViolationLocus {
                 facts: vec![fact_id.clone()],
                 field: Some("evidence".to_string()),
@@ -384,7 +555,7 @@ pub fn continuity_actionable(v: &ContinuityViolation) -> ActionableViolation {
             ),
         ),
         ContinuityViolation::FactQuoteAbsentFromEvidence { fact_id, quote } => action(
-            "fact_quote_absent_from_evidence",
+            ViolationRule::FactQuoteAbsentFromEvidence,
             ViolationLocus {
                 facts: vec![fact_id.clone()],
                 field: Some("quote".to_string()),
@@ -399,7 +570,7 @@ pub fn continuity_actionable(v: &ContinuityViolation) -> ActionableViolation {
             format!("fact `{fact_id}` quotes text no evidence section contains: {quote:?}"),
         ),
         ContinuityViolation::LadderUnanchored { section } => action(
-            "ladder_unanchored",
+            ViolationRule::LadderUnanchored,
             ViolationLocus {
                 field: Some("ladder".to_string()),
                 at: Some(section.clone()),
@@ -457,7 +628,7 @@ pub fn continuity_actionable(v: &ContinuityViolation) -> ActionableViolation {
                 ),
             };
             action(
-                "ladder_rung_stranded",
+                ViolationRule::LadderRungStranded,
                 ViolationLocus {
                     field: Some("ladder".to_string()),
                     at: Some(section.clone()),
@@ -474,7 +645,7 @@ pub fn continuity_actionable(v: &ContinuityViolation) -> ActionableViolation {
             locator,
             occurrences,
         } => action(
-            "ladder_duplicate_anchor",
+            ViolationRule::LadderDuplicateAnchor,
             ViolationLocus {
                 field: Some("ladder".to_string()),
                 at: Some(section.clone()),
@@ -496,7 +667,7 @@ pub fn continuity_actionable(v: &ContinuityViolation) -> ActionableViolation {
             prefix,
             declared_at,
         } => action(
-            "ladder_rungs_out_of_prose_order",
+            ViolationRule::LadderRungsOutOfProseOrder,
             ViolationLocus {
                 field: Some("ladder".to_string()),
                 at: Some(section.clone()),
@@ -513,7 +684,7 @@ pub fn continuity_actionable(v: &ContinuityViolation) -> ActionableViolation {
             ),
         ),
         ContinuityViolation::SuccessionTargetMissing { fact_id, target } => action(
-            "succession_target_missing",
+            ViolationRule::SuccessionTargetMissing,
             ViolationLocus {
                 facts: vec![fact_id.clone(), target.clone()],
                 field: Some("supersedes_in_frame".to_string()),
@@ -524,7 +695,7 @@ pub fn continuity_actionable(v: &ContinuityViolation) -> ActionableViolation {
             format!("fact `{fact_id}` supersedes missing fact `{target}`"),
         ),
         ContinuityViolation::SuccessionCycle { cycle } => action(
-            "succession_cycle",
+            ViolationRule::SuccessionCycle,
             ViolationLocus {
                 facts: cycle.clone(),
                 field: Some("supersedes_in_frame".to_string()),
@@ -535,7 +706,7 @@ pub fn continuity_actionable(v: &ContinuityViolation) -> ActionableViolation {
             format!("succession cycle: {}", cycle.join(" -> ")),
         ),
         ContinuityViolation::PayoffTargetMissing { fact_id, target } => action(
-            "payoff_target_missing",
+            ViolationRule::PayoffTargetMissing,
             ViolationLocus {
                 facts: vec![fact_id.clone(), target.clone()],
                 field: Some("pays_off".to_string()),
@@ -554,7 +725,7 @@ pub fn continuity_actionable(v: &ContinuityViolation) -> ActionableViolation {
             fact_b,
             at,
         } => action(
-            "rule_exclusive_overlap",
+            ViolationRule::RuleExclusiveOverlap,
             ViolationLocus {
                 facts: vec![fact_a.clone(), fact_b.clone()],
                 entities: Vec::new(),
@@ -590,7 +761,7 @@ pub fn continuity_actionable(v: &ContinuityViolation) -> ActionableViolation {
             lifted_from,
             lifted_to,
         } => action(
-            "rule_transition_invalid",
+            ViolationRule::RuleTransitionInvalid,
             ViolationLocus {
                 facts: vec![predecessor.clone(), successor.clone()],
                 field: Some("typed".to_string()),
@@ -681,7 +852,7 @@ pub fn continuity_actionable(v: &ContinuityViolation) -> ActionableViolation {
             bound,
             at,
         } => action(
-            "rule_interval_violation",
+            ViolationRule::RuleIntervalViolation,
             ViolationLocus {
                 facts: vec![left_fact.clone(), right_fact.clone()],
                 entities: Vec::new(),
@@ -704,7 +875,7 @@ pub fn continuity_actionable(v: &ContinuityViolation) -> ActionableViolation {
             fact,
             place,
         } => action(
-            "adjacency_self_loop",
+            ViolationRule::AdjacencySelfLoop,
             ViolationLocus {
                 facts: vec![fact.clone()],
                 field: Some("typed".to_string()),
@@ -728,7 +899,7 @@ pub fn continuity_actionable(v: &ContinuityViolation) -> ActionableViolation {
             a,
             b,
         } => action(
-            "adjacency_reverse_duplicate",
+            ViolationRule::AdjacencyReverseDuplicate,
             ViolationLocus {
                 facts: vec![fact_a.clone(), fact_b.clone()],
                 field: Some("typed".to_string()),
@@ -754,7 +925,7 @@ pub fn continuity_actionable(v: &ContinuityViolation) -> ActionableViolation {
             frame,
             branch,
         } => action(
-            "map_disconnected",
+            ViolationRule::MapDisconnected,
             ViolationLocus {
                 entities: unreached.clone(),
                 field: Some("typed".to_string()),
@@ -785,7 +956,7 @@ pub fn continuity_actionable(v: &ContinuityViolation) -> ActionableViolation {
             frame,
             branch,
         } => action(
-            "map_invented_place",
+            ViolationRule::MapInventedPlace,
             ViolationLocus {
                 entities: vec![place.clone()],
                 frame: Some(frame.clone()),
@@ -818,7 +989,7 @@ pub fn continuity_actionable(v: &ContinuityViolation) -> ActionableViolation {
             branch,
             at,
         } => action(
-            "adjacency_cross_scope",
+            ViolationRule::AdjacencyCrossScope,
             ViolationLocus {
                 facts: vec![fact.clone()],
                 entities: vec![a.clone(), b.clone()],
@@ -852,7 +1023,7 @@ pub fn continuity_actionable(v: &ContinuityViolation) -> ActionableViolation {
             frame,
             branch,
         } => action(
-            "map_contained_off_map",
+            ViolationRule::MapContainedOffMap,
             ViolationLocus {
                 facts: vec![fact.clone()],
                 entities: vec![contained.clone()],
@@ -880,7 +1051,7 @@ pub fn continuity_actionable(v: &ContinuityViolation) -> ActionableViolation {
             found,
             expected,
         } => action(
-            "edge_cost_not_an_edge",
+            ViolationRule::EdgeCostNotAnEdge,
             ViolationLocus {
                 facts: vec![fact.clone()],
                 field: Some("typed".to_string()),
@@ -906,7 +1077,7 @@ pub fn continuity_actionable(v: &ContinuityViolation) -> ActionableViolation {
             found,
             expected,
         } => action(
-            "edge_guard_not_an_edge",
+            ViolationRule::EdgeGuardNotAnEdge,
             ViolationLocus {
                 facts: vec![fact.clone()],
                 field: Some("typed".to_string()),
@@ -935,7 +1106,7 @@ pub fn continuity_actionable(v: &ContinuityViolation) -> ActionableViolation {
             parents,
             at,
         } => action(
-            "containment_multiple_parents",
+            ViolationRule::ContainmentMultipleParents,
             ViolationLocus {
                 facts: Vec::new(),
                 entities: {
@@ -971,7 +1142,7 @@ pub fn continuity_actionable(v: &ContinuityViolation) -> ActionableViolation {
             cycle,
             at,
         } => action(
-            "containment_cycle",
+            ViolationRule::ContainmentCycle,
             ViolationLocus {
                 facts: Vec::new(),
                 entities: cycle.clone(),
@@ -1001,9 +1172,10 @@ mod tests {
     /// a non-empty rule/expected/repair/message and at least one anchored fact.
     /// This exercises the exhaustive match (the drift guard's positive
     /// assertion) across a representative sample of every field shape.
-    #[test]
-    fn continuity_actionable_is_fully_populated() {
-        let samples = vec![
+    /// EVERY VIOLATION SHAPE THE FIXTURES BUILD, in one place (Round 1010)
+    /// so the mapping walk and the rule-coverage walk cannot drift apart.
+    fn every_violation_shape() -> Vec<ContinuityViolation> {
+        vec![
             ContinuityViolation::FrameConflictOverlap {
                 frame: "gt".into(),
                 branch: "main".into(),
@@ -1117,19 +1289,135 @@ mod tests {
                 cycle: vec!["ent-a".into(), "ent-b".into()],
                 at: "ch-2".into(),
             },
-        ];
+            ContinuityViolation::EvidenceUnreachable {
+                fact: "fact".into(),
+                branch: "branch".into(),
+                evidence: "evidence".into(),
+                canon_from: "canon-from".into(),
+            },
+            ContinuityViolation::ConfluenceEvidenceUnreconciled {
+                fact: "fact".into(),
+                confluence: "confluence".into(),
+                parent: "parent".into(),
+                evidence: "evidence".into(),
+                canon_from: "canon-from".into(),
+            },
+            ContinuityViolation::SuccessionContradiction {
+                frame: "frame".into(),
+                predecessor: "predecessor".into(),
+                successor: "successor".into(),
+                stored_to: "stored-to".into(),
+                successor_from: "successor-from".into(),
+            },
+            ContinuityViolation::SuccessionCrossFrame {
+                successor: "successor".into(),
+                predecessor: "predecessor".into(),
+                successor_frame: "successor-frame".into(),
+                predecessor_frame: "predecessor-frame".into(),
+            },
+            ContinuityViolation::SuccessionCrossBranch {
+                successor: "successor".into(),
+                predecessor: "predecessor".into(),
+                successor_branch: "successor-branch".into(),
+                predecessor_branch: "predecessor-branch".into(),
+            },
+            ContinuityViolation::ConflictTargetMissing {
+                fact_id: "fact-id".into(),
+                target: "target".into(),
+            },
+            ContinuityViolation::ConflictEdgeStale {
+                fact_id: "fact-id".into(),
+                target: "target".into(),
+                stamped_sha256: "stamped-sha256".into(),
+                current_sha256: "current-sha256".into(),
+            },
+            ContinuityViolation::EvidenceStale {
+                fact_id: "fact-id".into(),
+                section: "section".into(),
+                reviewed_sha256: "reviewed-sha256".into(),
+                current_sha256: "current-sha256".into(),
+            },
+            ContinuityViolation::EvidenceReviewUnanchored {
+                fact_id: "fact-id".into(),
+                section: "section".into(),
+            },
+            ContinuityViolation::FactQuoteAbsentFromEvidence {
+                fact_id: "fact-id".into(),
+                quote: "quote".into(),
+            },
+            ContinuityViolation::LadderUnanchored {
+                section: "section".into(),
+            },
+            ContinuityViolation::LadderRungStranded {
+                section: "section".into(),
+                prefix: "prefix".into(),
+                miss: RungMiss::Absent,
+            },
+            ContinuityViolation::LadderDuplicateAnchor {
+                section: "section".into(),
+                locator: "locator".into(),
+                occurrences: 1,
+            },
+            ContinuityViolation::LadderRungsOutOfProseOrder {
+                section: "section".into(),
+                prefix: "prefix".into(),
+                declared_at: 1,
+            },
+            ContinuityViolation::SuccessionTargetMissing {
+                fact_id: "fact-id".into(),
+                target: "target".into(),
+            },
+            ContinuityViolation::RuleExclusiveOverlap {
+                rule: "rule".into(),
+                predicate: "predicate".into(),
+                frame: "frame".into(),
+                branch: "branch".into(),
+                fact_a: "fact-a".into(),
+                fact_b: "fact-b".into(),
+                at: "at".into(),
+            },
+            ContinuityViolation::RuleTransitionInvalid {
+                rule: "rule".into(),
+                predicate: "predicate".into(),
+                frame: "frame".into(),
+                branch: Some("main".into()),
+                subject: "subject".into(),
+                predecessor: "predecessor".into(),
+                successor: "successor".into(),
+                from: "from".into(),
+                to: "to".into(),
+                via: vec!["via-a".into()],
+                scope: "scope".into(),
+                lifted_from: "lifted-from".into(),
+                lifted_to: "lifted-to".into(),
+            },
+        ]
+    }
+
+    #[test]
+    fn continuity_actionable_is_fully_populated() {
+        let samples = every_violation_shape();
         for v in &samples {
             let a = continuity_actionable(v);
             assert_eq!(a.source, ViolationSource::Continuity);
-            assert!(!a.rule.is_empty(), "empty rule for {v:?}");
+            assert!(
+                ViolationRule::ALL.contains(&a.rule),
+                "a rule outside the enumerated set for {v:?}"
+            );
             assert!(!a.expected.is_empty(), "empty expected for {v:?}");
             assert!(!a.repair_hint.is_empty(), "empty repair for {v:?}");
             assert!(!a.message.is_empty(), "empty message for {v:?}");
             // A graph-level violation (e.g. MapDisconnected) anchors on entities,
             // not a single fact — accept either.
+            // EVERY VIOLATION ANCHORS SOMEWHERE AN AGENT CAN ACT (Round 1010).
+            // The assertion used to demand a fact or an entity, which held only
+            // because the fixture list had never carried a ladder violation —
+            // those anchor on a section, through `at`. Widened to "names some
+            // coordinate", and the ladder family is now in the list.
             assert!(
-                !a.locus.facts.is_empty() || !a.locus.entities.is_empty(),
-                "no anchored fact or entity for {v:?}"
+                !a.locus.facts.is_empty() || !a.locus.entities.is_empty() || a.locus.at.is_some(),
+                "no anchor an agent can act on for {v:?}: {:?}",
+                a.locus
             );
         }
     }
@@ -1260,11 +1548,57 @@ mod tests {
     }
 
     /// A shape violation carries the primitive's message verbatim.
+    /// EVERY RULE THE MAPPING CAN EMIT IS AN ENUMERATED ONE, AND EVERY
+    /// ENUMERATED ONE IS REACHABLE (Round 1010).
+    ///
+    /// The first half the compiler gives for free once `rule` is a type. The
+    /// second is what a type cannot say on its own: a variant nothing emits is
+    /// a rule id an agent will never see, and the enum would go on claiming it
+    /// exists. `continuity_actionable` is exhaustive over `ContinuityViolation`,
+    /// so walking every violation the fixtures build and collecting what comes
+    /// out is the check — plus the one rule that has no continuity kind.
+    #[test]
+    fn every_enumerated_rule_is_one_the_mapping_actually_emits() {
+        let mut emitted: std::collections::BTreeSet<ViolationRule> =
+            std::collections::BTreeSet::new();
+        emitted.insert(ActionableViolation::shape(String::new()).rule);
+        for v in every_violation_shape() {
+            emitted.insert(continuity_actionable(&v).rule);
+        }
+        let declared: std::collections::BTreeSet<ViolationRule> =
+            ViolationRule::ALL.iter().copied().collect();
+        let unreachable: Vec<_> = declared.difference(&emitted).collect();
+        assert!(
+            unreachable.is_empty(),
+            "{} enumerated rule(s) are emitted by nothing, so the type claims \
+             ids an agent can never be handed: {unreachable:?}",
+            unreachable.len()
+        );
+        assert_eq!(
+            emitted, declared,
+            "the mapping emits a rule the enum does not carry"
+        );
+    }
+
+    /// THE WIRE DID NOT MOVE (Round 1010): every rule still serializes to the
+    /// id it was a `String` of.
+    #[test]
+    fn every_rule_serializes_to_its_existing_id() {
+        for rule in ViolationRule::ALL {
+            let json = serde_json::to_string(rule).expect("serializes");
+            assert_eq!(
+                json,
+                format!("\"{}\"", rule.as_str()),
+                "`{rule:?}` no longer serializes to its id"
+            );
+        }
+    }
+
     #[test]
     fn shape_violation_carries_message() {
         let a = ActionableViolation::shape("fact `f-1`: frame mandatory (non-empty)".to_string());
         assert_eq!(a.source, ViolationSource::Shape);
-        assert_eq!(a.rule, "shape-invariant");
+        assert_eq!(a.rule, ViolationRule::ShapeInvariant);
         assert!(a.message.contains("frame mandatory"));
         assert!(!a.repair_hint.is_empty());
     }

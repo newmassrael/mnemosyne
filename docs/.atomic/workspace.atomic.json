@@ -982,6 +982,100 @@
         "23 READ-SIDE ARGUMENTS REMAIN, unchanged by this round."
       ]
     },
+    "Round 1010": {
+      "decision_summary": "R1010 (DEBT) — the thirteenth audit, run the way the owner asked: the size of the remaining work was measured BY THE COMPILER rather than by reading, and what it found was that a test everyone trusted covered half of what it claimed. Round 1009 typed `source` and carried \"`ActionableViolation.rule` is still a `String`, so what an agent can be handed is settleable only by reading — a bigger change than this round took\". STAR THE COMPILER SIZED IT, NOT I. Making the rule slot demand a type turned every site into an error: 32, each already passing its own literal. The variants were generated from those compiler-named lines. \"A bigger change\" turned out to be one mechanical pass, which is what \"bigger\" usually means before anyone measures it. STAR THEN THE NEW COVERAGE TEST FOUND THE REAL DEFECT: 17 OF 33 ENUMERATED RULES WERE EMITTED BY NOTHING THE TESTS BUILD. `continuity_actionable_is_fully_populated` walked a hand-written sample list and asserted every mapping is populated — over 16 of the 33 shapes. It read as a completeness check for years and was one for half the surface. The check now walks the TYPE and demands every enumerated rule be reachable, so the fixture cannot silently cover a subset again. STAR AND FILLING THE OTHER 17 IMMEDIATELY FALSIFIED AN ASSERTION THAT HAD ALWAYS PASSED. \"Every violation anchors on a fact or an entity\" is false for the ladder family, which anchors on a section through `at` — nobody knew because no ladder violation had ever been in the list. The assertion now asks what it means, that a violation names SOME coordinate an agent can act on, and the ladder family is in the list to keep it honest. STAR THE WIRE IS UNCHANGED and a test says so rather than a comment: every variant serializes to the id it was a string of.",
+      "changes_bullets": [
+        "`mnemosyne-validate` — `ViolationRule` replaces the `String` on `ActionableViolation`, with `ALL` enumerating every rule a verdict can name. The 32 continuity ids came from the sites the compiler named once the slot demanded a type; `shape-invariant` is the 33rd.",
+        "Same file — `every_violation_shape()`, one list of sample violations shared by the mapping walk and the rule-coverage walk, so the two cannot drift. It gained the 17 shapes nothing had ever built.",
+        "Same file — `every_enumerated_rule_is_one_the_mapping_actually_emits`: every variant must be produced by something, so a rule id an agent can never be handed fails here.",
+        "Same file — `every_rule_serializes_to_its_existing_id`, because the type is only safe if the wire did not move.",
+        "Same file — the anchor assertion asks that a violation name SOME coordinate rather than a fact or entity specifically. The ladder family anchors on a section through `at` and had never been exercised."
+      ],
+      "verification_bullets": [
+        "STAR THE SIZE WAS MEASURED BY THE COMPILER, which is what the owner asked for over reading: demanding a type in the rule slot produced 32 errors, one per site, and the variant list was generated from those lines rather than transcribed.",
+        "STAR 17 OF 33 RULES WERE EMITTED BY NOTHING and the new test said so on its first run. The pre-existing completeness test walked a hand-written list of 16 shapes; it had never been a check over the rule space.",
+        "STAR FILLING THE GAP BROKE AN ASSERTION THAT HAD ALWAYS PASSED: `LadderUnanchored` anchors on neither a fact nor an entity. The assertion was widened to what it means — some actionable coordinate — rather than the ladder family being excluded to keep it green.",
+        "INJECTION AR, one shape removed from the shared fixture: \"1 enumerated rule(s) are emitted by nothing ... [LadderUnanchored]\". The coverage claim bites on the type, not on the list.",
+        "1604 workspace tests pass (1602 before), 0 failed, `--no-fail-fast`; clippy `-D warnings` and `cargo fmt --check` clean; `validate-workspace` T1 orphan 0 and T3 reject 0.",
+        "Citation hygiene (R255): Rounds 1008 and 1009 verified present with `query --changelog-entry` and Round 1010 verified absent before this entry was appended.",
+        "CARRY TEST (Round 1005): the bullet below was read against \"could I do this now?\" — and the answer for this round's predecessor was yes, which is why it is closed here rather than carried again."
+      ],
+      "impact_refs": [
+        "atomic-store-mutate-api"
+      ],
+      "carry_forward_bullets": [
+        "THE SAMPLE SHAPES ARE PLAUSIBLE, NOT REAL. `every_violation_shape` builds one of each variant with filler ids; it proves the MAPPING is total and every rule reachable, and says nothing about whether the scanner ever emits a given variant against a real store. That is a different claim and would need a corpus per variant.",
+        "23 READ-SIDE ARGUMENTS REMAIN in the Round 986 accounting, unchanged by this round."
+      ],
+      "population_census": [
+        {
+          "axis": "transition rules by `undirected`",
+          "left_label": "undirected",
+          "left": 10,
+          "right_label": "directed",
+          "right": 27
+        },
+        {
+          "axis": "map corpora by leg-kind declaration",
+          "left_label": "omitted",
+          "left": 6,
+          "right_label": "declared",
+          "right": 24
+        },
+        {
+          "axis": "cost-carrying corpora by direction-dependent pricing",
+          "left_label": "prices a way by direction",
+          "left": 4,
+          "right_label": "prices no way by direction",
+          "right": 6
+        },
+        {
+          "axis": "run trees by authoring mode",
+          "left_label": "hand script",
+          "left": 10,
+          "right_label": "file-only",
+          "right": 239
+        },
+        {
+          "axis": "map corpora by declared boundary crossing",
+          "left_label": "declares an exit",
+          "left": 6,
+          "right_label": "declares none",
+          "right": 24
+        },
+        {
+          "axis": "authored submissions by map and telling",
+          "left_label": "carries both",
+          "left": 10,
+          "right_label": "carries one",
+          "right": 24
+        }
+      ],
+      "publishable_decision_summary": "R1010 (DEBT) — the thirteenth audit, run the way the owner asked: the size of the remaining work was measured BY THE COMPILER rather than by reading, and what it found was that a test everyone trusted covered half of what it claimed. Round 1009 typed `source` and carried \"`ActionableViolation.rule` is still a `String`, so what an agent can be handed is settleable only by reading — a bigger change than this round took\". STAR THE COMPILER SIZED IT, NOT I. Making the rule slot demand a type turned every site into an error: 32, each already passing its own literal. The variants were generated from those compiler-named lines. \"A bigger change\" turned out to be one mechanical pass, which is what \"bigger\" usually means before anyone measures it. STAR THEN THE NEW COVERAGE TEST FOUND THE REAL DEFECT: 17 OF 33 ENUMERATED RULES WERE EMITTED BY NOTHING THE TESTS BUILD. `continuity_actionable_is_fully_populated` walked a hand-written sample list and asserted every mapping is populated — over 16 of the 33 shapes. It read as a completeness check for years and was one for half the surface. The check now walks the TYPE and demands every enumerated rule be reachable, so the fixture cannot silently cover a subset again. STAR AND FILLING THE OTHER 17 IMMEDIATELY FALSIFIED AN ASSERTION THAT HAD ALWAYS PASSED. \"Every violation anchors on a fact or an entity\" is false for the ladder family, which anchors on a section through `at` — nobody knew because no ladder violation had ever been in the list. The assertion now asks what it means, that a violation names SOME coordinate an agent can act on, and the ladder family is in the list to keep it honest. STAR THE WIRE IS UNCHANGED and a test says so rather than a comment: every variant serializes to the id it was a string of.",
+      "publishable_changes_bullets": [
+        "`mnemosyne-validate` — `ViolationRule` replaces the `String` on `ActionableViolation`, with `ALL` enumerating every rule a verdict can name. The 32 continuity ids came from the sites the compiler named once the slot demanded a type; `shape-invariant` is the 33rd.",
+        "Same file — `every_violation_shape()`, one list of sample violations shared by the mapping walk and the rule-coverage walk, so the two cannot drift. It gained the 17 shapes nothing had ever built.",
+        "Same file — `every_enumerated_rule_is_one_the_mapping_actually_emits`: every variant must be produced by something, so a rule id an agent can never be handed fails here.",
+        "Same file — `every_rule_serializes_to_its_existing_id`, because the type is only safe if the wire did not move.",
+        "Same file — the anchor assertion asks that a violation name SOME coordinate rather than a fact or entity specifically. The ladder family anchors on a section through `at` and had never been exercised."
+      ],
+      "publishable_verification_bullets": [
+        "STAR THE SIZE WAS MEASURED BY THE COMPILER, which is what the owner asked for over reading: demanding a type in the rule slot produced 32 errors, one per site, and the variant list was generated from those lines rather than transcribed.",
+        "STAR 17 OF 33 RULES WERE EMITTED BY NOTHING and the new test said so on its first run. The pre-existing completeness test walked a hand-written list of 16 shapes; it had never been a check over the rule space.",
+        "STAR FILLING THE GAP BROKE AN ASSERTION THAT HAD ALWAYS PASSED: `LadderUnanchored` anchors on neither a fact nor an entity. The assertion was widened to what it means — some actionable coordinate — rather than the ladder family being excluded to keep it green.",
+        "INJECTION AR, one shape removed from the shared fixture: \"1 enumerated rule(s) are emitted by nothing ... [LadderUnanchored]\". The coverage claim bites on the type, not on the list.",
+        "1604 workspace tests pass (1602 before), 0 failed, `--no-fail-fast`; clippy `-D warnings` and `cargo fmt --check` clean; `validate-workspace` T1 orphan 0 and T3 reject 0.",
+        "Citation hygiene (R255): Rounds 1008 and 1009 verified present with `query --changelog-entry` and Round 1010 verified absent before this entry was appended.",
+        "CARRY TEST (Round 1005): the bullet below was read against \"could I do this now?\" — and the answer for this round's predecessor was yes, which is why it is closed here rather than carried again."
+      ],
+      "publishable_impact_refs": [
+        "atomic-store-mutate-api"
+      ],
+      "publishable_carry_forward_bullets": [
+        "THE SAMPLE SHAPES ARE PLAUSIBLE, NOT REAL. `every_violation_shape` builds one of each variant with filler ids; it proves the MAPPING is total and every rule reachable, and says nothing about whether the scanner ever emits a given variant against a real store. That is a different claim and would need a corpus per variant.",
+        "23 READ-SIDE ARGUMENTS REMAIN in the Round 986 accounting, unchanged by this round."
+      ]
+    },
     "Round 252": {
       "decision_summary": "Parser CommonMark conformance — recognize indented fenced code blocks (§98) and require whitespace after ATX hash sequence (§62)",
       "changes_bullets": [

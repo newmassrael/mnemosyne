@@ -3063,7 +3063,9 @@ interval_unverifiable={} interval_severity={}",
             println!("  {}", serde_json::to_string(v)?);
             let a = mnemosyne_validate::verdict::continuity_actionable(v);
             println!("    {}", a.message);
-            repairs.entry(a.rule).or_insert(a.repair_hint);
+            repairs
+                .entry(a.rule.as_str().to_string())
+                .or_insert(a.repair_hint);
         }
         if !repairs.is_empty() {
             println!(
