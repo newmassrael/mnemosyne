@@ -81,6 +81,9 @@ pub struct ValidateWorkspaceReport {
     /// on every run, because an empty `census_stale` is the same clean a
     /// workspace gets when the check never ran.
     pub census_reach: CensusReach,
+    /// Round 983 — whether this workspace's entry ids are required to carry the
+    /// number that dates every count in an entry's prose.
+    pub entry_id_dating: EntryIdDating,
     pub failed: bool,
     pub failure_reasons: Vec<String>,
 }
@@ -458,6 +461,23 @@ pub fn validate_workspace(workspace_root: &Path) -> Result<ValidateWorkspaceRepo
             publishable_unmatched.len()
         ));
     }
+    // Round 983 — whether an entry id is even required to date the counts in
+    // its own prose. Resolved through the same shared path the append gate
+    // uses, and counted with production's own resolver, so this cannot say one
+    // thing while the gate does another.
+    let entry_id_dating = if crate::workspace_entry_id_prefix(workspace_root)?.is_empty() {
+        EntryIdDating::NotDemanded
+    } else {
+        EntryIdDating::Demanded {
+            dated: atomic_store
+                .changelog_entries
+                .keys()
+                .filter(|id| mnemosyne_atomic::project::parse_round_number(id).is_some())
+                .count(),
+            total: atomic_store.changelog_entries.len(),
+        }
+    };
+
     // Round 979 — a census an UNCOMMITTED entry records must be what the
     // workspace's report says right now.
     let (census_reach, census_stale) = census_contemporaneity(workspace_root, &atomic_store)?;
@@ -472,6 +492,7 @@ pub fn validate_workspace(workspace_root: &Path) -> Result<ValidateWorkspaceRepo
     Ok(ValidateWorkspaceReport {
         census_stale,
         census_reach,
+        entry_id_dating,
         orphan_actual,
         orphan_ledger: orphan_ledger_view,
         orphan_new,
@@ -546,6 +567,34 @@ pub enum CensusReach {
         /// Census rows compared against a report.
         rows_checked: usize,
     },
+}
+
+/// WHETHER THE LEDGER'S COUNTS ARE DATED AT ALL (Round 983).
+///
+/// The ledger needs no ban on undated counts, and the reason is structural: an
+/// entry is filed under its own round, so a count inside it is pinned to the
+/// moment it was taken. That property is worth exactly what the entry id
+/// guarantees — and it is guaranteed only where a workspace configures
+/// `schema.entry_id_prefix`, because the Round 976 gate demands a number only
+/// after a prefix it was given. A consumer with `entry_id_prefix = ""` has the
+/// gate stand down and gets no dating at all.
+///
+/// Round 976 stated that in its own carry and ended with "nothing here tells
+/// them so". Nothing did. This is the same defect Round 980 closed one axis
+/// over, found by a program rather than by re-reading: every state is named in
+/// the output, so a workspace that has the protection and one that never could
+/// no longer print the same clean.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum EntryIdDating {
+    /// No `schema.entry_id_prefix`, so the Round 976 gate stands down: nothing
+    /// demands a number in an entry id, and every count in this ledger's prose
+    /// is therefore undated.
+    NotDemanded,
+    /// The gate is in force. `dated` counts entries whose id yields a round
+    /// number through the projection's own resolver; anything short of `total`
+    /// is frozen history from before the gate.
+    Demanded { dated: usize, total: usize },
 }
 
 /// THE CENSUS AN ENTRY IS ABOUT TO FREEZE MUST BE THE ONE THE TREE HOLDS NOW.
@@ -950,6 +999,21 @@ impl ValidateWorkspaceReport {
         for s in &self.census_stale {
             let _ = writeln!(out, "  {}", s);
         }
+        let _ = writeln!(
+            out,
+            "ledger dating: {} (Round 983; a count inside an entry is pinned by \
+             the round it is filed under, and only a configured \
+             schema.entry_id_prefix demands that number)",
+            match &self.entry_id_dating {
+                EntryIdDating::NotDemanded =>
+                    "OFF — this workspace configures no schema.entry_id_prefix, so no \
+                     entry id has to carry a round number and every count in the \
+                     ledger's prose is undated"
+                        .to_string(),
+                EntryIdDating::Demanded { dated, total } =>
+                    format!("{dated} of {total} entry(ies) are dated by their own key"),
+            }
+        );
         if self.failed {
             let _ = writeln!(out, "FAILED:");
             for r in &self.failure_reasons {
@@ -1040,6 +1104,76 @@ mod tests {
             report.scan_unscanned.is_empty(),
             "unscanned: {:?}",
             report.scan_unscanned
+        );
+    }
+
+    /// A workspace that HAS the dating guarantee and one that never could must
+    /// not print the same clean (Round 983).
+    ///
+    /// The counts are read from a fixture whose store deliberately holds one
+    /// entry the gate would reject today — frozen history from before it — so
+    /// `dated` is not the same number as `total` and a rendering that printed
+    /// the entry count twice would pass.
+    #[test]
+    fn ledger_dating_is_reported_in_both_states() {
+        fn workspace(prefix: &str) -> tempfile::TempDir {
+            let tmp = tempfile::TempDir::new().expect("tempdir");
+            let ws = tmp.path();
+            fs::create_dir_all(ws.join("docs/.atomic")).expect("atomic dir");
+            fs::write(
+                ws.join("mnemosyne.toml"),
+                format!("[workspace]\n[schema]\nentry_id_prefix = \"{prefix}\"\n"),
+            )
+            .expect("config");
+            fs::write(
+                ws.join("docs/.atomic/workspace.atomic.json"),
+                serde_json::json!({
+                    "schema_version": mnemosyne_atomic::CURRENT_SCHEMA_VERSION,
+                    "sections": {},
+                    "changelog_entries": {
+                        "Round 900": {"decision_summary": "dated"},
+                        "Round misc": {"decision_summary": "frozen history, undated"},
+                    },
+                })
+                .to_string(),
+            )
+            .expect("store");
+            tmp
+        }
+
+        let demanded = workspace("Round ");
+        let report = validate_workspace(demanded.path()).expect("validate");
+        assert_eq!(
+            report.entry_id_dating,
+            EntryIdDating::Demanded { dated: 1, total: 2 },
+            "the count must come from the projection's resolver, not from the \
+             entry count: an id with no number is not dated"
+        );
+        let demanded_line = report
+            .render_plain()
+            .lines()
+            .find(|l| l.starts_with("ledger dating:"))
+            .expect("the report says nothing about dating")
+            .to_string();
+
+        let off = workspace("");
+        let report = validate_workspace(off.path()).expect("validate");
+        assert_eq!(report.entry_id_dating, EntryIdDating::NotDemanded);
+        let off_line = report
+            .render_plain()
+            .lines()
+            .find(|l| l.starts_with("ledger dating:"))
+            .expect("the report says nothing about dating")
+            .to_string();
+
+        assert_ne!(
+            demanded_line, off_line,
+            "a workspace with the dating guarantee and one that never could say \
+             the same thing, which is the silence Round 976 left"
+        );
+        assert!(
+            off_line.contains("OFF"),
+            "the off state does not name itself: {off_line}"
         );
     }
 
