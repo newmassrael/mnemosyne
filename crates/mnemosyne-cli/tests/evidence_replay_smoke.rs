@@ -4979,9 +4979,74 @@ fn the_recorded_corpora_are_swept_for_every_rule_they_can_trip() {
     for r in &fired {
         println!("  trips: {r}");
     }
+    // A CORPUS TODAY'S BINARY REFUSES IS NOT NECESSARILY UNREADABLE (Round
+    // 1013). The kits pin the revision that produced each replay, so a refused
+    // corpus whose facts manifest is a declared replay INPUT is still readable
+    // by the substrate that made it — which is the design, not a defect. One
+    // that is refused AND pinned by nothing is evidence nothing can open.
+    let pinned: BTreeSet<String> = declarations()
+        .replays
+        .iter()
+        .flat_map(|r| {
+            let unit = r.unit.clone();
+            r.steps.iter().map(move |s| format!("{unit}/{}", s.input))
+        })
+        .collect();
+    let mut orphaned = Vec::new();
     for u in &unbuildable {
-        println!("  refused: {u}");
+        let dir = u.split(':').next().unwrap_or(u).trim();
+        let covered = pinned.iter().any(|p| p.starts_with(&format!("{dir}/")));
+        println!(
+            "  refused ({}): {u}",
+            if covered {
+                "pinned replay can read it"
+            } else {
+                "PINNED BY NOTHING"
+            }
+        );
+        // A FIRST SUBMISSION IS THE ARTIFACT THE GATE REJECTED (Round 1013),
+        // so it not importing is what it IS, not evidence going out of reach.
+        // All three that reach here are first submissions and all three fail on
+        // something the repair fixed — a missing `parent_doc`, a surface object
+        // absent from the registry. Counting them as decay was a category
+        // error: the record keeps them precisely because they did not pass.
+        if !covered && !dir.ends_with("-first-submission") {
+            orphaned.push(dir.to_string());
+        }
     }
+    println!(
+        "  of {} refused, {} are readable by a pinned revision, {} are first \
+         submissions the gate rejected, and {} are readable by nothing",
+        unbuildable.len(),
+        unbuildable
+            .iter()
+            .filter(|u| {
+                let d = u.split(':').next().unwrap_or(u).trim();
+                pinned.iter().any(|p| p.starts_with(&format!("{d}/")))
+            })
+            .count(),
+        unbuildable
+            .iter()
+            .filter(|u| {
+                u.split(':')
+                    .next()
+                    .unwrap_or(u)
+                    .trim()
+                    .ends_with("-first-submission")
+            })
+            .count(),
+        orphaned.len()
+    );
+    // THE PROPERTY WORTH GATING, now that the population is the right one:
+    // every ACCEPTED submission the record holds is readable by today's binary
+    // or by the revision that produced it. The day one is readable by neither,
+    // the evidence has decayed and this fails naming it.
+    assert!(
+        orphaned.is_empty(),
+        "{} accepted submission(s) in the record are readable by neither \
+         today's substrate nor any pinned replay revision: {orphaned:?}",
+        orphaned.len()
+    );
     for n in &not_a_corpus {
         println!("  nothing to scan: {n}");
     }
@@ -5074,8 +5139,20 @@ fn rebuild_corpus(dir: &str) -> Result<TempDir, String> {
         }
     };
     if src.join("sections.json").is_file() {
-        std::fs::copy(src.join("sections.json"), ws.join("sections.json"))
-            .map_err(|e| e.to_string())?;
+        // TWO RECORDED SHAPES, AND THE INSTRUMENT READS BOTH (Round 1013). The
+        // CLI importer takes a bare array; some recorded submissions carry the
+        // MCP-shaped `{"sections": [...]}` wrapper. Reading only one of them
+        // made this sweep report two corpora as REFUSED BY THE SUBSTRATE when
+        // the substrate had never been asked — a defect in the measurement,
+        // not in the record, and exactly the kind that inflates an alarm.
+        let raw = std::fs::read_to_string(src.join("sections.json")).map_err(|e| e.to_string())?;
+        let value: serde_json::Value = serde_json::from_str(&raw).map_err(|e| e.to_string())?;
+        let array = value
+            .get("sections")
+            .filter(|v| v.is_array())
+            .cloned()
+            .unwrap_or(value);
+        std::fs::write(ws.join("sections.json"), array.to_string()).map_err(|e| e.to_string())?;
         run(&["import-sections", "--manifest", "sections.json"])?;
     }
     if !src.join("facts.json").is_file() {

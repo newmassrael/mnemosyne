@@ -1252,6 +1252,92 @@
         "THE DECLARED TRACK HAS NOT MOVED IN FIVE ROUNDS. The Round 986 accounting stood at 99 of 122 when Round 1007 closed and stands at 99 now; Rounds 1008 through 1012 were audit rounds that each found a real defect elsewhere. The findings are real and growing rather than shrinking, but they are not the track, and nothing said so until here."
       ]
     },
+    "Round 1013": {
+      "decision_summary": "R1013 (DEBT) — Round 1012's alarm was two-thirds instrument error and one-third category error, and the corrected reading says the evidence design is working rather than failing. It reported that 11 recorded corpora \"cannot be loaded by today's substrate\", called that the largest fact of the session, and left the impression of a record going out of reach. Taken apart: STAR EIGHT OF THE ELEVEN ARE READABLE BY THE REVISION THAT PRODUCED THEM. The kits pin a revision per replay, so a corpus refused by today's binary and named by a pinned replay's steps is readable by design — that is what the pin is FOR. Eight are exactly that, and every one fails on the `value`/`scalar` shape Round 708 removed, which is a schema change the pins were built to survive. Calling them decay ignored the instrument the record already carries. STAR TWO WERE MY MEASUREMENT MISREADING A FILE. Their `sections.json` carries the MCP-shaped `{\"sections\": [...]}` wrapper while the CLI importer takes a bare array; the sweep never asked the substrate, it failed to hand it anything. Fixed to read both shapes, and the error moved on to something real. STAR AND THE THREE THAT REMAIN ARE FIRST SUBMISSIONS, WHICH IS A CATEGORY ERROR IN THE POPULATION. A `-first-submission` is the artifact the gate REJECTED — the author's output before repair — so it not importing is what it is, not evidence lost. All three fail on precisely what the repair fixed: a missing `parent_doc`, a surface object absent from the entity registry. Expecting them to rebuild is expecting the rejected to pass. STAR SO THE PROPERTY WORTH GATING IS OVER THE ACCEPTED SUBMISSIONS, and it now is one: every accepted submission the record holds is readable by today's substrate or by its pinned revision, and zero are readable by neither. That is green today and fails naming the corpus the day it stops being true. Round 1012's number was right and its meaning was wrong; this round did not soften the alarm, it found the population it belonged to.",
+      "changes_bullets": [
+        "`crates/mnemosyne-cli/tests/evidence_replay_smoke.rs` — the sweep classifies each refusal against the pinned replays: readable by a pinned revision, a first submission the gate rejected, or readable by nothing. The third is asserted empty.",
+        "Same file — `rebuild_corpus` reads both recorded `sections.json` shapes, the bare array the CLI takes and the `{\"sections\": [...]}` wrapper. Reading one of them made the sweep report corpora as refused that were never handed to the substrate."
+      ],
+      "verification_bullets": [
+        "STAR THE CORRECTED SPLIT: 27 swept, 11 refused — 8 readable by a pinned revision, 3 first submissions, 0 readable by nothing. Round 1012 reported 11 as one undifferentiated number.",
+        "STAR TWO OF THE ELEVEN WERE MY INSTRUMENT, not the record: unwrapping the recorded `sections.json` shape moved their error from \"invalid type: map\" to \"missing field `parent_doc`\", which is the pre-repair defect the first submission actually has.",
+        "INJECTION AT, first submissions counted as decay again: the gate fails naming all three, so the exclusion is load-bearing rather than a way to reach zero.",
+        "THE ASSERTION IS OVER THE ACCEPTED SUBMISSIONS and is green with zero exceptions listed — no allow-list, no known-stale ledger. A corpus that becomes readable by neither fails here by name.",
+        "1606 workspace tests pass, 0 failed, `--no-fail-fast`; clippy `-D warnings` and `cargo fmt --check` clean; `validate-workspace` T1 orphan 0 and T3 reject 0.",
+        "Citation hygiene (R255): Rounds 469, 708 and 1012 verified present with `query --changelog-entry` and Round 1013 verified absent before this entry was appended."
+      ],
+      "impact_refs": [
+        "atomic-store-mutate-api"
+      ],
+      "carry_forward_bullets": [
+        "THE PINS ARE TRUSTED, NOT EXERCISED, BY THIS TEST. It asks whether a refused corpus is NAMED by a pinned replay, not whether that revision still builds and still reads it — the replay job answers that, at the cost of building 30 revisions, and this sweep is in the normal suite precisely because it does not. The two are complementary and neither alone says the evidence is safe.",
+        "THE THREE FIRST SUBMISSIONS ARE UNREADABLE BY ANYTHING AND THAT IS CORRECT, but nothing in the record says so where a reader would look. A kit declares replays for what passed; what a first submission IS — the rejected artifact, kept for the diff — lives in runbook prose."
+      ],
+      "population_census": [
+        {
+          "axis": "transition rules by `undirected`",
+          "left_label": "undirected",
+          "left": 10,
+          "right_label": "directed",
+          "right": 27
+        },
+        {
+          "axis": "map corpora by leg-kind declaration",
+          "left_label": "omitted",
+          "left": 6,
+          "right_label": "declared",
+          "right": 24
+        },
+        {
+          "axis": "cost-carrying corpora by direction-dependent pricing",
+          "left_label": "prices a way by direction",
+          "left": 4,
+          "right_label": "prices no way by direction",
+          "right": 6
+        },
+        {
+          "axis": "run trees by authoring mode",
+          "left_label": "hand script",
+          "left": 10,
+          "right_label": "file-only",
+          "right": 239
+        },
+        {
+          "axis": "map corpora by declared boundary crossing",
+          "left_label": "declares an exit",
+          "left": 6,
+          "right_label": "declares none",
+          "right": 24
+        },
+        {
+          "axis": "authored submissions by map and telling",
+          "left_label": "carries both",
+          "left": 10,
+          "right_label": "carries one",
+          "right": 24
+        }
+      ],
+      "publishable_decision_summary": "R1013 (DEBT) — Round 1012's alarm was two-thirds instrument error and one-third category error, and the corrected reading says the evidence design is working rather than failing. It reported that 11 recorded corpora \"cannot be loaded by today's substrate\", called that the largest fact of the session, and left the impression of a record going out of reach. Taken apart: STAR EIGHT OF THE ELEVEN ARE READABLE BY THE REVISION THAT PRODUCED THEM. The kits pin a revision per replay, so a corpus refused by today's binary and named by a pinned replay's steps is readable by design — that is what the pin is FOR. Eight are exactly that, and every one fails on the `value`/`scalar` shape Round 708 removed, which is a schema change the pins were built to survive. Calling them decay ignored the instrument the record already carries. STAR TWO WERE MY MEASUREMENT MISREADING A FILE. Their `sections.json` carries the MCP-shaped `{\"sections\": [...]}` wrapper while the CLI importer takes a bare array; the sweep never asked the substrate, it failed to hand it anything. Fixed to read both shapes, and the error moved on to something real. STAR AND THE THREE THAT REMAIN ARE FIRST SUBMISSIONS, WHICH IS A CATEGORY ERROR IN THE POPULATION. A `-first-submission` is the artifact the gate REJECTED — the author's output before repair — so it not importing is what it is, not evidence lost. All three fail on precisely what the repair fixed: a missing `parent_doc`, a surface object absent from the entity registry. Expecting them to rebuild is expecting the rejected to pass. STAR SO THE PROPERTY WORTH GATING IS OVER THE ACCEPTED SUBMISSIONS, and it now is one: every accepted submission the record holds is readable by today's substrate or by its pinned revision, and zero are readable by neither. That is green today and fails naming the corpus the day it stops being true. Round 1012's number was right and its meaning was wrong; this round did not soften the alarm, it found the population it belonged to.",
+      "publishable_changes_bullets": [
+        "`crates/mnemosyne-cli/tests/evidence_replay_smoke.rs` — the sweep classifies each refusal against the pinned replays: readable by a pinned revision, a first submission the gate rejected, or readable by nothing. The third is asserted empty.",
+        "Same file — `rebuild_corpus` reads both recorded `sections.json` shapes, the bare array the CLI takes and the `{\"sections\": [...]}` wrapper. Reading one of them made the sweep report corpora as refused that were never handed to the substrate."
+      ],
+      "publishable_verification_bullets": [
+        "STAR THE CORRECTED SPLIT: 27 swept, 11 refused — 8 readable by a pinned revision, 3 first submissions, 0 readable by nothing. Round 1012 reported 11 as one undifferentiated number.",
+        "STAR TWO OF THE ELEVEN WERE MY INSTRUMENT, not the record: unwrapping the recorded `sections.json` shape moved their error from \"invalid type: map\" to \"missing field `parent_doc`\", which is the pre-repair defect the first submission actually has.",
+        "INJECTION AT, first submissions counted as decay again: the gate fails naming all three, so the exclusion is load-bearing rather than a way to reach zero.",
+        "THE ASSERTION IS OVER THE ACCEPTED SUBMISSIONS and is green with zero exceptions listed — no allow-list, no known-stale ledger. A corpus that becomes readable by neither fails here by name.",
+        "1606 workspace tests pass, 0 failed, `--no-fail-fast`; clippy `-D warnings` and `cargo fmt --check` clean; `validate-workspace` T1 orphan 0 and T3 reject 0.",
+        "Citation hygiene (R255): Rounds 469, 708 and 1012 verified present with `query --changelog-entry` and Round 1013 verified absent before this entry was appended."
+      ],
+      "publishable_impact_refs": [
+        "atomic-store-mutate-api"
+      ],
+      "publishable_carry_forward_bullets": [
+        "THE PINS ARE TRUSTED, NOT EXERCISED, BY THIS TEST. It asks whether a refused corpus is NAMED by a pinned replay, not whether that revision still builds and still reads it — the replay job answers that, at the cost of building 30 revisions, and this sweep is in the normal suite precisely because it does not. The two are complementary and neither alone says the evidence is safe.",
+        "THE THREE FIRST SUBMISSIONS ARE UNREADABLE BY ANYTHING AND THAT IS CORRECT, but nothing in the record says so where a reader would look. A kit declares replays for what passed; what a first submission IS — the rejected artifact, kept for the diff — lives in runbook prose."
+      ]
+    },
     "Round 252": {
       "decision_summary": "Parser CommonMark conformance — recognize indented fenced code blocks (§98) and require whitespace after ATX hash sequence (§62)",
       "changes_bullets": [
