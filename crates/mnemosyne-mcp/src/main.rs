@@ -3424,11 +3424,21 @@ mod tests {
     }
 
     /// Every (tool, optional argument) pair a differential test proves the
-    /// handler actually READS. Growing this list is the point; it may never
-    /// shrink without the round that shrinks it saying why.
-    const EXERCISED: &[(&str, &str)] = &[
-        ("append_changelog_entry", "record_census"), // R981
-        ("add_entity", "description"),               // R986
+    /// handler actually READS — generated from the same invocations that
+    /// generate the tests, so a pair cannot be claimed without one existing.
+    /// Growing this list is the point; it may never shrink without the round
+    /// that shrinks it saying why.
+    /// Pairs proven by a BESPOKE test the `exercised!` macro cannot express —
+    /// `record_census` needs a workspace that declares a `[census] report`, and
+    /// its oracle is the shared resolver rather than a needle.
+    ///
+    /// THIS LIST IS WEAKER THAN THE GENERATED ONE AND IS KEPT SHORT FOR THAT
+    /// REASON: nothing checks that the named test exists, so it is a claim of
+    /// exactly the kind the macro was written to stop making. Each line names
+    /// the test that backs it.
+    const EXERCISED_BESPOKE: &[(&str, &str)] = &[
+        // mcp_append_records_the_census_the_shared_resolver_yields (R981)
+        ("append_changelog_entry", "record_census"),
     ];
 
     /// Every (tool, optional argument) pair that NOTHING proves the handler
@@ -3447,7 +3457,6 @@ mod tests {
         ("add_confirmation_event", "test_sha256"),
         ("add_disclosure_plan", "description"),
         ("add_entity", "kind"),
-        ("add_entity_kind", "description"),
         ("add_entity_kind", "parents"),
         ("add_fact", "branch"),
         ("add_fact", "canon_to"),
@@ -3459,18 +3468,15 @@ mod tests {
         ("add_fact", "quote"),
         ("add_fact", "supersedes_in_frame"),
         ("add_fact", "typed"),
-        ("add_frame", "description"),
         ("add_inventory_entry", "reason"),
         ("add_inventory_entry", "section_ref"),
         ("add_inventory_entry", "source"),
-        ("add_parameter", "description"),
         ("add_predicate", "description"),
         ("add_predicate", "object_entity_kind"),
         ("add_predicate", "object_tokens"),
         ("add_predicate", "subject_kind"),
         ("add_section", "parent_section"),
         ("add_section_binding", "symbol"),
-        ("add_unit", "description"),
         ("amend_fact", "branch"),
         ("amend_fact", "canon_to"),
         ("amend_fact", "conflicts_with"),
@@ -3630,11 +3636,15 @@ mod tests {
             "no pair is claimed exercised, so the accounting has no floor"
         );
 
-        let declared: BTreeSet<(&str, &str)> =
-            EXERCISED.iter().chain(UNEXERCISED).copied().collect();
+        let declared: BTreeSet<(&str, &str)> = EXERCISED
+            .iter()
+            .chain(EXERCISED_BESPOKE)
+            .chain(UNEXERCISED)
+            .copied()
+            .collect();
         assert_eq!(
             declared.len(),
-            EXERCISED.len() + UNEXERCISED.len(),
+            EXERCISED.len() + EXERCISED_BESPOKE.len() + UNEXERCISED.len(),
             "a pair is declared twice, so one of the two lists is lying about it"
         );
 
@@ -3666,7 +3676,7 @@ mod tests {
 
         println!(
             "MCP optional arguments: {} exercised / {} unexercised, of {} on the router",
-            EXERCISED.len(),
+            EXERCISED.len() + EXERCISED_BESPOKE.len(),
             UNEXERCISED.len(),
             live.len()
         );
@@ -3692,58 +3702,95 @@ mod tests {
         tmp
     }
 
-    /// AN OPTIONAL ARGUMENT AN AGENT SENDS CHANGES WHAT LANDS IN THE STORE.
+    /// THE PATTERN EVERY ENTRY IN `EXERCISED` FOLLOWS: AN OPTIONAL ARGUMENT AN
+    /// AGENT SENDS CHANGES WHAT LANDS IN THE STORE.
     ///
-    /// The pattern every entry in `EXERCISED` has to follow, and the reason it
-    /// is DIFFERENTIAL rather than a single call: a tool that ignores the
-    /// argument still succeeds and still writes a record, so asserting on one
-    /// store proves only that the tool ran. Two workspaces, identical but for
-    /// the argument, must not end up with the same bytes.
+    /// DIFFERENTIAL RATHER THAN A SINGLE CALL, and that is the load-bearing
+    /// part: a tool that ignores the argument still succeeds and still writes a
+    /// record, so asserting on one store proves only that the tool ran. Two
+    /// workspaces, identical but for the argument, may not end up with the same
+    /// bytes.
     ///
-    /// `add_entity.description` is the shape at its plainest — the argument is
-    /// authored prose, and a handler that drops it loses what the agent wrote
-    /// while telling the agent it was saved.
-    #[tokio::test]
-    async fn add_entity_description_reaches_the_store() {
-        let bytes = |with: bool| {
-            let tmp = agent_workspace();
-            let ws = tmp.path().to_path_buf();
-            let mut json = serde_json::json!({"entity_id": "e-her"});
-            if with {
-                json["description"] = serde_json::json!("the one who waits");
-            }
-            let args: AddEntityArgs =
-                serde_json::from_value(json).expect("the agent-facing shape must parse");
-            (ws, tmp, args)
+    /// The needle is asserted BESIDE the difference, because the two catch
+    /// different failures — a handler that writes the argument into the wrong
+    /// place still changes the bytes, and a handler that stamps a timestamp
+    /// changes them without reading anything.
+    ///
+    /// ONE INVOCATION EMITS BOTH THE TEST AND ITS `EXERCISED` ROW, which is the
+    /// hole this closes rather than a convenience. Round 986 shipped `EXERCISED`
+    /// as a hand-written list, so it was a CLAIM that a test existed and nothing
+    /// checked it — a pair could be moved out of the silent set by editing one
+    /// line. Now the row cannot exist without the test and the test cannot exist
+    /// without the row, and the compiler is what holds the two together.
+    macro_rules! exercised {
+        ($(
+            $test:ident : $tool:ident($args:ty) $base:tt . $field:literal = $needle:literal;
+        )*) => {
+            const EXERCISED: &[(&str, &str)] = &[$((stringify!($tool), $field)),*];
+            $(
+                #[tokio::test]
+                async fn $test() {
+                    let mut written = Vec::new();
+                    for with in [false, true] {
+                        let tmp = agent_workspace();
+                        let mut json = serde_json::json!($base);
+                        if with {
+                            json[$field] = serde_json::json!($needle);
+                        }
+                        let args: $args = serde_json::from_value(json)
+                            .expect("the agent-facing shape must parse this call");
+                        let server =
+                            MnemosyneServer::new(tmp.path().to_path_buf()).expect("server");
+                        let result = server.$tool(Parameters(args)).await;
+                        assert!(
+                            result.is_error != Some(true),
+                            "{} failed with {}={with}: {:?}",
+                            stringify!($tool),
+                            $field,
+                            result.content
+                        );
+                        written.push(
+                            std::fs::read_to_string(
+                                tmp.path().join("docs/.atomic/workspace.atomic.json"),
+                            )
+                            .expect("read the store"),
+                        );
+                    }
+                    assert!(
+                        written[1].contains($needle),
+                        "what the agent sent as `{}` is nowhere in the store {} wrote",
+                        $field,
+                        stringify!($tool)
+                    );
+                    assert_ne!(
+                        written[0], written[1],
+                        "the store is byte-identical with and without `{}`, so {} does \
+                         not read it and what the agent sent was dropped while the call \
+                         reported success",
+                        $field,
+                        stringify!($tool)
+                    );
+                }
+            )*
         };
+    }
 
-        let mut written = Vec::new();
-        for with in [false, true] {
-            let (ws, tmp, args) = bytes(with);
-            let server = MnemosyneServer::new(ws.clone()).expect("server");
-            let result = server.add_entity(Parameters(args)).await;
-            assert!(
-                result.is_error != Some(true),
-                "add_entity failed with description={with}: {:?}",
-                result.content
-            );
-            written.push(
-                std::fs::read_to_string(ws.join("docs/.atomic/workspace.atomic.json"))
-                    .expect("read the store"),
-            );
-            drop(tmp);
-        }
-
-        assert!(
-            written[1].contains("the one who waits"),
-            "the description an agent sent is nowhere in the store it wrote"
-        );
-        assert_ne!(
-            written[0], written[1],
-            "the store is byte-identical with and without `description`, so \
-             the handler does not read it and the agent's prose was dropped \
-             while the call reported success"
-        );
+    exercised! {
+        add_entity_description_reaches_the_store:
+            add_entity(AddEntityArgs) {"entity_id": "e-her"}
+            ."description" = "the one who waits";
+        add_entity_kind_description_reaches_the_store:
+            add_entity_kind(AddEntityKindArgs) {"kind_id": "place"}
+            ."description" = "anywhere a person can be";
+        add_frame_description_reaches_the_store:
+            add_frame(AddFrameArgs) {"frame_id": "ground-truth"}
+            ."description" = "what is so in the town";
+        add_parameter_description_reaches_the_store:
+            add_parameter(AddParameterArgs) {"parameter_id": "affection"}
+            ."description" = "how warmly she reads him";
+        add_unit_description_reaches_the_store:
+            add_unit(AddUnitArgs) {"unit_id": "day"}
+            ."description" = "a day of the flood";
     }
 
     /// An agent can only call what the schema shows it (Round 981) — the Round

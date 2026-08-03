@@ -33773,6 +33773,102 @@
         "THE UNEXERCISED LIST IS NOT AN EXEMPTION AND MUST NOT BECOME ONE. It cannot grow silently, since an argument in neither list fails the gate, but nothing stops a round from moving a pair INTO it. If that ever happens it should be with the same sentence a deletion would need, because the difference between this list and an allow-list is only that this one is meant to empty.",
         "WHAT WOULD KILL THE CLASS RATHER THAN COUNT IT is one declaration driving both the CLI and the MCP wire, so there is no second forwarding to drift. That is a large refactor across a hundred verbs and it is not proposed here; what makes it thinkable later is exactly this list, since a refactor needs the differential cases first to show it changed nothing."
       ]
+    },
+    "Round 987": {
+      "decision_summary": "R987 (BUILD) — the accounting Round 986 shipped had a hole in the half it was proudest of, and closing it is what made filling the list cheap. R986 walked the router's own schema for the 122 optional arguments an agent can send, declared each one exercised or not, and made a pair in neither list a failure. STAR BUT `EXERCISED` WAS A HAND-WRITTEN LIST, WHICH MEANS IT WAS A CLAIM THAT A TEST EXISTED AND NOTHING CHECKED IT. A pair could be lifted out of the silent set by editing one line, which is the exact move the gate was built to stop — an argument reading as covered while nothing exercises it is worse than one honestly named unexercised, because the first reads as assurance. This round found it the way such things are found: a script moved four pairs into `EXERCISED` and the tests it was supposed to move them with had not been written yet, and everything stayed green. STAR SO THE ROW AND THE TEST ARE NOW EMITTED BY ONE MACRO INVOCATION, AND THE COMPILER IS WHAT HOLDS THEM TOGETHER. `exercised!` generates `EXERCISED` from the same invocations that generate the test functions: a row cannot exist without its test, and deleting a case removes the row with it, so the pair falls back into the silent set and the gate fails naming it. STAR THE ONE CASE THE MACRO CANNOT EXPRESS IS SEPARATED RATHER THAN SMUGGLED IN. Round 981's `record_census` needs a workspace declaring a `[census] report` and its oracle is the shared resolver rather than a needle in the bytes, so it lives in `EXERCISED_BESPOKE` with the doc comment saying plainly that this list is weaker — nothing checks the named test exists — and that it is kept short for that reason. Naming the weakness is the difference between a second list and a loophole. STAR THE PATTERN IS DIFFERENTIAL AND ASSERTS TWO DIFFERENT THINGS, because they catch different failures: the store bytes must DIFFER with and without the argument, which catches the handler that ignores it, and the value must be FINDABLE in the bytes, which catches the handler that changes something else instead. A test with only the first would pass against a tool that stamps a timestamp. STAR FIVE ARGUMENTS MOVED OUT OF THE SILENT SET, all of them authored prose on a registry write — `add_entity`, `add_entity_kind`, `add_frame`, `add_parameter`, `add_unit`. That is the plainest shape of the harm and the right place to start: the agent writes a description, the tool answers success, and if the handler drops it the prose is gone with nothing anywhere saying so. The count is now 6 exercised against 116, and each further one is a line of data rather than a fresh piece of scaffolding.",
+      "changes_bullets": [
+        "`crates/mnemosyne-mcp/src/main.rs` — `exercised!`, one macro emitting both the `EXERCISED` row and the differential test for each (tool, argument) pair. This is the repair: Round 986's list was a claim that a test existed, and this makes the claim and the test the same declaration.",
+        "Same file — five cases: `add_entity.description`, `add_entity_kind.description`, `add_frame.description`, `add_parameter.description`, `add_unit.description`. Each is a registry write whose optional argument is authored prose, which is the plainest form of the harm.",
+        "Same file — `EXERCISED_BESPOKE`, holding the one pair the macro cannot express (Round 981's `record_census`, which needs a `[census]` workspace and a resolver oracle). Its doc comment states that nothing checks the named test exists and that the list is kept short for exactly that reason.",
+        "Same file — the gate unions the three lists, so a pair declared in the generated set and the bespoke set at once fails as declared twice, and the printed line counts both as exercised."
+      ],
+      "verification_bullets": [
+        "STAR THE HOLE WAS FOUND BY A FAILED EDIT, NOT BY REVIEW. A script moved four pairs into `EXERCISED` before their tests existed and the suite stayed green; that is the whole argument for generating the rows from the tests.",
+        "INJECTION K, one `exercised!` case deleted: the gate failed naming the pair, \"1 of 122 agent-facing optional argument(s) are in neither list: [(\\\"add_unit\\\", \\\"description\\\")]\". The row went with the test, which is the property the macro exists for.",
+        "INJECTION J, `add_frame` stops passing the description through: its differential case failed with \"what the agent sent as `description` is nowhere in the store add_frame wrote\", and the other eleven tests stayed green — the same measurement of invisibility Round 986 recorded, now with the case in place to catch it.",
+        "INJECTION J DID NOT APPLY ON ITS FIRST RUN AND THE GREEN WAS DISCARDED RATHER THAN READ. The anchor did not match the handler's actual body, so the suite passed with nothing injected; the anchor was re-read from the source and the injection re-run. A green under an unapplied injection is not evidence.",
+        "THE GATE'S OWN \"DECLARED TWICE\" ARM FIRED DURING THE WORK, when the four moved pairs were still listed as unexercised, so that assertion is exercised rather than decorative.",
+        "1503 workspace tests pass (1499 before), 0 failed, `--no-fail-fast`; clippy `-D warnings` and `cargo fmt --check` clean; `validate-workspace` T1 orphan 0 and T3 reject 0; entries and sections unchanged.",
+        "Every injection was reverted by restoring a COPY taken before it, and each was applied by a script asserting its anchor occurs exactly once — which is what caught the unapplied one.",
+        "Citation hygiene (R255): Rounds 981 and 986 verified present with `query --changelog-entry`, and Round 987 verified absent, before this entry was appended."
+      ],
+      "impact_refs": [
+        "atomic-store-mutate-api"
+      ],
+      "carry_forward_bullets": [
+        "116 OF 122 REMAIN, AND THE REMAINDER IS WORK RATHER THAN A LIMIT. The five landed here are the cases needing no prerequisite call; the next band needs one setup call before the tool under test (an entity kind before `add_entity.kind`, a section before `add_section.parent_section`), which the macro does not take yet. That is a parameter to add, not a question to answer.",
+        "THE DIFFERENTIAL PATTERN PROVES AN ARGUMENT IS READ, NOT THAT IT IS READ CORRECTLY. The needle assertion narrows it — the value has to appear in the bytes — but a handler writing it into a neighbouring field would still pass. Where a tool has a CLI twin, that twin's answer is the stronger oracle, and Round 981's bespoke case is the example of using it.",
+        "`EXERCISED_BESPOKE` IS THE ONE PLACE THE COMPILER IS NOT HOLDING THE CLAIM. It has one entry today. If it grows, the reason is that the macro is missing an ability, and the answer is to give the macro that ability rather than to add a line here."
+      ],
+      "population_census": [
+        {
+          "axis": "transition rules by `undirected`",
+          "left_label": "undirected",
+          "left": 10,
+          "right_label": "directed",
+          "right": 27
+        },
+        {
+          "axis": "map corpora by leg-kind declaration",
+          "left_label": "omitted",
+          "left": 6,
+          "right_label": "declared",
+          "right": 24
+        },
+        {
+          "axis": "cost-carrying corpora by direction-dependent pricing",
+          "left_label": "prices a way by direction",
+          "left": 4,
+          "right_label": "prices no way by direction",
+          "right": 6
+        },
+        {
+          "axis": "run trees by authoring mode",
+          "left_label": "hand script",
+          "left": 10,
+          "right_label": "file-only",
+          "right": 239
+        },
+        {
+          "axis": "map corpora by declared boundary crossing",
+          "left_label": "declares an exit",
+          "left": 6,
+          "right_label": "declares none",
+          "right": 24
+        },
+        {
+          "axis": "authored submissions by map and telling",
+          "left_label": "carries both",
+          "left": 10,
+          "right_label": "carries one",
+          "right": 24
+        }
+      ],
+      "publishable_decision_summary": "R987 (BUILD) — the accounting Round 986 shipped had a hole in the half it was proudest of, and closing it is what made filling the list cheap. R986 walked the router's own schema for the 122 optional arguments an agent can send, declared each one exercised or not, and made a pair in neither list a failure. STAR BUT `EXERCISED` WAS A HAND-WRITTEN LIST, WHICH MEANS IT WAS A CLAIM THAT A TEST EXISTED AND NOTHING CHECKED IT. A pair could be lifted out of the silent set by editing one line, which is the exact move the gate was built to stop — an argument reading as covered while nothing exercises it is worse than one honestly named unexercised, because the first reads as assurance. This round found it the way such things are found: a script moved four pairs into `EXERCISED` and the tests it was supposed to move them with had not been written yet, and everything stayed green. STAR SO THE ROW AND THE TEST ARE NOW EMITTED BY ONE MACRO INVOCATION, AND THE COMPILER IS WHAT HOLDS THEM TOGETHER. `exercised!` generates `EXERCISED` from the same invocations that generate the test functions: a row cannot exist without its test, and deleting a case removes the row with it, so the pair falls back into the silent set and the gate fails naming it. STAR THE ONE CASE THE MACRO CANNOT EXPRESS IS SEPARATED RATHER THAN SMUGGLED IN. Round 981's `record_census` needs a workspace declaring a `[census] report` and its oracle is the shared resolver rather than a needle in the bytes, so it lives in `EXERCISED_BESPOKE` with the doc comment saying plainly that this list is weaker — nothing checks the named test exists — and that it is kept short for that reason. Naming the weakness is the difference between a second list and a loophole. STAR THE PATTERN IS DIFFERENTIAL AND ASSERTS TWO DIFFERENT THINGS, because they catch different failures: the store bytes must DIFFER with and without the argument, which catches the handler that ignores it, and the value must be FINDABLE in the bytes, which catches the handler that changes something else instead. A test with only the first would pass against a tool that stamps a timestamp. STAR FIVE ARGUMENTS MOVED OUT OF THE SILENT SET, all of them authored prose on a registry write — `add_entity`, `add_entity_kind`, `add_frame`, `add_parameter`, `add_unit`. That is the plainest shape of the harm and the right place to start: the agent writes a description, the tool answers success, and if the handler drops it the prose is gone with nothing anywhere saying so. The count is now 6 exercised against 116, and each further one is a line of data rather than a fresh piece of scaffolding.",
+      "publishable_changes_bullets": [
+        "`crates/mnemosyne-mcp/src/main.rs` — `exercised!`, one macro emitting both the `EXERCISED` row and the differential test for each (tool, argument) pair. This is the repair: Round 986's list was a claim that a test existed, and this makes the claim and the test the same declaration.",
+        "Same file — five cases: `add_entity.description`, `add_entity_kind.description`, `add_frame.description`, `add_parameter.description`, `add_unit.description`. Each is a registry write whose optional argument is authored prose, which is the plainest form of the harm.",
+        "Same file — `EXERCISED_BESPOKE`, holding the one pair the macro cannot express (Round 981's `record_census`, which needs a `[census]` workspace and a resolver oracle). Its doc comment states that nothing checks the named test exists and that the list is kept short for exactly that reason.",
+        "Same file — the gate unions the three lists, so a pair declared in the generated set and the bespoke set at once fails as declared twice, and the printed line counts both as exercised."
+      ],
+      "publishable_verification_bullets": [
+        "STAR THE HOLE WAS FOUND BY A FAILED EDIT, NOT BY REVIEW. A script moved four pairs into `EXERCISED` before their tests existed and the suite stayed green; that is the whole argument for generating the rows from the tests.",
+        "INJECTION K, one `exercised!` case deleted: the gate failed naming the pair, \"1 of 122 agent-facing optional argument(s) are in neither list: [(\\\"add_unit\\\", \\\"description\\\")]\". The row went with the test, which is the property the macro exists for.",
+        "INJECTION J, `add_frame` stops passing the description through: its differential case failed with \"what the agent sent as `description` is nowhere in the store add_frame wrote\", and the other eleven tests stayed green — the same measurement of invisibility Round 986 recorded, now with the case in place to catch it.",
+        "INJECTION J DID NOT APPLY ON ITS FIRST RUN AND THE GREEN WAS DISCARDED RATHER THAN READ. The anchor did not match the handler's actual body, so the suite passed with nothing injected; the anchor was re-read from the source and the injection re-run. A green under an unapplied injection is not evidence.",
+        "THE GATE'S OWN \"DECLARED TWICE\" ARM FIRED DURING THE WORK, when the four moved pairs were still listed as unexercised, so that assertion is exercised rather than decorative.",
+        "1503 workspace tests pass (1499 before), 0 failed, `--no-fail-fast`; clippy `-D warnings` and `cargo fmt --check` clean; `validate-workspace` T1 orphan 0 and T3 reject 0; entries and sections unchanged.",
+        "Every injection was reverted by restoring a COPY taken before it, and each was applied by a script asserting its anchor occurs exactly once — which is what caught the unapplied one.",
+        "Citation hygiene (R255): Rounds 981 and 986 verified present with `query --changelog-entry`, and Round 987 verified absent, before this entry was appended."
+      ],
+      "publishable_impact_refs": [
+        "atomic-store-mutate-api"
+      ],
+      "publishable_carry_forward_bullets": [
+        "116 OF 122 REMAIN, AND THE REMAINDER IS WORK RATHER THAN A LIMIT. The five landed here are the cases needing no prerequisite call; the next band needs one setup call before the tool under test (an entity kind before `add_entity.kind`, a section before `add_section.parent_section`), which the macro does not take yet. That is a parameter to add, not a question to answer.",
+        "THE DIFFERENTIAL PATTERN PROVES AN ARGUMENT IS READ, NOT THAT IT IS READ CORRECTLY. The needle assertion narrows it — the value has to appear in the bytes — but a handler writing it into a neighbouring field would still pass. Where a tool has a CLI twin, that twin's answer is the stronger oracle, and Round 981's bespoke case is the example of using it.",
+        "`EXERCISED_BESPOKE` IS THE ONE PLACE THE COMPILER IS NOT HOLDING THE CLAIM. It has one entry today. If it grows, the reason is that the macro is missing an ability, and the answer is to give the macro that ability rather than to add a line here."
+      ]
     }
   },
   "inventory_entries": {},
