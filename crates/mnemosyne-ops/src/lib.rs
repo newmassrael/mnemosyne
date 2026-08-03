@@ -302,6 +302,16 @@ pub fn load_atomic_store(
     workspace_root: &Path,
     sidecar: Option<&AbsolutePath>,
 ) -> Result<AtomicStore, OpError> {
+    // A SIDECAR THE CALLER NAMED IS AN ASSERTION THAT IT EXISTS, and this is
+    // the READ path, so an absent one is a typo rather than a bootstrap. The
+    // distinction is exactly the `Option`: `None` is the workspace's own
+    // sidecar, whether built in or declared by `[atomic] sidecar_path`, and
+    // that one may legitimately not exist yet. Writes are unaffected — they go
+    // through `run_atomic_mutate`, which loads for itself, so
+    // `add-entity-kind --sidecar side.json` still CREATES the file.
+    if let Some(named) = sidecar {
+        return load_named_store(named, "the sidecar store");
+    }
     let sidecar_path = resolve_sidecar(workspace_root, sidecar)?;
     AtomicStore::load(&sidecar_path).map_err(|e| OpError::Other(format!("{}", e)))
 }
@@ -329,9 +339,10 @@ pub fn load_named_store(named: &AbsolutePath, what: &str) -> Result<AtomicStore,
     let path = named.as_path();
     if !path.exists() {
         return Err(OpError::Other(format!(
-            "{what} `{}` does not exist. A store named by the caller must be \
-             there to be read: an absent one would otherwise load as an EMPTY \
-             store and this gate reports emptiness as a pass",
+            "{what} `{}` does not exist. A store the caller NAMED must be there \
+             to be read: an absent one would otherwise load as an EMPTY store, \
+             and an answer about nothing reads exactly like an answer that \
+             found nothing — 0 findings, exit 0",
             path.display()
         )));
     }
@@ -2171,8 +2182,13 @@ pub fn emit_publishable_override_ledger_draft(
     applied_in: &str,
     kind: Option<&str>,
 ) -> Result<Option<String>, OpError> {
-    let sidecar_path = resolve_sidecar(workspace_root, sidecar)?;
-    let store = AtomicStore::load(&sidecar_path).map_err(|e| OpError::Other(format!("{}", e)))?;
+    // The SHARED read loader, so a named sidecar that is not there is refused
+    // here too. This verb was the fourth site of that defect and was found by
+    // counting every consumer of the loader rather than by reading the one the
+    // repair started from: it is read-only (`&store`), but it resolved and
+    // loaded for itself, which is how it kept the permissive rule after the
+    // read path had stopped having one.
+    let store = load_atomic_store(workspace_root, sidecar)?;
     let draft = mnemosyne_atomic::emit_publishable_override_ledger_draft(
         &store,
         entry_id,
@@ -2196,6 +2212,122 @@ mod tests {
         let store =
             load_atomic_store(tmp.path(), None).expect("missing sidecar must load as empty");
         assert!(store.atomic_section_id_set().is_empty());
+    }
+
+    /// A NAMED SIDECAR THAT IS NOT THERE IS A TYPO, NOT AN EMPTY WORLD.
+    ///
+    /// The sibling of Round 1014's `against`, and the same mechanism: a store
+    /// that cannot be found loads as an empty one, so a read verb pointed at
+    /// `sidde.json` answers about a world with nothing in it and exits 0. It
+    /// was measured on the real binary before it was repaired —
+    /// `report-entity-kind-migration --sidecar side.json` says "0 unregistered
+    /// kinds over 1 entity", and the same command one character wrong says "0
+    /// unregistered kinds over 0 entities, the store registers no entities, so
+    /// nothing was checked". Both are exit 0 and the second reads like a clean
+    /// bill.
+    ///
+    /// THE REPAIR SPLITS BY DIRECTION RATHER THAN BEING BLANKET, because the
+    /// other half was measured too: `add-entity-kind --sidecar side.json`
+    /// CREATES the file, which is a real workflow and must keep working. Writes
+    /// go through `run_atomic_mutate`, which loads for itself; this is the read
+    /// path, and only when the caller NAMED the file. The default sidecar keeps
+    /// the permissive rule directly below, because there absence is bootstrap.
+    #[test]
+    fn a_named_sidecar_that_is_absent_is_refused_rather_than_read_as_empty() {
+        let tmp = TempDir::new().unwrap();
+        let root = tmp.path();
+        std::fs::write(root.join("mnemosyne.toml"), "[workspace]\n").unwrap();
+
+        // NON-VACUITY: the same call, on a named sidecar that IS there, reads
+        // what it holds — so the refusal below is about the file's absence and
+        // not about naming one at all.
+        let present = root.join("side.json");
+        std::fs::write(
+            &present,
+            r#"{"schema_version":45,"sections":{},"changelog_entries":{},
+                "entity_kinds":{"place":{}},"entities":{"p-a":{"kind":"place"}}}"#,
+        )
+        .unwrap();
+        let named = AbsolutePath::new(present).unwrap();
+        let store = load_atomic_store(root, Some(&named)).expect("a named sidecar that is there");
+        assert_eq!(
+            store.entities.len(),
+            1,
+            "the named sidecar loaded, but not the world it holds"
+        );
+
+        let absent = AbsolutePath::new(root.join("sidde.json")).unwrap();
+        assert!(
+            load_atomic_store(root, Some(&absent)).is_err(),
+            "a named sidecar that is not there was read as an EMPTY STORE, so a \
+             one-character typo turns a populated world into a clean bill and \
+             every report over it answers 0 with exit 0"
+        );
+
+        // The default sidecar keeps the opposite rule, asserted here as well as
+        // below: the two policies live one line apart and must not drift.
+        load_atomic_store(root, None).expect("an absent DEFAULT sidecar is the bootstrap state");
+    }
+
+    /// THE READ VERB THAT RESOLVED FOR ITSELF GETS THE RULE TOO.
+    ///
+    /// `emit_publishable_override_ledger_draft` is read-only but did not go
+    /// through `load_atomic_store`: it called `resolve_sidecar` and the loader
+    /// itself, which is how it kept the permissive rule after the read path had
+    /// stopped having one. It was found by counting every consumer of the
+    /// loader, not by reading the verb the repair started from.
+    ///
+    /// THIS ARM EXISTS BECAUSE THE REPAIR SURVIVED WITHOUT IT. Reverting that
+    /// one line left the whole workspace suite green at 1609 passing, so the
+    /// fix was real and unguarded — the shape where a later edit undoes a
+    /// repair and nothing says so.
+    ///
+    /// The two arms are separated by WHICH failure they get rather than by
+    /// pass/fail: with the store present the verb gets as far as looking for
+    /// the entry, and with it absent it never reads a store at all. Asserting
+    /// only "the absent one errors" would pass on a verb that always errors.
+    #[test]
+    fn a_read_verb_that_resolves_for_itself_also_refuses_an_absent_named_sidecar() {
+        let tmp = TempDir::new().unwrap();
+        let root = tmp.path();
+        std::fs::write(root.join("mnemosyne.toml"), "[workspace]\n").unwrap();
+        let present = root.join("side.json");
+        std::fs::write(
+            &present,
+            r#"{"schema_version":45,"sections":{},"changelog_entries":{}}"#,
+        )
+        .unwrap();
+
+        let named = AbsolutePath::new(present).unwrap();
+        let with_store = emit_publishable_override_ledger_draft(
+            root,
+            Some(&named),
+            "Round 1",
+            "why",
+            "Round 2",
+            None,
+        );
+        let with_store = format!("{with_store:?}");
+        assert!(
+            !with_store.contains("does not exist"),
+            "the present-sidecar arm reported a missing file, so the two arms \
+             below are not separated by the file at all: {with_store}"
+        );
+
+        let absent = AbsolutePath::new(root.join("sidde.json")).unwrap();
+        let err = emit_publishable_override_ledger_draft(
+            root,
+            Some(&absent),
+            "Round 1",
+            "why",
+            "Round 2",
+            None,
+        )
+        .expect_err("a named sidecar that is not there must be refused");
+        assert!(
+            format!("{err}").contains("does not exist"),
+            "the verb answered about a store it never opened: {err}"
+        );
     }
 
     /// A corrupt sidecar must propagate the error, not silently read as an
