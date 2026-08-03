@@ -3397,22 +3397,37 @@ mod census {
         out
     }
 
-    /// Witness paths as REPO-RELATIVE.
+    /// Every TRACKED JSON manifest under `claudedocs`, parsed, keyed by its
+    /// repo-relative path.
     ///
-    /// Three of the four walks build their names by joining `root`, and the
-    /// fourth asks git, so the census printed absolute and relative paths side
-    /// by side and read differently on every machine. That was invisible while
-    /// the numbers only ever appeared in a failure message, and it surfaced the
-    /// moment the census became bytes something compares.
-    fn relative(root: &Path, paths: Vec<String>) -> Vec<String> {
-        let prefix = format!("{}/", root.display());
-        paths
-            .into_iter()
-            .map(|p| match p.strip_prefix(&prefix) {
-                Some(rest) => rest.to_string(),
-                None => p,
+    /// TRACKED, NOT "ON DISK", and the difference is not hypothetical. Rounds
+    /// 970 and 972 built these axes as filesystem walks, so the population was
+    /// whatever the authoring machine happened to be holding — and it was
+    /// holding an untracked PoC. CI counted 27 directed transition rules where
+    /// that machine counted 30, and the three that differ are one gitignored
+    /// file. The recorded corpora are what git records: a file no reader can
+    /// fetch is not evidence, and a census that counts one reports a population
+    /// nobody else can reproduce. Asking git also makes the witness paths
+    /// repo-relative by construction, which is the other half of what made the
+    /// census read differently on every machine.
+    fn tracked_corpus_json(root: &Path) -> Vec<(String, serde_json::Value)> {
+        super::git(&["ls-files", "claudedocs"])
+            .lines()
+            .filter(|p| p.ends_with(".json"))
+            .filter_map(|p| {
+                let text = std::fs::read_to_string(root.join(p)).ok()?;
+                let value = serde_json::from_str::<serde_json::Value>(&text).ok()?;
+                Some((p.to_string(), value))
             })
             .collect()
+    }
+
+    /// The directory a tracked manifest sits in, which is the scope a predicate
+    /// declaration and the rule naming it must share.
+    fn manifest_dir(path: &str) -> String {
+        Path::new(path)
+            .parent()
+            .map_or(String::new(), |d| d.to_string_lossy().into_owned())
     }
 
     /// Every axis the recorded population can be recounted on today.
@@ -3421,14 +3436,6 @@ mod census {
         let (kind_omitted, kind_declared) = map_leg_kind_census(root);
         let (priced_by_direction, priced_one_way_only) = edge_cost_direction_census(root);
         let (scripted, file_only) = authoring_mode_census();
-        let (undirected, directed) = (relative(root, undirected), relative(root, directed));
-        let (kind_omitted, kind_declared) =
-            (relative(root, kind_omitted), relative(root, kind_declared));
-        let (priced_by_direction, priced_one_way_only) = (
-            relative(root, priced_by_direction),
-            relative(root, priced_one_way_only),
-        );
-        let (scripted, file_only) = (relative(root, scripted), relative(root, file_only));
         vec![
             PopulationAxis {
                 id: "transition rules by `undirected`",
@@ -3481,53 +3488,29 @@ mod census {
     /// — a map is declared in a rules file and never lives in the store — and
     /// it is exactly what the instrument this test replaces did not have.
     fn transition_rule_census(root: &Path) -> (Vec<String>, Vec<String>) {
-        fn walk(dir: &Path, undirected: &mut Vec<String>, directed: &mut Vec<String>) {
-            let Ok(entries) = std::fs::read_dir(dir) else {
-                return;
+        let (mut undirected, mut directed) = (Vec::new(), Vec::new());
+        for (path, value) in tracked_corpus_json(root) {
+            let Some(rules) = value.get("rules").and_then(|r| r.as_array()) else {
+                continue;
             };
-            for entry in entries.flatten() {
-                let path = entry.path();
-                let Ok(kind) = entry.file_type() else {
-                    continue;
-                };
-                if kind.is_dir() {
-                    walk(&path, undirected, directed);
+            for rule in rules {
+                if rule.get("class").and_then(|c| c.as_str()) != Some("transition") {
                     continue;
                 }
-                if path.extension().and_then(|e| e.to_str()) != Some("json") {
-                    continue;
-                }
-                let Ok(text) = std::fs::read_to_string(&path) else {
-                    continue;
-                };
-                let Ok(v) = serde_json::from_str::<serde_json::Value>(&text) else {
-                    continue;
-                };
-                let Some(rules) = v.get("rules").and_then(|r| r.as_array()) else {
-                    continue;
-                };
-                for rule in rules {
-                    if rule.get("class").and_then(|c| c.as_str()) != Some("transition") {
-                        continue;
-                    }
-                    let name = path.display().to_string();
-                    if rule
-                        .get("undirected")
-                        .and_then(serde_json::Value::as_bool)
-                        .unwrap_or(false)
-                    {
-                        undirected.push(name);
-                    } else {
-                        directed.push(name);
-                    }
+                if rule
+                    .get("undirected")
+                    .and_then(serde_json::Value::as_bool)
+                    .unwrap_or(false)
+                {
+                    undirected.push(path.clone());
+                } else {
+                    directed.push(path.clone());
                 }
             }
         }
-        let (mut u, mut d) = (Vec::new(), Vec::new());
-        walk(&root.join("claudedocs"), &mut u, &mut d);
-        u.sort();
-        d.sort();
-        (u, d)
+        undirected.sort();
+        directed.sort();
+        (undirected, directed)
     }
 
     /// Whether an `adjacency` predicate names an entity kind on either leg.
@@ -3538,88 +3521,57 @@ mod census {
     /// looking. A corpus that declares neither leg cannot be asked which entities
     /// are places, which is the omission the containment paragraph measured.
     fn map_leg_kind_census(root: &Path) -> (Vec<String>, Vec<String>) {
-        fn declared_kinds(dir: &Path) -> std::collections::HashMap<String, bool> {
-            let mut out = std::collections::HashMap::new();
-            let Ok(entries) = std::fs::read_dir(dir) else {
-                return out;
-            };
-            for entry in entries.flatten() {
-                let path = entry.path();
-                if path.extension().and_then(|e| e.to_str()) != Some("json") {
-                    continue;
-                }
-                let Ok(text) = std::fs::read_to_string(&path) else {
-                    continue;
-                };
-                let Ok(v) = serde_json::from_str::<serde_json::Value>(&text) else {
-                    continue;
-                };
-                let Some(preds) = v.get("predicates").and_then(|p| p.as_array()) else {
+        let corpus = tracked_corpus_json(root);
+        // (directory, predicate_id) -> whether ANY tracked manifest in that
+        // directory names an entity kind on either leg.
+        let mut kinds: std::collections::HashMap<(String, String), bool> =
+            std::collections::HashMap::new();
+        for (path, value) in &corpus {
+            let dir = manifest_dir(path);
+            for p in value
+                .get("predicates")
+                .and_then(|p| p.as_array())
+                .into_iter()
+                .flatten()
+            {
+                let Some(id) = p.get("predicate_id").and_then(|i| i.as_str()) else {
                     continue;
                 };
-                for p in preds {
-                    let Some(id) = p.get("predicate_id").and_then(|i| i.as_str()) else {
-                        continue;
-                    };
-                    let has = p.get("subject_kind").is_some_and(|k| !k.is_null())
-                        || p.get("object_entity_kind").is_some_and(|k| !k.is_null());
-                    *out.entry(id.to_string()).or_insert(false) |= has;
-                }
+                let has = p.get("subject_kind").is_some_and(|k| !k.is_null())
+                    || p.get("object_entity_kind").is_some_and(|k| !k.is_null());
+                *kinds.entry((dir.clone(), id.to_string())).or_insert(false) |= has;
             }
-            out
         }
-
-        fn walk(dir: &Path, omitted: &mut Vec<String>, declared: &mut Vec<String>) {
-            let Ok(entries) = std::fs::read_dir(dir) else {
-                return;
+        let (mut omitted, mut declared) = (Vec::new(), Vec::new());
+        for (path, value) in &corpus {
+            let Some(rules) = value.get("rules").and_then(|r| r.as_array()) else {
+                continue;
             };
-            for entry in entries.flatten() {
-                let path = entry.path();
-                let Ok(kind) = entry.file_type() else {
-                    continue;
-                };
-                if kind.is_dir() {
-                    walk(&path, omitted, declared);
+            let dir = manifest_dir(path);
+            for rule in rules {
+                if rule.get("class").and_then(|c| c.as_str()) != Some("transition") {
                     continue;
                 }
-                if path.extension().and_then(|e| e.to_str()) != Some("json") {
-                    continue;
-                }
-                let Ok(text) = std::fs::read_to_string(&path) else {
-                    continue;
-                };
-                let Ok(v) = serde_json::from_str::<serde_json::Value>(&text) else {
+                // Only a rule that DECLARES an adjacency predicate is in scope:
+                // a transition rule without one has no map, and the claim this
+                // axis refutes is about maps.
+                let Some(adj) = rule.get("adjacency").and_then(|a| a.as_str()) else {
                     continue;
                 };
-                let Some(rules) = v.get("rules").and_then(|r| r.as_array()) else {
-                    continue;
-                };
-                let parent = path.parent().expect("a rules file has a directory");
-                let kinds = declared_kinds(parent);
-                for rule in rules {
-                    if rule.get("class").and_then(|c| c.as_str()) != Some("transition") {
-                        continue;
-                    }
-                    // Only a rule that DECLARES an adjacency predicate is in scope:
-                    // a transition rule without one has no map, and the claim this
-                    // axis refutes is about maps.
-                    let Some(adj) = rule.get("adjacency").and_then(|a| a.as_str()) else {
-                        continue;
-                    };
-                    let name = path.display().to_string();
-                    if kinds.get(adj).copied().unwrap_or(false) {
-                        declared.push(name);
-                    } else {
-                        omitted.push(name);
-                    }
+                if kinds
+                    .get(&(dir.clone(), adj.to_string()))
+                    .copied()
+                    .unwrap_or(false)
+                {
+                    declared.push(path.clone());
+                } else {
+                    omitted.push(path.clone());
                 }
             }
         }
-        let (mut o, mut d) = (Vec::new(), Vec::new());
-        walk(&root.join("claudedocs"), &mut o, &mut d);
-        o.sort();
-        d.sort();
-        (o, d)
+        omitted.sort();
+        declared.sort();
+        (omitted, declared)
     }
 
     /// Cost-carrying corpora split by whether ANY way is priced differently in its
@@ -3631,96 +3583,72 @@ mod census {
     /// recorded case is real, `phase1-map-corpus-experiment/v1` stage-b, whose costs
     /// live in their own file with no facts beside them.
     fn edge_cost_direction_census(root: &Path) -> (Vec<String>, Vec<String>) {
-        fn walk(dir: &Path, asymmetric: &mut Vec<String>, symmetric: &mut Vec<String>) {
-            let Ok(entries) = std::fs::read_dir(dir) else {
-                return;
+        let (mut asymmetric, mut symmetric) = (Vec::new(), Vec::new());
+        for (path, value) in tracked_corpus_json(root) {
+            let Some(costs) = value.get("edge_costs").and_then(|c| c.as_array()) else {
+                continue;
             };
-            for entry in entries.flatten() {
-                let path = entry.path();
-                let Ok(kind) = entry.file_type() else {
-                    continue;
-                };
-                if kind.is_dir() {
-                    walk(&path, asymmetric, symmetric);
-                    continue;
-                }
-                if path.extension().and_then(|e| e.to_str()) != Some("json") {
-                    continue;
-                }
-                let Ok(text) = std::fs::read_to_string(&path) else {
-                    continue;
-                };
-                let Ok(v) = serde_json::from_str::<serde_json::Value>(&text) else {
-                    continue;
-                };
-                let Some(costs) = v.get("edge_costs").and_then(|c| c.as_array()) else {
-                    continue;
-                };
-                if costs.is_empty() {
-                    continue;
-                }
-                // fact id -> the pair of places the edge fact joins.
-                let mut legs: std::collections::HashMap<&str, (String, String)> =
-                    std::collections::HashMap::new();
-                for fact in v
-                    .get("facts")
-                    .and_then(|f| f.as_array())
-                    .into_iter()
-                    .flatten()
-                {
-                    let typed = fact.get("typed");
-                    let subject = typed
-                        .and_then(|t| t.get("subject"))
-                        .and_then(|s| s.as_str());
-                    let object = typed
-                        .and_then(|t| t.get("object"))
-                        .and_then(|o| o.get("id"))
-                        .and_then(|i| i.as_str());
-                    if let (Some(id), Some(s), Some(o)) = (
-                        fact.get("fact_id").and_then(|i| i.as_str()),
-                        subject,
-                        object,
-                    ) {
-                        legs.insert(id, (s.to_string(), o.to_string()));
-                    }
-                }
-                // Keyed by the UNORDERED pair, valued by each direction's number.
-                let mut priced: std::collections::HashMap<(String, String), Vec<i64>> =
-                    std::collections::HashMap::new();
-                for c in costs {
-                    let Some(id) = c.get("fact_id").and_then(|i| i.as_str()) else {
-                        continue;
-                    };
-                    let Some((a, b)) = legs.get(id) else { continue };
-                    let Some(n) = c.get("n").and_then(serde_json::Value::as_i64) else {
-                        continue;
-                    };
-                    let key = if a <= b {
-                        (a.clone(), b.clone())
-                    } else {
-                        (b.clone(), a.clone())
-                    };
-                    priced.entry(key).or_default().push(n);
-                }
-                if priced.is_empty() {
-                    continue; // unmeasurable, and that is not the same as symmetric
-                }
-                let name = path.display().to_string();
-                if priced
-                    .values()
-                    .any(|ns| ns.len() > 1 && ns.iter().any(|n| n != &ns[0]))
-                {
-                    asymmetric.push(name);
-                } else {
-                    symmetric.push(name);
+            if costs.is_empty() {
+                continue;
+            }
+            // fact id -> the pair of places the edge fact joins.
+            let mut legs: std::collections::HashMap<String, (String, String)> =
+                std::collections::HashMap::new();
+            for fact in value
+                .get("facts")
+                .and_then(|f| f.as_array())
+                .into_iter()
+                .flatten()
+            {
+                let typed = fact.get("typed");
+                let subject = typed
+                    .and_then(|t| t.get("subject"))
+                    .and_then(|s| s.as_str());
+                let object = typed
+                    .and_then(|t| t.get("object"))
+                    .and_then(|o| o.get("id"))
+                    .and_then(|i| i.as_str());
+                if let (Some(id), Some(s), Some(o)) = (
+                    fact.get("fact_id").and_then(|i| i.as_str()),
+                    subject,
+                    object,
+                ) {
+                    legs.insert(id.to_string(), (s.to_string(), o.to_string()));
                 }
             }
+            // Keyed by the UNORDERED pair, valued by each direction's number.
+            let mut priced: std::collections::HashMap<(String, String), Vec<i64>> =
+                std::collections::HashMap::new();
+            for c in costs {
+                let Some(id) = c.get("fact_id").and_then(|i| i.as_str()) else {
+                    continue;
+                };
+                let Some((a, b)) = legs.get(id) else { continue };
+                let Some(n) = c.get("n").and_then(serde_json::Value::as_i64) else {
+                    continue;
+                };
+                let key = if a <= b {
+                    (a.clone(), b.clone())
+                } else {
+                    (b.clone(), a.clone())
+                };
+                priced.entry(key).or_default().push(n);
+            }
+            if priced.is_empty() {
+                continue; // unmeasurable, and that is not the same as symmetric
+            }
+            if priced
+                .values()
+                .any(|ns| ns.len() > 1 && ns.iter().any(|n| n != &ns[0]))
+            {
+                asymmetric.push(path);
+            } else {
+                symmetric.push(path);
+            }
         }
-        let (mut a, mut s) = (Vec::new(), Vec::new());
-        walk(&root.join("claudedocs"), &mut a, &mut s);
-        a.sort();
-        s.sort();
-        (a, s)
+        asymmetric.sort();
+        symmetric.sort();
+        (asymmetric, symmetric)
     }
 
     /// Recorded run trees split by whether the author dropped to a hand-written
@@ -3897,6 +3825,52 @@ fn the_population_census_runs_and_every_axis_still_refutes_a_universal() {
             axis.right.len()
         );
     }
+}
+
+/// EVERY WITNESS A CENSUS NAMES IS SOMETHING THE RECORD HOLDS.
+///
+/// Rounds 970 and 972 built the axes as filesystem walks, so the population was
+/// whatever the authoring machine happened to be holding. It was holding
+/// `claudedocs/phase1-detroit-poc/narrative-rules.json`, three untracked
+/// transition rules, and that machine therefore counted 30 directed rules where
+/// CI counted 27. The number reached the frozen ledger: Round 972's verification
+/// records "10 undirected against 30 directed", and 30 counts a file no reader
+/// can fetch.
+///
+/// Round 959's rule is that a number no program reads does not belong in shipped
+/// prose. A program read this one — and read a population nobody else has, which
+/// is the same defect wearing the fix. So the rule needs its other half, and this
+/// is it: the population a census reports must be one the record holds, which
+/// makes the count reproducible by anyone who can clone the repo.
+///
+/// This gates the CLASS rather than pinning the number 27, which would fire
+/// spuriously the day a 28th directed rule is authored.
+#[test]
+fn every_census_witness_is_something_the_record_holds() {
+    let tracked: BTreeSet<String> = git(&["ls-files", "claudedocs"])
+        .lines()
+        .map(str::to_string)
+        .collect();
+    let axes = census::axes(&repo_root());
+    let mut strays = Vec::new();
+    let mut witnesses = 0usize;
+    for axis in &axes {
+        for w in axis.left.iter().chain(axis.right.iter()) {
+            witnesses += 1;
+            if !tracked.contains(w) {
+                strays.push(format!("{}: {w}", axis.id));
+            }
+        }
+    }
+    assert!(
+        witnesses > 0,
+        "no axis names a witness at all, so this gate would pass on a census          that counts nothing"
+    );
+    assert!(
+        strays.is_empty(),
+        "{} of {witnesses} census witnesses are not tracked, so the counts          describe this machine rather than the record and no reader can          reproduce them: {strays:?}",
+        strays.len()
+    );
 }
 
 /// WHAT AN AXIS SAID AT ROUND N IS ANSWERABLE FROM A FILE'S HISTORY, NOT FROM A
