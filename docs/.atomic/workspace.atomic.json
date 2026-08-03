@@ -1432,6 +1432,52 @@
         "NOTHING FORCES A FUTURE READ VERB THROUGH THE SHARED LOADER. The fourth site was found by enumerating callers, and a fifth would be found the same way — by hand. Making it structural means the read path cannot construct a store except through one function, which is a larger change to how `ops` is organised than this round should make on its own."
       ]
     },
+    "Round 1016": {
+      "decision_summary": "R1016 (BUILD) — A world is declared once, and the `rules_path` family stands in it: 99 to 104, on a track that had not moved for six rounds. The enabling half came first because the shape of the case table was about to make the rest expensive. The branched story three verbs already share was COPY-PASTED AS FIVE BYTE-IDENTICAL LINES INTO SIX CASES — measured at fourteen kilobytes of one world — and the eighteen remaining path arguments would each have wanted the same five. Bulk is the smaller half of that: a world improved in one copy is a world that differs from five others, and what these cases are converging on is a world that resembles what the north star actually authors, which only pays if there is one of it. STAR `world!` TAKES THE SAME SYNTAX `exercised!` TAKES, so a world is written the way a case's setup is written and can be lifted out of one without being rephrased; a case names it with `@branch_story` and the macro establishes it in BOTH arms, before anything that case adds, so the difference asserted stays the argument. Two macro facts had to be learned by running it rather than by reasoning: a `///` inside a macro invocation is a `#[doc]` ATTRIBUTE and no rule expects one, and `$x:ident` MATCHES KEYWORDS, so an `in $world:ident` clause was genuinely ambiguous with a tool named `in` — hence `@`. STAR THEN THE FAMILY, and four of the five discriminated on the first run against a world built for other verbs, which is the return on having one. The fifth taught the difference the family hides: `report_timeline_gaps` reads INTERVAL rules and is blind to a transition artifact, so it needed quantity predicates the branched story does not carry — added to the CASE and not to the world, because perturbing a shared world to serve one verb is how six copies start again.",
+      "changes_bullets": [
+        "`crates/mnemosyne-mcp/src/main.rs` — `world!` declares a named world in `exercised!`'s own setup syntax and emits a function that establishes it. `branch_story` is declared once; the six cases that carried it verbatim now name it.",
+        "`crates/mnemosyne-mcp/src/main.rs` — `exercised!` takes an optional `@<world>` clause and runs it in both arms after the server exists and before the case's own files and setups.",
+        "`crates/mnemosyne-mcp/src/main.rs` — five `rules_path` cases: `report_transition_map`, `validate_continuity`, `propose_verdict`, `report_authoring_frontier` on a transition artifact, and `report_timeline_gaps` on an interval one with the quantity predicates it needs added case-locally.",
+        "`crates/mnemosyne-mcp/src/main.rs` — the five pairs leave `UNEXERCISED`, which the generated `EXERCISED` rows replace: 104 exercised / 18 unexercised of 122."
+      ],
+      "verification_bullets": [
+        "THE REFACTOR IS PROVED BY THE CASES IT DID NOT CHANGE: the mcp suite passed 112 before and after the extraction, with the six branch-story cases and their needles untouched.",
+        "STAR INJECTION D — the world declared but NOT established: exactly the six cases standing in it fail and the other 106 pass. The world is doing the work the cases stopped writing out.",
+        "Four of the five new cases discriminated on the first run against a world built for three other verbs.",
+        "STAR THE FIFTH WAS DIAGNOSED BY THE FAILURE MESSAGE, not by printing the output: Round 1003's `first_difference` answered \"without: `\\\"interval_rules\\\": 0` / with: `\\\"interval_rules\\\": 1`\", which is the needle. The report COUNTS rules rather than naming them, so a rule id was never going to move.",
+        "The accounting reads 104 exercised / 18 unexercised of 122, and the removed rows cannot be claimed without their tests, since the macro emits both from one invocation.",
+        "Workspace 1615 tests pass (0 failed), clippy `-D warnings` clean, `cargo fmt --check` clean."
+      ],
+      "impact_refs": [
+        "atomic-store-mutate-api"
+      ],
+      "carry_forward_bullets": [
+        "THE REMAINING 18 ARE 13 `order_path`, 2 `report_frame_view` filters, 1 `report_authoring_frontier.telling` and 2 `dry_run`. The `order_path` family should be cheaper than this one was — the world already carries two canon orders that differ by a scene, which is what an order override has to move — but that is a prediction and the last family had a verb blind to its artifact, so it is worth measuring rather than assuming.",
+        "THE DEBT LEDGER'S HAND-WRITTEN BREAKDOWN OF THIS POPULATION WAS WRONG and the router said so on the first question of the session: it listed the `order_path` family as 9 where the router says 13, because four of them sit on tools it had filed under `rules_path`. The ledger is prose about a population a program can print, which is the class this repository keeps removing."
+      ],
+      "publishable_decision_summary": "R1016 (BUILD) — A world is declared once, and the `rules_path` family stands in it: 99 to 104, on a track that had not moved for six rounds. The enabling half came first because the shape of the case table was about to make the rest expensive. The branched story three verbs already share was COPY-PASTED AS FIVE BYTE-IDENTICAL LINES INTO SIX CASES — measured at fourteen kilobytes of one world — and the eighteen remaining path arguments would each have wanted the same five. Bulk is the smaller half of that: a world improved in one copy is a world that differs from five others, and what these cases are converging on is a world that resembles what the north star actually authors, which only pays if there is one of it. STAR `world!` TAKES THE SAME SYNTAX `exercised!` TAKES, so a world is written the way a case's setup is written and can be lifted out of one without being rephrased; a case names it with `@branch_story` and the macro establishes it in BOTH arms, before anything that case adds, so the difference asserted stays the argument. Two macro facts had to be learned by running it rather than by reasoning: a `///` inside a macro invocation is a `#[doc]` ATTRIBUTE and no rule expects one, and `$x:ident` MATCHES KEYWORDS, so an `in $world:ident` clause was genuinely ambiguous with a tool named `in` — hence `@`. STAR THEN THE FAMILY, and four of the five discriminated on the first run against a world built for other verbs, which is the return on having one. The fifth taught the difference the family hides: `report_timeline_gaps` reads INTERVAL rules and is blind to a transition artifact, so it needed quantity predicates the branched story does not carry — added to the CASE and not to the world, because perturbing a shared world to serve one verb is how six copies start again.",
+      "publishable_changes_bullets": [
+        "`crates/mnemosyne-mcp/src/main.rs` — `world!` declares a named world in `exercised!`'s own setup syntax and emits a function that establishes it. `branch_story` is declared once; the six cases that carried it verbatim now name it.",
+        "`crates/mnemosyne-mcp/src/main.rs` — `exercised!` takes an optional `@<world>` clause and runs it in both arms after the server exists and before the case's own files and setups.",
+        "`crates/mnemosyne-mcp/src/main.rs` — five `rules_path` cases: `report_transition_map`, `validate_continuity`, `propose_verdict`, `report_authoring_frontier` on a transition artifact, and `report_timeline_gaps` on an interval one with the quantity predicates it needs added case-locally.",
+        "`crates/mnemosyne-mcp/src/main.rs` — the five pairs leave `UNEXERCISED`, which the generated `EXERCISED` rows replace: 104 exercised / 18 unexercised of 122."
+      ],
+      "publishable_verification_bullets": [
+        "THE REFACTOR IS PROVED BY THE CASES IT DID NOT CHANGE: the mcp suite passed 112 before and after the extraction, with the six branch-story cases and their needles untouched.",
+        "STAR INJECTION D — the world declared but NOT established: exactly the six cases standing in it fail and the other 106 pass. The world is doing the work the cases stopped writing out.",
+        "Four of the five new cases discriminated on the first run against a world built for three other verbs.",
+        "STAR THE FIFTH WAS DIAGNOSED BY THE FAILURE MESSAGE, not by printing the output: Round 1003's `first_difference` answered \"without: `\\\"interval_rules\\\": 0` / with: `\\\"interval_rules\\\": 1`\", which is the needle. The report COUNTS rules rather than naming them, so a rule id was never going to move.",
+        "The accounting reads 104 exercised / 18 unexercised of 122, and the removed rows cannot be claimed without their tests, since the macro emits both from one invocation.",
+        "Workspace 1615 tests pass (0 failed), clippy `-D warnings` clean, `cargo fmt --check` clean."
+      ],
+      "publishable_impact_refs": [
+        "atomic-store-mutate-api"
+      ],
+      "publishable_carry_forward_bullets": [
+        "THE REMAINING 18 ARE 13 `order_path`, 2 `report_frame_view` filters, 1 `report_authoring_frontier.telling` and 2 `dry_run`. The `order_path` family should be cheaper than this one was — the world already carries two canon orders that differ by a scene, which is what an order override has to move — but that is a prediction and the last family had a verb blind to its artifact, so it is worth measuring rather than assuming.",
+        "THE DEBT LEDGER'S HAND-WRITTEN BREAKDOWN OF THIS POPULATION WAS WRONG and the router said so on the first question of the session: it listed the `order_path` family as 9 where the router says 13, because four of them sit on tools it had filed under `rules_path`. The ledger is prose about a population a program can print, which is the class this repository keeps removing."
+      ]
+    },
     "Round 252": {
       "decision_summary": "Parser CommonMark conformance — recognize indented fenced code blocks (§98) and require whitespace after ATX hash sequence (§62)",
       "changes_bullets": [

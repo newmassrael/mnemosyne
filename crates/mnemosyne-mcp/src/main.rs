@@ -3922,9 +3922,7 @@ mod tests {
         ("import_edge_proposals", "dry_run"),
         ("import_typing_proposals", "dry_run"),
         ("propose_verdict", "order_path"),
-        ("propose_verdict", "rules_path"),
         ("report_authoring_frontier", "order_path"),
-        ("report_authoring_frontier", "rules_path"),
         ("report_authoring_frontier", "telling"),
         ("report_edge_candidates", "order_path"),
         ("report_fork_tree", "order_path"),
@@ -3936,10 +3934,7 @@ mod tests {
         ("report_payoff_substantiation", "order_path"),
         ("report_quest_graph", "order_path"),
         ("report_timeline_gaps", "order_path"),
-        ("report_timeline_gaps", "rules_path"),
-        ("report_transition_map", "rules_path"),
         ("validate_continuity", "order_path"),
-        ("validate_continuity", "rules_path"),
         ("validate_disclosure_leak", "order_path"),
         ("validate_render_fidelity", "order_path"),
     ];
@@ -4773,6 +4768,7 @@ mod tests {
     macro_rules! exercised {
         ($(
             $test:ident :
+            $( @ $world:ident )?
             $( {$file:literal = $contents:tt} )*
             $( [$setup:ident($setup_args:ty) $setup_base:tt] )*
             $tool:ident($args:ty) $base:tt . $field:literal = $value:tt seen $needle:literal in $oracle:ident;
@@ -4802,6 +4798,10 @@ mod tests {
                             .expect("the agent-facing shape must parse this call");
                         let server =
                             MnemosyneServer::new(tmp.path().to_path_buf()).expect("server");
+                        // THE NAMED WORLD, established in BOTH arms before
+                        // anything this case adds — the difference the test
+                        // asserts must be the argument, never the setup.
+                        $( $world(&server, tmp.path()).await; )?
                         // WHAT THE ARGUMENT NEEDS TO EXIST BEFORE IT CAN BE
                         // SENT. Run in BOTH arms, so the difference the test
                         // asserts is the argument and never the setup.
@@ -4996,53 +4996,92 @@ mod tests {
         };
     }
 
-    exercised! {
-        report_quest_graph_world_reaches_the_answer:
+    /// A NAMED WORLD — DECLARED ONCE, ESTABLISHED BY EVERY CASE THAT ASKS.
+    ///
+    /// The same syntax `exercised!` takes for its own setup, so a world is
+    /// written the way a case's setup is written and can be lifted into one
+    /// without being rephrased.
+    ///
+    /// It exists because the branch story below was copy-pasted into SIX cases
+    /// as five byte-identical lines, and the eighteen remaining path arguments
+    /// would each have wanted the same five. That is not only bulk: a world
+    /// improved in one copy is a world that now differs from five others, and
+    /// what these cases are converging on is a world that looks like what the
+    /// north star actually authors. One home for it means improving it improves
+    /// every case that stands in it.
+    macro_rules! world {
+        ($(
+            $name:ident :
+            $( {$file:literal = $contents:tt} )*
+            $( [$setup:ident($setup_args:ty) $setup_base:tt] )*
+        ;)*) => {
+            $(
+                async fn $name(server: &MnemosyneServer, ws: &std::path::Path) {
+                    $(
+                        std::fs::write(
+                            ws.join($file),
+                            serde_json::to_string(&serde_json::json!($contents))
+                                .expect("the world's file must serialize"),
+                        )
+                        .unwrap_or_else(|e| panic!("write {}: {e}", $file));
+                    )*
+                    $(
+                        let setup: $setup_args =
+                            serde_json::from_value(serde_json::json!($setup_base))
+                                .expect("the world's setup call must parse");
+                        let ready = server.$setup(Parameters(setup)).await;
+                        assert!(
+                            ready.is_error != Some(true),
+                            "establishing the world `{}` failed at {}, so every \
+                             case standing in it is measuring the failure: {:?}",
+                            stringify!($name),
+                            stringify!($setup),
+                            ready.content
+                        );
+                    )*
+                }
+            )*
+        };
+    }
+
+    world! {
+        // A BRANCHED STORY, not a fixture: three scenes, a fork at the second,
+        // a fact that exists only down the fork, a map, someone who moves along
+        // it, and two tellings that disclose differently. Three verbs already
+        // share it, and each new report argument that stands here is a line
+        // rather than a world.
+        branch_story:
             {"order-a.json" = {"schema": "canon-order/v1", "edges": [["sc-01", "sc-02"]]}}
             {"order-b.json" = {"schema": "canon-order/v1", "edges": [["sc-01", "sc-02"], ["sc-02", "sc-03"]]}}
             [import_sections(ImportSectionsArgs) {"sections": [{"section_id": "sc-01", "parent_doc": "spec", "title": "one"}, {"section_id": "sc-02", "parent_doc": "spec", "title": "two"}, {"section_id": "sc-03", "parent_doc": "spec", "title": "three"}]}]
             [import_facts(atomic::FactsManifest) {"frames": [{"frame_id": "ground-truth"}], "entity_kinds": [{"kind_id": "place"}, {"kind_id": "character"}], "entities": [{"entity_id": "p-a", "kind": "place"}, {"entity_id": "p-b", "kind": "place"}, {"entity_id": "e-her", "kind": "character"}], "predicates": [{"predicate_id": "adjacent", "object_kind": "entity", "subject_kind": "place", "object_entity_kind": "place"}, {"predicate_id": "at", "object_kind": "entity", "subject_kind": "character", "object_entity_kind": "place"}], "facts": [{"fact_id": "f-way", "frame": "ground-truth", "claim": "a way runs", "canon_from": "sc-01", "evidence": ["sc-01"], "entities": ["p-a", "p-b"], "typed": {"subject": "p-a", "predicate": "adjacent", "object": {"kind": "entity", "id": "p-b"}}}, {"fact_id": "f-at-a", "frame": "ground-truth", "claim": "she is at a", "canon_from": "sc-01", "evidence": ["sc-01"], "entities": ["e-her", "p-a"], "typed": {"subject": "e-her", "predicate": "at", "object": {"kind": "entity", "id": "p-a"}}}, {"fact_id": "f-at-b", "frame": "ground-truth", "claim": "she is at b", "canon_from": "sc-03", "evidence": ["sc-03"], "entities": ["e-her", "p-b"], "supersedes_in_frame": "f-at-a", "typed": {"subject": "e-her", "predicate": "at", "object": {"kind": "entity", "id": "p-b"}}}], "disclosure_plans": [{"telling_id": "t-quiet", "default_mode": "state"}, {"telling_id": "t-hidden", "default_mode": "withhold"}], "branches": [{"branch_id": "b-alt", "forks_from": "main", "forks_at": "sc-02"}]}]
             [add_fact(atomic::FactImport) {"fact_id": "f-alt", "frame": "ground-truth", "branch": "b-alt", "claim": "she never left", "canon_from": "sc-03", "evidence": ["sc-03"], "entities": ["e-her", "p-a"], "typed": {"subject": "e-her", "predicate": "at", "object": {"kind": "entity", "id": "p-a"}}}]
+        ;
+    }
+
+    exercised! {
+        report_quest_graph_world_reaches_the_answer:
+            @branch_story
             report_quest_graph(ReportQuestGraphArgs) {"telling": "t-quiet", "order_path": "order-b.json"}
             ."world" = "b-alt" seen "main" in output;
         report_playthrough_manuscript_telling_reaches_the_answer:
-            {"order-a.json" = {"schema": "canon-order/v1", "edges": [["sc-01", "sc-02"]]}}
-            {"order-b.json" = {"schema": "canon-order/v1", "edges": [["sc-01", "sc-02"], ["sc-02", "sc-03"]]}}
-            [import_sections(ImportSectionsArgs) {"sections": [{"section_id": "sc-01", "parent_doc": "spec", "title": "one"}, {"section_id": "sc-02", "parent_doc": "spec", "title": "two"}, {"section_id": "sc-03", "parent_doc": "spec", "title": "three"}]}]
-            [import_facts(atomic::FactsManifest) {"frames": [{"frame_id": "ground-truth"}], "entity_kinds": [{"kind_id": "place"}, {"kind_id": "character"}], "entities": [{"entity_id": "p-a", "kind": "place"}, {"entity_id": "p-b", "kind": "place"}, {"entity_id": "e-her", "kind": "character"}], "predicates": [{"predicate_id": "adjacent", "object_kind": "entity", "subject_kind": "place", "object_entity_kind": "place"}, {"predicate_id": "at", "object_kind": "entity", "subject_kind": "character", "object_entity_kind": "place"}], "facts": [{"fact_id": "f-way", "frame": "ground-truth", "claim": "a way runs", "canon_from": "sc-01", "evidence": ["sc-01"], "entities": ["p-a", "p-b"], "typed": {"subject": "p-a", "predicate": "adjacent", "object": {"kind": "entity", "id": "p-b"}}}, {"fact_id": "f-at-a", "frame": "ground-truth", "claim": "she is at a", "canon_from": "sc-01", "evidence": ["sc-01"], "entities": ["e-her", "p-a"], "typed": {"subject": "e-her", "predicate": "at", "object": {"kind": "entity", "id": "p-a"}}}, {"fact_id": "f-at-b", "frame": "ground-truth", "claim": "she is at b", "canon_from": "sc-03", "evidence": ["sc-03"], "entities": ["e-her", "p-b"], "supersedes_in_frame": "f-at-a", "typed": {"subject": "e-her", "predicate": "at", "object": {"kind": "entity", "id": "p-b"}}}], "disclosure_plans": [{"telling_id": "t-quiet", "default_mode": "state"}, {"telling_id": "t-hidden", "default_mode": "withhold"}], "branches": [{"branch_id": "b-alt", "forks_from": "main", "forks_at": "sc-02"}]}]
-            [add_fact(atomic::FactImport) {"fact_id": "f-alt", "frame": "ground-truth", "branch": "b-alt", "claim": "she never left", "canon_from": "sc-03", "evidence": ["sc-03"], "entities": ["e-her", "p-a"], "typed": {"subject": "e-her", "predicate": "at", "object": {"kind": "entity", "id": "p-a"}}}]
+            @branch_story
             report_playthrough_manuscript(ReportPlaythroughManuscriptArgs) {"telling": "t-quiet", "order_path": "order-b.json"}
             ."telling" = "t-hidden" seen "withhold" in output;
         report_playthrough_manuscript_order_path_reaches_the_answer:
-            {"order-a.json" = {"schema": "canon-order/v1", "edges": [["sc-01", "sc-02"]]}}
-            {"order-b.json" = {"schema": "canon-order/v1", "edges": [["sc-01", "sc-02"], ["sc-02", "sc-03"]]}}
-            [import_sections(ImportSectionsArgs) {"sections": [{"section_id": "sc-01", "parent_doc": "spec", "title": "one"}, {"section_id": "sc-02", "parent_doc": "spec", "title": "two"}, {"section_id": "sc-03", "parent_doc": "spec", "title": "three"}]}]
-            [import_facts(atomic::FactsManifest) {"frames": [{"frame_id": "ground-truth"}], "entity_kinds": [{"kind_id": "place"}, {"kind_id": "character"}], "entities": [{"entity_id": "p-a", "kind": "place"}, {"entity_id": "p-b", "kind": "place"}, {"entity_id": "e-her", "kind": "character"}], "predicates": [{"predicate_id": "adjacent", "object_kind": "entity", "subject_kind": "place", "object_entity_kind": "place"}, {"predicate_id": "at", "object_kind": "entity", "subject_kind": "character", "object_entity_kind": "place"}], "facts": [{"fact_id": "f-way", "frame": "ground-truth", "claim": "a way runs", "canon_from": "sc-01", "evidence": ["sc-01"], "entities": ["p-a", "p-b"], "typed": {"subject": "p-a", "predicate": "adjacent", "object": {"kind": "entity", "id": "p-b"}}}, {"fact_id": "f-at-a", "frame": "ground-truth", "claim": "she is at a", "canon_from": "sc-01", "evidence": ["sc-01"], "entities": ["e-her", "p-a"], "typed": {"subject": "e-her", "predicate": "at", "object": {"kind": "entity", "id": "p-a"}}}, {"fact_id": "f-at-b", "frame": "ground-truth", "claim": "she is at b", "canon_from": "sc-03", "evidence": ["sc-03"], "entities": ["e-her", "p-b"], "supersedes_in_frame": "f-at-a", "typed": {"subject": "e-her", "predicate": "at", "object": {"kind": "entity", "id": "p-b"}}}], "disclosure_plans": [{"telling_id": "t-quiet", "default_mode": "state"}, {"telling_id": "t-hidden", "default_mode": "withhold"}], "branches": [{"branch_id": "b-alt", "forks_from": "main", "forks_at": "sc-02"}]}]
-            [add_fact(atomic::FactImport) {"fact_id": "f-alt", "frame": "ground-truth", "branch": "b-alt", "claim": "she never left", "canon_from": "sc-03", "evidence": ["sc-03"], "entities": ["e-her", "p-a"], "typed": {"subject": "e-her", "predicate": "at", "object": {"kind": "entity", "id": "p-a"}}}]
+            @branch_story
             report_playthrough_manuscript(ReportPlaythroughManuscriptArgs) {"telling": "t-quiet", "order_path": "order-a.json"}
             ."order_path" = "order-b.json" seen "sc-03" in output;
         report_playthrough_manuscript_world_reaches_the_answer:
-            {"order-a.json" = {"schema": "canon-order/v1", "edges": [["sc-01", "sc-02"]]}}
-            {"order-b.json" = {"schema": "canon-order/v1", "edges": [["sc-01", "sc-02"], ["sc-02", "sc-03"]]}}
-            [import_sections(ImportSectionsArgs) {"sections": [{"section_id": "sc-01", "parent_doc": "spec", "title": "one"}, {"section_id": "sc-02", "parent_doc": "spec", "title": "two"}, {"section_id": "sc-03", "parent_doc": "spec", "title": "three"}]}]
-            [import_facts(atomic::FactsManifest) {"frames": [{"frame_id": "ground-truth"}], "entity_kinds": [{"kind_id": "place"}, {"kind_id": "character"}], "entities": [{"entity_id": "p-a", "kind": "place"}, {"entity_id": "p-b", "kind": "place"}, {"entity_id": "e-her", "kind": "character"}], "predicates": [{"predicate_id": "adjacent", "object_kind": "entity", "subject_kind": "place", "object_entity_kind": "place"}, {"predicate_id": "at", "object_kind": "entity", "subject_kind": "character", "object_entity_kind": "place"}], "facts": [{"fact_id": "f-way", "frame": "ground-truth", "claim": "a way runs", "canon_from": "sc-01", "evidence": ["sc-01"], "entities": ["p-a", "p-b"], "typed": {"subject": "p-a", "predicate": "adjacent", "object": {"kind": "entity", "id": "p-b"}}}, {"fact_id": "f-at-a", "frame": "ground-truth", "claim": "she is at a", "canon_from": "sc-01", "evidence": ["sc-01"], "entities": ["e-her", "p-a"], "typed": {"subject": "e-her", "predicate": "at", "object": {"kind": "entity", "id": "p-a"}}}, {"fact_id": "f-at-b", "frame": "ground-truth", "claim": "she is at b", "canon_from": "sc-03", "evidence": ["sc-03"], "entities": ["e-her", "p-b"], "supersedes_in_frame": "f-at-a", "typed": {"subject": "e-her", "predicate": "at", "object": {"kind": "entity", "id": "p-b"}}}], "disclosure_plans": [{"telling_id": "t-quiet", "default_mode": "state"}, {"telling_id": "t-hidden", "default_mode": "withhold"}], "branches": [{"branch_id": "b-alt", "forks_from": "main", "forks_at": "sc-02"}]}]
-            [add_fact(atomic::FactImport) {"fact_id": "f-alt", "frame": "ground-truth", "branch": "b-alt", "claim": "she never left", "canon_from": "sc-03", "evidence": ["sc-03"], "entities": ["e-her", "p-a"], "typed": {"subject": "e-her", "predicate": "at", "object": {"kind": "entity", "id": "p-a"}}}]
+            @branch_story
             report_playthrough_manuscript(ReportPlaythroughManuscriptArgs) {"telling": "t-quiet", "order_path": "order-b.json"}
             ."world" = "b-alt" seen "main" in output;
         report_playthrough_manuscript_reading_walk_reaches_the_answer:
-            {"order-a.json" = {"schema": "canon-order/v1", "edges": [["sc-01", "sc-02"]]}}
-            {"order-b.json" = {"schema": "canon-order/v1", "edges": [["sc-01", "sc-02"], ["sc-02", "sc-03"]]}}
-            [import_sections(ImportSectionsArgs) {"sections": [{"section_id": "sc-01", "parent_doc": "spec", "title": "one"}, {"section_id": "sc-02", "parent_doc": "spec", "title": "two"}, {"section_id": "sc-03", "parent_doc": "spec", "title": "three"}]}]
-            [import_facts(atomic::FactsManifest) {"frames": [{"frame_id": "ground-truth"}], "entity_kinds": [{"kind_id": "place"}, {"kind_id": "character"}], "entities": [{"entity_id": "p-a", "kind": "place"}, {"entity_id": "p-b", "kind": "place"}, {"entity_id": "e-her", "kind": "character"}], "predicates": [{"predicate_id": "adjacent", "object_kind": "entity", "subject_kind": "place", "object_entity_kind": "place"}, {"predicate_id": "at", "object_kind": "entity", "subject_kind": "character", "object_entity_kind": "place"}], "facts": [{"fact_id": "f-way", "frame": "ground-truth", "claim": "a way runs", "canon_from": "sc-01", "evidence": ["sc-01"], "entities": ["p-a", "p-b"], "typed": {"subject": "p-a", "predicate": "adjacent", "object": {"kind": "entity", "id": "p-b"}}}, {"fact_id": "f-at-a", "frame": "ground-truth", "claim": "she is at a", "canon_from": "sc-01", "evidence": ["sc-01"], "entities": ["e-her", "p-a"], "typed": {"subject": "e-her", "predicate": "at", "object": {"kind": "entity", "id": "p-a"}}}, {"fact_id": "f-at-b", "frame": "ground-truth", "claim": "she is at b", "canon_from": "sc-03", "evidence": ["sc-03"], "entities": ["e-her", "p-b"], "supersedes_in_frame": "f-at-a", "typed": {"subject": "e-her", "predicate": "at", "object": {"kind": "entity", "id": "p-b"}}}], "disclosure_plans": [{"telling_id": "t-quiet", "default_mode": "state"}, {"telling_id": "t-hidden", "default_mode": "withhold"}], "branches": [{"branch_id": "b-alt", "forks_from": "main", "forks_at": "sc-02"}]}]
-            [add_fact(atomic::FactImport) {"fact_id": "f-alt", "frame": "ground-truth", "branch": "b-alt", "claim": "she never left", "canon_from": "sc-03", "evidence": ["sc-03"], "entities": ["e-her", "p-a"], "typed": {"subject": "e-her", "predicate": "at", "object": {"kind": "entity", "id": "p-a"}}}]
+            @branch_story
             report_playthrough_manuscript(ReportPlaythroughManuscriptArgs) {"telling": "t-quiet", "order_path": "order-b.json"}
             ."reading_walk" = true seen "sc-02" in output;
         report_playable_world_world_reaches_the_answer:
-            {"order-a.json" = {"schema": "canon-order/v1", "edges": [["sc-01", "sc-02"]]}}
-            {"order-b.json" = {"schema": "canon-order/v1", "edges": [["sc-01", "sc-02"], ["sc-02", "sc-03"]]}}
-            [import_sections(ImportSectionsArgs) {"sections": [{"section_id": "sc-01", "parent_doc": "spec", "title": "one"}, {"section_id": "sc-02", "parent_doc": "spec", "title": "two"}, {"section_id": "sc-03", "parent_doc": "spec", "title": "three"}]}]
-            [import_facts(atomic::FactsManifest) {"frames": [{"frame_id": "ground-truth"}], "entity_kinds": [{"kind_id": "place"}, {"kind_id": "character"}], "entities": [{"entity_id": "p-a", "kind": "place"}, {"entity_id": "p-b", "kind": "place"}, {"entity_id": "e-her", "kind": "character"}], "predicates": [{"predicate_id": "adjacent", "object_kind": "entity", "subject_kind": "place", "object_entity_kind": "place"}, {"predicate_id": "at", "object_kind": "entity", "subject_kind": "character", "object_entity_kind": "place"}], "facts": [{"fact_id": "f-way", "frame": "ground-truth", "claim": "a way runs", "canon_from": "sc-01", "evidence": ["sc-01"], "entities": ["p-a", "p-b"], "typed": {"subject": "p-a", "predicate": "adjacent", "object": {"kind": "entity", "id": "p-b"}}}, {"fact_id": "f-at-a", "frame": "ground-truth", "claim": "she is at a", "canon_from": "sc-01", "evidence": ["sc-01"], "entities": ["e-her", "p-a"], "typed": {"subject": "e-her", "predicate": "at", "object": {"kind": "entity", "id": "p-a"}}}, {"fact_id": "f-at-b", "frame": "ground-truth", "claim": "she is at b", "canon_from": "sc-03", "evidence": ["sc-03"], "entities": ["e-her", "p-b"], "supersedes_in_frame": "f-at-a", "typed": {"subject": "e-her", "predicate": "at", "object": {"kind": "entity", "id": "p-b"}}}], "disclosure_plans": [{"telling_id": "t-quiet", "default_mode": "state"}, {"telling_id": "t-hidden", "default_mode": "withhold"}], "branches": [{"branch_id": "b-alt", "forks_from": "main", "forks_at": "sc-02"}]}]
-            [add_fact(atomic::FactImport) {"fact_id": "f-alt", "frame": "ground-truth", "branch": "b-alt", "claim": "she never left", "canon_from": "sc-03", "evidence": ["sc-03"], "entities": ["e-her", "p-a"], "typed": {"subject": "e-her", "predicate": "at", "object": {"kind": "entity", "id": "p-a"}}}]
+            @branch_story
             report_playable_world(ReportPlayableWorldArgs) {"telling": "t-quiet", "order_path": "order-b.json"}
             ."world" = "b-alt" seen "main" in output;
         report_playable_world_order_path_reaches_the_answer:
@@ -5483,6 +5522,33 @@ mod tests {
             [add_entity_kind(AddEntityKindArgs) {"kind_id": "quarter"}]
             set_entity_kind_parents(SetEntityKindParentsArgs) {"kind_id": "quarter"}
             ."parents" = ["place"] seen "place" in store;
+        report_transition_map_rules_path_reaches_the_answer:
+            @branch_story
+            {"rules-b.json" = {"schema": "narrative-rules/v1", "rules": [{"id": "moves-follow-the-map", "predicate": "at", "class": "transition", "adjacency": "adjacent", "undirected": true}]}}
+            report_transition_map(ReportTransitionMapArgs) {}
+            ."rules_path" = "rules-b.json" seen "moves-follow-the-map" in output;
+        validate_continuity_rules_path_reaches_the_answer:
+            @branch_story
+            {"rules-directed.json" = {"schema": "narrative-rules/v1", "rules": [{"id": "one-way-only", "predicate": "at", "class": "transition", "adjacency": "at", "undirected": false}]}}
+            validate_continuity(ValidateContinuityArgs) {"order_path": "order-b.json"}
+            ."rules_path" = "rules-directed.json" seen "one-way-only" in output;
+        propose_verdict_rules_path_reaches_the_answer:
+            @branch_story
+            {"rules-directed.json" = {"schema": "narrative-rules/v1", "rules": [{"id": "one-way-only", "predicate": "at", "class": "transition", "adjacency": "at", "undirected": false}]}}
+            {"return-trip.json" = {"facts": [{"fact_id": "f-back", "frame": "ground-truth", "claim": "she returns", "canon_from": "sc-03", "evidence": ["sc-03"], "entities": ["e-her", "p-a"], "supersedes_in_frame": "f-at-b", "typed": {"subject": "e-her", "predicate": "at", "object": {"kind": "entity", "id": "p-a"}}}]}}
+            propose_verdict(ProposeVerdictArgs) {"manifest_path": "return-trip.json", "order_path": "order-b.json"}
+            ."rules_path" = "rules-directed.json" seen "one-way-only" in output;
+        report_authoring_frontier_rules_path_reaches_the_answer:
+            @branch_story
+            {"rules-directed.json" = {"schema": "narrative-rules/v1", "rules": [{"id": "one-way-only", "predicate": "at", "class": "transition", "adjacency": "at", "undirected": false}]}}
+            report_authoring_frontier(ReportAuthoringFrontierArgs) {"order_path": "order-b.json"}
+            ."rules_path" = "rules-directed.json" seen "one-way-only" in output;
+        report_timeline_gaps_rules_path_reaches_the_answer:
+            @branch_story
+            {"rules-interval.json" = {"schema": "narrative-rules/v1", "rules": [{"id": "falls-after-it-rises", "predicate": "fell_on_day", "class": "interval", "right": "rose_on_day", "op": "ge", "bound": {"const": 1}}]}}
+            [import_facts(atomic::FactsManifest) {"units": [{"unit_id": "day"}], "predicates": [{"predicate_id": "rose_on_day", "object_kind": "quantity", "subject_kind": "character"}, {"predicate_id": "fell_on_day", "object_kind": "quantity", "subject_kind": "character"}], "facts": [{"fact_id": "f-rose", "frame": "ground-truth", "claim": "it rose on day 5", "canon_from": "sc-01", "evidence": ["sc-01"], "entities": ["e-her"], "typed": {"subject": "e-her", "predicate": "rose_on_day", "object": {"kind": "quantity", "n": 5, "unit": "day"}}}]}]
+            report_timeline_gaps(ReportTimelineGapsArgs) {"order_path": "order-b.json"}
+            ."rules_path" = "rules-interval.json" seen "\"interval_rules\": 1" in output;
     }
 
     /// An agent can only call what the schema shows it (Round 981) — the Round
