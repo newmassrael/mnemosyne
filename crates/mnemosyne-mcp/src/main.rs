@@ -3311,6 +3311,130 @@ mod tests {
         assert!(!router.has_route("definitely_not_a_tool"));
     }
 
+    /// THE SECOND WIRE INTO `population_census` IS EXERCISED, NOT INSPECTED
+    /// (Round 981).
+    ///
+    /// Round 979 put a field in the frozen ledger with two write paths, and
+    /// checked their parity by READING both wires' source — that a count cannot
+    /// be typed into either. A source scan cannot see the thing that actually
+    /// breaks a wire: a serde key that never deserializes, or an argument read
+    /// into nothing. `record_census` would then be silently false forever, and
+    /// the entry an agent appended through MCP would record no census while
+    /// saying it had. Nothing in this repository executed an MCP tool, so that
+    /// half of the parity claim rested on prose.
+    ///
+    /// The oracle is the CLI's own answer: the counts must equal what
+    /// `ops::workspace_population_census` yields for the same workspace, so this
+    /// cannot pass by agreeing with a mistake spelled twice.
+    #[tokio::test]
+    async fn mcp_append_records_the_census_the_shared_resolver_yields() {
+        let tmp = tempfile::TempDir::new().expect("tempdir");
+        let ws = tmp.path();
+        std::fs::create_dir_all(ws.join("docs/.atomic")).expect("atomic dir");
+        std::fs::write(
+            ws.join("mnemosyne.toml"),
+            "[workspace]\n[schema]\nentry_id_prefix = \"Round \"\n\
+             [census]\nreport = \"census.json\"\n",
+        )
+        .expect("config");
+        let axes = vec![atomic::PopulationCensus {
+            axis: "transition rules by `undirected`".to_string(),
+            left_label: "undirected".to_string(),
+            left: 10,
+            right_label: "directed".to_string(),
+            right: 27,
+        }];
+        std::fs::write(
+            ws.join("census.json"),
+            ops::render_population_census(&axes).expect("render"),
+        )
+        .expect("report");
+        std::fs::write(
+            ws.join("docs/.atomic/workspace.atomic.json"),
+            format!(
+                "{{\"schema_version\":{},\"sections\":{{}},\"changelog_entries\":{{}}}}",
+                atomic::CURRENT_SCHEMA_VERSION
+            ),
+        )
+        .expect("store");
+
+        // The argument arrives the way an agent sends it — as JSON — so a serde
+        // key that does not deserialize fails here rather than defaulting to
+        // false and recording nothing.
+        let args: AppendChangelogEntryArgs = serde_json::from_value(serde_json::json!({
+            "entry_id": "Round 981",
+            "decision_summary": "a round that states a census",
+            "changes_bullets": ["changed a thing"],
+            "verification_bullets": ["checked the thing"],
+            "record_census": true,
+        }))
+        .expect("the agent-facing shape must carry `record_census`");
+        assert!(args.record_census, "the flag deserialized as false");
+
+        let server = MnemosyneServer::new(ws.to_path_buf()).expect("server");
+        let result = server.append_changelog_entry(Parameters(args)).await;
+        assert!(
+            result.is_error != Some(true),
+            "the MCP append failed: {:?}",
+            result.content
+        );
+
+        let store = atomic::AtomicStore::load(&ws.join("docs/.atomic/workspace.atomic.json"))
+            .expect("reload");
+        let recorded = &store
+            .changelog_entries
+            .get("Round 981")
+            .expect("the entry landed")
+            .population_census;
+        assert_eq!(
+            recorded,
+            &ops::workspace_population_census(ws).expect("the CLI's own resolver"),
+            "the MCP wire recorded something other than what the shared resolver \
+             yields, so the two write paths into this field disagree"
+        );
+
+        // Non-vacuity: without the flag the same wire records nothing, so the
+        // assertion above is about the flag and not about the field's default.
+        let bare: AppendChangelogEntryArgs = serde_json::from_value(serde_json::json!({
+            "entry_id": "Round 982",
+            "decision_summary": "a round that states none",
+            "changes_bullets": ["changed a thing"],
+            "verification_bullets": ["checked the thing"],
+        }))
+        .expect("args without the flag");
+        let result = server.append_changelog_entry(Parameters(bare)).await;
+        assert!(result.is_error != Some(true), "the second append failed");
+        let store = atomic::AtomicStore::load(&ws.join("docs/.atomic/workspace.atomic.json"))
+            .expect("reload");
+        assert!(
+            store
+                .changelog_entries
+                .get("Round 982")
+                .expect("the entry landed")
+                .population_census
+                .is_empty(),
+            "an append that never asked for a census recorded one anyway"
+        );
+    }
+
+    /// An agent can only call what the schema shows it (Round 981) — the Round
+    /// 690 rule applied to the flag that decides whether a census is recorded.
+    #[test]
+    fn append_changelog_entry_schema_exposes_record_census() {
+        let schema = schemars::schema_for!(AppendChangelogEntryArgs);
+        let json = serde_json::to_value(&schema).expect("schema serializes");
+        let props = json
+            .get("properties")
+            .and_then(|p| p.as_object())
+            .expect("the args schema exposes object properties");
+        assert!(
+            props.contains_key("record_census"),
+            "the agent-facing schema hides `record_census`, so no agent can ask \
+             for a census: {:?}",
+            props.keys().collect::<Vec<_>>()
+        );
+    }
+
     /// Round 690 (DEBT-MCP-MANIFEST-SCHEMA) — PROVE the manifest tool arg is a
     /// TYPED schema, not the R687 opaque `{manifest_json: string}`. Generated
     /// from the ONE atomic type via the feature-gated JsonSchema derive, so the

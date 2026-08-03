@@ -444,7 +444,22 @@ fn both_wires_take_their_census_from_the_one_resolver() {
     ];
     let mut sites = 0usize;
     for wire in wires {
-        let text = fs::read_to_string(root.join(wire)).unwrap_or_else(|e| panic!("{wire}: {e}"));
+        let whole = fs::read_to_string(root.join(wire)).unwrap_or_else(|e| panic!("{wire}: {e}"));
+        // PRODUCTION ONLY. A `#[cfg(test)]` module in the same file is allowed to
+        // build a `PopulationCensus` — Round 981's MCP test builds one as its
+        // oracle, and reading it as a wire is a false positive that would force
+        // the behavioural test back out of the tree. The cut is asserted rather
+        // than assumed: a marker that stopped matching would silently scan the
+        // whole file again, which is how this check first went wrong.
+        let text = whole
+            .split_once("#[cfg(test)]")
+            .map_or(whole.as_str(), |(before, _)| before);
+        assert!(
+            text.len() > 1000,
+            "{wire}: cutting at `#[cfg(test)]` left {} bytes, so the scan is \
+             reading almost nothing and its silence proves nothing",
+            text.len()
+        );
         let lines: Vec<&str> = text.lines().collect();
         let fed: Vec<usize> = lines
             .iter()
