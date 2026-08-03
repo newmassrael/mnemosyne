@@ -19,6 +19,11 @@ pub mod validate;
 /// of these, and constructing one is where a caller says what its path is
 /// relative to.
 pub use mnemosyne_config::AbsolutePath;
+
+/// Re-exported so a consumer of a verdict can enumerate the sources one can
+/// carry without reaching past its kernel into the validator (Round 1009).
+pub use mnemosyne_validate::verdict::ViolationSource;
+
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
@@ -2487,7 +2492,10 @@ mod tests {
         .unwrap();
         assert_eq!(bad.verdict, ProposeVerdict::Rollback);
         assert_eq!(bad.gating_violation_count, 1);
-        assert_eq!(bad.violations[0].source, "shape");
+        assert_eq!(
+            bad.violations[0].source,
+            mnemosyne_validate::verdict::ViolationSource::Shape
+        );
 
         // Dry run: the store still holds exactly the seeded fact.
         let store = load_atomic_store(root, None).unwrap();

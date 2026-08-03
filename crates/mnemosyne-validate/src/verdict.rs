@@ -48,12 +48,48 @@ pub struct ViolationLocus {
     pub at: Option<String>,
 }
 
+/// WHICH GATE PRODUCED A VIOLATION, AS A TYPE (Round 1009).
+///
+/// It was a `&'static str` assigned in two places, which made "this verb has
+/// exactly two sources" a claim you could only settle by reading the file —
+/// and a claim I got wrong in Round 1008, where a carry named the disclosure
+/// gates as a third. A type answers it instead: a test can walk every variant,
+/// and a third source cannot appear without this enum growing.
+///
+/// The wire is unchanged — it serializes to the same lowercase strings.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ViolationSource {
+    /// A write-time invariant, from applying the batch.
+    Shape,
+    /// The cross-fact gate, from scanning the applied clone.
+    Continuity,
+}
+
+impl std::fmt::Display for ViolationSource {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
+impl ViolationSource {
+    /// Every source a verdict can carry — what a test asserting coverage walks.
+    pub const ALL: &'static [ViolationSource] = &[Self::Shape, Self::Continuity];
+
+    #[must_use]
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Shape => "shape",
+            Self::Continuity => "continuity",
+        }
+    }
+}
+
 /// One gate finding an agent can repair without parsing prose (R588).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct ActionableViolation {
-    /// Which gate produced it: `shape` (a write-time invariant) or
-    /// `continuity` (the cross-fact gate).
-    pub source: &'static str,
+    /// Which gate produced it.
+    pub source: ViolationSource,
     /// The stable machine rule id — the [`ContinuityViolation`] `kind`, or
     /// `shape-invariant`.
     pub rule: String,
@@ -75,7 +111,7 @@ impl ActionableViolation {
     /// NLP guessing the substrate forbids.
     pub fn shape(message: String) -> Self {
         ActionableViolation {
-            source: "shape",
+            source: ViolationSource::Shape,
             rule: "shape-invariant".to_string(),
             locus: ViolationLocus::default(),
             expected: "the batch must satisfy every write-time invariant \
@@ -101,7 +137,7 @@ pub fn continuity_actionable(v: &ContinuityViolation) -> ActionableViolation {
                   expected: String,
                   repair_hint: String,
                   message: String| ActionableViolation {
-        source: "continuity",
+        source: ViolationSource::Continuity,
         rule: rule.to_string(),
         locus,
         expected,
@@ -1084,7 +1120,7 @@ mod tests {
         ];
         for v in &samples {
             let a = continuity_actionable(v);
-            assert_eq!(a.source, "continuity");
+            assert_eq!(a.source, ViolationSource::Continuity);
             assert!(!a.rule.is_empty(), "empty rule for {v:?}");
             assert!(!a.expected.is_empty(), "empty expected for {v:?}");
             assert!(!a.repair_hint.is_empty(), "empty repair for {v:?}");
@@ -1227,7 +1263,7 @@ mod tests {
     #[test]
     fn shape_violation_carries_message() {
         let a = ActionableViolation::shape("fact `f-1`: frame mandatory (non-empty)".to_string());
-        assert_eq!(a.source, "shape");
+        assert_eq!(a.source, ViolationSource::Shape);
         assert_eq!(a.rule, "shape-invariant");
         assert!(a.message.contains("frame mandatory"));
         assert!(!a.repair_hint.is_empty());

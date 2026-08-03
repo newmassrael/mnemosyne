@@ -4329,12 +4329,21 @@ mod tests {
             .expect("args parse")
         };
 
-        // A SECOND FAMILY REACHING THE SAME FIELD (Round 1005). Round 1004
-        // closed by naming what one refusing rule does not cover — "the
-        // structural invariants ... reach the same verdict field by other
-        // paths" — and called the fix "a table away". This is the table: the
-        // rule that names the refusal is the one the agent repairs against, so
-        // each row asserts its own name and not just the word `rollback`.
+        // THE TABLE COVERS BOTH OF THE VERB'S SOURCES (Round 1009). A verdict
+        // has exactly two: a SHAPE rejection from applying the manifest, and
+        // the CONTINUITY scan over the applied clone. The rows below are one
+        // shape (an entity the registry never registered) and two continuity
+        // families (a transition rule and an interval rule) — so the field is
+        // exercised from every path that can reach it, which is a stronger
+        // statement than counting rules.
+        //
+        // Round 1008's carry said the disclosure gates were "the fourth family
+        // reaching the same field". They are not: `propose_verdict` runs the
+        // shape invariants and `scan_continuity`, and nothing else. That carry
+        // was a claim about the world and it was wrong.
+        //
+        // Each row asserts the NAME its refusal carries, since that is what an
+        // agent repairs against, and not just the word `rollback`.
         // A third family: an interval rule whose bound the candidate breaks.
         let backwards = serde_json::json!({
             "facts": [
@@ -4354,6 +4363,7 @@ mod tests {
                 "canon_from": "sc-02", "evidence": ["sc-02"], "entities": ["e-nobody"],
             }],
         });
+        let mut sources_seen: std::collections::BTreeSet<String> = Default::default();
         for (what, manifest, name, rule) in [
             (
                 "a beat that walks where no way runs",
@@ -4389,7 +4399,32 @@ mod tests {
                 "{what} refuses without naming `{rule}`, which is what an agent \
                  repairs against: {refused}"
             );
+            // EVERY SOURCE THIS VERB CAN CARRY IS WALKED, and the walk is the
+            // TYPE's (Round 1009), not a list in this test: `ViolationSource`
+            // enumerates them, so a third one cannot appear without this
+            // assertion going red. Round 1008 claimed a third by reading the
+            // file and was wrong.
+            let answer: serde_json::Value =
+                serde_json::from_str(&refused).expect("the verdict is json");
+            for v in answer
+                .get("violations")
+                .and_then(|v| v.as_array())
+                .expect("violations")
+            {
+                let src = v.get("source").and_then(|s| s.as_str()).expect("source");
+                sources_seen.insert(src.to_string());
+            }
         }
+        let expected: std::collections::BTreeSet<String> = ops::ViolationSource::ALL
+            .iter()
+            .map(|s| s.as_str().to_string())
+            .collect();
+        assert_eq!(
+            sources_seen, expected,
+            "the table does not reach every source a verdict can carry. The \
+             type is what enumerates them, so a source added there is undone \
+             work here rather than a sentence in a carry"
+        );
 
         let accepted = answer_text(
             &server
@@ -4764,8 +4799,9 @@ mod tests {
         style_check_doc_reaches_the_answer:
             [add_section(AddSectionArgs) {"section_id": "40", "parent_doc": "spec", "title": "the section"}]
             [add_section(AddSectionArgs) {"section_id": "41", "parent_doc": "other", "title": "the other"}]
+            [set_section_intent(SetSectionTextArgs) {"section_id": "41", "text": "the rest of this is in DESIGN.md and nobody wrote it as a reference"}]
             style_check(StyleCheckArgs) {}
-            ."doc" = "spec" seen "doc_filter\": \"spec" in output;
+            ."doc" = "spec" seen "cross_doc_reference_explicit" in output;
         query_term_fields_reaches_the_answer:
             [append_changelog_entry(AppendChangelogEntryArgs) {"entry_id": "Round 1", "decision_summary": "the decision names Waits", "changes_bullets": ["a change"], "verification_bullets": ["a check"]}]
             query_term(QueryTermArgs) {"pattern": "Waits"}

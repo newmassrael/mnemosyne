@@ -890,6 +890,98 @@
         "23 READ-SIDE ARGUMENTS REMAIN, unchanged by this round."
       ]
     },
+    "Round 1009": {
+      "decision_summary": "R1009 (DEBT) — the twelfth audit, and BOTH of the audit round's own carries were false claims about the world rather than undone work. Round 1008 was the round that found the carry test failing its own author; its two substantive carries then asserted things that are not true. STAR \"`style_check`'s FINDING SET CANNOT BE MADE TO VARY THROUGH ANY SURFACE THIS REPOSITORY EXPOSES\" IS REFUTED BY 66 CHARACTERS. I measured ONE rule — `max_sentence_length`, which fires at 200 characters while the intent field caps at 200 — and generalised to every rule. Two of the four T3 rules have no character threshold at all: `cross_doc_reference_explicit` fires on an intent that mentions `DESIGN.md` without the reference form. The case now watches the finding set varying with the filter rather than the filter the report echoes back. STAR \"THE DISCLOSURE GATES ARE THE FOURTH FAMILY REACHING THE SAME FIELD\" IS ALSO REFUTED. A verdict has two sources: a shape rejection from applying the manifest and the continuity scan over the applied clone. Nothing else feeds it. The three rows already covered both — one shape, two continuity — so the table was complete while its carry said it was missing a quarter of the surface. STAR AND THE OWNER'S CORRECTION IS THE ROUND'S REAL CONTENT: I established that second refutation BY READING THE FILE, which is exactly how the wrong claim was made in the first place. `source` was a `&'static str` assigned in two places, so \"this verb has exactly two sources\" was only ever settleable by reading. It is a TYPE now — `ViolationSource`, with `ALL` — and the verdict table asserts that the sources it observes equal the sources the type can carry. A third one cannot be added without that assertion going red. The claim moved from something I read to something the tree says. STAR THE WIRE IS UNCHANGED: the enum serializes to the same lowercase strings an agent already parses.",
+      "changes_bullets": [
+        "`mnemosyne-validate` — `ViolationSource` replaces the `&'static str` on `ActionableViolation`, with `ALL` enumerating what a verdict can carry. Serializes to the same strings, so nothing an agent parses changed.",
+        "`mnemosyne-ops` — re-exports `ViolationSource`, so a consumer enumerates the sources through its kernel rather than reaching past it into the validator.",
+        "`mnemosyne-mcp` — the verdict table asserts that the sources its rows OBSERVE equal `ViolationSource::ALL`. Coverage of the field is now the type's claim rather than a sentence in a comment.",
+        "Same file — `style_check.doc` watches the finding set varying: a 66-character intent in the other doc trips `cross_doc_reference_explicit`, and filtering to `spec` removes it."
+      ],
+      "verification_bullets": [
+        "STAR BOTH OF ROUND 1008's CARRIES WERE WRONG, and each was wrong the same way — one measurement generalised to a class. `max_sentence_length` fires at 200 where the field caps at 200; two of the four T3 rules have no character threshold at all, so \"no surface can make the finding set vary\" was false, and a 66-character intent proves it.",
+        "STAR THE SECOND REFUTATION WAS ESTABLISHED BY READING AND THE OWNER SAID SO. That is the same instrument that produced the wrong claim. `ViolationSource` makes it a type: the table asserts its observed sources equal `ViolationSource::ALL`.",
+        "INJECTION AQ, a third variant added to the enum: the verdict table fails with \"the table does not reach every source a verdict can carry\". The assertion bites on the type, not on a list in the test.",
+        "INJECTION AP (Round 1008), the verdict forced to `commit`: still fails the table's first row.",
+        "1602 workspace tests pass, 0 failed, `--no-fail-fast`; clippy `-D warnings` and `cargo fmt --check` clean; `validate-workspace` T1 orphan 0 and T3 reject 0.",
+        "Citation hygiene (R255): Rounds 1004, 1005 and 1008 verified present with `query --changelog-entry` and Round 1009 verified absent before this entry was appended.",
+        "CARRY TEST (Round 1005): each bullet below was read against \"could I do this now?\", and each was checked against the tree rather than asserted from memory — which is what Round 1008 did not do."
+      ],
+      "impact_refs": [
+        "atomic-store-mutate-api"
+      ],
+      "carry_forward_bullets": [
+        "A CLAIM ABOUT WHAT A VERB CAN PRODUCE BELONGS IN A TYPE, and only one has been moved. `ActionableViolation.rule` is still a `String`, so \"every rule an agent can be handed\" is settleable only by reading; the continuity mapping is exhaustive at the compiler already, but nothing joins the two. That is a bigger change than this round took and it is the same shape as the one it made.",
+        "23 READ-SIDE ARGUMENTS REMAIN, unchanged by this round."
+      ],
+      "population_census": [
+        {
+          "axis": "transition rules by `undirected`",
+          "left_label": "undirected",
+          "left": 10,
+          "right_label": "directed",
+          "right": 27
+        },
+        {
+          "axis": "map corpora by leg-kind declaration",
+          "left_label": "omitted",
+          "left": 6,
+          "right_label": "declared",
+          "right": 24
+        },
+        {
+          "axis": "cost-carrying corpora by direction-dependent pricing",
+          "left_label": "prices a way by direction",
+          "left": 4,
+          "right_label": "prices no way by direction",
+          "right": 6
+        },
+        {
+          "axis": "run trees by authoring mode",
+          "left_label": "hand script",
+          "left": 10,
+          "right_label": "file-only",
+          "right": 239
+        },
+        {
+          "axis": "map corpora by declared boundary crossing",
+          "left_label": "declares an exit",
+          "left": 6,
+          "right_label": "declares none",
+          "right": 24
+        },
+        {
+          "axis": "authored submissions by map and telling",
+          "left_label": "carries both",
+          "left": 10,
+          "right_label": "carries one",
+          "right": 24
+        }
+      ],
+      "publishable_decision_summary": "R1009 (DEBT) — the twelfth audit, and BOTH of the audit round's own carries were false claims about the world rather than undone work. Round 1008 was the round that found the carry test failing its own author; its two substantive carries then asserted things that are not true. STAR \"`style_check`'s FINDING SET CANNOT BE MADE TO VARY THROUGH ANY SURFACE THIS REPOSITORY EXPOSES\" IS REFUTED BY 66 CHARACTERS. I measured ONE rule — `max_sentence_length`, which fires at 200 characters while the intent field caps at 200 — and generalised to every rule. Two of the four T3 rules have no character threshold at all: `cross_doc_reference_explicit` fires on an intent that mentions `DESIGN.md` without the reference form. The case now watches the finding set varying with the filter rather than the filter the report echoes back. STAR \"THE DISCLOSURE GATES ARE THE FOURTH FAMILY REACHING THE SAME FIELD\" IS ALSO REFUTED. A verdict has two sources: a shape rejection from applying the manifest and the continuity scan over the applied clone. Nothing else feeds it. The three rows already covered both — one shape, two continuity — so the table was complete while its carry said it was missing a quarter of the surface. STAR AND THE OWNER'S CORRECTION IS THE ROUND'S REAL CONTENT: I established that second refutation BY READING THE FILE, which is exactly how the wrong claim was made in the first place. `source` was a `&'static str` assigned in two places, so \"this verb has exactly two sources\" was only ever settleable by reading. It is a TYPE now — `ViolationSource`, with `ALL` — and the verdict table asserts that the sources it observes equal the sources the type can carry. A third one cannot be added without that assertion going red. The claim moved from something I read to something the tree says. STAR THE WIRE IS UNCHANGED: the enum serializes to the same lowercase strings an agent already parses.",
+      "publishable_changes_bullets": [
+        "`mnemosyne-validate` — `ViolationSource` replaces the `&'static str` on `ActionableViolation`, with `ALL` enumerating what a verdict can carry. Serializes to the same strings, so nothing an agent parses changed.",
+        "`mnemosyne-ops` — re-exports `ViolationSource`, so a consumer enumerates the sources through its kernel rather than reaching past it into the validator.",
+        "`mnemosyne-mcp` — the verdict table asserts that the sources its rows OBSERVE equal `ViolationSource::ALL`. Coverage of the field is now the type's claim rather than a sentence in a comment.",
+        "Same file — `style_check.doc` watches the finding set varying: a 66-character intent in the other doc trips `cross_doc_reference_explicit`, and filtering to `spec` removes it."
+      ],
+      "publishable_verification_bullets": [
+        "STAR BOTH OF ROUND 1008's CARRIES WERE WRONG, and each was wrong the same way — one measurement generalised to a class. `max_sentence_length` fires at 200 where the field caps at 200; two of the four T3 rules have no character threshold at all, so \"no surface can make the finding set vary\" was false, and a 66-character intent proves it.",
+        "STAR THE SECOND REFUTATION WAS ESTABLISHED BY READING AND THE OWNER SAID SO. That is the same instrument that produced the wrong claim. `ViolationSource` makes it a type: the table asserts its observed sources equal `ViolationSource::ALL`.",
+        "INJECTION AQ, a third variant added to the enum: the verdict table fails with \"the table does not reach every source a verdict can carry\". The assertion bites on the type, not on a list in the test.",
+        "INJECTION AP (Round 1008), the verdict forced to `commit`: still fails the table's first row.",
+        "1602 workspace tests pass, 0 failed, `--no-fail-fast`; clippy `-D warnings` and `cargo fmt --check` clean; `validate-workspace` T1 orphan 0 and T3 reject 0.",
+        "Citation hygiene (R255): Rounds 1004, 1005 and 1008 verified present with `query --changelog-entry` and Round 1009 verified absent before this entry was appended.",
+        "CARRY TEST (Round 1005): each bullet below was read against \"could I do this now?\", and each was checked against the tree rather than asserted from memory — which is what Round 1008 did not do."
+      ],
+      "publishable_impact_refs": [
+        "atomic-store-mutate-api"
+      ],
+      "publishable_carry_forward_bullets": [
+        "A CLAIM ABOUT WHAT A VERB CAN PRODUCE BELONGS IN A TYPE, and only one has been moved. `ActionableViolation.rule` is still a `String`, so \"every rule an agent can be handed\" is settleable only by reading; the continuity mapping is exhaustive at the compiler already, but nothing joins the two. That is a bigger change than this round took and it is the same shape as the one it made.",
+        "23 READ-SIDE ARGUMENTS REMAIN, unchanged by this round."
+      ]
+    },
     "Round 252": {
       "decision_summary": "Parser CommonMark conformance — recognize indented fenced code blocks (§98) and require whitespace after ATX hash sequence (§62)",
       "changes_bullets": [
