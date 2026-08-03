@@ -1478,6 +1478,46 @@
         "THE DEBT LEDGER'S HAND-WRITTEN BREAKDOWN OF THIS POPULATION WAS WRONG and the router said so on the first question of the session: it listed the `order_path` family as 9 where the router says 13, because four of them sit on tools it had filed under `rules_path`. The ledger is prose about a population a program can print, which is the class this repository keeps removing."
       ]
     },
+    "Round 1017": {
+      "decision_summary": "R1017 (BUILD) — Ten `order_path` cases were written against the shared world in one pass and SIX WERE DELETED, which is the result rather than the shortfall: 104 to 108. The prediction carried out of Round 1016 was that this family would be cheaper than the last, because the branched story already holds two canon orders and an order override has to move what an order names. It was half right, and the half that was wrong is worth more. STAR THE TWO ORDERS DIFFER BY ADDING A SCENE, AND SIX OF THESE VERBS DO NOT KEY ON THAT. `report_fork_tree`, `report_edge_candidates`, `report_irony_intervals`, `report_payoff_substantiation`, `report_quest_graph` and `report_timeline_gaps` produced BYTE-IDENTICAL answers under both orders — not \"the needle was wrong\", which the macro states separately and did state for three others, but no observable difference at all. Those cases were deleted rather than weakened, on the Round 987 premise that a case which passes without discriminating is worse than none: it reads as coverage. What they need is an order pair that changes RELATIVE POSITION rather than membership, since these reports are about what comes before what. STAR THE FOUR THAT LANDED WERE DIAGNOSED BY THE FAILURE MESSAGE, NOT BY PRINTING ANYTHING. Round 1003's `first_difference` named the needle for three of them outright — `\"not_holding\": 1` for the frame view, `\"order_nodes\": 3` for continuity, and for payoff coverage the honest half-answer that the output HAD changed while the needle had not, which sent the repair to the case rather than to the handler. The needles are counts and emptied arrays, because these reports COUNT what the order names instead of naming it, and a case that watches for a scene id was never going to see them.",
+      "changes_bullets": [
+        "`crates/mnemosyne-mcp/src/main.rs` — four `order_path` cases stand in the shared world: `report_frame_view`, `validate_continuity`, `report_payoff_coverage` and `report_authoring_frontier`, each watching a count or an emptied array rather than a coordinate.",
+        "`crates/mnemosyne-mcp/src/main.rs` — the four pairs leave `UNEXERCISED`: 108 exercised / 14 unexercised of 122."
+      ],
+      "verification_bullets": [
+        "STAR SIX CASES WERE WRITTEN, RUN AND DELETED. Their outputs were byte-identical under both orders, which the macro reports as a distinct verdict from a wrong needle. Keeping them would have added six green tests that assert nothing about the argument.",
+        "Three needles came from Round 1003's `first_difference` on the first failing run: `\"not_holding\": 0` becoming 1, `\"order_nodes\": 2` becoming 3, and `\"unknown\"` emptying.",
+        "The payoff-coverage case took a second attempt, and the message said why: the needle occurred twice on BOTH sides while the output had changed, so the argument had arrived and the case was watching the wrong thing.",
+        "The accounting reads 108 exercised / 14 unexercised of 122, and the rows cannot exist without the tests that generate them.",
+        "Workspace 1619 tests pass (0 failed), clippy `-D warnings` clean, `cargo fmt --check` clean."
+      ],
+      "impact_refs": [
+        "atomic-store-mutate-api"
+      ],
+      "carry_forward_bullets": [
+        "THE SIX DELETED VERBS NEED AN ORDER PAIR THAT REORDERS RATHER THAN EXTENDS — the same scenes read in a different sequence, so that \"before\" and \"after\" change while membership does not. That is a third canon-order file in the shared world plus six needles, and it is undone work with a named first step, not a limit. It was attempted this round and the attempt was abandoned mid-edit rather than rushed.",
+        "`validate_disclosure_leak.order_path` AND `validate_render_fidelity.order_path` STILL NEED A RE-EXTRACTED STORE for `against`. Round 1014 built one inside a bespoke test by having a second server write it; the `exercised!` file setup writes JSON literals, so either the world gains a hand-written store — the hand-copied fixture this repository keeps removing — or the macro learns to seed a file from a store the server built."
+      ],
+      "publishable_decision_summary": "R1017 (BUILD) — Ten `order_path` cases were written against the shared world in one pass and SIX WERE DELETED, which is the result rather than the shortfall: 104 to 108. The prediction carried out of Round 1016 was that this family would be cheaper than the last, because the branched story already holds two canon orders and an order override has to move what an order names. It was half right, and the half that was wrong is worth more. STAR THE TWO ORDERS DIFFER BY ADDING A SCENE, AND SIX OF THESE VERBS DO NOT KEY ON THAT. `report_fork_tree`, `report_edge_candidates`, `report_irony_intervals`, `report_payoff_substantiation`, `report_quest_graph` and `report_timeline_gaps` produced BYTE-IDENTICAL answers under both orders — not \"the needle was wrong\", which the macro states separately and did state for three others, but no observable difference at all. Those cases were deleted rather than weakened, on the Round 987 premise that a case which passes without discriminating is worse than none: it reads as coverage. What they need is an order pair that changes RELATIVE POSITION rather than membership, since these reports are about what comes before what. STAR THE FOUR THAT LANDED WERE DIAGNOSED BY THE FAILURE MESSAGE, NOT BY PRINTING ANYTHING. Round 1003's `first_difference` named the needle for three of them outright — `\"not_holding\": 1` for the frame view, `\"order_nodes\": 3` for continuity, and for payoff coverage the honest half-answer that the output HAD changed while the needle had not, which sent the repair to the case rather than to the handler. The needles are counts and emptied arrays, because these reports COUNT what the order names instead of naming it, and a case that watches for a scene id was never going to see them.",
+      "publishable_changes_bullets": [
+        "`crates/mnemosyne-mcp/src/main.rs` — four `order_path` cases stand in the shared world: `report_frame_view`, `validate_continuity`, `report_payoff_coverage` and `report_authoring_frontier`, each watching a count or an emptied array rather than a coordinate.",
+        "`crates/mnemosyne-mcp/src/main.rs` — the four pairs leave `UNEXERCISED`: 108 exercised / 14 unexercised of 122."
+      ],
+      "publishable_verification_bullets": [
+        "STAR SIX CASES WERE WRITTEN, RUN AND DELETED. Their outputs were byte-identical under both orders, which the macro reports as a distinct verdict from a wrong needle. Keeping them would have added six green tests that assert nothing about the argument.",
+        "Three needles came from Round 1003's `first_difference` on the first failing run: `\"not_holding\": 0` becoming 1, `\"order_nodes\": 2` becoming 3, and `\"unknown\"` emptying.",
+        "The payoff-coverage case took a second attempt, and the message said why: the needle occurred twice on BOTH sides while the output had changed, so the argument had arrived and the case was watching the wrong thing.",
+        "The accounting reads 108 exercised / 14 unexercised of 122, and the rows cannot exist without the tests that generate them.",
+        "Workspace 1619 tests pass (0 failed), clippy `-D warnings` clean, `cargo fmt --check` clean."
+      ],
+      "publishable_impact_refs": [
+        "atomic-store-mutate-api"
+      ],
+      "publishable_carry_forward_bullets": [
+        "THE SIX DELETED VERBS NEED AN ORDER PAIR THAT REORDERS RATHER THAN EXTENDS — the same scenes read in a different sequence, so that \"before\" and \"after\" change while membership does not. That is a third canon-order file in the shared world plus six needles, and it is undone work with a named first step, not a limit. It was attempted this round and the attempt was abandoned mid-edit rather than rushed.",
+        "`validate_disclosure_leak.order_path` AND `validate_render_fidelity.order_path` STILL NEED A RE-EXTRACTED STORE for `against`. Round 1014 built one inside a bespoke test by having a second server write it; the `exercised!` file setup writes JSON literals, so either the world gains a hand-written store — the hand-copied fixture this repository keeps removing — or the macro learns to seed a file from a store the server built."
+      ]
+    },
     "Round 252": {
       "decision_summary": "Parser CommonMark conformance — recognize indented fenced code blocks (§98) and require whitespace after ATX hash sequence (§62)",
       "changes_bullets": [

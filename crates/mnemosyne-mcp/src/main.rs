@@ -3922,19 +3922,15 @@ mod tests {
         ("import_edge_proposals", "dry_run"),
         ("import_typing_proposals", "dry_run"),
         ("propose_verdict", "order_path"),
-        ("report_authoring_frontier", "order_path"),
         ("report_authoring_frontier", "telling"),
         ("report_edge_candidates", "order_path"),
         ("report_fork_tree", "order_path"),
         ("report_frame_view", "branch"),
         ("report_frame_view", "entity"),
-        ("report_frame_view", "order_path"),
         ("report_irony_intervals", "order_path"),
-        ("report_payoff_coverage", "order_path"),
         ("report_payoff_substantiation", "order_path"),
         ("report_quest_graph", "order_path"),
         ("report_timeline_gaps", "order_path"),
-        ("validate_continuity", "order_path"),
         ("validate_disclosure_leak", "order_path"),
         ("validate_render_fidelity", "order_path"),
     ];
@@ -5549,6 +5545,22 @@ mod tests {
             [import_facts(atomic::FactsManifest) {"units": [{"unit_id": "day"}], "predicates": [{"predicate_id": "rose_on_day", "object_kind": "quantity", "subject_kind": "character"}, {"predicate_id": "fell_on_day", "object_kind": "quantity", "subject_kind": "character"}], "facts": [{"fact_id": "f-rose", "frame": "ground-truth", "claim": "it rose on day 5", "canon_from": "sc-01", "evidence": ["sc-01"], "entities": ["e-her"], "typed": {"subject": "e-her", "predicate": "rose_on_day", "object": {"kind": "quantity", "n": 5, "unit": "day"}}}]}]
             report_timeline_gaps(ReportTimelineGapsArgs) {"order_path": "order-b.json"}
             ."rules_path" = "rules-interval.json" seen "\"interval_rules\": 1" in output;
+        report_payoff_coverage_order_path_reaches_the_answer:
+            @branch_story
+            report_payoff_coverage(ReportPayoffCoverageArgs) {"order_path": "order-a.json"}
+            ."order_path" = "order-b.json" seen "\"unknown\": []" in output;
+        validate_continuity_order_path_reaches_the_answer:
+            @branch_story
+            validate_continuity(ValidateContinuityArgs) {"order_path": "order-a.json"}
+            ."order_path" = "order-b.json" seen "\"order_nodes\": 3" in output;
+        report_authoring_frontier_order_path_reaches_the_answer:
+            @branch_story
+            report_authoring_frontier(ReportAuthoringFrontierArgs) {"telling": "t-quiet", "order_path": "order-a.json"}
+            ."order_path" = "order-b.json" seen "sc-03" in output;
+        report_frame_view_order_path_reaches_the_answer:
+            @branch_story
+            report_frame_view(ReportFrameViewArgs) {"frame": "ground-truth", "at": "sc-01", "order_path": "order-a.json"}
+            ."order_path" = "order-b.json" seen "\"not_holding\": 1" in output;
     }
 
     /// An agent can only call what the schema shows it (Round 981) — the Round
