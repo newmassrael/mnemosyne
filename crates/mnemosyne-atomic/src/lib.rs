@@ -4562,6 +4562,30 @@ pub fn append_changelog_entry(
             entry_id, entry_id_prefix
         )));
     }
+    // Round 976 — the prefix gate stops one character short of the thing the
+    // ledger's prose rests on. Round 970 banned UNDATED counts from the
+    // shipping contract ("date it or drop it") and left the ledger unmeasured.
+    // The ledger does not need that ban, and the reason is structural rather
+    // than a matter of taste: an entry is filed under its own round, so every
+    // count inside it is already pinned to the moment it was taken. That
+    // property is worth exactly as much as the pin is guaranteed — and the
+    // R424 gate only requires the prefix, so `Round misc` would have landed a
+    // ledger row in which no count is dated by anything. A configured prefix
+    // therefore has to be followed by the digits the parser captures — the
+    // `<entry_id_prefix><number>` scheme `mnemosyne.toml` documents, and the
+    // same shape `project::parse_round_number` resolves.
+    if !entry_id_prefix.is_empty() {
+        let rest = &entry_id[entry_id_prefix.len()..];
+        if !rest.starts_with(|c: char| c.is_ascii_digit()) {
+            return Err(AtomicMutateError::Validation(format!(
+                "entry_id `{}` carries no round number after the configured \
+  schema.entry_id_prefix `{}` (Round 976 pin gate). The ledger is append-only, \
+  so an entry's own id is the ONLY date every count in its prose gets; an id \
+  with no number leaves them all undated and unrepairable.",
+                entry_id, entry_id_prefix
+            )));
+        }
+    }
     // Round 298 — required-field gate at the primitive boundary so CLI / MCC
     // / future wires share the same enforcement surface. Frozen-ledger reject
     // wins over field validation (existing FrozenLedger test passes empty
@@ -12666,6 +12690,88 @@ mod tests {
         }
     }
 
+    // ============ Round 976 entry_id round-pin gate ============
+    //
+    // The prefix gate above accepts `Round misc`, which is a ledger row whose
+    // prose carries no date at all. That matters because of what the ledger
+    // does NOT need: Round 970 banned undated counts from the shipping
+    // contract, and Round 972 left open whether the same ban belongs on the
+    // ledger at append time. Measured over all 722 entries, the count half of
+    // that ban is discharged by the id and not by prose — an entry filed as
+    // `Round 934` dates every count it states — so the pin is the thing to
+    // enforce, and enforcing it is what lets the prose ban be dropped.
+
+    #[test]
+    fn r976_prefix_without_a_round_number_is_rejected() {
+        let tmp = TempDir::new().unwrap();
+        let path = tmp.path().join(".atomic/workspace.atomic.json");
+        let mut store = AtomicStore::new();
+        let err = append_minimal(&mut store, &path, "Round misc", "Round ").unwrap_err();
+        match err {
+            AtomicMutateError::Validation(msg) => {
+                assert!(msg.contains("no round number"), "msg={}", msg);
+                assert!(msg.contains("`Round misc`"), "msg={}", msg);
+            }
+            other => panic!("expected Validation, got {:?}", other),
+        }
+        assert!(store.changelog_entries.is_empty(), "reject must not insert");
+    }
+
+    #[test]
+    fn r976_both_recorded_entry_id_shapes_still_append() {
+        // The ledger holds two shapes — bare `Round 568` and titled
+        // `Round 293 — <title>`. The gate reads the digits the parser
+        // captures, so both keep landing; a gate that only accepted one of
+        // them would have closed the door on a quarter of the ledger's form.
+        let tmp = TempDir::new().unwrap();
+        let path = tmp.path().join(".atomic/workspace.atomic.json");
+        let mut store = AtomicStore::new();
+        append_minimal(&mut store, &path, "Round 568", "Round ").unwrap();
+        append_minimal(&mut store, &path, "Round 293 — a title", "Round ").unwrap();
+        assert!(store.changelog_entries.contains_key("Round 568"));
+        assert!(store.changelog_entries.contains_key("Round 293 — a title"));
+    }
+
+    #[test]
+    fn r976_empty_prefix_still_disables_the_gate() {
+        // A workspace with no entry-id convention has no pin to demand, and
+        // inventing one here would reject every generic-preset consumer.
+        let tmp = TempDir::new().unwrap();
+        let path = tmp.path().join(".atomic/workspace.atomic.json");
+        let mut store = AtomicStore::new();
+        append_minimal(&mut store, &path, "anything at all", "").unwrap();
+        assert!(store.changelog_entries.contains_key("anything at all"));
+    }
+
+    #[test]
+    fn r976_the_pin_the_gate_demands_is_the_one_the_projection_reads() {
+        // ONE RESOLVER: the gate must not invent a second answer to "does this
+        // id carry a round number". Every id the gate accepts under this
+        // workspace's prefix must parse for `project::parse_round_number`,
+        // which is what the changelog projection and the citation gate key on,
+        // and every id it rejects must not.
+        let tmp = TempDir::new().unwrap();
+        let path = tmp.path().join(".atomic/workspace.atomic.json");
+        for id in [
+            "Round 568",
+            "Round 293 — a title",
+            "Round misc",
+            "Round ",
+            "Round abc 12",
+        ] {
+            let mut store = AtomicStore::new();
+            let accepted = append_minimal(&mut store, &path, id, "Round ").is_ok();
+            let parses = crate::project::parse_round_number(id).is_some();
+            assert_eq!(
+                accepted, parses,
+                "`{}`: the append gate says {} and parse_round_number says {}, \
+                 so the store would hold an entry whose round the projection \
+                 cannot read (or refuse one it can)",
+                id, accepted, parses
+            );
+        }
+    }
+
     #[test]
     fn inventory_entry_round_trip() {
         // Direct insertion round-trips through save/load preserving status,
@@ -14730,7 +14836,7 @@ mod tests {
             &mut store_a,
             &path_a,
             ChangelogEntryDraft {
-                entry_id: "Round PA",
+                entry_id: "Round 9001",
                 decision_summary: Some(&long_summary),
                 changes_bullets: &["c".into()],
                 verification_bullets: &["v".into()],
@@ -14745,11 +14851,11 @@ mod tests {
         let tmp_b = TempDir::new().unwrap();
         let path_b = tmp_b.path().join(".atomic/workspace.atomic.json");
         let mut store_b = AtomicStore::new();
-        seed_entry(&mut store_b, &path_b, "Round PA");
+        seed_entry(&mut store_b, &path_b, "Round 9001");
         set_changelog_publishable_decision_summary(
             &mut store_b,
             &path_b,
-            "Round PA",
+            "Round 9001",
             &long_summary,
         )
         .expect("publishable setter must mirror append's cap-0 invariant");
@@ -14771,7 +14877,7 @@ mod tests {
             &mut store_a,
             &path_a,
             ChangelogEntryDraft {
-                entry_id: "Round PB",
+                entry_id: "Round 9002",
                 decision_summary: Some("audit summary"),
                 changes_bullets: &bullets,
                 verification_bullets: &bullets,
@@ -14789,15 +14895,20 @@ mod tests {
         let tmp_b = TempDir::new().unwrap();
         let path_b = tmp_b.path().join(".atomic/workspace.atomic.json");
         let mut store_b = AtomicStore::new();
-        seed_entry(&mut store_b, &path_b, "Round PB");
-        set_changelog_publishable_changes_bullets(&mut store_b, &path_b, "Round PB", &bullets)
+        seed_entry(&mut store_b, &path_b, "Round 9002");
+        set_changelog_publishable_changes_bullets(&mut store_b, &path_b, "Round 9002", &bullets)
             .expect("publishable changes setter must mirror append's cap-0 invariant");
-        set_changelog_publishable_verification_bullets(&mut store_b, &path_b, "Round PB", &bullets)
-            .expect("publishable verification setter must mirror append's cap-0 invariant");
+        set_changelog_publishable_verification_bullets(
+            &mut store_b,
+            &path_b,
+            "Round 9002",
+            &bullets,
+        )
+        .expect("publishable verification setter must mirror append's cap-0 invariant");
         set_changelog_publishable_impact_refs(
             &mut store_b,
             &path_b,
-            "Round PB",
+            "Round 9002",
             &bullets
                 .iter()
                 .map(|b| b.as_str().into())
@@ -14807,7 +14918,7 @@ mod tests {
         set_changelog_publishable_carry_forward_bullets(
             &mut store_b,
             &path_b,
-            "Round PB",
+            "Round 9002",
             &bullets,
         )
         .expect("publishable carry_forward setter must mirror append's cap-0 invariant");

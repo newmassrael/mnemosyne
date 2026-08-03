@@ -3835,3 +3835,297 @@ fn the_contract_states_no_undated_census_of_its_own_corpora() {
         priced_by_direction.first().expect("checked non-empty"),
     );
 }
+
+/// Every audit-half prose unit of the frozen ledger, as `(entry, field, text)`.
+fn ledger_prose() -> Vec<(String, String, String)> {
+    let raw = std::fs::read_to_string(repo_root().join("docs/.atomic/workspace.atomic.json"))
+        .expect("read the atomic store");
+    let store: serde_json::Value = serde_json::from_str(&raw).expect("parse the atomic store");
+    let entries = store
+        .get("changelog_entries")
+        .and_then(|v| v.as_object())
+        .expect("changelog_entries");
+    let mut out = Vec::new();
+    for (id, entry) in entries {
+        if let Some(s) = entry.get("decision_summary").and_then(|v| v.as_str()) {
+            out.push((id.clone(), "decision_summary".to_string(), s.to_string()));
+        }
+        for field in [
+            "changes_bullets",
+            "verification_bullets",
+            "carry_forward_bullets",
+        ] {
+            let Some(arr) = entry.get(field).and_then(|v| v.as_array()) else {
+                continue;
+            };
+            for (i, b) in arr.iter().enumerate() {
+                if let Some(s) = b.as_str() {
+                    out.push((id.clone(), format!("{field}[{i}]"), s.to_string()));
+                }
+            }
+        }
+    }
+    out
+}
+
+/// The one prose unit of the frozen ledger a citation names, or a panic that
+/// says which half of the citation failed.
+///
+/// An entry id comes in two shapes — bare `Round 568` and titled
+/// `Round 293 — <title>` — so a round is matched as the whole id or as its
+/// prefix up to the separating space, never by a bare `starts_with` that would
+/// read `Round 97` out of `Round 970`.
+fn ledger_unit(prose: &[(String, String, String)], round: u64, fragment: &str) -> String {
+    let want = format!("Round {round}");
+    let hits: Vec<&(String, String, String)> = prose
+        .iter()
+        .filter(|(id, _, _)| *id == want || id.starts_with(&format!("{want} ")))
+        .collect();
+    assert!(
+        !hits.is_empty(),
+        "no entry `{want}` in the ledger, so this citation names nothing"
+    );
+    let carrying: Vec<&&(String, String, String)> = hits
+        .iter()
+        .filter(|(_, _, text)| text.contains(fragment))
+        .collect();
+    assert_eq!(
+        carrying.len(),
+        1,
+        "`{want}` carries the fragment `{fragment}` in {} of its {} prose \
+         units; the ledger is frozen, so a citation into it resolves to exactly \
+         one or the citation is wrong",
+        carrying.len(),
+        hits.len()
+    );
+    carrying[0].2.clone()
+}
+
+/// The phrases that scope a claim to the recorded population — the tightening
+/// a census gate would reach for once its word list alone proves too loose.
+///
+/// Matched as WHOLE WORDS. A substring test reads `ever` out of `every` and so
+/// declares every universal already scoped, which is the reading that made the
+/// first measurement of this rule wrong.
+const SCOPE_MARKERS: &[&[&str]] = &[
+    &["on", "record"],
+    &["in", "this", "tree"],
+    &["this", "tree"],
+    &["ever"],
+    &["yet"],
+    &["recorded"],
+];
+
+fn scope_markers_in(sentence: &str) -> Vec<String> {
+    let words: Vec<String> = sentence
+        .split_whitespace()
+        .map(|w| {
+            w.trim_matches(|c: char| !c.is_ascii_alphanumeric())
+                .to_lowercase()
+        })
+        .filter(|w| !w.is_empty())
+        .collect();
+    SCOPE_MARKERS
+        .iter()
+        .filter(|m| words.windows(m.len()).any(|w| w == **m))
+        .map(|m| m.join(" "))
+        .collect()
+}
+
+/// The one sentence of `text` that carries `fragment`, split the way the census
+/// resolver splits (a colon does not end a sentence — Round 970).
+fn sentence_carrying(text: &str, fragment: &str) -> String {
+    let hits: Vec<&str> = text
+        .split(['.', ';'])
+        .filter(|s| s.contains(fragment))
+        .collect();
+    assert_eq!(
+        hits.len(),
+        1,
+        "`{fragment}` occurs in {} sentences of this unit, so naming one is \
+         ambiguous",
+        hits.len()
+    );
+    hits[0].split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+/// NO READING OF THE LEDGER'S PROSE IS BOTH COMPLETE AND CLEAN, AND THIS IS THE
+/// PAIR THAT PROVES IT.
+///
+/// Round 970 banned census-shaped prose from the shipping contract and recorded
+/// that the LEDGER was unmeasured, that its entries are frozen so a census in
+/// one can never be repaired, and that the only possible form would be a gate at
+/// APPEND time. Round 972 hit the same wall a second time and left the open
+/// question in one sentence: whether an append-time ban is AFFORDABLE, "since
+/// ledger prose is where findings live and a finding legitimately says 'four
+/// blind authors across two arms'". Round 975 was the third firing.
+///
+/// It was measured before it was decided. Applying this file's own resolver to
+/// all 722 entries — 10561 prose units — reports 97 universals and 148 counts.
+/// Five readings of the same question (dropping `arm`, which the ledger uses for
+/// Rust match arms and test arms; exempting quoted text, since a repair round
+/// QUOTES the sentence it is repairing; requiring a scope marker) move the
+/// universal count 97 → 70 → 60 → 58 → 29 and the count arm 148 → 26. Every
+/// reading still fires on the oracle the record itself names — Round 961's
+/// "every corpus on record has chosen directed", which Rounds 969, 970 and 972
+/// each identify as the census that shipped false — so RECALL IS STABLE AND
+/// PRECISION IS NOT, which is the Round 973 signature for a question this
+/// record cannot settle.
+///
+/// The tightest reading that still fires on the oracle reports 29 sites, of
+/// which 4 state no census. THE PAIR BELOW IS WHAT THAT TIGHTENING COSTS, and
+/// it is why the remaining four are not simply worth tuning away: one of these
+/// two frozen sentences is a census over the recorded corpora — two step
+/// classes have no witness in any of them, which one newly authored corpus
+/// would falsify — and the other is a distributive "each" over one run's
+/// sessions. The resolver fires on both and NEITHER carries a scope marker, so
+/// the scope rule drops them TOGETHER. Its precision is bought with a miss on
+/// the same axis it is aimed at, and a miss in the audit trail reads as
+/// assurance rather than as silence.
+///
+/// The COUNT half needs no ban at all, and that is structural rather than a
+/// concession: an entry is filed under its own round, so every count in it is
+/// dated by the id. Round 970's rule was "date it or drop it"; the ledger dates
+/// it by construction, and what that leaves to enforce is the pin —
+/// `r976_prefix_without_a_round_number_is_rejected` in `mnemosyne-atomic`.
+#[test]
+fn no_reading_of_ledger_prose_separates_a_census_from_a_distributive_each() {
+    let prose = ledger_prose();
+    // A census over the recorded corpora: two step classes have no witness in
+    // any of them, which one newly authored corpus would falsify.
+    let census = sentence_carrying(
+        &ledger_unit(&prose, 935, "are 0 in every corpus"),
+        "are 0 in every corpus",
+    );
+    // Not a census: one run's authoring sessions, distributed over.
+    let not_census = sentence_carrying(
+        &ledger_unit(&prose, 471, "after every authoring session"),
+        "after every authoring session",
+    );
+
+    for (label, sentence) in [("census", &census), ("not a census", &not_census)] {
+        let claims: Vec<String> = census_claims(sentence)
+            .into_iter()
+            .filter(|c| c.starts_with("universal"))
+            .collect();
+        assert!(
+            !claims.is_empty(),
+            "the resolver no longer fires on the {label} sentence, so this pair \
+             no longer demonstrates anything: {sentence}"
+        );
+        let markers = scope_markers_in(sentence);
+        assert!(
+            markers.is_empty(),
+            "the {label} sentence carries scope marker(s) {markers:?}, so a \
+             scope rule WOULD tell this pair apart and the ban is worth \
+             re-measuring rather than refused: {sentence}"
+        );
+    }
+}
+
+/// THE CENSUS CLAIMS THE LEDGER SHIPPED THAT THIS TREE CAN RECOUNT ARE FALSE,
+/// AND THE FALSITY IS BOUND TO THE PROGRAMS RATHER THAN RESTATED IN PROSE.
+///
+/// Round 970 repaired the shipping contract's census claims and its two doc
+/// comments in `mnemosyne-atomic`, naming three homes for one sentence and
+/// calling a repair to only one of them "the half-cleanup this repo bans". Its
+/// own carry then records that the LEDGER was not measured. It carries the same
+/// sentences. They cannot be repaired — the ledger is append-only — so what a
+/// round can do instead is make them un-inheritable: the axis that refutes each
+/// one is already a program in this file, and a baseline taken from any of
+/// these three sentences now fails a test that names the sentence.
+///
+/// Each assertion is stated in the DIRECTION of the finding rather than against
+/// a fixed number, so it does not rot as the corpora grow: `every` and `no`
+/// need one counterexample, and `half` needs the smaller side to stay smaller.
+#[test]
+fn the_ledger_census_claims_this_tree_can_recount_are_recounted() {
+    let root = repo_root();
+    let prose = ledger_prose();
+
+    // "every corpus on record has chosen directed" — Round 961, promoted from
+    // Round 936's count of five and inherited by Round 968 as a zero baseline.
+    let (undirected, directed) = transition_rule_census(&root);
+    for (round, fragment) in [
+        (961, "every corpus on record has chosen directed"),
+        (967, "every recorded corpus chose directed"),
+    ] {
+        ledger_unit(&prose, round, fragment);
+        assert!(
+            !undirected.is_empty(),
+            "Round {round} states `{fragment}` and the tree recounts {} \
+             undirected transition rules against {} directed. With zero \
+             undirected on record the sentence would be true again and this \
+             binding would be asserting nothing",
+            undirected.len(),
+            directed.len()
+        );
+    }
+
+    // "which is how every blind corpus on record was written" — Round 956, the
+    // same universal Round 970 removed from the contract's `edge_costs` row and
+    // left standing here.
+    let (scripted, file_only) = authoring_mode_census();
+    let fragment = "which is how every blind corpus on record was written";
+    ledger_unit(&prose, 956, fragment);
+    assert!(
+        !scripted.is_empty(),
+        "Round 956 states `{fragment}` and the tree carries {} hand-written \
+         shell scripts under the recorded run trees against {} authored files",
+        scripted.len(),
+        file_only.len()
+    );
+
+    // "Half of every blind authoring on record" — Round 934, the sentence Round
+    // 970 recounted in the contract as three of FIFTEEN and repaired there only.
+    let (omitted, declared) = map_leg_kind_census(&root);
+    let fragment = "Half of every blind authoring on record";
+    ledger_unit(&prose, 934, fragment);
+    assert!(
+        omitted.len() < declared.len(),
+        "Round 934 states `{fragment}` and the tree recounts {} rules omitting \
+         a leg kind against {} declaring one, so the omitting side is no longer \
+         the smaller one and the word `half` has to be re-measured rather than \
+         left bound here",
+        omitted.len(),
+        declared.len()
+    );
+}
+
+/// EVERY COUNT THE LEDGER STATES IS DATED BY THE ENTRY'S OWN KEY.
+///
+/// This is the fact that lets the count half of Round 970's "date it or drop
+/// it" be dropped for the ledger instead of enforced: a count inside `Round 934`
+/// is pinned to Round 934 by where it is filed, so it is history and never a
+/// standing claim. The property is only worth what the id guarantees, which is
+/// why `append_changelog_entry` now demands the number and not just the prefix.
+///
+/// The resolver is production's — `project::parse_round_number`, what the
+/// changelog projection keys on — so this cannot drift from the answer the rest
+/// of the store gives.
+#[test]
+fn every_ledger_entry_is_dated_by_its_own_key() {
+    let raw = std::fs::read_to_string(repo_root().join("docs/.atomic/workspace.atomic.json"))
+        .expect("read the atomic store");
+    let store: serde_json::Value = serde_json::from_str(&raw).expect("parse the atomic store");
+    let entries = store
+        .get("changelog_entries")
+        .and_then(|v| v.as_object())
+        .expect("changelog_entries");
+    let undated: Vec<&String> = entries
+        .keys()
+        .filter(|id| mnemosyne_atomic::project::parse_round_number(id).is_none())
+        .collect();
+    assert!(
+        undated.is_empty(),
+        "{} of {} ledger entries carry no round number in their key, so every \
+         count in their prose is undated and unrepairable: {:?}",
+        undated.len(),
+        entries.len(),
+        undated
+    );
+    assert!(
+        entries.len() > 1,
+        "a ledger with one entry cannot demonstrate that the id is what dates it"
+    );
+}

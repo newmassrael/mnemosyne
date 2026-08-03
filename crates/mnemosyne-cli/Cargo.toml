@@ -46,6 +46,11 @@ libc = "0.2"
 tempfile = { workspace = true }
 serde_json = { workspace = true }
 yaml-rust2 = { workspace = true }
+# The ledger tests ask whether an entry id carries a round pin. That question
+# already has one answer in production (`project::parse_round_number`, the
+# resolver the changelog projection keys on), so the tests borrow it rather
+# than re-deciding what a pin looks like.
+mnemosyne-atomic = { path = "../mnemosyne-atomic" }
 
 [lints]
 workspace = true
