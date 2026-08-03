@@ -328,6 +328,96 @@ fn a_census_being_added_must_match_the_tree_and_a_committed_one_need_not() {
     );
 }
 
+/// THE CHECK SAYS WHAT IT COULD SEE, ON EVERY RUN AND IN EVERY STATE.
+///
+/// Round 979 shipped the contemporaneity gate reporting only violations, so a
+/// workspace that kept no census, or had never installed the pre-commit hook,
+/// read exactly like one the gate had just cleared. Its own carry named that
+/// silence — "nothing here tells them so" — and this is the assertion that it
+/// cannot come back: four workspaces in four different states, and no two of
+/// them are allowed to say the same thing.
+///
+/// EXHAUSTIVENESS IS THE COMPILER'S, not this test's: `render_plain` matches
+/// `CensusReach` arm by arm, so a fifth state cannot be added without a
+/// rendering. What this adds is that each rendering is REACHABLE and DISTINCT,
+/// which no type can say.
+#[test]
+fn the_contemporaneity_check_names_what_it_could_see_in_every_state() {
+    let mut said: Vec<(&str, String)> = Vec::new();
+
+    // 1 — the workspace keeps no census at all.
+    let tmp = TempDir::new().unwrap();
+    write_workspace(tmp.path(), false);
+    said.push((
+        "no [census] table",
+        census_line(&run(tmp.path(), &["validate-workspace"])),
+    ));
+
+    // 2 — it keeps one, and no entry has recorded a census yet.
+    let tmp = TempDir::new().unwrap();
+    write_workspace(tmp.path(), true);
+    said.push((
+        "nothing recorded",
+        census_line(&run(tmp.path(), &["validate-workspace"])),
+    ));
+
+    // 3 — an entry records one, and nothing can say whether this commit adds it
+    // (a workspace outside any repository).
+    let tmp = TempDir::new().unwrap();
+    write_workspace(tmp.path(), true);
+    write_prose(tmp.path());
+    assert!(append(tmp.path(), "Round 979", &["--record-census"])
+        .status
+        .success());
+    said.push((
+        "no git",
+        census_line(&run(tmp.path(), &["validate-workspace"])),
+    ));
+
+    // 4 — the same entry, in a repository, uncommitted: the one decidable state.
+    let tmp = TempDir::new().unwrap();
+    let ws = tmp.path();
+    write_workspace(ws, true);
+    write_prose(ws);
+    git(ws, &["init", "--quiet"]);
+    commit_all(ws, "baseline");
+    assert!(append(ws, "Round 979", &["--record-census"])
+        .status
+        .success());
+    let measured = census_line(&run(ws, &["validate-workspace"]));
+    assert!(
+        measured.contains("1 uncommitted") && measured.contains("2 row(s)"),
+        "the measured state does not report the population it read: {measured}"
+    );
+    said.push(("measured", measured));
+
+    for (what, line) in &said {
+        assert!(
+            !line.is_empty(),
+            "`{what}`: validate-workspace says nothing about the census check, so \
+             a reader cannot tell a clean tree from one where it never ran"
+        );
+    }
+    for (i, (what_a, a)) in said.iter().enumerate() {
+        for (what_b, b) in said.iter().skip(i + 1) {
+            assert_ne!(
+                a, b,
+                "`{what_a}` and `{what_b}` are different states and say the same \
+                 thing, so the line does not distinguish them"
+            );
+        }
+    }
+}
+
+/// The one line `validate-workspace` prints about the census check, or empty.
+fn census_line(out: &std::process::Output) -> String {
+    String::from_utf8_lossy(&out.stdout)
+        .lines()
+        .find(|l| l.starts_with("census contemporaneity:"))
+        .unwrap_or_default()
+        .to_string()
+}
+
 /// NEITHER WIRE HAS A DOOR THROUGH WHICH A COUNT COULD ARRIVE.
 ///
 /// The primitive's invariants are shared by construction — one function, called

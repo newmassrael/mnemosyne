@@ -75,8 +75,12 @@ pub struct ValidateWorkspaceReport {
     pub scan_numbering_origin: Option<mnemosyne_validate::code_refs::NumberingOriginReport>,
     /// Round 979 — census rows recorded by entries this commit is ADDING that
     /// do not match the workspace's report. Empty on any tree where the answer
-    /// cannot be known (see [`uncommitted_census_disagreements`]).
+    /// cannot be known (see [`census_contemporaneity`]).
     pub census_stale: Vec<String>,
+    /// Round 980 — what the contemporaneity check was able to look at. Reported
+    /// on every run, because an empty `census_stale` is the same clean a
+    /// workspace gets when the check never ran.
+    pub census_reach: CensusReach,
     pub failed: bool,
     pub failure_reasons: Vec<String>,
 }
@@ -456,7 +460,7 @@ pub fn validate_workspace(workspace_root: &Path) -> Result<ValidateWorkspaceRepo
     }
     // Round 979 — a census an UNCOMMITTED entry records must be what the
     // workspace's report says right now.
-    let census_stale = uncommitted_census_disagreements(workspace_root, &atomic_store)?;
+    let (census_reach, census_stale) = census_contemporaneity(workspace_root, &atomic_store)?;
     if !census_stale.is_empty() {
         failure_reasons.push(format!(
             "{} uncommitted entry census row(s) disagree with the workspace's [census] report",
@@ -467,6 +471,7 @@ pub fn validate_workspace(workspace_root: &Path) -> Result<ValidateWorkspaceRepo
 
     Ok(ValidateWorkspaceReport {
         census_stale,
+        census_reach,
         orphan_actual,
         orphan_ledger: orphan_ledger_view,
         orphan_new,
@@ -503,6 +508,39 @@ pub fn validate_workspace(workspace_root: &Path) -> Result<ValidateWorkspaceRepo
     })
 }
 
+/// WHAT THE CONTEMPORANEITY CHECK COULD SEE (Round 980).
+///
+/// A verdict of "no violations" is worth what the reach behind it is worth, and
+/// this check has four ways of finding nothing — three of which are not the
+/// same as "nothing is wrong". Round 979 shipped it reporting only violations,
+/// so a workspace that had never installed the pre-commit hook, or kept no
+/// census at all, read exactly like one the gate had just cleared. That silence
+/// was named in Round 979's own carry as "nothing here tells them so" and is
+/// this type: every way of not knowing gets a name in the output, which is the
+/// Round 854 rule (a zero out of a population of zero is not a clean bill).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum CensusReach {
+    /// The workspace declares no `[census] report`, so no entry here can record
+    /// a census and there is nothing this check could ever say.
+    NotDeclared,
+    /// A report is declared and no entry records a census yet.
+    NothingRecorded,
+    /// Which entries this commit ADDS is unknowable — outside a repository, on a
+    /// branch with no `HEAD`, or with a committed store that will not parse — so
+    /// no entry can be checked and none is reported as wrong.
+    Undecidable { reason: String },
+    /// The population the check read.
+    Measured {
+        /// Entries in the store that record a census at all.
+        recorded: usize,
+        /// Of those, the ones this commit is adding — the only ones decidable.
+        uncommitted: usize,
+        /// Census rows compared against the workspace's report.
+        rows_checked: usize,
+    },
+}
+
 /// THE CENSUS AN ENTRY IS ABOUT TO FREEZE MUST BE THE ONE THE TREE HOLDS NOW.
 ///
 /// `--record-census` reads the workspace's report, so the number in an entry is
@@ -529,10 +567,13 @@ pub fn validate_workspace(workspace_root: &Path) -> Result<ValidateWorkspaceRepo
 /// `[census]` table, no git, no `HEAD` (the first commit of a repository), an
 /// unreadable committed store. A gate that guessed here would reject a
 /// legitimate workspace for the shape of its history.
-fn uncommitted_census_disagreements(
+fn census_contemporaneity(
     workspace_root: &Path,
     store: &mnemosyne_atomic::AtomicStore,
-) -> Result<Vec<String>, OpError> {
+) -> Result<(CensusReach, Vec<String>), OpError> {
+    if crate::workspace_census_report_path(workspace_root)?.is_none() {
+        return Ok((CensusReach::NotDeclared, Vec::new()));
+    }
     let recording: Vec<(&String, &Vec<mnemosyne_atomic::PopulationCensus>)> = store
         .changelog_entries
         .iter()
@@ -540,24 +581,34 @@ fn uncommitted_census_disagreements(
         .map(|(id, e)| (id, &e.population_census))
         .collect();
     if recording.is_empty() {
-        return Ok(Vec::new());
+        return Ok((CensusReach::NothingRecorded, Vec::new()));
     }
+    let undecidable = |why: &str| {
+        Ok((
+            CensusReach::Undecidable {
+                reason: why.to_string(),
+            },
+            Vec::new(),
+        ))
+    };
     let sidecar = crate::resolve_sidecar(workspace_root, None)?;
     let (Some(dir), Some(name)) = (sidecar.parent(), sidecar.file_name()) else {
-        return Ok(Vec::new());
+        return undecidable("the atomic sidecar has no parent directory to ask git from");
     };
     let out = std::process::Command::new("git")
         .args(["show", &format!("HEAD:./{}", name.to_string_lossy())])
         .current_dir(dir)
         .output();
     let Ok(out) = out else {
-        return Ok(Vec::new());
+        return undecidable("git is not runnable here");
     };
     if !out.status.success() {
-        return Ok(Vec::new());
+        return undecidable(
+            "git has no committed store at HEAD (outside a repository, or before the first commit)",
+        );
     }
     let Ok(committed) = serde_json::from_slice::<serde_json::Value>(&out.stdout) else {
-        return Ok(Vec::new());
+        return undecidable("the store committed at HEAD does not parse as JSON");
     };
     let already: BTreeSet<String> = committed
         .get("changelog_entries")
@@ -565,12 +616,16 @@ fn uncommitted_census_disagreements(
         .map(|o| o.keys().cloned().collect())
         .unwrap_or_default();
 
+    let recorded = recording.len();
+    let mut uncommitted = 0usize;
+    let mut rows_checked = 0usize;
     let mut stale = Vec::new();
     let mut report: Option<Vec<mnemosyne_atomic::PopulationCensus>> = None;
     for (id, rows) in recording {
         if already.contains(id) {
             continue;
         }
+        uncommitted += 1;
         // Resolved once, and only for a tree that has something to check — a
         // workspace with no `[census]` table cannot have recorded one either,
         // so reaching here with an unreadable report is a real defect and says
@@ -583,6 +638,7 @@ fn uncommitted_census_disagreements(
             }
         };
         for row in rows {
+            rows_checked += 1;
             if !axes.contains(row) {
                 stale.push(format!(
                     "{id}: `{}` recorded as {}={} {}={}, which is not what the \
@@ -593,7 +649,14 @@ fn uncommitted_census_disagreements(
             }
         }
     }
-    Ok(stale)
+    Ok((
+        CensusReach::Measured {
+            recorded,
+            uncommitted,
+            rows_checked,
+        },
+        stale,
+    ))
 }
 
 impl ValidateWorkspaceReport {
@@ -781,8 +844,28 @@ impl ValidateWorkspaceReport {
         for u in &self.publishable_unmatched {
             let _ = writeln!(out, "  {}", u);
         }
+        let _ = writeln!(
+            out,
+            "census contemporaneity: {} (Round 979; the check reaches only \
+             UNCOMMITTED entries, and passes vacuously where nothing is)",
+            match &self.census_reach {
+                CensusReach::NotDeclared =>
+                    "off — this workspace declares no [census] report".to_string(),
+                CensusReach::NothingRecorded => "no entry records a census yet".to_string(),
+                CensusReach::Undecidable { reason } =>
+                    format!("UNDECIDABLE — {reason}, so no entry was checked"),
+                CensusReach::Measured {
+                    recorded,
+                    uncommitted,
+                    rows_checked,
+                } => format!(
+                    "{recorded} entry(ies) record one, {uncommitted} uncommitted, \
+                     {rows_checked} row(s) checked against the report"
+                ),
+            }
+        );
         for s in &self.census_stale {
-            let _ = writeln!(out, "  census (Round 979): {}", s);
+            let _ = writeln!(out, "  {}", s);
         }
         if self.failed {
             let _ = writeln!(out, "FAILED:");
