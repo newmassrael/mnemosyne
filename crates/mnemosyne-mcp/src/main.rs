@@ -803,11 +803,21 @@ pub struct AddFactConflictArgs {
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct ValidateContinuityArgs {
+    /// PATH RESOLUTION: an explicit path override is resolved against the
+    /// SERVER PROCESS's working directory, not this workspace (Round 538 —
+    /// the same rule as `--sidecar` / `--manifest`; only the config-declared
+    /// path is workspace-rooted). An MCP caller cannot see that directory,
+    /// so send an ABSOLUTE path.
     /// Canon-order declaration path override (workspace-relative; bypasses
     /// the configured sha256 pin — the R428 rule). Omit to use
     /// `[continuity].canon_order_path`.
     #[serde(default)]
     pub order_path: Option<String>,
+    /// PATH RESOLUTION: an explicit path override is resolved against the
+    /// SERVER PROCESS's working directory, not this workspace (Round 538 —
+    /// the same rule as `--sidecar` / `--manifest`; only the config-declared
+    /// path is workspace-rooted). An MCP caller cannot see that directory,
+    /// so send an ABSOLUTE path.
     /// `narrative-rules/v1` declaration path override (Round 449;
     /// workspace-relative, bypasses the configured sha256 pin). Omit to
     /// use `[continuity].rules_path`.
@@ -817,15 +827,30 @@ pub struct ValidateContinuityArgs {
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct ProposeVerdictArgs {
+    /// PATH RESOLUTION: an explicit path override is resolved against the
+    /// SERVER PROCESS's working directory, not this workspace (Round 538 —
+    /// the same rule as `--sidecar` / `--manifest`; only the config-declared
+    /// path is workspace-rooted). An MCP caller cannot see that directory,
+    /// so send an ABSOLUTE path.
     /// Path to the candidate `import-facts` manifest (a JSON object with
     /// `frames`/`branches`/`entities`/`predicates`/`facts`/`disclosure_plans`
     /// arrays). The agent writes the candidate batch to this file, then calls
     /// the tool; the file is only READ (dry run).
     pub manifest_path: String,
+    /// PATH RESOLUTION: an explicit path override is resolved against the
+    /// SERVER PROCESS's working directory, not this workspace (Round 538 —
+    /// the same rule as `--sidecar` / `--manifest`; only the config-declared
+    /// path is workspace-rooted). An MCP caller cannot see that directory,
+    /// so send an ABSOLUTE path.
     /// Canon-order declaration path override (bypasses the pin). Omit to use
     /// `[continuity].canon_order_path`.
     #[serde(default)]
     pub order_path: Option<String>,
+    /// PATH RESOLUTION: an explicit path override is resolved against the
+    /// SERVER PROCESS's working directory, not this workspace (Round 538 —
+    /// the same rule as `--sidecar` / `--manifest`; only the config-declared
+    /// path is workspace-rooted). An MCP caller cannot see that directory,
+    /// so send an ABSOLUTE path.
     /// `narrative-rules/v1` declaration path override. Omit to use
     /// `[continuity].rules_path`.
     #[serde(default)]
@@ -839,10 +864,20 @@ pub struct ReportAuthoringFrontierArgs {
     /// gaps only (zero-fact scenes, per-scene coverage, dangling setups).
     #[serde(default)]
     pub telling: Option<String>,
+    /// PATH RESOLUTION: an explicit path override is resolved against the
+    /// SERVER PROCESS's working directory, not this workspace (Round 538 —
+    /// the same rule as `--sidecar` / `--manifest`; only the config-declared
+    /// path is workspace-rooted). An MCP caller cannot see that directory,
+    /// so send an ABSOLUTE path.
     /// Canon-order declaration path override (bypasses the pin). Omit to use
     /// `[continuity].canon_order_path`.
     #[serde(default)]
     pub order_path: Option<String>,
+    /// PATH RESOLUTION: an explicit path override is resolved against the
+    /// SERVER PROCESS's working directory, not this workspace (Round 538 —
+    /// the same rule as `--sidecar` / `--manifest`; only the config-declared
+    /// path is workspace-rooted). An MCP caller cannot see that directory,
+    /// so send an ABSOLUTE path.
     /// `narrative-rules/v1` declaration path override (Round 891; the
     /// transition rules that declare the map). Omit to use
     /// `[continuity].rules_path`.
@@ -852,9 +887,19 @@ pub struct ReportAuthoringFrontierArgs {
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct ReportTimelineGapsArgs {
+    /// PATH RESOLUTION: an explicit path override is resolved against the
+    /// SERVER PROCESS's working directory, not this workspace (Round 538 —
+    /// the same rule as `--sidecar` / `--manifest`; only the config-declared
+    /// path is workspace-rooted). An MCP caller cannot see that directory,
+    /// so send an ABSOLUTE path.
     /// Canon-order declaration path override (bypasses the pin).
     #[serde(default)]
     pub order_path: Option<String>,
+    /// PATH RESOLUTION: an explicit path override is resolved against the
+    /// SERVER PROCESS's working directory, not this workspace (Round 538 —
+    /// the same rule as `--sidecar` / `--manifest`; only the config-declared
+    /// path is workspace-rooted). An MCP caller cannot see that directory,
+    /// so send an ABSOLUTE path.
     /// `narrative-rules/v1` declaration path override (Round 490; the
     /// interval rules). Omit to use `[continuity].rules_path`.
     #[serde(default)]
@@ -863,6 +908,11 @@ pub struct ReportTimelineGapsArgs {
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct ReportTransitionMapArgs {
+    /// PATH RESOLUTION: an explicit path override is resolved against the
+    /// SERVER PROCESS's working directory, not this workspace (Round 538 —
+    /// the same rule as `--sidecar` / `--manifest`; only the config-declared
+    /// path is workspace-rooted). An MCP caller cannot see that directory,
+    /// so send an ABSOLUTE path.
     /// `narrative-rules/v1` declaration path override (Round 875; the
     /// transition rules DECLARE which predicate names a map edge). Omit to use
     /// `[continuity].rules_path`. No canon-order override — the map is read
@@ -884,6 +934,11 @@ pub struct ReportFrameViewArgs {
     pub entity: Option<String>,
     /// Canon point (structure-section id).
     pub at: String,
+    /// PATH RESOLUTION: an explicit path override is resolved against the
+    /// SERVER PROCESS's working directory, not this workspace (Round 538 —
+    /// the same rule as `--sidecar` / `--manifest`; only the config-declared
+    /// path is workspace-rooted). An MCP caller cannot see that directory,
+    /// so send an ABSOLUTE path.
     /// Canon-order declaration path override (bypasses the pin).
     #[serde(default)]
     pub order_path: Option<String>,
@@ -891,6 +946,11 @@ pub struct ReportFrameViewArgs {
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct ReportPayoffCoverageArgs {
+    /// PATH RESOLUTION: an explicit path override is resolved against the
+    /// SERVER PROCESS's working directory, not this workspace (Round 538 —
+    /// the same rule as `--sidecar` / `--manifest`; only the config-declared
+    /// path is workspace-rooted). An MCP caller cannot see that directory,
+    /// so send an ABSOLUTE path.
     /// Canon-order declaration path override (bypasses the pin).
     #[serde(default)]
     pub order_path: Option<String>,
@@ -898,6 +958,11 @@ pub struct ReportPayoffCoverageArgs {
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct ReportIronyIntervalsArgs {
+    /// PATH RESOLUTION: an explicit path override is resolved against the
+    /// SERVER PROCESS's working directory, not this workspace (Round 538 —
+    /// the same rule as `--sidecar` / `--manifest`; only the config-declared
+    /// path is workspace-rooted). An MCP caller cannot see that directory,
+    /// so send an ABSOLUTE path.
     /// Canon-order declaration path override (bypasses the pin).
     #[serde(default)]
     pub order_path: Option<String>,
@@ -909,6 +974,11 @@ pub struct ReportPlaythroughManuscriptArgs {
     /// every query world. Fail-loud on an unregistered id.
     #[serde(default)]
     pub world: Option<String>,
+    /// PATH RESOLUTION: an explicit path override is resolved against the
+    /// SERVER PROCESS's working directory, not this workspace (Round 538 —
+    /// the same rule as `--sidecar` / `--manifest`; only the config-declared
+    /// path is workspace-rooted). An MCP caller cannot see that directory,
+    /// so send an ABSOLUTE path.
     /// Canon-order declaration path override (bypasses the pin).
     #[serde(default)]
     pub order_path: Option<String>,
@@ -925,6 +995,11 @@ pub struct ReportPlaythroughManuscriptArgs {
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct ReportForkTreeArgs {
+    /// PATH RESOLUTION: an explicit path override is resolved against the
+    /// SERVER PROCESS's working directory, not this workspace (Round 538 —
+    /// the same rule as `--sidecar` / `--manifest`; only the config-declared
+    /// path is workspace-rooted). An MCP caller cannot see that directory,
+    /// so send an ABSOLUTE path.
     /// Canon-order declaration path override (bypasses the pin).
     #[serde(default)]
     pub order_path: Option<String>,
@@ -946,6 +1021,11 @@ pub struct ReportPlayableWorldArgs {
     /// unregistered id.
     #[serde(default)]
     pub world: Option<String>,
+    /// PATH RESOLUTION: an explicit path override is resolved against the
+    /// SERVER PROCESS's working directory, not this workspace (Round 538 —
+    /// the same rule as `--sidecar` / `--manifest`; only the config-declared
+    /// path is workspace-rooted). An MCP caller cannot see that directory,
+    /// so send an ABSOLUTE path.
     /// Canon-order declaration path override (bypasses the pin).
     #[serde(default)]
     pub order_path: Option<String>,
@@ -961,6 +1041,11 @@ pub struct ReportQuestGraphArgs {
     /// unregistered id.
     #[serde(default)]
     pub world: Option<String>,
+    /// PATH RESOLUTION: an explicit path override is resolved against the
+    /// SERVER PROCESS's working directory, not this workspace (Round 538 —
+    /// the same rule as `--sidecar` / `--manifest`; only the config-declared
+    /// path is workspace-rooted). An MCP caller cannot see that directory,
+    /// so send an ABSOLUTE path.
     /// Canon-order declaration path override (bypasses the pin).
     #[serde(default)]
     pub order_path: Option<String>,
@@ -976,6 +1061,11 @@ pub struct DisclosureLeakArgs {
     pub world: String,
     /// The frame whose re-extracted facts count as reader-established truth.
     pub truth_frame: String,
+    /// PATH RESOLUTION: an explicit path override is resolved against the
+    /// SERVER PROCESS's working directory, not this workspace (Round 538 —
+    /// the same rule as `--sidecar` / `--manifest`; only the config-declared
+    /// path is workspace-rooted). An MCP caller cannot see that directory,
+    /// so send an ABSOLUTE path.
     /// Canon-order declaration path override (bypasses the pin).
     #[serde(default)]
     pub order_path: Option<String>,
@@ -987,6 +1077,11 @@ pub struct RenderFidelityArgs {
     pub against: String,
     /// The assigned world-line the prose was rendered for.
     pub world: String,
+    /// PATH RESOLUTION: an explicit path override is resolved against the
+    /// SERVER PROCESS's working directory, not this workspace (Round 538 —
+    /// the same rule as `--sidecar` / `--manifest`; only the config-declared
+    /// path is workspace-rooted). An MCP caller cannot see that directory,
+    /// so send an ABSOLUTE path.
     /// Canon-order declaration path override (bypasses the pin).
     #[serde(default)]
     pub order_path: Option<String>,
@@ -994,6 +1089,11 @@ pub struct RenderFidelityArgs {
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct ImportTypingProposalsArgs {
+    /// PATH RESOLUTION: an explicit path override is resolved against the
+    /// SERVER PROCESS's working directory, not this workspace (Round 538 —
+    /// the same rule as `--sidecar` / `--manifest`; only the config-declared
+    /// path is workspace-rooted). An MCP caller cannot see that directory,
+    /// so send an ABSOLUTE path.
     /// Path to a `typing-proposals/v1` JSON artifact (workspace-relative
     /// or absolute).
     pub proposals_path: String,
@@ -1004,6 +1104,11 @@ pub struct ImportTypingProposalsArgs {
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct ReportEdgeCandidatesArgs {
+    /// PATH RESOLUTION: an explicit path override is resolved against the
+    /// SERVER PROCESS's working directory, not this workspace (Round 538 —
+    /// the same rule as `--sidecar` / `--manifest`; only the config-declared
+    /// path is workspace-rooted). An MCP caller cannot see that directory,
+    /// so send an ABSOLUTE path.
     /// Canon-order declaration path override (bypasses the pin).
     #[serde(default)]
     pub order_path: Option<String>,
@@ -1011,6 +1116,11 @@ pub struct ReportEdgeCandidatesArgs {
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct ImportEdgeProposalsArgs {
+    /// PATH RESOLUTION: an explicit path override is resolved against the
+    /// SERVER PROCESS's working directory, not this workspace (Round 538 —
+    /// the same rule as `--sidecar` / `--manifest`; only the config-declared
+    /// path is workspace-rooted). An MCP caller cannot see that directory,
+    /// so send an ABSOLUTE path.
     /// Path to an `edge-proposals/v1` JSON artifact (workspace-relative
     /// or absolute).
     pub proposals_path: String,
@@ -3513,6 +3623,65 @@ mod tests {
         out
     }
 
+    /// EVERY PATH AN AGENT CAN SEND SAYS WHAT IT IS RELATIVE TO.
+    ///
+    /// Round 998 wrote a canon order into the workspace, passed its name, and
+    /// got "No such file or directory" against a directory the test never chose:
+    /// an explicit path override is resolved against the SERVER PROCESS's
+    /// working directory. That is a deliberate rule — Round 538 made an explicit
+    /// `--order` CWD-relative to match `--sidecar` and `--manifest`, while the
+    /// config-declared path stays workspace-rooted — and it is right for a CLI,
+    /// where the working directory is the user's own choice.
+    ///
+    /// IT WAS NEVER RE-DECIDED FOR MCP, where the working directory belongs to
+    /// whatever host launched the server and the agent is told only about the
+    /// workspace. Changing the resolution is a decision about the contract and
+    /// is not taken here. What IS this side's omission is that the agent-facing
+    /// schema never said it, so the one caller who cannot see the working
+    /// directory was also the one not told it mattered.
+    ///
+    /// The rule now lives in the field descriptions, which is what an agent
+    /// reads, and this asserts it stays there — a new path argument that does
+    /// not say where it resolves fails here rather than in an agent's hands.
+    #[test]
+    fn every_path_argument_says_what_it_resolves_against() {
+        let mut checked = 0usize;
+        let mut silent = Vec::new();
+        for tool in MnemosyneServer::tool_router().list_all() {
+            let Some(props) = tool
+                .input_schema
+                .get("properties")
+                .and_then(|p| p.as_object())
+            else {
+                continue;
+            };
+            for (key, schema) in props {
+                if !key.ends_with("_path") {
+                    continue;
+                }
+                checked += 1;
+                let described = schema
+                    .get("description")
+                    .and_then(|d| d.as_str())
+                    .unwrap_or_default();
+                if !described.contains("working directory") {
+                    silent.push(format!("{}.{key}", tool.name));
+                }
+            }
+        }
+        assert!(
+            checked > 0,
+            "no tool exposes a `*_path` argument, so this gate reads nothing"
+        );
+        assert!(
+            silent.is_empty(),
+            "{} of {checked} path argument(s) do not tell an agent what they are \
+             relative to, and an MCP caller cannot see the server's working \
+             directory: {silent:?}",
+            silent.len()
+        );
+    }
+
     /// NO AGENT-FACING OPTIONAL ARGUMENT IS UNACCOUNTED FOR, AND THE POPULATION
     /// IS THE ROUTER'S RATHER THAN A LIST SOMEBODY TYPED.
     ///
@@ -3710,6 +3879,65 @@ mod tests {
                 }
             }
             _ => {}
+        }
+    }
+
+    /// `import_sections` MAKES THE SAME ALL-OR-NOTHING PROMISE AND KEEPS IT.
+    ///
+    /// Round 996 wrote the atomicity test for `import_facts` and closed with
+    /// "the case above is a template and the second one is a copy with a
+    /// different manifest" — a sentence that describes work rather than doing
+    /// it, which is the shape this session keeps paying for. It is the copy.
+    ///
+    /// The manifest's last row names a parent section that does not exist; a
+    /// handler that applied rows as it went would leave the first behind.
+    #[tokio::test]
+    async fn a_refused_section_import_leaves_the_store_untouched() {
+        for (what, parent, refused) in [
+            (
+                "a manifest whose last row names no such parent",
+                "no-such-section",
+                true,
+            ),
+            ("the same manifest with that row repaired", "40", false),
+        ] {
+            let tmp = agent_workspace();
+            let ws = tmp.path();
+            let server = MnemosyneServer::new(ws.to_path_buf()).expect("server");
+            let store_path = ws.join("docs/.atomic/workspace.atomic.json");
+            let before = std::fs::read_to_string(&store_path).expect("read the store");
+
+            let args: ImportSectionsArgs = serde_json::from_value(serde_json::json!({
+                "sections": [
+                    {"section_id": "40", "parent_doc": "spec", "title": "the first"},
+                    {"section_id": "41", "parent_doc": "spec", "title": "the last",
+                     "parent_section": parent},
+                ],
+            }))
+            .expect("manifest parse");
+            let result = server.import_sections(Parameters(args)).await;
+            let after = std::fs::read_to_string(&store_path).expect("read the store");
+
+            assert_eq!(
+                result.is_error == Some(true),
+                refused,
+                "{what}: the import was {} — {:?}",
+                if refused { "accepted" } else { "refused" },
+                result.content
+            );
+            if refused {
+                assert_eq!(
+                    before, after,
+                    "{what}: the store changed. Section 40 is exactly what a \
+                     row-at-a-time handler would have left behind"
+                );
+            } else {
+                assert_ne!(
+                    before, after,
+                    "{what}: the store did not change, so the refusal above says \
+                     nothing about atomicity"
+                );
+            }
         }
     }
 

@@ -34843,6 +34843,98 @@
         "SHOULD A RELATIVE PATH ARGUMENT RESOLVE AGAINST THE WORKSPACE? That is the open question this round found and did not answer, because it changes what the tools do rather than what the tests know. Today an agent must send an absolute path or the call reads a file from a directory it cannot see. The argument for changing it: the workspace is the only location the agent is told about. The argument against: the CLI resolves against the working directory and the two wires would then differ. It needs the owner's call, not more measurement.",
         "35 REMAIN AND EACH WANTS A WORLD ITS REPORT CAN SEE. This round proved the shape on `report_playable_world` and removed six siblings that the same world could not discriminate; the next ones need worlds with payoffs, with irony intervals, with edge candidates, with a second telling to leak against. That is per-report authoring rather than a new mechanism, and the mechanisms — file setups, `{ws}`, three oracles — are all in place."
       ]
+    },
+    "Round 999": {
+      "decision_summary": "R999 (DEBT) — the seventh time the owner asked, and this time verifying a carry's PREMISE changed what the carry was. Round 998 recorded that a path argument resolves against the server process's working directory and left it as a decision for the owner, on the stated grounds that \"the CLI resolves against the working directory and the two wires would then differ\". STAR THAT PREMISE WAS WRITTEN WITHOUT CHECKING AND TURNS OUT TO BE TRUE AND DECIDED. The resolver says so in place: an explicit `--order` override is CWD-relative by Round 538's rule, matching `--sidecar` and `--manifest`, while the config-declared path stays workspace-rooted. So this is not a defect and not an accident. STAR BUT THE RULE WAS DECIDED FOR A CLI, WHERE THE WORKING DIRECTORY IS THE USER'S OWN CHOICE, AND IT WAS NEVER RE-DECIDED FOR MCP, where it belongs to whatever host launched the server and the agent is told only about the workspace. Changing the resolution is still the owner's call. What is NOT the owner's call, and was mine, is that the agent-facing schema never said any of it: 23 of 23 path arguments described everything about themselves except the one thing an MCP caller cannot work out. The rule is now in the field descriptions — what an agent actually reads — and a test asserts it stays there, so a new path argument that does not say where it resolves fails here rather than in an agent's hands. THE GATE WAS RED ON TODAY'S TREE WITH NO INJECTION, naming all 23. STAR AND ROUND 996's OWN CARRY HAD THE SAME SHAPE IT CAUGHT ROUND 993 IN. It closed with \"`import_sections` makes the same all-or-nothing promise and is not tested for it; the case above is a template and the second one is a copy with a different manifest\" — a sentence describing work, in the round whose whole finding was that a sentence describing work is not work. The copy is written, and the injection that makes it fail is the row-at-a-time handler the contract says this verb is not.",
+      "changes_bullets": [
+        "`crates/mnemosyne-mcp/src/main.rs` — every one of the 22 path fields (23 router properties; two tools share one args struct) carries the resolution rule in its doc comment, which is what schemars puts in front of an agent.",
+        "Same file — `every_path_argument_says_what_it_resolves_against`, walking the router's own schema for `*_path` properties and requiring each description to say what it is relative to. It was red on the unmodified tree, naming all 23.",
+        "Same file — `a_refused_section_import_leaves_the_store_untouched`, the copy Round 996 described: a section manifest whose last row names a parent that does not exist must leave the store byte-identical."
+      ],
+      "verification_bullets": [
+        "STAR THE CARRY'S PREMISE WAS VERIFIED RATHER THAN INHERITED, and verifying it is what turned \"a defect awaiting a decision\" into \"a decided rule with an undocumented consequence\". `resolve_canon_order_file` states Round 538's rule in place; Round 538 was confirmed present with `query --changelog-entry`.",
+        "THE NEW GATE WAS RED WITHOUT ANY INJECTION: \"23 of 23 path argument(s) do not tell an agent what they are relative to\". That is the strongest form of non-vacuity — the tree itself was the counterexample.",
+        "INJECTION AC, one field stops saying where it resolves: \"1 of 23 ... [\\\"validate_continuity.order_path\\\"]\", so the gate reads each field rather than the file.",
+        "INJECTION AB, `import_sections` made non-atomic by committing row by row: the new test fails with \"the store changed. Section 40 is exactly what a row-at-a-time handler would have left behind\". Both directions are asserted — the repaired manifest must land, or the refusal proves nothing.",
+        "A SCRIPT'S `count == 1`-STYLE ASSERTION REFUSED A WRONG EDIT AGAIN: inserting the note expected 23 sites and found 22, because `report_payoff_coverage` and `report_payoff_substantiation` share one args struct. The script wrote nothing and the count was corrected rather than the assertion dropped.",
+        "1587 workspace tests pass (1585 before), 0 failed, `--no-fail-fast`; clippy `-D warnings` and `cargo fmt --check` clean; `validate-workspace` T1 orphan 0 and T3 reject 0.",
+        "Citation hygiene (R255): Rounds 538, 993, 996 and 998 verified present with `query --changelog-entry` and Round 999 verified absent before this entry was appended."
+      ],
+      "impact_refs": [
+        "atomic-store-mutate-api"
+      ],
+      "carry_forward_bullets": [
+        "STAR THE OPEN QUESTION IS NARROWER THAN ROUND 998 LEFT IT AND STILL NEEDS THE OWNER: should an MCP path override resolve against the WORKSPACE instead of the server's working directory? It is now documented rather than silent, so an agent that reads the schema can work; the question is whether an agent should have to. Changing it would put the two wires' explicit-path rules in disagreement, which Round 538 chose deliberately for the CLI. Nothing further can be measured — this is a contract decision.",
+        "35 ARGUMENTS REMAIN, ALL READ-SIDE, and each wants a world its report can actually see. Round 998 proved the shape and removed six siblings the same world could not discriminate; the mechanisms are all built.",
+        "BOTH ATOMICITY TESTS COVER A REFUSAL AT THE LAST ROW. A handler that failed in the MIDDLE of applying — after some rows, before others — is the same class and is not separately exercised; the two verbs commit through one primitive, so the coverage is of that primitive's contract rather than of each row boundary."
+      ],
+      "population_census": [
+        {
+          "axis": "transition rules by `undirected`",
+          "left_label": "undirected",
+          "left": 10,
+          "right_label": "directed",
+          "right": 27
+        },
+        {
+          "axis": "map corpora by leg-kind declaration",
+          "left_label": "omitted",
+          "left": 6,
+          "right_label": "declared",
+          "right": 24
+        },
+        {
+          "axis": "cost-carrying corpora by direction-dependent pricing",
+          "left_label": "prices a way by direction",
+          "left": 4,
+          "right_label": "prices no way by direction",
+          "right": 6
+        },
+        {
+          "axis": "run trees by authoring mode",
+          "left_label": "hand script",
+          "left": 10,
+          "right_label": "file-only",
+          "right": 239
+        },
+        {
+          "axis": "map corpora by declared boundary crossing",
+          "left_label": "declares an exit",
+          "left": 6,
+          "right_label": "declares none",
+          "right": 24
+        },
+        {
+          "axis": "authored submissions by map and telling",
+          "left_label": "carries both",
+          "left": 10,
+          "right_label": "carries one",
+          "right": 24
+        }
+      ],
+      "publishable_decision_summary": "R999 (DEBT) — the seventh time the owner asked, and this time verifying a carry's PREMISE changed what the carry was. Round 998 recorded that a path argument resolves against the server process's working directory and left it as a decision for the owner, on the stated grounds that \"the CLI resolves against the working directory and the two wires would then differ\". STAR THAT PREMISE WAS WRITTEN WITHOUT CHECKING AND TURNS OUT TO BE TRUE AND DECIDED. The resolver says so in place: an explicit `--order` override is CWD-relative by Round 538's rule, matching `--sidecar` and `--manifest`, while the config-declared path stays workspace-rooted. So this is not a defect and not an accident. STAR BUT THE RULE WAS DECIDED FOR A CLI, WHERE THE WORKING DIRECTORY IS THE USER'S OWN CHOICE, AND IT WAS NEVER RE-DECIDED FOR MCP, where it belongs to whatever host launched the server and the agent is told only about the workspace. Changing the resolution is still the owner's call. What is NOT the owner's call, and was mine, is that the agent-facing schema never said any of it: 23 of 23 path arguments described everything about themselves except the one thing an MCP caller cannot work out. The rule is now in the field descriptions — what an agent actually reads — and a test asserts it stays there, so a new path argument that does not say where it resolves fails here rather than in an agent's hands. THE GATE WAS RED ON TODAY'S TREE WITH NO INJECTION, naming all 23. STAR AND ROUND 996's OWN CARRY HAD THE SAME SHAPE IT CAUGHT ROUND 993 IN. It closed with \"`import_sections` makes the same all-or-nothing promise and is not tested for it; the case above is a template and the second one is a copy with a different manifest\" — a sentence describing work, in the round whose whole finding was that a sentence describing work is not work. The copy is written, and the injection that makes it fail is the row-at-a-time handler the contract says this verb is not.",
+      "publishable_changes_bullets": [
+        "`crates/mnemosyne-mcp/src/main.rs` — every one of the 22 path fields (23 router properties; two tools share one args struct) carries the resolution rule in its doc comment, which is what schemars puts in front of an agent.",
+        "Same file — `every_path_argument_says_what_it_resolves_against`, walking the router's own schema for `*_path` properties and requiring each description to say what it is relative to. It was red on the unmodified tree, naming all 23.",
+        "Same file — `a_refused_section_import_leaves_the_store_untouched`, the copy Round 996 described: a section manifest whose last row names a parent that does not exist must leave the store byte-identical."
+      ],
+      "publishable_verification_bullets": [
+        "STAR THE CARRY'S PREMISE WAS VERIFIED RATHER THAN INHERITED, and verifying it is what turned \"a defect awaiting a decision\" into \"a decided rule with an undocumented consequence\". `resolve_canon_order_file` states Round 538's rule in place; Round 538 was confirmed present with `query --changelog-entry`.",
+        "THE NEW GATE WAS RED WITHOUT ANY INJECTION: \"23 of 23 path argument(s) do not tell an agent what they are relative to\". That is the strongest form of non-vacuity — the tree itself was the counterexample.",
+        "INJECTION AC, one field stops saying where it resolves: \"1 of 23 ... [\\\"validate_continuity.order_path\\\"]\", so the gate reads each field rather than the file.",
+        "INJECTION AB, `import_sections` made non-atomic by committing row by row: the new test fails with \"the store changed. Section 40 is exactly what a row-at-a-time handler would have left behind\". Both directions are asserted — the repaired manifest must land, or the refusal proves nothing.",
+        "A SCRIPT'S `count == 1`-STYLE ASSERTION REFUSED A WRONG EDIT AGAIN: inserting the note expected 23 sites and found 22, because `report_payoff_coverage` and `report_payoff_substantiation` share one args struct. The script wrote nothing and the count was corrected rather than the assertion dropped.",
+        "1587 workspace tests pass (1585 before), 0 failed, `--no-fail-fast`; clippy `-D warnings` and `cargo fmt --check` clean; `validate-workspace` T1 orphan 0 and T3 reject 0.",
+        "Citation hygiene (R255): Rounds 538, 993, 996 and 998 verified present with `query --changelog-entry` and Round 999 verified absent before this entry was appended."
+      ],
+      "publishable_impact_refs": [
+        "atomic-store-mutate-api"
+      ],
+      "publishable_carry_forward_bullets": [
+        "STAR THE OPEN QUESTION IS NARROWER THAN ROUND 998 LEFT IT AND STILL NEEDS THE OWNER: should an MCP path override resolve against the WORKSPACE instead of the server's working directory? It is now documented rather than silent, so an agent that reads the schema can work; the question is whether an agent should have to. Changing it would put the two wires' explicit-path rules in disagreement, which Round 538 chose deliberately for the CLI. Nothing further can be measured — this is a contract decision.",
+        "35 ARGUMENTS REMAIN, ALL READ-SIDE, and each wants a world its report can actually see. Round 998 proved the shape and removed six siblings the same world could not discriminate; the mechanisms are all built.",
+        "BOTH ATOMICITY TESTS COVER A REFUSAL AT THE LAST ROW. A handler that failed in the MIDDLE of applying — after some rows, before others — is the same class and is not separately exercised; the two verbs commit through one primitive, so the coverage is of that primitive's contract rather than of each row boundary."
+      ]
     }
   },
   "inventory_entries": {},
