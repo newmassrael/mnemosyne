@@ -1,0 +1,651 @@
+//! What stands between an authoring slip and the runtime (Rounds 1033, 1034).
+//!
+//! Round 1031 built a gate for ONE play-breaking class and chose that class by
+//! reading a doc comment. Round 1033 replaced that hand-list with a walk: the
+//! population is DERIVED from the store — the quest layer of the one
+//! blind-authored branching corpus, and per fact the legs it ACTUALLY has —
+//! and each corruption is applied to the MANIFEST and pushed through the real
+//! write path, so what is judged is what an author could commit.
+//!
+//! That walk answered "how much of the arc's surface is left" and left one
+//! question open in so many words: WHICH of the silent corruptions admit a
+//! declared contract to gate against, the way `requires` did. This round
+//! answers it, and moving the walk here is how. Round 1033 ran three stations
+//! it called by hand from the library; the reads a consumer actually has are
+//! the verbs the CLI advertises, and there are thirty-two of them. So:
+//!
+//! - The PANEL is derived from `--help`, not curated. Every advertised
+//!   `report-*` / `validate-*` verb is asked. A verb that cannot be asked
+//!   without inventing an argument this corpus does not supply fails AT
+//!   BASELINE and is excluded by that measurement, with its name and its
+//!   refusal printed.
+//! - "The system has somewhere to PUT this" is derived too, and against the
+//!   store rather than against a list of field names. A read that merely
+//!   carries the edited datum reproduces the store's own diff; a read that
+//!   CLASSIFIES moves an id between buckets the store never held. Comparing
+//!   the read's resize footprint against the STORE's separates the two, so a
+//!   rendering read cannot masquerade as a defect detector.
+//!
+//! Each corruption lands in exactly one bucket:
+//!
+//! - `REFUSED` — the write path rejects it. The class cannot be authored.
+//! - `CAUGHT` — some shipped read EXITS NON-ZERO. A gate rejects it.
+//! - `REPORTED` — every read exits 0, but some read RECLASSIFIES: a list the
+//!   store does not hold changes size. The system has a place to stand, so
+//!   whether to gate is a policy question with a named owner rather than a
+//!   missing capability. Necessary for a gate, not sufficient — `dangling` is
+//!   computed and deliberately never rejects, and that is a decision already
+//!   made rather than a hole.
+//! - `CARRIED` — every read exits 0 and nothing derived moves. A rendering
+//!   read reproduces the altered datum and no other read has an opinion.
+//!   THIS is the arc's floor: the store states the datum once, so there is no
+//!   second declaration for a gate to compare it against.
+//! - `INERT` — no advertised read distinguishes it at all. The store holds a
+//!   datum no consumer can see.
+//!
+//! The census is pinned. A new leg kind, a new quest fact, a new verb, or a
+//! read that starts or stops seeing a class all move it, which is the point:
+//! the number is the arc's remaining surface, re-derived on every run.
+
+use std::collections::{BTreeMap, BTreeSet};
+use std::path::Path;
+
+use mnemosyne_atomic::AtomicStore;
+
+mod common;
+use common::{cli_binary, dnd_quest_facts, dnd_quest_workspace_try, run};
+
+/// The sidecar the import writes, relative to the workspace root.
+const SIDECAR: &str = "docs/.atomic/workspace.atomic.json";
+
+/// The store as the import left it, read back as the store's own serialization.
+fn read_sidecar(ws: &Path) -> serde_json::Value {
+    let path = ws.join(SIDECAR);
+    let text = std::fs::read_to_string(&path)
+        .unwrap_or_else(|e| panic!("sidecar {} unreadable: {e}", path.display()));
+    serde_json::from_str(&text).expect("the store serializes as json")
+}
+
+/// The corpus's own telling, read from the store rather than named here — the
+/// walk supplies no argument the corpus did not declare.
+fn telling_of(store: &AtomicStore) -> String {
+    let mut plans = store.disclosure_plans.keys();
+    let telling = plans
+        .next()
+        .expect("the corpus declares a disclosure plan")
+        .clone();
+    assert_eq!(
+        plans.next(),
+        None,
+        "the corpus declares more than one telling, so `the` telling is no \
+         longer derivable — the walk would have to choose, which is the \
+         invented argument this panel refuses to make"
+    );
+    telling
+}
+
+/// One authorable corruption: which fact, which leg, and the edit itself.
+struct Corruption {
+    fact: String,
+    leg: &'static str,
+    apply: Box<dyn Fn(&mut serde_json::Value)>,
+}
+
+/// Swap an entity out of a fact's `entities` list and the replacement in — the
+/// R446 invariant the write path enforces, so a claim retarget carries it.
+/// Without this the corruption is refused, and a refused corruption is not a
+/// move an author could make.
+fn swap_entity(fact: &mut serde_json::Value, from: &str, to: &str) {
+    let list = fact["entities"].as_array_mut().expect("entities array");
+    list.retain(|e| e != from);
+    let to_value = serde_json::Value::from(to);
+    if !list.contains(&to_value) {
+        list.push(to_value);
+    }
+}
+
+/// DERIVE the corruption population: the quest layer's facts, and per fact the
+/// legs it actually carries. Nothing here names a defect class — the classes
+/// are whatever the legs turn out to be.
+fn corruptions(store: &AtomicStore, facts_json: &serde_json::Value) -> Vec<Corruption> {
+    let structural =
+        mnemosyne_validate::continuity::structural_fact_ids(store).expect("quest plumbing derives");
+    // The quest layer = the plumbing plus whatever pays it off (a completion
+    // fact credits a giving setup, and both are the runtime's business).
+    let mut population: BTreeSet<String> = structural.clone();
+    for (id, fact) in &store.narrative_facts {
+        if fact
+            .pays_off
+            .iter()
+            .any(|t| structural.contains(t.as_str()))
+        {
+            population.insert(id.to_string());
+        }
+    }
+
+    // The alternatives a retarget can choose, derived from what the store
+    // already uses in that role — so the corruption stays type-plausible.
+    let mut objects_of: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
+    let mut predicates: BTreeSet<String> = BTreeSet::new();
+    for fact in store.narrative_facts.values() {
+        let Some(claim) = &fact.typed else { continue };
+        if let mnemosyne_core::TypedObject::Entity { id } = &claim.object {
+            predicates.insert(claim.predicate.to_string());
+            objects_of
+                .entry(claim.predicate.to_string())
+                .or_default()
+                .insert(id.to_string());
+        }
+    }
+
+    let mut out = Vec::new();
+    for entry in facts_json["facts"].as_array().expect("facts array") {
+        let id = entry["fact_id"].as_str().expect("fact_id").to_string();
+        if !population.contains(&id) {
+            continue;
+        }
+        let fact = &store.narrative_facts[&id.as_str().into()];
+
+        // The legs, each guarded by whether this fact HAS it.
+        if let Some(claim) = &fact.typed {
+            if let mnemosyne_core::TypedObject::Entity { id: object } = &claim.object {
+                let object = object.to_string();
+                let predicate = claim.predicate.to_string();
+                // Leg 1 — the claim points at a different entity of the same role.
+                if let Some(alt) = objects_of[&predicate]
+                    .iter()
+                    .find(|c| **c != object)
+                    .cloned()
+                {
+                    let from = object.clone();
+                    out.push(Corruption {
+                        fact: id.clone(),
+                        leg: "typed.object",
+                        apply: Box::new(move |f| {
+                            f["typed"]["object"]["id"] = alt.as_str().into();
+                            swap_entity(f, &from, &alt);
+                        }),
+                    });
+                }
+                // Leg 2 — the claim carries a different predicate.
+                if let Some(alt) = predicates.iter().find(|p| **p != predicate).cloned() {
+                    out.push(Corruption {
+                        fact: id.clone(),
+                        leg: "typed.predicate",
+                        apply: Box::new(move |f| f["typed"]["predicate"] = alt.as_str().into()),
+                    });
+                }
+            }
+        }
+        // Leg 3 — one payoff edge goes missing.
+        if !fact.pays_off.is_empty() {
+            out.push(Corruption {
+                fact: id.clone(),
+                leg: "pays_off",
+                apply: Box::new(|f| {
+                    f["pays_off"].as_array_mut().expect("pays_off").remove(0);
+                }),
+            });
+        }
+        // Leg 4 — a setup stops expecting its payoff.
+        if fact.payoff_expectation == mnemosyne_core::PayoffExpectation::Expected {
+            out.push(Corruption {
+                fact: id.clone(),
+                leg: "payoff_expectation",
+                apply: Box::new(|f| {
+                    f.as_object_mut()
+                        .expect("fact object")
+                        .remove("payoff_expectation");
+                }),
+            });
+        }
+        // Leg 5 — a backreference goes missing.
+        if fact.evidence.len() > 1 {
+            out.push(Corruption {
+                fact: id.clone(),
+                leg: "evidence",
+                apply: Box::new(|f| {
+                    f["evidence"].as_array_mut().expect("evidence").remove(0);
+                }),
+            });
+        }
+    }
+    out
+}
+
+/// One shipped read, and the arguments the CORPUS can answer it with.
+struct Read {
+    verb: String,
+    args: Vec<String>,
+}
+
+impl Read {
+    fn argv(&self) -> Vec<&str> {
+        let mut argv = vec![self.verb.as_str()];
+        argv.extend(self.args.iter().map(String::as_str));
+        argv.push("--json");
+        argv
+    }
+}
+
+/// Every `report-*` / `validate-*` verb the shipped help advertises. Read from
+/// the token that FOLLOWS the program path on each usage line, so a verb named
+/// in a note's prose is not mistaken for a dispatchable one.
+fn advertised_reads(ws: &Path) -> BTreeSet<String> {
+    let help = run(ws, &["--help"]);
+    assert!(help.status.success(), "--help must exit 0");
+    let help = String::from_utf8(help.stdout).expect("help is utf-8");
+    let bin = cli_binary();
+    let verbs: BTreeSet<String> = help
+        .lines()
+        .filter_map(|line| {
+            let mut tokens = line.split_whitespace().skip_while(|t| *t != bin);
+            tokens.next()?;
+            tokens.next().map(str::to_string)
+        })
+        .filter(|verb| verb.starts_with("report-") || verb.starts_with("validate-"))
+        .collect();
+    assert!(
+        verbs.len() > 20,
+        "the panel derivation read {} verbs out of the shipped help, which is \
+         a parse that stopped working rather than a CLI that shrank",
+        verbs.len()
+    );
+    verbs
+}
+
+/// Ask every advertised read at BASELINE, bare first and then with the corpus's
+/// own telling. A read that still refuses needs an argument this corpus does
+/// not supply; it is excluded BY THAT MEASUREMENT, and its refusal is returned
+/// to be printed rather than curated away.
+fn panel(ws: &Path, telling: &str) -> (Vec<Read>, Vec<(String, String)>) {
+    let mut asked = Vec::new();
+    let mut unaskable = Vec::new();
+    for verb in advertised_reads(ws) {
+        let candidates = [
+            Vec::new(),
+            vec!["--telling".to_string(), telling.to_string()],
+        ];
+        let mut refusal = None;
+        for args in candidates {
+            let read = Read {
+                verb: verb.clone(),
+                args,
+            };
+            let out = run(ws, &read.argv());
+            if out.status.success() {
+                asked.push(read);
+                refusal = None;
+                break;
+            }
+            refusal.get_or_insert_with(|| {
+                String::from_utf8_lossy(&out.stderr)
+                    .lines()
+                    .next()
+                    .unwrap_or("(no stderr)")
+                    .to_string()
+            });
+        }
+        if let Some(reason) = refusal {
+            unaskable.push((verb, reason));
+        }
+    }
+    (asked, unaskable)
+}
+
+/// Where a read RECLASSIFIED something: the JSON paths whose list holds a
+/// different NUMBER of entries than it did at baseline.
+///
+/// This is the discriminator between a read that merely carries the changed
+/// datum and a read that has somewhere to PUT it. A rendering read re-renders
+/// the altered prose — leaves change, cardinalities do not. A read that sorts
+/// facts into `dangling` / `payoffs_to_unmarked` / `unresolved_quests` /
+/// `violations` moves one across, and the path names the bucket, so whether
+/// that bucket is a finding or merely content is visible rather than assumed.
+///
+/// A resized list is NOT descended into: once the length moved, comparing the
+/// n-th element against the n-th is comparing two different things, and the
+/// index-shift shows up as a phantom finding one level down.
+fn resized(base: &serde_json::Value, now: &serde_json::Value, path: &str, out: &mut Vec<String>) {
+    match (base, now) {
+        (serde_json::Value::Array(b), serde_json::Value::Array(n)) => {
+            if b.len() != n.len() {
+                out.push(format!("{path}({}->{})", b.len(), n.len()));
+                return;
+            }
+            for (i, (b, n)) in b.iter().zip(n).enumerate() {
+                resized(b, n, &format!("{path}[{i}]"), out);
+            }
+        }
+        (serde_json::Value::Object(b), serde_json::Value::Object(n)) => {
+            let mut moved = false;
+            for key in n.keys().filter(|k| !b.contains_key(*k)) {
+                out.push(format!("{path}.{key}(+)"));
+                moved = true;
+            }
+            for key in b.keys().filter(|k| !n.contains_key(*k)) {
+                out.push(format!("{path}.{key}(-)"));
+                moved = true;
+            }
+            if moved {
+                return;
+            }
+            for (key, bv) in b {
+                if let Some(nv) = n.get(key) {
+                    resized(bv, nv, &format!("{path}.{key}"), out);
+                }
+            }
+        }
+        _ => {}
+    }
+}
+
+/// The last segment of a resize path, which is the datum's own name and the
+/// count it moved between — `evidence(2->1)`. Taken from the STORE's diff it is
+/// the corruption's echo; found in a READ's diff it is that same datum being
+/// carried through, not a classification the read made.
+fn signature(path: &str) -> &str {
+    path.rsplit('.').next().unwrap_or(path)
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+enum Bucket {
+    Refused,
+    Caught,
+    Reported,
+    Carried,
+    Inert,
+}
+
+impl Bucket {
+    fn as_str(self) -> &'static str {
+        match self {
+            Bucket::Refused => "REFUSED",
+            Bucket::Caught => "CAUGHT",
+            Bucket::Reported => "REPORTED",
+            Bucket::Carried => "CARRIED",
+            Bucket::Inert => "INERT",
+        }
+    }
+}
+
+/// One read's answer about one store. A verb that takes `--json` and answers in
+/// prose anyway can still be compared for difference, but it holds no list, so
+/// it can never be asked whether it STARTED SAYING SOMETHING — a limit of the
+/// panel that is named and printed rather than absorbed.
+enum Answer {
+    Json(serde_json::Value),
+    Prose(String),
+}
+
+impl Answer {
+    fn read(stdout: Vec<u8>) -> Self {
+        let text = String::from_utf8(stdout).expect("cli output is utf-8");
+        match serde_json::from_str(&text) {
+            Ok(json) => Answer::Json(json),
+            Err(_) => Answer::Prose(text),
+        }
+    }
+}
+
+/// What every advertised read said about one store.
+struct Panelled {
+    failed: Vec<String>,
+    answers: BTreeMap<String, Answer>,
+}
+
+fn ask_panel(ws: &Path, panel: &[Read]) -> Panelled {
+    let mut failed = Vec::new();
+    let mut answers = BTreeMap::new();
+    for read in panel {
+        let out = run(ws, &read.argv());
+        if out.status.success() {
+            answers.insert(read.verb.clone(), Answer::read(out.stdout));
+        } else {
+            failed.push(read.verb.clone());
+        }
+    }
+    Panelled { failed, answers }
+}
+
+#[test]
+fn the_walk_says_what_stands_between_an_authoring_slip_and_the_runtime() {
+    let facts_json = dnd_quest_facts();
+    let baseline_ws = dnd_quest_workspace_try(&facts_json).expect("the authored store must load");
+    let baseline_store =
+        AtomicStore::load(&baseline_ws.path().join(SIDECAR)).expect("the imported store loads");
+    let baseline_sidecar = read_sidecar(baseline_ws.path());
+    let telling = telling_of(&baseline_store);
+
+    let (panel, unaskable) = panel(baseline_ws.path(), &telling);
+    let baseline = ask_panel(baseline_ws.path(), &panel);
+    assert!(
+        baseline.failed.is_empty(),
+        "the panel is exactly the reads that answered at baseline: {:?}",
+        baseline.failed
+    );
+
+    let population = corruptions(&baseline_store, &facts_json);
+    assert!(
+        population.len() >= 30,
+        "the derived population collapsed to {} — a walk that finds almost \
+         nothing reads exactly like a store with almost no surface",
+        population.len()
+    );
+
+    let mut census: BTreeMap<Bucket, usize> = BTreeMap::new();
+    let mut rows: BTreeMap<Bucket, Vec<String>> = BTreeMap::new();
+    for (index, corruption) in population.iter().enumerate() {
+        let mut mutated = facts_json.clone();
+        let mut applied = 0usize;
+        for entry in mutated["facts"].as_array_mut().expect("facts array") {
+            if entry["fact_id"] == corruption.fact.as_str() {
+                (corruption.apply)(entry);
+                applied += 1;
+            }
+        }
+        assert_eq!(
+            applied, 1,
+            "corruption {index} ({}/{}) applied {applied} times",
+            corruption.fact, corruption.leg
+        );
+
+        let mut note = String::new();
+        let bucket = match dnd_quest_workspace_try(&mutated) {
+            Err(_) => Bucket::Refused,
+            Ok(ws) => {
+                let seen = ask_panel(ws.path(), &panel);
+                if !seen.failed.is_empty() {
+                    note = format!(" <- {}", seen.failed.join(" "));
+                    Bucket::Caught
+                } else {
+                    // What the manifest edit did to the STORE, before any read
+                    // had an opinion: the corruption's own echo.
+                    let mut store_paths = Vec::new();
+                    resized(
+                        &baseline_sidecar,
+                        &read_sidecar(ws.path()),
+                        "store",
+                        &mut store_paths,
+                    );
+                    let echo: BTreeSet<&str> = store_paths.iter().map(|p| signature(p)).collect();
+                    let mut growth: Vec<String> = Vec::new();
+                    let mut differing: Vec<&str> = Vec::new();
+                    for read in &panel {
+                        match (&baseline.answers[&read.verb], &seen.answers[&read.verb]) {
+                            (Answer::Json(before), Answer::Json(after)) => {
+                                if before == after {
+                                    continue;
+                                }
+                                differing.push(read.verb.as_str());
+                                resized(before, after, &read.verb, &mut growth);
+                            }
+                            (Answer::Prose(before), Answer::Prose(after)) => {
+                                if before != after {
+                                    differing.push(read.verb.as_str());
+                                }
+                            }
+                            _ => panic!(
+                                "`{}` answered in one shape at baseline and another here",
+                                read.verb
+                            ),
+                        }
+                    }
+                    let derived: Vec<&String> = growth
+                        .iter()
+                        .filter(|p| !echo.contains(signature(p)))
+                        .collect();
+                    if !derived.is_empty() {
+                        note = format!(
+                            " <- {}",
+                            derived
+                                .iter()
+                                .map(|p| p.as_str())
+                                .collect::<Vec<_>>()
+                                .join(" ")
+                        );
+                        Bucket::Reported
+                    } else if !differing.is_empty() {
+                        note = format!(" <- {}", differing.join(" "));
+                        Bucket::Carried
+                    } else {
+                        Bucket::Inert
+                    }
+                }
+            }
+        };
+        *census.entry(bucket).or_default() += 1;
+        rows.entry(bucket)
+            .or_default()
+            .push(format!("{}/{}{note}", corruption.fact, corruption.leg));
+    }
+
+    // Print BEFORE asserting: a first-violation stop would make the whole walk
+    // report one line (the R1026 lesson).
+    println!(
+        "panel: {} advertised reads asked, {} unaskable by this corpus",
+        panel.len(),
+        unaskable.len()
+    );
+    for read in &panel {
+        println!("    ask  {}", read.argv().join(" "));
+    }
+    for (verb, reason) in &unaskable {
+        println!("    skip {verb} :: {reason}");
+    }
+    let prose_only: Vec<&str> = baseline
+        .answers
+        .iter()
+        .filter(|(_, a)| matches!(a, Answer::Prose(_)))
+        .map(|(verb, _)| verb.as_str())
+        .collect();
+    println!(
+        "    of those, {} answer `--json` in prose, so they hold no list and \
+         cannot be asked whether they started saying something: {}",
+        prose_only.len(),
+        prose_only.join(" ")
+    );
+    println!(
+        "\nplay-break class census over {} derived corruptions:",
+        population.len()
+    );
+    for (bucket, n) in &census {
+        println!("  {:9} {n}", bucket.as_str());
+    }
+    for (bucket, listed) in &rows {
+        println!("\n{} — {}:", bucket.as_str(), listed.len());
+        for row in listed {
+            println!("    {row}");
+        }
+    }
+
+    assert_eq!(
+        census.values().sum::<usize>(),
+        population.len(),
+        "every corruption lands in exactly one bucket"
+    );
+
+    // The panel is the shipped surface, so a new verb has to be LOOKED AT
+    // rather than absorbed. The unaskable four are earned, not curated: each
+    // was asked at baseline and refused for a stated missing argument this
+    // corpus does not supply.
+    assert_eq!(
+        unaskable
+            .iter()
+            .map(|(verb, _)| verb.as_str())
+            .collect::<Vec<_>>(),
+        [
+            "report-entity",
+            "report-frame-view",
+            "validate-disclosure-leak",
+            "validate-render-fidelity",
+        ],
+        "the reads this corpus cannot ask without inventing an argument"
+    );
+    assert_eq!(
+        prose_only,
+        ["validate-workspace"],
+        "the reads that take `--json` and answer in prose — they hold no list, \
+         so this walk can see them REJECT but never see them RECLASSIFY"
+    );
+
+    // THE NUMBER THIS ROUND EXISTS TO PRODUCE.
+    //
+    // REFUSED is 0 and that is a measurement: every corruption carries its own
+    // entities list (`swap_entity`), which is what Round 1031 learned the write
+    // path demands. An author who keeps the store's own invariants can commit
+    // all 41.
+    //
+    // INERT is 0, and it overturns a claim Round 1033 pinned. That walk ran
+    // three stations and found two payoff edges neither runtime projection
+    // carried; it scoped the finding honestly to those two reads. Asked of the
+    // whole shipped surface, `report-payoff-coverage` and
+    // `report-payoff-substantiation` both reclassify them. NOTHING in the quest
+    // layer is invisible to every consumer.
+    assert_eq!(
+        census,
+        BTreeMap::from([
+            (Bucket::Caught, 6),
+            (Bucket::Reported, 19),
+            (Bucket::Carried, 16),
+        ]),
+        "the play-break census over the quest layer"
+    );
+
+    // THE ANSWER TO ROUND 1033'S QUESTION, named rather than counted: the
+    // corruptions for which no shipped read derives anything at all. Every
+    // other row moves some classification the system already computes, so a
+    // gate would have a place to stand and the question is policy. These
+    // sixteen have no such place — a rendering read carries the altered datum
+    // and nothing else in the system has an opinion. Two legs, and the shape of
+    // both is that the store states the datum ONCE: a retargeted claim object
+    // is a different story rather than a broken one, and a dropped evidence
+    // backreference removes the only record that the link was ever claimed.
+    // This is the R476 ceiling — author content, not missing enforcement —
+    // showing up one layer down, and it is 16 of 41 rather than 33.
+    assert_eq!(
+        rows[&Bucket::Carried]
+            .iter()
+            .map(|row| row.split(" <-").next().expect("row head").to_string())
+            .collect::<Vec<_>>(),
+        [
+            "f-161/typed.object",
+            "f-161/evidence",
+            "f-180/evidence",
+            "f-305/typed.object",
+            "f-305/evidence",
+            "f-316/typed.object",
+            "f-316/evidence",
+            "f-404/typed.object",
+            "f-404/evidence",
+            "f-409/typed.object",
+            "f-409/evidence",
+            "f-411/evidence",
+            "f-505/typed.object",
+            "f-505/evidence",
+            "f-515/typed.object",
+            "f-515/evidence",
+        ],
+        "the corruptions no shipped read derives anything from"
+    );
+}

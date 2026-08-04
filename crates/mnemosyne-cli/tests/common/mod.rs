@@ -76,6 +76,13 @@ pub fn dnd_quest_facts() -> serde_json::Value {
 /// the authoring path, and it validates: a corruption the import rejects is a
 /// corruption no author could have shipped).
 pub fn dnd_quest_workspace_from(facts: &serde_json::Value) -> TempDir {
+    dnd_quest_workspace_try(facts).unwrap_or_else(|e| panic!("the fact manifest must import: {e}"))
+}
+
+/// The same recipe, with the fact import's REFUSAL handed back rather than
+/// asserted. A walk that corrupts the manifest needs "the write path rejected
+/// this" as a VERDICT about the corruption, not as a failure of the walk.
+pub fn dnd_quest_workspace_try(facts: &serde_json::Value) -> Result<TempDir, String> {
     let tmp = TempDir::new().expect("tempdir");
     let ws = tmp.path();
     fs::create_dir_all(ws.join("docs/.atomic")).expect("mkdir");
@@ -110,8 +117,13 @@ pub fn dnd_quest_workspace_from(facts: &serde_json::Value) -> TempDir {
     .expect("write seed");
 
     run_ok(ws, &["import-sections", "--manifest", "sections.json"]);
-    run_ok(ws, &["import-facts", "--manifest", "facts.json"]);
-    tmp
+    let facts_import = run(ws, &["import-facts", "--manifest", "facts.json"]);
+    if !facts_import.status.success() {
+        return Err(String::from_utf8_lossy(&facts_import.stderr)
+            .trim()
+            .to_string());
+    }
+    Ok(tmp)
 }
 
 /// The authored store exactly as the blind author left it.
