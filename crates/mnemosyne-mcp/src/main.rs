@@ -131,12 +131,38 @@ pub struct StyleCheckArgs {
     pub severity: Option<String>,
 }
 
+/// THREE STRUCTS BECAUSE THERE ARE THREE VALUE SPACES.
+///
+/// These were one `SetSectionTextArgs` whose `text` field carried the doc "New
+/// value. For intent: a single sentence, max ~200 chars" — a per-user caveat
+/// inside a shared shape, which is the same defect the round before this one
+/// removed from the bullet setters, still standing three declarations away. A
+/// struct can only say one thing, so it said the intent's rule to the title and
+/// the parent doc as well, and named none of them.
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
-pub struct SetSectionTextArgs {
-    /// Section ID to mutate. Pass `"39"`, not `""`.
+pub struct SetSectionTitleArgs {
+    /// Section ID to mutate. Pass `"39"`, not `"§39"`.
     pub section_id: ExistingRef,
-    /// New value. For intent: a single sentence, max ~200 chars.
-    pub text: String,
+    /// Heading text. Free prose, no length rule of its own.
+    pub title: String,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct SetSectionParentDocArgs {
+    /// Section ID to mutate. Pass `"39"`, not `"§39"`.
+    pub section_id: ExistingRef,
+    /// The owning doc this section re-binds to — an identifier, not prose.
+    pub parent_doc: String,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct SetSectionIntentArgs {
+    /// Section ID to mutate. Pass `"39"`, not `"§39"`.
+    pub section_id: ExistingRef,
+    /// One sentence stating what the section is for. The store enforces a
+    /// length cap and refuses a longer value; this is the only one of the three
+    /// section-text arguments with a rule of its own.
+    pub intent: String,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
@@ -405,6 +431,7 @@ pub struct AddBranchArgs {
 /// One incoming-merge edge of a confluence branch (R532): the parent
 /// world-line + the parent's merge coordinate (structure-section id).
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[schemars(inline)]
 pub struct ConvergeEdgeArg {
     pub branch: String,
     pub at: String,
@@ -703,6 +730,7 @@ pub struct AddDisclosurePlanArgs {
 /// One per-world-line first-reveal trigger (Round 752) — a branch plus its
 /// trigger-coordinate SET and an optional K-of-N threshold.
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[schemars(inline)]
 pub struct DisclosureRevealArg {
     /// World-line this reveal pins timing for (main or a registered branch).
     pub branch: String,
@@ -1887,9 +1915,9 @@ impl MnemosyneServer {
     #[tool(
         description = "Set Section.title (heading text). Section must exist (use add_section to create first)."
     )]
-    async fn set_section_title(&self, args: Parameters<SetSectionTextArgs>) -> CallToolResult {
+    async fn set_section_title(&self, args: Parameters<SetSectionTitleArgs>) -> CallToolResult {
         let section = strip_section_marker(&args.0.section_id).to_string();
-        let title = args.0.text.clone();
+        let title = args.0.title.clone();
         let outcome =
             self.run_mutate(|store, path| atomic::set_section_title(store, path, &section, &title));
         self.finish_mutate(outcome)
@@ -1898,9 +1926,12 @@ impl MnemosyneServer {
     #[tool(
         description = "Set Section.parent_doc (re-bind section to a different owning doc). Section must exist."
     )]
-    async fn set_section_parent_doc(&self, args: Parameters<SetSectionTextArgs>) -> CallToolResult {
+    async fn set_section_parent_doc(
+        &self,
+        args: Parameters<SetSectionParentDocArgs>,
+    ) -> CallToolResult {
         let section = strip_section_marker(&args.0.section_id).to_string();
-        let parent_doc = args.0.text.clone();
+        let parent_doc = args.0.parent_doc.clone();
         let outcome = self.run_mutate(|store, path| {
             atomic::set_section_parent_doc(store, path, &section, &parent_doc)
         });
@@ -1929,9 +1960,9 @@ impl MnemosyneServer {
     #[tool(
         description = "Set Section.intent atomic field. The intent is a one-sentence statement of what the section is for. Replaces any previous intent. T1+T2 run pre-write."
     )]
-    async fn set_section_intent(&self, args: Parameters<SetSectionTextArgs>) -> CallToolResult {
+    async fn set_section_intent(&self, args: Parameters<SetSectionIntentArgs>) -> CallToolResult {
         let section = strip_section_marker(&args.0.section_id).to_string();
-        let intent = args.0.text.clone();
+        let intent = args.0.intent.clone();
         let outcome = self
             .run_mutate(|store, path| atomic::set_section_intent(store, path, &section, &intent));
         self.finish_mutate(outcome)
@@ -4480,6 +4511,166 @@ mod tests {
         ]
     }
 
+    /// Tool sets that are DELIBERATELY shaped by one argument struct, with the
+    /// claim that makes the sharing safe: every tool named here means the SAME
+    /// thing by each argument, so one schema describing all of them is honest.
+    ///
+    /// The table exists because the round before this one found the shape it is
+    /// meant to stop, and found it by accident: `set_section_alternatives` took
+    /// `SetSectionBulletsArgs` alongside six setters of free prose, while its own
+    /// handler split each bullet on a separator and refused what would not split.
+    /// The schema said `string` for the free case and the constrained one alike,
+    /// because the struct they share can only say one thing. Nothing was watching
+    /// for that, and nothing would have been.
+    ///
+    /// Each row is EXECUTED on the Round 1022 terms: the groups are derived from
+    /// the properties the ROUTER exposes, so a row whose tools stopped agreeing —
+    /// or a group that appears without a row — reddens on the round that does it.
+    const SHARED_ARGS: &[(&str, &[&str])] = &[
+        (
+            "a section id and an ordered list of free-prose bullets — no member \
+             constrains a bullet beyond the T3 length default that applies to \
+             all of them",
+            &[
+                "set_section_rationale",
+                "set_section_inputs",
+                "set_section_outputs",
+            ],
+        ),
+        (
+            "an entry id and an ordered list of free-prose bullets on the \
+             publishable half — the four fields differ in what they are ABOUT \
+             and not in what a bullet may be",
+            &[
+                "set_changelog_publishable_carry_forward",
+                "set_changelog_publishable_changes",
+                "set_changelog_publishable_impact_refs",
+                "set_changelog_publishable_verification",
+            ],
+        ),
+        (
+            "the same world-line filters over the same authored world — five \
+             READ verbs shaped by five separate structs that an agent cannot \
+             tell apart, which is the case this gate catches beyond literal \
+             struct sharing",
+            &[
+                "report_edge_candidates",
+                "report_fork_tree",
+                "report_irony_intervals",
+                "report_payoff_coverage",
+                "report_payoff_substantiation",
+            ],
+        ),
+    ];
+
+    /// EVERY TOOL SET THAT SHARES AN ARGUMENT SHAPE IS DECLARED.
+    ///
+    /// Two tools whose property maps are identical are shaped by one struct, or
+    /// are structurally indistinguishable to an agent — which for this question
+    /// is the same thing, since the schema is all it reads. Sharing is a claim
+    /// that the tools MEAN the same by each argument, and the claim was never
+    /// written down anywhere, so the one place it was false was found only when
+    /// a different gate walked past it.
+    #[test]
+    fn every_shared_argument_shape_is_declared() {
+        let mut groups: std::collections::BTreeMap<String, Vec<String>> =
+            std::collections::BTreeMap::new();
+        for tool in agent_facing_tools() {
+            let Some(props) = tool.input_schema.get("properties") else {
+                continue;
+            };
+            groups
+                .entry(props.to_string())
+                .or_default()
+                .push(tool.name.to_string());
+        }
+        let shared: Vec<Vec<String>> = groups
+            .into_values()
+            .filter(|tools| tools.len() > 1)
+            .map(|mut tools| {
+                tools.sort();
+                tools
+            })
+            .collect();
+        let declared: BTreeSet<Vec<String>> = SHARED_ARGS
+            .iter()
+            .map(|(_, tools)| {
+                let mut t: Vec<String> = tools.iter().map(|s| s.to_string()).collect();
+                t.sort();
+                t
+            })
+            .collect();
+        let found: BTreeSet<Vec<String>> = shared.iter().cloned().collect();
+        println!(
+            "agent-facing tools sharing an argument shape: {} group(s), {} declared",
+            found.len(),
+            declared.len()
+        );
+        assert_eq!(
+            found, declared,
+            "the tools that share an argument shape are not the ones declared to. \
+             A group the router shows and the table does not is a set of tools \
+             whose schema cannot distinguish them — which is only safe if they \
+             MEAN the same by every argument, and that is the claim the table \
+             makes and this compares"
+        );
+    }
+
+    /// NO AGENT-FACING PROPERTY HIDES ITS SHAPE BEHIND A `$ref`.
+    ///
+    /// Round 1014 stated the rule for a closed set and Round 1027 applied it to
+    /// ten of them: a set behind a reference is one the client and the gate must
+    /// each follow, and a set the client does not follow is a set the agent
+    /// still has to guess. The rule was never put to the WHOLE surface, and the
+    /// round that asked found it the expensive way — `import_sections.sections`
+    /// was excepted from the probe sweep as "a shape the schema describes no
+    /// value for", and the diagnostic that finally printed what it MET said
+    /// `{"items": {"$ref": "#/$defs/SectionImport"}}`. The probe could not build
+    /// an element because the element's properties were not there to read; an
+    /// agent reading the same property is in exactly that position.
+    ///
+    /// The check is on the property AND its `items`, because an array is the
+    /// shape where the reference hides one level down — which is where it hid.
+    #[test]
+    fn no_agent_facing_property_hides_its_shape_behind_a_ref() {
+        let mut hidden: Vec<String> = Vec::new();
+        let mut properties = 0usize;
+        for tool in agent_facing_tools() {
+            let Some(props) = tool
+                .input_schema
+                .get("properties")
+                .and_then(|p| p.as_object())
+            else {
+                continue;
+            };
+            for (key, schema) in props {
+                properties += 1;
+                let referenced = |node: Option<&serde_json::Value>| {
+                    node.and_then(|n| n.get("$ref"))
+                        .and_then(|r| r.as_str())
+                        .map(str::to_string)
+                };
+                if let Some(target) =
+                    referenced(Some(schema)).or_else(|| referenced(schema.get("items")))
+                {
+                    hidden.push(format!("{}.{key} -> {target}", tool.name));
+                }
+            }
+        }
+        println!(
+            "agent-facing properties: {properties} read, {} behind a `$ref`",
+            hidden.len()
+        );
+        assert!(
+            hidden.is_empty(),
+            "{} agent-facing propert(ies) name a definition instead of showing \
+             their shape, so a client that does not follow references shows the \
+             agent nothing: {}",
+            hidden.len(),
+            hidden.join(" | ")
+        );
+    }
+
     /// Whether `text` names EVERY member of a set, each as a word.
     ///
     /// As a WORD, because a member is a tag and not a substring: `state` sits
@@ -6506,6 +6697,24 @@ mod tests {
                                  states no value space: {property}"
                             )),
                         }
+                        // AND THE `enum` ANSWER IS UNREACHABLE HERE, WHICH THE RUN
+                        // SAYS RATHER THAN A READER ASSUMING IT EITHER WAY. A
+                        // declared closed set is refused by serde before the
+                        // handler, so it cannot produce a `validated` verdict —
+                        // and the arm above this one already asserts that such an
+                        // argument's answer MOVES. If this ever fires, that arm
+                        // stopped running: the branch is kept because the three
+                        // answers are the classification, not because one of them
+                        // is expected.
+                        assert!(
+                            how != Some("enum"),
+                            "`{tool}.{arg}` reached the value-space check with a \
+                             declared closed set AND a `validated` verdict. serde \
+                             refuses a non-member before the handler, so this \
+                             means a VALID member was refused and the assertion \
+                             that a closed set must move the answer no longer \
+                             runs: {why}"
+                        );
                     }
                     println!(
                         "  {tool}: value space stated for {} of {} refused \
@@ -6784,7 +6993,7 @@ mod tests {
         style_check_doc_reaches_the_answer:
             [add_section(AddSectionArgs) {"section_id": "40", "parent_doc": "spec", "title": "the section"}]
             [add_section(AddSectionArgs) {"section_id": "41", "parent_doc": "other", "title": "the other"}]
-            [set_section_intent(SetSectionTextArgs) {"section_id": "41", "text": "the rest of this is in DESIGN.md and nobody wrote it as a reference"}]
+            [set_section_intent(SetSectionIntentArgs) {"section_id": "41", "intent": "the rest of this is in DESIGN.md and nobody wrote it as a reference"}]
             style_check(StyleCheckArgs) {}
             ."doc" = "spec" seen "cross_doc_reference_explicit" in output;
         query_term_fields_reaches_the_answer:
@@ -7766,10 +7975,10 @@ mod tests {
             add_section(AddSectionArgs) {"section_id": "sc-04", "parent_doc": "spec", "title": "four"};
         set_section_intent_probed:
             @branch_story
-            set_section_intent(SetSectionTextArgs) {"section_id": "sc-01", "text": "what it is for"};
+            set_section_intent(SetSectionIntentArgs) {"section_id": "sc-01", "intent": "what it is for"};
         set_section_title_probed:
             @branch_story
-            set_section_title(SetSectionTextArgs) {"section_id": "sc-01", "text": "a new title"};
+            set_section_title(SetSectionTitleArgs) {"section_id": "sc-01", "title": "a new title"};
         add_section_caveat_probed:
             @branch_story
             add_section_caveat(AddSectionCaveatArgs) {"section_id": "sc-01", "bullet": "a caveat"};
@@ -7816,7 +8025,7 @@ mod tests {
             query_changelog_entry(QueryChangelogEntryArgs) {"entry_id": "Round 1"};
         set_section_parent_doc_probed:
             @branch_story
-            set_section_parent_doc(SetSectionTextArgs) {"section_id": "sc-01", "text": "other"};
+            set_section_parent_doc(SetSectionParentDocArgs) {"section_id": "sc-01", "parent_doc": "other"};
         set_section_rationale_probed:
             @branch_story
             set_section_rationale(SetSectionBulletsArgs) {"section_id": "sc-01", "bullets": ["because of this"]};
@@ -7946,8 +8155,7 @@ mod tests {
         add_parameter_gate_probed:
             @branch_story
             [add_parameter(AddParameterArgs) {"parameter_id": "hope"}]
-            add_parameter_gate(AddParameterGateArgs) {"fact_id": "f-way", "parameter": "hope", "threshold": 2, "op": "ge"}
-            except "op";
+            add_parameter_gate(AddParameterGateArgs) {"fact_id": "f-way", "parameter": "hope", "threshold": 2, "op": "ge"};
         remove_parameter_gate_probed:
             @branch_story
             [add_parameter(AddParameterArgs) {"parameter_id": "hope"}]
@@ -8033,8 +8241,7 @@ mod tests {
             )
             validate_render_fidelity(RenderFidelityArgs) {"against": "blind.json", "world": "main", "order_path": "order-b.json"};
         import_sections_probed:
-            import_sections(ImportSectionsArgs) {"sections": [{"section_id": "sc-01", "parent_doc": "spec", "title": "one"}]}
-            except "sections";
+            import_sections(ImportSectionsArgs) {"sections": [{"section_id": "sc-01", "parent_doc": "spec", "title": "one"}]};
     }
 
     /// An agent can only call what the schema shows it (Round 981) — the Round

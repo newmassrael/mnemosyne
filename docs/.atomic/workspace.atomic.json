@@ -2062,6 +2062,100 @@
         "`set_section_alternatives` no longer shares `SetSectionBulletsArgs`, and the same question was not asked of the other structs that several tools share. The shape that made this one wrong — one user with a constrained value space among users with free prose — is findable the same way, by asking which shared argument's handler refuses what its siblings accept."
       ]
     },
+    "Round 1030": {
+      "decision_summary": "The four debts this round was asked to close each named a thing to measure, and three of the four measurements said something the debt did not.\n\nDEBT M asked why `import_sections.sections` stayed excepted from the probe sweep after the previous round taught the probe to build an element for an array of objects. The round before had written that the exception's survival was \"evidence its item schema is not an object of required strings — not evidence about what it is\", which was correct and was also an admission that nobody had looked. The diagnostic already prints what the probe MET, and what it met was `{\"items\": {\"$ref\": \"#/$defs/SectionImport\"}}`. The element's properties were not there to read.\n\nTHAT IS NOT A PROBE LIMIT. It is the rule Round 1014 stated and Round 1027 applied to ten closed sets — a set behind a reference is one the client and the gate must each follow, and a set the client does not follow is a set the agent still has to guess — never once put to the whole surface. Put to it: FOURTEEN of 295 agent-facing properties named a definition instead of showing their shape, and one of them was `add_parameter_gate.op`, a closed vocabulary the round that typed ten of them believed it had already reached. Two of the sweep's three exceptions existed only because of this, and both became unearned the moment the shapes were inlined — the earned-exception assertion required their removal rather than permitting it.\n\nDEBT L asked whether the value-space gate's `enum` answer is reachable. It is not, and the reason is structural rather than incidental: serde refuses a non-member before the handler, so a declared closed set never produces the `validated` verdict the gate keys on, and the arm above it already asserts that such an argument's answer MOVES. The branch stays, because the three answers are the classification and not a prediction; what it now carries is an assertion whose failure says the arm above stopped running.\n\nDEBT N asked whether other shared argument structs hide a constrained value space among free ones, the way `SetSectionBulletsArgs` did. The grouping is derived from the properties the ROUTER exposes rather than from the Rust types, which reaches every tool and also catches the case where separate structs are structurally indistinguishable to an agent — for the reader of a schema those are the same thing. FOUR groups, and the guesses written before the measurement were wrong about three of them. One was the defect again, three declarations away from where the last one was found: `set_section_intent`, `set_section_title` and `set_section_parent_doc` share a `text` field whose documentation reads \"New value. FOR INTENT: a single sentence, max ~200 chars\" — a per-user rule inside a shape that can only say one thing, applied by an agent's reading to a heading and to a doc identifier as well.\n\nDEBT O asked for the injections the summary round had not run. Three landed, each reddening exactly one test: the clock back into the derived event id, the forward-schema refusal disabled, and one primitive's reason dropped on the floor. The third is worth its own line — it reddens `remove_section_binding_probed` and NOT `every_reason_an_agent_sends_reaches_the_ledger`, which is the division working as designed: that gate proves every reason-taking tool is probed, and the probe is the oracle.\n\nTHE AXIS IS DORMANT AFTER THIS. Not because it is exhausted — this round found a fourteen-instance class the arc had walked past twice — but because it no longer needs a person to decide to resume it. Every instrument on it fails on the round that breaks it: a new argument lands in neither accounting list, a new refusal with a silent schema reddens its tool, a new `$ref` reddens the whole-surface gate, a new shared shape reddens the declaration, and a new tool with a required `reason` reddens for want of a probe. The resume condition is those failures, not a note.",
+      "changes_bullets": [
+        "Fourteen agent-facing properties stop naming a definition: `SectionImport`, `FactImport`, `FrameImport`, `EntityImport`, `EntityKindImport`, `PredicateImport`, `BranchImport`, `UnitImport`, `EdgeCostImport`, `EdgeGuardImport`, `DisclosurePlanImport`, `IntervalOp`, `ConvergeEdgeArg` and `DisclosureRevealArg` are now inlined, and `no_agent_facing_property_hides_its_shape_behind_a_ref` walks the property AND its `items` on every tool, printing 295 read / 0 hidden.",
+        "`except \"op\"` and `except \"sections\"` are gone, removed under protest by the earned-exception assertion once the probe could build their elements. One exception remains and it is the tool that writes nothing.",
+        "The value-space gate asserts its `enum` answer is unreachable, with a message that says what a firing would mean: serde refuses a non-member first, so a `validated` verdict on a closed set means the arm requiring such an argument to move the answer stopped running.",
+        "`every_shared_argument_shape_is_declared` groups tools by the property map the router exposes and compares the groups to `SHARED_ARGS`, whose rows state the claim that makes sharing safe — that every member means the same by each argument.",
+        "`SetSectionTextArgs` becomes `SetSectionTitleArgs`, `SetSectionParentDocArgs` and `SetSectionIntentArgs`, each naming its argument (`title` / `parent_doc` / `intent`) and stating its own value space; the shared `text` doc had carried the intent's length rule for all three.",
+        "Three injections re-verify the gates of Rounds 1023, 1024 and 1025, which the previous round had only seen green."
+      ],
+      "verification_bullets": [
+        "Workspace 1735 passed / 0 failed / 11 ignored, exit 0; clippy `-D warnings` exit 0; `cargo fmt --all --check` clean; `validate-workspace` T1 orphan 0, T3 reject/warn/info 0.",
+        "The gates print their own populations: agent-facing properties 295 read / 0 behind a `$ref` (was 14); tools sharing an argument shape 3 groups / 3 declared (was 4 undeclared); value space stated for 106 of 106 refused arguments; optional 123 of 123 differential and required 22 differential + 150 probed, both halves 0 unexercised.",
+        "The required accounting did NOT move when two exceptions became conclusions, which was checked rather than assumed: `add_parameter_gate.op` and `import_sections.sections` already had hand-written differential cases, so the exception had only withheld them from the probe. The unchanged numbers are the correct answer.",
+        "Injection — the clock back into the derived confirmation-event id: exactly `one_verification_act_records_once_whatever_the_clock_says`.",
+        "Injection — the forward-schema refusal disabled: exactly `a_store_from_a_newer_schema_is_refused_naming_both_versions`.",
+        "Injection — `remove_section_binding` saved without its reason: exactly `remove_section_binding_probed`, and NOT the reason gate, which proves coverage rather than the row.",
+        "Every injection ran at full workspace scope and was reverted from a copy; the touched files are byte-identical to their pre-injection state (`cmp`)."
+      ],
+      "carry_forward_bullets": [
+        "The `$ref` gate reads the property and its `items` and stops there, so a reference nested deeper — inside an inlined element's own field — is outside it. That is a reach stated rather than measured: the round did not count how many such references exist, and the count is what would say whether the remaining depth matters.",
+        "`SHARED_ARGS` states that the tools in a group mean the same by every argument, and nothing executes that sentence. The grouping is derived and a group appearing or dissolving reddens, but the CLAIM is a reader's judgement — the divergence it exists to catch was found by reading a doc comment, not by a run.",
+        "The probe's sentinel is a value naming nothing, which no length cap refuses, so an argument constrained only by LENGTH never reaches a `validated` verdict and the value-space gate cannot see it. `set_section_intent.intent` is exactly that argument, and its cap is now stated in prose on its own struct rather than by anything the gate reads.",
+        "THE AXIS IS DORMANT, and what makes that honest is that resumption needs no decision: a new argument in neither accounting list, a new silent refusal, a new `$ref`, a new undeclared shared shape and a new unprobed `reason` each redden on the round that introduces them. What no instrument covers is a handler that IGNORES a bad value rather than refusing it — the population of every gate here is refusals or differentials, and silence has neither."
+      ],
+      "population_census": [
+        {
+          "axis": "transition rules by `undirected`",
+          "left_label": "undirected",
+          "left": 10,
+          "right_label": "directed",
+          "right": 27
+        },
+        {
+          "axis": "map corpora by leg-kind declaration",
+          "left_label": "omitted",
+          "left": 6,
+          "right_label": "declared",
+          "right": 24
+        },
+        {
+          "axis": "cost-carrying corpora by direction-dependent pricing",
+          "left_label": "prices a way by direction",
+          "left": 4,
+          "right_label": "prices no way by direction",
+          "right": 6
+        },
+        {
+          "axis": "run trees by authoring mode",
+          "left_label": "hand script",
+          "left": 10,
+          "right_label": "file-only",
+          "right": 239
+        },
+        {
+          "axis": "map corpora by declared boundary crossing",
+          "left_label": "declares an exit",
+          "left": 6,
+          "right_label": "declares none",
+          "right": 24
+        },
+        {
+          "axis": "authored submissions by map and telling",
+          "left_label": "carries both",
+          "left": 10,
+          "right_label": "carries one",
+          "right": 24
+        }
+      ],
+      "publishable_decision_summary": "The four debts this round was asked to close each named a thing to measure, and three of the four measurements said something the debt did not.\n\nDEBT M asked why `import_sections.sections` stayed excepted from the probe sweep after the previous round taught the probe to build an element for an array of objects. The round before had written that the exception's survival was \"evidence its item schema is not an object of required strings — not evidence about what it is\", which was correct and was also an admission that nobody had looked. The diagnostic already prints what the probe MET, and what it met was `{\"items\": {\"$ref\": \"#/$defs/SectionImport\"}}`. The element's properties were not there to read.\n\nTHAT IS NOT A PROBE LIMIT. It is the rule Round 1014 stated and Round 1027 applied to ten closed sets — a set behind a reference is one the client and the gate must each follow, and a set the client does not follow is a set the agent still has to guess — never once put to the whole surface. Put to it: FOURTEEN of 295 agent-facing properties named a definition instead of showing their shape, and one of them was `add_parameter_gate.op`, a closed vocabulary the round that typed ten of them believed it had already reached. Two of the sweep's three exceptions existed only because of this, and both became unearned the moment the shapes were inlined — the earned-exception assertion required their removal rather than permitting it.\n\nDEBT L asked whether the value-space gate's `enum` answer is reachable. It is not, and the reason is structural rather than incidental: serde refuses a non-member before the handler, so a declared closed set never produces the `validated` verdict the gate keys on, and the arm above it already asserts that such an argument's answer MOVES. The branch stays, because the three answers are the classification and not a prediction; what it now carries is an assertion whose failure says the arm above stopped running.\n\nDEBT N asked whether other shared argument structs hide a constrained value space among free ones, the way `SetSectionBulletsArgs` did. The grouping is derived from the properties the ROUTER exposes rather than from the Rust types, which reaches every tool and also catches the case where separate structs are structurally indistinguishable to an agent — for the reader of a schema those are the same thing. FOUR groups, and the guesses written before the measurement were wrong about three of them. One was the defect again, three declarations away from where the last one was found: `set_section_intent`, `set_section_title` and `set_section_parent_doc` share a `text` field whose documentation reads \"New value. FOR INTENT: a single sentence, max ~200 chars\" — a per-user rule inside a shape that can only say one thing, applied by an agent's reading to a heading and to a doc identifier as well.\n\nDEBT O asked for the injections the summary round had not run. Three landed, each reddening exactly one test: the clock back into the derived event id, the forward-schema refusal disabled, and one primitive's reason dropped on the floor. The third is worth its own line — it reddens `remove_section_binding_probed` and NOT `every_reason_an_agent_sends_reaches_the_ledger`, which is the division working as designed: that gate proves every reason-taking tool is probed, and the probe is the oracle.\n\nTHE AXIS IS DORMANT AFTER THIS. Not because it is exhausted — this round found a fourteen-instance class the arc had walked past twice — but because it no longer needs a person to decide to resume it. Every instrument on it fails on the round that breaks it: a new argument lands in neither accounting list, a new refusal with a silent schema reddens its tool, a new `$ref` reddens the whole-surface gate, a new shared shape reddens the declaration, and a new tool with a required `reason` reddens for want of a probe. The resume condition is those failures, not a note.",
+      "publishable_changes_bullets": [
+        "Fourteen agent-facing properties stop naming a definition: `SectionImport`, `FactImport`, `FrameImport`, `EntityImport`, `EntityKindImport`, `PredicateImport`, `BranchImport`, `UnitImport`, `EdgeCostImport`, `EdgeGuardImport`, `DisclosurePlanImport`, `IntervalOp`, `ConvergeEdgeArg` and `DisclosureRevealArg` are now inlined, and `no_agent_facing_property_hides_its_shape_behind_a_ref` walks the property AND its `items` on every tool, printing 295 read / 0 hidden.",
+        "`except \"op\"` and `except \"sections\"` are gone, removed under protest by the earned-exception assertion once the probe could build their elements. One exception remains and it is the tool that writes nothing.",
+        "The value-space gate asserts its `enum` answer is unreachable, with a message that says what a firing would mean: serde refuses a non-member first, so a `validated` verdict on a closed set means the arm requiring such an argument to move the answer stopped running.",
+        "`every_shared_argument_shape_is_declared` groups tools by the property map the router exposes and compares the groups to `SHARED_ARGS`, whose rows state the claim that makes sharing safe — that every member means the same by each argument.",
+        "`SetSectionTextArgs` becomes `SetSectionTitleArgs`, `SetSectionParentDocArgs` and `SetSectionIntentArgs`, each naming its argument (`title` / `parent_doc` / `intent`) and stating its own value space; the shared `text` doc had carried the intent's length rule for all three.",
+        "Three injections re-verify the gates of Rounds 1023, 1024 and 1025, which the previous round had only seen green."
+      ],
+      "publishable_verification_bullets": [
+        "Workspace 1735 passed / 0 failed / 11 ignored, exit 0; clippy `-D warnings` exit 0; `cargo fmt --all --check` clean; `validate-workspace` T1 orphan 0, T3 reject/warn/info 0.",
+        "The gates print their own populations: agent-facing properties 295 read / 0 behind a `$ref` (was 14); tools sharing an argument shape 3 groups / 3 declared (was 4 undeclared); value space stated for 106 of 106 refused arguments; optional 123 of 123 differential and required 22 differential + 150 probed, both halves 0 unexercised.",
+        "The required accounting did NOT move when two exceptions became conclusions, which was checked rather than assumed: `add_parameter_gate.op` and `import_sections.sections` already had hand-written differential cases, so the exception had only withheld them from the probe. The unchanged numbers are the correct answer.",
+        "Injection — the clock back into the derived confirmation-event id: exactly `one_verification_act_records_once_whatever_the_clock_says`.",
+        "Injection — the forward-schema refusal disabled: exactly `a_store_from_a_newer_schema_is_refused_naming_both_versions`.",
+        "Injection — `remove_section_binding` saved without its reason: exactly `remove_section_binding_probed`, and NOT the reason gate, which proves coverage rather than the row.",
+        "Every injection ran at full workspace scope and was reverted from a copy; the touched files are byte-identical to their pre-injection state (`cmp`)."
+      ],
+      "publishable_carry_forward_bullets": [
+        "The `$ref` gate reads the property and its `items` and stops there, so a reference nested deeper — inside an inlined element's own field — is outside it. That is a reach stated rather than measured: the round did not count how many such references exist, and the count is what would say whether the remaining depth matters.",
+        "`SHARED_ARGS` states that the tools in a group mean the same by every argument, and nothing executes that sentence. The grouping is derived and a group appearing or dissolving reddens, but the CLAIM is a reader's judgement — the divergence it exists to catch was found by reading a doc comment, not by a run.",
+        "The probe's sentinel is a value naming nothing, which no length cap refuses, so an argument constrained only by LENGTH never reaches a `validated` verdict and the value-space gate cannot see it. `set_section_intent.intent` is exactly that argument, and its cap is now stated in prose on its own struct rather than by anything the gate reads.",
+        "THE AXIS IS DORMANT, and what makes that honest is that resumption needs no decision: a new argument in neither accounting list, a new silent refusal, a new `$ref`, a new undeclared shared shape and a new unprobed `reason` each redden on the round that introduces them. What no instrument covers is a handler that IGNORES a bad value rather than refusing it — the population of every gate here is refusals or differentials, and silence has neither."
+      ]
+    },
     "Round 252": {
       "decision_summary": "Parser CommonMark conformance — recognize indented fenced code blocks (§98) and require whitespace after ATX hash sequence (§62)",
       "changes_bullets": [

@@ -582,7 +582,7 @@ pub struct Parameter {
 /// evaluates it (the R712 layering line); [`holds`](IntervalOp::holds) is the
 /// interval rule's tool AND the consumer's, never called by Mnemosyne on a gate.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema), schemars(inline))]
 #[serde(rename_all = "snake_case")]
 pub enum IntervalOp {
     Ge,

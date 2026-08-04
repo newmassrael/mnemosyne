@@ -3230,7 +3230,7 @@ pub struct NormativeExcerptImport {
 /// inline at create — the bulk path's reason to exist (a section's
 /// frozen-anchor moment IS its creation, per RFC-002 FR-1).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema), schemars(inline))]
 pub struct SectionImport {
     pub section_id: String,
     pub parent_doc: String,
@@ -5488,7 +5488,7 @@ pub fn remove_inventory_entry(
 
 /// One frame entry in the [`FactsManifest`] (and the `add_frame` shape).
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema), schemars(inline))]
 pub struct FrameImport {
     pub frame_id: String,
     #[serde(default)]
@@ -5498,7 +5498,7 @@ pub struct FrameImport {
 /// One branch entry in the [`FactsManifest`] (and the `add_branch` shape,
 /// Round 436).
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema), schemars(inline))]
 pub struct BranchImport {
     pub branch_id: String,
     #[serde(default)]
@@ -5535,7 +5535,7 @@ pub struct BranchConvergeImport {
 /// time, so a stored hash can never start out wrong (offline drift detection
 /// then owns divergence — the R404 content-drift pattern).
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema), schemars(inline))]
 pub struct FactImport {
     pub fact_id: String,
     pub frame: String,
@@ -5579,7 +5579,7 @@ pub struct FactImport {
 /// declare it in `entity_kinds` (this manifest stages those FIRST) or with
 /// `add_entity_kind` before it is named here.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema), schemars(inline))]
 pub struct EntityImport {
     pub entity_id: String,
     #[serde(default)]
@@ -5596,7 +5596,7 @@ pub struct EntityImport {
 /// EARLIER in the `entity_kinds` array than the child that names it (the
 /// parent-declared-first staging the write path enforces).
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema), schemars(inline))]
 pub struct EntityKindImport {
     pub kind_id: String,
     /// Direct super-kinds (0..N) — registered EARLIER in the array. A DAG:
@@ -5612,7 +5612,7 @@ pub struct EntityKindImport {
 /// manifest can declare a unit and use it in a `Quantity` object (the
 /// registries-before-facts ordering this manifest already relies on).
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema), schemars(inline))]
 pub struct UnitImport {
     pub unit_id: String,
     #[serde(default)]
@@ -5630,7 +5630,7 @@ pub struct UnitImport {
 /// token visible to the parse — the same free-text-machine-slot closure R708
 /// performed on the store, finally applied to the manifest wire.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema), schemars(inline))]
 pub struct PredicateImport {
     pub predicate_id: String,
     pub object_kind: mnemosyne_core::PredicateObjectKind,
@@ -5658,7 +5658,7 @@ pub struct PredicateImport {
 /// hand-written shell scripts calling the verbs, one of which says in its
 /// header that a manifest array for these tables is a silent no-op.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema), schemars(inline))]
 pub struct EdgeCostImport {
     /// The ADJACENT fact the cost attaches to (the `adjacent(a, b)` edge).
     pub fact_id: String,
@@ -5672,7 +5672,7 @@ pub struct EdgeCostImport {
 /// N `add-edge-guard` calls plus an optional `set-edge-guard-threshold`, applied
 /// through those verbs' own cores.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema), schemars(inline))]
 pub struct EdgeGuardImport {
     /// The ADJACENT fact this guard gates.
     pub fact_id: String,
@@ -5737,7 +5737,7 @@ pub struct DisclosureOverrideImport {
 /// the typed-fact invariant. Uses the SAME `apply_disclosure_plan` /
 /// `apply_disclosure_override` cores as the standalone primitives.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema), schemars(inline))]
 pub struct DisclosurePlanImport {
     pub telling_id: String,
     /// Default disclosure mode tag; omitted = `withhold` (the plan default).
