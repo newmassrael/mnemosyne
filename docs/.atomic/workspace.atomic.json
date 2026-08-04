@@ -1812,6 +1812,40 @@
         "nothing yet reads a reason ALONGSIDE what changed — the row says a fact was amended and why, not what the claim said before, so \"what did it say then\" is still only answerable from git"
       ]
     },
+    "Round 1025": {
+      "decision_summary": "The MCP argument surface has no silent set on either half. Optional: 123 of 123 proved by a differential. Required: 10 by a differential and 162 by the probe sweep, with nothing in neither list. The two counts are printed apart every run and never summed, because they are not the same evidence — a differential shows the value the agent sent decided the answer, a probe shows only that the handler validated it or left it observable.\n\nWHAT CLOSED THE LAST FIVE WAS NOT MORE PROBING. Four of them are the shapes the sweep derives no value for — three closed enums behind a `$ref`, whose members serde refuses before the handler sees them, and one array of objects — so each got the thing the sweep could not derive: a second valid value written by hand. The fifth was different in kind. `emit_publishable_override_ledger_draft.reason` was excepted because the tool WRITES NOTHING, so its reason appearing in the answer is indistinguishable from an echo, and Round 1019 rejected echo needles. That exception was earned by the tool's semantics rather than by a limit — the draft IS composed from the arguments — and the honest close was to ask a question an echo cannot answer: whether the value landed in the reason SLOT. The needle is the TOML key beside its value, so a handler that put `reason` where `kind` goes fails it.\n\nAND THE ROUND OPENED BY MEASURING A CLAIM I HAD MADE WITHOUT MEASURING. Round 1024 raised the schema to 46 and I said, in the same breath, that an older binary can therefore no longer open this repository's sidecar. The branch that makes that true had no test: every schema test beside it walks BACKWARD, an older store loading into today's binary. Building an old revision would answer it once. A store stamped one past `CURRENT_SCHEMA_VERSION` puts today's binary on exactly the path an older one takes, and keeps answering it every run — including that the refusal names BOTH versions, which is what tells the reader which side is the old one.",
+      "changes_bullets": [
+        "the last five required arguments: four hand-written second values for the shapes the schema describes no probe value for, and one needle that proves a reason landed in its slot rather than merely appearing",
+        "`a_store_from_a_newer_schema_is_refused_naming_both_versions` — the forward direction of the version gate, which nothing had exercised",
+        "both silent lists stay in place though both are empty: an argument in neither list still fails, which is where the next one lands"
+      ],
+      "verification_bullets": [
+        "all four new differentials passed on their first run, needle included, which is the sweep's declarations having already shaped the world they stand in",
+        "deleting one probe declaration makes the accounting name its argument as in neither list, so the empty list is not a list that cannot fail",
+        "the version test asserts BOTH sides of its branch — a newer store refused, today's own loaded — so it could not pass by refusing everything",
+        "workspace 1727 tests green, clippy -D warnings clean, fmt clean, validate-workspace T1 and T3 = 0"
+      ],
+      "carry_forward_bullets": [
+        "162 of the required half rests on the probe floor, which is weaker than a differential and is printed as such every run; raising one to a differential is a case at a time, and nothing says which of them would repay it",
+        "the probe still cannot tell a correct refusal from an empty answer where a refusal was intended, since it has no way to know which polarity an argument was meant to have — that needs the polarity to be a type, the way Round 1014 made a path one"
+      ],
+      "publishable_decision_summary": "The MCP argument surface has no silent set on either half. Optional: 123 of 123 proved by a differential. Required: 10 by a differential and 162 by the probe sweep, with nothing in neither list. The two counts are printed apart every run and never summed, because they are not the same evidence — a differential shows the value the agent sent decided the answer, a probe shows only that the handler validated it or left it observable.\n\nWHAT CLOSED THE LAST FIVE WAS NOT MORE PROBING. Four of them are the shapes the sweep derives no value for — three closed enums behind a `$ref`, whose members serde refuses before the handler sees them, and one array of objects — so each got the thing the sweep could not derive: a second valid value written by hand. The fifth was different in kind. `emit_publishable_override_ledger_draft.reason` was excepted because the tool WRITES NOTHING, so its reason appearing in the answer is indistinguishable from an echo, and Round 1019 rejected echo needles. That exception was earned by the tool's semantics rather than by a limit — the draft IS composed from the arguments — and the honest close was to ask a question an echo cannot answer: whether the value landed in the reason SLOT. The needle is the TOML key beside its value, so a handler that put `reason` where `kind` goes fails it.\n\nAND THE ROUND OPENED BY MEASURING A CLAIM I HAD MADE WITHOUT MEASURING. Round 1024 raised the schema to 46 and I said, in the same breath, that an older binary can therefore no longer open this repository's sidecar. The branch that makes that true had no test: every schema test beside it walks BACKWARD, an older store loading into today's binary. Building an old revision would answer it once. A store stamped one past `CURRENT_SCHEMA_VERSION` puts today's binary on exactly the path an older one takes, and keeps answering it every run — including that the refusal names BOTH versions, which is what tells the reader which side is the old one.",
+      "publishable_changes_bullets": [
+        "the last five required arguments: four hand-written second values for the shapes the schema describes no probe value for, and one needle that proves a reason landed in its slot rather than merely appearing",
+        "`a_store_from_a_newer_schema_is_refused_naming_both_versions` — the forward direction of the version gate, which nothing had exercised",
+        "both silent lists stay in place though both are empty: an argument in neither list still fails, which is where the next one lands"
+      ],
+      "publishable_verification_bullets": [
+        "all four new differentials passed on their first run, needle included, which is the sweep's declarations having already shaped the world they stand in",
+        "deleting one probe declaration makes the accounting name its argument as in neither list, so the empty list is not a list that cannot fail",
+        "the version test asserts BOTH sides of its branch — a newer store refused, today's own loaded — so it could not pass by refusing everything",
+        "workspace 1727 tests green, clippy -D warnings clean, fmt clean, validate-workspace T1 and T3 = 0"
+      ],
+      "publishable_carry_forward_bullets": [
+        "162 of the required half rests on the probe floor, which is weaker than a differential and is printed as such every run; raising one to a differential is a case at a time, and nothing says which of them would repay it",
+        "the probe still cannot tell a correct refusal from an empty answer where a refusal was intended, since it has no way to know which polarity an argument was meant to have — that needs the polarity to be a type, the way Round 1014 made a path one"
+      ]
+    },
     "Round 252": {
       "decision_summary": "Parser CommonMark conformance — recognize indented fenced code blocks (§98) and require whitespace after ATX hash sequence (§62)",
       "changes_bullets": [

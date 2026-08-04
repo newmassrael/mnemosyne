@@ -12263,6 +12263,56 @@ mod tests {
         assert!(store.inventory_entries.is_empty());
     }
 
+    /// A STORE FROM A NEWER SCHEMA IS REFUSED, AND THE REFUSAL NAMES BOTH SIDES.
+    ///
+    /// The tests beside this one all walk BACKWARD — an older store loading into
+    /// today's binary — and Round 1024 raised the version to 46 while carrying,
+    /// unmeasured, a claim about the FORWARD direction: that an older binary can
+    /// no longer open this repository's sidecar. That branch is what makes the
+    /// claim true, and nothing exercised it. Building an old revision would
+    /// answer it once; a store stamped one past `CURRENT_SCHEMA_VERSION` puts
+    /// today's binary on exactly the code path an older one takes, and keeps
+    /// answering it every run.
+    #[test]
+    fn a_store_from_a_newer_schema_is_refused_naming_both_versions() {
+        let tmp = tempfile::TempDir::new().expect("tempdir");
+        let path = tmp.path().join("workspace.atomic.json");
+        let ahead = CURRENT_SCHEMA_VERSION + 1;
+        std::fs::write(
+            &path,
+            format!("{{\"schema_version\":{ahead},\"sections\":{{}},\"changelog_entries\":{{}}}}"),
+        )
+        .expect("write");
+        let err = AtomicStore::load(&path).expect_err("a newer store must be refused");
+        assert!(
+            matches!(
+                err,
+                AtomicStoreError::SchemaVersionMismatch { store, expected }
+                    if store == ahead && expected == CURRENT_SCHEMA_VERSION
+            ),
+            "the refusal must carry BOTH versions so a reader knows which side to \
+             move — an older binary hitting this needs to be told it is the old \
+             one: {err:?}"
+        );
+        let said = err.to_string();
+        assert!(
+            said.contains(&ahead.to_string()) && said.contains(&CURRENT_SCHEMA_VERSION.to_string()),
+            "the message must print both versions: {said}"
+        );
+        // THE OTHER SIDE OF THE SAME BRANCH: today's own version loads. Without
+        // this the assertion above would still pass if `load` refused
+        // everything.
+        let current = tmp.path().join("current.atomic.json");
+        std::fs::write(
+            &current,
+            format!(
+                "{{\"schema_version\":{CURRENT_SCHEMA_VERSION},\"sections\":{{}},\"changelog_entries\":{{}}}}"
+            ),
+        )
+        .expect("write");
+        AtomicStore::load(&current).expect("today's own schema must load");
+    }
+
     #[test]
     fn schema_version_1_store_loads_with_empty_inventory() {
         // Back-compat: a store written under schema-version 1 (pre-Round 273)

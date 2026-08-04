@@ -3970,13 +3970,7 @@ mod tests {
     /// failure output rather than transcribed, the way Round 986 produced the
     /// optional list — a hand-copied population is the defect the accounting
     /// exists to stop.
-    const UNEXERCISED_REQUIRED: &[(&str, &str)] = &[
-        ("add_parameter_gate", "op"),
-        ("add_predicate", "object_kind"),
-        ("emit_publishable_override_ledger_draft", "reason"),
-        ("import_sections", "sections"),
-        ("set_predicate", "object_kind"),
-    ];
+    const UNEXERCISED_REQUIRED: &[(&str, &str)] = &[];
 
     /// The REQUIRED arguments of every routed tool — the half of the surface
     /// the exercised/unexercised accounting does not cover, counted so the
@@ -6390,6 +6384,42 @@ mod tests {
             {"quest-conflicts.json" = {"schema": "edge-proposals/v1", "conflicts": [{"fact": "f-quest-done", "target": "f-alt", "fact_claim_sha256": "2496954133070e3e5795def5eae4528054f8dbdd6713dc16f01e33b4cf7d01b2", "target_claim_sha256": "934b712828d0c69368eb8082c9251c5190cceb939a964b8b0bed953bb2da7e9f", "rationale": "the crossing cannot be made by someone who never left"}]}}
             import_edge_proposals(ImportEdgeProposalsArgs) {"proposals_path": "alt-conflicts.json"}
             ."proposals_path" = "quest-conflicts.json" seen "\"target\": \"f-alt\"" in store;
+        // THE LAST ONE THE SWEEP LEFT, AND ITS EXCEPTION WAS EARNED BY THE
+        // TOOL'S SEMANTICS RATHER THAN BY A LIMIT. This verb writes nothing: it
+        // composes a ledger row for a human to paste, so the reason appearing in
+        // its answer IS the effect and the probe correctly called that
+        // indistinguishable from an echo. What the probe could not ask is
+        // whether the value landed in the reason SLOT — a handler that put
+        // `reason` where `kind` goes would pass an echo test and fail this one,
+        // because the needle is the TOML key beside its value.
+        emit_publishable_override_ledger_draft_reason_reaches_the_answer:
+            [append_changelog_entry(AppendChangelogEntryArgs) {"entry_id": "Round 1", "decision_summary": "the decision names Waits", "changes_bullets": ["a change"], "verification_bullets": ["a check"]}]
+            [set_changelog_publishable_decision_summary(SetChangelogPublishableStringArgs) {"entry_id": "Round 1", "value": "the published line names Waits"}]
+            emit_publishable_override_ledger_draft(EmitPublishableOverrideLedgerDraftArgs) {"entry_id": "Round 1", "reason": "word", "applied_in": "Round 1", "pattern": "Waits", "replacement": "lingers"}
+            ."reason" = "the name is a person's" seen "reason = \\\"the name is a person's\\\"" in output;
+        // THE FOUR THE PROBE SWEEP CANNOT REACH. Its value comes from the
+        // schema, and these four are the shapes the schema describes no value
+        // for — three closed enums behind a `$ref`, whose members serde would
+        // refuse before the handler saw them, and one array of objects. Each
+        // gets what the sweep could not derive: a SECOND VALID VALUE, written by
+        // hand, and an answer that has to change.
+        add_parameter_gate_op_reaches_the_store:
+            @branch_story
+            [add_parameter(AddParameterArgs) {"parameter_id": "hope"}]
+            add_parameter_gate(AddParameterGateArgs) {"fact_id": "f-way", "parameter": "hope", "threshold": 2, "op": "ge"}
+            ."op" = "lt" seen "\"op\": \"lt\"" in store;
+        add_predicate_object_kind_reaches_the_store:
+            @branch_story
+            add_predicate(AddPredicateArgs) {"predicate_id": "counts", "object_kind": "quantity", "subject_kind": "place", "description": "how many"}
+            ."object_kind" = "fact" seen "\"object_kind\": \"fact\"" in store;
+        set_predicate_object_kind_reaches_the_store:
+            @branch_story
+            [add_predicate(AddPredicateArgs) {"predicate_id": "counts", "object_kind": "quantity", "subject_kind": "place", "description": "how many"}]
+            set_predicate(SetPredicateArgs) {"predicate_id": "counts", "object_kind": "quantity", "description": "how many"}
+            ."object_kind" = "fact" seen "\"object_kind\": \"fact\"" in store;
+        import_sections_sections_reaches_the_store:
+            import_sections(ImportSectionsArgs) {"sections": [{"section_id": "sc-11", "parent_doc": "spec", "title": "eleven"}]}
+            ."sections" = [{"section_id": "sc-12", "parent_doc": "spec", "title": "twelve"}] seen "sc-12" in store;
         report_mutation_reasons_target_reaches_the_answer:
             @branch_story
             [add_section(AddSectionArgs) {"section_id": "sc-06", "parent_doc": "spec", "title": "six"}]
