@@ -2310,6 +2310,82 @@
         "Still open from R1031 and untouched here: a quest that is OPEN on a terminal road is an obligation that road never discharges, and nothing gates it — `unresolved_quests` surfaces the no-anchor case only."
       ]
     },
+    "Round 1033": {
+      "decision_summary": "R1033 (MEASURE) — the arc's remaining surface, produced by a walk instead of by my memory. STAR THE OWNER ASKED WHETHER THE ROUNDS ARE MEANINGFUL AND WHAT IS LEFT, AND THE FIRST HONEST ANSWER WAS THAT THE LEDGER ALREADY KNEW. Counting `carry_forward_bullets` per round: R700-799 filed 4.4 per round, R800-899 4.0, R900-999 3.9, R1000-1032 2.6 — and NOT ONE ROUND IN 333 FILED ZERO. \"Pay off every debt\" is not a reachable state, and the tracked debt list in memory is a hand-curated snapshot (about 20) rather than the population (85 in the last 33 rounds alone). The rate is falling, but it is not a curve that reaches zero: a round that builds something new discovers something new. STAR AND ROUND 1031 CHOSE ITS CLASS BY READING A DOC COMMENT, which is the \"the only one left is X\" habit this repository has caught itself in four rounds running, committed one round after recording it. So this round does not build class two. It makes the class list a DERIVED thing. STAR THE POPULATION COMES FROM THE STORE, NOT FROM A LIST. The quest layer of the one blind-authored branching corpus (`structural_fact_ids`, the shipping definition of quest plumbing, plus the facts that pay it off), and per fact the legs it ACTUALLY carries — a retargeted claim object, a retargeted predicate, a dropped payoff edge, a setup that stops expecting, a dropped backreference. Each is applied to the MANIFEST and pushed through the real write path, so what is judged is what an author could commit. 41 corruptions. STAR THE ANSWER IS 6 CAUGHT, 33 SILENT, 2 INERT, 0 REFUSED. Six the continuity gate reports. THIRTY-THREE pass every gate and CHANGE THE WORLD BOTH RUNTIME PROJECTIONS RENDER — nothing but the author's attention stands there. Two change NOTHING either projection carries. And REFUSED is zero because every corruption carries its own entities list, which is precisely the invariant R1031 discovered the write path demands: an author who keeps the store's own rules can commit all 41. STAR THE 33 IS NOT A BACKLOG OF 33 GATES AND SAYING SO IS THE POINT. A gate can adjudicate only where a DECLARED contract exists to compare against — which is what `requires` was, and why R1031 was buildable. Retargeting `pursues` from one quest to another is a different story, not a broken one; no gate can know the author did not mean it. So the measurement's real content is that the quest layer's remaining surface is mostly AUTHOR CONTENT rather than missing enforcement: the R476 ceiling (prose aesthetics and the unbounded commonsense of relevance) showing up here, one layer down. That is a stopping signal, and it arrived from a walk rather than from anyone's judgement. STAR THE TWO INERT ROWS ARE A FINDING, NAMED NOT COUNTED: `f-180/pays_off` and `f-411/pays_off` are payoff edges neither `report-playable-world` nor `report-quest-graph` carries. Scoped honestly — `report-payoff-coverage` is a third read and is not in this walk.",
+      "changes_bullets": [
+        "`crates/mnemosyne-validate/tests/play_break_class_census.rs`: derives the quest-layer corruption population from the store, pushes each through import + continuity + both runtime projections, and pins the REFUSED/CAUGHT/SILENT/INERT census at 0/6/33/2 with the silent and inert rows printed by name before the assertion."
+      ],
+      "verification_bullets": [
+        "Workspace 1746 tests green, clippy -D warnings clean, fmt clean.",
+        "The walk runs in 2.7s over 41 corruptions, each a fresh store built through `import_sections` + `import_facts` — the same primitives the CLI calls, so a corruption the write path would refuse is recorded as refused rather than assumed authorable.",
+        "Injection: collapsing the projection comparison so every corruption reads INERT fires exactly this test across the whole workspace; the census assertion is what catches it.",
+        "The carry-rate figures are read straight from `carry_forward_bullets` in this store, not from recollection: 4.4 / 4.0 / 3.9 / 2.6 per round over R700-799 / R800-899 / R900-999 / R1000-1032, zero rounds at 0."
+      ],
+      "carry_forward_bullets": [
+        "The walk covers the QUEST layer only. The same derivation over disclosure plans, canon coordinates and the entity registry is undone work, not a limit — it would need a `canon_from` leg, which this round left out because moving a coordinate one scene on its own road needs the road, and the road is per-branch.",
+        "SILENT is a surface, not a verdict. Which of the 33 admit a declared contract to gate against — the way `requires` did — is the question the next round would ask, and this walk does not answer it.",
+        "INERT is scoped to the two runtime projections. `report-payoff-coverage` reads payoff edges and is not in the walk, so the two INERT rows are inert to a runtime, not unread by the whole system."
+      ],
+      "population_census": [
+        {
+          "axis": "transition rules by `undirected`",
+          "left_label": "undirected",
+          "left": 10,
+          "right_label": "directed",
+          "right": 27
+        },
+        {
+          "axis": "map corpora by leg-kind declaration",
+          "left_label": "omitted",
+          "left": 6,
+          "right_label": "declared",
+          "right": 24
+        },
+        {
+          "axis": "cost-carrying corpora by direction-dependent pricing",
+          "left_label": "prices a way by direction",
+          "left": 4,
+          "right_label": "prices no way by direction",
+          "right": 6
+        },
+        {
+          "axis": "run trees by authoring mode",
+          "left_label": "hand script",
+          "left": 10,
+          "right_label": "file-only",
+          "right": 239
+        },
+        {
+          "axis": "map corpora by declared boundary crossing",
+          "left_label": "declares an exit",
+          "left": 6,
+          "right_label": "declares none",
+          "right": 24
+        },
+        {
+          "axis": "authored submissions by map and telling",
+          "left_label": "carries both",
+          "left": 10,
+          "right_label": "carries one",
+          "right": 24
+        }
+      ],
+      "publishable_decision_summary": "R1033 (MEASURE) — the arc's remaining surface, produced by a walk instead of by my memory. STAR THE OWNER ASKED WHETHER THE ROUNDS ARE MEANINGFUL AND WHAT IS LEFT, AND THE FIRST HONEST ANSWER WAS THAT THE LEDGER ALREADY KNEW. Counting `carry_forward_bullets` per round: R700-799 filed 4.4 per round, R800-899 4.0, R900-999 3.9, R1000-1032 2.6 — and NOT ONE ROUND IN 333 FILED ZERO. \"Pay off every debt\" is not a reachable state, and the tracked debt list in memory is a hand-curated snapshot (about 20) rather than the population (85 in the last 33 rounds alone). The rate is falling, but it is not a curve that reaches zero: a round that builds something new discovers something new. STAR AND ROUND 1031 CHOSE ITS CLASS BY READING A DOC COMMENT, which is the \"the only one left is X\" habit this repository has caught itself in four rounds running, committed one round after recording it. So this round does not build class two. It makes the class list a DERIVED thing. STAR THE POPULATION COMES FROM THE STORE, NOT FROM A LIST. The quest layer of the one blind-authored branching corpus (`structural_fact_ids`, the shipping definition of quest plumbing, plus the facts that pay it off), and per fact the legs it ACTUALLY carries — a retargeted claim object, a retargeted predicate, a dropped payoff edge, a setup that stops expecting, a dropped backreference. Each is applied to the MANIFEST and pushed through the real write path, so what is judged is what an author could commit. 41 corruptions. STAR THE ANSWER IS 6 CAUGHT, 33 SILENT, 2 INERT, 0 REFUSED. Six the continuity gate reports. THIRTY-THREE pass every gate and CHANGE THE WORLD BOTH RUNTIME PROJECTIONS RENDER — nothing but the author's attention stands there. Two change NOTHING either projection carries. And REFUSED is zero because every corruption carries its own entities list, which is precisely the invariant R1031 discovered the write path demands: an author who keeps the store's own rules can commit all 41. STAR THE 33 IS NOT A BACKLOG OF 33 GATES AND SAYING SO IS THE POINT. A gate can adjudicate only where a DECLARED contract exists to compare against — which is what `requires` was, and why R1031 was buildable. Retargeting `pursues` from one quest to another is a different story, not a broken one; no gate can know the author did not mean it. So the measurement's real content is that the quest layer's remaining surface is mostly AUTHOR CONTENT rather than missing enforcement: the R476 ceiling (prose aesthetics and the unbounded commonsense of relevance) showing up here, one layer down. That is a stopping signal, and it arrived from a walk rather than from anyone's judgement. STAR THE TWO INERT ROWS ARE A FINDING, NAMED NOT COUNTED: `f-180/pays_off` and `f-411/pays_off` are payoff edges neither `report-playable-world` nor `report-quest-graph` carries. Scoped honestly — `report-payoff-coverage` is a third read and is not in this walk.",
+      "publishable_changes_bullets": [
+        "`crates/mnemosyne-validate/tests/play_break_class_census.rs`: derives the quest-layer corruption population from the store, pushes each through import + continuity + both runtime projections, and pins the REFUSED/CAUGHT/SILENT/INERT census at 0/6/33/2 with the silent and inert rows printed by name before the assertion."
+      ],
+      "publishable_verification_bullets": [
+        "Workspace 1746 tests green, clippy -D warnings clean, fmt clean.",
+        "The walk runs in 2.7s over 41 corruptions, each a fresh store built through `import_sections` + `import_facts` — the same primitives the CLI calls, so a corruption the write path would refuse is recorded as refused rather than assumed authorable.",
+        "Injection: collapsing the projection comparison so every corruption reads INERT fires exactly this test across the whole workspace; the census assertion is what catches it.",
+        "The carry-rate figures are read straight from `carry_forward_bullets` in this store, not from recollection: 4.4 / 4.0 / 3.9 / 2.6 per round over R700-799 / R800-899 / R900-999 / R1000-1032, zero rounds at 0."
+      ],
+      "publishable_carry_forward_bullets": [
+        "The walk covers the QUEST layer only. The same derivation over disclosure plans, canon coordinates and the entity registry is undone work, not a limit — it would need a `canon_from` leg, which this round left out because moving a coordinate one scene on its own road needs the road, and the road is per-branch.",
+        "SILENT is a surface, not a verdict. Which of the 33 admit a declared contract to gate against — the way `requires` did — is the question the next round would ask, and this walk does not answer it.",
+        "INERT is scoped to the two runtime projections. `report-payoff-coverage` reads payoff edges and is not in the walk, so the two INERT rows are inert to a runtime, not unread by the whole system."
+      ]
+    },
     "Round 252": {
       "decision_summary": "Parser CommonMark conformance — recognize indented fenced code blocks (§98) and require whitespace after ATX hash sequence (§62)",
       "changes_bullets": [
