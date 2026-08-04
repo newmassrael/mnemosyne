@@ -2240,6 +2240,76 @@
         "WORLD LIMIT: an entity cannot declare itself its own prerequisite — the R446 entities-list invariant rejects the duplicate leg at import, so this gate never has to say so. Pinned by a test, so a loosening of that invariant is known to make the promise the next thing to check."
       ]
     },
+    "Round 1032": {
+      "decision_summary": "R1032 (DEBT) — the carry Round 1031 shipped was answerable by the tree it shipped into. R1031 left this bullet: \"a `requires` edge could equally promise that the prerequisite is discharged before the dependent is PICKED UP — a second, stricter reading the store has the data for, and that nothing here asks. Not attempted: undone work, not a limit.\" It named its own status correctly and then left it anyway. STAR THE ANSWER WAS ALREADY IN THE ONE BLIND-AUTHORED CORPUS THIS REPO CAN LOAD, AND IT REFUTES THE STRICTER READING. The reeve hands the party the main charge at `sc-02` (`f-013`, the `pursues` claim on `q-main`) and the warden's key is not lifted until `sc-17` (`f-161`) — fifteen scenes of play between the pickup and the prerequisite's discharge. A pickup-order rule would reject the store a blind author wrote, on the road that keeps every other promise. STAR AND THAT IS NOT A DEFECT IN THE STORE, IT IS THE SHAPE OF A QUEST: you accept an obligation long before you can discharge it, and a gate forbidding that would forbid nearly every quest ever written. So the `requires` promise is about COMPLETION order, which is what R1031 built — but R1031 could not say WHY it had chosen that reading, only that it had. Now it can, and the reason is evidence rather than taste. STAR THE PIN DERIVES BOTH COORDINATES FROM THE FIXTURE RATHER THAN ASSERTING THEM. The pickup comes from whichever fact carries the `pursues` claim on `q-main`, the discharge from whichever carries `completed_by` on `q-key`, and the precedence from the `claim` road as `report-playable-world` actually composes it — so an authored change that moves either coordinate moves the test, and a later round that builds the stricter rule turns this red and inherits the corpus it has to answer for. STAR THE PROCESS FINDING IS THE ONE THE OWNER HAS ASKED ABOUT TWICE: writing the gap down made it read like rigor. The R1005 carry test says a bullet concrete enough to describe the work is undone work — this one described the work, named the data, and was filed anyway. The rule that catches it is cheaper than the rule that describes it: before writing a carry, check whether the tree already answers it.",
+      "changes_bullets": [
+        "`the_authored_store_hands_out_a_quest_long_before_its_prerequisite_can_close` in `crates/mnemosyne-cli/tests/quest_prerequisite_order_smoke.rs`: derives the pickup and the prerequisite discharge from the fixture, and their order from the composed `claim` road, then asserts the pickup comes first."
+      ],
+      "verification_bullets": [
+        "Workspace 1745 tests green, clippy -D warnings clean, fmt clean, `validate-workspace` clean.",
+        "Injection: flipping the pin's comparison to `>` fires exactly that test across the whole workspace and nothing else."
+      ],
+      "carry_forward_bullets": [
+        "`report-playable-world` composes the scene walk this pin reads precedence from, so the pin depends on the `claim` road staying a road that names both coordinates. A road-free store would fail loudly on the lookup rather than skip, which is the right failure but is not the same as being independent of the projection.",
+        "Still open from R1031 and untouched here: a quest that is OPEN on a terminal road is an obligation that road never discharges, and nothing gates it — `unresolved_quests` surfaces the no-anchor case only."
+      ],
+      "population_census": [
+        {
+          "axis": "transition rules by `undirected`",
+          "left_label": "undirected",
+          "left": 10,
+          "right_label": "directed",
+          "right": 27
+        },
+        {
+          "axis": "map corpora by leg-kind declaration",
+          "left_label": "omitted",
+          "left": 6,
+          "right_label": "declared",
+          "right": 24
+        },
+        {
+          "axis": "cost-carrying corpora by direction-dependent pricing",
+          "left_label": "prices a way by direction",
+          "left": 4,
+          "right_label": "prices no way by direction",
+          "right": 6
+        },
+        {
+          "axis": "run trees by authoring mode",
+          "left_label": "hand script",
+          "left": 10,
+          "right_label": "file-only",
+          "right": 239
+        },
+        {
+          "axis": "map corpora by declared boundary crossing",
+          "left_label": "declares an exit",
+          "left": 6,
+          "right_label": "declares none",
+          "right": 24
+        },
+        {
+          "axis": "authored submissions by map and telling",
+          "left_label": "carries both",
+          "left": 10,
+          "right_label": "carries one",
+          "right": 24
+        }
+      ],
+      "publishable_decision_summary": "R1032 (DEBT) — the carry Round 1031 shipped was answerable by the tree it shipped into. R1031 left this bullet: \"a `requires` edge could equally promise that the prerequisite is discharged before the dependent is PICKED UP — a second, stricter reading the store has the data for, and that nothing here asks. Not attempted: undone work, not a limit.\" It named its own status correctly and then left it anyway. STAR THE ANSWER WAS ALREADY IN THE ONE BLIND-AUTHORED CORPUS THIS REPO CAN LOAD, AND IT REFUTES THE STRICTER READING. The reeve hands the party the main charge at `sc-02` (`f-013`, the `pursues` claim on `q-main`) and the warden's key is not lifted until `sc-17` (`f-161`) — fifteen scenes of play between the pickup and the prerequisite's discharge. A pickup-order rule would reject the store a blind author wrote, on the road that keeps every other promise. STAR AND THAT IS NOT A DEFECT IN THE STORE, IT IS THE SHAPE OF A QUEST: you accept an obligation long before you can discharge it, and a gate forbidding that would forbid nearly every quest ever written. So the `requires` promise is about COMPLETION order, which is what R1031 built — but R1031 could not say WHY it had chosen that reading, only that it had. Now it can, and the reason is evidence rather than taste. STAR THE PIN DERIVES BOTH COORDINATES FROM THE FIXTURE RATHER THAN ASSERTING THEM. The pickup comes from whichever fact carries the `pursues` claim on `q-main`, the discharge from whichever carries `completed_by` on `q-key`, and the precedence from the `claim` road as `report-playable-world` actually composes it — so an authored change that moves either coordinate moves the test, and a later round that builds the stricter rule turns this red and inherits the corpus it has to answer for. STAR THE PROCESS FINDING IS THE ONE THE OWNER HAS ASKED ABOUT TWICE: writing the gap down made it read like rigor. The R1005 carry test says a bullet concrete enough to describe the work is undone work — this one described the work, named the data, and was filed anyway. The rule that catches it is cheaper than the rule that describes it: before writing a carry, check whether the tree already answers it.",
+      "publishable_changes_bullets": [
+        "`the_authored_store_hands_out_a_quest_long_before_its_prerequisite_can_close` in `crates/mnemosyne-cli/tests/quest_prerequisite_order_smoke.rs`: derives the pickup and the prerequisite discharge from the fixture, and their order from the composed `claim` road, then asserts the pickup comes first."
+      ],
+      "publishable_verification_bullets": [
+        "Workspace 1745 tests green, clippy -D warnings clean, fmt clean, `validate-workspace` clean.",
+        "Injection: flipping the pin's comparison to `>` fires exactly that test across the whole workspace and nothing else."
+      ],
+      "publishable_carry_forward_bullets": [
+        "`report-playable-world` composes the scene walk this pin reads precedence from, so the pin depends on the `claim` road staying a road that names both coordinates. A road-free store would fail loudly on the lookup rather than skip, which is the right failure but is not the same as being independent of the projection.",
+        "Still open from R1031 and untouched here: a quest that is OPEN on a terminal road is an obligation that road never discharges, and nothing gates it — `unresolved_quests` surfaces the no-anchor case only."
+      ]
+    },
     "Round 252": {
       "decision_summary": "Parser CommonMark conformance — recognize indented fenced code blocks (§98) and require whitespace after ATX hash sequence (§62)",
       "changes_bullets": [

@@ -291,3 +291,70 @@ fn the_gate_names_the_road_and_the_two_ways_a_road_breaks_the_promise() {
         "the trunk is judged inapplicable, not accused: {report}"
     );
 }
+
+/// Round 1032 — WHY THE PROMISE IS READ AS DISCHARGE ORDER AND NOT PICKUP ORDER.
+///
+/// Round 1031 left this as a carry: a `requires` edge could equally promise the
+/// prerequisite is discharged before the dependent is PICKED UP (its `pursues`
+/// claim), a stricter reading the store has every coordinate for. The carry was
+/// wrong to leave — the only blind-authored corpus this repo can load already
+/// answers it, and the answer is that the stricter reading REJECTS THE AUTHORED
+/// STORE: the reeve hands the party the main charge in scene 2 and the warden's
+/// key is not lifted until scene 17, fifteen scenes of play later.
+///
+/// That is not a defect, it is the shape of a quest — you accept an obligation
+/// long before you can discharge it, and a gate that forbade it would forbid
+/// nearly every quest ever written. So the promise a `requires` edge makes is
+/// about COMPLETION order, and this test is the evidence, derived from the
+/// fixture rather than asserted about it. If a later round builds the stricter
+/// rule, this goes red and hands it the corpus it has to answer for.
+#[test]
+fn the_authored_store_hands_out_a_quest_long_before_its_prerequisite_can_close() {
+    let facts = dnd_quest_facts();
+    // A `subject` leg is a bare id; an `object` leg is `{kind, id}` — read the
+    // id out of whichever shape the leg has rather than assuming one.
+    let leg = |predicate: &str, key: &str, id: &str| -> String {
+        let found: Vec<&str> = facts["facts"]
+            .as_array()
+            .expect("facts array")
+            .iter()
+            .filter(|f| {
+                let leg = &f["typed"][key];
+                f["typed"]["predicate"] == predicate
+                    && (leg == id || (leg.is_object() && leg["id"] == id))
+            })
+            .map(|f| f["canon_from"].as_str().expect("canon_from"))
+            .collect();
+        assert_eq!(found.len(), 1, "`{predicate}` on `{id}`: {found:?}");
+        found[0].to_string()
+    };
+    // Where the party takes on the main charge, and where the key it needs lands.
+    let pickup = leg("pursues", "object", "q-main");
+    let prerequisite_discharge = leg("completed_by", "subject", DECLARED_PREREQUISITE);
+
+    let tmp = dnd_quest_workspace();
+    let world = json_report(tmp.path(), &["report-playable-world", "--telling", "delve"])["worlds"]
+        ["claim"]["manuscript"]["scenes"]
+        .as_array()
+        .expect("scenes")
+        .iter()
+        .map(|s| s["section"].as_str().expect("section").to_string())
+        .collect::<Vec<_>>();
+    let ordinal = |scene: &str| {
+        world
+            .iter()
+            .position(|s| s == scene)
+            .unwrap_or_else(|| panic!("`{scene}` is not on the `claim` road: {world:?}"))
+    };
+    assert!(
+        ordinal(&pickup) < ordinal(&prerequisite_discharge),
+        "the blind author picked `q-main` up at `{pickup}` and only discharged its declared \
+         prerequisite at `{prerequisite_discharge}` — a pickup-order rule would reject the \
+         one authored store this repo has"
+    );
+
+    // And the discharge-order reading, on the same road, holds — which is the
+    // whole reason the two readings had to be told apart.
+    let (ok, _) = continuity(tmp.path());
+    assert!(ok, "the discharge-order promise is kept on that same road");
+}
