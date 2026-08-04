@@ -45,8 +45,13 @@ const SUPERSEDED_BY_REF_KIND: &str = "decision";
 
 /// Cross-ref kind emitted for an `AtomicSection.resolved_by` edge — an open
 /// question's forward-pointer to the section expected to resolve it (the
-/// structured-fact SSOT home for "deferred to §Y"; sec 12a). Projecting it
-/// routes the edge through the existing cross-ref orphan check for free.
+/// structured-fact SSOT home for "deferred to §Y"; sec 12a).
+///
+/// THE SENTENCE THIS REPLACES SAID PROJECTING IT ROUTED THE EDGE THROUGH THE
+/// EXISTING CROSS-REF ORPHAN CHECK FOR FREE. It did not: that check walks the
+/// STORE, field by field, and had an arm for `superseded_by` alone, so for the
+/// whole life of this constant a dangling `resolved_by` was reported by nothing.
+/// R1026 measured it by marking the MCP argument's polarity and added the arm.
 const RESOLVED_BY_REF_KIND: &str = "resolved_by";
 
 /// Deterministic numeric entity id for a string `section_id`: the first 8 bytes

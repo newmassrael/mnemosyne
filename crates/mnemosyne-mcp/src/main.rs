@@ -62,7 +62,7 @@ pub struct QuerySectionArgs {
     /// Section ID without the leading `§` (e.g. `"39"`, `"39.1"`,
     /// `"changelog"`). Pass `--list-sections` form via `list_sections`
     /// instead.
-    pub section_id: String,
+    pub section_id: ExistingRef,
     /// Include 1-hop CrossRef neighborhood (outbound + inbound).
     #[serde(default)]
     pub include_related: bool,
@@ -76,7 +76,7 @@ pub struct QuerySectionArgs {
 pub struct QueryChangelogEntryArgs {
     /// The citation to verify and read — a round, e.g. `Round 625`. The
     /// exact stored key (with its title) also resolves.
-    pub entry_id: String,
+    pub entry_id: ExistingRef,
 }
 
 // Round 467/470 — whole-ledger changelog listing (R410 read model exposed).
@@ -134,35 +134,35 @@ pub struct StyleCheckArgs {
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct SetSectionTextArgs {
     /// Section ID to mutate. Pass `"39"`, not `""`.
-    pub section_id: String,
+    pub section_id: ExistingRef,
     /// New value. For intent: a single sentence, max ~200 chars.
     pub text: String,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct SetSectionBulletsArgs {
-    pub section_id: String,
+    pub section_id: ExistingRef,
     /// Ordered list of bullets. Each ≤ 100 chars per T3 default.
     pub bullets: Vec<String>,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct AddSectionCaveatArgs {
-    pub section_id: String,
+    pub section_id: ExistingRef,
     /// Single caveat bullet to append.
     pub bullet: String,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct SetImpactScopeArgs {
-    pub section_id: String,
+    pub section_id: ExistingRef,
     /// Cross-ref targets without the `§` prefix, e.g. `["39", "61.1"]`.
     pub refs: Vec<String>,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct AddSectionExampleArgs {
-    pub section_id: String,
+    pub section_id: ExistingRef,
     /// Code-fence language tag (e.g. `"rust"`, `"toml"`).
     pub language: String,
     /// Code body — embedded inside a fenced block. No leading fence.
@@ -172,7 +172,7 @@ pub struct AddSectionExampleArgs {
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct AddSectionBindingArgs {
     /// Section ID without the `§` prefix.
-    pub section_id: String,
+    pub section_id: ExistingRef,
     /// Workspace-relative POSIX file path. No leading `/`, no leading
     /// `./`, no `..` segment, no backslash. The file does not need to
     /// exist at write time — schema records intent.
@@ -195,7 +195,7 @@ pub struct AddSectionBindingArgs {
 pub struct AddSectionArgs {
     /// Section ID to create. No `§` prefix in the value; use the bare slug
     /// or numbered id (e.g. `"39"`, `"39.1"`, `"my-section"`).
-    pub section_id: String,
+    pub section_id: FreshId,
     /// Owning doc identifier (workspace-relative path or doc id).
     pub parent_doc: String,
     /// Heading title (non-empty).
@@ -204,17 +204,17 @@ pub struct AddSectionArgs {
     /// (no `§`) to nest under an existing section. The parent must exist
     /// in the atomic store at write time.
     #[serde(default)]
-    pub parent_section: Option<String>,
+    pub parent_section: Option<ExistingRef>,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct SetSectionParentSectionArgs {
     /// Section being re-parented.
-    pub section_id: String,
+    pub section_id: ExistingRef,
     /// New parent. Pass `Some("<id>")` to nest under that section, or
     /// `None` (omit) to promote to top-level. Self-loop rejected.
     #[serde(default)]
-    pub parent_section: Option<String>,
+    pub parent_section: Option<ExistingRef>,
 }
 
 /// R678 — the section-mutate parity gap the cost-audit found: an MCP agent
@@ -222,7 +222,7 @@ pub struct SetSectionParentSectionArgs {
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct RemoveSectionArgs {
     /// Section ID (the `§` prefix is stripped if present).
-    pub section_id: String,
+    pub section_id: ExistingRef,
     /// Mandatory rationale — recorded in the reasoned-mutation ledger
     /// (`report_mutation_reasons`), not discarded.
     pub reason: String,
@@ -232,23 +232,23 @@ pub struct RemoveSectionArgs {
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct SetSectionDecisionStatusArgs {
     /// Section ID (the `§` prefix is stripped if present).
-    pub section_id: String,
+    pub section_id: ExistingRef,
     /// New status: `active` | `superseded` | `removed` | `open`. Unknown rejects.
     pub status: String,
     /// Superseding section id — MANDATORY for `superseded`, rejected otherwise.
     #[serde(default)]
-    pub superseding: Option<String>,
+    pub superseding: Option<ScannedRef>,
     /// Resolving section id — valid only for `open`, rejected otherwise.
     #[serde(default)]
-    pub resolving: Option<String>,
+    pub resolving: Option<ScannedRef>,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct RemoveSectionBindingArgs {
     /// Section ID without the `§` prefix.
-    pub section_id: String,
+    pub section_id: ExistingRef,
     /// Workspace-relative POSIX file path to remove from the binding set.
-    pub file: String,
+    pub file: ExistingRef,
     /// Optional symbol — must exact-match the row to remove. Omit to
     /// target a file-only binding (a row with `symbol = None`). Matching is
     /// kind-agnostic (identity is the `(file, symbol)` pair).
@@ -262,9 +262,9 @@ pub struct RemoveSectionBindingArgs {
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct SetSectionBindingKindArgs {
     /// Section ID without the `§` prefix.
-    pub section_id: String,
+    pub section_id: ExistingRef,
     /// Workspace-relative POSIX file path of the existing binding.
-    pub file: String,
+    pub file: ExistingRef,
     /// Optional symbol identifying the binding (omit for a file-only row).
     #[serde(default)]
     pub symbol: Option<String>,
@@ -278,7 +278,7 @@ pub struct SetSectionBindingKindArgs {
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct SetSectionCoverageExpectationArgs {
     /// Section ID without the `§` prefix.
-    pub section_id: String,
+    pub section_id: ExistingRef,
     /// One of the three `CoverageExpectation` tags. `"normative"` expects an
     /// `implements` binding; `"out_of_scope_here"` (in the document this ledger
     /// mirrors, not built here — including a deferred or Phase-2 feature) and
@@ -293,7 +293,7 @@ pub struct SetSectionCoverageExpectationArgs {
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct SetSectionVerificationExpectationArgs {
     /// Section ID without the `§` prefix.
-    pub section_id: String,
+    pub section_id: ExistingRef,
     /// `"dedicated"` (expects a `verifies` binding to a test/report artifact)
     /// or `"by_construction"` (no independently-assertable per-unit oracle,
     /// exempt from the dedicated-verify gate).
@@ -319,14 +319,14 @@ pub struct ReportMutationReasonsArgs {
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct AddConfirmationEventArgs {
     /// Claim section ID without the `§` prefix.
-    pub section_id: String,
+    pub section_id: ExistingRef,
     /// Bound file (VerifiesBinding claim). Omit for a SectionCompleteness claim.
     pub file: Option<String>,
     /// Bound symbol (requires `file`).
     pub symbol: Option<String>,
     /// `"tool"` (deterministic, reproducible) or `"model"` (fresh-context LLM).
     pub confirmer_kind: String,
-    pub confirmer_id: String,
+    pub confirmer_id: FreshId,
     pub confirmer_version: String,
     /// `"linkage_check"` | `"semantic_review"` | `"coverage_attestation"`.
     pub method: String,
@@ -356,7 +356,7 @@ pub struct AddConfirmationEventArgs {
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct AddFrameArgs {
     /// Frame id — the registry key every fact's `frame` must reference.
-    pub frame_id: String,
+    pub frame_id: FreshId,
     /// Optional free-form description (whose epistemic frame this is).
     #[serde(default)]
     pub description: String,
@@ -366,17 +366,17 @@ pub struct AddFrameArgs {
 pub struct AddBranchArgs {
     /// Branch id — the registry key every non-default fact `branch` must
     /// reference. `main` is known by construction and never registered.
-    pub branch_id: String,
+    pub branch_id: FreshId,
     /// Optional free-form description (which quest-path/playthrough world).
     #[serde(default)]
     pub description: String,
     /// Parent world-line this branch diverges from (R438). Give with
     /// `forks_at`; omit both for a standalone world.
     #[serde(default)]
-    pub forks_from: Option<String>,
+    pub forks_from: Option<ExistingRef>,
     /// Canon point of divergence (structure-section id).
     #[serde(default)]
-    pub forks_at: Option<String>,
+    pub forks_at: Option<ExistingRef>,
     /// Incoming world-line merges (R532 — convergence / confluence). Each entry
     /// is a parent + its merge coordinate; a confluence has ≥ 2. Mutually
     /// exclusive with `forks_from`/`forks_at`.
@@ -395,7 +395,7 @@ pub struct ConvergeEdgeArg {
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct AddEntityArgs {
     /// Entity id — the registry key fact `entities` refs must name.
-    pub entity_id: String,
+    pub entity_id: FreshId,
     /// Kind — a REF into the entity-kind registry, not free text (R669):
     /// register it first with `add_entity_kind`. Omitted = unspecified
     /// (allowed); a non-empty typo fails loud (it would route the entity out
@@ -414,7 +414,7 @@ pub struct AddEntityArgs {
 pub struct AddEntityKindArgs {
     /// Entity-kind id — one member of the vocabulary `add_entity`'s `kind`
     /// refs (e.g. character / place / item). Fail-loud, load-bearing.
-    pub kind_id: String,
+    pub kind_id: FreshId,
     /// Direct SUPER-kinds (Round 732 DEBT-M as one, Round 738 as a SET —
     /// multiple inheritance / a DAG) — a `thing`-scoped rule then accepts a
     /// `weapon` when `thing` is reachable upward from `weapon`'s parents, and a
@@ -434,7 +434,7 @@ pub struct AddEntityKindArgs {
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct SetEntityKindParentsArgs {
     /// The EXISTING entity-kind whose super-kinds to replace (fail-loud if absent).
-    pub kind_id: String,
+    pub kind_id: ExistingRef,
     /// The new direct SUPER-kinds (0..N) — a full replace, not a merge. Each must
     /// be registered and not the kind itself; none may be at-or-below `kind_id`
     /// (that would close a cycle). Empty = root the kind.
@@ -448,7 +448,7 @@ pub struct SetEntityKindParentsArgs {
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct RemoveEntityKindArgs {
     /// The entity-kind to remove (fail-loud if absent or still referenced).
-    pub kind_id: String,
+    pub kind_id: ExistingRef,
 }
 
 /// Register one unit of measure (Round 706) — the vocabulary a `quantity`
@@ -459,7 +459,7 @@ pub struct RemoveEntityKindArgs {
 pub struct AddUnitArgs {
     /// Unit id — one member of the measurement vocabulary (e.g. day / minute /
     /// metre). Fail-loud: a Quantity whose unit is unregistered rejects.
-    pub unit_id: String,
+    pub unit_id: FreshId,
     #[serde(default)]
     pub description: String,
 }
@@ -470,7 +470,7 @@ pub struct AddUnitArgs {
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct AddParameterArgs {
     /// Parameter id — one member of the meter vocabulary (e.g. affection).
-    pub parameter_id: String,
+    pub parameter_id: FreshId,
     #[serde(default)]
     pub description: String,
 }
@@ -481,9 +481,9 @@ pub struct AddParameterArgs {
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct AddParameterDeltaArgs {
     /// The BEAT FACT ID the delta rides (must already exist).
-    pub fact_id: String,
+    pub fact_id: ExistingRef,
     /// A REGISTERED parameter (add_parameter first).
-    pub parameter: String,
+    pub parameter: ExistingRef,
     /// The SIGNED delta — non-zero (0 = a no-op beat); both signs legal.
     pub delta: i64,
 }
@@ -493,9 +493,9 @@ pub struct AddParameterDeltaArgs {
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct RemoveParameterDeltaArgs {
     /// The beat fact id whose delta to drop.
-    pub fact_id: String,
+    pub fact_id: ExistingRef,
     /// The parameter whose delta to drop (fail-loud if the beat has none).
-    pub parameter: String,
+    pub parameter: ExistingRef,
 }
 
 /// Attach a numeric-value THRESHOLD gate to a CHOICE edge (Round 730, DEBT-K) — a
@@ -505,9 +505,9 @@ pub struct RemoveParameterDeltaArgs {
 pub struct AddParameterGateArgs {
     /// The CHOICE FACT ID the gate rides (must already exist; rides ANY fact — no
     /// map-edge check).
-    pub fact_id: String,
+    pub fact_id: ExistingRef,
     /// A REGISTERED parameter (add_parameter first).
-    pub parameter: String,
+    pub parameter: ExistingRef,
     /// The comparison operator: ge | le | eq | gt | lt.
     pub op: IntervalOp,
     /// The required accumulated value (signed; 0 / negative legal).
@@ -519,7 +519,7 @@ pub struct AddParameterGateArgs {
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct RemoveParameterGateArgs {
     /// The choice fact id whose gate to drop (fail-loud if it has none).
-    pub fact_id: String,
+    pub fact_id: ExistingRef,
 }
 
 /// Attach a cost to one map edge (Round 709 → DEBT-J) — a side-table entry keyed
@@ -528,12 +528,12 @@ pub struct RemoveParameterGateArgs {
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct AddEdgeCostArgs {
     /// The ADJACENT FACT ID the cost attaches to (must already exist).
-    pub fact_id: String,
+    pub fact_id: ExistingRef,
     /// The cost amount — a POSITIVE integer (e.g. walk minutes; 0/negative = a
     /// free teleport, rejected by G3).
     pub n: i64,
     /// A REGISTERED unit (e.g. minute; add_unit first).
-    pub unit: String,
+    pub unit: ExistingRef,
 }
 
 /// Remove a map edge's cost (Round 711) — the peer of `add_edge_cost`. Drops a
@@ -541,7 +541,7 @@ pub struct AddEdgeCostArgs {
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct RemoveEdgeCostArgs {
     /// The fact id whose edge cost to drop (fail-loud if it has none).
-    pub fact_id: String,
+    pub fact_id: ExistingRef,
 }
 
 /// Attach a multiset COUNT to a fact (Round 731 → DEBT-L) — a side-table entry
@@ -549,7 +549,7 @@ pub struct RemoveEdgeCostArgs {
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct AddFactCountArgs {
     /// The FACT ID the count attaches to (must already exist).
-    pub fact_id: String,
+    pub fact_id: ExistingRef,
     /// The multiset count — a POSITIVE integer (holds(A,potion) count 5 = A holds
     /// FIVE potions; 0/negative = not holding it, rejected — retract the fact).
     pub count: i64,
@@ -560,7 +560,7 @@ pub struct AddFactCountArgs {
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct RemoveFactCountArgs {
     /// The fact id whose multiset count to drop (fail-loud if it has none).
-    pub fact_id: String,
+    pub fact_id: ExistingRef,
 }
 
 /// Attach a place-access guard to one map edge (Round 717 design → Round 720).
@@ -568,10 +568,10 @@ pub struct RemoveFactCountArgs {
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct AddEdgeGuardArgs {
     /// The ADJACENT (edge) FACT ID the guard attaches to (must already exist).
-    pub fact_id: String,
+    pub fact_id: ExistingRef,
     /// The CONDITION FACT ID the edge requires (must already exist; a dangling-
     /// ref is rejected). Distinct from the edge — an edge cannot guard itself.
-    pub condition: String,
+    pub condition: ExistingRef,
 }
 
 /// Remove a map edge's whole guard set (Round 720) — the peer of `add_edge_guard`.
@@ -579,24 +579,24 @@ pub struct AddEdgeGuardArgs {
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct RemoveEdgeGuardArgs {
     /// The fact id whose edge guard set to drop (fail-loud if it has none).
-    pub fact_id: String,
+    pub fact_id: ExistingRef,
 }
 
 /// Remove ONE condition from a map edge's guard set (Round 722).
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct RemoveEdgeGuardConditionArgs {
     /// The edge fact id whose guard set to edit.
-    pub fact_id: String,
+    pub fact_id: ExistingRef,
     /// The condition to drop from the set (fail-loud if absent; the edge key is
     /// deleted when the set empties).
-    pub condition: String,
+    pub condition: ExistingRef,
 }
 
 /// Set (or clear) a map edge guard's K-of-N threshold (Round 723).
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct SetEdgeGuardThresholdArgs {
     /// The edge fact id whose guard threshold to set (must already have a guard).
-    pub fact_id: String,
+    pub fact_id: ExistingRef,
     /// The K-of-N threshold: `Some(k)` = at least k of the conditions (1 <= k <=
     /// len; k == len normalizes to AND); `None` (omit) = clear to AND (require all).
     #[serde(default)]
@@ -606,14 +606,14 @@ pub struct SetEdgeGuardThresholdArgs {
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct ReportEntityArgs {
     /// Entity id to assemble the dossier for.
-    pub entity_id: String,
+    pub entity_id: ExistingRef,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct AddPredicateArgs {
     /// Predicate id — the registry key every TypedClaim predicate must
     /// name. Load-bearing (narrative rules key off it), hence fail-loud.
-    pub predicate_id: String,
+    pub predicate_id: FreshId,
     /// Declared object shape. Round 873 typed this slot: the closed set is now
     /// in the tool's JSON Schema, so a client cannot spell a tag the wire
     /// removed and learn about it only from a write-time reject.
@@ -622,11 +622,11 @@ pub struct AddPredicateArgs {
     /// `entity_kinds` ref; omit = any). The write path rejects a fact whose
     /// subject entity is not this kind (the spatial-map G1 gate).
     #[serde(default)]
-    pub subject_kind: Option<String>,
+    pub subject_kind: Option<ExistingRef>,
     /// R701 — required entity-KIND for an entity-shaped object leg (omit =
     /// any). Rejects unless `object_kind=entity` (only an entity object has a kind).
     #[serde(default)]
-    pub object_entity_kind: Option<String>,
+    pub object_entity_kind: Option<ExistingRef>,
     /// R705 — the CLOSED object vocabulary. REQUIRED (non-empty) under
     /// `object_kind=token`, REJECTED otherwise. Every `TypedObject::Token`
     /// under this predicate must be a member; a token outside it rejects.
@@ -642,7 +642,7 @@ pub struct AddPredicateArgs {
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct SetPredicateArgs {
     /// Predicate id — must ALREADY be registered (`add_predicate` creates).
-    pub predicate_id: String,
+    pub predicate_id: ExistingRef,
     /// New declared object shape. A re-type rejects while any existing use still
     /// holds an object of the old shape. Round 873 typed this slot, so the closed
     /// set travels in the tool's JSON Schema.
@@ -650,11 +650,11 @@ pub struct SetPredicateArgs {
     /// R701 — new required subject entity-KIND (omit = clear; full replace).
     /// A tighten rejects while any existing use's subject is off-kind.
     #[serde(default)]
-    pub subject_kind: Option<String>,
+    pub subject_kind: Option<ExistingRef>,
     /// R701 — new required object entity-KIND (omit = clear; full replace).
     /// A tighten rejects while any existing use's object is off-kind.
     #[serde(default)]
-    pub object_entity_kind: Option<String>,
+    pub object_entity_kind: Option<ExistingRef>,
     /// R705 — new closed object vocabulary (full replace). REQUIRED non-empty
     /// under `object_kind=token`. A tighten (dropping a token an existing use
     /// holds) rejects — extend, never silently narrow.
@@ -668,13 +668,13 @@ pub struct SetPredicateArgs {
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct RemovePredicateArgs {
     /// Predicate id. Rejects while any typed leg still names it.
-    pub predicate_id: String,
+    pub predicate_id: ExistingRef,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct AddDisclosurePlanArgs {
     /// Telling id — the registry key for this named telling over the fact base.
-    pub telling_id: String,
+    pub telling_id: FreshId,
     /// Default disclosure mode: withhold | state | hint | imply. Unknown rejects.
     pub default_mode: String,
     #[serde(default)]
@@ -699,9 +699,9 @@ pub struct DisclosureRevealArg {
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct SetDisclosureArgs {
     /// Telling id (add_disclosure_plan first).
-    pub telling_id: String,
+    pub telling_id: ExistingRef,
     /// Fact id the override targets (must exist; withhold/first_at need it typed).
-    pub fact_id: String,
+    pub fact_id: ExistingRef,
     /// Disclosure mode: withhold | state | hint | imply.
     pub mode: String,
     /// Per-world-line first-reveal triggers (R752): each a branch + a coord SET +
@@ -720,9 +720,9 @@ pub struct SetDisclosureArgs {
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct RemoveDisclosureArgs {
     /// Telling id carrying the decision.
-    pub telling_id: String,
+    pub telling_id: ExistingRef,
     /// Fact id whose decision is cleared (the fact itself is untouched).
-    pub fact_id: String,
+    pub fact_id: ExistingRef,
     /// Why the decision is withdrawn (mandatory — audit-trail safeguard).
     pub reason: String,
 }
@@ -732,14 +732,14 @@ pub struct RemoveDisclosureArgs {
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct AddDisclosureRevealCoordArgs {
     /// Telling id carrying the override (`set_disclosure` first).
-    pub telling_id: String,
+    pub telling_id: ExistingRef,
     /// Fact id whose reveal the coord attaches to (a first_at pin makes it
     /// gate-targeted, so the fact must carry a typed claim).
-    pub fact_id: String,
+    pub fact_id: ExistingRef,
     /// World-line the reveal pins timing for (main or a registered branch).
-    pub branch: String,
+    pub branch: ExistingRef,
     /// The trigger coordinate to ADD to the branch's SET (a registered section).
-    pub coord: String,
+    pub coord: ExistingRef,
 }
 
 /// Round 752 — remove ONE trigger coordinate from a fact's per-world first-reveal
@@ -747,14 +747,14 @@ pub struct AddDisclosureRevealCoordArgs {
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct RemoveDisclosureRevealCoordArgs {
     /// Telling id carrying the override.
-    pub telling_id: String,
+    pub telling_id: ExistingRef,
     /// Fact id whose reveal the coord is dropped from.
-    pub fact_id: String,
+    pub fact_id: ExistingRef,
     /// World-line the reveal is pinned on.
-    pub branch: String,
+    pub branch: ExistingRef,
     /// The trigger coordinate to DROP from the set (fail-loud if absent; the
     /// branch key is deleted when the set empties — never a vacuous empty trigger).
-    pub coord: String,
+    pub coord: ExistingRef,
 }
 
 /// Round 752 — set (or clear) a fact's per-world first-reveal K-of-N THRESHOLD
@@ -762,11 +762,11 @@ pub struct RemoveDisclosureRevealCoordArgs {
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct SetDisclosureRevealThresholdArgs {
     /// Telling id carrying the override.
-    pub telling_id: String,
+    pub telling_id: ExistingRef,
     /// Fact id whose reveal threshold to set.
-    pub fact_id: String,
+    pub fact_id: ExistingRef,
     /// World-line whose reveal threshold to set (must already have a reveal).
-    pub branch: String,
+    pub branch: ExistingRef,
     /// K-of-N threshold: `k` fires at the k-th-earliest trigger (2 <= k <= len;
     /// k == 1 normalizes to first-reached; k == len = last-reached, kept distinct);
     /// omit/null clears back to first-reached.
@@ -809,15 +809,15 @@ pub struct AmendFactArgs {
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct RetractFactArgs {
-    pub fact_id: String,
+    pub fact_id: ExistingRef,
     /// Mandatory rationale (audit safeguard).
     pub reason: String,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct AddFactConflictArgs {
-    pub fact_id: String,
-    pub conflicts_with: String,
+    pub fact_id: ExistingRef,
+    pub conflicts_with: ExistingRef,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
@@ -857,7 +857,7 @@ pub struct ReportAuthoringFrontierArgs {
     /// quests, never-planned disclosures). Omit for the telling-independent
     /// gaps only (zero-fact scenes, per-scene coverage, dangling setups).
     #[serde(default)]
-    pub telling: Option<String>,
+    pub telling: Option<ExistingRef>,
     /// Canon-order declaration path override (bypasses the pin). Omit to use
     /// `[continuity].canon_order_path`.
     #[serde(default)]
@@ -893,16 +893,16 @@ pub struct ReportTransitionMapArgs {
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct ReportFrameViewArgs {
     /// Epistemic frame to project.
-    pub frame: String,
+    pub frame: ExistingRef,
     /// World-line branch. Omit for the default branch (`main`).
     #[serde(default)]
-    pub branch: Option<String>,
+    pub branch: Option<ExistingRef>,
     /// Entity filter (Round 437) — the NPC-context query is frame ×
     /// branch × entity at T. Omit for the whole frame.
     #[serde(default)]
-    pub entity: Option<String>,
+    pub entity: Option<ExistingRef>,
     /// Canon point (structure-section id).
-    pub at: String,
+    pub at: ExistingRef,
     /// Canon-order declaration path override (bypasses the pin).
     #[serde(default)]
     pub order_path: Option<AgentPath>,
@@ -927,7 +927,7 @@ pub struct ReportPlaythroughManuscriptArgs {
     /// Single-world filter (a registered branch id or `main`); omitted =
     /// every query world. Fail-loud on an unregistered id.
     #[serde(default)]
-    pub world: Option<String>,
+    pub world: Option<ExistingRef>,
     /// Canon-order declaration path override (bypasses the pin).
     #[serde(default)]
     pub order_path: Option<AgentPath>,
@@ -935,7 +935,7 @@ pub struct ReportPlaythroughManuscriptArgs {
     /// begins-event with its disclosure decision (mode/first_at/surface) under
     /// the named telling. Fail-loud on a typo'd id.
     #[serde(default)]
-    pub telling: Option<String>,
+    pub telling: Option<ExistingRef>,
     /// Reading-walk prune (R509): keep only each world's content scenes
     /// (begins>0) = the deterministic reading-copy walk.
     #[serde(default)]
@@ -952,19 +952,19 @@ pub struct ReportForkTreeArgs {
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct ReportDisclosureCoverageArgs {
     /// Telling id to classify (disclosed / hidden-by-design / never-planned).
-    pub telling: String,
+    pub telling: ExistingRef,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct ReportPlayableWorldArgs {
     /// Telling id whose disclosure plan resolves the locators (required — a
     /// playable world IS a telling). Fail-loud on a typo'd id.
-    pub telling: String,
+    pub telling: ExistingRef,
     /// Single-world filter (a registered branch id or `main`); omitted = every
     /// query world. The fork tree stays full regardless. Fail-loud on an
     /// unregistered id.
     #[serde(default)]
-    pub world: Option<String>,
+    pub world: Option<ExistingRef>,
     /// Canon-order declaration path override (bypasses the pin).
     #[serde(default)]
     pub order_path: Option<AgentPath>,
@@ -974,12 +974,12 @@ pub struct ReportPlayableWorldArgs {
 pub struct ReportQuestGraphArgs {
     /// Telling id whose disclosure plan resolves the giver-surface locators
     /// (required). Fail-loud on a typo'd id.
-    pub telling: String,
+    pub telling: ExistingRef,
     /// Single-world filter (a registered branch id or `main`); omitted = every
     /// query world. The fork tree stays full regardless. Fail-loud on an
     /// unregistered id.
     #[serde(default)]
-    pub world: Option<String>,
+    pub world: Option<ExistingRef>,
     /// Canon-order declaration path override (bypasses the pin).
     #[serde(default)]
     pub order_path: Option<AgentPath>,
@@ -988,13 +988,13 @@ pub struct ReportQuestGraphArgs {
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct DisclosureLeakArgs {
     /// Telling id whose plan is the gate's authored side.
-    pub telling: String,
+    pub telling: ExistingRef,
     /// Path to the BLIND RE-EXTRACTED prose store to check.
     pub against: AgentPath,
     /// The world-line the re-extracted prose represents.
-    pub world: String,
+    pub world: ExistingRef,
     /// The frame whose re-extracted facts count as reader-established truth.
-    pub truth_frame: String,
+    pub truth_frame: ExistingRef,
     /// Canon-order declaration path override (bypasses the pin).
     #[serde(default)]
     pub order_path: Option<AgentPath>,
@@ -1005,7 +1005,7 @@ pub struct RenderFidelityArgs {
     /// Path to the BLIND RE-EXTRACTED prose store to check.
     pub against: AgentPath,
     /// The assigned world-line the prose was rendered for.
-    pub world: String,
+    pub world: ExistingRef,
     /// Canon-order declaration path override (bypasses the pin).
     #[serde(default)]
     pub order_path: Option<AgentPath>,
@@ -1043,18 +1043,18 @@ pub struct ImportEdgeProposalsArgs {
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct InventoryIdArgs {
     /// Inventory id (e.g. `"ARP_07"`, `"TCP_RETRANSMISSION_TO_04"`).
-    pub inventory_id: String,
+    pub inventory_id: ExistingRef,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct AddInventoryEntryArgs {
     /// Stable inventory id. Must be non-empty, no whitespace.
-    pub inventory_id: String,
+    pub inventory_id: FreshId,
     /// Lifecycle status: `"active"` / `"deprecated"` / `"reserved"`.
     pub status: String,
     /// Optional section binding without leading `§` (e.g. `"4.2.4"`).
     #[serde(default)]
-    pub section_ref: Option<String>,
+    pub section_ref: Option<ExistingRef>,
     /// Optional traceability pointer (PDF page ref, JSON row id, etc.).
     #[serde(default)]
     pub source: Option<String>,
@@ -1066,7 +1066,7 @@ pub struct AddInventoryEntryArgs {
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct SetInventoryStatusArgs {
-    pub inventory_id: String,
+    pub inventory_id: ExistingRef,
     /// New status: `"active"` / `"deprecated"` / `"reserved"`.
     pub status: String,
     /// Optional reason. Omit to preserve existing; empty string clears.
@@ -1076,11 +1076,11 @@ pub struct SetInventoryStatusArgs {
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct SetInventorySectionRefArgs {
-    pub inventory_id: String,
+    pub inventory_id: ExistingRef,
     /// New section_ref without `§`. Omit (or pass `null`) AND set
     /// `clear: true` to unset the binding.
     #[serde(default)]
-    pub section_ref: Option<String>,
+    pub section_ref: Option<ExistingRef>,
     /// Set to `true` to explicitly unset the section_ref. Exactly one
     /// of `section_ref` or `clear` must be present.
     #[serde(default)]
@@ -1089,7 +1089,7 @@ pub struct SetInventorySectionRefArgs {
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct RemoveInventoryEntryArgs {
-    pub inventory_id: String,
+    pub inventory_id: ExistingRef,
     /// Mandatory rationale recorded in the receipt (audit safeguard).
     pub reason: String,
 }
@@ -1104,7 +1104,7 @@ pub struct RemoveInventoryEntryArgs {
 pub struct SetChangelogPublishableStringArgs {
     /// Existing entry_id whose publishable_decision_summary will be updated.
     /// NotFound if the entry has not been appended yet.
-    pub entry_id: String,
+    pub entry_id: ExistingRef,
     /// Replacement decision_summary text. The audit half is untouched.
     pub value: String,
 }
@@ -1112,7 +1112,7 @@ pub struct SetChangelogPublishableStringArgs {
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct SetChangelogPublishableBulletsArgs {
     /// Existing entry_id whose publishable bullet list will be replaced.
-    pub entry_id: String,
+    pub entry_id: ExistingRef,
     /// Replacement bullets in order. Empty vec clears the publishable list
     /// (audit half untouched).
     pub bullets: Vec<String>,
@@ -1124,7 +1124,7 @@ pub struct EmitPublishableOverrideLedgerDraftArgs {
     /// a `[[publishable_override_ledger]]` block. NotFound if entry_id is
     /// absent; returns `in_sync: true` and `ledger_draft: null` when the
     /// publishable half still matches the audit half (nothing to anchor).
-    pub entry_id: String,
+    pub entry_id: ExistingRef,
     /// Audit reason recorded in the draft. Mandatory.
     pub reason: String,
     /// `applied_in` field for the draft (commit ref, PR id, etc.). Mandatory.
@@ -1169,7 +1169,7 @@ pub struct RedactTermArgs {
 pub struct AppendChangelogEntryArgs {
     /// Entry id matching `[schema] entry_id_prefix`. Must be strictly
     /// monotonic (greater than the last entry's id).
-    pub entry_id: String,
+    pub entry_id: FreshId,
     /// One-sentence headline of the decision.
     pub decision_summary: String,
     /// What concretely changed. File paths, primitives, etc.
@@ -1395,8 +1395,189 @@ impl schemars::JsonSchema for AgentPath {
     }
 }
 
-/// The tools an agent is shown, with the path-resolution rule stamped into
-/// every argument whose TYPE says it is one.
+/// The `format` an argument carries when it must NAME SOMETHING THE STORE
+/// ALREADY HOLDS.
+///
+/// Round 1022's probe sweep measured that fifteen such arguments all refuse an
+/// unregistered value loudly, and Round 1025 shipped that as the surface's last
+/// carry: the sweep would be exactly as green if one of them answered with an
+/// EMPTY result instead, because it has no way to know which polarity an
+/// argument was meant to have. This round measured the carry rather than
+/// repeating it — `query_section` was made to answer `{}` for a section that
+/// does not exist, and the whole workspace stayed green at 1727 tests. Nothing
+/// anywhere reads the difference between a correct refusal and a fabricated
+/// empty answer.
+///
+/// So the polarity becomes a TYPE, the way Round 1014 made a path one, and the
+/// sweep derives its oracle from the mark instead of a later reader trusting
+/// prose.
+const EXISTING_REF_FORMAT: &str = "mnemosyne-existing-ref";
+
+/// The `format` an argument carries when it is the identifier a NEW record is
+/// filed under.
+///
+/// It is the other half of the same question and not a decoration. Without it,
+/// the only way to say "this argument is not an existing reference" is to leave
+/// it unmarked, which is also what an argument nobody has classified looks
+/// like — and then the bridge below, which asks whether every id-shaped NAME is
+/// typed, would have to carry a hand-written list of exemptions. That list is
+/// the thing Round 1014 deleted.
+const FRESH_ID_FORMAT: &str = "mnemosyne-fresh-id";
+
+/// The contract of an existing reference, in the words an agent reads, in ONE
+/// place — stamped in by [`agent_facing_tools`] rather than re-typed per field.
+const EXISTING_REF_RULE: &str =
+    "EXISTING REFERENCE: this value must already name something the store \
+     holds. A value that names nothing is REFUSED and the refusal names the \
+     value; it is never answered with an empty or default result, which would \
+     be indistinguishable from a real answer about a real thing.";
+
+/// The `format` an argument carries when it names something the store must
+/// hold, but is admitted by the CALL and refused at the SCAN boundary.
+///
+/// It exists because typing the surface found arguments that are references and
+/// are nonetheless accepted with a value naming nothing, and the store is right
+/// about them: `AtomicSection::superseded_by` and `resolved_by` are projected
+/// as cross-refs and resolved by the orphan scan, which the field-classification
+/// table records as `Coverage::Projection` — a baseline gate reached by a
+/// different route. Marking those `ExistingRef` would have made the type lie
+/// about where the refusal happens, and leaving them unmarked would have said
+/// nothing at all about a reference an agent can dangle.
+const SCANNED_REF_FORMAT: &str = "mnemosyne-scanned-ref";
+
+/// The contract of a scan-checked reference, in one place, stamped the same way.
+const SCANNED_REF_RULE: &str =
+    "SCANNED REFERENCE: this value must name something the store holds, and \
+     unlike an existing reference it is ACCEPTED here and refused at the scan \
+     boundary — `validate_workspace` reports it as an atomic orphan ref. The \
+     call succeeding is therefore not evidence that the value resolves.";
+
+/// The contract of a fresh identifier, in one place, stamped the same way.
+const FRESH_ID_RULE: &str =
+    "FRESH IDENTIFIER: this value is the id the new record is filed under. \
+     Naming something that does NOT exist is the normal case; what the store \
+     refuses is a second record under an id it already holds, so calling twice \
+     with one id leaves one record and never two.";
+
+/// A REFERENCE TO SOMETHING THE STORE ALREADY HOLDS.
+///
+/// The type carries no behaviour of its own, and that is deliberate rather than
+/// unfinished. `AgentPath` can forbid its own misuse because resolving a path
+/// against the wrong base is a COMPUTATION, and removing `as_str` removes the
+/// way to do it. Whether a name is registered is not a computation this crate
+/// performs: the lookup belongs to `ops`, and a second membership check here
+/// would be two write paths for one invariant — the shape `CLAUDE.md` forbids
+/// outright. What a type CAN do is make the polarity travel with the field into
+/// the schema, wherever it is declared and whatever it is called, so the sweep
+/// that already sends every argument a value naming nothing knows which answer
+/// is the correct one.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(transparent)]
+pub struct ExistingRef(String);
+
+impl std::ops::Deref for ExistingRef {
+    type Target = str;
+
+    fn deref(&self) -> &str {
+        &self.0
+    }
+}
+
+/// THE IDENTIFIER A NEW RECORD IS FILED UNDER.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(transparent)]
+pub struct FreshId(String);
+
+impl std::ops::Deref for FreshId {
+    type Target = str;
+
+    fn deref(&self) -> &str {
+        &self.0
+    }
+}
+
+/// Both markers stamp themselves the way [`AgentPath`] does: inlined onto the
+/// property an agent reads, so neither the gate nor a client has to follow a
+/// `$ref` to see it.
+macro_rules! marker_schema {
+    ($($ty:ident => $format:ident;)*) => {$(
+        impl schemars::JsonSchema for $ty {
+            fn schema_name() -> std::borrow::Cow<'static, str> {
+                stringify!($ty).into()
+            }
+
+            fn schema_id() -> std::borrow::Cow<'static, str> {
+                concat!(module_path!(), "::", stringify!($ty)).into()
+            }
+
+            fn inline_schema() -> bool {
+                true
+            }
+
+            fn json_schema(_generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+                schemars::json_schema!({
+                    "type": "string",
+                    "format": $format,
+                })
+            }
+        }
+    )*};
+}
+
+/// A REFERENCE THE SCAN RESOLVES RATHER THAN THE CALL.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(transparent)]
+pub struct ScannedRef(String);
+
+impl std::ops::Deref for ScannedRef {
+    type Target = str;
+
+    fn deref(&self) -> &str {
+        &self.0
+    }
+}
+
+marker_schema! {
+    ExistingRef => EXISTING_REF_FORMAT;
+    FreshId => FRESH_ID_FORMAT;
+    ScannedRef => SCANNED_REF_FORMAT;
+}
+
+/// Every rule an agent-facing marker stamps, in the one table both the stamping
+/// and the gate read. A marker added here is stamped and gated by that alone.
+const MARKER_RULES: &[(&str, &str)] = &[
+    (AGENT_PATH_FORMAT, AGENT_PATH_RULE),
+    (EXISTING_REF_FORMAT, EXISTING_REF_RULE),
+    (SCANNED_REF_FORMAT, SCANNED_REF_RULE),
+    (FRESH_ID_FORMAT, FRESH_ID_RULE),
+];
+
+/// THE POLARITY OF A PROPERTY NO FIELD OF THIS CRATE OWNS.
+///
+/// A type is the better home and is used everywhere it can be, because it
+/// travels with the field and an author cannot forget it. Typing the surface
+/// found the two arguments where it CANNOT be one, and the reason is worth
+/// stating rather than working around: `add_fact` and `amend_fact` are both
+/// shaped by `atomic::FactImport` — the ONE fact DTO, shared with the CLI
+/// importer — and `fact_id` has OPPOSITE polarity in the two. `add_fact` files
+/// a new fact under it; `amend_fact` revises the fact it names. The same field
+/// of the same struct is therefore fresh in one tool and a reference in the
+/// other, so the polarity is not a property of the FIELD at all. It belongs to
+/// the (tool, argument) pair.
+///
+/// A hand-written table is what Round 1014 deleted, and this one is admitted
+/// only on the terms Round 1022 set for an exception: every row is EXECUTED —
+/// the sweep probes it exactly as it probes a typed argument, and a row whose
+/// tool does not behave as the row claims turns that tool's probe red. What the
+/// table cannot do, and a type can, is force a NEW composed argument to declare
+/// itself; that one is caught only if its name is id-shaped, by the bridge.
+const COMPOSED_POLARITY: &[(&str, &str, &str)] = &[
+    ("add_fact", "fact_id", FRESH_ID_FORMAT),
+    ("amend_fact", "fact_id", EXISTING_REF_FORMAT),
+];
+
+/// The tools an agent is shown, with each marker's rule stamped into every
+/// argument whose TYPE carries that marker.
 ///
 /// THE ONE READER OF THE ROUTER for anything agent-facing: `list_tools` and
 /// `get_tool` both come through here, and so does the gate, because a rule that
@@ -1410,25 +1591,37 @@ impl schemars::JsonSchema for AgentPath {
 fn agent_facing_tools() -> Vec<rmcp::model::Tool> {
     let mut tools = MnemosyneServer::tool_router().list_all();
     for tool in &mut tools {
+        let name = tool.name.to_string();
         let schema = std::sync::Arc::make_mut(&mut tool.input_schema);
         let Some(props) = schema.get_mut("properties").and_then(|p| p.as_object_mut()) else {
             continue;
         };
+        // A COMPOSED PROPERTY IS MARKED HERE AND THEN STAMPED BELOW BY THE SAME
+        // LOOP AS A TYPED ONE, so there is one reader of a marker and not two.
+        for (tool_name, arg, format) in COMPOSED_POLARITY {
+            if *tool_name != name {
+                continue;
+            }
+            if let Some(property) = props.get_mut(*arg).and_then(|p| p.as_object_mut()) {
+                property.insert("format".to_string(), serde_json::Value::from(*format));
+            }
+        }
         for (_, property) in props.iter_mut() {
             let Some(property) = property.as_object_mut() else {
                 continue;
             };
-            if property.get("format").and_then(|f| f.as_str()) != Some(AGENT_PATH_FORMAT) {
+            let marked = property.get("format").and_then(|f| f.as_str());
+            let Some((_, rule)) = MARKER_RULES.iter().find(|(f, _)| Some(*f) == marked) else {
                 continue;
-            }
+            };
             let described = property
                 .get("description")
                 .and_then(|d| d.as_str())
                 .unwrap_or_default();
             let stamped = if described.is_empty() {
-                AGENT_PATH_RULE.to_string()
+                (*rule).to_string()
             } else {
-                format!("{described}\n\n{AGENT_PATH_RULE}")
+                format!("{described}\n\n{rule}")
             };
             property.insert("description".to_string(), serde_json::Value::from(stamped));
         }
@@ -2008,7 +2201,7 @@ impl MnemosyneServer {
                 claim,
                 confirmer: atomic::Confirmer {
                     kind,
-                    id: a.confirmer_id.clone(),
+                    id: a.confirmer_id.to_string(),
                     version: a.confirmer_version.clone(),
                 },
                 method,
@@ -2048,7 +2241,7 @@ impl MnemosyneServer {
         let outcome = self.run_mutate(|store, path| {
             let fork = match (&a.forks_from, &a.forks_at) {
                 (None, None) => None,
-                (Some(p), Some(at)) => Some((p.as_str(), at.as_str())),
+                (Some(p), Some(at)) => Some((&**p, &**at)),
                 _ => {
                     return Err(atomic::AtomicMutateError::Validation(
                         "forks_from and forks_at must be given together".to_string(),
@@ -3276,7 +3469,7 @@ impl MnemosyneServer {
             args.0.kind.as_deref(),
         ) {
             Ok(draft) => self.tool_json(&serde_json::json!({
-                "entry_id": args.0.entry_id,
+                "entry_id": &*args.0.entry_id,
                 "in_sync": draft.is_none(),
                 "ledger_draft": draft,
             })),
@@ -4114,6 +4307,132 @@ mod tests {
         );
     }
 
+    /// The polarity an argument's TYPE declares, or `None` if it declares none.
+    fn declared_polarity(tool: &str, arg: &str) -> Option<&'static str> {
+        let found = agent_facing_tools().into_iter().find(|t| t.name == tool)?;
+        let marked = found
+            .input_schema
+            .get("properties")
+            .and_then(|p| p.as_object())
+            .and_then(|p| p.get(arg))
+            .and_then(|s| s.get("format"))
+            .and_then(|f| f.as_str())?;
+        // THE POLARITY MARKERS, AND NOT EVERY MARKER. `AgentPath` is a marker
+        // about resolution rather than about existence, so it is deliberately
+        // not one of these — and listing them here rather than by exclusion is
+        // what stops a marker added later for a third purpose from silently
+        // acquiring an oracle written for this one.
+        [EXISTING_REF_FORMAT, SCANNED_REF_FORMAT, FRESH_ID_FORMAT]
+            .into_iter()
+            .find(|f| *f == marked)
+    }
+
+    /// EVERY IDENTIFIER AN AGENT SENDS SAYS WHETHER IT IS LOOKED UP.
+    ///
+    /// Round 1025 shipped the argument surface with no silent set on either half
+    /// and one carry: the probe cannot tell a correct refusal from an empty
+    /// answer where a refusal was intended, because it has no way to know which
+    /// polarity an argument was meant to have. THAT CARRY WAS MEASURED BEFORE IT
+    /// WAS PAID. `query_section` was made to answer `{}` for a section that does
+    /// not exist instead of refusing, and the whole workspace stayed green —
+    /// 1727 tests, 135 binaries, nothing anywhere reading the difference. An
+    /// agent asking about a section that is not there would have been told,
+    /// successfully, that it is empty.
+    ///
+    /// The two markers are mirrors, and each one buys an oracle the sweep can
+    /// run rather than a sentence a later reader has to trust:
+    ///
+    /// - `ExistingRef` — a value naming NOTHING must be refused, and the refusal
+    ///   must name the value. This is the class where silence is fatal, because
+    ///   "not found" has an empty-shaped answer that looks exactly like a real
+    ///   one about a real thing.
+    /// - `FreshId` — the same call made TWICE must leave ONE record. Round 1022
+    ///   measured that a duplicate `add_*` is a no-op when the content is
+    ///   identical and a refusal when it diverges, and recorded that both rules
+    ///   were hand-written prose at each site with nothing enforcing either.
+    ///
+    /// THE POPULATION IS THE TYPE'S, and the bridge below is why both markers
+    /// exist rather than only the one that closes the defect. A gate keyed on
+    /// the NAME `*_id` is what Round 1014 already showed to be a convention
+    /// rather than a population — `against` was a path not called one. Here the
+    /// same gap runs the other way too: `coord`, `telling`, `world`,
+    /// `truth_frame`, `at`, `frame`, `unit`, `parameter`, `condition` and `file`
+    /// are all looked up and none of them is named `*_id`. So the name is used
+    /// only as a BRIDGE — every id-shaped name must carry one of the two marks,
+    /// which is a set and not a count, and the surplus of typed-but-not-named
+    /// arguments is printed as the measure of what a name-keyed gate could never
+    /// have reached.
+    #[test]
+    fn every_identifier_argument_says_whether_it_is_looked_up() {
+        let mut typed: BTreeSet<String> = BTreeSet::new();
+        let mut silent: Vec<String> = Vec::new();
+        let mut untyped_by_name: Vec<String> = Vec::new();
+        let mut by_name = 0usize;
+        for tool in agent_facing_tools() {
+            let Some(props) = tool
+                .input_schema
+                .get("properties")
+                .and_then(|p| p.as_object())
+            else {
+                continue;
+            };
+            for (key, schema) in props {
+                let named = key == "id" || key.ends_with("_id");
+                let polarity = declared_polarity(&tool.name, key);
+                if named {
+                    by_name += 1;
+                }
+                let Some(polarity) = polarity else {
+                    if named {
+                        untyped_by_name.push(format!("{}.{key}", tool.name));
+                    }
+                    continue;
+                };
+                typed.insert(format!("{}.{key}", tool.name));
+                // THE RULE REACHED THE PROPERTY AN AGENT READS. The stamping is
+                // what makes a new marked argument born saying what it is, so a
+                // marker whose rule did not land is a marker that says nothing.
+                let rule = MARKER_RULES
+                    .iter()
+                    .find(|(f, _)| *f == polarity)
+                    .map(|(_, r)| *r)
+                    .expect("a marked format must have a rule");
+                let described = schema
+                    .get("description")
+                    .and_then(|d| d.as_str())
+                    .unwrap_or_default();
+                if !described.contains(rule) {
+                    silent.push(format!("{}.{key}", tool.name));
+                }
+            }
+        }
+        assert!(
+            !typed.is_empty(),
+            "no argument declares a polarity, so this gate reads nothing"
+        );
+        assert!(
+            silent.is_empty(),
+            "{} marked argument(s) do not carry their marker's rule in the \
+             description an agent reads, so the stamping in `agent_facing_tools` \
+             did not reach them: {silent:?}",
+            silent.len()
+        );
+        println!(
+            "agent-facing identifiers: {} typed, of which {by_name} argument(s) are \
+             named `id`/`*_id` — {} are looked up or minted under a name no \
+             `*_id` gate would have reached",
+            typed.len(),
+            typed.len().saturating_sub(by_name)
+        );
+        assert!(
+            untyped_by_name.is_empty(),
+            "{} argument(s) are named `id`/`*_id` and declare no polarity, so \
+             whether the store looks them up is stated nowhere the agent or this \
+             sweep can read: {untyped_by_name:?}",
+            untyped_by_name.len()
+        );
+    }
+
     /// NO AGENT-FACING OPTIONAL ARGUMENT IS UNACCOUNTED FOR, AND THE POPULATION
     /// IS THE ROUTER'S RATHER THAN A LIST SOMEBODY TYPED.
     ///
@@ -4416,7 +4735,20 @@ mod tests {
         if property.get("enum").is_some() {
             return None;
         }
-        match property.get("type").and_then(|t| t.as_str())? {
+        // AN OPTIONAL ARGUMENT'S TYPE IS WRITTEN AS A UNION WITH `null`, and the
+        // probe is about the value the agent sends rather than about the option
+        // of omitting it — which the other half of the accounting already
+        // covers with a present-vs-absent differential. So the null arm is set
+        // aside and what remains is the type probed.
+        let declared = match property.get("type") {
+            Some(serde_json::Value::String(s)) => s.as_str(),
+            Some(serde_json::Value::Array(items)) => items
+                .iter()
+                .filter_map(|v| v.as_str())
+                .find(|t| *t != "null")?,
+            _ => return None,
+        };
+        match declared {
             "string" => Some((
                 serde_json::json!(NOT_REGISTERED),
                 NOT_REGISTERED.to_string(),
@@ -5360,6 +5692,7 @@ mod tests {
             $( (store $blind:literal = $( [$blind_call:ident($blind_args:ty) $blind_base:tt] )* ) )*
             $( [$setup:ident($setup_args:ty) $setup_base:tt] )*
             $tool:ident($args:ty) $base:tt
+            $( when $when_arg:literal $when_base:tt )*
             $( except $except:literal )*
             ;
         )*) => {
@@ -5400,10 +5733,51 @@ mod tests {
                     // same list with a different name.
                     let mut arms: Vec<Option<String>> = vec![None];
                     arms.extend(required.iter().cloned().map(Some));
+                    // AN OPTIONAL ARGUMENT THAT DECLARES A POLARITY IS PROBED
+                    // TOO. The coverage accounting owns the two halves and this
+                    // sweep only ever reached the required one; polarity is not
+                    // a question about required-ness, and an optional reference
+                    // that answers empty instead of refusing is the same defect
+                    // in the same place. Nothing new is declared for it — the
+                    // tool already has a valid call, and the probe ADDS the
+                    // argument to it rather than replacing a value.
+                    let optional_typed: Vec<String> = optional_arguments()
+                        .into_iter()
+                        .filter(|(t, a)| t == tool && declared_polarity(t, a).is_some())
+                        .map(|(_, a)| a)
+                        .collect();
+                    arms.extend(optional_typed.iter().cloned().map(Some));
                     let mut base_answer = String::new();
                     let mut base_store = String::new();
                     let mut base_wrote = false;
                     let mut verdicts: Vec<(String, &'static str, String)> = Vec::new();
+                    // ONE RECORD OF WHAT EVERY ARM DID, read by two questions.
+                    // The coverage accounting owns the REQUIRED half and asks
+                    // only about those rows; the polarity check owns every
+                    // marked argument and asks about all of them. Keeping two
+                    // vectors is how the two early `inconclusive` paths below
+                    // came to be counted as required when they were not.
+                    let is_required = |arg: &str| required.iter().any(|r| r == arg);
+                    // AN ARGUMENT WHOSE VALIDITY DEPENDS ON ANOTHER ARGUMENT
+                    // CANNOT BE PROBED FROM ONE BASE CALL. `superseding` is
+                    // rejected unless `status` is `superseded` and `resolving`
+                    // unless it is `open`, so the two are mutually exclusive and
+                    // no single valid call admits both: probing either from the
+                    // other's base gets a refusal that never reached the lookup,
+                    // which the sweep correctly refuses to read as evidence. So
+                    // the declaration may say what ELSE this one arm sends, and
+                    // the arm is otherwise the same probe.
+                    let when_bases: Vec<(&str, serde_json::Value)> = vec![
+                        $(($when_arg, serde_json::json!($when_base))),*
+                    ];
+                    for (arg, _) in &when_bases {
+                        assert!(
+                            required.iter().any(|a| a == arg)
+                                || optional_typed.iter().any(|a| a == arg),
+                            "`{tool}` declares `when {arg}`, which is not an \
+                             argument this sweep probes"
+                        );
+                    }
                     for arm in arms {
                         let tmp = agent_workspace();
                         let server =
@@ -5469,6 +5843,20 @@ mod tests {
                         let mut needle = String::new();
                         let mut was = String::new();
                         if let Some(arg) = &arm {
+                            // The `when` fields land BEFORE the probe value, so
+                            // an override may also supply a valid value for the
+                            // argument about to be replaced.
+                            if let Some((_, extra)) =
+                                when_bases.iter().find(|(a, _)| a == arg)
+                            {
+                                if let (Some(dst), Some(src)) =
+                                    (json.as_object_mut(), extra.as_object())
+                                {
+                                    for (k, v) in src {
+                                        dst.insert(k.clone(), v.clone());
+                                    }
+                                }
+                            }
                             // NO PROBE VALUE THE SCHEMA DESCRIBES IS NO VERDICT.
                             // A `$ref` to a closed enum and an array of objects
                             // are the two shapes this reaches; both are recorded
@@ -5537,6 +5925,59 @@ mod tests {
                             base_answer = answer;
                             base_store = after;
                             base_wrote = base_store != before;
+                            // THE MIRROR ORACLE, RUN WHERE THE WORLD IS ALREADY
+                            // STANDING. `FreshId` says the id is the one the new
+                            // record is filed under, and what that forbids is a
+                            // SECOND record under an id the store already holds.
+                            // Round 1022 measured the rule — a duplicate `add_*`
+                            // is a no-op when the content is identical and a
+                            // refusal when it diverges — and recorded that it was
+                            // hand-written prose at each site with nothing
+                            // enforcing it. Repeating the declared call is the
+                            // whole probe: whether it is refused or absorbed is
+                            // the primitive's choice, and either way the id must
+                            // occur exactly as often as it did after one call.
+                            // Counting rather than comparing bytes is what makes
+                            // this safe against a store that stamps anything.
+                            for arg in required.iter().chain(optional_typed.iter()) {
+                                if declared_polarity(tool, arg) != Some(FRESH_ID_FORMAT) {
+                                    continue;
+                                }
+                                let declared = serde_json::json!($base);
+                                let Some(value) = declared
+                                    .get(arg.as_str())
+                                    .and_then(|v| v.as_str())
+                                    .map(str::to_string)
+                                else {
+                                    continue;
+                                };
+                                let value = value.as_str();
+                                let once = base_store.matches(value).count();
+                                assert!(
+                                    once > 0,
+                                    "`{tool}.{arg}` is typed `FreshId`, but the id \
+                                     `{value}` the declared call files under is \
+                                     nowhere in the store afterwards, so repeating \
+                                     the call cannot be counted. Either the record \
+                                     is filed under something else and the type is \
+                                     wrong, or the call did not write"
+                                );
+                                let again: $args = serde_json::from_value(declared)
+                                    .expect("the declared call's shape must parse");
+                                let _ = server.$tool(Parameters(again)).await;
+                                let twice = std::fs::read_to_string(&store_path)
+                                    .expect("read the store");
+                                assert_eq!(
+                                    twice.matches(value).count(),
+                                    once,
+                                    "`{tool}.{arg}` is typed `FreshId`, so calling \
+                                     twice with the id `{value}` must leave ONE \
+                                     record — the second call is either refused or \
+                                     absorbed as a no-op. The store holds it more \
+                                     often after the second call, so a duplicate \
+                                     was filed under an id the store already had"
+                                );
+                            }
                             continue;
                         };
                         let verdict = if result.is_error == Some(true) {
@@ -5610,9 +6051,16 @@ mod tests {
                             // (Round 1019). So the echo is removed from both
                             // sides and what remains still has to differ.
                             let mark = "\u{a7}";
-                            if answer.replace(&needle, mark)
-                                != base_answer.replace(was.trim_matches('"'), mark)
-                            {
+                            // An argument the base call OMITS has no echo to
+                            // strip from the base's own answer, and `null` is
+                            // not a value that was echoed anywhere — replacing
+                            // it would edit text the base really did produce.
+                            let stripped_base = if was == "null" {
+                                base_answer.clone()
+                            } else {
+                                base_answer.replace(was.trim_matches('"'), mark)
+                            };
+                            if answer.replace(&needle, mark) != stripped_base {
                                 ("answered", "the answer differs beyond the echo".to_string())
                             } else {
                                 (
@@ -5623,8 +6071,116 @@ mod tests {
                                 )
                             }
                         };
+                        // The coverage accounting owns the REQUIRED half only;
+                        // the polarity check owns every probed argument, so an
+                        // optional reference cannot be marked and then never
+                        // asked about.
                         verdicts.push((arg, verdict.0, verdict.1));
                     }
+                    // WHAT EVERY ARM DID IS PRINTED BEFORE ANYTHING IS ASSERTED,
+                    // so a failure below arrives with the whole tool's picture
+                    // rather than one line of it (Round 854).
+                    for (arg, verdict, why) in &verdicts {
+                        println!("  {tool}.{arg}: {verdict} — {why}");
+                    }
+                    // A MARK IS AN ORACLE, NOT A LABEL. `ExistingRef` says a
+                    // value naming nothing is refused by name, which is exactly
+                    // the observation this sweep already makes — so the type
+                    // turns a rule that was hand-written prose at each site into
+                    // the one thing every run checks.
+                    for (arg, verdict, why) in &verdicts {
+                        match declared_polarity(tool, arg) {
+                            Some(EXISTING_REF_FORMAT) => assert_eq!(
+                                *verdict, "validated",
+                                "`{tool}.{arg}` is typed `ExistingRef`, so a \
+                                 value naming nothing must be REFUSED and the \
+                                 refusal must name it. It was not: {why}. Either \
+                                 the handler stopped looking the value up — \
+                                 which answers an agent about a thing that does \
+                                 not exist, in the shape of an answer about one \
+                                 that does — or the reference is resolved at the \
+                                 scan boundary instead and the type is \
+                                 `ScannedRef`"
+                            ),
+                            Some(SCANNED_REF_FORMAT) => assert_ne!(
+                                *verdict, "validated",
+                                "`{tool}.{arg}` is typed `ScannedRef`, which \
+                                 says the CALL admits a value naming nothing and \
+                                 the scan refuses it. The call refused it, so \
+                                 the reference is checked here and the type is \
+                                 `ExistingRef`: {why}"
+                            ),
+                            _ => {}
+                        }
+                    }
+                    // AND A SCANNED REFERENCE IS ONLY HONEST IF THE SCAN
+                    // ACTUALLY SPEAKS. The classification table records
+                    // `superseded_by` as covered by the orphan scan and cites a
+                    // measurement for it; this runs that measurement every time,
+                    // through the same `validate_workspace` an agent would call,
+                    // so "the other gate has it" cannot decay into a sentence
+                    // nobody re-checked.
+                    let mut unscanned: Vec<String> = Vec::new();
+                    for arg in required.iter().chain(optional_typed.iter()) {
+                        if declared_polarity(tool, arg) != Some(SCANNED_REF_FORMAT) {
+                            continue;
+                        }
+                        let tmp = agent_workspace();
+                        let server =
+                            MnemosyneServer::new(tmp.path().to_path_buf()).expect("server");
+                        $( $world(&server, tmp.path()).await; )?
+                        $(
+                            let setup: $setup_args =
+                                serde_json::from_value(serde_json::json!($setup_base))
+                                    .expect("the setup call's shape must parse");
+                            server.$setup(Parameters(setup)).await;
+                        )*
+                        let clean = answer_text(
+                            &server.validate_workspace(Parameters(EmptyArgs {})).await,
+                        );
+                        let mut json = serde_json::json!($base);
+                        if let Some((_, extra)) = when_bases.iter().find(|(a, _)| a == arg) {
+                            if let (Some(dst), Some(src)) =
+                                (json.as_object_mut(), extra.as_object())
+                            {
+                                for (k, v) in src {
+                                    dst.insert(k.clone(), v.clone());
+                                }
+                            }
+                        }
+                        let (value, _) = probe_value(tool, arg)
+                            .expect("a scanned reference is a string the schema describes");
+                        json[arg.as_str()] = value;
+                        let args: $args = serde_json::from_value(json)
+                            .expect("the probe call's shape must parse");
+                        let dangled = server.$tool(Parameters(args)).await;
+                        assert!(
+                            dangled.is_error != Some(true),
+                            "`{tool}.{arg}` is typed `ScannedRef` but the call \
+                             refused it: {:?}",
+                            dangled.content
+                        );
+                        let after = answer_text(
+                            &server.validate_workspace(Parameters(EmptyArgs {})).await,
+                        );
+                        if after == clean {
+                            unscanned.push(arg.clone());
+                        }
+                    }
+                    // EVERY SCANNED REFERENCE IS ASKED BEFORE ANY IS REPORTED,
+                    // because stopping at the first turns a measurement of the
+                    // whole tool into one line of it — which is how
+                    // `resolved_by` and `superseded_by`, classified identically
+                    // and behaving differently, would have looked the same.
+                    assert!(
+                        unscanned.is_empty(),
+                        "{} argument(s) of `{tool}` are typed `ScannedRef` and \
+                         NOTHING refuses the value — not the call, which \
+                         admitted it, and not the boundary the type points at: \
+                         `validate_workspace` says exactly what it said before \
+                         the dangling reference was written. {unscanned:?}",
+                        unscanned.len()
+                    );
                     // THE EXCEPTIONS AND THE INCONCLUSIVE PROBES MUST BE THE SAME
                     // SET. One direction stops an exception from silencing a
                     // probe that would have concluded; the other stops an
@@ -5634,13 +6190,10 @@ mod tests {
                     // did.
                     let inconclusive: BTreeSet<&str> = verdicts
                         .iter()
-                        .filter(|(_, v, _)| *v == "inconclusive")
+                        .filter(|(a, v, _)| *v == "inconclusive" && is_required(a))
                         .map(|(a, _, _)| a.as_str())
                         .collect();
                     let claimed: BTreeSet<&str> = excepted.iter().copied().collect();
-                    for (arg, verdict, why) in &verdicts {
-                        println!("  {tool}.{arg}: {verdict} — {why}");
-                    }
                     assert_eq!(
                         inconclusive,
                         claimed,
@@ -5652,10 +6205,14 @@ mod tests {
                          hiding evidence that exists"
                     );
                     println!(
-                        "{tool}: {} of {} required argument(s) concluded, {} excepted",
-                        verdicts.len() - inconclusive.len(),
+                        "{tool}: {} of {} required argument(s) concluded, {} \
+                         excepted; {} marked optional argument(s) probed for \
+                         polarity",
+                        verdicts.iter().filter(|(a, _, _)| is_required(a)).count()
+                            - inconclusive.len(),
                         required.len(),
-                        inconclusive.len()
+                        inconclusive.len(),
+                        optional_typed.len()
                     );
                 }
             )*
@@ -6822,7 +7379,9 @@ mod tests {
             set_section_parent_section(SetSectionParentSectionArgs) {"section_id": "sc-02", "parent": "sc-01"};
         set_section_decision_status_probed:
             @branch_story
-            set_section_decision_status(SetSectionDecisionStatusArgs) {"section_id": "sc-01", "status": "active"};
+            set_section_decision_status(SetSectionDecisionStatusArgs) {"section_id": "sc-01", "status": "active"}
+            when "superseding" {"status": "superseded", "superseding": "sc-02"}
+            when "resolving" {"status": "open", "resolving": "sc-02"};
         set_section_coverage_expectation_probed:
             @branch_story
             set_section_coverage_expectation(SetSectionCoverageExpectationArgs) {"section_id": "sc-01", "expectation": "out_of_scope_here", "reason": "the scene is written"};

@@ -141,6 +141,20 @@ pub fn validate_atomic_store(
                 orphan_section_refs.push((section_id.to_string(), target.to_string()));
             }
         }
+        // R1026: `resolved_by` is the SAME SHAPE and was not here. Both fields
+        // are classified `Coverage::Projection` — covered by the orphan scan —
+        // and `project.rs` says of `resolved_by` that projecting it "routes the
+        // edge through the existing cross-ref orphan check for free". THIS SCAN
+        // READS THE STORE, NOT THE PROJECTION, so the projection bought nothing
+        // and an open question could point at a section that does not exist
+        // with no gate anywhere disagreeing. Measured by marking the MCP
+        // argument's polarity: `superseding` moved the scan's answer and
+        // `resolving` left it byte-identical.
+        if let Some(target) = &atomic.resolved_by {
+            if !section_id_set.contains(target.as_str()) {
+                orphan_section_refs.push((section_id.to_string(), target.to_string()));
+            }
+        }
     }
 
     Ok(AtomicValidationSummary {

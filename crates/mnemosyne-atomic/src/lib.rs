@@ -5232,6 +5232,35 @@ fn validate_inventory_id(raw: &str) -> Result<&str, AtomicMutateError> {
     Ok(raw)
 }
 
+/// Resolve a `section_ref` value: canonical shape AND a section that exists.
+///
+/// Round 847 typed `InventoryEntry::section_ref` as a `SectionId` and recorded,
+/// in the same entry, what the arc did NOT buy: LOOKUP. This is that step for
+/// this field, and Round 1026 found it by marking the argument's polarity —
+/// the MCP probe sent a value naming nothing and the store kept it, so an
+/// inventory entry could be bound to a section that does not exist and no gate
+/// anywhere disagreed. The field-classification table recorded the field as
+/// `WritePathOnly`, "the write path validates it", which was true only of the
+/// SHAPE; that table says of itself that it catches an unclassified field and
+/// never a misclassified one, and this is what a misclassified one looked like.
+///
+/// BOTH WRITERS GO THROUGH HERE. `add_inventory_entry` and
+/// `set_inventory_section_ref` are the two paths to this field, and a field
+/// whose two writers enforce different invariants has no invariant at all.
+fn resolve_section_ref_input<'a>(
+    store: &AtomicStore,
+    raw: &'a str,
+) -> Result<&'a str, AtomicMutateError> {
+    let clean = validate_section_ref_input(raw)?;
+    if !store.sections.contains_key(&clean.into()) {
+        return Err(AtomicMutateError::NotFound(format!(
+            "section_ref `{clean}` not present in atomic store (add_section to \
+             create it first, or omit section_ref until the section exists)"
+        )));
+    }
+    Ok(clean)
+}
+
 /// Validate a `section_ref` value: strip nothing (callers pass canonical
 /// form already — no leading `§`, no whitespace edges). The CLI surface
 /// performs the `§` strip before reaching this layer.
@@ -5285,7 +5314,7 @@ pub fn add_inventory_entry(
  )));
     }
     let section_ref_clean = match section_ref {
-        Some(s) => Some(validate_section_ref_input(s)?.into()),
+        Some(s) => Some(resolve_section_ref_input(store, s)?.into()),
         None => None,
     };
     let source_clean = match source {
@@ -5366,10 +5395,13 @@ pub fn set_inventory_status(
 /// after a shape check (leading `§` rejected — callers strip before this
 /// layer, matching the existing CLI convention).
 ///
-/// No referential-integrity check (`section_ref` points at a section_id
-/// that actually exists) — that's `validate-workspace`'s job, not the
-/// atomic primitive's. Mirrors the `set_section_decision_status`
-/// stance on `superseding` (no cross-store existence enforcement here).
+/// REFERENTIAL INTEGRITY IS CHECKED HERE, and the sentence this replaces said
+/// it was `validate-workspace`'s job instead. That was measured false in Round
+/// 1026: `project.rs` emits no cross-ref for an inventory entry, so the orphan
+/// scan never sees this field and neither does any registry detector — an
+/// entry bound to a section that does not exist was accepted by the write path
+/// and then agreed with by every gate. The prose deferred the check to a reader
+/// that was not looking.
 pub fn set_inventory_section_ref(
     store: &mut AtomicStore,
     sidecar_path: &Path,
@@ -5378,7 +5410,7 @@ pub fn set_inventory_section_ref(
 ) -> Result<AtomicMutateReceipt, AtomicMutateError> {
     validate_inventory_id(inventory_id)?;
     let cleaned = match section_ref {
-        Some(s) => Some(validate_section_ref_input(s)?.into()),
+        Some(s) => Some(resolve_section_ref_input(store, s)?.into()),
         None => None,
     };
     let entry = store
@@ -13190,6 +13222,10 @@ mod tests {
         let tmp = TempDir::new().unwrap();
         let path = tmp.path().join(".atomic/workspace.atomic.json");
         let mut store = AtomicStore::new();
+        // The section this entry binds to has to BE there — since Round 1026 a
+        // `section_ref` naming nothing is refused, and this fixture was one of
+        // the two that had been relying on it not being.
+        add_section(&mut store, &path, "4.2.4", "docs/tc8.md", "ARP", None).unwrap();
         add_inventory_entry(
             &mut store,
             &path,
@@ -13312,6 +13348,86 @@ mod tests {
         }
     }
 
+    /// BOTH WRITERS OF `InventoryEntry::section_ref` ENFORCE THE SAME
+    /// INVARIANT, ON THE SAME INPUT.
+    ///
+    /// The field has two write paths — `add_inventory_entry` sets it at
+    /// registration and `set_inventory_section_ref` rebinds it — and
+    /// `CLAUDE.md` forbids two writers of one field with different invariants
+    /// outright: data admitted by the looser path makes the stricter one's rule
+    /// vacuous, which is the same as having no rule. Round 305 added the first
+    /// parity test of this shape after a pasted cap diverged between a setter
+    /// and its append path; this is that test for this field.
+    ///
+    /// Round 1026 needed it because the invariant CHANGED. Typing the MCP
+    /// argument as an existing reference made the probe send a value naming
+    /// nothing, and the store kept it: the write path checked the SHAPE of a
+    /// section ref and never whether the section was there.
+    #[test]
+    fn both_inventory_section_ref_writers_refuse_an_unregistered_section() {
+        let tmp = TempDir::new().unwrap();
+        let path = tmp.path().join(".atomic/workspace.atomic.json");
+        let mut store = AtomicStore::new();
+        add_section(&mut store, &path, "sc-01", "docs/spec.md", "One", None).unwrap();
+
+        // THE REGISTERED ONE IS ACCEPTED BY BOTH, so a test that refuses
+        // everything cannot pass this.
+        add_inventory_entry(
+            &mut store,
+            &path,
+            "TCP_X",
+            InventoryStatus::Active,
+            Some("sc-01"),
+            None,
+            None,
+        )
+        .unwrap();
+        set_inventory_section_ref(&mut store, &path, "TCP_X", Some("sc-01")).unwrap();
+
+        let at_add = add_inventory_entry(
+            &mut store,
+            &path,
+            "TCP_Y",
+            InventoryStatus::Active,
+            Some("sc-99"),
+            None,
+            None,
+        )
+        .expect_err("add_inventory_entry must refuse an unregistered section_ref");
+        let at_set = set_inventory_section_ref(&mut store, &path, "TCP_X", Some("sc-99"))
+            .expect_err("set_inventory_section_ref must refuse an unregistered section_ref");
+        for (who, e) in [
+            ("add_inventory_entry", at_add),
+            ("set_inventory_section_ref", at_set),
+        ] {
+            let said = e.to_string();
+            assert!(
+                said.contains("sc-99"),
+                "`{who}` refused without naming the value, so an agent cannot \
+                 tell which argument was wrong: {said}"
+            );
+        }
+
+        // AND THE REFUSAL LEFT NOTHING BEHIND — neither writer may mutate the
+        // store in memory before deciding to refuse, which is the defect four
+        // existing tests caught in Round 1024 when a check moved below a write.
+        let loaded = AtomicStore::load(&path).unwrap();
+        assert!(
+            loaded.inventory("TCP_Y").is_none(),
+            "the refused registration was written anyway"
+        );
+        assert_eq!(
+            loaded
+                .inventory("TCP_X")
+                .unwrap()
+                .section_ref
+                .as_ref()
+                .map(|s| s.as_str()),
+            Some("sc-01"),
+            "the refused rebind overwrote the binding it refused to replace"
+        );
+    }
+
     #[test]
     fn set_inventory_status_active_to_deprecated_with_reason() {
         let tmp = TempDir::new().unwrap();
@@ -13406,6 +13522,7 @@ mod tests {
         let tmp = TempDir::new().unwrap();
         let path = tmp.path().join(".atomic/workspace.atomic.json");
         let mut store = AtomicStore::new();
+        add_section(&mut store, &path, "4.2.4", "docs/tc8.md", "ARP", None).unwrap();
         add_inventory_entry(
             &mut store,
             &path,
