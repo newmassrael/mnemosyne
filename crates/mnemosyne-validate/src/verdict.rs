@@ -137,6 +137,8 @@ pub enum ViolationRule {
     SuccessionCycle,
     /// `payoff_target_missing`
     PayoffTargetMissing,
+    /// `quest_prerequisite_unreachable`
+    QuestPrerequisiteUnreachable,
     /// `rule_exclusive_overlap`
     RuleExclusiveOverlap,
     /// `rule_transition_invalid`
@@ -188,6 +190,7 @@ impl ViolationRule {
         Self::SuccessionTargetMissing,
         Self::SuccessionCycle,
         Self::PayoffTargetMissing,
+        Self::QuestPrerequisiteUnreachable,
         Self::RuleExclusiveOverlap,
         Self::RuleTransitionInvalid,
         Self::RuleIntervalViolation,
@@ -226,6 +229,7 @@ impl ViolationRule {
             Self::SuccessionTargetMissing => "succession_target_missing",
             Self::SuccessionCycle => "succession_cycle",
             Self::PayoffTargetMissing => "payoff_target_missing",
+            Self::QuestPrerequisiteUnreachable => "quest_prerequisite_unreachable",
             Self::RuleExclusiveOverlap => "rule_exclusive_overlap",
             Self::RuleTransitionInvalid => "rule_transition_invalid",
             Self::RuleIntervalViolation => "rule_interval_violation",
@@ -716,6 +720,46 @@ pub fn continuity_actionable(v: &ContinuityViolation) -> ActionableViolation {
             "remove the dangling pays_off ref, or add the missing setup fact".to_string(),
             format!("fact `{fact_id}` pays off missing setup `{target}`"),
         ),
+        ContinuityViolation::QuestPrerequisiteUnreachable {
+            quest,
+            prerequisite,
+            world,
+            shape,
+            quest_at,
+            prerequisite_at,
+        } => action(
+            ViolationRule::QuestPrerequisiteUnreachable,
+            ViolationLocus {
+                facts: Vec::new(),
+                entities: vec![quest.clone(), prerequisite.clone()],
+                field: Some("typed".to_string()),
+                branch: Some(world.clone()),
+                at: Some(quest_at.clone()),
+                ..Default::default()
+            },
+            "a `requires` prerequisite must be discharged on the same road, before the quest \
+             that declares it"
+                .to_string(),
+            match *shape {
+                "never" => format!(
+                    "give world `{world}` a `completed_by` fact for `{prerequisite}` before \
+                     `{quest_at}`, drop the `requires` edge, or keep `{quest}` off this road"
+                ),
+                _ => format!(
+                    "move `{prerequisite}`'s discharge before `{quest_at}`, or move `{quest}`'s"
+                ),
+            },
+            match prerequisite_at {
+                Some(at) => format!(
+                    "world `{world}` discharges `{quest}` at `{quest_at}` but its declared \
+                     prerequisite `{prerequisite}` not before `{at}`"
+                ),
+                None => format!(
+                    "world `{world}` discharges `{quest}` at `{quest_at}` but never discharges \
+                     its declared prerequisite `{prerequisite}`"
+                ),
+            },
+        ),
         ContinuityViolation::RuleExclusiveOverlap {
             rule,
             predicate,
@@ -1194,6 +1238,24 @@ mod tests {
             ContinuityViolation::PayoffTargetMissing {
                 fact_id: "f-4".into(),
                 target: "f-gone".into(),
+            },
+            // Both shapes: `never` carries no prerequisite coordinate (that is
+            // the finding), `late` carries one — the two render different repairs.
+            ContinuityViolation::QuestPrerequisiteUnreachable {
+                quest: "q-main".into(),
+                prerequisite: "q-key".into(),
+                world: "claim".into(),
+                shape: "never",
+                quest_at: "sc-25c".into(),
+                prerequisite_at: None,
+            },
+            ContinuityViolation::QuestPrerequisiteUnreachable {
+                quest: "q-main".into(),
+                prerequisite: "q-delver".into(),
+                world: "shatter".into(),
+                shape: "late",
+                quest_at: "sc-25s".into(),
+                prerequisite_at: Some("sc-31s".into()),
             },
             ContinuityViolation::RuleIntervalViolation {
                 rule: "gap".into(),

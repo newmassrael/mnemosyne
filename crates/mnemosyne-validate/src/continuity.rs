@@ -1704,6 +1704,36 @@ pub enum ContinuityViolation {
     /// An evaluable data finding like the conflict/succession variants, not
     /// a store-corruption `Err` (the Round 440 boundary doctrine).
     PayoffTargetMissing { fact_id: String, target: String },
+    /// Round 1031 — A DECLARED PREREQUISITE IS A PROMISE THE ROAD MUST KEEP.
+    ///
+    /// A `requires` claim says the object quest must complete FIRST (the R559
+    /// declarative gate), and [`QuestNode::prerequisites`] has carried that
+    /// sentence to every consumer since R568 under the words "the canon order
+    /// proves the timing". Nothing proved it. This is the proof: on a world-line
+    /// that DISCHARGES the dependent quest, the prerequisite must be discharged
+    /// on that same road, at a coordinate strictly before it.
+    ///
+    /// The class is the third destination's, not hygiene: a road that closes the
+    /// vault before it ever hands over the key is skeleton-CLEAN — every other
+    /// gate passes, both projections render, and the game is unplayable. The
+    /// promise was written in the contract prose and kept nowhere, which is the
+    /// R636 shape (a rule stated twice with zero binding between the statements).
+    QuestPrerequisiteUnreachable {
+        /// The dependent quest — the `requires` claim's subject.
+        quest: String,
+        /// The quest it declares must complete first — the `requires` object.
+        prerequisite: String,
+        /// The world-line whose road breaks the promise.
+        world: String,
+        /// `"never"` = this road never discharges the prerequisite at all;
+        /// `"late"` = it discharges it, but never before the dependent.
+        shape: &'static str,
+        /// The coordinate where this road discharges the DEPENDENT quest.
+        quest_at: String,
+        /// The prerequisite's own discharge coordinate — `None` under
+        /// `"never"`, where the whole point is that there is not one.
+        prerequisite_at: Option<String>,
+    },
     /// An exclusive rule violated (Round 449, design sec 7.12): two
     /// same-frame typed facts with the rule's predicate agree on the keyed
     /// leg but differ on the non-keyed one, and co-hold at `at` in query
@@ -2231,6 +2261,14 @@ pub struct ContinuityReport {
     /// says a gate that evaluated nothing must never read like a gate that
     /// passed, and this is the field that lets it keep its word.
     pub completeness_unaskable: Vec<UnaskableCompleteness>,
+    /// Round 1031 — every declared quest prerequisite, judged against every road.
+    ///
+    /// ALWAYS populated, never knob-gated, for the reason `step_judgements` is
+    /// (R921): the two violation arms are drawn from THIS walk, so the finding
+    /// and its denominator cannot be produced by two different traversals. EMPTY
+    /// means no `requires` claim is declared — the class was never askable, and
+    /// the CLI prints `not-declared` rather than a `0` that reads like a pass.
+    pub quest_prerequisite_judgements: Vec<QuestPrerequisiteJudgement>,
 }
 
 /// One transition rule whose completeness class went unevaluated (Round 934).
@@ -3371,6 +3409,36 @@ pub fn scan_continuity(
             }
         }
     }
+    // Quest prerequisite reachability (Round 1031): a `requires` edge promises
+    // the object completes FIRST, and until now the promise was carried to the
+    // runtime unexamined. The violations are DRAWN FROM the judgement walk, not
+    // computed beside it, so the gate and the report cannot disagree.
+    let prerequisite_judgements = quest_prerequisite_judgements(store, order)?;
+    for judged in &prerequisite_judgements {
+        let (shape, prerequisite_at) = match &judged.verdict {
+            QuestPrerequisiteVerdict::NeverDischarged => ("never", None),
+            QuestPrerequisiteVerdict::DischargedTooLate { prerequisite_at } => {
+                ("late", Some(prerequisite_at.clone()))
+            }
+            QuestPrerequisiteVerdict::Satisfied { .. }
+            | QuestPrerequisiteVerdict::Inapplicable
+            | QuestPrerequisiteVerdict::Unverifiable { .. } => continue,
+        };
+        report
+            .violations
+            .push(ContinuityViolation::QuestPrerequisiteUnreachable {
+                quest: judged.quest.clone(),
+                prerequisite: judged.prerequisite.clone(),
+                world: judged.world.clone(),
+                shape,
+                quest_at: judged
+                    .quest_at
+                    .clone()
+                    .expect("both violating arms are keyed by a discharge"),
+                prerequisite_at,
+            });
+    }
+    report.quest_prerequisite_judgements = prerequisite_judgements;
     // Distinct recorded conflict pairs (edges are read symmetrically).
     let mut pairs: BTreeSet<(mnemosyne_core::FactId, mnemosyne_core::FactId)> = BTreeSet::new();
     for (aid, a) in facts {
@@ -7252,6 +7320,189 @@ fn quest_giving_setups(
         .collect()
 }
 
+/// Round 1031 — one (quest, prerequisite, world-line, discharge) judgement.
+///
+/// Every arm is a MEASUREMENT, including the two that prove nothing: a reader
+/// who cannot tell "this road has nothing to prove" from "this road proved it"
+/// is being misinformed by a clean report (the R918/R924 line, applied to a
+/// verdict rather than a counter).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(tag = "verdict", rename_all = "snake_case")]
+pub enum QuestPrerequisiteVerdict {
+    /// This road discharges the prerequisite strictly before the dependent.
+    Satisfied { prerequisite_at: String },
+    /// This road never discharges the DEPENDENT quest, so its declared gate is
+    /// never opened here and there is nothing to prove. Emitted, not skipped —
+    /// it is the denominator the satisfied verdicts are drawn from.
+    Inapplicable,
+    /// This road discharges the dependent but never the prerequisite: the
+    /// player is handed a quest whose declared gate this world-line cannot open.
+    NeverDischarged,
+    /// Both discharge here, but no prerequisite discharge precedes the
+    /// dependent's — the gate opens after the door it gates.
+    DischargedTooLate { prerequisite_at: String },
+    /// The world's declared order cannot compare the two coordinates, so the
+    /// precedence question cannot be ASKED. Surfaced, never gated (B-1): the
+    /// author's order is silent, not contradictory.
+    Unverifiable { reason: String },
+}
+
+/// Round 1031 — one judged discharge of a quest that declares a prerequisite.
+///
+/// The row is keyed by the DEPENDENT's own discharge coordinate rather than by
+/// the quest alone, so a road that discharges one quest twice is judged twice.
+/// Collapsing those to an "earliest" would need a total order the canon order
+/// does not promise, and would hide the second promise behind the first.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct QuestPrerequisiteJudgement {
+    /// The `requires` subject — the quest that declares the gate.
+    pub quest: String,
+    /// The `requires` object — the quest declared to complete first.
+    pub prerequisite: String,
+    /// The world-line judged.
+    pub world: String,
+    /// Where this road discharges the dependent; `None` under `Inapplicable`,
+    /// which is precisely the arm that has no discharge.
+    pub quest_at: Option<String>,
+    /// Flattened, so a row reads as one flat record (`"verdict": "satisfied",
+    /// "prerequisite_at": "sc-17"`) rather than a verdict nested inside a field
+    /// called verdict — the shape a consumer joining these rows wants.
+    #[serde(flatten)]
+    pub verdict: QuestPrerequisiteVerdict,
+}
+
+/// Round 1031 — judge every declared quest prerequisite against every road.
+///
+/// THE proof of the sentence [`QuestNode::prerequisites`] has published since
+/// R568 ("the canon order proves the timing"). Before this, a `requires` edge
+/// was carried verbatim to the runtime and NOTHING compared it to the order: an
+/// authored store whose `requires` object completes after its subject — or on no
+/// road at all — passed `import-facts`, `validate-continuity`, `validate-workspace`,
+/// `report-quest-graph` and `report-playable-world`, every one of them exit 0.
+///
+/// Shares the R676 [`quest_ids`] kernel (and therefore its shape + role-conflict
+/// guards) rather than re-deriving "what is a quest" beside it — the R631
+/// two-readers-must-agree rule; a second definition here is how the gate and the
+/// projection would come to disagree about which entity the promise is even about.
+///
+/// Membership is the ONE [`visibility`] decision every other per-world read uses,
+/// so "discharged on this road" means here exactly what it means in
+/// [`payoff_coverage`]. Precedence is [`CanonOrder::le`], the same primitive the
+/// R488/R522 reachability gates ride.
+///
+/// Returns one row per (requires-edge x world x dependent discharge), plus one
+/// `Inapplicable` row per (requires-edge x world) that discharges the dependent
+/// nowhere. EMPTY iff the store declares no `requires` claim at all — the class
+/// was never askable, which the CLI prints as `not-declared` rather than `0`.
+pub fn quest_prerequisite_judgements(
+    store: &AtomicStore,
+    order: &CanonOrder,
+) -> Result<Vec<QuestPrerequisiteJudgement>, String> {
+    // The shared kernel: runs `check_quest_predicate_shapes` + the role-conflict
+    // guard, so the claim legs below are entity-shaped and role-consistent.
+    let quests = quest_ids(store)?;
+    let mut edges: BTreeSet<(mnemosyne_core::EntityId, mnemosyne_core::EntityId)> = BTreeSet::new();
+    for fact in store.narrative_facts.values() {
+        let Some(claim) = &fact.typed else { continue };
+        if claim.predicate != QUEST_PRED_REQUIRES {
+            continue;
+        }
+        if let mnemosyne_core::TypedObject::Entity { id } = &claim.object {
+            // A self-requirement is a cycle of one; it can never be discharged
+            // first, so it is a promise no road can keep. Judged like any other.
+            edges.insert((claim.subject.clone(), id.clone()));
+        }
+    }
+    if edges.is_empty() {
+        return Ok(Vec::new());
+    }
+    debug_assert!(
+        edges
+            .iter()
+            .all(|(a, b)| quests.contains(a) && quests.contains(b)),
+        "`requires` endpoints are quests by construction of `quest_ids`"
+    );
+
+    let mut out = Vec::new();
+    for world in query_worlds(store) {
+        let lineage = lineage_of(&store.branches, &world)?;
+        // Where each quest is DISCHARGED on this road: the canon coordinates of
+        // its visible `completed_by` facts. `Vis::Unknown` is deliberately not
+        // a discharge — an undecidable membership is not evidence that the
+        // player got there (the R447 "suspended, not decided" discipline).
+        let mut discharges: BTreeMap<
+            &mnemosyne_core::EntityId,
+            BTreeSet<&mnemosyne_core::SectionId>,
+        > = BTreeMap::new();
+        for fact in store.narrative_facts.values() {
+            let Some(claim) = &fact.typed else { continue };
+            if claim.predicate != QUEST_PRED_COMPLETED_BY {
+                continue;
+            }
+            if visibility(&world, &lineage, order, fact) != Vis::In {
+                continue;
+            }
+            discharges
+                .entry(&claim.subject)
+                .or_default()
+                .insert(&fact.canon_from);
+        }
+        let empty = BTreeSet::new();
+        for (quest, prerequisite) in &edges {
+            let quest_at = discharges.get(quest).unwrap_or(&empty);
+            let prereq_at = discharges.get(prerequisite).unwrap_or(&empty);
+            if quest_at.is_empty() {
+                out.push(QuestPrerequisiteJudgement {
+                    quest: quest.to_string(),
+                    prerequisite: prerequisite.to_string(),
+                    world: world.to_string(),
+                    quest_at: None,
+                    verdict: QuestPrerequisiteVerdict::Inapplicable,
+                });
+                continue;
+            }
+            for at in quest_at {
+                let verdict = if prereq_at.is_empty() {
+                    QuestPrerequisiteVerdict::NeverDischarged
+                } else if let Some(before) = prereq_at
+                    .iter()
+                    .find(|p| **p != *at && order.le(&world, p, at))
+                {
+                    QuestPrerequisiteVerdict::Satisfied {
+                        prerequisite_at: before.to_string(),
+                    }
+                } else if let Some(loose) =
+                    prereq_at.iter().find(|p| !order.comparable(&world, p, at))
+                {
+                    QuestPrerequisiteVerdict::Unverifiable {
+                        reason: format!(
+                            "the order of world `{world}` cannot compare `{loose}` to `{at}`, so \
+                             whether the prerequisite is discharged first cannot be asked"
+                        ),
+                    }
+                } else {
+                    QuestPrerequisiteVerdict::DischargedTooLate {
+                        // Comparable and not before: every element is at-or-after.
+                        prerequisite_at: prereq_at
+                            .iter()
+                            .next()
+                            .expect("non-empty by the branch above")
+                            .to_string(),
+                    }
+                };
+                out.push(QuestPrerequisiteJudgement {
+                    quest: quest.to_string(),
+                    prerequisite: prerequisite.to_string(),
+                    world: world.to_string(),
+                    quest_at: Some(at.to_string()),
+                    verdict,
+                });
+            }
+        }
+    }
+    Ok(out)
+}
+
 /// The STRUCTURAL (quest-plumbing) fact ids (Round 618, MNEMO-GAP-005 part 3a):
 /// a fact is structural iff it carries a quest typed predicate
 /// (`pursues`/`requires`/`completed_by`) OR it is a quest GIVING setup
@@ -10356,6 +10607,226 @@ mod tests {
             "{:?}",
             report.violations
         );
+    }
+
+    // --- Round 1031: quest prerequisites the road must keep ----------------
+
+    /// A store with a `requires` edge and the two discharges, over the order the
+    /// caller declares. `hero` is the discharger, so it holds only ACTOR roles.
+    fn quest_gate_store(
+        requires_at: &str,
+        dependent_discharge: &str,
+        prerequisite_discharge: Option<&str>,
+        prerequisite: &str,
+    ) -> AtomicStore {
+        let mut facts = vec![
+            typed_fact(
+                "f-req",
+                "gt",
+                requires_at,
+                "q-a",
+                QUEST_PRED_REQUIRES,
+                TypedObject::Entity {
+                    id: prerequisite.into(),
+                },
+            ),
+            typed_fact(
+                "f-done-a",
+                "gt",
+                dependent_discharge,
+                "q-a",
+                QUEST_PRED_COMPLETED_BY,
+                TypedObject::Entity { id: "hero".into() },
+            ),
+        ];
+        if let Some(at) = prerequisite_discharge {
+            facts.push(typed_fact(
+                "f-done-b",
+                "gt",
+                at,
+                prerequisite,
+                QUEST_PRED_COMPLETED_BY,
+                TypedObject::Entity { id: "hero".into() },
+            ));
+        }
+        store_with(facts)
+    }
+
+    /// A store that declares no `requires` claim at all leaves the walk EMPTY —
+    /// the class was never askable, which the CLI prints as `not-declared`. A
+    /// `0` here would read exactly like a store whose every gate is kept.
+    #[test]
+    fn a_store_declaring_no_prerequisite_judges_nothing_rather_than_judging_zero() {
+        let store = store_with(vec![typed_fact(
+            "f-done-a",
+            "gt",
+            "ch-2",
+            "q-a",
+            QUEST_PRED_COMPLETED_BY,
+            TypedObject::Entity { id: "hero".into() },
+        )]);
+        let order = chain(&["ch-1", "ch-2", "ch-3", "ch-4"]);
+        assert!(quest_prerequisite_judgements(&store, &order)
+            .unwrap()
+            .is_empty());
+        assert!(scan_continuity(&store, &order, &[])
+            .unwrap()
+            .quest_prerequisite_judgements
+            .is_empty());
+    }
+
+    /// Coordinates the world's order cannot compare yield `Unverifiable`, never
+    /// a guess in either direction (B-1): the author's order is silent about
+    /// which came first, and a gate that picked one would be inventing a road.
+    #[test]
+    fn incomparable_discharges_are_unverifiable_rather_than_guessed() {
+        let store = quest_gate_store("ch-1", "ch-2", Some("ch-3"), "q-b");
+        // A fork with no join: `ch-2` and `ch-3` are both after `ch-1` and
+        // neither is before the other.
+        let order = CanonOrder::from_edges(&[
+            ["ch-1".to_string(), "ch-2".to_string()],
+            ["ch-1".to_string(), "ch-3".to_string()],
+        ])
+        .unwrap();
+        let judged = quest_prerequisite_judgements(&store, &order).unwrap();
+        assert!(
+            matches!(
+                judged.as_slice(),
+                [QuestPrerequisiteJudgement { verdict: QuestPrerequisiteVerdict::Unverifiable { reason }, .. }]
+                    if reason.contains("ch-3") && reason.contains("ch-2")
+            ),
+            "{judged:?}"
+        );
+        // Surfaced, never gated — an unaskable question is not a finding.
+        assert!(scan_continuity(&store, &order, &[])
+            .unwrap()
+            .violations
+            .is_empty());
+    }
+
+    /// A quest that requires ITSELF is a gate no road can open — and this gate
+    /// never has to say so, because the WRITE path already refuses to record it:
+    /// subject and object would both list `q-a`, and the R446 entities-list
+    /// invariant rejects the duplicate. MEASURED, not assumed: the first draft of
+    /// the round's tests expected the scan to catch it, and the import did.
+    /// Pinned here so that if the entities rule ever loosens, the road-keeping
+    /// promise is known to be the next thing to check.
+    #[test]
+    fn a_quest_cannot_even_declare_itself_its_own_prerequisite() {
+        let panic = std::panic::catch_unwind(|| {
+            quest_gate_store("ch-1", "ch-2", None, "q-a");
+        })
+        .expect_err("the import path must refuse a self-requirement");
+        let message = panic.downcast_ref::<String>().cloned().unwrap_or_else(|| {
+            panic
+                .downcast_ref::<&str>()
+                .map_or_else(String::new, |s| (*s).to_string())
+        });
+        assert!(
+            message.contains("duplicate entity ref `q-a`"),
+            "the refusal must name the duplicate leg: {message}"
+        );
+    }
+
+    /// A discharge the order cannot place on this road is NOT a discharge here.
+    ///
+    /// `Vis::Unknown` means the declared order cannot compare the fact's start to
+    /// the world's departure bound — so nobody knows whether the player was ever
+    /// there, and "we cannot tell" is not evidence that they were. Counting it
+    /// would let an unplaceable completion silently satisfy a gate on a road that
+    /// may never reach it. MEASURED: with `Unknown` folded into `In`, the whole
+    /// 1742-test workspace stayed green — no fixture distinguished the two, which
+    /// is what this one is for.
+    #[test]
+    fn an_undecidable_discharge_does_not_open_the_gate() {
+        let requires = typed_fact(
+            "f-req",
+            "gt",
+            "ch-1",
+            "q-a",
+            QUEST_PRED_REQUIRES,
+            TypedObject::Entity { id: "q-b".into() },
+        );
+        let dependent = FactImport {
+            branch: Some("route".to_string()),
+            ..typed_fact(
+                "f-done-a",
+                "gt",
+                "ch-3",
+                "q-a",
+                QUEST_PRED_COMPLETED_BY,
+                TypedObject::Entity { id: "hero".into() },
+            )
+        };
+        // On main, but at a coordinate the fork's departure bound cannot be
+        // compared to — the definition of `Vis::Unknown` in world `route`.
+        let prerequisite = typed_fact(
+            "f-done-b",
+            "gt",
+            "k-1",
+            "q-b",
+            QUEST_PRED_COMPLETED_BY,
+            TypedObject::Entity { id: "hero".into() },
+        );
+        let store = store_with_forks(
+            vec![requires, dependent, prerequisite],
+            &[("route", MAIN_BRANCH, "ch-2")],
+        );
+        let order = CanonOrder::from_edges(&[
+            ["ch-1".to_string(), "ch-2".to_string()],
+            ["ch-2".to_string(), "ch-3".to_string()],
+            ["ch-1".to_string(), "k-1".to_string()],
+        ])
+        .unwrap();
+        let judged: Vec<(String, &str)> = quest_prerequisite_judgements(&store, &order)
+            .unwrap()
+            .into_iter()
+            .map(|j| {
+                (
+                    j.world,
+                    match j.verdict {
+                        QuestPrerequisiteVerdict::Satisfied { .. } => "satisfied",
+                        QuestPrerequisiteVerdict::Inapplicable => "inapplicable",
+                        QuestPrerequisiteVerdict::NeverDischarged => "never",
+                        QuestPrerequisiteVerdict::DischargedTooLate { .. } => "late",
+                        QuestPrerequisiteVerdict::Unverifiable { .. } => "unverifiable",
+                    },
+                )
+            })
+            .collect();
+        assert_eq!(
+            judged,
+            vec![
+                ("main".to_string(), "inapplicable"),
+                ("route".to_string(), "never")
+            ],
+            "an undecidable completion must not read as a discharge"
+        );
+    }
+
+    /// The prerequisite discharged at the SAME coordinate is not "first" — the
+    /// promise is strict precedence, and a simultaneous discharge leaves the
+    /// player at the door and the key in the same beat.
+    #[test]
+    fn a_prerequisite_discharged_at_the_same_coordinate_is_not_discharged_first() {
+        let store = quest_gate_store("ch-1", "ch-2", Some("ch-2"), "q-b");
+        let order = chain(&["ch-1", "ch-2", "ch-3", "ch-4"]);
+        let report = scan_continuity(&store, &order, &[]).unwrap();
+        assert!(
+            report.violations.iter().any(|v| matches!(
+                v,
+                ContinuityViolation::QuestPrerequisiteUnreachable { shape, prerequisite_at, .. }
+                    if *shape == "late" && prerequisite_at.as_deref() == Some("ch-2")
+            )),
+            "{:?}",
+            report.violations
+        );
+        // And strictly before passes, on the same shapes.
+        let ok = quest_gate_store("ch-1", "ch-3", Some("ch-2"), "q-b");
+        assert!(scan_continuity(&ok, &order, &[])
+            .unwrap()
+            .violations
+            .is_empty());
     }
 
     // --- Round 449: narrative-rules gate (R441 probe mirror) ---------------

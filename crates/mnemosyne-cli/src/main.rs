@@ -3010,6 +3010,25 @@ interval_unverifiable={} interval_severity={}",
                  `describe-schema` documents the classes and the wire."
             );
         }
+        // Round 1031 — the quest-prerequisite census, derived from the SAME
+        // judgement walk the violations were drawn from (never counted beside
+        // it). Printed on every run, and `not-declared` when no `requires` claim
+        // exists at all: a store with no declared gate and a store whose every
+        // gate is kept both find nothing, and only one of them was measured.
+        {
+            use mnemosyne_validate::continuity::QuestPrerequisiteVerdict as V;
+            let judgements = &report.quest_prerequisite_judgements;
+            let count = |f: fn(&V) -> bool| judgements.iter().filter(|j| f(&j.verdict)).count();
+            println!(
+                "  quest prerequisites: {} judged (satisfied {} / inapplicable {} / \
+                 unverifiable {}) \u{2014} a `requires` edge promises its object is \
+                 discharged first, on the same road",
+                counter_or_silence((!judgements.is_empty()).then_some(judgements.len())),
+                count(|v| matches!(v, V::Satisfied { .. })),
+                count(|v| matches!(v, V::Inapplicable)),
+                count(|v| matches!(v, V::Unverifiable { .. })),
+            );
+        }
         // Round 806 — evidence refs whose section holds prose but which carry no
         // review affirmation. Never a violation (an absent affirmation certifies
         // nothing, so nothing can drift from it) and ALWAYS printed: a knob may

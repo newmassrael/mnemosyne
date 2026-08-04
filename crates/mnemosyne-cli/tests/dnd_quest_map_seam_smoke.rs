@@ -24,11 +24,9 @@
 //! produce.
 
 use std::collections::{BTreeMap, BTreeSet};
-use std::fs;
-use std::path::{Path, PathBuf};
-use std::process::Command;
 
-use tempfile::TempDir;
+mod common;
+use common::{dnd_quest_workspace as rebuilt_workspace, json_report, run_ok};
 
 /// The four surfaces the blind author placed on the map: scene, then object.
 const AUTHORED_SURFACES: [(&str, &str); 4] = [
@@ -51,90 +49,6 @@ const QUEST_GIVINGS: [(&str, &[&str]); 4] = [
     ("q-main", &[]),
     ("q-reliquary", &["f-060"]),
 ];
-
-fn cli_binary() -> &'static str {
-    env!("CARGO_BIN_EXE_mnemosyne-cli")
-}
-
-fn repo_root() -> PathBuf {
-    // CARGO_MANIFEST_DIR = <root>/crates/mnemosyne-cli
-    Path::new(env!("CARGO_MANIFEST_DIR"))
-        .ancestors()
-        .nth(2)
-        .expect("repo root is two levels above the crate manifest")
-        .to_path_buf()
-}
-
-/// The frozen experiment record. Read, never written: it is the blind author's
-/// own output and the experiment's sha-pinned evidence.
-fn audit_dir() -> PathBuf {
-    repo_root().join("claudedocs/phase1-dnd-quest-experiment/v3/run/author")
-}
-
-fn run(workspace: &Path, args: &[&str]) -> std::process::Output {
-    Command::new(cli_binary())
-        .args(args)
-        .current_dir(workspace)
-        .output()
-        .expect("cli exec")
-}
-
-fn run_ok(workspace: &Path, args: &[&str]) -> String {
-    let out = run(workspace, args);
-    assert!(
-        out.status.success(),
-        "{args:?} failed: {}\n{}",
-        String::from_utf8_lossy(&out.stdout),
-        String::from_utf8_lossy(&out.stderr),
-    );
-    String::from_utf8(out.stdout).expect("cli output is utf-8")
-}
-
-fn json_report(workspace: &Path, args: &[&str]) -> serde_json::Value {
-    let mut full = args.to_vec();
-    full.push("--json");
-    serde_json::from_str(&run_ok(workspace, &full)).expect("report json")
-}
-
-/// Rebuild the store the way the experiment's runbook does — fresh seed, then
-/// the manifests — with the three unchanged manifests taken from the frozen
-/// record and the migrated fact manifest from this crate's fixture.
-fn rebuilt_workspace() -> TempDir {
-    let tmp = TempDir::new().expect("tempdir");
-    let ws = tmp.path();
-    fs::create_dir_all(ws.join("docs/.atomic")).expect("mkdir");
-
-    let audit = audit_dir();
-    for name in ["sections.json", "order.json", "narrative-rules.json"] {
-        let src = audit.join(name);
-        fs::copy(&src, ws.join(name))
-            .unwrap_or_else(|e| panic!("the frozen record must hold {}: {e}", src.display()));
-    }
-    let fixture = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/dnd-quest/facts.json");
-    fs::copy(&fixture, ws.join("facts.json"))
-        .unwrap_or_else(|e| panic!("fixture {} unreadable: {e}", fixture.display()));
-
-    fs::write(
-        ws.join("mnemosyne.toml"),
-        "[workspace]\n[continuity]\ncanon_order_path = \"order.json\"\n\
-         rules_path = \"narrative-rules.json\"\n",
-    )
-    .expect("write config");
-    fs::write(
-        ws.join("docs/.atomic/workspace.atomic.json"),
-        serde_json::json!({
-            "schema_version": 23,
-            "sections": {},
-            "changelog_entries": {}
-        })
-        .to_string(),
-    )
-    .expect("write seed");
-
-    run_ok(ws, &["import-sections", "--manifest", "sections.json"]);
-    run_ok(ws, &["import-facts", "--manifest", "facts.json"]);
-    tmp
-}
 
 /// Every `(scene, object)` a locator names, over all world-lines.
 fn surfaces_of(locators: &serde_json::Value) -> BTreeSet<(String, String)> {

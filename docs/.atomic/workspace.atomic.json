@@ -2156,6 +2156,90 @@
         "THE AXIS IS DORMANT, and what makes that honest is that resumption needs no decision: a new argument in neither accounting list, a new silent refusal, a new `$ref`, a new undeclared shared shape and a new unprobed `reason` each redden on the round that introduces them. What no instrument covers is a handler that IGNORES a bad value rather than refusing it — the population of every gate here is refusals or differentials, and silence has neither."
       ]
     },
+    "Round 1031": {
+      "decision_summary": "R1031 (BUILD) — a declared prerequisite is a promise the road must keep. `QuestNode::prerequisites` has carried a `requires` edge to every consumer since Round 568 under the words \"the canon order proves the timing\". NOTHING PROVED IT. STAR THE MEASUREMENT CAME FIRST AND IT USED THE ONLY BLIND-AUTHORED BRANCHING CORPUS THIS REPO CAN LOAD. One field of the dnd-quest store was moved — `f-153`'s `requires` object from `q-key` to `q-delver` — which turns \"the vault needs the warden's key\" into \"the vault needs the lantern-boy's errand\", and that errand closes at `sc-30p` / `sc-31s`, AFTER the vault does on the two roads that close it at all, and never on `claim`. Under that edit `import-facts` accepted the store, `validate-continuity` reported violations 0, `validate-workspace` passed, and `report-quest-graph` and `report-playable-world` both rendered it and handed a runtime a gate no road can open. Five stations, all exit 0. That is the third destination's class exactly: consistent store, unplayable game — the shape R634/R635/R636 each hit one instance of, every one of them found because a person tripped over it rather than because anything asked. STAR THE FIRST CORRUPTION WAS REJECTED, AND THE REJECTION IS PART OF THE FINDING. Moving the typed object alone failed at `import-facts`: the R446 entities-list invariant requires the object to ride the retrieval key. So the defect this gate is for must carry BOTH halves, which is what makes it an authorable defect rather than a corrupt file — the write path already refuses the file, and refuses nothing about the promise. STAR THE RULE IS STRICT PRECEDENCE ON THE SAME ROAD, AND ITS THREE NON-FINDINGS ARE MEASUREMENTS. On a world-line that discharges the subject quest, the object quest must be discharged there too, at a coordinate strictly before it. `inapplicable` = this road never discharges the subject, so its gate is never opened and there is nothing to prove; `unverifiable` = the world's order cannot compare the two coordinates, so the question cannot be ASKED (B-1: the author's order is silent, not contradictory); and an UNDECIDABLE membership is not a discharge — \"we cannot tell whether the player was ever there\" is not evidence that they were. All three are emitted as rows rather than skipped, because the satisfied verdicts are drawn from that same denominator. STAR NO SECOND DEFINITION OF WHAT A QUEST IS. The walk shares the R676 `quest_ids` kernel and therefore its shape and role-conflict guards; membership is the one `visibility` decision every other per-world read uses, and precedence is the `CanonOrder::le` the R488/R522 reachability gates ride. The two violation arms are DRAWN FROM the judgement list rather than computed beside it, so the finding and its census cannot come from two different traversals. STAR THE AUTHORED STORE JUDGES 4 AND SATISFIES 3, SO THE GATE IS NOT VACUOUS ON REAL CONTENT.",
+      "changes_bullets": [
+        "`quest_prerequisite_judgements` in mnemosyne-validate::continuity: one row per (requires-edge x world x discharge of the subject), verdict Satisfied / Inapplicable / NeverDischarged / DischargedTooLate / Unverifiable; empty iff no `requires` claim is declared at all.",
+        "`ContinuityViolation::QuestPrerequisiteUnreachable {quest, prerequisite, world, shape, quest_at, prerequisite_at}` with shape `never` / `late`, wired into `scan_continuity` from the judgement walk, plus its `ViolationRule` + actionable mapping (two repair hints, one per shape).",
+        "`ContinuityReport.quest_prerequisite_judgements` (always populated, the R921 `step_judgements` pattern) carried through `ops::ContinuityScanReport` to both wires; the CLI prints the census every run and says `not-declared` rather than `0` when the class was never askable.",
+        "`crates/mnemosyne-cli/tests/common/mod.rs`: the dnd-quest workspace builder gets ONE home, taking the fact manifest as a parameter so a test can author a defect through the same import path the blind author used; `dnd_quest_map_seam_smoke.rs` now reads it instead of carrying its own copy."
+      ],
+      "verification_bullets": [
+        "Workspace 1744 tests green, clippy -D warnings clean, fmt clean, `validate-workspace` clean, repo `validate-continuity` violations 0.",
+        "MEASURED BEFORE THE BUILD: with `f-153`'s requires object moved to `q-delver`, `import-facts` / `validate-continuity` / `validate-workspace` / `report-quest-graph` / `report-playable-world` all exited 0 on the authored store; after the build the continuity gate is the ONE station that rejects, with 3 findings covering both shapes (`claim` never, `parley` + `shatter` late) and `main` judged inapplicable rather than accused.",
+        "5 injections, each run against the WHOLE workspace, each firing exactly the intended test(s): I1 non-strict precedence -> same-coordinate test; I2 Unknown membership counts as a discharge -> the undecidable-discharge test; I3 the `never` arm stops gating -> the both-shapes test; I4 inapplicable rows stop being emitted -> 3 tests; I5 the CLI census line deleted -> the printed-census test.",
+        "I2 AND I5 EACH FIRED NOTHING ON THEIR FIRST RUN and each bought a test: no fixture distinguished Unknown-as-discharge, and the shipped census line was a number no program read. Both were built before the round closed rather than filed as carries."
+      ],
+      "carry_forward_bullets": [
+        "The gate judges DISCHARGE order only. A `requires` edge could equally promise that the prerequisite is discharged before the dependent is PICKED UP (its giving setup disclosed) — a second, stricter reading the store has the data for (`quest_graph.locators` already resolve giver surfaces per world) and that nothing here asks. Not attempted: undone work, not a limit.",
+        "The authored corpus has exactly ONE `requires` edge, so `satisfied` and `inapplicable` are exercised on real content and `late` / `never` / `unverifiable` only on injected or synthetic stores. A second authored corpus would be the honest widening.",
+        "Nothing yet asks the sibling question a runtime also needs: whether a quest that is OPEN on a terminal road can be discharged there at all. `unresolved_quests` surfaces the no-anchor case and gates on nothing.",
+        "WORLD LIMIT: an entity cannot declare itself its own prerequisite — the R446 entities-list invariant rejects the duplicate leg at import, so this gate never has to say so. Pinned by a test, so a loosening of that invariant is known to make the promise the next thing to check."
+      ],
+      "population_census": [
+        {
+          "axis": "transition rules by `undirected`",
+          "left_label": "undirected",
+          "left": 10,
+          "right_label": "directed",
+          "right": 27
+        },
+        {
+          "axis": "map corpora by leg-kind declaration",
+          "left_label": "omitted",
+          "left": 6,
+          "right_label": "declared",
+          "right": 24
+        },
+        {
+          "axis": "cost-carrying corpora by direction-dependent pricing",
+          "left_label": "prices a way by direction",
+          "left": 4,
+          "right_label": "prices no way by direction",
+          "right": 6
+        },
+        {
+          "axis": "run trees by authoring mode",
+          "left_label": "hand script",
+          "left": 10,
+          "right_label": "file-only",
+          "right": 239
+        },
+        {
+          "axis": "map corpora by declared boundary crossing",
+          "left_label": "declares an exit",
+          "left": 6,
+          "right_label": "declares none",
+          "right": 24
+        },
+        {
+          "axis": "authored submissions by map and telling",
+          "left_label": "carries both",
+          "left": 10,
+          "right_label": "carries one",
+          "right": 24
+        }
+      ],
+      "publishable_decision_summary": "R1031 (BUILD) — a declared prerequisite is a promise the road must keep. `QuestNode::prerequisites` has carried a `requires` edge to every consumer since Round 568 under the words \"the canon order proves the timing\". NOTHING PROVED IT. STAR THE MEASUREMENT CAME FIRST AND IT USED THE ONLY BLIND-AUTHORED BRANCHING CORPUS THIS REPO CAN LOAD. One field of the dnd-quest store was moved — `f-153`'s `requires` object from `q-key` to `q-delver` — which turns \"the vault needs the warden's key\" into \"the vault needs the lantern-boy's errand\", and that errand closes at `sc-30p` / `sc-31s`, AFTER the vault does on the two roads that close it at all, and never on `claim`. Under that edit `import-facts` accepted the store, `validate-continuity` reported violations 0, `validate-workspace` passed, and `report-quest-graph` and `report-playable-world` both rendered it and handed a runtime a gate no road can open. Five stations, all exit 0. That is the third destination's class exactly: consistent store, unplayable game — the shape R634/R635/R636 each hit one instance of, every one of them found because a person tripped over it rather than because anything asked. STAR THE FIRST CORRUPTION WAS REJECTED, AND THE REJECTION IS PART OF THE FINDING. Moving the typed object alone failed at `import-facts`: the R446 entities-list invariant requires the object to ride the retrieval key. So the defect this gate is for must carry BOTH halves, which is what makes it an authorable defect rather than a corrupt file — the write path already refuses the file, and refuses nothing about the promise. STAR THE RULE IS STRICT PRECEDENCE ON THE SAME ROAD, AND ITS THREE NON-FINDINGS ARE MEASUREMENTS. On a world-line that discharges the subject quest, the object quest must be discharged there too, at a coordinate strictly before it. `inapplicable` = this road never discharges the subject, so its gate is never opened and there is nothing to prove; `unverifiable` = the world's order cannot compare the two coordinates, so the question cannot be ASKED (B-1: the author's order is silent, not contradictory); and an UNDECIDABLE membership is not a discharge — \"we cannot tell whether the player was ever there\" is not evidence that they were. All three are emitted as rows rather than skipped, because the satisfied verdicts are drawn from that same denominator. STAR NO SECOND DEFINITION OF WHAT A QUEST IS. The walk shares the R676 `quest_ids` kernel and therefore its shape and role-conflict guards; membership is the one `visibility` decision every other per-world read uses, and precedence is the `CanonOrder::le` the R488/R522 reachability gates ride. The two violation arms are DRAWN FROM the judgement list rather than computed beside it, so the finding and its census cannot come from two different traversals. STAR THE AUTHORED STORE JUDGES 4 AND SATISFIES 3, SO THE GATE IS NOT VACUOUS ON REAL CONTENT.",
+      "publishable_changes_bullets": [
+        "`quest_prerequisite_judgements` in mnemosyne-validate::continuity: one row per (requires-edge x world x discharge of the subject), verdict Satisfied / Inapplicable / NeverDischarged / DischargedTooLate / Unverifiable; empty iff no `requires` claim is declared at all.",
+        "`ContinuityViolation::QuestPrerequisiteUnreachable {quest, prerequisite, world, shape, quest_at, prerequisite_at}` with shape `never` / `late`, wired into `scan_continuity` from the judgement walk, plus its `ViolationRule` + actionable mapping (two repair hints, one per shape).",
+        "`ContinuityReport.quest_prerequisite_judgements` (always populated, the R921 `step_judgements` pattern) carried through `ops::ContinuityScanReport` to both wires; the CLI prints the census every run and says `not-declared` rather than `0` when the class was never askable.",
+        "`crates/mnemosyne-cli/tests/common/mod.rs`: the dnd-quest workspace builder gets ONE home, taking the fact manifest as a parameter so a test can author a defect through the same import path the blind author used; `dnd_quest_map_seam_smoke.rs` now reads it instead of carrying its own copy."
+      ],
+      "publishable_verification_bullets": [
+        "Workspace 1744 tests green, clippy -D warnings clean, fmt clean, `validate-workspace` clean, repo `validate-continuity` violations 0.",
+        "MEASURED BEFORE THE BUILD: with `f-153`'s requires object moved to `q-delver`, `import-facts` / `validate-continuity` / `validate-workspace` / `report-quest-graph` / `report-playable-world` all exited 0 on the authored store; after the build the continuity gate is the ONE station that rejects, with 3 findings covering both shapes (`claim` never, `parley` + `shatter` late) and `main` judged inapplicable rather than accused.",
+        "5 injections, each run against the WHOLE workspace, each firing exactly the intended test(s): I1 non-strict precedence -> same-coordinate test; I2 Unknown membership counts as a discharge -> the undecidable-discharge test; I3 the `never` arm stops gating -> the both-shapes test; I4 inapplicable rows stop being emitted -> 3 tests; I5 the CLI census line deleted -> the printed-census test.",
+        "I2 AND I5 EACH FIRED NOTHING ON THEIR FIRST RUN and each bought a test: no fixture distinguished Unknown-as-discharge, and the shipped census line was a number no program read. Both were built before the round closed rather than filed as carries."
+      ],
+      "publishable_carry_forward_bullets": [
+        "The gate judges DISCHARGE order only. A `requires` edge could equally promise that the prerequisite is discharged before the dependent is PICKED UP (its giving setup disclosed) — a second, stricter reading the store has the data for (`quest_graph.locators` already resolve giver surfaces per world) and that nothing here asks. Not attempted: undone work, not a limit.",
+        "The authored corpus has exactly ONE `requires` edge, so `satisfied` and `inapplicable` are exercised on real content and `late` / `never` / `unverifiable` only on injected or synthetic stores. A second authored corpus would be the honest widening.",
+        "Nothing yet asks the sibling question a runtime also needs: whether a quest that is OPEN on a terminal road can be discharged there at all. `unresolved_quests` surfaces the no-anchor case and gates on nothing.",
+        "WORLD LIMIT: an entity cannot declare itself its own prerequisite — the R446 entities-list invariant rejects the duplicate leg at import, so this gate never has to say so. Pinned by a test, so a loosening of that invariant is known to make the promise the next thing to check."
+      ]
+    },
     "Round 252": {
       "decision_summary": "Parser CommonMark conformance — recognize indented fenced code blocks (§98) and require whitespace after ATX hash sequence (§62)",
       "changes_bullets": [
