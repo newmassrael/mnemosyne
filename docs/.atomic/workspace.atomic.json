@@ -1930,6 +1930,36 @@
         "152 required arguments remain on the probe floor and nothing says which of them would repay a differential, which is Round 1025's carry unchanged: this round moved the ten the schema could answer for, not the ones that need a world"
       ]
     },
+    "Round 1028": {
+      "decision_summary": "Round 1027 shipped with a carry saying that `DisclosureMode` keeps a `&str` edge in the atomic primitives — the manifest importer carries its tag out of a file — and that nothing proved the two ways in admit the same set. RUNNING THE CARRY TEST RATHER THAN TRANSCRIBING IT ANSWERED IT: that bullet describes a test, so it is undone work and not a limit, and `CLAUDE.md` is explicit that a field two primitives write must have both enforcing one invariant or there is no invariant.\n\nThe ledger is append-only, so the sentence in Round 1027 stands and this entry is where it stops being true.\n\nWHAT MAKES THE TEST WORTH MORE THAN ITS SIZE is that it is derived from the type rather than written beside it: it runs the string edge over every member `DisclosureMode::ALL` holds, so a variant added to the enum is exercised by the same test without anybody remembering to add a case, and a member the string edge refuses names itself. Then it sends one tag in no member's place and requires the refusal to name EVERY member — which is what pins the message to `vocabulary()` rather than to a spelling that can drift, the defect Round 1027 found in `ConfirmMethod` and Round 870 found in five surfaces at once.\n\nThe injection is the whole point of landing it now: dropping ONE member at the string edge — a `filter` that quietly refuses `imply` — turns the test red with the two definitions printed side by side, the refusal listing `imply` as admissible in the same sentence that refuses it. Nothing else in the crate's 285 tests noticed.",
+      "changes_bullets": [
+        "`the_disclosure_mode_string_edge_admits_the_typed_set_and_no_more` runs the atomic primitive over every member `DisclosureMode::ALL` holds, so the last vocabulary with two ways in has both of them checked against one list",
+        "the same test requires the refusal of a non-member to name EVERY member, which pins that message to `vocabulary()` instead of to a spelling free to drift from it"
+      ],
+      "verification_bullets": [
+        "injection I5 (the string edge filters `Imply` out after parsing it) turns the new test red and names the member, printing a refusal that lists `imply` as admissible in the same sentence that refuses it; the other 284 tests in the crate stay green, so nothing else in this crate was watching",
+        "the test is green on today's tree only after that injection proved it can fail, which is the order this repository requires of a repair",
+        "workspace 1732 tests green over 135 binaries, clippy -D warnings clean, fmt clean, validate-workspace T1 and T3 = 0"
+      ],
+      "carry_forward_bullets": [
+        "the refusal tripwire still reads a hand-written table of the ten vocabularies, and moving that table beside each declaration is UNDONE WORK rather than a limit; making it impossible to forget needs a registry crate (`inventory` / `linkme`), which is a dependency decision and not something this round may take alone",
+        "152 required arguments remain on the probe floor and nothing says which of them would repay a differential — Round 1025's carry, unchanged, because this pair of rounds moved the ten the schema could answer for and not the ones that need a world"
+      ],
+      "publishable_decision_summary": "Round 1027 shipped with a carry saying that `DisclosureMode` keeps a `&str` edge in the atomic primitives — the manifest importer carries its tag out of a file — and that nothing proved the two ways in admit the same set. RUNNING THE CARRY TEST RATHER THAN TRANSCRIBING IT ANSWERED IT: that bullet describes a test, so it is undone work and not a limit, and `CLAUDE.md` is explicit that a field two primitives write must have both enforcing one invariant or there is no invariant.\n\nThe ledger is append-only, so the sentence in Round 1027 stands and this entry is where it stops being true.\n\nWHAT MAKES THE TEST WORTH MORE THAN ITS SIZE is that it is derived from the type rather than written beside it: it runs the string edge over every member `DisclosureMode::ALL` holds, so a variant added to the enum is exercised by the same test without anybody remembering to add a case, and a member the string edge refuses names itself. Then it sends one tag in no member's place and requires the refusal to name EVERY member — which is what pins the message to `vocabulary()` rather than to a spelling that can drift, the defect Round 1027 found in `ConfirmMethod` and Round 870 found in five surfaces at once.\n\nThe injection is the whole point of landing it now: dropping ONE member at the string edge — a `filter` that quietly refuses `imply` — turns the test red with the two definitions printed side by side, the refusal listing `imply` as admissible in the same sentence that refuses it. Nothing else in the crate's 285 tests noticed.",
+      "publishable_changes_bullets": [
+        "`the_disclosure_mode_string_edge_admits_the_typed_set_and_no_more` runs the atomic primitive over every member `DisclosureMode::ALL` holds, so the last vocabulary with two ways in has both of them checked against one list",
+        "the same test requires the refusal of a non-member to name EVERY member, which pins that message to `vocabulary()` instead of to a spelling free to drift from it"
+      ],
+      "publishable_verification_bullets": [
+        "injection I5 (the string edge filters `Imply` out after parsing it) turns the new test red and names the member, printing a refusal that lists `imply` as admissible in the same sentence that refuses it; the other 284 tests in the crate stay green, so nothing else in this crate was watching",
+        "the test is green on today's tree only after that injection proved it can fail, which is the order this repository requires of a repair",
+        "workspace 1732 tests green over 135 binaries, clippy -D warnings clean, fmt clean, validate-workspace T1 and T3 = 0"
+      ],
+      "publishable_carry_forward_bullets": [
+        "the refusal tripwire still reads a hand-written table of the ten vocabularies, and moving that table beside each declaration is UNDONE WORK rather than a limit; making it impossible to forget needs a registry crate (`inventory` / `linkme`), which is a dependency decision and not something this round may take alone",
+        "152 required arguments remain on the probe floor and nothing says which of them would repay a differential — Round 1025's carry, unchanged, because this pair of rounds moved the ten the schema could answer for and not the ones that need a world"
+      ]
+    },
     "Round 252": {
       "decision_summary": "Parser CommonMark conformance — recognize indented fenced code blocks (§98) and require whitespace after ATX hash sequence (§62)",
       "changes_bullets": [

@@ -11085,6 +11085,43 @@ mod tests {
         Verdict::assert_vocabulary_parity("Verdict");
     }
 
+    /// THE STRING EDGE ADMITS EXACTLY THE TYPED EDGE'S SET.
+    ///
+    /// Round 1027 typed nine of the ten agent-facing vocabularies all the way
+    /// down, but `DisclosureMode` keeps a `&str` edge here because the manifest
+    /// importer carries its tag out of a file. That leaves two ways in to one
+    /// field, and `CLAUDE.md` is explicit that two write paths must enforce the
+    /// SAME set or there is no set — so the primitive is run over every member
+    /// `DisclosureMode::ALL` holds and over one tag that is in no member's
+    /// place, rather than trusted to have been written from the same list.
+    #[test]
+    fn the_disclosure_mode_string_edge_admits_the_typed_set_and_no_more() {
+        let tmp = TempDir::new().unwrap();
+        let path = tmp.path().join("s.json");
+        let mut store = AtomicStore::new();
+        for (n, mode) in DisclosureMode::ALL.iter().enumerate() {
+            add_disclosure_plan(&mut store, &path, &format!("t-{n}"), mode.as_str(), "")
+                .unwrap_or_else(|e| {
+                    panic!(
+                        "`{}` is a member of DisclosureMode and the string edge \
+                         refused it, so the two ways in do not admit one set: {e}",
+                        mode.as_str()
+                    )
+                });
+        }
+        let refused = add_disclosure_plan(&mut store, &path, "t-off", "mn-names-nothing", "")
+            .expect_err("a tag in no member's place must be refused");
+        let said = refused.to_string();
+        for mode in DisclosureMode::ALL {
+            assert!(
+                said.contains(mode.as_str()),
+                "the refusal does not name `{}`, so the message is not the \
+                 vocabulary's own and can drift from it: {said}",
+                mode.as_str()
+            );
+        }
+    }
+
     #[test]
     fn rejected_alternative_parse_line_separators_and_bullet() {
         // Em-dash and double-hyphen separators, with/without a bullet marker.
