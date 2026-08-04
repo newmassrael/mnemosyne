@@ -1444,10 +1444,16 @@ fn parse_alternatives(bullets: &[String]) -> Result<Vec<RejectedAlternative>, St
         if trimmed.is_empty() {
             continue;
         }
+        // THE REFUSAL NAMES THE BULLET IT GOT, not only the index. Every other
+        // closed-vocabulary refusal on this surface ends "(got `x`)", and an
+        // agent that sent a list is told which line and shown what the handler
+        // read there — the Round 1001 correction, where an error printed the
+        // argument it was handed rather than what it did with it and only misled
+        // at the moment it mattered.
         let parsed = RejectedAlternative::parse_line(trimmed).ok_or_else(|| {
             format!(
-                "alternative[{}]: expected `<alternative> -- <reason>` (or ` — ` separator)",
-                i
+                "alternative[{i}]: expected `<alternative> -- <reason>` (or ` — ` \
+                 separator) (got `{trimmed}`)"
             )
         })?;
         out.push(parsed);
@@ -3933,173 +3939,22 @@ mod tests {
     /// optional list — a hand-copied population is the defect the accounting
     /// exists to stop.
     const UNEXERCISED_REQUIRED: &[(&str, &str)] = &[
-        ("add_branch", "branch_id"),
-        ("add_confirmation_event", "authoring_run"),
-        ("add_confirmation_event", "confirmer_id"),
-        ("add_confirmation_event", "confirmer_kind"),
-        ("add_confirmation_event", "confirmer_version"),
-        ("add_confirmation_event", "confirming_run"),
-        ("add_confirmation_event", "method"),
-        ("add_confirmation_event", "rationale"),
-        ("add_confirmation_event", "section_id"),
-        ("add_confirmation_event", "timestamp"),
-        ("add_confirmation_event", "verdict"),
-        ("add_disclosure_plan", "default_mode"),
-        ("add_disclosure_plan", "telling_id"),
-        ("add_disclosure_reveal_coord", "branch"),
-        ("add_disclosure_reveal_coord", "coord"),
-        ("add_disclosure_reveal_coord", "fact_id"),
-        ("add_disclosure_reveal_coord", "telling_id"),
-        ("add_edge_cost", "fact_id"),
-        ("add_edge_cost", "n"),
-        ("add_edge_cost", "unit"),
-        ("add_edge_guard", "condition"),
-        ("add_edge_guard", "fact_id"),
-        ("add_entity", "entity_id"),
-        ("add_entity_kind", "kind_id"),
-        ("add_fact", "canon_from"),
-        ("add_fact", "claim"),
-        ("add_fact", "fact_id"),
-        ("add_fact", "frame"),
-        ("add_fact_conflict", "conflicts_with"),
-        ("add_fact_conflict", "fact_id"),
-        ("add_fact_count", "count"),
-        ("add_fact_count", "fact_id"),
-        ("add_frame", "frame_id"),
-        ("add_inventory_entry", "inventory_id"),
-        ("add_inventory_entry", "status"),
-        ("add_parameter", "parameter_id"),
-        ("add_parameter_delta", "delta"),
-        ("add_parameter_delta", "fact_id"),
-        ("add_parameter_delta", "parameter"),
-        ("add_parameter_gate", "fact_id"),
         ("add_parameter_gate", "op"),
-        ("add_parameter_gate", "parameter"),
-        ("add_parameter_gate", "threshold"),
         ("add_predicate", "object_kind"),
-        ("add_predicate", "predicate_id"),
-        ("add_section", "parent_doc"),
-        ("add_section", "section_id"),
-        ("add_section", "title"),
-        ("add_section_binding", "file"),
-        ("add_section_binding", "kind"),
-        ("add_section_binding", "section_id"),
-        ("add_section_caveat", "bullet"),
-        ("add_section_caveat", "section_id"),
-        ("add_section_example", "code"),
-        ("add_section_example", "language"),
-        ("add_section_example", "section_id"),
-        ("add_unit", "unit_id"),
-        ("amend_fact", "canon_from"),
-        ("amend_fact", "claim"),
-        ("amend_fact", "fact_id"),
-        ("amend_fact", "frame"),
         ("amend_fact", "reason"),
-        ("append_changelog_entry", "changes_bullets"),
-        ("append_changelog_entry", "decision_summary"),
-        ("append_changelog_entry", "entry_id"),
-        ("append_changelog_entry", "verification_bullets"),
-        ("emit_publishable_override_ledger_draft", "applied_in"),
-        ("emit_publishable_override_ledger_draft", "entry_id"),
         ("emit_publishable_override_ledger_draft", "reason"),
         ("import_sections", "sections"),
-        ("query_changelog_entry", "entry_id"),
-        ("query_inventory", "inventory_id"),
-        ("query_section", "section_id"),
-        ("query_term", "pattern"),
         ("redact_term", "applied_in"),
-        ("redact_term", "pattern"),
         ("redact_term", "reason"),
-        ("redact_term", "replacement"),
-        ("remove_disclosure", "fact_id"),
         ("remove_disclosure", "reason"),
-        ("remove_disclosure", "telling_id"),
-        ("remove_disclosure_reveal_coord", "branch"),
-        ("remove_disclosure_reveal_coord", "coord"),
-        ("remove_disclosure_reveal_coord", "fact_id"),
-        ("remove_disclosure_reveal_coord", "telling_id"),
-        ("remove_edge_cost", "fact_id"),
-        ("remove_edge_guard", "fact_id"),
-        ("remove_edge_guard_condition", "condition"),
-        ("remove_edge_guard_condition", "fact_id"),
-        ("remove_entity_kind", "kind_id"),
-        ("remove_fact_count", "fact_id"),
-        ("remove_inventory_entry", "inventory_id"),
         ("remove_inventory_entry", "reason"),
-        ("remove_parameter_delta", "fact_id"),
-        ("remove_parameter_delta", "parameter"),
-        ("remove_parameter_gate", "fact_id"),
-        ("remove_predicate", "predicate_id"),
-        ("remove_section", "reason"),
-        ("remove_section", "section_id"),
-        ("remove_section_binding", "file"),
-        ("remove_section_binding", "reason"),
-        ("remove_section_binding", "section_id"),
-        ("report_disclosure_coverage", "telling"),
-        ("report_entity", "entity_id"),
-        ("report_frame_view", "at"),
-        ("report_frame_view", "frame"),
-        ("report_playable_world", "telling"),
-        ("report_quest_graph", "telling"),
-        ("retract_fact", "fact_id"),
         ("retract_fact", "reason"),
-        ("set_changelog_publishable_carry_forward", "bullets"),
-        ("set_changelog_publishable_carry_forward", "entry_id"),
-        ("set_changelog_publishable_changes", "bullets"),
-        ("set_changelog_publishable_changes", "entry_id"),
-        ("set_changelog_publishable_decision_summary", "entry_id"),
-        ("set_changelog_publishable_decision_summary", "value"),
-        ("set_changelog_publishable_impact_refs", "bullets"),
-        ("set_changelog_publishable_impact_refs", "entry_id"),
-        ("set_changelog_publishable_verification", "bullets"),
-        ("set_changelog_publishable_verification", "entry_id"),
-        ("set_disclosure", "fact_id"),
-        ("set_disclosure", "mode"),
-        ("set_disclosure", "telling_id"),
-        ("set_disclosure_reveal_threshold", "branch"),
-        ("set_disclosure_reveal_threshold", "fact_id"),
-        ("set_disclosure_reveal_threshold", "telling_id"),
-        ("set_edge_guard_threshold", "fact_id"),
-        ("set_entity_kind_parents", "kind_id"),
-        ("set_inventory_section_ref", "inventory_id"),
-        ("set_inventory_status", "inventory_id"),
-        ("set_inventory_status", "status"),
-        ("set_predicate", "description"),
+        ("remove_section", "reason"),
+        ("remove_section_binding", "reason"),
         ("set_predicate", "object_kind"),
-        ("set_predicate", "predicate_id"),
-        ("set_section_alternatives", "bullets"),
-        ("set_section_alternatives", "section_id"),
-        ("set_section_binding_kind", "file"),
-        ("set_section_binding_kind", "kind"),
         ("set_section_binding_kind", "reason"),
-        ("set_section_binding_kind", "section_id"),
-        ("set_section_coverage_expectation", "expectation"),
         ("set_section_coverage_expectation", "reason"),
-        ("set_section_coverage_expectation", "section_id"),
-        ("set_section_decision_status", "section_id"),
-        ("set_section_decision_status", "status"),
-        ("set_section_impact_scope", "refs"),
-        ("set_section_impact_scope", "section_id"),
-        ("set_section_inputs", "bullets"),
-        ("set_section_inputs", "section_id"),
-        ("set_section_intent", "section_id"),
-        ("set_section_intent", "text"),
-        ("set_section_outputs", "bullets"),
-        ("set_section_outputs", "section_id"),
-        ("set_section_parent_doc", "section_id"),
-        ("set_section_parent_doc", "text"),
-        ("set_section_parent_section", "section_id"),
-        ("set_section_rationale", "bullets"),
-        ("set_section_rationale", "section_id"),
-        ("set_section_title", "section_id"),
-        ("set_section_title", "text"),
-        ("set_section_verification_expectation", "expectation"),
         ("set_section_verification_expectation", "reason"),
-        ("set_section_verification_expectation", "section_id"),
-        ("validate_disclosure_leak", "telling"),
-        ("validate_disclosure_leak", "truth_frame"),
-        ("validate_disclosure_leak", "world"),
-        ("validate_render_fidelity", "world"),
     ];
 
     /// The REQUIRED arguments of every routed tool — the half of the surface
@@ -4275,7 +4130,12 @@ mod tests {
     /// wire Round 981 found broken-by-construction was one of these.
     #[test]
     fn every_optional_tool_argument_is_declared_exercised_or_not() {
-        account_for("optional", optional_arguments(), UNEXERCISED);
+        account_for(
+            "optional",
+            optional_arguments(),
+            UNEXERCISED,
+            &BTreeSet::new(),
+        );
     }
 
     /// THE OTHER HALF, ON THE SAME TERMS. Round 1014's defect lived here and the
@@ -4298,7 +4158,12 @@ mod tests {
     /// turns it red).
     #[test]
     fn every_required_tool_argument_is_declared_exercised_or_not() {
-        account_for("required", required_arguments(), UNEXERCISED_REQUIRED);
+        account_for(
+            "required",
+            required_arguments(),
+            UNEXERCISED_REQUIRED,
+            &probed_pairs(),
+        );
     }
 
     /// One accounting, run once per half of the surface.
@@ -4309,7 +4174,12 @@ mod tests {
     /// so a pair is checked against the half it actually lives in and is ignored
     /// by the other — a second generated const would need the macro to know a
     /// fact about the schema rather than about the case.
-    fn account_for(half: &str, population: Vec<(String, String)>, silent: &[(&str, &str)]) {
+    fn account_for(
+        half: &str,
+        population: Vec<(String, String)>,
+        silent: &[(&str, &str)],
+        probed: &BTreeSet<(String, String)>,
+    ) {
         assert!(
             !population.is_empty(),
             "the router exposes no {half} argument at all, so this gate is \
@@ -4375,8 +4245,28 @@ mod tests {
             nowhere.len()
         );
 
-        let unaccounted: Vec<&(&str, &str)> =
-            live.iter().filter(|p| !deduped.contains(*p)).collect();
+        // A PAIR THE PROBE SWEEP REACHES IS ACCOUNTED FOR, ON WEAKER TERMS. It
+        // is a separate set rather than another list because nobody types it:
+        // it is derived from the tools that declare a valid call, so it cannot
+        // claim an argument the sweep did not actually probe.
+        let swept: BTreeSet<(&str, &str)> = probed
+            .iter()
+            .map(|(t, a)| (t.as_str(), a.as_str()))
+            .filter(|p| live.contains(p))
+            .collect();
+        let both: Vec<&(&str, &str)> = swept.iter().filter(|p| silent.contains(p)).collect();
+        assert!(
+            both.is_empty(),
+            "{} pair(s) are named unexercised AND reached by the probe sweep. \
+             Declaring a valid call for a tool covers every required argument it \
+             has, so the admission must go on the round that declares the call: \
+             {both:?}",
+            both.len()
+        );
+        let unaccounted: Vec<&(&str, &str)> = live
+            .iter()
+            .filter(|p| !deduped.contains(*p) && !swept.contains(*p))
+            .collect();
         assert!(
             unaccounted.is_empty(),
             "{} of {} agent-facing {half} argument(s) are in neither list. An \
@@ -4391,11 +4281,20 @@ mod tests {
         // violations reads exactly like one that has nothing to report (Round
         // 854) — and because the optional half read as coverage of the whole
         // surface for as long as the required half had no gate to print.
+        // THE PROBED COUNT IS PRINTED APART FROM THE DIFFERENTIAL COUNT AND
+        // NEVER ADDED TO IT. A probe proves the handler validated the value or
+        // left it observable; a differential proves the value the agent sent
+        // decided the answer. Summing them would let the weaker evidence be read
+        // as the stronger, which is the reading Round 987 caught when four pairs
+        // were moved out of the silent set with no test behind them at all.
+        let differential = deduped.len() - silent.iter().filter(|p| live.contains(*p)).count();
         println!(
-            "MCP {half} arguments: {} exercised / {} unexercised, of {} on the router",
-            deduped.len() - silent.iter().filter(|p| live.contains(*p)).count(),
+            "MCP {half} arguments, of {} on the router: {differential} proved by \
+             differential, {} probed only (a floor — the value was validated or \
+             observable, not shown to decide the answer), {} unexercised",
+            live.len(),
+            swept.iter().filter(|p| !deduped.contains(*p)).count(),
             silent.len(),
-            live.len()
         );
         let mut by_type: std::collections::BTreeMap<String, usize> = Default::default();
         for (tool, arg) in silent {
@@ -4460,6 +4359,93 @@ mod tests {
             Some(other) => other.to_string(),
             None => "composed".to_string(),
         }
+    }
+
+    /// THE VALUE A REQUIRED ARGUMENT IS PROBED WITH. It names nothing in any
+    /// registry, is not a path any fixture writes, and appears in no world — so
+    /// a handler that READS the argument has to either refuse it or leave it
+    /// somewhere observable, and a handler that ignores it does neither.
+    const NOT_REGISTERED: &str = "mn-probe-names-nothing";
+
+    /// The number a required integer is probed with. A fixed value rather than
+    /// `base + 1`, because it doubles as the needle counted in the observation.
+    const NOT_A_FIXTURE_NUMBER: i64 = 909091;
+
+    /// What to send in place of ONE required argument, DERIVED FROM THE ROUTER'S
+    /// OWN SCHEMA rather than written out per argument.
+    ///
+    /// This is the whole reason the required half costs one declaration per TOOL
+    /// instead of one case per ARGUMENT: the schema already says what shape each
+    /// argument takes, so the probe value and the needle to count follow from it.
+    /// Returns `None` when the schema does not describe a value this can build —
+    /// an argument whose type is a `$ref` to a closed enum, or an array of
+    /// objects — and those arguments must be named in the tool's `except` list,
+    /// where they stay visible in the unexercised population.
+    ///
+    /// A CLOSED VOCABULARY IS NOT ONE OF THOSE. The 148 required strings include
+    /// every closed set this surface has (`mode`, `status`, `verdict`, `kind`),
+    /// and the schema declares them as bare `string` with no `enum`: the
+    /// vocabulary is enforced by the handler, not by the wire type. So the
+    /// sentinel PARSES and reaches the handler, which is what makes its refusal
+    /// evidence about the handler rather than about serde.
+    fn probe_value(tool: &str, arg: &str) -> Option<(serde_json::Value, String)> {
+        let found = agent_facing_tools().into_iter().find(|t| t.name == tool)?;
+        let property = found
+            .input_schema
+            .get("properties")
+            .and_then(|p| p.as_object())
+            .and_then(|p| p.get(arg))?;
+        // A value constrained to a listed set cannot be probed with something
+        // outside it: serde refuses before the handler is reached, and a
+        // deserialization error is evidence about the schema, not the handler.
+        if property.get("enum").is_some() {
+            return None;
+        }
+        match property.get("type").and_then(|t| t.as_str())? {
+            "string" => Some((
+                serde_json::json!(NOT_REGISTERED),
+                NOT_REGISTERED.to_string(),
+            )),
+            "integer" | "number" => Some((
+                serde_json::json!(NOT_A_FIXTURE_NUMBER),
+                NOT_A_FIXTURE_NUMBER.to_string(),
+            )),
+            "array"
+                if property
+                    .get("items")
+                    .and_then(|i| i.get("type"))
+                    .and_then(|t| t.as_str())
+                    == Some("string") =>
+            {
+                Some((
+                    serde_json::json!([NOT_REGISTERED]),
+                    NOT_REGISTERED.to_string(),
+                ))
+            }
+            _ => None,
+        }
+    }
+
+    /// The (tool, required argument) pairs the probe sweep reaches, DERIVED from
+    /// the tools that declare a valid call and the router's own required list.
+    ///
+    /// Nothing is transcribed: declaring one call for a tool covers every
+    /// required argument that tool has, and a required argument ADDED to a
+    /// declared tool later is covered by the same declaration on the round that
+    /// adds it. That is the property a per-argument table cannot have — Round
+    /// 986 opened the optional half with 122 rows that each had to be written,
+    /// and every new optional argument since has needed a new one.
+    fn probed_pairs() -> BTreeSet<(String, String)> {
+        let required = required_arguments();
+        let mut out = BTreeSet::new();
+        for (tool, except) in PROBED {
+            for (t, a) in &required {
+                if t == tool && !except.contains(&a.as_str()) {
+                    out.insert((t.clone(), a.clone()));
+                }
+            }
+        }
+        out
     }
 
     /// The population the OTHER gate owns — so each gate can tell "this pair
@@ -5307,6 +5293,360 @@ mod tests {
         };
     }
 
+    /// ONE VALID CALL PER TOOL, AND EVERY REQUIRED ARGUMENT OF IT IS PROBED.
+    ///
+    /// WHY THIS EXISTS RATHER THAN 163 MORE `exercised!` CASES. A required
+    /// argument cannot be omitted, so the optional half's present-vs-absent
+    /// differential has no arm without it; Round 1020 answered that with
+    /// value-A-vs-value-B and wrote the first five by hand. Filling the rest that
+    /// way is 163 cases, each needing a world, a second value and a needle found
+    /// by trial — and each new required argument added afterwards needs another
+    /// one. The population is 163 arguments over SEVENTY-SIX tools, so the unit
+    /// of work is wrong: what a tool needs is ONE call that is valid, and what
+    /// each of its arguments needs follows from the schema.
+    ///
+    /// WHAT ONE PROBE PROVES. The base call is made once and must SUCCEED — the
+    /// floor, without which every probe is refused for the base's reasons and the
+    /// sweep would report a handler reading arguments it never saw
+    /// (`add_predicate` refused a probe of this shape while measuring, because
+    /// the base named `object_kind: token` with no token vocabulary). Then each
+    /// required argument in turn is replaced by a value that names NOTHING, and
+    /// exactly one of two things must happen:
+    ///
+    /// - THE CALL IS REFUSED, and the refusal NAMES THE VALUE. The handler
+    ///   looked the value up and rejected it, so it read the argument. Naming it
+    ///   is what separates this from a refusal for an unrelated reason.
+    /// - THE CALL IS ACCEPTED, and the value is OBSERVABLE. Which observation is
+    ///   not declared but DERIVED (the Round 991 discipline): if the base call
+    ///   wrote the store, the store is the oracle and the sentinel must occur
+    ///   there more often than without it; if it wrote nothing, the tool is a
+    ///   read and its answer is all there is.
+    ///
+    /// WHAT IT DOES NOT PROVE, stated because a green sweep beside a shrinking
+    /// silent set will otherwise read as the same evidence the hand-written
+    /// differentials give. A handler that VALIDATES a value and then ignores it
+    /// passes the refusal branch. Round 1019 rejected exactly that weakness in a
+    /// hand-written needle — an argument echoed back proves parsing, not
+    /// filtering — so this is a FLOOR under the surface and not a substitute for
+    /// the differentials, and the accounting prints the two counts separately for
+    /// that reason.
+    ///
+    /// It also cannot tell a correct refusal from an empty answer where a
+    /// refusal was intended: measuring found fifteen existing-ref arguments that
+    /// all fail loud on an unregistered value, and the sweep would be equally
+    /// green if one of them returned an empty dossier instead, because it has no
+    /// way to know which polarity an argument was meant to have. That needs the
+    /// polarity to be a TYPE, the way Round 1014 made a path one.
+    macro_rules! probed {
+        ($(
+            $test:ident :
+            $( @ $world:ident )?
+            $( {$file:literal = $contents:tt} )*
+            $( (store $blind:literal = $( [$blind_call:ident($blind_args:ty) $blind_base:tt] )* ) )*
+            $( [$setup:ident($setup_args:ty) $setup_base:tt] )*
+            $tool:ident($args:ty) $base:tt
+            $( except $except:literal )*
+            ;
+        )*) => {
+            /// Every tool with a declared valid call, beside the required
+            /// arguments of it the schema describes no probe value for.
+            const PROBED: &[(&str, &[&str])] = &[
+                $((stringify!($tool), &[$($except),*])),*
+            ];
+            $(
+                #[tokio::test]
+                async fn $test() {
+                    let tool = stringify!($tool);
+                    let excepted: &[&str] = &[$($except),*];
+                    let required: Vec<String> = required_arguments()
+                        .into_iter()
+                        .filter(|(t, _)| t == tool)
+                        .map(|(_, a)| a)
+                        .collect();
+                    assert!(
+                        !required.is_empty(),
+                        "the router says `{tool}` has no required argument, so \
+                         this declaration probes nothing"
+                    );
+                    // AN EXCEPTION MUST BE A REAL REQUIRED ARGUMENT, or it is a
+                    // way to silence a probe by misspelling it.
+                    for skip in excepted {
+                        assert!(
+                            required.iter().any(|a| a == skip),
+                            "`{tool}` is declared with `except {skip}`, which is \
+                             not a required argument of it"
+                        );
+                    }
+                    // EVERY REQUIRED ARGUMENT IS PROBED, INCLUDING THE EXCEPTED
+                    // ONES — an exception says the probe CANNOT CONCLUDE about
+                    // this argument, and that is a claim about behaviour, so it
+                    // is executed rather than trusted. Round 987's defect was a
+                    // list that said a test existed; an unearned exception is the
+                    // same list with a different name.
+                    let mut arms: Vec<Option<String>> = vec![None];
+                    arms.extend(required.iter().cloned().map(Some));
+                    let mut base_answer = String::new();
+                    let mut base_store = String::new();
+                    let mut base_wrote = false;
+                    let mut verdicts: Vec<(String, &'static str, String)> = Vec::new();
+                    for arm in arms {
+                        let tmp = agent_workspace();
+                        let server =
+                            MnemosyneServer::new(tmp.path().to_path_buf()).expect("server");
+                        // THE WORLD AND THE SETUP RUN IN EVERY ARM, so the only
+                        // difference between the base and a probe is the one
+                        // argument.
+                        $( $world(&server, tmp.path()).await; )?
+                        $(
+                            std::fs::write(
+                                tmp.path().join($file),
+                                serde_json::to_string(&serde_json::json!($contents))
+                                    .expect("the given file must serialize"),
+                            )
+                            .unwrap_or_else(|e| panic!("write {}: {e}", $file));
+                        )*
+                        // A BLIND STORE A GATE READS, built by a second server in
+                        // every arm — the same shape `exercised!` takes, so a
+                        // declaration can move between the two without being
+                        // rewritten.
+                        $(
+                            {
+                                let blind_ws = agent_workspace();
+                                let blind = MnemosyneServer::new(
+                                    blind_ws.path().to_path_buf(),
+                                )
+                                .expect("the second server");
+                                $(
+                                    let seed: $blind_args = serde_json::from_value(
+                                        serde_json::json!($blind_base),
+                                    )
+                                    .expect("the blind store call's shape must parse");
+                                    let built = blind.$blind_call(Parameters(seed)).await;
+                                    assert!(
+                                        built.is_error != Some(true),
+                                        "building the blind store `{}` failed at {}: {:?}",
+                                        $blind,
+                                        stringify!($blind_call),
+                                        built.content
+                                    );
+                                )*
+                                std::fs::copy(
+                                    blind_ws.path().join("docs/.atomic/workspace.atomic.json"),
+                                    tmp.path().join($blind),
+                                )
+                                .unwrap_or_else(|e| panic!("seed {}: {e}", $blind));
+                            }
+                        )*
+                        $(
+                            let setup: $setup_args =
+                                serde_json::from_value(serde_json::json!($setup_base))
+                                    .expect("the setup call's shape must parse");
+                            let ready = server.$setup(Parameters(setup)).await;
+                            assert!(
+                                ready.is_error != Some(true),
+                                "the `given` call {} failed, so {tool} was never \
+                                 reached: {:?}",
+                                stringify!($setup),
+                                ready.content
+                            );
+                        )*
+                        let mut json = serde_json::json!($base);
+                        let mut needle = String::new();
+                        let mut was = String::new();
+                        if let Some(arg) = &arm {
+                            // NO PROBE VALUE THE SCHEMA DESCRIBES IS NO VERDICT.
+                            // A `$ref` to a closed enum and an array of objects
+                            // are the two shapes this reaches; both are recorded
+                            // as inconclusive rather than skipped, so the
+                            // exception that covers them has to be earned here.
+                            let Some((value, n)) = probe_value(tool, arg) else {
+                                verdicts.push((
+                                    arg.clone(),
+                                    "inconclusive",
+                                    "the schema describes no probe value for it \
+                                     (a closed enum behind a $ref, or an array \
+                                     of objects)".to_string(),
+                                ));
+                                continue;
+                            };
+                            was = json[arg.as_str()].to_string();
+                            assert_ne!(
+                                json[arg.as_str()], value,
+                                "the declared call for `{tool}` already sends the \
+                                 probe value for `{arg}`, so its two arms would \
+                                 be identical"
+                            );
+                            json[arg.as_str()] = value;
+                            needle = n;
+                        }
+                        let parsed: Result<$args, _> = serde_json::from_value(json);
+                        let args = match (parsed, &arm) {
+                            (Ok(args), _) => args,
+                            // A PROBE THAT SERDE REJECTS NEVER REACHED THE
+                            // HANDLER, so it is evidence about the wire shape
+                            // and none at all about the handler.
+                            (Err(e), Some(arg)) => {
+                                verdicts.push((
+                                    arg.clone(),
+                                    "inconclusive",
+                                    format!("the probe value does not deserialize \
+                                             ({e}), so it never reaches the handler"),
+                                ));
+                                continue;
+                            }
+                            (Err(e), None) => panic!(
+                                "the call declared for `{tool}` does not even parse: {e}"
+                            ),
+                        };
+                        let store_path =
+                            tmp.path().join("docs/.atomic/workspace.atomic.json");
+                        let before = std::fs::read_to_string(&store_path)
+                            .expect("read the store");
+                        let result = server.$tool(Parameters(args)).await;
+                        let after = std::fs::read_to_string(&store_path)
+                            .expect("read the store");
+                        let answer = answer_text(&result);
+                        let Some(arg) = arm else {
+                            // THE FLOOR. Every probe below is interpreted against
+                            // this call having worked; if it did not, every
+                            // refusal that follows is the base's and the sweep
+                            // would report reading that never happened.
+                            assert!(
+                                result.is_error != Some(true),
+                                "the call declared for `{tool}` is NOT VALID, so \
+                                 every probe of it would be refused for this \
+                                 reason rather than for the argument being \
+                                 probed: {:?}",
+                                result.content
+                            );
+                            base_answer = answer;
+                            base_store = after;
+                            base_wrote = base_store != before;
+                            continue;
+                        };
+                        let verdict = if result.is_error == Some(true) {
+                            if answer.contains(&needle) {
+                                ("validated", format!("refused it by name: {answer}"))
+                            } else {
+                                // A REFUSAL THAT DOES NOT NAME THE VALUE may be
+                                // for an unrelated reason, so it is not evidence
+                                // that this argument was read.
+                                (
+                                    "inconclusive",
+                                    format!(
+                                        "refused WITHOUT naming the value, so the \
+                                         refusal may be for an unrelated reason: \
+                                         {answer}"
+                                    ),
+                                )
+                            }
+                        } else if base_wrote {
+                            let (b, a) = (
+                                base_store.matches(&needle).count(),
+                                after.matches(&needle).count(),
+                            );
+                            if a > b {
+                                ("stored", format!("the store holds the probe value {a} time(s)"))
+                            } else if after == before {
+                                // THE ARGUMENT DECIDED WHETHER ANYTHING HAPPENED
+                                // AT ALL. A subtractive or selective argument
+                                // never appears in the store — a pattern that
+                                // matches nothing leaves no trace of itself — so
+                                // counting it says nothing, exactly as Round 989
+                                // found for the optional `limit`. What it does
+                                // say is that the base call WROTE and this one
+                                // did not, and that comparison is safe against
+                                // the stamped-timestamp hazard the needle exists
+                                // to avoid, because it compares each arm against
+                                // ITS OWN before.
+                                (
+                                    "selected",
+                                    format!(
+                                        "the base value {was} made the tool write \
+                                         and a value naming nothing made it write \
+                                         nothing"
+                                    ),
+                                )
+                            } else {
+                                // ACCEPTED AND NOWHERE IN THE STORE. Two causes
+                                // look identical from here and the sweep cannot
+                                // separate them: the handler ignored the
+                                // argument, or it validated it and the store
+                                // deliberately does not keep it — which
+                                // `retract_fact.reason` does, its primitive
+                                // saying so outright ("the transaction-time audit
+                                // of a retraction is the git history of the log,
+                                // so nothing is tombstoned in the store; `reason`
+                                // is mandatory as the audit-trail safeguard").
+                                (
+                                    "inconclusive",
+                                    format!(
+                                        "ACCEPTED and the store holds it {a} \
+                                         time(s) ({b} with {was}) — either the \
+                                         handler ignored it, or it is validated \
+                                         and deliberately not kept"
+                                    ),
+                                )
+                            }
+                        } else {
+                            // A READ TOOL LEAVES ONLY ITS ANSWER, and an answer
+                            // that differs ONLY by the value echoed back proves
+                            // the argument was parsed, not that it was used
+                            // (Round 1019). So the echo is removed from both
+                            // sides and what remains still has to differ.
+                            let mark = "\u{a7}";
+                            if answer.replace(&needle, mark)
+                                != base_answer.replace(was.trim_matches('"'), mark)
+                            {
+                                ("answered", "the answer differs beyond the echo".to_string())
+                            } else {
+                                (
+                                    "inconclusive",
+                                    "ACCEPTED and the answer differs from the \
+                                     base's ONLY by the value echoed back"
+                                        .to_string(),
+                                )
+                            }
+                        };
+                        verdicts.push((arg, verdict.0, verdict.1));
+                    }
+                    // THE EXCEPTIONS AND THE INCONCLUSIVE PROBES MUST BE THE SAME
+                    // SET. One direction stops an exception from silencing a
+                    // probe that would have concluded; the other stops an
+                    // inconclusive probe from being counted as coverage. Neither
+                    // is a list anyone maintains by hand: the left side is what
+                    // this declaration says and the right side is what the tool
+                    // did.
+                    let inconclusive: BTreeSet<&str> = verdicts
+                        .iter()
+                        .filter(|(_, v, _)| *v == "inconclusive")
+                        .map(|(a, _, _)| a.as_str())
+                        .collect();
+                    let claimed: BTreeSet<&str> = excepted.iter().copied().collect();
+                    for (arg, verdict, why) in &verdicts {
+                        println!("  {tool}.{arg}: {verdict} — {why}");
+                    }
+                    assert_eq!(
+                        inconclusive,
+                        claimed,
+                        "`{tool}`: the probe concluded about a DIFFERENT set of \
+                         arguments than this declaration excepts. Every argument \
+                         the probe cannot conclude about must be excepted (and \
+                         stays named in the unexercised population); an argument \
+                         it CAN conclude about must not be, or the exception is \
+                         hiding evidence that exists"
+                    );
+                    println!(
+                        "{tool}: {} of {} required argument(s) concluded, {} excepted",
+                        verdicts.len() - inconclusive.len(),
+                        required.len(),
+                        inconclusive.len()
+                    );
+                }
+            )*
+        };
+    }
+
     /// A NAMED WORLD — DECLARED ONCE, ESTABLISHED BY EVERY CASE THAT ASKS.
     ///
     /// The same syntax `exercised!` takes for its own setup, so a world is
@@ -6038,6 +6378,288 @@ mod tests {
             [set_disclosure(SetDisclosureArgs) {"telling_id": "t-quiet", "fact_id": "f-at-b", "mode": "state", "first_at": [{"branch": "main", "coords": ["sc-03"]}]}]
             validate_disclosure_leak(DisclosureLeakArgs) {"telling": "t-quiet", "against": "blind.json", "world": "main", "truth_frame": "ground-truth", "order_path": "order-c.json"}
             ."order_path" = "order-b.json" seen "\"kind\": \"early\"" in output;
+    }
+
+    probed! {
+        add_section_probed:
+            @branch_story
+            add_section(AddSectionArgs) {"section_id": "sc-04", "parent_doc": "spec", "title": "four"};
+        set_section_intent_probed:
+            @branch_story
+            set_section_intent(SetSectionTextArgs) {"section_id": "sc-01", "text": "what it is for"};
+        set_section_title_probed:
+            @branch_story
+            set_section_title(SetSectionTextArgs) {"section_id": "sc-01", "text": "a new title"};
+        add_section_caveat_probed:
+            @branch_story
+            add_section_caveat(AddSectionCaveatArgs) {"section_id": "sc-01", "bullet": "a caveat"};
+        add_entity_probed:
+            @branch_story
+            add_entity(AddEntityArgs) {"entity_id": "e-him", "kind": "character"};
+        add_entity_kind_probed:
+            @branch_story
+            add_entity_kind(AddEntityKindArgs) {"kind_id": "thing"};
+        add_frame_probed:
+            @branch_story
+            add_frame(AddFrameArgs) {"frame_id": "he-believes"};
+        add_branch_probed:
+            @branch_story
+            add_branch(AddBranchArgs) {"branch_id": "b-third", "forks_from": "main", "forks_at": "sc-02"};
+        add_fact_count_probed:
+            @branch_story
+            add_fact_count(AddFactCountArgs) {"fact_id": "f-way", "count": 3};
+        retract_fact_probed:
+            @branch_story
+            retract_fact(RetractFactArgs) {"fact_id": "f-quest-done", "reason": "the crossing was never made"}
+            except "reason";
+        report_entity_probed:
+            @branch_story
+            report_entity(ReportEntityArgs) {"entity_id": "e-her"};
+        query_section_probed:
+            @branch_story
+            query_section(QuerySectionArgs) {"section_id": "sc-01"};
+        report_frame_view_probed:
+            @branch_story
+            report_frame_view(ReportFrameViewArgs) {"frame": "ground-truth", "at": "sc-03", "order_path": "order-b.json"};
+        report_quest_graph_probed:
+            @branch_story
+            report_quest_graph(ReportQuestGraphArgs) {"telling": "t-quiet", "order_path": "order-b.json"};
+        report_disclosure_coverage_probed:
+            @branch_story
+            report_disclosure_coverage(ReportDisclosureCoverageArgs) {"telling": "t-quiet"};
+        set_disclosure_probed:
+            @branch_story
+            set_disclosure(SetDisclosureArgs) {"telling_id": "t-quiet", "fact_id": "f-at-b", "mode": "state"};
+        append_changelog_entry_probed:
+            append_changelog_entry(AppendChangelogEntryArgs) {"entry_id": "Round 1", "decision_summary": "the decision", "changes_bullets": ["a change"], "verification_bullets": ["a check"]};
+        query_changelog_entry_probed:
+            [append_changelog_entry(AppendChangelogEntryArgs) {"entry_id": "Round 1", "decision_summary": "the decision", "changes_bullets": ["a change"], "verification_bullets": ["a check"]}]
+            query_changelog_entry(QueryChangelogEntryArgs) {"entry_id": "Round 1"};
+        set_section_parent_doc_probed:
+            @branch_story
+            set_section_parent_doc(SetSectionTextArgs) {"section_id": "sc-01", "text": "other"};
+        set_section_rationale_probed:
+            @branch_story
+            set_section_rationale(SetSectionBulletsArgs) {"section_id": "sc-01", "bullets": ["because of this"]};
+        set_section_alternatives_probed:
+            @branch_story
+            set_section_alternatives(SetSectionBulletsArgs) {"section_id": "sc-01", "bullets": ["the other way -- it costs more"]};
+        set_section_inputs_probed:
+            @branch_story
+            set_section_inputs(SetSectionBulletsArgs) {"section_id": "sc-01", "bullets": ["what comes in"]};
+        set_section_outputs_probed:
+            @branch_story
+            set_section_outputs(SetSectionBulletsArgs) {"section_id": "sc-01", "bullets": ["what goes out"]};
+        set_section_impact_scope_probed:
+            @branch_story
+            set_section_impact_scope(SetImpactScopeArgs) {"section_id": "sc-01", "refs": ["sc-02"]};
+        set_section_parent_section_probed:
+            @branch_story
+            set_section_parent_section(SetSectionParentSectionArgs) {"section_id": "sc-02", "parent": "sc-01"};
+        set_section_decision_status_probed:
+            @branch_story
+            set_section_decision_status(SetSectionDecisionStatusArgs) {"section_id": "sc-01", "status": "active"};
+        set_section_coverage_expectation_probed:
+            @branch_story
+            set_section_coverage_expectation(SetSectionCoverageExpectationArgs) {"section_id": "sc-01", "expectation": "out_of_scope_here", "reason": "the scene is written"}
+            except "reason";
+        set_section_verification_expectation_probed:
+            @branch_story
+            set_section_verification_expectation(SetSectionVerificationExpectationArgs) {"section_id": "sc-01", "expectation": "by_construction", "reason": "the scene is checked"}
+            except "reason";
+        add_section_example_probed:
+            @branch_story
+            add_section_example(AddSectionExampleArgs) {"section_id": "sc-01", "code": "the sample", "language": "text"};
+        add_section_binding_probed:
+            @branch_story
+            add_section_binding(AddSectionBindingArgs) {"section_id": "sc-01", "file": "src/lib.rs", "kind": "implements"};
+        set_section_binding_kind_probed:
+            @branch_story
+            [add_section_binding(AddSectionBindingArgs) {"section_id": "sc-01", "file": "src/lib.rs", "kind": "implements"}]
+            set_section_binding_kind(SetSectionBindingKindArgs) {"section_id": "sc-01", "file": "src/lib.rs", "kind": "verifies", "reason": "the binding is a check"}
+            except "reason";
+        remove_section_binding_probed:
+            @branch_story
+            [add_section_binding(AddSectionBindingArgs) {"section_id": "sc-01", "file": "src/lib.rs", "kind": "implements"}]
+            remove_section_binding(RemoveSectionBindingArgs) {"section_id": "sc-01", "file": "src/lib.rs", "reason": "the symbol moved"}
+            except "reason";
+        remove_section_probed:
+            @branch_story
+            [add_section(AddSectionArgs) {"section_id": "sc-05", "parent_doc": "spec", "title": "five"}]
+            remove_section(RemoveSectionArgs) {"section_id": "sc-05", "reason": "the scene was cut"}
+            except "reason";
+        set_changelog_publishable_decision_summary_probed:
+            [append_changelog_entry(AppendChangelogEntryArgs) {"entry_id": "Round 1", "decision_summary": "the decision", "changes_bullets": ["a change"], "verification_bullets": ["a check"]}]
+            set_changelog_publishable_decision_summary(SetChangelogPublishableStringArgs) {"entry_id": "Round 1", "value": "the published line"};
+        set_changelog_publishable_changes_probed:
+            [append_changelog_entry(AppendChangelogEntryArgs) {"entry_id": "Round 1", "decision_summary": "the decision", "changes_bullets": ["a change"], "verification_bullets": ["a check"]}]
+            set_changelog_publishable_changes(SetChangelogPublishableBulletsArgs) {"entry_id": "Round 1", "bullets": ["the published change"]};
+        set_changelog_publishable_verification_probed:
+            [append_changelog_entry(AppendChangelogEntryArgs) {"entry_id": "Round 1", "decision_summary": "the decision", "changes_bullets": ["a change"], "verification_bullets": ["a check"]}]
+            set_changelog_publishable_verification(SetChangelogPublishableBulletsArgs) {"entry_id": "Round 1", "bullets": ["the published check"]};
+        set_changelog_publishable_carry_forward_probed:
+            [append_changelog_entry(AppendChangelogEntryArgs) {"entry_id": "Round 1", "decision_summary": "the decision", "changes_bullets": ["a change"], "verification_bullets": ["a check"]}]
+            set_changelog_publishable_carry_forward(SetChangelogPublishableBulletsArgs) {"entry_id": "Round 1", "bullets": ["the published carry"]};
+        set_changelog_publishable_impact_refs_probed:
+            [append_changelog_entry(AppendChangelogEntryArgs) {"entry_id": "Round 1", "decision_summary": "the decision", "changes_bullets": ["a change"], "verification_bullets": ["a check"]}]
+            set_changelog_publishable_impact_refs(SetChangelogPublishableBulletsArgs) {"entry_id": "Round 1", "bullets": ["sc-01"]};
+        query_term_probed:
+            [append_changelog_entry(AppendChangelogEntryArgs) {"entry_id": "Round 1", "decision_summary": "the decision names Waits", "changes_bullets": ["a change"], "verification_bullets": ["a check"]}]
+            query_term(QueryTermArgs) {"pattern": "Waits"};
+        redact_term_probed:
+            [append_changelog_entry(AppendChangelogEntryArgs) {"entry_id": "Round 1", "decision_summary": "the decision names Waits", "changes_bullets": ["a change"], "verification_bullets": ["a check"]}]
+            redact_term(RedactTermArgs) {"pattern": "Waits", "replacement": "lingers", "reason": "word", "applied_in": "Round 1", "dry_run": false}
+            except "reason"
+            except "applied_in";
+        emit_publishable_override_ledger_draft_probed:
+            [append_changelog_entry(AppendChangelogEntryArgs) {"entry_id": "Round 1", "decision_summary": "the decision names Waits", "changes_bullets": ["a change"], "verification_bullets": ["a check"]}]
+            [set_changelog_publishable_decision_summary(SetChangelogPublishableStringArgs) {"entry_id": "Round 1", "value": "the published line names Waits"}]
+            emit_publishable_override_ledger_draft(EmitPublishableOverrideLedgerDraftArgs) {"entry_id": "Round 1", "reason": "word", "applied_in": "Round 1", "pattern": "Waits", "replacement": "lingers"}
+            except "reason";
+        add_fact_probed:
+            @branch_story
+            add_fact(atomic::FactImport) {"fact_id": "f-new", "frame": "ground-truth", "claim": "the lamp is lit", "canon_from": "sc-01", "evidence": ["sc-01"]};
+        amend_fact_probed:
+            @branch_story
+            amend_fact(AmendFactArgs) {"fact_id": "f-way", "frame": "ground-truth", "claim": "a way runs, narrow", "canon_from": "sc-01", "evidence": ["sc-01"], "reason": "the prose says narrow"}
+            except "reason";
+        add_fact_conflict_probed:
+            @branch_story
+            add_fact_conflict(AddFactConflictArgs) {"fact_id": "f-at-a", "conflicts_with": "f-quest-done"};
+        remove_fact_count_probed:
+            @branch_story
+            [add_fact_count(AddFactCountArgs) {"fact_id": "f-way", "count": 3}]
+            remove_fact_count(RemoveFactCountArgs) {"fact_id": "f-way"};
+        add_unit_probed:
+            @branch_story
+            add_unit(AddUnitArgs) {"unit_id": "minute"};
+        add_edge_cost_probed:
+            @branch_story
+            [add_unit(AddUnitArgs) {"unit_id": "minute"}]
+            add_edge_cost(AddEdgeCostArgs) {"fact_id": "f-way", "n": 5, "unit": "minute"};
+        remove_edge_cost_probed:
+            @branch_story
+            [add_unit(AddUnitArgs) {"unit_id": "minute"}]
+            [add_edge_cost(AddEdgeCostArgs) {"fact_id": "f-way", "n": 5, "unit": "minute"}]
+            remove_edge_cost(RemoveEdgeCostArgs) {"fact_id": "f-way"};
+        add_edge_guard_probed:
+            @branch_story
+            add_edge_guard(AddEdgeGuardArgs) {"fact_id": "f-way", "condition": "f-quest-given"};
+        remove_edge_guard_condition_probed:
+            @branch_story
+            [add_edge_guard(AddEdgeGuardArgs) {"fact_id": "f-way", "condition": "f-quest-given"}]
+            remove_edge_guard_condition(RemoveEdgeGuardConditionArgs) {"fact_id": "f-way", "condition": "f-quest-given"};
+        remove_edge_guard_probed:
+            @branch_story
+            [add_edge_guard(AddEdgeGuardArgs) {"fact_id": "f-way", "condition": "f-quest-given"}]
+            remove_edge_guard(RemoveEdgeGuardArgs) {"fact_id": "f-way"};
+        set_edge_guard_threshold_probed:
+            @branch_story
+            [add_edge_guard(AddEdgeGuardArgs) {"fact_id": "f-way", "condition": "f-quest-given"}]
+            [add_edge_guard(AddEdgeGuardArgs) {"fact_id": "f-way", "condition": "f-at-a"}]
+            set_edge_guard_threshold(SetEdgeGuardThresholdArgs) {"fact_id": "f-way", "threshold": 1};
+        add_parameter_probed:
+            @branch_story
+            add_parameter(AddParameterArgs) {"parameter_id": "hope"};
+        add_parameter_delta_probed:
+            @branch_story
+            [add_parameter(AddParameterArgs) {"parameter_id": "hope"}]
+            add_parameter_delta(AddParameterDeltaArgs) {"fact_id": "f-way", "parameter": "hope", "delta": 2};
+        remove_parameter_delta_probed:
+            @branch_story
+            [add_parameter(AddParameterArgs) {"parameter_id": "hope"}]
+            [add_parameter_delta(AddParameterDeltaArgs) {"fact_id": "f-way", "parameter": "hope", "delta": 2}]
+            remove_parameter_delta(RemoveParameterDeltaArgs) {"fact_id": "f-way", "parameter": "hope"};
+        add_parameter_gate_probed:
+            @branch_story
+            [add_parameter(AddParameterArgs) {"parameter_id": "hope"}]
+            add_parameter_gate(AddParameterGateArgs) {"fact_id": "f-way", "parameter": "hope", "threshold": 2, "op": "ge"}
+            except "op";
+        remove_parameter_gate_probed:
+            @branch_story
+            [add_parameter(AddParameterArgs) {"parameter_id": "hope"}]
+            [add_parameter_gate(AddParameterGateArgs) {"fact_id": "f-way", "parameter": "hope", "threshold": 2, "op": "ge"}]
+            remove_parameter_gate(RemoveParameterGateArgs) {"fact_id": "f-way"};
+        add_predicate_probed:
+            @branch_story
+            add_predicate(AddPredicateArgs) {"predicate_id": "beside", "object_kind": "entity", "subject_kind": "place", "object_entity_kind": "place", "description": "one place beside another"}
+            except "object_kind";
+        set_predicate_probed:
+            @branch_story
+            set_predicate(SetPredicateArgs) {"predicate_id": "adjacent", "object_kind": "entity", "description": "a way between two places"}
+            except "object_kind";
+        remove_predicate_probed:
+            @branch_story
+            [add_predicate(AddPredicateArgs) {"predicate_id": "beside", "object_kind": "entity", "subject_kind": "place", "object_entity_kind": "place", "description": "one place beside another"}]
+            remove_predicate(RemovePredicateArgs) {"predicate_id": "beside"};
+        remove_entity_kind_probed:
+            @branch_story
+            [add_entity_kind(AddEntityKindArgs) {"kind_id": "thing"}]
+            remove_entity_kind(RemoveEntityKindArgs) {"kind_id": "thing"};
+        set_entity_kind_parents_probed:
+            @branch_story
+            [add_entity_kind(AddEntityKindArgs) {"kind_id": "thing"}]
+            set_entity_kind_parents(SetEntityKindParentsArgs) {"kind_id": "place", "parents": ["thing"]};
+        add_disclosure_plan_probed:
+            @branch_story
+            add_disclosure_plan(AddDisclosurePlanArgs) {"telling_id": "t-loud", "default_mode": "hint"};
+        add_disclosure_reveal_coord_probed:
+            @branch_story
+            [set_disclosure(SetDisclosureArgs) {"telling_id": "t-quiet", "fact_id": "f-at-b", "mode": "withhold", "first_at": [{"branch": "main", "coords": ["sc-03"]}]}]
+            add_disclosure_reveal_coord(AddDisclosureRevealCoordArgs) {"telling_id": "t-quiet", "fact_id": "f-at-b", "branch": "main", "coord": "sc-02"};
+        remove_disclosure_reveal_coord_probed:
+            @branch_story
+            [set_disclosure(SetDisclosureArgs) {"telling_id": "t-quiet", "fact_id": "f-at-b", "mode": "withhold", "first_at": [{"branch": "main", "coords": ["sc-03", "sc-02"]}]}]
+            remove_disclosure_reveal_coord(RemoveDisclosureRevealCoordArgs) {"telling_id": "t-quiet", "fact_id": "f-at-b", "branch": "main", "coord": "sc-02"};
+        set_disclosure_reveal_threshold_probed:
+            @branch_story
+            [set_disclosure(SetDisclosureArgs) {"telling_id": "t-quiet", "fact_id": "f-at-b", "mode": "withhold", "first_at": [{"branch": "main", "coords": ["sc-03", "sc-02"]}]}]
+            set_disclosure_reveal_threshold(SetDisclosureRevealThresholdArgs) {"telling_id": "t-quiet", "fact_id": "f-at-b", "branch": "main", "threshold": 1};
+        remove_disclosure_probed:
+            @branch_story
+            [set_disclosure(SetDisclosureArgs) {"telling_id": "t-quiet", "fact_id": "f-at-b", "mode": "state"}]
+            remove_disclosure(RemoveDisclosureArgs) {"telling_id": "t-quiet", "fact_id": "f-at-b", "reason": "the telling says it plainly"}
+            except "reason";
+        add_inventory_entry_probed:
+            add_inventory_entry(AddInventoryEntryArgs) {"inventory_id": "inv-lamp", "status": "active"};
+        set_inventory_status_probed:
+            [add_inventory_entry(AddInventoryEntryArgs) {"inventory_id": "inv-lamp", "status": "active"}]
+            set_inventory_status(SetInventoryStatusArgs) {"inventory_id": "inv-lamp", "status": "deprecated"};
+        set_inventory_section_ref_probed:
+            @branch_story
+            [add_inventory_entry(AddInventoryEntryArgs) {"inventory_id": "inv-lamp", "status": "active"}]
+            set_inventory_section_ref(SetInventorySectionRefArgs) {"inventory_id": "inv-lamp", "section_ref": "sc-01"};
+        remove_inventory_entry_probed:
+            [add_inventory_entry(AddInventoryEntryArgs) {"inventory_id": "inv-lamp", "status": "active"}]
+            remove_inventory_entry(RemoveInventoryEntryArgs) {"inventory_id": "inv-lamp", "reason": "the lamp was never carried"}
+            except "reason";
+        query_inventory_probed:
+            [add_inventory_entry(AddInventoryEntryArgs) {"inventory_id": "inv-lamp", "status": "active"}]
+            query_inventory(InventoryIdArgs) {"inventory_id": "inv-lamp"};
+        report_playable_world_probed:
+            @branch_story
+            report_playable_world(ReportPlayableWorldArgs) {"telling": "t-quiet", "order_path": "order-b.json"};
+        add_confirmation_event_probed:
+            @branch_story
+            add_confirmation_event(AddConfirmationEventArgs) {"section_id": "sc-01", "confirmer_kind": "model", "confirmer_id": "the author", "confirmer_version": "1", "method": "semantic_review", "verdict": "confirm", "rationale": "the scene reads as written", "timestamp": "2026-08-04T00:00:00Z", "authoring_run": "run-a", "confirming_run": "run-b"};
+        validate_disclosure_leak_probed:
+            @branch_story
+            (store "blind.json" =
+                [import_sections(ImportSectionsArgs) {"sections": [{"section_id": "sc-01", "parent_doc": "spec", "title": "one"}, {"section_id": "sc-02", "parent_doc": "spec", "title": "two"}, {"section_id": "sc-03", "parent_doc": "spec", "title": "three"}]}]
+                [import_facts(atomic::FactsManifest) {"frames": [{"frame_id": "ground-truth"}], "entity_kinds": [{"kind_id": "place"}, {"kind_id": "character"}], "entities": [{"entity_id": "p-b", "kind": "place"}, {"entity_id": "e-her", "kind": "character"}], "predicates": [{"predicate_id": "at", "object_kind": "entity", "subject_kind": "character", "object_entity_kind": "place"}], "facts": [{"fact_id": "r-at-b", "frame": "ground-truth", "claim": "the prose puts her at b", "canon_from": "sc-03", "evidence": ["sc-03"], "entities": ["e-her", "p-b"], "typed": {"subject": "e-her", "predicate": "at", "object": {"kind": "entity", "id": "p-b"}}}]}]
+            )
+            [set_disclosure(SetDisclosureArgs) {"telling_id": "t-quiet", "fact_id": "f-at-b", "mode": "state", "first_at": [{"branch": "main", "coords": ["sc-03"]}]}]
+            validate_disclosure_leak(DisclosureLeakArgs) {"telling": "t-quiet", "against": "blind.json", "world": "main", "truth_frame": "ground-truth", "order_path": "order-b.json"};
+        validate_render_fidelity_probed:
+            @branch_story
+            (store "blind.json" =
+                [import_sections(ImportSectionsArgs) {"sections": [{"section_id": "sc-01", "parent_doc": "spec", "title": "one"}, {"section_id": "sc-02", "parent_doc": "spec", "title": "two"}, {"section_id": "sc-03", "parent_doc": "spec", "title": "three"}]}]
+                [import_facts(atomic::FactsManifest) {"frames": [{"frame_id": "ground-truth"}], "entity_kinds": [{"kind_id": "place"}, {"kind_id": "character"}], "entities": [{"entity_id": "p-b", "kind": "place"}, {"entity_id": "e-her", "kind": "character"}], "predicates": [{"predicate_id": "at", "object_kind": "entity", "subject_kind": "character", "object_entity_kind": "place"}], "facts": [{"fact_id": "r-at-b", "frame": "ground-truth", "claim": "the prose puts her at b", "canon_from": "sc-03", "evidence": ["sc-03"], "entities": ["e-her", "p-b"], "typed": {"subject": "e-her", "predicate": "at", "object": {"kind": "entity", "id": "p-b"}}}]}]
+            )
+            validate_render_fidelity(RenderFidelityArgs) {"against": "blind.json", "world": "main", "order_path": "order-b.json"};
+        import_sections_probed:
+            import_sections(ImportSectionsArgs) {"sections": [{"section_id": "sc-01", "parent_doc": "spec", "title": "one"}]}
+            except "sections";
     }
 
     /// An agent can only call what the schema shows it (Round 981) — the Round
