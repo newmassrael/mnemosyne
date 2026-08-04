@@ -27,7 +27,7 @@
 mod common;
 use common::{dnd_quest_facts, dnd_quest_workspace_from, json_report};
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 /// The telling the corpus declares — the graph read needs one.
 const TELLING: &str = "delve";
@@ -82,14 +82,32 @@ fn the_gate_and_the_runtime_projection_agree_on_which_roads_finish_a_quest() {
         }
     }
 
+    // THE TWO READS MUST BE TALKING ABOUT THE SAME ROADS. `quest_discharges` is
+    // one definition called from two walks, and each walk supplies its own world
+    // set — the gate from `query_worlds`, the projection from `playable_world`.
+    // Nothing else notices if one of them starts covering fewer roads, and this
+    // comparison would silently shrink with it: a pair the projection stopped
+    // answering is a pair that can no longer disagree. Asserting the road sets
+    // match is what keeps the agreement below from passing by having nothing
+    // left to compare.
+    let gate_roads: BTreeSet<&str> = discharged.keys().map(|(_, w)| w.as_str()).collect();
+    let projected_roads: BTreeSet<&str> = state.keys().map(|(_, w)| w.as_str()).collect();
+    assert_eq!(
+        gate_roads, projected_roads,
+        "the gate and the quest graph derive discharges over different road \
+         sets, so every row this walk compares is a coincidence"
+    );
+
     // Print the whole table before asserting — a first-violation stop would
     // report one row of a comparison whose value is the distribution.
     println!("(quest, road): gate discharge vs projection state\n");
     let mut disagree: Vec<String> = Vec::new();
     for ((quest, world), at) in &discharged {
-        let Some(projected) = state.get(&(quest.clone(), world.clone())) else {
-            continue;
-        };
+        let projected = state
+            .get(&(quest.clone(), world.clone()))
+            .unwrap_or_else(|| {
+                panic!("the quest graph holds no state for `{quest}` on road `{world}`")
+            });
         let gate_says = at.as_deref().unwrap_or("(not discharged here)");
         println!("  {quest} / {world}: gate={gate_says} projection={projected}");
         // The gate discharging this road and the projection calling it `done`

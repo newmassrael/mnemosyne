@@ -2584,6 +2584,76 @@
         "The census walk's proposal list is unchanged at six rules, so this round removed no candidate from it: `payoffs_to_unmarked is always empty` is still printed as a CANDIDATE by a walk that cannot see the R618/R619 decision refuting it. Which read-lists carry a gating policy is stated in doc comments and in no program."
       ]
     },
+    "Round 1038": {
+      "decision_summary": "R1038 (DEBT) — R1037's own carry named a test, so it was undone work rather than a limit. That round left \"`quest_graph` and `quest_prerequisite_judgements` each derive discharges over their own world set; one definition, two walks, and no test would notice if one drifted\", which the R1005 carry rule says is not a carry at all: a bullet concrete enough to describe the test is work the round did not do. STAR AND IT WAS A HOLE IN THE TEST R1037 SHIPPED. The agreement walk compared only the (quest, road) pairs BOTH reads answered, skipping the rest — so a projection covering fewer roads takes its own disagreements out of the comparison and the walk goes green with less to say. The gate draws its roads from `query_worlds` and the projection from `playable_world`; nothing tied the two together. The walk now asserts the road SETS match before comparing any row, and the skip is gone: a pair the projection does not answer is a panic naming the quest and the road. STAR MEASURED, NOT ASSUMED: the injection that proves it is the drift itself — dropping one road from the projection's world set. Before this round that turned the comparison from four rows to three and stayed green; now it names both sets, and the same injection turns six other tests red as well, which is the honest picture of how much of the suite that world set carries.",
+      "changes_bullets": [
+        "`crates/mnemosyne-cli/tests/quest_discharge_agreement_smoke.rs`: the two reads' road SETS are asserted equal before any row is compared, and a pair the projection does not answer panics by name instead of being skipped."
+      ],
+      "verification_bullets": [
+        "Workspace 1748 tests green, clippy -D warnings clean, fmt clean, `validate-workspace` T1/T3 = 0.",
+        "Injection I7 (the projection's world set loses one road) fires the new road-set assertion, printing {claim, main, parley, shatter} against {main, parley, shatter}; it fires 6 other tests too, so the world set is load-bearing well beyond this walk.",
+        "Run over the WHOLE workspace with --no-fail-fast, reverted from a saved copy rather than `git checkout`."
+      ],
+      "carry_forward_bullets": [
+        "The road sets are compared for THIS corpus's unfiltered read. A `--world` filter is meant to narrow the projection, so the two reads legitimately differ there and no test states which difference is legitimate."
+      ],
+      "population_census": [
+        {
+          "axis": "transition rules by `undirected`",
+          "left_label": "undirected",
+          "left": 10,
+          "right_label": "directed",
+          "right": 27
+        },
+        {
+          "axis": "map corpora by leg-kind declaration",
+          "left_label": "omitted",
+          "left": 6,
+          "right_label": "declared",
+          "right": 24
+        },
+        {
+          "axis": "cost-carrying corpora by direction-dependent pricing",
+          "left_label": "prices a way by direction",
+          "left": 4,
+          "right_label": "prices no way by direction",
+          "right": 6
+        },
+        {
+          "axis": "run trees by authoring mode",
+          "left_label": "hand script",
+          "left": 10,
+          "right_label": "file-only",
+          "right": 239
+        },
+        {
+          "axis": "map corpora by declared boundary crossing",
+          "left_label": "declares an exit",
+          "left": 6,
+          "right_label": "declares none",
+          "right": 24
+        },
+        {
+          "axis": "authored submissions by map and telling",
+          "left_label": "carries both",
+          "left": 10,
+          "right_label": "carries one",
+          "right": 24
+        }
+      ],
+      "publishable_decision_summary": "R1038 (DEBT) — R1037's own carry named a test, so it was undone work rather than a limit. That round left \"`quest_graph` and `quest_prerequisite_judgements` each derive discharges over their own world set; one definition, two walks, and no test would notice if one drifted\", which the R1005 carry rule says is not a carry at all: a bullet concrete enough to describe the test is work the round did not do. STAR AND IT WAS A HOLE IN THE TEST R1037 SHIPPED. The agreement walk compared only the (quest, road) pairs BOTH reads answered, skipping the rest — so a projection covering fewer roads takes its own disagreements out of the comparison and the walk goes green with less to say. The gate draws its roads from `query_worlds` and the projection from `playable_world`; nothing tied the two together. The walk now asserts the road SETS match before comparing any row, and the skip is gone: a pair the projection does not answer is a panic naming the quest and the road. STAR MEASURED, NOT ASSUMED: the injection that proves it is the drift itself — dropping one road from the projection's world set. Before this round that turned the comparison from four rows to three and stayed green; now it names both sets, and the same injection turns six other tests red as well, which is the honest picture of how much of the suite that world set carries.",
+      "publishable_changes_bullets": [
+        "`crates/mnemosyne-cli/tests/quest_discharge_agreement_smoke.rs`: the two reads' road SETS are asserted equal before any row is compared, and a pair the projection does not answer panics by name instead of being skipped."
+      ],
+      "publishable_verification_bullets": [
+        "Workspace 1748 tests green, clippy -D warnings clean, fmt clean, `validate-workspace` T1/T3 = 0.",
+        "Injection I7 (the projection's world set loses one road) fires the new road-set assertion, printing {claim, main, parley, shatter} against {main, parley, shatter}; it fires 6 other tests too, so the world set is load-bearing well beyond this walk.",
+        "Run over the WHOLE workspace with --no-fail-fast, reverted from a saved copy rather than `git checkout`."
+      ],
+      "publishable_carry_forward_bullets": [
+        "The road sets are compared for THIS corpus's unfiltered read. A `--world` filter is meant to narrow the projection, so the two reads legitimately differ there and no test states which difference is legitimate."
+      ]
+    },
     "Round 252": {
       "decision_summary": "Parser CommonMark conformance — recognize indented fenced code blocks (§98) and require whitespace after ATX hash sequence (§62)",
       "changes_bullets": [
