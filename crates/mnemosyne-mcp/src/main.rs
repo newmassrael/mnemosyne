@@ -146,6 +146,19 @@ pub struct SetSectionBulletsArgs {
     pub bullets: Vec<String>,
 }
 
+/// `set_section_alternatives` does NOT share [`SetSectionBulletsArgs`], and the
+/// reason is the thing the shared struct was hiding: every other bullet setter
+/// takes free prose, while this one took a line with a GRAMMAR in it and split
+/// it in the handler. One struct for both meant the schema described the free
+/// case and the constrained one identically.
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct SetSectionAlternativesArgs {
+    pub section_id: ExistingRef,
+    /// Ordered list of rejected alternatives. Replaces the existing list; an
+    /// empty list clears it.
+    pub alternatives: Vec<RejectedAlternative>,
+}
+
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct AddSectionCaveatArgs {
     pub section_id: ExistingRef,
@@ -347,7 +360,7 @@ pub struct AddConfirmationEventArgs {
     /// the append-only ledger sorts chronologically by sorting lexically. Never
     /// generated in-core (determinism), and NOT part of the derived event id: one
     /// verification act records once however many times its clock moves.
-    pub timestamp: String,
+    pub timestamp: UtcInstant,
     pub spec_sha256: Option<String>,
     #[serde(default)]
     pub code_sha256: Vec<String>,
@@ -1058,8 +1071,9 @@ pub struct InventoryIdArgs {
 pub struct AddInventoryEntryArgs {
     /// Stable inventory id. Must be non-empty, no whitespace.
     pub inventory_id: FreshId,
-    /// Lifecycle status: `"active"` / `"deprecated"` / `"reserved"`.
-    pub status: String,
+    /// Lifecycle state the entry is filed under. `deprecated` at creation is
+    /// the case `reason` exists for.
+    pub status: mnemosyne_core::InventoryStatus,
     /// Optional section binding without leading `§` (e.g. `"4.2.4"`).
     #[serde(default)]
     pub section_ref: Option<ExistingRef>,
@@ -1075,8 +1089,8 @@ pub struct AddInventoryEntryArgs {
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct SetInventoryStatusArgs {
     pub inventory_id: ExistingRef,
-    /// New status: `"active"` / `"deprecated"` / `"reserved"`.
-    pub status: String,
+    /// Lifecycle state the entry moves to.
+    pub status: mnemosyne_core::InventoryStatus,
     /// Optional reason. Omit to preserve existing; empty string clears.
     #[serde(default)]
     pub reason: Option<String>,
@@ -1551,6 +1565,63 @@ marker_schema! {
     ScannedRef => SCANNED_REF_FORMAT;
 }
 
+/// The `format` an argument carries when it is a canonical UTC instant.
+const UTC_INSTANT_FORMAT: &str = "mnemosyne-utc-instant";
+
+/// The contract of a canonical instant, in one place, stamped the same way —
+/// and honest about where the published `pattern` stops.
+const UTC_INSTANT_RULE: &str =
+    "CANONICAL UTC INSTANT: the `pattern` on this property states the exact \
+     layout the store enforces — no offset and no fractional seconds, so the \
+     append-only ledger this feeds sorts chronologically by sorting lexically. \
+     The pattern states the LAYOUT ONLY: the store additionally requires a real \
+     calendar day and refuses one that is not, so matching the pattern is \
+     necessary and not sufficient.";
+
+/// A CANONICAL UTC INSTANT.
+///
+/// It carries no validation of its own, for the reason [`ExistingRef`] does not:
+/// `atomic` owns the check, and a second one here would be two write paths for
+/// one invariant. What the type adds is that the SHAPE travels into the schema —
+/// as a `pattern` DERIVED from the same layout table the checker walks, so the
+/// rule an agent is handed and the rule it is judged by cannot come apart. Round
+/// 1023 put the form in one home and gated the two surfaces that STATE it in
+/// prose; this is the machine-readable half, which is the half an agent's client
+/// can act on.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(transparent)]
+pub struct UtcInstant(String);
+
+impl std::ops::Deref for UtcInstant {
+    type Target = str;
+
+    fn deref(&self) -> &str {
+        &self.0
+    }
+}
+
+impl schemars::JsonSchema for UtcInstant {
+    fn schema_name() -> std::borrow::Cow<'static, str> {
+        "UtcInstant".into()
+    }
+
+    fn schema_id() -> std::borrow::Cow<'static, str> {
+        concat!(module_path!(), "::UtcInstant").into()
+    }
+
+    fn inline_schema() -> bool {
+        true
+    }
+
+    fn json_schema(_generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        schemars::json_schema!({
+            "type": "string",
+            "format": UTC_INSTANT_FORMAT,
+            "pattern": atomic::utc_instant_pattern(),
+        })
+    }
+}
+
 /// Every rule an agent-facing marker stamps, in the one table both the stamping
 /// and the gate read. A marker added here is stamped and gated by that alone.
 const MARKER_RULES: &[(&str, &str)] = &[
@@ -1558,6 +1629,7 @@ const MARKER_RULES: &[(&str, &str)] = &[
     (EXISTING_REF_FORMAT, EXISTING_REF_RULE),
     (SCANNED_REF_FORMAT, SCANNED_REF_RULE),
     (FRESH_ID_FORMAT, FRESH_ID_RULE),
+    (UTC_INSTANT_FORMAT, UTC_INSTANT_RULE),
 ];
 
 /// THE POLARITY OF A PROPERTY NO FIELD OF THIS CRATE OWNS.
@@ -1579,9 +1651,24 @@ const MARKER_RULES: &[(&str, &str)] = &[
 /// tool does not behave as the row claims turns that tool's probe red. What the
 /// table cannot do, and a type can, is force a NEW composed argument to declare
 /// itself; that one is caught only if its name is id-shaped, by the bridge.
+///
+/// THE SAME DTO GIVES THE TABLE ITS SECOND REASON, and the round that wrote the
+/// paragraph above did not have it: `canon_from` and `frame` are references in
+/// BOTH tools, so the polarity is not divided at all — what divides is where the
+/// field lives. `FactImport` is `atomic`'s, and `atomic` does not depend on this
+/// crate, so no field of it can carry a marker declared here. Those four rows
+/// are not an opinion the sweep trusts; they are stamped into the schema by the
+/// loop below and then probed like any typed argument, which is how the round
+/// that added them found the arguments in the first place: their handlers refuse
+/// an unregistered value and their schemas said nothing at all about it, so the
+/// only way an agent could learn either rule was to send a wrong value.
 const COMPOSED_POLARITY: &[(&str, &str, &str)] = &[
     ("add_fact", "fact_id", FRESH_ID_FORMAT),
     ("amend_fact", "fact_id", EXISTING_REF_FORMAT),
+    ("add_fact", "canon_from", EXISTING_REF_FORMAT),
+    ("amend_fact", "canon_from", EXISTING_REF_FORMAT),
+    ("add_fact", "frame", EXISTING_REF_FORMAT),
+    ("amend_fact", "frame", EXISTING_REF_FORMAT),
 ];
 
 /// The tools an agent is shown, with each marker's rule stamped into every
@@ -1652,38 +1739,6 @@ fn render_projection_validation(v: &ProjectionValidation) -> String {
         status(v.ok()),
         v.total_violations(),
     )
-}
-
-/// Parse `<alternative> -- <reason>` / `<alternative> — <reason>` bullets
-/// into structured rejected-alternative rows. Mirrors the CLI's
-/// `parse_alternatives_file`.
-fn parse_alternatives(bullets: &[String]) -> Result<Vec<RejectedAlternative>, String> {
-    let mut out = Vec::new();
-    for (i, raw) in bullets.iter().enumerate() {
-        let trimmed = raw.trim();
-        if trimmed.is_empty() {
-            continue;
-        }
-        // THE REFUSAL NAMES THE BULLET IT GOT, not only the index. Every other
-        // closed-vocabulary refusal on this surface ends "(got `x`)", and an
-        // agent that sent a list is told which line and shown what the handler
-        // read there — the Round 1001 correction, where an error printed the
-        // argument it was handed rather than what it did with it and only misled
-        // at the moment it mattered.
-        let parsed = RejectedAlternative::parse_line(trimmed).ok_or_else(|| {
-            format!(
-                "alternative[{i}]: expected `<alternative> -- <reason>` (or ` — ` \
-                 separator) (got `{trimmed}`)"
-            )
-        })?;
-        out.push(parsed);
-    }
-    Ok(out)
-}
-
-fn parse_inventory_status(raw: &str) -> Result<InventoryStatus, String> {
-    raw.parse::<InventoryStatus>()
-        .map_err(|e| format!("status {}", e))
 }
 
 #[tool_router]
@@ -1926,18 +1981,13 @@ impl MnemosyneServer {
         self.finish_mutate(outcome)
     }
 
-    #[tool(
-        description = "Set Section.alternatives_rejected. Replaces existing. Each bullet is `<alternative> -- <reason>`."
-    )]
+    #[tool(description = "Set Section.alternatives_rejected. Replaces existing.")]
     async fn set_section_alternatives(
         &self,
-        args: Parameters<SetSectionBulletsArgs>,
+        args: Parameters<SetSectionAlternativesArgs>,
     ) -> CallToolResult {
         let section = strip_section_marker(&args.0.section_id).to_string();
-        let alternatives = match parse_alternatives(&args.0.bullets) {
-            Ok(a) => a,
-            Err(e) => return Self::tool_error(e),
-        };
+        let alternatives = args.0.alternatives.clone();
         let outcome = self.run_mutate(|store, path| {
             atomic::set_section_alternatives(store, path, &section, &alternatives)
         });
@@ -2169,7 +2219,7 @@ impl MnemosyneServer {
                 confirming_run: a.confirming_run.clone(),
                 verdict,
                 rationale: a.rationale.clone(),
-                timestamp: a.timestamp.clone(),
+                timestamp: a.timestamp.to_string(),
             };
             atomic::append_confirmation_event(store, path, event)
         });
@@ -3461,14 +3511,11 @@ impl MnemosyneServer {
     }
 
     #[tool(
-        description = "Register a new inventory entry. Duplicate inventory_id rejects. status = active|deprecated|reserved. Registering as deprecated surfaces any pre-existing cite-sites via the mutate-time cascade. section_ref omits the leading §."
+        description = "Register a new inventory entry. Duplicate inventory_id rejects. Registering as deprecated surfaces any pre-existing cite-sites via the mutate-time cascade. section_ref omits the leading §."
     )]
     async fn add_inventory_entry(&self, args: Parameters<AddInventoryEntryArgs>) -> CallToolResult {
         let inventory_id = args.0.inventory_id.clone();
-        let status = match parse_inventory_status(&args.0.status) {
-            Ok(s) => s,
-            Err(e) => return Self::tool_error(e),
-        };
+        let status = args.0.status;
         let section_ref = args
             .0
             .section_ref
@@ -3502,10 +3549,7 @@ impl MnemosyneServer {
         args: Parameters<SetInventoryStatusArgs>,
     ) -> CallToolResult {
         let inventory_id = args.0.inventory_id.clone();
-        let status = match parse_inventory_status(&args.0.status) {
-            Ok(s) => s,
-            Err(e) => return Self::tool_error(e),
-        };
+        let status = args.0.status;
         let reason = args.0.reason.clone();
         let outcome = self.run_mutate(|store, path| {
             atomic::set_inventory_status(store, path, &inventory_id, status, reason.as_deref())
@@ -4415,6 +4459,13 @@ mod tests {
                 ),
             ),
             (
+                "InventoryStatus",
+                tags(
+                    mnemosyne_core::InventoryStatus::ALL,
+                    mnemosyne_core::InventoryStatus::as_str,
+                ),
+            ),
+            (
                 "ConfirmerKind",
                 tags(atomic::ConfirmerKind::ALL, atomic::ConfirmerKind::as_str),
             ),
@@ -4917,6 +4968,38 @@ mod tests {
                     serde_json::json!([NOT_REGISTERED]),
                     NOT_REGISTERED.to_string(),
                 ))
+            }
+            // AN ARRAY OF OBJECTS IS STILL A SHAPE THE SCHEMA DESCRIBES, so it
+            // is probed with ONE element whose every required property is the
+            // sentinel. Excepting these instead was the cheaper move and it
+            // costs the evidence: an argument nothing concludes about is one
+            // whose handler could stop reading it and no run would say so. The
+            // element is built from the ITEM SCHEMA, so a property added to the
+            // element type is sent by the same declaration — and where a
+            // required property is not a string, this returns `None` rather than
+            // guessing, and the exception must then be earned as usual.
+            "array" if property.get("items").is_some() => {
+                let items = property.get("items")?;
+                if items.get("type").and_then(|t| t.as_str()) != Some("object") {
+                    return None;
+                }
+                let required = items.get("required")?.as_array()?;
+                let props = items.get("properties")?.as_object()?;
+                let mut element = serde_json::Map::new();
+                for key in required {
+                    let key = key.as_str()?;
+                    let declared = props.get(key)?.get("type")?.as_str()?;
+                    if declared != "string" {
+                        return None;
+                    }
+                    element.insert(key.to_string(), serde_json::json!(NOT_REGISTERED));
+                }
+                (!element.is_empty()).then(|| {
+                    (
+                        serde_json::Value::Array(vec![serde_json::Value::Object(element)]),
+                        NOT_REGISTERED.to_string(),
+                    )
+                })
             }
             _ => None,
         }
@@ -6377,6 +6460,69 @@ mod tests {
                             );
                         }
                     }
+                    // AND A REFUSAL IS A VALUE SPACE THE SCHEMA MUST NAME.
+                    //
+                    // `validated` is the verdict for an argument whose handler
+                    // REFUSED a value naming nothing. The refusal is itself the
+                    // evidence that the space is constrained — and where the
+                    // schema says nothing about it, the only way an agent can
+                    // learn the constraint is to send a wrong value and read
+                    // the error. That is the shape the round above closed for
+                    // ten arguments; this is the general form of it, and it
+                    // needs no tripwire table to fall out of date, because the
+                    // population is every refusal THE SWEEP ITSELF COLLECTED
+                    // and the question is put to the property an agent reads.
+                    //
+                    // The three answers that count are the three JSON Schema
+                    // has: `enum` for a closed set, `format` for a named shape
+                    // — the markers stamp theirs, so a typed argument satisfies
+                    // this by construction — and `pattern` for a space only a
+                    // regex states. EVERY VIOLATION IS COLLECTED before the
+                    // assertion, so a failure arrives as the tool's whole list
+                    // rather than its first line, and each one carries the
+                    // property it MET, since a diagnosis that does not say what
+                    // it found is how an axis gets miscounted.
+                    let mut mute: Vec<String> = Vec::new();
+                    let mut stated: Vec<String> = Vec::new();
+                    for (arg, verdict, why) in &verdicts {
+                        if *verdict != "validated" {
+                            continue;
+                        }
+                        let property = agent_property(tool, arg)
+                            .expect("a probed argument is a property of its tool");
+                        let how = if closed_set_members(&property).is_some() {
+                            Some("enum")
+                        } else if property.get("format").is_some() {
+                            Some("format")
+                        } else if property.get("pattern").is_some() {
+                            Some("pattern")
+                        } else {
+                            None
+                        };
+                        match how {
+                            Some(how) => stated.push(format!("{arg}: {how}")),
+                            None => mute.push(format!(
+                                "`{tool}.{arg}` refused it ({why}) and its schema \
+                                 states no value space: {property}"
+                            )),
+                        }
+                    }
+                    println!(
+                        "  {tool}: value space stated for {} of {} refused \
+                         argument(s){}{}",
+                        stated.len(),
+                        stated.len() + mute.len(),
+                        if stated.is_empty() { "" } else { " — " },
+                        stated.join(", ")
+                    );
+                    assert!(
+                        mute.is_empty(),
+                        "{} argument(s) of `{tool}` enforce a value space the \
+                         schema does not state, so an agent finds the rule only \
+                         by being refused: {}",
+                        mute.len(),
+                        mute.join(" | ")
+                    );
                     // A MARK IS AN ORACLE, NOT A LABEL. `ExistingRef` says a
                     // value naming nothing is refused by name, which is exactly
                     // the observation this sweep already makes — so the type
@@ -7455,18 +7601,36 @@ mod tests {
 
     /// THE SURFACE THAT STATES THE TIMESTAMP CONTRACT SAYS THE FORM THAT IS
     /// ENFORCED, and cannot drift from it — both read the same const.
+    ///
+    /// IN PROSE AND IN THE MACHINE-READABLE HALF. The prose half is what Round
+    /// 1023 shipped, and a client cannot act on it: `pattern` is the field a
+    /// generated form, a validating client or a schema-aware agent actually
+    /// checks against. The round that added it found this assertion missing by
+    /// trying to INJECT the defect — deleting `pattern` from the property
+    /// reddened nothing, because the parity test beside it proves the derived
+    /// pattern is honest and says nothing about whether the schema carries it.
     #[test]
     fn the_timestamp_schema_states_the_form_the_store_enforces() {
         let tool = agent_facing_tools()
             .into_iter()
             .find(|t| t.name == "add_confirmation_event")
             .expect("the tool must be routed");
-        let described = tool
+        let property = tool
             .input_schema
             .get("properties")
             .and_then(|p| p.as_object())
             .and_then(|p| p.get("timestamp"))
-            .and_then(|f| f.get("description"))
+            .cloned()
+            .expect("the tool must have a timestamp property");
+        assert_eq!(
+            property.get("pattern").and_then(|p| p.as_str()),
+            Some(atomic::utc_instant_pattern().as_str()),
+            "the `timestamp` property does not publish the pattern derived from \
+             the layout the store enforces, so the only machine-readable thing \
+             an agent has about this value is nothing: {property}"
+        );
+        let described = property
+            .get("description")
             .and_then(|d| d.as_str())
             .unwrap_or_default()
             .to_string();
@@ -7658,7 +7822,7 @@ mod tests {
             set_section_rationale(SetSectionBulletsArgs) {"section_id": "sc-01", "bullets": ["because of this"]};
         set_section_alternatives_probed:
             @branch_story
-            set_section_alternatives(SetSectionBulletsArgs) {"section_id": "sc-01", "bullets": ["the other way -- it costs more"]};
+            set_section_alternatives(SetSectionAlternativesArgs) {"section_id": "sc-01", "alternatives": [{"alternative": "the other way", "reason": "it costs more"}]};
         set_section_inputs_probed:
             @branch_story
             set_section_inputs(SetSectionBulletsArgs) {"section_id": "sc-01", "bullets": ["what comes in"]};

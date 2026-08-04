@@ -456,9 +456,20 @@ pub struct EpubLocator {
     pub cfi: Option<String>,
 }
 
+/// One rejected alternative, as a PAIR rather than a line with a separator in
+/// it. The MCP wire took these as `<alternative> -- <reason>` strings until the
+/// round that measured every refusal against the schema: the handler split them
+/// and refused what would not split, while the schema said `string` and an agent
+/// could only learn the grammar by getting it wrong. The primitive below has
+/// always taken this type — it was the WIRE that was less typed than the thing
+/// it called. The line grammar survives where it is genuinely a line: the CLI's
+/// `--alternatives-file`, parsed by [`RejectedAlternative::parse_line`].
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema), schemars(inline))]
 pub struct RejectedAlternative {
+    /// The option that was considered and not taken.
     pub alternative: String,
+    /// Why it was not taken.
     pub reason: String,
 }
 
@@ -4912,6 +4923,54 @@ pub fn append_confirmation_event(
 /// is how that happens again.
 pub const UTC_INSTANT_FORM: &str = "YYYY-MM-DDTHH:MM:SSZ";
 
+/// The positions [`UTC_INSTANT_FORM`] fixes to a literal character — and THE ONE
+/// PLACE both readers of that layout take it from. The checker below walks it,
+/// and [`utc_instant_pattern`] turns it into the regular expression the MCP
+/// schema publishes to agents. Written twice, the schema would eventually
+/// describe a shape the store does not enforce, and nothing would say so.
+const UTC_INSTANT_LITERALS: &[(usize, u8)] = &[
+    (4, b'-'),
+    (7, b'-'),
+    (10, b'T'),
+    (13, b':'),
+    (16, b':'),
+    (19, b'Z'),
+];
+
+/// The value space [`UTC_INSTANT_FORM`] admits, as a regular expression, DERIVED
+/// from the layout the checker enforces rather than transcribed beside it.
+///
+/// It is a NECESSARY condition and not the whole rule: the checker also demands
+/// a real calendar day, which no regex states — `2026-02-30T00:00:00Z` matches
+/// this and is refused. That asymmetry is asserted rather than left to a reader,
+/// because a pattern published as if it were the whole rule is worse than none:
+/// an agent would read it as permission. What the pattern buys is that the
+/// SHAPE, which is the part an agent gets wrong, is in the schema instead of
+/// only in a refusal.
+#[must_use]
+pub fn utc_instant_pattern() -> String {
+    fn flush(out: &mut String, digits: &mut usize) {
+        if *digits > 0 {
+            out.push_str(&format!("\\d{{{digits}}}"));
+            *digits = 0;
+        }
+    }
+    let mut out = String::from("^");
+    let mut digits = 0usize;
+    for i in 0..UTC_INSTANT_FORM.len() {
+        match UTC_INSTANT_LITERALS.iter().find(|(at, _)| *at == i) {
+            Some((_, c)) => {
+                flush(&mut out, &mut digits);
+                out.push_str(&regex::escape(&(*c as char).to_string()));
+            }
+            None => digits += 1,
+        }
+    }
+    flush(&mut out, &mut digits);
+    out.push('$');
+    out
+}
+
 fn check_utc_instant(s: &str) -> Result<(), String> {
     let b = s.as_bytes();
     if b.len() != UTC_INSTANT_FORM.len() {
@@ -4921,14 +4980,7 @@ fn check_utc_instant(s: &str) -> Result<(), String> {
             b.len()
         ));
     }
-    for (i, want) in [
-        (4, b'-'),
-        (7, b'-'),
-        (10, b'T'),
-        (13, b':'),
-        (16, b':'),
-        (19, b'Z'),
-    ] {
+    for (i, want) in UTC_INSTANT_LITERALS.iter().copied() {
         if b[i] != want {
             return Err(format!(
                 "expected `{}` at position {i}, found `{}`",
@@ -11076,13 +11128,104 @@ mod tests {
     use tempfile::TempDir;
 
     /// Every closed vocabulary THIS crate declares, checked by the guard the
-    /// declaration carries. The sibling in `mnemosyne-core` names the seven
+    /// declaration carries. The sibling in `mnemosyne-core` names the eight
     /// declared there.
     #[test]
     fn serde_spelling_is_the_vocabularys_own() {
         ConfirmerKind::assert_vocabulary_parity("ConfirmerKind");
         ConfirmMethod::assert_vocabulary_parity("ConfirmMethod");
         Verdict::assert_vocabulary_parity("Verdict");
+    }
+
+    /// THE PUBLISHED PATTERN ADMITS EVERYTHING THE CHECKER DOES, AND SAYS WHERE
+    /// IT STOPS.
+    ///
+    /// A schema that states a value space an agent's calls are NOT judged by is
+    /// the half-enforced invariant in its most expensive form: the agent obeys
+    /// the published rule and is refused anyway, with no way to see why. So the
+    /// two are run against one battery, and the assertion is the implication
+    /// that matters — ACCEPTED BY THE CHECKER IMPLIES MATCHED BY THE PATTERN.
+    ///
+    /// The converse is deliberately false and is asserted as false, so the
+    /// asymmetry is a measured fact rather than something a later reader assumes
+    /// either way: a regular expression cannot know that February has no 30th,
+    /// and a pattern that pretended to would be a second, weaker copy of the
+    /// calendar rule.
+    ///
+    /// NON-VACUITY: the battery includes the exact shapes this form exists to
+    /// exclude — an offset and a fractional second, both of which RFC 3339
+    /// admits and lexicographic ordering cannot survive — and the pattern must
+    /// refuse them. A pattern of `.*` would pass the implication above and fail
+    /// here.
+    #[test]
+    fn the_published_pattern_admits_every_instant_the_checker_admits() {
+        let pattern = utc_instant_pattern();
+        let re = regex::Regex::new(&pattern).expect("the published pattern must compile");
+        let valid = "2026-08-04T10:48:35Z";
+
+        let mut battery: Vec<String> = vec![
+            valid.to_string(),
+            "1970-01-01T00:00:00Z".to_string(),
+            "2024-02-29T23:59:60Z".to_string(), // leap day, leap second
+            "2026-08-04T10:48:35+09:00".to_string(), // RFC 3339, not this form
+            "2026-08-04T10:48:35.123Z".to_string(), // fractional second
+            "2026-08-04 10:48:35Z".to_string(), // space for `T`
+            "2026-08-04T10:48:35".to_string(),  // no zone
+            "mn-probe-names-nothing".to_string(), // the sweep's sentinel
+            String::new(),
+        ];
+        // EVERY SINGLE-POSITION MUTATION of a valid instant, so the battery is
+        // generated from the form rather than from what occurred to the author.
+        for i in 0..valid.len() {
+            for c in ['x', '0', '-', ':', 'T', 'Z'] {
+                let mut m: Vec<char> = valid.chars().collect();
+                m[i] = c;
+                battery.push(m.into_iter().collect());
+            }
+        }
+
+        let mut broken: Vec<String> = Vec::new();
+        for case in &battery {
+            let checker = check_utc_instant(case).is_ok();
+            let matched = re.is_match(case);
+            if checker && !matched {
+                broken.push(format!(
+                    "`{case}` is accepted by the store and REFUSED by the \
+                     published pattern `{pattern}`"
+                ));
+            }
+        }
+        assert!(
+            broken.is_empty(),
+            "{} case(s) the store admits are outside the pattern an agent is \
+             handed: {}",
+            broken.len(),
+            broken.join(" | ")
+        );
+
+        // Where the pattern is knowingly wider, named rather than implied.
+        let calendar_only = "2026-02-30T00:00:00Z";
+        assert!(
+            re.is_match(calendar_only),
+            "the pattern states the layout only, so `{calendar_only}` matches it"
+        );
+        assert!(
+            check_utc_instant(calendar_only).is_err(),
+            "`{calendar_only}` is not a day, and the checker stays the authority"
+        );
+
+        // Non-vacuity: the shapes the narrowing exists for.
+        for excluded in [
+            "2026-08-04T10:48:35+09:00",
+            "2026-08-04T10:48:35.123Z",
+            "mn-probe-names-nothing",
+        ] {
+            assert!(
+                !re.is_match(excluded),
+                "the pattern admits `{excluded}`, so it is not stating the form \
+                 `{UTC_INSTANT_FORM}` at all"
+            );
+        }
     }
 
     /// THE STRING EDGE ADMITS EXACTLY THE TYPED EDGE'S SET.

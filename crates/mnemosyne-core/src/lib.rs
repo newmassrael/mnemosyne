@@ -486,6 +486,7 @@ crate::closed_vocabulary!(DecisionStatus {
 /// alongside `DecisionStatus` so every plugin reads one canonical
 /// status surface.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema), schemars(inline))]
 #[serde(rename_all = "snake_case")]
 pub enum InventoryStatus {
     #[default]
@@ -494,18 +495,11 @@ pub enum InventoryStatus {
     Reserved,
 }
 
-impl InventoryStatus {
-    /// Canonical snake_case label (matches the serde representation). Used by
-    /// adapters that carry the status as a string at a layer boundary
-    /// (CLI/MCP render). Mirrors [`DecisionStatus::as_str`].
-    pub fn as_str(self) -> &'static str {
-        match self {
-            InventoryStatus::Active => "active",
-            InventoryStatus::Deprecated => "deprecated",
-            InventoryStatus::Reserved => "reserved",
-        }
-    }
-}
+crate::closed_vocabulary!(InventoryStatus {
+    Active => "active",
+    Deprecated => "deprecated",
+    Reserved => "reserved",
+});
 
 /// Error returned when a string is not a valid [`InventoryStatus`] label.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -517,8 +511,9 @@ impl std::fmt::Display for ParseInventoryStatusError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
-            "`{}` invalid (expected active|deprecated|reserved)",
-            self.got
+            "`{}` invalid (expected {})",
+            self.got,
+            InventoryStatus::vocabulary()
         )
     }
 }
@@ -528,15 +523,17 @@ impl std::error::Error for ParseInventoryStatusError {}
 impl std::str::FromStr for InventoryStatus {
     type Err = ParseInventoryStatusError;
 
-    /// Parse the canonical label (case-insensitive). The sole vocabulary
-    /// source for the CLI/MCP `--status` parsers (Round 357 DRY).
+    /// Parse the canonical label, DERIVED from the vocabulary rather than
+    /// re-listed beside it (Round 357 named this the sole source and then wrote
+    /// the members a second time three lines down).
+    ///
+    /// EXACTLY the canonical spelling, because the same value now arrives on the
+    /// MCP wire as this enum and serde admits nothing else: a lowercasing arm
+    /// here would accept `Active` from the CLI and refuse it from an agent,
+    /// which is one value set with two definitions — the shape Round 1027 found
+    /// on `status` and removed from both surfaces at once.
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s.to_ascii_lowercase().as_str() {
-            "active" => Ok(InventoryStatus::Active),
-            "deprecated" => Ok(InventoryStatus::Deprecated),
-            "reserved" => Ok(InventoryStatus::Reserved),
-            _ => Err(ParseInventoryStatusError { got: s.to_string() }),
-        }
+        InventoryStatus::from_tag(s).ok_or_else(|| ParseInventoryStatusError { got: s.to_string() })
     }
 }
 
@@ -813,17 +810,20 @@ output_parser = "gopls_v0_15""#;
     #[test]
     fn inventory_status_as_str_from_str_round_trip() {
         use std::str::FromStr;
-        for s in [
-            InventoryStatus::Active,
-            InventoryStatus::Deprecated,
-            InventoryStatus::Reserved,
-        ] {
-            assert_eq!(InventoryStatus::from_str(s.as_str()), Ok(s));
+        // THE SET IS THE DECLARATION'S, so a member added to the vocabulary is
+        // round-tripped by this test without it being edited.
+        for s in InventoryStatus::ALL {
+            assert_eq!(InventoryStatus::from_str(s.as_str()), Ok(*s));
         }
-        // Case-insensitive, matching the prior to_ascii_lowercase parsers.
+        // EXACTLY the canonical spelling. The lenient arm this replaced accepted
+        // `DEPRECATED` from the CLI while the MCP wire — which takes this enum
+        // through serde — refuses it, which is one value set with two
+        // definitions.
         assert_eq!(
             InventoryStatus::from_str("DEPRECATED"),
-            Ok(InventoryStatus::Deprecated)
+            Err(ParseInventoryStatusError {
+                got: "DEPRECATED".to_string()
+            })
         );
         // as_str matches the serde snake_case representation.
         assert_eq!(InventoryStatus::Active.as_str(), "active");
@@ -852,9 +852,16 @@ output_parser = "gopls_v0_15""#;
         use std::str::FromStr;
         let err = InventoryStatus::from_str("retired").unwrap_err();
         assert_eq!(err.got, "retired");
+        // THE REFUSAL SPEAKS THE VOCABULARY'S OWN WORDS. It used to spell the
+        // members with `|` separators of its own, which is the exact shape Round
+        // 1027 found on `ConfirmMethod` — a set written a second time, and the
+        // one a matcher keyed on the usual phrasing walked straight past.
         assert_eq!(
             err.to_string(),
-            "`retired` invalid (expected active|deprecated|reserved)"
+            format!(
+                "`retired` invalid (expected {})",
+                InventoryStatus::vocabulary()
+            )
         );
     }
     /// Round 870 — the derived vocabulary names EVERY value, or a message can
@@ -901,6 +908,7 @@ output_parser = "gopls_v0_15""#;
         VerificationExpectation::assert_vocabulary_parity("VerificationExpectation");
         DecisionStatus::assert_vocabulary_parity("DecisionStatus");
         DisclosureMode::assert_vocabulary_parity("DisclosureMode");
+        InventoryStatus::assert_vocabulary_parity("InventoryStatus");
         PayoffExpectation::assert_vocabulary_parity("PayoffExpectation");
         PredicateObjectKind::assert_vocabulary_parity("PredicateObjectKind");
     }
