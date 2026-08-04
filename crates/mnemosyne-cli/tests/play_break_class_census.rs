@@ -1,4 +1,4 @@
-//! What stands between an authoring slip and the runtime (Rounds 1033, 1034).
+//! What stands between an authoring slip and the runtime (Rounds 1033-1035).
 //!
 //! Round 1031 built a gate for ONE play-breaking class and chose that class by
 //! reading a doc comment. Round 1033 replaced that hand-list with a walk: the
@@ -46,6 +46,17 @@
 //! The census is pinned. A new leg kind, a new quest fact, a new verb, or a
 //! read that starts or stops seeing a class all move it, which is the point:
 //! the number is the arc's remaining surface, re-derived on every run.
+//!
+//! Round 1034 stopped there, and left "which of the REPORTED SHOULD reject" as
+//! a policy question. Round 1035 asks it the only way this repository has that
+//! is not judgement. Every boundary-crossing resize PROPOSES a rule — a list
+//! that filled proposes "always empty", a list that emptied proposes "never
+//! empty" — and each proposal is put to the blind author's own store. A rule
+//! the authored corpus already breaks is a rule that would reject the author,
+//! which is exactly how Round 1032 disproved the pickup-order reading. The
+//! corpus can only REFUTE; a surviving rule is un-refuted, never confirmed, so
+//! the authored distribution is printed beside each verdict and the reader can
+//! see how close the evidence sits to the boundary.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
@@ -306,11 +317,60 @@ fn panel(ws: &Path, telling: &str) -> (Vec<Read>, Vec<(String, String)>) {
 /// A resized list is NOT descended into: once the length moved, comparing the
 /// n-th element against the n-th is comparing two different things, and the
 /// index-shift shows up as a phantom finding one level down.
-fn resized(base: &serde_json::Value, now: &serde_json::Value, path: &str, out: &mut Vec<String>) {
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct Resize {
+    path: String,
+    /// The datum's own name — the last path segment with any index stripped.
+    field: String,
+    before: usize,
+    after: usize,
+    /// A real list length moved, as opposed to a key appearing or vanishing.
+    /// Only a list length can be read as an emptiness rule.
+    list: bool,
+}
+
+impl Resize {
+    fn new(path: &str, before: usize, after: usize, list: bool) -> Self {
+        let field = path
+            .rsplit('.')
+            .next()
+            .unwrap_or(path)
+            .split('[')
+            .next()
+            .unwrap_or(path)
+            .to_string();
+        Resize {
+            path: path.to_string(),
+            field,
+            before,
+            after,
+            list,
+        }
+    }
+
+    /// What the STORE's own diff and a READ's diff have to share for the read to
+    /// be merely carrying the edited datum: the same name moving the same way.
+    fn signature(&self) -> (&str, usize, usize) {
+        (self.field.as_str(), self.before, self.after)
+    }
+
+    /// The read this resize happened in — the root of the path, which the walk
+    /// seeds with the verb. A list name means what its own read means by it, so
+    /// the refuter is scoped here rather than across the whole surface.
+    fn verb(&self) -> &str {
+        self.path.split('.').next().unwrap_or(&self.path)
+    }
+
+    fn show(&self) -> String {
+        format!("{}({}->{})", self.path, self.before, self.after)
+    }
+}
+
+fn resized(base: &serde_json::Value, now: &serde_json::Value, path: &str, out: &mut Vec<Resize>) {
     match (base, now) {
         (serde_json::Value::Array(b), serde_json::Value::Array(n)) => {
             if b.len() != n.len() {
-                out.push(format!("{path}({}->{})", b.len(), n.len()));
+                out.push(Resize::new(path, b.len(), n.len(), true));
                 return;
             }
             for (i, (b, n)) in b.iter().zip(n).enumerate() {
@@ -320,11 +380,11 @@ fn resized(base: &serde_json::Value, now: &serde_json::Value, path: &str, out: &
         (serde_json::Value::Object(b), serde_json::Value::Object(n)) => {
             let mut moved = false;
             for key in n.keys().filter(|k| !b.contains_key(*k)) {
-                out.push(format!("{path}.{key}(+)"));
+                out.push(Resize::new(&format!("{path}.{key}"), 0, 1, false));
                 moved = true;
             }
             for key in b.keys().filter(|k| !n.contains_key(*k)) {
-                out.push(format!("{path}.{key}(-)"));
+                out.push(Resize::new(&format!("{path}.{key}"), 1, 0, false));
                 moved = true;
             }
             if moved {
@@ -340,12 +400,78 @@ fn resized(base: &serde_json::Value, now: &serde_json::Value, path: &str, out: &
     }
 }
 
-/// The last segment of a resize path, which is the datum's own name and the
-/// count it moved between — `evidence(2->1)`. Taken from the STORE's diff it is
-/// the corruption's echo; found in a READ's diff it is that same datum being
-/// carried through, not a classification the read made.
-fn signature(path: &str) -> &str {
-    path.rsplit('.').next().unwrap_or(path)
+/// The rule a boundary-crossing resize proposes, and nothing else. A list that
+/// FILLED proposes "this list is always empty"; a list that EMPTIED proposes
+/// "this list is never empty". A move between two non-zero counts proposes
+/// nothing — a bucket holding four instead of five is a tally, not a predicate.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+enum Rule {
+    AlwaysEmpty,
+    NeverEmpty,
+}
+
+impl Rule {
+    fn of(resize: &Resize) -> Option<Rule> {
+        match (resize.list, resize.before, resize.after) {
+            (true, 0, after) if after > 0 => Some(Rule::AlwaysEmpty),
+            (true, before, 0) if before > 0 => Some(Rule::NeverEmpty),
+            _ => None,
+        }
+    }
+
+    fn sentence(self, field: &str) -> String {
+        match self {
+            Rule::AlwaysEmpty => format!("`{field}` is always empty"),
+            Rule::NeverEmpty => format!("`{field}` is never empty"),
+        }
+    }
+
+    fn refuted_by(self, len: usize) -> bool {
+        match self {
+            Rule::AlwaysEmpty => len > 0,
+            Rule::NeverEmpty => len == 0,
+        }
+    }
+}
+
+/// One rule the walk proposes, named by the read it lives in and the list it is
+/// about — a list name means what its own read means by it.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+struct Proposed {
+    rule: Rule,
+    verb: String,
+    field: String,
+}
+
+/// What is known about a proposal: whether the authored corpus already breaks
+/// it, and which corruptions asked for it.
+struct Evidence {
+    refuted: bool,
+    proposed_by: Vec<String>,
+}
+
+/// Every list the AUTHORED store's reads hold, indexed by the datum's own name.
+/// This is the refuter: the one blind-authored corpus is evidence about what an
+/// author legitimately ships, so a rule the corpus already violates is a rule
+/// that would reject the author. Keyed by name across the whole surface rather
+/// than by an exact path, which errs toward refutation — the safe direction.
+fn index_lists(v: &serde_json::Value, key: Option<&str>, out: &mut BTreeMap<String, Vec<usize>>) {
+    match v {
+        serde_json::Value::Array(a) => {
+            if let Some(k) = key {
+                out.entry(k.to_string()).or_default().push(a.len());
+            }
+            for element in a {
+                index_lists(element, None, out);
+            }
+        }
+        serde_json::Value::Object(o) => {
+            for (k, value) in o {
+                index_lists(value, Some(k), out);
+            }
+        }
+        _ => {}
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -433,8 +559,24 @@ fn the_walk_says_what_stands_between_an_authoring_slip_and_the_runtime() {
         population.len()
     );
 
+    // The authored corpus's own lists, which is what a proposed rule is refuted
+    // against. Round 1032 learned this the hard way: a stricter reading felt
+    // safer and turned out to REJECT the blind author's store, and that
+    // rejection was the proof the reading was wrong.
+    let mut baseline_lists: BTreeMap<(String, String), Vec<usize>> = BTreeMap::new();
+    for (verb, answer) in &baseline.answers {
+        if let Answer::Json(json) = answer {
+            let mut per_read = BTreeMap::new();
+            index_lists(json, None, &mut per_read);
+            for (field, lens) in per_read {
+                baseline_lists.insert((verb.clone(), field), lens);
+            }
+        }
+    }
+
     let mut census: BTreeMap<Bucket, usize> = BTreeMap::new();
     let mut rows: BTreeMap<Bucket, Vec<String>> = BTreeMap::new();
+    let mut proposals: BTreeMap<Proposed, Evidence> = BTreeMap::new();
     for (index, corruption) in population.iter().enumerate() {
         let mut mutated = facts_json.clone();
         let mut applied = 0usize;
@@ -468,8 +610,9 @@ fn the_walk_says_what_stands_between_an_authoring_slip_and_the_runtime() {
                         "store",
                         &mut store_paths,
                     );
-                    let echo: BTreeSet<&str> = store_paths.iter().map(|p| signature(p)).collect();
-                    let mut growth: Vec<String> = Vec::new();
+                    let echo: BTreeSet<(&str, usize, usize)> =
+                        store_paths.iter().map(Resize::signature).collect();
+                    let mut growth: Vec<Resize> = Vec::new();
                     let mut differing: Vec<&str> = Vec::new();
                     for read in &panel {
                         match (&baseline.answers[&read.verb], &seen.answers[&read.verb]) {
@@ -491,16 +634,39 @@ fn the_walk_says_what_stands_between_an_authoring_slip_and_the_runtime() {
                             ),
                         }
                     }
-                    let derived: Vec<&String> = growth
+                    let derived: Vec<&Resize> = growth
                         .iter()
-                        .filter(|p| !echo.contains(signature(p)))
+                        .filter(|r| !echo.contains(&r.signature()))
                         .collect();
+                    // Each boundary-crossing resize proposes a rule; the
+                    // AUTHORED corpus is asked whether it already breaks it.
+                    for resize in &derived {
+                        let Some(rule) = Rule::of(resize) else {
+                            continue;
+                        };
+                        let key = (resize.verb().to_string(), resize.field.clone());
+                        let refuted = baseline_lists
+                            .get(&key)
+                            .is_some_and(|lens| lens.iter().any(|len| rule.refuted_by(*len)));
+                        proposals
+                            .entry(Proposed {
+                                rule,
+                                verb: key.0,
+                                field: key.1,
+                            })
+                            .or_insert(Evidence {
+                                refuted,
+                                proposed_by: Vec::new(),
+                            })
+                            .proposed_by
+                            .push(format!("{}/{}", corruption.fact, corruption.leg));
+                    }
                     if !derived.is_empty() {
                         note = format!(
                             " <- {}",
                             derived
                                 .iter()
-                                .map(|p| p.as_str())
+                                .map(|r| r.show())
                                 .collect::<Vec<_>>()
                                 .join(" ")
                         );
@@ -557,6 +723,38 @@ fn the_walk_says_what_stands_between_an_authoring_slip_and_the_runtime() {
         for row in listed {
             println!("    {row}");
         }
+    }
+
+    println!(
+        "\nrules the REPORTED rows propose, put to the authored corpus ({} \
+         distinct list names indexed):",
+        baseline_lists.len()
+    );
+    for (proposed, evidence) in &mut proposals {
+        let Proposed { rule, verb, field } = proposed;
+        let Evidence {
+            refuted,
+            proposed_by: from,
+        } = evidence;
+        from.sort();
+        from.dedup();
+        let lens = baseline_lists
+            .get(&(verb.clone(), field.clone()))
+            .cloned()
+            .unwrap_or_default();
+        // Print the EVIDENCE, not just the verdict. One corpus can only refute:
+        // a rule it does not break is un-refuted, never confirmed, and how close
+        // the authored store sits to breaking it is the whole of what is known.
+        println!(
+            "  {:9} {}: {} [authored: n={} min={} max={}] <- {}",
+            if *refuted { "REFUTED" } else { "CANDIDATE" },
+            verb,
+            rule.sentence(field),
+            lens.len(),
+            lens.iter().min().copied().unwrap_or(0),
+            lens.iter().max().copied().unwrap_or(0),
+            from.join(" ")
+        );
     }
 
     assert_eq!(
@@ -647,5 +845,48 @@ fn the_walk_says_what_stands_between_an_authoring_slip_and_the_runtime() {
             "f-515/evidence",
         ],
         "the corruptions no shipped read derives anything from"
+    );
+
+    // THE SECOND ANSWER: of the classifications the REPORTED rows move, which
+    // could become a gate. A rule is proposed only by a resize that CROSSES the
+    // emptiness boundary — a bucket holding four instead of five is a tally,
+    // not a predicate — and it is then put to the blind author's own store.
+    //
+    // The corpus can only REFUTE (Round 1032). Three of these rules would
+    // reject the store an author actually shipped, and one of them,
+    // `completions is never empty`, is the debt the previous round filed as its
+    // next candidate: "a quest still open on a terminal road". Sixteen authored
+    // (quest, world) pairs already sit at zero. The gate this arc was about to
+    // build would have rejected the blind author, and a measurement said so
+    // rather than a reviewer.
+    //
+    // The three survivors are un-refuted, NOT confirmed, and the evidence line
+    // is printed beside each so the difference is visible: `payoffs_to_unmarked`
+    // is 0 in all four authored worlds, while `dangling is never empty` survives
+    // only because this WIP corpus has unpaid setups everywhere — a FINISHED
+    // story would refute it, and no finished story exists here to ask.
+    assert_eq!(
+        proposals
+            .iter()
+            .map(|(proposed, evidence)| format!(
+                "{} {}: {}",
+                if evidence.refuted {
+                    "REFUTED"
+                } else {
+                    "CANDIDATE"
+                },
+                proposed.verb,
+                proposed.rule.sentence(&proposed.field)
+            ))
+            .collect::<Vec<_>>(),
+        [
+            "CANDIDATE report-payoff-coverage: `payoffs_to_unmarked` is always empty",
+            "CANDIDATE report-payoff-coverage: `dangling` is never empty",
+            "CANDIDATE report-quest-graph: `actors` is never empty",
+            "REFUTED report-quest-graph: `completions` is never empty",
+            "REFUTED report-quest-graph: `giving_facts` is never empty",
+            "REFUTED report-quest-graph: `locators` is never empty",
+        ],
+        "the rules the walk's own findings propose, put to the authored corpus"
     );
 }
