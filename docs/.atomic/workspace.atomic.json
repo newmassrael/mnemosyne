@@ -2654,6 +2654,88 @@
         "The road sets are compared for THIS corpus's unfiltered read. A `--world` filter is meant to narrow the projection, so the two reads legitimately differ there and no test states which difference is legitimate."
       ]
     },
+    "Round 1039": {
+      "decision_summary": "R1039 (MEASURE) — the population of \"two shipped reads answer the same question\", derived rather than picked. Round 1037 found a contradiction that had shipped since R568 by comparing `report-quest-graph` against `validate-continuity`, and it picked that pair BY HAND, and it hit on the first try. A hand-picked second pair is the mistake this arc has made four times running, so the population is derived here and the backlog comes out of a walk. STAR THE FIRST DERIVATION WAS VACUOUS AND THE WALK SAYS SO EVERY RUN. Keyed on \"a read mentions this id\", 220 of the corpus's 220 registered subjects are answered about by more than one read, because `report-playable-world`, `report-playthrough-manuscript` and `report-edge-candidates` each render the whole store. A backlog built on co-mention is noise. That is the R1034 lesson one layer up — a rendering read must not be allowed to masquerade as one with an opinion — and it is now an assertion rather than a sentence, so a shipped surface that stops rendering everything makes the vacuity argument itself go red. STAR A READ ANSWERS ABOUT A SUBJECT WHEN ITS RECORD CARRIES A VERDICT, AND THE VERDICT FIELDS ARE DERIVED FROM THE DATA. A verdict field is one whose values across that read's whole output form a small closed set of short lowercase tokens, none of them a registered id. Rust cannot enumerate the types implementing the store's `closed_vocabulary!` (R1027), and a hand table of verdict field NAMES is the keyed-by-name gate population this repository has spent rounds removing — so the shape is recognised in the data and every field found is printed, which is how a reader checks the walk for inventing them. It finds `state` on the quest graph and `verdict` on the continuity walk: the exact two fields whose disagreement R1037 found. The population drops from 220-of-220 to 81-of-206, and the read-pair table from 55 pairs to 16. STAR THE DERIVATION REPRODUCES THE KNOWN POSITIVE, AND THAT IS ASSERTED. `report-quest-graph <-> validate-continuity` is in the backlog with 4 subjects in common, and `q-main` — the quest R1037's defect was about — is one of them. A derivation that cannot re-find what a hand comparison already proved is a list, not a backlog. STAR SEVEN INJECTIONS LANDED ON TWO ASSERTIONS BETWEEN THEM, SO THE ASSERTIONS WERE RESTRUCTURED. Every check now runs and the failures come out as a named list, the R1026 rule applied to this test's own claims rather than to its findings; re-run against that form, the same seven injections cover all six checks, and one of them breaks the backlog alone.",
+      "changes_bullets": [
+        "`crates/mnemosyne-cli/tests/common/mod.rs`: the `--help`-derived read panel moves here from the census walk — two walks need it now, and a second copy is how they would come to disagree about which surface a consumer has.",
+        "`crates/mnemosyne-cli/tests/read_agreement_population.rs`: subjects from the store, records as the minimal enclosing object, verdict fields derived from each read's own values, the subject population and the read-pair backlog printed and pinned, with the R1037 pair as the oracle.",
+        "The walk's own assertions are a checklist that all run and report as one named list, so an injection shows every claim it breaks rather than the first."
+      ],
+      "verification_bullets": [
+        "Workspace 1749 tests green, clippy -D warnings clean, fmt clean, `validate-workspace` T1/T3 = 0.",
+        "Measured: 220 registered subjects, 27 reads holding records, 1 answering `--json` in prose; 220 of 220 shared under co-mention, 81 of 206 under the verdict filter, 16 read pairs in the backlog.",
+        "7 injections, each over the WHOLE workspace with --no-fail-fast: J1 verdict filter off / J2 ancestors also claim / J3 the verdict shape accepts ids / J4 world-lines are not subjects / J5 the backlog ranked least-shared first / J6 entities are not subjects / J7 arrays stop propagating.",
+        "Per-assertion coverage after the restructure: ORACLE by J6+J7, INPUTS by J4+J6, VACUITY by J7, JUDGED by six of them, BACKLOG by all — and J5 breaks BACKLOG alone, which is what shows it is live rather than carried by a neighbour.",
+        "The first seven runs, against the stop-at-first form, landed on exactly two assertions; that is what the restructure is for and it is why the injections were re-run rather than counted twice."
+      ],
+      "carry_forward_bullets": [
+        "A verdict field is recognised by SHAPE, not by declaration: `telling`, `parent` and `kind` are picked up beside `state` and `verdict`, so the judged population is an over-count of unknown size. The store HAS the answer — its `closed_vocabulary!` types — and no read carries which of its fields came from one.",
+        "The population says which pairs share subjects, never whether their answers agree. Comparing two verdicts needs to know what each read MEANS by its own, and nothing here derives that; R1037 did it by reading both.",
+        "Asked of ONE corpus. A read that judges nothing here because this store declares nothing for it (`report-transition-map`, `report-parameter-economy` and six others answer about 0 subjects) is absent from the backlog for a reason that has nothing to do with agreement."
+      ],
+      "population_census": [
+        {
+          "axis": "transition rules by `undirected`",
+          "left_label": "undirected",
+          "left": 10,
+          "right_label": "directed",
+          "right": 27
+        },
+        {
+          "axis": "map corpora by leg-kind declaration",
+          "left_label": "omitted",
+          "left": 6,
+          "right_label": "declared",
+          "right": 24
+        },
+        {
+          "axis": "cost-carrying corpora by direction-dependent pricing",
+          "left_label": "prices a way by direction",
+          "left": 4,
+          "right_label": "prices no way by direction",
+          "right": 6
+        },
+        {
+          "axis": "run trees by authoring mode",
+          "left_label": "hand script",
+          "left": 10,
+          "right_label": "file-only",
+          "right": 239
+        },
+        {
+          "axis": "map corpora by declared boundary crossing",
+          "left_label": "declares an exit",
+          "left": 6,
+          "right_label": "declares none",
+          "right": 24
+        },
+        {
+          "axis": "authored submissions by map and telling",
+          "left_label": "carries both",
+          "left": 10,
+          "right_label": "carries one",
+          "right": 24
+        }
+      ],
+      "publishable_decision_summary": "R1039 (MEASURE) — the population of \"two shipped reads answer the same question\", derived rather than picked. Round 1037 found a contradiction that had shipped since R568 by comparing `report-quest-graph` against `validate-continuity`, and it picked that pair BY HAND, and it hit on the first try. A hand-picked second pair is the mistake this arc has made four times running, so the population is derived here and the backlog comes out of a walk. STAR THE FIRST DERIVATION WAS VACUOUS AND THE WALK SAYS SO EVERY RUN. Keyed on \"a read mentions this id\", 220 of the corpus's 220 registered subjects are answered about by more than one read, because `report-playable-world`, `report-playthrough-manuscript` and `report-edge-candidates` each render the whole store. A backlog built on co-mention is noise. That is the R1034 lesson one layer up — a rendering read must not be allowed to masquerade as one with an opinion — and it is now an assertion rather than a sentence, so a shipped surface that stops rendering everything makes the vacuity argument itself go red. STAR A READ ANSWERS ABOUT A SUBJECT WHEN ITS RECORD CARRIES A VERDICT, AND THE VERDICT FIELDS ARE DERIVED FROM THE DATA. A verdict field is one whose values across that read's whole output form a small closed set of short lowercase tokens, none of them a registered id. Rust cannot enumerate the types implementing the store's `closed_vocabulary!` (R1027), and a hand table of verdict field NAMES is the keyed-by-name gate population this repository has spent rounds removing — so the shape is recognised in the data and every field found is printed, which is how a reader checks the walk for inventing them. It finds `state` on the quest graph and `verdict` on the continuity walk: the exact two fields whose disagreement R1037 found. The population drops from 220-of-220 to 81-of-206, and the read-pair table from 55 pairs to 16. STAR THE DERIVATION REPRODUCES THE KNOWN POSITIVE, AND THAT IS ASSERTED. `report-quest-graph <-> validate-continuity` is in the backlog with 4 subjects in common, and `q-main` — the quest R1037's defect was about — is one of them. A derivation that cannot re-find what a hand comparison already proved is a list, not a backlog. STAR SEVEN INJECTIONS LANDED ON TWO ASSERTIONS BETWEEN THEM, SO THE ASSERTIONS WERE RESTRUCTURED. Every check now runs and the failures come out as a named list, the R1026 rule applied to this test's own claims rather than to its findings; re-run against that form, the same seven injections cover all six checks, and one of them breaks the backlog alone.",
+      "publishable_changes_bullets": [
+        "`crates/mnemosyne-cli/tests/common/mod.rs`: the `--help`-derived read panel moves here from the census walk — two walks need it now, and a second copy is how they would come to disagree about which surface a consumer has.",
+        "`crates/mnemosyne-cli/tests/read_agreement_population.rs`: subjects from the store, records as the minimal enclosing object, verdict fields derived from each read's own values, the subject population and the read-pair backlog printed and pinned, with the R1037 pair as the oracle.",
+        "The walk's own assertions are a checklist that all run and report as one named list, so an injection shows every claim it breaks rather than the first."
+      ],
+      "publishable_verification_bullets": [
+        "Workspace 1749 tests green, clippy -D warnings clean, fmt clean, `validate-workspace` T1/T3 = 0.",
+        "Measured: 220 registered subjects, 27 reads holding records, 1 answering `--json` in prose; 220 of 220 shared under co-mention, 81 of 206 under the verdict filter, 16 read pairs in the backlog.",
+        "7 injections, each over the WHOLE workspace with --no-fail-fast: J1 verdict filter off / J2 ancestors also claim / J3 the verdict shape accepts ids / J4 world-lines are not subjects / J5 the backlog ranked least-shared first / J6 entities are not subjects / J7 arrays stop propagating.",
+        "Per-assertion coverage after the restructure: ORACLE by J6+J7, INPUTS by J4+J6, VACUITY by J7, JUDGED by six of them, BACKLOG by all — and J5 breaks BACKLOG alone, which is what shows it is live rather than carried by a neighbour.",
+        "The first seven runs, against the stop-at-first form, landed on exactly two assertions; that is what the restructure is for and it is why the injections were re-run rather than counted twice."
+      ],
+      "publishable_carry_forward_bullets": [
+        "A verdict field is recognised by SHAPE, not by declaration: `telling`, `parent` and `kind` are picked up beside `state` and `verdict`, so the judged population is an over-count of unknown size. The store HAS the answer — its `closed_vocabulary!` types — and no read carries which of its fields came from one.",
+        "The population says which pairs share subjects, never whether their answers agree. Comparing two verdicts needs to know what each read MEANS by its own, and nothing here derives that; R1037 did it by reading both.",
+        "Asked of ONE corpus. A read that judges nothing here because this store declares nothing for it (`report-transition-map`, `report-parameter-economy` and six others answer about 0 subjects) is absent from the backlog for a reason that has nothing to do with agreement."
+      ]
+    },
     "Round 252": {
       "decision_summary": "Parser CommonMark conformance — recognize indented fenced code blocks (§98) and require whitespace after ATX hash sequence (§62)",
       "changes_bullets": [

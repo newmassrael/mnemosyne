@@ -201,3 +201,165 @@ pub fn corpus_workspace_try(dir: &Path, facts: &serde_json::Value) -> Result<Tem
 pub fn dnd_quest_workspace() -> TempDir {
     dnd_quest_workspace_from(&dnd_quest_facts())
 }
+
+// ==========================================================================
+// THE SHIPPED READ PANEL (Round 1034, shared here in Round 1039).
+//
+// The panel is DERIVED from `--help`, never curated: every advertised
+// `report-*` / `validate-*` verb is asked, and one that cannot be asked
+// without inventing an argument the corpus does not supply is excluded BY
+// THAT MEASUREMENT, with its refusal returned rather than filtered away.
+//
+// It lives here because two walks now need it — the play-break class census
+// and the read-agreement population — and a second copy is how they would
+// come to disagree about which surface a consumer actually has.
+// ==========================================================================
+
+use std::collections::{BTreeMap, BTreeSet};
+
+use mnemosyne_atomic::AtomicStore;
+
+/// The sidecar the import writes, relative to the workspace root.
+pub const SIDECAR: &str = "docs/.atomic/workspace.atomic.json";
+
+/// The store as the import left it, read back as the store's own serialization.
+pub fn read_sidecar(ws: &Path) -> serde_json::Value {
+    read_json(&ws.join(SIDECAR))
+}
+
+/// The corpus's own telling, read from the store rather than named here — the
+/// walk supplies no argument the corpus did not declare.
+pub fn telling_of(store: &AtomicStore) -> String {
+    let mut plans = store.disclosure_plans.keys();
+    let telling = plans
+        .next()
+        .expect("the corpus declares a disclosure plan")
+        .clone();
+    assert_eq!(
+        plans.next(),
+        None,
+        "the corpus declares more than one telling, so `the` telling is no \
+         longer derivable — the walk would have to choose, which is the \
+         invented argument this panel refuses to make"
+    );
+    telling
+}
+
+/// One shipped read, and the arguments the CORPUS can answer it with.
+pub struct Read {
+    pub verb: String,
+    pub args: Vec<String>,
+}
+
+impl Read {
+    pub fn argv(&self) -> Vec<&str> {
+        let mut argv = vec![self.verb.as_str()];
+        argv.extend(self.args.iter().map(String::as_str));
+        argv.push("--json");
+        argv
+    }
+}
+
+/// Every `report-*` / `validate-*` verb the shipped help advertises. Read from
+/// the token that FOLLOWS the program path on each usage line, so a verb named
+/// in a note's prose is not mistaken for a dispatchable one.
+pub fn advertised_reads(ws: &Path) -> BTreeSet<String> {
+    let help = run(ws, &["--help"]);
+    assert!(help.status.success(), "--help must exit 0");
+    let help = String::from_utf8(help.stdout).expect("help is utf-8");
+    let bin = cli_binary();
+    let verbs: BTreeSet<String> = help
+        .lines()
+        .filter_map(|line| {
+            let mut tokens = line.split_whitespace().skip_while(|t| *t != bin);
+            tokens.next()?;
+            tokens.next().map(str::to_string)
+        })
+        .filter(|verb| verb.starts_with("report-") || verb.starts_with("validate-"))
+        .collect();
+    assert!(
+        verbs.len() > 20,
+        "the panel derivation read {} verbs out of the shipped help, which is \
+         a parse that stopped working rather than a CLI that shrank",
+        verbs.len()
+    );
+    verbs
+}
+
+/// Ask every advertised read at BASELINE, bare first and then with the corpus's
+/// own telling. A read that still refuses needs an argument this corpus does
+/// not supply; it is excluded BY THAT MEASUREMENT, and its refusal is returned
+/// to be printed rather than curated away.
+pub fn panel(ws: &Path, telling: &str) -> (Vec<Read>, Vec<(String, String)>) {
+    let mut asked = Vec::new();
+    let mut unaskable = Vec::new();
+    for verb in advertised_reads(ws) {
+        let candidates = [
+            Vec::new(),
+            vec!["--telling".to_string(), telling.to_string()],
+        ];
+        let mut refusal = None;
+        for args in candidates {
+            let read = Read {
+                verb: verb.clone(),
+                args,
+            };
+            let out = run(ws, &read.argv());
+            if out.status.success() {
+                asked.push(read);
+                refusal = None;
+                break;
+            }
+            refusal.get_or_insert_with(|| {
+                String::from_utf8_lossy(&out.stderr)
+                    .lines()
+                    .next()
+                    .unwrap_or("(no stderr)")
+                    .to_string()
+            });
+        }
+        if let Some(reason) = refusal {
+            unaskable.push((verb, reason));
+        }
+    }
+    (asked, unaskable)
+}
+
+/// One read's answer about one store. A verb that takes `--json` and answers in
+/// prose anyway can still be compared for difference, but it holds no list, so
+/// it can never be asked whether it STARTED SAYING SOMETHING — a limit of the
+/// panel that is named and printed rather than absorbed.
+pub enum Answer {
+    Json(serde_json::Value),
+    Prose(String),
+}
+
+impl Answer {
+    pub fn read(stdout: Vec<u8>) -> Self {
+        let text = String::from_utf8(stdout).expect("cli output is utf-8");
+        match serde_json::from_str(&text) {
+            Ok(json) => Answer::Json(json),
+            Err(_) => Answer::Prose(text),
+        }
+    }
+}
+
+/// What every advertised read said about one store.
+pub struct Panelled {
+    pub failed: Vec<String>,
+    pub answers: BTreeMap<String, Answer>,
+}
+
+pub fn ask_panel(ws: &Path, panel: &[Read]) -> Panelled {
+    let mut failed = Vec::new();
+    let mut answers = BTreeMap::new();
+    for read in panel {
+        let out = run(ws, &read.argv());
+        if out.status.success() {
+            answers.insert(read.verb.clone(), Answer::read(out.stdout));
+        } else {
+            failed.push(read.verb.clone());
+        }
+    }
+    Panelled { failed, answers }
+}
