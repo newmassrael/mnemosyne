@@ -1,4 +1,4 @@
-//! What stands between an authoring slip and the runtime (Rounds 1033-1035).
+//! What stands between an authoring slip and the runtime (Rounds 1033-1036).
 //!
 //! Round 1031 built a gate for ONE play-breaking class and chose that class by
 //! reading a doc comment. Round 1033 replaced that hand-list with a walk: the
@@ -51,30 +51,40 @@
 //! a policy question. Round 1035 asks it the only way this repository has that
 //! is not judgement. Every boundary-crossing resize PROPOSES a rule — a list
 //! that filled proposes "always empty", a list that emptied proposes "never
-//! empty" — and each proposal is put to the blind author's own store. A rule
-//! the authored corpus already breaks is a rule that would reject the author,
-//! which is exactly how Round 1032 disproved the pickup-order reading. The
-//! corpus can only REFUTE; a surviving rule is un-refuted, never confirmed, so
-//! the authored distribution is printed beside each verdict and the reader can
-//! see how close the evidence sits to the boundary.
+//! empty" — and each proposal is put to the authored stores. A rule an authored
+//! corpus already breaks is a rule that would reject its author, which is
+//! exactly how Round 1032 disproved the pickup-order reading.
+//!
+//! Round 1036 fixed the population that refutation is drawn from. Round 1035
+//! asked the ONE corpus under corruption; the refuter's population is not the
+//! corpus being corrupted but EVERY store an author shipped, and `git ls-files`
+//! finds 43 of them. A rule is refuted by any of them. The corpus can still
+//! only REFUTE — a surviving rule is un-refuted, never confirmed — so the
+//! authored distribution is printed beside each verdict and the reader can see
+//! how close the evidence sits to the boundary.
 
 use std::collections::{BTreeMap, BTreeSet};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use mnemosyne_atomic::AtomicStore;
 
 mod common;
-use common::{cli_binary, dnd_quest_facts, dnd_quest_workspace_try, run};
+use common::{
+    cli_binary, corpus_workspace_try, dnd_quest_facts, dnd_quest_workspace_try, repo_root, run,
+};
 
 /// The sidecar the import writes, relative to the workspace root.
 const SIDECAR: &str = "docs/.atomic/workspace.atomic.json";
 
 /// The store as the import left it, read back as the store's own serialization.
 fn read_sidecar(ws: &Path) -> serde_json::Value {
-    let path = ws.join(SIDECAR);
-    let text = std::fs::read_to_string(&path)
-        .unwrap_or_else(|e| panic!("sidecar {} unreadable: {e}", path.display()));
-    serde_json::from_str(&text).expect("the store serializes as json")
+    read_sidecar_at(&ws.join(SIDECAR))
+}
+
+fn read_sidecar_at(path: &Path) -> serde_json::Value {
+    let text = std::fs::read_to_string(path)
+        .unwrap_or_else(|e| panic!("{} unreadable: {e}", path.display()));
+    serde_json::from_str(&text).unwrap_or_else(|e| panic!("{} is not json: {e}", path.display()))
 }
 
 /// The corpus's own telling, read from the store rather than named here — the
@@ -434,6 +444,36 @@ impl Rule {
     }
 }
 
+/// Every authored corpus this repository TRACKS: a fact manifest with a
+/// `sections.json` and an `order.json` beside it. Asked of `git ls-files`, not
+/// of the working directory — an untracked stray is not evidence about what an
+/// author ships, and a walk over the filesystem would count it.
+fn authored_corpora() -> Vec<PathBuf> {
+    let listed = std::process::Command::new("git")
+        .args(["ls-files", "claudedocs"])
+        .current_dir(repo_root())
+        .output()
+        .expect("git ls-files");
+    assert!(listed.status.success(), "git ls-files must exit 0");
+    let root = repo_root();
+    let mut out: Vec<PathBuf> = String::from_utf8(listed.stdout)
+        .expect("git output is utf-8")
+        .lines()
+        .filter(|path| path.ends_with("/facts.json"))
+        .filter_map(|path| root.join(path).parent().map(Path::to_path_buf))
+        .filter(|dir| dir.join("sections.json").exists() && dir.join("order.json").exists())
+        .collect();
+    out.sort();
+    out.dedup();
+    assert!(
+        out.len() > 20,
+        "the corpus sweep found {} authored corpora, which is a listing that \
+         stopped working rather than a repository that emptied",
+        out.len()
+    );
+    out
+}
+
 /// One rule the walk proposes, named by the read it lives in and the list it is
 /// about — a list name means what its own read means by it.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
@@ -563,15 +603,89 @@ fn the_walk_says_what_stands_between_an_authoring_slip_and_the_runtime() {
     // against. Round 1032 learned this the hard way: a stricter reading felt
     // safer and turned out to REJECT the blind author's store, and that
     // rejection was the proof the reading was wrong.
+    // Round 1035 asked the ONE corpus under corruption and recorded "a second
+    // authored corpus is what would move it". The refuter's population is not
+    // the corpus being corrupted, though — it is every store an author actually
+    // shipped, and this repository tracks forty-three of them. Each is built and
+    // read the same way; a corpus that no longer loads is excluded by that
+    // failure and named, never by a judgement about relevance.
     let mut baseline_lists: BTreeMap<(String, String), Vec<usize>> = BTreeMap::new();
+    let mut refuters: Vec<String> = Vec::new();
+    let mut unloadable: Vec<String> = Vec::new();
+    // How much evidence actually reached the refuter. A corpus that loads but
+    // whose reads start failing loses evidence SILENTLY — the rules it used to
+    // refute quietly become candidates — so the total is asserted rather than
+    // printed. Round 1036 found this by aiming an injection at exactly that
+    // path and watching nothing turn red.
+    let mut answers_total = 0usize;
+    // The store under corruption is itself an authored store, and it must be in
+    // the refuter's population. Widening the sweep WITHOUT this LOST evidence:
+    // the dnd-quest record's own `facts.json` is the pre-migration manifest that
+    // stopped loading (the rot R857 found), so the tracked-corpus sweep excludes
+    // it and every quest-bearing list went to n=0 — three refutations turned
+    // into candidates because the population grew.
     for (verb, answer) in &baseline.answers {
         if let Answer::Json(json) = answer {
             let mut per_read = BTreeMap::new();
             index_lists(json, None, &mut per_read);
             for (field, lens) in per_read {
-                baseline_lists.insert((verb.clone(), field), lens);
+                baseline_lists
+                    .entry((verb.clone(), field))
+                    .or_default()
+                    .extend(lens);
             }
         }
+    }
+    refuters.push("the migrated dnd-quest record (the store under corruption)".to_string());
+    for dir in authored_corpora() {
+        let name = dir
+            .strip_prefix(repo_root())
+            .unwrap_or(&dir)
+            .display()
+            .to_string();
+        let facts = read_sidecar_at(&dir.join("facts.json"));
+        let Ok(ws) = corpus_workspace_try(&dir, &facts) else {
+            unloadable.push(name);
+            continue;
+        };
+        let Ok(store) = AtomicStore::load(&ws.path().join(SIDECAR)) else {
+            unloadable.push(name);
+            continue;
+        };
+        // Each corpus answers under its OWN telling, or bare when it declares
+        // none or more than one — the walk invents no argument for anyone.
+        let its_telling = match store.disclosure_plans.keys().collect::<Vec<_>>()[..] {
+            [only] => Some(only.clone()),
+            _ => None,
+        };
+        let mut answered = 0usize;
+        for read in &panel {
+            let mut argv = vec![read.verb.as_str()];
+            if !read.args.is_empty() {
+                let Some(telling) = its_telling.as_deref() else {
+                    continue;
+                };
+                argv.extend(["--telling", telling]);
+            }
+            argv.push("--json");
+            let out = run(ws.path(), &argv);
+            if !out.status.success() {
+                continue;
+            }
+            if let Answer::Json(json) = Answer::read(out.stdout) {
+                answered += 1;
+                let mut per_read = BTreeMap::new();
+                index_lists(&json, None, &mut per_read);
+                for (field, lens) in per_read {
+                    baseline_lists
+                        .entry((read.verb.clone(), field))
+                        .or_default()
+                        .extend(lens);
+                }
+            }
+        }
+        answers_total += answered;
+        refuters.push(format!("{name} ({answered} reads)"));
     }
 
     let mut census: BTreeMap<Bucket, usize> = BTreeMap::new();
@@ -726,10 +840,19 @@ fn the_walk_says_what_stands_between_an_authoring_slip_and_the_runtime() {
     }
 
     println!(
-        "\nrules the REPORTED rows propose, put to the authored corpus ({} \
-         distinct list names indexed):",
+        "\nrefuters: {} authored corpora loaded, {} unloadable, {} (read, list) \
+         names indexed",
+        refuters.len(),
+        unloadable.len(),
         baseline_lists.len()
     );
+    for name in &refuters {
+        println!("    load {name}");
+    }
+    for name in &unloadable {
+        println!("    dead {name}");
+    }
+    println!("\nrules the REPORTED rows propose, put to every authored corpus:");
     for (proposed, evidence) in &mut proposals {
         let Proposed { rule, verb, field } = proposed;
         let Evidence {
@@ -860,11 +983,25 @@ fn the_walk_says_what_stands_between_an_authoring_slip_and_the_runtime() {
     // build would have rejected the blind author, and a measurement said so
     // rather than a reviewer.
     //
-    // The three survivors are un-refuted, NOT confirmed, and the evidence line
-    // is printed beside each so the difference is visible: `payoffs_to_unmarked`
-    // is 0 in all four authored worlds, while `dangling is never empty` survives
-    // only because this WIP corpus has unpaid setups everywhere — a FINISHED
-    // story would refute it, and no finished story exists here to ask.
+    // Round 1035 asked ONE corpus and let `dangling is never empty` survive,
+    // recording that a finished story would refute it and that no second corpus
+    // existed to ask. The second premise was wrong: this repository tracks 43
+    // authored corpora and 27 of them still load. Asked of all of them,
+    // `dangling` IS refuted — some author did finish paying their setups — and
+    // the surviving `payoffs_to_unmarked` rule now rests on 41 authored worlds
+    // rather than 4, every one of them at zero.
+    //
+    // Sixteen of the 43 no longer load, including the dnd-quest record's own
+    // pre-migration manifest. That is the rot Round 857 found, still live, and
+    // it is counted here rather than mentioned: a corpus that stops loading
+    // silently shrinks the evidence every rule in this list is judged against.
+    assert_eq!(
+        (refuters.len(), unloadable.len(), answers_total),
+        (28, 16, 660),
+        "the refuter population: authored corpora that load, those that no \
+         longer do, and the (corpus, read) answers that actually reached the \
+         index"
+    );
     assert_eq!(
         proposals
             .iter()
@@ -881,7 +1018,7 @@ fn the_walk_says_what_stands_between_an_authoring_slip_and_the_runtime() {
             .collect::<Vec<_>>(),
         [
             "CANDIDATE report-payoff-coverage: `payoffs_to_unmarked` is always empty",
-            "CANDIDATE report-payoff-coverage: `dangling` is never empty",
+            "REFUTED report-payoff-coverage: `dangling` is never empty",
             "CANDIDATE report-quest-graph: `actors` is never empty",
             "REFUTED report-quest-graph: `completions` is never empty",
             "REFUTED report-quest-graph: `giving_facts` is never empty",

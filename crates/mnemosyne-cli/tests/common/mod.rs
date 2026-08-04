@@ -83,15 +83,36 @@ pub fn dnd_quest_workspace_from(facts: &serde_json::Value) -> TempDir {
 /// asserted. A walk that corrupts the manifest needs "the write path rejected
 /// this" as a VERDICT about the corruption, not as a failure of the walk.
 pub fn dnd_quest_workspace_try(facts: &serde_json::Value) -> Result<TempDir, String> {
+    for name in ["sections.json", "order.json", "narrative-rules.json"] {
+        let src = audit_dir().join(name);
+        assert!(
+            src.exists(),
+            "the frozen record must hold {}",
+            src.display()
+        );
+    }
+    corpus_workspace_try(&audit_dir(), facts)
+}
+
+/// The same recipe over ANY authored corpus directory this tree tracks. The
+/// dnd-quest builder is this one with the frozen record's path: a corpus is a
+/// `sections.json` + `order.json` beside a fact manifest, and nothing about the
+/// recipe is specific to which author wrote it. `narrative-rules.json` is
+/// optional — not every corpus declares rules, and a config naming a file that
+/// is not there is a load failure rather than a corpus without rules.
+pub fn corpus_workspace_try(dir: &Path, facts: &serde_json::Value) -> Result<TempDir, String> {
     let tmp = TempDir::new().expect("tempdir");
     let ws = tmp.path();
     fs::create_dir_all(ws.join("docs/.atomic")).expect("mkdir");
 
-    let audit = audit_dir();
+    let mut rules = false;
     for name in ["sections.json", "order.json", "narrative-rules.json"] {
-        let src = audit.join(name);
-        fs::copy(&src, ws.join(name))
-            .unwrap_or_else(|e| panic!("the frozen record must hold {}: {e}", src.display()));
+        let src = dir.join(name);
+        if !src.exists() {
+            continue;
+        }
+        fs::copy(&src, ws.join(name)).map_err(|e| format!("copy {}: {e}", src.display()))?;
+        rules |= name == "narrative-rules.json";
     }
     fs::write(
         ws.join("facts.json"),
@@ -101,8 +122,14 @@ pub fn dnd_quest_workspace_try(facts: &serde_json::Value) -> Result<TempDir, Str
 
     fs::write(
         ws.join("mnemosyne.toml"),
-        "[workspace]\n[continuity]\ncanon_order_path = \"order.json\"\n\
-         rules_path = \"narrative-rules.json\"\n",
+        format!(
+            "[workspace]\n[continuity]\ncanon_order_path = \"order.json\"\n{}",
+            if rules {
+                "rules_path = \"narrative-rules.json\"\n"
+            } else {
+                ""
+            }
+        ),
     )
     .expect("write config");
     fs::write(
@@ -116,12 +143,18 @@ pub fn dnd_quest_workspace_try(facts: &serde_json::Value) -> Result<TempDir, Str
     )
     .expect("write seed");
 
-    run_ok(ws, &["import-sections", "--manifest", "sections.json"]);
-    let facts_import = run(ws, &["import-facts", "--manifest", "facts.json"]);
-    if !facts_import.status.success() {
-        return Err(String::from_utf8_lossy(&facts_import.stderr)
-            .trim()
-            .to_string());
+    for import in [
+        ["import-sections", "--manifest", "sections.json"],
+        ["import-facts", "--manifest", "facts.json"],
+    ] {
+        let out = run(ws, &import);
+        if !out.status.success() {
+            return Err(format!(
+                "{}: {}",
+                import[0],
+                String::from_utf8_lossy(&out.stderr).trim()
+            ));
+        }
     }
     Ok(tmp)
 }
