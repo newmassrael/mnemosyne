@@ -4770,6 +4770,18 @@ pub fn append_confirmation_event(
             "rationale must be non-blank (esp. for Refute, sec 4.1)".to_string(),
         ));
     }
+    // Round 1022's probe sweep found this field storing `mn-probe-names-nothing`
+    // verbatim, and the CLI's own `--timestamp <iso>` said the contract while
+    // nothing held it. A ledger whose reason for existing is a verification
+    // audit cannot have a time axis that accepts any string: an event that
+    // cannot be placed in time cannot be read as evidence of when anything was
+    // checked.
+    if let Err(why) = check_utc_instant(&event.timestamp) {
+        return Err(AtomicMutateError::Validation(format!(
+            "timestamp `{}` is not a canonical UTC instant: {why}",
+            event.timestamp
+        )));
+    }
     // R287 fail-loud: a claim about a non-existent section is a silent footgun.
     // Only section existence is checked here; binding existence + the
     // `Verifies` kind are evaluated by the `confirmed?` predicate (R418), which
@@ -4806,6 +4818,83 @@ pub fn append_confirmation_event(
 /// EXCLUDED — they are payload of the act, not its identity. Two identical acts
 /// collide (idempotent re-append rejects); distinct independent confirmations
 /// (a different `confirming_run` / `timestamp`) get distinct ids and accumulate.
+/// A CANONICAL UTC INSTANT — exactly `YYYY-MM-DDTHH:MM:SSZ`, and nothing else.
+///
+/// NARROWER THAN RFC 3339 ON PURPOSE. The general form admits `+09:00` offsets
+/// and fractional seconds, and two instants written in different offsets do not
+/// sort into the order they happened. The ledger this guards is append-only and
+/// read as a sequence, so requiring one fixed-width UTC form makes lexicographic
+/// order the same as chronological order, which is a property the store gets for
+/// free and a parser cannot give it back later.
+///
+/// Hand-written rather than delegated because the workspace carries no date
+/// dependency and this shape is smaller than one: a fixed layout, a range per
+/// field, and a real calendar day. A leap second (`:60`) is accepted, since RFC
+/// 3339 admits it and a confirmer's clock may report one.
+/// THE ONE PLACE THE ENFORCED TIMESTAMP FORM IS WRITTEN. The checker below reads
+/// its length from here, its refusal quotes it, and the two agent-facing
+/// surfaces that STATE the contract — the MCP schema's field doc and the CLI's
+/// usage line — are gated on containing it. Before Round 1022 the CLI said
+/// `--timestamp <iso>` and nothing held it; three hand-written copies of a rule
+/// is how that happens again.
+pub const UTC_INSTANT_FORM: &str = "YYYY-MM-DDTHH:MM:SSZ";
+
+fn check_utc_instant(s: &str) -> Result<(), String> {
+    let b = s.as_bytes();
+    if b.len() != UTC_INSTANT_FORM.len() {
+        return Err(format!(
+            "expected {} characters in the form `{UTC_INSTANT_FORM}`, got {}",
+            UTC_INSTANT_FORM.len(),
+            b.len()
+        ));
+    }
+    for (i, want) in [
+        (4, b'-'),
+        (7, b'-'),
+        (10, b'T'),
+        (13, b':'),
+        (16, b':'),
+        (19, b'Z'),
+    ] {
+        if b[i] != want {
+            return Err(format!(
+                "expected `{}` at position {i}, found `{}`",
+                want as char, b[i] as char
+            ));
+        }
+    }
+    let num = |from: usize, to: usize| -> Result<u32, String> {
+        s[from..to]
+            .parse::<u32>()
+            .map_err(|_| format!("`{}` is not a number", &s[from..to]))
+    };
+    let (year, month, day) = (num(0, 4)?, num(5, 7)?, num(8, 10)?);
+    let (hour, minute, second) = (num(11, 13)?, num(14, 16)?, num(17, 19)?);
+    if !(1..=12).contains(&month) {
+        return Err(format!("month {month} is not in 1..=12"));
+    }
+    let leap = year % 4 == 0 && (year % 100 != 0 || year % 400 == 0);
+    let days = match month {
+        1 | 3 | 5 | 7 | 8 | 10 | 12 => 31,
+        4 | 6 | 9 | 11 => 30,
+        _ if leap => 29,
+        _ => 28,
+    };
+    if !(1..=days).contains(&day) {
+        return Err(format!("day {day} is not in 1..={days} for month {month}"));
+    }
+    if hour > 23 {
+        return Err(format!("hour {hour} is not in 0..=23"));
+    }
+    if minute > 59 {
+        return Err(format!("minute {minute} is not in 0..=59"));
+    }
+    if second > 60 {
+        return Err(format!("second {second} is not in 0..=60"));
+    }
+    Ok(())
+}
+
 fn derive_confirmation_event_id(event: &ConfirmationEvent) -> String {
     let (kind, section, file, symbol) = match &event.claim {
         ConfirmationClaim::VerifiesBinding {
@@ -4823,6 +4912,19 @@ fn derive_confirmation_event_id(event: &ConfirmationEvent) -> String {
         }
     };
     // Unit-separator join so distinct field tuples can never alias.
+    //
+    // THE CLOCK IS NOT PART OF THE ACT (Round 1022's measurement). This function
+    // carried `event.timestamp` as its last field, and that made the idempotence
+    // this primitive documents — "a re-append of the identical act hashes to the
+    // same id and is rejected" — FALSE: one confirmer re-running the same check
+    // stamps a new second and the ledger takes a second row, three times in a
+    // row when measured. What distinguishes two genuine verification acts is
+    // already here: `confirming_run` differs per run, and the self-confirm
+    // invariant above forces it to differ from the authoring run. So the clock
+    // could only ever let ONE run record ONE act repeatedly, which is the
+    // opposite of what an append-only evidence ledger is for. It stays a field
+    // — the recorded provenance of when the confirmer says it checked — and
+    // stops being an identity.
     let canonical = [
         kind,
         section,
@@ -4834,7 +4936,6 @@ fn derive_confirmation_event_id(event: &ConfirmationEvent) -> String {
         event.verdict.as_str(),
         event.authoring_run.as_str(),
         event.confirming_run.as_str(),
-        event.timestamp.as_str(),
     ]
     .join("\u{1f}");
     format!("evt-{}", &sha256_hex(canonical.as_bytes())[..16])

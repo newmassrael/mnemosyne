@@ -1738,6 +1738,40 @@
         "`add_confirmation_event.timestamp` stores `mn-probe-names-nothing` verbatim: the max-rigor confirmation ledger's time axis accepts any string"
       ]
     },
+    "Round 1023": {
+      "decision_summary": "Round 1022's sweep reported that `add_confirmation_event.timestamp` stored the sentinel `mn-probe-names-nothing` verbatim, and following that found the worse half beneath it: the event id was DERIVED with the clock in it, so the idempotence this primitive documents — \"a re-append of the identical act hashes to the same id and is rejected (idempotent append-only)\" — was FALSE. Measured before the repair: one act, restamped a second later and then given a string that is not a time, was accepted three times and the ledger held three rows. The max-rigor confirmation ledger is the substrate an external consumer reads as evidence of what was verified, and it could be inflated by one confirmer re-running with a moving clock.\n\nTHE CLOCK IS NOT PART OF THE ACT, so it comes out of the id. What distinguishes two genuine verification runs was already in the derivation — `confirming_run`, which the self-confirm invariant forces to differ from the authoring run — so the timestamp could only ever let ONE run record ONE act repeatedly. It stays a field, the recorded provenance of when the confirmer says it looked, and stops being an identity.\n\nAND THE TIME AXIS IS NOW A TIME: exactly `YYYY-MM-DDTHH:MM:SSZ`. Narrower than RFC 3339 on purpose, because the general form admits offsets and fractional seconds and two instants written in different offsets do not sort into the order they happened; one fixed-width UTC form makes lexicographic order chronological, which an append-only ledger gets for free and no later parser can give back. Hand-written rather than delegated — the workspace carries no date dependency and a fixed layout with a range per field and a real calendar day is smaller than one.\n\nThe rule had been stated and unenforced in two places at once: the CLI's usage said `--timestamp <iso>` and the MCP schema said \"caller-supplied timestamp\". Both now read the validator's own const, and both are gated on containing it, because three hand-written copies of one rule is how this recurs.",
+      "changes_bullets": [
+        "`timestamp` out of `derive_confirmation_event_id`: one verification act records once however many times its clock moves, which is what the primitive already documented",
+        "`check_utc_instant` in the primitive, so both wires get one invariant structurally rather than by parity: exactly `YYYY-MM-DDTHH:MM:SSZ`, real calendar day, leap second admitted",
+        "`UTC_INSTANT_FORM` is the one home for the form; the MCP field doc and the CLI usage line are each gated on containing it"
+      ],
+      "verification_bullets": [
+        "the measurement is now the assertion: the same act restamped is refused saying \"identical act\", seven malformed instants are each refused naming what is wrong, a leap day is accepted and 29 February 2026 is not, and the ledger holds one row per RUN",
+        "injection I6 (put the clock back in the id) turns it red on the restamped arm; injection I7 (drop the validation) turns it red and leaves the other 218 tests in that crate green",
+        "my own first draft of the test was wrong in a way the repair caught: the leap-day arm reused the same act and was refused as a duplicate, so the calendar arms had to become distinct runs",
+        "workspace 1719 tests green, clippy -D warnings clean, fmt clean, validate-workspace T1 and T3 = 0"
+      ],
+      "carry_forward_bullets": [
+        "the store held zero confirmation events, so no id in it changes shape; a store that already held some would need the ids rederived and this round would have been a migration",
+        "nothing reads `timestamp` except the id derivation it just left, so the ledger still has no verb that orders or filters by time — the field is now trustworthy and unused"
+      ],
+      "publishable_decision_summary": "Round 1022's sweep reported that `add_confirmation_event.timestamp` stored the sentinel `mn-probe-names-nothing` verbatim, and following that found the worse half beneath it: the event id was DERIVED with the clock in it, so the idempotence this primitive documents — \"a re-append of the identical act hashes to the same id and is rejected (idempotent append-only)\" — was FALSE. Measured before the repair: one act, restamped a second later and then given a string that is not a time, was accepted three times and the ledger held three rows. The max-rigor confirmation ledger is the substrate an external consumer reads as evidence of what was verified, and it could be inflated by one confirmer re-running with a moving clock.\n\nTHE CLOCK IS NOT PART OF THE ACT, so it comes out of the id. What distinguishes two genuine verification runs was already in the derivation — `confirming_run`, which the self-confirm invariant forces to differ from the authoring run — so the timestamp could only ever let ONE run record ONE act repeatedly. It stays a field, the recorded provenance of when the confirmer says it looked, and stops being an identity.\n\nAND THE TIME AXIS IS NOW A TIME: exactly `YYYY-MM-DDTHH:MM:SSZ`. Narrower than RFC 3339 on purpose, because the general form admits offsets and fractional seconds and two instants written in different offsets do not sort into the order they happened; one fixed-width UTC form makes lexicographic order chronological, which an append-only ledger gets for free and no later parser can give back. Hand-written rather than delegated — the workspace carries no date dependency and a fixed layout with a range per field and a real calendar day is smaller than one.\n\nThe rule had been stated and unenforced in two places at once: the CLI's usage said `--timestamp <iso>` and the MCP schema said \"caller-supplied timestamp\". Both now read the validator's own const, and both are gated on containing it, because three hand-written copies of one rule is how this recurs.",
+      "publishable_changes_bullets": [
+        "`timestamp` out of `derive_confirmation_event_id`: one verification act records once however many times its clock moves, which is what the primitive already documented",
+        "`check_utc_instant` in the primitive, so both wires get one invariant structurally rather than by parity: exactly `YYYY-MM-DDTHH:MM:SSZ`, real calendar day, leap second admitted",
+        "`UTC_INSTANT_FORM` is the one home for the form; the MCP field doc and the CLI usage line are each gated on containing it"
+      ],
+      "publishable_verification_bullets": [
+        "the measurement is now the assertion: the same act restamped is refused saying \"identical act\", seven malformed instants are each refused naming what is wrong, a leap day is accepted and 29 February 2026 is not, and the ledger holds one row per RUN",
+        "injection I6 (put the clock back in the id) turns it red on the restamped arm; injection I7 (drop the validation) turns it red and leaves the other 218 tests in that crate green",
+        "my own first draft of the test was wrong in a way the repair caught: the leap-day arm reused the same act and was refused as a duplicate, so the calendar arms had to become distinct runs",
+        "workspace 1719 tests green, clippy -D warnings clean, fmt clean, validate-workspace T1 and T3 = 0"
+      ],
+      "publishable_carry_forward_bullets": [
+        "the store held zero confirmation events, so no id in it changes shape; a store that already held some would need the ids rederived and this round would have been a migration",
+        "nothing reads `timestamp` except the id derivation it just left, so the ledger still has no verb that orders or filters by time — the field is now trustworthy and unused"
+      ]
+    },
     "Round 252": {
       "decision_summary": "Parser CommonMark conformance — recognize indented fenced code blocks (§98) and require whitespace after ATX hash sequence (§62)",
       "changes_bullets": [

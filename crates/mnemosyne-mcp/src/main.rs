@@ -322,7 +322,11 @@ pub struct AddConfirmationEventArgs {
     /// The run producing THIS verdict (must differ from `authoring_run`).
     pub confirming_run: String,
     pub rationale: String,
-    /// Caller-supplied timestamp (determinism — never generated in-core).
+    /// When the confirmer says it checked, as a canonical UTC instant —
+    /// EXACTLY `YYYY-MM-DDTHH:MM:SSZ`, no offset and no fractional seconds, so
+    /// the append-only ledger sorts chronologically by sorting lexically. Never
+    /// generated in-core (determinism), and NOT part of the derived event id: one
+    /// verification act records once however many times its clock moves.
     pub timestamp: String,
     pub spec_sha256: Option<String>,
     #[serde(default)]
@@ -6378,6 +6382,149 @@ mod tests {
             [set_disclosure(SetDisclosureArgs) {"telling_id": "t-quiet", "fact_id": "f-at-b", "mode": "state", "first_at": [{"branch": "main", "coords": ["sc-03"]}]}]
             validate_disclosure_leak(DisclosureLeakArgs) {"telling": "t-quiet", "against": "blind.json", "world": "main", "truth_frame": "ground-truth", "order_path": "order-c.json"}
             ."order_path" = "order-b.json" seen "\"kind\": \"early\"" in output;
+    }
+
+    /// THE SURFACE THAT STATES THE TIMESTAMP CONTRACT SAYS THE FORM THAT IS
+    /// ENFORCED, and cannot drift from it — both read the same const.
+    #[test]
+    fn the_timestamp_schema_states_the_form_the_store_enforces() {
+        let tool = agent_facing_tools()
+            .into_iter()
+            .find(|t| t.name == "add_confirmation_event")
+            .expect("the tool must be routed");
+        let described = tool
+            .input_schema
+            .get("properties")
+            .and_then(|p| p.as_object())
+            .and_then(|p| p.get("timestamp"))
+            .and_then(|f| f.get("description"))
+            .and_then(|d| d.as_str())
+            .unwrap_or_default()
+            .to_string();
+        assert!(
+            described.contains(atomic::UTC_INSTANT_FORM),
+            "the `timestamp` field does not show an agent the form the store \
+             enforces (`{}`), which is the state Round 1022 found the CLI in — \
+             it said `<iso>` and any string was accepted: {described}",
+            atomic::UTC_INSTANT_FORM
+        );
+    }
+
+    /// THE CONFIRMATION LEDGER'S IDEMPOTENCE SURVIVES A RESTAMPED CLOCK, AND ITS
+    /// TIME AXIS IS A TIME.
+    ///
+    /// Round 1022's probe sweep found `timestamp` stored verbatim — the sentinel
+    /// `mn-probe-names-nothing` went in and came back out of the store — and the
+    /// CLI's own `--timestamp <iso>` had been stating the contract in prose while
+    /// nothing held it. Following that found the worse half: the event id was
+    /// DERIVED with the clock in it, so the idempotence the primitive documents
+    /// ("a re-append of the identical act hashes to the same id and is rejected")
+    /// did not hold. Measured before the repair: the same act, restamped one
+    /// second later and then given a string that is not a time at all, was
+    /// accepted three times and the ledger held three rows.
+    ///
+    /// Both halves are asserted here rather than in the primitive's own tests,
+    /// because this is the wire an agent reaches them through and the argument
+    /// that was unchecked is one an agent sends.
+    #[tokio::test]
+    async fn one_verification_act_records_once_whatever_the_clock_says() {
+        let tmp = agent_workspace();
+        let server = MnemosyneServer::new(tmp.path().to_path_buf()).expect("server");
+        branch_story(&server, tmp.path()).await;
+        // THE ACT IS WHAT WAS VERIFIED AND BY WHICH RUN; the clock is only when
+        // the confirmer says it looked. Two arms that mean to test the CALENDAR
+        // rather than idempotence have to be different acts, which is what
+        // `run` names.
+        let act = |timestamp: &str, run: &str| {
+            serde_json::json!({
+                "section_id": "sc-01", "confirmer_kind": "model",
+                "confirmer_id": "the author", "confirmer_version": "1",
+                "method": "semantic_review", "verdict": "confirm",
+                "rationale": "the scene reads as written", "timestamp": timestamp,
+                "authoring_run": "run-a", "confirming_run": run
+            })
+        };
+        let call = |json: serde_json::Value| {
+            let args: AddConfirmationEventArgs =
+                serde_json::from_value(json).expect("the agent-facing shape parses");
+            server.add_confirmation_event(Parameters(args))
+        };
+        let first = call(act("2026-08-04T00:00:00Z", "run-b")).await;
+        assert!(
+            first.is_error != Some(true),
+            "a canonical UTC instant must be accepted: {:?}",
+            first.content
+        );
+        // THE SAME ACT, ONE SECOND LATER. Nothing about what was verified
+        // changed, so the ledger must not grow.
+        let again = call(act("2026-08-04T00:00:01Z", "run-b")).await;
+        assert!(
+            again.is_error == Some(true),
+            "the same verification act was recorded a SECOND time because the \
+             clock moved, so the documented idempotence is keyed on when the \
+             confirmer ran rather than on what it confirmed: {:?}",
+            again.content
+        );
+        assert!(
+            answer_text(&again).contains("identical act"),
+            "the refusal must say it is the same act, or a caller reads it as a \
+             different rejection: {}",
+            answer_text(&again)
+        );
+        // A TIME AXIS THAT TAKES ANYTHING IS NOT A TIME AXIS. Each of these is
+        // refused for a reason that names what is wrong with it.
+        for (timestamp, why) in [
+            ("not-a-time-at-all", "20 characters"),
+            ("2026-08-04T00:00:00+09:00", "20 characters"),
+            ("2026-08-04T00:00:00.5Z", "20 characters"),
+            ("2026-13-04T00:00:00Z", "month 13"),
+            ("2026-02-30T00:00:00Z", "day 30"),
+            ("2026-08-04T24:00:00Z", "hour 24"),
+            ("2026-08-04 00:00:00Z", "`T` at position 10"),
+        ] {
+            let refused = call(act(timestamp, "run-b")).await;
+            assert!(
+                refused.is_error == Some(true),
+                "`{timestamp}` was accepted as a timestamp: {:?}",
+                refused.content
+            );
+            let said = answer_text(&refused);
+            assert!(
+                said.contains(why),
+                "`{timestamp}` was refused without saying `{why}`, so the caller \
+                 is not told what to fix: {said}"
+            );
+        }
+        // A LEAP DAY IS A REAL DAY, so the calendar check has to know the year.
+        let leap = call(act("2028-02-29T00:00:00Z", "run-c")).await;
+        assert!(
+            leap.is_error != Some(true),
+            "2028 is a leap year and 29 February is a real day: {:?}",
+            leap.content
+        );
+        let not_leap = call(act("2026-02-29T00:00:00Z", "run-d")).await;
+        assert!(
+            not_leap.is_error == Some(true),
+            "2026 is not a leap year, so 29 February is not a day in it"
+        );
+        // TWO ROWS FOR TWO ACTS. `run-b` recorded once however many times its
+        // clock moved, and `run-c` is a second, genuinely distinct verification
+        // run — which is exactly the distinction the id keeps now that the clock
+        // is out of it.
+        let store: serde_json::Value = serde_json::from_str(
+            &std::fs::read_to_string(tmp.path().join("docs/.atomic/workspace.atomic.json"))
+                .expect("read the store"),
+        )
+        .expect("the store parses");
+        assert_eq!(
+            store["confirmation_events"]
+                .as_object()
+                .map(|o| o.len())
+                .unwrap_or(0),
+            2,
+            "the ledger should hold one row per verification RUN — `run-b` once \
+             despite three clocks, and `run-c` once"
+        );
     }
 
     probed! {

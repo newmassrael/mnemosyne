@@ -1257,7 +1257,7 @@ static COMMANDS: &[Command] = &[
         aliases: &[],
         group: Some(&GROUP_ATOMIC_MUTATE),
         blank_before: false,
-        usage: &["add-confirmation-event --section §<N> [--file <path> --symbol <sym>] --confirmer-kind tool|model --confirmer-id <id> --confirmer-version <v> --method linkage_check|semantic_review|coverage_attestation --verdict confirm|refute --authoring-run <id> --confirming-run <id> --rationale <text> --timestamp <iso> [--spec-sha256 <h>] [--code-sha256 <h>] [--test-sha256 <h>] [--sidecar <path>] [--json]"],
+        usage: &["add-confirmation-event --section §<N> [--file <path> --symbol <sym>] --confirmer-kind tool|model --confirmer-id <id> --confirmer-version <v> --method linkage_check|semantic_review|coverage_attestation --verdict confirm|refute --authoring-run <id> --confirming-run <id> --rationale <text> --timestamp YYYY-MM-DDTHH:MM:SSZ [--spec-sha256 <h>] [--code-sha256 <h>] [--test-sha256 <h>] [--sidecar <path>] [--json]"],
         notes: &[],
         run: |c| atomic_cli::cmd_add_confirmation_event(&c.anchor()?, c.rest()),
     },
@@ -6946,6 +6946,26 @@ mod tests {
     /// exists to catch was invisible to it.
     ///
     /// An alias may lead instead — some usages document the alias spelling.
+    /// THE USAGE LINE THAT STATES THE TIMESTAMP CONTRACT SAYS THE FORM THE STORE
+    /// ENFORCES. It said `<iso>` until Round 1022 measured that any string was
+    /// accepted; a usage line and a validator that hold the rule separately are
+    /// two copies, and this reads the validator's own const.
+    #[test]
+    fn the_confirmation_usage_states_the_timestamp_form_the_store_enforces() {
+        let line = COMMANDS
+            .iter()
+            .find(|c| c.name == "add-confirmation-event")
+            .and_then(|c| c.usage.first())
+            .copied()
+            .expect("add-confirmation-event must be a dispatched command");
+        assert!(
+            line.contains(mnemosyne_atomic::UTC_INSTANT_FORM),
+            "the usage line does not state the timestamp form the store enforces \
+             (`{}`): {line}",
+            mnemosyne_atomic::UTC_INSTANT_FORM
+        );
+    }
+
     #[test]
     fn every_usage_line_leads_with_a_verb_that_dispatches() {
         for command in COMMANDS {
