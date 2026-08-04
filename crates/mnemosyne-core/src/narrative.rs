@@ -1000,6 +1000,32 @@ pub struct NarrativeFact {
     pub quote_sha256: Option<String>,
 }
 
+impl NarrativeFact {
+    /// Is this fact marked a narrative SETUP — the half of the setup/payoff
+    /// relation the setup declares about ITSELF (Round 442)?
+    ///
+    /// THE one statement of "a `pays_off` edge names a setup" (Round 1037).
+    /// Every write path that could create the disagreement reads this
+    /// (`add_fact` / `import_facts` / `amend_fact`, via the shared ref check
+    /// and the amend's inbound guard), and so does the continuity scan that
+    /// re-reads an out-of-band edit — one invariant, one predicate, so the
+    /// paths cannot enforce different halves of it (the CLAUDE.md
+    /// half-enforced-invariant rule).
+    ///
+    /// The marking is NOT bookkeeping the payoff edge makes redundant: the
+    /// quest layer binds a giving setup only through it (`quest_giving_setups`
+    /// intersects `pays_off` targets with the `Expected` set), so a payoff
+    /// naming an unmarked fact leaves its quest with no giver, no locator and
+    /// no completion — a store every gate passes and no runtime can hand out.
+    #[must_use]
+    pub fn is_marked_setup(&self) -> bool {
+        match self.payoff_expectation {
+            PayoffExpectation::Expected => true,
+            PayoffExpectation::Unmarked => false,
+        }
+    }
+}
+
 /// How a fact reaches the READER under a given telling (Round 506, design sec
 /// 7.24 — the disclosure/discourse axis). `Withhold` (the default = the
 /// sparse-frame ethos applied to disclosure) means never told: the reader

@@ -115,15 +115,25 @@ fn the_quest_graph_reproduces_the_bindings_the_ledger_recorded() {
     let tmp = rebuilt_workspace();
     let report = json_report(tmp.path(), &["report-quest-graph", "--telling", "delve"]);
 
-    let unresolved: Vec<&str> = report["unresolved_quests"]
+    // R1037 — each row carries WHY no giving bound. `q-main` has three
+    // `completed_by` facts and R569 binds no giving for the split encoding the
+    // author used, which is a different thing from a quest whose completion was
+    // never written.
+    let unresolved: Vec<String> = report["unresolved_quests"]
         .as_array()
         .expect("unresolved array")
         .iter()
-        .map(|v| v.as_str().expect("quest id"))
+        .map(|v| {
+            format!(
+                "{} ({})",
+                v["quest"].as_str().expect("quest id"),
+                v["reason"].as_str().expect("reason")
+            )
+        })
         .collect();
     assert_eq!(
         unresolved,
-        ["q-main"],
+        ["q-main (completion_gives_nothing)"],
         "R569 chose an honest unresolved on the split encoding over a heuristic"
     );
 
@@ -191,7 +201,14 @@ fn the_open_verdict_has_an_instance_here_and_the_census_is_pinned() {
     // worth keeping loadable: a store of FINISHED manuscripts yields none.
     assert_eq!(
         census,
-        BTreeMap::from([("done", 7), ("open", 5), ("unknown", 4)]),
+        BTreeMap::from([("done", 10), ("open", 5), ("unknown", 1)]),
         "the per-world verdict census over 4 quests x 4 world-lines is pinned"
     );
+    // R1037 — this census WAS {done 7, open 5, unknown 4}. The three verdicts
+    // that moved are `q-main` on the three roads that complete it: R569 binds
+    // no giving for its split encoding, and the state used to be read only from
+    // the giving's coverage, so the corpus's MAIN quest was `unknown` on every
+    // road while `validate-continuity` judged it discharged on three of them.
+    // The one remaining `unknown` is `q-main` on `main`, the road that never
+    // completes it — which both reads have always agreed about.
 }

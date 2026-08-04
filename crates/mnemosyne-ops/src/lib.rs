@@ -1084,10 +1084,11 @@ pub struct AuthoringFrontierReport {
     /// Dangling setups per world-line (Expected facts with no visible payoff,
     /// R442) — the Chekhov guns still to fire. Only worlds with ≥ 1 dangling.
     pub dangling_setups: BTreeMap<String, Vec<String>>,
-    /// Quests whose giving setup could not be bound (no completed_by anchor,
-    /// R568). Present only when a telling is given.
+    /// Quests whose giving setup could not be bound (R568) — no `completed_by`
+    /// fact, or one that pays off no `Expected` setup, told apart by the R1037
+    /// reason. Present only when a telling is given.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub unresolved_quests: Option<Vec<String>>,
+    pub unresolved_quests: Option<Vec<mnemosyne_validate::continuity::UnresolvedQuest>>,
     /// Facts never given an explicit disclosure decision under the telling
     /// (withheld by default, R507). Present only when a telling is given.
     #[serde(skip_serializing_if = "Option::is_none")]

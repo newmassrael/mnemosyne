@@ -61,12 +61,50 @@ pub fn json_report(workspace: &Path, args: &[&str]) -> serde_json::Value {
     serde_json::from_str(&run_ok(workspace, &full)).expect("report json")
 }
 
+/// Any JSON this tree tracks, read as JSON — a manifest, a sidecar, a fixture.
+pub fn read_json(path: &Path) -> serde_json::Value {
+    let text =
+        fs::read_to_string(path).unwrap_or_else(|e| panic!("{} unreadable: {e}", path.display()));
+    serde_json::from_str(&text).unwrap_or_else(|e| panic!("{} is not json: {e}", path.display()))
+}
+
 /// The tracked fact manifest — the migrated half of the frozen record.
 pub fn dnd_quest_facts() -> serde_json::Value {
-    let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/dnd-quest/facts.json");
-    let text = fs::read_to_string(&path)
-        .unwrap_or_else(|e| panic!("fixture {} unreadable: {e}", path.display()));
-    serde_json::from_str(&text).expect("fixture json")
+    read_json(&Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/dnd-quest/facts.json"))
+}
+
+/// Every authored corpus this repository TRACKS: a fact manifest with a
+/// `sections.json` and an `order.json` beside it. Asked of `git ls-files`, not
+/// of the working directory — an untracked stray is not evidence about what an
+/// author ships, and a walk over the filesystem would count it.
+///
+/// Round 1036 built this to widen a refuter's population from one corpus to
+/// forty-three; it lives here because a second copy is how two tests come to
+/// disagree about which stores an author shipped.
+pub fn authored_corpora() -> Vec<PathBuf> {
+    let listed = Command::new("git")
+        .args(["ls-files", "claudedocs"])
+        .current_dir(repo_root())
+        .output()
+        .expect("git ls-files");
+    assert!(listed.status.success(), "git ls-files must exit 0");
+    let root = repo_root();
+    let mut out: Vec<PathBuf> = String::from_utf8(listed.stdout)
+        .expect("git output is utf-8")
+        .lines()
+        .filter(|path| path.ends_with("/facts.json"))
+        .filter_map(|path| root.join(path).parent().map(Path::to_path_buf))
+        .filter(|dir| dir.join("sections.json").exists() && dir.join("order.json").exists())
+        .collect();
+    out.sort();
+    out.dedup();
+    assert!(
+        out.len() > 20,
+        "the corpus sweep found {} authored corpora, which is a listing that \
+         stopped working rather than a repository that emptied",
+        out.len()
+    );
+    out
 }
 
 /// Rebuild the store the way the experiment's runbook does — fresh seed, then

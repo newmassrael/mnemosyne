@@ -3397,6 +3397,14 @@ pub fn scan_continuity(
     }
     // Payoff edge integrity (Round 442): identity refs re-checked against
     // out-of-band edits, exactly like conflict/succession targets.
+    //
+    // Round 1037 asked whether the target must also AGREE it is a setup (an
+    // edge into an `Unmarked` fact) and the answer is NO — see
+    // `NarrativeFact::is_marked_setup`: R618/R619 lock the Unmarked target as
+    // the author's way of saying "this payoff of a completion is not the
+    // quest's giving", so demanding the marking would delete a discrimination
+    // the tree already tested. The 44 authored corpora never exercise it (296
+    // of 296 edges name a marked setup) and the rule is refuted anyway.
     for (aid, a) in facts {
         for target in &a.pays_off {
             if !facts.contains_key(target) {
@@ -5790,7 +5798,10 @@ pub fn payoff_coverage(
                     .or_default()
                     .push((*pid).to_string());
                 never_credited.remove(&((*pid).into(), target.clone()));
-                if t.payoff_expectation != mnemosyne_core::PayoffExpectation::Expected {
+                // The SAME predicate the write paths and the scan read (R1037)
+                // — the report's world-scoped honesty count and the store-wide
+                // verdict cannot come to mean different things about one edge.
+                if !t.is_marked_setup() {
                     cov.payoffs_to_unmarked.push(PayoffEdgeRef {
                         payoff: (*pid).to_string(),
                         setup: target.to_string(),
@@ -5805,7 +5816,7 @@ pub fn payoff_coverage(
             }
         }
         for (id, fact) in &visible {
-            if fact.payoff_expectation != mnemosyne_core::PayoffExpectation::Expected {
+            if !fact.is_marked_setup() {
                 cov.exempt += 1;
                 continue;
             }
@@ -7288,7 +7299,7 @@ fn quest_giving_setups(
     let facts = &store.narrative_facts;
     let expected: BTreeSet<&str> = facts
         .iter()
-        .filter(|(_, f)| f.payoff_expectation == mnemosyne_core::PayoffExpectation::Expected)
+        .filter(|(_, f)| f.is_marked_setup())
         .map(|(id, _)| id.as_str())
         .collect();
     // `completed_by`-typed facts grouped by their subject quest.
@@ -7318,6 +7329,163 @@ fn quest_giving_setups(
             (quest_id, givings)
         })
         .collect()
+}
+
+/// Where each quest is DISCHARGED on ONE road: its VISIBLE `completed_by`
+/// facts, indexed by quest (Round 1031, hoisted to a shared kernel in R1037).
+///
+/// THE one definition of "the player finished this quest here". There were two.
+/// [`quest_prerequisite_judgements`] read the completion fact directly, while
+/// [`quest_graph`]'s per-world state read the R442 payoff coverage of the
+/// quest's GIVING setup — and on the only blind-authored corpus this repository
+/// can load they disagreed about its MAIN quest: the gate judged `q-main`
+/// discharged on three roads and named the coordinate, while the runtime
+/// projection reported `unknown` on all four. R569 binds no giving when the
+/// completion fact carries no `pays_off` of its own (the split encoding that
+/// author used), so the state derived from the giving had nothing to read.
+///
+/// Reading the completion fact is NOT the R568 scene-proximity rescue R569
+/// refused: that inferred a quest's GIVING from a sibling fact's position,
+/// which could bleed across two quests sharing a scene. This reads the fact
+/// that itself claims `<quest> completed_by <actor>` — the store's own direct
+/// statement, bound to no sibling. `giving_facts` stays exactly as R569 left it.
+///
+/// `Vis::Unknown` is deliberately NOT a discharge — an undecidable membership
+/// is not evidence that the player got there (the R447 discipline).
+fn quest_discharges<'a>(
+    store: &'a AtomicStore,
+    world: &mnemosyne_core::BranchId,
+    membership: &mnemosyne_core::WorldMembership,
+    order: &CanonOrder,
+) -> BTreeMap<&'a mnemosyne_core::EntityId, Vec<&'a mnemosyne_core::FactId>> {
+    let mut out: BTreeMap<&mnemosyne_core::EntityId, Vec<&mnemosyne_core::FactId>> =
+        BTreeMap::new();
+    for (fid, fact) in &store.narrative_facts {
+        let Some(claim) = &fact.typed else { continue };
+        if claim.predicate != QUEST_PRED_COMPLETED_BY {
+            continue;
+        }
+        if visibility(world, membership, order, fact) != Vis::In {
+            continue;
+        }
+        out.entry(&claim.subject).or_default().push(fid);
+    }
+    out
+}
+
+/// WHY a quest's giving setup could not be bound (Round 1037).
+///
+/// `unresolved_quests` carried both causes behind a bare id since R568, and
+/// they are not the same kind of thing — one is unwritten work and the other is
+/// a contradiction. A consumer holding only the id cannot tell them apart, and
+/// a gate keyed on the list would have to reject both or neither (the R918/R924
+/// line: a reader who cannot tell "nothing to prove here" from "this is broken"
+/// is misinformed by a clean report).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum UnresolvedQuestReason {
+    /// No `completed_by` fact names this quest at all — the author has not
+    /// written its completion yet. The `dangling` shape (a WIP story has
+    /// unfinished quests by definition): surfaced, deliberately never gated.
+    NoCompletion,
+    /// A `completed_by` fact DOES name this quest and pays off no `Expected`
+    /// setup. The store then says both "this quest is completed by X" and
+    /// "nothing gives this quest", and a quest's state is derived from its
+    /// giving's payoff coverage — so it reads `unknown` on every road, forever.
+    /// The runtime is handed an obligation it can never show as available and
+    /// never show as done. Gated.
+    CompletionGivesNothing,
+}
+
+impl UnresolvedQuestReason {
+    /// Stable lowercase label (matches the serde rename), for human output.
+    #[must_use]
+    pub fn as_str(self) -> &'static str {
+        match self {
+            UnresolvedQuestReason::NoCompletion => "no_completion",
+            UnresolvedQuestReason::CompletionGivesNothing => "completion_gives_nothing",
+        }
+    }
+}
+
+/// One quest with no giving setup bound, and why (Round 1037).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct UnresolvedQuest {
+    pub quest: String,
+    pub reason: UnresolvedQuestReason,
+    /// The `completed_by` facts naming this quest, sorted — empty exactly when
+    /// the reason is `NoCompletion`. A repair has to amend one of THESE (or the
+    /// setup it should be paying off), so naming them is the difference between
+    /// a finding and a chore.
+    pub completions: Vec<String>,
+}
+
+impl UnresolvedQuest {
+    /// One human line: the quest, the reason, and the facts a repair touches.
+    /// Both prose wires render THIS, so neither can restate the reason in words
+    /// the type does not carry — which is how `report-quest-graph` came to print
+    /// "no completed_by anchor" over quests that have one (R1037).
+    #[must_use]
+    pub fn describe(&self) -> String {
+        if self.completions.is_empty() {
+            format!("{} ({})", self.quest, self.reason.as_str())
+        } else {
+            format!(
+                "{} ({}, completed by {})",
+                self.quest,
+                self.reason.as_str(),
+                self.completions.join(" ")
+            )
+        }
+    }
+}
+
+/// Every derived quest whose giving setup could not be bound, and why (R1037).
+///
+/// THE one derivation of the list [`quest_graph`] renders and [`scan_continuity`]
+/// gates: the report shows both causes, the gate rejects only the one that is a
+/// contradiction, and the two cannot drift because there is one walk. Order-free
+/// — whether a quest's giving binds is a property of the store, so no world-line
+/// and no canon order enter into it, which is why the gate can state it once
+/// rather than per road.
+pub fn unresolved_quests(store: &AtomicStore) -> Result<Vec<UnresolvedQuest>, String> {
+    let quests = quest_ids(store)?;
+    let giving_map = quest_giving_setups(store, &quests);
+    let mut completions_of: BTreeMap<&str, Vec<String>> = BTreeMap::new();
+    for (fid, fact) in &store.narrative_facts {
+        if let Some(claim) = &fact.typed {
+            if claim.predicate == QUEST_PRED_COMPLETED_BY {
+                completions_of
+                    .entry(claim.subject.as_str())
+                    .or_default()
+                    .push(fid.to_string());
+            }
+        }
+    }
+    Ok(quests
+        .iter()
+        .filter(|quest| {
+            giving_map
+                .get(*quest)
+                .is_none_or(std::collections::BTreeSet::is_empty)
+        })
+        .map(|quest| {
+            let mut completions = completions_of
+                .get(quest.as_str())
+                .cloned()
+                .unwrap_or_default();
+            completions.sort();
+            UnresolvedQuest {
+                reason: if completions.is_empty() {
+                    UnresolvedQuestReason::NoCompletion
+                } else {
+                    UnresolvedQuestReason::CompletionGivesNothing
+                },
+                quest: quest.to_string(),
+                completions,
+            }
+        })
+        .collect())
 }
 
 /// Round 1031 — one (quest, prerequisite, world-line, discharge) judgement.
@@ -7430,23 +7598,19 @@ pub fn quest_prerequisite_judgements(
         // its visible `completed_by` facts. `Vis::Unknown` is deliberately not
         // a discharge — an undecidable membership is not evidence that the
         // player got there (the R447 "suspended, not decided" discipline).
-        let mut discharges: BTreeMap<
-            &mnemosyne_core::EntityId,
-            BTreeSet<&mnemosyne_core::SectionId>,
-        > = BTreeMap::new();
-        for fact in store.narrative_facts.values() {
-            let Some(claim) = &fact.typed else { continue };
-            if claim.predicate != QUEST_PRED_COMPLETED_BY {
-                continue;
-            }
-            if visibility(&world, &lineage, order, fact) != Vis::In {
-                continue;
-            }
-            discharges
-                .entry(&claim.subject)
-                .or_default()
-                .insert(&fact.canon_from);
-        }
+        let discharges: BTreeMap<&mnemosyne_core::EntityId, BTreeSet<&mnemosyne_core::SectionId>> =
+            quest_discharges(store, &world, &lineage, order)
+                .into_iter()
+                .map(|(quest, completions)| {
+                    (
+                        quest,
+                        completions
+                            .into_iter()
+                            .map(|fid| &store.narrative_facts[fid].canon_from)
+                            .collect(),
+                    )
+                })
+                .collect();
         let empty = BTreeSet::new();
         for (quest, prerequisite) in &edges {
             let quest_at = discharges.get(quest).unwrap_or(&empty);
@@ -7548,10 +7712,18 @@ pub fn structural_fact_ids(store: &AtomicStore) -> Result<BTreeSet<String>, Stri
 }
 
 /// A quest's DERIVED state in one world-line (R559: "quest state DERIVED per
-/// world-line, never stored"). Open vs done is read VERBATIM from the R442
-/// payoff coverage of the quest's giving fact — paid here = done, dangling here
-/// = open, neither (the giving fact is not visible in this world) = unknown
-/// (B-1, surfaced not assumed).
+/// world-line, never stored").
+///
+/// DONE is the quest's own `completed_by` fact being visible here — the one
+/// discharge definition [`quest_discharges`] owns, shared with the R1031
+/// prerequisite gate (R1037). OPEN is read VERBATIM from the R442 payoff
+/// coverage of the quest's giving fact: dangling here = the obligation is
+/// outstanding on this road. Neither = unknown (B-1, surfaced not assumed).
+///
+/// Done was itself read from the giving's coverage until R1037, which is the
+/// same set whenever a giving is bound and EMPTY forever when R569 binds none —
+/// so the two shipped reads contradicted each other about the blind-authored
+/// corpus's main quest.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum QuestState {
@@ -7605,6 +7777,8 @@ pub struct QuestCompletion {
 pub struct QuestWorldState {
     pub state: QuestState,
     /// The completion fact(s) discharging this quest here; empty when open.
+    /// R1037 — the quest's VISIBLE `completed_by` facts, not the subset of them
+    /// that happens to credit a bound giving.
     pub completions: Vec<QuestCompletion>,
 }
 
@@ -7675,7 +7849,12 @@ pub struct QuestGraphReport {
     /// combined). The obligation has no payoff anchor (surfaced, not silently
     /// dropped — the R558 lesson). Each still appears in `quests` with empty
     /// `giving_facts` and an all-`unknown` `per_world`.
-    pub unresolved_quests: Vec<String>,
+    ///
+    /// Round 1037 — carries the REASON, because the two causes are unwritten
+    /// work and a contradiction respectively, and the gate rejects only the
+    /// second. Read from [`unresolved_quests`], the one derivation the scan
+    /// also gates on.
+    pub unresolved_quests: Vec<UnresolvedQuest>,
     /// The subset of `worlds` that are confluence FRAGMENTS (Round 746) — a merge
     /// node reached by an explicit `--world <confluence>`, not a standalone
     /// playthrough, so its `per_world` quest column is a fragment view. Sorted;
@@ -7799,7 +7978,28 @@ pub fn quest_graph(
     let giving_map = quest_giving_setups(store, &quest_set);
 
     let mut quests: Vec<QuestNode> = Vec::new();
-    let mut unresolved_quests: Vec<String> = Vec::new();
+    // R1037 — read from THE derivation the continuity gate also reads, rather
+    // than re-deciding it inside this loop. A quest with no giving bound reads
+    // `unknown` on every road (surfaced, not silently dropped — the R558
+    // lesson), and which of the two causes it is decides whether the scan
+    // rejects it, so the report and the gate cannot be allowed to disagree.
+    let unresolved_quests = unresolved_quests(store)?;
+    // R1037 — where each quest is DISCHARGED on each road, from THE definition
+    // the prerequisite gate reads. Computed here rather than inside the
+    // per-world closure so a lineage failure is a fail-loud `?` rather than a
+    // silently empty road.
+    let mut discharges: BTreeMap<
+        &str,
+        BTreeMap<&mnemosyne_core::EntityId, Vec<&mnemosyne_core::FactId>>,
+    > = BTreeMap::new();
+    for w in &worlds {
+        let branch = mnemosyne_core::BranchId::from(w.as_str());
+        let membership = lineage_of(&store.branches, &branch)?;
+        discharges.insert(
+            w.as_str(),
+            quest_discharges(store, &branch, &membership, order),
+        );
+    }
     // R676 — iterate the DERIVED quest set (sorted, a BTreeSet), not a `kind`
     // scan. Every id resolves to a registered entity: it came from a typed claim
     // leg, whose entities the write path registers (R437) and the shape gate
@@ -7816,12 +8016,6 @@ pub fn quest_graph(
             .get(quest_id.as_str())
             .unwrap_or(&empty_completions);
         let q_givings: BTreeSet<String> = giving_map.get(quest_id).cloned().unwrap_or_default();
-        // No giving setup bound = the obligation has no payoff anchor (no
-        // `completed_by` fact, or none pays off an Expected setup) — surfaced,
-        // not silently dropped (R558). Such a quest reads `unknown` everywhere.
-        if q_givings.is_empty() {
-            unresolved_quests.push(quest_id.to_string());
-        }
         // This quest's completed_by facts by id → (scene, discharger): used to
         // credit a paid giving's R442 payoff list back to the named discharger.
         let discharger: BTreeMap<&str, (&str, Option<&str>)> = q_completions
@@ -7831,30 +8025,39 @@ pub fn quest_graph(
         let per_world: BTreeMap<String, QuestWorldState> = worlds
             .iter()
             .map(|w| {
-                // R442 payoff coverage is the SINGLE authority for open/done
-                // (reused verbatim, not re-derived): a giving setup PAID here =
-                // done, DANGLING here = open, neither (not visible on this road)
-                // = unknown. The completion beats are the giving's crediting
-                // payoffs that carry THIS quest's `completed_by` claim — read
-                // straight from the R442 paid list, no second visibility pass.
+                // DONE here = this quest's own `completed_by` fact is visible
+                // here, read from `quest_discharges` — the same definition the
+                // R1031 prerequisite gate judges against (R1037). It used to be
+                // "the giving setup is PAID here", which is the same set
+                // whenever a giving is bound (strict-combined: the giving is
+                // paid BY a visible completion of this quest) and empty forever
+                // when R569 binds none, so the two reads contradicted each
+                // other on a split-encoded quest.
+                //
+                // OPEN here is still the R442 coverage, reused verbatim: a
+                // giving setup DANGLING here is the obligation outstanding on
+                // this road. Neither = unknown (not on this road at all).
                 let cov = payoff.worlds.get(w);
-                let mut completions: Vec<QuestCompletion> = Vec::new();
-                let mut paid_here = false;
+                let discharged_here: &[&mnemosyne_core::FactId] = discharges
+                    .get(w.as_str())
+                    .and_then(|per_quest| per_quest.get(quest_id))
+                    .map_or(&[], Vec::as_slice);
+                let mut completions: Vec<QuestCompletion> = discharged_here
+                    .iter()
+                    .filter_map(|fid| {
+                        discharger
+                            .get(fid.as_str())
+                            .map(|(scene, actor)| QuestCompletion {
+                                fact: (*fid).to_string(),
+                                scene: (*scene).to_string(),
+                                actor: actor.map(str::to_string),
+                            })
+                    })
+                    .collect();
+                let paid_here = !discharged_here.is_empty();
                 let mut dangling_here = false;
                 if let Some(c) = cov {
                     for g in &q_givings {
-                        if let Some(ps) = c.paid.iter().find(|p| &p.setup == g) {
-                            paid_here = true;
-                            for payoff_fact in &ps.payoffs {
-                                if let Some((scene, actor)) = discharger.get(payoff_fact.as_str()) {
-                                    completions.push(QuestCompletion {
-                                        fact: payoff_fact.clone(),
-                                        scene: (*scene).to_string(),
-                                        actor: actor.map(str::to_string),
-                                    });
-                                }
-                            }
-                        }
                         if c.dangling.iter().any(|d| d == g) {
                             dangling_here = true;
                         }
@@ -16311,7 +16514,16 @@ mod tests {
         // Sorted by id: q-key, q-main, q-orphan.
         let ids: Vec<&str> = report.quests.iter().map(|q| q.quest_id.as_str()).collect();
         assert_eq!(ids, vec!["q-key", "q-main", "q-orphan"]);
-        assert_eq!(report.unresolved_quests, vec!["q-orphan".to_string()]);
+        // R1037 — the REASON rides along, so "unwritten completion" and "the
+        // completion gives nothing" are not one bucket.
+        assert_eq!(
+            report
+                .unresolved_quests
+                .iter()
+                .map(UnresolvedQuest::describe)
+                .collect::<Vec<_>>(),
+            ["q-orphan (no_completion)"]
+        );
 
         let main_quest = report
             .quests
@@ -16517,14 +16729,34 @@ mod tests {
         let order = chain(&["ch-1", "ch-2", "ch-3", "ch-4"]);
         let report = quest_graph(&store, &order, None, "t1").unwrap();
 
-        assert_eq!(report.unresolved_quests, vec!["q-split".to_string()]);
+        assert_eq!(
+            report
+                .unresolved_quests
+                .iter()
+                .map(UnresolvedQuest::describe)
+                .collect::<Vec<_>>(),
+            ["q-split (completion_gives_nothing, completed by f-complete)"],
+            "R1037 — the list carries WHY, because unwritten completion and a \
+             completion that binds nothing are not one bucket"
+        );
         let q = report
             .quests
             .iter()
             .find(|q| q.quest_id == "q-split")
             .unwrap();
         assert!(q.giving_facts.is_empty(), "no scene-proximity rescue");
-        assert!(q.per_world.values().all(|s| s.state == QuestState::Unknown));
+        // R1037 — R569's refusal to BIND a giving stands, and it no longer
+        // costs the quest its state: `f-complete` is this quest's own
+        // `completed_by` fact and it is visible on this road, which is the
+        // store saying the player finished it. Before R1037 the state was read
+        // from the giving's coverage, so a split-encoded quest read `unknown`
+        // everywhere while the prerequisite gate judged the same quest
+        // discharged — two reads, opposite answers.
+        assert!(
+            q.per_world.values().all(|s| s.state == QuestState::Done),
+            "{:?}",
+            q.per_world
+        );
     }
 
     // ====================================================================

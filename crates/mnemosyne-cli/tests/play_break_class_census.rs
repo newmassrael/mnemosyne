@@ -64,13 +64,14 @@
 //! how close the evidence sits to the boundary.
 
 use std::collections::{BTreeMap, BTreeSet};
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use mnemosyne_atomic::AtomicStore;
 
 mod common;
 use common::{
-    cli_binary, corpus_workspace_try, dnd_quest_facts, dnd_quest_workspace_try, repo_root, run,
+    authored_corpora, cli_binary, corpus_workspace_try, dnd_quest_facts, dnd_quest_workspace_try,
+    read_json, repo_root, run,
 };
 
 /// The sidecar the import writes, relative to the workspace root.
@@ -78,13 +79,7 @@ const SIDECAR: &str = "docs/.atomic/workspace.atomic.json";
 
 /// The store as the import left it, read back as the store's own serialization.
 fn read_sidecar(ws: &Path) -> serde_json::Value {
-    read_sidecar_at(&ws.join(SIDECAR))
-}
-
-fn read_sidecar_at(path: &Path) -> serde_json::Value {
-    let text = std::fs::read_to_string(path)
-        .unwrap_or_else(|e| panic!("{} unreadable: {e}", path.display()));
-    serde_json::from_str(&text).unwrap_or_else(|e| panic!("{} is not json: {e}", path.display()))
+    read_json(&ws.join(SIDECAR))
 }
 
 /// The corpus's own telling, read from the store rather than named here — the
@@ -444,36 +439,6 @@ impl Rule {
     }
 }
 
-/// Every authored corpus this repository TRACKS: a fact manifest with a
-/// `sections.json` and an `order.json` beside it. Asked of `git ls-files`, not
-/// of the working directory — an untracked stray is not evidence about what an
-/// author ships, and a walk over the filesystem would count it.
-fn authored_corpora() -> Vec<PathBuf> {
-    let listed = std::process::Command::new("git")
-        .args(["ls-files", "claudedocs"])
-        .current_dir(repo_root())
-        .output()
-        .expect("git ls-files");
-    assert!(listed.status.success(), "git ls-files must exit 0");
-    let root = repo_root();
-    let mut out: Vec<PathBuf> = String::from_utf8(listed.stdout)
-        .expect("git output is utf-8")
-        .lines()
-        .filter(|path| path.ends_with("/facts.json"))
-        .filter_map(|path| root.join(path).parent().map(Path::to_path_buf))
-        .filter(|dir| dir.join("sections.json").exists() && dir.join("order.json").exists())
-        .collect();
-    out.sort();
-    out.dedup();
-    assert!(
-        out.len() > 20,
-        "the corpus sweep found {} authored corpora, which is a listing that \
-         stopped working rather than a repository that emptied",
-        out.len()
-    );
-    out
-}
-
 /// One rule the walk proposes, named by the read it lives in and the list it is
 /// about — a list name means what its own read means by it.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
@@ -643,7 +608,7 @@ fn the_walk_says_what_stands_between_an_authoring_slip_and_the_runtime() {
             .unwrap_or(&dir)
             .display()
             .to_string();
-        let facts = read_sidecar_at(&dir.join("facts.json"));
+        let facts = read_json(&dir.join("facts.json"));
         let Ok(ws) = corpus_workspace_try(&dir, &facts) else {
             unloadable.push(name);
             continue;

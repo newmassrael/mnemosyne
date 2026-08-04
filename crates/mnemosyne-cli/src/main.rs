@@ -4207,9 +4207,16 @@ fn cmd_report_quest_graph(args: &[String]) -> Result<()> {
         report.fork_tree.branch_count
     );
     if !report.unresolved_quests.is_empty() {
+        // R1037 — the REASON, from the type. This line said "no completed_by
+        // anchor" over every unresolved quest, and half of them have one.
         println!(
-            "unresolved (no completed_by anchor): {}",
-            report.unresolved_quests.join(", ")
+            "unresolved (no giving setup bound): {}",
+            report
+                .unresolved_quests
+                .iter()
+                .map(mnemosyne_validate::continuity::UnresolvedQuest::describe)
+                .collect::<Vec<_>>()
+                .join(", ")
         );
     }
     // Round 746 — name any confluence world in the set as a fragment (the shared
@@ -4592,7 +4599,12 @@ fn cmd_report_authoring_frontier(args: &[String]) -> Result<()> {
         }
     }
     match &report.unresolved_quests {
-        Some(q) => list("unresolved quests", q),
+        Some(q) => list(
+            "unresolved quests",
+            &q.iter()
+                .map(mnemosyne_validate::continuity::UnresolvedQuest::describe)
+                .collect::<Vec<_>>(),
+        ),
         None => println!("unresolved quests: (pass --telling)"),
     }
     match &report.never_planned_disclosures {

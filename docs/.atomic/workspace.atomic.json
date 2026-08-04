@@ -2494,6 +2494,96 @@
         "Only `report-quest-graph` evidence still rests on one corpus: it is the only loadable store that declares quests, so `actors is never empty` is judged against 4 samples while `payoffs_to_unmarked` is judged against 41."
       ]
     },
+    "Round 1037": {
+      "decision_summary": "R1037 (BUILD) — the arc's last gate candidate was refuted twice, and the second refusal was a defect this repository was shipping. STAR THE MEASUREMENT CAME FIRST AND IT WIDENED THE EVIDENCE FROM 41 WORLDS TO 44 CORPORA. Round 1036 left `payoffs_to_unmarked is always empty` as the one surviving candidate on 41 authored worlds at zero, and that evidence was world-scoped and drawn only from the corpora that still load. Both narrowings are now closed by reading the AUTHOR'S OWN manifest, which every corpus has whether or not the import still accepts it: 44 corpora, 3800 facts, 296 `pays_off` edges, and every single edge names a fact its author marked `expected`. The manifest reader is worth exactly its agreement with the write path, so it runs beside the store reader on all 28 corpora a store can be built from and the two are asserted equal — only then are the 16 dead corpora read, which is the first evidence this arc has drawn from them. STAR THE TREE REFUTED THE RULE THAT THE CORPUS COULD NOT. Nothing an author wrote breaks it, and R618/R619 lock the opposite as a DESIGNED discrimination: \"an Unmarked fact a completion pays off is NOT a giving\" is how an author says which payoff of a completion is the quest's giving setup, and a gate demanding the marking deletes it. A rule 296 of 296 edges obey is still the wrong rule when the tree already decided the case, and the decision was found by running the suite, not by reading the file. STAR THE SECOND CANDIDATE REJECTED THE BLIND AUTHOR'S OWN STORE, WHICH IS WHERE THE DEFECT WAS. `unresolved_quests` conflated two causes behind a bare id — no `completed_by` fact at all, versus a `completed_by` that pays off no `Expected` setup — so R1037 typed the reason and gated the second. That gate rejected the dnd-quest corpus: `q-main` is completed by f-305, f-404 and f-505 and R569 binds no giving for the split encoding its author used. Putting the candidate to the corpus (R1032's method) is what surfaced it. STAR TWO SHIPPED READS WERE ANSWERING THE SAME QUESTION OPPOSITELY ABOUT THAT QUEST. `validate-continuity`'s prerequisite walk reads a quest's VISIBLE `completed_by` facts and judged `q-main` discharged on three of four roads, naming sc-25c / sc-25p / sc-25s. `report-quest-graph` derived state from the giving's R442 coverage, and with no giving bound it reported `unknown` on all four. One store, both exit 0, and the disagreement is about the MAIN quest of the only blind-authored corpus this repository can load. The repair is one derivation: `quest_discharges` owns \"the player finished this quest here\", and both reads take it. That is not the R568 scene-proximity rescue R569 refused — that inferred a GIVING from a sibling fact's position; this reads the fact that itself claims `<quest> completed_by <actor>`, and `giving_facts` is untouched. DONE was the giving's coverage, which is the same set whenever a giving is bound (strict-combined: the giving is paid BY a visible completion of this quest) and empty forever when R569 binds none. The corpus's per-world verdict census moved from done 7 / open 5 / unknown 4 to done 10 / open 5 / unknown 1, and the three that moved are exactly `q-main` on the three roads that complete it. STAR THE SHIPPED PROSE WAS ALREADY LYING ABOUT IT. `report-quest-graph` printed \"unresolved (no completed_by anchor)\" over every row, and `q-main` has three. Both wires now render `UnresolvedQuest::describe`, so neither can restate a reason the type does not carry.",
+      "changes_bullets": [
+        "`crates/mnemosyne-cli/tests/payoff_marking_evidence.rs`: the setup/payoff marking as every authored corpus declares it — a manifest reader whose `PayoffExpectation` spelling comes from serde, cross-checked against the imported store on all 28 corpora that load, then applied to the 16 that do not; totals and the named verdict list are pinned.",
+        "`quest_discharges` in mnemosyne-validate::continuity: THE one definition of \"this road discharges this quest\" (its visible `completed_by` facts, `Vis::Unknown` deliberately not a discharge), read by `quest_prerequisite_judgements` and by `quest_graph`'s per-world state, which had derived it two different ways.",
+        "`UnresolvedQuestReason` + `UnresolvedQuest` + `unresolved_quests(store)`: the two causes `unresolved_quests` conflated, typed and told apart, with the `completed_by` facts a repair has to amend; `quest_graph` and the authoring frontier render `describe` rather than restating a reason in prose.",
+        "`NarrativeFact::is_marked_setup` in mnemosyne-core: one predicate for \"marked a setup\", read by the payoff coverage, the giving binding and the corpus walk, with the R618/R619 reason a payoff into an Unmarked fact is legal written where the next round will find it.",
+        "`crates/mnemosyne-cli/tests/quest_discharge_agreement_smoke.rs`: the gate and the runtime projection must agree on every (quest, road) pair both have an opinion about."
+      ],
+      "verification_bullets": [
+        "Workspace 1748 tests green, clippy -D warnings clean, fmt clean, `validate-workspace` T1/T3 = 0.",
+        "MEASURED BEFORE THE BUILD: 44 authored corpora, 3800 facts, 296 `pays_off` edges across all 44, 0 naming an unmarked setup and 0 naming a fact their own manifest never declares; manifest reader and write path agree on all 28 corpora a store can be built from.",
+        "The first candidate was refuted by the SUITE — three tests build payoff-to-unmarked stores through the write path, one of them R618/R619's lock that an Unmarked target of a completion is deliberately not a giving.",
+        "The second candidate was refuted by the CORPUS: it rejected dnd-quest, naming `q-main` completed by f-305/f-404/f-505 and given by nothing.",
+        "6 injections, each over the WHOLE workspace with --no-fail-fast, each firing exactly the intended test(s): I1 Unknown-as-discharge -> the undecidable-discharge test; I2 DONE back to the giving's coverage -> the agreement test + the pinned per-world census + the split-completion test; I3 every unresolved quest reports the WIP reason -> two reason tests; I4 the manifest reader stops recognising `expected` and I5 the store reader skips a fact -> the cross-check, in both directions; I6 BOTH readers inverted, so only the verdict arm can fire -> it fires and prints all 296 edges.",
+        "I4 and I5 landing on the cross-check is why I6 exists: without it no injection shows the verdict assertion is live."
+      ],
+      "carry_forward_bullets": [
+        "The 296-edge measurement says no author has ever paid off an unmarked fact, and R618/R619 keep that state legal so a quest's giving can be told from a completion's other payoffs. Nothing measures whether the discrimination is USED — a corpus exercising it would be the honest widening, and this tree has none.",
+        "Sixteen tracked corpora still do not load. This round read their manifests for one predicate; every other question about them still needs the R857-style migration.",
+        "`quest_graph` now derives discharges per world and `quest_prerequisite_judgements` derives them again for its own worlds. One definition, two walks — correct but not cheap, and no test would notice if one call site drifted to a different world set.",
+        "The census walk's proposal list is unchanged at six rules, so this round removed no candidate from it: `payoffs_to_unmarked is always empty` is still printed as a CANDIDATE by a walk that cannot see the R618/R619 decision refuting it. Which read-lists carry a gating policy is stated in doc comments and in no program."
+      ],
+      "population_census": [
+        {
+          "axis": "transition rules by `undirected`",
+          "left_label": "undirected",
+          "left": 10,
+          "right_label": "directed",
+          "right": 27
+        },
+        {
+          "axis": "map corpora by leg-kind declaration",
+          "left_label": "omitted",
+          "left": 6,
+          "right_label": "declared",
+          "right": 24
+        },
+        {
+          "axis": "cost-carrying corpora by direction-dependent pricing",
+          "left_label": "prices a way by direction",
+          "left": 4,
+          "right_label": "prices no way by direction",
+          "right": 6
+        },
+        {
+          "axis": "run trees by authoring mode",
+          "left_label": "hand script",
+          "left": 10,
+          "right_label": "file-only",
+          "right": 239
+        },
+        {
+          "axis": "map corpora by declared boundary crossing",
+          "left_label": "declares an exit",
+          "left": 6,
+          "right_label": "declares none",
+          "right": 24
+        },
+        {
+          "axis": "authored submissions by map and telling",
+          "left_label": "carries both",
+          "left": 10,
+          "right_label": "carries one",
+          "right": 24
+        }
+      ],
+      "publishable_decision_summary": "R1037 (BUILD) — the arc's last gate candidate was refuted twice, and the second refusal was a defect this repository was shipping. STAR THE MEASUREMENT CAME FIRST AND IT WIDENED THE EVIDENCE FROM 41 WORLDS TO 44 CORPORA. Round 1036 left `payoffs_to_unmarked is always empty` as the one surviving candidate on 41 authored worlds at zero, and that evidence was world-scoped and drawn only from the corpora that still load. Both narrowings are now closed by reading the AUTHOR'S OWN manifest, which every corpus has whether or not the import still accepts it: 44 corpora, 3800 facts, 296 `pays_off` edges, and every single edge names a fact its author marked `expected`. The manifest reader is worth exactly its agreement with the write path, so it runs beside the store reader on all 28 corpora a store can be built from and the two are asserted equal — only then are the 16 dead corpora read, which is the first evidence this arc has drawn from them. STAR THE TREE REFUTED THE RULE THAT THE CORPUS COULD NOT. Nothing an author wrote breaks it, and R618/R619 lock the opposite as a DESIGNED discrimination: \"an Unmarked fact a completion pays off is NOT a giving\" is how an author says which payoff of a completion is the quest's giving setup, and a gate demanding the marking deletes it. A rule 296 of 296 edges obey is still the wrong rule when the tree already decided the case, and the decision was found by running the suite, not by reading the file. STAR THE SECOND CANDIDATE REJECTED THE BLIND AUTHOR'S OWN STORE, WHICH IS WHERE THE DEFECT WAS. `unresolved_quests` conflated two causes behind a bare id — no `completed_by` fact at all, versus a `completed_by` that pays off no `Expected` setup — so R1037 typed the reason and gated the second. That gate rejected the dnd-quest corpus: `q-main` is completed by f-305, f-404 and f-505 and R569 binds no giving for the split encoding its author used. Putting the candidate to the corpus (R1032's method) is what surfaced it. STAR TWO SHIPPED READS WERE ANSWERING THE SAME QUESTION OPPOSITELY ABOUT THAT QUEST. `validate-continuity`'s prerequisite walk reads a quest's VISIBLE `completed_by` facts and judged `q-main` discharged on three of four roads, naming sc-25c / sc-25p / sc-25s. `report-quest-graph` derived state from the giving's R442 coverage, and with no giving bound it reported `unknown` on all four. One store, both exit 0, and the disagreement is about the MAIN quest of the only blind-authored corpus this repository can load. The repair is one derivation: `quest_discharges` owns \"the player finished this quest here\", and both reads take it. That is not the R568 scene-proximity rescue R569 refused — that inferred a GIVING from a sibling fact's position; this reads the fact that itself claims `<quest> completed_by <actor>`, and `giving_facts` is untouched. DONE was the giving's coverage, which is the same set whenever a giving is bound (strict-combined: the giving is paid BY a visible completion of this quest) and empty forever when R569 binds none. The corpus's per-world verdict census moved from done 7 / open 5 / unknown 4 to done 10 / open 5 / unknown 1, and the three that moved are exactly `q-main` on the three roads that complete it. STAR THE SHIPPED PROSE WAS ALREADY LYING ABOUT IT. `report-quest-graph` printed \"unresolved (no completed_by anchor)\" over every row, and `q-main` has three. Both wires now render `UnresolvedQuest::describe`, so neither can restate a reason the type does not carry.",
+      "publishable_changes_bullets": [
+        "`crates/mnemosyne-cli/tests/payoff_marking_evidence.rs`: the setup/payoff marking as every authored corpus declares it — a manifest reader whose `PayoffExpectation` spelling comes from serde, cross-checked against the imported store on all 28 corpora that load, then applied to the 16 that do not; totals and the named verdict list are pinned.",
+        "`quest_discharges` in mnemosyne-validate::continuity: THE one definition of \"this road discharges this quest\" (its visible `completed_by` facts, `Vis::Unknown` deliberately not a discharge), read by `quest_prerequisite_judgements` and by `quest_graph`'s per-world state, which had derived it two different ways.",
+        "`UnresolvedQuestReason` + `UnresolvedQuest` + `unresolved_quests(store)`: the two causes `unresolved_quests` conflated, typed and told apart, with the `completed_by` facts a repair has to amend; `quest_graph` and the authoring frontier render `describe` rather than restating a reason in prose.",
+        "`NarrativeFact::is_marked_setup` in mnemosyne-core: one predicate for \"marked a setup\", read by the payoff coverage, the giving binding and the corpus walk, with the R618/R619 reason a payoff into an Unmarked fact is legal written where the next round will find it.",
+        "`crates/mnemosyne-cli/tests/quest_discharge_agreement_smoke.rs`: the gate and the runtime projection must agree on every (quest, road) pair both have an opinion about."
+      ],
+      "publishable_verification_bullets": [
+        "Workspace 1748 tests green, clippy -D warnings clean, fmt clean, `validate-workspace` T1/T3 = 0.",
+        "MEASURED BEFORE THE BUILD: 44 authored corpora, 3800 facts, 296 `pays_off` edges across all 44, 0 naming an unmarked setup and 0 naming a fact their own manifest never declares; manifest reader and write path agree on all 28 corpora a store can be built from.",
+        "The first candidate was refuted by the SUITE — three tests build payoff-to-unmarked stores through the write path, one of them R618/R619's lock that an Unmarked target of a completion is deliberately not a giving.",
+        "The second candidate was refuted by the CORPUS: it rejected dnd-quest, naming `q-main` completed by f-305/f-404/f-505 and given by nothing.",
+        "6 injections, each over the WHOLE workspace with --no-fail-fast, each firing exactly the intended test(s): I1 Unknown-as-discharge -> the undecidable-discharge test; I2 DONE back to the giving's coverage -> the agreement test + the pinned per-world census + the split-completion test; I3 every unresolved quest reports the WIP reason -> two reason tests; I4 the manifest reader stops recognising `expected` and I5 the store reader skips a fact -> the cross-check, in both directions; I6 BOTH readers inverted, so only the verdict arm can fire -> it fires and prints all 296 edges.",
+        "I4 and I5 landing on the cross-check is why I6 exists: without it no injection shows the verdict assertion is live."
+      ],
+      "publishable_carry_forward_bullets": [
+        "The 296-edge measurement says no author has ever paid off an unmarked fact, and R618/R619 keep that state legal so a quest's giving can be told from a completion's other payoffs. Nothing measures whether the discrimination is USED — a corpus exercising it would be the honest widening, and this tree has none.",
+        "Sixteen tracked corpora still do not load. This round read their manifests for one predicate; every other question about them still needs the R857-style migration.",
+        "`quest_graph` now derives discharges per world and `quest_prerequisite_judgements` derives them again for its own worlds. One definition, two walks — correct but not cheap, and no test would notice if one call site drifted to a different world set.",
+        "The census walk's proposal list is unchanged at six rules, so this round removed no candidate from it: `payoffs_to_unmarked is always empty` is still printed as a CANDIDATE by a walk that cannot see the R618/R619 decision refuting it. Which read-lists carry a gating policy is stated in doc comments and in no program."
+      ]
+    },
     "Round 252": {
       "decision_summary": "Parser CommonMark conformance — recognize indented fenced code blocks (§98) and require whitespace after ATX hash sequence (§62)",
       "changes_bullets": [
