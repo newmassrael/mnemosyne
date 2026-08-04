@@ -1121,6 +1121,7 @@ impl ConfirmationClaim {
 
 /// What KIND of producer emitted a confirmation (design sec 4.1 provenance).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema), schemars(inline))]
 #[serde(rename_all = "snake_case")]
 pub enum ConfirmerKind {
     /// A deterministic tool (reproducible — CI re-runs it; truly
@@ -1131,27 +1132,14 @@ pub enum ConfirmerKind {
     Model,
 }
 
-impl ConfirmerKind {
-    /// Canonical lowercase label (matches the serde representation).
-    pub fn as_str(self) -> &'static str {
-        match self {
-            ConfirmerKind::Tool => "tool",
-            ConfirmerKind::Model => "model",
-        }
-    }
-
-    /// Parse the canonical tag back to a value; `None` otherwise.
-    pub fn from_tag(s: &str) -> Option<Self> {
-        match s {
-            "tool" => Some(ConfirmerKind::Tool),
-            "model" => Some(ConfirmerKind::Model),
-            _ => None,
-        }
-    }
-}
+mnemosyne_core::closed_vocabulary!(ConfirmerKind {
+    Tool => "tool",
+    Model => "model",
+});
 
 /// The verification method recorded on the event (design sec 4.1).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema), schemars(inline))]
 #[serde(rename_all = "snake_case")]
 pub enum ConfirmMethod {
     /// Deterministic: the verifying test exercises the bound symbol.
@@ -1162,54 +1150,26 @@ pub enum ConfirmMethod {
     CoverageAttestation,
 }
 
-impl ConfirmMethod {
-    /// Canonical lowercase label (matches the serde representation).
-    pub fn as_str(self) -> &'static str {
-        match self {
-            ConfirmMethod::LinkageCheck => "linkage_check",
-            ConfirmMethod::SemanticReview => "semantic_review",
-            ConfirmMethod::CoverageAttestation => "coverage_attestation",
-        }
-    }
-
-    /// Parse the canonical tag back to a value; `None` otherwise.
-    pub fn from_tag(s: &str) -> Option<Self> {
-        match s {
-            "linkage_check" => Some(ConfirmMethod::LinkageCheck),
-            "semantic_review" => Some(ConfirmMethod::SemanticReview),
-            "coverage_attestation" => Some(ConfirmMethod::CoverageAttestation),
-            _ => None,
-        }
-    }
-}
+mnemosyne_core::closed_vocabulary!(ConfirmMethod {
+    LinkageCheck => "linkage_check",
+    SemanticReview => "semantic_review",
+    CoverageAttestation => "coverage_attestation",
+});
 
 /// The verdict an event records (design sec 4.1). A single `Refute` blocks
 /// regardless of confirmations (design sec 8).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema), schemars(inline))]
 #[serde(rename_all = "snake_case")]
 pub enum Verdict {
     Confirm,
     Refute,
 }
 
-impl Verdict {
-    /// Canonical lowercase label (matches the serde representation).
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Verdict::Confirm => "confirm",
-            Verdict::Refute => "refute",
-        }
-    }
-
-    /// Parse the canonical tag back to a value; `None` otherwise.
-    pub fn from_tag(s: &str) -> Option<Self> {
-        match s {
-            "confirm" => Some(Verdict::Confirm),
-            "refute" => Some(Verdict::Refute),
-            _ => None,
-        }
-    }
-}
+mnemosyne_core::closed_vocabulary!(Verdict {
+    Confirm => "confirm",
+    Refute => "refute",
+});
 
 /// Who/what produced a confirmation (design sec 4.1 `confirmer`).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -8997,9 +8957,9 @@ pub(crate) fn apply_disclosure_plan(
     }
     let mode = DisclosureMode::from_tag(default_mode.trim()).ok_or_else(|| {
         AtomicMutateError::Validation(format!(
-            "add_disclosure_plan: unknown default_mode `{}` (expected one of: \
-             withhold, state, hint, imply)",
-            default_mode.trim()
+            "add_disclosure_plan: unknown default_mode `{}` (must be {})",
+            default_mode.trim(),
+            DisclosureMode::vocabulary()
         ))
     })?;
     let description = description.trim().to_string();
@@ -9139,8 +9099,9 @@ pub(crate) fn apply_disclosure_override(
     };
     let mode = DisclosureMode::from_tag(mode.trim()).ok_or_else(|| {
         AtomicMutateError::Validation(format!(
-            "set_disclosure: unknown mode `{}` (expected one of: withhold, state, hint, imply)",
-            mode.trim()
+            "set_disclosure: unknown mode `{}` (must be {})",
+            mode.trim(),
+            DisclosureMode::vocabulary()
         ))
     })?;
     // Build the per-world first-reveal triggers (Round 752): multiple first_at
@@ -11113,6 +11074,16 @@ mod tests {
     use super::*;
     use strum::IntoEnumIterator;
     use tempfile::TempDir;
+
+    /// Every closed vocabulary THIS crate declares, checked by the guard the
+    /// declaration carries. The sibling in `mnemosyne-core` names the seven
+    /// declared there.
+    #[test]
+    fn serde_spelling_is_the_vocabularys_own() {
+        ConfirmerKind::assert_vocabulary_parity("ConfirmerKind");
+        ConfirmMethod::assert_vocabulary_parity("ConfirmMethod");
+        Verdict::assert_vocabulary_parity("Verdict");
+    }
 
     #[test]
     fn rejected_alternative_parse_line_separators_and_bullet() {

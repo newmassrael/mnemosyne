@@ -703,7 +703,7 @@ pub struct EdgeCost {
 /// checks the typed leg's object against this declaration — a shape or
 /// vocabulary mismatch is a write-time reject, not a scan finding.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema), schemars(inline))]
 #[serde(rename_all = "snake_case")]
 pub enum PredicateObjectKind {
     Entity,
@@ -712,47 +712,12 @@ pub enum PredicateObjectKind {
     Fact,
 }
 
-impl PredicateObjectKind {
-    /// Every value, in declaration order. The ONE source for any surface that
-    /// spells the closed set out (the Round 870 rule: a vocabulary hand-typed in
-    /// N places drifts in N−1 of them — the `scalar` this enum lost at Round 708
-    /// still stood in `build_predicate`'s "expected one of" until Round 873).
-    pub const ALL: [PredicateObjectKind; 4] = [
-        PredicateObjectKind::Entity,
-        PredicateObjectKind::Token,
-        PredicateObjectKind::Quantity,
-        PredicateObjectKind::Fact,
-    ];
-
-    /// The closed set as an error message says it, derived from [`Self::as_str`].
-    #[must_use]
-    pub fn vocabulary() -> String {
-        let tags: Vec<&str> = Self::ALL.iter().map(|v| v.as_str()).collect();
-        crate::join_or(&tags)
-    }
-
-    /// Canonical lowercase label (matches the serde representation).
-    pub fn as_str(self) -> &'static str {
-        match self {
-            PredicateObjectKind::Entity => "entity",
-            PredicateObjectKind::Token => "token",
-            PredicateObjectKind::Quantity => "quantity",
-            PredicateObjectKind::Fact => "fact",
-        }
-    }
-
-    /// Parse the canonical lowercase tag back to a value. `None` for any
-    /// other string (fail-loud at the caller; no silent default).
-    pub fn from_tag(s: &str) -> Option<Self> {
-        match s {
-            "entity" => Some(PredicateObjectKind::Entity),
-            "token" => Some(PredicateObjectKind::Token),
-            "quantity" => Some(PredicateObjectKind::Quantity),
-            "fact" => Some(PredicateObjectKind::Fact),
-            _ => None,
-        }
-    }
-}
+crate::closed_vocabulary!(PredicateObjectKind {
+    Entity => "entity",
+    Token => "token",
+    Quantity => "quantity",
+    Fact => "fact",
+});
 
 /// One predicate (registry entry, Round 446 — the FOURTH registry, design
 /// sec 7.12). Keyed by predicate id in `AtomicStore.predicates`; every
@@ -921,6 +886,7 @@ pub struct TypedClaim {
 /// — a report finding (the author's todo list), deliberately never a gate
 /// reject (a WIP story has dangling setups by definition).
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema), schemars(inline))]
 #[serde(rename_all = "snake_case")]
 pub enum PayoffExpectation {
     #[default]
@@ -928,26 +894,10 @@ pub enum PayoffExpectation {
     Expected,
 }
 
-impl PayoffExpectation {
-    /// Canonical lowercase label (matches the serde representation).
-    pub fn as_str(self) -> &'static str {
-        match self {
-            PayoffExpectation::Unmarked => "unmarked",
-            PayoffExpectation::Expected => "expected",
-        }
-    }
-
-    /// Parse the canonical lowercase tag ([`Self::as_str`]) back to a
-    /// value. `None` for any other string. Mirrors
-    /// [`crate::CoverageExpectation::from_tag`].
-    pub fn from_tag(s: &str) -> Option<Self> {
-        match s {
-            "unmarked" => Some(PayoffExpectation::Unmarked),
-            "expected" => Some(PayoffExpectation::Expected),
-            _ => None,
-        }
-    }
-}
+crate::closed_vocabulary!(PayoffExpectation {
+    Unmarked => "unmarked",
+    Expected => "expected",
+});
 
 fn payoff_unmarked(p: &PayoffExpectation) -> bool {
     *p == PayoffExpectation::Unmarked
@@ -1061,6 +1011,7 @@ pub struct NarrativeFact {
 /// (blind-judged), never gated — the four modes are an authoring vocabulary,
 /// the gate's half-enforced-invariant guard (CLAUDE.md).
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema), schemars(inline))]
 #[serde(rename_all = "snake_case")]
 pub enum DisclosureMode {
     #[default]
@@ -1070,30 +1021,12 @@ pub enum DisclosureMode {
     Imply,
 }
 
-impl DisclosureMode {
-    /// Canonical lowercase label (matches the serde representation).
-    pub fn as_str(self) -> &'static str {
-        match self {
-            DisclosureMode::Withhold => "withhold",
-            DisclosureMode::State => "state",
-            DisclosureMode::Hint => "hint",
-            DisclosureMode::Imply => "imply",
-        }
-    }
-
-    /// Parse the canonical lowercase tag ([`Self::as_str`]) back to a value.
-    /// `None` for any other string (fail-loud at the caller; no silent
-    /// default — the [`PayoffExpectation::from_tag`] pattern).
-    pub fn from_tag(s: &str) -> Option<Self> {
-        match s {
-            "withhold" => Some(DisclosureMode::Withhold),
-            "state" => Some(DisclosureMode::State),
-            "hint" => Some(DisclosureMode::Hint),
-            "imply" => Some(DisclosureMode::Imply),
-            _ => None,
-        }
-    }
-}
+crate::closed_vocabulary!(DisclosureMode {
+    Withhold => "withhold",
+    State => "state",
+    Hint => "hint",
+    Imply => "imply",
+});
 
 fn disclosure_mode_is_withhold(m: &DisclosureMode) -> bool {
     *m == DisclosureMode::Withhold

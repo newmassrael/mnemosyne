@@ -3504,7 +3504,8 @@ pub fn cmd_add_section_example(workspace_root: &Path, args: &[String]) -> Result
 fn parse_binding_kind(raw: &str) -> Result<BindingKind> {
     BindingKind::from_tag(raw.trim()).ok_or_else(|| {
         anyhow!(
-            "--kind must be `implements`, `references`, or `verifies` (got `{}`)",
+            "--kind must be {} (got `{}`)",
+            BindingKind::vocabulary(),
             raw
         )
     })
@@ -4098,7 +4099,7 @@ pub fn cmd_add_confirmation_event(workspace_root: &Path, args: &[String]) -> Res
             .ok_or_else(|| anyhow!("--verdict arg required"))?
             .trim(),
     )
-    .ok_or_else(|| anyhow!("--verdict must be `confirm` or `refute`"))?;
+    .ok_or_else(|| anyhow!("--verdict must be {}", Verdict::vocabulary()))?;
     let event = ConfirmationEvent {
         claim,
         confirmer,
@@ -4232,15 +4233,23 @@ pub fn cmd_set_section_decision_status(
         }
     }
     let section = strip_section_prefix(&section.ok_or_else(|| anyhow!("--section arg required"))?);
-    let status_raw = status_str
-        .ok_or_else(|| anyhow!("--status arg required (active|superseded|removed|open)"))?;
-    let new_status =
-        DecisionStatus::from_tag(&status_raw.to_ascii_lowercase()).ok_or_else(|| {
-            anyhow!(
-                "--status `{}` invalid (expected active|superseded|removed|open)",
-                status_raw
-            )
-        })?;
+    let status_raw = status_str.ok_or_else(|| {
+        anyhow!(
+            "--status arg required (must be {})",
+            DecisionStatus::vocabulary()
+        )
+    })?;
+    // EXACT, like every other closed-set flag on this surface. The tag was
+    // lowercased here and at the MCP handler, so `Superseded` was accepted by
+    // both and described by neither — and two MCP fixtures had drifted into
+    // that spelling, which is how an undocumented leniency becomes load-bearing.
+    let new_status = DecisionStatus::from_tag(status_raw.trim()).ok_or_else(|| {
+        anyhow!(
+            "--status `{}` invalid (must be {})",
+            status_raw,
+            DecisionStatus::vocabulary()
+        )
+    })?;
     // T1 rule 4 + the superseding/resolving pointer guards are homed in
     // `atomic::set_section_decision_status` (R678), so the CLI and MCP write
     // paths enforce the identical invariant set — no CLI-only guard for the MCP

@@ -194,6 +194,7 @@ pub struct SectionView {
 /// in the closed taxonomy but deferred (load-time migration makes a new
 /// variant a single-step change).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema), schemars(inline))]
 #[serde(rename_all = "lowercase")]
 pub enum BindingKind {
     Implements,
@@ -201,28 +202,11 @@ pub enum BindingKind {
     Verifies,
 }
 
-impl BindingKind {
-    pub fn as_str(self) -> &'static str {
-        match self {
-            BindingKind::Implements => "implements",
-            BindingKind::References => "references",
-            BindingKind::Verifies => "verifies",
-        }
-    }
-
-    /// Parse the canonical lowercase tag ([`Self::as_str`]) back to a kind.
-    /// `None` for any other string. Used to round-trip the kind through the
-    /// projection layer's primitive salsa inputs (core is L0 zero-dep and
-    /// cannot derive `salsa::Update`, so the enum is lowered to its tag).
-    pub fn from_tag(s: &str) -> Option<Self> {
-        match s {
-            "implements" => Some(BindingKind::Implements),
-            "references" => Some(BindingKind::References),
-            "verifies" => Some(BindingKind::Verifies),
-            _ => None,
-        }
-    }
-}
+crate::closed_vocabulary!(BindingKind {
+    Implements => "implements",
+    References => "references",
+    Verifies => "verifies",
+});
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BindingRef {
@@ -259,7 +243,7 @@ pub struct BindingRef {
 /// calls [`Self::vocabulary`]; a static one is covered by the derived test that
 /// parses every `--expectation` alternation back through [`Self::from_tag`].
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema), schemars(inline))]
 #[serde(rename_all = "snake_case")]
 pub enum CoverageExpectation {
     #[default]
@@ -294,7 +278,11 @@ pub enum CoverageExpectation {
 /// Render a closed value set the way an error message wants it — backticked,
 /// comma-separated, `or` before the last. THE one formatter, so two messages
 /// about the same enum cannot describe it differently (Round 870).
-pub(crate) fn join_or(tags: &[&str]) -> String {
+///
+/// Public because [`closed_vocabulary!`] expands into other crates: the macro
+/// is how a vocabulary gets its message, and a formatter the macro cannot reach
+/// would put the second spelling back.
+pub fn join_or(tags: &[&str]) -> String {
     match tags {
         [] => String::new(),
         [only] => format!("`{only}`"),
@@ -314,45 +302,106 @@ pub(crate) fn join_or(tags: &[&str]) -> String {
     }
 }
 
-impl CoverageExpectation {
-    /// Every value, in declaration order. The ONE source for any surface that
-    /// spells the closed set out (Round 870).
-    pub const ALL: [CoverageExpectation; 3] = [
-        CoverageExpectation::Normative,
-        CoverageExpectation::OutOfScopeHere,
-        CoverageExpectation::Informational,
-    ];
+/// A CLOSED VALUE SET, DECLARED ONCE.
+///
+/// Round 870 gave three vocabularies a home — `ALL` plus a [`join_or`]-derived
+/// message — after a consumer classifying 173 sections was told by one message
+/// to send a tag the next message refused. SEVEN OTHERS NEVER GOT ONE. Each
+/// spelled its members out again at every site that names them: `BindingKind`
+/// at two MCP handlers and one CLI flag, `Verdict` at two wires, and
+/// `ConfirmMethod` with `|` separators where every other message on the surface
+/// uses [`join_or`] — which is the drift `join_or` exists to make impossible,
+/// already present.
+///
+/// So the declaration is the macro and everything else falls out of it: the
+/// tag, the parse, the set, and the sentence an error says. `from_tag` is
+/// DERIVED FROM `ALL` rather than written beside it, which is what keeps `ALL`
+/// load-bearing — a variant missing from it stops being parseable, loudly,
+/// instead of quietly shortening a message nobody re-reads. The serde spelling
+/// is checked against `as_str` for every member of every registered vocabulary
+/// (`serde_spelling_is_the_vocabularys_own`), because a tag the wire accepts and
+/// `from_tag` refuses is the same half-enforced invariant in a new place.
+#[macro_export]
+macro_rules! closed_vocabulary {
+    ($ty:ident { $($variant:ident => $tag:literal),+ $(,)? }) => {
+        impl $ty {
+            /// Every value, in declaration order. THE source for any surface
+            /// that spells this set out.
+            pub const ALL: &'static [$ty] = &[$($ty::$variant),+];
 
-    /// The closed set as an error message says it, derived from [`Self::as_str`].
-    #[must_use]
-    pub fn vocabulary() -> String {
-        let tags: Vec<&str> = Self::ALL.iter().map(|v| v.as_str()).collect();
-        join_or(&tags)
-    }
+            /// Canonical tag — the same string the serde representation uses.
+            #[must_use]
+            pub fn as_str(self) -> &'static str {
+                match self {
+                    $($ty::$variant => $tag),+
+                }
+            }
 
-    /// Canonical lowercase label (matches the serde representation).
-    pub fn as_str(self) -> &'static str {
-        match self {
-            CoverageExpectation::Normative => "normative",
-            CoverageExpectation::OutOfScopeHere => "out_of_scope_here",
-            CoverageExpectation::Informational => "informational",
+            /// Parse the canonical tag back to a value; `None` for anything
+            /// else (fail-loud at the caller, never a silent default).
+            #[must_use]
+            pub fn from_tag(s: &str) -> Option<Self> {
+                Self::ALL.iter().copied().find(|v| v.as_str() == s)
+            }
+
+            /// The closed set as an error message says it.
+            #[must_use]
+            pub fn vocabulary() -> ::std::string::String {
+                let tags: ::std::vec::Vec<&str> =
+                    Self::ALL.iter().map(|v| v.as_str()).collect();
+                $crate::join_or(&tags)
+            }
+
+            /// THE DECLARATION CARRIES ITS OWN GUARD, so a vocabulary declared
+            /// in any crate is checked by the same code rather than by a copy
+            /// of this test written beside it.
+            ///
+            /// `from_tag` is derived from `ALL`, so a member missing from `ALL`
+            /// stops parsing loudly. What the macro cannot derive is the OTHER
+            /// spelling: `#[serde(rename_all)]` decides what the wire accepts,
+            /// and since Round 1027 typed the MCP arguments with these enums,
+            /// serde's spelling is BOTH what an agent's call is judged by and
+            /// what the schema shows. A tag the wire takes and `from_tag`
+            /// refuses is one value set with two definitions — the shape Round
+            /// 870 found in five surfaces at once.
+            #[doc(hidden)]
+            pub fn assert_vocabulary_parity(name: &str) {
+                assert!(!Self::ALL.is_empty(), "{name} declares no member at all");
+                for value in Self::ALL {
+                    let wire = ::serde_json::to_value(value)
+                        .unwrap_or_else(|e| panic!("{name}: a member does not serialize: {e}"));
+                    let wire = wire
+                        .as_str()
+                        .unwrap_or_else(|| panic!("{name}: a member serializes to {wire}, not a tag"));
+                    assert_eq!(
+                        wire,
+                        value.as_str(),
+                        "{name}: serde spells this member `{wire}` and the \
+                         vocabulary spells it `{}`, so the schema shows one \
+                         string and the wire accepts another",
+                        value.as_str()
+                    );
+                    assert_eq!(
+                        Self::from_tag(wire).map(|v| v.as_str()),
+                        Some(value.as_str()),
+                        "{name}: `{wire}` is what serde writes and `from_tag` \
+                         does not read it back"
+                    );
+                }
+                assert!(
+                    Self::from_tag("mn-names-nothing").is_none(),
+                    "{name}: a tag in no member's place was parsed anyway"
+                );
+            }
         }
-    }
-
-    /// Parse the canonical lowercase tag ([`Self::as_str`]) back to a value.
-    /// `None` for any other string. Used to round-trip the classification
-    /// through the projection layer's primitive salsa inputs (core is L0
-    /// zero-dep and cannot derive `salsa::Update`, so the enum is lowered to
-    /// its tag), mirroring [`BindingKind::from_tag`].
-    pub fn from_tag(s: &str) -> Option<Self> {
-        match s {
-            "normative" => Some(CoverageExpectation::Normative),
-            "out_of_scope_here" => Some(CoverageExpectation::OutOfScopeHere),
-            "informational" => Some(CoverageExpectation::Informational),
-            _ => None,
-        }
-    }
+    };
 }
+
+crate::closed_vocabulary!(CoverageExpectation {
+    Normative => "normative",
+    OutOfScopeHere => "out_of_scope_here",
+    Informational => "informational",
+});
 
 /// What KIND of verification evidence a `Normative` section is expected to
 /// carry — the axis orthogonal to [`CoverageExpectation`]. `Dedicated` = a
@@ -372,6 +421,7 @@ impl CoverageExpectation {
 /// dedicated evidence until classified otherwise. Mirrors [`BindingKind`] /
 /// [`CoverageExpectation`] (L0 core, adapter-local, no medium-neutral lift).
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema), schemars(inline))]
 #[serde(rename_all = "snake_case")]
 pub enum VerificationExpectation {
     #[default]
@@ -379,41 +429,10 @@ pub enum VerificationExpectation {
     ByConstruction,
 }
 
-impl VerificationExpectation {
-    /// Every value, in declaration order — the ONE source for any surface that
-    /// spells this closed set out, for the reason on
-    /// [`CoverageExpectation::ALL`]. This axis had not drifted yet; it is the
-    /// sibling that would drift next (Round 870).
-    pub const ALL: [VerificationExpectation; 2] = [
-        VerificationExpectation::Dedicated,
-        VerificationExpectation::ByConstruction,
-    ];
-
-    /// The closed set as an error message says it, derived from [`Self::as_str`].
-    #[must_use]
-    pub fn vocabulary() -> String {
-        let tags: Vec<&str> = Self::ALL.iter().map(|v| v.as_str()).collect();
-        join_or(&tags)
-    }
-
-    /// Canonical lowercase label (matches the serde representation).
-    pub fn as_str(self) -> &'static str {
-        match self {
-            VerificationExpectation::Dedicated => "dedicated",
-            VerificationExpectation::ByConstruction => "by_construction",
-        }
-    }
-
-    /// Parse the canonical lowercase tag ([`Self::as_str`]) back to a value.
-    /// `None` for any other string. Mirrors [`CoverageExpectation::from_tag`].
-    pub fn from_tag(s: &str) -> Option<Self> {
-        match s {
-            "dedicated" => Some(VerificationExpectation::Dedicated),
-            "by_construction" => Some(VerificationExpectation::ByConstruction),
-            _ => None,
-        }
-    }
-}
+crate::closed_vocabulary!(VerificationExpectation {
+    Dedicated => "dedicated",
+    ByConstruction => "by_construction",
+});
 
 /// Section.decision_status lifecycle vocabulary — substrate-canonical
 /// enum. Lives in `mnemosyne-core` (not in any downstream leaf crate)
@@ -421,6 +440,7 @@ impl VerificationExpectation {
 /// the snapshot returned from `AtomicStoreView::snapshot` round-trips
 /// without an adapter.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema), schemars(inline))]
 #[serde(rename_all = "lowercase")]
 pub enum DecisionStatus {
     Active,
@@ -440,31 +460,6 @@ pub enum DecisionStatus {
 }
 
 impl DecisionStatus {
-    /// Canonical lowercase label (matches the serde representation). Used by
-    /// adapters that still carry the status as a string at a layer boundary.
-    pub fn as_str(self) -> &'static str {
-        match self {
-            DecisionStatus::Active => "active",
-            DecisionStatus::Superseded => "superseded",
-            DecisionStatus::Removed => "removed",
-            DecisionStatus::Open => "open",
-        }
-    }
-
-    /// Parse the canonical lowercase tag back to a value — the ONE resolver both
-    /// the CLI (`set-section-decision-status`) and the MCP tool share (R678), so
-    /// the two surfaces cannot accept different vocabularies. `None` for any
-    /// other string (fail-loud at the caller; no silent default).
-    pub fn from_tag(s: &str) -> Option<Self> {
-        match s {
-            "active" => Some(DecisionStatus::Active),
-            "superseded" => Some(DecisionStatus::Superseded),
-            "removed" => Some(DecisionStatus::Removed),
-            "open" => Some(DecisionStatus::Open),
-            _ => None,
-        }
-    }
-
     /// Lifecycle states that carry no in-force, backable decision — `Removed`
     /// (tombstone) and `Open` (question not yet decided). Such sections are
     /// EXEMPT from the decision-backing axioms (coverage / verification /
@@ -476,6 +471,13 @@ impl DecisionStatus {
         matches!(self, DecisionStatus::Removed | DecisionStatus::Open)
     }
 }
+
+crate::closed_vocabulary!(DecisionStatus {
+    Active => "active",
+    Superseded => "superseded",
+    Removed => "removed",
+    Open => "open",
+});
 
 /// Inventory entry lifecycle vocabulary — substrate-canonical enum.
 /// Genre distinct from `DecisionStatus`: stable external IDs (test
@@ -887,5 +889,19 @@ output_parser = "gopls_v0_15""#;
         assert_eq!(join_or(&["a"]), "`a`");
         assert_eq!(join_or(&["a", "b"]), "`a` or `b`");
         assert_eq!(join_or(&["a", "b", "c"]), "`a`, `b`, or `c`");
+    }
+
+    /// Every closed vocabulary THIS CRATE declares, checked by the guard the
+    /// declaration itself carries. The sibling in `mnemosyne-atomic` names the
+    /// three declared there; there is no third home.
+    #[test]
+    fn serde_spelling_is_the_vocabularys_own() {
+        BindingKind::assert_vocabulary_parity("BindingKind");
+        CoverageExpectation::assert_vocabulary_parity("CoverageExpectation");
+        VerificationExpectation::assert_vocabulary_parity("VerificationExpectation");
+        DecisionStatus::assert_vocabulary_parity("DecisionStatus");
+        DisclosureMode::assert_vocabulary_parity("DisclosureMode");
+        PayoffExpectation::assert_vocabulary_parity("PayoffExpectation");
+        PredicateObjectKind::assert_vocabulary_parity("PredicateObjectKind");
     }
 }

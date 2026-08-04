@@ -182,11 +182,12 @@ pub struct AddSectionBindingArgs {
     /// Omit for file-level binding.
     #[serde(default)]
     pub symbol: Option<String>,
-    /// Trace-link kind: `"implements"` (= SysML «satisfy»; the symbol
-    /// fulfills the section's normative requirement; the only kind counted
-    /// as coverage) or `"references"` (= SysML «trace»; the symbol relates
-    /// to / draws meaning from the section without claiming fulfillment).
-    pub kind: String,
+    /// Trace-link kind. `implements` = SysML «satisfy»: the symbol fulfills
+    /// the section's normative requirement, and it is the only kind counted as
+    /// coverage. `references` = SysML «trace»: related to, no fulfillment
+    /// claim. `verifies` = SysML «verify»: a test or report artifact
+    /// establishes the requirement.
+    pub kind: atomic::BindingKind,
 }
 
 // Round 287/289 — Section creation + outline setter MCP arg structs.
@@ -233,8 +234,9 @@ pub struct RemoveSectionArgs {
 pub struct SetSectionDecisionStatusArgs {
     /// Section ID (the `§` prefix is stripped if present).
     pub section_id: ExistingRef,
-    /// New status: `active` | `superseded` | `removed` | `open`. Unknown rejects.
-    pub status: String,
+    /// The decision-lifecycle state the section moves to. `superseded`
+    /// requires `superseding`; `open` admits `resolving`.
+    pub status: mnemosyne_core::DecisionStatus,
     /// Superseding section id — MANDATORY for `superseded`, rejected otherwise.
     #[serde(default)]
     pub superseding: Option<ScannedRef>,
@@ -268,8 +270,8 @@ pub struct SetSectionBindingKindArgs {
     /// Optional symbol identifying the binding (omit for a file-only row).
     #[serde(default)]
     pub symbol: Option<String>,
-    /// New kind: `"implements"` or `"references"`.
-    pub kind: String,
+    /// The kind the binding is reclassified to.
+    pub kind: atomic::BindingKind,
     /// Mandatory rationale — recorded in the reasoned-mutation ledger
     /// (`report_mutation_reasons`), not discarded.
     pub reason: String,
@@ -279,12 +281,11 @@ pub struct SetSectionBindingKindArgs {
 pub struct SetSectionCoverageExpectationArgs {
     /// Section ID without the `§` prefix.
     pub section_id: ExistingRef,
-    /// One of the three `CoverageExpectation` tags. `"normative"` expects an
-    /// `implements` binding; `"out_of_scope_here"` (in the document this ledger
+    /// Whether the section's coverage axiom applies. `normative` expects an
+    /// `implements` binding; `out_of_scope_here` (in the document this ledger
     /// mirrors, not built here — including a deferred or Phase-2 feature) and
-    /// `"informational"` (inherently non-implementable prose) both exempt the
-    /// section. The refusal message names the current set.
-    pub expectation: String,
+    /// `informational` (inherently non-implementable prose) both exempt it.
+    pub expectation: atomic::CoverageExpectation,
     /// Mandatory rationale — recorded in the reasoned-mutation ledger
     /// (`report_mutation_reasons`), not discarded.
     pub reason: String,
@@ -294,10 +295,10 @@ pub struct SetSectionCoverageExpectationArgs {
 pub struct SetSectionVerificationExpectationArgs {
     /// Section ID without the `§` prefix.
     pub section_id: ExistingRef,
-    /// `"dedicated"` (expects a `verifies` binding to a test/report artifact)
-    /// or `"by_construction"` (no independently-assertable per-unit oracle,
-    /// exempt from the dedicated-verify gate).
-    pub expectation: String,
+    /// `dedicated` expects a `verifies` binding to a test or report artifact;
+    /// `by_construction` has no independently-assertable per-unit oracle and is
+    /// exempt from the dedicated-verify gate.
+    pub expectation: atomic::VerificationExpectation,
     /// Mandatory rationale — recorded in the reasoned-mutation ledger
     /// (`report_mutation_reasons`), not discarded.
     pub reason: String,
@@ -324,14 +325,18 @@ pub struct AddConfirmationEventArgs {
     pub file: Option<String>,
     /// Bound symbol (requires `file`).
     pub symbol: Option<String>,
-    /// `"tool"` (deterministic, reproducible) or `"model"` (fresh-context LLM).
-    pub confirmer_kind: String,
+    /// What kind of producer emitted this: `tool` is deterministic and
+    /// reproducible, `model` is a fresh-context LLM trusted only as an
+    /// independent-set member.
+    pub confirmer_kind: atomic::ConfirmerKind,
     pub confirmer_id: FreshId,
     pub confirmer_version: String,
-    /// `"linkage_check"` | `"semantic_review"` | `"coverage_attestation"`.
-    pub method: String,
-    /// `"confirm"` or `"refute"`.
-    pub verdict: String,
+    /// How it was verified — a deterministic linkage check, a fresh-context
+    /// semantic review, or an external coverage attestation.
+    pub method: atomic::ConfirmMethod,
+    /// The verdict this event records. A single refutation blocks regardless
+    /// of how many confirmations stand beside it.
+    pub verdict: atomic::Verdict,
     /// The run that authored the claim.
     pub authoring_run: String,
     /// The run producing THIS verdict (must differ from `authoring_run`).
@@ -675,8 +680,9 @@ pub struct RemovePredicateArgs {
 pub struct AddDisclosurePlanArgs {
     /// Telling id — the registry key for this named telling over the fact base.
     pub telling_id: FreshId,
-    /// Default disclosure mode: withhold | state | hint | imply. Unknown rejects.
-    pub default_mode: String,
+    /// The mode every fact takes in this telling unless `set_disclosure`
+    /// overrides it.
+    pub default_mode: mnemosyne_core::DisclosureMode,
     #[serde(default)]
     pub description: String,
 }
@@ -702,8 +708,10 @@ pub struct SetDisclosureArgs {
     pub telling_id: ExistingRef,
     /// Fact id the override targets (must exist; withhold/first_at need it typed).
     pub fact_id: ExistingRef,
-    /// Disclosure mode: withhold | state | hint | imply.
-    pub mode: String,
+    /// How this telling exposes this fact. `withhold` = never told (the reader
+    /// reconstructs it); `state` = told outright; `hint` = partially
+    /// signalled; `imply` = realised through an object or the environment.
+    pub mode: mnemosyne_core::DisclosureMode,
     /// Per-world-line first-reveal triggers (R752): each a branch + a coord SET +
     /// optional threshold; multiple entries for one branch accumulate.
     #[serde(default)]
@@ -1985,14 +1993,8 @@ impl MnemosyneServer {
         let section = strip_section_marker(&args.0.section_id).to_string();
         let file = args.0.file.clone();
         let symbol = args.0.symbol.clone();
-        let kind_raw = args.0.kind.clone();
+        let kind = args.0.kind;
         let outcome = self.run_mutate(|store, path| {
-            let kind = atomic::BindingKind::from_tag(kind_raw.trim()).ok_or_else(|| {
-                atomic::AtomicMutateError::Validation(format!(
-                    "kind must be `implements`, `references`, or `verifies` (got `{}`)",
-                    kind_raw
-                ))
-            })?;
             atomic::add_section_binding(store, path, &section, &file, symbol.as_deref(), kind)
         });
         self.finish_mutate(outcome)
@@ -2017,7 +2019,7 @@ impl MnemosyneServer {
         args: Parameters<SetSectionDecisionStatusArgs>,
     ) -> CallToolResult {
         let section = strip_section_marker(&args.0.section_id).to_string();
-        let status_raw = args.0.status.clone();
+        let status = args.0.status;
         let superseding = args
             .0
             .superseding
@@ -2029,13 +2031,6 @@ impl MnemosyneServer {
             .as_deref()
             .map(|s| strip_section_marker(s).to_string());
         let outcome = self.run_mutate(|store, path| {
-            let status = mnemosyne_core::DecisionStatus::from_tag(&status_raw.to_ascii_lowercase())
-                .ok_or_else(|| {
-                    atomic::AtomicMutateError::Validation(format!(
-                        "status must be `active`, `superseded`, `removed`, or `open` (got `{}`)",
-                        status_raw
-                    ))
-                })?;
             atomic::set_section_decision_status(
                 store,
                 path,
@@ -2075,15 +2070,9 @@ impl MnemosyneServer {
         let section = strip_section_marker(&args.0.section_id).to_string();
         let file = args.0.file.clone();
         let symbol = args.0.symbol.clone();
-        let kind_raw = args.0.kind.clone();
+        let kind = args.0.kind;
         let reason = args.0.reason.clone();
         let outcome = self.run_mutate(|store, path| {
-            let kind = atomic::BindingKind::from_tag(kind_raw.trim()).ok_or_else(|| {
-                atomic::AtomicMutateError::Validation(format!(
-                    "kind must be `implements`, `references`, or `verifies` (got `{}`)",
-                    kind_raw
-                ))
-            })?;
             atomic::set_section_binding_kind(
                 store,
                 path,
@@ -2105,17 +2094,9 @@ impl MnemosyneServer {
         args: Parameters<SetSectionCoverageExpectationArgs>,
     ) -> CallToolResult {
         let section = strip_section_marker(&args.0.section_id).to_string();
-        let expectation_raw = args.0.expectation.clone();
+        let expectation = args.0.expectation;
         let reason = args.0.reason.clone();
         let outcome = self.run_mutate(|store, path| {
-            let expectation = atomic::CoverageExpectation::from_tag(expectation_raw.trim())
-                .ok_or_else(|| {
-                    atomic::AtomicMutateError::Validation(format!(
-                        "expectation must be {} (got `{}`)",
-                        atomic::CoverageExpectation::vocabulary(),
-                        expectation_raw
-                    ))
-                })?;
             atomic::set_section_coverage_expectation(store, path, &section, expectation, &reason)
         });
         self.finish_mutate(outcome)
@@ -2129,17 +2110,9 @@ impl MnemosyneServer {
         args: Parameters<SetSectionVerificationExpectationArgs>,
     ) -> CallToolResult {
         let section = strip_section_marker(&args.0.section_id).to_string();
-        let expectation_raw = args.0.expectation.clone();
+        let expectation = args.0.expectation;
         let reason = args.0.reason.clone();
         let outcome = self.run_mutate(|store, path| {
-            let expectation = atomic::VerificationExpectation::from_tag(expectation_raw.trim())
-                .ok_or_else(|| {
-                    atomic::AtomicMutateError::Validation(format!(
-                        "expectation must be {} (got `{}`)",
-                        atomic::VerificationExpectation::vocabulary(),
-                        expectation_raw
-                    ))
-                })?;
             atomic::set_section_verification_expectation(
                 store,
                 path,
@@ -2178,25 +2151,7 @@ impl MnemosyneServer {
                     }
                 }
             };
-            let kind =
-                atomic::ConfirmerKind::from_tag(a.confirmer_kind.trim()).ok_or_else(|| {
-                    atomic::AtomicMutateError::Validation(format!(
-                        "confirmer_kind must be `tool` or `model` (got `{}`)",
-                        a.confirmer_kind
-                    ))
-                })?;
-            let method = atomic::ConfirmMethod::from_tag(a.method.trim()).ok_or_else(|| {
-                atomic::AtomicMutateError::Validation(format!(
-                    "method must be linkage_check|semantic_review|coverage_attestation (got `{}`)",
-                    a.method
-                ))
-            })?;
-            let verdict = atomic::Verdict::from_tag(a.verdict.trim()).ok_or_else(|| {
-                atomic::AtomicMutateError::Validation(format!(
-                    "verdict must be `confirm` or `refute` (got `{}`)",
-                    a.verdict
-                ))
-            })?;
+            let (kind, method, verdict) = (a.confirmer_kind, a.method, a.verdict);
             let event = atomic::ConfirmationEvent {
                 claim,
                 confirmer: atomic::Confirmer {
@@ -2528,7 +2483,13 @@ impl MnemosyneServer {
     async fn add_disclosure_plan(&self, args: Parameters<AddDisclosurePlanArgs>) -> CallToolResult {
         let a = args.0;
         let outcome = self.run_mutate(|store, path| {
-            atomic::add_disclosure_plan(store, path, &a.telling_id, &a.default_mode, &a.description)
+            atomic::add_disclosure_plan(
+                store,
+                path,
+                &a.telling_id,
+                a.default_mode.as_str(),
+                &a.description,
+            )
         });
         self.finish_mutate(outcome)
     }
@@ -2558,7 +2519,7 @@ impl MnemosyneServer {
                 atomic::DisclosureDecision {
                     telling_id: &a.telling_id,
                     fact_id: &a.fact_id,
-                    mode: &a.mode,
+                    mode: a.mode.as_str(),
                     first_at: &first_at,
                     surface,
                 },
@@ -4327,6 +4288,163 @@ mod tests {
             .find(|f| *f == marked)
     }
 
+    /// The closed set a PROPERTY declares, in either shape the schema writes
+    /// one — and reading both is not a convenience.
+    ///
+    /// THERE ARE THREE SHAPES AND ASSUMING TWO REPORTS THE SURFACE AS OPEN
+    /// WHERE IT IS MOST CAREFULLY DESCRIBED.
+    ///
+    /// A unit-variant enum whose variants carry no doc comment lands as a flat
+    /// `enum: [...]`. One where EVERY variant is documented lands as
+    /// `oneOf: [{const, description}, ...]`, which is the better shape to hand
+    /// an agent because each member arrives with its meaning. And the mixed
+    /// case — some variants documented, some not — lands as a `oneOf` whose
+    /// branches are of BOTH kinds, the undocumented ones grouped into a single
+    /// `enum` branch. That third shape is what `DecisionStatus` takes, and a
+    /// reader that knew only the first two called it `composed` and concluded
+    /// there was no closed set at all.
+    ///
+    /// So a branch contributes its `const` or its `enum`, and EVERY branch must
+    /// contribute — a `oneOf` with a branch that is neither is a union of
+    /// shapes, not a closed value set, and calling it one would be a false
+    /// claim about what an agent may send.
+    fn closed_set_members(property: &serde_json::Value) -> Option<Vec<String>> {
+        fn tags_of(node: &serde_json::Value) -> Option<Vec<String>> {
+            if let Some(c) = node.get("const").and_then(|c| c.as_str()) {
+                return Some(vec![c.to_string()]);
+            }
+            let listed = node.get("enum")?.as_array()?;
+            let tags: Vec<String> = listed
+                .iter()
+                .filter_map(|m| m.as_str().map(str::to_string))
+                .collect();
+            (tags.len() == listed.len() && !tags.is_empty()).then_some(tags)
+        }
+        if let Some(tags) = tags_of(property) {
+            return Some(tags);
+        }
+        let branches = property.get("oneOf").and_then(|o| o.as_array())?;
+        let mut tags: Vec<String> = Vec::new();
+        for branch in branches {
+            tags.extend(tags_of(branch)?);
+        }
+        (!tags.is_empty()).then_some(tags)
+    }
+
+    /// The property an agent reads for one argument, not a `$ref` beside it:
+    /// the vocabulary enums are `schemars(inline)` for the reason `AgentPath`
+    /// is (Round 1014) — a set behind a reference is one the client and the
+    /// gate must each follow, and a set the client does not follow is a set the
+    /// agent still has to guess.
+    fn agent_property(tool: &str, arg: &str) -> Option<serde_json::Value> {
+        agent_facing_tools()
+            .into_iter()
+            .find(|t| t.name == tool)?
+            .input_schema
+            .get("properties")
+            .and_then(|p| p.as_object())
+            .and_then(|p| p.get(arg))
+            .cloned()
+    }
+
+    /// The closed set an argument's schema declares, or `None` if its value
+    /// space is open.
+    fn declared_closed_set(tool: &str, arg: &str) -> Option<Vec<String>> {
+        closed_set_members(&agent_property(tool, arg)?)
+    }
+
+    /// Every closed vocabulary this workspace declares, with the members it
+    /// holds — the table the refusal check below searches.
+    ///
+    /// Hand-written and EXECUTED, on the terms Round 1022 set for a table: each
+    /// row is looked for in every refusal the sweep collects, so a row naming a
+    /// vocabulary that no longer exists stops compiling and a row whose members
+    /// moved searches the new ones. What it cannot do is notice a vocabulary
+    /// declared somewhere and never registered here — the same bridge limit the
+    /// `*_id` name gate has, and the reason the type is the primary mechanism
+    /// and this is only the tripwire.
+    fn registered_vocabularies() -> Vec<(&'static str, Vec<String>)> {
+        fn tags<T: Copy>(all: &'static [T], f: fn(T) -> &'static str) -> Vec<String> {
+            all.iter().map(|v| f(*v).to_string()).collect()
+        }
+        vec![
+            (
+                "BindingKind",
+                tags(atomic::BindingKind::ALL, atomic::BindingKind::as_str),
+            ),
+            (
+                "CoverageExpectation",
+                tags(
+                    atomic::CoverageExpectation::ALL,
+                    atomic::CoverageExpectation::as_str,
+                ),
+            ),
+            (
+                "VerificationExpectation",
+                tags(
+                    atomic::VerificationExpectation::ALL,
+                    atomic::VerificationExpectation::as_str,
+                ),
+            ),
+            (
+                "DecisionStatus",
+                tags(
+                    mnemosyne_core::DecisionStatus::ALL,
+                    mnemosyne_core::DecisionStatus::as_str,
+                ),
+            ),
+            (
+                "DisclosureMode",
+                tags(
+                    mnemosyne_core::DisclosureMode::ALL,
+                    mnemosyne_core::DisclosureMode::as_str,
+                ),
+            ),
+            (
+                "PayoffExpectation",
+                tags(
+                    mnemosyne_core::PayoffExpectation::ALL,
+                    mnemosyne_core::PayoffExpectation::as_str,
+                ),
+            ),
+            (
+                "PredicateObjectKind",
+                tags(
+                    mnemosyne_core::PredicateObjectKind::ALL,
+                    mnemosyne_core::PredicateObjectKind::as_str,
+                ),
+            ),
+            (
+                "ConfirmerKind",
+                tags(atomic::ConfirmerKind::ALL, atomic::ConfirmerKind::as_str),
+            ),
+            (
+                "ConfirmMethod",
+                tags(atomic::ConfirmMethod::ALL, atomic::ConfirmMethod::as_str),
+            ),
+            (
+                "Verdict",
+                tags(atomic::Verdict::ALL, atomic::Verdict::as_str),
+            ),
+        ]
+    }
+
+    /// Whether `text` names EVERY member of a set, each as a word.
+    ///
+    /// As a WORD, because a member is a tag and not a substring: `state` sits
+    /// inside `status` and `statement`, and a check that missed that would
+    /// report a vocabulary wherever its shortest member happened to appear.
+    fn names_every_member(text: &str, members: &[String]) -> bool {
+        fn word(text: &str, needle: &str) -> bool {
+            let edge = |c: Option<char>| c.is_none_or(|c| !c.is_ascii_alphanumeric() && c != '_');
+            text.match_indices(needle).any(|(at, _)| {
+                edge(text[..at].chars().next_back())
+                    && edge(text[at + needle.len()..].chars().next())
+            })
+        }
+        members.len() > 1 && members.iter().all(|m| word(text, m))
+    }
+
     /// EVERY IDENTIFIER AN AGENT SENDS SAYS WHETHER IT IS LOOKED UP.
     ///
     /// Round 1025 shipped the argument surface with no silent set on either half
@@ -4621,13 +4739,30 @@ mod tests {
         // decided the answer. Summing them would let the weaker evidence be read
         // as the stronger, which is the reading Round 987 caught when four pairs
         // were moved out of the silent set with no test behind them at all.
-        let differential = deduped.len() - silent.iter().filter(|p| live.contains(*p)).count();
+        // AND AN ARGUMENT DECLARING A CLOSED SET IS ON THE DIFFERENTIAL SIDE,
+        // derived from the router rather than declared anywhere. The sweep sends
+        // it a second MEMBER and asserts the answer moved, which is the same
+        // evidence a hand-written differential gives; counting it as a floor
+        // would understate what every run already proves. The claim is executed:
+        // if such an argument does not move the answer, its tool's probe is red.
+        let closed: BTreeSet<(&str, &str)> = swept
+            .iter()
+            .copied()
+            .filter(|(t, a)| declared_closed_set(t, a).is_some())
+            .collect();
+        let differential = deduped.len() - silent.iter().filter(|p| live.contains(*p)).count()
+            + closed.iter().filter(|p| !deduped.contains(*p)).count();
         println!(
             "MCP {half} arguments, of {} on the router: {differential} proved by \
-             differential, {} probed only (a floor — the value was validated or \
-             observable, not shown to decide the answer), {} unexercised",
+             differential ({} of them by a second member of a closed set the \
+             schema declares), {} probed only (a floor — the value was validated \
+             or observable, not shown to decide the answer), {} unexercised",
             live.len(),
-            swept.iter().filter(|p| !deduped.contains(*p)).count(),
+            closed.iter().filter(|p| !deduped.contains(*p)).count(),
+            swept
+                .iter()
+                .filter(|p| !deduped.contains(*p) && !closed.contains(*p))
+                .count(),
             silent.len(),
         );
         let mut by_type: std::collections::BTreeMap<String, usize> = Default::default();
@@ -4716,24 +4851,38 @@ mod tests {
     /// objects — and those arguments must be named in the tool's `except` list,
     /// where they stay visible in the unexercised population.
     ///
-    /// A CLOSED VOCABULARY IS NOT ONE OF THOSE. The 148 required strings include
-    /// every closed set this surface has (`mode`, `status`, `verdict`, `kind`),
-    /// and the schema declares them as bare `string` with no `enum`: the
-    /// vocabulary is enforced by the handler, not by the wire type. So the
-    /// sentinel PARSES and reaches the handler, which is what makes its refusal
-    /// evidence about the handler rather than about serde.
-    fn probe_value(tool: &str, arg: &str) -> Option<(serde_json::Value, String)> {
+    /// A CLOSED VOCABULARY IS PROBED WITH ANOTHER MEMBER OF IT, which is a
+    /// DIFFERENTIAL and not a floor.
+    ///
+    /// Until this round the ten closed sets on this surface were bare `string`
+    /// on the wire and enforced by the handler, so the sentinel parsed, reached
+    /// the handler and was refused by name — evidence about the handler, and
+    /// the agent learned the set only by guessing wrong. Now the wire takes the
+    /// enum: serde refuses a non-member before the handler is reached, which is
+    /// a STRUCTURAL proof that no other value gets through, and the question
+    /// left over is the one a sentinel could never answer — whether the member
+    /// the agent chose decides the answer. So the probe value is a SECOND
+    /// MEMBER, and the same derived observation that judges every other
+    /// argument judges this one, as a differential.
+    fn probe_value(
+        tool: &str,
+        arg: &str,
+        base: &serde_json::Value,
+    ) -> Option<(serde_json::Value, String)> {
         let found = agent_facing_tools().into_iter().find(|t| t.name == tool)?;
         let property = found
             .input_schema
             .get("properties")
             .and_then(|p| p.as_object())
             .and_then(|p| p.get(arg))?;
-        // A value constrained to a listed set cannot be probed with something
-        // outside it: serde refuses before the handler is reached, and a
-        // deserialization error is evidence about the schema, not the handler.
-        if property.get("enum").is_some() {
-            return None;
+        // THE MEMBER IS PICKED FROM THE SCHEMA, so a variant added to the enum
+        // is probed by the same declaration. Any member other than the one the
+        // declared call already sends will do; the caller asserts they differ.
+        if let Some(members) = closed_set_members(property) {
+            let other = members
+                .into_iter()
+                .find(|m| base.as_str() != Some(m.as_str()))?;
+            return Some((serde_json::Value::from(other.clone()), other));
         }
         // AN OPTIONAL ARGUMENT'S TYPE IS WRITTEN AS A UNION WITH `null`, and the
         // probe is about the value the agent sends rather than about the option
@@ -5731,8 +5880,30 @@ mod tests {
                     // is executed rather than trusted. Round 987's defect was a
                     // list that said a test existed; an unearned exception is the
                     // same list with a different name.
-                    let mut arms: Vec<Option<String>> = vec![None];
-                    arms.extend(required.iter().cloned().map(Some));
+                    // A CLOSED SET GETS ONE ARM PER MEMBER, because "the value
+                    // decides the answer" is a claim about a PAIR of members and
+                    // one arm can only ever test one pair. Round 995's hazard is
+                    // why it matters here rather than being thoroughness: a
+                    // member equal to the field's default is normalised away by
+                    // the store, so an arm that happens to pick it observes
+                    // nothing and says so about the HANDLER. Trying every other
+                    // member turns that into what it is — a fact about one
+                    // value, not about the argument.
+                    let declared_base = serde_json::json!($base);
+                    let candidates = |arg: &str| -> Vec<Option<String>> {
+                        match declared_closed_set(tool, arg) {
+                            Some(members) => members
+                                .into_iter()
+                                .filter(|m| declared_base[arg].as_str() != Some(m.as_str()))
+                                .map(Some)
+                                .collect(),
+                            None => vec![None],
+                        }
+                    };
+                    let mut arms: Vec<Option<(String, Option<String>)>> = vec![None];
+                    arms.extend(required.iter().flat_map(|a| {
+                        candidates(a).into_iter().map(|m| Some((a.clone(), m)))
+                    }));
                     // AN OPTIONAL ARGUMENT THAT DECLARES A POLARITY IS PROBED
                     // TOO. The coverage accounting owns the two halves and this
                     // sweep only ever reached the required one; polarity is not
@@ -5746,7 +5917,9 @@ mod tests {
                         .filter(|(t, a)| t == tool && declared_polarity(t, a).is_some())
                         .map(|(_, a)| a)
                         .collect();
-                    arms.extend(optional_typed.iter().cloned().map(Some));
+                    arms.extend(optional_typed.iter().flat_map(|a| {
+                        candidates(a).into_iter().map(|m| Some((a.clone(), m)))
+                    }));
                     let mut base_answer = String::new();
                     let mut base_store = String::new();
                     let mut base_wrote = false;
@@ -5842,7 +6015,7 @@ mod tests {
                         let mut json = serde_json::json!($base);
                         let mut needle = String::new();
                         let mut was = String::new();
-                        if let Some(arg) = &arm {
+                        if let Some((arg, member)) = &arm {
                             // The `when` fields land BEFORE the probe value, so
                             // an override may also supply a valid value for the
                             // argument about to be replaced.
@@ -5858,17 +6031,29 @@ mod tests {
                                 }
                             }
                             // NO PROBE VALUE THE SCHEMA DESCRIBES IS NO VERDICT.
-                            // A `$ref` to a closed enum and an array of objects
-                            // are the two shapes this reaches; both are recorded
-                            // as inconclusive rather than skipped, so the
-                            // exception that covers them has to be earned here.
-                            let Some((value, n)) = probe_value(tool, arg) else {
+                            // An array of objects is the shape this still
+                            // reaches; it is recorded as inconclusive rather
+                            // than skipped, so the exception that covers it has
+                            // to be earned here.
+                            let derived = match member {
+                                Some(m) => Some((
+                                    serde_json::Value::from(m.clone()),
+                                    m.clone(),
+                                )),
+                                None => probe_value(tool, arg, &json[arg.as_str()]),
+                            };
+                            let Some((value, n)) = derived else {
                                 verdicts.push((
                                     arg.clone(),
                                     "inconclusive",
-                                    "the schema describes no probe value for it \
-                                     (a closed enum behind a $ref, or an array \
-                                     of objects)".to_string(),
+                                    format!(
+                                        "the schema describes no probe value for \
+                                         it — declared type `{}`, property {}",
+                                        declared_type(tool, arg),
+                                        agent_property(tool, arg)
+                                            .map(|p| p.to_string())
+                                            .unwrap_or_else(|| "absent".to_string())
+                                    ),
                                 ));
                                 continue;
                             };
@@ -5888,7 +6073,7 @@ mod tests {
                             // A PROBE THAT SERDE REJECTS NEVER REACHED THE
                             // HANDLER, so it is evidence about the wire shape
                             // and none at all about the handler.
-                            (Err(e), Some(arg)) => {
+                            (Err(e), Some((arg, _))) => {
                                 verdicts.push((
                                     arg.clone(),
                                     "inconclusive",
@@ -5909,7 +6094,7 @@ mod tests {
                         let after = std::fs::read_to_string(&store_path)
                             .expect("read the store");
                         let answer = answer_text(&result);
-                        let Some(arg) = arm else {
+                        let Some((arg, _)) = arm else {
                             // THE FLOOR. Every probe below is interpreted against
                             // this call having worked; if it did not, every
                             // refusal that follows is the base's and the sweep
@@ -6001,7 +6186,33 @@ mod tests {
                                 base_store.matches(&needle).count(),
                                 after.matches(&needle).count(),
                             );
-                            if a > b {
+                            // A CLOSED SET COUNTS BOTH WAYS. Both arms send a
+                            // VALID member, so the value the base sent is as
+                            // countable as the one the probe sent — and it has to
+                            // be, because a store omits a field equal to its
+                            // default (Round 995): `verification_expectation`
+                            // `dedicated` is written as nothing at all, so an arm
+                            // that sends it can only be seen by the base's member
+                            // DISAPPEARING. Watching one direction called that
+                            // "the handler ignored it".
+                            let closed = declared_closed_set(tool, &arg).is_some();
+                            let was_tag = was.trim_matches('"').to_string();
+                            let (wb, wa) = (
+                                base_store.matches(&was_tag).count(),
+                                after.matches(&was_tag).count(),
+                            );
+                            if closed && a <= b && wa < wb {
+                                (
+                                    "stored",
+                                    format!(
+                                        "the member the base sent ({was}) occurs \
+                                         {wb} time(s) without `{needle}` and {wa} \
+                                         with it, so the store follows the member \
+                                         chosen even where the chosen one is the \
+                                         default it omits"
+                                    ),
+                                )
+                            } else if a > b {
                                 ("stored", format!("the store holds the probe value {a} time(s)"))
                             } else if after == before {
                                 // THE ARGUMENT DECIDED WHETHER ANYTHING HAPPENED
@@ -6077,11 +6288,94 @@ mod tests {
                         // asked about.
                         verdicts.push((arg, verdict.0, verdict.1));
                     }
+                    // ONE VERDICT PER ARGUMENT, however many members it has.
+                    // A closed set ran one arm per member and "the value decides
+                    // the answer" is satisfied by ANY pair that differs, so the
+                    // strongest arm is the argument's verdict — and when none of
+                    // them moved the answer, every member tried is named, since
+                    // "no other member changed anything" is the finding and a
+                    // single member's silence is not.
+                    let rank = |v: &str| match v {
+                        "stored" | "answered" | "selected" => 0,
+                        "validated" => 1,
+                        _ => 2,
+                    };
+                    let mut collapsed: Vec<(String, &'static str, String)> = Vec::new();
+                    for arg in verdicts
+                        .iter()
+                        .map(|(a, _, _)| a.clone())
+                        .collect::<BTreeSet<String>>()
+                    {
+                        let mut mine: Vec<&(String, &'static str, String)> =
+                            verdicts.iter().filter(|(a, _, _)| *a == arg).collect();
+                        mine.sort_by_key(|(_, v, _)| rank(v));
+                        let (_, verdict, why) = mine[0];
+                        let why = if mine.len() > 1 && rank(verdict) == 2 {
+                            format!(
+                                "no member moved the answer — {}",
+                                mine.iter()
+                                    .map(|(_, _, w)| w.as_str())
+                                    .collect::<Vec<_>>()
+                                    .join(" / ")
+                            )
+                        } else {
+                            why.clone()
+                        };
+                        collapsed.push((arg, verdict, why));
+                    }
+                    let verdicts = collapsed;
                     // WHAT EVERY ARM DID IS PRINTED BEFORE ANYTHING IS ASSERTED,
                     // so a failure below arrives with the whole tool's picture
                     // rather than one line of it (Round 854).
                     for (arg, verdict, why) in &verdicts {
                         println!("  {tool}.{arg}: {verdict} — {why}");
+                    }
+                    // A CLOSED SET IS A DIFFERENTIAL, NOT A FLOOR. serde already
+                    // refuses every non-member before the handler is reached, so
+                    // the probe sends ANOTHER MEMBER and the only honest verdict
+                    // is that the answer moved. A refusal here is not the
+                    // validation evidence a sentinel's refusal is — it says a
+                    // VALID member was rejected, which is either a dependency the
+                    // declaration must supply with `when` or a defect.
+                    for (arg, verdict, why) in &verdicts {
+                        let Some(members) = declared_closed_set(tool, arg) else {
+                            continue;
+                        };
+                        assert!(
+                            ["stored", "answered", "selected"].contains(verdict),
+                            "`{tool}.{arg}` declares the closed set {members:?}, so \
+                             the sweep probes it with a second MEMBER and the \
+                             answer must move: {why}. A member the wire admits and \
+                             the handler refuses is a dependency on another \
+                             argument (declare it with `when`) or a defect"
+                        );
+                    }
+                    // AND NO REFUSAL RE-SPELLS A SET THE SCHEMA HIDES. A handler
+                    // that lists a vocabulary in its refusal is enforcing a
+                    // closed set the wire type does not carry, so an agent
+                    // reading the schema sees `string` and learns the members
+                    // only by guessing wrong — the defect this round closed for
+                    // ten arguments. The check is on the MEMBERS rather than on
+                    // the sentence, because the sentence was not one sentence:
+                    // nine sites said "must be `a`, `b`, or `c`" and
+                    // `ConfirmMethod` said "a|b|c", and a matcher keyed on the
+                    // phrasing missed exactly that one while measuring.
+                    for (arg, verdict, why) in &verdicts {
+                        if *verdict != "validated" || declared_closed_set(tool, arg).is_some() {
+                            continue;
+                        }
+                        for (name, members) in registered_vocabularies() {
+                            assert!(
+                                !names_every_member(why, &members),
+                                "`{tool}.{arg}` is refused by a message naming \
+                                 every member of `{name}` ({members:?}), so the \
+                                 handler is enforcing a closed set the SCHEMA \
+                                 does not declare — an agent reading the tool \
+                                 sees an open string and finds the set by being \
+                                 refused. Type the argument with the enum, the \
+                                 way the ten Round 1027 moved are: {why}"
+                            );
+                        }
                     }
                     // A MARK IS AN ORACLE, NOT A LABEL. `ExistingRef` says a
                     // value naming nothing is refused by name, which is exactly
@@ -6148,7 +6442,7 @@ mod tests {
                                 }
                             }
                         }
-                        let (value, _) = probe_value(tool, arg)
+                        let (value, _) = probe_value(tool, arg, &json[arg.as_str()])
                             .expect("a scanned reference is a string the schema describes");
                         json[arg.as_str()] = value;
                         let args: $args = serde_json::from_value(json)
@@ -6553,7 +6847,7 @@ mod tests {
             ."clear" = true seen "inv-1" in outcome;
         set_section_decision_status_superseding_reaches_the_store:
             [import_sections(ImportSectionsArgs) {"sections": [{"section_id": "40", "parent_doc": "spec", "title": "the section"}, {"section_id": "41", "parent_doc": "spec", "title": "the other"}]}]
-            set_section_decision_status(SetSectionDecisionStatusArgs) {"section_id": "40", "status": "Superseded", "reason": "overtaken"}
+            set_section_decision_status(SetSectionDecisionStatusArgs) {"section_id": "40", "status": "superseded", "reason": "overtaken"}
             ."superseding" = "41" seen "superseding" in outcome;
         add_confirmation_event_file_reaches_the_store:
             [import_sections(ImportSectionsArgs) {"sections": [{"section_id": "40", "parent_doc": "spec", "title": "the section"}]}]
@@ -6609,7 +6903,7 @@ mod tests {
             ."converges_from" = [{"branch": "b-other", "at": "sc-01"}, {"branch": "b-third", "at": "sc-01"}] seen "b-third" in store;
         set_section_decision_status_resolving_reaches_the_store:
             [import_sections(ImportSectionsArgs) {"sections": [{"section_id": "40", "parent_doc": "spec", "title": "the section"}, {"section_id": "41", "parent_doc": "spec", "title": "the other"}, {"section_id": "sc-01", "parent_doc": "spec", "title": "scene one"}]}]
-            set_section_decision_status(SetSectionDecisionStatusArgs) {"section_id": "40", "status": "Open", "reason": "reopened"}
+            set_section_decision_status(SetSectionDecisionStatusArgs) {"section_id": "40", "status": "open", "reason": "reopened"}
             ."resolving" = "41" seen "41" in store;
         add_branch_description_reaches_the_store:
             add_branch(AddBranchArgs) {"branch_id": "b-what-if"}
@@ -7498,11 +7792,15 @@ mod tests {
         add_predicate_probed:
             @branch_story
             add_predicate(AddPredicateArgs) {"predicate_id": "beside", "object_kind": "entity", "subject_kind": "place", "object_entity_kind": "place", "description": "one place beside another"}
-            except "object_kind";
+            when "object_kind" {"object_entity_kind": null, "object_tokens": ["quiet"]};
         set_predicate_probed:
             @branch_story
-            set_predicate(SetPredicateArgs) {"predicate_id": "adjacent", "object_kind": "entity", "description": "a way between two places"}
-            except "object_kind";
+            // ON A PREDICATE NOTHING USES YET. Re-typing one that facts already
+            // hold objects for is refused BY DESIGN, so probing the object shape
+            // through `adjacent` measured that guard rather than the argument.
+            [add_predicate(AddPredicateArgs) {"predicate_id": "beside", "object_kind": "entity", "subject_kind": "place", "object_entity_kind": "place", "description": "one place beside another"}]
+            set_predicate(SetPredicateArgs) {"predicate_id": "beside", "object_kind": "entity", "description": "a way between two places"}
+            when "object_kind" {"object_entity_kind": null, "object_tokens": ["quiet"]};
         remove_predicate_probed:
             @branch_story
             [add_predicate(AddPredicateArgs) {"predicate_id": "beside", "object_kind": "entity", "subject_kind": "place", "object_entity_kind": "place", "description": "one place beside another"}]
