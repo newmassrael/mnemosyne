@@ -2736,6 +2736,86 @@
         "Asked of ONE corpus. A read that judges nothing here because this store declares nothing for it (`report-transition-map`, `report-parameter-economy` and six others answer about 0 subjects) is absent from the backlog for a reason that has nothing to do with agreement."
       ]
     },
+    "Round 1040": {
+      "decision_summary": "R1040 (BUILD) — the backlog is finite now because \"answers about\" stopped being guessed. Round 1039 derived the population of subjects more than one shipped read answers about, and the answer rested on a heuristic: a VERDICT FIELD recognised by shape, \"a few short lowercase tokens, none of them a registered id\". STAR TWO INDEPENDENT DERIVATIONS OF THAT HEURISTIC WERE MEASURED AND BOTH FAILED, WHICH IS THE FINDING. The shape guess swept in `telling` and `parent` — ids that happen to look like tokens — so this round tried to replace it with a CLOSURE measurement: a closed vocabulary is the same small set in every store, an id field's values belong to the store that declared them, so pool each field's values over all 28 authored corpora that load and let the union sizes separate. They did not. `quest_id` pools to FOUR values across 28 stores, because one store declares quests; a field only one corpus exercises has a small union whatever it is. Whether a field carries a closed vocabulary is a fact about its TYPE, and no amount of looking at output recovers it — the store HAS the answer in its `closed_vocabulary!` types and no read carries which of its fields came from one. STAR SO THE QUESTION WAS CHANGED TO ONE THE PERTURBATION CAN ANSWER, AND IT IS THE ONE R1037'S FINDING ACTUALLY RESTED ON. A read ANSWERS ABOUT a subject when its record for that subject CHANGES under some authorable edit; a read that only renders the id has no opinion to contradict anyone with. The corruption population is the R1033 walk's, derived from the store's own legs and moved to the shared module rather than copied, so the two walks cannot come to disagree about what an author could commit. No vocabulary, no shape, no threshold. STAR THE POPULATION IS 98 SUBJECTS, 79 OF THEM ANSWERED ABOUT BY MORE THAN ONE READ, AND THE BACKLOG IS 28 READ PAIRS. Under co-mention it was 220 of 220 and 55 pairs, which is noise; under the shape guess it was 81 of 206 and 16 pairs, which was the wrong 16. STAR THE ORACLE IS ASSERTED, NOT ASSUMED. `report-quest-graph <-> validate-continuity` is in the backlog with 9 subjects in common and `q-main` — the quest R1037's contradiction was about — is one of them. A derivation that cannot re-find what a hand comparison already proved is a list, not a backlog, and two of the seven injections land on exactly that claim. STAR EVERY CLAIM THIS WALK MAKES NOW HAS AN INJECTION THAT BREAKS IT ALONE OR NEARLY SO: K4 moves only the backlog, K6 only the population, K7 the vacuity argument. That is the R1039 restructure paying off — the checklist form is what makes per-claim coverage visible at all.",
+      "changes_bullets": [
+        "`crates/mnemosyne-cli/tests/common/mod.rs`: the derived corruption population moves here from the census walk — two walks need the same authorable edits, and a second copy is how they would come to disagree about what an author can commit.",
+        "`crates/mnemosyne-cli/tests/read_agreement_population.rs`: \"answers about\" is now measured by perturbation rather than by a verdict-field heuristic; the discarded shape and closure derivations are recorded with the numbers that killed them, and the population, the 28-pair backlog and the R1037 oracle are pinned."
+      ],
+      "verification_bullets": [
+        "Workspace 1749 tests green, clippy -D warnings clean, fmt clean, `validate-workspace` T1/T3 = 0.",
+        "Measured and discarded: the closure derivation over all 28 loadable corpora does not separate vocabularies from ids, because `quest_id` pools to 4 values and `world` to 4 — one corpus exercises them.",
+        "Population: 220 registered subjects, 41 authorable corruptions all accepted by the write path, 27 reads holding records; 98 subjects answered about, 79 by more than one read, 28 read pairs.",
+        "7 injections, each over the WHOLE workspace with --no-fail-fast: K1 mention counts as answering / K2 the corruption is not applied / K3 ancestors also claim a record / K4 the backlog ranked least-shared first / K5 entities are not subjects / K6 a retarget stops carrying its entities list / K7 arrays stop propagating.",
+        "Per-claim coverage: ORACLE by K2+K5+K7, INPUTS by K5, POPULATION by K6 alone, VACUITY by K7, ANSWERED by five, BACKLOG by all — and K4 breaks the backlog alone, which is what shows it is live rather than carried by a neighbour."
+      ],
+      "carry_forward_bullets": [
+        "The backlog says which pairs answer about a subject in common, never whether their answers agree. Comparing two records needs to know what each read MEANS by its own, and R1037 did that by reading both. 28 pairs remain unexamined.",
+        "Which read fields carry a closed vocabulary is not recoverable from output, and this round proved it twice. The store knows — `closed_vocabulary!` — and reaching it needs either a fourth hand table or the `inventory`/`linkme` dependency the owner has open. Until then no walk can tell a verdict from an id by looking.",
+        "Asked of ONE corpus's corruptions. A read that answers about nothing here because this store declares nothing for it is absent from the backlog for a reason that has nothing to do with agreement."
+      ],
+      "population_census": [
+        {
+          "axis": "transition rules by `undirected`",
+          "left_label": "undirected",
+          "left": 10,
+          "right_label": "directed",
+          "right": 27
+        },
+        {
+          "axis": "map corpora by leg-kind declaration",
+          "left_label": "omitted",
+          "left": 6,
+          "right_label": "declared",
+          "right": 24
+        },
+        {
+          "axis": "cost-carrying corpora by direction-dependent pricing",
+          "left_label": "prices a way by direction",
+          "left": 4,
+          "right_label": "prices no way by direction",
+          "right": 6
+        },
+        {
+          "axis": "run trees by authoring mode",
+          "left_label": "hand script",
+          "left": 10,
+          "right_label": "file-only",
+          "right": 239
+        },
+        {
+          "axis": "map corpora by declared boundary crossing",
+          "left_label": "declares an exit",
+          "left": 6,
+          "right_label": "declares none",
+          "right": 24
+        },
+        {
+          "axis": "authored submissions by map and telling",
+          "left_label": "carries both",
+          "left": 10,
+          "right_label": "carries one",
+          "right": 24
+        }
+      ],
+      "publishable_decision_summary": "R1040 (BUILD) — the backlog is finite now because \"answers about\" stopped being guessed. Round 1039 derived the population of subjects more than one shipped read answers about, and the answer rested on a heuristic: a VERDICT FIELD recognised by shape, \"a few short lowercase tokens, none of them a registered id\". STAR TWO INDEPENDENT DERIVATIONS OF THAT HEURISTIC WERE MEASURED AND BOTH FAILED, WHICH IS THE FINDING. The shape guess swept in `telling` and `parent` — ids that happen to look like tokens — so this round tried to replace it with a CLOSURE measurement: a closed vocabulary is the same small set in every store, an id field's values belong to the store that declared them, so pool each field's values over all 28 authored corpora that load and let the union sizes separate. They did not. `quest_id` pools to FOUR values across 28 stores, because one store declares quests; a field only one corpus exercises has a small union whatever it is. Whether a field carries a closed vocabulary is a fact about its TYPE, and no amount of looking at output recovers it — the store HAS the answer in its `closed_vocabulary!` types and no read carries which of its fields came from one. STAR SO THE QUESTION WAS CHANGED TO ONE THE PERTURBATION CAN ANSWER, AND IT IS THE ONE R1037'S FINDING ACTUALLY RESTED ON. A read ANSWERS ABOUT a subject when its record for that subject CHANGES under some authorable edit; a read that only renders the id has no opinion to contradict anyone with. The corruption population is the R1033 walk's, derived from the store's own legs and moved to the shared module rather than copied, so the two walks cannot come to disagree about what an author could commit. No vocabulary, no shape, no threshold. STAR THE POPULATION IS 98 SUBJECTS, 79 OF THEM ANSWERED ABOUT BY MORE THAN ONE READ, AND THE BACKLOG IS 28 READ PAIRS. Under co-mention it was 220 of 220 and 55 pairs, which is noise; under the shape guess it was 81 of 206 and 16 pairs, which was the wrong 16. STAR THE ORACLE IS ASSERTED, NOT ASSUMED. `report-quest-graph <-> validate-continuity` is in the backlog with 9 subjects in common and `q-main` — the quest R1037's contradiction was about — is one of them. A derivation that cannot re-find what a hand comparison already proved is a list, not a backlog, and two of the seven injections land on exactly that claim. STAR EVERY CLAIM THIS WALK MAKES NOW HAS AN INJECTION THAT BREAKS IT ALONE OR NEARLY SO: K4 moves only the backlog, K6 only the population, K7 the vacuity argument. That is the R1039 restructure paying off — the checklist form is what makes per-claim coverage visible at all.",
+      "publishable_changes_bullets": [
+        "`crates/mnemosyne-cli/tests/common/mod.rs`: the derived corruption population moves here from the census walk — two walks need the same authorable edits, and a second copy is how they would come to disagree about what an author can commit.",
+        "`crates/mnemosyne-cli/tests/read_agreement_population.rs`: \"answers about\" is now measured by perturbation rather than by a verdict-field heuristic; the discarded shape and closure derivations are recorded with the numbers that killed them, and the population, the 28-pair backlog and the R1037 oracle are pinned."
+      ],
+      "publishable_verification_bullets": [
+        "Workspace 1749 tests green, clippy -D warnings clean, fmt clean, `validate-workspace` T1/T3 = 0.",
+        "Measured and discarded: the closure derivation over all 28 loadable corpora does not separate vocabularies from ids, because `quest_id` pools to 4 values and `world` to 4 — one corpus exercises them.",
+        "Population: 220 registered subjects, 41 authorable corruptions all accepted by the write path, 27 reads holding records; 98 subjects answered about, 79 by more than one read, 28 read pairs.",
+        "7 injections, each over the WHOLE workspace with --no-fail-fast: K1 mention counts as answering / K2 the corruption is not applied / K3 ancestors also claim a record / K4 the backlog ranked least-shared first / K5 entities are not subjects / K6 a retarget stops carrying its entities list / K7 arrays stop propagating.",
+        "Per-claim coverage: ORACLE by K2+K5+K7, INPUTS by K5, POPULATION by K6 alone, VACUITY by K7, ANSWERED by five, BACKLOG by all — and K4 breaks the backlog alone, which is what shows it is live rather than carried by a neighbour."
+      ],
+      "publishable_carry_forward_bullets": [
+        "The backlog says which pairs answer about a subject in common, never whether their answers agree. Comparing two records needs to know what each read MEANS by its own, and R1037 did that by reading both. 28 pairs remain unexamined.",
+        "Which read fields carry a closed vocabulary is not recoverable from output, and this round proved it twice. The store knows — `closed_vocabulary!` — and reaching it needs either a fourth hand table or the `inventory`/`linkme` dependency the owner has open. Until then no walk can tell a verdict from an id by looking.",
+        "Asked of ONE corpus's corruptions. A read that answers about nothing here because this store declares nothing for it is absent from the backlog for a reason that has nothing to do with agreement."
+      ]
+    },
     "Round 252": {
       "decision_summary": "Parser CommonMark conformance — recognize indented fenced code blocks (§98) and require whitespace after ATX hash sequence (§62)",
       "changes_bullets": [
