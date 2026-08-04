@@ -329,6 +329,17 @@ const CLASSIFIED: &[(&str, &str, Coverage, &str)] = &[
     ("ConfirmationClaim", "file", Coverage::NotARef, "a workspace-relative path"),
     ("ConfirmationClaim", "section_id", Coverage::WritePathOnly, "section ref; no re-check found"),
     ("ConfirmationClaim", "symbol", Coverage::NotARef, "a code symbol name"),
+    // THE MUTATION-REASON LEDGER (R1024) EMITS NO LIVE REF, and that is the
+    // point rather than an oversight. Five of the ten primitives that write a
+    // row are REMOVALS, so a row naming a target that no longer exists is the
+    // normal case — the ledger outlives what it describes, which is what an
+    // audit trail is for. A dangling-ref scan over `target_id` would report the
+    // ledger working as a violation.
+    ("MutationReason", "primitive", Coverage::NotARef, "the primitive's own name, as the receipt spells it"),
+    ("MutationReason", "target_kind", Coverage::NotARef, "the receipt's kind word, not a registry key"),
+    ("MutationReason", "target_id", Coverage::NotARef, "what changed, recorded even when the change was its removal"),
+    ("MutationReason", "reason", Coverage::NotARef, "authored prose"),
+    ("MutationReason", "applied_in", Coverage::NotARef, "the round a redaction is filed under, when the caller already knows it"),
     ("ConfirmationEvent", "authoring_run", Coverage::NotARef, "an opaque run identifier"),
     ("ConfirmationEvent", "confirming_run", Coverage::NotARef, "an opaque run identifier"),
     ("ConfirmationEvent", "rationale", Coverage::NotARef, "authored prose"),

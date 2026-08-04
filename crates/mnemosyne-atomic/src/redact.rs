@@ -270,6 +270,34 @@ pub fn redact_term(
         s
     };
 
+    // ONE LEDGER ROW PER ENTRY A REDACTION ACTUALLY CHANGED (Round 1024). This
+    // verb rewrites prose in the frozen ledger's publishable half, which is the
+    // change whose "why" is least reconstructible later — and it is the only
+    // reasoned mutation that ALREADY knows the round it is filed under, so its
+    // `applied_in` goes in the row beside the reason instead of being validated
+    // and dropped the way the other ten were. A dry run changes nothing and so
+    // records nothing.
+    if !req.dry_run && !touched.is_empty() {
+        for entry_id in &touched {
+            crate::record_reason(
+                store,
+                "redact_term",
+                "changelog_entry",
+                entry_id,
+                &req.reason,
+                Some(&req.applied_in),
+            )
+            .map_err(|e| RedactError::Mutate {
+                entry_id: entry_id.clone(),
+                source: e,
+            })?;
+        }
+        store.save(sidecar_path).map_err(|e| RedactError::Mutate {
+            entry_id: touched[0].clone(),
+            source: e.into(),
+        })?;
+    }
+
     let ledger_drafts = touched
         .iter()
         .filter_map(|entry_id| {

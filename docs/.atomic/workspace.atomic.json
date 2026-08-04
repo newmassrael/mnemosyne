@@ -1772,6 +1772,46 @@
         "nothing reads `timestamp` except the id derivation it just left, so the ledger still has no verb that orders or filters by time — the field is now trustworthy and unused"
       ]
     },
+    "Round 1024": {
+      "decision_summary": "Ten primitives took a mandatory `reason`, validated it non-blank as an \"audit-trail safeguard\", and then never persisted it. Round 1022's probe sweep found them by sending a value that names nothing and finding no trace of it in the store; the CLI twin on a scratch workspace said the same, so it was not a wire defect but the primitives' own shape. Beside them `add_confirmation_event.rationale` IS kept, so the store already had the shape and nothing declared why one rationale survived and the other did not. What the prose offered instead — the transaction-time audit is the git history (R330) — does not actually reach: COMMIT_FORMAT.md allows one to three bullets for a whole ROUND, so a per-mutation reason has nowhere to go in a commit message, and an agent resuming through `mnemosyne-cli query` cannot read git at all.\n\nTHE REASON BELONGS TO THE CHANGE, NOT TO THE RESULTING STATE, and that decides the shape rather than the cost does. A field on the record holds one reason and the second change destroys the first; a record is changed many times for many reasons. Nor can a row carry a derived id the way a confirmation event does — two amends of one fact for the same stated reason are two acts, and Round 1023 took the clock out of that derivation precisely because identity must come from the act. So the ledger is a SEQUENCE ordered by the order the acts happened, with no id and no timestamp: R330 stands, and the commit that added the rows is when they happened.\n\nIT COSTS ONE ARGUMENT AT ONE CHOKE POINT. `save_with_receipt` is the single save path and already carried three quarters of the row — primitive, target kind, target id — so `save_reasoned` is the same call with the reason, and a primitive cannot accept one and drop it. The row survives its target on purpose: five of the ten writers are removals, and the removed thing is exactly what no other read can answer about, which is why the field-classification gate records `target_id` as deliberately not a live ref.\n\nA LEDGER NOBODY CAN READ WOULD HAVE MOVED THE GAP RATHER THAN CLOSED IT, since the whole argument for the store over git was that an agent reads the store. So `report-mutation-reasons` / `report_mutation_reasons` land with it, `--target` narrowing to one record including a removed one, and the printed total staying the whole ledger so a narrow answer is never read as the whole of it.",
+      "changes_bullets": [
+        "`AtomicStore.mutation_reasons` (schema 46): an append-only sequence, written only by `save_reasoned`, so recording the reason is the same call that writes the file rather than a step nine primitives must remember",
+        "`redact_term` records one row per entry it actually rewrote and is the only writer that already knows its round, so `applied_in` rides along instead of being validated and dropped",
+        "the read side lands with the write side: `report-mutation-reasons [--target]` on both wires, total always the whole ledger",
+        "required unexercised 16 to 5: the `reason` class closed through the repair, not through an admission"
+      ],
+      "verification_bullets": [
+        "four existing atomic tests caught a real defect I introduced mid-round — moving the non-blank check into the save let `remove_section` mutate the store in memory before refusing, so the check went back above the first write while the ten copies of its wording stayed gone",
+        "injection 1 (the recorder writes nothing) reddens four probes and the ledger test; injection 2 (one primitive keeps the unreasoned save) reddens exactly that tool's probe and the ledger test; injection 3 (the guard moves below the mutation) reddens the atomic empty-reason test",
+        "injection 2's first anchor did not match after `cargo fmt` and the run came back green, which is the \"0 hits means suspect the injection\" rule catching itself",
+        "the CLI verb was exercised on the real binary in a scratch workspace: a section removed by name still answers why it was classified and why it was cut",
+        "workspace 1721 tests green, clippy -D warnings clean, fmt clean, validate-workspace T1 and T3 = 0, optional 123/123"
+      ],
+      "carry_forward_bullets": [
+        "`emit_publishable_override_ledger_draft.reason` stays unexercised on earned terms that differ from the other ten: it writes nothing at all, so there is no store change for a reason to accompany — its product IS the draft",
+        "the remaining four unexercised required arguments are the shapes the schema describes no probe value for: three closed enums behind a `$ref` and one array of objects, each closable by a hand-written second variant",
+        "nothing yet reads a reason ALONGSIDE what changed — the row says a fact was amended and why, not what the claim said before, so \"what did it say then\" is still only answerable from git"
+      ],
+      "publishable_decision_summary": "Ten primitives took a mandatory `reason`, validated it non-blank as an \"audit-trail safeguard\", and then never persisted it. Round 1022's probe sweep found them by sending a value that names nothing and finding no trace of it in the store; the CLI twin on a scratch workspace said the same, so it was not a wire defect but the primitives' own shape. Beside them `add_confirmation_event.rationale` IS kept, so the store already had the shape and nothing declared why one rationale survived and the other did not. What the prose offered instead — the transaction-time audit is the git history (R330) — does not actually reach: COMMIT_FORMAT.md allows one to three bullets for a whole ROUND, so a per-mutation reason has nowhere to go in a commit message, and an agent resuming through `mnemosyne-cli query` cannot read git at all.\n\nTHE REASON BELONGS TO THE CHANGE, NOT TO THE RESULTING STATE, and that decides the shape rather than the cost does. A field on the record holds one reason and the second change destroys the first; a record is changed many times for many reasons. Nor can a row carry a derived id the way a confirmation event does — two amends of one fact for the same stated reason are two acts, and Round 1023 took the clock out of that derivation precisely because identity must come from the act. So the ledger is a SEQUENCE ordered by the order the acts happened, with no id and no timestamp: R330 stands, and the commit that added the rows is when they happened.\n\nIT COSTS ONE ARGUMENT AT ONE CHOKE POINT. `save_with_receipt` is the single save path and already carried three quarters of the row — primitive, target kind, target id — so `save_reasoned` is the same call with the reason, and a primitive cannot accept one and drop it. The row survives its target on purpose: five of the ten writers are removals, and the removed thing is exactly what no other read can answer about, which is why the field-classification gate records `target_id` as deliberately not a live ref.\n\nA LEDGER NOBODY CAN READ WOULD HAVE MOVED THE GAP RATHER THAN CLOSED IT, since the whole argument for the store over git was that an agent reads the store. So `report-mutation-reasons` / `report_mutation_reasons` land with it, `--target` narrowing to one record including a removed one, and the printed total staying the whole ledger so a narrow answer is never read as the whole of it.",
+      "publishable_changes_bullets": [
+        "`AtomicStore.mutation_reasons` (schema 46): an append-only sequence, written only by `save_reasoned`, so recording the reason is the same call that writes the file rather than a step nine primitives must remember",
+        "`redact_term` records one row per entry it actually rewrote and is the only writer that already knows its round, so `applied_in` rides along instead of being validated and dropped",
+        "the read side lands with the write side: `report-mutation-reasons [--target]` on both wires, total always the whole ledger",
+        "required unexercised 16 to 5: the `reason` class closed through the repair, not through an admission"
+      ],
+      "publishable_verification_bullets": [
+        "four existing atomic tests caught a real defect I introduced mid-round — moving the non-blank check into the save let `remove_section` mutate the store in memory before refusing, so the check went back above the first write while the ten copies of its wording stayed gone",
+        "injection 1 (the recorder writes nothing) reddens four probes and the ledger test; injection 2 (one primitive keeps the unreasoned save) reddens exactly that tool's probe and the ledger test; injection 3 (the guard moves below the mutation) reddens the atomic empty-reason test",
+        "injection 2's first anchor did not match after `cargo fmt` and the run came back green, which is the \"0 hits means suspect the injection\" rule catching itself",
+        "the CLI verb was exercised on the real binary in a scratch workspace: a section removed by name still answers why it was classified and why it was cut",
+        "workspace 1721 tests green, clippy -D warnings clean, fmt clean, validate-workspace T1 and T3 = 0, optional 123/123"
+      ],
+      "publishable_carry_forward_bullets": [
+        "`emit_publishable_override_ledger_draft.reason` stays unexercised on earned terms that differ from the other ten: it writes nothing at all, so there is no store change for a reason to accompany — its product IS the draft",
+        "the remaining four unexercised required arguments are the shapes the schema describes no probe value for: three closed enums behind a `$ref` and one array of objects, each closable by a hand-written second variant",
+        "nothing yet reads a reason ALONGSIDE what changed — the row says a fact was amended and why, not what the claim said before, so \"what did it say then\" is still only answerable from git"
+      ]
+    },
     "Round 252": {
       "decision_summary": "Parser CommonMark conformance — recognize indented fenced code blocks (§98) and require whitespace after ATX hash sequence (§62)",
       "changes_bullets": [
@@ -36651,6 +36691,7 @@
   },
   "inventory_entries": {},
   "confirmation_events": {},
+  "mutation_reasons": [],
   "frames": {},
   "branches": {},
   "entities": {},
@@ -36665,5 +36706,5 @@
   "parameter_deltas": {},
   "parameter_gates": {},
   "fact_counts": {},
-  "schema_version": 45
+  "schema_version": 46
 }

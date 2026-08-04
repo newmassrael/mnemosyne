@@ -884,6 +884,15 @@ static COMMANDS: &[Command] = &[
         run: |c| cmd_report_entity_kind_migration(c.rest()).map_err(CliError::from),
     },
     Command {
+        name: "report-mutation-reasons",
+        aliases: &[],
+        group: Some(&GROUP_ATOMIC_MUTATE),
+        blank_before: false,
+        usage: &["report-mutation-reasons [--target <id>] [--sidecar <path>] [--json]"],
+        notes: &["   Round 1024 — WHY the store changed: one append-only row per reasoned mutation (primitive, target, reason). --target filters to one record INCLUDING a removed one, which is the case no other read can answer"],
+        run: |c| cmd_report_mutation_reasons(c.rest()).map_err(CliError::from),
+    },
+    Command {
         name: "report-parameter-economy",
         aliases: &[],
         group: Some(&GROUP_ATOMIC_MUTATE),
@@ -3463,6 +3472,72 @@ fn cmd_report_entity_kind_migration(args: &[String]) -> Result<()> {
 /// read projection — a NEUTRAL Σ the consumer interprets with its own
 /// accumulation model, never a reachability verdict (R728 review F1). No order,
 /// no world — a static aggregate over the meter side-tables.
+/// Round 1024 — the reasoned-mutation ledger read. `--target` narrows to one
+/// record; the printed total stays the whole ledger so a narrow answer is never
+/// read as the whole of it.
+fn cmd_report_mutation_reasons(args: &[String]) -> Result<()> {
+    let mut json = false;
+    let mut sidecar_override: Option<String> = None;
+    let mut target: Option<String> = None;
+    let mut iter = args.iter();
+    while let Some(a) = iter.next() {
+        match a.as_str() {
+            "--json" => json = true,
+            "--target" => {
+                target = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--target missing"))?
+                        .clone(),
+                )
+            }
+            "--sidecar" => {
+                sidecar_override = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--sidecar missing"))?
+                        .clone(),
+                )
+            }
+            other => bail!("unknown flag `{}`", other),
+        }
+    }
+    let loaded = workspace_config()?;
+    let anchor = loaded
+        .config_path
+        .parent()
+        .map(std::path::Path::to_path_buf)
+        .unwrap_or_else(|| loaded.workspace_root.clone());
+    let report = mnemosyne_ops::mutation_reason_report(
+        &anchor,
+        atomic_cli::cli_path(sidecar_override.as_deref())?.as_ref(),
+        target.as_deref(),
+    )
+    .map_err(|e| anyhow!("{e}"))?;
+    if json {
+        println!("{}", serde_json::to_string(&report)?);
+    } else {
+        println!(
+            "=== reasoned mutations — {} of {} row(s){} ===",
+            report.rows.len(),
+            report.total,
+            match &report.target {
+                Some(t) => format!(" for target `{t}`"),
+                None => String::new(),
+            }
+        );
+        for r in &report.rows {
+            let filed = match &r.applied_in {
+                Some(a) => format!(" [filed under {a}]"),
+                None => String::new(),
+            };
+            println!(
+                "  {} {} `{}`{}: {}",
+                r.primitive, r.target_kind, r.target_id, filed, r.reason
+            );
+        }
+    }
+    Ok(())
+}
+
 fn cmd_report_parameter_economy(args: &[String]) -> Result<()> {
     let mut json = false;
     let mut sidecar_override: Option<String> = None;

@@ -829,6 +829,35 @@ pub struct AtomicStore {
     /// `#[serde(default)]`.
     #[serde(default)]
     pub confirmation_events: BTreeMap<String, ConfirmationEvent>,
+    /// WHY THE STORE CHANGED — one append-only row per reasoned mutation.
+    ///
+    /// Round 1022 measured that ten primitives take a mandatory `reason`,
+    /// validate it non-blank as an "audit-trail safeguard", and then never
+    /// persist it: a value naming nothing went in through both wires and the
+    /// only two files a workspace has held no trace of it. Beside them
+    /// `add_confirmation_event.rationale` IS kept, so the store already had the
+    /// shape and nothing declared why one rationale survived and the other did
+    /// not. What the prose said instead — the transaction-time audit is the git
+    /// history (R330) — does not reach: `COMMIT_FORMAT.md` allows one to three
+    /// bullets for a whole ROUND, so a per-mutation reason has nowhere to go in
+    /// a commit message, and an agent resuming through `mnemosyne-cli query`
+    /// cannot read git at all.
+    ///
+    /// A SEQUENCE, NOT A MAP, and that is the shape rather than a convenience.
+    /// The reason belongs to the CHANGE, not to the resulting state: a record is
+    /// changed many times for many reasons, so a field on the record holds one
+    /// reason and the second change destroys the first. Nor can a row carry a
+    /// derived id the way a confirmation event does — two amends of one fact for
+    /// the same stated reason are two acts, and Round 1023 took the clock out of
+    /// that derivation precisely because identity must come from the act. So the
+    /// ledger is ordered by the order the acts happened and needs neither.
+    ///
+    /// It carries no timestamp: R330's transaction-time rule stands, and the
+    /// commit that added the rows is when they happened. A tombstone this is
+    /// not — `retract_fact` still leaves no dead fact body behind; a row records
+    /// that an act occurred and why, never the content the act removed.
+    #[serde(default)]
+    pub mutation_reasons: Vec<MutationReason>,
     /// Epistemic-frame registry (Round 430) — keyed by frame id;
     /// `ground-truth` is a non-privileged entry like any other. Every
     /// `NarrativeFact.frame` must reference a key here (fail-loud at the
@@ -1208,6 +1237,37 @@ pub struct ArtifactHashes {
 /// One immutable confirmation / refutation event (design sec 4.1) — the SSOT for
 /// "what confirmations happened." Everything derived (status, count,
 /// `confirmed?`) is a projection computed later, never stored.
+/// One reasoned mutation: which primitive changed what, and why the author said
+/// it changed. Written by [`save_reasoned`] — the only save path a reasoned
+/// primitive may take — so a primitive cannot accept a `reason` and drop it.
+///
+/// The three identifying fields are the ones the receipt already carries, which
+/// is why the ledger costs one argument at one choke point rather than a field
+/// on nine record types.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MutationReason {
+    /// The primitive that made the change, as the receipt names it.
+    pub primitive: String,
+    /// What kind of thing changed (`section`, `fact`, `binding`, …).
+    pub target_kind: String,
+    /// Which one changed.
+    pub target_id: String,
+    /// Why the author said it changed. Prose, unvalidated beyond non-blank —
+    /// judging the QUALITY of a stated reason is a word-list, which Round 976
+    /// refused, and the alternative to keeping unjudged prose is keeping none.
+    pub reason: String,
+    /// The round this change is filed under, WHEN THE CALLER ALREADY KNOWS IT.
+    ///
+    /// `redact_term` takes an `applied_in` because a redaction of frozen prose
+    /// is filed against a round; the nine primitives do not, because a mutation
+    /// happens BEFORE the round entry that will describe it exists. Recording
+    /// what the caller already has costs nothing and adds no required argument
+    /// to any wire; demanding it from the nine would add one to each, for a
+    /// datum they cannot know yet.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub applied_in: Option<String>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ConfirmationEvent {
     pub claim: ConfirmationClaim,
@@ -1748,7 +1808,7 @@ pub enum AtomicStoreError {
 // stale-baseline defect the field exists to end. A pre-R979 binary reading a v45
 // store hits the monotone `> CURRENT` guard rather than silently dropping the
 // key on save.
-pub const CURRENT_SCHEMA_VERSION: u32 = 45;
+pub const CURRENT_SCHEMA_VERSION: u32 = 46;
 const DEFAULT_SIDECAR_REL: &str = "docs/.atomic/workspace.atomic.json";
 
 /// Round 738 (v37→v38 migration): rewrite each `EntityKind`'s legacy single
@@ -2611,6 +2671,70 @@ fn check_optional_bullets(
     Ok(())
 }
 
+/// THE SAVE A REASONED PRIMITIVE TAKES, so recording the reason is not a step
+/// that can be forgotten — it is the same call that writes the file.
+///
+/// Round 1022 found ten primitives validating a mandatory `reason` and then
+/// dropping it, and the reason it stayed invisible is that every one of them
+/// checked it at the top and then never mentioned it again: nothing in the type
+/// system, and nothing in the save, connected the argument to the store. Since
+/// `save_with_receipt` already carries the other three fields of the row, the
+/// ledger costs ONE argument HERE instead of a field on nine record types and a
+/// remembering-to at nine call sites.
+///
+/// The non-blank check moves here too, for the same reason: ten copies of one
+/// validation is the multi-write-path parity hazard `CLAUDE.md` names, and the
+/// copies had already drifted in their wording.
+/// A REASON IS CHECKED BEFORE THE MUTATION, AND RECORDED AFTER IT.
+///
+/// Round 1024 first moved the non-blank check into the save, to stop ten copies
+/// of one validation from drifting the way `CLAUDE.md`'s multi-write-path rule
+/// warns. Four existing tests said no within the minute: a primitive that
+/// removes a section had already removed it in memory by the time the save
+/// refused, so the caller was handed a store the file did not agree with. The
+/// copies are still gone — this is the one wording — but the CALL belongs where
+/// validation always belonged, above the first write.
+pub(crate) fn check_reason(primitive: &str, reason: &str) -> Result<(), AtomicMutateError> {
+    if reason.trim().is_empty() {
+        return Err(AtomicMutateError::Validation(format!(
+            "{primitive}: reason mandatory (audit-trail safeguard — it is recorded \
+             in the mutation-reason ledger, not discarded)"
+        )));
+    }
+    Ok(())
+}
+
+pub(crate) fn record_reason(
+    store: &mut AtomicStore,
+    primitive: &str,
+    target_kind: &str,
+    target_id: &str,
+    reason: &str,
+    applied_in: Option<&str>,
+) -> Result<(), AtomicMutateError> {
+    check_reason(primitive, reason)?;
+    store.mutation_reasons.push(MutationReason {
+        primitive: primitive.to_string(),
+        target_kind: target_kind.to_string(),
+        target_id: target_id.to_string(),
+        reason: reason.trim().to_string(),
+        applied_in: applied_in.map(|a| a.trim().to_string()),
+    });
+    Ok(())
+}
+
+fn save_reasoned(
+    store: &mut AtomicStore,
+    sidecar_path: &Path,
+    primitive: &str,
+    target_kind: &'static str,
+    target_id: &str,
+    reason: &str,
+) -> Result<AtomicMutateReceipt, AtomicMutateError> {
+    record_reason(store, primitive, target_kind, target_id, reason, None)?;
+    save_with_receipt(store, sidecar_path, primitive, target_kind, target_id)
+}
+
 fn save_with_receipt(
     store: &AtomicStore,
     sidecar_path: &Path,
@@ -2925,11 +3049,7 @@ pub fn remove_section(
     section_id: &str,
     reason: &str,
 ) -> Result<AtomicMutateReceipt, AtomicMutateError> {
-    if reason.trim().is_empty() {
-        return Err(AtomicMutateError::Validation(
-            "remove_section: --reason mandatory (audit-trail safeguard)".to_string(),
-        ));
-    }
+    check_reason("remove_section", reason)?;
     if !store.sections.contains_key(&section_id.into()) {
         return Err(AtomicMutateError::NotFound(format!(
             "section_id `{}` not present in atomic store",
@@ -2951,7 +3071,14 @@ pub fn remove_section(
         )));
     }
     store.sections.remove(&section_id.into());
-    save_with_receipt(store, sidecar_path, "remove_section", "section", section_id)
+    save_reasoned(
+        store,
+        sidecar_path,
+        "remove_section",
+        "section",
+        section_id,
+        reason,
+    )
 }
 
 /// Round 287 — atomic section creation primitive.
@@ -3644,11 +3771,7 @@ pub fn remove_section_binding(
     symbol: Option<&str>,
     reason: &str,
 ) -> Result<AtomicMutateReceipt, AtomicMutateError> {
-    if reason.trim().is_empty() {
-        return Err(AtomicMutateError::Validation(
-            "remove_section_binding: --reason mandatory (audit-trail safeguard)".to_string(),
-        ));
-    }
+    check_reason("remove_section_binding", reason)?;
     let file_clean = validate_binding_file(file)?;
     let symbol_clean = match symbol {
         Some(s) => Some(validate_binding_symbol(s)?),
@@ -3682,12 +3805,13 @@ pub fn remove_section_binding(
         }
     };
     section.bindings.remove(pos);
-    save_with_receipt(
+    save_reasoned(
         store,
         sidecar_path,
         "remove_section_binding",
         "section",
         section_id,
+        reason,
     )
 }
 
@@ -3710,11 +3834,7 @@ pub fn set_section_binding_kind(
     kind: BindingKind,
     reason: &str,
 ) -> Result<AtomicMutateReceipt, AtomicMutateError> {
-    if reason.trim().is_empty() {
-        return Err(AtomicMutateError::Validation(
-            "set_section_binding_kind: --reason mandatory (audit-trail safeguard)".to_string(),
-        ));
-    }
+    check_reason("set_section_binding_kind", reason)?;
     let file_clean = validate_binding_file(file)?;
     let symbol_clean = match symbol {
         Some(s) => Some(validate_binding_symbol(s)?),
@@ -3748,12 +3868,13 @@ pub fn set_section_binding_kind(
         }
     };
     binding.kind = kind;
-    save_with_receipt(
+    save_reasoned(
         store,
         sidecar_path,
         "set_section_binding_kind",
         "section",
         section_id,
+        reason,
     )
 }
 
@@ -3775,12 +3896,7 @@ pub fn set_section_coverage_expectation(
     expectation: mnemosyne_core::CoverageExpectation,
     reason: &str,
 ) -> Result<AtomicMutateReceipt, AtomicMutateError> {
-    if reason.trim().is_empty() {
-        return Err(AtomicMutateError::Validation(
-            "set_section_coverage_expectation: --reason mandatory (audit-trail safeguard)"
-                .to_string(),
-        ));
-    }
+    check_reason("set_section_coverage_expectation", reason)?;
     let section = match store.sections.get_mut(&section_id.into()) {
         Some(s) => s,
         None => {
@@ -3791,12 +3907,13 @@ pub fn set_section_coverage_expectation(
         }
     };
     section.coverage_expectation = expectation;
-    save_with_receipt(
+    save_reasoned(
         store,
         sidecar_path,
         "set_section_coverage_expectation",
         "section",
         section_id,
+        reason,
     )
 }
 
@@ -3811,12 +3928,7 @@ pub fn set_section_verification_expectation(
     expectation: mnemosyne_core::VerificationExpectation,
     reason: &str,
 ) -> Result<AtomicMutateReceipt, AtomicMutateError> {
-    if reason.trim().is_empty() {
-        return Err(AtomicMutateError::Validation(
-            "set_section_verification_expectation: --reason mandatory (audit-trail safeguard)"
-                .to_string(),
-        ));
-    }
+    check_reason("set_section_verification_expectation", reason)?;
     let section = match store.sections.get_mut(&section_id.into()) {
         Some(s) => s,
         None => {
@@ -3827,12 +3939,13 @@ pub fn set_section_verification_expectation(
         }
     };
     section.verification_expectation = expectation;
-    save_with_receipt(
+    save_reasoned(
         store,
         sidecar_path,
         "set_section_verification_expectation",
         "section",
         section_id,
+        reason,
     )
 }
 
@@ -5300,24 +5413,21 @@ pub fn remove_inventory_entry(
     inventory_id: &str,
     reason: &str,
 ) -> Result<AtomicMutateReceipt, AtomicMutateError> {
+    check_reason("remove_inventory_entry", reason)?;
     validate_inventory_id(inventory_id)?;
-    if reason.trim().is_empty() {
-        return Err(AtomicMutateError::Validation(
-            "remove_inventory_entry: --reason mandatory (audit-trail safeguard)".to_string(),
-        ));
-    }
     if store.inventory_entries.remove(inventory_id).is_none() {
         return Err(AtomicMutateError::NotFound(format!(
             "inventory_id `{}` not present in atomic store",
             inventory_id
         )));
     }
-    save_with_receipt(
+    save_reasoned(
         store,
         sidecar_path,
         "remove_inventory_entry",
         "inventory_entry",
         inventory_id,
+        reason,
     )
 }
 
@@ -9519,11 +9629,7 @@ pub fn remove_disclosure(
     fact_id: &str,
     reason: &str,
 ) -> Result<AtomicMutateReceipt, AtomicMutateError> {
-    if reason.trim().is_empty() {
-        return Err(AtomicMutateError::Validation(
-            "remove_disclosure: --reason mandatory (audit-trail safeguard)".to_string(),
-        ));
-    }
+    check_reason("remove_disclosure", reason)?;
     let telling = telling_id.trim();
     let fact = fact_id.trim();
     let Some(plan) = store.disclosure_plans.get_mut(telling) else {
@@ -9539,12 +9645,13 @@ pub fn remove_disclosure(
     }
     // R627 — say what the fact now DOES, not just what was removed.
     let effective = plan.default_mode.as_str();
-    save_with_receipt(
+    save_reasoned(
         store,
         sidecar_path,
         "remove_disclosure",
         "disclosure_plan",
         &format!("{telling} -> {fact} (now rides the plan default: {effective})"),
+        reason,
     )
 }
 
@@ -10237,11 +10344,7 @@ pub fn retract_fact(
     fact_id: &str,
     reason: &str,
 ) -> Result<AtomicMutateReceipt, AtomicMutateError> {
-    if reason.trim().is_empty() {
-        return Err(AtomicMutateError::Validation(
-            "retract_fact: --reason mandatory (audit-trail safeguard)".to_string(),
-        ));
-    }
+    check_reason("retract_fact", reason)?;
     let id = &mnemosyne_core::FactId::from(fact_id.trim());
     if !store.narrative_facts.contains_key(id) {
         return Err(AtomicMutateError::NotFound(format!(
@@ -10343,12 +10446,13 @@ pub fn retract_fact(
     // story for the count side-table. This makes the R731-measured orphaned-count
     // silent hole (a count surviving its custody retract) unrepresentable.
     store.fact_counts.remove(id);
-    save_with_receipt(
+    save_reasoned(
         store,
         sidecar_path,
         "retract_fact",
         "narrative_fact",
         id.as_str(),
+        reason,
     )
 }
 
@@ -10370,11 +10474,7 @@ pub fn amend_fact(
     entry: &FactImport,
     reason: &str,
 ) -> Result<AtomicMutateReceipt, AtomicMutateError> {
-    if reason.trim().is_empty() {
-        return Err(AtomicMutateError::Validation(
-            "amend_fact: --reason mandatory (audit-trail safeguard)".to_string(),
-        ));
-    }
+    check_reason("amend_fact", reason)?;
     let (fact_id, mut candidate) =
         build_candidate_fact(store, entry).map_err(AtomicMutateError::Validation)?;
     if !store.narrative_facts.contains_key(&fact_id) {
@@ -10435,12 +10535,13 @@ pub fn amend_fact(
         });
     }
     store.narrative_facts.insert(fact_id.clone(), candidate);
-    save_with_receipt(
+    save_reasoned(
         store,
         sidecar_path,
         "amend_fact",
         "narrative_fact",
         fact_id.as_str(),
+        reason,
     )
 }
 
@@ -14108,6 +14209,13 @@ mod tests {
             changelog_entries: _,
             inventory_entries: _,
             confirmation_events: _,
+            // CONTENT, AND ITS `target_id` IS DELIBERATELY NOT A LIVE REF. A
+            // mutation-reason row (R1024) records that a change happened and
+            // why; five of the ten primitives that write one are REMOVALS, so a
+            // row whose target no longer exists is the normal case and the whole
+            // point — a dangling-ref scan here would report the ledger doing its
+            // job as a violation. It emits no ref that any scan should chase.
+            mutation_reasons: _,
             frames: _,
             entities: _,
             units: _,
@@ -16896,7 +17004,7 @@ mod tests {
         // decision first" is a trap unless clearing is possible. Fail-loud on
         // both absences — no silent no-op (the remove_section_binding idiom).
         let err = remove_disclosure(&mut store, &path, "t", "f-withheld", "  ").unwrap_err();
-        assert!(err.to_string().contains("--reason mandatory"), "{err}");
+        assert!(err.to_string().contains("reason mandatory"), "{err}");
         let err = remove_disclosure(&mut store, &path, "nope", "f-withheld", "r").unwrap_err();
         assert!(matches!(err, AtomicMutateError::NotFound(_)), "{err}");
         let err = remove_disclosure(&mut store, &path, "t", "f-no-decision", "r").unwrap_err();

@@ -223,7 +223,8 @@ pub struct SetSectionParentSectionArgs {
 pub struct RemoveSectionArgs {
     /// Section ID (the `§` prefix is stripped if present).
     pub section_id: String,
-    /// Mandatory rationale recorded on the receipt (audit safeguard).
+    /// Mandatory rationale — recorded in the reasoned-mutation ledger
+    /// (`report_mutation_reasons`), not discarded.
     pub reason: String,
 }
 
@@ -253,7 +254,8 @@ pub struct RemoveSectionBindingArgs {
     /// kind-agnostic (identity is the `(file, symbol)` pair).
     #[serde(default)]
     pub symbol: Option<String>,
-    /// Mandatory rationale recorded on the receipt (audit safeguard).
+    /// Mandatory rationale — recorded in the reasoned-mutation ledger
+    /// (`report_mutation_reasons`), not discarded.
     pub reason: String,
 }
 
@@ -268,7 +270,8 @@ pub struct SetSectionBindingKindArgs {
     pub symbol: Option<String>,
     /// New kind: `"implements"` or `"references"`.
     pub kind: String,
-    /// Mandatory rationale recorded on the receipt (audit safeguard).
+    /// Mandatory rationale — recorded in the reasoned-mutation ledger
+    /// (`report_mutation_reasons`), not discarded.
     pub reason: String,
 }
 
@@ -282,7 +285,8 @@ pub struct SetSectionCoverageExpectationArgs {
     /// `"informational"` (inherently non-implementable prose) both exempt the
     /// section. The refusal message names the current set.
     pub expectation: String,
-    /// Mandatory rationale recorded on the receipt (audit safeguard).
+    /// Mandatory rationale — recorded in the reasoned-mutation ledger
+    /// (`report_mutation_reasons`), not discarded.
     pub reason: String,
 }
 
@@ -294,8 +298,19 @@ pub struct SetSectionVerificationExpectationArgs {
     /// or `"by_construction"` (no independently-assertable per-unit oracle,
     /// exempt from the dedicated-verify gate).
     pub expectation: String,
-    /// Mandatory rationale recorded on the receipt (audit safeguard).
+    /// Mandatory rationale — recorded in the reasoned-mutation ledger
+    /// (`report_mutation_reasons`), not discarded.
     pub reason: String,
+}
+
+/// Round 1024 — the reasoned-mutation ledger read.
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct ReportMutationReasonsArgs {
+    /// Narrow to one record's rows — a section, fact, binding or entry id. A
+    /// target that no longer exists is the interesting case, not an error:
+    /// removals write rows too. Omit for the whole ledger.
+    #[serde(default)]
+    pub target: Option<String>,
 }
 
 /// R417 — confirmation-event MCP args. A `file` present makes it a
@@ -2454,6 +2469,19 @@ impl MnemosyneServer {
     }
 
     #[tool(
+        description = "Reasoned-mutation ledger read (R1024, read-only): WHY the store changed. One append-only row per reasoned mutation — the primitive, what it changed, and the reason the author gave — in the order the acts happened. Ten primitives take a mandatory `reason`; before this ledger every one of them validated it non-blank and then discarded it, so the rationale an agent spent on a change reached nothing and no later reader could ask why the canon moved. `target` narrows to ONE record, INCLUDING one that no longer exists: five of the ten are removals, and a removed thing is exactly what no other read can answer about. `total` is the whole ledger even when `rows` is filtered, so a narrow answer is never readable as the whole of it."
+    )]
+    async fn report_mutation_reasons(
+        &self,
+        args: Parameters<ReportMutationReasonsArgs>,
+    ) -> CallToolResult {
+        match ops::mutation_reason_report(&self.workspace, None, args.0.target.as_deref()) {
+            Ok(r) => self.tool_json(&r),
+            Err(e) => self.op_error(e),
+        }
+    }
+
+    #[tool(
         description = "Parameter-economy read (R730, DEBT-K, read-only): the VISIBLE accumulation surface (gap 3). Per REGISTERED meter, the delta inventory (count, Σ+ = apply-once max reach, Σ- = apply-once min) and the gates that threshold it. NEUTRAL — the Σ is DESCRIPTIVE, NOT a reachability verdict: the consumer applies its OWN accumulation model (grinding / one-shot / clamped), so Mnemosyne never judges whether a gate is reachable (the R712 layering line). Deltas/gates on an unregistered parameter are out-of-band (the validate detectors' job), not this registered-scoped read."
     )]
     async fn report_parameter_economy(&self, _args: Parameters<EmptyArgs>) -> CallToolResult {
@@ -3945,20 +3973,9 @@ mod tests {
     const UNEXERCISED_REQUIRED: &[(&str, &str)] = &[
         ("add_parameter_gate", "op"),
         ("add_predicate", "object_kind"),
-        ("amend_fact", "reason"),
         ("emit_publishable_override_ledger_draft", "reason"),
         ("import_sections", "sections"),
-        ("redact_term", "applied_in"),
-        ("redact_term", "reason"),
-        ("remove_disclosure", "reason"),
-        ("remove_inventory_entry", "reason"),
-        ("retract_fact", "reason"),
-        ("remove_section", "reason"),
-        ("remove_section_binding", "reason"),
         ("set_predicate", "object_kind"),
-        ("set_section_binding_kind", "reason"),
-        ("set_section_coverage_expectation", "reason"),
-        ("set_section_verification_expectation", "reason"),
     ];
 
     /// The REQUIRED arguments of every routed tool — the half of the surface
@@ -6373,6 +6390,14 @@ mod tests {
             {"quest-conflicts.json" = {"schema": "edge-proposals/v1", "conflicts": [{"fact": "f-quest-done", "target": "f-alt", "fact_claim_sha256": "2496954133070e3e5795def5eae4528054f8dbdd6713dc16f01e33b4cf7d01b2", "target_claim_sha256": "934b712828d0c69368eb8082c9251c5190cceb939a964b8b0bed953bb2da7e9f", "rationale": "the crossing cannot be made by someone who never left"}]}}
             import_edge_proposals(ImportEdgeProposalsArgs) {"proposals_path": "alt-conflicts.json"}
             ."proposals_path" = "quest-conflicts.json" seen "\"target\": \"f-alt\"" in store;
+        report_mutation_reasons_target_reaches_the_answer:
+            @branch_story
+            [add_section(AddSectionArgs) {"section_id": "sc-06", "parent_doc": "spec", "title": "six"}]
+            [add_section(AddSectionArgs) {"section_id": "sc-07", "parent_doc": "spec", "title": "seven"}]
+            [remove_section(RemoveSectionArgs) {"section_id": "sc-06", "reason": "the sixth scene was cut"}]
+            [remove_section(RemoveSectionArgs) {"section_id": "sc-07", "reason": "the seventh scene was cut"}]
+            report_mutation_reasons(ReportMutationReasonsArgs) {}
+            ."target" = "sc-06" seen "the seventh scene was cut" in output;
         validate_disclosure_leak_order_path_reaches_the_answer:
             @branch_story
             (store "blind.json" =
@@ -6382,6 +6407,169 @@ mod tests {
             [set_disclosure(SetDisclosureArgs) {"telling_id": "t-quiet", "fact_id": "f-at-b", "mode": "state", "first_at": [{"branch": "main", "coords": ["sc-03"]}]}]
             validate_disclosure_leak(DisclosureLeakArgs) {"telling": "t-quiet", "against": "blind.json", "world": "main", "truth_frame": "ground-truth", "order_path": "order-c.json"}
             ."order_path" = "order-b.json" seen "\"kind\": \"early\"" in output;
+    }
+
+    /// EVERY REQUIRED `reason` AN AGENT SENDS IS IN THE STORE AFTERWARDS, AND
+    /// THE POPULATION IS THE ROUTER'S RATHER THAN A LIST SOMEBODY TYPED.
+    ///
+    /// Round 1022 measured that ten primitives validated a mandatory `reason`
+    /// non-blank and then dropped it, so an agent spent its rationale on a field
+    /// that reached nothing and a later reader could not ask why the canon
+    /// changed. This walks the same schema the probe sweep does, calls every
+    /// tool that declares a required `reason`, and asserts the ledger holds it.
+    ///
+    /// DERIVED, so a tool ADDED later with a `reason` argument is covered by
+    /// this on the round that adds it: the population comes from
+    /// `required_arguments()`, and a tool this cannot call has to be named here
+    /// with why, not silently skipped.
+    #[tokio::test]
+    async fn every_reason_an_agent_sends_reaches_the_ledger() {
+        // The one tool whose `reason` shapes an ANSWER and writes nothing: it
+        // emits a draft ledger row for a human to paste, so there is no store
+        // change for a reason to accompany.
+        const WRITES_NOTHING: &[&str] = &["emit_publishable_override_ledger_draft"];
+        let declaring: Vec<String> = required_arguments()
+            .into_iter()
+            .filter(|(_, a)| a == "reason")
+            .map(|(t, _)| t)
+            .collect();
+        assert!(
+            declaring.len() > 1,
+            "only {} tool(s) declare a required `reason`, so this gate is reading \
+             almost nothing",
+            declaring.len()
+        );
+        let probed: BTreeSet<&str> = PROBED.iter().map(|(t, _)| *t).collect();
+        let mut unreached = Vec::new();
+        for tool in &declaring {
+            if WRITES_NOTHING.contains(&tool.as_str()) {
+                continue;
+            }
+            assert!(
+                probed.contains(tool.as_str()),
+                "`{tool}` declares a required `reason` and has no probe \
+                 declaration, so nothing here can call it"
+            );
+            unreached.push(tool.clone());
+        }
+        // The probe sweep already calls each of these with a value naming
+        // nothing and requires it to be observable in the store; what this adds
+        // is that the observable place is THE LEDGER, by name, rather than
+        // anywhere in the file.
+        let tmp = agent_workspace();
+        let server = MnemosyneServer::new(tmp.path().to_path_buf()).expect("server");
+        branch_story(&server, tmp.path()).await;
+        let reason = "the ledger has to hold this sentence";
+        let added = server
+            .add_section(
+                serde_json::from_value::<AddSectionArgs>(serde_json::json!({
+                    "section_id": "sc-06", "parent_doc": "spec", "title": "six"
+                }))
+                .map(Parameters)
+                .expect("shape parses"),
+            )
+            .await;
+        assert!(added.is_error != Some(true), "adding: {:?}", added.content);
+        let removed = server
+            .remove_section(
+                serde_json::from_value::<RemoveSectionArgs>(serde_json::json!({
+                    "section_id": "sc-06", "reason": reason
+                }))
+                .map(Parameters)
+                .expect("shape parses"),
+            )
+            .await;
+        assert!(
+            removed.is_error != Some(true),
+            "the removal failed: {:?}",
+            removed.content
+        );
+        let store: serde_json::Value = serde_json::from_str(
+            &std::fs::read_to_string(tmp.path().join("docs/.atomic/workspace.atomic.json"))
+                .expect("read the store"),
+        )
+        .expect("the store parses");
+        let rows = store["mutation_reasons"]
+            .as_array()
+            .expect("the ledger is an array")
+            .clone();
+        assert_eq!(
+            rows.len(),
+            1,
+            "one reasoned mutation should leave one row: {rows:?}"
+        );
+        assert_eq!(rows[0]["primitive"], "remove_section");
+        assert_eq!(rows[0]["target_kind"], "section");
+        assert_eq!(rows[0]["target_id"], "sc-06");
+        assert_eq!(rows[0]["reason"], reason);
+        // THE ROW SURVIVES ITS TARGET. `sc-02` is gone from the sections
+        // registry and the row that says why is still here, which is the whole
+        // reason the ledger is a sequence beside the registries rather than a
+        // field on the record.
+        assert!(
+            store["sections"].get("sc-06").is_none(),
+            "the section should be gone"
+        );
+        // A SECOND REASONED CHANGE APPENDS RATHER THAN REPLACING — the property
+        // a field on the record could not have.
+        for (fact, why) in [
+            ("f-quest-done", "the crossing was never made"),
+            ("f-alt", "the fork is cut"),
+        ] {
+            let out = server
+                .retract_fact(
+                    serde_json::from_value::<RetractFactArgs>(serde_json::json!({
+                        "fact_id": fact, "reason": why
+                    }))
+                    .map(Parameters)
+                    .expect("shape parses"),
+                )
+                .await;
+            assert!(
+                out.is_error != Some(true),
+                "retracting {fact}: {:?}",
+                out.content
+            );
+        }
+        let store: serde_json::Value = serde_json::from_str(
+            &std::fs::read_to_string(tmp.path().join("docs/.atomic/workspace.atomic.json"))
+                .expect("read the store"),
+        )
+        .expect("the store parses");
+        let rows = store["mutation_reasons"].as_array().expect("array").clone();
+        assert_eq!(
+            rows.len(),
+            3,
+            "three reasoned mutations, three rows: {rows:?}"
+        );
+        assert_eq!(
+            rows.iter()
+                .map(|r| r["reason"].as_str().unwrap_or_default())
+                .collect::<Vec<_>>(),
+            vec![reason, "the crossing was never made", "the fork is cut"],
+            "the ledger is ordered by the order the acts happened"
+        );
+        // A BLANK REASON IS REFUSED BEFORE ANYTHING MOVES, which is where the
+        // check has to be: Round 1024 first put it in the save and four atomic
+        // tests said the store had already been mutated in memory.
+        let blank = server
+            .remove_section(
+                serde_json::from_value::<RemoveSectionArgs>(serde_json::json!({
+                    "section_id": "sc-03", "reason": "   "
+                }))
+                .map(Parameters)
+                .expect("shape parses"),
+            )
+            .await;
+        assert!(
+            blank.is_error == Some(true),
+            "a blank reason must be refused"
+        );
+        assert!(
+            answer_text(&blank).contains("reason mandatory"),
+            "the refusal must name what is missing: {}",
+            answer_text(&blank)
+        );
     }
 
     /// THE SURFACE THAT STATES THE TIMESTAMP CONTRACT SAYS THE FORM THAT IS
@@ -6557,8 +6745,7 @@ mod tests {
             add_fact_count(AddFactCountArgs) {"fact_id": "f-way", "count": 3};
         retract_fact_probed:
             @branch_story
-            retract_fact(RetractFactArgs) {"fact_id": "f-quest-done", "reason": "the crossing was never made"}
-            except "reason";
+            retract_fact(RetractFactArgs) {"fact_id": "f-quest-done", "reason": "the crossing was never made"};
         report_entity_probed:
             @branch_story
             report_entity(ReportEntityArgs) {"entity_id": "e-her"};
@@ -6608,12 +6795,10 @@ mod tests {
             set_section_decision_status(SetSectionDecisionStatusArgs) {"section_id": "sc-01", "status": "active"};
         set_section_coverage_expectation_probed:
             @branch_story
-            set_section_coverage_expectation(SetSectionCoverageExpectationArgs) {"section_id": "sc-01", "expectation": "out_of_scope_here", "reason": "the scene is written"}
-            except "reason";
+            set_section_coverage_expectation(SetSectionCoverageExpectationArgs) {"section_id": "sc-01", "expectation": "out_of_scope_here", "reason": "the scene is written"};
         set_section_verification_expectation_probed:
             @branch_story
-            set_section_verification_expectation(SetSectionVerificationExpectationArgs) {"section_id": "sc-01", "expectation": "by_construction", "reason": "the scene is checked"}
-            except "reason";
+            set_section_verification_expectation(SetSectionVerificationExpectationArgs) {"section_id": "sc-01", "expectation": "by_construction", "reason": "the scene is checked"};
         add_section_example_probed:
             @branch_story
             add_section_example(AddSectionExampleArgs) {"section_id": "sc-01", "code": "the sample", "language": "text"};
@@ -6623,18 +6808,15 @@ mod tests {
         set_section_binding_kind_probed:
             @branch_story
             [add_section_binding(AddSectionBindingArgs) {"section_id": "sc-01", "file": "src/lib.rs", "kind": "implements"}]
-            set_section_binding_kind(SetSectionBindingKindArgs) {"section_id": "sc-01", "file": "src/lib.rs", "kind": "verifies", "reason": "the binding is a check"}
-            except "reason";
+            set_section_binding_kind(SetSectionBindingKindArgs) {"section_id": "sc-01", "file": "src/lib.rs", "kind": "verifies", "reason": "the binding is a check"};
         remove_section_binding_probed:
             @branch_story
             [add_section_binding(AddSectionBindingArgs) {"section_id": "sc-01", "file": "src/lib.rs", "kind": "implements"}]
-            remove_section_binding(RemoveSectionBindingArgs) {"section_id": "sc-01", "file": "src/lib.rs", "reason": "the symbol moved"}
-            except "reason";
+            remove_section_binding(RemoveSectionBindingArgs) {"section_id": "sc-01", "file": "src/lib.rs", "reason": "the symbol moved"};
         remove_section_probed:
             @branch_story
             [add_section(AddSectionArgs) {"section_id": "sc-05", "parent_doc": "spec", "title": "five"}]
-            remove_section(RemoveSectionArgs) {"section_id": "sc-05", "reason": "the scene was cut"}
-            except "reason";
+            remove_section(RemoveSectionArgs) {"section_id": "sc-05", "reason": "the scene was cut"};
         set_changelog_publishable_decision_summary_probed:
             [append_changelog_entry(AppendChangelogEntryArgs) {"entry_id": "Round 1", "decision_summary": "the decision", "changes_bullets": ["a change"], "verification_bullets": ["a check"]}]
             set_changelog_publishable_decision_summary(SetChangelogPublishableStringArgs) {"entry_id": "Round 1", "value": "the published line"};
@@ -6655,9 +6837,7 @@ mod tests {
             query_term(QueryTermArgs) {"pattern": "Waits"};
         redact_term_probed:
             [append_changelog_entry(AppendChangelogEntryArgs) {"entry_id": "Round 1", "decision_summary": "the decision names Waits", "changes_bullets": ["a change"], "verification_bullets": ["a check"]}]
-            redact_term(RedactTermArgs) {"pattern": "Waits", "replacement": "lingers", "reason": "word", "applied_in": "Round 1", "dry_run": false}
-            except "reason"
-            except "applied_in";
+            redact_term(RedactTermArgs) {"pattern": "Waits", "replacement": "lingers", "reason": "word", "applied_in": "Round 1", "dry_run": false};
         emit_publishable_override_ledger_draft_probed:
             [append_changelog_entry(AppendChangelogEntryArgs) {"entry_id": "Round 1", "decision_summary": "the decision names Waits", "changes_bullets": ["a change"], "verification_bullets": ["a check"]}]
             [set_changelog_publishable_decision_summary(SetChangelogPublishableStringArgs) {"entry_id": "Round 1", "value": "the published line names Waits"}]
@@ -6668,8 +6848,7 @@ mod tests {
             add_fact(atomic::FactImport) {"fact_id": "f-new", "frame": "ground-truth", "claim": "the lamp is lit", "canon_from": "sc-01", "evidence": ["sc-01"]};
         amend_fact_probed:
             @branch_story
-            amend_fact(AmendFactArgs) {"fact_id": "f-way", "frame": "ground-truth", "claim": "a way runs, narrow", "canon_from": "sc-01", "evidence": ["sc-01"], "reason": "the prose says narrow"}
-            except "reason";
+            amend_fact(AmendFactArgs) {"fact_id": "f-way", "frame": "ground-truth", "claim": "a way runs, narrow", "canon_from": "sc-01", "evidence": ["sc-01"], "reason": "the prose says narrow"};
         add_fact_conflict_probed:
             @branch_story
             add_fact_conflict(AddFactConflictArgs) {"fact_id": "f-at-a", "conflicts_with": "f-quest-done"};
@@ -6765,8 +6944,7 @@ mod tests {
         remove_disclosure_probed:
             @branch_story
             [set_disclosure(SetDisclosureArgs) {"telling_id": "t-quiet", "fact_id": "f-at-b", "mode": "state"}]
-            remove_disclosure(RemoveDisclosureArgs) {"telling_id": "t-quiet", "fact_id": "f-at-b", "reason": "the telling says it plainly"}
-            except "reason";
+            remove_disclosure(RemoveDisclosureArgs) {"telling_id": "t-quiet", "fact_id": "f-at-b", "reason": "the telling says it plainly"};
         add_inventory_entry_probed:
             add_inventory_entry(AddInventoryEntryArgs) {"inventory_id": "inv-lamp", "status": "active"};
         set_inventory_status_probed:
@@ -6778,8 +6956,7 @@ mod tests {
             set_inventory_section_ref(SetInventorySectionRefArgs) {"inventory_id": "inv-lamp", "section_ref": "sc-01"};
         remove_inventory_entry_probed:
             [add_inventory_entry(AddInventoryEntryArgs) {"inventory_id": "inv-lamp", "status": "active"}]
-            remove_inventory_entry(RemoveInventoryEntryArgs) {"inventory_id": "inv-lamp", "reason": "the lamp was never carried"}
-            except "reason";
+            remove_inventory_entry(RemoveInventoryEntryArgs) {"inventory_id": "inv-lamp", "reason": "the lamp was never carried"};
         query_inventory_probed:
             [add_inventory_entry(AddInventoryEntryArgs) {"inventory_id": "inv-lamp", "status": "active"}]
             query_inventory(InventoryIdArgs) {"inventory_id": "inv-lamp"};

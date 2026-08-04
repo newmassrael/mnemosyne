@@ -1912,6 +1912,45 @@ pub struct ParameterEconomyReport {
     pub meters: Vec<ParameterEconomyRow>,
 }
 
+/// WHY THE STORE CHANGED (R1024) — the ledger's read side.
+///
+/// A reason recorded and unreadable would be the gap this ledger was built to
+/// close, moved rather than closed: the argument for keeping it in the store at
+/// all was that an agent resuming through `mnemosyne-cli query` cannot read git
+/// history, so the store has to answer "why is this what it is now". `target`
+/// filters to one record, INCLUDING one that no longer exists — five of the ten
+/// primitives that write a row are removals, and the removed thing is exactly
+/// what a reader has no other way to ask about.
+pub fn mutation_reason_report(
+    workspace_root: &Path,
+    sidecar: Option<&AbsolutePath>,
+    target: Option<&str>,
+) -> Result<MutationReasonReport, OpError> {
+    let store = load_atomic_store(workspace_root, sidecar)?;
+    let wanted = target.map(str::trim).filter(|t| !t.is_empty());
+    let rows: Vec<mnemosyne_atomic::MutationReason> = store
+        .mutation_reasons
+        .iter()
+        .filter(|r| wanted.is_none_or(|t| r.target_id == t))
+        .cloned()
+        .collect();
+    Ok(MutationReasonReport {
+        target: wanted.map(str::to_string),
+        total: store.mutation_reasons.len(),
+        rows,
+    })
+}
+
+/// The reasoned-mutation ledger as read. `total` is the WHOLE ledger even when
+/// `rows` is filtered, so a caller can never read a narrow answer as the whole
+/// of what the store holds (the Round 854 rule these gates keep re-learning).
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct MutationReasonReport {
+    pub target: Option<String>,
+    pub total: usize,
+    pub rows: Vec<mnemosyne_atomic::MutationReason>,
+}
+
 pub fn parameter_economy_report(
     workspace_root: &Path,
     sidecar: Option<&AbsolutePath>,
