@@ -9204,6 +9204,89 @@ mod tests {
     }
 
     #[test]
+    fn frame_view_at_the_ancestor_does_not_see_the_fork_that_left_it() {
+        // Round 438's other half: "a fork's own revisions never leak back into
+        // the ancestor's view". `frame_view_scopes_to_one_world_line` above
+        // asserts the forward half on STANDALONE branches, and only looks at
+        // `holding` — so a fork's fact appearing in the ancestor's `unknown`
+        // list, which is what a REGISTERED FORK produces, was never asserted.
+        //
+        // The fork's own coordinate is deliberately off the ancestor's chain
+        // (the shape every branching corpus in this tree has: `sc-b1` on the
+        // branch, `sc-NN` on main). That is what makes the leak VISIBLE rather
+        // than merely counted: a fact whose start the ancestor's order cannot
+        // compare lands in `unknown`, while one on the shared chain would only
+        // raise `not_holding`.
+        let on_main = fact("f-main", "jonathan", "ch-1", None);
+        let mut on_fork = fact("f-fork", "jonathan", "k-1", None);
+        on_fork.branch = Some("sea-route".to_string());
+        let store = store_with_forks(
+            vec![on_main, on_fork],
+            &[("sea-route", MAIN_BRANCH, "ch-2")],
+        );
+        // Composed the way the shipped read composes it: the base spine plus
+        // the branch's OWN declared edges, so the fork's coordinate hangs off
+        // the fork point exactly as every corpus's `order.json` states it.
+        let decl = CanonOrderFile {
+            edges: vec![
+                ["ch-1".to_string(), "ch-2".to_string()],
+                ["ch-2".to_string(), "ch-3".to_string()],
+            ],
+            branches: BTreeMap::from([(
+                "sea-route".to_string(),
+                vec![["ch-2".to_string(), "k-1".to_string()]],
+            )]),
+            ..Default::default()
+        };
+        let order = CanonOrder::from_declaration(&decl, &store.branches).unwrap();
+
+        let ancestor = frame_view(
+            &store,
+            &order,
+            &"jonathan".into(),
+            &MAIN_BRANCH.into(),
+            None,
+            &"ch-2".into(),
+        )
+        .unwrap();
+        assert_eq!(
+            ancestor
+                .holding
+                .iter()
+                .map(|e| e.fact_id.as_str())
+                .collect::<Vec<_>>(),
+            ["f-main"],
+        );
+        assert_eq!(
+            (ancestor.unknown.as_slice(), ancestor.not_holding),
+            (&[] as &[String], 0),
+            "the ancestor's view must not carry the fork's fact in ANY arm — \
+             `unknown` is a verdict about a fact this world holds an opinion \
+             on, and a world-line that was left has no opinion about what \
+             happened after the departure",
+        );
+
+        // The fork itself still inherits, which is the half that already held.
+        let forked = frame_view(
+            &store,
+            &order,
+            &"jonathan".into(),
+            &"sea-route".into(),
+            None,
+            &"k-1".into(),
+        )
+        .unwrap();
+        assert_eq!(
+            forked
+                .holding
+                .iter()
+                .map(|e| e.fact_id.as_str())
+                .collect::<Vec<_>>(),
+            ["f-fork", "f-main"],
+        );
+    }
+
+    #[test]
     fn order_declared_branch_must_be_registered() {
         // Round 436: the declaration is a consumer artifact — an edge set
         // for an unregistered branch is a typo, surfaced loud by gate AND

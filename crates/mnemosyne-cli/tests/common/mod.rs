@@ -111,6 +111,16 @@ pub fn authored_corpora() -> Vec<PathBuf> {
 pub struct AuthoredStore {
     pub name: String,
     pub ws: TempDir,
+    /// The corpus directory the recipe read — the `sections.json` / `order.json`
+    /// / `narrative-rules.json` half of this store.
+    pub dir: PathBuf,
+    /// The fact manifest this store was built from, as the author wrote it.
+    ///
+    /// Carried beside the built workspace so a walk can REBUILD the same corpus
+    /// with one thing changed ([`corpus_workspace_try`]) — the authoring path an
+    /// author could equally have taken, which is what makes a perturbation
+    /// evidence about the store rather than about a hand-edited sidecar.
+    pub facts: serde_json::Value,
 }
 
 /// Every authored store this repository can actually ASK, and the names of the
@@ -132,14 +142,22 @@ pub fn authored_stores() -> (Vec<AuthoredStore>, Vec<String>) {
             .unwrap_or(&dir)
             .display()
             .to_string();
-        match corpus_workspace_try(&dir, &read_json(&dir.join("facts.json"))) {
-            Ok(ws) => loadable.push(AuthoredStore { name, ws }),
+        let facts = read_json(&dir.join("facts.json"));
+        match corpus_workspace_try(&dir, &facts) {
+            Ok(ws) => loadable.push(AuthoredStore {
+                name,
+                ws,
+                dir,
+                facts,
+            }),
             Err(_) => unloadable.push(name),
         }
     }
     loadable.push(AuthoredStore {
         name: "the migrated dnd-quest record".to_string(),
         ws: dnd_quest_workspace_from(&dnd_quest_facts()),
+        dir: audit_dir(),
+        facts: dnd_quest_facts(),
     });
     (loadable, unloadable)
 }
@@ -454,6 +472,134 @@ pub fn baseline_argv(flags: &[Flag], store: &AtomicStore) -> Option<Vec<String>>
         }
     }
     Some(base)
+}
+
+// ==========================================================================
+// THE ROAD AXIS (Round 1049, shared here in Round 1050).
+//
+// Which flags take a road, and whether the ANSWER is keyed by one — the
+// discriminator that separates a SELECTOR (a filter picking part of an answer
+// that holds one entry per road) from a COORDINATE (a flag that moves the
+// point the WHOLE answer is evaluated AT). Two walks now judge those two kinds
+// and they must agree about which read is which, so the discriminator is one
+// definition rather than a copy in each.
+// ==========================================================================
+
+/// The flags on one usage line whose value vocabulary IS this corpus's road
+/// registry — derived from the shared [`values_for`] rather than spelled per
+/// verb, so `--world` and `--branch` are found the same way and a third
+/// road-taking flag joins the run it ships (the R1046 lesson).
+pub fn road_filters<'a>(flags: &'a [Flag], store: &AtomicStore) -> Vec<&'a Flag> {
+    let roads = values_for("--world", store);
+    flags
+        .iter()
+        .filter(|flag| flag.takes_value && values_for(&flag.name, store) == roads)
+        .collect()
+}
+
+/// How a structure carries the road it is about — the three encodings the
+/// shipped reads use, derived from the value rather than named per verb.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Keyed {
+    /// An object whose every key is a registered road (`worlds`, `per_world`).
+    Map,
+    /// An array of road ids (the quest graph's sorted per-world key set).
+    Ids,
+    /// An array of records, each ABOUT one road under this field (the quest
+    /// graph's `locators`, one per world where a giving fact is disclosed).
+    Records(String),
+}
+
+/// How this value carries roads, if it carries them at all.
+///
+/// Read from the UNFILTERED side by callers that compare two answers: it is the
+/// answer that says what shape the read has, and the filtered side is what has
+/// to match it.
+pub fn road_keying(value: &serde_json::Value, roads: &BTreeSet<String>) -> Option<Keyed> {
+    match value {
+        serde_json::Value::Object(map) if !map.is_empty() => map
+            .keys()
+            .all(|key| roads.contains(key))
+            .then_some(Keyed::Map),
+        serde_json::Value::Array(items) if !items.is_empty() => {
+            if items
+                .iter()
+                .all(|item| item.as_str().is_some_and(|id| roads.contains(id)))
+            {
+                return Some(Keyed::Ids);
+            }
+            // A record is about one road when ONE of its fields holds a road
+            // id, in every element. Two such fields would leave the caller
+            // choosing which one the filter means, which is a judgement it must
+            // not make silently — it says so instead.
+            let carriers: Vec<&String> = items[0].as_object()?.keys().collect();
+            let carriers: Vec<String> = carriers
+                .into_iter()
+                .filter(|key| {
+                    items.iter().all(|item| {
+                        item.get(key)
+                            .and_then(serde_json::Value::as_str)
+                            .is_some_and(|id| roads.contains(id))
+                    })
+                })
+                .cloned()
+                .collect();
+            match carriers.len() {
+                1 => Some(Keyed::Records(carriers[0].clone())),
+                _ => None,
+            }
+        }
+        _ => None,
+    }
+}
+
+/// The roads a value holds under a known keying — read WITHOUT re-testing the
+/// shape, because a filter that narrows a structure to nothing leaves an empty
+/// one, and empty must not read as "no longer that structure".
+pub fn roads_in(value: &serde_json::Value, keyed: &Keyed) -> Option<Vec<String>> {
+    match (keyed, value) {
+        (Keyed::Map, serde_json::Value::Object(map)) => Some(map.keys().cloned().collect()),
+        (Keyed::Ids, serde_json::Value::Array(items)) => items
+            .iter()
+            .map(|item| item.as_str().map(ToString::to_string))
+            .collect(),
+        (Keyed::Records(field), serde_json::Value::Array(items)) => items
+            .iter()
+            .map(|item| {
+                item.get(field)
+                    .and_then(serde_json::Value::as_str)
+                    .map(ToString::to_string)
+            })
+            .collect(),
+        _ => None,
+    }
+}
+
+/// Whether this answer is ABOUT roads at all — whether a road id appears
+/// anywhere in it as a KEY rather than only as a value.
+///
+/// This is what separates a SELECTOR from a COORDINATE, and it is derived
+/// rather than declared. `report-playthrough-manuscript --world` picks a road
+/// out of an answer that holds one entry per road; `report-frame-view --branch`
+/// takes the same vocabulary and means something else entirely — it moves the
+/// coordinate the whole answer is evaluated AT, so its `not_holding` count
+/// legitimately RISES on a road where fewer facts hold. Holding a coordinate to
+/// "the roads you keep say what they said" would be refuted by the shipped
+/// design on the first run, so the two are judged by different contracts and
+/// this is the one line that decides which.
+pub fn answer_is_keyed_by_road(value: &serde_json::Value, roads: &BTreeSet<String>) -> bool {
+    if road_keying(value, roads).is_some() {
+        return true;
+    }
+    match value {
+        serde_json::Value::Object(map) => map
+            .values()
+            .any(|value| answer_is_keyed_by_road(value, roads)),
+        serde_json::Value::Array(items) => items
+            .iter()
+            .any(|value| answer_is_keyed_by_road(value, roads)),
+        _ => false,
+    }
 }
 
 /// Every top-level scalar field of an answer, as `(key, rendered value)`.

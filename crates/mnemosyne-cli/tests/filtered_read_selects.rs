@@ -45,8 +45,8 @@ use serde_json::Value;
 
 mod common;
 use common::{
-    advertised_reads, authored_stores, baseline_argv, flags_of, record_of, run, substance,
-    usage_lines, values_for, SIDECAR,
+    advertised_reads, answer_is_keyed_by_road, authored_stores, baseline_argv, flags_of, record_of,
+    road_filters, road_keying, roads_in, run, substance, usage_lines, values_for, Keyed, SIDECAR,
 };
 
 /// What one road-keyed structure did under the filter.
@@ -56,19 +56,6 @@ enum Shape {
     Narrowed,
     /// It stayed whole — a structure whose meaning is cross-world.
     Whole,
-}
-
-/// How a structure carries the road it is about — the three encodings the
-/// shipped reads use, derived from the value rather than named per verb.
-#[derive(Debug, Clone, PartialEq, Eq)]
-enum Keyed {
-    /// An object whose every key is a registered road (`worlds`, `per_world`).
-    Map,
-    /// An array of road ids (the quest graph's sorted per-world key set).
-    Ids,
-    /// An array of records, each ABOUT one road under this field (the quest
-    /// graph's `locators`, one per world where a giving fact is disclosed).
-    Records(String),
 }
 
 /// One filtered-versus-unfiltered comparison in progress.
@@ -121,97 +108,9 @@ fn brief(value: &Value) -> String {
 }
 
 impl Selection<'_> {
-    /// How this value carries roads, if it carries them at all. Read from the
-    /// UNFILTERED side: it is the answer that says what shape the read has, and
-    /// the filtered side is what has to match it.
-    fn keying(&self, value: &Value) -> Option<Keyed> {
-        match value {
-            Value::Object(map) if !map.is_empty() => map
-                .keys()
-                .all(|key| self.roads.contains(key))
-                .then_some(Keyed::Map),
-            Value::Array(items) if !items.is_empty() => {
-                if items
-                    .iter()
-                    .all(|item| item.as_str().is_some_and(|id| self.roads.contains(id)))
-                {
-                    return Some(Keyed::Ids);
-                }
-                // A record is about one road when ONE of its fields holds a
-                // road id, in every element. Two such fields would leave the
-                // walk choosing which one the filter means, which is a judgement
-                // it must not make silently — it says so instead.
-                let carriers: Vec<&String> = items[0].as_object()?.keys().collect();
-                let carriers: Vec<String> = carriers
-                    .into_iter()
-                    .filter(|key| {
-                        items.iter().all(|item| {
-                            item.get(key)
-                                .and_then(Value::as_str)
-                                .is_some_and(|id| self.roads.contains(id))
-                        })
-                    })
-                    .cloned()
-                    .collect();
-                match carriers.len() {
-                    1 => Some(Keyed::Records(carriers[0].clone())),
-                    _ => None,
-                }
-            }
-            _ => None,
-        }
-    }
-
-    /// The roads a value holds under a known keying — read WITHOUT re-testing
-    /// the shape, because a filter that narrows a structure to nothing leaves
-    /// an empty one, and empty must not read as "no longer that structure".
-    fn roads_in(&self, value: &Value, keyed: &Keyed) -> Option<Vec<String>> {
-        match (keyed, value) {
-            (Keyed::Map, Value::Object(map)) => Some(map.keys().cloned().collect()),
-            (Keyed::Ids, Value::Array(items)) => items
-                .iter()
-                .map(|item| item.as_str().map(ToString::to_string))
-                .collect(),
-            (Keyed::Records(field), Value::Array(items)) => items
-                .iter()
-                .map(|item| {
-                    item.get(field)
-                        .and_then(Value::as_str)
-                        .map(ToString::to_string)
-                })
-                .collect(),
-            _ => None,
-        }
-    }
-
-    /// Whether this answer is ABOUT roads at all — whether a road id appears
-    /// anywhere in it as a key rather than only as a value.
-    ///
-    /// This is what separates a SELECTOR from a COORDINATE, and it is derived
-    /// rather than declared. `report-playthrough-manuscript --world` picks a
-    /// road out of an answer that holds one entry per road; `report-frame-view
-    /// --branch` takes the same vocabulary and means something else entirely —
-    /// it moves the coordinate the whole answer is evaluated AT, so its
-    /// `not_holding` count legitimately RISES on a road where fewer facts hold.
-    /// Holding a coordinate to "the roads you keep say what they said" would be
-    /// refuted by the shipped design on the first run, so this walk names the
-    /// coordinate reads and counts them instead of judging them.
-    fn is_about_roads(&self, value: &Value) -> bool {
-        if self.keying(value).is_some() {
-            return true;
-        }
-        match value {
-            Value::Object(map) => map.values().any(|value| self.is_about_roads(value)),
-            Value::Array(items) => items.iter().any(|value| self.is_about_roads(value)),
-            _ => false,
-        }
-    }
-
     fn compare(&mut self, path: &str, all: &Value, one: &Value) {
-        if let Some(keyed) = self.keying(all) {
-            let (Some(before), Some(after)) =
-                (self.roads_in(all, &keyed), self.roads_in(one, &keyed))
-            else {
+        if let Some(keyed) = road_keying(all, self.roads) {
+            let (Some(before), Some(after)) = (roads_in(all, &keyed), roads_in(one, &keyed)) else {
                 self.moved.push(format!(
                     "{path}: the filtered read answers {}, which is not the road-keyed shape \
                      the unfiltered read used",
@@ -357,10 +256,7 @@ fn a_road_filter_answers_what_the_unfiltered_read_already_said() {
             // road registry — derived from the shared resolver rather than
             // spelled here, so `--world` and `--branch` are found the same way
             // and a third road-taking flag joins this walk the run it ships.
-            let filters: Vec<&common::Flag> = flags
-                .iter()
-                .filter(|flag| flag.takes_value && values_for(&flag.name, &atomic) == roads)
-                .collect();
+            let filters = road_filters(&flags, &atomic);
             if filters.is_empty() {
                 continue;
             }
@@ -397,13 +293,11 @@ fn a_road_filter_answers_what_the_unfiltered_read_already_said() {
                         .or_default() += 1;
                     continue;
                 };
-                let scan = Selection {
-                    roads: &road_set,
-                    road: "",
-                    shapes: BTreeMap::new(),
-                    moved: Vec::new(),
-                };
-                if !scan.is_about_roads(&unfiltered) {
+                // A COORDINATE, not a selection — judged by the sibling walk
+                // (`coordinate_read_answers.rs`), which holds it to the lineage
+                // of the road it was given rather than to "the roads you keep
+                // say what they said".
+                if !answer_is_keyed_by_road(&unfiltered, &road_set) {
                     coordinate.insert((verb.clone(), filter.name.clone()));
                     continue;
                 }
