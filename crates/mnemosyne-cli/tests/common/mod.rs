@@ -257,6 +257,33 @@ pub fn dnd_quest_workspace() -> TempDir {
     dnd_quest_workspace_from(&dnd_quest_facts())
 }
 
+/// The SAME corpus recipe over manifests a test writes itself, for the shapes
+/// no author shipped (Round 1052).
+///
+/// A contract asked only of the authored corpora is asked only about what those
+/// authors happened to write, and an arm no corpus reaches is a claim with no
+/// evidence behind it. The corpora hold no confluence that also declares a
+/// telling, no section outside the order, and no scene with nothing in it — so
+/// a law about any of those reads as held when nothing exercised it. The R1041
+/// precedent is the answer: what the corpora cannot make, the TREE makes, and
+/// it goes through the recipe an author would have used rather than a
+/// hand-written sidecar, so the store it produces is one an author could ship.
+pub fn constructed_corpus(
+    sections: &serde_json::Value,
+    order: &serde_json::Value,
+    facts: &serde_json::Value,
+) -> Result<TempDir, String> {
+    let manifests = TempDir::new().expect("tempdir");
+    for (name, value) in [("sections.json", sections), ("order.json", order)] {
+        fs::write(
+            manifests.path().join(name),
+            serde_json::to_string(value).expect("manifest serialize"),
+        )
+        .map_err(|e| format!("write {name}: {e}"))?;
+    }
+    corpus_workspace_try(manifests.path(), facts)
+}
+
 // ==========================================================================
 // THE SHIPPED READ PANEL (Round 1034, shared here in Round 1039).
 //

@@ -3466,6 +3466,90 @@
         "The corruption loop now asks 66 questions per corruption instead of 27 reads, which is the runtime this population costs."
       ]
     },
+    "Round 1052": {
+      "decision_summary": "R1052 (BUILD) — the sixth declared cross-read agreement, and the first pair where neither read embeds the other: `report-authoring-frontier <-> report-playable-world`, 57 subjects in common, the largest overlap no contract judged. ★THE TWO READS DECOMPOSE ONE STORE ALONG THE SAME TWO AXES AND HAND BACK DIFFERENT HALVES. The frontier is keyed by SCENE (a coverage row per registered section, plus the placement sets naming the ones no order reaches) and by ROAD only in aggregate (a length and an owned-fact count). The playable world is keyed by ROAD (a manuscript per world-line, its scenes in walk order) and names the sections each road does not travel. So no field here equals a field there, and every one of the seven laws is a JOIN — which is what makes this pair unlike the four before it, where one read called the other's projection and the contract pinned that reuse. ★SEVEN LAWS: ROADS (the frontier knows every road the dump walks, and the ones it knows that the dump does not are EXACTLY the confluences the playable world's own fork tree names — the exception proved by the other read rather than by the test consulting the store); LENGTH (the frontier's `road_scenes` is that road's walk); PARTITION (travelled + off-road partition the frontier's scene census, disjointly and exhaustively); UNPLACED (a section no order positions is off EVERY road); EMPTY (a zero-fact scene begins nothing anywhere); CENSUS (per-scene `≤` plus an equal total IS per-scene equality, with the residual — facts undecidable on every road — counted, not absorbed); DISCLOSURE (a never-planned fact carries NO locator, the R643 arm; a seat the frontier calls early is a locator earlier in the walk than the scene its fact begins at, the R949 arm — both judged from the other side for the first time). ★THE AUTHORED CORPORA LEAVE FOUR OF THOSE ARMS AT ZERO, AND THAT IS ASSERTED RATHER THAN AVERAGED AWAY. 13 (store, telling) pairs answer both reads over 18 roads, and none of them holds a section outside its order, a scene with nothing in it, a seat before its truth, or a confluence that also declares a telling — the one corpus with a merge declares none, so this pair's per-telling half cannot ask it. Four laws over an empty arm are four claims with no evidence, so the TREE constructs the store the authors did not, through the same import recipe (`constructed_corpus`), and the same `judge` runs over both populations with their evidence asserted separately. ★AND THE FIRST VERSION OF THE PROSE WAS WRONG ABOUT WHAT THE CONFLUENCE ASK BUYS — the shape line refuted it in one run. It said the census could not close without asking `--world merge`; in fact both forks walk THROUGH the merge into its continuation (7 scenes each over a 4-scene trunk), so the fact the confluence owns is named on the forks anyway. What the ask does buy is the confluence's own road: its LENGTH and PARTITION are judged nowhere else, and its manuscript carries ONE locator over eight scenes because a fragment leaves the pre-merge trunk undecidable. The number the prose now states is the number the test prints.",
+      "changes_bullets": [
+        "`crates/mnemosyne-cli/tests/frontier_playable_agreement.rs`: new — the seven laws, one `judge` over two populations (the authored corpora and a constructed store), evidence asserted per population and a shape line per (store, telling) so every total is explained by the distribution it summed.",
+        "`crates/mnemosyne-cli/tests/common/mod.rs`: `constructed_corpus` — the same corpus recipe over manifests a test writes itself, for the shapes no author shipped."
+      ],
+      "verification_bullets": [
+        "Workspace 1765 tests green, clippy -D warnings clean, fmt clean, `validate-workspace` T1/T3 = 0.",
+        "AUTHORED: 44 stores asked, 16 do not load and 18 declare no telling, 13 (store, telling) pairs answer both reads over 18 roads / 400 scenes / 512 section-rows; 1092 facts named at a scene the frontier counts with 0 undecidable everywhere; 1422 locators, 8 of them seated away from their fact's own scene, 20 never-planned facts checked against them.",
+        "AUTHORED SILENCE, asserted as a number: unplaced-section checks 0, zero-fact scene checks 0, early seats 0. Those four laws are carried by the constructed store alone, and the assertion is what keeps that visible.",
+        "CONSTRUCTED: 1 store, 4 roads — a 4-scene trunk, two forks that walk 7 because they carry on through the merge, and the confluence's own 8-scene fragment, which only a `--world` ask reaches. 4 unplaced-section checks, 7 zero-fact scene checks, all 8 facts named, 11 locators, 2 never-planned facts, 1 early seat both reads name, 2 early on roads the frontier does not name, 1 early seat withheld so no locator exists.",
+        "8 injections, each aimed at ONE law, each over the WHOLE workspace with --no-fail-fast: all 8 fired this contract. I1 (the frontier's road length becomes the section count) fired it ALONE — 1 target failed in the whole workspace, so nothing else was checking that the frontier's road is the road a reader walks. I2 partition (4 targets), I3 unplaced (3), I4 empty (2), I5 census (3), I6 roads (2), I7 the R643 withhold filter (2), I8 the R949 seat comparison inverted (2)."
+      ],
+      "carry_forward_bullets": [
+        "The backlog is 45 pairs and 39 of them are undeclared. The next by rank is `report-authoring-frontier <-> report-playthrough-manuscript` (57), then `report-entity <-> report-playable-world` (49).",
+        "Which road a FACT belongs to is not derivable from this pair: the manuscript's begins-event carries a frame, not a branch. So the reverse half of the R949 law — the walk says early, the frontier does not name that road — is COUNTED (2 on the constructed store) rather than judged, and what is judged is the weaker, true statement that the fact must be named on some road.",
+        "The authored corpora exercise four of the seven laws not at all. A second authored corpus that declares both a confluence and a telling would move that, and the tracked convergence probe is one telling away from being it.",
+        "The constructed store is one store. Every law it carries alone is judged over four roads and nine sections, which is enough to fire each arm and is not a distribution.",
+        "`owned_facts`, the numerator of the frontier's density, is checked by nothing here: no field of the playable world says which branch a fact belongs to, so the pair can compare the denominator and not the numerator."
+      ],
+      "population_census": [
+        {
+          "axis": "transition rules by `undirected`",
+          "left_label": "undirected",
+          "left": 10,
+          "right_label": "directed",
+          "right": 27
+        },
+        {
+          "axis": "map corpora by leg-kind declaration",
+          "left_label": "omitted",
+          "left": 6,
+          "right_label": "declared",
+          "right": 24
+        },
+        {
+          "axis": "cost-carrying corpora by direction-dependent pricing",
+          "left_label": "prices a way by direction",
+          "left": 4,
+          "right_label": "prices no way by direction",
+          "right": 6
+        },
+        {
+          "axis": "run trees by authoring mode",
+          "left_label": "hand script",
+          "left": 10,
+          "right_label": "file-only",
+          "right": 239
+        },
+        {
+          "axis": "map corpora by declared boundary crossing",
+          "left_label": "declares an exit",
+          "left": 6,
+          "right_label": "declares none",
+          "right": 24
+        },
+        {
+          "axis": "authored submissions by map and telling",
+          "left_label": "carries both",
+          "left": 10,
+          "right_label": "carries one",
+          "right": 24
+        }
+      ],
+      "publishable_decision_summary": "R1052 (BUILD) — the sixth declared cross-read agreement, and the first pair where neither read embeds the other: `report-authoring-frontier <-> report-playable-world`, 57 subjects in common, the largest overlap no contract judged. ★THE TWO READS DECOMPOSE ONE STORE ALONG THE SAME TWO AXES AND HAND BACK DIFFERENT HALVES. The frontier is keyed by SCENE (a coverage row per registered section, plus the placement sets naming the ones no order reaches) and by ROAD only in aggregate (a length and an owned-fact count). The playable world is keyed by ROAD (a manuscript per world-line, its scenes in walk order) and names the sections each road does not travel. So no field here equals a field there, and every one of the seven laws is a JOIN — which is what makes this pair unlike the four before it, where one read called the other's projection and the contract pinned that reuse. ★SEVEN LAWS: ROADS (the frontier knows every road the dump walks, and the ones it knows that the dump does not are EXACTLY the confluences the playable world's own fork tree names — the exception proved by the other read rather than by the test consulting the store); LENGTH (the frontier's `road_scenes` is that road's walk); PARTITION (travelled + off-road partition the frontier's scene census, disjointly and exhaustively); UNPLACED (a section no order positions is off EVERY road); EMPTY (a zero-fact scene begins nothing anywhere); CENSUS (per-scene `≤` plus an equal total IS per-scene equality, with the residual — facts undecidable on every road — counted, not absorbed); DISCLOSURE (a never-planned fact carries NO locator, the R643 arm; a seat the frontier calls early is a locator earlier in the walk than the scene its fact begins at, the R949 arm — both judged from the other side for the first time). ★THE AUTHORED CORPORA LEAVE FOUR OF THOSE ARMS AT ZERO, AND THAT IS ASSERTED RATHER THAN AVERAGED AWAY. 13 (store, telling) pairs answer both reads over 18 roads, and none of them holds a section outside its order, a scene with nothing in it, a seat before its truth, or a confluence that also declares a telling — the one corpus with a merge declares none, so this pair's per-telling half cannot ask it. Four laws over an empty arm are four claims with no evidence, so the TREE constructs the store the authors did not, through the same import recipe (`constructed_corpus`), and the same `judge` runs over both populations with their evidence asserted separately. ★AND THE FIRST VERSION OF THE PROSE WAS WRONG ABOUT WHAT THE CONFLUENCE ASK BUYS — the shape line refuted it in one run. It said the census could not close without asking `--world merge`; in fact both forks walk THROUGH the merge into its continuation (7 scenes each over a 4-scene trunk), so the fact the confluence owns is named on the forks anyway. What the ask does buy is the confluence's own road: its LENGTH and PARTITION are judged nowhere else, and its manuscript carries ONE locator over eight scenes because a fragment leaves the pre-merge trunk undecidable. The number the prose now states is the number the test prints.",
+      "publishable_changes_bullets": [
+        "`crates/mnemosyne-cli/tests/frontier_playable_agreement.rs`: new — the seven laws, one `judge` over two populations (the authored corpora and a constructed store), evidence asserted per population and a shape line per (store, telling) so every total is explained by the distribution it summed.",
+        "`crates/mnemosyne-cli/tests/common/mod.rs`: `constructed_corpus` — the same corpus recipe over manifests a test writes itself, for the shapes no author shipped."
+      ],
+      "publishable_verification_bullets": [
+        "Workspace 1765 tests green, clippy -D warnings clean, fmt clean, `validate-workspace` T1/T3 = 0.",
+        "AUTHORED: 44 stores asked, 16 do not load and 18 declare no telling, 13 (store, telling) pairs answer both reads over 18 roads / 400 scenes / 512 section-rows; 1092 facts named at a scene the frontier counts with 0 undecidable everywhere; 1422 locators, 8 of them seated away from their fact's own scene, 20 never-planned facts checked against them.",
+        "AUTHORED SILENCE, asserted as a number: unplaced-section checks 0, zero-fact scene checks 0, early seats 0. Those four laws are carried by the constructed store alone, and the assertion is what keeps that visible.",
+        "CONSTRUCTED: 1 store, 4 roads — a 4-scene trunk, two forks that walk 7 because they carry on through the merge, and the confluence's own 8-scene fragment, which only a `--world` ask reaches. 4 unplaced-section checks, 7 zero-fact scene checks, all 8 facts named, 11 locators, 2 never-planned facts, 1 early seat both reads name, 2 early on roads the frontier does not name, 1 early seat withheld so no locator exists.",
+        "8 injections, each aimed at ONE law, each over the WHOLE workspace with --no-fail-fast: all 8 fired this contract. I1 (the frontier's road length becomes the section count) fired it ALONE — 1 target failed in the whole workspace, so nothing else was checking that the frontier's road is the road a reader walks. I2 partition (4 targets), I3 unplaced (3), I4 empty (2), I5 census (3), I6 roads (2), I7 the R643 withhold filter (2), I8 the R949 seat comparison inverted (2)."
+      ],
+      "publishable_carry_forward_bullets": [
+        "The backlog is 45 pairs and 39 of them are undeclared. The next by rank is `report-authoring-frontier <-> report-playthrough-manuscript` (57), then `report-entity <-> report-playable-world` (49).",
+        "Which road a FACT belongs to is not derivable from this pair: the manuscript's begins-event carries a frame, not a branch. So the reverse half of the R949 law — the walk says early, the frontier does not name that road — is COUNTED (2 on the constructed store) rather than judged, and what is judged is the weaker, true statement that the fact must be named on some road.",
+        "The authored corpora exercise four of the seven laws not at all. A second authored corpus that declares both a confluence and a telling would move that, and the tracked convergence probe is one telling away from being it.",
+        "The constructed store is one store. Every law it carries alone is judged over four roads and nine sections, which is enough to fire each arm and is not a distribution.",
+        "`owned_facts`, the numerator of the frontier's density, is checked by nothing here: no field of the playable world says which branch a fact belongs to, so the pair can compare the denominator and not the numerator."
+      ]
+    },
     "Round 252": {
       "decision_summary": "Parser CommonMark conformance — recognize indented fenced code blocks (§98) and require whitespace after ATX hash sequence (§62)",
       "changes_bullets": [
