@@ -5633,6 +5633,21 @@ pub struct PaidSetup {
     pub payoffs: Vec<String>,
 }
 
+/// One SUBSTANTIATED setup, with the payoffs that discharge its typed state —
+/// a SUBSET of the payoffs [`PaidSetup`] credits the same setup with (R1041).
+///
+/// Its own type because the two reads that carry these rows are shipped
+/// separately and answer about the same setups: `report-payoff-coverage` says
+/// which payoffs CREDIT a setup, `report-payoff-substantiation` says which of
+/// them DISCHARGE it. Both were `{setup, payoffs}`, so a consumer joining them
+/// by setup read a narrowing as a contradiction — the R1037 class, in a store
+/// where nothing is wrong. The field says which one it is.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct SubstantiatedSetup {
+    pub setup: String,
+    pub discharging_payoffs: Vec<String>,
+}
+
 /// Per-world payoff coverage (Round 442) — the R390 3-way classification
 /// on the discourse axis: a visible setup with a visible payoff is `paid`,
 /// without one it is `dangling` (the author's todo list — a report
@@ -5874,7 +5889,7 @@ pub fn payoff_coverage(
 ///   not a failure.
 #[derive(Debug, Clone, Default, Serialize)]
 pub struct WorldPayoffSubstantiation {
-    pub substantiated: Vec<PaidSetup>,
+    pub substantiated: Vec<SubstantiatedSetup>,
     pub unsubstantiated: Vec<PaidSetup>,
     pub unverifiable: Vec<PaidSetup>,
 }
@@ -5954,9 +5969,9 @@ pub fn payoff_substantiation(
                             // typed state — a hollow payoff.
                             w.unsubstantiated.push(paid.clone());
                         } else {
-                            w.substantiated.push(PaidSetup {
+                            w.substantiated.push(SubstantiatedSetup {
                                 setup: paid.setup.clone(),
-                                payoffs: discharging,
+                                discharging_payoffs: discharging,
                             });
                         }
                     }
@@ -10466,12 +10481,73 @@ mod tests {
         let w = &report.worlds[MAIN_BRANCH];
         let names =
             |v: &[PaidSetup]| -> Vec<String> { v.iter().map(|p| p.setup.clone()).collect() };
-        assert_eq!(names(&w.substantiated), vec!["su-diary"]);
-        assert_eq!(w.substantiated[0].payoffs, vec!["p-diary".to_string()]);
+        assert_eq!(
+            w.substantiated
+                .iter()
+                .map(|p| p.setup.clone())
+                .collect::<Vec<_>>(),
+            vec!["su-diary"]
+        );
+        assert_eq!(
+            w.substantiated[0].discharging_payoffs,
+            vec!["p-diary".to_string()]
+        );
         assert_eq!(names(&w.unsubstantiated), vec!["su-gun"]);
         let mut unver = names(&w.unverifiable);
         unver.sort();
         assert_eq!(unver, vec!["su-letter".to_string(), "su-safe".to_string()]);
+    }
+
+    /// Round 1041 — the two payoff reads emit the same row shape and mean
+    /// different things by it, and this is the store that shows it.
+    ///
+    /// `report-payoff-coverage` lists every in-world payoff that CREDITS a
+    /// setup; `report-payoff-substantiation` lists, for a substantiated one,
+    /// only the payoffs that DISCHARGE its typed state. Both rows are
+    /// `{setup, payoffs}`, so a consumer joining the two reads by setup — which
+    /// is exactly what the R1040 agreement walk nominated this pair for — reads
+    /// a narrowed list as a contradiction. Every authored corpus this tree
+    /// tracks happens to credit substantiated setups with exactly their
+    /// discharging payoffs, so the corpus cannot show this: the tree can.
+    #[test]
+    fn a_substantiated_setup_lists_fewer_payoffs_than_credit_it() {
+        let store = store_with(vec![
+            typed_value(
+                setup_fact("su-diary", "gt", "ch-1"),
+                "diary",
+                "state",
+                "sealed",
+            ),
+            // Discharges it: same subject+predicate, different value.
+            typed_value(
+                payoff_fact("p-open", "gt", "ch-2", &["su-diary"]),
+                "diary",
+                "state",
+                "opened",
+            ),
+            // Credits the same setup and discharges nothing (prose-only).
+            payoff_fact("p-echo", "gt", "ch-3", &["su-diary"]),
+        ]);
+        let order = chain(&["ch-1", "ch-2", "ch-3", "ch-4"]);
+        let coverage = payoff_coverage(&store, &order).unwrap();
+        let credited = &coverage.worlds[MAIN_BRANCH].paid;
+        assert_eq!(credited.len(), 1, "one paid setup");
+        assert_eq!(
+            credited[0].payoffs,
+            vec!["p-echo".to_string(), "p-open".to_string()],
+            "coverage credits the setup with BOTH payoffs"
+        );
+
+        let report = payoff_substantiation(&store, &order).unwrap();
+        let w = &report.worlds[MAIN_BRANCH];
+        assert_eq!(w.substantiated.len(), 1, "one substantiated setup");
+        assert_eq!(
+            w.substantiated[0].discharging_payoffs,
+            vec!["p-open".to_string()],
+            "substantiation lists only the payoff that discharges the typed state \
+             — a narrowing the field name now carries, so a consumer joining the \
+             two reads cannot read it as a disagreement"
+        );
     }
 
     /// Round 488 — the wrong-branch authoring footgun made loud. A canon

@@ -5152,7 +5152,14 @@ fn cmd_report_payoff_substantiation(args: &[String]) -> Result<()> {
                 w.unverifiable.len()
             );
             for p in &w.substantiated {
-                println!("  [substantiated] {} <- {}", p.setup, p.payoffs.join(", "));
+                // "discharged by", not "paid by": these are the payoffs that
+                // move the setup's typed state, a subset of the ones
+                // `report-payoff-coverage` credits it with (R1041).
+                println!(
+                    "  [substantiated] {} <- {} (discharging)",
+                    p.setup,
+                    p.discharging_payoffs.join(", ")
+                );
             }
             for p in &w.unsubstantiated {
                 println!(
