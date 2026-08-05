@@ -107,6 +107,43 @@ pub fn authored_corpora() -> Vec<PathBuf> {
     out
 }
 
+/// One authored store, built and ready to be asked.
+pub struct AuthoredStore {
+    pub name: String,
+    pub ws: TempDir,
+}
+
+/// Every authored store this repository can actually ASK, and the names of the
+/// ones it cannot: the tracked corpora, PLUS the migrated dnd-quest record.
+///
+/// The migrated record has to be named separately and that is not a detail. It
+/// is the richest store this tree holds — four roads, quests, dangling setups
+/// on every road — and its own TRACKED manifest is the pre-migration file that
+/// stopped loading (the rot R857 found), so a sweep of tracked corpora alone
+/// EXCLUDES it. Round 1036 lost three refutations to exactly that omission and
+/// had to add it back by hand; this is that lesson as a shared resolver rather
+/// than as a line each walk remembers to write.
+pub fn authored_stores() -> (Vec<AuthoredStore>, Vec<String>) {
+    let mut loadable = Vec::new();
+    let mut unloadable = Vec::new();
+    for dir in authored_corpora() {
+        let name = dir
+            .strip_prefix(repo_root())
+            .unwrap_or(&dir)
+            .display()
+            .to_string();
+        match corpus_workspace_try(&dir, &read_json(&dir.join("facts.json"))) {
+            Ok(ws) => loadable.push(AuthoredStore { name, ws }),
+            Err(_) => unloadable.push(name),
+        }
+    }
+    loadable.push(AuthoredStore {
+        name: "the migrated dnd-quest record".to_string(),
+        ws: dnd_quest_workspace_from(&dnd_quest_facts()),
+    });
+    (loadable, unloadable)
+}
+
 /// Rebuild the store the way the experiment's runbook does — fresh seed, then
 /// the manifests — with the three unchanged manifests taken from the frozen
 /// record and the fact manifest supplied by the caller, so a test can author a

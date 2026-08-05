@@ -48,15 +48,18 @@
 //! its own field name, and this walk asserts the relation each bucket has to
 //! the crediting list rather than assuming one.
 //!
-//! Asked of every corpus an author shipped that still loads, not just the
-//! blind-authored one (the R1036 population rule), and the totals are ASSERTED
-//! rather than printed: a corpus that stops answering silently shrinks the
-//! evidence, which is the defect Round 1036 found by aiming an injection at it.
+//! Asked of every store an author shipped that this tree can still ask (the
+//! R1036 population rule) — the tracked corpora AND the migrated dnd-quest
+//! record, which a sweep of tracked manifests alone excludes because its own
+//! tracked manifest is the pre-migration file that no longer loads. The totals
+//! are ASSERTED rather than printed: a store that stops answering silently
+//! shrinks the evidence, which is the defect Round 1036 found by aiming an
+//! injection at exactly that path.
 
 use std::collections::{BTreeMap, BTreeSet};
 
 mod common;
-use common::{authored_corpora, corpus_workspace_try, read_json, repo_root, run};
+use common::{authored_stores, run};
 
 /// A read's `[{setup, payoffs}]` list as a map, with the duplicate-setup case
 /// made loud: two rows for one setup would make "the same population" ambiguous
@@ -87,25 +90,20 @@ fn by_setup(rows: &serde_json::Value, whose: &str) -> BTreeMap<String, Vec<Strin
 
 #[test]
 fn the_two_payoff_reads_partition_the_same_paid_setups() {
-    let mut asked = 0usize;
     let mut answered = 0usize;
-    let mut silent: Vec<String> = Vec::new();
     let mut worlds_compared = 0usize;
     let mut setups_compared = 0usize;
     let mut disagreements: Vec<String> = Vec::new();
 
-    for dir in authored_corpora() {
-        asked += 1;
-        let name = dir
-            .strip_prefix(repo_root())
-            .unwrap_or(&dir)
-            .display()
-            .to_string();
-        let facts = read_json(&dir.join("facts.json"));
-        let Ok(ws) = corpus_workspace_try(&dir, &facts) else {
-            silent.push(format!("{name} (does not load)"));
-            continue;
-        };
+    let (stores, unloadable) = authored_stores();
+    let asked = stores.len() + unloadable.len();
+    let mut silent: Vec<String> = unloadable
+        .iter()
+        .map(|name| format!("{name} (does not load)"))
+        .collect();
+    for store in &stores {
+        let name = &store.name;
+        let ws = &store.ws;
         let read = |verb: &str| {
             let out = run(ws.path(), &[verb, "--json"]);
             out.status
@@ -241,7 +239,7 @@ fn the_two_payoff_reads_partition_the_same_paid_setups() {
     // the shape of defect Round 1036 found by injecting into exactly that path.
     assert_eq!(
         (asked, answered, worlds_compared, setups_compared),
-        (43, 27, 37, 109),
+        (44, 28, 41, 136),
         "the corpora that answer both payoff reads, and how much they compare"
     );
 
