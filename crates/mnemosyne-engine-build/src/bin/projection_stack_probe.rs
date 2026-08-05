@@ -12,107 +12,46 @@
 //!   exit 0    built within that stack
 //!   exit 2    the OS refused a thread that small — NOT a measurement
 //!   killed    overflowed
+//! projection_stack_probe --list
+//!   every fixture compiled in, one per line
 //! ```
 //!
 //! The `exit 2` arm is the one worth naming: a platform's minimum thread size is
 //! a floor on what can be asked, and a probe that reported "did not build" for
 //! "was never allowed to try" would hand the parent a fabricated number. Below
 //! the floor there is no measurement, and saying so is the honest answer.
+//!
+//! `--list` exists so the gate can ask what this binary CARRIES instead of
+//! assuming its own list is the whole of it (Round 1046). The two must be equal:
+//! a fixture nothing weighs is the defect that round repaired one level up, and
+//! a gate that only ever names fixtures it already intends to measure cannot
+//! see it — including the degenerate case where the population is empty and
+//! every claim below passes by never running.
 
-/// The fixtures `build.rs` emits for this binary. Each is the generator's own
-/// output, so what is weighed here is the artifact a consumer compiles.
-mod playable_small {
-    include!(concat!(env!("OUT_DIR"), "/stack_playable_small.rs"));
-}
-mod playable_big {
-    include!(concat!(env!("OUT_DIR"), "/stack_playable_big.rs"));
-}
-mod quest_small {
-    include!(concat!(env!("OUT_DIR"), "/stack_quest_small.rs"));
-}
-mod quest_big {
-    include!(concat!(env!("OUT_DIR"), "/stack_quest_big.rs"));
-}
-/// The same parts as `playable_*`, emitted with the bound removed — the shape
-/// the emitter had before Round 775, kept compiled so the gate can show that its
-/// measurement detects the difference rather than asserting it does.
-mod control_small {
-    include!(concat!(env!("OUT_DIR"), "/stack_control_small.rs"));
-}
-mod control_big {
-    include!(concat!(env!("OUT_DIR"), "/stack_control_big.rs"));
-}
-
-/// One fixture per function, and `#[inline(never)]` to keep it that way
-/// (Round 804).
-///
-/// These were six arms of one `match` until this round, and at `opt-level = 0`
-/// that is ONE frame holding every arm's temporaries at once — so the figure
-/// reported for any fixture carried what the others wanted. Round 804 found it
-/// by changing only the playable projection's accessor types and watching the
-/// QUEST reading move from 8 KiB to 28 KiB, past the ratio
-/// `tests/projection_stack.rs` asserts, while every compiled frame in the quest
-/// artifact stayed byte-identical — the emitted quest source did not change by
-/// one character.
-///
-/// That is the failure mode the test's own header warns about one level up: a
-/// gate that cannot say WHICH artifact it is weighing reports on the union and
-/// calls it the part. Splitting the arms puts each measurement back on its own
-/// artifact, and `#[inline(never)]` is what stops the arms from being pooled
-/// again at a profile where the optimizer would.
-mod arm {
-    #[inline(never)]
-    pub fn playable_small() -> usize {
-        super::playable_small::playable_projection()
-            .walk("main")
-            .len()
-    }
-    #[inline(never)]
-    pub fn playable_big() -> usize {
-        super::playable_big::playable_projection()
-            .walk("main")
-            .len()
-    }
-    #[inline(never)]
-    pub fn quest_small() -> usize {
-        super::quest_small::quest_projection().quests().len()
-    }
-    #[inline(never)]
-    pub fn quest_big() -> usize {
-        super::quest_big::quest_projection().quests().len()
-    }
-    #[inline(never)]
-    pub fn control_small() -> usize {
-        super::control_small::playable_projection()
-            .walk("main")
-            .len()
-    }
-    #[inline(never)]
-    pub fn control_big() -> usize {
-        super::control_big::playable_projection().walk("main").len()
-    }
-}
-
-/// Build the named artifact, returning a count so the work cannot be optimized
-/// away as dead. `None` = no such fixture.
-///
-/// Dispatch only: the work is in [`arm`], one function per fixture, so this
-/// frame is a string comparison rather than the union of six artifacts.
-fn build(fixture: &str) -> Option<usize> {
-    Some(match fixture {
-        "playable_small" => arm::playable_small(),
-        "playable_big" => arm::playable_big(),
-        "quest_small" => arm::quest_small(),
-        "quest_big" => arm::quest_big(),
-        "control_small" => arm::control_small(),
-        "control_big" => arm::control_big(),
-        _ => return None,
-    })
-}
+// The fixture modules, the arms, and `build`'s dispatch over them — GENERATED
+// by `build.rs` from the same loop that writes the fixtures (Round 1046).
+//
+// This file carried all three by hand: a `mod` per fixture, an arm per fixture,
+// and a `match` naming each one. That is the fixtures-that-exist list and the
+// fixtures-that-can-be-measured list kept equal by review, and they were not —
+// two of the four baked artifacts had no fixture here at all, so the emitter
+// changes Round 1044 made to `chunked_over` went unweighed on the map and
+// passage axes. The population is `Baked::ALL` now; see `write_stack_arms` for
+// what the generated text is and why each arm is its own `#[inline(never)]`
+// function (the Round 804 pooling defect).
+include!(concat!(env!("OUT_DIR"), "/stack_arms.rs"));
 
 fn main() {
     let mut args = std::env::args().skip(1);
-    let fixture = args.next().expect("usage: <fixture> <stack-bytes>");
+    let fixture = args
+        .next()
+        .expect("usage: <fixture> <stack-bytes> | --list");
+    if fixture == "--list" {
+        for name in FIXTURES {
+            println!("{name}");
+        }
+        return;
+    }
     let stack: usize = args
         .next()
         .expect("usage: <fixture> <stack-bytes>")

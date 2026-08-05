@@ -21,9 +21,12 @@
 //! Round 780 added a SECOND family of fixtures on a different axis: the ones
 //! above prove the emitted forms are right, and are far too small to say anything
 //! about how much STACK the artifact costs to build. `stack_fixtures` emits
-//! grown ones — each at a size and its quadruple, plus a deliberately unbounded
-//! control — for `tests/projection_stack.rs`. See that file for what the pair
-//! buys; here it is enough that a fixture nothing grows cannot measure growth.
+//! grown ones — every baked artifact at a size and its quadruple, each beside a
+//! deliberately unbounded control of its own — for `tests/projection_stack.rs`.
+//! See that file for what the pair buys; here it is enough that a fixture nothing
+//! grows cannot measure growth. Since Round 1046 the family is `Baked::ALL`
+//! rather than a list written here, and the grown parts live beside the generator
+//! in `src/render.rs` so both gates compile one text.
 //!
 //! Round 782 added a THIRD family on a third axis. `alloc_fixtures` emits the
 //! same data held three ways — owned as shipped, borrowed from `.rodata`, and
@@ -385,16 +388,27 @@ fn sizes() -> (usize, usize) {
     fixture_sizes(raw.as_deref()).unwrap_or_else(|e| panic!("{e}"))
 }
 
-/// Emit the grown fixtures `tests/projection_stack.rs` measures, plus the build
-/// facts it needs to say what it measured.
+/// Emit the grown fixtures `tests/projection_stack.rs` measures, the probe's own
+/// dispatch over them, and the build facts the test needs to say what it
+/// measured.
 ///
-/// Three families at two sizes each: the playable artifact as shipped, the quest
-/// artifact as shipped (repeated rather than assumed from the playable one — the
-/// R774 discipline, since `render_quest` is free to stop calling `chunked` while
-/// `render` still does), and an unbounded CONTROL that is the shipped emitter
-/// with one difference, its bound. The control is what makes the other two
-/// meaningful: it grows, so a run that reports no growth is reporting that the
-/// instrument works.
+/// # Every artifact, and its own control (Round 1046)
+///
+/// Round 780 emitted three families — the playable artifact, the quest artifact,
+/// and one unbounded CONTROL that was the playable emitter with its bound
+/// removed. Two of the four emitters had a reading, and the single control stood
+/// in as the instrument-liveness proof for both.
+///
+/// Both halves of that are now per-artifact, over [`Baked::ALL`]. The reading,
+/// because `render_map` and `render_passages` call the same `chunked_over` Round
+/// 1044 rewrote and nothing weighed the result — the R774 discipline (an emitter
+/// is free to stop calling the shared chunker) applied to the two emitters it
+/// was never applied to. The control, because it is per-FIXTURE evidence, not
+/// per-emitter: a playable control that grows says the instrument can see a
+/// growing playable artifact, and says nothing about whether the map fixture
+/// grows anything at all. Each artifact's control is that artifact's own parts
+/// at an unbounded chunk, so every flat reading below is licensed by a growing
+/// one over the same data.
 fn stack_fixtures(out_dir: &str) {
     let unbounded = NonZeroUsize::new(usize::MAX).expect("usize::MAX is not zero");
     let write = |name: &str, source: String| {
@@ -406,29 +420,122 @@ fn stack_fixtures(out_dir: &str) {
     };
 
     let (small, big) = sizes();
-    for (tag, n) in [("small", small), ("big", big)] {
-        let parts = lines_parts(n);
-        write(&format!("playable_{tag}"), render(&parts));
-        write(&format!("control_{tag}"), render_bounded(&parts, unbounded));
-        write(&format!("quest_{tag}"), render_quest(&quest_parts(n)));
+    let mut fixtures: Vec<(String, &'static str)> = Vec::new();
+    let mut rows = String::new();
+    for baked in Baked::ALL {
+        // The four fixtures one artifact is weighed through — the shipped bound
+        // and the removed one, at a size and its quadruple, over identical
+        // parts. Named HERE and nowhere else: the test used to be able to spell
+        // the convention a second time, which is one more place for it to drift
+        // than there are conventions.
+        let mut named: Vec<String> = Vec::new();
+        for (shape, bound) in [("", CHUNK), ("_control", unbounded)] {
+            for (size, n) in [("small", small), ("big", big)] {
+                let name = format!("{}{shape}_{size}", baked.tag());
+                write(&name, baked.fixture_bounded(n, bound));
+                fixtures.push((name.clone(), baked.item()));
+                named.push(name);
+            }
+        }
+        let _ = writeln!(
+            rows,
+            "    Weighed {{ what: {:?}, small: {:?}, big: {:?}, \
+             control_small: {:?}, control_big: {:?} }},",
+            baked.tag(),
+            named[0],
+            named[1],
+            named[2],
+            named[3]
+        );
     }
+    write_stack_arms(out_dir, &fixtures);
 
     // What the gate measured, from the one place that knows it. `OPT_LEVEL` is a
     // build-script variable, and the difference matters: at any level above 0 the
     // optimizer folds the temporaries this gate weighs, so a green run would mean
     // "not measured here" rather than "flat". The test refuses to pass in that
     // case and needs this to say WHY.
+    //
     let facts = format!(
         "pub const OPT_LEVEL: &str = {:?};\n\
          pub const SMALL: usize = {small};\n\
          pub const BIG: usize = {big};\n",
-        std::env::var("OPT_LEVEL").expect("OPT_LEVEL")
+        std::env::var("OPT_LEVEL").expect("OPT_LEVEL"),
     );
     std::fs::write(
         std::path::Path::new(out_dir).join("stack_build_facts.rs"),
         facts,
     )
     .expect("write the stack build facts");
+
+    // The population itself, named fixture by fixture, so the stack gate
+    // iterates what was emitted rather than a list of its own that a fifth
+    // artifact would not reach. A file of its own because the facts above are
+    // shared with `tests/projection_alloc.rs`, which weighs a different
+    // population — holding shapes rather than baked artifacts — and has no
+    // business carrying this one.
+    std::fs::write(
+        std::path::Path::new(out_dir).join("stack_artifacts.rs"),
+        format!("pub const ARTIFACTS: &[Weighed] = &[\n{rows}];\n"),
+    )
+    .expect("write the weighed artifacts");
+}
+
+/// Emit the probe's fixture modules, arms and dispatch (Round 1046).
+///
+/// The probe carried all three by hand — a `mod` per fixture, an arm per
+/// fixture, and a `match` naming each one — so the fixtures that exist and the
+/// fixtures that can be MEASURED were two lists kept equal by review. They are
+/// now one list, emitted here from the same loop that writes the fixtures, and a
+/// fixture the probe cannot reach is unrepresentable rather than unnoticed.
+///
+/// Each arm is `#[inline(never)]` and its own function for the Round 804 reason:
+/// six arms of one `match` at `opt-level = 0` is ONE frame holding every arm's
+/// temporaries, so the figure reported for any fixture carried what the others
+/// wanted. Round 804 found that by changing the playable accessors and watching
+/// the QUEST reading move while the quest source stayed byte-identical.
+///
+/// An arm takes the artifact's ADDRESS rather than calling an accessor on it.
+/// The point is the same — the entry point runs, so nothing is dead — and it is
+/// the same expression for every artifact, which is what lets this be generated
+/// at all. A per-artifact accessor call would put a hand list back, one level
+/// down, in the place this round is removing one.
+fn write_stack_arms(out_dir: &str, fixtures: &[(String, &'static str)]) {
+    let mut out = String::from("// @generated by build.rs. Do not edit.\n");
+    for (name, _) in fixtures {
+        let _ = writeln!(
+            out,
+            "mod __fx_{name} {{ include!(concat!(env!(\"OUT_DIR\"), \"/stack_{name}.rs\")); }}"
+        );
+    }
+    out.push_str("mod arm {\n");
+    for (name, item) in fixtures {
+        let _ = writeln!(
+            out,
+            "    #[inline(never)]\n    \
+             pub fn {name}() -> usize {{ \
+             ::std::ptr::from_ref(super::__fx_{name}::{item}()) as usize }}"
+        );
+    }
+    out.push_str("}\n");
+    out.push_str("/// Build the named artifact. `None` = no such fixture.\n");
+    out.push_str("fn build(fixture: &str) -> Option<usize> {\n    Some(match fixture {\n");
+    for (name, _) in fixtures {
+        let _ = writeln!(out, "        {name:?} => arm::{name}(),");
+    }
+    out.push_str("        _ => return None,\n    })\n}\n");
+    // What this binary can weigh, for a caller that must not guess. The gate
+    // compares it against what it MEASURES, so a fixture emitted and then
+    // weighed by nothing is a failure rather than an absence — which is the
+    // whole shape of the defect this round is repairing, one level down.
+    out.push_str("/// Every fixture compiled in, in emission order.\n");
+    out.push_str("pub const FIXTURES: &[&str] = &[\n");
+    for (name, _) in fixtures {
+        let _ = writeln!(out, "    {name:?},");
+    }
+    out.push_str("];\n");
+    std::fs::write(std::path::Path::new(out_dir).join("stack_arms.rs"), out)
+        .expect("write the stack probe arms");
 }
 
 /// Emit the controlled trio `tests/projection_alloc.rs` weighs (Round 782).
@@ -649,72 +756,6 @@ fn vec_assembly(fns: &str, ty: &str, names: &[String]) -> String {
         "pub fn build() -> {ty} {{ let mut v = {first}();{extends} v }}"
     );
     out
-}
-
-/// `n` lines in one section — parts that GROW, for the scaling assertion.
-fn lines_parts(n: usize) -> ProjectionParts {
-    ProjectionParts {
-        telling: "reader".into(),
-        by_world: vec![(
-            "main".into(),
-            vec![(
-                "sc-01".into(),
-                (0..n)
-                    .map(|i| LinePart {
-                        fact_id: format!("f-{i:06}").into(),
-                        text: "그는 \"셈\"이라 했다.".into(),
-                        mode: DisclosureMode::State,
-                        frame: "ground-truth".into(),
-                        entities: vec!["ent-a".into()].into(),
-                        carrier: None,
-                        typed_predicate: None,
-                        typed_quantity: None,
-                        quote: None,
-                        count: None,
-                    })
-                    .collect(),
-            )],
-        )],
-        walks: vec![("main".into(), vec!["sc-01".into()])],
-        titles: Vec::new(),
-        cast: Vec::new(),
-        forks: Vec::new(),
-        divergent_endings: Vec::new(),
-        interactivity: Interactivity::default(),
-        choice_entity_refs: Vec::new(),
-        ask_doors: Vec::new(),
-        // The scaling fixture prices LINE growth; the journal axis is not what it
-        // varies, so it carries none (Round 787).
-        journal_offers: Vec::new(),
-    }
-}
-
-/// `n` quests, the journal-axis sibling of [`lines_parts`].
-fn quest_parts(n: usize) -> QuestProjectionParts {
-    QuestProjectionParts {
-        telling: "reader".to_string(),
-        quests: (0..n)
-            .map(|i| QuestPart {
-                quest_id: format!("q-{i:06}"),
-                objective: "그는 \"셈\"이라 했다.".to_string(),
-                actors: vec!["ent-a".to_string()],
-                prerequisites: Vec::new(),
-                per_world: vec![(
-                    "main".to_string(),
-                    QuestWorldPart {
-                        state: mnemosyne_engine::QuestState::Done,
-                        completions: vec![QuestCompletionPart {
-                            fact: format!("f-{i:06}"),
-                            scene: "sc-01".to_string(),
-                            actor: None,
-                        }],
-                        outstanding_givings: Vec::new(),
-                    },
-                )],
-                preconditions: Vec::new(),
-            })
-            .collect(),
-    }
 }
 
 /// A gate's prose sizes: the first consumer's actual spot count, and its

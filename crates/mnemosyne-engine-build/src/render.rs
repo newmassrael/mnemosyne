@@ -16,24 +16,89 @@ use mnemosyne_engine::{
     QuestPart, QuestProjectionParts, QuestWorldPart, Rung,
 };
 
-/// The item the generated playable source defines, and the type it returns.
-const FN_NAME: &str = "playable_projection";
-const PLAYABLE_PROJECTION_TY: &str = "::mnemosyne_engine::PlayableProjection";
+// Every artifact this crate bakes, declared ONCE — the population its gates
+// measure (Round 1046).
+//
+// This was four pairs of constants, one pair per emitter, and every gate that
+// wanted to weigh "the emitters" carried its own hand list of which ones it
+// meant. Round 780's stack gate meant two of the four and Round 781's
+// composition gate three, so `render_map` and `render_passages` — which call
+// the same `chunked_over` Round 1044 rewrote — had no reading on either axis.
+// A population keyed by NAME cannot see the instance nobody named; this one is
+// keyed by a TYPE, and a gate iterates `Baked::ALL` rather than restating it.
+//
+// A macro rather than an enum plus four `match`es, because the forcing property
+// is the whole reason it exists: a variant is undeclarable without its entry
+// point and its return type, and it lands in `ALL` by construction. The one
+// thing a new variant must answer by hand is [`Baked::fixture`], which is an
+// exhaustive `match` — so the compiler asks the question rather than a reviewer.
+macro_rules! baked_artifacts {
+    ($($(#[$meta:meta])* $variant:ident => {
+        tag: $tag:literal, item: $item:literal, ty: $ty:expr $(,)?
+    }),+ $(,)?) => {
+        /// One baked artifact kind. See the comment above the declaration.
+        #[derive(Clone, Copy, PartialEq, Eq, Debug)]
+        pub(crate) enum Baked {
+            $($(#[$meta])* $variant),+
+        }
 
-/// The item the generated quest source defines, and the type it returns (Round 774).
-const QUEST_FN_NAME: &str = "quest_projection";
-const QUEST_PROJECTION_TY: &str = "::mnemosyne_engine::QuestProjection";
+        impl Baked {
+            /// The whole population, in declaration order.
+            ///
+            /// `dead_code` for the reason [`FIXTURE_LINES_ENV`] carries it: the
+            /// callers are `build.rs` and this crate's own tests, both invisible
+            /// to a plain lib build.
+            #[allow(dead_code)]
+            pub(crate) const ALL: &'static [Baked] = &[$(Baked::$variant),+];
 
-/// The item the generated PLACE-axis source defines, and the type it returns.
-const MAP_FN_NAME: &str = "map_projection";
-const MAP_PROJECTION_TY: &str = "::mnemosyne_engine::MapProjection";
+            /// How a fixture, a gate message or a generated module names it.
+            #[allow(dead_code)]
+            pub(crate) fn tag(self) -> &'static str {
+                match self { $(Baked::$variant => $tag),+ }
+            }
 
-/// The item the generated passage source defines, and the type it returns
-/// (Round 791). A map rather than a kernel struct, because that is what
-/// `store_passages` returns and the bake replaces that call, not a type.
-const PASSAGES_FN_NAME: &str = "passages";
-const PASSAGES_TY: &str =
-    "::std::collections::HashMap<::std::string::String, ::mnemosyne_engine::Passage>";
+            /// The public item the generated source defines.
+            #[allow(dead_code)]
+            pub(crate) fn item(self) -> &'static str {
+                match self { $(Baked::$variant => $item),+ }
+            }
+
+            /// The type that item hands back, as generated Rust.
+            fn projection_ty(self) -> &'static str {
+                match self { $(Baked::$variant => $ty),+ }
+            }
+        }
+    };
+}
+
+baked_artifacts! {
+    /// The narrative axis (Round 770).
+    Playable => {
+        tag: "playable",
+        item: "playable_projection",
+        ty: "::mnemosyne_engine::PlayableProjection",
+    },
+    /// The journal axis (Round 774).
+    Quest => {
+        tag: "quest",
+        item: "quest_projection",
+        ty: "::mnemosyne_engine::QuestProjection",
+    },
+    /// The place axis.
+    Map => {
+        tag: "map",
+        item: "map_projection",
+        ty: "::mnemosyne_engine::MapProjection",
+    },
+    /// The prose axis (Round 791). A map rather than a kernel struct, because
+    /// that is what `store_passages` returns and the bake replaces that call,
+    /// not a type.
+    Passages => {
+        tag: "passages",
+        item: "passages",
+        ty: "::std::collections::HashMap<::std::string::String, ::mnemosyne_engine::Passage>",
+    },
+}
 
 /// The banner both generated files carry.
 fn header(out: &mut String) {
@@ -108,7 +173,8 @@ fn header(out: &mut String) {
 /// `OnceLock` at exit, so it is "still reachable", not "definitely lost". They
 /// knew why and were not alarmed; a consumer who does not would read it as a
 /// regression this crate introduced.
-fn artifact(fn_name: &str, ty: &str, chunks: &Chunks, build: &str) -> String {
+fn artifact(baked: Baked, chunks: &Chunks, build: &str) -> String {
+    let (fn_name, ty) = (baked.item(), baked.projection_ty());
     let module = format!("__mn_{fn_name}");
     let mut out = String::new();
     header(&mut out);
@@ -208,6 +274,176 @@ pub(crate) fn fixture_sizes(override_raw: Option<&str>) -> Result<(usize, usize)
     Ok((big / 4, big))
 }
 
+impl Baked {
+    /// This artifact emitted from parts that GROW — `n` items, at chunk bound
+    /// `bound` — which is the fixture both of this crate's scaling gates compile
+    /// (Round 1046).
+    ///
+    /// One `match`, so a fifth artifact cannot be declared without saying what
+    /// growing it means. That question has no default answer: a fixture nothing
+    /// grows measures no growth, and a gate over one reports flat forever.
+    ///
+    /// It lives beside the generator rather than in `build.rs` for the reason
+    /// this whole file does: the build script `include!`s this text, and so does
+    /// the lib, so the fixture the stack gate compiles and the fixture the
+    /// composition gate renders are one text rather than two that agree today.
+    #[allow(dead_code)]
+    pub(crate) fn fixture(self, n: usize) -> String {
+        self.fixture_bounded(n, CHUNK)
+    }
+
+    /// [`Baked::fixture`] at a caller-chosen bound — what the stack gate's
+    /// control arm needs, and nothing else.
+    #[allow(dead_code)]
+    pub(crate) fn fixture_bounded(self, n: usize, bound: NonZeroUsize) -> String {
+        match self {
+            Baked::Playable => render_bounded(&lines_parts(n), bound),
+            Baked::Quest => render_quest_bounded(&quest_parts(n), bound),
+            Baked::Map => render_map_bounded(&map_parts(n), bound),
+            Baked::Passages => render_passages_bounded(&passages_parts(n), bound),
+        }
+    }
+}
+
+/// `n` lines in one section — parts that GROW, for the scaling assertion.
+#[allow(dead_code)]
+fn lines_parts(n: usize) -> ProjectionParts {
+    ProjectionParts {
+        telling: "reader".into(),
+        by_world: vec![(
+            "main".into(),
+            vec![(
+                "sc-01".into(),
+                (0..n)
+                    .map(|i| LinePart {
+                        fact_id: format!("f-{i:06}").into(),
+                        text: "그는 \"셈\"이라 했다.".into(),
+                        mode: mnemosyne_engine::DisclosureMode::State,
+                        frame: "ground-truth".into(),
+                        entities: vec!["ent-a".into()].into(),
+                        carrier: None,
+                        typed_predicate: None,
+                        typed_quantity: None,
+                        quote: None,
+                        count: None,
+                    })
+                    .collect(),
+            )],
+        )],
+        walks: vec![("main".into(), vec!["sc-01".into()])],
+        titles: Vec::new(),
+        cast: Vec::new(),
+        forks: Vec::new(),
+        divergent_endings: Vec::new(),
+        interactivity: Interactivity::default(),
+        choice_entity_refs: Vec::new(),
+        ask_doors: Vec::new(),
+        // The scaling fixture prices LINE growth; the journal axis is not what it
+        // varies, so it carries none (Round 787).
+        journal_offers: Vec::new(),
+    }
+}
+
+/// `n` quests, the journal-axis sibling of [`lines_parts`].
+#[allow(dead_code)]
+fn quest_parts(n: usize) -> QuestProjectionParts {
+    QuestProjectionParts {
+        telling: "reader".to_string(),
+        quests: (0..n)
+            .map(|i| QuestPart {
+                quest_id: format!("q-{i:06}"),
+                objective: "그는 \"셈\"이라 했다.".to_string(),
+                actors: vec!["ent-a".to_string()],
+                prerequisites: Vec::new(),
+                per_world: vec![(
+                    "main".to_string(),
+                    QuestWorldPart {
+                        state: mnemosyne_engine::QuestState::Done,
+                        completions: vec![QuestCompletionPart {
+                            fact: format!("f-{i:06}"),
+                            scene: "sc-01".to_string(),
+                            actor: None,
+                        }],
+                        outstanding_givings: Vec::new(),
+                    },
+                )],
+                preconditions: Vec::new(),
+            })
+            .collect(),
+    }
+}
+
+/// `n` roads in one declared map, the place-axis sibling of [`lines_parts`]
+/// (Round 1046).
+///
+/// Both grown lists are grown: the node set and the edge list, which the emitter
+/// chunks through two different paths (`strings` and `chunked`). Every edge
+/// carries its cost and its guard, because an edge with neither is exactly the
+/// projection the consumer this axis exists for had to hand-parse the store to
+/// get, and a fixture may not be the shape the door was opened to replace.
+#[allow(dead_code)]
+fn map_parts(n: usize) -> MapProjectionParts {
+    MapProjectionParts {
+        maps: vec![DeclaredMapPart {
+            rule: "town".to_string(),
+            predicate: "at".to_string(),
+            adjacency: "adjacent".to_string(),
+            undirected: false,
+            containment: Some("inside".to_string()),
+            nodes: (0..=n).map(|i| format!("loc-{i:06}")).collect(),
+            edges: (0..n)
+                .map(|i| MapEdgePart {
+                    fact_id: format!("f-{i:06}"),
+                    from: format!("loc-{i:06}"),
+                    to: format!("loc-{:06}", i + 1),
+                    frame: "ground-truth".to_string(),
+                    branch: "main".to_string(),
+                    cost: Some(mnemosyne_engine::EdgeCostPart {
+                        n: 10,
+                        unit: "unit-minute".to_string(),
+                    }),
+                    guard: Some(mnemosyne_engine::EdgeGuardPart {
+                        conditions: vec!["f-tide-out".to_string()],
+                        threshold: Some(1),
+                    }),
+                })
+                .collect(),
+            self_loops: Vec::new(),
+        }],
+        transition_rules: 1,
+        unattached_costs: Vec::new(),
+        unattached_guards: Vec::new(),
+    }
+}
+
+/// `n` passages, the prose-axis sibling of [`lines_parts`] (Round 1046).
+///
+/// The text is one short sentence rather than the ~2,655-character spot
+/// `prose_fixtures` prices. The two gates ask different questions of the same
+/// emitter: that one weighs BYTES, where prose is the whole cost, and this one
+/// weighs the frame a chunk function needs, where what matters is how many items
+/// a body holds. A fixture carrying real spots here would multiply this crate's
+/// build time by the length of a chapter to move the answer by nothing.
+#[allow(dead_code)]
+fn passages_parts(n: usize) -> PassagesParts {
+    PassagesParts {
+        passages: (0..n)
+            .map(|i| {
+                (
+                    format!("sc-{i:06}"),
+                    mnemosyne_engine::PassagePart {
+                        anchor: ContentAnchor {
+                            source: "M.md".to_string(),
+                            locator: Locator::Prefix(format!("d{i:06}-이름을")),
+                        },
+                        text: "그는 \"셈\"이라 했다.".into(),
+                    },
+                )
+            })
+            .collect(),
+    }
+}
+
 /// The chunk functions emitted so far, the counter that keeps their names
 /// unique, and the bound they obey. Threaded through the renderers because a
 /// list at ANY depth may be the one that grows.
@@ -225,10 +461,6 @@ struct Chunks {
 }
 
 impl Chunks {
-    fn new() -> Self {
-        Self::bounded(CHUNK)
-    }
-
     fn bounded(bound: NonZeroUsize) -> Self {
         Self {
             fns: String::new(),
@@ -523,6 +755,12 @@ pub fn render(parts: &ProjectionParts) -> String {
 /// that cannot demonstrate it discriminates is the shape Rounds 776-779 spent
 /// four rounds removing. Deliberately not `pub`: a consumer has no business
 /// choosing a bound, and the one caller that does lives in this crate.
+///
+/// Every emitter has this sibling since Round 1046, because the demonstration is
+/// per-ARTIFACT: an unbounded playable control proves the instrument can see a
+/// playable artifact grow, and says nothing about whether the map fixture grows
+/// anything at all. A flat reading over a fixture that does not grow is the
+/// vacuous green this file's header spends four rounds refusing.
 pub(crate) fn render_bounded(parts: &ProjectionParts, bound: NonZeroUsize) -> String {
     let mut c = Chunks::bounded(bound);
 
@@ -639,7 +877,7 @@ pub(crate) fn render_bounded(parts: &ProjectionParts, bound: NonZeroUsize) -> St
     let _ = writeln!(build, "            ask_doors: {ask_doors},");
     let _ = writeln!(build, "            journal_offers: {journal_offers},");
     build.push_str("        },\n    )\n");
-    artifact(FN_NAME, PLAYABLE_PROJECTION_TY, &c, &build)
+    artifact(Baked::Playable, &c, &build)
 }
 
 /// Render quest parts as Rust source (Round 774) — the JOURNAL-axis sibling of
@@ -651,7 +889,13 @@ pub(crate) fn render_bounded(parts: &ProjectionParts, bound: NonZeroUsize) -> St
 /// nothing is sorted on the way out here either.
 #[must_use]
 pub fn render_quest(parts: &QuestProjectionParts) -> String {
-    let mut c = Chunks::new();
+    render_quest_bounded(parts, CHUNK)
+}
+
+/// [`render_quest`] at a caller-chosen bound — see [`render_bounded`] for why
+/// every emitter has one.
+pub(crate) fn render_quest_bounded(parts: &QuestProjectionParts, bound: NonZeroUsize) -> String {
+    let mut c = Chunks::bounded(bound);
     let quests = chunked(&mut c, QUEST_TY, &parts.quests, quest);
     let mut build = String::new();
     build.push_str("    ::mnemosyne_engine::QuestProjection::from_parts(\n");
@@ -659,7 +903,7 @@ pub fn render_quest(parts: &QuestProjectionParts) -> String {
     let _ = writeln!(build, "            telling: {},", string(&parts.telling));
     let _ = writeln!(build, "            quests: {quests},");
     build.push_str("        },\n    )\n");
-    artifact(QUEST_FN_NAME, QUEST_PROJECTION_TY, &c, &build)
+    artifact(Baked::Quest, &c, &build)
 }
 
 fn quest(chunks: &mut Chunks, part: &QuestPart) -> String {
@@ -723,7 +967,13 @@ fn quest_state(state: mnemosyne_engine::QuestState) -> String {
 /// it edges with no cost and no guard.
 #[must_use]
 pub fn render_map(parts: &MapProjectionParts) -> String {
-    let mut c = Chunks::new();
+    render_map_bounded(parts, CHUNK)
+}
+
+/// [`render_map`] at a caller-chosen bound — see [`render_bounded`] for why
+/// every emitter has one.
+pub(crate) fn render_map_bounded(parts: &MapProjectionParts, bound: NonZeroUsize) -> String {
+    let mut c = Chunks::bounded(bound);
     let maps = chunked(&mut c, DECLARED_MAP_TY, &parts.maps, declared_map);
     let unattached_costs = strings(&mut c, &parts.unattached_costs);
     let unattached_guards = strings(&mut c, &parts.unattached_guards);
@@ -739,7 +989,7 @@ pub fn render_map(parts: &MapProjectionParts) -> String {
     let _ = writeln!(build, "            unattached_costs: {unattached_costs},");
     let _ = writeln!(build, "            unattached_guards: {unattached_guards},");
     build.push_str("        },\n    )\n");
-    artifact(MAP_FN_NAME, MAP_PROJECTION_TY, &c, &build)
+    artifact(Baked::Map, &c, &build)
 }
 
 fn declared_map(chunks: &mut Chunks, part: &DeclaredMapPart) -> String {
@@ -990,7 +1240,13 @@ fn rung(r: &Rung) -> String {
 /// it asserts a RATIO rather than a byte threshold. Nothing about this emitter
 /// needed a special case; the measurement is what established that.
 pub fn render_passages(parts: &PassagesParts) -> String {
-    let mut c = Chunks::new();
+    render_passages_bounded(parts, CHUNK)
+}
+
+/// [`render_passages`] at a caller-chosen bound — see [`render_bounded`] for why
+/// every emitter has one.
+pub(crate) fn render_passages_bounded(parts: &PassagesParts, bound: NonZeroUsize) -> String {
+    let mut c = Chunks::bounded(bound);
     let entries = chunked(&mut c, PASSAGE_ENTRY_TY, &parts.passages, |_, (id, p)| {
         format!(
             "({}, ::mnemosyne_engine::PassagePart {{ anchor: {}, text: ::std::borrow::Cow::Borrowed({}) }})",
@@ -1004,7 +1260,7 @@ pub fn render_passages(parts: &PassagesParts) -> String {
     build.push_str("        ::mnemosyne_engine::PassagesParts {\n");
     let _ = writeln!(build, "            passages: {entries},");
     build.push_str("        },\n    )\n");
-    artifact(PASSAGES_FN_NAME, PASSAGES_TY, &c, &build)
+    artifact(Baked::Passages, &c, &build)
 }
 
 /// One baked passage entry, as generated Rust.

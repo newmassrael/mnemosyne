@@ -723,23 +723,55 @@ mod tests {
         // The assertion is the SCALING, not a byte threshold: quadruple the store
         // and the file must grow while the largest single body must not. Before
         // this round the largest line WAS the file — 98% of it.
+        //
+        // Round 1046 — over EVERY baked artifact rather than the playable one.
+        // This gate asserted the bound on one of the four emitters that call the
+        // chunker, and inferred the rest, which is the assumption Round 774 wrote
+        // down and Round 769 was the cost of: an emitter is free to stop calling
+        // `chunked` while its siblings keep calling it. The population is
+        // `Baked::ALL`, so the inference is now a measurement.
         let longest = |src: &str| src.lines().map(str::len).max().unwrap_or(0);
-        let small = crate::render(&parts_with_lines(200));
-        let big = crate::render(&parts_with_lines(800));
+        let (small_n, big_n) = fixture_sizes(None).expect("the default pair");
+        let mut wrong: Vec<String> = Vec::new();
+        for baked in crate::render::Baked::ALL {
+            let what = baked.tag();
+            let small = baked.fixture(small_n);
+            let big = baked.fixture(big_n);
+            // A fixture that does not grow makes every claim below vacuous, so it
+            // is checked per artifact rather than assumed from the playable one.
+            if big.len() <= 3 * small.len() {
+                wrong.push(format!(
+                    "the {what} fixture must actually grow: {} bytes at {small_n} \
+                     against {} at {big_n}",
+                    small.len(),
+                    big.len()
+                ));
+            }
+            if longest(&big) >= 2 * longest(&small) {
+                wrong.push(format!(
+                    "a {what} function body grew with the store: {} -> {}",
+                    longest(&small),
+                    longest(&big)
+                ));
+            }
+            // And the growth went where it was supposed to go.
+            let more = |src: &str| src.matches("fn __mn_").count();
+            if more(&big) <= more(&small) {
+                wrong.push(format!(
+                    "the {what} artifact grew without emitting more functions: {} \
+                     -> {}",
+                    more(&small),
+                    more(&big)
+                ));
+            }
+        }
         assert!(
-            big.len() > 3 * small.len(),
-            "the fixture must actually grow: {} vs {}",
-            small.len(),
-            big.len()
+            wrong.is_empty(),
+            "{} claim(s) failed across {} baked artifact(s):\n{}",
+            wrong.len(),
+            crate::render::Baked::ALL.len(),
+            wrong.join("\n")
         );
-        assert!(
-            longest(&big) < 2 * longest(&small),
-            "a function body grew with the store: {} -> {}",
-            longest(&small),
-            longest(&big)
-        );
-        // And the growth went where it was supposed to go.
-        assert!(big.matches("fn __mn_").count() > small.matches("fn __mn_").count());
     }
 
     /// The same section, walked by `worlds` world-lines carrying `lines`
@@ -953,29 +985,6 @@ mod tests {
         }
     }
 
-    /// One quest — the journal-axis sibling of [`parts_with_lines`], sized only to
-    /// make the emitter produce a chunk function.
-    fn parts_with_quests() -> QuestProjectionParts {
-        QuestProjectionParts {
-            telling: "reader".to_string(),
-            quests: vec![QuestPart {
-                quest_id: "q-1".to_string(),
-                objective: "a quest".to_string(),
-                actors: Vec::new(),
-                prerequisites: Vec::new(),
-                per_world: vec![(
-                    "main".to_string(),
-                    QuestWorldPart {
-                        state: QuestState::Open,
-                        completions: Vec::new(),
-                        outstanding_givings: vec!["f-give-1".to_string()],
-                    },
-                )],
-                preconditions: Vec::new(),
-            }],
-        }
-    }
-
     #[test]
     fn the_artifacts_define_the_same_private_names_and_compose_anyway() {
         // Round 781. `mod baked` above splices both artifacts into one module, and
@@ -989,18 +998,21 @@ mod tests {
         // do, and the only way to learn was for a third emitter to exist. It
         // does, it went into the same `mod baked`, and the wall held with no
         // change to it — the derivation was right rather than lucky.
-        let playable = crate::render(&parts_with_lines(1));
-        let quest = crate::render_quest(&parts_with_quests());
-        let passages = crate::render_passages(&parts_with_passages());
+        //
+        // Round 1046 — FOUR, and not by adding a fourth name here. Three was a
+        // hand list, the map emitter existed for rounds without appearing in it,
+        // and a list cannot report the member nobody wrote into it. The
+        // population is `Baked::ALL`, the same one the stack gate weighs, so this
+        // grows with the emitters rather than with whoever remembers.
+        let sources: Vec<(&str, String)> = crate::render::Baked::ALL
+            .iter()
+            .map(|baked| (baked.tag(), baked.fixture(1)))
+            .collect();
 
-        // The hazard: the counter restarts per render, so all three really do
+        // The hazard: the counter restarts per render, so all of them really do
         // define `__mn_0`. If any stopped, `mod baked` would prove less than it
         // looks like it proves.
-        for (what, src) in [
-            ("playable", &playable),
-            ("quest", &quest),
-            ("passages", &passages),
-        ] {
+        for (what, src) in &sources {
             assert!(
                 src.contains("fn __mn_0("),
                 "the {what} artifact defines no `__mn_0`, so the name collision the \
@@ -1019,15 +1031,14 @@ mod tests {
                 .expect("the artifact walls its chunk functions in a module")
                 .to_string()
         };
-        // Pairwise across all three, not just the first two: a wall that
-        // separated playable from quest and collided with a third would be the
-        // same defect one artifact later, and checking only the original pair is
-        // how a gate stops growing with what it guards.
-        let walls = [
-            ("playable", wall(&playable)),
-            ("quest", wall(&quest)),
-            ("passages", wall(&passages)),
-        ];
+        // Pairwise across the whole population, not just the first two: a wall
+        // that separated playable from quest and collided with a third would be
+        // the same defect one artifact later, and checking only the original pair
+        // is how a gate stops growing with what it guards.
+        let walls: Vec<(&str, String)> = sources
+            .iter()
+            .map(|(what, src)| (*what, wall(src)))
+            .collect();
         for (i, (a_name, a)) in walls.iter().enumerate() {
             for (b_name, b) in walls.iter().skip(i + 1) {
                 assert_ne!(
