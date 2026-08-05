@@ -91,11 +91,24 @@
 //! shipped that sentence, at the pair this gate defaults to, the probe answers
 //! playable 32 KiB, quest 28 KiB, control 96 KiB then 344 KiB — the figures
 //! Round 780 wrote above, a page out on quest and a third out on the control.
-//! The likely origin is the oversized pair that round measured at, reported as
-//! though it were this one. Nothing caught it because this test asserted
-//! booleans and printed nothing: the numbers lived only in prose, where no
-//! program could disagree with them. It prints its whole table now, every run,
-//! pass or fail.
+//!
+//! Round 1046 first wrote that the origin was "likely the oversized pair that
+//! round measured at", and Round 1047 measured it instead and found otherwise.
+//! Re-running with `MN_FIXTURE_LINES=1200` gives a second pair: playable and
+//! quest sit at 32 KiB and 28 KiB at 300 and 1200 items, exactly as at 200 and
+//! 800, with the playable control at 136 KiB then 508 KiB. Four measured
+//! control points — 96 at 200, 136 at 300, 344 at 800, 508 at 1200 — place 128
+//! KiB at roughly 285 items and 512 KiB at roughly 1,210, and those are not
+//! four times apart, so NO pair this gate can be run at yields that sentence.
+//! Where the figures came from is not recoverable from this tree: that round
+//! measured candidate emitter shapes in a worktree it then discarded, and a
+//! reading from one of those is the only remaining explanation.
+//!
+//! Nothing caught any of it because this test asserted booleans and printed
+//! nothing: the numbers lived only in prose, where no program could disagree
+//! with them. It prints its whole table now, every run, pass or fail — and the
+//! correction above is what an unmeasured sentence costs, since the round that
+//! set out to fix exactly this shipped one of its own.
 //!
 //! # Round 1046 — which artifacts this weighed, and which it did not
 //!
