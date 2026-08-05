@@ -334,6 +334,205 @@ pub fn advertised_reads(ws: &Path) -> BTreeSet<String> {
     verbs
 }
 
+/// One flag on one verb's usage line, and how to give it a value this corpus
+/// can actually supply.
+pub struct Flag {
+    pub name: String,
+    /// `false` = a boolean flag (no value token follows it).
+    pub takes_value: bool,
+    /// `true` when the usage line lists it OUTSIDE brackets — it must be on
+    /// every probe, so a differential is between two values rather than between
+    /// present and absent.
+    pub required: bool,
+}
+
+/// Every advertised read's usage line, as `verb -> the tail after the verb`.
+///
+/// Read from the line the shipped `--help` prints, never from a table here: a
+/// verb that grows a flag is covered the run it ships, which is the property a
+/// hand list cannot have (the R1046 lesson — a population keyed by a hand list
+/// is blind to the element nobody wrote down).
+pub fn usage_lines(ws: &Path) -> BTreeMap<String, String> {
+    let help = run(ws, &["--help"]);
+    assert!(help.status.success(), "--help must exit 0");
+    let help = String::from_utf8(help.stdout).expect("help is utf-8");
+    let mut out: BTreeMap<String, String> = BTreeMap::new();
+    for line in help.lines() {
+        let mut tokens = line.split_whitespace().skip_while(|t| *t != cli_binary());
+        if tokens.next().is_none() {
+            continue;
+        }
+        let Some(verb) = tokens.next() else { continue };
+        if !(verb.starts_with("report-") || verb.starts_with("validate-")) {
+            continue;
+        }
+        out.entry(verb.to_string())
+            .or_insert_with(|| tokens.collect::<Vec<_>>().join(" "));
+    }
+    out
+}
+
+/// The flags on a verb's usage line, in the order the line lists them.
+pub fn flags_of(usage: &str) -> Vec<Flag> {
+    let mut out: Vec<Flag> = Vec::new();
+    let bytes: Vec<&str> = usage.split_whitespace().collect();
+    for (index, token) in bytes.iter().enumerate() {
+        let bare = token.trim_start_matches('[').trim_end_matches(']');
+        if !bare.starts_with("--") {
+            continue;
+        }
+        // A value token follows when the next token is a `<placeholder>` or an
+        // `a|b|c` alternation (the severity flags print the members inline).
+        let next = bytes.get(index + 1).copied().unwrap_or_default();
+        let next_bare = next.trim_start_matches('[').trim_end_matches(']');
+        let takes_value = next_bare.starts_with('<') || next_bare.contains('|');
+        // Required = the flag token itself is not bracketed. `[--world <b>]`
+        // opens the bracket on the flag; `--telling <id>` does not.
+        let required = !token.starts_with('[');
+        if out.iter().any(|f| f.name == bare) {
+            continue;
+        }
+        out.push(Flag {
+            name: bare.to_string(),
+            takes_value,
+            required,
+        });
+    }
+    out
+}
+
+/// The values this corpus can supply for a flag, read from the store itself.
+///
+/// An id the corpus never declared is an invented argument, and the panel's
+/// rule since R1034 is that the walk supplies none. `main` is the exception the
+/// STORE makes rather than any walk: it is a world every store has whether or
+/// not it registers a branch.
+pub fn values_for(flag: &str, store: &AtomicStore) -> Vec<String> {
+    let ids = |set: Vec<String>| set;
+    match flag {
+        "--telling" => ids(declared_tellings(store)),
+        "--world" | "--branch" => {
+            let mut out: Vec<String> = store.branches.keys().map(ToString::to_string).collect();
+            out.push("main".to_string());
+            out.sort();
+            out.dedup();
+            out
+        }
+        "--entity" => ids(store.entities.keys().map(ToString::to_string).collect()),
+        "--at" | "--target" => ids(store.sections.keys().map(ToString::to_string).collect()),
+        "--frame" => {
+            let mut out: BTreeSet<String> = BTreeSet::new();
+            for fact in store.narrative_facts.values() {
+                out.insert(fact.frame.to_string());
+            }
+            out.into_iter().collect()
+        }
+        // The declared severity vocabulary the usage lines print themselves.
+        "--severity" | "--severity-missing" | "--interval-severity" => {
+            vec!["warn".to_string(), "info".to_string()]
+        }
+        _ => Vec::new(),
+    }
+}
+
+/// The argv every probe of a verb starts from: each REQUIRED flag at the first
+/// value this corpus declares. `None` when a required flag names something the
+/// corpus does not supply, which is a measurement about the corpus rather than
+/// a skip — the caller counts it by name.
+pub fn baseline_argv(flags: &[Flag], store: &AtomicStore) -> Option<Vec<String>> {
+    let mut base: Vec<String> = Vec::new();
+    for flag in flags.iter().filter(|f| f.required) {
+        match values_for(&flag.name, store).first() {
+            Some(first) if flag.takes_value => {
+                base.push(flag.name.clone());
+                base.push(first.clone());
+            }
+            // A required flag with no value this corpus declares (a file path,
+            // an id it does not hold).
+            _ if flag.takes_value => return None,
+            _ => base.push(flag.name.clone()),
+        }
+    }
+    Some(base)
+}
+
+/// Every top-level scalar field of an answer, as `(key, rendered value)`.
+/// Nested objects are the DATA — an id inside `worlds` is what the read is
+/// talking about, not a record of what it was asked.
+pub fn provenance_fields(answer: &serde_json::Value) -> BTreeMap<String, String> {
+    let mut out = BTreeMap::new();
+    if let Some(map) = answer.as_object() {
+        for (key, value) in map {
+            let rendered = match value {
+                serde_json::Value::String(s) => s.clone(),
+                serde_json::Value::Null => "null".to_string(),
+                serde_json::Value::Bool(b) => b.to_string(),
+                serde_json::Value::Number(n) => n.to_string(),
+                _ => continue,
+            };
+            out.insert(key.clone(), rendered);
+        }
+    }
+    out
+}
+
+/// The top-level fields that TRACK the argument — carrying the value in the
+/// probe that supplied it, and something else in the probe that did not. The
+/// answer's RECORD of what it was asked (Round 1048).
+///
+/// The "something else" matters as much as the match. A field that reads `main`
+/// under both probes is a constant, not provenance; a field that reads `main`
+/// under `--world main` and `null` without it is the read saying what it was
+/// asked. A missing key counts as the absent side: the sibling that has named
+/// its telling since R556 spells `null`, and this resolver holds the weaker of
+/// the two encodings so it measures the surface rather than a house style.
+///
+/// THE one definition, because two walks now need it: the provenance census
+/// asks whether the record exists, and the filter walk has to take the record
+/// OUT before asking what the answer said — a second copy is how the two would
+/// come to disagree about which field is a record and which is substance.
+pub fn record_of(
+    with: &serde_json::Value,
+    without: &serde_json::Value,
+    value: Option<&str>,
+) -> BTreeSet<String> {
+    let taken = provenance_fields(with);
+    let bare = provenance_fields(without);
+    taken
+        .iter()
+        .filter(|(key, said)| {
+            let matches_value = match value {
+                Some(v) => *said == v,
+                // A boolean flag: the field is `true` where it was passed.
+                None => *said == "true",
+            };
+            matches_value && bare.get(*key) != Some(said)
+        })
+        .map(|(key, _)| key.clone())
+        .collect()
+}
+
+/// The answer with its record of the argument removed — everything the read
+/// SAID, as opposed to what it noted about being asked.
+///
+/// This split is what keeps a differential from being circular. RECORDING an
+/// argument makes two answers differ by that record, so "if the answers differ
+/// the answer must name the argument" would be satisfied by any field that
+/// names itself. Only the tracking fields come out — a scalar like the
+/// manuscript's `facts` count is substance and stays in, so an argument that
+/// moved only it would still be measured.
+pub fn substance(answer: &serde_json::Value, record: &BTreeSet<String>) -> serde_json::Value {
+    match answer.as_object() {
+        Some(map) => serde_json::Value::Object(
+            map.iter()
+                .filter(|(key, _)| !record.contains(*key))
+                .map(|(key, value)| (key.clone(), value.clone()))
+                .collect(),
+        ),
+        None => answer.clone(),
+    }
+}
+
 /// Ask every advertised read at BASELINE, bare first and then with the corpus's
 /// own telling. A read that still refuses needs an argument this corpus does
 /// not supply; it is excluded BY THAT MEASUREMENT, and its refusal is returned

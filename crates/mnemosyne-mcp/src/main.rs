@@ -3001,6 +3001,10 @@ impl MnemosyneServer {
                 Err(e) => return Self::tool_error(e),
             }
             .as_ref(),
+            // This tool has never advertised a road filter, and `None` is the
+            // whole-store read it has always answered (Round 1049 moved the
+            // CLI's filter into the projection; it did not add one here).
+            None,
         ) {
             Ok(report) => self.tool_json(&report),
             Err(e) => self.op_error(e),

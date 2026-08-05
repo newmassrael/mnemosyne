@@ -58,6 +58,7 @@ fn the_playable_world_embeds_the_manuscript_it_was_asked_for() {
 
     let mut answered = 0usize;
     let mut roads = 0usize;
+    let mut filtered_roads = 0usize;
     let mut scenes = 0usize;
     let mut disclosed_events = 0usize;
     let mut disagreements: Vec<String> = Vec::new();
@@ -159,6 +160,64 @@ fn the_playable_world_embeds_the_manuscript_it_was_asked_for() {
             }
             for road in mine.intersection(&theirs) {
                 roads += 1;
+
+                // HALF THREE — the same pair, asked for ONE road. Until Round
+                // 1049 this contract only ever asked both reads unfiltered, so
+                // the `world` half of HALF ONE fired only its `null` arm and
+                // three of Round 1048's four world injections left this file
+                // green while the provenance gate went red. A filtered read is
+                // the one a runtime actually makes.
+                let filtered =
+                    |verb: &str| read(&[verb, "--telling", telling, "--world", road, "--json"]);
+                match (
+                    filtered("report-playthrough-manuscript"),
+                    filtered("report-playable-world"),
+                ) {
+                    (Ok(manuscript), Ok(playable)) => {
+                        filtered_roads += 1;
+                        for (whose, report) in [
+                            ("the manuscript", &manuscript),
+                            ("the playable world", &playable),
+                        ] {
+                            if report["world"].as_str() != Some(road.as_str()) {
+                                disagreements.push(format!(
+                                    "{name} [{telling}]/{road}: {whose} was asked for that road \
+                                     and its report says `{}`",
+                                    report["world"]
+                                ));
+                            }
+                            if report["telling"].as_str() != Some(telling.as_str()) {
+                                disagreements.push(format!(
+                                    "{name} [{telling}]/{road}: {whose} under a road filter says \
+                                     telling `{}`",
+                                    report["telling"]
+                                ));
+                            }
+                        }
+                        if manuscript["worlds"][road.as_str()]
+                            != playable["worlds"][road.as_str()]["manuscript"]
+                        {
+                            disagreements.push(format!(
+                                "{name} [{telling}]/{road}: under a road filter the playable \
+                                 world's embedded manuscript is not the manuscript read's answer"
+                            ));
+                        }
+                    }
+                    (manuscript, playable) => {
+                        for (whose, answer) in [
+                            ("the manuscript", manuscript),
+                            ("the playable world", playable),
+                        ] {
+                            if let Err(why) = answer {
+                                note(
+                                    "a read refuses the road filter",
+                                    format!("{name} [{telling}]/{road}: {whose}: {why}"),
+                                );
+                            }
+                        }
+                    }
+                }
+
                 let mine = &manuscript["worlds"][road.as_str()];
                 let theirs = &playable["worlds"][road.as_str()]["manuscript"];
                 if mine != theirs {
@@ -198,8 +257,9 @@ fn the_playable_world_embeds_the_manuscript_it_was_asked_for() {
     // Print BEFORE asserting (the R1026 lesson).
     println!(
         "{asked} authored stores asked, {answered} (store, telling) pairs answered both reads\n\
-         {roads} roads compared whole, {scenes} scenes, {disclosed_events} begins-events \
-         carrying a disclosure the telling decided"
+         {roads} roads compared whole ({filtered_roads} of them asked again under `--world`), \
+         {scenes} scenes, {disclosed_events} begins-events carrying a disclosure the telling \
+         decided"
     );
     for (why, names) in &silent {
         println!("  {:3} {why}", names.len());
@@ -230,9 +290,10 @@ fn the_playable_world_embeds_the_manuscript_it_was_asked_for() {
          pair of per-telling reads",
     );
     check(
-        (answered, roads, scenes) == (13, 18, 400),
-        "EVIDENCE: the (store, telling) pairs that answered both reads, and how \
-         much of each store the two put in front of each other",
+        (answered, roads, scenes, filtered_roads) == (13, 18, 400, 18),
+        "EVIDENCE: the (store, telling) pairs that answered both reads, how \
+         much of each store the two put in front of each other, and how many of \
+         those roads were asked a SECOND time with the filter a runtime uses",
     );
     check(
         disclosed_events == 1483,

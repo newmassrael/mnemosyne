@@ -3170,6 +3170,108 @@
         "`report-quest-graph --telling` reads INERT in substance on the three corpora that declare two tellings: the quest layer's data does not move with the telling there. Whether that is the telling being irrelevant to quests or those corpora not exercising it is not measured."
       ]
     },
+    "Round 1049": {
+      "decision_summary": "R1049 (BUILD) — the Round 1048 pair contract never asked a FILTERED read, and asking one derived a property of every read on the shipped surface: a road filter must SELECT, not re-derive. The first run found a shipped defect. STAR THE DEBT AS WRITTEN WAS \"ADD A FILTERED ARM TO ONE PAIR\". Three of Round 1048's four world injections left `manuscript_projection_agreement` green while the provenance gate went red, because that contract asked both reads unfiltered and only ever fired the `world: null` arm of its own provenance half. The literal repair is eighteen more probes. But \"does this filter MEAN what its report names\" is a property of ONE read, and the whole shipped surface can be asked at once — the same move R1048 made when it stopped declaring pairs one at a time. STAR THE DERIVED WALK. Every advertised read, the flags on its own usage line, and a flag counts as a ROAD FILTER when the value vocabulary the shared resolver gives it IS the corpus's road registry, so a third road-taking flag joins the run it ships. Over 44 authored stores that is 5 (verb, flag) cells and 112 probes, plus 76 asked for a road no registry holds. The rule: the roads a filtered read KEEPS answer exactly what the unfiltered read said about them once the read's record of the filter is stripped, it never answers a road the unfiltered read did not, and every road-keyed structure either narrows to the asked road or stays WHOLE — which is a per-read fact printed as a table and pinned, not a hope. STAR THE FIRST RUN FOUND `report-timeline-gaps --world` SCOPING NOTHING. The flag filtered the CLI's PROSE loop, and the `--json` wire returned before that loop ran: one argument, two write paths, and the one a runtime reads was the undefended one. It also had no fail-loud check, so a typo'd road read as a timeline with no gaps — the rule its siblings have followed since R466. The repair moves the filter into the projection, where the report seeds its sweep from the road it was given and records it. STAR THE TWO GATES INTERLOCK AND THAT IS THE EVIDENCE. The provenance census read `report-timeline-gaps --world` as INERT, because an argument that decides nothing and an argument that is IGNORED are the same row there. Repairing it flipped that census from 12 named / 11 inert to 13 / 10 — a gate this round did not touch moved because a defect the other gate found was fixed. STAR THE SAME VOCABULARY IS NOT THE SAME MEANING, AND THE WALK DERIVES THE DIFFERENCE. `report-frame-view --branch` takes road ids and is NOT a selector: it moves the coordinate the whole answer is evaluated at, so its `not_holding` count legitimately RISES on a road where fewer facts hold. Holding it to \"the roads you keep say what they said\" would be refuted by the shipped design on the first run. The walk separates them by asking whether a road id appears in the answer as a KEY, and names the coordinate cell rather than judging it — 1 of the 5. STAR A DOC CLAIM RAN FOR THE FIRST TIME. The fork tree stays whole under a filter because its topology is inherently cross-world; that sentence has been in the R556 doc comment since the read shipped and nothing ever executed it. It is now two rows of an eight-row shape table, beside the six that narrow, reached through all three encodings the reads use for a road: a map keyed by roads, a sorted list of road ids, and a list of records each ABOUT one road. STAR AND THE HEADER CLAUSE BECAME A LIST OF THE ARGUMENTS A READ HAS. R1048 spelled \"cannot be asked\" versus \"not given\" for the reading walk alone and left telling and world positional, so a read with no telling could only print `telling (none)`. `report-timeline-gaps` is that read. The prose walk now derives its population from the usage lines too: 40 headers over 4 reads, where a hand list of 3 would not have covered the read this round repaired.",
+      "changes_bullets": [
+        "`crates/mnemosyne-validate/src/continuity.rs`: `timeline_gaps` takes the road filter, seeds its sweep from it, fails loud on an id the branch registry does not hold, and records it on the report — the filter lived in the CLI's prose loop, so the `--json` wire answered every road under `--world <one>`.",
+        "`crates/mnemosyne-ops/src/lib.rs`: `timeline_gaps_report` carries the road into the projection rather than leaving a caller to apply it, the entry into the store vocabulary happening once for both wires.",
+        "`crates/mnemosyne-cli/src/main.rs`: the timeline-gaps prose loop drops its own filter (the report is already scoped) and prints the shared clause; `asked_clause` takes the arguments a read HAS as a list, so a read with no telling prints no telling clause.",
+        "`crates/mnemosyne-mcp/src/main.rs`: the timeline-gaps tool passes no road — it has never advertised one, and `None` is the whole-store read it has always answered.",
+        "`crates/mnemosyne-cli/tests/filtered_read_selects.rs`: NEW — the derived walk over every read that takes a road filter: the roads it keeps, the shape table of what narrows and what stays whole, and the fail-loud arm.",
+        "`crates/mnemosyne-cli/tests/common/mod.rs`: the usage-line parse, the flag vocabulary, the baseline argv and the record-versus-substance split become shared resolvers, so the two walks that now need them cannot come to disagree.",
+        "`crates/mnemosyne-cli/tests/manuscript_projection_agreement.rs`: HALF THREE — the pair asked again for one road, both reports naming it.",
+        "`crates/mnemosyne-cli/tests/read_argument_provenance.rs`: the prose-header walk derives its population from the usage lines instead of naming three verbs."
+      ],
+      "verification_bullets": [
+        "Workspace 1762 tests green, clippy -D warnings clean, fmt clean, `validate-workspace` T1/T3 = 0.",
+        "The filter walk over 44 authored stores: 5 (verb, flag) cells, 112 (read, road, corpus) probes, 76 of them for a road no registry holds and all refused, 0 answers moved. The shape table is 8 rows — 6 narrow, 2 stay whole — reached through a road-keyed map, a list of road ids, and a list of records each about one road.",
+        "1 of the 5 cells is a COORDINATE, not a selection: `report-frame-view --branch` re-evaluates the whole answer at that road, so its `not_holding` count rises where fewer facts hold. Named and counted rather than judged.",
+        "The provenance census moved without this round touching that gate: 12 named / 11 inert becomes 13 / 10, because `report-timeline-gaps --world` stopped being ignored. Its cells and probes are unchanged at 23 and 485, which is how the refactor of the shared resolvers is shown to have moved nothing.",
+        "The pair contract: 13 (store, telling) pairs, 18 roads compared whole, all 18 asked again under `--world`, 400 scenes, 1483 begins-events, 0 disagreements.",
+        "The prose walk reads 40 headers over 4 reads (Round 1048 read 30 over a hand-named 3).",
+        "8 revert injections, each over the WHOLE workspace with --no-fail-fast, all 8 fired. I1a (the sweep ignores the filter, as it did before this round) reddens the filter walk AND the provenance census. I1b (the report stops recording it) reddens the provenance contract and the prose header. I2 (the playable world stops carrying the filter from the manuscript it embeds) reddens the PAIR CONTRACT — the injection Round 1048 ran and left green, which is the debt this round opened.",
+        "I3 narrows the fork tree and the shape table names it; I4 recomputes a whole-store scalar under the filter and the contract names it; I5 drops the fail-loud guard; I6 strips the prose clause and reddens the human wire ALONE, the R1045 shape; I7 builds the quest graph's world list from the store instead of the filtered projection and reddens both the walk and an R1048-era unit pin."
+      ],
+      "carry_forward_bullets": [
+        "23 read pairs of the Round 1040 backlog remain undeclared. This round widened the fifth pair rather than declaring a sixth.",
+        "The walk can say nothing about a COORDINATE read. Whether `report-frame-view --branch` answers CORRECTLY at the road it is given is a different contract, and no test in this tree makes it.",
+        "The `records about one road` keying demands exactly ONE road-carrying field per element and reports any structure with two as undecidable rather than guessing. No corpus ships one, so that arm has never fired.",
+        "The MCP `report_timeline_gaps` tool still takes no road filter. That is a deliberate non-change, not an oversight — adding one is an argument-surface decision with its own accounting gates.",
+        "The location flags (--sidecar, --order, --rules, --catalog, --against) are still 42 of the provenance walk's 72 excluded cells; a corpus shipping two orders would close them and none does."
+      ],
+      "population_census": [
+        {
+          "axis": "transition rules by `undirected`",
+          "left_label": "undirected",
+          "left": 10,
+          "right_label": "directed",
+          "right": 27
+        },
+        {
+          "axis": "map corpora by leg-kind declaration",
+          "left_label": "omitted",
+          "left": 6,
+          "right_label": "declared",
+          "right": 24
+        },
+        {
+          "axis": "cost-carrying corpora by direction-dependent pricing",
+          "left_label": "prices a way by direction",
+          "left": 4,
+          "right_label": "prices no way by direction",
+          "right": 6
+        },
+        {
+          "axis": "run trees by authoring mode",
+          "left_label": "hand script",
+          "left": 10,
+          "right_label": "file-only",
+          "right": 239
+        },
+        {
+          "axis": "map corpora by declared boundary crossing",
+          "left_label": "declares an exit",
+          "left": 6,
+          "right_label": "declares none",
+          "right": 24
+        },
+        {
+          "axis": "authored submissions by map and telling",
+          "left_label": "carries both",
+          "left": 10,
+          "right_label": "carries one",
+          "right": 24
+        }
+      ],
+      "publishable_decision_summary": "R1049 (BUILD) — the Round 1048 pair contract never asked a FILTERED read, and asking one derived a property of every read on the shipped surface: a road filter must SELECT, not re-derive. The first run found a shipped defect. STAR THE DEBT AS WRITTEN WAS \"ADD A FILTERED ARM TO ONE PAIR\". Three of Round 1048's four world injections left `manuscript_projection_agreement` green while the provenance gate went red, because that contract asked both reads unfiltered and only ever fired the `world: null` arm of its own provenance half. The literal repair is eighteen more probes. But \"does this filter MEAN what its report names\" is a property of ONE read, and the whole shipped surface can be asked at once — the same move R1048 made when it stopped declaring pairs one at a time. STAR THE DERIVED WALK. Every advertised read, the flags on its own usage line, and a flag counts as a ROAD FILTER when the value vocabulary the shared resolver gives it IS the corpus's road registry, so a third road-taking flag joins the run it ships. Over 44 authored stores that is 5 (verb, flag) cells and 112 probes, plus 76 asked for a road no registry holds. The rule: the roads a filtered read KEEPS answer exactly what the unfiltered read said about them once the read's record of the filter is stripped, it never answers a road the unfiltered read did not, and every road-keyed structure either narrows to the asked road or stays WHOLE — which is a per-read fact printed as a table and pinned, not a hope. STAR THE FIRST RUN FOUND `report-timeline-gaps --world` SCOPING NOTHING. The flag filtered the CLI's PROSE loop, and the `--json` wire returned before that loop ran: one argument, two write paths, and the one a runtime reads was the undefended one. It also had no fail-loud check, so a typo'd road read as a timeline with no gaps — the rule its siblings have followed since R466. The repair moves the filter into the projection, where the report seeds its sweep from the road it was given and records it. STAR THE TWO GATES INTERLOCK AND THAT IS THE EVIDENCE. The provenance census read `report-timeline-gaps --world` as INERT, because an argument that decides nothing and an argument that is IGNORED are the same row there. Repairing it flipped that census from 12 named / 11 inert to 13 / 10 — a gate this round did not touch moved because a defect the other gate found was fixed. STAR THE SAME VOCABULARY IS NOT THE SAME MEANING, AND THE WALK DERIVES THE DIFFERENCE. `report-frame-view --branch` takes road ids and is NOT a selector: it moves the coordinate the whole answer is evaluated at, so its `not_holding` count legitimately RISES on a road where fewer facts hold. Holding it to \"the roads you keep say what they said\" would be refuted by the shipped design on the first run. The walk separates them by asking whether a road id appears in the answer as a KEY, and names the coordinate cell rather than judging it — 1 of the 5. STAR A DOC CLAIM RAN FOR THE FIRST TIME. The fork tree stays whole under a filter because its topology is inherently cross-world; that sentence has been in the R556 doc comment since the read shipped and nothing ever executed it. It is now two rows of an eight-row shape table, beside the six that narrow, reached through all three encodings the reads use for a road: a map keyed by roads, a sorted list of road ids, and a list of records each ABOUT one road. STAR AND THE HEADER CLAUSE BECAME A LIST OF THE ARGUMENTS A READ HAS. R1048 spelled \"cannot be asked\" versus \"not given\" for the reading walk alone and left telling and world positional, so a read with no telling could only print `telling (none)`. `report-timeline-gaps` is that read. The prose walk now derives its population from the usage lines too: 40 headers over 4 reads, where a hand list of 3 would not have covered the read this round repaired.",
+      "publishable_changes_bullets": [
+        "`crates/mnemosyne-validate/src/continuity.rs`: `timeline_gaps` takes the road filter, seeds its sweep from it, fails loud on an id the branch registry does not hold, and records it on the report — the filter lived in the CLI's prose loop, so the `--json` wire answered every road under `--world <one>`.",
+        "`crates/mnemosyne-ops/src/lib.rs`: `timeline_gaps_report` carries the road into the projection rather than leaving a caller to apply it, the entry into the store vocabulary happening once for both wires.",
+        "`crates/mnemosyne-cli/src/main.rs`: the timeline-gaps prose loop drops its own filter (the report is already scoped) and prints the shared clause; `asked_clause` takes the arguments a read HAS as a list, so a read with no telling prints no telling clause.",
+        "`crates/mnemosyne-mcp/src/main.rs`: the timeline-gaps tool passes no road — it has never advertised one, and `None` is the whole-store read it has always answered.",
+        "`crates/mnemosyne-cli/tests/filtered_read_selects.rs`: NEW — the derived walk over every read that takes a road filter: the roads it keeps, the shape table of what narrows and what stays whole, and the fail-loud arm.",
+        "`crates/mnemosyne-cli/tests/common/mod.rs`: the usage-line parse, the flag vocabulary, the baseline argv and the record-versus-substance split become shared resolvers, so the two walks that now need them cannot come to disagree.",
+        "`crates/mnemosyne-cli/tests/manuscript_projection_agreement.rs`: HALF THREE — the pair asked again for one road, both reports naming it.",
+        "`crates/mnemosyne-cli/tests/read_argument_provenance.rs`: the prose-header walk derives its population from the usage lines instead of naming three verbs."
+      ],
+      "publishable_verification_bullets": [
+        "Workspace 1762 tests green, clippy -D warnings clean, fmt clean, `validate-workspace` T1/T3 = 0.",
+        "The filter walk over 44 authored stores: 5 (verb, flag) cells, 112 (read, road, corpus) probes, 76 of them for a road no registry holds and all refused, 0 answers moved. The shape table is 8 rows — 6 narrow, 2 stay whole — reached through a road-keyed map, a list of road ids, and a list of records each about one road.",
+        "1 of the 5 cells is a COORDINATE, not a selection: `report-frame-view --branch` re-evaluates the whole answer at that road, so its `not_holding` count rises where fewer facts hold. Named and counted rather than judged.",
+        "The provenance census moved without this round touching that gate: 12 named / 11 inert becomes 13 / 10, because `report-timeline-gaps --world` stopped being ignored. Its cells and probes are unchanged at 23 and 485, which is how the refactor of the shared resolvers is shown to have moved nothing.",
+        "The pair contract: 13 (store, telling) pairs, 18 roads compared whole, all 18 asked again under `--world`, 400 scenes, 1483 begins-events, 0 disagreements.",
+        "The prose walk reads 40 headers over 4 reads (Round 1048 read 30 over a hand-named 3).",
+        "8 revert injections, each over the WHOLE workspace with --no-fail-fast, all 8 fired. I1a (the sweep ignores the filter, as it did before this round) reddens the filter walk AND the provenance census. I1b (the report stops recording it) reddens the provenance contract and the prose header. I2 (the playable world stops carrying the filter from the manuscript it embeds) reddens the PAIR CONTRACT — the injection Round 1048 ran and left green, which is the debt this round opened.",
+        "I3 narrows the fork tree and the shape table names it; I4 recomputes a whole-store scalar under the filter and the contract names it; I5 drops the fail-loud guard; I6 strips the prose clause and reddens the human wire ALONE, the R1045 shape; I7 builds the quest graph's world list from the store instead of the filtered projection and reddens both the walk and an R1048-era unit pin."
+      ],
+      "publishable_carry_forward_bullets": [
+        "23 read pairs of the Round 1040 backlog remain undeclared. This round widened the fifth pair rather than declaring a sixth.",
+        "The walk can say nothing about a COORDINATE read. Whether `report-frame-view --branch` answers CORRECTLY at the road it is given is a different contract, and no test in this tree makes it.",
+        "The `records about one road` keying demands exactly ONE road-carrying field per element and reports any structure with two as undecidable rather than guessing. No corpus ships one, so that arm has never fired.",
+        "The MCP `report_timeline_gaps` tool still takes no road filter. That is a deliberate non-change, not an oversight — adding one is an argument-surface decision with its own accounting gates.",
+        "The location flags (--sidecar, --order, --rules, --catalog, --against) are still 42 of the provenance walk's 72 excluded cells; a corpus shipping two orders would close them and none does."
+      ]
+    },
     "Round 252": {
       "decision_summary": "Parser CommonMark conformance — recognize indented fenced code blocks (§98) and require whitespace after ATX hash sequence (§62)",
       "changes_bullets": [

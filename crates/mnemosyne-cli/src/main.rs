@@ -3241,17 +3241,38 @@ fn confluence_fragment_note(world: &str) -> String {
 /// `None` is spelled out rather than omitted. An absent clause and "no filter
 /// was named" are the same characters on a terminal, and telling them apart is
 /// the whole point of printing it.
-fn asked_clause(telling: Option<&str>, world: Option<&str>, reading_walk: Option<bool>) -> String {
-    let telling = telling.map_or_else(|| "(none)".to_string(), |t| format!("`{t}`"));
-    let world = world.map_or_else(|| "(every road)".to_string(), |w| format!("`{w}`"));
-    // `None` = the read has no such argument at all, which is not the same as
-    // having it and not being given it — so it prints nothing rather than `no`.
-    let walk = match reading_walk {
-        Some(true) => " — reading walk `yes`",
-        Some(false) => " — reading walk `no`",
-        None => "",
-    };
-    format!("telling {telling} — world {world}{walk}")
+///
+/// Round 1049 — the caller passes the arguments the read HAS, in the order it
+/// wants them, and each carries whether it was GIVEN one. Round 1048 spelled
+/// this distinction for the reading walk alone (`None` = no such argument)
+/// while telling and world were positional, so a read without a telling could
+/// only print `telling (none)` — "not given" said of something it cannot be
+/// given. `report-timeline-gaps` is that read, and it takes a road filter, so
+/// the axis had to become a list rather than three positions.
+enum Asked<'a> {
+    Telling(Option<&'a str>),
+    World(Option<&'a str>),
+    ReadingWalk(bool),
+}
+
+fn asked_clause(parts: &[Asked]) -> String {
+    parts
+        .iter()
+        .map(|part| match part {
+            Asked::Telling(telling) => format!(
+                "telling {}",
+                telling.map_or_else(|| "(none)".to_string(), |t| format!("`{t}`"))
+            ),
+            Asked::World(world) => format!(
+                "world {}",
+                world.map_or_else(|| "(every road)".to_string(), |w| format!("`{w}`"))
+            ),
+            Asked::ReadingWalk(walked) => {
+                format!("reading walk `{}`", if *walked { "yes" } else { "no" })
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(" — ")
 }
 
 /// Round 432 — frame-at-T read projection (`report-frame-view`): the facts a
@@ -3937,11 +3958,11 @@ fn cmd_report_playthrough_manuscript(args: &[String]) -> Result<()> {
     }
     println!(
         "=== playthrough manuscript — {} — {} fact(s), {} world(s) ===",
-        asked_clause(
-            report.telling.as_deref(),
-            report.world.as_deref(),
-            Some(report.reading_walk),
-        ),
+        asked_clause(&[
+            Asked::Telling(report.telling.as_deref()),
+            Asked::World(report.world.as_deref()),
+            Asked::ReadingWalk(report.reading_walk),
+        ]),
         report.facts,
         report.worlds.len()
     );
@@ -4154,7 +4175,10 @@ fn cmd_report_playable_world(args: &[String]) -> Result<()> {
     }
     println!(
         "=== playable world — {} — {} world(s), {} registered branch(es) ===",
-        asked_clause(Some(&report.telling), report.world.as_deref(), None),
+        asked_clause(&[
+            Asked::Telling(Some(&report.telling)),
+            Asked::World(report.world.as_deref()),
+        ]),
         report.worlds.len(),
         report.fork_tree.branch_count
     );
@@ -4233,7 +4257,10 @@ fn cmd_report_quest_graph(args: &[String]) -> Result<()> {
     }
     println!(
         "=== quest graph — {} — {} quest(s), {} world(s), {} registered branch(es) ===",
-        asked_clause(Some(&report.telling), report.world.as_deref(), None),
+        asked_clause(&[
+            Asked::Telling(Some(&report.telling)),
+            Asked::World(report.world.as_deref()),
+        ]),
         report.quests.len(),
         report.worlds.len(),
         report.fork_tree.branch_count
@@ -5387,6 +5414,7 @@ fn cmd_report_timeline_gaps(args: &[String]) -> Result<()> {
         atomic_cli::cli_path(sidecar_override.as_deref())?.as_ref(),
         atomic_cli::cli_path(order_override.as_deref())?.as_ref(),
         atomic_cli::cli_path(rules_override.as_deref())?.as_ref(),
+        world_filter.as_deref(),
     )
     .map_err(|e| anyhow!("{e}"))?;
     if json {
@@ -5394,13 +5422,11 @@ fn cmd_report_timeline_gaps(args: &[String]) -> Result<()> {
         return Ok(());
     }
     println!(
-        "=== timeline gaps — {} interval rule(s) ===",
-        report.interval_rules
+        "=== timeline gaps — {} interval rule(s) — {} ===",
+        report.interval_rules,
+        asked_clause(&[Asked::World(report.world.as_deref())])
     );
     for (world, gaps) in &report.worlds {
-        if world_filter.as_deref().is_some_and(|f| f != world) {
-            continue;
-        }
         let mut violated = 0;
         let mut unverifiable = 0;
         let mut satisfied = 0;

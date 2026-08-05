@@ -3125,6 +3125,16 @@ pub struct WorldTimelineGaps {
 /// the continuity gate's, not a timeline surface.
 #[derive(Debug, Clone, Default, Serialize)]
 pub struct TimelineGapsReport {
+    /// THE `--world` FILTER (Round 1049), `None` = every query world. `worlds`
+    /// below is what ANSWERED; this is what was asked, and the two are not the
+    /// same datum — a one-road store answers one road unfiltered.
+    ///
+    /// The filter lives HERE, not in the printer. Until this round the CLI's
+    /// prose loop skipped the roads the filter excluded and the `--json` wire
+    /// returned before that loop ran, so `--json --world <road>` answered every
+    /// road and said nothing about it: one argument, two write paths, and the
+    /// one a runtime reads was the undefended one.
+    pub world: Option<String>,
     pub worlds: BTreeMap<String, WorldTimelineGaps>,
     /// Interval rules evaluated (0 = no interval rules declared).
     pub interval_rules: usize,
@@ -3134,19 +3144,43 @@ pub struct TimelineGapsReport {
 /// boundary + predicate-existence checks as the gate, the SAME evaluator
 /// (`scan_interval_rule`) — the report is the gate's findings without the
 /// gating, grouped per world. Surface-not-gate: no severity, no exit.
+///
+/// `world` filters to one world-line (Round 1049), fail-loud on an id the
+/// branch registry does not hold — the [`playthrough_manuscript`] idiom, and
+/// for its reason: a typo'd road must not read as a timeline with no gaps.
 pub fn timeline_gaps(
     store: &AtomicStore,
     order: &CanonOrder,
     rules: &[NarrativeRule],
+    world: Option<&mnemosyne_core::BranchId>,
 ) -> Result<TimelineGapsReport, String> {
     check_store_boundary(store, order)?;
     check_rule_predicates(store, rules)?;
     check_quest_predicate_shapes(store)?;
+    if let Some(w) = world {
+        if !mnemosyne_core::is_known_world(&store.branches, w) {
+            return Err(format!(
+                "world `{w}` not present in the branch registry (fail-loud — a typo'd \
+                 world must not read as a timeline with no gaps)"
+            ));
+        }
+    }
     let facts = &store.narrative_facts;
     let successors = successors_index(facts);
     let lineages = query_world_lineages(store)?;
-    let worlds = query_worlds(store);
-    let mut report = TimelineGapsReport::default();
+    // Explicit `--world` scopes to that road — any REGISTERED branch, including
+    // a confluence node, the [`playthrough_manuscript`] idiom; the default
+    // sweeps the playthroughs (Round 533 `query_worlds`). Every outcome is
+    // decided inside one world's [`WorldCtx`], so narrowing the sweep SELECTS:
+    // the verdicts a road gets here are the verdicts it gets unfiltered.
+    let worlds = match world {
+        Some(w) => vec![w.clone()],
+        None => query_worlds(store),
+    };
+    let mut report = TimelineGapsReport {
+        world: world.map(ToString::to_string),
+        ..Default::default()
+    };
     // Every world present, even the clean ones (explicit empty list).
     for w in &worlds {
         report
@@ -18047,7 +18081,7 @@ mod tests {
         // agree that main flows into the confluence: both irony_intervals and
         // timeline_gaps compose without error over the same topology.
         irony_intervals(&store, &order).unwrap();
-        timeline_gaps(&store, &order, &[]).unwrap();
+        timeline_gaps(&store, &order, &[], None).unwrap();
     }
 
     /// Round 611 — the fork-off-a-confluence-chain fixture (MNEMO-GAP-003): a
@@ -19756,7 +19790,7 @@ mod tests {
             ],
         );
         let order = chain(&["ch-1", "ch-2", "ch-3", "ch-4"]);
-        let report = timeline_gaps(&store, &order, &[ratify_term()]).unwrap();
+        let report = timeline_gaps(&store, &order, &[ratify_term()], None).unwrap();
         assert_eq!(report.interval_rules, 1);
         assert!(
             report.worlds.contains_key(MAIN_BRANCH),
@@ -19813,7 +19847,7 @@ mod tests {
         );
         let order = chain(&["ch-1", "ch-2", "ch-3", "ch-4"]);
         let gate = scan_continuity(&store, &order, &[ratify_term()]).unwrap();
-        let read = timeline_gaps(&store, &order, &[ratify_term()]).unwrap();
+        let read = timeline_gaps(&store, &order, &[ratify_term()], None).unwrap();
         let gate_violations = gate
             .violations
             .iter()

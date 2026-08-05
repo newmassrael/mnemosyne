@@ -55,7 +55,10 @@ use std::collections::{BTreeMap, BTreeSet};
 use mnemosyne_atomic::AtomicStore;
 
 mod common;
-use common::{advertised_reads, authored_stores, cli_binary, read_sidecar, run, SIDECAR};
+use common::{
+    advertised_reads, authored_stores, baseline_argv, flags_of, record_of, run, substance,
+    usage_lines, values_for, SIDECAR,
+};
 
 /// What one (verb, flag) probe concluded on one corpus.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -67,52 +70,6 @@ enum Verdict {
     Named,
     /// The answers differ and nothing in the answer says which was asked.
     Unnamed,
-}
-
-/// One flag on one verb's usage line, and how to give it a value this corpus
-/// can actually supply.
-struct Flag {
-    name: String,
-    /// `None` = a boolean flag (no value token follows it).
-    takes_value: bool,
-    /// `true` when the usage line lists it OUTSIDE brackets — it must be on
-    /// every probe, so the differential is between two values rather than
-    /// between present and absent.
-    required: bool,
-}
-
-/// The flags on a verb's usage line, in the order the line lists them.
-///
-/// Read from the line the shipped `--help` prints, never from a table here: a
-/// verb that grows a flag is covered the run it ships, which is the property a
-/// hand list cannot have (the R1046 lesson — a population keyed by a hand list
-/// is blind to the element nobody wrote down).
-fn flags_of(usage: &str) -> Vec<Flag> {
-    let mut out: Vec<Flag> = Vec::new();
-    let bytes: Vec<&str> = usage.split_whitespace().collect();
-    for (index, token) in bytes.iter().enumerate() {
-        let bare = token.trim_start_matches('[').trim_end_matches(']');
-        if !bare.starts_with("--") {
-            continue;
-        }
-        // A value token follows when the next token is a `<placeholder>` or an
-        // `a|b|c` alternation (the severity flags print the members inline).
-        let next = bytes.get(index + 1).copied().unwrap_or_default();
-        let next_bare = next.trim_start_matches('[').trim_end_matches(']');
-        let takes_value = next_bare.starts_with('<') || next_bare.contains('|');
-        // Required = the flag token itself is not bracketed. `[--world <b>]`
-        // opens the bracket on the flag; `--telling <id>` does not.
-        let required = !token.starts_with('[');
-        if out.iter().any(|f| f.name == bare) {
-            continue;
-        }
-        out.push(Flag {
-            name: bare.to_string(),
-            takes_value,
-            required,
-        });
-    }
-    out
 }
 
 /// Why a flag is outside this walk's reach at all — an EARNED exclusion, named
@@ -137,117 +94,6 @@ fn unprobable(flag: &str) -> Option<&'static str> {
     }
 }
 
-/// The values this corpus can supply for a flag, read from the store itself.
-///
-/// An id the corpus never declared is an invented argument, and the panel's
-/// rule since R1034 is that the walk supplies none. `main` is the exception the
-/// STORE makes rather than this walk: it is a world every store has whether or
-/// not it registers a branch.
-fn values_for(flag: &str, store: &AtomicStore) -> Vec<String> {
-    let ids = |set: Vec<String>| set;
-    match flag {
-        "--telling" => ids(store
-            .disclosure_plans
-            .keys()
-            .map(ToString::to_string)
-            .collect()),
-        "--world" | "--branch" => {
-            let mut out: Vec<String> = store.branches.keys().map(ToString::to_string).collect();
-            out.push("main".to_string());
-            out.sort();
-            out.dedup();
-            out
-        }
-        "--entity" => ids(store.entities.keys().map(ToString::to_string).collect()),
-        "--at" | "--target" => ids(store.sections.keys().map(ToString::to_string).collect()),
-        "--frame" => {
-            let mut out: BTreeSet<String> = BTreeSet::new();
-            for fact in store.narrative_facts.values() {
-                out.insert(fact.frame.to_string());
-            }
-            out.into_iter().collect()
-        }
-        // The declared severity vocabulary the usage lines print themselves.
-        "--severity" | "--severity-missing" | "--interval-severity" => {
-            vec!["warn".to_string(), "info".to_string()]
-        }
-        _ => Vec::new(),
-    }
-}
-
-/// Every top-level scalar field of an answer, as `(key, rendered value)`.
-/// Nested objects are the DATA — an id inside `worlds` is what the read is
-/// talking about, not a record of what it was asked.
-fn provenance_fields(answer: &serde_json::Value) -> BTreeMap<String, String> {
-    let mut out = BTreeMap::new();
-    if let Some(map) = answer.as_object() {
-        for (key, value) in map {
-            let rendered = match value {
-                serde_json::Value::String(s) => s.clone(),
-                serde_json::Value::Null => "null".to_string(),
-                serde_json::Value::Bool(b) => b.to_string(),
-                serde_json::Value::Number(n) => n.to_string(),
-                _ => continue,
-            };
-            out.insert(key.clone(), rendered);
-        }
-    }
-    out
-}
-
-/// The top-level fields that TRACK the argument — carrying the value in the
-/// probe that supplied it, and something else in the probe that did not. The
-/// answer's RECORD of what it was asked.
-///
-/// The "something else" matters as much as the match. A field that reads `main`
-/// under both probes is a constant, not provenance; a field that reads `main`
-/// under `--world main` and `null` without it is the read saying what it was
-/// asked. A missing key counts as the absent side: the sibling that has named
-/// its telling since R556 spells `null`, and this walk holds the weaker of the
-/// two encodings so it measures the surface rather than a house style.
-fn record_of(
-    with: &serde_json::Value,
-    without: &serde_json::Value,
-    value: Option<&str>,
-) -> BTreeSet<String> {
-    let taken = provenance_fields(with);
-    let bare = provenance_fields(without);
-    taken
-        .iter()
-        .filter(|(key, said)| {
-            let matches_value = match value {
-                Some(v) => *said == v,
-                // A boolean flag: the field is `true` where it was passed.
-                None => *said == "true",
-            };
-            matches_value && bare.get(*key) != Some(said)
-        })
-        .map(|(key, _)| key.clone())
-        .collect()
-}
-
-/// The answer with its record of the argument removed — everything the read
-/// SAID, as opposed to what it noted about being asked.
-///
-/// This split is what keeps the walk from being circular. RECORDING an argument
-/// makes two answers differ by that record, so "if the answers differ the
-/// answer must name the argument" would be satisfied by any field that names
-/// itself: an argument with no other effect would read as "changes the answer,
-/// and is named". Only the tracking fields come out — a scalar like the
-/// manuscript's `facts` count is substance and stays in, so an argument that
-/// moved only it would still be measured.
-fn substance(answer: &serde_json::Value, record: &BTreeSet<String>) -> serde_json::Value {
-    match answer.as_object() {
-        Some(map) => serde_json::Value::Object(
-            map.iter()
-                .filter(|(key, _)| !record.contains(*key))
-                .map(|(key, value)| (key.clone(), value.clone()))
-                .collect(),
-        ),
-        None => answer.clone(),
-    }
-}
-
 #[test]
 fn every_argument_that_decides_an_answer_is_named_in_the_answer() {
     let (stores, unloadable) = authored_stores();
@@ -267,23 +113,7 @@ fn every_argument_that_decides_an_answer_is_named_in_the_answer() {
             Err(_) => continue,
         };
         // The usage line of every advertised read, from the shipped help.
-        let help = run(ws, &["--help"]);
-        assert!(help.status.success(), "--help must exit 0");
-        let help = String::from_utf8(help.stdout).expect("help is utf-8");
-        let mut usage_of: BTreeMap<String, String> = BTreeMap::new();
-        for line in help.lines() {
-            let mut tokens = line.split_whitespace().skip_while(|t| *t != cli_binary());
-            if tokens.next().is_none() {
-                continue;
-            }
-            let Some(verb) = tokens.next() else { continue };
-            if !(verb.starts_with("report-") || verb.starts_with("validate-")) {
-                continue;
-            }
-            usage_of
-                .entry(verb.to_string())
-                .or_insert_with(|| tokens.collect::<Vec<_>>().join(" "));
-        }
+        let usage_of = usage_lines(ws);
         // The panel derivation is the shared one; this walk only adds the
         // usage line, so the two cannot come to disagree about which verbs the
         // CLI advertises.
@@ -303,30 +133,12 @@ fn every_argument_that_decides_an_answer_is_named_in_the_answer() {
             // The baseline argv: every REQUIRED flag at its first value. A verb
             // whose required flag this corpus cannot supply is unaskable here,
             // which is a measurement about the corpus, not a skip.
-            let mut base: Vec<String> = Vec::new();
-            let mut unaskable = false;
-            for flag in &flags {
-                if !flag.required {
-                    continue;
-                }
-                let values = values_for(&flag.name, &atomic);
-                match values.first() {
-                    Some(first) if flag.takes_value => {
-                        base.push(flag.name.clone());
-                        base.push(first.clone());
-                    }
-                    // A required flag with no value this corpus declares (a
-                    // file path, an id it does not hold).
-                    _ if flag.takes_value => unaskable = true,
-                    _ => base.push(flag.name.clone()),
-                }
-            }
-            if unaskable {
+            let Some(base) = baseline_argv(&flags, &atomic) else {
                 *unprobed
                     .entry("a required flag has no value this corpus declares")
                     .or_default() += 1;
                 continue;
-            }
+            };
             let ask = |extra: &[String]| -> Option<serde_json::Value> {
                 let mut argv: Vec<&str> = vec![verb.as_str()];
                 argv.extend(base.iter().map(String::as_str));
@@ -491,14 +303,20 @@ fn every_argument_that_decides_an_answer_is_named_in_the_answer() {
     // an oracle rather than a rule invented here — the surface already tracks
     // its arguments in most cells, and the failures are the minority.
     check(
-        (census(Verdict::Named), census(Verdict::Inert)) == (12, 11),
+        (census(Verdict::Named), census(Verdict::Inert)) == (13, 10),
         "CENSUS: the arguments whose record the answer carries, and the ones no \
          authored corpus can make change an answer's substance at all. EIGHT of \
-         the twelve were already named before this round — that majority is why \
-         the rule below is the repository's own and not one invented here; the \
-         four this round repaired are `report-playable-world --world`, \
+         the thirteen were already named before Round 1048 — that majority is \
+         why the rule below is the repository's own and not one invented here; \
+         the four that round repaired are `report-playable-world --world`, \
          `report-quest-graph --world`, and both of \
-         `report-playthrough-manuscript`'s",
+         `report-playthrough-manuscript`'s. THE THIRTEENTH ARRIVED BY BEING \
+         FIXED: `report-timeline-gaps --world` read Inert here until Round 1049 \
+         found that it scoped the PROSE loop alone, so the `--json` wire this \
+         walk reads answered every road no matter what it was asked. An \
+         argument that decides nothing and an argument that is ignored are the \
+         same row in this census, which is why the sibling walk asks the other \
+         question — whether the filter SELECTS",
     );
 
     check(
@@ -520,13 +338,18 @@ fn every_argument_that_decides_an_answer_is_named_in_the_answer() {
 /// that stripped a clause from the human line left the whole workspace green,
 /// because every contract above reads `--json`.)
 ///
-/// The three narrative projections print a header, and the header now says what
-/// was asked. Checked by DIFFERENCE rather than by substring: the header under
-/// `--world <road>` must not be the header without it, and it must name the
-/// road — a report that prints the road count alone satisfies neither.
+/// EVERY READ THAT TAKES A ROAD FILTER, derived from the shipped usage lines
+/// rather than listed — Round 1049 repaired a fourth such read and a hand list
+/// of three would not have covered it, which is the same blindness R1046 found
+/// in the stack gates. For each argument the read HAS, the header says what it
+/// was given; for each argument it does NOT have, the header says nothing.
+/// That second half is the point: "not given" and "cannot be given" are the
+/// same characters on a terminal unless the read declines to print the clause,
+/// and `report-timeline-gaps` has no telling to be given.
 #[test]
 fn the_prose_header_says_what_the_projection_was_asked() {
     let mut checked = 0usize;
+    let mut verbs: BTreeSet<String> = BTreeSet::new();
     let mut wrong: Vec<String> = Vec::new();
     let (stores, _) = authored_stores();
 
@@ -536,33 +359,33 @@ fn the_prose_header_says_what_the_projection_was_asked() {
         let Ok(atomic) = AtomicStore::load(&ws.join(SIDECAR)) else {
             continue;
         };
-        let tellings: Vec<String> = atomic
-            .disclosure_plans
-            .keys()
-            .map(ToString::to_string)
-            .collect();
-        // `main` is a world every store has, registered or not — the same
-        // resolution the gate above uses, so the two walks cannot come to
-        // disagree about which roads a corpus can be asked for.
-        let mut roads: Vec<String> = read_sidecar(ws)["branches"]
-            .as_object()
-            .map(|map| map.keys().cloned().collect())
-            .unwrap_or_default();
-        roads.push("main".to_string());
-        roads.sort();
-        roads.dedup();
-        let Some(telling) = tellings.first() else {
+        let usage_of = usage_lines(ws);
+        // `main` is a world every store has, registered or not — the shared
+        // resolution, so this walk and the gate above cannot come to disagree
+        // about which roads a corpus can be asked for.
+        let roads = values_for("--world", &atomic);
+        let tellings = values_for("--telling", &atomic);
+        let (Some(road), Some(telling)) = (roads.first(), tellings.first()) else {
             continue;
         };
-        let road = &roads[0];
 
-        for verb in [
-            "report-playthrough-manuscript",
-            "report-playable-world",
-            "report-quest-graph",
-        ] {
-            let header = |argv: &[&str]| -> Option<String> {
-                let out = run(ws, argv);
+        for verb in advertised_reads(ws) {
+            let Some(usage) = usage_of.get(&verb) else {
+                continue;
+            };
+            let flags = flags_of(usage);
+            let has = |name: &str| flags.iter().any(|flag| flag.name == name);
+            if !has("--world") {
+                continue;
+            }
+            let Some(base) = baseline_argv(&flags, &atomic) else {
+                continue;
+            };
+            let header = |extra: &[&str]| -> Option<String> {
+                let mut argv: Vec<&str> = vec![verb.as_str()];
+                argv.extend(base.iter().map(String::as_str));
+                argv.extend(extra);
+                let out = run(ws, &argv);
                 out.status.success().then(|| {
                     String::from_utf8(out.stdout)
                         .expect("the report is utf-8")
@@ -572,65 +395,90 @@ fn the_prose_header_says_what_the_projection_was_asked() {
                         .to_string()
                 })
             };
-            let all = header(&[verb, "--telling", telling]);
-            let one = header(&[verb, "--telling", telling, "--world", road]);
-            let (Some(all), Some(one)) = (all, one) else {
+            let (Some(all), Some(one)) = (header(&[]), header(&["--world", road])) else {
                 continue;
             };
             checked += 1;
-            if !all.contains(&format!("telling `{telling}`")) {
-                wrong.push(format!(
-                    "{name}: `{verb}` header does not name its telling: {all}"
-                ));
-            }
+            verbs.insert(verb.clone());
+
+            // The road filter, which every read in this population has.
             if !one.contains(&format!("world `{road}`")) {
                 wrong.push(format!(
                     "{name}: `{verb} --world {road}` header does not name the road: {one}"
                 ));
             }
-            if !all.contains("(every road)") {
+            if !all.contains("world (every road)") {
                 wrong.push(format!(
                     "{name}: `{verb}` header does not say it was given no road filter: {all}"
                 ));
             }
-            // The third argument, on the one read that has it. The clause is
-            // absent from the siblings because they cannot take a reading walk
-            // at all — which is a different fact from having one and not being
-            // given it, so it prints nothing rather than `no`.
-            let walked = header(&[verb, "--telling", telling, "--reading-walk"]);
-            let expected = if verb == "report-playthrough-manuscript" {
-                ["reading walk `no`", "reading walk `yes`"]
-            } else {
-                ["", ""]
-            };
-            for (said, want) in [
-                (&all, expected[0]),
-                (walked.as_ref().unwrap_or(&all), expected[1]),
+            // The two arguments only SOME of them have. A read that cannot be
+            // asked must print no clause at all, which is a different fact from
+            // having one and not being given it.
+            let telling_probe = header(&["--telling", telling]);
+            let walk_probe = header(&["--reading-walk"]);
+            for (argument, absent, given, probe) in [
+                (
+                    "--telling",
+                    "telling (none)".to_string(),
+                    format!("telling `{telling}`"),
+                    &telling_probe,
+                ),
+                (
+                    "--reading-walk",
+                    "reading walk `no`".to_string(),
+                    "reading walk `yes`".to_string(),
+                    &walk_probe,
+                ),
             ] {
-                if want.is_empty() {
-                    if said.contains("reading walk") {
+                let clause = argument.trim_start_matches("--").replace('-', " ");
+                if !has(argument) {
+                    if all.contains(&clause) {
                         wrong.push(format!(
-                            "{name}: `{verb}` names a reading walk it cannot be asked for: {said}"
+                            "{name}: `{verb}` names a {clause} it cannot be asked for: {all}"
                         ));
                     }
-                } else if !said.contains(want) {
+                    continue;
+                }
+                // A REQUIRED argument is already on the baseline, so the
+                // unfiltered header names it; an optional one says so.
+                let want = if flags
+                    .iter()
+                    .any(|flag| flag.name == argument && flag.required)
+                {
+                    given.clone()
+                } else {
+                    absent
+                };
+                if !all.contains(&want) {
                     wrong.push(format!(
-                        "{name}: `{verb}` header does not say `{want}`: {said}"
+                        "{name}: `{verb}` header does not say `{want}`: {all}"
                     ));
+                }
+                if let Some(probe) = probe {
+                    if !probe.contains(&given) {
+                        wrong.push(format!(
+                            "{name}: `{verb}` given a {clause} does not say `{given}`: {probe}"
+                        ));
+                    }
                 }
             }
         }
     }
 
-    println!("{checked} prose headers read");
+    println!("{checked} prose headers read over {} reads", verbs.len());
+    for verb in &verbs {
+        println!("  {verb}");
+    }
     for row in &wrong {
         println!("    SILENT {row}");
     }
     // Non-vacuity: with nothing read the walk would pass over a wire that
     // prints nothing at all.
     assert_eq!(
-        checked, 30,
-        "the narrative-projection headers this corpus set puts in front of the walk"
+        (checked, verbs.len()),
+        (40, 4),
+        "the road-filtering headers this corpus set puts in front of the walk"
     );
     assert_eq!(
         wrong,

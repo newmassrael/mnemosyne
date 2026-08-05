@@ -1471,18 +1471,25 @@ pub fn payoff_substantiation_report(
 /// deterministic interval evaluator surfaced as a READ report, per world,
 /// never gated. Resolves the same `narrative-rules` artifact as the gate
 /// (`continuity_scan`); only `interval` rules contribute.
+///
+/// `world` scopes to one road (Round 1049) — carried into the projection, not
+/// applied to its output by a caller: the CLI used to filter in its PROSE loop
+/// alone, so the `--json` wire answered every road under `--world <one>`.
 pub fn timeline_gaps_report(
     workspace_root: &Path,
     sidecar: Option<&AbsolutePath>,
     order_override: Option<&AbsolutePath>,
     rules_override: Option<&AbsolutePath>,
+    world: Option<&str>,
 ) -> Result<mnemosyne_validate::continuity::TimelineGapsReport, OpError> {
     let policy = continuity_policy(workspace_root)?;
     let decl = resolve_canon_order_file(&policy, order_override)?;
     let rules = resolve_narrative_rules(&policy, rules_override)?;
     let store = load_atomic_store(workspace_root, sidecar)?;
     let order = compose_canon_order(&decl, &store)?;
-    mnemosyne_validate::continuity::timeline_gaps(&store, &order, &rules.rules)
+    // Entry into the store vocabulary, once, for both wires.
+    let world = world.map(mnemosyne_core::BranchId::from);
+    mnemosyne_validate::continuity::timeline_gaps(&store, &order, &rules.rules, world.as_ref())
         .map_err(OpError::Other)
 }
 
