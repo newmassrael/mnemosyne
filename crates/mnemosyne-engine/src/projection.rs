@@ -153,9 +153,25 @@ impl PlayableProjection {
         let journal = overrides.journal_predicates();
         let PlayableWorldReport {
             telling,
+            world: read_under_filter,
             fork_tree,
             worlds,
         } = report;
+        // Round 1048 — A FILTERED READ IS NOT A WORLD. The projection below is
+        // keyed by world and is consumed as THE set of roads a runtime can walk;
+        // built from a `--world`-filtered report it would hold one road and look
+        // exactly like a store with one. `from_workspace` passes no filter, and
+        // the report now SAYS so, so the constructor can hold its caller to it
+        // instead of trusting the parameter list. The exhaustive destructuring
+        // above is what put the question here at all: it made the compiler ask
+        // what this constructor means by the new field.
+        if let Some(filter) = read_under_filter {
+            return Err(EngineError::Projection(format!(
+                "the playable-world read was filtered to world `{filter}`, and a \
+                 projection built from it would carry that one road as if it were \
+                 the whole world set"
+            )));
+        }
         // Every key and scalar here is `Cow::Owned` (Round 798): this constructor
         // derives the projection at run time from a store read, so it OWNS what it
         // builds — exactly as `Line::from_disclosed` does. The baked door is the
@@ -1555,6 +1571,34 @@ mod tests {
             d,
             Door::Ask { question, .. } if question.contains("FABRICATED")
         )));
+    }
+
+    /// Round 1048 — a projection may not be built from a `--world`-filtered
+    /// read. The report now says which road it was asked for, and the
+    /// constructor holds its callers to "no filter" instead of trusting them:
+    /// a filtered report carries ONE road, and a projection keyed by world
+    /// cannot be told apart from a store that has one.
+    ///
+    /// Written because the arm the exhaustive destructuring forced had no
+    /// caller that could reach it — an unexercised arm is a number printed and
+    /// not asserted (the R1036 rule about injections that never fire).
+    #[test]
+    fn a_projection_may_not_be_built_from_a_world_filtered_read() {
+        let mut filtered = name_report();
+        filtered.world = Some("main".into());
+        let err = PlayableProjection::from_report_and_passages(
+            filtered,
+            &anchored_ladder(None),
+            HashMap::new(),
+        )
+        .unwrap_err();
+        let EngineError::Projection(said) = err else {
+            panic!("a filtered read is a projection fault, not another kind");
+        };
+        assert!(
+            said.contains("filtered to world `main`"),
+            "the refusal names the road the read was narrowed to: {said}"
+        );
     }
 
     #[test]

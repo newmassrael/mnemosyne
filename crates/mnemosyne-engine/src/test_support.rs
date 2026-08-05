@@ -235,6 +235,11 @@ pub(crate) fn report_worlds(
         .collect();
     PlayableWorldReport {
         telling: "reader".into(),
+        // Round 1048 — an unfiltered read, which is what a projection may be
+        // built from: `MapProjection` rejects a filtered one, because a single
+        // road carried as the whole world set is indistinguishable from a store
+        // that has one.
+        world: None,
         fork_tree,
         worlds,
     }

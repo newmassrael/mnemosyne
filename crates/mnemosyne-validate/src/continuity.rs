@@ -6309,6 +6309,31 @@ pub struct WorldManuscript {
 /// defect detector).
 #[derive(Debug, Clone, Default, Serialize)]
 pub struct PlaythroughManuscriptReport {
+    /// THE TELLING THIS MANUSCRIPT WAS READ UNDER (Round 1048), `None` when
+    /// none was named — the argument that decided the `disclosure` column on
+    /// every begins-event below, so the answer says which question it answered.
+    ///
+    /// Never skipped when absent: a consumer reading `null` learns "no telling
+    /// was in play, and the disclosure column is missing for that reason",
+    /// which is a different fact from a key that is not there. This report is
+    /// the one [`playable_world`] embeds verbatim, and that sibling has named
+    /// its telling since R556 — three answers to one store (bare, and one per
+    /// declared telling) with nothing in the answer to tell them apart is the
+    /// R1042 shape: a consumer cannot distinguish "no answer" from "the answer
+    /// is none".
+    pub telling: Option<String>,
+    /// THE `--world` FILTER (Round 1048), `None` = every query world. The
+    /// `worlds` map below carries the roads that ANSWERED, which is not the
+    /// same datum: a one-road store answers one road unfiltered, and a filter
+    /// naming that road answers the same map. The filter is the question.
+    pub world: Option<String>,
+    /// WHETHER THE READING PRUNE RAN (Round 1048). `--reading-walk` drops every
+    /// scene that introduces no content, so it decides which scenes are here —
+    /// and no authored corpus can show that, because all 823 of their scenes
+    /// begin at least one fact. Recorded anyway: the argument shapes the answer
+    /// by construction, and leaving the field off would mean the surface is
+    /// honest only for as long as the corpus stays that way.
+    pub reading_walk: bool,
     pub worlds: BTreeMap<String, WorldManuscript>,
     pub facts: usize,
 }
@@ -6352,7 +6377,13 @@ pub fn playthrough_manuscript(
     };
     let facts = &store.narrative_facts;
     let successors = successors_index(facts);
+    // Round 1048 — the projection records its own arguments, here and nowhere
+    // else: `playable_world` and `quest_graph` embed this report and CARRY the
+    // two values up rather than reading the parameters a second time, so there
+    // is one write path for "which question was asked".
     let mut report = PlaythroughManuscriptReport {
+        telling: telling.map(ToString::to_string),
+        world: world.map(ToString::to_string),
         facts: facts.len(),
         ..Default::default()
     };
@@ -7128,6 +7159,10 @@ pub fn map_frontier(
 pub struct PlayableWorldReport {
     /// The telling whose disclosure plan resolved the locators.
     pub telling: String,
+    /// The `--world` filter (Round 1048), `None` = every query world — CARRIED
+    /// from the manuscript this report embeds, never re-read from the
+    /// parameter. `worlds` below is what answered; this is what was asked.
+    pub world: Option<String>,
     /// The cross-world choice graph (R497) — navigation context, always full
     /// even under a `world` filter (the topology is inherently cross-world).
     pub fork_tree: ForkTreeReport,
@@ -7153,6 +7188,10 @@ pub fn playable_world(
 ) -> Result<PlayableWorldReport, String> {
     let manuscript = playthrough_manuscript(store, order, world, Some(telling))?;
     let fork_tree = fork_tree(store, order)?;
+    // Round 1048 — the filter is CARRIED from the manuscript, not re-read from
+    // the parameter: one write path, so the two reports cannot come to disagree
+    // about which question this pair answered.
+    let asked_world = manuscript.world.clone();
     let mut worlds = BTreeMap::new();
     for (world_id, manuscript_world) in manuscript.worlds {
         // Owned-key index so the borrow ends before the manuscript moves into
@@ -7220,6 +7259,7 @@ pub fn playable_world(
     }
     Ok(PlayableWorldReport {
         telling: telling.to_string(),
+        world: asked_world,
         fork_tree,
         worlds,
     })
@@ -7865,6 +7905,10 @@ pub struct QuestNode {
 pub struct QuestGraphReport {
     /// The telling whose disclosure plan resolved the giver locators.
     pub telling: String,
+    /// The `--world` filter (Round 1048), `None` = every query world — CARRIED
+    /// from the playable world this report reuses verbatim, never re-read from
+    /// the parameter. `worlds` below is what answered; this is what was asked.
+    pub world: Option<String>,
     /// The cross-world choice graph (R497) — navigation context, always full
     /// even under a `world` filter (the topology is inherently cross-world).
     pub fork_tree: ForkTreeReport,
@@ -8146,7 +8190,12 @@ pub fn quest_graph(
     }
 
     Ok(QuestGraphReport {
-        telling: telling.to_string(),
+        // Round 1048 — both provenance fields are CARRIED from the playable
+        // world this report reuses verbatim (R558), never re-read from the
+        // parameters: one write path for "which question was asked", so the
+        // three reads of this pipeline cannot come to disagree about it.
+        telling: playable.telling,
+        world: playable.world,
         fork_tree: playable.fork_tree,
         worlds,
         quests,

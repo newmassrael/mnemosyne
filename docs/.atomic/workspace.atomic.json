@@ -3074,6 +3074,102 @@
         "Where R1044's figures came from is not recoverable. The worktree it measured its discarded emitter shape in is gone, so the explanation named here is the last one standing rather than one that was checked."
       ]
     },
+    "Round 1048": {
+      "decision_summary": "R1048 (BUILD) — the biggest pair in the Round 1040 backlog agrees exactly, and writing the check found that neither read could say which question it answered. STAR THE PAIR CAME FROM THE TOP OF THE PROGRAM'S LIST, NOT A SHORTLIST. The previous session left three candidates (32, 24, 13 subjects) and the walk's own ranking starts at 72: `report-playable-world <-> report-playthrough-manuscript`. No round recorded a reason for skipping the first five, and a hand shortlist over a derived population is the mistake this arc has now made in both directions. The pair agrees on all 18 road cells of every corpus that answers both, because the playable world does not re-derive the scene walk — it CALLS the manuscript projection and embeds the result verbatim (Round 558). The contract is a pin on ONE derivation staying one. STAR THE FIRST SWEEP READ AS 18 OF 18 CELLS DISAGREEING AND THE WALK WAS WHAT WAS WRONG. The difference was the `disclosure` column on every begins-event, present on one side and absent on the other, because the manuscript read makes `--telling` optional and answers happily bare. The two reads had not disagreed; they had been asked different questions, and NEITHER ANSWER SAID WHICH QUESTION IT WAS. One store, one verb, three different manuscripts (bare, and one per declared telling), with nothing in the JSON and nothing in the prose header to tell them apart. STAR SO THE UNIT OF WORK WAS WRONG AND THE PROGRAM WAS ASKED FOR THE POPULATION. Declaring the 24 remaining pairs one at a time asks \"do these two agree\" 24 times and never asks \"can either say what it was asked\", which is a property of ONE read and is derivable for the whole shipped surface at once. The derivation: every advertised verb, the flags on its own usage line, values only from each corpus's own vocabulary, asked twice — with the flag and without. Over 44 authored stores that is 23 (verb, flag) cells and 485 probes, with 72 further cells named as outside the walk (a file the corpus ships no second copy of, or `--json`, which every probe already passes). STAR THE RULE WAS THE REPOSITORY'S OWN BEFORE THIS ROUND MEASURED IT: EIGHT OF THE TWELVE ARGUMENTS THAT MOVE AN ANSWER'S SUBSTANCE ALREADY TRACKED. `report-frame-view` names all four of its, `report-entity` names its entity, the frontier and disclosure-coverage name their tellings. FOUR DID NOT, and all four were on the three narrative projections a runtime consumes: `report-playthrough-manuscript` `--telling` and `--world`, `report-playable-world --world`, `report-quest-graph --world`. STAR THE REPAIR CARRIES THE VALUE RATHER THAN RE-READING THE PARAMETER. The manuscript projection records `telling` and `world`; the playable world takes its filter FROM the manuscript it embeds; the quest graph takes both FROM the playable world it reuses. ONE write path, and the injections prove the chain: erasing the manuscript's record breaks three cells, the playable world's breaks two, the quest graph's breaks one. `None` is serialized rather than skipped, because a consumer reading `null` learns \"no telling was in play, and the disclosure column is missing for that reason\", which is a different fact from a key that is not there. STAR THE GATE'S FIRST CUT WAS CIRCULAR AND THIS ROUND SHIPPED THE DEFECT BEFORE CATCHING IT. Recording an argument makes two answers differ BY THAT RECORD, so `--reading-walk` flipped from inert to named the moment the field landed — a field that names itself satisfies \"the answer changed and the answer names it\". Substance is now judged with the tracking fields stripped, and a scalar like the manuscript's `facts` count stays in, so an argument that moved only it would still be measured. STAR AND THE ENGINE GOT A QUESTION IT HAD NEVER BEEN ASKED. `MapProjection` destructures the playable-world report exhaustively, so the new field made the compiler ask what a projection means by it — and the answer is that a `--world`-filtered read may not build one: it carries ONE road, and a projection keyed by world cannot be told apart from a store that has one. STAR `--reading-walk` IS INERT ON EVERY AUTHORED CORPUS AND THE TREE CARRIES THE CLASS INSTEAD: all 823 scenes of the 28 askable corpora begin at least one fact, so the reading prune removes nothing anywhere, and the gate is quiet for want of a corpus rather than for want of a hole.",
+      "changes_bullets": [
+        "`crates/mnemosyne-validate/src/continuity.rs`: the manuscript projection records the telling and the `--world` filter it was given; the playable world and the quest graph CARRY them from the projection they embed rather than re-reading the parameters, so one write path answers \"which question was asked\".",
+        "`crates/mnemosyne-ops/src/lib.rs`: the reading prune records that it ran, beside the prune; a tree fixture shows the class no authored corpus has (a scene that introduces no content) and pins that the two answers differ and each says which walk produced it.",
+        "`crates/mnemosyne-cli/src/main.rs`: one shared header clause for the three narrative projections — telling, road filter, and reading walk, with \"no filter\" spelled out rather than omitted.",
+        "`crates/mnemosyne-engine/src/projection.rs`: a projection may not be built from a `--world`-filtered read, with a test that reaches the arm the exhaustive destructuring forced.",
+        "`crates/mnemosyne-cli/tests/read_argument_provenance.rs`: NEW — the derived gate over the whole shipped read surface; substance is judged with the argument's own record stripped, so the rule cannot be satisfied by a field that names itself.",
+        "`crates/mnemosyne-cli/tests/manuscript_projection_agreement.rs`: NEW — the fifth declared cross-read agreement, on the backlog's largest pair."
+      ],
+      "verification_bullets": [
+        "Workspace 1761 tests green, clippy -D warnings clean, fmt clean, `validate-workspace` T1/T3 = 0.",
+        "Provenance census over 44 authored stores: 23 (verb, flag) cells, 485 probes, 72 cells outside the walk by named reason; 12 named, 11 inert, 0 unnamed. The pre-repair split is 8 named / 4 unnamed, established cell by cell by injections N1-N4 rather than by one run of the old tree.",
+        "The pair: 13 (store, telling) pairs answered both reads, 18 roads compared whole, 400 scenes, 1483 begins-events carrying a disclosure the telling decided; 0 disagreements. 16 corpora do not load (the R857 rot) and 18 declare no telling, counted by name.",
+        "8 revert injections, each over the WHOLE workspace with --no-fail-fast, all 8 fired. The carry chain is what they measure: erasing the manuscript's `world` record breaks three cells, the playable world's breaks two, the quest graph's breaks one.",
+        "N1 (the manuscript's telling) is the only one that breaks the pair contract as well, because that contract asks both reads unfiltered; the filtered half is the gate's.",
+        "N5 (the prose clause) breaks the prose test ALONE — every other contract in this series reads `--json`, which is what R1045 found leaves the human wire undefended.",
+        "N8 reverts this round's own circularity guard: comparing answers with the record left in turns `--reading-walk` from inert to named, and the gate goes red.",
+        "`--reading-walk` measured inert on every corpus: 823 of 823 scenes begin at least one fact."
+      ],
+      "carry_forward_bullets": [
+        "23 read pairs of the R1040 backlog remain undeclared. This round declared the largest and then argued the unit was wrong, which is a claim about where the next defect is, not a proof that pairwise declarations are finished.",
+        "The provenance gate cannot see a handler that IGNORES a bad value: its whole population is \"the answer moved\" versus \"it did not\", and silence is neither. That limit is the R1030 one, unchanged.",
+        "The location flags (--sidecar, --order, --rules, --catalog, --against) are 42 of the 72 excluded cells and no walk here can decide them, because a corpus ships one of each and pointing at another corpus's file is an invented argument. A fixture that ships a corpus TWO orders would close it.",
+        "`report-quest-graph --telling` reads INERT in substance on the three corpora that declare two tellings: the quest layer's data does not move with the telling there. Whether that is the telling being irrelevant to quests or those corpora not exercising it is not measured."
+      ],
+      "population_census": [
+        {
+          "axis": "transition rules by `undirected`",
+          "left_label": "undirected",
+          "left": 10,
+          "right_label": "directed",
+          "right": 27
+        },
+        {
+          "axis": "map corpora by leg-kind declaration",
+          "left_label": "omitted",
+          "left": 6,
+          "right_label": "declared",
+          "right": 24
+        },
+        {
+          "axis": "cost-carrying corpora by direction-dependent pricing",
+          "left_label": "prices a way by direction",
+          "left": 4,
+          "right_label": "prices no way by direction",
+          "right": 6
+        },
+        {
+          "axis": "run trees by authoring mode",
+          "left_label": "hand script",
+          "left": 10,
+          "right_label": "file-only",
+          "right": 239
+        },
+        {
+          "axis": "map corpora by declared boundary crossing",
+          "left_label": "declares an exit",
+          "left": 6,
+          "right_label": "declares none",
+          "right": 24
+        },
+        {
+          "axis": "authored submissions by map and telling",
+          "left_label": "carries both",
+          "left": 10,
+          "right_label": "carries one",
+          "right": 24
+        }
+      ],
+      "publishable_decision_summary": "R1048 (BUILD) — the biggest pair in the Round 1040 backlog agrees exactly, and writing the check found that neither read could say which question it answered. STAR THE PAIR CAME FROM THE TOP OF THE PROGRAM'S LIST, NOT A SHORTLIST. The previous session left three candidates (32, 24, 13 subjects) and the walk's own ranking starts at 72: `report-playable-world <-> report-playthrough-manuscript`. No round recorded a reason for skipping the first five, and a hand shortlist over a derived population is the mistake this arc has now made in both directions. The pair agrees on all 18 road cells of every corpus that answers both, because the playable world does not re-derive the scene walk — it CALLS the manuscript projection and embeds the result verbatim (Round 558). The contract is a pin on ONE derivation staying one. STAR THE FIRST SWEEP READ AS 18 OF 18 CELLS DISAGREEING AND THE WALK WAS WHAT WAS WRONG. The difference was the `disclosure` column on every begins-event, present on one side and absent on the other, because the manuscript read makes `--telling` optional and answers happily bare. The two reads had not disagreed; they had been asked different questions, and NEITHER ANSWER SAID WHICH QUESTION IT WAS. One store, one verb, three different manuscripts (bare, and one per declared telling), with nothing in the JSON and nothing in the prose header to tell them apart. STAR SO THE UNIT OF WORK WAS WRONG AND THE PROGRAM WAS ASKED FOR THE POPULATION. Declaring the 24 remaining pairs one at a time asks \"do these two agree\" 24 times and never asks \"can either say what it was asked\", which is a property of ONE read and is derivable for the whole shipped surface at once. The derivation: every advertised verb, the flags on its own usage line, values only from each corpus's own vocabulary, asked twice — with the flag and without. Over 44 authored stores that is 23 (verb, flag) cells and 485 probes, with 72 further cells named as outside the walk (a file the corpus ships no second copy of, or `--json`, which every probe already passes). STAR THE RULE WAS THE REPOSITORY'S OWN BEFORE THIS ROUND MEASURED IT: EIGHT OF THE TWELVE ARGUMENTS THAT MOVE AN ANSWER'S SUBSTANCE ALREADY TRACKED. `report-frame-view` names all four of its, `report-entity` names its entity, the frontier and disclosure-coverage name their tellings. FOUR DID NOT, and all four were on the three narrative projections a runtime consumes: `report-playthrough-manuscript` `--telling` and `--world`, `report-playable-world --world`, `report-quest-graph --world`. STAR THE REPAIR CARRIES THE VALUE RATHER THAN RE-READING THE PARAMETER. The manuscript projection records `telling` and `world`; the playable world takes its filter FROM the manuscript it embeds; the quest graph takes both FROM the playable world it reuses. ONE write path, and the injections prove the chain: erasing the manuscript's record breaks three cells, the playable world's breaks two, the quest graph's breaks one. `None` is serialized rather than skipped, because a consumer reading `null` learns \"no telling was in play, and the disclosure column is missing for that reason\", which is a different fact from a key that is not there. STAR THE GATE'S FIRST CUT WAS CIRCULAR AND THIS ROUND SHIPPED THE DEFECT BEFORE CATCHING IT. Recording an argument makes two answers differ BY THAT RECORD, so `--reading-walk` flipped from inert to named the moment the field landed — a field that names itself satisfies \"the answer changed and the answer names it\". Substance is now judged with the tracking fields stripped, and a scalar like the manuscript's `facts` count stays in, so an argument that moved only it would still be measured. STAR AND THE ENGINE GOT A QUESTION IT HAD NEVER BEEN ASKED. `MapProjection` destructures the playable-world report exhaustively, so the new field made the compiler ask what a projection means by it — and the answer is that a `--world`-filtered read may not build one: it carries ONE road, and a projection keyed by world cannot be told apart from a store that has one. STAR `--reading-walk` IS INERT ON EVERY AUTHORED CORPUS AND THE TREE CARRIES THE CLASS INSTEAD: all 823 scenes of the 28 askable corpora begin at least one fact, so the reading prune removes nothing anywhere, and the gate is quiet for want of a corpus rather than for want of a hole.",
+      "publishable_changes_bullets": [
+        "`crates/mnemosyne-validate/src/continuity.rs`: the manuscript projection records the telling and the `--world` filter it was given; the playable world and the quest graph CARRY them from the projection they embed rather than re-reading the parameters, so one write path answers \"which question was asked\".",
+        "`crates/mnemosyne-ops/src/lib.rs`: the reading prune records that it ran, beside the prune; a tree fixture shows the class no authored corpus has (a scene that introduces no content) and pins that the two answers differ and each says which walk produced it.",
+        "`crates/mnemosyne-cli/src/main.rs`: one shared header clause for the three narrative projections — telling, road filter, and reading walk, with \"no filter\" spelled out rather than omitted.",
+        "`crates/mnemosyne-engine/src/projection.rs`: a projection may not be built from a `--world`-filtered read, with a test that reaches the arm the exhaustive destructuring forced.",
+        "`crates/mnemosyne-cli/tests/read_argument_provenance.rs`: NEW — the derived gate over the whole shipped read surface; substance is judged with the argument's own record stripped, so the rule cannot be satisfied by a field that names itself.",
+        "`crates/mnemosyne-cli/tests/manuscript_projection_agreement.rs`: NEW — the fifth declared cross-read agreement, on the backlog's largest pair."
+      ],
+      "publishable_verification_bullets": [
+        "Workspace 1761 tests green, clippy -D warnings clean, fmt clean, `validate-workspace` T1/T3 = 0.",
+        "Provenance census over 44 authored stores: 23 (verb, flag) cells, 485 probes, 72 cells outside the walk by named reason; 12 named, 11 inert, 0 unnamed. The pre-repair split is 8 named / 4 unnamed, established cell by cell by injections N1-N4 rather than by one run of the old tree.",
+        "The pair: 13 (store, telling) pairs answered both reads, 18 roads compared whole, 400 scenes, 1483 begins-events carrying a disclosure the telling decided; 0 disagreements. 16 corpora do not load (the R857 rot) and 18 declare no telling, counted by name.",
+        "8 revert injections, each over the WHOLE workspace with --no-fail-fast, all 8 fired. The carry chain is what they measure: erasing the manuscript's `world` record breaks three cells, the playable world's breaks two, the quest graph's breaks one.",
+        "N1 (the manuscript's telling) is the only one that breaks the pair contract as well, because that contract asks both reads unfiltered; the filtered half is the gate's.",
+        "N5 (the prose clause) breaks the prose test ALONE — every other contract in this series reads `--json`, which is what R1045 found leaves the human wire undefended.",
+        "N8 reverts this round's own circularity guard: comparing answers with the record left in turns `--reading-walk` from inert to named, and the gate goes red.",
+        "`--reading-walk` measured inert on every corpus: 823 of 823 scenes begin at least one fact."
+      ],
+      "publishable_carry_forward_bullets": [
+        "23 read pairs of the R1040 backlog remain undeclared. This round declared the largest and then argued the unit was wrong, which is a claim about where the next defect is, not a proof that pairwise declarations are finished.",
+        "The provenance gate cannot see a handler that IGNORES a bad value: its whole population is \"the answer moved\" versus \"it did not\", and silence is neither. That limit is the R1030 one, unchanged.",
+        "The location flags (--sidecar, --order, --rules, --catalog, --against) are 42 of the 72 excluded cells and no walk here can decide them, because a corpus ships one of each and pointing at another corpus's file is an invented argument. A fixture that ships a corpus TWO orders would close it.",
+        "`report-quest-graph --telling` reads INERT in substance on the three corpora that declare two tellings: the quest layer's data does not move with the telling there. Whether that is the telling being irrelevant to quests or those corpora not exercising it is not measured."
+      ]
+    },
     "Round 252": {
       "decision_summary": "Parser CommonMark conformance — recognize indented fenced code blocks (§98) and require whitespace after ATX hash sequence (§62)",
       "changes_bullets": [

@@ -1598,6 +1598,11 @@ pub fn playthrough_manuscript_report(
     // convention). A deterministic, in-code prune replaces the orchestrator's
     // hand-made `.filtered` files (the harness debt R505 flagged), so the next
     // blind run produces per-world reading copies without manual surgery.
+    // Round 1048 — recorded where it is APPLIED. The projection never prunes,
+    // so `false` is the truth there; this is the one place the answer changes,
+    // and a consumer holding two manuscripts of one store has no other way to
+    // learn that one of them is missing its contentless scenes.
+    report.reading_walk = reading_walk;
     if reading_walk {
         for world in report.worlds.values_mut() {
             world.scenes.retain(|scene| !scene.begins.is_empty());
@@ -3002,6 +3007,73 @@ mod tests {
         let graph =
             quest_graph_report(root, None, None, None, "player").expect("a declared order answers");
         assert_eq!(graph.worlds, vec!["main".to_string()]);
+    }
+
+    /// Round 1048 — THE READING PRUNE CHANGES THE ANSWER, AND THE ANSWER SAYS
+    /// SO. `--reading-walk` drops every scene that introduces no content, so
+    /// two manuscripts of one store differ by which scenes are in them; the
+    /// report records the flag, because nothing else in the output distinguishes
+    /// "this store has no contentless scenes" from "they were pruned away".
+    ///
+    /// NO AUTHORED CORPUS CAN SHOW THIS. All 823 scenes across the 28 corpora
+    /// this tree can ask begin at least one fact, so the derived provenance gate
+    /// (`read_argument_provenance.rs`) reads the flag as INERT and demands
+    /// nothing — it is quiet for want of a corpus, not for want of a hole. The
+    /// tree shows the class instead, which is the R1045 discipline.
+    #[test]
+    fn the_reading_walk_prunes_contentless_scenes_and_the_report_says_it_did() {
+        let tmp = TempDir::new().unwrap();
+        let root = tmp.path();
+        std::fs::write(
+            root.join("mnemosyne.toml"),
+            "[workspace]\nroot = \".\"\n\n[atomic]\nsidecar_path = \"store.json\"\n\n\
+             [continuity]\ncanon_order_path = \"canon.json\"\nseverity = \"reject\"\n",
+        )
+        .unwrap();
+        // `sc-2` is on the road and introduces nothing — the scene the reading
+        // copy drops and the structural manuscript keeps.
+        std::fs::write(
+            root.join("canon.json"),
+            r#"{"edges":[["sc-1","sc-2"]],"branches":{}}"#,
+        )
+        .unwrap();
+        std::fs::write(
+            root.join("store.json"),
+            r#"{"schema_version":23,"sections":{"sc-1":{},"sc-2":{}},"frames":{"gt":{}},
+               "disclosure_plans":{"player":{"description":"d","overrides":{}}},
+               "narrative_facts":{"f-1":{"frame":"gt","claim":"c","canon_from":"sc-1","evidence":["sc-1"]}}}"#,
+        )
+        .unwrap();
+
+        let read = |reading_walk: bool| {
+            playthrough_manuscript_report(root, None, None, None, Some("player"), reading_walk)
+                .expect("a declared order answers")
+        };
+        let structural = read(false);
+        let reading = read(true);
+
+        let scenes = |report: &mnemosyne_validate::continuity::PlaythroughManuscriptReport| {
+            report.worlds["main"]
+                .scenes
+                .iter()
+                .map(|scene| scene.section.clone())
+                .collect::<Vec<_>>()
+        };
+        // NON-VACUITY FIRST: the prune must actually remove something here, or
+        // the provenance claim below rides on two identical answers.
+        assert_eq!(scenes(&structural), vec!["sc-1", "sc-2"]);
+        assert_eq!(scenes(&reading), vec!["sc-1"]);
+        assert_eq!(
+            (structural.reading_walk, reading.reading_walk),
+            (false, true),
+            "the two answers differ, so each has to say which walk produced it"
+        );
+        // And the other two provenance fields are unchanged by the prune —
+        // whichever walk ran, the telling and the road filter are what was asked.
+        for report in [&structural, &reading] {
+            assert_eq!(report.telling.as_deref(), Some("player"));
+            assert_eq!(report.world, None);
+        }
     }
 
     /// Round 667 — placement is its own axis, and the EMPTY unplaced section is

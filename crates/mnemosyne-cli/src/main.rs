@@ -3227,6 +3227,33 @@ fn confluence_fragment_note(world: &str) -> String {
     )
 }
 
+/// Round 1048 — WHAT THE PROJECTION WAS ASKED, for the header of every
+/// narrative-projection read. THE one formatter: the three reads of this
+/// pipeline (manuscript, playable world, quest graph) answer differently under
+/// different arguments, so each names them, and a second copy of this clause is
+/// how two of them would come to phrase the same datum differently.
+///
+/// On the PROSE wire, not only in `--json`: a contract that checks the report
+/// object leaves the line a person reads undefended, which is the shape R1045
+/// found when an injection stripped a clause from the human wire and the whole
+/// workspace stayed green.
+///
+/// `None` is spelled out rather than omitted. An absent clause and "no filter
+/// was named" are the same characters on a terminal, and telling them apart is
+/// the whole point of printing it.
+fn asked_clause(telling: Option<&str>, world: Option<&str>, reading_walk: Option<bool>) -> String {
+    let telling = telling.map_or_else(|| "(none)".to_string(), |t| format!("`{t}`"));
+    let world = world.map_or_else(|| "(every road)".to_string(), |w| format!("`{w}`"));
+    // `None` = the read has no such argument at all, which is not the same as
+    // having it and not being given it — so it prints nothing rather than `no`.
+    let walk = match reading_walk {
+        Some(true) => " — reading walk `yes`",
+        Some(false) => " — reading walk `no`",
+        None => "",
+    };
+    format!("telling {telling} — world {world}{walk}")
+}
+
 /// Round 432 — frame-at-T read projection (`report-frame-view`): the facts a
 /// frame holds at a canon point, over the SAME holds-semantics as the
 /// continuity gate (R390 single-predicate discipline). Read-only; order and
@@ -3909,7 +3936,12 @@ fn cmd_report_playthrough_manuscript(args: &[String]) -> Result<()> {
         return Ok(());
     }
     println!(
-        "=== playthrough manuscript — {} fact(s), {} world(s) ===",
+        "=== playthrough manuscript — {} — {} fact(s), {} world(s) ===",
+        asked_clause(
+            report.telling.as_deref(),
+            report.world.as_deref(),
+            Some(report.reading_walk),
+        ),
         report.facts,
         report.worlds.len()
     );
@@ -4121,8 +4153,8 @@ fn cmd_report_playable_world(args: &[String]) -> Result<()> {
         return Ok(());
     }
     println!(
-        "=== playable world — telling `{}` — {} world(s), {} registered branch(es) ===",
-        report.telling,
+        "=== playable world — {} — {} world(s), {} registered branch(es) ===",
+        asked_clause(Some(&report.telling), report.world.as_deref(), None),
         report.worlds.len(),
         report.fork_tree.branch_count
     );
@@ -4200,8 +4232,8 @@ fn cmd_report_quest_graph(args: &[String]) -> Result<()> {
         return Ok(());
     }
     println!(
-        "=== quest graph — telling `{}` — {} quest(s), {} world(s), {} registered branch(es) ===",
-        report.telling,
+        "=== quest graph — {} — {} quest(s), {} world(s), {} registered branch(es) ===",
+        asked_clause(Some(&report.telling), report.world.as_deref(), None),
         report.quests.len(),
         report.worlds.len(),
         report.fork_tree.branch_count
