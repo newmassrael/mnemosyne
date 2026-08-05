@@ -4254,10 +4254,19 @@ fn cmd_report_quest_graph(args: &[String]) -> Result<()> {
                 })
                 .collect::<Vec<_>>()
                 .join("; ");
-            if detail.is_empty() {
-                println!("    {world}: {}", state.state.as_str());
+            // R1045 — what this road still OWES, from the type. A road can read
+            // `done` and still owe one of the quest's givings (completed one of
+            // two ways), and the prose said only "done" — the R1037 shape, where
+            // the line stated less than the report held.
+            let owes = if state.outstanding_givings.is_empty() {
+                String::new()
             } else {
-                println!("    {world}: {} ({detail})", state.state.as_str());
+                format!(" — still owes {}", state.outstanding_givings.join(", "))
+            };
+            if detail.is_empty() {
+                println!("    {world}: {}{owes}", state.state.as_str());
+            } else {
+                println!("    {world}: {} ({detail}){owes}", state.state.as_str());
             }
         }
         for loc in &q.locators {

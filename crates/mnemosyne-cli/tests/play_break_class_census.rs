@@ -709,11 +709,19 @@ fn the_walk_says_what_stands_between_an_authoring_slip_and_the_runtime() {
             .collect::<Vec<_>>(),
         [
             "CANDIDATE report-payoff-coverage: `payoffs_to_unmarked` is always empty",
+            // R1045 — the walk picked the new field up on its own and refuted
+            // BOTH shapes of rule over it (n=16, min=0, max=1): a road that owes
+            // one of its quest's givings and a road that owes none are both
+            // authored, so `outstanding_givings` supports no gate. That is the
+            // answer this census exists to give, and it arrived without anyone
+            // adding the field to a list here.
+            "REFUTED report-quest-graph: `outstanding_givings` is always empty",
             "REFUTED report-payoff-coverage: `dangling` is never empty",
             "CANDIDATE report-quest-graph: `actors` is never empty",
             "REFUTED report-quest-graph: `completions` is never empty",
             "REFUTED report-quest-graph: `giving_facts` is never empty",
             "REFUTED report-quest-graph: `locators` is never empty",
+            "REFUTED report-quest-graph: `outstanding_givings` is never empty",
         ],
         "the rules the walk's own findings propose, put to the authored corpus"
     );

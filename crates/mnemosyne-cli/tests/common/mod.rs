@@ -264,16 +264,27 @@ pub fn read_sidecar(ws: &Path) -> serde_json::Value {
     read_json(&ws.join(SIDECAR))
 }
 
+/// Every telling the corpus declares — the only `--telling` arguments a walk
+/// may supply, since an id the corpus never declared is an invented argument.
+/// THE one definition; [`telling_of`] is this for a caller that needs exactly
+/// one and treats the ambiguity as a panic.
+pub fn declared_tellings(store: &AtomicStore) -> Vec<String> {
+    store
+        .disclosure_plans
+        .keys()
+        .map(ToString::to_string)
+        .collect()
+}
+
 /// The corpus's own telling, read from the store rather than named here — the
 /// walk supplies no argument the corpus did not declare.
 pub fn telling_of(store: &AtomicStore) -> String {
-    let mut plans = store.disclosure_plans.keys();
-    let telling = plans
+    let mut declared = declared_tellings(store).into_iter();
+    let telling = declared
         .next()
-        .expect("the corpus declares a disclosure plan")
-        .clone();
+        .expect("the corpus declares a disclosure plan");
     assert_eq!(
-        plans.next(),
+        declared.next(),
         None,
         "the corpus declares more than one telling, so `the` telling is no \
          longer derivable — the walk would have to choose, which is the \

@@ -206,6 +206,7 @@ fn main() {
                         QuestWorldPart {
                             state: mnemosyne_engine::QuestState::Unknown,
                             completions: Vec::new(),
+                            outstanding_givings: Vec::new(),
                         },
                     ),
                     (
@@ -224,6 +225,10 @@ fn main() {
                                     actor: None,
                                 },
                             ],
+                            // R1045 — done here AND still owing the other
+                            // route's giving, the one shape where the emitted
+                            // list is not empty under a Done.
+                            outstanding_givings: vec!["f-give-alt".to_string()],
                         },
                     ),
                 ],
@@ -239,6 +244,7 @@ fn main() {
                     QuestWorldPart {
                         state: mnemosyne_engine::QuestState::Open,
                         completions: Vec::new(),
+                        outstanding_givings: vec!["f-give-salt".to_string()],
                     },
                 )],
                 preconditions: Vec::new(),
@@ -702,6 +708,7 @@ fn quest_parts(n: usize) -> QuestProjectionParts {
                             scene: "sc-01".to_string(),
                             actor: None,
                         }],
+                        outstanding_givings: Vec::new(),
                     },
                 )],
                 preconditions: Vec::new(),

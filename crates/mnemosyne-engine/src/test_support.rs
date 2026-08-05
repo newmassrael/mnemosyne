@@ -178,7 +178,14 @@ pub(crate) fn quest_node(
         per_world: per_world
             .into_iter()
             .map(|(world, state, completions)| {
-                (world.to_string(), QuestWorldState { state, completions })
+                (
+                    world.to_string(),
+                    QuestWorldState {
+                        state,
+                        completions,
+                        outstanding_givings: Vec::new(),
+                    },
+                )
             })
             .collect(),
         ..Default::default()

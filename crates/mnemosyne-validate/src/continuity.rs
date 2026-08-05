@@ -7795,6 +7795,20 @@ pub struct QuestWorldState {
     /// R1037 — the quest's VISIBLE `completed_by` facts, not the subset of them
     /// that happens to credit a bound giving.
     pub completions: Vec<QuestCompletion>,
+    /// Which of the quest's `giving_facts` are DANGLING on this road (R442
+    /// coverage), sorted — the obligation still outstanding here.
+    ///
+    /// Round 1045. The state derivation below already intersects the quest's
+    /// givings with this road's dangling list and threw the answer away, keeping
+    /// one bit of it: `giving_facts` is a STORE-WIDE union over every completion
+    /// of the quest, so a consumer holding `state` plus that list cannot tell
+    /// which of the setups is the one outstanding HERE without re-deriving both
+    /// the R442 coverage and the R559 giving binding. It matters most where the
+    /// bit is discarded entirely — `done` is derived from a visible
+    /// `completed_by` (R1037) and consults coverage not at all, so a quest
+    /// completed by one route reads `done` while the OTHER route's giving still
+    /// dangles on the same road, and nothing in the read said so.
+    pub outstanding_givings: Vec<String>,
 }
 
 /// One quest in the graph (R559 design sec 7.38, R568 build): the narrative
@@ -8070,24 +8084,35 @@ pub fn quest_graph(
                     })
                     .collect();
                 let paid_here = !discharged_here.is_empty();
-                let mut dangling_here = false;
-                if let Some(c) = cov {
-                    for g in &q_givings {
-                        if c.dangling.iter().any(|d| d == g) {
-                            dangling_here = true;
-                        }
-                    }
-                }
+                // R1045 — the givings outstanding HERE, kept by name. This was a
+                // `bool` folded out of the same intersection, which left `done`
+                // silently covering a road that still owes one of the quest's
+                // setups (a quest completable two ways owes the other way's
+                // giving on the road it did not take).
+                let outstanding_givings: Vec<String> = cov.map_or_else(Vec::new, |c| {
+                    q_givings
+                        .iter()
+                        .filter(|g| c.dangling.contains(g))
+                        .cloned()
+                        .collect()
+                });
                 completions.sort_by(|a, b| a.fact.cmp(&b.fact));
                 completions.dedup();
                 let state = if paid_here {
                     QuestState::Done
-                } else if dangling_here {
+                } else if !outstanding_givings.is_empty() {
                     QuestState::Open
                 } else {
                     QuestState::Unknown
                 };
-                (w.clone(), QuestWorldState { state, completions })
+                (
+                    w.clone(),
+                    QuestWorldState {
+                        state,
+                        completions,
+                        outstanding_givings,
+                    },
+                )
             })
             .collect();
         // Giver-surface locators: the playable-world locators (R557, reused
@@ -16832,6 +16857,121 @@ mod tests {
             q.per_world.values().all(|s| s.state == QuestState::Done),
             "{:?}",
             q.per_world
+        );
+    }
+
+    /// Round 1045 — a quest completable TWO ways reads `done` on the road it was
+    /// completed on while the OTHER way's giving still dangles there, and until
+    /// this round the read said only "done".
+    ///
+    /// `done` is derived from a VISIBLE `completed_by` (R1037) and consults
+    /// coverage not at all, while `giving_facts` is a store-wide union over
+    /// every completion — so on `win` the quest is discharged by the `win`
+    /// route and the `lose` route's setup, authored pre-fork and paid only on
+    /// `lose`, is still an outstanding obligation. Two shipped reads then say
+    /// "this quest is finished here" and "this setup is unpaid here" about the
+    /// same road, and a consumer joining them reads a contradiction in a store
+    /// where nothing is wrong (the R1041 class).
+    ///
+    /// NO AUTHORED CORPUS SHOWS THIS — every quest in the one corpus that
+    /// declares quests is completed exactly one way, which is why the corpus
+    /// walk `quest_state_coverage_agreement` pins the class at 0 and points
+    /// here. The state derivation already computed this intersection and folded
+    /// it to a `bool`; `outstanding_givings` is that set kept.
+    #[test]
+    fn a_quest_is_done_where_its_other_giving_still_dangles() {
+        let give = |id: &str| FactImport {
+            payoff_expectation: Some("expected".to_string()),
+            ..fact(id, "gt", "ch-1", None)
+        };
+        let pursue = quest_fact(
+            "f-pursue",
+            "ch-1",
+            None,
+            &["hero", "q-two-ways"],
+            ent_claim("hero", "pursues", "q-two-ways"),
+            &[],
+        );
+        // Each road completes the quest its own way, paying off its own giving.
+        let complete_win = quest_fact(
+            "f-complete-win",
+            "ch-3",
+            Some("win"),
+            &["q-two-ways", "hero"],
+            ent_claim("q-two-ways", "completed_by", "hero"),
+            &["f-give-win"],
+        );
+        let complete_lose = quest_fact(
+            "f-complete-lose",
+            "ch-3",
+            Some("lose"),
+            &["q-two-ways", "rival"],
+            ent_claim("q-two-ways", "completed_by", "rival"),
+            &["f-give-lose"],
+        );
+        let mut store = store_with_forks(
+            vec![
+                give("f-give-win"),
+                give("f-give-lose"),
+                pursue,
+                complete_win,
+                complete_lose,
+            ],
+            &[("win", MAIN_BRANCH, "ch-2"), ("lose", MAIN_BRANCH, "ch-2")],
+        );
+        store
+            .entities
+            .get_mut(&"q-two-ways".into())
+            .unwrap()
+            .description = "Settle the debt, one way or the other".to_string();
+        store.disclosure_plans.insert(
+            "t1".to_string(),
+            mnemosyne_core::DisclosurePlan {
+                description: String::new(),
+                default_mode: mnemosyne_core::DisclosureMode::Withhold,
+                overrides: BTreeMap::new(),
+            },
+        );
+        let order = chain(&["ch-1", "ch-2", "ch-3", "ch-4"]);
+
+        // WHAT COVERAGE SAYS: on `win`, the `lose` route's giving is unpaid.
+        let coverage = payoff_coverage(&store, &order).unwrap();
+        assert_eq!(
+            coverage.worlds["win"].dangling,
+            vec!["f-give-lose".to_string()],
+            "the other route's setup is an outstanding obligation on `win`"
+        );
+
+        // WHAT THE QUEST GRAPH SAYS: finished on `win` — and now, WITH what the
+        // road still owes, so the two reads can be held to each other.
+        let report = quest_graph(&store, &order, None, "t1").unwrap();
+        let q = report
+            .quests
+            .iter()
+            .find(|q| q.quest_id == "q-two-ways")
+            .unwrap();
+        assert_eq!(
+            q.giving_facts,
+            vec!["f-give-lose".to_string(), "f-give-win".to_string()],
+            "the giving list is a store-wide union over both completions"
+        );
+        let win = &q.per_world["win"];
+        assert_eq!(win.state, QuestState::Done);
+        assert_eq!(
+            win.outstanding_givings,
+            vec!["f-give-lose".to_string()],
+            "done on this road AND still owing the other route's setup"
+        );
+        let lose = &q.per_world["lose"];
+        assert_eq!(lose.state, QuestState::Done);
+        assert_eq!(lose.outstanding_givings, vec!["f-give-win".to_string()]);
+        // Neither completion is visible on the trunk, so both givings dangle
+        // there and the quest is open — the arm the corpus does exercise.
+        let main = &q.per_world[MAIN_BRANCH];
+        assert_eq!(main.state, QuestState::Open);
+        assert_eq!(
+            main.outstanding_givings,
+            vec!["f-give-lose".to_string(), "f-give-win".to_string()]
         );
     }
 

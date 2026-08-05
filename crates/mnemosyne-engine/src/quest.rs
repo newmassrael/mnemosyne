@@ -60,6 +60,13 @@ pub struct QuestWorldView {
     pub state: QuestState,
     /// The completion beat(s) discharging the quest here; empty when open.
     pub completions: Vec<QuestCompletionView>,
+    /// The quest's giving setups still DANGLING on this road, sorted (R1045) —
+    /// the obligation outstanding here. Carried rather than dropped because a
+    /// runtime that had to recompute it would be re-deriving the R442 coverage
+    /// and the R559 giving binding, which is the computation this seam exists to
+    /// keep on the store side. Non-empty under `Done` is the road a quest was
+    /// completed one way on while the other way's setup still owes.
+    pub outstanding_givings: Vec<String>,
 }
 
 /// One quest as the kernel exposes it — read from the store's quest graph, so
@@ -237,6 +244,7 @@ impl QuestProjection {
                                 QuestWorldView {
                                     state: ws.state,
                                     completions,
+                                    outstanding_givings: ws.outstanding_givings,
                                 },
                             )
                         })
@@ -380,6 +388,8 @@ pub struct QuestWorldPart {
     pub state: QuestState,
     /// The completion beat(s) discharging the quest here; empty when open.
     pub completions: Vec<QuestCompletionPart>,
+    /// The quest's giving setups still dangling on this road, sorted (R1045).
+    pub outstanding_givings: Vec<String>,
 }
 
 /// A [`QuestView`] as plain data (Round 773).
@@ -458,6 +468,7 @@ impl QuestProjection {
                                             actor: c.actor.clone(),
                                         })
                                         .collect(),
+                                    outstanding_givings: wv.outstanding_givings.clone(),
                                 },
                             )
                         })
@@ -506,6 +517,7 @@ impl QuestProjection {
                                             actor: c.actor,
                                         })
                                         .collect(),
+                                    outstanding_givings: wp.outstanding_givings,
                                 },
                             )
                         })

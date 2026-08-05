@@ -682,11 +682,13 @@ fn quest(chunks: &mut Chunks, part: &QuestPart) -> String {
 
 fn quest_world(chunks: &mut Chunks, part: &QuestWorldPart) -> String {
     format!(
-        "::mnemosyne_engine::QuestWorldPart {{ state: {}, completions: {} }}",
+        "::mnemosyne_engine::QuestWorldPart {{ state: {}, completions: {}, \
+         outstanding_givings: {} }}",
         quest_state(part.state),
         chunked(chunks, QUEST_COMPLETION_TY, &part.completions, |_, c| {
             quest_completion(c)
         }),
+        inline_strings(&part.outstanding_givings),
     )
 }
 

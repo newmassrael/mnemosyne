@@ -968,6 +968,7 @@ mod tests {
                     QuestWorldPart {
                         state: QuestState::Open,
                         completions: Vec::new(),
+                        outstanding_givings: vec!["f-give-1".to_string()],
                     },
                 )],
                 preconditions: Vec::new(),
@@ -1141,6 +1142,7 @@ mod tests {
                             scene: "sc-01".to_string(),
                             actor: None,
                         }],
+                        outstanding_givings: Vec::new(),
                     },
                 )],
                 preconditions: Vec::new(),
