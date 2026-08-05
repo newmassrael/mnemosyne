@@ -39,7 +39,10 @@
 //! - `CARRIED` — every read exits 0 and nothing derived moves. A rendering
 //!   read reproduces the altered datum and no other read has an opinion.
 //!   THIS is the arc's floor: the store states the datum once, so there is no
-//!   second declaration for a gate to compare it against.
+//!   second declaration for a gate to compare it against. Round 1051 found the
+//!   floor was seven rows too high — a floor derived from a panel that could
+//!   not ask two of the shipped reads is a floor under the QUESTION, not under
+//!   the system.
 //! - `INERT` — no advertised read distinguishes it at all. The store holds a
 //!   datum no consumer can see.
 //!
@@ -300,6 +303,12 @@ fn the_walk_says_what_stands_between_an_authoring_slip_and_the_runtime() {
     // shipped, and this repository tracks forty-three of them. Each is built and
     // read the same way; a corpus that no longer loads is excluded by that
     // failure and named, never by a judgement about relevance.
+    // The panel is keyed by read-and-question (R1051); every verdict below is
+    // about the READ, so this maps back.
+    let verb_of: BTreeMap<String, &str> = panel
+        .iter()
+        .map(|read| (read.label(), read.verb.as_str()))
+        .collect();
     let mut baseline_lists: BTreeMap<(String, String), Vec<usize>> = BTreeMap::new();
     let mut refuters: Vec<String> = Vec::new();
     let mut unloadable: Vec<String> = Vec::new();
@@ -315,13 +324,21 @@ fn the_walk_says_what_stands_between_an_authoring_slip_and_the_runtime() {
     // stopped loading (the rot R857 found), so the tracked-corpus sweep excludes
     // it and every quest-bearing list went to n=0 — three refutations turned
     // into candidates because the population grew.
-    for (verb, answer) in &baseline.answers {
+    // Keyed by VERB, not by the panel's label: a rule is proposed as
+    // `(verb, field)` from the corruption side, and Round 1051 keyed this side
+    // by read-and-question for one run — the store under corruption then filed
+    // its evidence under `report-quest-graph --telling delve` while the rules
+    // looked for `report-quest-graph`, and five refutations became candidates
+    // with nothing red to say why. That is the exact failure the paragraph
+    // above describes, committed again by a change of key.
+    for (label, answer) in &baseline.answers {
         if let Answer::Json(json) = answer {
+            let verb = &verb_of[label];
             let mut per_read = BTreeMap::new();
             index_lists(json, None, &mut per_read);
             for (field, lens) in per_read {
                 baseline_lists
-                    .entry((verb.clone(), field))
+                    .entry(((*verb).to_string(), field))
                     .or_default()
                     .extend(lens);
             }
@@ -353,10 +370,20 @@ fn the_walk_says_what_stands_between_an_authoring_slip_and_the_runtime() {
         for read in &panel {
             let mut argv = vec![read.verb.as_str()];
             if !read.args.is_empty() {
-                let Some(telling) = its_telling.as_deref() else {
-                    continue;
-                };
-                argv.extend(["--telling", telling]);
+                // The panel's arguments come from the dnd-quest store's
+                // vocabulary and another corpus declares its own. The telling
+                // is the one this sweep can TRANSLATE; any other question is
+                // asked as it stands, and the corpus's own fail-loud decides
+                // whether it holds those ids — a refusal is skipped and shows
+                // up in the `answered` tally rather than being pre-judged here.
+                if read.args == [String::from("--telling"), telling.clone()] {
+                    let Some(mine) = its_telling.as_deref() else {
+                        continue;
+                    };
+                    argv.extend(["--telling", mine]);
+                } else {
+                    argv.extend(read.args.iter().map(String::as_str));
+                }
             }
             argv.push("--json");
             let out = run(ws.path(), &argv);
@@ -418,27 +445,32 @@ fn the_walk_says_what_stands_between_an_authoring_slip_and_the_runtime() {
                     let echo: BTreeSet<(&str, usize, usize)> =
                         store_paths.iter().map(Resize::signature).collect();
                     let mut growth: Vec<Resize> = Vec::new();
-                    let mut differing: Vec<&str> = Vec::new();
+                    // The panel is keyed by read-and-question (R1051), so one
+                    // verb can appear several times; a verb DIFFERS when any of
+                    // the questions it was asked answers differently, and it is
+                    // named once either way.
+                    let mut differed: BTreeSet<&str> = BTreeSet::new();
                     for read in &panel {
-                        match (&baseline.answers[&read.verb], &seen.answers[&read.verb]) {
+                        let label = read.label();
+                        match (&baseline.answers[&label], &seen.answers[&label]) {
                             (Answer::Json(before), Answer::Json(after)) => {
                                 if before == after {
                                     continue;
                                 }
-                                differing.push(read.verb.as_str());
+                                differed.insert(read.verb.as_str());
                                 resized(before, after, &read.verb, &mut growth);
                             }
                             (Answer::Prose(before), Answer::Prose(after)) => {
                                 if before != after {
-                                    differing.push(read.verb.as_str());
+                                    differed.insert(read.verb.as_str());
                                 }
                             }
                             _ => panic!(
-                                "`{}` answered in one shape at baseline and another here",
-                                read.verb
+                                "`{label}` answered in one shape at baseline and another here"
                             ),
                         }
                     }
+                    let differing: Vec<&str> = differed.into_iter().collect();
                     let derived: Vec<&Resize> = growth
                         .iter()
                         .filter(|r| !echo.contains(&r.signature()))
@@ -504,12 +536,16 @@ fn the_walk_says_what_stands_between_an_authoring_slip_and_the_runtime() {
     for (verb, reason) in &unaskable {
         println!("    skip {verb} :: {reason}");
     }
-    let prose_only: Vec<&str> = baseline
+    // Keyed by read-and-question since Round 1051, and this verdict is about
+    // the READ: a verb asked twice answers in prose under both, and naming it
+    // twice would read as two verbs.
+    let prose_only: BTreeSet<&str> = baseline
         .answers
         .iter()
         .filter(|(_, a)| matches!(a, Answer::Prose(_)))
-        .map(|(verb, _)| verb.as_str())
+        .map(|(label, _)| verb_of[label])
         .collect();
+    let prose_only: Vec<&str> = prose_only.into_iter().collect();
     println!(
         "    of those, {} answer `--json` in prose, so they hold no list and \
          cannot be asked whether they started saying something: {}",
@@ -578,20 +614,22 @@ fn the_walk_says_what_stands_between_an_authoring_slip_and_the_runtime() {
     );
 
     // The panel is the shipped surface, so a new verb has to be LOOKED AT
-    // rather than absorbed. The unaskable four are earned, not curated: each
-    // was asked at baseline and refused for a stated missing argument this
-    // corpus does not supply.
+    // rather than absorbed. The unaskable are earned, not curated: each was
+    // asked at baseline and refused for a stated missing argument this corpus
+    // does not supply.
+    //
+    // Round 1051 halved this list. `report-entity` and `report-frame-view` were
+    // here because the panel GUESSED a read's arguments in two shapes — nothing,
+    // or a telling — and both needed a third. Their arguments were in the store
+    // the whole time; the panel now reads each verb's own usage line and supplies
+    // every required flag from the corpus's vocabulary. What is left needs a
+    // FILE this corpus does not ship, which no vocabulary can supply.
     assert_eq!(
         unaskable
             .iter()
             .map(|(verb, _)| verb.as_str())
             .collect::<Vec<_>>(),
-        [
-            "report-entity",
-            "report-frame-view",
-            "validate-disclosure-leak",
-            "validate-render-fidelity",
-        ],
+        ["validate-disclosure-leak", "validate-render-fidelity"],
         "the reads this corpus cannot ask without inventing an argument"
     );
     assert_eq!(
@@ -618,8 +656,8 @@ fn the_walk_says_what_stands_between_an_authoring_slip_and_the_runtime() {
         census,
         BTreeMap::from([
             (Bucket::Caught, 6),
-            (Bucket::Reported, 19),
-            (Bucket::Carried, 16),
+            (Bucket::Reported, 26),
+            (Bucket::Carried, 9),
         ]),
         "the play-break census over the quest layer"
     );
@@ -627,35 +665,38 @@ fn the_walk_says_what_stands_between_an_authoring_slip_and_the_runtime() {
     // THE ANSWER TO ROUND 1033'S QUESTION, named rather than counted: the
     // corruptions for which no shipped read derives anything at all. Every
     // other row moves some classification the system already computes, so a
-    // gate would have a place to stand and the question is policy. These
-    // sixteen have no such place — a rendering read carries the altered datum
-    // and nothing else in the system has an opinion. Two legs, and the shape of
-    // both is that the store states the datum ONCE: a retargeted claim object
-    // is a different story rather than a broken one, and a dropped evidence
-    // backreference removes the only record that the link was ever claimed.
-    // This is the R476 ceiling — author content, not missing enforcement —
-    // showing up one layer down, and it is 16 of 41 rather than 33.
+    // gate would have a place to stand and the question is policy. These have
+    // no such place — a rendering read carries the altered datum and nothing
+    // else in the system has an opinion.
+    //
+    // ROUND 1051 CUT THIS LIST FROM SIXTEEN TO NINE, and the seven that left
+    // are the whole of one leg. `typed.object` retargets were called the arc's
+    // floor because "the store states the object once"; `report-entity` states
+    // it a SECOND time, per entity, and its `facts` count resizes on every one
+    // of them. That read was not in the panel — it needs an `--entity`, the
+    // panel guessed arguments in two shapes, and a read needing a third was
+    // recorded as an unaskable NUMBER. So seven rows of "no consumer can see
+    // this" meant "nobody asked the consumer that can".
+    //
+    // What remains is one leg, and its shape is the honest version of the old
+    // claim: a dropped `evidence` backreference removes the ONLY record that
+    // the link was ever claimed, so there is no second declaration anywhere to
+    // compare against. This is the R476 ceiling — author content rather than
+    // missing enforcement — showing up one layer down, and it is 9 of 41.
     assert_eq!(
         rows[&Bucket::Carried]
             .iter()
             .map(|row| row.split(" <-").next().expect("row head").to_string())
             .collect::<Vec<_>>(),
         [
-            "f-161/typed.object",
             "f-161/evidence",
             "f-180/evidence",
-            "f-305/typed.object",
             "f-305/evidence",
-            "f-316/typed.object",
             "f-316/evidence",
-            "f-404/typed.object",
             "f-404/evidence",
-            "f-409/typed.object",
             "f-409/evidence",
             "f-411/evidence",
-            "f-505/typed.object",
             "f-505/evidence",
-            "f-515/typed.object",
             "f-515/evidence",
         ],
         "the corruptions no shipped read derives anything from"
@@ -686,9 +727,15 @@ fn the_walk_says_what_stands_between_an_authoring_slip_and_the_runtime() {
     // pre-migration manifest. That is the rot Round 857 found, still live, and
     // it is counted here rather than mentioned: a corpus that stops loading
     // silently shrinks the evidence every rule in this list is judged against.
+    // Round 1051: `answers_total` rose 660 -> 672 because the panel holds 68
+    // QUESTIONS rather than 27 reads, and a verb that answers both bare and
+    // under a telling now contributes both to every corpus that can be asked
+    // them. Questions built from the dnd-quest store's own frames or entities
+    // are skipped here — only a telling can be translated to another corpus —
+    // and that skip is what this total counts.
     assert_eq!(
         (refuters.len(), unloadable.len(), answers_total),
-        (28, 16, 660),
+        (28, 16, 672),
         "the refuter population: authored corpora that load, those that no \
          longer do, and the (corpus, read) answers that actually reached the \
          index"

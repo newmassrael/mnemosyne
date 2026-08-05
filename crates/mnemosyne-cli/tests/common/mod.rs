@@ -324,6 +324,21 @@ impl Read {
         argv.push("--json");
         argv
     }
+
+    /// The read AND the question it was asked, as one key.
+    ///
+    /// A panel keyed by verb alone can hold a read at exactly ONE point of its
+    /// argument space, and Round 1051 measured what that costs: asked at a
+    /// single frame, `report-frame-view` mentioned 17 subjects and answered
+    /// about NONE of them, because the corruption population lives in a frame
+    /// the probe did not ask. The label is what lets one verb appear once per
+    /// question; callers that want a verdict about the READ aggregate over it.
+    pub fn label(&self) -> String {
+        if self.args.is_empty() {
+            return self.verb.clone();
+        }
+        format!("{} {}", self.verb, self.args.join(" "))
+    }
 }
 
 /// Every `report-*` / `validate-*` verb the shipped help advertises. Read from
@@ -453,17 +468,91 @@ pub fn values_for(flag: &str, store: &AtomicStore) -> Vec<String> {
     }
 }
 
-/// The argv every probe of a verb starts from: each REQUIRED flag at the first
-/// value this corpus declares. `None` when a required flag names something the
-/// corpus does not supply, which is a measurement about the corpus rather than
-/// a skip — the caller counts it by name.
-pub fn baseline_argv(flags: &[Flag], store: &AtomicStore) -> Option<Vec<String>> {
+/// One road as the shipped manuscript reads it.
+pub struct RoadLine {
+    /// The scenes this road plays through, in order.
+    pub scenes: BTreeSet<String>,
+    /// The last of them — where the road has all of its history behind it.
+    pub end: String,
+}
+
+/// Each road's playthrough, read from the shipped manuscript.
+///
+/// This is the ORACLE FOR THE CANON AXIS, and it reaches what the fork tree
+/// cannot: a fork inherits its parent's history only UP TO the fork point, and
+/// the parent's later scenes are exactly the ones the child's manuscript does
+/// not play. So "which scenes are on this road" is the departure bound, stated
+/// by a read rather than recomputed from the membership lattice.
+///
+/// A road whose manuscript holds no scene has no end and is returned by its
+/// absence, counted by the caller.
+pub fn road_lines(ws: &Path) -> BTreeMap<String, RoadLine> {
+    let mut out = BTreeMap::new();
+    let out_bytes = run(ws, &["report-playthrough-manuscript", "--json"]);
+    if !out_bytes.status.success() {
+        return out;
+    }
+    let Ok(manuscript) = serde_json::from_slice::<serde_json::Value>(&out_bytes.stdout) else {
+        return out;
+    };
+    for (road, world) in manuscript["worlds"].as_object().into_iter().flatten() {
+        let scenes: Vec<String> = world["scenes"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(|scene| scene["section"].as_str().map(ToString::to_string))
+            .collect();
+        let Some(end) = scenes.last().cloned() else {
+            continue;
+        };
+        out.insert(
+            road.clone(),
+            RoadLine {
+                scenes: scenes.into_iter().collect(),
+                end,
+            },
+        );
+    }
+    out
+}
+
+/// The argv every probe of a verb starts from: each REQUIRED flag at a value
+/// this corpus declares. `None` when a required flag names something the corpus
+/// does not supply, which is a measurement about the corpus rather than a skip —
+/// the caller counts it by name.
+///
+/// A required flag whose vocabulary IS the section registry is a CANON
+/// COORDINATE and takes the END of the default road rather than the first
+/// section id (Round 1051). The two are not interchangeable: the first section
+/// is where the story STARTS, and a view asked there holds almost nothing, so a
+/// read probed at it answers about a fraction of the subjects it can answer
+/// about. The end of the road is where the store has all of its history behind
+/// it. If the manuscript cannot say where a road ends — no declared order — the
+/// first section is the honest fallback and the caller sees the same `Some` it
+/// always did.
+pub fn baseline_argv(flags: &[Flag], store: &AtomicStore, ws: &Path) -> Option<Vec<String>> {
+    let sections = values_for("--at", store);
     let mut base: Vec<String> = Vec::new();
+    let mut default_end: Option<Option<String>> = None;
     for flag in flags.iter().filter(|f| f.required) {
-        match values_for(&flag.name, store).first() {
-            Some(first) if flag.takes_value => {
+        let values = values_for(&flag.name, store);
+        let canon_coordinate = flag.takes_value && !sections.is_empty() && values == sections;
+        let chosen = if canon_coordinate {
+            let end = default_end
+                .get_or_insert_with(|| {
+                    road_lines(ws)
+                        .get(mnemosyne_core::MAIN_BRANCH)
+                        .map(|line| line.end.clone())
+                })
+                .clone();
+            end.or_else(|| values.first().cloned())
+        } else {
+            values.first().cloned()
+        };
+        match chosen {
+            Some(value) if flag.takes_value => {
                 base.push(flag.name.clone());
-                base.push(first.clone());
+                base.push(value);
             }
             // A required flag with no value this corpus declares (a file path,
             // an id it does not hold).
@@ -679,19 +768,90 @@ pub fn substance(answer: &serde_json::Value, record: &BTreeSet<String>) -> serde
     }
 }
 
-/// Ask every advertised read at BASELINE, bare first and then with the corpus's
-/// own telling. A read that still refuses needs an argument this corpus does
-/// not supply; it is excluded BY THAT MEASUREMENT, and its refusal is returned
-/// to be printed rather than curated away.
+/// Every argv of a verb's REQUIRED arguments the corpus can supply: the
+/// cartesian product of each required flag's vocabulary, with a section-valued
+/// flag pinned to the canon coordinate [`baseline_argv`] chooses.
+///
+/// One argv per read is a SAMPLE of its argument space, and Round 1051 measured
+/// the cost of sampling: `report-frame-view` asked at one frame mentions 17
+/// subjects and answers about NONE, because the corruption population lives in
+/// a frame that probe did not ask. A read whose argument selects WHICH facts it
+/// can see needs every value the corpus declares, or the census reads "this
+/// read answers about nothing" when the truth is "nobody asked it".
+///
+/// The canon coordinate is deliberately NOT swept: it is a point in the story
+/// rather than a choice of subject matter, sweeping it multiplies the panel by
+/// every section, and the end of the road is where the store has all of its
+/// history behind it (the R1050 rule).
+pub fn required_argvs(flags: &[Flag], store: &AtomicStore, ws: &Path) -> Vec<Vec<String>> {
+    let Some(base) = baseline_argv(flags, store, ws) else {
+        return Vec::new();
+    };
+    let sections = values_for("--at", store);
+    let mut out = vec![base];
+    for flag in flags.iter().filter(|f| f.required && f.takes_value) {
+        let values = values_for(&flag.name, store);
+        if values.len() < 2 || (!sections.is_empty() && values == sections) {
+            continue;
+        }
+        out = out
+            .iter()
+            .flat_map(|argv| {
+                values.iter().map(|value| {
+                    let mut next = argv.clone();
+                    // The baseline already carries this flag once, at the first
+                    // value; replace that value rather than appending a second.
+                    if let Some(at) = next.iter().position(|token| *token == flag.name) {
+                        next[at + 1] = value.clone();
+                    }
+                    next
+                })
+            })
+            .collect();
+    }
+    out.sort();
+    out.dedup();
+    out
+}
+
+/// Ask every advertised read at BASELINE: bare, then with the corpus's own
+/// telling, then with EVERY REQUIRED ARGUMENT the corpus can supply. A read that
+/// still refuses needs an argument this corpus does not have; it is excluded BY
+/// THAT MEASUREMENT, and its refusal is returned to be printed rather than
+/// curated away.
+///
+/// Round 1051 added the third candidate, and it is not a convenience. The first
+/// two are a GUESS about what a read needs — "nothing" or "a telling" — and a
+/// read needing anything else was reported as an unaskable COUNT, so the four
+/// reads that need a frame, a canon coordinate or an entity sat outside every
+/// population this panel derives, including the read-agreement backlog. The
+/// derivation is the same one the coordinate contract uses: each required flag
+/// from the verb's own usage line, at a value read out of the store, with a
+/// section-valued flag treated as a canon coordinate ([`baseline_argv`]). A verb
+/// that grows a required argument is covered the run it ships.
 pub fn panel(ws: &Path, telling: &str) -> (Vec<Read>, Vec<(String, String)>) {
     let mut asked = Vec::new();
     let mut unaskable = Vec::new();
+    let store = AtomicStore::load(&ws.join(SIDECAR)).ok();
+    let usage_of = usage_lines(ws);
     for verb in advertised_reads(ws) {
-        let candidates = [
+        let mut candidates = vec![
             Vec::new(),
             vec!["--telling".to_string(), telling.to_string()],
         ];
-        let mut refusal = None;
+        if let (Some(store), Some(usage)) = (store.as_ref(), usage_of.get(&verb)) {
+            candidates.extend(required_argvs(&flags_of(usage), store, ws));
+        }
+        candidates.sort();
+        candidates.dedup();
+        // EVERY argv the corpus can supply and the read accepts, not the first
+        // one that works. Stopping at the first is what kept a swept read down
+        // to one question, and one question is what made `report-frame-view`
+        // answer about nothing (Round 1051). Two questions to one verb are two
+        // different questions — that is the R1048 finding, and the panel now
+        // holds both rather than choosing.
+        let mut refusals: Vec<String> = Vec::new();
+        let mut answered = false;
         for args in candidates {
             let read = Read {
                 verb: verb.clone(),
@@ -700,19 +860,23 @@ pub fn panel(ws: &Path, telling: &str) -> (Vec<Read>, Vec<(String, String)>) {
             let out = run(ws, &read.argv());
             if out.status.success() {
                 asked.push(read);
-                refusal = None;
-                break;
+                answered = true;
+                continue;
             }
-            refusal.get_or_insert_with(|| {
-                String::from_utf8_lossy(&out.stderr)
-                    .lines()
-                    .next()
-                    .unwrap_or("(no stderr)")
-                    .to_string()
-            });
+            let reason = String::from_utf8_lossy(&out.stderr)
+                .lines()
+                .next()
+                .unwrap_or("(no stderr)")
+                .to_string();
+            if !refusals.contains(&reason) {
+                refusals.push(reason);
+            }
         }
-        if let Some(reason) = refusal {
-            unaskable.push((verb, reason));
+        if !answered {
+            // Every distinct refusal, not the first: the first is the BARE
+            // attempt, which says "--telling arg required" even when the panel
+            // went on to supply one and the read refused for another reason.
+            unaskable.push((verb, refusals.join(" | ")));
         }
     }
     (asked, unaskable)
@@ -737,7 +901,8 @@ impl Answer {
     }
 }
 
-/// What every advertised read said about one store.
+/// What every advertised read said about one store, keyed by [`Read::label`] —
+/// the read AND the question, since one verb can be asked several.
 pub struct Panelled {
     pub failed: Vec<String>,
     pub answers: BTreeMap<String, Answer>,
@@ -749,9 +914,9 @@ pub fn ask_panel(ws: &Path, panel: &[Read]) -> Panelled {
     for read in panel {
         let out = run(ws, &read.argv());
         if out.status.success() {
-            answers.insert(read.verb.clone(), Answer::read(out.stdout));
+            answers.insert(read.label(), Answer::read(out.stdout));
         } else {
-            failed.push(read.verb.clone());
+            failed.push(read.label());
         }
     }
     Panelled { failed, answers }

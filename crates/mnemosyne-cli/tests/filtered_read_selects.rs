@@ -260,7 +260,7 @@ fn a_road_filter_answers_what_the_unfiltered_read_already_said() {
             if filters.is_empty() {
                 continue;
             }
-            let Some(base) = baseline_argv(&flags, &atomic) else {
+            let Some(base) = baseline_argv(&flags, &atomic, ws) else {
                 *unprobed
                     .entry("a required flag has no value this corpus declares")
                     .or_default() += 1;

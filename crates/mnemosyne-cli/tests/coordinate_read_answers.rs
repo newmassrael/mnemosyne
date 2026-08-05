@@ -75,8 +75,8 @@ use serde_json::Value;
 mod common;
 use common::{
     advertised_reads, answer_is_keyed_by_road, authored_stores, baseline_argv,
-    corpus_workspace_try, flags_of, record_of, road_filters, run, substance, usage_lines,
-    values_for, Flag, SIDECAR,
+    corpus_workspace_try, flags_of, record_of, road_filters, road_lines, run, substance,
+    usage_lines, values_for, Flag, SIDECAR,
 };
 
 /// Ask a read and hand back its JSON, or `None` when it refuses.
@@ -201,53 +201,6 @@ fn fork_tree_topology(ws: &Path, roads: &[String]) -> Topology {
         divergences,
         disagreements,
     }
-}
-
-/// One road as the shipped manuscript reads it.
-struct RoadLine {
-    /// The scenes this road plays through, in order.
-    scenes: BTreeSet<String>,
-    /// The last of them — where the road has all of its history behind it.
-    end: String,
-}
-
-/// Each road's playthrough, read from the shipped manuscript.
-///
-/// This is the walk's second oracle and it reaches the axis the fork tree
-/// cannot: a fork inherits its parent's history only UP TO the fork point, and
-/// the parent's later scenes are exactly the ones the child's manuscript does
-/// not play. So "which scenes are on this road" is the departure bound, stated
-/// by a read rather than recomputed from the membership lattice.
-///
-/// A road whose manuscript holds no scene has no end and is returned by its
-/// absence, counted by the caller.
-fn road_lines(ws: &Path) -> BTreeMap<String, RoadLine> {
-    let mut out = BTreeMap::new();
-    let Some(manuscript) = ask(
-        ws,
-        &["report-playthrough-manuscript".into(), "--json".into()],
-    ) else {
-        return out;
-    };
-    for (road, world) in manuscript["worlds"].as_object().into_iter().flatten() {
-        let scenes: Vec<String> = world["scenes"]
-            .as_array()
-            .into_iter()
-            .flatten()
-            .filter_map(|scene| scene["section"].as_str().map(ToString::to_string))
-            .collect();
-        let Some(end) = scenes.last().cloned() else {
-            continue;
-        };
-        out.insert(
-            road.clone(),
-            RoadLine {
-                scenes: scenes.into_iter().collect(),
-                end,
-            },
-        );
-    }
-    out
 }
 
 /// Every registered fact id this answer names, anywhere in it.
@@ -513,7 +466,7 @@ fn a_coordinate_read_answers_at_the_lineage_of_the_road_it_is_given() {
                 if filter.required {
                     continue;
                 }
-                let Some(base) = baseline_argv(&flags, &atomic) else {
+                let Some(base) = baseline_argv(&flags, &atomic, ws) else {
                     *unprobed
                         .entry("a required argument has no value this corpus declares")
                         .or_default() += 1;

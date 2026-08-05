@@ -3372,6 +3372,100 @@
         "Facts starting off their road are 0 today, and a non-zero count would not be automatically a defect: a start the declared order cannot COMPARE to a bound is honestly `unknown` rather than absent, and the row would then have to split by the read's undecidable arm, which no corpus currently produces."
       ]
     },
+    "Round 1051": {
+      "decision_summary": "R1051 (BUILD) — the population every read-agreement claim rests on was derived from a panel that GUESSED what each read needs, and the guess was wrong about two reads and about every read it could ask. STAR THE DEBT. The panel asked each advertised verb bare, then with the corpus's telling, and whatever still refused became an unaskable COUNT — not a name. Four reads sat behind that number, outside the subject census, outside the backlog that says which pair to compare next, outside the play-break class census. Round 1050 closed the coordinate read by supplying its arguments from the corpus's own vocabulary, which measured the reason those four were excluded: not structural, removable. STAR THE FIX IS THE SAME DERIVATION, MOVED INTO THE PANEL. Each verb's own usage line gives its required flags, the store gives their values, and a section-valued flag is a CANON COORDINATE that takes the end of the default road rather than the first section id — the story's start, where a view holds almost nothing. Reads asked 27 to 29, unaskable 4 to 2, and the two that remain need a FILE this corpus does not ship, which no vocabulary can supply. They are printed by name now: an exclusion nobody can read is an exclusion nobody removes. STAR AND ONE QUESTION PER READ WAS ITS OWN DEFECT, MEASURED. The panel kept the FIRST argv a read accepted. Asked at one frame, `report-frame-view` mentioned 17 subjects and answered about NONE — the corruption population lives in a frame that probe did not ask. The panel now holds every argv the corpus can supply and the read accepts: 29 reads over 66 QUESTIONS, and that read answers about 26 subjects. Two questions to one verb are two different questions, which is R1048's finding applied to the asking side instead of the answering side. STAR THE ARC'S FLOOR WAS SEVEN ROWS TOO HIGH. The play-break census called CARRIED \"the arc's floor: the store states the datum once, so there is no second declaration for a gate to compare against\", and pinned it at 16 of 41 over two legs. It is now 9, and the seven that left are the WHOLE of one leg: every `typed.object` retarget is reported by `report-entity`, whose `facts` count resizes on each — the read that states the object a second time, per entity. It was not in the panel because it needs an `--entity`. So seven rows of \"no consumer can see this\" meant \"nobody asked the consumer that can\", and what remains is one leg whose shape is the honest version of the old claim: a dropped `evidence` backreference removes the only record the link was ever claimed. The backlog grew 28 pairs to 45. STAR THIS ROUND SHIPPED A DEFECT INTO THE REFUTER AND THE PINS CAUGHT IT. Keying the panel's answers by read-and-question sent the store-under-corruption's own evidence into the rule index under `report-quest-graph --telling delve` while rules are proposed as `(verb, field)` — five rules flipped from REFUTED to CANDIDATE with nothing else red. The paragraph directly above that loop warns about this exact class, which Round 1036 found by aiming an injection at it: a corpus whose evidence stops reaching the refuter turns refutations into candidates silently. It was a change of KEY rather than a change of population, and the pinned rule list is what said so.",
+      "changes_bullets": [
+        "`crates/mnemosyne-cli/tests/common/mod.rs`: the panel derives each read's arguments from its own usage line and the store's vocabulary instead of guessing two shapes, keeps EVERY argv a read accepts rather than the first, and reports every distinct refusal for a read it cannot ask at all.",
+        "`crates/mnemosyne-cli/tests/common/mod.rs`: `baseline_argv` treats a section-valued required flag as a canon coordinate and gives it the end of the default road; `required_argvs` sweeps the other required flags over the corpus's vocabulary; `Read::label` keys the panel by read-AND-question; `road_lines` moves here from the coordinate contract, now that two walks need it.",
+        "`crates/mnemosyne-cli/tests/read_agreement_population.rs`: names the unaskable reads instead of counting them, aggregates each verdict over the questions one verb was asked, and re-pins the backlog at 45 pairs.",
+        "`crates/mnemosyne-cli/tests/play_break_class_census.rs`: aggregates per verb over the panel's labels, keeps the refuter index keyed by VERB (a label there silently unrefutes five rules), and re-pins the census — CARRIED 16 to 9, REPORTED 19 to 26."
+      ],
+      "verification_bullets": [
+        "Workspace 1764 tests green, clippy -D warnings clean, fmt clean, `validate-workspace` T1/T3 = 0.",
+        "The read panel over the authored dnd-quest store: 29 reads asked over 66 QUESTIONS (was 27 reads over 27), 2 unaskable (was 4) and both now printed by name with every distinct refusal — each needs `--against <file>`, which no corpus vocabulary can supply.",
+        "`report-entity` enters the census at 215 subjects mentioned / 49 answered about, and `report-frame-view` at 131 / 26. Asked at ONE question, that second read measured 17 / 0: it mentions subjects and answers about none, because the corruption population lives in a frame the single probe did not ask.",
+        "The read-agreement backlog: 28 pairs to 45, every new pair involving one of the two reads that were an unaskable count. 79 of 98 subjects are answered about by more than one read.",
+        "The play-break class census: CAUGHT 6 unchanged, REPORTED 19 to 26, CARRIED 16 to 9. The seven rows that moved are exactly the seven `typed.object` retargets, and every one of them is reported by `report-entity` ALONE — checked by filtering the REPORTED rows for those whose resizes name no other read.",
+        "The refuter's evidence total 660 to 672, its corpora 28 and its unloadable 16 unchanged, and the five rules the authored corpora refute are unchanged — which is what says the population grew without the refuter losing evidence.",
+        "5 revert injections, each over the WHOLE workspace with --no-fail-fast, all 5 fired. J1 (the panel guesses two shapes again) and J2 (it keeps only the first question a read accepts) redden BOTH walks; J3 (the argument sweep collapses to one argv) and J4 (the canon coordinate goes back to the first section id) redden the agreement population; J5 keys the refuter index by the panel's label again — the defect this round shipped for one run — and reddens the class census alone."
+      ],
+      "carry_forward_bullets": [
+        "The backlog is 45 pairs and 40 of them are undeclared. It grew by 17 this round, all of them involving the two reads the panel could not previously ask.",
+        "The two reads still unaskable both need `--against <file>`, a second store to compare against. No corpus ships one, and a fixture that did would make them askable — that is undone work, not a limit of the derivation.",
+        "The refuter sweep can only TRANSLATE one argument to another corpus, its telling. A question built from the dnd-quest store's frames or entities is asked as it stands and refused by the other corpus's fail-loud, so those corpora refute rules with a smaller question set than the panel holds.",
+        "The canon coordinate is deliberately not swept: one point per road rather than every section. A read that is right at the road's end and wrong midway is judged by the coordinate contract (Round 1050), not here.",
+        "`report-entity` and `report-frame-view` are now in the population and no pair contract has been declared for either — they enter the backlog at ranks 4 and 10.",
+        "The corruption loop now asks 66 questions per corruption instead of 27 reads, which is the runtime this population costs."
+      ],
+      "population_census": [
+        {
+          "axis": "transition rules by `undirected`",
+          "left_label": "undirected",
+          "left": 10,
+          "right_label": "directed",
+          "right": 27
+        },
+        {
+          "axis": "map corpora by leg-kind declaration",
+          "left_label": "omitted",
+          "left": 6,
+          "right_label": "declared",
+          "right": 24
+        },
+        {
+          "axis": "cost-carrying corpora by direction-dependent pricing",
+          "left_label": "prices a way by direction",
+          "left": 4,
+          "right_label": "prices no way by direction",
+          "right": 6
+        },
+        {
+          "axis": "run trees by authoring mode",
+          "left_label": "hand script",
+          "left": 10,
+          "right_label": "file-only",
+          "right": 239
+        },
+        {
+          "axis": "map corpora by declared boundary crossing",
+          "left_label": "declares an exit",
+          "left": 6,
+          "right_label": "declares none",
+          "right": 24
+        },
+        {
+          "axis": "authored submissions by map and telling",
+          "left_label": "carries both",
+          "left": 10,
+          "right_label": "carries one",
+          "right": 24
+        }
+      ],
+      "publishable_decision_summary": "R1051 (BUILD) — the population every read-agreement claim rests on was derived from a panel that GUESSED what each read needs, and the guess was wrong about two reads and about every read it could ask. STAR THE DEBT. The panel asked each advertised verb bare, then with the corpus's telling, and whatever still refused became an unaskable COUNT — not a name. Four reads sat behind that number, outside the subject census, outside the backlog that says which pair to compare next, outside the play-break class census. Round 1050 closed the coordinate read by supplying its arguments from the corpus's own vocabulary, which measured the reason those four were excluded: not structural, removable. STAR THE FIX IS THE SAME DERIVATION, MOVED INTO THE PANEL. Each verb's own usage line gives its required flags, the store gives their values, and a section-valued flag is a CANON COORDINATE that takes the end of the default road rather than the first section id — the story's start, where a view holds almost nothing. Reads asked 27 to 29, unaskable 4 to 2, and the two that remain need a FILE this corpus does not ship, which no vocabulary can supply. They are printed by name now: an exclusion nobody can read is an exclusion nobody removes. STAR AND ONE QUESTION PER READ WAS ITS OWN DEFECT, MEASURED. The panel kept the FIRST argv a read accepted. Asked at one frame, `report-frame-view` mentioned 17 subjects and answered about NONE — the corruption population lives in a frame that probe did not ask. The panel now holds every argv the corpus can supply and the read accepts: 29 reads over 66 QUESTIONS, and that read answers about 26 subjects. Two questions to one verb are two different questions, which is R1048's finding applied to the asking side instead of the answering side. STAR THE ARC'S FLOOR WAS SEVEN ROWS TOO HIGH. The play-break census called CARRIED \"the arc's floor: the store states the datum once, so there is no second declaration for a gate to compare against\", and pinned it at 16 of 41 over two legs. It is now 9, and the seven that left are the WHOLE of one leg: every `typed.object` retarget is reported by `report-entity`, whose `facts` count resizes on each — the read that states the object a second time, per entity. It was not in the panel because it needs an `--entity`. So seven rows of \"no consumer can see this\" meant \"nobody asked the consumer that can\", and what remains is one leg whose shape is the honest version of the old claim: a dropped `evidence` backreference removes the only record the link was ever claimed. The backlog grew 28 pairs to 45. STAR THIS ROUND SHIPPED A DEFECT INTO THE REFUTER AND THE PINS CAUGHT IT. Keying the panel's answers by read-and-question sent the store-under-corruption's own evidence into the rule index under `report-quest-graph --telling delve` while rules are proposed as `(verb, field)` — five rules flipped from REFUTED to CANDIDATE with nothing else red. The paragraph directly above that loop warns about this exact class, which Round 1036 found by aiming an injection at it: a corpus whose evidence stops reaching the refuter turns refutations into candidates silently. It was a change of KEY rather than a change of population, and the pinned rule list is what said so.",
+      "publishable_changes_bullets": [
+        "`crates/mnemosyne-cli/tests/common/mod.rs`: the panel derives each read's arguments from its own usage line and the store's vocabulary instead of guessing two shapes, keeps EVERY argv a read accepts rather than the first, and reports every distinct refusal for a read it cannot ask at all.",
+        "`crates/mnemosyne-cli/tests/common/mod.rs`: `baseline_argv` treats a section-valued required flag as a canon coordinate and gives it the end of the default road; `required_argvs` sweeps the other required flags over the corpus's vocabulary; `Read::label` keys the panel by read-AND-question; `road_lines` moves here from the coordinate contract, now that two walks need it.",
+        "`crates/mnemosyne-cli/tests/read_agreement_population.rs`: names the unaskable reads instead of counting them, aggregates each verdict over the questions one verb was asked, and re-pins the backlog at 45 pairs.",
+        "`crates/mnemosyne-cli/tests/play_break_class_census.rs`: aggregates per verb over the panel's labels, keeps the refuter index keyed by VERB (a label there silently unrefutes five rules), and re-pins the census — CARRIED 16 to 9, REPORTED 19 to 26."
+      ],
+      "publishable_verification_bullets": [
+        "Workspace 1764 tests green, clippy -D warnings clean, fmt clean, `validate-workspace` T1/T3 = 0.",
+        "The read panel over the authored dnd-quest store: 29 reads asked over 66 QUESTIONS (was 27 reads over 27), 2 unaskable (was 4) and both now printed by name with every distinct refusal — each needs `--against <file>`, which no corpus vocabulary can supply.",
+        "`report-entity` enters the census at 215 subjects mentioned / 49 answered about, and `report-frame-view` at 131 / 26. Asked at ONE question, that second read measured 17 / 0: it mentions subjects and answers about none, because the corruption population lives in a frame the single probe did not ask.",
+        "The read-agreement backlog: 28 pairs to 45, every new pair involving one of the two reads that were an unaskable count. 79 of 98 subjects are answered about by more than one read.",
+        "The play-break class census: CAUGHT 6 unchanged, REPORTED 19 to 26, CARRIED 16 to 9. The seven rows that moved are exactly the seven `typed.object` retargets, and every one of them is reported by `report-entity` ALONE — checked by filtering the REPORTED rows for those whose resizes name no other read.",
+        "The refuter's evidence total 660 to 672, its corpora 28 and its unloadable 16 unchanged, and the five rules the authored corpora refute are unchanged — which is what says the population grew without the refuter losing evidence.",
+        "5 revert injections, each over the WHOLE workspace with --no-fail-fast, all 5 fired. J1 (the panel guesses two shapes again) and J2 (it keeps only the first question a read accepts) redden BOTH walks; J3 (the argument sweep collapses to one argv) and J4 (the canon coordinate goes back to the first section id) redden the agreement population; J5 keys the refuter index by the panel's label again — the defect this round shipped for one run — and reddens the class census alone."
+      ],
+      "publishable_carry_forward_bullets": [
+        "The backlog is 45 pairs and 40 of them are undeclared. It grew by 17 this round, all of them involving the two reads the panel could not previously ask.",
+        "The two reads still unaskable both need `--against <file>`, a second store to compare against. No corpus ships one, and a fixture that did would make them askable — that is undone work, not a limit of the derivation.",
+        "The refuter sweep can only TRANSLATE one argument to another corpus, its telling. A question built from the dnd-quest store's frames or entities is asked as it stands and refused by the other corpus's fail-loud, so those corpora refute rules with a smaller question set than the panel holds.",
+        "The canon coordinate is deliberately not swept: one point per road rather than every section. A read that is right at the road's end and wrong midway is judged by the coordinate contract (Round 1050), not here.",
+        "`report-entity` and `report-frame-view` are now in the population and no pair contract has been declared for either — they enter the backlog at ranks 4 and 10.",
+        "The corruption loop now asks 66 questions per corruption instead of 27 reads, which is the runtime this population costs."
+      ]
+    },
     "Round 252": {
       "decision_summary": "Parser CommonMark conformance — recognize indented fenced code blocks (§98) and require whitespace after ATX hash sequence (§62)",
       "changes_bullets": [

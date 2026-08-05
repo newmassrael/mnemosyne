@@ -133,7 +133,7 @@ fn every_argument_that_decides_an_answer_is_named_in_the_answer() {
             // The baseline argv: every REQUIRED flag at its first value. A verb
             // whose required flag this corpus cannot supply is unaskable here,
             // which is a measurement about the corpus, not a skip.
-            let Some(base) = baseline_argv(&flags, &atomic) else {
+            let Some(base) = baseline_argv(&flags, &atomic, ws) else {
                 *unprobed
                     .entry("a required flag has no value this corpus declares")
                     .or_default() += 1;
@@ -378,7 +378,7 @@ fn the_prose_header_says_what_the_projection_was_asked() {
             if !has("--world") {
                 continue;
             }
-            let Some(base) = baseline_argv(&flags, &atomic) else {
+            let Some(base) = baseline_argv(&flags, &atomic, ws) else {
                 continue;
             };
             let header = |extra: &[&str]| -> Option<String> {

@@ -123,17 +123,28 @@ fn panel_records(
 /// The pairs of shipped reads that both ANSWER ABOUT a subject — both of their
 /// records for it move under some authorable edit. Most-shared first; this is
 /// the backlog, and R1037's hand-picked pair sits inside it.
-const BACKLOG: [&str; 28] = [
+const BACKLOG: [&str; 45] = [
     "72 report-playable-world <-> report-playthrough-manuscript",
-    "53 report-authoring-frontier <-> report-playable-world",
-    "53 report-authoring-frontier <-> report-playthrough-manuscript",
+    "57 report-authoring-frontier <-> report-playable-world",
+    "57 report-authoring-frontier <-> report-playthrough-manuscript",
+    "49 report-entity <-> report-playable-world",
+    "49 report-entity <-> report-playthrough-manuscript",
+    "47 report-edge-candidates <-> report-entity",
     "47 report-edge-candidates <-> report-playable-world",
     "47 report-edge-candidates <-> report-playthrough-manuscript",
+    "35 report-authoring-frontier <-> report-edge-candidates",
+    "34 report-authoring-frontier <-> report-entity",
     "32 report-edge-candidates <-> report-quest-graph",
-    "31 report-authoring-frontier <-> report-edge-candidates",
+    "29 report-entity <-> report-quest-graph",
     "29 report-playable-world <-> report-quest-graph",
     "29 report-playthrough-manuscript <-> report-quest-graph",
-    "24 report-authoring-frontier <-> report-quest-graph",
+    "28 report-authoring-frontier <-> report-quest-graph",
+    "25 report-edge-candidates <-> report-frame-view",
+    "25 report-entity <-> report-frame-view",
+    "25 report-frame-view <-> report-playable-world",
+    "25 report-frame-view <-> report-playthrough-manuscript",
+    "18 report-authoring-frontier <-> report-frame-view",
+    "15 report-frame-view <-> report-quest-graph",
     "13 report-authoring-frontier <-> report-payoff-coverage",
     "12 report-edge-candidates <-> report-payoff-coverage",
     "12 report-edge-candidates <-> report-payoff-substantiation",
@@ -141,7 +152,11 @@ const BACKLOG: [&str; 28] = [
     "10 report-authoring-frontier <-> report-payoff-substantiation",
     "10 report-payoff-coverage <-> report-quest-graph",
     "10 report-payoff-substantiation <-> report-quest-graph",
+    "9 report-authoring-frontier <-> validate-continuity",
     "9 report-edge-candidates <-> validate-continuity",
+    "9 report-entity <-> report-payoff-coverage",
+    "9 report-entity <-> report-payoff-substantiation",
+    "9 report-entity <-> validate-continuity",
     "9 report-payoff-coverage <-> report-playable-world",
     "9 report-payoff-coverage <-> report-playthrough-manuscript",
     "9 report-payoff-substantiation <-> report-playable-world",
@@ -149,7 +164,9 @@ const BACKLOG: [&str; 28] = [
     "9 report-playable-world <-> validate-continuity",
     "9 report-playthrough-manuscript <-> validate-continuity",
     "9 report-quest-graph <-> validate-continuity",
-    "7 report-authoring-frontier <-> validate-continuity",
+    "4 report-frame-view <-> validate-continuity",
+    "3 report-frame-view <-> report-payoff-coverage",
+    "3 report-frame-view <-> report-payoff-substantiation",
     "3 report-payoff-coverage <-> validate-continuity",
     "3 report-payoff-substantiation <-> validate-continuity",
 ];
@@ -169,12 +186,30 @@ fn the_population_of_subjects_more_than_one_shipped_read_answers_about() {
         baseline.failed
     );
     let baseline_records = panel_records(&baseline.answers, &subjects);
-    let prose_only: Vec<&str> = baseline
+    // The panel is keyed by read-and-question since Round 1051 — one verb can
+    // be asked several. Every verdict below is about the READ, so the label
+    // maps back to it and the answers a verb gave to its several questions are
+    // unioned: a read ANSWERS ABOUT a subject when SOME question it can be
+    // asked moves its record.
+    let verb_of: BTreeMap<String, String> = panel
+        .iter()
+        .map(|read| (read.label(), read.verb.clone()))
+        .collect();
+    let prose_only: BTreeSet<&str> = baseline
         .answers
         .iter()
         .filter(|(_, a)| matches!(a, Answer::Prose(_)))
-        .map(|(verb, _)| verb.as_str())
+        .map(|(label, _)| verb_of[label].as_str())
         .collect();
+    let prose_only: Vec<&str> = prose_only.into_iter().collect();
+    // read -> every subject any of its questions MENTIONED at baseline.
+    let mut mentioned: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
+    for (label, per_read) in &baseline_records {
+        mentioned
+            .entry(verb_of[label].clone())
+            .or_default()
+            .extend(per_read.keys().cloned());
+    }
 
     // read -> the subjects whose record it MOVED for, over the whole derived
     // corruption population. Moving is what separates answering from rendering.
@@ -205,14 +240,14 @@ fn the_population_of_subjects_more_than_one_shipped_read_answers_about() {
         applied += 1;
         let seen = ask_panel(mutated_ws.path(), &panel);
         let seen_records = panel_records(&seen.answers, &subjects);
-        for (verb, before) in &baseline_records {
-            let after = seen_records.get(verb);
+        for (label, before) in &baseline_records {
+            let after = seen_records.get(label);
             for subject in &subjects {
                 let was = before.get(subject);
                 let now = after.and_then(|per_read| per_read.get(subject));
                 if was != now {
                     responsive
-                        .entry(verb.clone())
+                        .entry(verb_of[label].clone())
                         .or_default()
                         .insert(subject.clone());
                 }
@@ -255,21 +290,30 @@ fn the_population_of_subjects_more_than_one_shipped_read_answers_about() {
     // first-violation stop would report one line of it (the R1026 lesson).
     println!(
         "{} registered subjects; {} corruptions applied, {} refused by the write \
-         path; {} reads asked, {} answering `--json` in prose ({}), {} unaskable\n",
+         path; {} reads asked over {} questions, {} answering `--json` in prose \
+         ({}), {} UNASKABLE:\n",
         subjects.len(),
         applied,
         refused,
+        mentioned.len(),
         baseline_records.len(),
         prose_only.len(),
         prose_only.join(" "),
         unaskable.len(),
     );
+    // NAMED, not counted. Round 1051: this line printed a bare count, and the
+    // four reads behind it were outside every population this walk derives —
+    // including the backlog that says which pair to compare next. An exclusion
+    // nobody can read is an exclusion nobody removes (the R1029 rule).
+    for (verb, reason) in &unaskable {
+        println!("  UNASKABLE {verb}: {reason}");
+    }
     println!("per read: subjects MENTIONED at baseline / ANSWERED ABOUT (record moved):");
-    for (verb, per_read) in &baseline_records {
+    for (verb, subjects_seen) in &mentioned {
         println!(
             "  {:38} {:4} / {:4}",
             verb,
-            per_read.len(),
+            subjects_seen.len(),
             responsive.get(verb).map_or(0, BTreeSet::len),
         );
     }
@@ -310,9 +354,18 @@ fn the_population_of_subjects_more_than_one_shipped_read_answers_about() {
          than finding the right pair for the wrong reason",
     );
     check(
-        (subjects.len(), baseline_records.len(), prose_only.len()) == (220, 27, 1),
-        "INPUTS: 220 registered ids, 27 reads holding records, 1 answering \
-         `--json` in prose",
+        (
+            subjects.len(),
+            mentioned.len(),
+            baseline_records.len(),
+            prose_only.len(),
+        ) == (220, 29, 66, 1),
+        "INPUTS: 220 registered ids, 29 reads holding records over 66 \
+         QUESTIONS, 1 answering `--json` in prose. Round 1051: the panel used \
+         to guess a read's arguments in two shapes — nothing, or a telling — so \
+         two reads were counted as an unaskable NUMBER and never entered any \
+         population here, and every swept read was asked at ONE point of its \
+         argument space",
     );
     check(
         (applied, refused) == (41, 0),
