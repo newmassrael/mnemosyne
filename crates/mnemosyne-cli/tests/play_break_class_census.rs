@@ -763,6 +763,14 @@ fn the_walk_says_what_stands_between_an_authoring_slip_and_the_runtime() {
             // answer this census exists to give, and it arrived without anyone
             // adding the field to a list here.
             "REFUTED report-quest-graph: `outstanding_givings` is always empty",
+            // R1053 — the frontier's per-scene structural subset became a LIST
+            // of fact ids rather than a count, and the walk picked the new field
+            // up on its own and put a rule over it to the authored corpus, which
+            // refused: most scenes carry no quest plumbing at all. Nobody added
+            // it here. A field that crosses the emptiness boundary is a rule
+            // proposal, and this is what it costs to widen a wire — the census
+            // says so in the same run rather than in a later round's review.
+            "REFUTED report-authoring-frontier: `structural` is never empty",
             "REFUTED report-payoff-coverage: `dangling` is never empty",
             "CANDIDATE report-quest-graph: `actors` is never empty",
             "REFUTED report-quest-graph: `completions` is never empty",

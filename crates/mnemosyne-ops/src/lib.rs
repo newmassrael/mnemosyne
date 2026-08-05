@@ -971,18 +971,30 @@ pub fn propose_verdict(
     })
 }
 
-/// One scene's fact coverage (Round 589) — how many facts are anchored (via
-/// their `canon_from`) at this section. `structural` (Round 618, MNEMO-GAP-005
-/// part 3a) is the DERIVED subset of `fact_count` that is quest plumbing
-/// (`structural_fact_ids`): a coverage read subtracts it so bookkeeping does not
-/// inflate "how much narrative a scene carries". Canon-vs-invented is NOT split
-/// here — it is per-branch adaptation-fidelity kept consumer-side (decision C);
-/// a consumer that wants it combines this with the facts' `branch`.
+/// One scene's fact coverage (Round 589) — WHICH facts are anchored (via their
+/// `canon_from`) at this section, sorted. `structural` (Round 618,
+/// MNEMO-GAP-005 part 3a) is the DERIVED subset of `facts` that is quest
+/// plumbing (`structural_fact_ids`): a coverage read subtracts it so bookkeeping
+/// does not inflate "how much narrative a scene carries". Canon-vs-invented is
+/// NOT split here — it is per-branch adaptation-fidelity kept consumer-side
+/// (decision C); a consumer that wants it combines this with the facts' `branch`.
+///
+/// BOTH WERE COUNTS UNTIL ROUND 1053, and a count cannot say WHICH fact it
+/// counted. Round 1052 declared this read's census against the playable world —
+/// every fact counted at a scene is named there — and could only ever check it
+/// as a per-scene `≤` plus an equal total, which is an equality of NUMBERS: two
+/// facts trading the coordinates they are anchored at left every number where it
+/// was, and (measured, not argued) left the WHOLE report byte-identical while
+/// the playable world plainly walked a reader through the difference. The same
+/// shape had just been met on `not_holding` (R1050), so it is a class. No
+/// contract over a count could have closed it; the wire had to name what it
+/// counts. The count is `facts.len()` — kept nowhere, so it cannot drift from
+/// the list it summarizes.
 #[derive(Debug, Clone, Serialize)]
 pub struct SceneCoverage {
     pub scene: String,
-    pub fact_count: usize,
-    pub structural: usize,
+    pub facts: Vec<String>,
+    pub structural: Vec<String>,
 }
 
 /// Per-world-line ownership density (Round 617, denominator corrected Round 619)
@@ -1075,11 +1087,16 @@ pub struct AuthoringFrontierReport {
     /// little is visible. Pure read, never gated. See [`BranchDensity`].
     pub branch_owned_density: BTreeMap<String, BranchDensity>,
     /// The derived STRUCTURAL (quest-plumbing) fact ids (Round 619,
-    /// `structural_fact_ids`), sorted — the same set `scene_coverage.structural`
-    /// counts, exposed flat so a consumer can JOIN it to each fact's `branch`
-    /// (retiring an external id-prefix heuristic) rather than only seeing a
-    /// per-scene aggregate. Canon-vs-invented is NOT here (consumer-side,
+    /// `structural_fact_ids`), sorted — the union of `scene_coverage.structural`
+    /// over every scene, exposed flat so a consumer can JOIN it to each fact's
+    /// `branch` (retiring an external id-prefix heuristic) rather than walking
+    /// the census for it. Canon-vs-invented is NOT here (consumer-side,
     /// decision C).
+    ///
+    /// It was the flat set BESIDE a per-scene aggregate until Round 1053, when
+    /// the census began naming what it counts; the two are now the same ids
+    /// keyed two ways, and a structural fact anchored at a section this store
+    /// does not register is the one thing here the census cannot hold.
     pub structural_facts: Vec<String>,
     /// Dangling setups per world-line (Expected facts with no visible payoff,
     /// R442) — the Chekhov guns still to fire. Only worlds with ≥ 1 dangling.
@@ -1175,36 +1192,35 @@ pub fn authoring_frontier_report(
     // consumer-side, decision C).
     let structural_ids =
         mnemosyne_validate::continuity::structural_fact_ids(&store).map_err(OpError::Other)?;
-    let mut counts: BTreeMap<String, usize> = store
-        .sections
-        .keys()
-        .map(|s| (s.to_string(), 0usize))
-        .collect();
-    let mut structural_counts: BTreeMap<String, usize> = store
-        .sections
-        .keys()
-        .map(|s| (s.to_string(), 0usize))
-        .collect();
+    let empty_scene = || -> BTreeMap<String, Vec<String>> {
+        store
+            .sections
+            .keys()
+            .map(|s| (s.to_string(), Vec::new()))
+            .collect()
+    };
+    let mut anchored = empty_scene();
+    let mut structural_at = empty_scene();
     for (fid, fact) in &store.narrative_facts {
-        if let Some(c) = counts.get_mut(fact.canon_from.as_str()) {
-            *c += 1;
+        if let Some(at) = anchored.get_mut(fact.canon_from.as_str()) {
+            at.push(fid.to_string());
         }
         if structural_ids.contains(fid.as_str()) {
-            if let Some(c) = structural_counts.get_mut(fact.canon_from.as_str()) {
-                *c += 1;
+            if let Some(at) = structural_at.get_mut(fact.canon_from.as_str()) {
+                at.push(fid.to_string());
             }
         }
     }
-    let zero_fact_scenes: Vec<String> = counts
+    let zero_fact_scenes: Vec<String> = anchored
         .iter()
-        .filter(|(_, n)| **n == 0)
+        .filter(|(_, facts)| facts.is_empty())
         .map(|(s, _)| s.clone())
         .collect();
     // Placement (Round 667), the ONE resolver: every section the order does not
     // position, content-independent. The projection below is its consumer, so a
     // section's placement is decided in exactly one place.
     let ordered: BTreeSet<&mnemosyne_core::SectionId> = order.nodes().collect();
-    let unplaced_scenes: Vec<String> = counts
+    let unplaced_scenes: Vec<String> = anchored
         .keys()
         .filter(|scene| !ordered.contains(&mnemosyne_core::SectionId::from(scene.as_str())))
         .cloned()
@@ -1218,16 +1234,16 @@ pub fn authoring_frontier_report(
     // excludes the empty ones — they have nothing to render yet.
     let unordered_scenes: Vec<String> = unplaced_scenes
         .iter()
-        .filter(|scene| counts.get(scene.as_str()).is_some_and(|n| *n > 0))
+        .filter(|scene| anchored.get(scene.as_str()).is_some_and(|f| !f.is_empty()))
         .cloned()
         .collect();
-    let scene_coverage: Vec<SceneCoverage> = counts
+    let scene_coverage: Vec<SceneCoverage> = anchored
         .into_iter()
-        .map(|(scene, fact_count)| {
-            let structural = structural_counts.get(&scene).copied().unwrap_or(0);
+        .map(|(scene, facts)| {
+            let structural = structural_at.remove(&scene).unwrap_or_default();
             SceneCoverage {
                 scene,
-                fact_count,
+                facts,
                 structural,
             }
         })
@@ -2802,13 +2818,16 @@ mod tests {
         let ws = narrative_ws("reject");
         let r = authoring_frontier_report(ws.path(), None, None, None, None).unwrap();
         assert_eq!(r.zero_fact_scenes, vec!["sc-2".to_string()]);
-        let counts: std::collections::BTreeMap<_, _> = r
+        let census: std::collections::BTreeMap<_, _> = r
             .scene_coverage
             .iter()
-            .map(|s| (s.scene.as_str(), s.fact_count))
+            .map(|s| (s.scene.as_str(), s.facts.clone()))
             .collect();
-        assert_eq!(counts["sc-1"], 1);
-        assert_eq!(counts["sc-2"], 0);
+        // NAMED, not counted (Round 1053): `1` here would hold for a census that
+        // credited the fact to the wrong scene, which is what shipped until that
+        // round and what nothing could have caught.
+        assert_eq!(census["sc-1"], vec!["f-1".to_string()]);
+        assert!(census["sc-2"].is_empty());
         // The canon order (canon.json edges sc-1 -> sc-2) covers the fact-bearing
         // sc-1, so nothing is unordered (Round 596).
         assert!(r.unordered_scenes.is_empty());

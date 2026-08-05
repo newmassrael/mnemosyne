@@ -7311,9 +7311,14 @@ pub fn playable_world(
 /// marker was a second signal that could silently disagree — it silently
 /// tolerated an actor mis-typed into a quest slot, where [`quest_ids`] fails
 /// loud (R676 removed the marker; the three predicates are the sole signal).
-pub(crate) const QUEST_PRED_PURSUES: &str = "pursues";
-pub(crate) const QUEST_PRED_REQUIRES: &str = "requires";
-pub(crate) const QUEST_PRED_COMPLETED_BY: &str = "completed_by";
+/// Public since Round 1053: the frontier/playable-world contract joins the
+/// census's structural subset against the typed legs the playable world hands a
+/// runtime, and a contract that RESTATED these three strings would be a second
+/// copy of the vocabulary — free to drift from the one the validator enforces,
+/// which is the exact failure R676 removed the quest marker to prevent.
+pub const QUEST_PRED_PURSUES: &str = "pursues";
+pub const QUEST_PRED_REQUIRES: &str = "requires";
+pub const QUEST_PRED_COMPLETED_BY: &str = "completed_by";
 
 /// The DERIVED quest set + a fail-loud role-conflict check (R676) — the ONE
 /// definition of "what is a quest" both [`quest_graph`] and [`quest_giving_setups`]
@@ -7762,7 +7767,8 @@ pub fn quest_prerequisite_judgements(
 /// ([`quest_giving_setups`], the shared definition `quest_graph` also uses). It
 /// is the non-narrative bookkeeping a coverage read subtracts, so quest plumbing
 /// does not inflate "how much narrative content a scene carries" (Round 589's
-/// `scene_coverage` counted every fact as one).
+/// `scene_coverage` holds every fact at a scene alike — as a count until Round
+/// 1053, by name since — and this set is the subset it marks out).
 ///
 /// A DERIVED read over existing axes (typed legs + payoff edges), never a stored
 /// classifier: MNEMO-GAP-005 verified this reproduces the consumer's id-prefix

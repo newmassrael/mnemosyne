@@ -3,7 +3,8 @@
 //!
 //! The sixth declared cross-read agreement, taken from the top of the Round
 //! 1051 backlog: `report-authoring-frontier <-> report-playable-world`, 57
-//! subjects in common — the largest overlap no contract judges. Rounds
+//! subjects in common when it was declared and 59 since Round 1053 made the
+//! census name its facts — the largest overlap no contract judged. Rounds
 //! 1041-1045 established why agreement is DECLARED rather than derived (five
 //! derivations over read output failed to decide it, the fifth refuted by
 //! injection), and Round 1050 established what makes a declaration worth
@@ -37,11 +38,18 @@
 //!   road. The frontier owns the one placement resolver (R667); this is the
 //!   only statement tying it to what a reader is walked through.
 //! - EMPTY — a scene the frontier calls zero-fact begins nothing on any road.
-//! - CENSUS — every fact the frontier counts at a scene is NAMED by the
-//!   playable world: it begins there on some road, or some road calls that
-//!   coordinate unplaced. Per-scene `≤` plus an equal total IS per-scene
-//!   equality, and the residual is the facts no road can decide (`undecidable`
-//!   everywhere), counted rather than absorbed.
+//! - CENSUS — the facts the frontier holds at a scene and the facts the playable
+//!   world names there are the same SET: each begins there on some road, or some
+//!   road calls that coordinate unplaced. The leftovers are the facts no road can
+//!   decide (`undecidable` everywhere), named rather than absorbed. This was an
+//!   equality of NUMBERS until Round 1053 made the census name what it counts.
+//! - STRUCTURAL — a fact the playable world hands the runtime with a quest typed
+//!   leg is one the frontier's census has already subtracted as plumbing, at the
+//!   scene it begins. The converse is counted, not asserted: a quest GIVING setup
+//!   is structural because a completion pays it off, and carries no typed leg for
+//!   the other read to show. Round 1052 left this field touching no law; Round
+//!   1053 emptied it and watched the workspace stay green, which is why it now
+//!   does.
 //! - DISCLOSURE — a fact the frontier calls never-planned carries NO locator,
 //!   and a disclosure it calls seated-before-truth is a locator sitting earlier
 //!   in the walk than the scene its fact begins at. The R643 arm ("a withheld
@@ -76,6 +84,10 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 
 use mnemosyne_atomic::AtomicStore;
+
+use mnemosyne_validate::continuity::{
+    QUEST_PRED_COMPLETED_BY, QUEST_PRED_PURSUES, QUEST_PRED_REQUIRES,
+};
 
 mod common;
 use common::{authored_stores, constructed_corpus, declared_tellings, run, SIDECAR};
@@ -118,6 +130,8 @@ struct Evidence {
     empty_scene_checks: usize,
     facts_named: usize,
     undecidable_everywhere: usize,
+    quest_typed_events: usize,
+    structural_untyped: usize,
     locators: usize,
     overridden_seats: usize,
     never_planned_checks: usize,
@@ -148,6 +162,8 @@ impl Evidence {
              confluences), {} scenes walked, {} section-rows partitioned, {} unplaced-section \
              checks, {} zero-fact scene checks\n  \
              {} facts named at a scene the frontier counts, {} undecidable on every road\n  \
+             {} begins-events carrying a quest typed leg, {} structural facts no road shows \
+             one for (the quest GIVING setups, which carry no typed leg of their own)\n  \
              {} locators ({} seated away from the scene their fact begins at), {} never-planned \
              facts checked against them, {} early seats both reads name, {} early on a road the \
              frontier does not name, {} early seats withheld so no locator exists",
@@ -160,6 +176,8 @@ impl Evidence {
             self.empty_scene_checks,
             self.facts_named,
             self.undecidable_everywhere,
+            self.quest_typed_events,
+            self.structural_untyped,
             self.locators,
             self.overridden_seats,
             self.never_planned_checks,
@@ -246,14 +264,14 @@ fn judge(ws: &Path, name: &str, telling: &str, ev: &mut Evidence) {
     let empty_list: Vec<serde_json::Value> = Vec::new();
 
     // The frontier's two keyings: per scene, and per road.
-    let coverage: BTreeMap<&str, usize> = frontier["scene_coverage"]
+    let coverage: BTreeMap<&str, BTreeSet<String>> = frontier["scene_coverage"]
         .as_array()
         .unwrap_or(&empty_list)
         .iter()
         .filter_map(|row| {
             row["scene"]
                 .as_str()
-                .map(|scene| (scene, row["fact_count"].as_u64().unwrap_or(0) as usize))
+                .map(|scene| (scene, strings(&row["facts"]).into_iter().collect()))
         })
         .collect();
     let known_roads: BTreeMap<&str, usize> = frontier["branch_owned_density"]
@@ -354,6 +372,9 @@ fn judge(ws: &Path, name: &str, telling: &str, ev: &mut Evidence) {
     // attributes to each scene — beginning there, or naming it as an unplaced
     // coordinate. It is the census's left-hand side.
     let mut named_at: BTreeMap<&str, BTreeSet<String>> = BTreeMap::new();
+    // Per scene, the facts the playable world shows carrying a quest typed leg —
+    // the left-hand side of LAW STRUCTURAL.
+    let mut quest_typed_at: BTreeMap<&str, BTreeSet<String>> = BTreeMap::new();
     let mut decided_somewhere: BTreeSet<String> = BTreeSet::new();
     let mut undecidable_somewhere: BTreeSet<String> = BTreeSet::new();
     let frontier_unplaced: BTreeSet<String> =
@@ -443,6 +464,29 @@ fn judge(ws: &Path, name: &str, telling: &str, ev: &mut Evidence) {
             let Some((section, _)) = coverage.get_key_value(section) else {
                 continue;
             };
+            // The typed legs the playable world hands a runtime — the other
+            // read's answer to "which of these facts is quest plumbing". Read
+            // BEFORE `begins` is flattened to ids, because the predicate is the
+            // whole signal (R676: the three predicates are the sole marker).
+            for event in scene["begins"].as_array().unwrap_or(&empty_list) {
+                let (Some(fact), Some(predicate)) = (
+                    event["fact_id"].as_str(),
+                    event["typed"]["predicate"].as_str(),
+                ) else {
+                    continue;
+                };
+                if !matches!(
+                    predicate,
+                    QUEST_PRED_PURSUES | QUEST_PRED_REQUIRES | QUEST_PRED_COMPLETED_BY
+                ) {
+                    continue;
+                }
+                ev.quest_typed_events += 1;
+                quest_typed_at
+                    .entry(section)
+                    .or_default()
+                    .insert(fact.to_string());
+            }
             for fact in begins {
                 decided_somewhere.insert(fact.clone());
                 named_at.entry(section).or_default().insert(fact);
@@ -478,34 +522,111 @@ fn judge(ws: &Path, name: &str, telling: &str, ev: &mut Evidence) {
         }
     }
 
-    // LAW CENSUS. Per scene the playable world can name no MORE facts than the
-    // frontier counts; the totals then close the gap, and the two together are
-    // per-scene equality whenever no fact is undecidable on every road. The
-    // residual is not absorbed — it is the facts no road could decide, named.
-    let undecidable_only: BTreeSet<&String> = undecidable_somewhere
+    // LAW CENSUS. Scene by scene, the facts the frontier holds and the facts the
+    // playable world names there are the SAME SET, but for the ones no road
+    // could decide — and those are named too, not absorbed into a total.
+    //
+    // Round 1052 could only state this as a per-scene `≤` plus an equal total,
+    // because the census shipped a COUNT: two facts trading the coordinates they
+    // are anchored at moved neither number and left this law green over an edit
+    // the playable world plainly walks a reader through. That is measured, in
+    // `the_frontier_census_names_the_facts_it_counts` below, and Round 1053
+    // changed the wire so it can be said at all.
+    let undecidable_only: BTreeSet<String> = undecidable_somewhere
         .difference(&decided_somewhere)
+        .cloned()
         .collect();
     ev.undecidable_everywhere += undecidable_only.len();
     let mut named_total = 0usize;
-    for (section, count) in &coverage {
-        let named = named_at.get(section).map_or(0, BTreeSet::len);
-        named_total += named;
-        if named > *count {
+    let mut undecided_at: BTreeSet<String> = BTreeSet::new();
+    for (section, held) in &coverage {
+        let named = named_at.get(section).cloned().unwrap_or_default();
+        named_total += named.len();
+        let invented: Vec<&String> = named.difference(held).collect();
+        if !invented.is_empty() {
             ev.disagreements.push(format!(
-                "{name} [{telling}]: the frontier counts {count} facts at `{section}` and the \
-                 playable world names {named}",
+                "{name} [{telling}]: the playable world names {invented:?} at `{section}` and the \
+                 frontier's census does not hold them there",
+            ));
+        }
+        undecided_at.extend(held.difference(&named).cloned());
+    }
+    ev.facts_named += named_total;
+    // The leftovers are exactly the facts no road could place. A fact the
+    // frontier holds at a scene that no road names THERE, but that some road
+    // decided elsewhere, is a disagreement about where it begins — the class the
+    // old total could not separate from a fact nobody could decide at all.
+    if undecided_at != undecidable_only {
+        let unexplained: Vec<&String> = undecided_at.difference(&undecidable_only).collect();
+        let missing: Vec<&String> = undecidable_only.difference(&undecided_at).collect();
+        ev.disagreements.push(format!(
+            "{name} [{telling}]: the frontier holds {unexplained:?} at scenes no road names them \
+             at while some road did decide them, and calls {missing:?} undecidable everywhere \
+             while its own census does not leave them over",
+        ));
+    }
+
+    // LAW STRUCTURAL. The census marks a subset of each scene's facts as quest
+    // plumbing, so a coverage read can subtract it and not read bookkeeping as
+    // narrative (R619). The playable world is what SAYS which facts are: it hands
+    // the runtime each begins-event's typed leg verbatim, and R676 made the three
+    // quest predicates the sole marker of quest-ness. So a fact the runtime is
+    // shown pursuing, requiring or completing a quest must be one the frontier
+    // has already subtracted, at the very scene it begins.
+    //
+    // Round 1052 declared this pair and left `structural_facts` touching no law
+    // at all; Round 1053 measured what that cost by emptying the subset and
+    // watching the whole workspace stay green. The converse is NOT a law and is
+    // counted instead: a quest GIVING setup is structural because a completion
+    // pays it off, not because it carries a typed leg, so the playable world has
+    // nothing to show for it and a residual here is expected work, not a defect.
+    let structural_at: BTreeMap<&str, BTreeSet<String>> = frontier["scene_coverage"]
+        .as_array()
+        .unwrap_or(&empty_list)
+        .iter()
+        .filter_map(|row| {
+            row["scene"]
+                .as_str()
+                .map(|scene| (scene, strings(&row["structural"]).into_iter().collect()))
+        })
+        .collect();
+    let structural_flat: BTreeSet<String> =
+        strings(&frontier["structural_facts"]).into_iter().collect();
+    let mut structural_shown: BTreeSet<String> = BTreeSet::new();
+    for (section, shown) in &quest_typed_at {
+        structural_shown.extend(shown.iter().cloned());
+        let marked = structural_at.get(section).cloned().unwrap_or_default();
+        let unsubtracted: Vec<&String> = shown.difference(&marked).collect();
+        if !unsubtracted.is_empty() {
+            ev.disagreements.push(format!(
+                "{name} [{telling}]: the playable world hands the runtime {unsubtracted:?} at \
+                 `{section}` typed as quest plumbing and the frontier's census does not mark them \
+                 structural there",
             ));
         }
     }
-    ev.facts_named += named_total;
-    let counted: usize = coverage.values().sum();
-    if named_total + undecidable_only.len() != counted {
+    let unlisted: Vec<&String> = structural_shown.difference(&structural_flat).collect();
+    if !unlisted.is_empty() {
         ev.disagreements.push(format!(
-            "{name} [{telling}]: the frontier counts {counted} facts across its scenes; the \
-             playable world names {named_total} of them and calls {} undecidable on every road",
-            undecidable_only.len(),
+            "{name} [{telling}]: {unlisted:?} carry a quest typed leg on some road and the \
+             frontier's flat structural set does not name them",
         ));
     }
+    // The two keyings of one set: every scene's marked subset is drawn from the
+    // facts that scene holds, and the flat list is their union plus the
+    // structural facts anchored at no registered section.
+    for (section, marked) in &structural_at {
+        let held = coverage.get(section).cloned().unwrap_or_default();
+        let stray: Vec<&String> = marked.difference(&held).collect();
+        let unlisted: Vec<&String> = marked.difference(&structural_flat).collect();
+        if !stray.is_empty() || !unlisted.is_empty() {
+            ev.disagreements.push(format!(
+                "{name} [{telling}]: the census marks {stray:?} structural at `{section}` without \
+                 holding them there, and {unlisted:?} without the flat structural set naming them",
+            ));
+        }
+    }
+    ev.structural_untyped += structural_flat.difference(&structural_shown).count();
 
     // LAW DISCLOSURE, half one — a never-planned fact carries no locator. The
     // frontier's list is the author's todo; a locator is the runtime's pointer
@@ -675,6 +796,42 @@ fn judge(ws: &Path, name: &str, telling: &str, ev: &mut Evidence) {
             .collect::<Vec<_>>()
             .join(" "),
     ));
+}
+
+/// Two facts trade the coordinate they are anchored at — `canon_from` and the
+/// evidence that names it, so each fact moves whole rather than being left
+/// pointing at the scene it came from.
+fn trade_coordinates(facts: &serde_json::Value, one: &str, other: &str) -> serde_json::Value {
+    let coordinate = |id: &str| {
+        facts["facts"]
+            .as_array()
+            .expect("facts array")
+            .iter()
+            .find(|fact| fact["fact_id"] == id)
+            .unwrap_or_else(|| panic!("the constructed store declares `{id}`"))["canon_from"]
+            .as_str()
+            .unwrap_or_else(|| panic!("`{id}` is anchored somewhere"))
+            .to_string()
+    };
+    let (here, there) = (coordinate(one), coordinate(other));
+    assert_ne!(
+        here, there,
+        "a trade between two facts at ONE coordinate would be no edit at all"
+    );
+    let mut traded = facts.clone();
+    let mut moved = 0usize;
+    for fact in traded["facts"].as_array_mut().expect("facts array") {
+        let to = match fact["fact_id"].as_str() {
+            Some(id) if id == one => &there,
+            Some(id) if id == other => &here,
+            _ => continue,
+        };
+        fact["canon_from"] = serde_json::json!(to);
+        fact["evidence"] = serde_json::json!([to]);
+        moved += 1;
+    }
+    assert_eq!(moved, 2, "the trade moved {moved} facts, not the two named");
+    traded
 }
 
 /// The sections, order and facts of the store the authors did not write: a
@@ -877,6 +1034,24 @@ fn the_frontier_counts_per_scene_what_the_playable_world_walks_per_road() {
          equality",
     );
     check(
+        (authored.quest_typed_events, authored.structural_untyped) == (30, 3),
+        "AUTHORED STRUCTURAL: the begins-events the playable world hands a \
+         runtime with a quest typed leg — every one of them subtracted by the \
+         census at the scene it begins — and the structural facts no road shows \
+         one for, which are the quest GIVING setups. Only the migrated dnd-quest \
+         record declares quests at all, so both numbers ride on one corpus and \
+         this line is where that shows",
+    );
+    check(
+        (
+            constructed.quest_typed_events,
+            constructed.structural_untyped,
+        ) == (0, 0),
+        "CONSTRUCTED STRUCTURAL, ASSERTED ZERO: the store the tree builds \
+         declares no quest, so it carries this law's evidence not at all — \
+         stated rather than averaged in with the authored 30",
+    );
+    check(
         (
             authored.locators,
             authored.overridden_seats,
@@ -938,5 +1113,160 @@ fn the_frontier_counts_per_scene_what_the_playable_world_walks_per_road() {
         broken,
         Vec::<String>::new(),
         "the frontier/playable-world correspondence no longer holds"
+    );
+}
+
+/// A store where two facts trade scenes is a store the frontier must be able to
+/// tell apart — and until Round 1053 it could not. (Round 1053.)
+///
+/// Round 1052 declared the CENSUS law above: every fact the frontier counts at a
+/// scene is named there by the playable world. Its evidence was a per-scene `≤`
+/// plus an equal total, and those two statements together are an equality of
+/// NUMBERS. Two facts trading the coordinates they are anchored at leaves every
+/// number exactly where it was, so the contract stayed green over an edit the
+/// other read plainly sees — the shape Round 1050 had already met on
+/// `not_holding`, where a count could not say WHICH fact it had counted. Twice
+/// in three rounds is a class, not an accident.
+///
+/// The hole was not in the contract. It was in the WIRE: `scene_coverage`
+/// shipped `fact_count`, so no test over this read's output could have judged
+/// identity, and no contract that could be written would have closed it. This
+/// test is what says so — it asserts what does NOT move. Every count is where it
+/// was, and with the census set aside the two reports are byte-equal, so the
+/// census is the only field of this read where the trade can ever appear. On the
+/// wire this round replaced, that made the two stores indistinguishable.
+#[test]
+fn the_frontier_census_names_the_facts_it_counts() {
+    let (sections, order, facts) = constructed_manifests();
+    // Both facts sit on `main`, neither carries an authored seat, and their
+    // scenes hold one and two facts — so the trade moves no count, no placement
+    // set, no density and no disclosure row. It moves only WHICH fact is where.
+    let traded = trade_coordinates(&facts, "fx-open", "fx-quiet");
+    let build = |manifest: &serde_json::Value| {
+        constructed_corpus(&sections, &order, manifest)
+            .unwrap_or_else(|e| panic!("the constructed manifests must import: {e}"))
+    };
+    let (before, after) = (build(&facts), build(&traded));
+
+    let ask = |ws: &Path, verb: &str| -> serde_json::Value {
+        let out = run(ws, &[verb, "--telling", "t-one", "--json"]);
+        assert!(
+            out.status.success(),
+            "{verb} on the constructed store: {}",
+            String::from_utf8_lossy(&out.stderr),
+        );
+        serde_json::from_slice(&out.stdout).unwrap_or_else(|e| panic!("{verb} is not json: {e}"))
+    };
+    let frontier = (
+        ask(before.path(), "report-authoring-frontier"),
+        ask(after.path(), "report-authoring-frontier"),
+    );
+    let playable = (
+        ask(before.path(), "report-playable-world"),
+        ask(after.path(), "report-playable-world"),
+    );
+
+    let empty: Vec<serde_json::Value> = Vec::new();
+    // Where the playable world begins a fact on a road — the other read's answer
+    // to the same question, which is what makes the trade an edit and not a
+    // rewording.
+    let begins_at = |playable: &serde_json::Value, road: &str, fact: &str| -> Option<String> {
+        playable["worlds"][road]["manuscript"]["scenes"]
+            .as_array()?
+            .iter()
+            .find(|scene| {
+                scene["begins"]
+                    .as_array()
+                    .is_some_and(|events| events.iter().any(|event| event["fact_id"] == fact))
+            })?["section"]
+            .as_str()
+            .map(ToString::to_string)
+    };
+    // The census as (scene -> how many, how many structural). NOT the names:
+    // this is the number the wire used to carry, and the claim below is that it
+    // is the same number on both sides of the trade.
+    let counted = |frontier: &serde_json::Value| -> BTreeMap<String, (usize, usize)> {
+        frontier["scene_coverage"]
+            .as_array()
+            .unwrap_or(&empty)
+            .iter()
+            .map(|row| {
+                (
+                    row["scene"].as_str().unwrap_or_default().to_string(),
+                    (
+                        strings(&row["facts"]).len(),
+                        strings(&row["structural"]).len(),
+                    ),
+                )
+            })
+            .collect()
+    };
+    let named_total: usize = counted(&frontier.0).values().map(|(all, _)| all).sum();
+    let without_census = |frontier: &serde_json::Value| {
+        let mut rest = frontier.clone();
+        rest.as_object_mut()
+            .expect("the frontier report is an object")
+            .remove("scene_coverage");
+        rest
+    };
+
+    println!(
+        "the trade moves `fx-open` {:?} -> {:?} and `fx-quiet` {:?} -> {:?} on main; the \
+         frontier's census names {named_total} facts across {} scenes",
+        begins_at(&playable.0, "main", "fx-open"),
+        begins_at(&playable.1, "main", "fx-open"),
+        begins_at(&playable.0, "main", "fx-quiet"),
+        begins_at(&playable.1, "main", "fx-quiet"),
+        counted(&frontier.0).len(),
+    );
+
+    let mut broken: Vec<String> = Vec::new();
+    let mut check = |ok: bool, claim: &str| {
+        if !ok {
+            broken.push(claim.to_string());
+        }
+    };
+
+    check(
+        [
+            begins_at(&playable.0, "main", "fx-open").as_deref(),
+            begins_at(&playable.1, "main", "fx-open").as_deref(),
+            begins_at(&playable.0, "main", "fx-quiet").as_deref(),
+            begins_at(&playable.1, "main", "fx-quiet").as_deref(),
+        ] == [Some("c-01"), Some("c-02"), Some("c-02"), Some("c-01")],
+        "THE EDIT IS REAL: the playable world begins the two facts at each \
+         other's scenes after the trade, so this is a store difference a reader \
+         walks through and not a difference of spelling",
+    );
+    check(
+        counted(&frontier.0) == counted(&frontier.1),
+        "INVISIBLE TO COUNTS: every scene holds as many facts, and as many \
+         structural ones, as it did before — the trade is exactly the edit a \
+         census of numbers cannot report",
+    );
+    check(
+        without_census(&frontier.0) == without_census(&frontier.1),
+        "AND TO EVERY OTHER FIELD: with the census set aside the two reports are \
+         equal, so `scene_coverage` is the ONLY place in this read where the \
+         trade could ever appear",
+    );
+    check(
+        named_total == 8 && counted(&frontier.0).len() == 9,
+        "NON-VACUITY: the census names all eight facts of the constructed store \
+         over its nine registered scenes. Without this the claim above holds for \
+         a census that names nothing at all",
+    );
+    check(
+        frontier.0["scene_coverage"] != frontier.1["scene_coverage"],
+        "THE LAW: the census MOVED. It names the facts it counts, so a store \
+         where two of them trade scenes is a store this read describes \
+         differently — which is what makes the Round 1052 CENSUS law an equality \
+         of facts rather than of numbers",
+    );
+
+    assert_eq!(
+        broken,
+        Vec::<String>::new(),
+        "the frontier's scene census does not name what it counts"
     );
 }

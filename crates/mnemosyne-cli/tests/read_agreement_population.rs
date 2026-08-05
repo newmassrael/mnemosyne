@@ -125,15 +125,15 @@ fn panel_records(
 /// the backlog, and R1037's hand-picked pair sits inside it.
 const BACKLOG: [&str; 45] = [
     "72 report-playable-world <-> report-playthrough-manuscript",
-    "57 report-authoring-frontier <-> report-playable-world",
-    "57 report-authoring-frontier <-> report-playthrough-manuscript",
+    "59 report-authoring-frontier <-> report-playable-world",
+    "59 report-authoring-frontier <-> report-playthrough-manuscript",
     "49 report-entity <-> report-playable-world",
     "49 report-entity <-> report-playthrough-manuscript",
     "47 report-edge-candidates <-> report-entity",
     "47 report-edge-candidates <-> report-playable-world",
     "47 report-edge-candidates <-> report-playthrough-manuscript",
-    "35 report-authoring-frontier <-> report-edge-candidates",
-    "34 report-authoring-frontier <-> report-entity",
+    "37 report-authoring-frontier <-> report-edge-candidates",
+    "36 report-authoring-frontier <-> report-entity",
     "32 report-edge-candidates <-> report-quest-graph",
     "29 report-entity <-> report-quest-graph",
     "29 report-playable-world <-> report-quest-graph",
@@ -143,13 +143,13 @@ const BACKLOG: [&str; 45] = [
     "25 report-entity <-> report-frame-view",
     "25 report-frame-view <-> report-playable-world",
     "25 report-frame-view <-> report-playthrough-manuscript",
-    "18 report-authoring-frontier <-> report-frame-view",
+    "19 report-authoring-frontier <-> report-frame-view",
+    "15 report-authoring-frontier <-> report-payoff-coverage",
     "15 report-frame-view <-> report-quest-graph",
-    "13 report-authoring-frontier <-> report-payoff-coverage",
+    "12 report-authoring-frontier <-> report-payoff-substantiation",
     "12 report-edge-candidates <-> report-payoff-coverage",
     "12 report-edge-candidates <-> report-payoff-substantiation",
     "12 report-payoff-coverage <-> report-payoff-substantiation",
-    "10 report-authoring-frontier <-> report-payoff-substantiation",
     "10 report-payoff-coverage <-> report-quest-graph",
     "10 report-payoff-substantiation <-> report-quest-graph",
     "9 report-authoring-frontier <-> validate-continuity",
@@ -387,8 +387,16 @@ fn the_population_of_subjects_more_than_one_shipped_read_answers_about() {
          answering is measured by perturbation",
     );
     check(
-        (readers_of.len(), shared.len()) == (98, 79),
-        "ANSWERED: subjects some read answers about, and those more than one does",
+        (readers_of.len(), shared.len()) == (214, 79),
+        "ANSWERED: subjects some read answers about, and those more than one does. \
+         Round 1053 more than doubled the first number without moving the second, \
+         and the reason is worth keeping: the frontier's scene census began \
+         NAMING the facts it counts, so its record for a fact is the census row \
+         that fact sits in — and that row moves when any fact anchored at the same \
+         scene moves. A list-valued field makes co-listed subjects share a record, \
+         which is how `dangling_setups` has always behaved here. The subjects it \
+         added are answered by the frontier ALONE, so the pairs below rose by two \
+         and the shared population not at all",
     );
     check(
         ranked
