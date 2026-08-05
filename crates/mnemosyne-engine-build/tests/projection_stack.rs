@@ -65,6 +65,26 @@
 //! Measured by rebuilding the probe against both emitter shapes with nothing
 //! else changed. Why the quest axis moved and the playable one did not is NOT
 //! explained here, because it was not measured — only that it did.
+//!
+//! # Round 1044 — the artifact was still growing, and this test could not see it
+//!
+//! That "under one page at both" is where the gate went blind. A page is the
+//! floor this instrument can report, so the quest arm's ratio was drawn between
+//! two readings that were not measurements, and it passed over an artifact whose
+//! cost was already stepping: at Round 1043's emitter the quest artifact wanted
+//! under a page to 800 quests and 28 KiB at 1,600, and the playable one 32 KiB
+//! at 800 against 64 KiB at 3,200 — both outside the sample points. Nothing here
+//! said so; it surfaced because an unrelated field added to `QuestWorldPart`
+//! moved the quest step down onto the 800 the gate samples.
+//!
+//! The cause was the reassembly `chunked` handed back: one `v.extend(f_i())`
+//! statement per chunk, in one frame, and at `opt-level = 0` every statement's
+//! temporaries get their own slot. Round 775 bounded the bodies and left their
+//! reassembly unbounded. It is now chunked by the same rule, recursively (see
+//! `chunked_over`), and the shipped figures are playable 32 KiB and quest 32 KiB
+//! at BOTH sizes with the control at 128 then 512 KiB — every one of them a
+//! resolved reading rather than a floor, which is what the new assertion below
+//! requires of any figure a ratio here is drawn from.
 
 use std::process::Command;
 
@@ -132,6 +152,13 @@ fn builds_within(fixture: &str, stack: usize) -> bool {
 /// four times MORE sensitive than the same assertion was at 28 KiB — but it is
 /// blind to growth that stays entirely under a page, and the honest name for a
 /// 4096 in that arm is a resolution limit rather than a cost.
+///
+/// ROUND 1044 REFUTED "still discriminates". The arm passed for the whole
+/// interval over an artifact that was already stepping — under a page to 800
+/// quests, 28 KiB at 1,600 — because `big < 2 * small` against a denominator
+/// meaning "at most one page" is a claim about this function's resolution, not
+/// about the artifact. A floor reading is now a hard failure where a ratio is
+/// drawn from it, so the property Round 780 described is enforced.
 fn stack_needed(fixture: &str) -> usize {
     let measure = || {
         assert!(
@@ -201,11 +228,6 @@ fn the_baked_artifact_costs_one_stack_however_big_the_store_gets() {
     // `render_quest` is free to stop calling the shared chunker while `render`
     // still calls it, and assuming across that seam is how the Round 769 defect
     // survived to Round 770.
-    //
-    // Both figures sit at GRAIN since Round 786 — see `stack_needed` for what a
-    // floor reading is and is not. The ratio is kept rather than swapped for
-    // `quest_big <= GRAIN`, because that would be a threshold fitted to today's
-    // store, which is the thing this test refuses to assert anywhere else.
     let quest_small = stack_needed("quest_small");
     let quest_big = stack_needed("quest_big");
     assert!(
@@ -213,6 +235,36 @@ fn the_baked_artifact_costs_one_stack_however_big_the_store_gets() {
         "the quest artifact needed {quest_small} bytes at {SMALL} quests and \
          {quest_big} at {BIG}: its stack cost grows with the store"
     );
+
+    // A RATIO DRAWN FROM A FLOOR READING IS NOT A MEASUREMENT (Round 1044).
+    //
+    // Between Rounds 786 and 1044 both quest figures sat at GRAIN, and the doc
+    // above this test argued the ratio "still discriminates" there. It does not.
+    // A reading AT GRAIN says "at most one page" — the artifact may want 100
+    // bytes or 4,096 — so `big < 2 * small` against it is a claim about the
+    // resolution of the instrument, and it passed for a quest artifact whose
+    // cost was ALREADY stepping: measured at Round 1043's tree, the artifact
+    // wanted under a page to 800 quests and 28 KiB at 1,600, with both sample
+    // points below the step. The blindness was found by a change that moved the
+    // step down to 800, not by anything this gate said.
+    //
+    // So the readings the ratios are drawn from must themselves be above the
+    // floor. This is not a threshold fitted to today's store — it does not care
+    // what the figure IS, only that the instrument resolved it — and it is the
+    // one assertion here that would have failed at Round 1043.
+    for (what, needed) in [
+        ("playable", playable_small),
+        ("playable", playable_big),
+        ("quest", quest_small),
+        ("quest", quest_big),
+    ] {
+        assert!(
+            needed > GRAIN,
+            "the {what} artifact read {needed} bytes, which is the {GRAIN}-byte \
+             resolution floor rather than a cost — every ratio above that uses \
+             this reading is comparing the instrument to itself"
+        );
+    }
 
     // And the consumer-facing form of it: what a plain spawned thread hands the
     // artifact, against what the artifact wants. This is the figure the first

@@ -293,6 +293,27 @@ fn chunked<T>(
 /// `OnceLock`: it is scaffolding for construction and has no business outliving
 /// it. `chunked` is this with `None`, so there is one chunker rather than two
 /// that could drift.
+///
+/// # The bound holds over the REASSEMBLY too (Round 1044)
+///
+/// Round 775 bounded how many literals one function body holds and then handed
+/// the caller `{ let mut v = f0(); v.extend(f1()); … v }` — one statement per
+/// chunk, in ONE frame, so the thing it bounded came back on the axis Round 780
+/// gates. At `opt-level = 0` rustc gives every statement's temporaries their own
+/// slot and reuses none, so that expression's frame grows with the chunk count:
+/// measured on the quest fixture, the artifact sat under a page to 800 quests
+/// and wanted 28 KiB at 1600, and the gate did not see it because BOTH its
+/// sample points sat below the step.
+///
+/// So the reassembly is chunked by the same rule, recursively: a level whose
+/// call list exceeds the bound is itself grouped into functions of at most
+/// `bound` calls, until one root remains. No frame on the path holds more than
+/// `bound` statements at any store size, and the depth grows logarithmically —
+/// two levels already cover 125,000 items at `CHUNK = 50`.
+///
+/// The functions APPEND into an out-parameter rather than returning a `Vec` each
+/// caller then extends with. A returned `Vec` is a temporary at every call site,
+/// which is the slot this was spending; `&mut` costs the caller nothing to hold.
 fn chunked_over<T>(
     chunks: &mut Chunks,
     ty: &str,
@@ -308,27 +329,43 @@ fn chunked_over<T>(
         bodies.push(each(chunks, item));
     }
     let (decl, arg) = param.map_or(("", ""), |p| (p.decl, p.arg));
-    let mut names: Vec<String> = Vec::new();
+    // The out-parameter every level takes, and the separator before `param`'s
+    // declaration/argument when there is one. `__mn_out` is `_`-prefixed for the
+    // reason [`POOL_PARAM`] is: a consumer building with `-D warnings` is
+    // entitled to a generated file that warns about nothing.
+    let out_decl = format!("__mn_out: &mut ::std::vec::Vec<{ty}>");
+    let sep = if decl.is_empty() { "" } else { ", " };
     let bound = chunks.bound.get();
+
+    // The leaf level: the literals themselves, at most `bound` per body.
+    let mut names: Vec<String> = Vec::new();
     for group in bodies.chunks(bound) {
         let name = format!("__mn_{}", chunks.next);
         chunks.next += 1;
-        let _ = writeln!(
-            chunks.fns,
-            "fn {name}({decl}) -> ::std::vec::Vec<{ty}> {{ vec![{}] }}",
-            group.join(", ")
-        );
+        let pushes: String = group
+            .iter()
+            .map(|body| format!(" __mn_out.push({body});"))
+            .collect();
+        let _ = writeln!(chunks.fns, "fn {name}({out_decl}{sep}{decl}) {{{pushes} }}");
         names.push(name);
     }
-    let (first, rest) = names.split_first().expect("a non-empty item list chunks");
-    if rest.is_empty() {
-        return format!("{first}({arg})");
+    // The reassembly levels, bounded by the same rule as the leaves.
+    while names.len() > 1 {
+        let mut above: Vec<String> = Vec::new();
+        for group in names.chunks(bound) {
+            let name = format!("__mn_{}", chunks.next);
+            chunks.next += 1;
+            let calls: String = group
+                .iter()
+                .map(|below| format!(" {below}(__mn_out{sep}{arg});"))
+                .collect();
+            let _ = writeln!(chunks.fns, "fn {name}({out_decl}{sep}{decl}) {{{calls} }}");
+            above.push(name);
+        }
+        names = above;
     }
-    let extends: String = rest
-        .iter()
-        .map(|name| format!(" v.extend({name}({arg}));"))
-        .collect();
-    format!("{{ let mut v = {first}({arg});{extends} v }}")
+    let root = names.first().expect("a non-empty item list chunks");
+    format!("{{ let mut v = ::std::vec::Vec::new(); {root}(&mut v{sep}{arg}); v }}")
 }
 
 /// The element types the generated chunk functions declare. Named rather than
