@@ -133,10 +133,16 @@ if [[ -n "${sub_ws//[$'\n']/}" ]]; then
     while IFS= read -r ws; do
         [[ -n "$ws" ]] || continue
         echo "[mnemosyne pre-commit] .rs staged in separate workspace '$ws' — fmt --check + clippy -D warnings" >&2
-        if ! cargo fmt --manifest-path "$ws/Cargo.toml" --check; then
+        # `--all`, because a VIRTUAL workspace manifest (`bench/Cargo.toml` is
+        # one: `[workspace]` and no `[package]`) has no targets of its own, and
+        # without it `cargo fmt` exits non-zero printing its own usage. This gate
+        # then rejected every commit touching that tree with "unformatted code",
+        # having formatted nothing and checked nothing (R1064 — found the day a
+        # bench file was staged for the first time since the gate existed).
+        if ! cargo fmt --all --manifest-path "$ws/Cargo.toml" --check; then
             {
                 echo "[mnemosyne pre-commit] commit rejected — unformatted code in $ws"
-                echo "  fix: cargo fmt --manifest-path $ws/Cargo.toml && git add -u"
+                echo "  fix: cargo fmt --all --manifest-path $ws/Cargo.toml && git add -u"
             } >&2
             exit 1
         fi

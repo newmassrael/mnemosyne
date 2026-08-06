@@ -17,11 +17,11 @@
 //! - `cf_wrapper`: §42 RocksDB CF runtime wrapper (Round 42 follow-up, consumes §39 input)
 //! - `salsa_wire`: §43 Salsa wire codegen (Round 42 subsequent, Phase 1.5 cascade gate measurement source)
 
-pub mod entity_indexer;
 pub mod cf_wrapper;
-pub mod salsa_wire;
 pub mod closure_runtime;
-pub mod markdown_import;
+pub mod entity_indexer;
 pub mod markdown_export;
-pub mod t1_validator;
+pub mod markdown_import;
 pub mod query_api;
+pub mod salsa_wire;
+pub mod t1_validator;

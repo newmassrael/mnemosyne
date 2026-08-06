@@ -34,6 +34,11 @@ pinion-runtime = { path = "../../pinion/crates/pinion-runtime" }
 pinion-text = { path = "../../pinion/crates/pinion-text" }
 # Matches pinion's vello pin (ABI of the forge-emitted `::vello::*` renderer).
 vello = "0.9"
+# The forge emits `::pinion_gpu::GpuContext` / `GpuSurface` into the generated
+# renderer, so this is a DIRECT dependency for the same reason `vello` above is:
+# generated code names it at this crate's root, and a crate reached only
+# transitively is not there. Its absence is what broke this build.
+pinion-gpu = { path = "../../pinion/crates/pinion-gpu" }
 
 # Mnemosyne backend read surface — the GUI-free core crates, linked exactly
 # as the CLI links them (the read SSOT is these lib fns).

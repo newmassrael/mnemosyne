@@ -31,13 +31,11 @@ set -euo pipefail
 root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 cd "$root"
 
-# Workspaces this gate does not run, and why. A skip is a claim about the world,
-# not a preference: the first cannot be built from a checkout of THIS repository
-# at all, and the second is a closed measurement spike whose failures are known,
-# named, and filed rather than silently tolerated.
+# Workspaces this gate does not run, and why. A skip written here is a claim
+# somebody has to defend in review; the skip below it is a claim about the
+# machine, which the machine answers.
 declare -A ungated=(
-  [studio]="path dependencies on the sibling pinion repository (../../pinion/crates/*), which no checkout of this repository alone contains — and broken today besides"
-  [bench]="the closed Phase -1A measurement spike; 6 tests in crates/codegen-prototype are pinned to the markdown-document model Round 400 removed"
+  [bench]="11 tests in crates/codegen-prototype/tests/markdown_full_scale.rs read docs/DESIGN.md and five sibling documents that no longer exist — the markdown-document model they parse was retired when the store became the SSOT (Round 400 is where that closed). Their subject is gone, and what to do with them is a disposition nobody has taken yet"
 )
 
 discover() {
@@ -48,6 +46,24 @@ discover() {
     while IFS= read -r -d '' manifest; do
       grep -qE '^\[workspace\]' "$manifest" && dirname "${manifest#./}"
     done
+}
+
+# The path dependencies a workspace names OUTSIDE this repository that are not
+# on this machine. `studio/` depends on the sibling pinion checkout, so it is
+# testable exactly where that checkout is: here, and not on a CI runner. Asking
+# the machine beats declaring the answer — a hardcoded "CI cannot build studio"
+# would also skip it on the one machine that can, which is where its rot was
+# found in the first place.
+missing_siblings() {
+  local ws=$1 manifest dep target
+  while IFS= read -r -d '' manifest; do
+    while IFS= read -r dep; do
+      target=$(realpath -m "$(dirname "$manifest")/$dep")
+      case "$target" in "$root"/*) continue ;; esac
+      [[ -d "$target" ]] || echo "$dep"
+    done < <(grep -oE 'path[[:space:]]*=[[:space:]]*"[^"]+"' "$manifest" |
+      sed -E 's/.*"([^"]+)".*/\1/')
+  done < <(find "$ws" -name Cargo.toml -not -path '*/target/*' -print0)
 }
 
 if [[ $# -gt 0 ]]; then
@@ -65,8 +81,19 @@ for ws in "${workspaces[@]}"; do
     skipped+=("$ws")
     continue
   fi
+  absent=$(missing_siblings "$ws" | sort -u | tr '\n' ' ')
+  if [[ -n "${absent// /}" ]]; then
+    echo "[side-workspaces] SKIP $ws — its path dependencies leave this repository" \
+      "and are not on this machine: ${absent% }"
+    skipped+=("$ws")
+    continue
+  fi
   echo "[side-workspaces] TEST $ws"
-  cargo test --manifest-path "$ws/Cargo.toml" --locked
+  # `--no-fail-fast`, because a gate that stops at the first failing target
+  # reports a smaller number than the truth and somebody fixes to it. This gate
+  # did exactly that on its first run: it said `bench` had 6 failures, and the
+  # 6 were one target's — there were 17.
+  cargo test --manifest-path "$ws/Cargo.toml" --locked --no-fail-fast
   tested+=("$ws")
 done
 

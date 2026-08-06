@@ -1858,6 +1858,7 @@ dependencies = [
  "pinion-a11y",
  "pinion-core",
  "pinion-forge",
+ "pinion-gpu",
  "pinion-runtime",
  "pinion-shell",
  "pinion-text",
@@ -2492,6 +2493,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "pinion-gpu"
+version = "0.0.1"
+dependencies = [
+ "wgpu",
+]
+
+[[package]]
 name = "pinion-overlay"
 version = "0.0.1"
 dependencies = [
@@ -2512,6 +2520,10 @@ name = "pinion-platform-fonts"
 version = "0.0.1"
 
 [[package]]
+name = "pinion-platform-memory"
+version = "0.0.1"
+
+[[package]]
 name = "pinion-rpc"
 version = "0.0.1"
 dependencies = [
@@ -2519,6 +2531,7 @@ dependencies = [
  "pinion-core",
  "pinion-pdf",
  "pinion-runtime",
+ "pinion-text",
  "pinion-text-font",
  "pinion-text-unicode",
  "serde",
@@ -2530,6 +2543,7 @@ name = "pinion-runtime"
 version = "0.0.1"
 dependencies = [
  "futures-executor",
+ "lru",
  "pinion-asset",
  "pinion-core",
  "pinion-platform-fonts",
@@ -2547,7 +2561,9 @@ dependencies = [
  "accesskit_winit",
  "pinion-a11y",
  "pinion-core",
+ "pinion-gpu",
  "pinion-overlay",
+ "pinion-platform-memory",
  "pinion-rpc",
  "pinion-runtime",
  "pinion-text",
