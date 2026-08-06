@@ -75,223 +75,21 @@ use mnemosyne_atomic::AtomicStore;
 mod common;
 use common::{
     ask_panel, corruptions, dnd_quest_facts, dnd_quest_workspace_from, dnd_quest_workspace_try,
-    panel, registered_ids, telling_of, Answer, SIDECAR,
+    panel, permutations, registered_ids, telling_of, wrote_about, Answer, Wrote, SIDECAR,
 };
 
-/// What one answer wrote about the store's subjects.
-#[derive(Default)]
-struct Records {
-    /// subject -> every record this answer holds about it.
-    by_subject: BTreeMap<String, BTreeSet<String>>,
-    /// The bare subject ids listed at an address, in document order. Kept so
-    /// the sweep can ask the one question a MEMBERSHIP record cannot answer:
-    /// whether an authorable edit ever permutes a list without changing what
-    /// is in it.
-    listed: BTreeMap<String, Vec<String>>,
-    /// Rows of an array of objects that NO field addresses, so the walk fell
-    /// back to the position each happens to sit at. Named, not counted (the
-    /// R1029 rule) — a positional address is the one part of this derivation
-    /// that a reordering read would break, so the next round needs to see
-    /// which rows are on it.
-    unaddressed: BTreeSet<String>,
-    /// Two places in one answer that produced the same address. Structurally
-    /// impossible while row keys are distinct, and measured rather than
-    /// argued: an address that is not unique silently merges two lists.
-    collisions: usize,
-}
-
-impl Records {
-    fn wrote(&mut self, subject: &str, record: String) {
-        self.by_subject
-            .entry(subject.to_string())
-            .or_default()
-            .insert(record);
-    }
-}
-
-fn under(path: &str, key: &str) -> String {
-    if path.is_empty() {
-        key.to_string()
-    } else {
-        format!("{path}.{key}")
-    }
-}
-
-/// The fields that ADDRESS a row of this array: the SMALLEST set of fields
-/// holding a subject id in every row whose values, taken together, are
-/// distinct across the rows. Derived from the values rather than named per
-/// read — the same discrimination `common::road_keying` makes for roads,
-/// widened to every id the store registers and to composite keys.
-///
-/// Distinctness is what makes it a key: a field every row carries but two rows
-/// share does not say which row you are at. And a single field is not enough
-/// on the shipped surface — the disclosure coverage's `inert_reveal_pins` is
-/// one row per (fact, world) and NEITHER column is distinct alone, which is
-/// how 9 rows came to be addressed by the position they sat at.
-///
-/// Smallest because an address should carry no more than what identifies the
-/// row: a field that varies for its own reasons would make the address move
-/// for a reason that is not about which row this is.
-fn key_fields(items: &[serde_json::Value], subjects: &BTreeSet<String>) -> Vec<String> {
-    let Some(first) = items.first().and_then(serde_json::Value::as_object) else {
-        return Vec::new();
-    };
-    let candidates: Vec<String> = first
-        .keys()
-        .filter(|key| {
-            items.iter().all(|item| {
-                item.get(key)
-                    .and_then(serde_json::Value::as_str)
-                    .is_some_and(|id| subjects.contains(id))
-            })
-        })
-        .cloned()
-        .collect();
-    let keys = |fields: &[String]| {
-        let mut seen: BTreeSet<Vec<&str>> = BTreeSet::new();
-        items.iter().all(|item| {
-            let tuple: Vec<&str> = fields
-                .iter()
-                .filter_map(|field| item.get(field).and_then(serde_json::Value::as_str))
-                .collect();
-            seen.insert(tuple)
-        })
-    };
-    for size in 1..=candidates.len() {
-        if let Some(found) = combinations(&candidates, size)
-            .into_iter()
-            .find(|fields| keys(fields))
-        {
-            return found;
-        }
-    }
-    Vec::new()
-}
-
-/// Every `size`-element subset of `of`, in the order the fields come in —
-/// so the address a row gets is a fact about the answer and not about which
-/// subset happened to be tried first.
-fn combinations(of: &[String], size: usize) -> Vec<Vec<String>> {
-    if size == 0 {
-        return vec![Vec::new()];
-    }
-    let mut out = Vec::new();
-    for (index, field) in of.iter().enumerate() {
-        for rest in combinations(&of[index + 1..], size - 1) {
-            let mut one = vec![field.clone()];
-            one.extend(rest);
-            out.push(one);
-        }
-    }
-    out
-}
-
-fn row_address(path: &str, item: &serde_json::Value, index: usize, keys: &[String]) -> String {
-    let addressed: Vec<String> = keys
-        .iter()
-        .filter_map(|field| {
-            item.get(field)
-                .and_then(serde_json::Value::as_str)
-                .map(|id| format!("{field}={id}"))
-        })
-        .collect();
-    if addressed.is_empty() {
-        format!("{path}[{index}]")
-    } else {
-        format!("{path}[{}]", addressed.join(","))
-    }
-}
-
-/// Walk one answer and record what it wrote about each subject it names.
-///
-/// An ancestor never claims: an object holds every id under it, so letting it
-/// claim would make the whole report one record about everything. The three
-/// occurrence kinds in this file's header are the three arms below, and each
-/// stops the propagation where the read's own statement about that id ends.
-fn collect(value: &serde_json::Value, path: &str, subjects: &BTreeSet<String>, out: &mut Records) {
-    match value {
-        serde_json::Value::Object(map) => {
-            let mut named_here: Vec<&String> = Vec::new();
-            for (key, child) in map {
-                let child_path = under(path, key);
-                // A map KEY is an id too — `per_world` and `worlds` are keyed
-                // by world-line. What the read wrote about that road is the
-                // subtree under it, not its siblings' subtrees as well.
-                if subjects.contains(key) {
-                    out.wrote(key, format!("{child_path} = {child}"));
-                }
-                match child {
-                    serde_json::Value::String(id) if subjects.contains(id) => named_here.push(id),
-                    _ => collect(child, &child_path, subjects, out),
-                }
-            }
-            if !named_here.is_empty() {
-                // The row is the sentence: a field naming an id makes THIS
-                // object what the read said about it, lists and all.
-                let record = format!("{path} = {value}");
-                for id in named_here {
-                    out.wrote(id, record.clone());
-                }
-            }
-        }
-        serde_json::Value::Array(items) => {
-            let keys = key_fields(items, subjects);
-            let listed_at = format!("{path}[]");
-            let mut listed: Vec<String> = Vec::new();
-            for (index, item) in items.iter().enumerate() {
-                match item {
-                    serde_json::Value::String(id) if subjects.contains(id) => {
-                        out.wrote(id, listed_at.clone());
-                        listed.push(id.clone());
-                    }
-                    _ => {
-                        let row = row_address(path, item, index, &keys);
-                        if item.is_object() && keys.is_empty() {
-                            out.unaddressed.insert(row.clone());
-                        }
-                        collect(item, &row, subjects, out);
-                    }
-                }
-            }
-            if !listed.is_empty() && out.listed.insert(listed_at, listed).is_some() {
-                out.collisions += 1;
-            }
-        }
-        _ => {}
-    }
-}
-
-/// The lists that came back holding EXACTLY what they held, in another order —
-/// the one thing a membership record cannot see, so the walk asks for it on
-/// every edit instead of assuming it never happens.
-///
-/// A list whose membership changed is not one of these: that move is what the
-/// record is for, and it is already counted as an answer.
-fn permutations(before: &Records, after: &Records) -> BTreeSet<String> {
-    before
-        .listed
-        .iter()
-        .filter(|(address, order)| {
-            after.listed.get(*address).is_some_and(|now| {
-                now != *order
-                    && now.iter().collect::<BTreeSet<_>>() == order.iter().collect::<BTreeSet<_>>()
-            })
-        })
-        .map(|(address, _)| address.clone())
-        .collect()
-}
-
-/// Every read's records for one store.
+/// Every read's records for one store. The derivation itself is
+/// [`common::wrote_about`] — since Round 1056 the census of lossy numbers needs
+/// the same one, and a second copy is how the two would come to disagree about
+/// what a read said about which id.
 fn panel_records(
     answers: &BTreeMap<String, Answer>,
     subjects: &BTreeSet<String>,
-) -> BTreeMap<String, Records> {
+) -> BTreeMap<String, Wrote> {
     let mut out = BTreeMap::new();
     for (verb, answer) in answers {
         if let Answer::Json(json) = answer {
-            let mut records = Records::default();
-            collect(json, "", subjects, &mut records);
-            out.insert(verb.clone(), records);
+            out.insert(verb.clone(), wrote_about(json, subjects));
         }
     }
     out
@@ -375,13 +173,14 @@ fn a_record_is_what_the_read_wrote_about_that_id() {
         .into_iter()
         .map(ToString::to_string)
         .collect();
-    let records = |answer: &serde_json::Value| {
-        let mut out = Records::default();
-        collect(answer, "", &subjects, &mut out);
+    let wrote = |answer: &serde_json::Value| {
+        let out = wrote_about(answer, &subjects);
         assert_eq!(out.collisions, 0, "an address is produced once");
         out
     };
-    let one = |record: String| BTreeSet::from([record]);
+    let one =
+        |address: &str, value: serde_json::Value| BTreeMap::from([(address.to_string(), value)]);
+    let member = serde_json::Value::Null;
 
     // A CENSUS: facts listed per scene, which is the shape that decided the
     // rule. `scene` keys the rows because every row holds one and no two rows
@@ -392,18 +191,20 @@ fn a_record_is_what_the_read_wrote_about_that_id() {
             {"scene": "sec-2", "facts": second},
         ]})
     };
-    let before = records(&census(&["f-1", "f-2"], &["f-3"]));
+    let before = wrote(&census(&["f-1", "f-2"], &["f-3"]));
     assert_eq!(
         before.by_subject["f-1"],
-        one("scene_coverage[scene=sec-1].facts[]".to_string()),
+        one("scene_coverage[scene=sec-1].facts[]", member.clone()),
         "a bare id in a list is addressed down through the ancestors that key \
          it, and that address is the whole of the record — the ancestors above \
          it hold every other id too and claim none of them"
     );
-    let row = serde_json::json!({"scene": "sec-1", "facts": ["f-1", "f-2"]});
     assert_eq!(
         before.by_subject["sec-1"],
-        one(format!("scene_coverage[scene=sec-1] = {row}")),
+        one(
+            "scene_coverage[scene=sec-1]",
+            serde_json::json!({"scene": "sec-1", "facts": ["f-1", "f-2"]})
+        ),
         "the id that KEYS the row has the row itself as its record, census and \
          all: the read wrote that list about that scene"
     );
@@ -411,7 +212,7 @@ fn a_record_is_what_the_read_wrote_about_that_id() {
     // A NEIGHBOUR MOVES. This is what the minimal-enclosing-object rule got
     // wrong, and it got it wrong in the direction that inflates: f-1's record
     // was the whole row, so f-2 leaving moved it.
-    let neighbour_left = records(&census(&["f-1"], &["f-2", "f-3"]));
+    let neighbour_left = wrote(&census(&["f-1"], &["f-2", "f-3"]));
     assert_eq!(
         neighbour_left.by_subject["f-1"], before.by_subject["f-1"],
         "a co-listed neighbour moving is not this subject's record moving"
@@ -426,35 +227,45 @@ fn a_record_is_what_the_read_wrote_about_that_id() {
     // gets wrong: both rows list under `facts`, so a record of "which list"
     // alone is identical here and the census could not see a fact change the
     // scene it is anchored at — the very thing R1053 changed the wire for.
-    let moved = records(&census(&["f-2"], &["f-1", "f-3"]));
+    let moved = wrote(&census(&["f-2"], &["f-1", "f-3"]));
     assert_eq!(
         moved.by_subject["f-1"],
-        one("scene_coverage[scene=sec-2].facts[]".to_string()),
+        one("scene_coverage[scene=sec-2].facts[]", member.clone()),
         "a fact anchored at another scene is listed at another address"
     );
     assert_ne!(moved.by_subject["f-1"], before.by_subject["f-1"]);
 
     // A MAP KEYED BY ID. What the read wrote about `r-1` is the subtree under
-    // it — not the map, which holds every other road beside it.
+    // it — not the map, which holds every other road beside it. And a number
+    // inside that subtree belongs to THAT record: `owned_facts` is part of the
+    // read's account of `r-1`, which is what lets the census of lossy numbers
+    // ask whether anything NAMED moved alongside it.
     let worlds = |mine: &[&str], theirs: &[&str]| {
         serde_json::json!({"worlds": {
-            "r-1": {"owned": mine},
-            "r-2": {"owned": theirs},
+            "r-1": {"owned": mine, "owned_facts": mine.len()},
+            "r-2": {"owned": theirs, "owned_facts": theirs.len()},
         }})
     };
-    let roads = records(&worlds(&["f-1"], &["f-3"]));
+    let roads = wrote(&worlds(&["f-1"], &["f-3"]));
     assert_eq!(
         roads.by_subject["r-1"],
-        one(format!(
-            "worlds.r-1 = {}",
-            serde_json::json!({"owned": ["f-1"]})
-        )),
+        one(
+            "worlds.r-1",
+            serde_json::json!({"owned": ["f-1"], "owned_facts": 1})
+        ),
     );
     assert_eq!(
         roads.by_subject["f-1"],
-        one("worlds.r-1.owned[]".to_string()),
+        one("worlds.r-1.owned[]", member.clone()),
     );
-    let other_road = records(&worlds(&["f-1"], &["f-2", "f-3"]));
+    assert_eq!(
+        roads.numbers["worlds.r-1"],
+        BTreeMap::from([("worlds.*.owned_facts".to_string(), vec!["1".to_string()])]),
+        "a number is filed under the innermost record that holds it, with the \
+         id-keyed step collapsed so a per-road map is ONE field rather than one \
+         finding per road"
+    );
+    let other_road = wrote(&worlds(&["f-1"], &["f-2", "f-3"]));
     assert_eq!(
         other_road.by_subject["r-1"], roads.by_subject["r-1"],
         "a change under a SIBLING key is not a change under this one — the map \
@@ -465,37 +276,49 @@ fn a_record_is_what_the_read_wrote_about_that_id() {
     // A ROW THAT NAMES AN ID IN A FIELD is the sentence about it, so anything
     // else in that row is part of what the read said.
     let quest = |state: &str| serde_json::json!({"quests": [{"quest": "q-1", "state": state}]});
-    let unknown = records(&quest("unknown"));
+    let unknown = wrote(&quest("unknown"));
     assert_eq!(
         unknown.by_subject["q-1"],
-        one(format!(
-            "quests[quest=q-1] = {}",
+        one(
+            "quests[quest=q-1]",
             serde_json::json!({"quest": "q-1", "state": "unknown"})
-        )),
+        ),
     );
     assert_ne!(
-        records(&quest("discharged")).by_subject["q-1"],
+        wrote(&quest("discharged")).by_subject["q-1"],
         unknown.by_subject["q-1"],
         "the verdict beside the id is what makes this read ANSWER about it"
+    );
+
+    // A NUMBER NO RECORD HOLDS belongs to the answer's root, which is a record
+    // at address "" whether or not it names anything. That is what keeps the
+    // census of lossy numbers reaching a top-level total: judged against the
+    // whole answer, exactly as it was before records scoped it.
+    let totals = wrote(&serde_json::json!({"facts": 3, "scenes": 1}));
+    assert_eq!(
+        totals.numbers[""],
+        BTreeMap::from([
+            ("facts".to_string(), vec!["3".to_string()]),
+            ("scenes".to_string(), vec!["1".to_string()]),
+        ]),
     );
 
     // ONE SUBJECT, SEVERAL RECORDS. `world` keys these rows and `at` does not,
     // because two rows hold the same `at` — a field every row carries but two
     // rows share does not say which row you are at.
-    let locators = serde_json::json!({"locators": [
+    let locators = wrote(&serde_json::json!({"locators": [
         {"world": "r-1", "at": "sec-1"},
         {"world": "r-2", "at": "sec-1"},
-    ]});
-    let locators = records(&locators);
+    ]}));
     assert_eq!(
         locators.by_subject["sec-1"],
-        BTreeSet::from([
-            format!(
-                "locators[world=r-1] = {}",
+        BTreeMap::from([
+            (
+                "locators[world=r-1]".to_string(),
                 serde_json::json!({"world": "r-1", "at": "sec-1"})
             ),
-            format!(
-                "locators[world=r-2] = {}",
+            (
+                "locators[world=r-2]".to_string(),
                 serde_json::json!({"world": "r-2", "at": "sec-1"})
             ),
         ]),
@@ -505,7 +328,7 @@ fn a_record_is_what_the_read_wrote_about_that_id() {
     // A ROW NO SINGLE FIELD KEYS. One row per (fact, world): `f-1` appears in
     // two of them and `r-1` in two of them, so neither column addresses a row
     // and the pair does. This is the shipped `inert_reveal_pins` shape.
-    let pins = records(&serde_json::json!({"pins": [
+    let pins = wrote(&serde_json::json!({"pins": [
         {"fact": "f-1", "world": "r-1"},
         {"fact": "f-1", "world": "r-2"},
         {"fact": "f-2", "world": "r-1"},
@@ -513,13 +336,13 @@ fn a_record_is_what_the_read_wrote_about_that_id() {
     assert!(pins.unaddressed.is_empty());
     assert_eq!(
         pins.by_subject["f-1"],
-        BTreeSet::from([
-            format!(
-                "pins[fact=f-1,world=r-1] = {}",
+        BTreeMap::from([
+            (
+                "pins[fact=f-1,world=r-1]".to_string(),
                 serde_json::json!({"fact": "f-1", "world": "r-1"})
             ),
-            format!(
-                "pins[fact=f-1,world=r-2] = {}",
+            (
+                "pins[fact=f-1,world=r-2]".to_string(),
                 serde_json::json!({"fact": "f-1", "world": "r-2"})
             ),
         ]),
@@ -528,7 +351,7 @@ fn a_record_is_what_the_read_wrote_about_that_id() {
     // A ROW NO FIELD KEYS falls back to the position it sits at, and says so
     // by name. The walk below asserts this set is EMPTY on the shipped
     // surface; here is the shape that would put something in it.
-    let classes = records(&serde_json::json!({"classes": [
+    let classes = wrote(&serde_json::json!({"classes": [
         {"kind": "exempt", "facts": ["f-1"]},
         {"kind": "dangling", "facts": ["f-2"]},
     ]}));
@@ -538,7 +361,7 @@ fn a_record_is_what_the_read_wrote_about_that_id() {
     );
     assert_eq!(
         classes.by_subject["f-1"],
-        one("classes[0].facts[]".to_string()),
+        one("classes[0].facts[]", member.clone()),
     );
 
     // THE LISTED SETS, kept in document order, are what the ORDER assertion in
@@ -562,7 +385,7 @@ fn a_record_is_what_the_read_wrote_about_that_id() {
     // detector cannot fire is worth nothing — so here is the shape that fires
     // it, and the shape that must NOT (a list whose membership changed has
     // moved for a reason the record already carries).
-    let reordered = records(&census(&["f-2", "f-1"], &["f-3"]));
+    let reordered = wrote(&census(&["f-2", "f-1"], &["f-3"]));
     assert_eq!(
         permutations(&before, &reordered),
         BTreeSet::from(["scene_coverage[scene=sec-1].facts[]".to_string()]),

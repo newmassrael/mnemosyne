@@ -5216,10 +5216,11 @@ fn cmd_report_payoff_substantiation(args: &[String]) -> Result<()> {
         );
         for (world, w) in &report.worlds {
             println!(
-                "world `{world}`: substantiated={} unsubstantiated={} unverifiable={}",
+                "world `{world}`: substantiated={} unsubstantiated={} unverifiable={} dangling={}",
                 w.substantiated.len(),
                 w.unsubstantiated.len(),
-                w.unverifiable.len()
+                w.unverifiable.len(),
+                w.dangling.len()
             );
             for p in &w.substantiated {
                 // "discharged by", not "paid by": these are the payoffs that
@@ -5244,6 +5245,13 @@ fn cmd_report_payoff_substantiation(args: &[String]) -> Result<()> {
                     p.setup,
                     p.payoffs.join(", ")
                 );
+            }
+            // Round 1056 — the fourth class on this wire too. The three above
+            // are about CREDITED setups, so a prose reader counting the lines
+            // against the header's total came up short by exactly the setups
+            // nobody has paid.
+            for setup in &w.dangling {
+                println!("  [dangling] {setup} (no payoff credits it — nothing to substantiate)");
             }
         }
     }

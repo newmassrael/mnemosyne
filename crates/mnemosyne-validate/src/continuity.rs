@@ -5939,6 +5939,18 @@ pub struct WorldPayoffSubstantiation {
     pub substantiated: Vec<SubstantiatedSetup>,
     pub unsubstantiated: Vec<PaidSetup>,
     pub unverifiable: Vec<PaidSetup>,
+    /// The setups NO payoff credits in this world (Round 1056) — carried
+    /// verbatim from `payoff_coverage`, which is where the classification lives.
+    ///
+    /// The three classes above are about CREDITED setups, so until this field a
+    /// setup nobody had paid appeared in this report only as a contribution to
+    /// `setups_total`: a consumer read a total against a body that named fewer,
+    /// and could not learn which ones were missing or that they were exactly the
+    /// ones substantiation cannot be asked about. Two answers naming identical
+    /// things disagreed about the total, which is the R1054 law's own subject —
+    /// found when Round 1056 asked that law of every PAIR of answers rather than
+    /// of each answer against the unedited store.
+    pub dangling: Vec<String>,
 }
 
 /// Whole-store payoff substantiation (Round 485). Pure read projection over the
@@ -6025,6 +6037,10 @@ pub fn payoff_substantiation(
                 }
             }
         }
+        // Round 1056 — the fourth class, so every setup `setups_total` counts is
+        // named in the same answer. Carried, never recomputed: the coverage read
+        // is the one home for "which setups nobody paid".
+        w.dangling = cov.dangling.clone();
         report.worlds.insert(world.clone(), w);
     }
     Ok(report)

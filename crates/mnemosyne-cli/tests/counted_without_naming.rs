@@ -45,13 +45,33 @@
 //! again. An empty answer from a probe that cannot reach the thing it asks about
 //! is the failure this arc has now met three times.
 //!
-//! WHAT THE LAW IS CONSERVATIVE ABOUT, stated because the walk counts it: a
-//! number can be lossy and still escape, when the same edit moves something named
-//! elsewhere in the same answer for an unrelated reason. So every flag raised is
-//! sound and the coverage is a number this walk prints (`accompanied`) rather
-//! than a claim. Narrowing that would mean scoping the comparison to the record
-//! (R1039) — a real next step, and not one to take before a sweep says whether it
-//! is needed.
+//! THE LAW IS ASKED OF EVERY PAIR OF ANSWERS, not of each answer against the
+//! unedited store (Round 1056). What makes a number lossy is that it is NOT A
+//! FUNCTION of what the answer names: two answers that name identical things and
+//! disagree about it prove the number carries information nothing named carries.
+//! Comparing against the baseline asks that of 92 pairs and leaves the escape
+//! Round 1054 named — an edit that moves a name for an unrelated reason excuses
+//! the number — so answers are bucketed by WHAT THEY NAME and every pair in a
+//! bucket is compared. The first sweep under that law found one field the
+//! baseline comparison could not:
+//! [`payoff_substantiation_names_every_setup_it_counts`] is what it found, why
+//! the pair mattered, and the wire this round changed to close it.
+//!
+//! ROUND 1054 PROPOSED A DIFFERENT NARROWING — scope the comparison to the
+//! RECORD, the read's account of one subject — and this round implemented it,
+//! swept it, and REFUTED it. Its first flag was the manuscript's per-scene
+//! `holding_count` under 34 edits on two reads, and that count is derivable from
+//! the events the same answer names in earlier rows:
+//! [`the_manuscript_count_is_derivable_from_the_events_it_names`] proves it over
+//! 823 scenes of 41 roads. A read's account of a subject is not bounded by one
+//! record when the records form a chain, so the record is the wrong scope for
+//! this question — while being exactly the right one for "which reads answer
+//! about this id" (`common::wrote_about`, whose addressing this walk does use to
+//! say where a number sits).
+//!
+//! The coverage measure stays and is still printed rather than claimed: for each
+//! single pair, `accompanied` is the numbers that moved while something named
+//! moved too.
 //!
 //! WHAT THE SECOND SWEEP FOUND is in [`COUNTED_WITHOUT_NAMING`], and this round
 //! did not stop at the census: both wires it named now name what they count. The
@@ -66,54 +86,56 @@ use mnemosyne_atomic::AtomicStore;
 mod common;
 use common::{
     ask_panel, corruptions, dnd_quest_facts, dnd_quest_workspace_from, dnd_quest_workspace_try,
-    panel, registered_ids, telling_of, Answer, SIDECAR,
+    panel, registered_ids, telling_of, wrote_about, Answer, SIDECAR,
 };
 
-/// Every number in one answer, keyed by the path it sits at, with array indices
-/// and id-valued map keys collapsed so the key names a FIELD of the read.
+/// Every number in one answer, keyed by the FIELD it sits at.
 ///
-/// The values are kept as a list in document order rather than summed: a field
-/// whose rows trade values has moved, and a total would say it had not — which
-/// is the very confusion this walk exists to find.
-fn numbers(
-    value: &serde_json::Value,
-    path: &str,
-    ids: &BTreeSet<String>,
-) -> BTreeMap<String, Vec<String>> {
+/// The addressing is [`common::wrote_about`], the one derivation this arc has
+/// for where a place in an answer IS — ids collapsed to `*` so a per-road map is
+/// one field rather than one finding per road, and array rows collapsed to the
+/// fields that key them. The values are kept as a list in the order the records
+/// come in rather than summed: rows that trade values have moved, and a total
+/// would say they had not, which is the very confusion this walk exists to find.
+fn numbers_of(answer: &serde_json::Value, ids: &BTreeSet<String>) -> Numbers {
     let mut out: BTreeMap<String, Vec<String>> = BTreeMap::new();
-    collect_numbers(value, path, ids, &mut out);
+    for per_record in wrote_about(answer, ids).numbers.values() {
+        for (field, values) in per_record {
+            out.entry(field.clone())
+                .or_default()
+                .extend(values.iter().cloned());
+        }
+    }
     out
 }
 
-fn collect_numbers(
-    value: &serde_json::Value,
-    path: &str,
-    ids: &BTreeSet<String>,
-    out: &mut BTreeMap<String, Vec<String>>,
-) {
-    match value {
-        serde_json::Value::Number(n) => {
-            out.entry(path.to_string()).or_default().push(n.to_string())
-        }
-        serde_json::Value::Array(items) => {
-            let path = format!("{path}[]");
-            for item in items {
-                collect_numbers(item, &path, ids, out);
-            }
-        }
-        serde_json::Value::Object(map) => {
-            for (key, child) in map {
-                let key = if ids.contains(key) { "*" } else { key.as_str() };
-                let child_path = if path.is_empty() {
-                    key.to_string()
-                } else {
-                    format!("{path}.{key}")
-                };
-                collect_numbers(child, &child_path, ids, out);
-            }
-        }
-        _ => {}
-    }
+/// What one answer NAMES, keyed so a bucket costs two words instead of a report.
+type Fingerprint = (u64, u64);
+
+/// The numbers one answer carried, by the field they sit at.
+type Numbers = BTreeMap<String, Vec<String>>;
+
+/// Per read-and-question: what an answer named -> the numbers one such answer
+/// carried, and the edit that produced it. Two answers in one bucket name
+/// identical things, so a number that differs between them is not a function of
+/// the names.
+type ByNames = BTreeMap<String, BTreeMap<Fingerprint, (Numbers, String)>>;
+
+/// What an answer NAMES, as a fixed-width key — two independent 64-bit hashes of
+/// the number-blanked answer, so answers that name identical things land in one
+/// bucket without the walk holding 30 reads x 93 stores of report text in
+/// memory (a measurement that runs the machine out of memory is not a
+/// measurement).
+fn fingerprint_of(named: &serde_json::Value) -> Fingerprint {
+    use std::hash::{Hash, Hasher};
+    let text = named.to_string();
+    let hash = |salt: &str| {
+        let mut hasher = std::collections::hash_map::DefaultHasher::new();
+        salt.hash(&mut hasher);
+        text.hash(&mut hasher);
+        hasher.finish()
+    };
+    (hash("names"), hash("shape"))
 }
 
 /// The answer with every number blanked — everything it NAMES, and the shape it
@@ -147,6 +169,13 @@ fn named(value: &serde_json::Value) -> serde_json::Value {
 /// - `report-payoff-coverage worlds.*.exempt` — the one class of a four-way
 ///   classification whose members no field carried. Its own doc comment said
 ///   so out loud, in the words "counted, not listed".
+///
+/// And what the all-pairs law found in Round 1056, also fixed here:
+///
+/// - `report-payoff-substantiation setups_total` — every fact marked `expected`
+///   store-wide, against a body that classifies only the CREDITED ones. The
+///   setups nobody paid were counted and never named. No pair with the unedited
+///   store shows it; two edited stores that name the same things do.
 const COUNTED_WITHOUT_NAMING: [&str; 0] = [];
 
 #[test]
@@ -179,6 +208,23 @@ fn the_reads_that_count_what_they_do_not_name() {
     // edit is out of this walk's reach, and the number says how far out.
     let mut still = 0usize;
     let mut prose_comparisons = 0usize;
+    // label -> what an answer NAMES -> the numbers one such answer carried, and
+    // the edit that produced it. Two answers in one bucket name identical things,
+    // so a number that differs between them is not a function of the names.
+    let mut by_names: ByNames = BTreeMap::new();
+
+    // The unedited store is one of the answers the law compares, not a
+    // privileged one: it goes into the same buckets, so "the baseline and this
+    // edit name the same things and disagree about a number" is the same finding
+    // as any other pair.
+    for (label, answer) in &baseline.answers {
+        if let Answer::Json(json) = answer {
+            by_names.entry(label.clone()).or_default().insert(
+                fingerprint_of(&named(json)),
+                (numbers_of(json, &ids), "(unedited)".to_string()),
+            );
+        }
+    }
 
     let population = corruptions(&store, &facts_json);
     let mut applied = 0usize;
@@ -215,28 +261,61 @@ fn the_reads_that_count_what_they_do_not_name() {
                 prose_comparisons += 1;
                 continue;
             };
-            let (was, now) = (numbers(before, "", &ids), numbers(after, "", &ids));
+            let (was, now) = (numbers_of(before, &ids), numbers_of(after, &ids));
             let moved: BTreeSet<String> = was
                 .keys()
                 .chain(now.keys())
                 .filter(|path| was.get(*path) != now.get(*path))
                 .cloned()
                 .collect();
+            // OVER ALL PAIRS, NOT ONLY AGAINST THE BASELINE (Round 1056). A
+            // number is a read's whole account of something exactly when it is
+            // NOT A FUNCTION of what the answer names: two answers that name
+            // identical things and disagree about the number prove the number
+            // carries information nothing named carries. Comparing each answer
+            // to the baseline asks that of 92 pairs; keying by what the answer
+            // NAMES asks it of every pair the sweep produces, which is the
+            // narrowing Round 1054 filed and reaches the case it named — an edit
+            // that moves a name for an unrelated reason no longer excuses the
+            // number, because another edit lands on the same names.
+            let fingerprint = fingerprint_of(&named(after));
+            match by_names
+                .entry(label.clone())
+                .or_default()
+                .entry(fingerprint)
+            {
+                std::collections::btree_map::Entry::Vacant(slot) => {
+                    slot.insert((now.clone(), edit.clone()));
+                }
+                std::collections::btree_map::Entry::Occupied(slot) => {
+                    let (theirs, other) = slot.get();
+                    for path in theirs.keys().chain(now.keys()) {
+                        if theirs.get(path) != now.get(path) {
+                            alone
+                                .entry((verb.clone(), path.clone()))
+                                .or_default()
+                                .insert(format!("{edit} against {other}, same names"));
+                        }
+                    }
+                }
+            }
             if moved.is_empty() {
                 if named(before) == named(after) {
                     still += 1;
                 }
                 continue;
             }
-            let into = if named(before) == named(after) {
-                &mut alone
-            } else {
-                &mut accompanied
-            };
-            for path in moved {
-                into.entry((verb.clone(), path))
-                    .or_default()
-                    .insert(edit.clone());
+            // THE COVERAGE MEASURE: the numbers one edit moved while moving
+            // something named too. Not evidence of loss — evidence of how much
+            // of the surface a single pair cannot speak about, which is why the
+            // fingerprint above asks all of them.
+            if named(before) != named(after) {
+                for path in moved {
+                    accompanied
+                        .entry((verb.clone(), path))
+                        .or_default()
+                        .insert(edit.clone());
+                }
             }
         }
     }
@@ -315,14 +394,17 @@ fn the_reads_that_count_what_they_do_not_name() {
          had to change",
     );
     check(
-        (still, prose_comparisons, accompanied.len()) == (5195, 216, 10),
+        (still, prose_comparisons, accompanied.len()) == (5194, 216, 11),
         "REACH, ASSERTED RATHER THAN IMPLIED: of the 6256 (question, edit) pairs \
-         this walk makes, 5195 move the read not at all and 216 are against the \
+         this walk makes, 5194 move the read not at all and 216 are against the \
          one verb that takes `--json` and answers in prose, which holds no fields \
          to key on. The law can speak only about the rest, and it finds numbers \
-         moving in 10 fields. An empty census is what a clean surface looks like \
+         moving in 11 fields. An empty census is what a clean surface looks like \
          AND what a walk that stopped reaching anything looks like; these three \
-         numbers are what tell them apart",
+         numbers are what tell them apart. It was 5195 and 10 until Round 1056: \
+         `report-payoff-substantiation` now names the setups nobody paid, so one \
+         more edit moves that read at all, and its total joins the fields whose \
+         moves are accounted for by something named",
     );
     check(
         accompanied.keys().any(|(verb, path)| {
@@ -552,5 +634,261 @@ fn the_frame_view_names_the_facts_it_calls_not_holding() {
         broken,
         Vec::<String>::new(),
         "the frame view does not name the facts it calls not-holding"
+    );
+}
+
+/// The manuscript's per-scene count IS derivable from the events the same answer
+/// names — which is why Round 1056 does not scope the law above to the RECORD.
+///
+/// That scoping is what Round 1054 filed as this law's narrowing: a number
+/// escapes the whole-answer test when the same edit moves a name somewhere else
+/// for an unrelated reason, so ask whether anything named moved inside the
+/// number's own record instead. It was implemented, swept, and the first thing
+/// it flagged was this count — `worlds.*.scenes[section=*].holding_count`, under
+/// every `branch` and `canon_from` retarget, 34 edits on two reads.
+///
+/// The flag is a FALSE POSITIVE, and the reason is the axis rather than the
+/// field: a scene row does not name the facts holding at it, but the road's
+/// EARLIER rows do. The count at scene N is the facts that began at or before N
+/// and have not ended, and both halves are named events in the same answer. A
+/// consumer reading one row learns only a number; a consumer reading the road
+/// learns which facts, and a read's account of a subject is not bounded by one
+/// record when the records form a chain.
+///
+/// So this test measures the derivation rather than asserting it, over every
+/// authored corpus and every road. It also executes a claim that shipped with
+/// the wire in Round 466 and had never been run: "the delta story and the holds
+/// semantics cross-check each other — a delta reconstruction that disagrees with
+/// the count has hit an unplaced coordinate, never a second semantics".
+#[test]
+fn the_manuscript_count_is_derivable_from_the_events_it_names() {
+    let (stores, unloadable) = common::authored_stores();
+    let mut roads = 0usize;
+    let mut scenes = 0usize;
+    let mut mismatches: Vec<String> = Vec::new();
+    let mut touched_by_unplaced = 0usize;
+    for store in &stores {
+        let out = common::run(
+            store.ws.path(),
+            &["report-playthrough-manuscript", "--json"],
+        );
+        if !out.status.success() {
+            continue;
+        }
+        let manuscript: serde_json::Value =
+            serde_json::from_slice(&out.stdout).expect("manuscript json");
+        for (world, road) in manuscript["worlds"].as_object().into_iter().flatten() {
+            roads += 1;
+            // The facts this road says it CANNOT place — the escape hatch the
+            // wire's own claim names. A fact whose end coordinate is outside the
+            // order has no `ends` event to replay.
+            let unplaced: BTreeSet<&str> = ["unplaced_facts", "undecidable"]
+                .iter()
+                .flat_map(|field| road[*field].as_array().into_iter().flatten())
+                .filter_map(|row| row["fact_id"].as_str())
+                .collect();
+            let mut holding: BTreeSet<&str> = BTreeSet::new();
+            for scene in road["scenes"].as_array().into_iter().flatten() {
+                scenes += 1;
+                for event in scene["begins"].as_array().into_iter().flatten() {
+                    if let Some(id) = event["fact_id"].as_str() {
+                        holding.insert(id);
+                    }
+                }
+                // THE TWO END KINDS STOP AT DIFFERENT TIMES, and the replay has
+                // to know it — which is a thing the answer says, in each event's
+                // `kind`. A fact still holds AT the scene its `canon_to` names
+                // (the interval is closed: `holds_at` asks `p <= canon_to`), and
+                // it has already stopped at the scene where a SUCCESSOR begins
+                // (that one asks `successor.canon_from <= p`). Replaying both as
+                // "gone here" undercounts 26 of 823 scenes, which is how this
+                // test found the distinction rather than assuming it.
+                for event in scene["ends"].as_array().into_iter().flatten() {
+                    let (Some(id), Some(kind)) =
+                        (event["fact_id"].as_str(), event["kind"].as_str())
+                    else {
+                        continue;
+                    };
+                    if kind == "superseded" {
+                        holding.remove(id);
+                    }
+                }
+                let replayed: BTreeSet<&str> = holding
+                    .iter()
+                    .copied()
+                    .filter(|id| !unplaced.contains(id))
+                    .collect();
+                if holding.len() != replayed.len() {
+                    touched_by_unplaced += 1;
+                }
+                let counted = scene["holding_count"].as_u64().unwrap_or_default() as usize;
+                if replayed.len() != counted {
+                    mismatches.push(format!(
+                        "{} {world} {}: replayed {} of the events it names, counted {counted}",
+                        store.name,
+                        scene["section"].as_str().unwrap_or("?"),
+                        replayed.len(),
+                    ));
+                }
+                // Now the closed end: a fact whose `canon_to` is THIS scene held
+                // here and is gone from the next one.
+                for event in scene["ends"].as_array().into_iter().flatten() {
+                    if let Some(id) = event["fact_id"].as_str() {
+                        holding.remove(id);
+                    }
+                }
+            }
+        }
+    }
+    // Print before asserting (the R1026 rule): the reach is the finding as much
+    // as the verdict, and a first-violation stop would report one line of it.
+    println!(
+        "{} authored stores ({} unloadable), {roads} roads, {scenes} scenes replayed; \
+         {touched_by_unplaced} scene(s) where an unplaced coordinate is in flight; \
+         {} mismatch(es)",
+        stores.len(),
+        unloadable.len(),
+        mismatches.len(),
+    );
+    for line in &mismatches {
+        println!("  MISMATCH {line}");
+    }
+    assert!(
+        scenes > 100,
+        "the replay reached {scenes} scenes, which is a walk that stopped \
+         working rather than a repository that emptied"
+    );
+    assert_eq!(
+        mismatches,
+        Vec::<String>::new(),
+        "the manuscript's holding count is NOT a function of the events the same \
+         answer names, which would make the count lossy after all and the \
+         record-scoped flag a true positive"
+    );
+}
+
+/// `report-payoff-substantiation` must NAME every setup it counts, and until
+/// Round 1056 it did not. (Round 1056.)
+///
+/// The census above found this one by asking its question of every PAIR of
+/// answers rather than of each answer against the unedited store: retargeting
+/// `f-041`'s world-line and dropping `f-041`'s payoff expectation produce two
+/// answers that NAME identical things and disagree about `setups_total`. A number
+/// that two answers naming the same things disagree about is carrying information
+/// nothing named carries — which is this law's whole subject, and the pair that
+/// proves it is a pair neither answer forms with the baseline.
+///
+/// The cause is a class this read is silent about. `setups_total` is every fact
+/// marked `expected`, store-wide; `worlds` classifies only the setups some payoff
+/// CREDITED, three ways. A setup no payoff credits — the author's todo, which the
+/// coverage sibling names as `dangling` — appears in this report only as a
+/// contribution to the total. So a consumer reads "12 setups" against a body
+/// naming nine and cannot learn which three are missing, or that they are the
+/// ones substantiation cannot even be asked about.
+///
+/// This test states the property rather than the fix: every setup the total
+/// counts is named somewhere in the same answer.
+///
+/// IT ASKS A CONSTRUCTED STORE AS WELL, and that is not decoration. All 28
+/// authored corpora satisfy the property as shipped — an author who marks a setup
+/// goes on to pay it — so a sweep of what authors wrote reports a clean surface
+/// and the census's finding reads as noise. The shape that breaks it is a setup
+/// NO payoff credits, which the census reached by dropping one expectation from
+/// an authored store. What the corpora cannot make, the tree makes, through the
+/// same import recipe an author would use (the R1052 rule).
+#[test]
+fn payoff_substantiation_names_every_setup_it_counts() {
+    let section = |id: &str, title: &str| serde_json::json!({"section_id": id, "parent_doc": "constructed", "title": title});
+    let sections = serde_json::json!([
+        section("n-01", "the gun on the wall"),
+        section("n-02", "the gun goes off"),
+    ]);
+    let order = serde_json::json!({"edges": [["n-01", "n-02"]]});
+    let fact = |id: &str, at: &str, claim: &str| {
+        serde_json::json!({
+            "fact_id": id,
+            "frame": "f-teller",
+            "claim": claim,
+            "canon_from": at,
+            "evidence": [at],
+        })
+    };
+    let mut paid_setup = fact("fx-paid-setup", "n-01", "a rifle hangs over the hearth");
+    paid_setup["payoff_expectation"] = serde_json::json!("expected");
+    let mut payoff = fact("fx-payoff", "n-02", "the rifle is fired");
+    payoff["pays_off"] = serde_json::json!(["fx-paid-setup"]);
+    // THE SHAPE NO AUTHOR SHIPPED: marked as a setup, credited by nothing.
+    let mut dangling_setup = fact("fx-dangling-setup", "n-01", "a locked case sits beneath it");
+    dangling_setup["payoff_expectation"] = serde_json::json!("expected");
+    let facts = serde_json::json!({
+        "frames": [{"frame_id": "f-teller"}],
+        "facts": [paid_setup, payoff, dangling_setup],
+    });
+    let constructed = common::constructed_corpus(&sections, &order, &facts)
+        .unwrap_or_else(|e| panic!("the constructed manifests must import: {e}"));
+
+    let (stores, unloadable) = common::authored_stores();
+    let mut targets: Vec<(String, &std::path::Path)> = stores
+        .iter()
+        .map(|store| (store.name.clone(), store.ws.path()))
+        .collect();
+    targets.push((
+        "a constructed store with one uncredited setup".to_string(),
+        constructed.path(),
+    ));
+    let mut asked = 0usize;
+    let mut shortfalls: Vec<String> = Vec::new();
+    for (name, path) in &targets {
+        let out = common::run(path, &["report-payoff-substantiation", "--json"]);
+        if !out.status.success() {
+            continue;
+        }
+        asked += 1;
+        let report: serde_json::Value =
+            serde_json::from_slice(&out.stdout).expect("substantiation json");
+        let mut named: BTreeSet<&str> = BTreeSet::new();
+        for road in report["worlds"]
+            .as_object()
+            .into_iter()
+            .flatten()
+            .map(|(_, w)| w)
+        {
+            for class in ["substantiated", "unsubstantiated", "unverifiable"] {
+                for row in road[class].as_array().into_iter().flatten() {
+                    if let Some(setup) = row["setup"].as_str() {
+                        named.insert(setup);
+                    }
+                }
+            }
+            for class in ["dangling", "unknown"] {
+                for row in road[class].as_array().into_iter().flatten() {
+                    if let Some(setup) = row.as_str() {
+                        named.insert(setup);
+                    }
+                }
+            }
+        }
+        let counted = report["setups_total"].as_u64().unwrap_or_default() as usize;
+        if named.len() != counted {
+            shortfalls.push(format!(
+                "{name}: counts {counted} setups, names {}",
+                named.len(),
+            ));
+        }
+    }
+    // Print before asserting (the R1026 rule).
+    println!(
+        "{asked} stores answered ({} unloadable); {} name fewer setups than they count",
+        unloadable.len(),
+        shortfalls.len(),
+    );
+    for line in &shortfalls {
+        println!("  SHORTFALL {line}");
+    }
+    assert!(asked > 20, "the sweep asked {asked} stores");
+    assert_eq!(
+        shortfalls,
+        Vec::<String>::new(),
+        "a setup counted and never named is a number a consumer cannot account for"
     );
 }

@@ -801,6 +801,12 @@ fn the_walk_says_what_stands_between_an_authoring_slip_and_the_runtime() {
             // says so in the same run rather than in a later round's review.
             "REFUTED report-authoring-frontier: `structural` is never empty",
             "REFUTED report-payoff-coverage: `dangling` is never empty",
+            // R1056 — the substantiation read began carrying the setups nobody
+            // paid, and this census picked the new field up on its own and
+            // refuted the same rule the coverage sibling's copy of it fails. The
+            // pair is the point: two reads now name that class and the corpus
+            // says it supports no gate on either. Nobody added it here.
+            "REFUTED report-payoff-substantiation: `dangling` is never empty",
             "CANDIDATE report-quest-graph: `actors` is never empty",
             "REFUTED report-quest-graph: `completions` is never empty",
             "REFUTED report-quest-graph: `giving_facts` is never empty",
