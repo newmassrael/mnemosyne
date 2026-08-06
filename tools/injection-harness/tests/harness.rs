@@ -16,6 +16,11 @@ fn binary() -> &'static str {
 
 /// A tree with one source file and a suite that goes red exactly when that file
 /// no longer says `HEALTHY`.
+///
+/// The suite EXITS NON-ZERO when it goes red, as a real one does. That is not
+/// decoration: the harness now holds the exit code and the failure list to each
+/// other, so a fixture that always exited 0 would be a fixture no real suite
+/// behaves like, and every test built on it would pass for the wrong reason.
 fn tree(root: &Path, source: &str) -> PathBuf {
     fs::create_dir_all(root.join("logs")).expect("mkdir");
     fs::write(root.join("src.txt"), source).expect("write source");
@@ -27,15 +32,59 @@ fn tree(root: &Path, source: &str) -> PathBuf {
          printf 'test result: ok. 2 passed; 0 failed; 0 ignored\\n'\n\
          else\n\
          printf 'failures:\\n    the_law\\n\\ntest result: FAILED. 1 passed; 1 failed; 0 ignored\\n'\n\
+         exit 1\n\
          fi\n",
     )
     .expect("write suite");
+    make_runnable(&suite);
+    suite
+}
+
+/// A suite whose log and whose exit code are supplied SEPARATELY for each of the
+/// two tree states, so a run can be made to say one thing in its log and another
+/// in its status — which is the disagreement under test.
+fn split_verdict_suite(
+    root: &Path,
+    healthy: (&str, i32),
+    broken: (&str, i32),
+    source: &str,
+) -> PathBuf {
+    fs::create_dir_all(root.join("logs")).expect("mkdir");
+    fs::write(root.join("src.txt"), source).expect("write source");
+    let suite = root.join("suite.sh");
+    let (healthy_log, healthy_exit) = healthy;
+    let (broken_log, broken_exit) = broken;
+    fs::write(
+        &suite,
+        format!(
+            "#!/bin/sh\n\
+             if grep -q HEALTHY src.txt; then\n\
+             printf '{healthy_log}'\n\
+             exit {healthy_exit}\n\
+             else\n\
+             printf '{broken_log}'\n\
+             exit {broken_exit}\n\
+             fi\n"
+        ),
+    )
+    .expect("write suite");
+    make_runnable(&suite);
+    suite
+}
+
+/// A cargo-shaped log with no failing test in it.
+const ALL_GREEN: &str = "test result: ok. 2 passed; 0 failed; 0 ignored\\n";
+
+/// A cargo-shaped log that names one failing test.
+const ONE_RED: &str =
+    "failures:\\n    the_law\\n\\ntest result: FAILED. 1 passed; 1 failed; 0 ignored\\n";
+
+fn make_runnable(suite: &Path) {
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
-        fs::set_permissions(&suite, fs::Permissions::from_mode(0o755)).expect("chmod");
+        fs::set_permissions(suite, fs::Permissions::from_mode(0o755)).expect("chmod");
     }
-    suite
 }
 
 fn manifest(root: &Path, injections: serde_json::Value) -> PathBuf {
@@ -255,6 +304,102 @@ fn a_floor_this_machine_clears_lets_the_run_through() {
 }
 
 #[test]
+fn a_control_that_failed_without_naming_a_test_stops_the_sweep() {
+    // THE SHAPE THIS IS ABOUT: a suite can fail in a way its own log does not
+    // name — a target that did not build, a crash, a signal — and the failure
+    // list stays empty. Read by the list alone that is a green control, and
+    // every count taken after it is taken against a run that did not happen.
+    let root = tempdir();
+    split_verdict_suite(root.path(), (ALL_GREEN, 1), (ALL_GREEN, 1), "HEALTHY\n");
+    let path = manifest(
+        root.path(),
+        serde_json::json!([{
+            "name": "I1",
+            "edits": [{"file": "src.txt", "from": "HEALTHY", "to": "BROKEN"}],
+        }]),
+    );
+    let out = harness(&path);
+    assert!(
+        !out.status.success(),
+        "a control that exited non-zero is not a green control"
+    );
+    let said = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        said.contains("exited 1") && said.contains("named no failing test"),
+        "and it must say WHICH half disagreed with which: {said}"
+    );
+    assert!(
+        !root.path().join("logs").join("I1.log").exists(),
+        "no injection is run from a control that did not happen"
+    );
+}
+
+#[test]
+fn an_injection_run_that_failed_without_naming_a_test_is_not_a_clean_surface() {
+    // The same disagreement one run later, where it is worse: 0 red against an
+    // injection reads as "the surface holds", and the run it is read from never
+    // finished. Round 1057 ran exactly this — 15 doc-tests failed to build under
+    // one injection — and it was caught afterwards by counting targets, not by
+    // the run itself.
+    let root = tempdir();
+    split_verdict_suite(root.path(), (ALL_GREEN, 0), (ALL_GREEN, 1), "HEALTHY\n");
+    let path = manifest(
+        root.path(),
+        serde_json::json!([{
+            "name": "I1",
+            // No `expect_red`: the misaimed-injection gate must not be what
+            // fails this sweep, or the test would pass without the law.
+            "edits": [{"file": "src.txt", "from": "HEALTHY", "to": "BROKEN"}],
+        }]),
+    );
+    let out = harness(&path);
+    assert!(
+        !out.status.success(),
+        "0 red out of a run that failed to run is not 0 red"
+    );
+    let said = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        said.contains("I1") && said.contains("named no failing test"),
+        "{said}"
+    );
+    assert_eq!(
+        fs::read_to_string(root.path().join("src.txt")).expect("read back"),
+        "HEALTHY\n",
+        "and the tree still comes back — a refusal is not a reason to leave the \
+         injection in place"
+    );
+}
+
+#[test]
+fn a_run_that_exited_green_over_a_red_log_stops_the_sweep() {
+    // The other direction, and it needs its own test because the two halves can
+    // disagree either way: a log that names failing tests under an exit code
+    // that says everything passed means either the parse invented the names or
+    // the suite swallowed the failure. Both make the red count fiction.
+    let root = tempdir();
+    split_verdict_suite(root.path(), (ALL_GREEN, 0), (ONE_RED, 0), "HEALTHY\n");
+    let path = manifest(
+        root.path(),
+        serde_json::json!([{
+            "name": "I1",
+            "edits": [{"file": "src.txt", "from": "HEALTHY", "to": "BROKEN"}],
+            "expect_red": ["the_law"],
+        }]),
+    );
+    let out = harness(&path);
+    assert!(
+        !out.status.success(),
+        "an exit code that says nothing failed cannot stand over a log that \
+         names what did"
+    );
+    let said = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        said.contains("exited 0") && said.contains("the_law"),
+        "{said}"
+    );
+}
+
+#[test]
 fn names_that_do_not_identify_the_targets_stop_the_sweep() {
     // A suite whose two targets announce the same name: the count says 2 and
     // the set says 1, so a run that lost one of them would read as no drift.
@@ -287,6 +432,388 @@ fn names_that_do_not_identify_the_targets_stop_the_sweep() {
         "{}",
         String::from_utf8_lossy(&out.stderr)
     );
+}
+
+/// A suite that answers instantly while the tree is healthy and then, once an
+/// injection has landed, opens a long window and records the pid of everything
+/// it started.
+///
+/// The two halves are the point: the control must not take a minute, and the
+/// injected run must still be running when the harness is killed — which is the
+/// only state in which the tree is edited and a suite is live.
+fn slow_once_injected(root: &Path, source: &str) -> PathBuf {
+    fs::create_dir_all(root.join("logs")).expect("mkdir");
+    fs::write(root.join("src.txt"), source).expect("write source");
+    let suite = root.join("suite.sh");
+    fs::write(
+        &suite,
+        "#!/bin/sh\n\
+         if grep -q HEALTHY src.txt; then\n\
+         printf 'test result: ok. 2 passed; 0 failed; 0 ignored\\n'\n\
+         exit 0\n\
+         fi\n\
+         sh -c 'echo $$ > grandchild.pid; exec sleep 120' &\n\
+         echo $$ > suite.pid\n\
+         while [ ! -s grandchild.pid ]; do sleep 0.05; done\n\
+         echo open > started\n\
+         sleep 120\n",
+    )
+    .expect("write suite");
+    make_runnable(&suite);
+    suite
+}
+
+fn until(what: &str, mut condition: impl FnMut() -> bool) {
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
+    while std::time::Instant::now() < deadline {
+        if condition() {
+            return;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(50));
+    }
+    panic!("timed out waiting for {what}");
+}
+
+fn alive(pid: i32) -> bool {
+    // Signal 0 asks the kernel whether the process exists without touching it.
+    unsafe { libc::kill(pid, 0) == 0 }
+}
+
+fn pid_in(path: &Path) -> i32 {
+    fs::read_to_string(path)
+        .expect("the suite wrote its pid")
+        .trim()
+        .parse()
+        .expect("a pid")
+}
+
+fn signal(pid: u32, signal: i32) {
+    assert_eq!(
+        unsafe { libc::kill(pid as i32, signal) },
+        0,
+        "the harness is still there to be signalled"
+    );
+}
+
+/// Start a sweep, wait until it is mid-injection with the suite live, and hand
+/// back the harness, the tree's injected state, and the pids under it.
+fn sweep_in_flight(root: &Path) -> (std::process::Child, i32, i32) {
+    slow_once_injected(root, "the wire is HEALTHY here\n");
+    let path = manifest(
+        root,
+        serde_json::json!([{
+            "name": "I1",
+            "edits": [{"file": "src.txt", "from": "HEALTHY", "to": "BROKEN"}],
+        }]),
+    );
+    let harness = Command::new(binary())
+        .arg(&path)
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .expect("harness starts");
+    until("the injected run to open its window", || {
+        root.join("started").exists()
+    });
+    assert!(
+        fs::read_to_string(root.join("src.txt"))
+            .expect("read")
+            .contains("BROKEN"),
+        "the window under test is the one where the tree IS edited"
+    );
+    (
+        harness,
+        pid_in(&root.join("suite.pid")),
+        pid_in(&root.join("grandchild.pid")),
+    )
+}
+
+#[test]
+fn a_sweep_that_is_interrupted_puts_the_tree_back_and_takes_the_suite_with_it() {
+    let root = tempdir();
+    let (mut harness, suite, grandchild) = sweep_in_flight(root.path());
+    signal(harness.id(), libc::SIGTERM);
+    // THE DEATHS ARE ASKED FOR BEFORE THE HARNESS IS WAITED ON, and that order
+    // is the whole oracle. Waiting first lets a sweep that killed nothing pass:
+    // it returns when the suite runs out of sleep, by which time the suite is
+    // gone of old age and every assertion below holds. The self-check found this
+    // by removing the process groups and watching this test stay green.
+    until("the suite to die with the sweep", || !alive(suite));
+    until("the test binary under it to die too", || !alive(grandchild));
+    let status = harness.wait().expect("the harness exits");
+    assert!(!status.success(), "a stopped sweep measured nothing");
+    assert_eq!(
+        fs::read_to_string(root.path().join("src.txt")).expect("read back"),
+        "the wire is HEALTHY here\n",
+        "THE TREE COMES BACK even though nobody asked the sweep to finish — an \
+         injection left in the tree is the next measurement's baseline"
+    );
+}
+
+#[test]
+fn a_sweep_that_is_killed_outright_is_still_survived_by_its_tree() {
+    // SIGKILL cannot be caught, so this is the case where nothing the harness
+    // could have installed runs. What restores the tree is the supervisor, which
+    // asked in advance to be signalled when its parent died.
+    let root = tempdir();
+    let (mut harness, suite, grandchild) = sweep_in_flight(root.path());
+    signal(harness.id(), libc::SIGKILL);
+    harness.wait().expect("the harness dies");
+    until("the suite to die with the sweep", || !alive(suite));
+    until("the test binary under it to die too", || !alive(grandchild));
+    until("the supervisor to put the tree back", || {
+        fs::read_to_string(root.path().join("src.txt")).unwrap_or_default()
+            == "the wire is HEALTHY here\n"
+    });
+
+    // And the originals it never got to clear are what tells the next sweep that
+    // this one died — with the tree's own answer about whether it was left
+    // injected.
+    assert!(
+        root.path().join("logs").join("sweep").exists(),
+        "a sweep that died leaves the evidence that it did"
+    );
+    let again = harness_run(root.path());
+    assert!(
+        again.status.success(),
+        "the tree matches every original, so the next sweep may proceed: {}",
+        String::from_utf8_lossy(&again.stderr)
+    );
+    assert!(
+        String::from_utf8_lossy(&again.stderr).contains("a previous sweep left"),
+        "and it says so rather than silently clearing them: {}",
+        String::from_utf8_lossy(&again.stderr)
+    );
+}
+
+#[test]
+fn a_tree_left_injected_by_a_dead_sweep_stops_the_next_one() {
+    // The loud half of that gate: the originals are there AND the file no longer
+    // holds them, which is a tree carrying somebody else's injection. A sweep
+    // started here would take that injection as its baseline and report every
+    // law it breaks as a law that holds.
+    let root = tempdir();
+    tree(root.path(), "the wire is BROKEN by a sweep that died\n");
+    left_originals(
+        root.path(),
+        "the wire is HEALTHY here\n",
+        a_pid_that_is_gone(),
+    );
+    let path = manifest(root.path(), serde_json::json!([]));
+    let out = harness(&path);
+    assert!(
+        !out.status.success(),
+        "a borrowed injection is not a baseline"
+    );
+    let said = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        said.contains("a sweep died holding this tree") && said.contains("src.txt"),
+        "and it names the file that is still injected: {said}"
+    );
+}
+
+#[test]
+fn a_manifest_that_names_its_paths_relatively_is_still_run_from_one_place() {
+    // THE SHAPE THE TRACKED MANIFESTS USE, and the one every other test here
+    // does not: `example.json` says `"repo": "../.."` and
+    // `"logs": "target/injection-logs"`. The suite is started with the TREE as
+    // its working directory, so a relative path handed across that change
+    // resolves somewhere else — the first real sweep under a supervisor died
+    // with `No such file or directory` because the supervisor's own path was
+    // relative to where the sweep was started, not to where the suite runs.
+    // THE SWEEP IS STARTED SOMEWHERE ELSE THAN THE TREE, which is the half that
+    // makes the paths bite: this crate's own sweeps run from `tools/…` over a
+    // repository two directories up. A fixture whose tree and whose starting
+    // directory are the same one resolves every relative path by accident — the
+    // first version of this test did exactly that and stayed green when the
+    // absolutising was removed.
+    let root = tempdir();
+    tree(root.path(), "the wire is HEALTHY here\n");
+    let from = root.path().join("tool");
+    fs::create_dir_all(&from).expect("mkdir");
+    let path = from.join("manifest.json");
+    fs::write(
+        &path,
+        serde_json::json!({
+            "repo": "..",
+            "test_command": ["./suite.sh"],
+            "logs": "logs",
+            "injections": [{
+                "name": "I1",
+                "edits": [{"file": "src.txt", "from": "HEALTHY", "to": "BROKEN"}],
+                "expect_red": ["the_law"],
+            }],
+        })
+        .to_string(),
+    )
+    .expect("write manifest");
+    let out = Command::new(binary())
+        .arg("manifest.json")
+        .current_dir(&from)
+        .output()
+        .expect("harness runs");
+    assert!(
+        out.status.success(),
+        "a relative manifest is the tracked shape: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert!(
+        String::from_utf8_lossy(&out.stdout).contains("\"the_law\""),
+        "and the injection still fires under it"
+    );
+}
+
+#[test]
+fn a_suite_that_replaces_the_tool_does_not_end_the_sweep() {
+    // A sweep may be aimed at the tree that BUILDS it — this crate's own
+    // `self-check.json` is exactly that — and the suite then replaces the binary
+    // the sweep is executing. `/proc/self/exe` afterwards names a path that no
+    // longer exists, and the first self-check ever run died on its SECOND
+    // injection with `No such file or directory`. The sweep's own copy is what
+    // makes the supervisor the code that started the sweep.
+    let root = tempdir();
+    fs::create_dir_all(root.path().join("logs")).expect("mkdir");
+    fs::write(root.path().join("src.txt"), "one HEALTHY two SOUND\n").expect("write source");
+    let tool = root.path().join("harness-copy");
+    fs::copy(binary(), &tool).expect("copy the tool");
+    make_runnable(&tool);
+    let suite = root.path().join("suite.sh");
+    fs::write(
+        &suite,
+        "#!/bin/sh\n\
+         rm -f harness-copy\n\
+         printf 'test result: ok. 1 passed; 0 failed; 0 ignored\\n'\n",
+    )
+    .expect("write suite");
+    make_runnable(&suite);
+    let path = manifest(
+        root.path(),
+        serde_json::json!([
+            {"name": "I1", "edits": [{"file": "src.txt", "from": "HEALTHY", "to": "BROKEN"}]},
+            {"name": "I2", "edits": [{"file": "src.txt", "from": "SOUND", "to": "BROKEN"}]},
+        ]),
+    );
+    let out = Command::new(&tool)
+        .arg(&path)
+        .output()
+        .expect("the copied tool runs");
+    assert!(
+        !tool.exists(),
+        "the suite really did replace the binary the sweep was started from"
+    );
+    assert!(
+        out.status.success(),
+        "and the sweep still finished: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert!(
+        root.path().join("logs").join("I2.log").exists(),
+        "including the run that came AFTER the tool was gone"
+    );
+}
+
+#[test]
+fn a_sweep_already_running_in_this_tree_stops_a_second_one() {
+    // The other reason an originals index is lying there, and it is the opposite
+    // reason: not a sweep that died, a sweep that is HERE. Two sweeps in one
+    // tree edit the same files and write the same logs, so each reads the
+    // other's injection as its own baseline — which is the one thing this tool
+    // exists to make impossible.
+    let root = tempdir();
+    tree(root.path(), "the wire is HEALTHY here\n");
+    // The test process itself is the owner nobody can claim is gone.
+    left_originals(
+        root.path(),
+        "the wire is HEALTHY here\n",
+        std::process::id() as i32,
+    );
+    let path = manifest(root.path(), serde_json::json!([]));
+    let out = harness(&path);
+    assert!(!out.status.success(), "one tree, one sweep");
+    let said = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        said.contains("already running in this tree") && said.contains("pid"),
+        "and it names who is holding it: {said}"
+    );
+}
+
+/// Leave behind what a sweep leaves when it does not finish: the originals, and
+/// the pid of whoever is answerable for them.
+fn left_originals(root: &Path, was: &str, owner: i32) {
+    let originals = root.join("logs").join("sweep");
+    fs::create_dir_all(&originals).expect("mkdir");
+    fs::write(originals.join("000-src.txt"), was).expect("backup");
+    fs::write(
+        originals.join("originals.json"),
+        serde_json::json!({
+            "owner": owner,
+            "files": [{
+                "repo_file": root.join("src.txt"),
+                "backup": originals.join("000-src.txt"),
+            }]
+        })
+        .to_string(),
+    )
+    .expect("index");
+}
+
+/// A pid that certainly belonged to a process and certainly does not now.
+fn a_pid_that_is_gone() -> i32 {
+    let mut gone = Command::new("/bin/true").spawn().expect("spawn /bin/true");
+    let pid = gone.id() as i32;
+    gone.wait().expect("reap");
+    pid
+}
+
+#[test]
+fn a_suite_killed_by_a_signal_is_not_a_run_that_finished() {
+    // The supervisor forwards the death rather than translating it: a suite that
+    // was killed must not arrive as an exit code, because every exit code is a
+    // run that got to the end.
+    let root = tempdir();
+    fs::create_dir_all(root.path().join("logs")).expect("mkdir");
+    fs::write(root.path().join("src.txt"), "HEALTHY\n").expect("write source");
+    let suite = root.path().join("suite.sh");
+    fs::write(
+        &suite,
+        "#!/bin/sh\n\
+         if grep -q HEALTHY src.txt; then\n\
+         printf 'test result: ok. 2 passed; 0 failed; 0 ignored\\n'\n\
+         exit 0\n\
+         fi\n\
+         kill -KILL $$\n",
+    )
+    .expect("write suite");
+    make_runnable(&suite);
+    let path = manifest(
+        root.path(),
+        serde_json::json!([{
+            "name": "I1",
+            "edits": [{"file": "src.txt", "from": "HEALTHY", "to": "BROKEN"}],
+        }]),
+    );
+    let out = harness(&path);
+    assert!(!out.status.success());
+    let said = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        said.contains("killed by a signal"),
+        "the run that was killed must be reported as one: {said}"
+    );
+}
+
+fn harness_run(root: &Path) -> std::process::Output {
+    let path = manifest(
+        root,
+        serde_json::json!([{
+            "name": "I1",
+            "edits": [{"file": "src.txt", "from": "HEALTHY", "to": "BROKEN"}],
+        }]),
+    );
+    Command::new(binary())
+        .arg(&path)
+        .arg("--control-only")
+        .output()
+        .expect("harness runs")
 }
 
 /// A temp directory that removes itself, without taking a dependency for it.

@@ -15,24 +15,45 @@
 //!   hand the next run a stale artifact, which is how one round reported a
 //!   shipping defect that did not exist;
 //! - a run that built a different set of targets than the control was compared
-//!   against is a smaller number that reads as a cleaner one.
+//!   against is a smaller number that reads as a cleaner one;
+//! - a suite can fail in a way its own log does not name — a target that did not
+//!   build, a crash, a signal — and the failure list stays empty, so the run
+//!   reads as 0 red, which is what a surface that holds also reads as.
 //!
 //! So: the edit must match exactly once, the control must be green, the restore
-//! is verified by reading the bytes back, and each run's target set is compared
-//! with the control's. The full log of every run is kept, never filtered — a
-//! summary is what this prints, not what it keeps.
+//! is verified by reading the bytes back, each run's target set is compared with
+//! the control's, and the exit code is held against the failure list rather than
+//! merely recorded beside it. The full log of every run is kept, never filtered
+//! — a summary is what this prints, not what it keeps.
 //!
 //! And it never polls for its own child. A round waited on
 //! `pgrep -f "cargo test --workspace"`, which the waiting shell's own command
 //! line matches, so the wait could not end; here the child is waited on because
 //! this process owns it.
+//!
+//! OWNERSHIP THROUGH ITS OWN DEATH is the other half of that, and it is not the
+//! same half: a sweep that is killed still owns an edited tree and a running
+//! suite, and neither goes back on its own. `supervise` is where that lives.
+
+mod supervise;
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
+use std::process::Stdio;
+use std::sync::atomic::{AtomicI32, Ordering};
 
 use serde::{Deserialize, Serialize};
+
+/// The process group of the supervisor now running the suite, or 0 when no run
+/// is in flight. Global because a signal is delivered to the process, not to
+/// whichever call happens to be on the stack.
+static SUITE_GROUP: AtomicI32 = AtomicI32::new(0);
+
+/// The interrupt this sweep was asked to stop on, or 0. Read at every step
+/// boundary rather than acted on from the signal thread, so the tree has exactly
+/// one owner at every moment.
+static INTERRUPTED: AtomicI32 = AtomicI32::new(0);
 
 /// One textual replacement in one file. `from` must occur EXACTLY once.
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -96,9 +117,48 @@ struct Run {
     reached: BTreeSet<String>,
     /// The names in the `failures:` lists, deduplicated.
     red: BTreeSet<String>,
-    /// Whether the command itself exited 0.
-    exit_ok: bool,
+    /// What the suite exited with — `None` when a signal killed it before it
+    /// could exit at all. Held against `red` by `verdict_disagreement`, because
+    /// a status that is only recorded is a status that judges nothing.
+    exit_code: Option<i32>,
     log: PathBuf,
+}
+
+/// The two halves of a run's verdict — the status the suite exited with, and the
+/// names its log listed — must tell the same story.
+///
+/// Each half is blind where the other sees. A failure list is written by the
+/// test harness inside the suite, so it is empty when the suite never got that
+/// far: a target that failed to compile, a crash, a signal. An exit code is one
+/// number for the whole run, so it says nothing about WHICH test failed and
+/// cannot be compared with the control's. Recorded side by side and never
+/// compared, the pair is worth exactly the weaker of the two — and the weaker
+/// one is silent in the case that matters, where a run that did not finish is
+/// read as a surface that held.
+fn verdict_disagreement(run: &Run) -> Option<String> {
+    let exited = match run.exit_code {
+        Some(code) => format!("exited {code}"),
+        None => "was killed by a signal, exiting nothing".to_string(),
+    };
+    if run.exit_code == Some(0) && !run.red.is_empty() {
+        return Some(format!(
+            "the run {exited} and its log names {} failing test(s) {:?} — either \
+             the log was read into names nothing actually failed under, or the \
+             suite swallowed a failure it reported; a red count under a green \
+             exit is fiction either way",
+            run.red.len(),
+            run.red
+        ));
+    }
+    if run.exit_code != Some(0) && run.red.is_empty() {
+        return Some(format!(
+            "the run {exited} and named no failing test — the suite failed in a \
+             way its own log does not name (a target that did not build, a \
+             crash, a signal), and 0 red out of a run that did not finish is not \
+             a clean surface"
+        ));
+    }
+    None
 }
 
 #[derive(Debug, Serialize)]
@@ -124,9 +184,67 @@ struct InjectionResult {
 }
 
 fn main() {
+    // `--supervise <index|-> -- argv…` is this binary re-exec'd as the owner of
+    // one suite run. It never returns: it exits AS the suite did.
+    let argv: Vec<String> = std::env::args().skip(1).collect();
+    if argv.first().map(String::as_str) == Some("--supervise") {
+        let index = match argv.get(1).map(String::as_str) {
+            Some("-") | None => None,
+            Some(path) => Some(PathBuf::from(path)),
+        };
+        let command: Vec<String> = argv
+            .iter()
+            .skip_while(|argument| argument.as_str() != "--")
+            .skip(1)
+            .cloned()
+            .collect();
+        supervise::supervise(index, &command);
+    }
     if let Err(problem) = run() {
         eprintln!("injection-harness: {problem}");
         std::process::exit(1);
+    }
+}
+
+/// A manifest's path as an absolute one, resolved against where the sweep was
+/// started rather than against wherever a child is about to be run.
+///
+/// Lexical rather than `canonicalize`, which requires the path to exist: the log
+/// directory is created after this, and a gate that refused a manifest for
+/// naming a directory it is about to make would be a gate about nothing.
+fn absolute(path: &Path) -> Result<PathBuf, String> {
+    std::path::absolute(path).map_err(|e| format!("{}: {e}", path.display()))
+}
+
+/// The interrupt this sweep has been asked to stop on, if one has arrived.
+fn interrupted() -> Option<i32> {
+    match INTERRUPTED.load(Ordering::SeqCst) {
+        0 => None,
+        signal => Some(signal),
+    }
+}
+
+/// The private state one sweep owns on disk: the copy of this binary that
+/// supervises every run, and the originals whoever is still alive restores the
+/// tree from.
+struct SweepFiles {
+    supervisor: PathBuf,
+    originals_index: PathBuf,
+}
+
+/// Removes the originals when the sweep ends under its own control.
+///
+/// What is left behind is precisely the signal that it did NOT: the next sweep
+/// reads them and says whether the tree still holds an injection.
+struct OriginalsGuard {
+    logs: PathBuf,
+}
+
+impl Drop for OriginalsGuard {
+    fn drop(&mut self) {
+        if let Err(problem) = supervise::clear_originals(&self.logs) {
+            eprintln!("injection-harness: the originals could not be cleared: {problem}");
+        }
     }
 }
 
@@ -137,11 +255,20 @@ fn run() -> Result<(), String> {
         .ok_or("usage: injection-harness <manifest.json> [--control-only]")?;
     let control_only = args.any(|flag| flag == "--control-only");
 
-    let manifest: Manifest = serde_json::from_str(
+    let mut manifest: Manifest = serde_json::from_str(
         &fs::read_to_string(&manifest_path)
             .map_err(|e| format!("{manifest_path} unreadable: {e}"))?,
     )
     .map_err(|e| format!("{manifest_path} is not a manifest: {e}"))?;
+    // EVERY PATH IS MADE ABSOLUTE HERE, ONCE. A manifest names its tree and its
+    // logs relative to wherever it is run from — the tracked ones say `../..`
+    // and `target/injection-logs` — and the suite is started with the tree as
+    // its working directory. A relative path handed across that change of
+    // directory resolves somewhere else entirely: the first real sweep under the
+    // supervisor died with `No such file or directory`, and a relative backup
+    // path would have restored the tree into a directory beside it.
+    manifest.repo = absolute(&manifest.repo)?;
+    manifest.logs = absolute(&manifest.logs)?;
     if manifest.test_command.is_empty() {
         return Err("the manifest names no test command".to_string());
     }
@@ -164,11 +291,82 @@ fn run() -> Result<(), String> {
         }
     }
 
+    // WHAT A PREVIOUS SWEEP LEFT BEHIND, before this one writes its own. A sweep
+    // that ended under its own control removes these; finding them means one
+    // died holding an edited tree, and the tree itself is asked whether that
+    // edit is still in it.
+    let stale = supervise::index_path(&manifest.logs);
+    if stale.exists() {
+        let originals = supervise::read_originals(&stale)?;
+        if supervise::owner_alive(originals.owner) {
+            return Err(format!(
+                "a sweep is already running in this tree (pid {}, originals in \
+                 {}) — two sweeps here would edit the same files and read each \
+                 other's injections as their own baseline",
+                originals.owner,
+                stale.display()
+            ));
+        }
+        let injected = supervise::still_injected(&originals)?;
+        if !injected.is_empty() {
+            return Err(format!(
+                "a sweep died holding this tree: {} left originals in {}, and \
+                 {} of them no longer hold their pre-sweep bytes ({:?}). A \
+                 sweep started here would measure that injection as its \
+                 baseline. Compare and put them back, then remove {}",
+                stale.display(),
+                manifest.logs.display(),
+                injected.len(),
+                injected,
+                stale.display()
+            ));
+        }
+        eprintln!(
+            "[originals] a previous sweep left {} original(s) behind and the \
+             tree matches every one — clearing them",
+            originals.files.len()
+        );
+        supervise::clear_originals(&manifest.logs)?;
+    }
+
+    // THE ORIGINALS GO TO DISK, because the process holding them in memory is
+    // the process that may be killed. From here the supervisor of whatever run
+    // is in flight can put the tree back without us.
+    let originals_index = supervise::write_originals(&manifest.logs, &snapshot)?;
+    let _originals = OriginalsGuard {
+        logs: manifest.logs.clone(),
+    };
+    // AND A COPY OF THIS BINARY, taken before the first run: a sweep may be
+    // aimed at the tree that builds it, and the suite would then replace the
+    // program that is running the sweep.
+    let files = SweepFiles {
+        supervisor: supervise::copy_self(&manifest.logs)?,
+        originals_index,
+    };
+
+    // ONE THREAD OWNS THE INTERRUPTS, and it only records and kills — the tree
+    // is put back by the main thread, which is the only one that ever writes to
+    // it. Blocking must happen before the thread exists, since the mask is
+    // inherited.
+    supervise::block_interrupts()?;
+    std::thread::spawn(|| {
+        let signal = supervise::wait_for_interrupt();
+        INTERRUPTED.store(signal, Ordering::SeqCst);
+        // SIGTERM to the supervisor, which kills the suite outright and puts the
+        // tree back if we no longer can.
+        supervise::kill_group(SUITE_GROUP.load(Ordering::SeqCst), libc::SIGTERM);
+    });
+
     // THE CONTROL, and it is a gate rather than a first data point. A sweep that
     // starts on a red tree makes every later count a subtraction done in
     // somebody's head, which Round 1053 did and had to redo.
     eprintln!("[control] {}", manifest.test_command.join(" "));
-    let control = execute(&manifest, "control")?;
+    let control = execute(&manifest, "control", &files);
+    if let Some(signal) = interrupted() {
+        restore(&snapshot)?;
+        return Err(stopped(signal));
+    }
+    let control = control?;
     eprintln!(
         "[control] {} passed, {} failed, {} targets",
         control.passed, control.failed, control.targets
@@ -182,6 +380,9 @@ fn run() -> Result<(), String> {
     }
     if control.targets == 0 {
         return Err("the control reached no test target at all".to_string());
+    }
+    if let Some(disagreement) = verdict_disagreement(&control) {
+        return Err(format!("the control cannot be a baseline: {disagreement}"));
     }
     // THE NAMES MUST IDENTIFY THE TARGETS, or the set comparison below is
     // quietly weaker than the count it replaced. This found its own first
@@ -205,6 +406,9 @@ fn run() -> Result<(), String> {
 
     let mut results = Vec::new();
     for injection in &manifest.injections {
+        if let Some(signal) = interrupted() {
+            return Err(stopped(signal));
+        }
         eprintln!(
             "[{}] applying {} edit(s)",
             injection.name,
@@ -214,8 +418,11 @@ fn run() -> Result<(), String> {
         // THE TREE IS OURS UNTIL THE RESTORE. Round 1054 edited a file while a
         // driver held the snapshot and the restore silently reverted that edit;
         // nothing here yields between apply and restore.
-        let run = execute(&manifest, &injection.name);
+        let run = execute(&manifest, &injection.name, &files);
         restore(&snapshot)?;
+        if let Some(signal) = interrupted() {
+            return Err(stopped(signal));
+        }
         let run = run?;
 
         let fired: BTreeSet<String> = run.red.difference(&control.red).cloned().collect();
@@ -261,6 +468,12 @@ fn run() -> Result<(), String> {
 
     let mut broken: Vec<String> = Vec::new();
     for result in &results {
+        // WHETHER THE RUN HAPPENED, before anything about what it found: a red
+        // count read off a suite that never finished is not a smaller finding,
+        // it is not a finding.
+        if let Some(disagreement) = verdict_disagreement(&result.run) {
+            broken.push(format!("{}: {}", result.name, disagreement));
+        }
         // BY NAME where the suite names its targets, and by count where it does
         // not — a run that lost one target and gained another has a drift of 0
         // and is not comparable to the control at all.
@@ -370,8 +583,17 @@ fn available_mb() -> Result<u64, String> {
         .ok_or_else(|| "/proc/meminfo names no MemAvailable".to_string())
 }
 
+/// What a sweep says when it is stopped, and what it has already done about it.
+fn stopped(signal: i32) -> String {
+    format!(
+        "stopped by {} — the suite was killed and the tree put back; nothing \
+         here was measured",
+        supervise::signal_name(signal)
+    )
+}
+
 /// Run the suite once, keeping the whole log and returning what it said.
-fn execute(manifest: &Manifest, label: &str) -> Result<Run, String> {
+fn execute(manifest: &Manifest, label: &str, files: &SweepFiles) -> Result<Run, String> {
     if let Some(floor) = manifest.min_free_mb {
         let free = available_mb()?;
         if free < floor {
@@ -390,16 +612,36 @@ fn execute(manifest: &Manifest, label: &str) -> Result<Run, String> {
         .map_err(|e| format!("{}: {e}", log.display()))?;
     // The child is WAITED ON, not polled for. A round polled with a pattern the
     // waiting shell's own command line matched, and the wait could not end.
-    let status = Command::new(&manifest.test_command[0])
-        .args(&manifest.test_command[1..])
+    //
+    // And it is not the suite: it is a supervisor that leads its own process
+    // group and dies when this process dies, so the suite cannot outlive the
+    // sweep that started it. Round 1061 killed a harness and the `cargo test`
+    // under it kept writing into this very log file.
+    let mut command = supervise::supervised_command(
+        &files.supervisor,
+        Some(&files.originals_index),
+        &manifest.test_command,
+    )?;
+    let mut child = command
         .current_dir(&manifest.repo)
         .stdout(Stdio::from(file))
         .stderr(Stdio::from(errors))
-        .status()
+        .spawn()
         .map_err(|e| format!("{:?}: {e}", manifest.test_command))?;
+    let group = child.id() as i32;
+    SUITE_GROUP.store(group, Ordering::SeqCst);
+    // An interrupt that landed between the spawn and the store would have found
+    // no group to signal, so the group asks for itself.
+    if interrupted().is_some() {
+        supervise::kill_group(group, libc::SIGTERM);
+    }
+    let status = child
+        .wait()
+        .map_err(|e| format!("{:?}: {e}", manifest.test_command))?;
+    SUITE_GROUP.store(0, Ordering::SeqCst);
     let text = fs::read_to_string(&log).map_err(|e| format!("{}: {e}", log.display()))?;
     let mut run = summarize(&text);
-    run.exit_ok = status.success();
+    run.exit_code = status.code();
     run.log = log;
     Ok(run)
 }
@@ -586,6 +828,41 @@ test result: ok. 1 passed; 0 failed
                 .difference(&after.reached)
                 .collect::<Vec<_>>(),
             vec!["beta:unittests src/lib.rs"]
+        );
+    }
+
+    #[test]
+    fn a_suite_killed_by_a_signal_exits_nothing_and_that_is_a_disagreement() {
+        // The arm no fake suite in the integration tests can reach by exiting,
+        // because it is the arm where nothing exits: a signal takes the suite
+        // down mid-run and leaves a log whose failure list is empty for the one
+        // reason that has nothing to do with the code under it.
+        let killed = Run {
+            exit_code: None,
+            ..Run::default()
+        };
+        let said = verdict_disagreement(&killed).expect("a signalled run is not a green run");
+        assert!(said.contains("killed by a signal"), "{said}");
+    }
+
+    #[test]
+    fn a_run_that_exited_zero_over_no_reds_is_the_only_agreement() {
+        // The other half of the gate, and it needs saying: a check that only
+        // ever objects is indistinguishable from a check that always objects.
+        let clean = Run {
+            exit_code: Some(0),
+            ..Run::default()
+        };
+        assert!(verdict_disagreement(&clean).is_none());
+        let red = Run {
+            exit_code: Some(101),
+            red: BTreeSet::from(["the_law".to_string()]),
+            ..Run::default()
+        };
+        assert!(
+            verdict_disagreement(&red).is_none(),
+            "a suite that exits non-zero BECAUSE a test failed is the ordinary \
+             case, and the law must not object to it"
         );
     }
 

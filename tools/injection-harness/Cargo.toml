@@ -45,3 +45,12 @@ path = "src/main.rs"
 [dependencies]
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+# Process groups, `PR_SET_PDEATHSIG` and `sigwait`: the three kernel facilities a
+# sweep needs to still own its tree and its suite after it has been killed. The
+# standard library exposes none of them.
+libc = "0.2"
+
+[dev-dependencies]
+# The tests here kill the harness on purpose, which is a syscall and not a
+# shell-out — spawning `/bin/kill` to test signal handling would test the shell.
+libc = "0.2"

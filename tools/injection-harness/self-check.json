@@ -1,0 +1,117 @@
+{
+  "_": [
+    "THE HARNESS AIMED AT ITSELF — run it from this crate's directory:",
+    "    cargo run -- self-check.json",
+    "Every property this tool holds is a property its own suite claims to hold,",
+    "and a claim nobody has broken is a claim nobody has measured. So each",
+    "injection here removes ONE of them and names the tests that must go red.",
+    "A green run of this file says the suite is not vacuous; a `did not reach`",
+    "says a test passes for a reason other than the one it is written for.",
+    "Keep it runnable: the `from` texts are exact, and a source edit that moves",
+    "one of them makes this sweep refuse out loud rather than pass quietly."
+  ],
+  "repo": ".",
+  "test_command": ["cargo", "test", "--no-fail-fast"],
+  "logs": "target/self-check-logs",
+  "min_free_mb": 4000,
+  "injections": [
+    {
+      "name": "the-supervisor-stops-dying-with-the-harness",
+      "why": "PR_SET_PDEATHSIG is the only notification a SIGKILLed parent can arrange in advance; without it nothing under a killed sweep is told to stop",
+      "edits": [
+        {
+          "file": "src/supervise.rs",
+          "from": "            if die_with_parent && libc::prctl(libc::PR_SET_PDEATHSIG, libc::SIGTERM) != 0 {",
+          "to": "            if false && die_with_parent && libc::prctl(libc::PR_SET_PDEATHSIG, libc::SIGTERM) != 0 {"
+        }
+      ],
+      "expect_red": ["a_sweep_that_is_killed_outright_is_still_survived_by_its_tree"]
+    },
+    {
+      "name": "nothing-leads-its-own-process-group",
+      "why": "one kill must reach every test binary the suite spawned, not only the cargo that spawned them; without a group of its own there is nothing to signal",
+      "edits": [
+        {
+          "file": "src/supervise.rs",
+          "from": "            if libc::setpgid(0, 0) != 0 {",
+          "to": "            if false && libc::setpgid(0, 0) != 0 {"
+        }
+      ],
+      "expect_red": [
+        "a_sweep_that_is_interrupted_puts_the_tree_back_and_takes_the_suite_with_it",
+        "a_sweep_that_is_killed_outright_is_still_survived_by_its_tree"
+      ]
+    },
+    {
+      "name": "the-supervisor-stops-putting-the-tree-back",
+      "why": "the originals are on disk precisely so a process the harness cannot reach can restore them; with the restore gone a killed sweep leaves its injection in the tree",
+      "edits": [
+        {
+          "file": "src/supervise.rs",
+          "from": "            match read_originals(&index).and_then(|originals| restore_originals(&originals)) {",
+          "to": "            match read_originals(&index).map(|_| ()) {"
+        }
+      ],
+      "expect_red": ["a_sweep_that_is_killed_outright_is_still_survived_by_its_tree"]
+    },
+    {
+      "name": "the-exit-code-goes-back-to-being-recorded-only",
+      "why": "the status a suite exited with and the names its log listed are each blind where the other sees; recorded side by side and never compared, the pair is worth the weaker of the two",
+      "edits": [
+        {
+          "file": "src/main.rs",
+          "from": "    if run.exit_code == Some(0) && !run.red.is_empty() {",
+          "to": "    if false && run.exit_code == Some(0) && !run.red.is_empty() {"
+        },
+        {
+          "file": "src/main.rs",
+          "from": "    if run.exit_code != Some(0) && run.red.is_empty() {",
+          "to": "    if false && run.exit_code != Some(0) && run.red.is_empty() {"
+        }
+      ],
+      "expect_red": [
+        "a_control_that_failed_without_naming_a_test_stops_the_sweep",
+        "an_injection_run_that_failed_without_naming_a_test_is_not_a_clean_surface",
+        "a_run_that_exited_green_over_a_red_log_stops_the_sweep",
+        "a_suite_killed_by_a_signal_is_not_a_run_that_finished",
+        "tests::a_suite_killed_by_a_signal_exits_nothing_and_that_is_a_disagreement"
+      ]
+    },
+    {
+      "name": "the-sweep-supervises-from-a-path-instead-of-its-own-copy",
+      "why": "the first self-check ever run died here: the suite rebuilt this binary, /proc/self/exe named a deleted file, and the second injection could not be started at all",
+      "edits": [
+        {
+          "file": "src/main.rs",
+          "from": "        supervisor: supervise::copy_self(&manifest.logs)?,",
+          "to": "        supervisor: std::env::current_exe().map_err(|e| e.to_string())?,"
+        }
+      ],
+      "expect_red": ["a_suite_that_replaces_the_tool_does_not_end_the_sweep"]
+    },
+    {
+      "name": "the-manifest-paths-stay-relative-to-wherever-they-were-read",
+      "why": "the suite runs with the TREE as its working directory, so a relative log path resolves somewhere else the moment it is handed across — the first real sweep under a supervisor died of exactly this",
+      "edits": [
+        {
+          "file": "src/main.rs",
+          "from": "    manifest.logs = absolute(&manifest.logs)?;",
+          "to": "    manifest.logs = manifest.logs.clone();"
+        }
+      ],
+      "expect_red": ["a_manifest_that_names_its_paths_relatively_is_still_run_from_one_place"]
+    },
+    {
+      "name": "a-tree-somebody-else-injected-is-taken-as-a-baseline",
+      "why": "a sweep that starts on a tree still holding a dead sweep's injection measures that injection as the state everything is compared against",
+      "edits": [
+        {
+          "file": "src/main.rs",
+          "from": "        if !injected.is_empty() {",
+          "to": "        if false && !injected.is_empty() {"
+        }
+      ],
+      "expect_red": ["a_tree_left_injected_by_a_dead_sweep_stops_the_next_one"]
+    }
+  ]
+}
