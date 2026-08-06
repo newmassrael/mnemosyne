@@ -1,0 +1,33 @@
+{
+  "_": [
+    "A REAL, RUNNABLE SWEEP — run it from this crate's directory:",
+    "    cargo run -- example.json",
+    "It reverts the wire Round 1056 shipped (payoff substantiation naming the",
+    "setups no payoff credits) and names the three tests that should go red.",
+    "Round 1057 ran this same injection by hand and got exactly those three.",
+    "Keep this file runnable: it is the shape the next round copies, and a",
+    "shape nobody can run is a shape nobody trusts."
+  ],
+  "repo": "../..",
+  "test_command": ["cargo", "test", "--workspace", "--no-fail-fast"],
+  "logs": "target/injection-logs",
+  "min_free_mb": 8000,
+  "injections": [
+    {
+      "name": "the-round-1056-wire-reverted",
+      "why": "the accounting law and the shortfall pin both rest on this wire carrying the fourth class; with it gone the census must name `setups_total` again",
+      "edits": [
+        {
+          "file": "crates/mnemosyne-validate/src/continuity.rs",
+          "from": "        w.dangling = cov.dangling.clone();",
+          "to": "        w.dangling = Vec::new();"
+        }
+      ],
+      "expect_red": [
+        "payoff_substantiation_names_every_setup_it_counts",
+        "the_reads_that_count_what_they_do_not_name",
+        "the_walk_says_what_stands_between_an_authoring_slip_and_the_runtime"
+      ]
+    }
+  ]
+}

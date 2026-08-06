@@ -4088,6 +4088,84 @@
         "PROCESS DEBT, IN THE ROUND THAT CREATED IT: the injection harness is still assembled by hand each round, though this session's ten injections all went through the editor path rather than a script. Occupancy was re-checked before each build; cargo ran ~25 times across the session."
       ]
     },
+    "Round 1059": {
+      "decision_summary": "The injection sweep is how this arc says a contract is not vacuous: break the\nthing the contract is about, show it goes red, put the tree back. Every round\nruns one, and every round has ASSEMBLED it by hand. Rounds 1054, 1055 and 1056\ndid the assembly in Python against a standing preference that even spike tooling\nis Rust; Round 1057 moved it to the editor path, which fixed the silent-fail half\nand left the assembly exactly where it was. This round is the promotion, and what\nit is worth is not a preference — it is four measured failures, each one a\nproperty a program can hold and a person cannot.\n\nWHAT THE HAND ASSEMBLY HAS ACTUALLY COST, from this ledger rather than from\nprinciple:\n\n- Round 1050 restored a file with its timestamp preserved. A stale build artifact\n  answered the next measurement, and the round wrote up a SHIPPING DEFECT THAT\n  WAS NOT THERE — caught only after a minimum reproduction and a unit test.\n- Round 1053 ran a sweep whose control was already 2 red, so every count in it\n  was a subtraction done in someone's head.\n- Round 1057 ran one injection whose doc-test targets failed to build, so that\n  run covered 146 targets against a control of 151. Nobody noticed until the\n  counts were compared afterwards; a smaller number reads as a cleaner one.\n- Round 1057 also waited on `pgrep -f \"cargo test --workspace\"`, a pattern the\n  WAITING SHELL'S OWN COMMAND LINE matches, so the wait could not end and one\n  elapsed-time reading came out 8x too large.\n\nSO THE PROGRAM HOLDS THEM. The text to replace must occur EXACTLY ONCE, and a\ncount of 0 or 2 is refused before the suite is asked anything — 0 is the shape\nthat reads as \"the injection did not fire\" and 2 is a change nobody described.\nThe control must be green, and it is a gate rather than a first data point. The\nrestore is verified by READING THE BYTES BACK, and writing them fresh is what\ngives the file a new timestamp, so the Round 1050 failure is unrepresentable\nrather than merely detectable. Each run's TARGET COUNT is compared with the\ncontrol's, so a run that built a different set of things says so instead of\nreporting a smaller number. And the child is waited on, because this process owns\nit — there is nothing to poll for and no pattern to match.\n\nIT ALSO ENFORCES THE RULE ROUND 1054 WROTE DOWN AND ROUND 1058 NEEDED. An\ninjection may name the tests it is aimed at; if none of them go red, that is a\nmisaimed injection and the sweep FAILS, rather than reporting a clean surface.\nRound 1054 aimed at a projection struct instead of the serialized one and got 0;\nRound 1058 aimed at separating two ordinal laws and got 0. Both were caught by a\nperson remembering to be suspicious.\n\nTHE PROOF IS A REAL SWEEP, NOT A DESCRIPTION OF ONE. `example.json` is tracked\nand runnable and reverts the wire Round 1056 shipped; running it reproduces\nexactly what Round 1057 got by hand from the same injection. A shape nobody can\nrun is a shape nobody copies correctly.\n\nThe crate is its own workspace, like `bench/`, `studio/` and\n`tools/experiment-harness`, so the root workspace's build, CI and pre-commit\ngates never compile it — and it has its own tests, run against a fake suite whose\nverdict depends on whether the injection landed, so the harness can be broken on\npurpose without running the real suite once.",
+      "changes_bullets": [
+        "`tools/injection-harness/` (new, its own `[workspace]` so the root gates never compile it — the `bench/` / `studio/` / `experiment-harness` pattern): apply an injection, run the suite, read what went red, put the tree back and prove it went back. The refusals are the point — an edit whose text occurs 0 or 2 times, a control that is already red, a restore whose bytes do not come back, a run that reached a different number of targets than the control, an injection that reaches nothing it named. The suite is a manifest field rather than a hardcoded `cargo test`, which is what lets the crate's own tests break the harness on purpose against a fake suite instead of trusting it after one real run.",
+        "`tools/injection-harness/example.json`: a tracked, runnable sweep that reverts the wire Round 1056 shipped and names the three tests it must turn red — the shape the next round copies, kept runnable so copying it is not a guess."
+      ],
+      "verification_bullets": [
+        "The crate is green on its own — 10 tests (2 unit over log parsing, 8 integration that break the harness on purpose against a fake suite): an injection that fires and a tree that comes back, an edit matching twice, an edit matching nothing, a red control, an injection that reaches nothing it named, a control asked for alone, and both arms of the occupancy floor. clippy -D warnings and fmt clean inside the crate; the root workspace never compiles it (its own `[workspace]`), so nothing about the 1774-test suite moves.",
+        "THE END-TO-END PROOF IS A REAL SWEEP OF THIS REPOSITORY, run through the tracked `example.json`: control 1774 passed / 0 failed / 151 targets, then the Round 1056 wire reverted = 1771 passed / 3 failed, target drift 0, and the three red are exactly the three named in the manifest — `payoff_substantiation_names_every_setup_it_counts`, `the_reads_that_count_what_they_do_not_name`, `the_walk_says_what_stands_between_an_authoring_slip_and_the_runtime`. Round 1057 got those same three from the same injection by hand, so the harness is measured against a known answer rather than trusted on its first run.",
+        "AND THE RESTORE IS THE PART THAT HAD TO BE PROVEN: the harness read every touched file back and compared bytes before reporting, and `git status` on this repository is clean afterwards. That is the Round 1050 failure — a restore that preserved a timestamp, a stale artifact answering the next measurement, and a shipping defect written up that was not there — made unrepresentable rather than merely detectable."
+      ],
+      "carry_forward_bullets": [
+        "THE HARNESS RUNS A SWEEP; IT DOES NOT CHOOSE ONE. What to break, and whether breaking it is evidence for the claim the round is making, is the round's judgement and stays there. Round 1058 is the example: its injection was mechanically perfect and told nobody anything, because the corpus put every quest locator on a scene the trunk also walks.",
+        "THE OCCUPANCY FLOOR IS OPT-IN, so a manifest that omits it gets no check. That is deliberate — a harness that refuses on a machine nobody else is using would be worked around, and a worked-around gate is worse than none — but it means the rule is only enforced where a manifest asks for it, and `example.json` does ask.",
+        "IT KNOWS NOTHING ABOUT WHAT A TARGET IS. The drift check compares COUNTS of `test result:` lines, so a run that lost one target and gained another reads as no drift. Comparing the target NAMES needs the `Running <binary>` lines, which are in every log this already keeps.",
+        "THE OLDER DEBTS ARE UNTOUCHED AND STILL RANKED: SS2 (widen the authorable edit population past the fact legs to the canon order and the section registry — 65 of 74 accounts have never been put to a second value) is the next round; then SS1 (the backlog head at 102 shared subjects) and TT1 (a quest disclosed on a scene only a fork walks, which is what would separate the two ordinal laws)."
+      ],
+      "population_census": [
+        {
+          "axis": "transition rules by `undirected`",
+          "left_label": "undirected",
+          "left": 10,
+          "right_label": "directed",
+          "right": 27
+        },
+        {
+          "axis": "map corpora by leg-kind declaration",
+          "left_label": "omitted",
+          "left": 6,
+          "right_label": "declared",
+          "right": 24
+        },
+        {
+          "axis": "cost-carrying corpora by direction-dependent pricing",
+          "left_label": "prices a way by direction",
+          "left": 4,
+          "right_label": "prices no way by direction",
+          "right": 6
+        },
+        {
+          "axis": "run trees by authoring mode",
+          "left_label": "hand script",
+          "left": 10,
+          "right_label": "file-only",
+          "right": 239
+        },
+        {
+          "axis": "map corpora by declared boundary crossing",
+          "left_label": "declares an exit",
+          "left": 6,
+          "right_label": "declares none",
+          "right": 24
+        },
+        {
+          "axis": "authored submissions by map and telling",
+          "left_label": "carries both",
+          "left": 10,
+          "right_label": "carries one",
+          "right": 24
+        }
+      ],
+      "publishable_decision_summary": "The injection sweep is how this arc says a contract is not vacuous: break the\nthing the contract is about, show it goes red, put the tree back. Every round\nruns one, and every round has ASSEMBLED it by hand. Rounds 1054, 1055 and 1056\ndid the assembly in Python against a standing preference that even spike tooling\nis Rust; Round 1057 moved it to the editor path, which fixed the silent-fail half\nand left the assembly exactly where it was. This round is the promotion, and what\nit is worth is not a preference — it is four measured failures, each one a\nproperty a program can hold and a person cannot.\n\nWHAT THE HAND ASSEMBLY HAS ACTUALLY COST, from this ledger rather than from\nprinciple:\n\n- Round 1050 restored a file with its timestamp preserved. A stale build artifact\n  answered the next measurement, and the round wrote up a SHIPPING DEFECT THAT\n  WAS NOT THERE — caught only after a minimum reproduction and a unit test.\n- Round 1053 ran a sweep whose control was already 2 red, so every count in it\n  was a subtraction done in someone's head.\n- Round 1057 ran one injection whose doc-test targets failed to build, so that\n  run covered 146 targets against a control of 151. Nobody noticed until the\n  counts were compared afterwards; a smaller number reads as a cleaner one.\n- Round 1057 also waited on `pgrep -f \"cargo test --workspace\"`, a pattern the\n  WAITING SHELL'S OWN COMMAND LINE matches, so the wait could not end and one\n  elapsed-time reading came out 8x too large.\n\nSO THE PROGRAM HOLDS THEM. The text to replace must occur EXACTLY ONCE, and a\ncount of 0 or 2 is refused before the suite is asked anything — 0 is the shape\nthat reads as \"the injection did not fire\" and 2 is a change nobody described.\nThe control must be green, and it is a gate rather than a first data point. The\nrestore is verified by READING THE BYTES BACK, and writing them fresh is what\ngives the file a new timestamp, so the Round 1050 failure is unrepresentable\nrather than merely detectable. Each run's TARGET COUNT is compared with the\ncontrol's, so a run that built a different set of things says so instead of\nreporting a smaller number. And the child is waited on, because this process owns\nit — there is nothing to poll for and no pattern to match.\n\nIT ALSO ENFORCES THE RULE ROUND 1054 WROTE DOWN AND ROUND 1058 NEEDED. An\ninjection may name the tests it is aimed at; if none of them go red, that is a\nmisaimed injection and the sweep FAILS, rather than reporting a clean surface.\nRound 1054 aimed at a projection struct instead of the serialized one and got 0;\nRound 1058 aimed at separating two ordinal laws and got 0. Both were caught by a\nperson remembering to be suspicious.\n\nTHE PROOF IS A REAL SWEEP, NOT A DESCRIPTION OF ONE. `example.json` is tracked\nand runnable and reverts the wire Round 1056 shipped; running it reproduces\nexactly what Round 1057 got by hand from the same injection. A shape nobody can\nrun is a shape nobody copies correctly.\n\nThe crate is its own workspace, like `bench/`, `studio/` and\n`tools/experiment-harness`, so the root workspace's build, CI and pre-commit\ngates never compile it — and it has its own tests, run against a fake suite whose\nverdict depends on whether the injection landed, so the harness can be broken on\npurpose without running the real suite once.",
+      "publishable_changes_bullets": [
+        "`tools/injection-harness/` (new, its own `[workspace]` so the root gates never compile it — the `bench/` / `studio/` / `experiment-harness` pattern): apply an injection, run the suite, read what went red, put the tree back and prove it went back. The refusals are the point — an edit whose text occurs 0 or 2 times, a control that is already red, a restore whose bytes do not come back, a run that reached a different number of targets than the control, an injection that reaches nothing it named. The suite is a manifest field rather than a hardcoded `cargo test`, which is what lets the crate's own tests break the harness on purpose against a fake suite instead of trusting it after one real run.",
+        "`tools/injection-harness/example.json`: a tracked, runnable sweep that reverts the wire Round 1056 shipped and names the three tests it must turn red — the shape the next round copies, kept runnable so copying it is not a guess."
+      ],
+      "publishable_verification_bullets": [
+        "The crate is green on its own — 10 tests (2 unit over log parsing, 8 integration that break the harness on purpose against a fake suite): an injection that fires and a tree that comes back, an edit matching twice, an edit matching nothing, a red control, an injection that reaches nothing it named, a control asked for alone, and both arms of the occupancy floor. clippy -D warnings and fmt clean inside the crate; the root workspace never compiles it (its own `[workspace]`), so nothing about the 1774-test suite moves.",
+        "THE END-TO-END PROOF IS A REAL SWEEP OF THIS REPOSITORY, run through the tracked `example.json`: control 1774 passed / 0 failed / 151 targets, then the Round 1056 wire reverted = 1771 passed / 3 failed, target drift 0, and the three red are exactly the three named in the manifest — `payoff_substantiation_names_every_setup_it_counts`, `the_reads_that_count_what_they_do_not_name`, `the_walk_says_what_stands_between_an_authoring_slip_and_the_runtime`. Round 1057 got those same three from the same injection by hand, so the harness is measured against a known answer rather than trusted on its first run.",
+        "AND THE RESTORE IS THE PART THAT HAD TO BE PROVEN: the harness read every touched file back and compared bytes before reporting, and `git status` on this repository is clean afterwards. That is the Round 1050 failure — a restore that preserved a timestamp, a stale artifact answering the next measurement, and a shipping defect written up that was not there — made unrepresentable rather than merely detectable."
+      ],
+      "publishable_carry_forward_bullets": [
+        "THE HARNESS RUNS A SWEEP; IT DOES NOT CHOOSE ONE. What to break, and whether breaking it is evidence for the claim the round is making, is the round's judgement and stays there. Round 1058 is the example: its injection was mechanically perfect and told nobody anything, because the corpus put every quest locator on a scene the trunk also walks.",
+        "THE OCCUPANCY FLOOR IS OPT-IN, so a manifest that omits it gets no check. That is deliberate — a harness that refuses on a machine nobody else is using would be worked around, and a worked-around gate is worse than none — but it means the rule is only enforced where a manifest asks for it, and `example.json` does ask.",
+        "IT KNOWS NOTHING ABOUT WHAT A TARGET IS. The drift check compares COUNTS of `test result:` lines, so a run that lost one target and gained another reads as no drift. Comparing the target NAMES needs the `Running <binary>` lines, which are in every log this already keeps.",
+        "THE OLDER DEBTS ARE UNTOUCHED AND STILL RANKED: SS2 (widen the authorable edit population past the fact legs to the canon order and the section registry — 65 of 74 accounts have never been put to a second value) is the next round; then SS1 (the backlog head at 102 shared subjects) and TT1 (a quest disclosed on a scene only a fork walks, which is what would separate the two ordinal laws)."
+      ]
+    },
     "Round 252": {
       "decision_summary": "Parser CommonMark conformance — recognize indented fenced code blocks (§98) and require whitespace after ATX hash sequence (§62)",
       "changes_bullets": [

@@ -1,0 +1,47 @@
+# injection-harness — the fail-loud Rust tool for the mechanical half of an
+# injection sweep: apply a change to the tree, run the suite, read what went
+# red, put the tree back, and prove it went back.
+#
+# A SEPARATE in-repo workspace (the same pattern as `bench/`, `studio/` and
+# `tools/experiment-harness`): its own `[workspace]` so the root workspace's
+# build / CI / pre-commit gates never compile it. It depends on nothing in the
+# core crates — it edits files and runs a command.
+#
+# Origin: the injection sweep is how this arc says a contract is not vacuous,
+# and it has been assembled BY HAND every round. Rounds 1054, 1055 and 1056 did
+# it with Python one-liners against a standing preference that even spike
+# tooling is Rust; Round 1057 did it through the editor instead, which fixed the
+# silent-fail half and left the assembly. What the hand assembly actually cost,
+# measured rather than asserted:
+#
+#   - Round 1050 restored a file with a preserved mtime, a stale binary answered
+#     the next measurement, and the round wrote up a shipping defect that was
+#     not there.
+#   - Round 1053 ran a sweep on a tree whose control was already 2 red and had
+#     to subtract by hand.
+#   - Round 1057 ran one injection whose doc-test targets failed to build, so it
+#     covered a different set of targets than its own control, and nobody
+#     noticed until the counts were compared afterwards.
+#   - Round 1057 also waited on `pgrep -f "cargo test --workspace"`, a pattern
+#     the waiting shell's own command line matches, so the wait never ended and
+#     one elapsed-time reading was off by 8x.
+#
+# Every one of those is a property a program can hold and a person cannot.
+[workspace]
+
+[package]
+name = "injection-harness"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.94"
+license = "MIT OR Apache-2.0"
+publish = false
+description = "Fail-loud apply / run / restore for injection sweeps over a test suite"
+
+[[bin]]
+name = "injection-harness"
+path = "src/main.rs"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
