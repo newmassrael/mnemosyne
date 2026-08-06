@@ -80,6 +80,41 @@ jobs:
         # missing citations fail the build.
         run: cargo run --release -q -p mnemosyne-cli -- validate-code-refs
 
+  # R1062 built an instrument nothing ran. This repository has four SEPARATE
+  # workspaces (`bench/`, `studio/`, `tools/*`) which carry their own
+  # `[workspace]` so the root gates never compile them — deliberate, and it left
+  # their tests run only when a person remembered. When this job was written two
+  # of the four were already rotted: `studio/` did not compile at all and
+  # `bench/` had 6 failing tests. Nothing had failed, because nothing had asked.
+  #
+  # The script is the single source for WHICH are run and why the rest are not,
+  # so a person runs exactly what this job runs, and every skip prints its
+  # reason. `protoc` is not installed here on purpose: none of these workspaces
+  # builds `mnemosyne-server`, and a job that installs what it does not need
+  # hides the day it starts needing it.
+  side-workspaces:
+    name: separate in-repo workspaces
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install rust toolchain (rust-toolchain.toml)
+        run: rustup show
+
+      - name: Cache cargo (side workspaces)
+        uses: actions/cache@v6
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: ${{ runner.os }}-cargo-side-${{ hashFiles('tools/*/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-side-
+
+      - name: cargo test in every separate in-repo workspace
+        run: ./scripts/test-side-workspaces.sh
+
   msrv:
     name: MSRV (workspace.package.rust-version)
     runs-on: ubuntu-latest
