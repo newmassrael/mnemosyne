@@ -34,9 +34,13 @@ cd "$root"
 # Workspaces this gate does not run, and why. A skip written here is a claim
 # somebody has to defend in review; the skip below it is a claim about the
 # machine, which the machine answers.
-declare -A ungated=(
-  [bench]="11 tests in crates/codegen-prototype/tests/markdown_full_scale.rs read docs/DESIGN.md and five sibling documents that no longer exist — the markdown-document model they parse was retired when the store became the SSOT (Round 400 is where that closed). Their subject is gone, and what to do with them is a disposition nobody has taken yet"
-)
+#
+# IT IS EMPTY, and that is the state to keep it in. `bench` sat here for one
+# round with eleven tests reading documents this project had deleted; they were
+# retired rather than tolerated, and every separate workspace is now run. An
+# entry added here should read like a decision somebody made, not like a failure
+# somebody stepped around.
+declare -A ungated=()
 
 discover() {
   # Every Cargo.toml with its own [workspace] that is not the root one — the
