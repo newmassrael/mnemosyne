@@ -4004,6 +4004,90 @@
         "PROCESS DEBT, IN THE ROUND THAT CREATED IT: the injections went through the editor rather than a script this time, which is the standing preference, but the harness that runs them is still assembled by hand each round and the two rounds before this one used Python. Occupancy was re-checked before each build; cargo ran ~15 times."
       ]
     },
+    "Round 1058": {
+      "decision_summary": "Round 1057 asked every number on the shipped read surface which of the things\nits own answer names it counts, and left exactly one with neither an account nor\na derivation: `report-quest-graph quests[].locators[].scene_ordinal`. This round\ncloses it, and the reason it was left over is the reason it needs a different\nshape from the other three.\n\nAN ORDINAL IS A POSITION, so no set of names can hold as many and the accounting\nlaw is right to name it. `report-playable-world` carries the road its locators\nindex into — the same answer holds the manuscript, scene by scene, in order — so\nthat ordinal is held to its own answer and needs no second read. The quest graph\ncarries `world_line` and `scene` and no scene sequence anywhere in the report. A\nreader holding that answer cannot check the number; neither can a test written\nover it.\n\nSO THE ORACLE IS THE READ THAT DOES STATE THE SEQUENCE. That is the Round 1050\nrule — the oracle is another shipped read rather than a recomputation of the\nprojection under test, because a recomputed order would be the same thought\nwritten twice, which is the shape Round 1041 named. The manuscript is what a\nreader would actually open to find out where `sc-12` falls on `parley`, so it is\nwhat the number is held to.\n\nTHE EVIDENCE IS ONE CORPUS'S QUESTS, AND THE LAW SAYS SO. Thirteen answers come\nback across the tracked corpora and four quests with twelve locators come out of\none of them — the migrated dnd-quest record is the only corpus this tree holds\nthat declares a quest at all, which Round 1053 already filed as a real limit\n(Z2/DD3, closed by the migration rather than by a law). The reach is printed and\nasserted rather than implied: a walk that reached no locator would otherwise\nreport the same clean surface as a wire that is correct.\n\nWHAT THIS ROUND DOES NOT GET TO CLAIM is that the new law reaches something the\nplayable-world one cannot. They read different things — the map key a locator is\nfiled under, against what the locator says its road is — so an edit that mixes\nthose up ought to split them, and one was written: the road pinned to `main` at\nthe shared construction site. Both stayed green. The corpus says why, and it is\nworth keeping: all twelve quest locators sit on scenes `main` also walks, at the\nsame index, because a fork inherits the trunk's prefix and every quest here is\ndisclosed on the trunk. So the injection is blind on this corpus rather than the\nlaw being redundant, and the difference between them is UNMEASURED. A quest\ndisclosed on a scene only a fork walks is what would measure it.\n\nAND A LOCATOR ON A ROAD THE MANUSCRIPT DOES NOT WALK IS NOT A FAILURE OF THIS\nLAW. It is the oracle declining to answer, which is a different verdict and is\ncounted and named separately. It is 0 today; the day it is not, this walk says\nwhich locator and which road rather than reporting a disagreement it never\nmeasured.",
+      "changes_bullets": [
+        "`crates/mnemosyne-cli/tests/counted_without_naming.rs`: the quest graph's locator ordinal held to the road the MANUSCRIPT walks under that name — the one number Round 1057's accounting law named with neither an account nor a derivation. The oracle is a second shipped read because this answer carries no scene sequence to be held to; a locator naming a road the manuscript does not walk is a separate verdict, counted and named rather than read as a disagreement. The census constant's doc now states the real derivation of all four numbers it holds rather than three."
+      ],
+      "verification_bullets": [
+        "Workspace green — 1774 tests, 0 failed, `--no-fail-fast`; clippy -D warnings clean; fmt clean; `validate-workspace` T1 orphan = 0, T3 reject = 0.",
+        "A CORRECTION TO ROUND 1057, WHICH THIS LEDGER CANNOT AMEND. That entry says the workspace stood at 1774 tests; the run that green-lit it counted 1773, and 1774 is what it counts with THIS round's test added. The number was written from the shape of the round rather than from the run — the Round 1054 habit of asserting a measurement nobody took, recurring in the round that filed it. Nothing else in that entry depends on it: every other number there was read off a log.",
+        "THE LAW, MEASURED: 13 `report-quest-graph` answers over 28 authored stores (16 unloadable), 4 quests, 12 locators; 0 naming a road the manuscript does not walk, 0 indexing somewhere else. The reach is asserted rather than implied — a walk that reached no locator reports the same clean surface as a wire that is right.",
+        "THE INJECTION THAT FIRED: the shipped ordinal off by one = 6 red over the whole workspace, this law among them, control 0 red before and after. The playable-world ordinal law falls with it, and that is a fact about the WIRE rather than a redundancy between the tests: both reads' locators come off ONE `MapLocator` construction site.",
+        "AND THE ONE THAT CAME BACK 0, WHICH IS A MEASUREMENT ABOUT THE CORPUS. To separate the two laws — one reads the map key its locator is filed under, the other reads what the locator SAYS its road is — the road was pinned to `main` at that same site. Both stayed green, so the corpus was asked why: all 12 quest locators sit on scenes `main` also walks, at the same index, because a fork inherits the trunk's prefix and every quest in this corpus is disclosed on the trunk. The injection is blind here, not the law, and the separation is undone work with a named shape rather than a claim this round is entitled to make."
+      ],
+      "carry_forward_bullets": [
+        "THE QUESTS ARE ONE CORPUS'S. Thirteen tracked corpora answer `report-quest-graph` and one of them declares a quest, so the four quests and twelve locators this law judges all come from the migrated dnd-quest record. That is the Z2/DD3 limit already on the ledger — closed by the migration Round 857 filed, not by anything a law can do — and it is printed here rather than implied so a corpus that stops declaring quests reads as a smaller number and not as a clean surface.",
+        "NOTHING SEPARATES THIS LAW FROM THE PLAYABLE-WORLD ONE ON THIS CORPUS, and the shape that would is describable. They differ in what they read — the map key a locator is filed under, against what the locator says its road is — so an edit that mixes those up should split them, and pinning the road to `main` at the shared construction site split nothing: all 12 quest locators sit on scenes `main` also walks, at the same index. What would separate them is a quest disclosed on a scene only a FORK walks, which no corpus here declares and the tree can construct through the same import recipe (the R1052 rule).",
+        "THE ORACLE-DECLINES ARM IS 0 TODAY. A locator naming a road the manuscript does not walk is a different verdict from a disagreement, and this walk separates them; today nothing is in it. The day something is, the walk names which locator and which road.",
+        "THE ACCOUNTING LAW IS STILL A GATE ONLY WHERE THE POPULATION MOVES THE NUMBER — 9 of 74 fields. The other 65 hold accounts the unedited store proposed and no second value ever tested, and the way to test them is to widen `corruptions` past the fact legs to the canon order and the section registry (filed twice already, Rounds 1055 and 1056). That is the next round.",
+        "THE BACKLOG IS 55 PAIRS AND 49 ARE UNDECLARED, head `report-playable-world <-> report-playthrough-manuscript` at 102 shared subjects. This round used the manuscript as an ORACLE for one field of one other read, which is not the same thing as declaring that pair and does not reduce it.",
+        "PROCESS DEBT, IN THE ROUND THAT CREATED IT: the injection harness is still assembled by hand each round, though this session's ten injections all went through the editor path rather than a script. Occupancy was re-checked before each build; cargo ran ~25 times across the session."
+      ],
+      "population_census": [
+        {
+          "axis": "transition rules by `undirected`",
+          "left_label": "undirected",
+          "left": 10,
+          "right_label": "directed",
+          "right": 27
+        },
+        {
+          "axis": "map corpora by leg-kind declaration",
+          "left_label": "omitted",
+          "left": 6,
+          "right_label": "declared",
+          "right": 24
+        },
+        {
+          "axis": "cost-carrying corpora by direction-dependent pricing",
+          "left_label": "prices a way by direction",
+          "left": 4,
+          "right_label": "prices no way by direction",
+          "right": 6
+        },
+        {
+          "axis": "run trees by authoring mode",
+          "left_label": "hand script",
+          "left": 10,
+          "right_label": "file-only",
+          "right": 239
+        },
+        {
+          "axis": "map corpora by declared boundary crossing",
+          "left_label": "declares an exit",
+          "left": 6,
+          "right_label": "declares none",
+          "right": 24
+        },
+        {
+          "axis": "authored submissions by map and telling",
+          "left_label": "carries both",
+          "left": 10,
+          "right_label": "carries one",
+          "right": 24
+        }
+      ],
+      "publishable_decision_summary": "Round 1057 asked every number on the shipped read surface which of the things\nits own answer names it counts, and left exactly one with neither an account nor\na derivation: `report-quest-graph quests[].locators[].scene_ordinal`. This round\ncloses it, and the reason it was left over is the reason it needs a different\nshape from the other three.\n\nAN ORDINAL IS A POSITION, so no set of names can hold as many and the accounting\nlaw is right to name it. `report-playable-world` carries the road its locators\nindex into — the same answer holds the manuscript, scene by scene, in order — so\nthat ordinal is held to its own answer and needs no second read. The quest graph\ncarries `world_line` and `scene` and no scene sequence anywhere in the report. A\nreader holding that answer cannot check the number; neither can a test written\nover it.\n\nSO THE ORACLE IS THE READ THAT DOES STATE THE SEQUENCE. That is the Round 1050\nrule — the oracle is another shipped read rather than a recomputation of the\nprojection under test, because a recomputed order would be the same thought\nwritten twice, which is the shape Round 1041 named. The manuscript is what a\nreader would actually open to find out where `sc-12` falls on `parley`, so it is\nwhat the number is held to.\n\nTHE EVIDENCE IS ONE CORPUS'S QUESTS, AND THE LAW SAYS SO. Thirteen answers come\nback across the tracked corpora and four quests with twelve locators come out of\none of them — the migrated dnd-quest record is the only corpus this tree holds\nthat declares a quest at all, which Round 1053 already filed as a real limit\n(Z2/DD3, closed by the migration rather than by a law). The reach is printed and\nasserted rather than implied: a walk that reached no locator would otherwise\nreport the same clean surface as a wire that is correct.\n\nWHAT THIS ROUND DOES NOT GET TO CLAIM is that the new law reaches something the\nplayable-world one cannot. They read different things — the map key a locator is\nfiled under, against what the locator says its road is — so an edit that mixes\nthose up ought to split them, and one was written: the road pinned to `main` at\nthe shared construction site. Both stayed green. The corpus says why, and it is\nworth keeping: all twelve quest locators sit on scenes `main` also walks, at the\nsame index, because a fork inherits the trunk's prefix and every quest here is\ndisclosed on the trunk. So the injection is blind on this corpus rather than the\nlaw being redundant, and the difference between them is UNMEASURED. A quest\ndisclosed on a scene only a fork walks is what would measure it.\n\nAND A LOCATOR ON A ROAD THE MANUSCRIPT DOES NOT WALK IS NOT A FAILURE OF THIS\nLAW. It is the oracle declining to answer, which is a different verdict and is\ncounted and named separately. It is 0 today; the day it is not, this walk says\nwhich locator and which road rather than reporting a disagreement it never\nmeasured.",
+      "publishable_changes_bullets": [
+        "`crates/mnemosyne-cli/tests/counted_without_naming.rs`: the quest graph's locator ordinal held to the road the MANUSCRIPT walks under that name — the one number Round 1057's accounting law named with neither an account nor a derivation. The oracle is a second shipped read because this answer carries no scene sequence to be held to; a locator naming a road the manuscript does not walk is a separate verdict, counted and named rather than read as a disagreement. The census constant's doc now states the real derivation of all four numbers it holds rather than three."
+      ],
+      "publishable_verification_bullets": [
+        "Workspace green — 1774 tests, 0 failed, `--no-fail-fast`; clippy -D warnings clean; fmt clean; `validate-workspace` T1 orphan = 0, T3 reject = 0.",
+        "A CORRECTION TO ROUND 1057, WHICH THIS LEDGER CANNOT AMEND. That entry says the workspace stood at 1774 tests; the run that green-lit it counted 1773, and 1774 is what it counts with THIS round's test added. The number was written from the shape of the round rather than from the run — the Round 1054 habit of asserting a measurement nobody took, recurring in the round that filed it. Nothing else in that entry depends on it: every other number there was read off a log.",
+        "THE LAW, MEASURED: 13 `report-quest-graph` answers over 28 authored stores (16 unloadable), 4 quests, 12 locators; 0 naming a road the manuscript does not walk, 0 indexing somewhere else. The reach is asserted rather than implied — a walk that reached no locator reports the same clean surface as a wire that is right.",
+        "THE INJECTION THAT FIRED: the shipped ordinal off by one = 6 red over the whole workspace, this law among them, control 0 red before and after. The playable-world ordinal law falls with it, and that is a fact about the WIRE rather than a redundancy between the tests: both reads' locators come off ONE `MapLocator` construction site.",
+        "AND THE ONE THAT CAME BACK 0, WHICH IS A MEASUREMENT ABOUT THE CORPUS. To separate the two laws — one reads the map key its locator is filed under, the other reads what the locator SAYS its road is — the road was pinned to `main` at that same site. Both stayed green, so the corpus was asked why: all 12 quest locators sit on scenes `main` also walks, at the same index, because a fork inherits the trunk's prefix and every quest in this corpus is disclosed on the trunk. The injection is blind here, not the law, and the separation is undone work with a named shape rather than a claim this round is entitled to make."
+      ],
+      "publishable_carry_forward_bullets": [
+        "THE QUESTS ARE ONE CORPUS'S. Thirteen tracked corpora answer `report-quest-graph` and one of them declares a quest, so the four quests and twelve locators this law judges all come from the migrated dnd-quest record. That is the Z2/DD3 limit already on the ledger — closed by the migration Round 857 filed, not by anything a law can do — and it is printed here rather than implied so a corpus that stops declaring quests reads as a smaller number and not as a clean surface.",
+        "NOTHING SEPARATES THIS LAW FROM THE PLAYABLE-WORLD ONE ON THIS CORPUS, and the shape that would is describable. They differ in what they read — the map key a locator is filed under, against what the locator says its road is — so an edit that mixes those up should split them, and pinning the road to `main` at the shared construction site split nothing: all 12 quest locators sit on scenes `main` also walks, at the same index. What would separate them is a quest disclosed on a scene only a FORK walks, which no corpus here declares and the tree can construct through the same import recipe (the R1052 rule).",
+        "THE ORACLE-DECLINES ARM IS 0 TODAY. A locator naming a road the manuscript does not walk is a different verdict from a disagreement, and this walk separates them; today nothing is in it. The day something is, the walk names which locator and which road.",
+        "THE ACCOUNTING LAW IS STILL A GATE ONLY WHERE THE POPULATION MOVES THE NUMBER — 9 of 74 fields. The other 65 hold accounts the unedited store proposed and no second value ever tested, and the way to test them is to widen `corruptions` past the fact legs to the canon order and the section registry (filed twice already, Rounds 1055 and 1056). That is the next round.",
+        "THE BACKLOG IS 55 PAIRS AND 49 ARE UNDECLARED, head `report-playable-world <-> report-playthrough-manuscript` at 102 shared subjects. This round used the manuscript as an ORACLE for one field of one other read, which is not the same thing as declaring that pair and does not reduce it.",
+        "PROCESS DEBT, IN THE ROUND THAT CREATED IT: the injection harness is still assembled by hand each round, though this session's ten injections all went through the editor path rather than a script. Occupancy was re-checked before each build; cargo ran ~25 times across the session."
+      ]
+    },
     "Round 252": {
       "decision_summary": "Parser CommonMark conformance — recognize indented fenced code blocks (§98) and require whitespace after ATX hash sequence (§62)",
       "changes_bullets": [

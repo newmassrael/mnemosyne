@@ -488,8 +488,8 @@ const HYPOTHESIS_CAP: usize = 100_000;
 ///   `report-playable-world` carries the road it indexes into, and
 ///   [`the_locator_ordinal_is_where_the_answer_puts_that_scene`] holds the
 ///   number to it. `report-quest-graph` carries the same field and NOT the road,
-///   so its oracle would have to be a second read — the undeclared pair
-///   `report-quest-graph <-> report-playthrough-manuscript`.
+///   so its oracle is a SECOND SHIPPED READ (Round 1058) —
+///   [`the_quest_locator_ordinal_is_where_the_manuscript_puts_that_scene`].
 /// - A CHAIN COUNT is a function of names the same answer carries in EARLIER
 ///   records. The facts holding at scene N are the ones that began at or before
 ///   N and have not ended, both of them named events of the same answer, which
@@ -1352,6 +1352,131 @@ fn the_locator_ordinal_is_where_the_answer_puts_that_scene() {
         wrong,
         Vec::<String>::new(),
         "a locator's ordinal is not a position on the road the same answer plays"
+    );
+}
+
+/// The quest graph's `scene_ordinal` is a position too — and the answer it sits
+/// in cannot say a position in WHAT, so its oracle is a second shipped read.
+/// (Round 1058.)
+///
+/// This is the one number the accounting law names that Round 1057 left with
+/// neither an account nor a derivation, and the reason it was left is the reason
+/// it needs this shape. `report-playable-world` carries the road its locators
+/// index into, so that ordinal is held to its own answer; the quest graph
+/// carries `world_line` and `scene` and no scene sequence anywhere, so a reader
+/// holding this answer alone cannot check the number and neither can a test.
+///
+/// The oracle is therefore the read that DOES state the sequence — the R1050
+/// rule, an oracle that is another shipped read rather than a recomputation of
+/// the projection under test. A recomputed order would be the same thought
+/// written twice (the R1041 shape); the manuscript is what a reader would
+/// actually open to find out where scene `sc-12` falls on the road `parley`.
+///
+/// A locator naming a road the manuscript does not walk is NOT a failure of this
+/// law — it is the oracle declining to answer, and it is counted and named
+/// rather than passed over.
+#[test]
+fn the_quest_locator_ordinal_is_where_the_manuscript_puts_that_scene() {
+    let (stores, unloadable) = common::authored_stores();
+    let mut answered = 0usize;
+    let mut quests = 0usize;
+    let mut locators = 0usize;
+    let mut unreached: Vec<String> = Vec::new();
+    let mut wrong: Vec<String> = Vec::new();
+    for store in &stores {
+        // THE ORACLE, asked first: the roads this store's manuscript walks, each
+        // one the sequence of scenes a reader plays through.
+        let told = common::run(
+            store.ws.path(),
+            &["report-playthrough-manuscript", "--json"],
+        );
+        if !told.status.success() {
+            continue;
+        }
+        let Ok(manuscript) = serde_json::from_slice::<serde_json::Value>(&told.stdout) else {
+            continue;
+        };
+        let roads: BTreeMap<&str, Vec<&str>> = manuscript["worlds"]
+            .as_object()
+            .into_iter()
+            .flatten()
+            .map(|(road, walk)| {
+                let scenes: Vec<&str> = walk["scenes"]
+                    .as_array()
+                    .into_iter()
+                    .flatten()
+                    .filter_map(|scene| scene["section"].as_str())
+                    .collect();
+                (road.as_str(), scenes)
+            })
+            .collect();
+
+        for telling in tellings_of(store) {
+            let out = common::run(
+                store.ws.path(),
+                &["report-quest-graph", "--telling", &telling, "--json"],
+            );
+            if !out.status.success() {
+                continue;
+            }
+            let Ok(graph) = serde_json::from_slice::<serde_json::Value>(&out.stdout) else {
+                continue;
+            };
+            answered += 1;
+            for quest in graph["quests"].as_array().into_iter().flatten() {
+                quests += 1;
+                for locator in quest["locators"].as_array().into_iter().flatten() {
+                    locators += 1;
+                    let (Some(quest_id), Some(fact), Some(road), Some(scene), Some(ordinal)) = (
+                        quest["quest_id"].as_str(),
+                        locator["fact_id"].as_str(),
+                        locator["world_line"].as_str(),
+                        locator["scene"].as_str(),
+                        locator["scene_ordinal"].as_u64(),
+                    ) else {
+                        continue;
+                    };
+                    let Some(walk) = roads.get(road) else {
+                        // The oracle declines: no road by that name is walked.
+                        unreached.push(format!("{} {quest_id} {fact}: {road}", store.name));
+                        continue;
+                    };
+                    let at = walk.iter().position(|section| *section == scene);
+                    if at != Some(ordinal as usize) {
+                        wrong.push(format!(
+                            "{} {quest_id} {fact}: the quest graph puts {scene} at {ordinal} on \
+                             {road}, the manuscript walks it at {at:?}",
+                            store.name,
+                        ));
+                    }
+                }
+            }
+        }
+    }
+    // Print before asserting (the R1026 rule).
+    println!(
+        "{answered} quest-graph answer(s) over {} authored stores ({} unloadable), {quests} \
+         quests, {locators} locators; {} the manuscript walks no road for; {} that index \
+         somewhere else",
+        stores.len(),
+        unloadable.len(),
+        unreached.len(),
+        wrong.len(),
+    );
+    for line in unreached.iter().chain(wrong.iter()) {
+        println!("  ELSEWHERE {line}");
+    }
+    assert!(
+        locators > 5,
+        "the walk reached {locators} quest locators, which is a corpus that \
+         declares no quest rather than a law with nothing to say — the migrated \
+         dnd-quest record alone carries twelve"
+    );
+    assert_eq!(
+        (unreached, wrong),
+        (Vec::<String>::new(), Vec::<String>::new()),
+        "a quest locator's ordinal is not a position on the road the manuscript \
+         walks under that name"
     );
 }
 
