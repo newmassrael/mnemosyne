@@ -89,6 +89,11 @@ struct Run {
     failed: usize,
     /// Every `test result:` line, which is one per target the run reached.
     targets: usize,
+    /// WHICH targets, by the name cargo prints for each one. A count alone
+    /// cannot tell a run that lost a target from one that lost a target and
+    /// gained another, and the whole point of the drift check is that a run
+    /// covering something else than the control is not comparable to it.
+    reached: BTreeSet<String>,
     /// The names in the `failures:` lists, deduplicated.
     red: BTreeSet<String>,
     /// Whether the command itself exited 0.
@@ -111,7 +116,10 @@ struct InjectionResult {
     fired: BTreeSet<String>,
     /// Expected red that did not go red.
     missed: BTreeSet<String>,
-    /// Targets this run reached that the control did not, and the reverse.
+    /// Targets the control reached and this run did not, and the reverse.
+    targets_missing: BTreeSet<String>,
+    targets_extra: BTreeSet<String>,
+    /// The count difference, kept for a suite whose output names no targets.
     target_drift: i64,
 }
 
@@ -175,6 +183,21 @@ fn run() -> Result<(), String> {
     if control.targets == 0 {
         return Err("the control reached no test target at all".to_string());
     }
+    // THE NAMES MUST IDENTIFY THE TARGETS, or the set comparison below is
+    // quietly weaker than the count it replaced. This found its own first
+    // instance: three crates in this repository run unit tests for a library
+    // AND a binary under one stem, so 151 targets came out as 148 names until
+    // what cargo was RUNNING went into the name.
+    if !control.reached.is_empty() && control.reached.len() != control.targets {
+        return Err(format!(
+            "the control ran {} targets under {} distinct names — {} pair(s) \
+             share a name, and a drift check cannot see a pair it cannot tell \
+             apart",
+            control.targets,
+            control.reached.len(),
+            control.targets - control.reached.len()
+        ));
+    }
     if control_only {
         println!("{}", serde_json::to_string_pretty(&control).map_err(err)?);
         return Ok(());
@@ -203,12 +226,15 @@ fn run() -> Result<(), String> {
             .cloned()
             .collect();
         let drift = run.targets as i64 - control.targets as i64;
+        let missing: BTreeSet<String> = control.reached.difference(&run.reached).cloned().collect();
+        let extra: BTreeSet<String> = run.reached.difference(&control.reached).cloned().collect();
         eprintln!(
-            "[{}] {} red ({} targets, drift {})",
+            "[{}] {} red ({} targets, {} missing, {} extra)",
             injection.name,
             fired.len(),
             run.targets,
-            drift
+            missing.len(),
+            extra.len(),
         );
         results.push(InjectionResult {
             name: injection.name.clone(),
@@ -216,6 +242,8 @@ fn run() -> Result<(), String> {
             run,
             fired,
             missed,
+            targets_missing: missing,
+            targets_extra: extra,
             target_drift: drift,
         });
     }
@@ -233,10 +261,19 @@ fn run() -> Result<(), String> {
 
     let mut broken: Vec<String> = Vec::new();
     for result in &results {
-        if result.target_drift != 0 {
+        // BY NAME where the suite names its targets, and by count where it does
+        // not — a run that lost one target and gained another has a drift of 0
+        // and is not comparable to the control at all.
+        if !result.targets_missing.is_empty() || !result.targets_extra.is_empty() {
             broken.push(format!(
-                "{}: reached {} targets against the control's {} — a run that \
-                 built a different set is a smaller number, not a cleaner one",
+                "{}: did not reach {:?} and reached {:?} the control did not — a \
+                 run over a different set is a smaller number, not a cleaner one",
+                result.name, result.targets_missing, result.targets_extra
+            ));
+        } else if control.reached.is_empty() && result.target_drift != 0 {
+            broken.push(format!(
+                "{}: reached {} targets against the control's {}, and this suite \
+                 names none of them so the count is all there is",
                 result.name, result.run.targets, control.targets
             ));
         }
@@ -261,6 +298,8 @@ fn clone_result(result: &InjectionResult) -> InjectionResult {
         run: result.run.clone(),
         fired: result.fired.clone(),
         missed: result.missed.clone(),
+        targets_missing: result.targets_missing.clone(),
+        targets_extra: result.targets_extra.clone(),
         target_drift: result.target_drift,
     }
 }
@@ -365,8 +404,32 @@ fn execute(manifest: &Manifest, label: &str) -> Result<Run, String> {
     Ok(run)
 }
 
-/// What a cargo-test log says: the per-target totals, and the names in the
-/// `failures:` lists.
+/// The name cargo gives one test target, off the line that announces it.
+///
+/// `Running unittests src/lib.rs (target/debug/deps/foo-9a3f...)` is one target
+/// and `Doc-tests foo` is another. The trailing hash is dropped because it moves
+/// whenever the crate is rebuilt, which is every injection — a name that changes
+/// for a reason that is not about coverage would report drift on every run.
+///
+/// THE BINARY STEM ALONE IS NOT UNIQUE, and this repository is where that shows:
+/// a crate with both a library and a binary runs its unit tests twice under one
+/// stem, so `mnemosyne_cli`, `mnemosyne_index` and `mnemosyne_render` each named
+/// two targets and 151 targets came out as 148 names. A set that collapses three
+/// pairs is three pairs a drift check cannot see, so what cargo was RUNNING —
+/// `unittests src/lib.rs` against `unittests src/main.rs` — goes in the name.
+fn target_name(line: &str) -> Option<String> {
+    let line = line.trim_start();
+    if let Some(crate_name) = line.strip_prefix("Doc-tests ") {
+        return Some(format!("doc:{}", crate_name.trim()));
+    }
+    let (what, inside) = line.strip_prefix("Running ")?.rsplit_once('(')?;
+    let binary = inside.trim_end_matches(')').rsplit('/').next()?;
+    let stem = binary.rsplit_once('-').map_or(binary, |(name, _hash)| name);
+    Some(format!("{stem}:{}", what.trim()))
+}
+
+/// What a cargo-test log says: the per-target totals, WHICH targets, and the
+/// names in the `failures:` lists.
 ///
 /// Parsed from the whole log rather than a filtered view of it — a pipeline that
 /// filters before counting is how one round lost an exit code to `tail`.
@@ -374,6 +437,10 @@ fn summarize(text: &str) -> Run {
     let mut run = Run::default();
     let mut in_failures = false;
     for line in text.lines() {
+        if let Some(name) = target_name(line) {
+            run.reached.insert(name);
+            continue;
+        }
         if let Some(rest) = line.strip_prefix("test result:") {
             run.targets += 1;
             let mut fields = rest.split_whitespace();
@@ -446,6 +513,80 @@ test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out
         let run = summarize(log);
         assert_eq!((run.passed, run.failed, run.targets), (2, 1, 2));
         assert_eq!(run.red, BTreeSet::from(["beta".to_string()]));
+    }
+
+    #[test]
+    fn a_target_is_named_by_what_cargo_announces_and_not_by_its_hash() {
+        let log = "\
+     Running unittests src/main.rs (target/debug/deps/counted_without_naming-996bc06531259b19)
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out
+
+   Doc-tests mnemosyne-ops
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out
+";
+        let run = summarize(log);
+        assert_eq!(
+            run.reached,
+            BTreeSet::from([
+                "counted_without_naming:unittests src/main.rs".to_string(),
+                "doc:mnemosyne-ops".to_string()
+            ]),
+            "the hash moves on every rebuild, so a name that carried it would \
+             report drift on every injection"
+        );
+        assert_eq!(run.targets, 2);
+    }
+
+    #[test]
+    fn one_crate_running_two_target_kinds_is_two_names() {
+        // A crate with a library AND a binary runs its unit tests twice under
+        // one binary stem. Three such crates in this repository turned 151
+        // targets into 148 names, and three collapsed pairs are three pairs the
+        // drift check could not have seen.
+        let log = "\
+     Running unittests src/lib.rs (target/debug/deps/mnemosyne_cli-aa11)
+test result: ok. 1 passed; 0 failed
+     Running unittests src/main.rs (target/debug/deps/mnemosyne_cli-bb22)
+test result: ok. 1 passed; 0 failed
+";
+        let run = summarize(log);
+        assert_eq!(run.reached.len(), 2, "{:?}", run.reached);
+        assert_eq!(run.reached.len(), run.targets);
+    }
+
+    #[test]
+    fn a_lost_target_and_a_gained_one_do_not_cancel() {
+        // The count is 2 either way; the SET is what says these two runs are
+        // not comparable. This is the whole reason the check is by name.
+        let control = summarize(
+            "     Running unittests src/lib.rs (target/debug/deps/alpha-1)
+test result: ok. 1 passed; 0 failed
+     Running unittests src/lib.rs (target/debug/deps/beta-2)
+test result: ok. 1 passed; 0 failed
+",
+        );
+        let after = summarize(
+            "     Running unittests src/lib.rs (target/debug/deps/alpha-9)
+test result: ok. 1 passed; 0 failed
+     Running unittests src/lib.rs (target/debug/deps/gamma-3)
+test result: ok. 1 passed; 0 failed
+",
+        );
+        assert_eq!(control.targets, after.targets);
+        assert_eq!(
+            after
+                .reached
+                .difference(&control.reached)
+                .collect::<Vec<_>>(),
+            vec!["gamma:unittests src/lib.rs"]
+        );
+        assert_eq!(
+            control
+                .reached
+                .difference(&after.reached)
+                .collect::<Vec<_>>(),
+            vec!["beta:unittests src/lib.rs"]
+        );
     }
 
     #[test]

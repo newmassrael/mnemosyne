@@ -254,6 +254,41 @@ fn a_floor_this_machine_clears_lets_the_run_through() {
     );
 }
 
+#[test]
+fn names_that_do_not_identify_the_targets_stop_the_sweep() {
+    // A suite whose two targets announce the same name: the count says 2 and
+    // the set says 1, so a run that lost one of them would read as no drift.
+    let root = tempdir();
+    fs::create_dir_all(root.path().join("logs")).expect("mkdir");
+    fs::write(root.path().join("src.txt"), "HEALTHY\n").expect("write source");
+    let suite = root.path().join("suite.sh");
+    fs::write(
+        &suite,
+        "#!/bin/sh\n\
+         printf '     Running unittests src/lib.rs (target/debug/deps/twin-1)\\n'\n\
+         printf 'test result: ok. 1 passed; 0 failed\\n'\n\
+         printf '     Running unittests src/lib.rs (target/debug/deps/twin-2)\\n'\n\
+         printf 'test result: ok. 1 passed; 0 failed\\n'\n",
+    )
+    .expect("write suite");
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        fs::set_permissions(&suite, fs::Permissions::from_mode(0o755)).expect("chmod");
+    }
+    let path = manifest(root.path(), serde_json::json!([]));
+    let out = harness(&path);
+    assert!(
+        !out.status.success(),
+        "a name that identifies nothing is not a name"
+    );
+    assert!(
+        String::from_utf8_lossy(&out.stderr).contains("share a name"),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+}
+
 /// A temp directory that removes itself, without taking a dependency for it.
 struct TempDir(PathBuf);
 

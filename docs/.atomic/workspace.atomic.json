@@ -4166,6 +4166,82 @@
         "THE OLDER DEBTS ARE UNTOUCHED AND STILL RANKED: SS2 (widen the authorable edit population past the fact legs to the canon order and the section registry — 65 of 74 accounts have never been put to a second value) is the next round; then SS1 (the backlog head at 102 shared subjects) and TT1 (a quest disclosed on a scene only a fork walks, which is what would separate the two ordinal laws)."
       ]
     },
+    "Round 1060": {
+      "decision_summary": "Round 1059 shipped the injection harness with a drift check that compared COUNTS\nof test targets, and filed the obvious hole in the same breath: a run that loses\none target and gains another has a drift of zero. That is not a hypothetical\nshape. The failure the check exists for — Round 1057's injection whose doc-test\ntargets failed to build, so it covered 146 targets against a control of 151 —\nis a LOST target, and a rebuild that also picks up a target the control missed\nwould hide it perfectly.\n\nSo the check is by NAME now. Cargo announces every target it runs, and the name\nis in that line: `Running unittests src/lib.rs (target/debug/deps/foo-9a3f…)` is\n`foo` and `Doc-tests mnemosyne-ops` is `doc:mnemosyne-ops`. The trailing hash is\ndropped on purpose — it moves every time the crate is rebuilt, which is every\ninjection, so a name that carried it would report drift on every run and the\ngate would be turned off within a round.\n\nWHAT THE COUNT IS STILL FOR: a suite whose output names no targets at all. The\nharness's own tests use one — a shell script that prints a canned cargo verdict —\nand a gate that silently stopped checking for such a suite would be the same\nclass of hole one layer down. So the count comparison survives as the fallback,\nand it says which one it used.\n\nTHE TWO ARMS ARE ASSERTED SEPARATELY, because a set comparison that can only\never report \"the same\" is indistinguishable from no comparison: one test reads a\nreal cargo log and checks that a target is named by what cargo announces rather\nthan by its hash; another builds two runs with the SAME COUNT and different\nmembers, and asserts the difference comes out in both directions.\n\nAnd the real sweep was run again through the tracked manifest, because a gate\nthat has never been exercised against the thing it gates is a claim rather than\na check.",
+      "changes_bullets": [
+        "`tools/injection-harness/src/main.rs`: a run records WHICH targets it reached rather than how many, and the drift gate compares the sets — reporting what the control reached and this run did not, and the reverse. A target's name is the binary stem PLUS what cargo was running under it, because the stem alone is not unique. The count comparison stays as the fallback for a suite that names no targets, which the harness's own tests use.",
+        "And the control now refuses a run whose names do not identify its targets: if two targets share a name, the set comparison is quietly weaker than the count it replaced, and nothing downstream could tell."
+      ],
+      "verification_bullets": [
+        "The crate is green on its own — 14 tests (5 unit over log parsing, 9 integration that break the harness on purpose against a fake suite). clippy -D warnings and fmt clean inside the crate; the root workspace never compiles it, so nothing about the 1774-test suite moves.",
+        "THE REAL SWEEP AGAIN, through the tracked manifest: control 1774 passed / 0 failed / 151 targets, the Round 1056 wire reverted = 3 red — the three named — with 0 targets missing and 0 extra, and the tree clean afterwards. The occupancy floor fired for the first time on a real manifest rather than a fake one, printing 20602 MiB and 22362 MiB against its 8000 floor.",
+        "AND THE NAMES WERE WRONG BEFORE THEY WERE RIGHT, which is why this round exists twice over. The first run under the by-name check reported 151 targets and 148 names; the gap was not a parse that missed three lines but three crates that run unit tests for a library AND a binary under one stem. Three collapsed pairs are three pairs a drift check cannot see. The name now carries what cargo was running, the control refuses any run whose names do not identify its targets, and the real control comes back 151 targets under 151 names."
+      ],
+      "carry_forward_bullets": [
+        "THE NAME IS CARGO'S SHAPE. `Running … (target/debug/deps/foo-hash)` and `Doc-tests crate` are what this reads, so a suite that announces its targets some other way is compared by count and the report says which comparison it used. That is a limit of reading a tool's output rather than asking it, and the fallback keeps it from being a silent one.",
+        "AN INJECTION THAT FAILS TO BUILD IS NOW CAUGHT BY THE SAME GATE — it reaches no target, so every name the control reached comes back as missing rather than as a smaller number. That was not true of the count check when the build failure was partial, which is exactly the Round 1057 case.",
+        "THE OLDER DEBTS ARE UNTOUCHED AND STILL RANKED: SS2 (widen the authorable edit population past the fact legs to the canon order and the section registry — 65 of 74 accounts have never been put to a second value) is the next round; then SS1 (the backlog head at 102 shared subjects) and TT1 (a quest disclosed on a scene only a fork walks)."
+      ],
+      "population_census": [
+        {
+          "axis": "transition rules by `undirected`",
+          "left_label": "undirected",
+          "left": 10,
+          "right_label": "directed",
+          "right": 27
+        },
+        {
+          "axis": "map corpora by leg-kind declaration",
+          "left_label": "omitted",
+          "left": 6,
+          "right_label": "declared",
+          "right": 24
+        },
+        {
+          "axis": "cost-carrying corpora by direction-dependent pricing",
+          "left_label": "prices a way by direction",
+          "left": 4,
+          "right_label": "prices no way by direction",
+          "right": 6
+        },
+        {
+          "axis": "run trees by authoring mode",
+          "left_label": "hand script",
+          "left": 10,
+          "right_label": "file-only",
+          "right": 239
+        },
+        {
+          "axis": "map corpora by declared boundary crossing",
+          "left_label": "declares an exit",
+          "left": 6,
+          "right_label": "declares none",
+          "right": 24
+        },
+        {
+          "axis": "authored submissions by map and telling",
+          "left_label": "carries both",
+          "left": 10,
+          "right_label": "carries one",
+          "right": 24
+        }
+      ],
+      "publishable_decision_summary": "Round 1059 shipped the injection harness with a drift check that compared COUNTS\nof test targets, and filed the obvious hole in the same breath: a run that loses\none target and gains another has a drift of zero. That is not a hypothetical\nshape. The failure the check exists for — Round 1057's injection whose doc-test\ntargets failed to build, so it covered 146 targets against a control of 151 —\nis a LOST target, and a rebuild that also picks up a target the control missed\nwould hide it perfectly.\n\nSo the check is by NAME now. Cargo announces every target it runs, and the name\nis in that line: `Running unittests src/lib.rs (target/debug/deps/foo-9a3f…)` is\n`foo` and `Doc-tests mnemosyne-ops` is `doc:mnemosyne-ops`. The trailing hash is\ndropped on purpose — it moves every time the crate is rebuilt, which is every\ninjection, so a name that carried it would report drift on every run and the\ngate would be turned off within a round.\n\nWHAT THE COUNT IS STILL FOR: a suite whose output names no targets at all. The\nharness's own tests use one — a shell script that prints a canned cargo verdict —\nand a gate that silently stopped checking for such a suite would be the same\nclass of hole one layer down. So the count comparison survives as the fallback,\nand it says which one it used.\n\nTHE TWO ARMS ARE ASSERTED SEPARATELY, because a set comparison that can only\never report \"the same\" is indistinguishable from no comparison: one test reads a\nreal cargo log and checks that a target is named by what cargo announces rather\nthan by its hash; another builds two runs with the SAME COUNT and different\nmembers, and asserts the difference comes out in both directions.\n\nAnd the real sweep was run again through the tracked manifest, because a gate\nthat has never been exercised against the thing it gates is a claim rather than\na check.",
+      "publishable_changes_bullets": [
+        "`tools/injection-harness/src/main.rs`: a run records WHICH targets it reached rather than how many, and the drift gate compares the sets — reporting what the control reached and this run did not, and the reverse. A target's name is the binary stem PLUS what cargo was running under it, because the stem alone is not unique. The count comparison stays as the fallback for a suite that names no targets, which the harness's own tests use.",
+        "And the control now refuses a run whose names do not identify its targets: if two targets share a name, the set comparison is quietly weaker than the count it replaced, and nothing downstream could tell."
+      ],
+      "publishable_verification_bullets": [
+        "The crate is green on its own — 14 tests (5 unit over log parsing, 9 integration that break the harness on purpose against a fake suite). clippy -D warnings and fmt clean inside the crate; the root workspace never compiles it, so nothing about the 1774-test suite moves.",
+        "THE REAL SWEEP AGAIN, through the tracked manifest: control 1774 passed / 0 failed / 151 targets, the Round 1056 wire reverted = 3 red — the three named — with 0 targets missing and 0 extra, and the tree clean afterwards. The occupancy floor fired for the first time on a real manifest rather than a fake one, printing 20602 MiB and 22362 MiB against its 8000 floor.",
+        "AND THE NAMES WERE WRONG BEFORE THEY WERE RIGHT, which is why this round exists twice over. The first run under the by-name check reported 151 targets and 148 names; the gap was not a parse that missed three lines but three crates that run unit tests for a library AND a binary under one stem. Three collapsed pairs are three pairs a drift check cannot see. The name now carries what cargo was running, the control refuses any run whose names do not identify its targets, and the real control comes back 151 targets under 151 names."
+      ],
+      "publishable_carry_forward_bullets": [
+        "THE NAME IS CARGO'S SHAPE. `Running … (target/debug/deps/foo-hash)` and `Doc-tests crate` are what this reads, so a suite that announces its targets some other way is compared by count and the report says which comparison it used. That is a limit of reading a tool's output rather than asking it, and the fallback keeps it from being a silent one.",
+        "AN INJECTION THAT FAILS TO BUILD IS NOW CAUGHT BY THE SAME GATE — it reaches no target, so every name the control reached comes back as missing rather than as a smaller number. That was not true of the count check when the build failure was partial, which is exactly the Round 1057 case.",
+        "THE OLDER DEBTS ARE UNTOUCHED AND STILL RANKED: SS2 (widen the authorable edit population past the fact legs to the canon order and the section registry — 65 of 74 accounts have never been put to a second value) is the next round; then SS1 (the backlog head at 102 shared subjects) and TT1 (a quest disclosed on a scene only a fork walks)."
+      ]
+    },
     "Round 252": {
       "decision_summary": "Parser CommonMark conformance — recognize indented fenced code blocks (§98) and require whitespace after ATX hash sequence (§62)",
       "changes_bullets": [
