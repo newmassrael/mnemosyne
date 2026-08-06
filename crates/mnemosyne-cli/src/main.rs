@@ -3372,7 +3372,7 @@ fn cmd_report_frame_view(args: &[String]) -> Result<()> {
         println!(
             "  holding={} not_holding={} unknown={}",
             view.holding_count,
-            view.not_holding,
+            view.not_holding.len(),
             view.unknown.len()
         );
         for e in &view.holding {
@@ -3802,7 +3802,7 @@ fn cmd_report_payoff_coverage(args: &[String]) -> Result<()> {
                 "world `{world}`: paid={} dangling={} exempt={} unknown={}",
                 cov.paid.len(),
                 cov.dangling.len(),
-                cov.exempt,
+                cov.exempt.len(),
                 cov.unknown.len()
             );
             for p in &cov.paid {
@@ -4728,7 +4728,9 @@ fn cmd_report_authoring_frontier(args: &[String]) -> Result<()> {
         };
         println!(
             "branch density [{world}]: {} owned fact(s) over {} traversed scene(s) = {}",
-            d.owned_facts, d.road_scenes, density
+            d.owned.len(),
+            d.road_scenes,
+            density
         );
     }
     Ok(())

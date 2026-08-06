@@ -810,10 +810,12 @@ fn a_coordinate_read_answers_at_the_lineage_of_the_road_it_is_given() {
          into its ancestor's view (the R438 promise)",
     );
     check(
-        (inherited.len(), inheriting_probes) == (9, 124),
+        (inherited.len(), inheriting_probes) == (9, 128),
         "INHERITANCE: forked roads actually DRAW on their ancestors, so the \
          lineage claim is measured rather than vacuously true of reads that \
-         name nothing",
+         name nothing. Round 1054 raised the probe count: the frame view's \
+         residual arm began naming the facts it had only counted, so four more \
+         probes name a fact authored on an ancestor road",
     );
     check(
         (
@@ -826,10 +828,13 @@ fn a_coordinate_read_answers_at_the_lineage_of_the_road_it_is_given() {
          counted by name rather than skipped",
     );
     check(
-        (must_not_move, must_move, either) == (240, 75, 312),
+        (must_not_move, must_move, either) == (240, 88, 299),
         "DEPENDENCE (population): every deletion is classified by what the fork \
          tree and the baseline answer already said — the road cannot see that \
-         branch, the probe named that fact, or neither decides",
+         branch, the probe named that fact, or neither decides. Round 1054 moved \
+         thirteen probes out of `may` and into `must`: the frame view's residual \
+         arm names its facts now, so a probe that had merely COUNTED a deleted \
+         fact is one this contract can hold to moving",
     );
     check(
         dependence.is_empty(),
@@ -845,7 +850,7 @@ fn a_coordinate_read_answers_at_the_lineage_of_the_road_it_is_given() {
          and wrong about the prefix it shares with its parent is still judged",
     );
     check(
-        (on_road, off_road.len(), bound_excludes) == (3988, 0, 136),
+        (on_road, off_road.len(), bound_excludes) == (5520, 0, 136),
         "BOUND: every fact a coordinate read names starts at a scene the road \
          it was asked about actually plays — the departure cut, which the fork \
          tree cannot state (it gives the topology, not where a road stops \
@@ -854,7 +859,10 @@ fn a_coordinate_read_answers_at_the_lineage_of_the_road_it_is_given() {
          off-road count is not automatically a defect: a start the declared \
          order cannot COMPARE to the bound is honestly `unknown` rather than \
          absent (B-1), and this row would then have to split by the read's \
-         undecidable arm. Today no corpus produces one",
+         undecidable arm. Today no corpus produces one. Round 1054 took this \
+         from 3988 to 5520 namings without moving the off-road count: the frame \
+         view's residual arm began naming the facts it counted, and every one of \
+         them lands inside the same cut",
     );
     check(
         (compared.len(), still.len()) == (13, 0),

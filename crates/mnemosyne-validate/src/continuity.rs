@@ -5519,7 +5519,13 @@ pub struct FrameView {
     /// Entity filter applied (Round 437), `None` = unfiltered.
     pub entity: Option<String>,
     pub holding: Vec<FrameViewEntry>,
-    pub not_holding: usize,
+    /// The facts of this frame that definitively do NOT hold at the query point,
+    /// NAMED (Round 1054). This was a count while its two sibling classes were
+    /// lists, so the one class a consumer could not open was the one saying what
+    /// is no longer true. It is not recoverable from the rest of the answer
+    /// either: `not_holding = population - holding - unknown` and the population
+    /// — the facts of frame F in world B — appears nowhere in the report.
+    pub not_holding: Vec<String>,
     pub unknown: Vec<String>,
     /// This world-line is a CONFLUENCE (a merge node) rendered as a prefix-less
     /// FRAGMENT (Round 533/746) — its pre-merge trunk reads `unknown` because the
@@ -5647,7 +5653,7 @@ pub fn frame_view(
         if from_unknown || (to_unknown && !succ_cut) {
             view.unknown.push(id.to_string());
         } else {
-            view.not_holding += 1;
+            view.not_holding.push(id.to_string());
         }
     }
     Ok(view)
@@ -5696,7 +5702,14 @@ pub struct SubstantiatedSetup {
 pub struct WorldPayoffCoverage {
     pub paid: Vec<PaidSetup>,
     pub dangling: Vec<String>,
-    pub exempt: usize,
+    /// The unmarked facts, NAMED (Round 1054). This was `exempt: usize` — the
+    /// one class of a four-way classification whose members no field carried,
+    /// which its own doc said out loud ("counted, not listed"). The Round 1054
+    /// walk over the whole read surface reached it from the outside: moving a
+    /// fact to another world-line moved this number and nothing named, so a
+    /// consumer learned that the exempt set had changed and could not learn how.
+    /// The count is `exempt.len()`; the prose wire still prints the number.
+    pub exempt: Vec<String>,
     pub payoffs_to_unmarked: Vec<PayoffEdgeRef>,
     pub payoff_before_setup: Vec<PayoffEdgeRef>,
     pub unknown: Vec<String>,
@@ -5866,7 +5879,7 @@ pub fn payoff_coverage(
         }
         for (id, fact) in &visible {
             if !fact.is_marked_setup() {
-                cov.exempt += 1;
+                cov.exempt.push((*id).to_string());
                 continue;
             }
             match paid_by.get(id) {
@@ -9015,7 +9028,12 @@ mod tests {
                 .collect::<Vec<_>>(),
             vec!["f-old"]
         );
-        assert_eq!(at2.not_holding, 1);
+        assert_eq!(
+            at2.not_holding,
+            vec!["f-new"],
+            "Round 1054: the arm NAMES its facts. This read it as `== 1`, and a \
+             count cannot say that what does not hold yet is the successor"
+        );
         let at3 = frame_view(
             &store,
             &order,
@@ -9032,7 +9050,12 @@ mod tests {
                 .collect::<Vec<_>>(),
             vec!["f-new"]
         );
-        assert_eq!(at3.not_holding, 1);
+        assert_eq!(
+            at3.not_holding,
+            vec!["f-old"],
+            "and here it is the superseded belief — the same `1` as above, about \
+             the other fact, which is the whole reason this arm now names them"
+        );
         assert!(at3.unknown.is_empty());
     }
 
@@ -9052,7 +9075,7 @@ mod tests {
         )
         .unwrap();
         assert!(at3.holding.is_empty());
-        assert_eq!(at3.not_holding, 1);
+        assert_eq!(at3.not_holding, vec!["f-b"]);
         // jonathan's fact never appears in seward's view.
         let at1 = frame_view(
             &store,
@@ -9088,7 +9111,7 @@ mod tests {
         .unwrap();
         assert!(view.holding.is_empty());
         assert_eq!(view.unknown, vec!["f-arm".to_string()]);
-        assert_eq!(view.not_holding, 0);
+        assert!(view.not_holding.is_empty());
     }
 
     #[test]
@@ -9264,8 +9287,8 @@ mod tests {
             ["f-main"],
         );
         assert_eq!(
-            (ancestor.unknown.as_slice(), ancestor.not_holding),
-            (&[] as &[String], 0),
+            (ancestor.unknown.as_slice(), ancestor.not_holding.as_slice(),),
+            (&[] as &[String], &[] as &[String]),
             "the ancestor's view must not carry the fork's fact in ANY arm — \
              `unknown` is a verdict about a fact this world holds an opinion \
              on, and a world-line that was left has no opinion about what \
@@ -10554,7 +10577,14 @@ mod tests {
             "multi-payoff credits every in-world payoff"
         );
         assert_eq!(main.dangling, vec!["su-dangling".to_string()]);
-        assert_eq!(main.exempt, 5, "unmarked facts counted, never listed");
+        assert_eq!(
+            main.exempt,
+            vec!["p-a", "p-b", "p-early", "p-unmarked", "world-state"],
+            "unmarked facts are NAMED (Round 1054): this line read `exempt == 5` \
+             and its message said `counted, never listed`, which is the whole \
+             defect — the four payoffs and the world-state fact are the class, \
+             and a consumer watching the number could not have said so"
+        );
         assert_eq!(
             main.payoffs_to_unmarked,
             vec![PayoffEdgeRef {

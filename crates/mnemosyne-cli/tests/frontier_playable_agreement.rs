@@ -3,8 +3,9 @@
 //!
 //! The sixth declared cross-read agreement, taken from the top of the Round
 //! 1051 backlog: `report-authoring-frontier <-> report-playable-world`, 57
-//! subjects in common when it was declared and 59 since Round 1053 made the
-//! census name its facts — the largest overlap no contract judged. Rounds
+//! subjects in common when it was declared, 59 once Round 1053 made the scene
+//! census name its facts and 80 once Round 1054 made the density numerator name
+//! its own — the largest overlap no contract judged at the time. Rounds
 //! 1041-1045 established why agreement is DECLARED rather than derived (five
 //! derivations over read output failed to decide it, the fifth refuted by
 //! injection), and Round 1050 established what makes a declaration worth

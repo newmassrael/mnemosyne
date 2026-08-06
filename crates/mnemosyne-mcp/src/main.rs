@@ -7467,7 +7467,13 @@ mod tests {
         report_frame_view_order_path_reaches_the_answer:
             @branch_story
             report_frame_view(ReportFrameViewArgs) {"frame": "ground-truth", "at": "sc-01", "order_path": "order-a.json"}
-            ."order_path" = "order-b.json" seen "\"not_holding\": 2" in output;
+            // Round 1054 — `not_holding` became a LIST, and the two facts it
+            // names at `sc-01` are the same two `unknown` holds without the
+            // order that admits `sc-03`, so a needle naming either of them
+            // occurs once in BOTH answers. The emptiness of the sibling arm is
+            // what the argument still moves: with `order-b` nothing is
+            // undecided, without it the two facts anchored past the order are.
+            ."order_path" = "order-b.json" seen "\"unknown\": []" in output;
         report_fork_tree_order_path_reaches_the_answer:
             @branch_story
             report_fork_tree(ReportForkTreeArgs) {"order_path": "order-b.json"}

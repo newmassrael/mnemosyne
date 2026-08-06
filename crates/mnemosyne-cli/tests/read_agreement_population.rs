@@ -123,52 +123,62 @@ fn panel_records(
 /// The pairs of shipped reads that both ANSWER ABOUT a subject — both of their
 /// records for it move under some authorable edit. Most-shared first; this is
 /// the backlog, and R1037's hand-picked pair sits inside it.
-const BACKLOG: [&str; 45] = [
-    "72 report-playable-world <-> report-playthrough-manuscript",
-    "59 report-authoring-frontier <-> report-playable-world",
-    "59 report-authoring-frontier <-> report-playthrough-manuscript",
-    "49 report-entity <-> report-playable-world",
-    "49 report-entity <-> report-playthrough-manuscript",
-    "47 report-edge-candidates <-> report-entity",
-    "47 report-edge-candidates <-> report-playable-world",
-    "47 report-edge-candidates <-> report-playthrough-manuscript",
-    "37 report-authoring-frontier <-> report-edge-candidates",
-    "36 report-authoring-frontier <-> report-entity",
-    "32 report-edge-candidates <-> report-quest-graph",
-    "29 report-entity <-> report-quest-graph",
-    "29 report-playable-world <-> report-quest-graph",
-    "29 report-playthrough-manuscript <-> report-quest-graph",
-    "28 report-authoring-frontier <-> report-quest-graph",
-    "25 report-edge-candidates <-> report-frame-view",
-    "25 report-entity <-> report-frame-view",
-    "25 report-frame-view <-> report-playable-world",
-    "25 report-frame-view <-> report-playthrough-manuscript",
-    "19 report-authoring-frontier <-> report-frame-view",
-    "15 report-authoring-frontier <-> report-payoff-coverage",
-    "15 report-frame-view <-> report-quest-graph",
+const BACKLOG: [&str; 55] = [
+    "135 report-authoring-frontier <-> report-payoff-coverage",
+    "95 report-playable-world <-> report-playthrough-manuscript",
+    "80 report-authoring-frontier <-> report-playable-world",
+    "80 report-authoring-frontier <-> report-playthrough-manuscript",
+    "55 report-entity <-> report-playable-world",
+    "55 report-entity <-> report-playthrough-manuscript",
+    "53 report-edge-candidates <-> report-entity",
+    "53 report-edge-candidates <-> report-playable-world",
+    "53 report-edge-candidates <-> report-playthrough-manuscript",
+    "40 report-authoring-frontier <-> report-entity",
+    "38 report-authoring-frontier <-> report-edge-candidates",
+    "38 report-frame-view <-> report-playable-world",
+    "38 report-frame-view <-> report-playthrough-manuscript",
+    "37 report-edge-candidates <-> report-frame-view",
+    "37 report-entity <-> report-frame-view",
+    "36 report-playable-world <-> report-quest-graph",
+    "36 report-playthrough-manuscript <-> report-quest-graph",
+    "35 report-edge-candidates <-> report-quest-graph",
+    "35 report-entity <-> report-quest-graph",
+    "29 report-authoring-frontier <-> report-quest-graph",
+    "26 report-authoring-frontier <-> report-frame-view",
+    "24 report-edge-candidates <-> report-typing-candidates",
+    "24 report-entity <-> report-typing-candidates",
+    "24 report-playable-world <-> report-typing-candidates",
+    "24 report-playthrough-manuscript <-> report-typing-candidates",
+    "23 report-frame-view <-> report-quest-graph",
+    "23 report-frame-view <-> report-typing-candidates",
+    "20 report-edge-candidates <-> report-payoff-coverage",
+    "20 report-entity <-> report-payoff-coverage",
+    "20 report-payoff-coverage <-> report-playable-world",
+    "20 report-payoff-coverage <-> report-playthrough-manuscript",
+    "15 report-authoring-frontier <-> report-typing-candidates",
+    "15 report-quest-graph <-> report-typing-candidates",
+    "14 report-frame-view <-> report-payoff-coverage",
+    "13 report-payoff-coverage <-> report-quest-graph",
     "12 report-authoring-frontier <-> report-payoff-substantiation",
-    "12 report-edge-candidates <-> report-payoff-coverage",
     "12 report-edge-candidates <-> report-payoff-substantiation",
+    "12 report-entity <-> report-payoff-substantiation",
     "12 report-payoff-coverage <-> report-payoff-substantiation",
-    "10 report-payoff-coverage <-> report-quest-graph",
+    "12 report-payoff-substantiation <-> report-playable-world",
+    "12 report-payoff-substantiation <-> report-playthrough-manuscript",
+    "10 report-authoring-frontier <-> validate-continuity",
+    "10 report-edge-candidates <-> validate-continuity",
+    "10 report-entity <-> validate-continuity",
     "10 report-payoff-substantiation <-> report-quest-graph",
-    "9 report-authoring-frontier <-> validate-continuity",
-    "9 report-edge-candidates <-> validate-continuity",
-    "9 report-entity <-> report-payoff-coverage",
-    "9 report-entity <-> report-payoff-substantiation",
-    "9 report-entity <-> validate-continuity",
-    "9 report-payoff-coverage <-> report-playable-world",
-    "9 report-payoff-coverage <-> report-playthrough-manuscript",
-    "9 report-payoff-substantiation <-> report-playable-world",
-    "9 report-payoff-substantiation <-> report-playthrough-manuscript",
-    "9 report-playable-world <-> validate-continuity",
-    "9 report-playthrough-manuscript <-> validate-continuity",
-    "9 report-quest-graph <-> validate-continuity",
-    "4 report-frame-view <-> validate-continuity",
-    "3 report-frame-view <-> report-payoff-coverage",
-    "3 report-frame-view <-> report-payoff-substantiation",
+    "10 report-playable-world <-> validate-continuity",
+    "10 report-playthrough-manuscript <-> validate-continuity",
+    "10 report-quest-graph <-> validate-continuity",
+    "8 report-frame-view <-> report-payoff-substantiation",
+    "6 report-payoff-coverage <-> report-typing-candidates",
+    "6 report-payoff-substantiation <-> report-typing-candidates",
+    "5 report-frame-view <-> validate-continuity",
     "3 report-payoff-coverage <-> validate-continuity",
     "3 report-payoff-substantiation <-> validate-continuity",
+    "3 report-typing-candidates <-> validate-continuity",
 ];
 
 #[test]
@@ -368,8 +378,14 @@ fn the_population_of_subjects_more_than_one_shipped_read_answers_about() {
          argument space",
     );
     check(
-        (applied, refused) == (41, 0),
-        "POPULATION: 41 authorable corruptions, none refused by the write path",
+        (applied, refused) == (92, 0),
+        "POPULATION: 92 authorable corruptions, none refused by the write path. \
+         It was 41 until Round 1054, and the 51 that arrived are the legs that \
+         PLACE a fact and ATTRIBUTE it — where it becomes true, where it stops, \
+         whose view holds it, which world-line authored it. This derivation had \
+         always said it took the legs a fact actually carries and had carried \
+         only the ones saying what a fact CLAIMS, so no edit here ever moved a \
+         coordinate, a frame or a branch",
     );
     // MENTION IS VACUOUS AND THE WALK SAYS SO EVERY RUN rather than in prose:
     // every registered id is mentioned by more than one read at baseline,
@@ -387,16 +403,27 @@ fn the_population_of_subjects_more_than_one_shipped_read_answers_about() {
          answering is measured by perturbation",
     );
     check(
-        (readers_of.len(), shared.len()) == (214, 79),
+        (readers_of.len(), shared.len()) == (214, 210),
         "ANSWERED: subjects some read answers about, and those more than one does. \
          Round 1053 more than doubled the first number without moving the second, \
          and the reason is worth keeping: the frontier's scene census began \
          NAMING the facts it counts, so its record for a fact is the census row \
          that fact sits in — and that row moves when any fact anchored at the same \
          scene moves. A list-valued field makes co-listed subjects share a record, \
-         which is how `dangling_setups` has always behaved here. The subjects it \
-         added are answered by the frontier ALONE, so the pairs below rose by two \
-         and the shared population not at all",
+         which is how `dangling_setups` has always behaved here.\n\n\
+         ROUND 1054 TOOK THE SECOND NUMBER FROM 79 TO 210, and that is this walk's \
+         own definition coming due rather than a discovery about the surface. \
+         Three reads stopped counting sets they did not name — the frontier's \
+         `owned`, the payoff coverage's `exempt`, the frame view's `not_holding` — \
+         and each of those lists holds most of the store, so under the \
+         minimal-enclosing-object rule nearly every pair of them now shares nearly \
+         every subject. The BACKLOG below is ranked by that number, and its new \
+         head is a pair that shares 135 subjects because BOTH READS ENUMERATE, not \
+         because both judge. What a record should be for a bare id inside a LIST is \
+         the open question, and it is open rather than deferred: the obvious \
+         refinement — a subject's record in a list of ids is its own membership, \
+         not its neighbours' — is wrong as stated, because the frontier's census \
+         lists facts per SCENE and that refinement would throw the scene away",
     );
     check(
         ranked

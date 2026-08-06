@@ -90,12 +90,14 @@ fn succession_swaps_the_held_belief_at_its_canon_point() {
     let at2 = view_json(tmp.path(), "jonathan", "ch-2");
     assert_eq!(at2["holding_count"], 1);
     assert_eq!(at2["holding"][0]["fact_id"], "f-old");
-    assert_eq!(at2["not_holding"], 1);
+    // Round 1054: the residual NAMES its facts. This read `== 1`, and the two
+    // views below differ only in WHICH fact is in it.
+    assert_eq!(at2["not_holding"], serde_json::json!(["f-new"]));
     let at3 = view_json(tmp.path(), "jonathan", "ch-3");
     assert_eq!(at3["holding_count"], 1);
     assert_eq!(at3["holding"][0]["fact_id"], "f-new");
     // f-old is definitively ended (derived closure), not unknown.
-    assert_eq!(at3["not_holding"], 1);
+    assert_eq!(at3["not_holding"], serde_json::json!(["f-old"]));
     assert_eq!(at3["unknown"].as_array().unwrap().len(), 0);
     // Other frames never leak in.
     let seward = view_json(tmp.path(), "seward", "ch-2");

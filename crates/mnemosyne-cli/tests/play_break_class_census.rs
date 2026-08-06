@@ -644,7 +644,10 @@ fn the_walk_says_what_stands_between_an_authoring_slip_and_the_runtime() {
     // REFUSED is 0 and that is a measurement: every corruption carries its own
     // entities list (`swap_entity`), which is what Round 1031 learned the write
     // path demands. An author who keeps the store's own invariants can commit
-    // all 41.
+    // all 92 — 41 before Round 1054 widened the derived population from the
+    // legs that say what a fact CLAIMS to the ones that PLACE it and ATTRIBUTE
+    // it. Every number in this walk moved with it, and none of them moved
+    // because a read changed its mind.
     //
     // INERT is 0, and it overturns a claim Round 1033 pinned. That walk ran
     // three stations and found two payoff edges neither runtime projection
@@ -655,9 +658,9 @@ fn the_walk_says_what_stands_between_an_authoring_slip_and_the_runtime() {
     assert_eq!(
         census,
         BTreeMap::from([
-            (Bucket::Caught, 6),
-            (Bucket::Reported, 26),
-            (Bucket::Carried, 9),
+            (Bucket::Caught, 17),
+            (Bucket::Reported, 59),
+            (Bucket::Carried, 16),
         ]),
         "the play-break census over the quest layer"
     );
@@ -678,11 +681,22 @@ fn the_walk_says_what_stands_between_an_authoring_slip_and_the_runtime() {
     // recorded as an unaskable NUMBER. So seven rows of "no consumer can see
     // this" meant "nobody asked the consumer that can".
     //
-    // What remains is one leg, and its shape is the honest version of the old
-    // claim: a dropped `evidence` backreference removes the ONLY record that
-    // the link was ever claimed, so there is no second declaration anywhere to
-    // compare against. This is the R476 ceiling — author content rather than
-    // missing enforcement — showing up one layer down, and it is 9 of 41.
+    // What remains is TWO legs, and both say the same thing in different words:
+    // the store states the datum once, so no second declaration exists for a
+    // gate to compare it against.
+    //
+    // - `evidence` — dropping a backreference removes the ONLY record that the
+    //   link was ever claimed. This is the R476 ceiling (author content rather
+    //   than missing enforcement) showing up one layer down.
+    // - `frame` — Round 1054, and it is the whole of a leg that did not exist
+    //   in this population before. A fact can be moved into another frame — into
+    //   another mind's belief — and FOUR shipped reads carry it there without
+    //   one of them having an opinion. `report-frame-view` is the read that
+    //   partitions by frame, and it does not appear in a single one of these
+    //   rows: asked at one frame it loses the fact and asked at the other it
+    //   gains it, which reproduces the store's own diff exactly, and this walk
+    //   subtracts that footprint on purpose so a rendering read cannot pass for
+    //   a detector. Whose belief a fact is has no cross-check anywhere.
     assert_eq!(
         rows[&Bucket::Carried]
             .iter()
@@ -692,12 +706,19 @@ fn the_walk_says_what_stands_between_an_authoring_slip_and_the_runtime() {
             "f-161/evidence",
             "f-180/evidence",
             "f-305/evidence",
+            "f-305/frame",
             "f-316/evidence",
+            "f-316/frame",
             "f-404/evidence",
+            "f-404/frame",
             "f-409/evidence",
+            "f-409/frame",
             "f-411/evidence",
+            "f-411/frame",
             "f-505/evidence",
+            "f-505/frame",
             "f-515/evidence",
+            "f-515/frame",
         ],
         "the corruptions no shipped read derives anything from"
     );
@@ -755,7 +776,15 @@ fn the_walk_says_what_stands_between_an_authoring_slip_and_the_runtime() {
             ))
             .collect::<Vec<_>>(),
         [
+            // R1054 — the frontier's scene census is not the only wire that
+            // widened. `payoff_before_setup` and `uncredited_edges` cross the
+            // emptiness boundary now because the placement legs reach them: a
+            // setup moved past its payoff, or onto a world-line where nothing
+            // credits it. Nobody added either to a list here.
+            "REFUTED report-authoring-frontier: `structural` is always empty",
+            "CANDIDATE report-payoff-coverage: `payoff_before_setup` is always empty",
             "CANDIDATE report-payoff-coverage: `payoffs_to_unmarked` is always empty",
+            "CANDIDATE report-payoff-coverage: `uncredited_edges` is always empty",
             // R1045 — the walk picked the new field up on its own and refuted
             // BOTH shapes of rule over it (n=16, min=0, max=1): a road that owes
             // one of its quest's givings and a road that owes none are both

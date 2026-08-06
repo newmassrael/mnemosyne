@@ -1000,7 +1000,20 @@ pub fn corruptions(store: &AtomicStore, facts_json: &serde_json::Value) -> Vec<C
     // already uses in that role — so the corruption stays type-plausible.
     let mut objects_of: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
     let mut predicates: BTreeSet<String> = BTreeSet::new();
+    // The same, for the legs that PLACE a fact and ATTRIBUTE it. Round 1054
+    // added these: this derivation says it takes "the legs a fact actually
+    // carries" and carried only the ones that say what a fact CLAIMS, so no
+    // edit here ever moved a fact's coordinate, its frame or its world-line.
+    // A walk asking which reads count a set they do not name came back EMPTY
+    // over the whole read surface — every count on the surface summarizes one
+    // of those three axes, and the population could not touch any of them.
+    let mut frames: BTreeSet<String> = BTreeSet::new();
+    let mut anchors: BTreeSet<String> = BTreeSet::new();
+    let mut worlds: BTreeSet<String> = BTreeSet::new();
     for fact in store.narrative_facts.values() {
+        frames.insert(fact.frame.to_string());
+        anchors.insert(fact.canon_from.to_string());
+        worlds.insert(fact.branch.to_string());
         let Some(claim) = &fact.typed else { continue };
         if let mnemosyne_core::TypedObject::Entity { id } = &claim.object {
             predicates.insert(claim.predicate.to_string());
@@ -1080,6 +1093,64 @@ pub fn corruptions(store: &AtomicStore, facts_json: &serde_json::Value) -> Vec<C
                 apply: Box::new(|f| {
                     f["evidence"].as_array_mut().expect("evidence").remove(0);
                 }),
+            });
+        }
+        // THE PLACEMENT AND ATTRIBUTION LEGS (Round 1054). The four above say
+        // what a fact CLAIMS; these say WHERE it becomes true, WHERE it stops,
+        // WHOSE view holds it, and WHICH world-line authored it. Every count a
+        // shipped read emits summarizes one of those, so without them a walk
+        // over the read surface cannot move a single number.
+        //
+        // The `entities` leg is not here because Leg 1 already carries it: a
+        // claim retarget swaps the entity with it (the R446 invariant), so the
+        // cast axis is exercised. The prose legs (`claim`, `quote`) are not
+        // here either, and that is a different question rather than an
+        // omission — a prose edit changes no cardinality, and admitting one
+        // would make every read that merely RENDERS a claim "answer about"
+        // the fact, which is the distinction this population exists to draw.
+
+        // Leg 6 — the fact becomes true at a coordinate another fact is
+        // anchored at. `evidence` moves with it: a backreference left pointing
+        // at the scene the fact came from is not a move an author would commit,
+        // and the write path is entitled to refuse it.
+        let anchor = fact.canon_from.to_string();
+        if let Some(alt) = anchors.iter().find(|s| **s != anchor).cloned() {
+            out.push(Corruption {
+                fact: id.clone(),
+                leg: "canon_from",
+                apply: Box::new(move |f| {
+                    f["canon_from"] = alt.as_str().into();
+                    f["evidence"] = serde_json::json!([alt.as_str()]);
+                }),
+            });
+        }
+        // Leg 7 — the fact stops being true somewhere else.
+        if let Some(to) = &fact.canon_to {
+            let to = to.to_string();
+            if let Some(alt) = anchors.iter().find(|s| **s != to).cloned() {
+                out.push(Corruption {
+                    fact: id.clone(),
+                    leg: "canon_to",
+                    apply: Box::new(move |f| f["canon_to"] = alt.as_str().into()),
+                });
+            }
+        }
+        // Leg 8 — a different frame holds the fact.
+        let frame = fact.frame.to_string();
+        if let Some(alt) = frames.iter().find(|f| **f != frame).cloned() {
+            out.push(Corruption {
+                fact: id.clone(),
+                leg: "frame",
+                apply: Box::new(move |f| f["frame"] = alt.as_str().into()),
+            });
+        }
+        // Leg 9 — a different world-line authored it.
+        let world = fact.branch.to_string();
+        if let Some(alt) = worlds.iter().find(|b| **b != world).cloned() {
+            out.push(Corruption {
+                fact: id.clone(),
+                leg: "branch",
+                apply: Box::new(move |f| f["branch"] = alt.as_str().into()),
             });
         }
     }

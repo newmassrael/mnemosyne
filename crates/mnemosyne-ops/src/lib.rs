@@ -1021,7 +1021,13 @@ pub struct SceneCoverage {
 /// to match any external divisor.
 #[derive(Debug, Clone, Serialize)]
 pub struct BranchDensity {
-    pub owned_facts: usize,
+    /// The facts this world-line authored, NAMED (Round 1054). It shipped as
+    /// `owned_facts`, a count, and a walk over every shipped read measured what
+    /// that cost: moving one fact to another world-line moved this number, the
+    /// `density` derived from it, and NOTHING else in the whole report. A
+    /// consumer acting on a density could not open its own numerator. The count
+    /// is `owned.len()` and is kept nowhere — the Round 1053 wire discipline.
+    pub owned: Vec<String>,
     pub road_scenes: usize,
     pub density: Option<f64>,
 }
@@ -1312,16 +1318,17 @@ pub fn authoring_frontier_report(
         .chain(store.branches.keys().cloned())
     {
         let road_scenes = order.linearize(&world).len();
-        let owned_facts = store
+        let owned: Vec<String> = store
             .narrative_facts
-            .values()
-            .filter(|f| f.branch == world)
-            .count();
-        let density = (road_scenes > 0).then(|| owned_facts as f64 / road_scenes as f64);
+            .iter()
+            .filter(|(_, f)| f.branch == world)
+            .map(|(id, _)| id.to_string())
+            .collect();
+        let density = (road_scenes > 0).then(|| owned.len() as f64 / road_scenes as f64);
         branch_owned_density.insert(
             world.to_string(),
             BranchDensity {
-                owned_facts,
+                owned,
                 road_scenes,
                 density,
             },
@@ -1363,7 +1370,8 @@ pub struct FrameViewReport {
     pub entity: Option<String>,
     pub holding: Vec<mnemosyne_validate::continuity::FrameViewEntry>,
     pub holding_count: usize,
-    pub not_holding: usize,
+    /// NAMED since Round 1054 — see [`mnemosyne_validate::continuity::FrameView`].
+    pub not_holding: Vec<String>,
     pub unknown: Vec<String>,
     /// The world-line is a confluence FRAGMENT (Round 746) — carried through from
     /// the projection so the CLI/MCP render can name it, the same signal the
@@ -3260,21 +3268,41 @@ mod tests {
         let r = authoring_frontier_report(root, None, None, None, None).unwrap();
         let d = &r.branch_owned_density;
 
+        let owned = |d: &BranchDensity| -> Vec<String> { d.owned.clone() };
+
         // main owns 4 facts over its 3 traversed scenes -> density > 1.0.
         let m = &d["main"];
-        assert_eq!((m.owned_facts, m.road_scenes), (4, 3));
+        assert_eq!(
+            (owned(m), m.road_scenes),
+            (
+                ["f-m1", "f-m2", "f-m3", "f-m4"]
+                    .map(str::to_string)
+                    .to_vec(),
+                3
+            ),
+            "Round 1054: the numerator NAMES its facts. This line read \
+             `(m.owned_facts, m.road_scenes) == (4, 3)`, and a walk over every \
+             shipped read measured that moving a fact between world-lines moved \
+             that count, the density under it, and nothing else in the report"
+        );
         assert_eq!(m.density, Some(4.0 / 3.0));
 
         // the CONFLUENCE gets a real density over its full traversal — no
         // divide-by-zero (the own-segment version's fatal case), no `None`.
         let w = &d["weave"];
-        assert_eq!((w.owned_facts, w.road_scenes), (1, 3));
+        assert_eq!(
+            (owned(w), w.road_scenes),
+            (["f-w1"].map(str::to_string).to_vec(), 3)
+        );
         assert_eq!(w.density, Some(1.0 / 3.0));
 
         // the facts-only / undeclared-road divergence gets a real density too —
         // it rides a 3-scene road owning 1 fact, NOT a confusing "n/a rides trunk".
         let b = &d["braid"];
-        assert_eq!((b.owned_facts, b.road_scenes), (1, 3));
+        assert_eq!(
+            (owned(b), b.road_scenes),
+            (["f-b1"].map(str::to_string).to_vec(), 3)
+        );
         assert_eq!(b.density, Some(1.0 / 3.0));
         assert!(b.density.is_some(), "a facts-only divergence is never None");
 
