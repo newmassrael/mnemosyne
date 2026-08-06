@@ -106,8 +106,8 @@ use mnemosyne_atomic::AtomicStore;
 
 mod common;
 use common::{
-    ask_panel, corruptions, dnd_quest_facts, dnd_quest_workspace_from, dnd_quest_workspace_try,
-    panel, registered_ids, telling_of, wrote_about, Answer, Wrote, SIDECAR,
+    ask_panel, audit_dir, corruptions, dnd_quest_manifests, panel, registered_ids, telling_of,
+    workspace_try, wrote_about, Answer, Wrote, SIDECAR,
 };
 
 /// Every number in one answer, keyed by the FIELD it sits at.
@@ -460,6 +460,25 @@ fn named(value: &serde_json::Value) -> serde_json::Value {
 ///   store shows it; two edited stores that name the same things do.
 const COUNTED_WITHOUT_NAMING: [&str; 0] = [];
 
+/// The reads that REFUSE a store this population can author, rather than
+/// answering about it (Round 1061).
+///
+/// A read that stops answering has reacted more loudly than any number could,
+/// and until this round the walk filed that reaction as "an answer I could not
+/// compare" — the same bucket as a read that answers in prose. The distinction
+/// only became load-bearing when the population reached the canon order, where
+/// there is no import to refuse anything and the READS are the whole gate.
+///
+/// `report-authoring-frontier` and `report-quest-graph` reject the five
+/// predicate retargets that make a quest claim malformed (the R676 role-conflict
+/// guard, which rejects the read rather than judging content).
+/// `validate-continuity` rejects far more, and that is what a gate is for.
+const READS_THAT_REJECT: [&str; 3] = [
+    "report-authoring-frontier",
+    "report-quest-graph",
+    "validate-continuity",
+];
+
 /// How many hypotheses one search may visit, and how many it may keep. Both are
 /// printed when they bite, because a search that stopped early is a search whose
 /// silence means nothing (the R1029 rule, applied to a walk's own budget).
@@ -498,19 +517,29 @@ const HYPOTHESIS_CAP: usize = 100_000;
 ///   over both wires that carry a manuscript.
 ///
 /// The one number the law does not reach at all is the frontier's `density`,
-/// which is a FRACTION: [`the_density_is_the_facts_it_names_over_a_road_it_does_not`]
+/// which is a FRACTION: [`the_density_is_the_facts_it_names_over_the_road_it_names`]
 /// is what that one is, and where the loss in it actually sits.
-const NOT_A_COUNT_OF_NAMES: [&str; 4] = [
+/// The two spec-map entries arrived in Round 1061 with the scene registry, and
+/// they are a limit of THIS SEARCH rather than of the read. `report-spec-map`
+/// names every section AND its `coverage_class`, so `by_class.normative_gap` is
+/// exactly the rows whose class is that one — but an account here is composed as
+/// a UNION of named lists, and a subset selected by a field's value is not a
+/// union of anything. Teaching the search filtered subsets is the next round's
+/// work, and it is not free: the hypothesis space multiplies by every (list,
+/// field, value), and this walk already measures its own budget.
+const NOT_A_COUNT_OF_NAMES: [&str; 6] = [
     "report-playable-world worlds.*.locators[].scene_ordinal",
     "report-playable-world worlds.*.manuscript.scenes[].holding_count",
     "report-playthrough-manuscript worlds.*.scenes[].holding_count",
     "report-quest-graph quests[].locators[].scene_ordinal",
+    "report-spec-map summary.by_class.informative_exempt",
+    "report-spec-map summary.by_class.normative_gap",
 ];
 
 #[test]
 fn the_reads_that_count_what_they_do_not_name() {
-    let facts_json = dnd_quest_facts();
-    let ws = dnd_quest_workspace_from(&facts_json);
+    let manifests = dnd_quest_manifests();
+    let ws = workspace_try(&manifests, Some(&audit_dir())).expect("the authored corpus must load");
     let store = AtomicStore::load(&ws.path().join(SIDECAR)).expect("the imported store loads");
     let ids = registered_ids(&store);
     let telling = telling_of(&store);
@@ -578,39 +607,54 @@ fn the_reads_that_count_what_they_do_not_name() {
         }
     }
 
-    let population = corruptions(&store, &facts_json);
+    let population = corruptions(&store, &manifests);
     let mut applied = 0usize;
     let mut refused = 0usize;
+    // The edits no read on the panel answered differently for. A member of the
+    // population that moves NOTHING is not evidence of a quiet surface — it is a
+    // corruption the store never received, which is what a manifest field the
+    // import ignores would look like from here. Named rather than counted.
+    let mut moved_nothing: BTreeSet<String> = BTreeSet::new();
+    // Reads that stopped answering at all under an edit, by read and by edit.
+    // `order.json` has no import to refuse a bad road, so the refusal surfaces
+    // HERE, and a walk that let it fall in with the answers it could not compare
+    // would read a store it could not ask as a store with nothing to say.
+    let mut read_failures: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
     for corruption in &population {
-        let mut mutated = facts_json.clone();
-        let mut hits = 0usize;
-        for entry in mutated["facts"].as_array_mut().expect("facts array") {
-            if entry["fact_id"] == corruption.fact.as_str() {
-                (corruption.apply)(entry);
-                hits += 1;
-            }
-        }
-        assert_eq!(
-            hits, 1,
-            "{}/{} applied {hits} times",
-            corruption.fact, corruption.leg
-        );
-        let Ok(mutated_ws) = dnd_quest_workspace_try(&mutated) else {
+        let Ok(mutated_ws) = workspace_try(&corruption.applied(&manifests), Some(&audit_dir()))
+        else {
             // The write path refuses it: not a move an author could make.
             refused += 1;
             continue;
         };
         applied += 1;
-        let edit = format!("{}/{}", corruption.fact, corruption.leg);
+        let edit = corruption.label();
         let seen = ask_panel(mutated_ws.path(), &panel);
+        // A read that answered at baseline and refuses this store MOVED — from
+        // an answer to a refusal. Counting it as an answer this walk could not
+        // compare would file the loudest reaction on the panel as silence.
+        let mut moved_something = !seen.failed.is_empty();
+        for label in &seen.failed {
+            read_failures
+                .entry(verb_of[label].clone())
+                .or_default()
+                .insert(edit.clone());
+        }
         for (label, before) in &baseline.answers {
             let verb = verb_of[label].clone();
             let (Answer::Json(before), Some(Answer::Json(after))) =
                 (before, seen.answers.get(label))
             else {
                 // A read that answers `--json` in prose holds no fields to key
-                // on. Counted rather than curated away (the R1029 rule).
+                // on. Counted rather than curated away (the R1029 rule) — but
+                // its TEXT still says whether the edit reached it, which is a
+                // different question from whether the law can key on it.
                 prose_comparisons += 1;
+                if let (Answer::Prose(was), Some(Answer::Prose(now))) =
+                    (before, seen.answers.get(label))
+                {
+                    moved_something |= was != now;
+                }
                 continue;
             };
             let (was_wrote, now_wrote) = (wrote_about(before, &ids), wrote_about(after, &ids));
@@ -657,9 +701,12 @@ fn the_reads_that_count_what_they_do_not_name() {
             if moved.is_empty() {
                 if named(before) == named(after) {
                     still += 1;
+                } else {
+                    moved_something = true;
                 }
                 continue;
             }
+            moved_something = true;
             // THE COVERAGE MEASURE: the numbers one edit moved while moving
             // something named too. Not evidence of loss — evidence of how much
             // of the surface a single pair cannot speak about, which is why the
@@ -672,6 +719,9 @@ fn the_reads_that_count_what_they_do_not_name() {
                         .insert(edit.clone());
                 }
             }
+        }
+        if !moved_something {
+            moved_nothing.insert(edit.clone());
         }
     }
 
@@ -689,6 +739,23 @@ fn the_reads_that_count_what_they_do_not_name() {
     );
     for (verb, reason) in &unaskable {
         println!("  UNASKABLE {verb}: {reason}");
+    }
+    // THE SWEEP ASSERTS ITS OWN REACH (the R1054 rule: an empty answer is the
+    // shape of a clean surface AND of a surface nothing touched). These two say
+    // the edits arrived and the reads stayed askable.
+    println!(
+        "\n{} edit(s) moved no answer on the panel; {} read(s) stopped answering under some edit:",
+        moved_nothing.len(),
+        read_failures.len()
+    );
+    for (verb, edits) in &read_failures {
+        println!("  {verb} could not answer under {} edit(s)", edits.len());
+        for edit in edits.iter().take(3) {
+            println!("        {edit}");
+        }
+    }
+    for edit in &moved_nothing {
+        println!("  MOVED NOTHING {edit}");
     }
     println!("\nCOUNTED WITHOUT NAMING — the number moved and nothing named did:");
     for ((verb, path), edits) in &alone {
@@ -788,13 +855,17 @@ fn the_reads_that_count_what_they_do_not_name() {
             panel.len(),
             applied,
             refused,
-        ) == (30, 68, 92, 0),
+        ) == (30, 68, 256, 56),
         "INPUTS: both populations come from `common`, so this walk cannot narrow \
-         either to suit itself — 30 reads over 68 questions, and 92 authorable \
-         corruptions with none refused. The corruption count was 41 until this \
-         round: that derivation says it takes the legs a fact ACTUALLY carries \
-         and carried only the ones saying what a fact CLAIMS, so the first sweep \
-         over this law came back empty and could not have come back otherwise",
+         either to suit itself — 30 reads over 68 questions, and 312 authorable \
+         corruptions of which the write path refuses 56. It was 41 until Round \
+         1054 and 92 until Round 1061, and both jumps were the same discovery \
+         twice: the derivation said it took the legs a thing ACTUALLY carries \
+         and was reading a smaller thing than it claimed. First it carried only \
+         the legs saying what a fact CLAIMS, never where it sits; then it took \
+         the FACT manifest for the corpus, when an author writes three. The \
+         refusals are one leg — cutting a scene out of the registry that facts \
+         still stand at",
     );
     check(
         alone
@@ -819,21 +890,19 @@ fn the_reads_that_count_what_they_do_not_name() {
          had to change",
     );
     check(
-        (still, prose_comparisons, accompanied.len()) == (5194, 216, 10),
-        "REACH, ASSERTED RATHER THAN IMPLIED: of the 6256 (question, edit) pairs \
-         this walk makes, 5194 move the read not at all and 216 are against the \
+        (still, prose_comparisons, accompanied.len()) == (15079, 608, 17),
+        "REACH, ASSERTED RATHER THAN IMPLIED: of the 17408 (question, edit) pairs \
+         this walk makes, 15079 move the read not at all and 608 are against the \
          one verb that takes `--json` and answers in prose, which holds no fields \
          to key on. The law can speak only about the rest, and it finds numbers \
-         moving in 10 fields. An empty census is what a clean surface looks like \
+         moving in 17 fields. An empty census is what a clean surface looks like \
          AND what a walk that stopped reaching anything looks like; these three \
-         numbers are what tell them apart. It was 5195 and 10 until Round 1056: \
-         `report-payoff-substantiation` now names the setups nobody paid, so one \
-         more edit moves that read at all, and its total joins the fields whose \
-         moves are accounted for by something named. It read 11 until Round \
-         1057, and the field that left was never a second field: the quest \
-         graph's locator ordinal was reported under two names because the row \
-         key was spelled into the field path, and a key derived from the values \
-         makes one place carry different names in two answers",
+         numbers are what tell them apart. It read 10 fields from Round 1056 to \
+         Round 1060 over a population of 92, all of them fact edits. Round 1061 \
+         widened that population to the two manifests an author writes beside \
+         the facts, and the seven fields that arrived are what a scene registry \
+         and a canon order move: the coverage class split, the spec map's class \
+         totals, and the road under the frontier's density",
     );
     check(
         accompanied.keys().any(|(verb, path)| {
@@ -855,6 +924,23 @@ fn the_reads_that_count_what_they_do_not_name() {
          that something named moved alongside — the upgrade Round 1056 filed as \
          undone for ten of its eleven fields, since a number that moves beside a \
          name can still carry what no name carries",
+    );
+    check(
+        moved_nothing.is_empty(),
+        "EVERY CORRUPTION IS EVIDENCE: no edit in the population leaves the whole \
+         panel saying exactly what it said before. One that did would be a store \
+         the walk built, asked thirty reads about, and learned nothing from — \
+         and the thing it would look like from here is a clean surface. Round \
+         1061 met 110 such edits the first time this population reached the \
+         canon order, and every one of them was a road no reader could travel",
+    );
+    check(
+        read_failures.keys().cloned().collect::<Vec<_>>() == READS_THAT_REJECT,
+        "AND WHICH READS REFUSE, rather than answer: a read that stops answering \
+         under an edit has reacted more loudly than any number could, and the \
+         walk files it as a refusal instead of as an answer it could not \
+         compare. Three of the thirty do it; the rest hand back an answer about \
+         a store an author should not have shipped",
     );
     check(
         accounts.exhausted.is_empty() && accounts.capped.is_empty() && accounts.late.is_empty(),
@@ -1481,18 +1567,19 @@ fn the_quest_locator_ordinal_is_where_the_manuscript_puts_that_scene() {
 }
 
 /// The frontier's `density` is a FRACTION, so the accounting law does not judge
-/// it at all — and this is what it is, and where the loss in it sits.
-/// (Round 1057.)
+/// it at all — and this says what it is, from the inside. (Round 1057; the
+/// denominator opened in Round 1061.)
 ///
-/// Numerator and denominator are both in the answer and they are not alike. The
-/// numerator is `owned`, a list of facts the read NAMES since Round 1054. The
-/// denominator is `road_scenes`, a count of the coordinates that road travels,
-/// and the answer names none of them — so the one number a reader cannot open is
-/// the road's length, which Rounds 1052 and 1054 recorded from the outside as
-/// something no walk had judged. This states it from the inside: everything in
-/// the density that could be accounted for, is.
+/// Numerator and denominator are both in the answer and until this round they
+/// were not alike. The numerator is `owned`, a list of facts the read NAMES
+/// since Round 1054; the denominator was `road_scenes`, a count of coordinates
+/// the answer named none of — recorded from the outside by Rounds 1052, 1054
+/// and 1055 as something no walk had judged, because no corruption in the
+/// population could move a canon order. Round 1061's population could, the
+/// number moved with nothing named moving beside it, and the road is named now.
+/// So the ratio is a statement about two LISTS.
 #[test]
-fn the_density_is_the_facts_it_names_over_a_road_it_does_not() {
+fn the_density_is_the_facts_it_names_over_the_road_it_names() {
     let (stores, unloadable) = common::authored_stores();
     let mut answered = 0usize;
     let mut roads = 0usize;
@@ -1514,7 +1601,14 @@ fn the_density_is_the_facts_it_names_over_a_road_it_does_not() {
         {
             roads += 1;
             let owned = row["owned"].as_array().map_or(0, Vec::len);
-            let scenes = row["road_scenes"].as_u64().unwrap_or_default();
+            let Some(road) = row["road"].as_array() else {
+                wrong.push(format!(
+                    "{} {world}: the answer carries no road for the density to be over",
+                    store.name,
+                ));
+                continue;
+            };
+            let scenes = road.len();
             let density = row["density"].as_f64();
             if scenes == 0 {
                 // A world that travels no scene has no density to state, and

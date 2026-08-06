@@ -76,8 +76,8 @@ use mnemosyne_atomic::AtomicStore;
 
 mod common;
 use common::{
-    ask_panel, corruptions, dnd_quest_facts, dnd_quest_workspace_from, dnd_quest_workspace_try,
-    panel, permutations, registered_ids, telling_of, wrote_about, Answer, Wrote, SIDECAR,
+    ask_panel, audit_dir, corruptions, dnd_quest_manifests, panel, permutations, registered_ids,
+    telling_of, workspace_try, wrote_about, Answer, Wrote, SIDECAR,
 };
 
 /// Every read's records for one store. The derivation itself is
@@ -100,68 +100,87 @@ fn panel_records(
 /// The pairs of shipped reads that both ANSWER ABOUT a subject — both of their
 /// records for it move under some authorable edit. Most-shared first; this is
 /// the backlog, and R1037's hand-picked pair sits inside it.
-const BACKLOG: [&str; 55] = [
-    "102 report-playable-world <-> report-playthrough-manuscript",
-    "86 report-authoring-frontier <-> report-playable-world",
-    "86 report-authoring-frontier <-> report-playthrough-manuscript",
-    "56 report-entity <-> report-playable-world",
-    "56 report-entity <-> report-playthrough-manuscript",
+const BACKLOG: [&str; 74] = [
+    "200 report-authoring-frontier <-> report-playable-world",
+    "179 report-playable-world <-> report-playthrough-manuscript",
+    "158 report-authoring-frontier <-> report-playthrough-manuscript",
+    "135 report-frame-view <-> report-playable-world",
+    "135 report-frame-view <-> report-playthrough-manuscript",
+    "114 report-authoring-frontier <-> report-frame-view",
+    "98 report-authoring-frontier <-> report-payoff-coverage",
+    "98 report-payoff-coverage <-> report-playable-world",
+    "92 report-payoff-coverage <-> report-playthrough-manuscript",
+    "83 report-frame-view <-> report-payoff-coverage",
+    "81 report-playable-world <-> report-quest-graph",
+    "81 report-playthrough-manuscript <-> report-quest-graph",
+    "74 report-authoring-frontier <-> report-quest-graph",
+    "62 report-authoring-frontier <-> validate-continuity",
+    "62 report-playable-world <-> validate-continuity",
+    "62 report-playthrough-manuscript <-> validate-continuity",
+    "62 report-quest-graph <-> validate-continuity",
+    "59 report-entity <-> report-playable-world",
+    "59 report-entity <-> report-playthrough-manuscript",
+    "58 report-edge-candidates <-> report-playable-world",
+    "56 report-authoring-frontier <-> report-coverage",
+    "56 report-authoring-frontier <-> report-spec-map",
+    "56 report-coverage <-> report-playable-world",
+    "56 report-coverage <-> report-playthrough-manuscript",
+    "56 report-coverage <-> report-quest-graph",
+    "56 report-coverage <-> report-spec-map",
+    "56 report-coverage <-> validate-continuity",
+    "56 report-edge-candidates <-> report-playthrough-manuscript",
+    "56 report-playable-world <-> report-spec-map",
+    "56 report-playthrough-manuscript <-> report-spec-map",
+    "56 report-quest-graph <-> report-spec-map",
+    "56 report-spec-map <-> validate-continuity",
+    "51 report-authoring-frontier <-> report-edge-candidates",
+    "46 report-entity <-> report-frame-view",
+    "45 report-edge-candidates <-> report-entity",
+    "45 report-frame-view <-> report-quest-graph",
     "44 report-authoring-frontier <-> report-entity",
-    "43 report-edge-candidates <-> report-entity",
-    "43 report-edge-candidates <-> report-playable-world",
-    "43 report-edge-candidates <-> report-playthrough-manuscript",
-    "39 report-authoring-frontier <-> report-edge-candidates",
-    "39 report-frame-view <-> report-playable-world",
-    "39 report-frame-view <-> report-playthrough-manuscript",
-    "38 report-entity <-> report-frame-view",
-    "37 report-playable-world <-> report-quest-graph",
-    "37 report-playthrough-manuscript <-> report-quest-graph",
-    "36 report-entity <-> report-quest-graph",
-    "33 report-edge-candidates <-> report-quest-graph",
-    "30 report-authoring-frontier <-> report-quest-graph",
-    "29 report-edge-candidates <-> report-frame-view",
-    "27 report-authoring-frontier <-> report-frame-view",
-    "24 report-frame-view <-> report-quest-graph",
-    "21 report-authoring-frontier <-> report-payoff-coverage",
-    "21 report-edge-candidates <-> report-payoff-coverage",
-    "21 report-entity <-> report-payoff-coverage",
-    "21 report-payoff-coverage <-> report-playable-world",
-    "21 report-payoff-coverage <-> report-playthrough-manuscript",
-    "15 report-frame-view <-> report-payoff-coverage",
+    "41 report-entity <-> report-quest-graph",
+    "39 report-edge-candidates <-> report-frame-view",
+    "36 report-edge-candidates <-> report-quest-graph",
+    "31 report-edge-candidates <-> report-payoff-coverage",
+    "30 report-authoring-frontier <-> report-payoff-substantiation",
+    "30 report-frame-view <-> validate-continuity",
+    "30 report-payoff-coverage <-> report-payoff-substantiation",
+    "30 report-payoff-substantiation <-> report-playable-world",
+    "26 report-coverage <-> report-frame-view",
+    "26 report-frame-view <-> report-spec-map",
+    "24 report-entity <-> report-payoff-coverage",
+    "24 report-payoff-substantiation <-> report-playthrough-manuscript",
+    "22 report-entity <-> validate-continuity",
+    "20 report-edge-candidates <-> report-payoff-substantiation",
+    "20 report-edge-candidates <-> validate-continuity",
+    "17 report-frame-view <-> report-payoff-substantiation",
+    "16 report-coverage <-> report-entity",
+    "16 report-entity <-> report-spec-map",
+    "14 report-coverage <-> report-edge-candidates",
+    "14 report-edge-candidates <-> report-spec-map",
     "14 report-edge-candidates <-> report-typing-candidates",
+    "14 report-entity <-> report-payoff-substantiation",
     "14 report-entity <-> report-typing-candidates",
     "14 report-payoff-coverage <-> report-quest-graph",
     "14 report-playable-world <-> report-typing-candidates",
     "14 report-playthrough-manuscript <-> report-typing-candidates",
-    "13 report-authoring-frontier <-> report-payoff-substantiation",
     "13 report-authoring-frontier <-> report-typing-candidates",
-    "13 report-edge-candidates <-> report-payoff-substantiation",
-    "13 report-entity <-> report-payoff-substantiation",
     "13 report-frame-view <-> report-typing-candidates",
-    "13 report-payoff-coverage <-> report-payoff-substantiation",
-    "13 report-payoff-substantiation <-> report-playable-world",
-    "13 report-payoff-substantiation <-> report-playthrough-manuscript",
-    "11 report-authoring-frontier <-> validate-continuity",
-    "11 report-edge-candidates <-> validate-continuity",
-    "11 report-entity <-> validate-continuity",
+    "12 report-quest-graph <-> report-typing-candidates",
     "11 report-payoff-substantiation <-> report-quest-graph",
-    "11 report-playable-world <-> validate-continuity",
-    "11 report-playthrough-manuscript <-> validate-continuity",
-    "11 report-quest-graph <-> validate-continuity",
-    "10 report-quest-graph <-> report-typing-candidates",
-    "9 report-frame-view <-> report-payoff-substantiation",
+    "8 report-typing-candidates <-> validate-continuity",
     "7 report-payoff-coverage <-> report-typing-candidates",
     "7 report-payoff-substantiation <-> report-typing-candidates",
-    "6 report-frame-view <-> validate-continuity",
+    "6 report-coverage <-> report-typing-candidates",
+    "6 report-spec-map <-> report-typing-candidates",
     "4 report-payoff-coverage <-> validate-continuity",
     "4 report-payoff-substantiation <-> validate-continuity",
-    "3 report-typing-candidates <-> validate-continuity",
 ];
 
 #[test]
 fn the_population_of_subjects_more_than_one_shipped_read_answers_about() {
-    let facts_json = dnd_quest_facts();
-    let ws = dnd_quest_workspace_from(&facts_json);
+    let manifests = dnd_quest_manifests();
+    let ws = workspace_try(&manifests, Some(&audit_dir())).expect("the authored corpus must load");
     let store = AtomicStore::load(&ws.path().join(SIDECAR)).expect("the imported store loads");
     let subjects = registered_ids(&store);
     let telling = telling_of(&store);
@@ -219,24 +238,17 @@ fn the_population_of_subjects_more_than_one_shipped_read_answers_about() {
     let mut responsive: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
     // Lists that came back holding the same ids in a different order.
     let mut permuted: BTreeSet<String> = BTreeSet::new();
-    let population = corruptions(&store, &facts_json);
+    let population = corruptions(&store, &manifests);
     let mut applied = 0usize;
     let mut refused = 0usize;
+    // Reads that stopped answering under some edit. `order.json` is read at read
+    // time rather than imported, so a road an author could not have meant is
+    // refused HERE and nowhere else; a walk that did not look would record the
+    // subjects that read went quiet about as subjects it does not answer about.
+    let mut read_failures: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
     for corruption in &population {
-        let mut mutated = facts_json.clone();
-        let mut hits = 0usize;
-        for entry in mutated["facts"].as_array_mut().expect("facts array") {
-            if entry["fact_id"] == corruption.fact.as_str() {
-                (corruption.apply)(entry);
-                hits += 1;
-            }
-        }
-        assert_eq!(
-            hits, 1,
-            "{}/{} applied {hits} times",
-            corruption.fact, corruption.leg
-        );
-        let Ok(mutated_ws) = dnd_quest_workspace_try(&mutated) else {
+        let Ok(mutated_ws) = workspace_try(&corruption.applied(&manifests), Some(&audit_dir()))
+        else {
             // The write path refuses it: not a move an author could make, so it
             // is evidence about nothing here.
             refused += 1;
@@ -244,6 +256,12 @@ fn the_population_of_subjects_more_than_one_shipped_read_answers_about() {
         };
         applied += 1;
         let seen = ask_panel(mutated_ws.path(), &panel);
+        for label in &seen.failed {
+            read_failures
+                .entry(verb_of[label].clone())
+                .or_default()
+                .insert(corruption.label());
+        }
         let seen_records = panel_records(&seen.answers, &subjects);
         for (label, before) in &baseline_records {
             let after = seen_records.get(label);
@@ -329,6 +347,16 @@ fn the_population_of_subjects_more_than_one_shipped_read_answers_about() {
         "  ADDRESSING: {} rows addressed by position, {collisions} address collisions",
         unaddressed.len(),
     );
+    // A read that stopped answering did not stop ANSWERING ABOUT — it refused
+    // the store. Printed so a subject that leaves a read's population is read as
+    // the refusal it is rather than as silence.
+    for (verb, edits) in &read_failures {
+        println!(
+            "  REFUSED THE STORE: {verb} under {} edit(s), e.g. {}",
+            edits.len(),
+            edits.iter().next().expect("a named edit"),
+        );
+    }
     for row in &unaddressed {
         println!("    BY POSITION {row}");
     }
@@ -415,14 +443,14 @@ fn the_population_of_subjects_more_than_one_shipped_read_answers_about() {
          below in ADDRESSING",
     );
     check(
-        (applied, refused) == (92, 0),
-        "POPULATION: 92 authorable corruptions, none refused by the write path. \
-         It was 41 until Round 1054, and the 51 that arrived are the legs that \
-         PLACE a fact and ATTRIBUTE it — where it becomes true, where it stops, \
-         whose view holds it, which world-line authored it. This derivation had \
-         always said it took the legs a fact actually carries and had carried \
-         only the ones saying what a fact CLAIMS, so no edit here ever moved a \
-         coordinate, a frame or a branch",
+        (applied, refused) == (256, 56),
+        "POPULATION: 256 authorable corruptions applied and 56 the write path \
+         refuses. It was 41 until Round 1054, which added the legs that PLACE a \
+         fact and ATTRIBUTE it, and 92 until Round 1061, which stopped taking \
+         the FACT manifest for the corpus: an author writes three, and the \
+         other two hold the scene registry and the canon order. The 56 refusals \
+         are one leg — cutting a scene out of the registry, which the fact \
+         import rejects because facts stand at it",
     );
     // MENTION IS VACUOUS AND THE WALK SAYS SO EVERY RUN rather than in prose:
     // every registered id is mentioned by more than one read at baseline,
@@ -440,24 +468,21 @@ fn the_population_of_subjects_more_than_one_shipped_read_answers_about() {
          answering is measured by perturbation",
     );
     check(
-        (readers_of.len(), shared.len()) == (216, 105),
+        (readers_of.len(), shared.len()) == (221, 221),
         "ANSWERED: subjects some read answers about, and those more than one \
          does. The second number was 79, then 210 of 214 when Round 1054 made \
-         three reads NAME the sets they had been counting: under the \
-         minimal-enclosing-object rule a fact listed in a scene's census \
-         carried that whole row, so it moved whenever a NEIGHBOUR did, and \
-         three lists holding most of the store made nearly every pair of reads \
-         share nearly every subject. Round 1055 gives a bare id in a list the \
-         ADDRESS of that list as its record, so a co-listed neighbour moving is \
-         no longer this subject's record moving — and the census still sees a \
-         fact change SCENE, because the scene is in the address.\n\n\
-         THE FIRST NUMBER WENT UP while the second fell, and that is the same \
-         change rather than a second one: an address distinguishes two places \
-         that used to collapse. The manuscript writes the same scene row under \
-         every road that plays it, so a fact leaving one road's copy left the \
-         other copies to serialize identically and the old record set did not \
-         move at all — 216 of 221 subjects have a read that answers about \
-         them, against 214 when a record was a value with no address",
+         three reads NAME the sets they had been counting, then 105 of 216 when \
+         Round 1055 gave a bare id in a list the ADDRESS of that list as its \
+         record, so a co-listed neighbour moving stopped being this subject's \
+         record moving.\n\n\
+         BOTH ARE 221 NOW — every registered id, answered about by more than \
+         one read — and the reason is the population rather than the reads. \
+         Round 1061 widened the authorable edit set past the fact manifest to \
+         the corpus an author writes, and the 56 SECTIONS are registered ids \
+         that nothing could move until an edit could reach the scene registry \
+         and the canon order. A subject no edit can move is a subject no read \
+         can be shown to answer about; those 116 were never evidence that the \
+         reads were silent about scenes, only that the walk could not ask",
     );
     check(
         permuted.is_empty(),

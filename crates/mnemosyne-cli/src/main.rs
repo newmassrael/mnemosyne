@@ -2936,7 +2936,7 @@ fn cmd_validate_continuity(args: &[String]) -> Result<()> {
             "  facts={} order_nodes={}/{} sections conflict_pairs={} cross_scope(data)={} \
              unordered={}",
             report.facts,
-            report.order_nodes,
+            report.order_nodes.len(),
             report.sections,
             report.conflict_pairs_checked,
             report.cross_scope_pairs,
@@ -3191,17 +3191,18 @@ interval_unverifiable={} interval_severity={}",
         // sections are the same shape. A missing order is not this notice's
         // business and is not lost — `report-authoring-frontier` already reports
         // EVERY fact-bearing scene as unordered when no order is declared (R596).
-        if report.order_nodes > 0 && report.sections > report.order_nodes {
+        let placed = report.order_nodes.len();
+        if placed > 0 && report.sections > placed {
             println!(
                 "  NOTICE: the canon order places {} of {} section(s) \u{2014} {} unplaced. A \
                  store renders only where the order places it, so a fact anchored to an unplaced \
                  section can never be rendered; the section may also be unplaced YET, which is \
                  the author's todo and never gated. Run report-authoring-frontier: `unplaced \
                  scenes` names these {}.",
-                report.order_nodes,
+                placed,
                 report.sections,
-                report.sections - report.order_nodes,
-                report.sections - report.order_nodes
+                report.sections - placed,
+                report.sections - placed
             );
         }
     }
@@ -4729,7 +4730,7 @@ fn cmd_report_authoring_frontier(args: &[String]) -> Result<()> {
         println!(
             "branch density [{world}]: {} owned fact(s) over {} traversed scene(s) = {}",
             d.owned.len(),
-            d.road_scenes,
+            d.road.len(),
             density
         );
     }

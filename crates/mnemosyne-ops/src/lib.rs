@@ -674,7 +674,9 @@ pub struct ContinuityScanReport {
     /// authored time-bend, so gating is the author's opt-in.
     pub interval_severity: Option<String>,
     pub facts: usize,
-    pub order_nodes: usize,
+    /// The scenes the declared order places, NAMED (Round 1061) — carried from
+    /// the scan verbatim; see the field it forwards for why it is not a count.
+    pub order_nodes: Vec<String>,
     /// Sections in the registry — `order_nodes`' denominator (Round 667). The
     /// order's nodes are a subset (the store-boundary check rejects a node that
     /// is not a section), so a surplus here means sections on no declared road:
@@ -792,7 +794,7 @@ pub fn continuity_scan(
         severity,
         interval_severity,
         facts: report.facts,
-        order_nodes: report.order_nodes,
+        order_nodes: report.order_nodes.clone(),
         sections: report.sections,
         conflict_pairs_checked: report.conflict_pairs_checked,
         cross_scope_pairs: report.cross_scope_pairs,
@@ -1028,7 +1030,20 @@ pub struct BranchDensity {
     /// consumer acting on a density could not open its own numerator. The count
     /// is `owned.len()` and is kept nowhere — the Round 1053 wire discipline.
     pub owned: Vec<String>,
-    pub road_scenes: usize,
+    /// The scenes this world-line travels, NAMED (Round 1061) — the denominator
+    /// of `density`, opened for the same reason the numerator was.
+    ///
+    /// It shipped as `road_scenes`, a count, and Round 1054 named `owned` right
+    /// beside it without being able to reach this one: the corruption
+    /// population stopped at the fact manifest, and a road's length is a
+    /// property of the canon ORDER. Rounds 1052, 1054 and 1055 each recorded
+    /// that as a limit of the walk. Round 1061 widened the population to the
+    /// manifests an author actually writes, put this number to a second value
+    /// for the first time, and it moved while nothing this answer names moved
+    /// — a consumer holding a density could open its numerator and not its
+    /// denominator. The count is `road.len()` and is kept nowhere (the R1053
+    /// wire discipline).
+    pub road: Vec<String>,
     pub density: Option<f64>,
 }
 
@@ -1317,19 +1332,23 @@ pub fn authoring_frontier_report(
     for world in std::iter::once(mnemosyne_core::BranchId::from(mnemosyne_core::MAIN_BRANCH))
         .chain(store.branches.keys().cloned())
     {
-        let road_scenes = order.linearize(&world).len();
+        let road: Vec<String> = order
+            .linearize(&world)
+            .iter()
+            .map(ToString::to_string)
+            .collect();
         let owned: Vec<String> = store
             .narrative_facts
             .iter()
             .filter(|(_, f)| f.branch == world)
             .map(|(id, _)| id.to_string())
             .collect();
-        let density = (road_scenes > 0).then(|| owned.len() as f64 / road_scenes as f64);
+        let density = (!road.is_empty()).then(|| owned.len() as f64 / road.len() as f64);
         branch_owned_density.insert(
             world.to_string(),
             BranchDensity {
                 owned,
-                road_scenes,
+                road,
                 density,
             },
         );
@@ -3177,9 +3196,11 @@ mod tests {
         // (it counted 3 at a list of 1).
         let scan = continuity_scan(root, None, None, None).unwrap();
         assert_eq!(scan.sections, 4);
-        assert_eq!(scan.order_nodes, 2);
+        // Round 1061 — the placed side is NAMED, so the identity below is a
+        // statement about two lists rather than about two numbers that agree.
+        assert_eq!(scan.order_nodes, ["s1", "s2"]);
         assert_eq!(
-            scan.sections - scan.order_nodes,
+            scan.sections - scan.order_nodes.len(),
             r.unplaced_scenes.len(),
             "the notice's count must equal the list it points at"
         );
@@ -3213,7 +3234,7 @@ mod tests {
         .unwrap();
         let scan = continuity_scan(root, None, None, None).unwrap();
         // The state the CLI guard reads: no order declared at all.
-        assert_eq!(scan.order_nodes, 0);
+        assert!(scan.order_nodes.is_empty());
         assert_eq!(scan.sections, 2);
 
         // Nothing is lost by staying quiet: R596 already reports every
@@ -3269,21 +3290,23 @@ mod tests {
         let d = &r.branch_owned_density;
 
         let owned = |d: &BranchDensity| -> Vec<String> { d.owned.clone() };
+        let road = |d: &BranchDensity| -> Vec<String> { d.road.clone() };
+        let scenes = ["s1", "s2", "s3"].map(str::to_string).to_vec();
 
         // main owns 4 facts over its 3 traversed scenes -> density > 1.0.
         let m = &d["main"];
         assert_eq!(
-            (owned(m), m.road_scenes),
+            (owned(m), road(m)),
             (
                 ["f-m1", "f-m2", "f-m3", "f-m4"]
                     .map(str::to_string)
                     .to_vec(),
-                3
+                scenes.clone()
             ),
-            "Round 1054: the numerator NAMES its facts. This line read \
-             `(m.owned_facts, m.road_scenes) == (4, 3)`, and a walk over every \
-             shipped read measured that moving a fact between world-lines moved \
-             that count, the density under it, and nothing else in the report"
+            "Round 1054 named the numerator and Round 1061 the denominator. This \
+             line read `(m.owned_facts, m.road_scenes) == (4, 3)`, and each half \
+             was named the round a corruption population first reached the \
+             manifest it lives in — facts, then the canon order"
         );
         assert_eq!(m.density, Some(4.0 / 3.0));
 
@@ -3291,8 +3314,8 @@ mod tests {
         // divide-by-zero (the own-segment version's fatal case), no `None`.
         let w = &d["weave"];
         assert_eq!(
-            (owned(w), w.road_scenes),
-            (["f-w1"].map(str::to_string).to_vec(), 3)
+            (owned(w), road(w)),
+            (["f-w1"].map(str::to_string).to_vec(), scenes.clone())
         );
         assert_eq!(w.density, Some(1.0 / 3.0));
 
@@ -3300,8 +3323,8 @@ mod tests {
         // it rides a 3-scene road owning 1 fact, NOT a confusing "n/a rides trunk".
         let b = &d["braid"];
         assert_eq!(
-            (owned(b), b.road_scenes),
-            (["f-b1"].map(str::to_string).to_vec(), 3)
+            (owned(b), road(b)),
+            (["f-b1"].map(str::to_string).to_vec(), scenes)
         );
         assert_eq!(b.density, Some(1.0 / 3.0));
         assert!(b.density.is_some(), "a facts-only divergence is never None");

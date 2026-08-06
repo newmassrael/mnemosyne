@@ -31,8 +31,10 @@
 //!   roads it knows that the dump does not walk are EXACTLY the confluences the
 //!   playable world's own fork tree names. The exception is proved by the other
 //!   read, not by this file consulting the store.
-//! - LENGTH — the frontier's `road_scenes` is the length of that road's walk.
-//!   Two call sites of one linearizer; a re-derivation drifts here first.
+//! - ROAD — the frontier's `road` IS that road's walk, scene for scene. Two
+//!   call sites of one linearizer; a re-derivation drifts here first. It was a
+//!   LENGTH law until Round 1061 named the frontier's denominator, and a length
+//!   cannot tell two roads of one length through different scenes apart.
 //! - PARTITION — the scenes a road travels and the sections it calls off-road
 //!   partition the frontier's scene census, disjointly and exhaustively.
 //! - UNPLACED — a section the frontier says no order positions is off EVERY
@@ -275,14 +277,22 @@ fn judge(ws: &Path, name: &str, telling: &str, ev: &mut Evidence) {
                 .map(|scene| (scene, strings(&row["facts"]).into_iter().collect()))
         })
         .collect();
-    let known_roads: BTreeMap<&str, usize> = frontier["branch_owned_density"]
+    let known_roads: BTreeMap<&str, Vec<&str>> = frontier["branch_owned_density"]
         .as_object()
         .unwrap_or(&empty_map)
         .iter()
         .map(|(road, row)| {
             (
                 road.as_str(),
-                row["road_scenes"].as_u64().unwrap_or(0) as usize,
+                row["road"]
+                    .as_array()
+                    .map(|scenes| {
+                        scenes
+                            .iter()
+                            .filter_map(serde_json::Value::as_str)
+                            .collect()
+                    })
+                    .unwrap_or_default(),
             )
         })
         .collect();
@@ -396,13 +406,16 @@ fn judge(ws: &Path, name: &str, telling: &str, ev: &mut Evidence) {
             .filter_map(|scene| scene["section"].as_str())
             .collect();
 
-        // LAW LENGTH.
-        let declared = known_roads.get(road).copied().unwrap_or(0);
-        if declared != walk.len() {
+        // LAW ROAD. Round 1061 named the frontier's road, so this compares the
+        // two SEQUENCES rather than their lengths — two roads of one length
+        // through different scenes were indistinguishable here until now, and
+        // the whole point of the pair is that one linearizer has two call sites.
+        let empty_road: Vec<&str> = Vec::new();
+        let declared = known_roads.get(road).unwrap_or(&empty_road);
+        if declared != &walk {
             ev.disagreements.push(format!(
-                "{name} [{telling}]/{road}: the frontier says the road is {declared} scenes long \
-                 and the playable world walks {}",
-                walk.len(),
+                "{name} [{telling}]/{road}: the frontier says the road is {declared:?} and the \
+                 playable world walks {walk:?}",
             ));
         }
         ev.scenes_walked += walk.len();

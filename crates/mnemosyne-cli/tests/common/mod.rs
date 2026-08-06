@@ -162,12 +162,60 @@ pub fn authored_stores() -> (Vec<AuthoredStore>, Vec<String>) {
     (loadable, unloadable)
 }
 
+// ==========================================================================
+// THE AUTHORABLE CORPUS (Round 1061).
+//
+// The manifests an author writes, held as VALUES so a walk can rebuild any of
+// them with one thing changed. Until Round 1061 only the FACT manifest was a
+// value here, and the census over the read surface said what that cost: of the
+// 74 numbers the surface emits, 65 were proposed and never put to a second
+// value, because no edit in the population could move a scene registry or a
+// road. Every number that counts sections or road positions was in that 65.
+//
+// Which manifest an edit lands in is a property OF the edit, so the corpus is
+// one value rather than one value and two paths.
+// ==========================================================================
+
+/// The manifests a corpus directory holds, as an author wrote them.
+///
+/// `narrative-rules.json` is deliberately NOT here: it is not in the corruption
+/// population, so it is carried by path (see [`workspace_try`]) rather than by
+/// value. A datum with two homes is how two callers come to disagree about it.
+#[derive(Clone)]
+pub struct Manifests {
+    pub sections: serde_json::Value,
+    pub order: serde_json::Value,
+    pub facts: serde_json::Value,
+}
+
+impl Manifests {
+    /// The manifests as the author left them in `dir`.
+    pub fn of_corpus(dir: &Path) -> Self {
+        Self {
+            sections: read_json(&dir.join("sections.json")),
+            order: read_json(&dir.join("order.json")),
+            facts: read_json(&dir.join("facts.json")),
+        }
+    }
+}
+
+/// The frozen record's corpus — its scene registry and canon order, with the
+/// fact manifest taken from the MIGRATED fixture, because the audit directory's
+/// own `facts.json` is the pre-migration file that stopped loading (R857).
+pub fn dnd_quest_manifests() -> Manifests {
+    Manifests {
+        sections: read_json(&audit_dir().join("sections.json")),
+        order: read_json(&audit_dir().join("order.json")),
+        facts: dnd_quest_facts(),
+    }
+}
+
 /// Rebuild the store the way the experiment's runbook does — fresh seed, then
-/// the manifests — with the three unchanged manifests taken from the frozen
-/// record and the fact manifest supplied by the caller, so a test can author a
-/// DEFECT into the store an author could equally have authored (the manifest is
-/// the authoring path, and it validates: a corruption the import rejects is a
-/// corruption no author could have shipped).
+/// the manifests — with the corpus taken from the frozen record and the fact
+/// manifest supplied by the caller, so a test can author a DEFECT into the
+/// store an author could equally have authored (the manifest is the authoring
+/// path, and it validates: a corruption the import rejects is a corruption no
+/// author could have shipped).
 pub fn dnd_quest_workspace_from(facts: &serde_json::Value) -> TempDir {
     dnd_quest_workspace_try(facts).unwrap_or_else(|e| panic!("the fact manifest must import: {e}"))
 }
@@ -190,28 +238,47 @@ pub fn dnd_quest_workspace_try(facts: &serde_json::Value) -> Result<TempDir, Str
 /// The same recipe over ANY authored corpus directory this tree tracks. The
 /// dnd-quest builder is this one with the frozen record's path: a corpus is a
 /// `sections.json` + `order.json` beside a fact manifest, and nothing about the
-/// recipe is specific to which author wrote it. `narrative-rules.json` is
-/// optional — not every corpus declares rules, and a config naming a file that
-/// is not there is a load failure rather than a corpus without rules.
+/// recipe is specific to which author wrote it.
 pub fn corpus_workspace_try(dir: &Path, facts: &serde_json::Value) -> Result<TempDir, String> {
+    let manifests = Manifests {
+        sections: read_json(&dir.join("sections.json")),
+        order: read_json(&dir.join("order.json")),
+        facts: facts.clone(),
+    };
+    workspace_try(&manifests, Some(dir))
+}
+
+/// THE recipe, over manifest VALUES: fresh seed, the three manifests written
+/// out, then the imports an author would run.
+///
+/// `rules_from` is the corpus directory whose `narrative-rules.json` sits
+/// beside them, if it has one — not every corpus declares rules, and a config
+/// naming a file that is not there is a load failure rather than a corpus
+/// without rules.
+pub fn workspace_try(manifests: &Manifests, rules_from: Option<&Path>) -> Result<TempDir, String> {
     let tmp = TempDir::new().expect("tempdir");
     let ws = tmp.path();
     fs::create_dir_all(ws.join("docs/.atomic")).expect("mkdir");
 
-    let mut rules = false;
-    for name in ["sections.json", "order.json", "narrative-rules.json"] {
-        let src = dir.join(name);
-        if !src.exists() {
-            continue;
-        }
-        fs::copy(&src, ws.join(name)).map_err(|e| format!("copy {}: {e}", src.display()))?;
-        rules |= name == "narrative-rules.json";
+    let rules_src = rules_from
+        .map(|dir| dir.join("narrative-rules.json"))
+        .filter(|src| src.exists());
+    let rules = rules_src.is_some();
+    if let Some(src) = &rules_src {
+        fs::copy(src, ws.join("narrative-rules.json"))
+            .map_err(|e| format!("copy {}: {e}", src.display()))?;
     }
-    fs::write(
-        ws.join("facts.json"),
-        serde_json::to_string(facts).expect("facts serialize"),
-    )
-    .expect("write facts");
+    for (name, value) in [
+        ("sections.json", &manifests.sections),
+        ("order.json", &manifests.order),
+        ("facts.json", &manifests.facts),
+    ] {
+        fs::write(
+            ws.join(name),
+            serde_json::to_string(value).expect("manifest serialize"),
+        )
+        .map_err(|e| format!("write {name}: {e}"))?;
+    }
 
     fs::write(
         ws.join("mnemosyne.toml"),
@@ -273,15 +340,14 @@ pub fn constructed_corpus(
     order: &serde_json::Value,
     facts: &serde_json::Value,
 ) -> Result<TempDir, String> {
-    let manifests = TempDir::new().expect("tempdir");
-    for (name, value) in [("sections.json", sections), ("order.json", order)] {
-        fs::write(
-            manifests.path().join(name),
-            serde_json::to_string(value).expect("manifest serialize"),
-        )
-        .map_err(|e| format!("write {name}: {e}"))?;
-    }
-    corpus_workspace_try(manifests.path(), facts)
+    workspace_try(
+        &Manifests {
+            sections: sections.clone(),
+            order: order.clone(),
+            facts: facts.clone(),
+        },
+        None,
+    )
 }
 
 // ==========================================================================
@@ -1318,11 +1384,290 @@ pub fn ask_panel(ws: &Path, panel: &[Read]) -> Panelled {
 // write path, so what is judged is a move an author could commit.
 // ==========================================================================
 
-/// One authorable corruption: which fact, which leg, and the edit itself.
+/// One authorable corruption: which subject it moves, which leg of the corpus
+/// carries it, and the edit itself.
+///
+/// The edit takes the whole corpus, not a fact entry, and it ASSERTS ITS OWN
+/// ARITY while applying: a substitution that matched no place, or two, is a
+/// mis-aimed injection rather than a corruption, and it stops the walk here
+/// rather than producing a store that silently equals the baseline. That
+/// assertion used to sit in each walk that consumed the population — three
+/// copies of one loop, three places for it to drift.
 pub struct Corruption {
-    pub fact: String,
+    /// The registered id whose corner of the corpus this edit moves.
+    pub subject: String,
+    /// WHICH KIND of leg moved — one of [`LEGS`], a closed vocabulary, so a
+    /// leg the corpus cannot fill shows up as a zero rather than as an absence.
     pub leg: &'static str,
-    pub apply: Box<dyn Fn(&mut serde_json::Value)>,
+    /// WHERE it moved, when the subject and the leg together do not say. A
+    /// scene sits on several roads, so `sc-22/order.from` names three different
+    /// edits; without this they share one label, and a walk that keys findings
+    /// by label silently merges them (the collision axis R1055 measured).
+    pub site: String,
+    apply: Box<dyn Fn(&mut Manifests)>,
+}
+
+/// Every leg this derivation knows how to fill — the closed vocabulary the
+/// population reports its reach over.
+pub const LEGS: &[&str] = &[
+    "facts.typed.object",
+    "facts.typed.predicate",
+    "facts.pays_off",
+    "facts.payoff_expectation",
+    "facts.evidence",
+    "facts.canon_from",
+    "facts.canon_to",
+    "facts.frame",
+    "facts.branch",
+    "sections.coverage_expectation",
+    "sections.parent_doc",
+    "sections.dropped",
+    "order.to",
+    "order.from",
+    "order.dropped",
+];
+
+impl Corruption {
+    /// How every walk names this edit. THE one spelling: three walks printed
+    /// `format!("{fact}/{leg}")` by hand, and a name a reader matches across
+    /// three reports is a name that has to be derived in one place.
+    pub fn label(&self) -> String {
+        if self.site.is_empty() {
+            format!("{}/{}", self.subject, self.leg)
+        } else {
+            format!("{}/{}@{}", self.subject, self.leg, self.site)
+        }
+    }
+
+    /// The corpus with this one edit in it.
+    pub fn applied(&self, base: &Manifests) -> Manifests {
+        let mut out = base.clone();
+        (self.apply)(&mut out);
+        out
+    }
+}
+
+/// An edit to the ONE fact entry with this id.
+fn on_fact(
+    id: &str,
+    edit: impl Fn(&mut serde_json::Value) + 'static,
+) -> Box<dyn Fn(&mut Manifests)> {
+    let id = id.to_string();
+    Box::new(move |m| {
+        let mut hits = 0usize;
+        for entry in m.facts["facts"].as_array_mut().expect("facts array") {
+            if entry["fact_id"] == id.as_str() {
+                edit(entry);
+                hits += 1;
+            }
+        }
+        assert_eq!(hits, 1, "the edit to fact {id} matched {hits} entries");
+    })
+}
+
+/// An edit to the ONE scene-registry entry with this id.
+fn on_section(
+    id: &str,
+    edit: impl Fn(&mut serde_json::Value) + 'static,
+) -> Box<dyn Fn(&mut Manifests)> {
+    let id = id.to_string();
+    Box::new(move |m| {
+        let mut hits = 0usize;
+        for entry in m.sections.as_array_mut().expect("sections array") {
+            if entry["section_id"] == id.as_str() {
+                edit(entry);
+                hits += 1;
+            }
+        }
+        assert_eq!(hits, 1, "the edit to section {id} matched {hits} entries");
+    })
+}
+
+/// An edge of the canon order is the pair `[from, to]`, so its two ends have
+/// positions rather than names in the manifest. These give them names back.
+const TAIL: usize = 0;
+const HEAD: usize = 1;
+
+/// The edge list of one road in the canon order. The unforked road is the
+/// manifest's top-level `edges`; a fork is `branches.<name>`. Both are lists of
+/// `[from, to]` pairs, so one accessor serves both and the population never
+/// learns which kind of road it is editing.
+fn road_mut<'a>(
+    order: &'a mut serde_json::Value,
+    road: Option<&str>,
+) -> &'a mut Vec<serde_json::Value> {
+    match road {
+        None => order["edges"].as_array_mut().expect("order edges array"),
+        Some(name) => order["branches"][name]
+            .as_array_mut()
+            .unwrap_or_else(|| panic!("order branch {name} is an array")),
+    }
+}
+
+/// How the manifest spells the road — the prefix every order leg is named with.
+fn road_path(road: Option<&str>) -> String {
+    match road {
+        None => "order.edges".to_string(),
+        Some(name) => format!("order.branches.{name}"),
+    }
+}
+
+/// WHERE EACH SCENE SITS in the declaration — one linearisation of the whole
+/// canon order, trunk and forks in a single graph, which is how a road that
+/// inherits a trunk prefix actually reads.
+///
+/// This exists so a retarget can stay AUTHORABLE, and it is the canon order's
+/// version of [`swap_entity`]: an edge re-pointed at a scene that already
+/// reaches its own tail closes a loop, and the CLI's answer to a loop is
+/// `cycle through <id> — a cyclic declaration is no order`. Round 1061 measured
+/// that before writing this: choosing the first scene BY NAME produced 110
+/// corruptions, every one of them a two-cycle back to the road's own root, and
+/// twelve of the thirty shipped reads refused all 110 with the same message. A
+/// third of the sweep, carrying one bit. Keeping every edge pointing FORWARD in
+/// the baseline's own linearisation cannot close a loop, because every other
+/// edge already points that way.
+///
+/// Scenes the order never mentions come last: nothing reaches them and they
+/// reach nothing, so an edge to or from one cannot be part of a cycle.
+fn topological_index(
+    order: &serde_json::Value,
+    scenes: &BTreeSet<String>,
+) -> BTreeMap<String, usize> {
+    let mut edges: Vec<(String, String)> = Vec::new();
+    let mut roads: Vec<&serde_json::Value> = vec![&order["edges"]];
+    if let Some(branches) = order["branches"].as_object() {
+        roads.extend(branches.values());
+    }
+    for road in roads {
+        for edge in road.as_array().into_iter().flatten() {
+            let (Some(from), Some(to)) = (edge[TAIL].as_str(), edge[HEAD].as_str()) else {
+                continue;
+            };
+            edges.push((from.to_string(), to.to_string()));
+        }
+    }
+
+    let mut nodes: BTreeSet<String> = scenes.clone();
+    for (from, to) in &edges {
+        nodes.insert(from.clone());
+        nodes.insert(to.clone());
+    }
+    let mut indegree: BTreeMap<&str, usize> = nodes.iter().map(|n| (n.as_str(), 0)).collect();
+    let mut out_of: BTreeMap<&str, Vec<&str>> = BTreeMap::new();
+    for (from, to) in &edges {
+        out_of.entry(from.as_str()).or_default().push(to.as_str());
+        *indegree.get_mut(to.as_str()).expect("a declared node") += 1;
+    }
+
+    // Smallest ready node first, so the linearisation is a property of the
+    // corpus rather than of iteration order.
+    let mut ready: BTreeSet<&str> = indegree
+        .iter()
+        .filter(|(_, deg)| **deg == 0)
+        .map(|(node, _)| *node)
+        .collect();
+    let mut index = BTreeMap::new();
+    while let Some(node) = ready.iter().next().copied() {
+        ready.remove(node);
+        index.insert(node.to_string(), index.len());
+        for next in out_of.get(node).into_iter().flatten() {
+            let deg = indegree.get_mut(*next).expect("a declared node");
+            *deg -= 1;
+            if *deg == 0 {
+                ready.insert(next);
+            }
+        }
+    }
+    assert_eq!(
+        index.len(),
+        nodes.len(),
+        "the authored canon order is cyclic, so there is no baseline order for a \
+         corruption to stay inside of"
+    );
+    index
+}
+
+/// The scenes strictly after `from`, nearest first — where a road could skip
+/// to, in the order a smaller skip comes before a larger one.
+fn forward_of(order_of: &BTreeMap<String, usize>, from: &str, to: &str) -> Vec<String> {
+    let Some(at) = order_of.get(from).copied() else {
+        return Vec::new();
+    };
+    let mut out: Vec<(usize, String)> = order_of
+        .iter()
+        .filter(|(scene, place)| **place > at && scene.as_str() != to)
+        .map(|(scene, place)| (*place, scene.clone()))
+        .collect();
+    out.sort();
+    out.into_iter().map(|(_, scene)| scene).collect()
+}
+
+/// The scenes strictly before `to`, nearest first — where a road could be
+/// entered from instead.
+fn backward_of(order_of: &BTreeMap<String, usize>, from: &str, to: &str) -> Vec<String> {
+    let Some(at) = order_of.get(to).copied() else {
+        return Vec::new();
+    };
+    let mut out: Vec<(usize, String)> = order_of
+        .iter()
+        .filter(|(scene, place)| **place < at && scene.as_str() != from)
+        .map(|(scene, place)| (*place, scene.clone()))
+        .collect();
+    out.sort();
+    out.into_iter().rev().map(|(_, scene)| scene).collect()
+}
+
+/// Whether an edited canon order is still one the system will accept — asked of
+/// THE SHIPPED COMPOSER, never re-derived here.
+///
+/// This is the one judge because the canon order has more than one invariant
+/// and a population that hand-lists them learns the next one the expensive way.
+/// Round 1061 learned two in one round: an edge chosen by NAME closes a loop
+/// (`a cyclic declaration is no order`, 110 corruptions), and the topological
+/// choice that fixed it still detached forks from the trunk (`a branch's edge
+/// set must ATTACH to the road it rides in on`, 83 more). Both were 12 of the
+/// 30 shipped reads refusing the store outright, which is what a corruption no
+/// author could ship looks like when the manifest passes no import.
+/// Whether re-pointing one end of one edge leaves an order the system accepts.
+fn composed_edge(
+    manifests: &Manifests,
+    store: &AtomicStore,
+    road: Option<&str>,
+    at: usize,
+    end: usize,
+    alt: &str,
+) -> bool {
+    let mut candidate = manifests.order.clone();
+    road_mut(&mut candidate, road)[at][end] = alt.into();
+    composes(&candidate, store)
+}
+
+pub fn composes(order: &serde_json::Value, store: &AtomicStore) -> bool {
+    let Ok(decl) =
+        serde_json::from_value::<mnemosyne_validate::continuity::CanonOrderFile>(order.clone())
+    else {
+        return false;
+    };
+    mnemosyne_validate::continuity::CanonOrder::from_declaration(&decl, &store.branches).is_ok()
+}
+
+/// An edit to the ONE edge at this position of this road.
+fn on_edge(
+    road: Option<&str>,
+    at: usize,
+    edit: impl Fn(&mut Vec<serde_json::Value>, usize) + 'static,
+) -> Box<dyn Fn(&mut Manifests)> {
+    let road = road.map(str::to_string);
+    Box::new(move |m| {
+        let edges = road_mut(&mut m.order, road.as_deref());
+        assert!(
+            at < edges.len(),
+            "the edit to {}[{at}] found {} edges",
+            road_path(road.as_deref()),
+            edges.len()
+        );
+        edit(edges, at);
+    })
 }
 
 /// Swap an entity out of a fact's `entities` list and the replacement in — the
@@ -1338,10 +1683,26 @@ fn swap_entity(fact: &mut serde_json::Value, from: &str, to: &str) {
     }
 }
 
-/// DERIVE the corruption population: the quest layer's facts, and per fact the
-/// legs it actually carries. Nothing here names a defect class — the classes
-/// are whatever the legs turn out to be.
-pub fn corruptions(store: &AtomicStore, facts_json: &serde_json::Value) -> Vec<Corruption> {
+/// DERIVE the corruption population: the corpus an author writes, and per entry
+/// the legs it actually carries. Nothing here names a defect class — the
+/// classes are whatever the legs turn out to be.
+///
+/// Three manifests, because an author writes three (Round 1061). The fact legs
+/// came first and for twenty rounds they were the whole population; the census
+/// that walks it then reported 65 of the surface's 74 numbers as proposed and
+/// never put to a second value, and the reason was not the surface. Every
+/// number that counts SCENES or ROAD POSITIONS — the frontier's `road_scenes`,
+/// continuity's `order_nodes` and `sections`, the spec map's section totals,
+/// coverage's class split — sits behind a manifest no edit could reach.
+///
+/// The fact leg is scoped to the quest layer and the other two are not, which
+/// is a difference rather than an oversight. The quest layer is the runtime
+/// seam this arc walks, and the fact manifest holds 136 facts of which it is a
+/// part; a scene registry and a canon order are 56 entries and 55 edges, they
+/// are wholly about where the story goes, and there is no sub-part of either
+/// that a runtime seam would single out.
+pub fn corruptions(store: &AtomicStore, manifests: &Manifests) -> Vec<Corruption> {
+    let facts_json = &manifests.facts;
     let structural =
         mnemosyne_validate::continuity::structural_fact_ids(store).expect("quest plumbing derives");
     // The quest layer = the plumbing plus whatever pays it off (a completion
@@ -1406,9 +1767,10 @@ pub fn corruptions(store: &AtomicStore, facts_json: &serde_json::Value) -> Vec<C
                 {
                     let from = object.clone();
                     out.push(Corruption {
-                        fact: id.clone(),
-                        leg: "typed.object",
-                        apply: Box::new(move |f| {
+                        subject: id.clone(),
+                        leg: "facts.typed.object",
+                        site: String::new(),
+                        apply: on_fact(&id, move |f| {
                             f["typed"]["object"]["id"] = alt.as_str().into();
                             swap_entity(f, &from, &alt);
                         }),
@@ -1417,9 +1779,12 @@ pub fn corruptions(store: &AtomicStore, facts_json: &serde_json::Value) -> Vec<C
                 // Leg 2 — the claim carries a different predicate.
                 if let Some(alt) = predicates.iter().find(|p| **p != predicate).cloned() {
                     out.push(Corruption {
-                        fact: id.clone(),
-                        leg: "typed.predicate",
-                        apply: Box::new(move |f| f["typed"]["predicate"] = alt.as_str().into()),
+                        subject: id.clone(),
+                        leg: "facts.typed.predicate",
+                        site: String::new(),
+                        apply: on_fact(&id, move |f| {
+                            f["typed"]["predicate"] = alt.as_str().into();
+                        }),
                     });
                 }
             }
@@ -1427,9 +1792,10 @@ pub fn corruptions(store: &AtomicStore, facts_json: &serde_json::Value) -> Vec<C
         // Leg 3 — one payoff edge goes missing.
         if !fact.pays_off.is_empty() {
             out.push(Corruption {
-                fact: id.clone(),
-                leg: "pays_off",
-                apply: Box::new(|f| {
+                subject: id.clone(),
+                leg: "facts.pays_off",
+                site: String::new(),
+                apply: on_fact(&id, |f| {
                     f["pays_off"].as_array_mut().expect("pays_off").remove(0);
                 }),
             });
@@ -1437,9 +1803,10 @@ pub fn corruptions(store: &AtomicStore, facts_json: &serde_json::Value) -> Vec<C
         // Leg 4 — a setup stops expecting its payoff.
         if fact.payoff_expectation == mnemosyne_core::PayoffExpectation::Expected {
             out.push(Corruption {
-                fact: id.clone(),
-                leg: "payoff_expectation",
-                apply: Box::new(|f| {
+                subject: id.clone(),
+                leg: "facts.payoff_expectation",
+                site: String::new(),
+                apply: on_fact(&id, |f| {
                     f.as_object_mut()
                         .expect("fact object")
                         .remove("payoff_expectation");
@@ -1449,9 +1816,10 @@ pub fn corruptions(store: &AtomicStore, facts_json: &serde_json::Value) -> Vec<C
         // Leg 5 — a backreference goes missing.
         if fact.evidence.len() > 1 {
             out.push(Corruption {
-                fact: id.clone(),
-                leg: "evidence",
-                apply: Box::new(|f| {
+                subject: id.clone(),
+                leg: "facts.evidence",
+                site: String::new(),
+                apply: on_fact(&id, |f| {
                     f["evidence"].as_array_mut().expect("evidence").remove(0);
                 }),
             });
@@ -1477,9 +1845,10 @@ pub fn corruptions(store: &AtomicStore, facts_json: &serde_json::Value) -> Vec<C
         let anchor = fact.canon_from.to_string();
         if let Some(alt) = anchors.iter().find(|s| **s != anchor).cloned() {
             out.push(Corruption {
-                fact: id.clone(),
-                leg: "canon_from",
-                apply: Box::new(move |f| {
+                subject: id.clone(),
+                leg: "facts.canon_from",
+                site: String::new(),
+                apply: on_fact(&id, move |f| {
                     f["canon_from"] = alt.as_str().into();
                     f["evidence"] = serde_json::json!([alt.as_str()]);
                 }),
@@ -1490,9 +1859,12 @@ pub fn corruptions(store: &AtomicStore, facts_json: &serde_json::Value) -> Vec<C
             let to = to.to_string();
             if let Some(alt) = anchors.iter().find(|s| **s != to).cloned() {
                 out.push(Corruption {
-                    fact: id.clone(),
-                    leg: "canon_to",
-                    apply: Box::new(move |f| f["canon_to"] = alt.as_str().into()),
+                    subject: id.clone(),
+                    leg: "facts.canon_to",
+                    site: String::new(),
+                    apply: on_fact(&id, move |f| {
+                        f["canon_to"] = alt.as_str().into();
+                    }),
                 });
             }
         }
@@ -1500,19 +1872,238 @@ pub fn corruptions(store: &AtomicStore, facts_json: &serde_json::Value) -> Vec<C
         let frame = fact.frame.to_string();
         if let Some(alt) = frames.iter().find(|f| **f != frame).cloned() {
             out.push(Corruption {
-                fact: id.clone(),
-                leg: "frame",
-                apply: Box::new(move |f| f["frame"] = alt.as_str().into()),
+                subject: id.clone(),
+                leg: "facts.frame",
+                site: String::new(),
+                apply: on_fact(&id, move |f| {
+                    f["frame"] = alt.as_str().into();
+                }),
             });
         }
         // Leg 9 — a different world-line authored it.
         let world = fact.branch.to_string();
         if let Some(alt) = worlds.iter().find(|b| **b != world).cloned() {
             out.push(Corruption {
-                fact: id.clone(),
-                leg: "branch",
-                apply: Box::new(move |f| f["branch"] = alt.as_str().into()),
+                subject: id.clone(),
+                leg: "facts.branch",
+                site: String::new(),
+                apply: on_fact(&id, move |f| {
+                    f["branch"] = alt.as_str().into();
+                }),
             });
+        }
+    }
+
+    out.extend(registry_corruptions(manifests));
+    out.extend(order_corruptions(manifests, store));
+    out
+}
+
+// ==========================================================================
+// THE OTHER TWO MANIFESTS (Round 1061).
+// ==========================================================================
+
+/// The scene registry's legs — `sections.json`, one entry per scene.
+///
+/// A section is a registered id exactly like a fact is ([`registered_ids`]),
+/// and until this round nothing in the population moved one. The legs are the
+/// ones a registry entry carries, guarded the same way: a retarget goes to a
+/// value that is already legal in that role, so the corruption stays
+/// type-plausible.
+///
+/// `coverage_expectation` takes its alternatives FROM THE TYPE rather than from
+/// the corpus, and that is the one place this population reads a type. The
+/// difference is in the field: `typed.object` holds an ID, so only the store
+/// knows which values exist, and inventing one would author a dangling
+/// reference. `coverage_expectation` holds a CLOSED VOCABULARY — the type is
+/// the registry of everything an author may write there, and every variant is
+/// plausible by construction. Deriving it from the corpus instead would have
+/// yielded nothing at all: all 56 of this corpus's scenes are `informational`,
+/// so "another value the corpus uses in this role" is the empty set, and a leg
+/// that silently contributes zero reads exactly like a leg the surface ignores.
+///
+/// `title` is absent for the reason the fact legs give: a prose edit changes no
+/// cardinality, and admitting one would make every read that merely RENDERS a
+/// scene "answer about" it. `section_id` is absent because it is the identity,
+/// not a leg — the same reason `fact_id` is not a fact leg.
+fn registry_corruptions(manifests: &Manifests) -> Vec<Corruption> {
+    let entries = manifests
+        .sections
+        .as_array()
+        .expect("the scene registry is an array");
+    // The docs this registry already files scenes under.
+    let docs: BTreeSet<String> = entries
+        .iter()
+        .filter_map(|e| e["parent_doc"].as_str().map(str::to_string))
+        .collect();
+
+    let mut out = Vec::new();
+    for entry in entries {
+        let Some(id) = entry["section_id"].as_str() else {
+            continue;
+        };
+        let id = id.to_string();
+
+        // Leg 1 — the scene is classified differently. Absent in the manifest
+        // means the serde default, so the value being moved AWAY from is what
+        // the import would have stored, not what the JSON happens to spell.
+        let expectation = entry["coverage_expectation"]
+            .as_str()
+            .unwrap_or_else(|| mnemosyne_core::CoverageExpectation::default().as_str())
+            .to_string();
+        if let Some(alt) = mnemosyne_core::CoverageExpectation::ALL
+            .iter()
+            .map(|v| v.as_str())
+            .find(|v| *v != expectation)
+        {
+            out.push(Corruption {
+                subject: id.clone(),
+                leg: "sections.coverage_expectation",
+                site: String::new(),
+                apply: on_section(&id, move |e| {
+                    e["coverage_expectation"] = alt.into();
+                }),
+            });
+        }
+
+        // Leg 2 — the scene is filed under a different document.
+        let doc = entry["parent_doc"].as_str().unwrap_or_default().to_string();
+        if let Some(alt) = docs.iter().find(|d| **d != doc).cloned() {
+            out.push(Corruption {
+                subject: id.clone(),
+                leg: "sections.parent_doc",
+                site: String::new(),
+                apply: on_section(&id, move |e| {
+                    e["parent_doc"] = alt.as_str().into();
+                }),
+            });
+        }
+
+        // Leg 3 — the author cuts the scene from the registry. The road may
+        // still walk through it and facts may still anchor at it; whether that
+        // is refused, and by whom, is the measurement rather than the premise.
+        let dropped = id.clone();
+        out.push(Corruption {
+            subject: id.clone(),
+            leg: "sections.dropped",
+            site: String::new(),
+            apply: Box::new(move |m| {
+                let entries = m.sections.as_array_mut().expect("sections array");
+                let before = entries.len();
+                entries.retain(|e| e["section_id"] != dropped.as_str());
+                assert_eq!(
+                    before - entries.len(),
+                    1,
+                    "dropping section {dropped} removed {} entries",
+                    before - entries.len()
+                );
+            }),
+        });
+    }
+    out
+}
+
+/// The canon order's legs — `order.json`, one entry per edge of one road.
+///
+/// This is the manifest the frontier's `road_scenes` counts and continuity's
+/// `order_nodes` counts, and no edit has ever moved it: `corruptions` derived
+/// from the fact leg, so the only edits that reached a road were the ones that
+/// moved a fact ONTO a different one. Round 1055 filed that as `QQ3` and Round
+/// 1056 filed it again as `RR2` — both said the same thing, that the population
+/// stops at the fact manifest.
+///
+/// Unlike the other two manifests there is no import to refuse an edit here:
+/// `order.json` is read at READ time through the workspace config. So the
+/// analogue of "the write path rejected this" is "the reads rejected it", which
+/// is why every walk over this population counts read failures BY NAME rather
+/// than letting them fall in with the answers it could not compare.
+fn order_corruptions(manifests: &Manifests, store: &AtomicStore) -> Vec<Corruption> {
+    // What a road may point at: the scenes the registry declares. Derived from
+    // the corpus, like a fact's anchors — a scene id is an ID, so only the
+    // corpus knows which ones exist.
+    let scenes: BTreeSet<String> = manifests
+        .sections
+        .as_array()
+        .expect("the scene registry is an array")
+        .iter()
+        .filter_map(|e| e["section_id"].as_str().map(str::to_string))
+        .collect();
+    // WHERE EACH SCENE SITS IN THE DECLARATION, so a retarget can stay one.
+    let order_of = topological_index(&manifests.order, &scenes);
+
+    // Every road the manifest declares: the unforked one, then each fork by
+    // name. Named here from the manifest rather than listed, so a corpus with
+    // more forks is walked without this derivation learning about it.
+    let mut roads: Vec<Option<String>> = vec![None];
+    if let Some(branches) = manifests.order["branches"].as_object() {
+        roads.extend(branches.keys().map(|name| Some(name.clone())));
+    }
+
+    let mut out = Vec::new();
+    for road in roads {
+        let name = road.as_deref();
+        let edges = manifests.order.clone();
+        let Some(edges) = (match name {
+            None => edges["edges"].as_array().cloned(),
+            Some(branch) => edges["branches"][branch].as_array().cloned(),
+        }) else {
+            continue;
+        };
+        let path = road_path(name);
+        for (at, edge) in edges.iter().enumerate() {
+            let (from, to) = (
+                edge[TAIL].as_str().unwrap_or_default().to_string(),
+                edge[HEAD].as_str().unwrap_or_default().to_string(),
+            );
+            // Leg 1 — the road goes somewhere else next: the story skips ahead.
+            // Candidates are tried nearest-skip first and the SHIPPED COMPOSER
+            // decides, so the corruption is a road an author could ship rather
+            // than one every road-reading verb refuses.
+            let end = HEAD;
+            if let Some(alt) = forward_of(&order_of, &from, &to)
+                .into_iter()
+                .find(|alt| composed_edge(manifests, store, name, at, end, alt))
+            {
+                out.push(Corruption {
+                    subject: to.clone(),
+                    leg: "order.to",
+                    site: format!("{path}[{at}]"),
+                    apply: on_edge(name, at, move |edges, at| {
+                        edges[at][end] = alt.as_str().into();
+                    }),
+                });
+            }
+            // Leg 2 — the road arrives from somewhere else: an earlier scene
+            // leads here instead.
+            let end = TAIL;
+            if let Some(alt) = backward_of(&order_of, &from, &to)
+                .into_iter()
+                .find(|alt| composed_edge(manifests, store, name, at, end, alt))
+            {
+                out.push(Corruption {
+                    subject: from.clone(),
+                    leg: "order.from",
+                    site: format!("{path}[{at}]"),
+                    apply: on_edge(name, at, move |edges, at| {
+                        edges[at][end] = alt.as_str().into();
+                    }),
+                });
+            }
+            // Leg 3 — the step goes missing, and the road is that much shorter.
+            // Only where the rest still composes: dropping the edge a fork
+            // hangs off detaches it, and a detached fork is refused, not read.
+            let mut without = manifests.order.clone();
+            road_mut(&mut without, name).remove(at);
+            if composes(&without, store) {
+                out.push(Corruption {
+                    subject: to.clone(),
+                    leg: "order.dropped",
+                    site: format!("{path}[{at}]"),
+                    apply: on_edge(name, at, |edges, at| {
+                        edges.remove(at);
+                    }),
+                });
+            }
         }
     }
     out

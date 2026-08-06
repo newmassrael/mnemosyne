@@ -427,6 +427,12 @@ fn a_road_filter_answers_what_the_unfiltered_read_already_said() {
                 // road, and the sorted key set spelled as a list of ids.
                 "report-quest-graph /quests[]/locators [Narrowed]",
                 "report-quest-graph /quests[]/per_world [Narrowed]",
+                // Round 1061 — the walk each locator's `scene_ordinal` indexes,
+                // added so the number is openable from the answer that prints
+                // it. A fourth road encoding, and this table judged it without
+                // being told: it scopes like the other three, and the CONTRACT
+                // check below says the roads it keeps say what they said.
+                "report-quest-graph /roads [Narrowed]",
                 "report-quest-graph /worlds [Narrowed]",
                 // Round 1049 — before this round `--world` scoped the PROSE
                 // loop and the `--json` wire answered every road, so this row

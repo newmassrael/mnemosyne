@@ -2112,7 +2112,17 @@ pub struct ContinuityReport {
     /// the declared order (B-1: surfaced, never gated).
     pub unordered_pairs: usize,
     pub facts: usize,
-    pub order_nodes: usize,
+    /// The scenes the declared order places, NAMED (Round 1061) — sorted and
+    /// distinct, so the count is `len()` and is kept nowhere.
+    ///
+    /// It shipped as a count and stayed one through the round that gave it a
+    /// denominator. The corruption population reached the canon order for the
+    /// first time in Round 1061, and dropping one step of it moved this number
+    /// while nothing this answer names moved: a reader could see that the road
+    /// had shrunk and not which scene had left it. The comparison Round 667
+    /// carried `sections` here to make — `sections - order_nodes == |unplaced|`
+    /// — now has both sides open on the side that shrinks.
+    pub order_nodes: Vec<String>,
     /// Sections in the registry — `order_nodes`' DENOMINATOR (Round 667).
     ///
     /// `check_store_boundary` rejects an order node that is not a section, so
@@ -3228,7 +3238,12 @@ pub fn scan_continuity(
     let lineages = query_world_lineages(store)?;
     let mut report = ContinuityReport {
         facts: facts.len(),
-        order_nodes: order.node_count(),
+        order_nodes: order
+            .nodes()
+            .collect::<BTreeSet<_>>()
+            .into_iter()
+            .map(ToString::to_string)
+            .collect(),
         sections: store.sections.len(),
         // Round 614 — name the world-lines whose road (and ending) is their lineage's,
         // because the substrate cannot tell "diverges in facts only" from "divergent
@@ -8004,6 +8019,21 @@ pub struct QuestGraphReport {
     /// Read from each world's embedded manuscript `confluence_fragment` (the ONE
     /// [`mnemosyne_core::is_confluence`] computation), never re-derived here.
     pub confluence_fragment_worlds: Vec<String>,
+    /// Per world-line, the scene walk each locator's `scene_ordinal` INDEXES
+    /// (Round 1061) — READ from the manuscript this report already reuses
+    /// verbatim (R558), never re-derived, so it cannot drift from the ordinals
+    /// it opens.
+    ///
+    /// [`playable_world`] carries this walk and the quest graph did not, which
+    /// is why the same ordinal is openable in one sibling and not the other.
+    /// Round 1058 gave the ordinal an ORACLE — the road the manuscript walks
+    /// under that name — and recorded that the answer itself carried no road,
+    /// so the oracle had to be a second shipped read. Round 1061 widened the
+    /// corruption population to the canon order, dropped one step of it, and
+    /// watched the ordinal move while nothing this answer names moved: the
+    /// oracle stands, and a consumer holding only this answer still could not
+    /// say what the number counts.
+    pub roads: BTreeMap<String, Vec<String>>,
 }
 
 /// Compose the quest-graph projection for `telling` (R559 design sec 7.38, R568
@@ -8046,6 +8076,23 @@ pub fn quest_graph(
         .iter()
         .filter(|(_, w)| w.manuscript.confluence_fragment)
         .map(|(id, _)| id.clone())
+        .collect();
+
+    // Round 1061 — the walk every `scene_ordinal` below indexes, from the same
+    // manuscript, so the pointer and the thing it points into travel together.
+    let roads: BTreeMap<String, Vec<String>> = playable
+        .worlds
+        .iter()
+        .map(|(id, w)| {
+            (
+                id.clone(),
+                w.manuscript
+                    .scenes
+                    .iter()
+                    .map(|scene| scene.section.clone())
+                    .collect(),
+            )
+        })
         .collect();
 
     let facts = &store.narrative_facts;
@@ -8270,6 +8317,7 @@ pub fn quest_graph(
         quests,
         unresolved_quests,
         confluence_fragment_worlds,
+        roads,
     })
 }
 
@@ -8799,14 +8847,15 @@ mod tests {
         // Four sections in the registry; the order positions only two of them.
         let partial = scan_continuity(&store, &chain(&["ch-1", "ch-2"]), &[]).unwrap();
         assert_eq!(partial.sections, 4, "registry size, not the order's");
-        assert_eq!(partial.order_nodes, 2);
+        // Round 1061 — WHICH two, so a reader of the pair can see the gap.
+        assert_eq!(partial.order_nodes, ["ch-1", "ch-2"]);
         assert!(partial.violations.is_empty(), "unplaced is never gated");
 
         // The order now positions every section: the two numbers meet.
         let covering =
             scan_continuity(&store, &chain(&["ch-1", "ch-2", "ch-3", "ch-4"]), &[]).unwrap();
         assert_eq!(covering.sections, 4);
-        assert_eq!(covering.order_nodes, 4);
+        assert_eq!(covering.order_nodes, ["ch-1", "ch-2", "ch-3", "ch-4"]);
         assert!(covering.violations.is_empty());
     }
 

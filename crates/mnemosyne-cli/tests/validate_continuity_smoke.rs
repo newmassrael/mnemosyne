@@ -100,7 +100,11 @@ fn cross_frame_conflict_is_data_exit_zero() {
     assert_eq!(v["violation_count"], 0);
     assert_eq!(v["cross_scope_pairs"], 1);
     assert_eq!(v["conflict_pairs_checked"], 1);
-    assert_eq!(v["order_nodes"], 3);
+    // Round 1061 — the placed scenes are NAMED, so this says WHICH three.
+    assert_eq!(
+        v["order_nodes"],
+        serde_json::json!(["ch-1", "ch-2", "ch-3"])
+    );
 }
 
 #[test]

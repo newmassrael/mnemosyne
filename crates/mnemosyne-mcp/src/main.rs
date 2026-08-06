@@ -3175,7 +3175,7 @@ impl MnemosyneServer {
     }
 
     #[tool(
-        description = "Quest graph (R559/568, read-only): the fact->quest leg a pinion narrative runtime / authoring consumer needs, the sibling of report_playable_world. Per telling, every derived quest (pursues object / requires endpoint / completed_by subject) projected to a QuestNode — objective + actor (pursues) + prerequisites (requires) + giving setups + per-world DERIVED open/done (the R442 payoff coverage: a quest done on one road and open on another) + the completion fact (with discharger) + the giver-surface MapLocator (R557). A pure JOIN over payoff-coverage + playable-world; `world` filters the per-world map (the fork tree stays full). Reading surface, never gated; quest STATE derived per world-line, never stored. Executable quest logic (lifecycle/guards) is SCE/pinion's. Fail-loud on a typo'd telling / unregistered world."
+        description = "Quest graph (R559/568, read-only): the fact->quest leg a pinion narrative runtime / authoring consumer needs, the sibling of report_playable_world. Per telling, every derived quest (pursues object / requires endpoint / completed_by subject) projected to a QuestNode — objective + actor (pursues) + prerequisites (requires) + giving setups + per-world DERIVED open/done (the R442 payoff coverage: a quest done on one road and open on another) + the completion fact (with discharger) + the giver-surface MapLocator (R557). Plus roads (R1061): per world-line, the scene walk each locator's scene_ordinal INDEXES, read from the manuscript this report already reuses — the pointer and what it points into travel together, as they do in report_playable_world. A pure JOIN over payoff-coverage + playable-world; `world` filters the per-world map (the fork tree stays full). Reading surface, never gated; quest STATE derived per world-line, never stored. Executable quest logic (lifecycle/guards) is SCE/pinion's. Fail-loud on a typo'd telling / unregistered world."
     )]
     async fn report_quest_graph(&self, args: Parameters<ReportQuestGraphArgs>) -> CallToolResult {
         match ops::quest_graph_report(
@@ -7459,11 +7459,17 @@ mod tests {
         validate_continuity_order_path_reaches_the_answer:
             @branch_story
             validate_continuity(ValidateContinuityArgs) {"order_path": "order-a.json"}
-            ."order_path" = "order-b.json" seen "\"order_nodes\": 3" in output;
+            // Round 1061 — `order_nodes` NAMES the scenes it places, so the
+            // needle that follows the value is one of the names rather than the
+            // count that used to stand for them.
+            ."order_path" = "order-b.json" seen "\"sc-03\"" in output;
         report_authoring_frontier_order_path_reaches_the_answer:
             @branch_story
             report_authoring_frontier(ReportAuthoringFrontierArgs) {"telling": "t-quiet", "order_path": "order-a.json"}
-            ."order_path" = "order-b.json" seen "sc-03" in output;
+            // Round 1061 — the frontier now names each world's ROAD, so `sc-03`
+            // appears under both orders and no longer follows the value. The
+            // placement axis still does: order-b places every scene.
+            ."order_path" = "order-b.json" seen "\"unplaced_scenes\": []" in output;
         report_frame_view_order_path_reaches_the_answer:
             @branch_story
             report_frame_view(ReportFrameViewArgs) {"frame": "ground-truth", "at": "sc-01", "order_path": "order-a.json"}

@@ -72,9 +72,8 @@ use mnemosyne_atomic::AtomicStore;
 
 mod common;
 use common::{
-    ask_panel, authored_corpora, corpus_workspace_try, corruptions, dnd_quest_facts,
-    dnd_quest_workspace_try, panel, read_json, read_sidecar, repo_root, run, telling_of, Answer,
-    SIDECAR,
+    ask_panel, audit_dir, authored_corpora, corpus_workspace_try, corruptions, dnd_quest_manifests,
+    panel, read_json, read_sidecar, repo_root, run, telling_of, workspace_try, Answer, SIDECAR,
 };
 
 /// Where a read RECLASSIFIED something: the JSON paths whose list holds a
@@ -270,8 +269,9 @@ impl Bucket {
 
 #[test]
 fn the_walk_says_what_stands_between_an_authoring_slip_and_the_runtime() {
-    let facts_json = dnd_quest_facts();
-    let baseline_ws = dnd_quest_workspace_try(&facts_json).expect("the authored store must load");
+    let manifests = dnd_quest_manifests();
+    let baseline_ws =
+        workspace_try(&manifests, Some(&audit_dir())).expect("the authored corpus must load");
     let baseline_store =
         AtomicStore::load(&baseline_ws.path().join(SIDECAR)).expect("the imported store loads");
     let baseline_sidecar = read_sidecar(baseline_ws.path());
@@ -285,7 +285,7 @@ fn the_walk_says_what_stands_between_an_authoring_slip_and_the_runtime() {
         baseline.failed
     );
 
-    let population = corruptions(&baseline_store, &facts_json);
+    let population = corruptions(&baseline_store, &manifests);
     assert!(
         population.len() >= 30,
         "the derived population collapsed to {} — a walk that finds almost \
@@ -409,23 +409,9 @@ fn the_walk_says_what_stands_between_an_authoring_slip_and_the_runtime() {
     let mut census: BTreeMap<Bucket, usize> = BTreeMap::new();
     let mut rows: BTreeMap<Bucket, Vec<String>> = BTreeMap::new();
     let mut proposals: BTreeMap<Proposed, Evidence> = BTreeMap::new();
-    for (index, corruption) in population.iter().enumerate() {
-        let mut mutated = facts_json.clone();
-        let mut applied = 0usize;
-        for entry in mutated["facts"].as_array_mut().expect("facts array") {
-            if entry["fact_id"] == corruption.fact.as_str() {
-                (corruption.apply)(entry);
-                applied += 1;
-            }
-        }
-        assert_eq!(
-            applied, 1,
-            "corruption {index} ({}/{}) applied {applied} times",
-            corruption.fact, corruption.leg
-        );
-
+    for corruption in &population {
         let mut note = String::new();
-        let bucket = match dnd_quest_workspace_try(&mutated) {
+        let bucket = match workspace_try(&corruption.applied(&manifests), Some(&audit_dir())) {
             Err(_) => Bucket::Refused,
             Ok(ws) => {
                 let seen = ask_panel(ws.path(), &panel);
@@ -496,7 +482,7 @@ fn the_walk_says_what_stands_between_an_authoring_slip_and_the_runtime() {
                                 proposed_by: Vec::new(),
                             })
                             .proposed_by
-                            .push(format!("{}/{}", corruption.fact, corruption.leg));
+                            .push(corruption.label());
                     }
                     if !derived.is_empty() {
                         note = format!(
@@ -520,7 +506,7 @@ fn the_walk_says_what_stands_between_an_authoring_slip_and_the_runtime() {
         *census.entry(bucket).or_default() += 1;
         rows.entry(bucket)
             .or_default()
-            .push(format!("{}/{}{note}", corruption.fact, corruption.leg));
+            .push(format!("{}{note}", corruption.label()));
     }
 
     // Print BEFORE asserting: a first-violation stop would make the whole walk
@@ -641,13 +627,20 @@ fn the_walk_says_what_stands_between_an_authoring_slip_and_the_runtime() {
 
     // THE NUMBER THIS ROUND EXISTS TO PRODUCE.
     //
-    // REFUSED is 0 and that is a measurement: every corruption carries its own
-    // entities list (`swap_entity`), which is what Round 1031 learned the write
-    // path demands. An author who keeps the store's own invariants can commit
-    // all 92 — 41 before Round 1054 widened the derived population from the
-    // legs that say what a fact CLAIMS to the ones that PLACE it and ATTRIBUTE
-    // it. Every number in this walk moved with it, and none of them moved
-    // because a read changed its mind.
+    // REFUSED was 0 through Round 1060 and that was a measurement: every fact
+    // corruption carries its own entities list (`swap_entity`), which is what
+    // Round 1031 learned the write path demands, so an author who keeps the
+    // store's own invariants could commit all 92 — 41 before Round 1054 widened
+    // the derived population from the legs that say what a fact CLAIMS to the
+    // ones that PLACE it and ATTRIBUTE it.
+    //
+    // It is 56 now, and they are one leg: Round 1061 widened the population
+    // again, past the fact manifest to the corpus an author writes, and CUTTING
+    // A SCENE out of the registry is refused for all 56 of them because facts
+    // still stand at every scene. The road legs are refused by nobody, since
+    // `order.json` passes no import at all — which is why CAUGHT went from 17 to
+    // 81. Every number in this walk moved with the population, and none of them
+    // moved because a read changed its mind.
     //
     // INERT is 0, and it overturns a claim Round 1033 pinned. That walk ran
     // three stations and found two payoff edges neither runtime projection
@@ -658,11 +651,12 @@ fn the_walk_says_what_stands_between_an_authoring_slip_and_the_runtime() {
     assert_eq!(
         census,
         BTreeMap::from([
-            (Bucket::Caught, 17),
-            (Bucket::Reported, 59),
+            (Bucket::Refused, 56),
+            (Bucket::Caught, 81),
+            (Bucket::Reported, 159),
             (Bucket::Carried, 16),
         ]),
-        "the play-break census over the quest layer"
+        "the play-break census over the corpus an author writes"
     );
 
     // THE ANSWER TO ROUND 1033'S QUESTION, named rather than counted: the
@@ -703,22 +697,22 @@ fn the_walk_says_what_stands_between_an_authoring_slip_and_the_runtime() {
             .map(|row| row.split(" <-").next().expect("row head").to_string())
             .collect::<Vec<_>>(),
         [
-            "f-161/evidence",
-            "f-180/evidence",
-            "f-305/evidence",
-            "f-305/frame",
-            "f-316/evidence",
-            "f-316/frame",
-            "f-404/evidence",
-            "f-404/frame",
-            "f-409/evidence",
-            "f-409/frame",
-            "f-411/evidence",
-            "f-411/frame",
-            "f-505/evidence",
-            "f-505/frame",
-            "f-515/evidence",
-            "f-515/frame",
+            "f-161/facts.evidence",
+            "f-180/facts.evidence",
+            "f-305/facts.evidence",
+            "f-305/facts.frame",
+            "f-316/facts.evidence",
+            "f-316/facts.frame",
+            "f-404/facts.evidence",
+            "f-404/facts.frame",
+            "f-409/facts.evidence",
+            "f-409/facts.frame",
+            "f-411/facts.evidence",
+            "f-411/facts.frame",
+            "f-505/facts.evidence",
+            "f-505/facts.frame",
+            "f-515/facts.evidence",
+            "f-515/facts.frame",
         ],
         "the corruptions no shipped read derives anything from"
     );
@@ -782,9 +776,28 @@ fn the_walk_says_what_stands_between_an_authoring_slip_and_the_runtime() {
             // setup moved past its payoff, or onto a world-line where nothing
             // credits it. Nobody added either to a list here.
             "REFUTED report-authoring-frontier: `structural` is always empty",
+            // R1061 — the eleven that arrived here are what a SCENE REGISTRY
+            // and a CANON ORDER reach. Cutting a step out of a road leaves
+            // scenes unordered and unplaced, moves a fact past its payoff on a
+            // road that no longer arrives, and empties the coverage classes a
+            // scene's expectation sorts it into. Nobody added a field to a list:
+            // the walk proposes a rule wherever a list crosses the emptiness
+            // boundary, and a wider population crosses more of them.
+            "CANDIDATE report-authoring-frontier: `unordered_scenes` is always empty",
+            "CANDIDATE report-authoring-frontier: `unplaced_scenes` is always empty",
+            "REFUTED report-coverage: `normative_gap` is always empty",
+            "CANDIDATE report-frame-view: `unknown` is always empty",
             "CANDIDATE report-payoff-coverage: `payoff_before_setup` is always empty",
             "CANDIDATE report-payoff-coverage: `payoffs_to_unmarked` is always empty",
             "CANDIDATE report-payoff-coverage: `uncredited_edges` is always empty",
+            "CANDIDATE report-payoff-coverage: `undecidable_edges` is always empty",
+            "CANDIDATE report-payoff-coverage: `unknown` is always empty",
+            "CANDIDATE report-playable-world: `undecidable` is always empty",
+            "CANDIDATE report-playable-world: `undeclared_adjacencies` is always empty",
+            "CANDIDATE report-playable-world: `unplaced_facts` is always empty",
+            "CANDIDATE report-playthrough-manuscript: `undecidable` is always empty",
+            "CANDIDATE report-playthrough-manuscript: `undeclared_adjacencies` is always empty",
+            "CANDIDATE report-playthrough-manuscript: `unplaced_facts` is always empty",
             // R1045 — the walk picked the new field up on its own and refuted
             // BOTH shapes of rule over it (n=16, min=0, max=1): a road that owes
             // one of its quest's givings and a road that owes none are both
@@ -800,6 +813,7 @@ fn the_walk_says_what_stands_between_an_authoring_slip_and_the_runtime() {
             // proposal, and this is what it costs to widen a wire — the census
             // says so in the same run rather than in a later round's review.
             "REFUTED report-authoring-frontier: `structural` is never empty",
+            "CANDIDATE report-frame-view: `holding` is never empty",
             "REFUTED report-payoff-coverage: `dangling` is never empty",
             // R1056 — the substantiation read began carrying the setups nobody
             // paid, and this census picked the new field up on its own and
@@ -807,6 +821,8 @@ fn the_walk_says_what_stands_between_an_authoring_slip_and_the_runtime() {
             // pair is the point: two reads now name that class and the corpus
             // says it supports no gate on either. Nobody added it here.
             "REFUTED report-payoff-substantiation: `dangling` is never empty",
+            "CANDIDATE report-playable-world: `begins` is never empty",
+            "CANDIDATE report-playthrough-manuscript: `begins` is never empty",
             "CANDIDATE report-quest-graph: `actors` is never empty",
             "REFUTED report-quest-graph: `completions` is never empty",
             "REFUTED report-quest-graph: `giving_facts` is never empty",
