@@ -66,22 +66,8 @@ use mnemosyne_atomic::AtomicStore;
 mod common;
 use common::{
     ask_panel, corruptions, dnd_quest_facts, dnd_quest_workspace_from, dnd_quest_workspace_try,
-    panel, telling_of, Answer, SIDECAR,
+    panel, registered_ids, telling_of, Answer, SIDECAR,
 };
-
-/// Every id the store registers — used to collapse a map KEYED BY id, so
-/// `branch_owned_density.main.owned_facts` and its sibling for every other road
-/// are one field rather than one finding per road. `main` is a world every store
-/// has whether or not it registers a branch (the [`common::values_for`] rule).
-fn registered_ids(store: &AtomicStore) -> BTreeSet<String> {
-    let mut out: BTreeSet<String> = BTreeSet::new();
-    out.extend(store.narrative_facts.keys().map(ToString::to_string));
-    out.extend(store.entities.keys().map(ToString::to_string));
-    out.extend(store.sections.keys().map(ToString::to_string));
-    out.extend(store.branches.keys().map(ToString::to_string));
-    out.insert(mnemosyne_core::MAIN_BRANCH.to_string());
-    out
-}
 
 /// Every number in one answer, keyed by the path it sits at, with array indices
 /// and id-valued map keys collapsed so the key names a FIELD of the read.

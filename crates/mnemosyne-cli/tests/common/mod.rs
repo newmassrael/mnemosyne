@@ -338,6 +338,31 @@ pub fn telling_of(store: &AtomicStore) -> String {
     telling
 }
 
+/// Every id this store registers — what a read could be talking about.
+///
+/// Read from the STORE rather than from the reads, so a read inventing an id it
+/// never registered is invisible here rather than counted as a subject.
+///
+/// `main` is in it and that is not a detail. It is a world every store has
+/// whether or not it registers a branch (the [`values_for`] rule), and a walk
+/// that leaves it out cannot recognise a row keyed by road. Two walks derived
+/// this set by hand and they disagreed about exactly that id; Round 1055
+/// measured what the disagreement cost, by addressing every row of every array
+/// a shipped read emits: 25 rows across three reads — the quest graph's
+/// `locators`, the disclosure coverage's `inert_reveal_pins`, the continuity
+/// report's `quest_prerequisite_judgements` — are keyed by a world, and a walk
+/// blind to `main` fell back to addressing them by the position they happen to
+/// sit at.
+pub fn registered_ids(store: &AtomicStore) -> BTreeSet<String> {
+    let mut out: BTreeSet<String> = BTreeSet::new();
+    out.extend(store.narrative_facts.keys().map(ToString::to_string));
+    out.extend(store.entities.keys().map(ToString::to_string));
+    out.extend(store.sections.keys().map(ToString::to_string));
+    out.extend(store.branches.keys().map(ToString::to_string));
+    out.insert(mnemosyne_core::MAIN_BRANCH.to_string());
+    out
+}
+
 /// One shipped read, and the arguments the CORPUS can answer it with.
 pub struct Read {
     pub verb: String,
