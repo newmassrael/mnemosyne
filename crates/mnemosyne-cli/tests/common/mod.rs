@@ -409,6 +409,17 @@ pub struct Wrote {
     /// order rather than summed: rows that trade values have moved, and a total
     /// would say they had not.
     pub numbers: BTreeMap<String, BTreeMap<String, Vec<String>>>,
+    /// The same addressing for what the record NAMES: address -> field -> the
+    /// subject ids named there. The parallel of [`Wrote::numbers`], and it has
+    /// to come off the SAME walk — a number is accounted for when it counts
+    /// things the answer names, and reading the two with different notions of
+    /// where a place in an answer is would let an accounting be against names
+    /// that sit somewhere the number does not.
+    ///
+    /// A field that names NOTHING is here too, with an empty set: an empty list
+    /// is a place ids appear in other stores, and a walk that only sees the
+    /// stores where it is full cannot express an accounting that includes it.
+    pub names: BTreeMap<String, BTreeMap<String, BTreeSet<String>>>,
     /// The bare subject ids listed at an address, in document order — what the
     /// ORDER question reads, being the one thing a membership record cannot see.
     pub listed: BTreeMap<String, Vec<String>>,
@@ -429,6 +440,21 @@ impl Wrote {
             .entry(subject.to_string())
             .or_default()
             .insert(address.to_string(), value.clone());
+    }
+
+    /// A place in one record where ids are named. Called with `id: None` for a
+    /// list or map that is EMPTY here — the place exists whether or not this
+    /// store put anything in it.
+    fn named(&mut self, record: &str, field: &str, id: Option<&str>) {
+        let at = self
+            .names
+            .entry(record.to_string())
+            .or_default()
+            .entry(field.to_string())
+            .or_default();
+        if let Some(id) = id {
+            at.insert(id.to_string());
+        }
     }
 }
 
@@ -470,6 +496,10 @@ fn walk_wrote(
                 .or_default()
                 .push(n.to_string());
         }
+        serde_json::Value::Object(map) if map.is_empty() => {
+            // A map with nothing in it: a place ids appear in other stores.
+            out.named(record, &format!("{field}{{}}"), None);
+        }
         serde_json::Value::Object(map) => {
             // The ids this object names in a FIELD. They make it a record, and
             // the record is this whole object: the row is the sentence.
@@ -493,8 +523,11 @@ fn walk_wrote(
                 let child_path = under(path, key);
                 if subjects.contains(key) {
                     // A map KEY is an id: the read wrote the subtree under it
-                    // about that id, and that subtree is its own record.
+                    // about that id, and that subtree is its own record. The
+                    // KEY SET is a place this record names ids — `{}` rather
+                    // than `.*`, which is the subtree under one of them.
                     let child_field = under(field, "*");
+                    out.named(&here, &format!("{field}{{}}"), Some(key));
                     out.wrote(key, &child_path, child);
                     if child.is_object() {
                         out.records.insert(child_path.clone(), child.clone());
@@ -506,7 +539,9 @@ fn walk_wrote(
                 }
                 match child.as_str() {
                     // Already claimed above, as one of this object's names.
-                    Some(id) if subjects.contains(id) => {}
+                    Some(id) if subjects.contains(id) => {
+                        out.named(&here, &under(field, key), Some(id));
+                    }
                     _ => walk_wrote(child, &child_path, &under(field, key), &here, subjects, out),
                 }
             }
@@ -514,28 +549,36 @@ fn walk_wrote(
         serde_json::Value::Array(items) => {
             let keys = key_fields(items, subjects);
             let listed_at = format!("{path}[]");
+            if items.is_empty() {
+                // A list with nothing in it: a place ids appear in other
+                // stores, and the accounting a full store states has to be
+                // expressible against the empty one.
+                out.named(record, &format!("{field}[]"), None);
+            }
             let mut listed: Vec<String> = Vec::new();
             for (index, item) in items.iter().enumerate() {
                 match item {
                     serde_json::Value::String(id) if subjects.contains(id) => {
                         // MEMBERSHIP: the address is the whole of the record,
                         // so a neighbour joining or leaving says nothing here.
+                        out.named(record, &format!("{field}[]"), Some(id));
                         out.wrote(id, &listed_at, &serde_json::Value::Null);
                         listed.push(id.clone());
                     }
                     _ => {
                         let row = row_address(path, item, index, &keys);
-                        let row_field = if keys.is_empty() {
-                            format!("{field}[]")
-                        } else {
-                            format!(
-                                "{field}[{}]",
-                                keys.iter()
-                                    .map(|f| format!("{f}=*"))
-                                    .collect::<Vec<_>>()
-                                    .join(",")
-                            )
-                        };
+                        // THE FIELD IS THE PLACE, THE ADDRESS IS THE ROW. Which
+                        // columns key a row is derived from the values (see
+                        // [`key_fields`]), so spelling the key into the FIELD
+                        // makes one place in one read carry different names in
+                        // two answers: `report-entity`'s fact rows key on
+                        // `branch` for an entity whose facts are one per road
+                        // and on `fact_id` for the rest, and the quest graph's
+                        // locators key on `world_line` until an edit leaves two
+                        // rows sharing one. A shape that moves with the data
+                        // cannot be compared across answers, which is the whole
+                        // of what a field path is for.
+                        let row_field = format!("{field}[]");
                         if item.is_object() && keys.is_empty() {
                             out.unaddressed.insert(row.clone());
                         }
