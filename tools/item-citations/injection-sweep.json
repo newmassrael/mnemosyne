@@ -66,11 +66,14 @@
       "edits": [
         {
           "file": "src/main.rs",
-          "from": "    let with_extern = match &library {",
-          "to": "    let with_extern = match &None::<(String, String)> {"
+          "from": "    let needs_library = groups.keys().any(|omitted| omitted.own_library);",
+          "to": "    let needs_library = groups.keys().any(|omitted| omitted.own_library) && false;"
         }
       ],
-      "expect_red": ["a_test_target_that_uses_its_own_crate_is_reached_and_still_read"]
+      "expect_red": [
+        "a_test_target_that_uses_its_own_crate_is_reached_and_still_read",
+        "a_bench_target_that_uses_its_own_crate_and_a_dev_dependency_is_reached"
+      ]
     },
     {
       "name": "the-extern-is-handed-to-targets-cargo-already-wired",
@@ -78,11 +81,11 @@
       "edits": [
         {
           "file": "src/lib.rs",
-          "from": "            TargetKind::Bin | TargetKind::Example => true,",
-          "to": "            TargetKind::Bin | TargetKind::Example => false,"
+          "from": "            TargetKind::Lib | TargetKind::Bin | TargetKind::Example => OmittedExterns {\n                own_library: false,",
+          "to": "            TargetKind::Lib | TargetKind::Bin | TargetKind::Example => OmittedExterns {\n                own_library: true,"
         }
       ],
-      "expect_red": ["tests::only_the_kinds_cargo_already_wires_are_kept_from_the_extern_repair"]
+      "expect_red": ["tests::the_repair_puts_back_exactly_what_cargo_leaves_out_per_kind"]
     },
     {
       "name": "test-targets-leave-the-population",
@@ -100,6 +103,33 @@
         "a_citation_naming_nothing_in_a_test_target_is_reached_here_and_not_by_cargo_doc",
         "a_test_target_that_uses_its_own_crate_is_reached_and_still_read"
       ]
+    },
+    {
+      "name": "a-bench-target-is-not-handed-its-dev-dependencies",
+      "why": "a bench target receives NEITHER its own crate nor its dev-dependencies; with only the first put back, criterion still resolves to nothing and rustdoc documents the target not at all",
+      "edits": [
+        {
+          "file": "src/lib.rs",
+          "from": "            TargetKind::Bench => OmittedExterns {\n                own_library: true,\n                dev_dependencies: true,",
+          "to": "            TargetKind::Bench => OmittedExterns {\n                own_library: true,\n                dev_dependencies: false,"
+        }
+      ],
+      "expect_red": [
+        "tests::the_repair_puts_back_exactly_what_cargo_leaves_out_per_kind",
+        "a_bench_target_that_uses_its_own_crate_and_a_dev_dependency_is_reached"
+      ]
+    },
+    {
+      "name": "a-dependency-in-both-tables-is-treated-as-dev-only",
+      "why": "a crate named in [dependencies] AND [dev-dependencies] is already passed by cargo; adding it again is E0464, and the census is the only thing that keeps it out",
+      "edits": [
+        {
+          "file": "src/lib.rs",
+          "from": "            .filter(|dependency| !normal.contains(dependency.name.as_str()))",
+          "to": "            .filter(|dependency| normal.contains(dependency.name.as_str()) || true)"
+        }
+      ],
+      "expect_red": ["tests::a_dependency_declared_in_both_tables_is_not_dev_only"]
     },
     {
       "name": "a-run-cargo-never-finished-is-treated-as-finished",

@@ -333,16 +333,23 @@ fn a_test_target_that_uses_its_own_crate_is_reached_and_still_read() {
 /// outcome: the repair becomes unnecessary rather than silently wrong.
 ///
 /// The answer this measured, on cargo 1.94.1: a BINARY and an EXAMPLE each
-/// receive their package's library; an integration TEST and a BENCH receive
-/// nothing. Benches and examples are on opposite sides of that line, which no
-/// amount of reasoning about "what a target is" would have produced.
+/// receive their package's library and a TEST and a BENCH do not; and a TEST
+/// receives the package's dev-dependencies while a BENCH does not. Benches and
+/// examples land on opposite sides of the first line and tests and benches on
+/// opposite sides of the second, which no amount of reasoning about "what a
+/// target is" would have produced.
+///
+/// The dev-dependency is a PATH crate inside the fixture, so this measures
+/// cargo rather than the network.
 #[test]
-fn cargo_hands_a_binary_and_an_example_their_library_and_a_test_and_bench_nothing() {
+fn cargo_omits_a_different_set_of_externs_for_each_kind_of_target() {
     let dir = fixture(&[
         (
             "Cargo.toml",
             r#"
 [workspace]
+members = ["helper"]
+
 [package]
 name = "fixture"
 version = "0.1.0"
@@ -356,17 +363,25 @@ path = "src/main.rs"
 name = "measured"
 path = "benches/measured.rs"
 harness = false
+
+[dev-dependencies]
+helper = { path = "helper" }
 "#,
         ),
+        (
+            "helper/Cargo.toml",
+            "[package]\nname = \"helper\"\nversion = \"0.1.0\"\nedition = \"2021\"\n",
+        ),
+        ("helper/src/lib.rs", "pub fn helped() {}\n"),
         ("src/lib.rs", "pub fn kept() {}\n"),
         ("src/main.rs", "use fixture::kept;\nfn main() { kept(); }\n"),
         (
             "tests/smoke.rs",
-            "use fixture::kept;\n#[test]\nfn passes() { kept(); }\n",
+            "use fixture::kept;\n#[test]\nfn passes() { kept(); helper::helped(); }\n",
         ),
         (
             "benches/measured.rs",
-            "use fixture::kept;\nfn main() { kept(); }\n",
+            "use fixture::kept;\nfn main() { kept(); helper::helped(); }\n",
         ),
         (
             "examples/shown.rs",
@@ -411,6 +426,7 @@ harness = false
         found[0].to_string()
     };
 
+    // The library column.
     for (selector, crate_name) in [("--bins", "runner"), ("--examples", "shown")] {
         let line = line_for(selector, crate_name);
         assert!(
@@ -427,6 +443,85 @@ harness = false
              this has been fixed, narrow the extern repair rather than keeping it:\n{line}"
         );
     }
+
+    // The dev-dependency column, which is where tests and benches part.
+    assert!(
+        line_for("--tests", "smoke").contains("--extern helper="),
+        "cargo is expected to hand a test target the package's dev-dependencies"
+    );
+    let bench = line_for("--benches", "measured");
+    assert!(
+        !bench.contains("--extern helper="),
+        "cargo is expected to hand a bench target NO dev-dependency — if this has been \
+         fixed, narrow the repair rather than keeping it:\n{bench}"
+    );
+}
+
+/// The bench half of the same hole, which needs BOTH halves of the repair: a
+/// bench target receives neither its package's library nor its
+/// dev-dependencies, and `bench/crates/direct-impl` in this repository is
+/// exactly that shape — `use direct_impl::…` and `use criterion::…` in one
+/// file, neither of which cargo hands the documentation unit.
+#[test]
+fn a_bench_target_that_uses_its_own_crate_and_a_dev_dependency_is_reached() {
+    let files: Vec<(&str, &str)> = vec![
+        (
+            "Cargo.toml",
+            r#"
+[workspace]
+members = ["helper"]
+
+[package]
+name = "fixture"
+version = "0.1.0"
+edition = "2021"
+
+[[bench]]
+name = "measured"
+path = "benches/measured.rs"
+harness = false
+
+[dev-dependencies]
+helper = { path = "helper" }
+"#,
+        ),
+        (
+            "helper/Cargo.toml",
+            "[package]\nname = \"helper\"\nversion = \"0.1.0\"\nedition = \"2021\"\n",
+        ),
+        ("helper/src/lib.rs", "pub fn helped() {}\n"),
+        ("src/lib.rs", "//! Clean library.\npub fn kept() {}\n"),
+    ];
+
+    let mut clean = files.clone();
+    clean.push((
+        "benches/measured.rs",
+        "//! Cites [`fixture::kept`] and [`helper::helped`].\n\
+         use fixture::kept;\nfn main() { kept(); helper::helped(); }\n",
+    ));
+    let dir = fixture(&clean);
+    let run = gate(dir.path());
+    assert!(
+        run.ok,
+        "a bench target using its own crate and a dev-dependency must be documentable:\n{}\n{}",
+        run.stdout, run.stderr
+    );
+    assert!(
+        run.says("reached 3/3 targets"),
+        "the library, the bench and the helper's library:\n{}",
+        run.stdout
+    );
+
+    let mut broken = files;
+    broken.push((
+        "benches/measured.rs",
+        "//! Cites [`helper::absent`], which the dev-dependency does not have.\n\
+         use fixture::kept;\nfn main() { kept(); helper::helped(); }\n",
+    ));
+    let dir = fixture(&broken);
+    let run = gate(dir.path());
+    assert!(!run.ok, "and its citations are still read:\n{}", run.stdout);
+    assert!(run.says("helper::absent"), "{}", run.stdout);
 }
 
 /// A target rustdoc could not open at all is neither clean nor a citation

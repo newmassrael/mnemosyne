@@ -116,17 +116,64 @@ for ws in "${workspaces[@]}"; do
     skipped+=("$ws")
     continue
   fi
-  echo "[side-workspaces] CHECK $ws — fmt, clippy$($lint_only || echo ', tests')"
-  # `--all`, because a VIRTUAL workspace manifest (`bench/Cargo.toml` is one:
-  # `[workspace]` and no `[package]`) has no targets of its own, and without it
-  # `cargo fmt` exits non-zero printing its own usage — which a caller reads as
-  # "unformatted" while nothing was checked at all.
-  if ! cargo fmt --all --manifest-path "$ws/Cargo.toml" --check; then
-    echo "[side-workspaces] $ws is unformatted —" \
-      "fix: cargo fmt --all --manifest-path $ws/Cargo.toml" >&2
+  echo "[side-workspaces] CHECK $ws — fmt, clippy, item citations$($lint_only || echo ', tests')"
+  # PACKAGE BY PACKAGE, over the manifests that live INSIDE this workspace's
+  # directory, which is the same thing as "the packages this repository owns".
+  #
+  # Not `--all`: R1066 used it because a VIRTUAL manifest (`bench/Cargo.toml` is
+  # one: `[workspace]` and no `[package]`) has no targets of its own, and
+  # `cargo fmt` without it exits non-zero printing its usage — which a caller
+  # reads as "unformatted" while nothing was checked at all. But `--all` walks
+  # PATH DEPENDENCIES, and `studio` depends on a sibling checkout: this gate
+  # spent three rounds reporting `studio` as unformatted because of files in
+  # `../pinion`, which this repository does not own, cannot commit, and had
+  # another session live in. A gate that fails on somebody else's file is a gate
+  # that gets ignored. Walking this workspace's own manifests keeps the virtual
+  # case working (the virtual manifest declares no package and is skipped) and
+  # cannot leave the tree.
+  formatted=0
+  while IFS= read -r -d '' member; do
+    grep -qE '^\[package\]' "$member" || continue
+    formatted=$((formatted + 1))
+    if ! cargo fmt --manifest-path "$member" --check; then
+      echo "[side-workspaces] $ws is unformatted —" \
+        "fix: cargo fmt --manifest-path $member" >&2
+      exit 1
+    fi
+  done < <(find "$ws" -name Cargo.toml -not -path '*/target/*' -print0 | sort -z)
+  if [[ $formatted -eq 0 ]]; then
+    echo "[side-workspaces] $ws has no package manifest of its own — a workspace this" \
+      "gate formats nothing in is one it is not checking" >&2
     exit 1
   fi
   cargo clippy --manifest-path "$ws/Cargo.toml" --all-targets -- -D warnings
+  # R1078 — every item citation in this workspace names an item. The root
+  # workspace gets this from the pre-commit hook and its own CI job; ZZ10 named
+  # the general hole that a check taking only the root leaves these four out,
+  # and this one does not take only the root: it is pointed at a manifest.
+  #
+  # It found something on its first run here, which is the whole argument for
+  # putting it in: two citations in `bench` and one in `studio` that named
+  # nothing (`#[tracked]`, `child[i]`, `argv[1]` — brackets are markdown whether
+  # or not anyone meant them that way), and NINE bench targets it could not
+  # document at all until cargo's omissions were put back.
+  # THE PROGRAM comes from THIS script's checkout; the TREE it is pointed at is
+  # the working directory, per the rule above. Those are two different things
+  # and they are two different trees whenever this repository's gate runs over
+  # another one — resolving the program from `$root` looks for it inside the
+  # tree under check, where it does not exist.
+  citations="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/tools/item-citations/Cargo.toml"
+  if [[ ! -f "$citations" ]]; then
+    echo "[side-workspaces] the item-citation gate is missing at $citations" >&2
+    exit 1
+  fi
+  if ! cargo run -q --manifest-path "$citations" --bin item-citations -- \
+    --workspace "$root/$ws/Cargo.toml"; then
+    echo "[side-workspaces] $ws carries a citation that names no item —" \
+      "fix: cargo run -q --manifest-path tools/item-citations/Cargo.toml" \
+      "--bin item-citations -- --workspace $ws/Cargo.toml" >&2
+    exit 1
+  fi
   if ! $lint_only; then
     # `--no-fail-fast`, because a gate that stops at the first failing target
     # reports a smaller number than the truth and somebody fixes to it. This gate

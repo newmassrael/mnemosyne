@@ -5110,6 +5110,96 @@
         "`tools/medium-forge` is not a cargo workspace at all: it is a `convert.py`. It is invisible to both this gate and `check-side-workspaces.sh`, and the standing preference against silent-fail scripting has never been applied to it."
       ]
     },
+    "Round 1079 — the same law in the workspaces nobody gated": {
+      "decision_summary": "The same law, in the four workspaces no gate had ever asked. Three citations\nnamed nothing, nine targets could not be opened at all, and the reason the gate\nhad been reporting one of these workspaces as broken for three rounds turned out\nto be a file in another repository.\n\nRound 1078 built `tools/item-citations` and pointed it at the root workspace.\nThis repository has FOUR more workspaces that carry their own `[workspace]`\nprecisely so the root gates never compile them, and ZZ10 named the general shape\nof the hole: a check that takes only the root does not reach them. This one does\nnot take only the root — it is pointed at a manifest — so the whole of the\nquestion was whether it could answer for them.\n\nWHAT THE FIRST RUN FOUND, which is the argument for wiring it in:\n\n- `bench/crates/codegen-prototype/src/salsa_wire.rs` cited a `tracked` that is\n  no item: the prose is `Salsa #[tracked] function name`, and brackets in a doc\n  comment are markdown whether or not anyone meant them that way.\n- `bench/crates/xtdb-baseline/src/main.rs` cited an `i`, from\n  `child[i].parent = people[i-1]`.\n- `studio/src/main.rs` cited a `1`, from `the store path is argv[1]`.\n- And NINE of `bench`'s 29 targets could not be documented at all.\n\nTHE NINE WERE A SECOND CARGO OMISSION, NOT THE ONE ROUND 1078 REPAIRED. That\nround put back the package's own library, which cargo does not hand to a test\ntarget's documentation unit. A BENCH target receives neither its own library nor\nits DEV-DEPENDENCIES: `use direct_impl::…` and `use criterion::…` in one file,\nand cargo passes the sixteen ordinary dependencies and neither of those two. So\nthe model here is no longer \"is this kind wired to its library\" but \"what does\ncargo LEAVE OUT for this kind\", and the targets of a package are grouped by that\nset, one rustdoc invocation per group — because the repair travels in\n`RUSTDOCFLAGS`, which reaches every target of its invocation, and an extern\ncargo already passed, passed again, is `E0464` and documents nothing.\n\nMeasured on cargo 1.94.1, on one fixture that has all four kinds and a\ndev-dependency that is a path crate so the measurement is of cargo and not of\nthe network:\n\n    kind                own library    dev-dependencies\n    lib, bin, example   passed         passed\n    test                MISSING        passed\n    bench               MISSING        MISSING\n\nBenches and examples are on opposite sides of the first column and tests and\nbenches on opposite sides of the second. Nothing about \"what a target is\"\npredicts that, which is why it is a test that reads the command lines cargo\nbuilds rather than a sentence here.\n\nWHICH DEPENDENCIES ARE DEV-ONLY IS THE MANIFEST'S ANSWER, not the difference\nbetween two command lines: a crate named in `[dependencies]` AND\n`[dev-dependencies]` is already passed, and adding it again is the same E0464.\nWhere each one's metadata landed is cargo's artifact record. A dev-only\ndependency that resolves to no library, or to more than one, stops the gate:\na wrong `--extern` does not fail loudly, it silently resolves a citation against\nthe wrong crate.\n\nSTAR AND THE THING THAT HAD BEEN CALLED \"NOT MINE, UNTOUCHED\" FOR THREE ROUNDS\nWAS THIS GATE'S OWN DEFECT. `cargo fmt --all` walks PATH DEPENDENCIES, and\n`studio` depends on a sibling checkout, so the gate had been failing on\n`../pinion/examples/hello-node-editor/src/main.rs` — a file this repository does\nnot own, cannot commit, and had another session live in. Three rounds recorded\nthat as an external condition to work around. It is not: a gate for this\nrepository must not judge a file this repository does not own. Formatting now\nwalks the manifests INSIDE the workspace's own directory, which keeps the\nvirtual-manifest case working (a virtual manifest declares no package and is\nskipped, with a refusal if that leaves nothing formatted) and cannot leave the\ntree. `studio` is checked again for the first time in three rounds.\n\nOne more of the same shape, one level down: `check-side-workspaces.sh` resolves\nthe TREE from the working directory (Round 1069's rule, because this\nrepository's gate may be run over another tree) and it now also runs a PROGRAM,\nwhich must come from the script's own checkout instead. Those are two different\ntrees and the hook's own smoke test is what runs them apart.",
+      "changes_bullets": [
+        "`TargetKind::externs_cargo_omits` replaces `is_wired_to_its_library`: a set of what cargo leaves out (own library, dev-dependencies) rather than a flag, with one rustdoc invocation per distinct set, because the repair travels in `RUSTDOCFLAGS` and reaches every target of its invocation.",
+        "The census reads each package's dev-ONLY dependencies from `cargo metadata` — declared under `[dev-dependencies]` and not under `[dependencies]`, with the manifest's rename if it has one — and `dev_only_externs` resolves each to the library cargo says it built, stopping the gate when a name resolves to none or to more than one.",
+        "`scripts/check-side-workspaces.sh` runs the item-citation gate for every workspace it checks, from one definition with CI and the hook. The PROGRAM is resolved from the script's own checkout while the TREE stays the working directory (R1069's rule, which now has two subjects rather than one).",
+        "Formatting in that gate walks the manifests inside the workspace's own directory instead of `cargo fmt --all`, which follows path dependencies out of this repository; a workspace with no package manifest of its own is a refusal rather than a silent pass.",
+        "Three citations repaired: `#[tracked]` in `codegen-prototype`, `child[i]` in `xtdb-baseline`, `argv[1]` in `studio` — all three prose that brackets made into links."
+      ],
+      "verification_bullets": [
+        "`bench` went from 20/29 targets reached with 2 defects to 29/29 with 0. `studio` from 1 defect to 1/1 clean — its first green in three rounds. `tools/experiment-harness` 2/2, `tools/injection-harness` 2/2, `tools/item-citations` 3/3 (the gate over itself). The root workspace is unchanged at 131/131 with the generalised model.",
+        "`scripts/check-side-workspaces.sh` reports `checked 5, skipped 0` on this machine, where the sibling `pinion` checkout is present; before this round it stopped at `studio` on a file in that checkout.",
+        "30 tests in the gate's crate, up from 28. The new ones: cargo's own answer for all four kinds across BOTH columns, read from the command lines it builds on a fixture with a lib, a bin, a test, a bench, an example and a path dev-dependency; and a bench target that uses its own crate AND that dev-dependency, asserted reached when clean and still read when it carries a citation naming nothing.",
+        "Injection sweep through `tools/injection-harness`: control 30 passed / 0 failed / 4 targets, NINE injections each removing one property, all nine fired, `missed` 0, target drift 0. Two are new — a bench target left without its dev-dependencies, and a dependency in both tables treated as dev-only (the E0464 direction).",
+        "The hook smoke tests, 10/10, on the tree that changes the script they run: `pre_commit_gates_a_separate_in_repo_workspace_the_root_gates_miss` is what caught the program-versus-tree resolution the first time and it is what proves it now.",
+        "Full root workspace suite, `validate-workspace`, clippy `-D warnings` and `cargo fmt --check` on the committed tree."
+      ],
+      "carry_forward_bullets": [
+        "The dev-only extern set is the manifest's own answer, so a crate reachable only as a dependency OF a dependency is not in it. That is correct for what cargo omits today and it is not a rule anybody verified for a workspace shaped differently from these five.",
+        "`bench/crates/codegen-prototype` still carries prose citing `DESIGN §43`, a document Round 400 removed. This gate answers for ITEM citations; a citation to a section of a deleted design document is the other kind, and no gate reads it.",
+        "`cargo fmt` per member manifest is what keeps this gate inside the repository, and it means a workspace member that is NOT under its workspace's own directory would go unformatted. None of the five is shaped that way, and the gate says how many manifests it formatted rather than leaving that to be assumed.",
+        "`rustdoc::private_intra_doc_links` remains ungated in every workspace, on the same open question as the root: whether this documentation is for a downstream consumer or for an agent reading the internals."
+      ],
+      "population_census": [
+        {
+          "axis": "transition rules by `undirected`",
+          "left_label": "undirected",
+          "left": 10,
+          "right_label": "directed",
+          "right": 27
+        },
+        {
+          "axis": "map corpora by leg-kind declaration",
+          "left_label": "omitted",
+          "left": 6,
+          "right_label": "declared",
+          "right": 24
+        },
+        {
+          "axis": "cost-carrying corpora by direction-dependent pricing",
+          "left_label": "prices a way by direction",
+          "left": 4,
+          "right_label": "prices no way by direction",
+          "right": 6
+        },
+        {
+          "axis": "run trees by authoring mode",
+          "left_label": "hand script",
+          "left": 10,
+          "right_label": "file-only",
+          "right": 239
+        },
+        {
+          "axis": "map corpora by declared boundary crossing",
+          "left_label": "declares an exit",
+          "left": 6,
+          "right_label": "declares none",
+          "right": 24
+        },
+        {
+          "axis": "authored submissions by map and telling",
+          "left_label": "carries both",
+          "left": 10,
+          "right_label": "carries one",
+          "right": 24
+        }
+      ],
+      "publishable_decision_summary": "The same law, in the four workspaces no gate had ever asked. Three citations\nnamed nothing, nine targets could not be opened at all, and the reason the gate\nhad been reporting one of these workspaces as broken for three rounds turned out\nto be a file in another repository.\n\nRound 1078 built `tools/item-citations` and pointed it at the root workspace.\nThis repository has FOUR more workspaces that carry their own `[workspace]`\nprecisely so the root gates never compile them, and ZZ10 named the general shape\nof the hole: a check that takes only the root does not reach them. This one does\nnot take only the root — it is pointed at a manifest — so the whole of the\nquestion was whether it could answer for them.\n\nWHAT THE FIRST RUN FOUND, which is the argument for wiring it in:\n\n- `bench/crates/codegen-prototype/src/salsa_wire.rs` cited a `tracked` that is\n  no item: the prose is `Salsa #[tracked] function name`, and brackets in a doc\n  comment are markdown whether or not anyone meant them that way.\n- `bench/crates/xtdb-baseline/src/main.rs` cited an `i`, from\n  `child[i].parent = people[i-1]`.\n- `studio/src/main.rs` cited a `1`, from `the store path is argv[1]`.\n- And NINE of `bench`'s 29 targets could not be documented at all.\n\nTHE NINE WERE A SECOND CARGO OMISSION, NOT THE ONE ROUND 1078 REPAIRED. That\nround put back the package's own library, which cargo does not hand to a test\ntarget's documentation unit. A BENCH target receives neither its own library nor\nits DEV-DEPENDENCIES: `use direct_impl::…` and `use criterion::…` in one file,\nand cargo passes the sixteen ordinary dependencies and neither of those two. So\nthe model here is no longer \"is this kind wired to its library\" but \"what does\ncargo LEAVE OUT for this kind\", and the targets of a package are grouped by that\nset, one rustdoc invocation per group — because the repair travels in\n`RUSTDOCFLAGS`, which reaches every target of its invocation, and an extern\ncargo already passed, passed again, is `E0464` and documents nothing.\n\nMeasured on cargo 1.94.1, on one fixture that has all four kinds and a\ndev-dependency that is a path crate so the measurement is of cargo and not of\nthe network:\n\n    kind                own library    dev-dependencies\n    lib, bin, example   passed         passed\n    test                MISSING        passed\n    bench               MISSING        MISSING\n\nBenches and examples are on opposite sides of the first column and tests and\nbenches on opposite sides of the second. Nothing about \"what a target is\"\npredicts that, which is why it is a test that reads the command lines cargo\nbuilds rather than a sentence here.\n\nWHICH DEPENDENCIES ARE DEV-ONLY IS THE MANIFEST'S ANSWER, not the difference\nbetween two command lines: a crate named in `[dependencies]` AND\n`[dev-dependencies]` is already passed, and adding it again is the same E0464.\nWhere each one's metadata landed is cargo's artifact record. A dev-only\ndependency that resolves to no library, or to more than one, stops the gate:\na wrong `--extern` does not fail loudly, it silently resolves a citation against\nthe wrong crate.\n\nSTAR AND THE THING THAT HAD BEEN CALLED \"NOT MINE, UNTOUCHED\" FOR THREE ROUNDS\nWAS THIS GATE'S OWN DEFECT. `cargo fmt --all` walks PATH DEPENDENCIES, and\n`studio` depends on a sibling checkout, so the gate had been failing on\n`../pinion/examples/hello-node-editor/src/main.rs` — a file this repository does\nnot own, cannot commit, and had another session live in. Three rounds recorded\nthat as an external condition to work around. It is not: a gate for this\nrepository must not judge a file this repository does not own. Formatting now\nwalks the manifests INSIDE the workspace's own directory, which keeps the\nvirtual-manifest case working (a virtual manifest declares no package and is\nskipped, with a refusal if that leaves nothing formatted) and cannot leave the\ntree. `studio` is checked again for the first time in three rounds.\n\nOne more of the same shape, one level down: `check-side-workspaces.sh` resolves\nthe TREE from the working directory (Round 1069's rule, because this\nrepository's gate may be run over another tree) and it now also runs a PROGRAM,\nwhich must come from the script's own checkout instead. Those are two different\ntrees and the hook's own smoke test is what runs them apart.",
+      "publishable_changes_bullets": [
+        "`TargetKind::externs_cargo_omits` replaces `is_wired_to_its_library`: a set of what cargo leaves out (own library, dev-dependencies) rather than a flag, with one rustdoc invocation per distinct set, because the repair travels in `RUSTDOCFLAGS` and reaches every target of its invocation.",
+        "The census reads each package's dev-ONLY dependencies from `cargo metadata` — declared under `[dev-dependencies]` and not under `[dependencies]`, with the manifest's rename if it has one — and `dev_only_externs` resolves each to the library cargo says it built, stopping the gate when a name resolves to none or to more than one.",
+        "`scripts/check-side-workspaces.sh` runs the item-citation gate for every workspace it checks, from one definition with CI and the hook. The PROGRAM is resolved from the script's own checkout while the TREE stays the working directory (R1069's rule, which now has two subjects rather than one).",
+        "Formatting in that gate walks the manifests inside the workspace's own directory instead of `cargo fmt --all`, which follows path dependencies out of this repository; a workspace with no package manifest of its own is a refusal rather than a silent pass.",
+        "Three citations repaired: `#[tracked]` in `codegen-prototype`, `child[i]` in `xtdb-baseline`, `argv[1]` in `studio` — all three prose that brackets made into links."
+      ],
+      "publishable_verification_bullets": [
+        "`bench` went from 20/29 targets reached with 2 defects to 29/29 with 0. `studio` from 1 defect to 1/1 clean — its first green in three rounds. `tools/experiment-harness` 2/2, `tools/injection-harness` 2/2, `tools/item-citations` 3/3 (the gate over itself). The root workspace is unchanged at 131/131 with the generalised model.",
+        "`scripts/check-side-workspaces.sh` reports `checked 5, skipped 0` on this machine, where the sibling `pinion` checkout is present; before this round it stopped at `studio` on a file in that checkout.",
+        "30 tests in the gate's crate, up from 28. The new ones: cargo's own answer for all four kinds across BOTH columns, read from the command lines it builds on a fixture with a lib, a bin, a test, a bench, an example and a path dev-dependency; and a bench target that uses its own crate AND that dev-dependency, asserted reached when clean and still read when it carries a citation naming nothing.",
+        "Injection sweep through `tools/injection-harness`: control 30 passed / 0 failed / 4 targets, NINE injections each removing one property, all nine fired, `missed` 0, target drift 0. Two are new — a bench target left without its dev-dependencies, and a dependency in both tables treated as dev-only (the E0464 direction).",
+        "The hook smoke tests, 10/10, on the tree that changes the script they run: `pre_commit_gates_a_separate_in_repo_workspace_the_root_gates_miss` is what caught the program-versus-tree resolution the first time and it is what proves it now.",
+        "Full root workspace suite, `validate-workspace`, clippy `-D warnings` and `cargo fmt --check` on the committed tree."
+      ],
+      "publishable_carry_forward_bullets": [
+        "The dev-only extern set is the manifest's own answer, so a crate reachable only as a dependency OF a dependency is not in it. That is correct for what cargo omits today and it is not a rule anybody verified for a workspace shaped differently from these five.",
+        "`bench/crates/codegen-prototype` still carries prose citing `DESIGN §43`, a document Round 400 removed. This gate answers for ITEM citations; a citation to a section of a deleted design document is the other kind, and no gate reads it.",
+        "`cargo fmt` per member manifest is what keeps this gate inside the repository, and it means a workspace member that is NOT under its workspace's own directory would go unformatted. None of the five is shaped that way, and the gate says how many manifests it formatted rather than leaving that to be assumed.",
+        "`rustdoc::private_intra_doc_links` remains ungated in every workspace, on the same open question as the root: whether this documentation is for a downstream consumer or for an agent reading the internals."
+      ]
+    },
     "Round 252": {
       "decision_summary": "Parser CommonMark conformance — recognize indented fenced code blocks (§98) and require whitespace after ATX hash sequence (§62)",
       "changes_bullets": [

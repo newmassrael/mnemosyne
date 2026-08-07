@@ -7,7 +7,7 @@
 //!
 //! Native path: this binary links the GUI-free core crates
 //! (`mnemosyne-query` / `mnemosyne-atomic`) over the JSON `AtomicStore`
-//! in-process — no daemon, no network. The store path is argv[1] (default
+//! in-process — no daemon, no network. The store path is `argv[1]` (default
 //! `docs/.atomic/workspace.atomic.json`, i.e. run from the repo root).
 //!
 //! The view is the hello-virtual-list shape adapted to real data: the dataset

@@ -36,7 +36,7 @@ use crate::entity_indexer::GraphSpec;
 /// Cascade query spec — DESIGN §43 *input*'s `<query>` block direct carry.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CascadeQuerySpec {
-    /// Query name — Salsa #[tracked] function name.
+    /// Query name — Salsa `#[tracked]` function name.
     pub name: String,
     /// Read dependencies — entity / relation CF in read path.
     /// each element = `(entity_or_relation_name, field_name)`.

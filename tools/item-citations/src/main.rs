@@ -16,7 +16,7 @@ use std::process::{Command, Output};
 
 use item_citations::{
     census, coherence, harness_names, judge, read_stream, BrokenLink, Census, Coherence,
-    StreamReport, TargetId, TargetKind, Verdict, LINT,
+    DevOnlyDependency, OmittedExterns, StreamReport, TargetId, TargetKind, Verdict, LINT,
 };
 
 /// The flags every rustdoc invocation in this gate runs under.
@@ -111,7 +111,9 @@ fn run() -> Result<bool, String> {
             .filter(|target| &target.package == package)
             .cloned()
             .collect();
-        let (report, log) = document_package(&root, &manifest, package, &packages, &targets)?;
+        let dev_only = census.dev_only.get(package).cloned().unwrap_or_default();
+        let (report, log) =
+            document_package(&root, &manifest, package, &packages, &targets, &dev_only)?;
         merge(&mut stream, report);
         logs.insert(package.clone(), log);
     }
@@ -213,6 +215,84 @@ fn library_of(
     Ok(report.libraries.get(package).cloned())
 }
 
+/// The `--extern` flags for the dependencies a package declares only for
+/// development, which cargo omits from a BENCH target's documentation unit.
+///
+/// Every part comes from cargo. Which dependencies are dev-only is the
+/// manifest's answer, read from `cargo metadata`; where each one's metadata
+/// landed and what crate name rustdoc knows it by are the artifact records of a
+/// `cargo check` that builds the bench graph. A dev-only dependency that
+/// resolves to no artifact, or to more than one, stops the gate rather than
+/// being guessed at: a wrong `--extern` does not fail loudly, it silently
+/// resolves a citation against the wrong crate.
+fn dev_only_externs(
+    root: &Path,
+    manifest: &Path,
+    package: &str,
+    dev_only: &[DevOnlyDependency],
+) -> Result<String, String> {
+    let output = cargo(
+        root,
+        &[
+            "check",
+            "-q",
+            "--manifest-path",
+            &manifest.display().to_string(),
+            "-p",
+            package,
+            "--benches",
+            "--message-format=json",
+        ],
+        None,
+    )?;
+    if !output.status.success() {
+        return Err(format!(
+            "`{package}`'s benches do not check, so nothing can be said about the citations in \
+             them:\n{}",
+            String::from_utf8_lossy(&output.stderr)
+        ));
+    }
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let mut flags = String::new();
+    for dependency in dev_only {
+        let found = lib_artifacts_of(&stdout, &dependency.package);
+        let (crate_name, rmeta) = match found.as_slice() {
+            [one] => one.clone(),
+            [] => {
+                return Err(format!(
+                    "`{package}` declares `{}` only as a dev-dependency, and cargo's check of its \
+                     benches produced no library for it — this gate cannot document a bench \
+                     target without putting that crate back",
+                    dependency.package
+                ))
+            }
+            many => {
+                return Err(format!(
+                    "`{}` resolves to {} different libraries in `{package}`'s bench graph; this \
+                     gate will not choose one, because the wrong choice resolves citations \
+                     against the wrong crate in silence",
+                    dependency.package,
+                    many.len()
+                ))
+            }
+        };
+        let spelled = dependency.renamed_to.clone().unwrap_or(crate_name);
+        flags.push_str(&format!(" --extern {spelled}={rmeta}"));
+    }
+    Ok(flags)
+}
+
+/// Every distinct (crate name, `.rmeta`) a package produced a library artifact
+/// for in one message stream.
+fn lib_artifacts_of(stdout: &str, package: &str) -> Vec<(String, String)> {
+    let known: BTreeSet<String> = [package.to_string()].into_iter().collect();
+    let mut found: BTreeSet<(String, String)> = BTreeSet::new();
+    for (_, (crate_name, rmeta)) in read_stream(stdout, &known).libraries {
+        found.insert((crate_name, rmeta));
+    }
+    found.into_iter().collect()
+}
+
 /// Document every target of one package.
 ///
 /// TWO invocations, and which target goes in which is the whole of what the
@@ -247,6 +327,7 @@ fn document_package(
     package: &str,
     known: &BTreeSet<String>,
     targets: &[TargetId],
+    dev_only: &[DevOnlyDependency],
 ) -> Result<(StreamReport, String), String> {
     // ONE SELECTOR PER TARGET, never a kind-wide flag. `--tests` does not mean
     // "the test targets": cargo reads it as "every target with `test = true`",
@@ -254,34 +335,45 @@ fn document_package(
     // shape. Selecting a group that way puts binaries in the invocation that
     // carries the extern repair, where they are E0464 — silently, because they
     // had already been documented correctly by the other invocation.
-    let mut wired: Vec<String> = Vec::new();
-    let mut unwired: Vec<String> = Vec::new();
+    //
+    // ONE INVOCATION PER OMITTED-EXTERN SET, because the repair travels in
+    // `RUSTDOCFLAGS` and therefore reaches every target in its invocation. Two
+    // targets may share one only when cargo leaves out the same things for
+    // both.
+    let mut groups: BTreeMap<OmittedExterns, Vec<String>> = BTreeMap::new();
     for target in targets {
-        let group = if target.kind.is_wired_to_its_library() {
-            &mut wired
-        } else {
-            &mut unwired
-        };
-        group.extend(target.kind.selector(&target.name));
+        groups
+            .entry(target.kind.externs_cargo_omits())
+            .or_default()
+            .extend(target.kind.selector(&target.name));
     }
-    let kinds: BTreeSet<TargetKind> = targets.iter().map(|target| target.kind).collect();
 
-    let library = if kinds.contains(&TargetKind::Lib) {
+    let needs_library = groups.keys().any(|omitted| omitted.own_library);
+    let library = if needs_library {
         library_of(root, manifest, package, known)?
     } else {
         None
     };
-    let with_extern = match &library {
-        Some((crate_name, rmeta)) => format!("{RUSTDOC_FLAGS} --extern {crate_name}={rmeta}"),
-        None => RUSTDOC_FLAGS.to_string(),
+    let needs_dev = groups.keys().any(|omitted| omitted.dev_dependencies) && !dev_only.is_empty();
+    let dev_externs = if needs_dev {
+        dev_only_externs(root, manifest, package, dev_only)?
+    } else {
+        String::new()
     };
 
     let mut merged = StreamReport::default();
     let mut logs = String::new();
-    for (selectors, flags) in [(&wired, RUSTDOC_FLAGS), (&unwired, with_extern.as_str())] {
-        if selectors.is_empty() {
-            continue;
+    for (omitted, selectors) in &groups {
+        let mut flags = RUSTDOC_FLAGS.to_string();
+        // A package with no library has nothing to put back, and the targets in
+        // this group are documented without it.
+        if let (true, Some((crate_name, rmeta))) = (omitted.own_library, &library) {
+            flags.push_str(&format!(" --extern {crate_name}={rmeta}"));
         }
+        if omitted.dev_dependencies {
+            flags.push_str(&dev_externs);
+        }
+        let flags = flags.as_str();
         println!(
             "[item-citations] documenting {package} {}",
             selectors.join(" ")

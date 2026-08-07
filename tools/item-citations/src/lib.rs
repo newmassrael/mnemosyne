@@ -39,26 +39,46 @@ impl TargetKind {
         }
     }
 
-    /// Whether cargo already hands this kind of target its own package's
-    /// library on the rustdoc command line.
+    /// What cargo LEAVES OUT of the rustdoc command line for this kind of
+    /// target, and therefore what this gate has to put back.
     ///
-    /// It does for binaries and examples; it does NOT for integration tests or
-    /// benches. That split is not a guess — `tests/gate.rs` puts all four
-    /// kinds to cargo and reads the command lines it builds, because this is a
-    /// claim about a tool this repository does not own. The first version of
-    /// this function put benches and examples on the same side and cargo
-    /// disagreed with both halves of that at once.
+    /// None of this is reasoned; `tests/gate.rs` puts every kind to cargo on
+    /// one fixture and reads the command lines it builds, because this is a
+    /// claim about a tool this repository does not own. Measured on cargo
+    /// 1.94.1:
     ///
-    /// It matters in both directions. A kind cargo already wired that is given
-    /// a second `--extern` for the same library gets `E0464`, "multiple
-    /// candidates", and rustdoc documents nothing; a kind cargo did not wire
-    /// and that is left alone cannot resolve its own crate and rustdoc
-    /// documents nothing either. Two ways to reach the same silence.
+    /// | kind | own library | dev-dependencies |
+    /// |---|---|---|
+    /// | lib, bin, example | passed | passed / not applicable |
+    /// | test | MISSING | passed |
+    /// | bench | MISSING | MISSING |
+    ///
+    /// Benches and examples land on opposite sides of the first column and
+    /// tests and benches on opposite sides of the second, which no reasoning
+    /// about "what a target is" would have produced — the first version of this
+    /// function guessed and cargo disagreed with both halves at once.
+    ///
+    /// It matters in BOTH directions, which is why this is a set of what is
+    /// missing rather than a flag. An extern cargo already passed, passed a
+    /// second time, is `E0464` "multiple candidates" and rustdoc documents
+    /// nothing; an extern cargo never passed and nobody adds cannot be
+    /// resolved and rustdoc documents nothing either. Two ways to the same
+    /// silence, and only an exact set avoids both.
     #[must_use]
-    pub fn is_wired_to_its_library(self) -> bool {
+    pub fn externs_cargo_omits(self) -> OmittedExterns {
         match self {
-            TargetKind::Bin | TargetKind::Example => true,
-            TargetKind::Lib | TargetKind::Test | TargetKind::Bench => false,
+            TargetKind::Lib | TargetKind::Bin | TargetKind::Example => OmittedExterns {
+                own_library: false,
+                dev_dependencies: false,
+            },
+            TargetKind::Test => OmittedExterns {
+                own_library: true,
+                dev_dependencies: false,
+            },
+            TargetKind::Bench => OmittedExterns {
+                own_library: true,
+                dev_dependencies: true,
+            },
         }
     }
 
@@ -111,6 +131,15 @@ impl TargetKind {
     }
 }
 
+/// The externs cargo does not pass for a target kind, which are exactly the
+/// ones this gate adds back. Two targets belong in the same rustdoc invocation
+/// when — and only when — this is equal for them.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub struct OmittedExterns {
+    pub own_library: bool,
+    pub dev_dependencies: bool,
+}
+
 /// One documentable target, addressed the way cargo addresses it.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct TargetId {
@@ -142,11 +171,29 @@ pub struct SkippedTarget {
     pub reason: String,
 }
 
+/// A dependency a package declares ONLY under `[dev-dependencies]`.
+///
+/// These are what cargo omits from a bench target's documentation unit, and
+/// they are taken from the manifest rather than from the difference between two
+/// command lines: a package that names a crate in both `[dependencies]` and
+/// `[dev-dependencies]` already receives it, and adding it again is `E0464`.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub struct DevOnlyDependency {
+    /// The dependency's PACKAGE name, which is how cargo's artifact records
+    /// identify it.
+    pub package: String,
+    /// The name the manifest renamed it to, if it did. That name, not the
+    /// crate's own, is what the source `use`s and what `--extern` must spell.
+    pub renamed_to: Option<String>,
+}
+
 /// The full census of a workspace: what will be documented, and what will not.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Census {
     pub expected: Vec<TargetId>,
     pub skipped: Vec<SkippedTarget>,
+    /// Per package, the dependencies declared only for development.
+    pub dev_only: BTreeMap<String, Vec<DevOnlyDependency>>,
 }
 
 #[derive(Deserialize)]
@@ -160,6 +207,18 @@ struct MetadataPackage {
     id: String,
     name: String,
     targets: Vec<MetadataTarget>,
+    #[serde(default)]
+    dependencies: Vec<MetadataDependency>,
+}
+
+#[derive(Deserialize)]
+struct MetadataDependency {
+    name: String,
+    /// `null` for a normal dependency, `"dev"` / `"build"` otherwise.
+    #[serde(default)]
+    kind: Option<String>,
+    #[serde(default)]
+    rename: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -186,6 +245,28 @@ pub fn census(metadata_json: &str) -> Result<Census, String> {
 
     let mut expected = Vec::new();
     let mut skipped = Vec::new();
+    let mut dev_only: BTreeMap<String, Vec<DevOnlyDependency>> = BTreeMap::new();
+    for package in &doc.packages {
+        let normal: BTreeSet<&str> = package
+            .dependencies
+            .iter()
+            .filter(|dependency| dependency.kind.is_none())
+            .map(|dependency| dependency.name.as_str())
+            .collect();
+        let mut only: Vec<DevOnlyDependency> = package
+            .dependencies
+            .iter()
+            .filter(|dependency| dependency.kind.as_deref() == Some("dev"))
+            .filter(|dependency| !normal.contains(dependency.name.as_str()))
+            .map(|dependency| DevOnlyDependency {
+                package: dependency.name.clone(),
+                renamed_to: dependency.rename.clone(),
+            })
+            .collect();
+        only.sort();
+        only.dedup();
+        dev_only.insert(package.name.clone(), only);
+    }
     for package in &doc.packages {
         if !members.contains(package.id.as_str()) {
             return Err(format!(
@@ -214,7 +295,11 @@ pub fn census(metadata_json: &str) -> Result<Census, String> {
         }
     }
     expected.sort();
-    Ok(Census { expected, skipped })
+    Ok(Census {
+        expected,
+        skipped,
+        dev_only,
+    })
 }
 
 // ---------------------------------------------------------------------------
@@ -621,12 +706,50 @@ mod tests {
     }
 
     #[test]
-    fn only_the_kinds_cargo_already_wires_are_kept_from_the_extern_repair() {
-        assert!(TargetKind::Bin.is_wired_to_its_library());
-        assert!(TargetKind::Example.is_wired_to_its_library());
-        assert!(!TargetKind::Bench.is_wired_to_its_library());
-        assert!(!TargetKind::Test.is_wired_to_its_library());
-        assert!(!TargetKind::Lib.is_wired_to_its_library());
+    fn the_repair_puts_back_exactly_what_cargo_leaves_out_per_kind() {
+        let omitted = |kind: TargetKind| {
+            let o = kind.externs_cargo_omits();
+            (o.own_library, o.dev_dependencies)
+        };
+        // Cargo passes both, so adding either is E0464.
+        assert_eq!(omitted(TargetKind::Lib), (false, false));
+        assert_eq!(omitted(TargetKind::Bin), (false, false));
+        assert_eq!(omitted(TargetKind::Example), (false, false));
+        // A test target receives its dev-dependencies and not its own crate.
+        assert_eq!(omitted(TargetKind::Test), (true, false));
+        // A bench target receives neither.
+        assert_eq!(omitted(TargetKind::Bench), (true, true));
+    }
+
+    #[test]
+    fn a_dependency_declared_in_both_tables_is_not_dev_only() {
+        let json = r#"{"packages":[{"id":"path+file:///w/p#0.1.0","name":"p",
+            "targets":[{"kind":["lib"],"name":"p","test":false}],
+            "dependencies":[
+              {"name":"serde","kind":null,"rename":null},
+              {"name":"criterion","kind":"dev","rename":null},
+              {"name":"tempfile","kind":"dev","rename":null},
+              {"name":"tempfile","kind":null,"rename":null},
+              {"name":"cc","kind":"build","rename":null},
+              {"name":"other-crate","kind":"dev","rename":"aliased"}
+            ]}],
+            "workspace_members":["path+file:///w/p#0.1.0"]}"#;
+        let census = census(json).expect("census");
+        assert_eq!(
+            census.dev_only.get("p"),
+            Some(&vec![
+                DevOnlyDependency {
+                    package: "criterion".to_string(),
+                    renamed_to: None,
+                },
+                DevOnlyDependency {
+                    package: "other-crate".to_string(),
+                    renamed_to: Some("aliased".to_string()),
+                },
+            ]),
+            "a crate in BOTH tables is already passed, and a build dependency is \
+             not in a bench target's graph at all"
+        );
     }
 
     #[test]

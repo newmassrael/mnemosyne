@@ -380,7 +380,7 @@ fn fmt_ns(ns: u64) -> String {
 
 /// Populate the family-tree fixture (T2 invariant target) and the agent
 /// fixture (epistemic target) on top of the existing entity / fact baseline.
-/// Family tree: linear `people` count, child[i].parent = people[i-1] for i>0.
+/// Family tree: linear `people` count, `child[i].parent = people[i-1]` for i>0.
 /// Agents: each agent knows a deterministic 10-fact slice of the workload's
 /// fact ids — small enough that the doc fits in a single round-trip.
 async fn populate_t2(
