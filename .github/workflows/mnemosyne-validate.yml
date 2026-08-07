@@ -112,8 +112,8 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-cargo-side-
 
-      - name: cargo test in every separate in-repo workspace
-        run: ./scripts/test-side-workspaces.sh
+      - name: fmt, clippy and test in every separate in-repo workspace
+        run: ./scripts/check-side-workspaces.sh
 
   msrv:
     name: MSRV (workspace.package.rust-version)
