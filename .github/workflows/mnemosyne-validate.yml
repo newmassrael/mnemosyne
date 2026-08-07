@@ -71,18 +71,6 @@ jobs:
       - name: cargo test --workspace
         run: cargo test --workspace --locked
 
-      # R1077 — the sibling `validate-code-refs` never had. That gate rejects a
-      # `Round NNN` in code naming no ledger entry; nothing rejected a `[`foo`]`
-      # naming no ITEM, because `cargo doc` had never been run here. Its first
-      # run found 34, two of which advertised `mnemosyne-query`'s entry points
-      # under names the crate no longer has. Integration-test targets are NOT
-      # reached by this: `cargo doc` does not document them, and rustdoc cannot
-      # see a `#[test]` or `#[cfg(test)]` item at all.
-      - name: rustdoc intra-doc links (Round 1077)
-        env:
-          RUSTDOCFLAGS: -D rustdoc::broken_intra_doc_links
-        run: cargo doc --workspace --no-deps --document-private-items -q
-
       - name: mnemosyne-cli validate-workspace
         run: cargo run --release -q -p mnemosyne-cli -- validate-workspace
 
@@ -91,6 +79,60 @@ jobs:
         # unconfigured; when configured with severity_missing = "reject",
         # missing citations fail the build.
         run: cargo run --release -q -p mnemosyne-cli -- validate-code-refs
+
+  # R1077 pointed rustdoc at this workspace for the first time and gave the
+  # `[`foo`]` citation the gate `validate-code-refs` gives `Round NNN`. It ran
+  # `cargo doc --workspace`, and R1078 measured what that reaches: 25 of this
+  # workspace's 136 targets. Not one of the 106 test targets — R1076 had just
+  # shipped a citation to a `searchable` named `spelled` inside one — and not a
+  # binary whose name collides with its package's library, which is how
+  # `crates/mnemosyne-cli/src/main.rs` carried a `DisclosureReveal` that exists
+  # nowhere while the gate reported exit 0. Both were live on the commit that
+  # shipped the first gate.
+  #
+  # `tools/item-citations` documents every target cargo lists, asks a test
+  # target's own harness for the names rustdoc structurally cannot see
+  # (a `#[test]` item is expanded away outside test mode), and REPORTS WHAT IT
+  # REACHED — because a gate that never opened a target and a gate that found
+  # nothing wrong in it print the same thing.
+  #
+  # ITS OWN JOB rather than a step in `validate`, and that is measured: the
+  # `cargo doc` step it replaces cost 6m49s of that job's 21m40s against a
+  # 30-minute budget, and this does five times the documenting. Run beside
+  # `validate` it costs wall-clock nothing and carries its own budget; run
+  # inside it, it would be the thing that eventually turns the whole gate red by
+  # running out of minutes.
+  item-citations:
+    name: item citations name items
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+
+      # Same reason as `validate`: documenting `mnemosyne-server` runs its build
+      # script, which shells out to protoc.
+      - name: Install protoc (mnemosyne-server build script)
+        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
+
+      - name: Install rust toolchain (rust-toolchain.toml)
+        run: rustup show
+
+      - name: Cache cargo (item citations)
+        uses: actions/cache@v6
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+            tools/item-citations/target
+          key: ${{ runner.os }}-cargo-citations-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-citations-
+
+      - name: every item citation in the workspace names an item
+        run: >
+          cargo run -q --manifest-path tools/item-citations/Cargo.toml
+          --bin item-citations -- --workspace Cargo.toml
 
   # R1062 built an instrument nothing ran. This repository has four SEPARATE
   # workspaces (`bench/`, `studio/`, `tools/*`) which carry their own

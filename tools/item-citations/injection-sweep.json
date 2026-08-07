@@ -1,0 +1,117 @@
+{
+  "_": [
+    "THIS GATE AIMED AT ITS OWN SUITE — run it from the harness's directory:",
+    "    cd tools/injection-harness && cargo run -- ../item-citations/injection-sweep.json",
+    "Every property this gate holds is a property its suite claims to hold, and a",
+    "claim nobody has broken is a claim nobody has measured. Each injection here",
+    "removes ONE of them and names the tests that must go red. A green run says",
+    "the suite is not vacuous; a `did not reach` says a test passes for a reason",
+    "other than the one it is written for.",
+    "Keep it runnable: the `from` texts are exact, and a source edit that moves",
+    "one of them makes this sweep refuse out loud rather than pass quietly."
+  ],
+  "repo": "../item-citations",
+  "test_command": ["cargo", "test", "--no-fail-fast"],
+  "logs": "target/item-citations-sweep-logs",
+  "min_free_mb": 4000,
+  "injections": [
+    {
+      "name": "an-unreached-target-counts-as-clean",
+      "why": "the whole reason this gate exists is that `found nothing wrong` and `never opened it` print the same; with the unreached arm folded into the clean one, a target rustdoc could not document passes",
+      "edits": [
+        {
+          "file": "src/lib.rs",
+          "from": "        (true, true) => Verdict::Clean,",
+          "to": "        (true, true) | (false, true) => Verdict::Clean,"
+        }
+      ],
+      "expect_red": [
+        "tests::a_target_that_was_never_reached_is_not_a_clean_one",
+        "a_target_rustdoc_could_not_open_is_reported_rather_than_counted_as_clean"
+      ]
+    },
+    {
+      "name": "the-second-authority-is-never-asked",
+      "why": "rustdoc cannot see a #[test] item, so without the harness's list every citation naming a sibling test is convicted and the `a law citing the law next to it` idiom becomes a wall of defects",
+      "edits": [
+        {
+          "file": "src/lib.rs",
+          "from": "            let Some(names) = harness else {",
+          "to": "            let Some(names) = None::<&BTreeSet<String>> else {"
+        }
+      ],
+      "expect_red": [
+        "tests::the_harness_excuses_the_names_it_lists_and_no_others",
+        "the_harness_excuses_a_cited_test_and_convicts_a_cited_name_that_is_no_test"
+      ]
+    },
+    {
+      "name": "the-second-authority-excuses-everything",
+      "why": "the other direction, and the one that empties the gate: excusing a name the harness does NOT list turns a stale test citation into a pass",
+      "edits": [
+        {
+          "file": "src/lib.rs",
+          "from": "                .partition(|link| names.contains(&link.name));",
+          "to": "                .partition(|link| names.contains(&link.name) || true);"
+        }
+      ],
+      "expect_red": [
+        "tests::the_harness_excuses_the_names_it_lists_and_no_others",
+        "the_harness_excuses_a_cited_test_and_convicts_a_cited_name_that_is_no_test"
+      ]
+    },
+    {
+      "name": "a-test-target-is-not-handed-its-own-crate",
+      "why": "cargo passes a test target's documentation unit an extern for every dependency and none for the crate under test; without the repair, every test that uses its own crate is unreachable",
+      "edits": [
+        {
+          "file": "src/main.rs",
+          "from": "    let with_extern = match &library {",
+          "to": "    let with_extern = match &None::<(String, String)> {"
+        }
+      ],
+      "expect_red": ["a_test_target_that_uses_its_own_crate_is_reached_and_still_read"]
+    },
+    {
+      "name": "the-extern-is-handed-to-targets-cargo-already-wired",
+      "why": "a binary already receives its package's library, and a second extern for it is E0464 and documents nothing — the failure that came back as three unreached binaries",
+      "edits": [
+        {
+          "file": "src/lib.rs",
+          "from": "            TargetKind::Bin | TargetKind::Example => true,",
+          "to": "            TargetKind::Bin | TargetKind::Example => false,"
+        }
+      ],
+      "expect_red": ["tests::only_the_kinds_cargo_already_wires_are_kept_from_the_extern_repair"]
+    },
+    {
+      "name": "test-targets-leave-the-population",
+      "why": "this is the shape of the gate it replaces: `cargo doc` documents no test target at all, so a citation in one is not wrong, it is unasked",
+      "edits": [
+        {
+          "file": "src/lib.rs",
+          "from": "                \"test\" => Some(TargetKind::Test),",
+          "to": "                \"test\" => None,"
+        }
+      ],
+      "expect_red": [
+        "tests::the_census_documents_every_kind_but_the_build_script_and_names_that_one",
+        "a_clean_workspace_passes_and_says_how_many_targets_it_reached",
+        "a_citation_naming_nothing_in_a_test_target_is_reached_here_and_not_by_cargo_doc",
+        "a_test_target_that_uses_its_own_crate_is_reached_and_still_read"
+      ]
+    },
+    {
+      "name": "a-run-cargo-never-finished-is-treated-as-finished",
+      "why": "the ARM-B trap this round met in its own measurement: rustdoc refused a flag, reported zero citations and exited non-zero, and counting citations alone said clean",
+      "edits": [
+        {
+          "file": "src/lib.rs",
+          "from": "pub fn coherence(finished: Option<bool>, links_seen: usize, indecisive: usize) -> Coherence {",
+          "to": "pub fn coherence(finished: Option<bool>, links_seen: usize, indecisive: usize) -> Coherence { let finished = finished.or(Some(true));"
+        }
+      ],
+      "expect_red": ["tests::a_run_cargo_never_finished_is_never_coherent"]
+    }
+  ]
+}

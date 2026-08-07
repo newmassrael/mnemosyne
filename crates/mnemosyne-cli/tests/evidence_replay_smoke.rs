@@ -3333,7 +3333,7 @@ fn the_runbook_scan_can_see_every_checked_vocabulary() {
 /// actually did, by walking them. Rounds 970 and 972 built these one at a time
 /// as loose functions and each new consumer called whichever it wanted; Round
 /// 976 added a second consumer and the four walks had three callers between
-/// them. The walks are PRIVATE to this module and [`axes`] is the only thing
+/// them. The walks are PRIVATE to this module and [`census::axes`] is the only thing
 /// that leaves it, so "what does the tree say about this axis" has exactly one
 /// answer and the compiler is what enforces that — not a convention a later
 /// round has to notice.

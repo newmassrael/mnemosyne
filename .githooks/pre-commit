@@ -113,18 +113,44 @@ if printf '%s\n' "$staged" | grep -qE '\.rs$'; then
     cargo clippy --workspace --all-targets -- -D warnings
 fi
 
-# Gate 5a — intra-doc links, the sibling `validate-code-refs` never had. That
+# Gate 5a — item citations, the sibling `validate-code-refs` never had. That
 # gate rejects a `Round NNN` in code that names no ledger entry; nothing rejected
 # a `[`foo`]` that names no ITEM, and rustdoc — the resolver the toolchain
-# already ships — had never been pointed at this workspace. When R1077 first ran
-# it, 34 links in `crates/*/src` resolved to nothing, including two that
-# advertised `mnemosyne-query`'s entry points by names the crate no longer has.
-# `--document-private-items` because the internals here are documented for an
-# agent reading them, not only for a downstream consumer.
+# already ships — had never been pointed at this workspace. R1077 pointed it and
+# 34 links resolved to nothing, two of them advertising `mnemosyne-query`'s entry
+# points by names the crate no longer had.
+#
+# ONE DEFINITION, in `tools/item-citations`, which is what CI runs. R1077's form
+# here was `cargo doc --workspace`: it documents 25 of this workspace's 136
+# targets, so a citation inside any of the 106 test targets — or inside a binary
+# whose name collides with its package's library — passed it untouched. Both
+# holes had a live citation in them when R1078 measured.
+#
+# The gate is resolved from THIS HOOK's location and pointed at the WORKING
+# DIRECTORY, which are two different trees whenever this repository's hook runs
+# over another one — its own smoke test does exactly that, and it is what caught
+# the first version of this gate, which named the manifest relative to the cwd
+# and so did not exist wherever it was actually invoked. R1069 made the same
+# correction for the separate-workspace gate below; a gate that silently
+# vanishes when its program is not under the caller's cwd is a gate that stops
+# existing without saying so.
 if printf '%s\n' "$staged" | grep -qE '\.rs$'; then
-    echo "[mnemosyne pre-commit] .rs staged — cargo doc -D rustdoc::broken_intra_doc_links" >&2
-    RUSTDOCFLAGS="-D rustdoc::broken_intra_doc_links" \
-        cargo doc --workspace --no-deps --document-private-items -q
+    echo "[mnemosyne pre-commit] .rs staged — item citations name items" >&2
+    citations="$(cd "$(dirname "$0")/.." && pwd)/tools/item-citations/Cargo.toml"
+    if [[ ! -f "$citations" ]]; then
+        echo "[mnemosyne pre-commit] commit rejected — the item-citation gate is" \
+             "missing at $citations" >&2
+        exit 1
+    fi
+    if ! cargo run -q --manifest-path "$citations" --bin item-citations -- \
+        --workspace "$(pwd)/Cargo.toml"; then
+        {
+            echo "[mnemosyne pre-commit] commit rejected — a citation names no item"
+            echo "  run: cargo run -q --manifest-path tools/item-citations/Cargo.toml \\"
+            echo "         --bin item-citations -- --workspace Cargo.toml"
+        } >&2
+        exit 1
+    fi
 fi
 
 # Gate 5b — separate in-repo workspaces (own `[workspace]`; Gates 4/5 above,

@@ -1,0 +1,65 @@
+# item-citations — the gate for the `[`name`]` citations in this repository's
+# Rust code. `validate-code-refs` rejects a `Round NNN` in code that names no
+# ledger entry; Round 1077 built the sibling that rejects a `[`foo`]` naming no
+# ITEM, by pointing rustdoc — the resolver the toolchain already ships — at this
+# workspace for the first time. It found 34 unresolved links, two of which
+# advertised `mnemosyne-query`'s entry points under names the crate no longer
+# had.
+#
+# That gate was `cargo doc --workspace`, and this crate exists because a shell
+# line cannot say what `cargo doc` does not cover. Measured rather than assumed,
+# on the commit that shipped it:
+#
+#   - `cargo doc` documents 25 of this workspace's 136 targets. The 106 test
+#     targets are not documented at all, and Round 1076 had just shipped a
+#     citation to a `searchable` that was named `spelled` INSIDE one of them.
+#   - Of the 5 binaries it does count, the ones whose package also has a library
+#     are dropped on the floor: their documentation would collide with the
+#     library's, so cargo silently documents the library alone. That is how
+#     `crates/mnemosyne-cli/src/main.rs:3928` cited a `DisclosureReveal` that
+#     exists nowhere, through a gate reporting exit 0.
+#
+# A gate that answers "clean" for a target it never opened is the failure mode
+# this repository has now met four times, and it is indistinguishable from a
+# clean answer unless the gate is made to say WHAT IT REACHED. So this one asks
+# cargo for the target census, documents every target in it, and proves target
+# by target that rustdoc ran — from cargo's own `compiler-artifact` stream, not
+# from a count anybody typed here.
+#
+# A SEPARATE in-repo workspace (the same pattern as `bench/`, `studio/` and the
+# other `tools/*`): its own `[workspace]` so the root workspace's build gates
+# never compile it. It depends on nothing in the core crates — it runs cargo and
+# reads what cargo says.
+[workspace]
+
+[package]
+name = "item-citations"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.94"
+license = "MIT OR Apache-2.0"
+publish = false
+description = "Fail-loud gate: every item citation in a workspace's code names an item that exists"
+
+[[bin]]
+name = "item-citations"
+path = "src/main.rs"
+
+[lib]
+name = "item_citations"
+path = "src/lib.rs"
+
+[dependencies]
+# The census and the message stream are both cargo's JSON. Scraping either with
+# text patterns is a second parser that drifts from the first; cargo already
+# emits the structure, so it is deserialized into types.
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[dev-dependencies]
+# The end-to-end tests build throwaway cargo workspaces OUTSIDE this repository
+# and run the real gate over them. Outside, because a fixture carrying its own
+# `[workspace]` inside the tree would be discovered by
+# `scripts/check-side-workspaces.sh`, which would then try to lint a workspace
+# whose whole purpose is to be broken.
+tempfile = "3"

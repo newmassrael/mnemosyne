@@ -3925,7 +3925,7 @@ fn cmd_report_irony_intervals(args: &[String]) -> Result<()> {
     Ok(())
 }
 
-/// Round 752 — render a first-reveal [`DisclosureReveal`] trigger for the human
+/// Round 752 — render a first-reveal [`mnemosyne_core::DisclosureReveal`] trigger for the human
 /// surfaces as `first_at={coord,…} k=N`: the trigger SET plus the effective
 /// K-of-N (`threshold.unwrap_or(1)` = first-reached). The JSON already carries
 /// the structured shape; this is the readable echo (leading space to slot into
