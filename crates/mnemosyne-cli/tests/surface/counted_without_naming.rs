@@ -26,7 +26,7 @@
 //! THE POPULATIONS ARE BOTH DERIVED, AND NEITHER IS THIS FILE'S.
 //!
 //! - The reads: [`common::panel`], the shipped `--help` asked for every required
-//!   argument the corpus can supply — 30 reads over 68 questions (R1051). A
+//!   argument the corpus can supply — 32 reads over 79 questions (R1051). A
 //!   verdict here is about the READ, so the questions one verb answers are
 //!   unioned: a number is named if SOME question names it.
 //! - The edits: [`common::corruptions`], the store's own legs (R1033). This walk
@@ -470,10 +470,14 @@ const COUNTED_WITHOUT_NAMING: [&str; 0] = [];
 /// predicate retargets that make a quest claim malformed (the R676 role-conflict
 /// guard, which rejects the read rather than judging content).
 /// `validate-continuity` rejects far more, and that is what a gate is for.
-const READS_THAT_REJECT: [&str; 3] = [
+const READS_THAT_REJECT: [&str; 4] = [
     "report-authoring-frontier",
     "report-quest-graph",
     "validate-continuity",
+    // Round 1072 — the fidelity gate joined the panel and immediately joined
+    // this list: a road edit that hands a scene to a sibling world puts the
+    // frozen prose off-path, and the gate exits non-zero rather than reporting.
+    "validate-render-fidelity",
 ];
 
 /// How many hypotheses one search may visit, and how many it may keep. Both are
@@ -847,9 +851,9 @@ fn the_reads_that_count_what_they_do_not_name() {
             panel.len(),
             applied,
             refused,
-        ) == (30, 68, 256, 56),
+        ) == (32, 79, 256, 56),
         "INPUTS: both populations come from `common`, so this walk cannot narrow \
-         either to suit itself — 30 reads over 68 questions, and 312 authorable \
+         either to suit itself — 32 reads over 79 questions, and 312 authorable \
          corruptions of which the write path refuses 56. It was 41 until Round \
          1054 and 92 until Round 1061, and both jumps were the same discovery \
          twice: the derivation said it took the legs a thing ACTUALLY carries \
@@ -882,9 +886,9 @@ fn the_reads_that_count_what_they_do_not_name() {
          had to change",
     );
     check(
-        (still, prose_comparisons, accompanied.len()) == (15079, 608, 17),
-        "REACH, ASSERTED RATHER THAN IMPLIED: of the 17408 (question, edit) pairs \
-         this walk makes, 15079 move the read not at all and 608 are against the \
+        (still, prose_comparisons, accompanied.len()) == (17735, 614, 17),
+        "REACH, ASSERTED RATHER THAN IMPLIED: of the 20224 (question, edit) pairs \
+         this walk makes, 17735 move the read not at all and 614 are against the \
          one verb that takes `--json` and answers in prose, which holds no fields \
          to key on. The law can speak only about the rest, and it finds numbers \
          moving in 17 fields. An empty census is what a clean surface looks like \
@@ -931,7 +935,7 @@ fn the_reads_that_count_what_they_do_not_name() {
         "AND WHICH READS REFUSE, rather than answer: a read that stops answering \
          under an edit has reacted more loudly than any number could, and the \
          walk files it as a refusal instead of as an answer it could not \
-         compare. Three of the thirty do it; the rest hand back an answer about \
+         compare. Four of the thirty-two do it; the rest hand back an answer about \
          a store an author should not have shipped",
     );
     check(

@@ -894,10 +894,25 @@ pub fn flags_of(usage: &str) -> Vec<Flag> {
 /// rule since R1034 is that the walk supplies none. `main` is the exception the
 /// STORE makes rather than any walk: it is a world every store has whether or
 /// not it registers a branch.
-pub fn values_for(flag: &str, store: &AtomicStore) -> Vec<String> {
+/// `--against` / `--truth-frame` are why this takes the WORKSPACE and not only
+/// the store (Round 1072). A frame is store vocabulary like any other; a
+/// re-extracted store is a FILE, and a file is a fact about what the workspace
+/// holds rather than about what the corpus declares. The panel supplies one
+/// only where the projection has actually been written ([`project_worlds`]),
+/// so a corpus nobody projected still reports the read as unaskable — which is
+/// the truth about that corpus rather than a path to nothing.
+pub fn values_for(flag: &str, store: &AtomicStore, ws: &Path) -> Vec<String> {
     let ids = |set: Vec<String>| set;
     match flag {
         "--telling" => ids(declared_tellings(store)),
+        // The single-world projections this workspace holds, named RELATIVELY:
+        // the panel's argv is reused against every corrupted store, and an
+        // absolute path into a temp directory would put a different string in
+        // the read's label on every run.
+        "--against" => projected_worlds(store)
+            .into_iter()
+            .filter(|name| ws.join(name).exists())
+            .collect(),
         "--world" | "--branch" => {
             let mut out: Vec<String> = store.branches.keys().map(ToString::to_string).collect();
             out.push("main".to_string());
@@ -907,7 +922,11 @@ pub fn values_for(flag: &str, store: &AtomicStore) -> Vec<String> {
         }
         "--entity" => ids(store.entities.keys().map(ToString::to_string).collect()),
         "--at" | "--target" => ids(store.sections.keys().map(ToString::to_string).collect()),
-        "--frame" => {
+        // A TRUTH FRAME IS A FRAME. The leak gate names the frame it matches
+        // the re-extracted prose in; the vocabulary is the store's, exactly as
+        // for `--frame`, and until Round 1072 this arm was missing, so that
+        // read had no argv the panel could build even once its file existed.
+        "--frame" | "--truth-frame" => {
             let mut out: BTreeSet<String> = BTreeSet::new();
             for fact in store.narrative_facts.values() {
                 out.insert(fact.frame.to_string());
@@ -919,6 +938,77 @@ pub fn values_for(flag: &str, store: &AtomicStore) -> Vec<String> {
             vec!["warn".to_string(), "info".to_string()]
         }
         _ => Vec::new(),
+    }
+}
+
+/// What a world's projection is called inside a workspace — one name, derived
+/// from the world, so the writer and the reader cannot spell it differently.
+fn projection_name(world: &str) -> String {
+    format!("reextracted-{world}.json")
+}
+
+/// Every projection name this store's worlds would have.
+fn projected_worlds(store: &AtomicStore) -> Vec<String> {
+    let mut out: Vec<String> = store
+        .branches
+        .keys()
+        .map(ToString::to_string)
+        .chain(std::iter::once(mnemosyne_core::MAIN_BRANCH.to_string()))
+        .collect();
+    out.sort();
+    out.dedup();
+    out.into_iter()
+        .map(|world| projection_name(&world))
+        .collect()
+}
+
+/// ASK THE CORPUS TO PRODUCE THE FILE THE GATES REQUIRE (Round 1072).
+///
+/// `validate-render-fidelity` and `validate-disclosure-leak` take a
+/// re-extracted prose store and are SINGLE-WORLD by contract; Round 1070
+/// measured that handing them the authored store refuses at every world, and
+/// shipped `project-world` as the operation that produces what they expect.
+/// This runs it, once per world, into the workspace — after which
+/// [`values_for`] has a value for `--against` and the panel's own machinery
+/// supplies the rest.
+///
+/// It is the reason MM2 could not be closed by naming a path: the value is not
+/// something the corpus DECLARES, it is something the corpus must be ASKED to
+/// make. A world the projection refuses is left without a file rather than
+/// with an empty one, so the read stays unaskable and says why.
+pub fn project_worlds(ws: &Path, store: &AtomicStore) {
+    for world in store
+        .branches
+        .keys()
+        .map(ToString::to_string)
+        .chain(std::iter::once(mnemosyne_core::MAIN_BRANCH.to_string()))
+    {
+        let out = projection_name(&world);
+        let emitted = run(
+            ws,
+            &["project-world", "--world", &world, "--out", &out, "--json"],
+        );
+        assert!(
+            emitted.status.success(),
+            "the corpus registers `{world}` but cannot project it: {}",
+            String::from_utf8_lossy(&emitted.stderr)
+        );
+    }
+}
+
+/// Put a workspace's projections into ANOTHER workspace, unchanged.
+///
+/// The fixture the gates are asked against is the BASELINE's prose: a world's
+/// telling does not change because its road did, and that is exactly what
+/// leaves the gate something to disagree with. Copying rather than
+/// re-projecting is the whole point — a projection of the corrupted store
+/// would move with it and the gate would report clean forever.
+pub fn carry_projections(from: &Path, to: &Path, store: &AtomicStore) {
+    for name in projected_worlds(store) {
+        let src = from.join(&name);
+        if src.exists() {
+            fs::copy(&src, to.join(&name)).unwrap_or_else(|e| panic!("carry {name}: {e}"));
+        }
     }
 }
 
@@ -985,11 +1075,11 @@ pub fn road_lines(ws: &Path) -> BTreeMap<String, RoadLine> {
 /// first section is the honest fallback and the caller sees the same `Some` it
 /// always did.
 pub fn baseline_argv(flags: &[Flag], store: &AtomicStore, ws: &Path) -> Option<Vec<String>> {
-    let sections = values_for("--at", store);
+    let sections = values_for("--at", store, ws);
     let mut base: Vec<String> = Vec::new();
     let mut default_end: Option<Option<String>> = None;
     for flag in flags.iter().filter(|f| f.required) {
-        let values = values_for(&flag.name, store);
+        let values = values_for(&flag.name, store, ws);
         let canon_coordinate = flag.takes_value && !sections.is_empty() && values == sections;
         let chosen = if canon_coordinate {
             let end = default_end
@@ -1032,11 +1122,11 @@ pub fn baseline_argv(flags: &[Flag], store: &AtomicStore, ws: &Path) -> Option<V
 /// registry — derived from the shared [`values_for`] rather than spelled per
 /// verb, so `--world` and `--branch` are found the same way and a third
 /// road-taking flag joins the run it ships (the R1046 lesson).
-pub fn road_filters<'a>(flags: &'a [Flag], store: &AtomicStore) -> Vec<&'a Flag> {
-    let roads = values_for("--world", store);
+pub fn road_filters<'a>(flags: &'a [Flag], store: &AtomicStore, ws: &Path) -> Vec<&'a Flag> {
+    let roads = values_for("--world", store, ws);
     flags
         .iter()
-        .filter(|flag| flag.takes_value && values_for(&flag.name, store) == roads)
+        .filter(|flag| flag.takes_value && values_for(&flag.name, store, ws) == roads)
         .collect()
 }
 
@@ -1241,10 +1331,10 @@ pub fn required_argvs(flags: &[Flag], store: &AtomicStore, ws: &Path) -> Vec<Vec
     let Some(base) = baseline_argv(flags, store, ws) else {
         return Vec::new();
     };
-    let sections = values_for("--at", store);
+    let sections = values_for("--at", store, ws);
     let mut out = vec![base];
     for flag in flags.iter().filter(|f| f.required && f.takes_value) {
-        let values = values_for(&flag.name, store);
+        let values = values_for(&flag.name, store, ws);
         if values.len() < 2 || (!sections.is_empty() && values == sections) {
             continue;
         }
@@ -1287,6 +1377,12 @@ pub fn panel(ws: &Path, telling: &str) -> (Vec<Read>, Vec<(String, String)>) {
     let mut asked = Vec::new();
     let mut unaskable = Vec::new();
     let store = AtomicStore::load(&ws.join(SIDECAR)).ok();
+    // The two render-acceptance gates need a FILE, which is why they sat
+    // outside every population this panel derives until Round 1072. Ask the
+    // corpus to produce it before deriving arguments from it.
+    if let Some(store) = store.as_ref() {
+        project_worlds(ws, store);
+    }
     let usage_of = usage_lines(ws);
     for verb in advertised_reads(ws) {
         let mut candidates = vec![
@@ -1486,6 +1582,9 @@ fn build_sweep() -> Sweep {
         let seen = match workspace_try(&corruption.applied(&manifests), Some(&audit_dir())) {
             Err(refusal) => Err(refusal),
             Ok(mutated) => {
+                // The gates compare the BASELINE's prose against this store's
+                // roads, so the fixture rides in unchanged (Round 1072).
+                carry_projections(ws.path(), mutated.path(), &store);
                 let mut answers = BTreeMap::new();
                 let mut failed = Vec::new();
                 for read in &panel {

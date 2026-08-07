@@ -32,3 +32,5 @@ mod counted_without_naming;
 mod play_break_class_census;
 #[path = "surface/read_agreement_population.rs"]
 mod read_agreement_population;
+#[path = "surface/render_gates_reach.rs"]
+mod render_gates_reach;

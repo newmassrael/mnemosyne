@@ -243,7 +243,7 @@ fn a_road_filter_answers_what_the_unfiltered_read_already_said() {
         let Ok(atomic) = AtomicStore::load(&ws.join(SIDECAR)) else {
             continue;
         };
-        let roads = values_for("--world", &atomic);
+        let roads = values_for("--world", &atomic, ws);
         let road_set: BTreeSet<String> = roads.iter().cloned().collect();
         let usage_of = usage_lines(ws);
         for verb in advertised_reads(ws) {
@@ -256,7 +256,7 @@ fn a_road_filter_answers_what_the_unfiltered_read_already_said() {
             // road registry — derived from the shared resolver rather than
             // spelled here, so `--world` and `--branch` are found the same way
             // and a third road-taking flag joins this walk the run it ships.
-            let filters = road_filters(&flags, &atomic);
+            let filters = road_filters(&flags, &atomic, ws);
             if filters.is_empty() {
                 continue;
             }

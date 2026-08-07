@@ -326,8 +326,8 @@ struct Combo {
 /// The probe grid for one read on one corpus: every combination of the required
 /// arguments the corpus can supply, with any section-valued flag left to be
 /// filled in per road.
-fn grid(flags: &[Flag], filter: &Flag, store: &AtomicStore) -> Option<Vec<Combo>> {
-    let sections = values_for("--at", store);
+fn grid(flags: &[Flag], filter: &Flag, store: &AtomicStore, ws: &Path) -> Option<Vec<Combo>> {
+    let sections = values_for("--at", store, ws);
     let mut combos = vec![Combo {
         args: Vec::new(),
         coordinates: Vec::new(),
@@ -340,7 +340,7 @@ fn grid(flags: &[Flag], filter: &Flag, store: &AtomicStore) -> Option<Vec<Combo>
             }
             continue;
         }
-        let values = values_for(&flag.name, store);
+        let values = values_for(&flag.name, store, ws);
         if values.is_empty() {
             return None;
         }
@@ -442,7 +442,7 @@ fn a_coordinate_read_answers_at_the_lineage_of_the_road_it_is_given() {
             *unprobed.entry("the built store does not load").or_default() += 1;
             continue;
         };
-        let roads = values_for("--world", &atomic);
+        let roads = values_for("--world", &atomic, ws);
         let road_set: BTreeSet<String> = roads.iter().cloned().collect();
         let branch_of: BTreeMap<String, String> = atomic
             .narrative_facts
@@ -462,7 +462,7 @@ fn a_coordinate_read_answers_at_the_lineage_of_the_road_it_is_given() {
                 continue;
             };
             let flags = flags_of(usage);
-            for filter in road_filters(&flags, &atomic) {
+            for filter in road_filters(&flags, &atomic, ws) {
                 if filter.required {
                     continue;
                 }
@@ -487,7 +487,7 @@ fn a_coordinate_read_answers_at_the_lineage_of_the_road_it_is_given() {
                     *selectors.entry(verb.clone()).or_default() += 1;
                     continue;
                 }
-                let Some(combos) = grid(&flags, filter, &atomic) else {
+                let Some(combos) = grid(&flags, filter, &atomic, ws) else {
                     *unprobed
                         .entry("a required argument has no value this corpus declares")
                         .or_default() += 1;

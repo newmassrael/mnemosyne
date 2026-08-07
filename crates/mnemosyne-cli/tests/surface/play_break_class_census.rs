@@ -589,14 +589,21 @@ fn the_walk_says_what_stands_between_an_authoring_slip_and_the_runtime() {
     // here because the panel GUESSED a read's arguments in two shapes — nothing,
     // or a telling — and both needed a third. Their arguments were in the store
     // the whole time; the panel now reads each verb's own usage line and supplies
-    // every required flag from the corpus's vocabulary. What is left needs a
-    // FILE this corpus does not ship, which no vocabulary can supply.
+    // every required flag from the corpus's vocabulary. What was left needed a
+    // FILE, and no vocabulary can supply a file.
+    //
+    // ROUND 1072 EMPTIED IT. The file is not one the corpus DECLARES; it is the
+    // single-world projection of the corpus, which the corpus must be ASKED to
+    // produce (`project-world`, shipped in Round 1070 after Round 1068's fixture
+    // was run and refuted). An EMPTY list is asserted rather than deleted: an
+    // exclusion nobody can read is an exclusion nobody removes, and a walk that
+    // stopped reporting its exclusions reads exactly like one that has none.
     assert_eq!(
         unaskable
             .iter()
             .map(|(verb, _)| verb.as_str())
             .collect::<Vec<_>>(),
-        ["validate-disclosure-leak", "validate-render-fidelity"],
+        Vec::<&str>::new(),
         "the reads this corpus cannot ask without inventing an argument"
     );
     assert_eq!(
@@ -629,12 +636,22 @@ fn the_walk_says_what_stands_between_an_authoring_slip_and_the_runtime() {
     // whole shipped surface, `report-payoff-coverage` and
     // `report-payoff-substantiation` both reclassify them. NOTHING in the quest
     // layer is invisible to every consumer.
+    //
+    // ROUND 1072 MOVED THREE ROWS FROM REPORTED TO CAUGHT, and that is what
+    // asking a read the panel could not ask actually buys. The three are the
+    // fork attachment points — `sc-22/order.from` on each of `claim`, `parley`
+    // and `shatter` — and moving one leaves the world's frozen prose standing
+    // on a node that world no longer walks. Every other read still exits 0 and
+    // some of them reclassify, which is why these sat in REPORTED for twenty
+    // rounds; `validate-render-fidelity` REJECTS them, and it is the only
+    // shipped read that does. The census is the arc's remaining surface, so a
+    // read joining the panel is exactly the kind of thing that should move it.
     assert_eq!(
         census,
         BTreeMap::from([
             (Bucket::Refused, 56),
-            (Bucket::Caught, 81),
-            (Bucket::Reported, 159),
+            (Bucket::Caught, 84),
+            (Bucket::Reported, 156),
             (Bucket::Carried, 16),
         ]),
         "the play-break census over the corpus an author writes"
@@ -786,6 +803,13 @@ fn the_walk_says_what_stands_between_an_authoring_slip_and_the_runtime() {
             // answer this census exists to give, and it arrived without anyone
             // adding the field to a list here.
             "REFUTED report-quest-graph: `outstanding_givings` is always empty",
+            // Round 1072 — the fidelity gate joined the panel and immediately
+            // proposed one. `unplaced` fills when a road edit orphans a scene
+            // the frozen prose still stands at, and no authored corpus refutes
+            // it: a re-extracted coordinate that is a declaration node of NO
+            // world is a coordinate the extractor invented. Un-refuted, never
+            // confirmed — the corpora can only ever refute.
+            "CANDIDATE validate-render-fidelity: `unplaced` is always empty",
             // R1053 — the frontier's per-scene structural subset became a LIST
             // of fact ids rather than a count, and the walk picked the new field
             // up on its own and put a rule over it to the authored corpus, which

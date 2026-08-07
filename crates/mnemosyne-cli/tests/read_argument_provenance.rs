@@ -157,7 +157,7 @@ fn every_argument_that_decides_an_answer_is_named_in_the_answer() {
                 continue;
             };
             for flag in &flags {
-                let values = values_for(&flag.name, &atomic);
+                let values = values_for(&flag.name, &atomic, ws);
                 // The differential: a required flag varies its VALUE, an
                 // optional one varies between present and absent.
                 let (extra, supplied) = if flag.required {
@@ -363,8 +363,8 @@ fn the_prose_header_says_what_the_projection_was_asked() {
         // `main` is a world every store has, registered or not — the shared
         // resolution, so this walk and the gate above cannot come to disagree
         // about which roads a corpus can be asked for.
-        let roads = values_for("--world", &atomic);
-        let tellings = values_for("--telling", &atomic);
+        let roads = values_for("--world", &atomic, ws);
+        let tellings = values_for("--telling", &atomic, ws);
         let (Some(road), Some(telling)) = (roads.first(), tellings.first()) else {
             continue;
         };

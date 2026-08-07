@@ -95,7 +95,7 @@ fn panel_records(
 /// The pairs of shipped reads that both ANSWER ABOUT a subject — both of their
 /// records for it move under some authorable edit. Most-shared first; this is
 /// the backlog, and R1037's hand-picked pair sits inside it.
-const BACKLOG: [&str; 74] = [
+const BACKLOG: [&str; 87] = [
     "200 report-authoring-frontier <-> report-playable-world",
     "179 report-playable-world <-> report-playthrough-manuscript",
     "158 report-authoring-frontier <-> report-playthrough-manuscript",
@@ -151,6 +151,7 @@ const BACKLOG: [&str; 74] = [
     "17 report-frame-view <-> report-payoff-substantiation",
     "16 report-coverage <-> report-entity",
     "16 report-entity <-> report-spec-map",
+    "14 report-authoring-frontier <-> validate-render-fidelity",
     "14 report-coverage <-> report-edge-candidates",
     "14 report-edge-candidates <-> report-spec-map",
     "14 report-edge-candidates <-> report-typing-candidates",
@@ -158,18 +159,30 @@ const BACKLOG: [&str; 74] = [
     "14 report-entity <-> report-typing-candidates",
     "14 report-payoff-coverage <-> report-quest-graph",
     "14 report-playable-world <-> report-typing-candidates",
+    "14 report-playable-world <-> validate-render-fidelity",
     "14 report-playthrough-manuscript <-> report-typing-candidates",
+    "14 report-playthrough-manuscript <-> validate-render-fidelity",
     "13 report-authoring-frontier <-> report-typing-candidates",
     "13 report-frame-view <-> report-typing-candidates",
     "12 report-quest-graph <-> report-typing-candidates",
     "11 report-payoff-substantiation <-> report-quest-graph",
+    "8 report-quest-graph <-> validate-render-fidelity",
     "8 report-typing-candidates <-> validate-continuity",
+    "8 validate-continuity <-> validate-render-fidelity",
     "7 report-payoff-coverage <-> report-typing-candidates",
+    "7 report-payoff-coverage <-> validate-render-fidelity",
     "7 report-payoff-substantiation <-> report-typing-candidates",
     "6 report-coverage <-> report-typing-candidates",
+    "6 report-frame-view <-> validate-render-fidelity",
     "6 report-spec-map <-> report-typing-candidates",
+    "5 report-edge-candidates <-> validate-render-fidelity",
+    "5 report-entity <-> validate-render-fidelity",
+    "4 report-coverage <-> validate-render-fidelity",
     "4 report-payoff-coverage <-> validate-continuity",
     "4 report-payoff-substantiation <-> validate-continuity",
+    "4 report-payoff-substantiation <-> validate-render-fidelity",
+    "4 report-spec-map <-> validate-render-fidelity",
+    "3 report-typing-candidates <-> validate-render-fidelity",
 ];
 
 #[test]
@@ -420,8 +433,8 @@ fn the_population_of_subjects_more_than_one_shipped_read_answers_about() {
             mentioned.len(),
             baseline_records.len(),
             prose_only.len(),
-        ) == (221, 29, 66, 1),
-        "INPUTS: 221 registered ids, 29 reads holding records over 66 \
+        ) == (221, 31, 77, 1),
+        "INPUTS: 221 registered ids, 31 reads holding records over 77 \
          QUESTIONS, 1 answering `--json` in prose. Round 1051: the panel used \
          to guess a read's arguments in two shapes — nothing, or a telling — so \
          two reads were counted as an unaskable NUMBER and never entered any \
