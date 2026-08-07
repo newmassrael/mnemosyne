@@ -1377,6 +1377,163 @@ pub fn ask_panel(ws: &Path, panel: &[Read]) -> Panelled {
 }
 
 // ==========================================================================
+// THE SHARED SWEEP (Round 1071).
+//
+// Three laws ask the SAME panel about the SAME derived population, and each
+// built it for itself: measured at 220.53s + 191.08s + 139.94s in one suite
+// run — 9m12s, and the dominant term in a CI job sitting at 26m45s of a
+// 30-minute budget. The population is ONE substrate and the three laws are
+// its consumers, which is why they now live in one test binary: separate
+// binaries are separate processes and cannot share anything but the disk.
+//
+// IT HOLDS EACH TRIAL'S ANSWERS AS THE BYTES THE READ PRINTED, and hands a
+// consumer a parsed copy for the length of its own iteration. 312 parsed
+// panels do not fit in memory — one panel is most of a megabyte of JSON and
+// the parsed form is several times that — while the bytes do, and parsing
+// them three times is nothing beside the ~64,000 process launches this
+// removes. The held size is REPORTED rather than assumed, so a population
+// that outgrows the choice says so instead of being killed for it.
+// ==========================================================================
+
+/// What every advertised read printed about one corrupted store, unparsed.
+pub struct Seen {
+    /// Reads that exited non-zero — a gate rejecting this edit.
+    pub failed: Vec<String>,
+    answers: BTreeMap<String, Vec<u8>>,
+    sidecar: Vec<u8>,
+}
+
+impl Seen {
+    /// The panel's answers, parsed. Built per consumer per iteration and
+    /// dropped with it: this is the allocation the sweep refuses to keep.
+    pub fn parsed(&self) -> Panelled {
+        Panelled {
+            failed: self.failed.clone(),
+            answers: self
+                .answers
+                .iter()
+                .map(|(label, bytes)| (label.clone(), Answer::read(bytes.clone())))
+                .collect(),
+        }
+    }
+
+    /// The store the corrupted manifests imported to — the corruption's own
+    /// echo, before any read had an opinion about it.
+    pub fn sidecar(&self) -> serde_json::Value {
+        serde_json::from_slice(&self.sidecar).expect("the sidecar the import wrote is JSON")
+    }
+
+    fn bytes(&self) -> usize {
+        self.sidecar.len() + self.answers.values().map(Vec::len).sum::<usize>()
+    }
+}
+
+/// One corruption, applied and asked.
+pub struct Trial {
+    pub corruption: Corruption,
+    /// `Err` = the write path REFUSED the edit, with its reason. Not a failure
+    /// of the sweep: "the class cannot be authored" is a verdict about the
+    /// corruption, and each law counts it in its own terms.
+    pub seen: Result<Seen, String>,
+}
+
+/// The corpus, the panel, and every trial — built once per test binary.
+pub struct Sweep {
+    pub manifests: Manifests,
+    pub store: AtomicStore,
+    pub telling: String,
+    pub panel: Vec<Read>,
+    /// The advertised reads this corpus cannot ask, with their refusals.
+    pub unaskable: Vec<(String, String)>,
+    pub baseline: Panelled,
+    pub baseline_sidecar: serde_json::Value,
+    pub trials: Vec<Trial>,
+    /// What the answer bytes cost, printed by every consumer that reports.
+    pub held_bytes: usize,
+}
+
+/// THE sweep, memoized for the process. Three `#[test]`s in one binary share
+/// it; the first to ask pays for it and the others read it.
+pub fn sweep() -> &'static Sweep {
+    static SWEEP: std::sync::OnceLock<Sweep> = std::sync::OnceLock::new();
+    SWEEP.get_or_init(build_sweep)
+}
+
+fn build_sweep() -> Sweep {
+    let manifests = dnd_quest_manifests();
+    let ws = workspace_try(&manifests, Some(&audit_dir())).expect("the authored corpus must load");
+    let store = AtomicStore::load(&ws.path().join(SIDECAR)).expect("the imported store loads");
+    let telling = telling_of(&store);
+    let (panel, unaskable) = panel(ws.path(), &telling);
+    let baseline = ask_panel(ws.path(), &panel);
+    assert!(
+        baseline.failed.is_empty(),
+        "the panel is exactly the reads that answered at baseline: {:?}",
+        baseline.failed
+    );
+    let baseline_sidecar = read_sidecar(ws.path());
+
+    let population = corruptions(&store, &manifests);
+    assert!(
+        population.len() >= 30,
+        "the derived population collapsed to {} — a walk that finds almost \
+         nothing reads exactly like a store with almost no surface",
+        population.len()
+    );
+    let mut trials = Vec::with_capacity(population.len());
+    let mut held_bytes = 0usize;
+    for corruption in population {
+        let seen = match workspace_try(&corruption.applied(&manifests), Some(&audit_dir())) {
+            Err(refusal) => Err(refusal),
+            Ok(mutated) => {
+                let mut answers = BTreeMap::new();
+                let mut failed = Vec::new();
+                for read in &panel {
+                    let out = run(mutated.path(), &read.argv());
+                    if out.status.success() {
+                        answers.insert(read.label(), out.stdout);
+                    } else {
+                        failed.push(read.label());
+                    }
+                }
+                let seen = Seen {
+                    failed,
+                    answers,
+                    sidecar: fs::read(mutated.path().join(SIDECAR))
+                        .expect("the import wrote a sidecar"),
+                };
+                held_bytes += seen.bytes();
+                Ok(seen)
+            }
+        };
+        trials.push(Trial { corruption, seen });
+    }
+
+    // THE COST OF THE CHOICE, PRINTED. Holding the answers is what lets three
+    // laws share one sweep, and a population that outgrows the machine should
+    // say so here rather than be discovered as an OOM.
+    println!(
+        "sweep: {} trial(s), {} refused by the write path, {:.1} MiB of answer \
+         bytes held for the process",
+        trials.len(),
+        trials.iter().filter(|t| t.seen.is_err()).count(),
+        held_bytes as f64 / (1024.0 * 1024.0)
+    );
+
+    Sweep {
+        manifests,
+        store,
+        telling,
+        panel,
+        unaskable,
+        baseline,
+        baseline_sidecar,
+        trials,
+        held_bytes,
+    }
+}
+
+// ==========================================================================
 // THE DERIVED CORRUPTION POPULATION (Round 1033, shared here in Round 1040).
 //
 // Nothing here names a defect class: the population is the quest layer's facts
@@ -1404,7 +1561,7 @@ pub struct Corruption {
     /// edits; without this they share one label, and a walk that keys findings
     /// by label silently merges them (the collision axis R1055 measured).
     pub site: String,
-    apply: Box<dyn Fn(&mut Manifests)>,
+    apply: Box<dyn Fn(&mut Manifests) + Send + Sync>,
 }
 
 /// Every leg this derivation knows how to fill — the closed vocabulary the
@@ -1450,8 +1607,8 @@ impl Corruption {
 /// An edit to the ONE fact entry with this id.
 fn on_fact(
     id: &str,
-    edit: impl Fn(&mut serde_json::Value) + 'static,
-) -> Box<dyn Fn(&mut Manifests)> {
+    edit: impl Fn(&mut serde_json::Value) + Send + Sync + 'static,
+) -> Box<dyn Fn(&mut Manifests) + Send + Sync> {
     let id = id.to_string();
     Box::new(move |m| {
         let mut hits = 0usize;
@@ -1468,8 +1625,8 @@ fn on_fact(
 /// An edit to the ONE scene-registry entry with this id.
 fn on_section(
     id: &str,
-    edit: impl Fn(&mut serde_json::Value) + 'static,
-) -> Box<dyn Fn(&mut Manifests)> {
+    edit: impl Fn(&mut serde_json::Value) + Send + Sync + 'static,
+) -> Box<dyn Fn(&mut Manifests) + Send + Sync> {
     let id = id.to_string();
     Box::new(move |m| {
         let mut hits = 0usize;
@@ -1655,8 +1812,8 @@ pub fn composes(order: &serde_json::Value, store: &AtomicStore) -> bool {
 fn on_edge(
     road: Option<&str>,
     at: usize,
-    edit: impl Fn(&mut Vec<serde_json::Value>, usize) + 'static,
-) -> Box<dyn Fn(&mut Manifests)> {
+    edit: impl Fn(&mut Vec<serde_json::Value>, usize) + Send + Sync + 'static,
+) -> Box<dyn Fn(&mut Manifests) + Send + Sync> {
     let road = road.map(str::to_string);
     Box::new(move |m| {
         let edges = road_mut(&mut m.order, road.as_deref());

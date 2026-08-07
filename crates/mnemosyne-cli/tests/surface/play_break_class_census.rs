@@ -70,11 +70,8 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use mnemosyne_atomic::AtomicStore;
 
-mod common;
-use common::{
-    ask_panel, audit_dir, authored_corpora, corpus_workspace_try, corruptions, dnd_quest_manifests,
-    panel, read_json, read_sidecar, repo_root, run, telling_of, workspace_try, Answer, SIDECAR,
-};
+use crate::common;
+use common::{authored_corpora, corpus_workspace_try, read_json, repo_root, run, Answer, SIDECAR};
 
 /// Where a read RECLASSIFIED something: the JSON paths whose list holds a
 /// different NUMBER of entries than it did at baseline.
@@ -269,29 +266,15 @@ impl Bucket {
 
 #[test]
 fn the_walk_says_what_stands_between_an_authoring_slip_and_the_runtime() {
-    let manifests = dnd_quest_manifests();
-    let baseline_ws =
-        workspace_try(&manifests, Some(&audit_dir())).expect("the authored corpus must load");
-    let baseline_store =
-        AtomicStore::load(&baseline_ws.path().join(SIDECAR)).expect("the imported store loads");
-    let baseline_sidecar = read_sidecar(baseline_ws.path());
-    let telling = telling_of(&baseline_store);
-
-    let (panel, unaskable) = panel(baseline_ws.path(), &telling);
-    let baseline = ask_panel(baseline_ws.path(), &panel);
-    assert!(
-        baseline.failed.is_empty(),
-        "the panel is exactly the reads that answered at baseline: {:?}",
-        baseline.failed
-    );
-
-    let population = corruptions(&baseline_store, &manifests);
-    assert!(
-        population.len() >= 30,
-        "the derived population collapsed to {} — a walk that finds almost \
-         nothing reads exactly like a store with almost no surface",
-        population.len()
-    );
+    // ONE SWEEP, THREE LAWS (Round 1071): the corpus, the panel and every
+    // trial are built once for this binary and read here.
+    let sweep = common::sweep();
+    let baseline_sidecar = &sweep.baseline_sidecar;
+    let telling = sweep.telling.as_str();
+    let panel = &sweep.panel;
+    let unaskable = &sweep.unaskable;
+    let baseline = &sweep.baseline;
+    let population = &sweep.trials;
 
     // The authored corpus's own lists, which is what a proposed rule is refuted
     // against. Round 1032 learned this the hard way: a stricter reading felt
@@ -367,7 +350,7 @@ fn the_walk_says_what_stands_between_an_authoring_slip_and_the_runtime() {
             _ => None,
         };
         let mut answered = 0usize;
-        for read in &panel {
+        for read in panel {
             let mut argv = vec![read.verb.as_str()];
             if !read.args.is_empty() {
                 // The panel's arguments come from the dnd-quest store's
@@ -376,7 +359,7 @@ fn the_walk_says_what_stands_between_an_authoring_slip_and_the_runtime() {
                 // asked as it stands, and the corpus's own fail-loud decides
                 // whether it holds those ids — a refusal is skipped and shows
                 // up in the `answered` tally rather than being pre-judged here.
-                if read.args == [String::from("--telling"), telling.clone()] {
+                if read.args == [String::from("--telling"), telling.to_string()] {
                     let Some(mine) = its_telling.as_deref() else {
                         continue;
                     };
@@ -409,12 +392,15 @@ fn the_walk_says_what_stands_between_an_authoring_slip_and_the_runtime() {
     let mut census: BTreeMap<Bucket, usize> = BTreeMap::new();
     let mut rows: BTreeMap<Bucket, Vec<String>> = BTreeMap::new();
     let mut proposals: BTreeMap<Proposed, Evidence> = BTreeMap::new();
-    for corruption in &population {
+    for trial in population {
+        let corruption = &trial.corruption;
         let mut note = String::new();
-        let bucket = match workspace_try(&corruption.applied(&manifests), Some(&audit_dir())) {
+        let bucket = match &trial.seen {
             Err(_) => Bucket::Refused,
-            Ok(ws) => {
-                let seen = ask_panel(ws.path(), &panel);
+            Ok(raw) => {
+                // Parsed for this iteration and dropped with it — the sweep
+                // holds the bytes, never 312 parsed panels.
+                let seen = raw.parsed();
                 if !seen.failed.is_empty() {
                     note = format!(" <- {}", seen.failed.join(" "));
                     Bucket::Caught
@@ -422,12 +408,7 @@ fn the_walk_says_what_stands_between_an_authoring_slip_and_the_runtime() {
                     // What the manifest edit did to the STORE, before any read
                     // had an opinion: the corruption's own echo.
                     let mut store_paths = Vec::new();
-                    resized(
-                        &baseline_sidecar,
-                        &read_sidecar(ws.path()),
-                        "store",
-                        &mut store_paths,
-                    );
+                    resized(baseline_sidecar, &raw.sidecar(), "store", &mut store_paths);
                     let echo: BTreeSet<(&str, usize, usize)> =
                         store_paths.iter().map(Resize::signature).collect();
                     let mut growth: Vec<Resize> = Vec::new();
@@ -436,7 +417,7 @@ fn the_walk_says_what_stands_between_an_authoring_slip_and_the_runtime() {
                     // the questions it was asked answers differently, and it is
                     // named once either way.
                     let mut differed: BTreeSet<&str> = BTreeSet::new();
-                    for read in &panel {
+                    for read in panel {
                         let label = read.label();
                         match (&baseline.answers[&label], &seen.answers[&label]) {
                             (Answer::Json(before), Answer::Json(after)) => {
@@ -516,10 +497,10 @@ fn the_walk_says_what_stands_between_an_authoring_slip_and_the_runtime() {
         panel.len(),
         unaskable.len()
     );
-    for read in &panel {
+    for read in panel {
         println!("    ask  {}", read.argv().join(" "));
     }
-    for (verb, reason) in &unaskable {
+    for (verb, reason) in unaskable {
         println!("    skip {verb} :: {reason}");
     }
     // Keyed by read-and-question since Round 1051, and this verdict is about

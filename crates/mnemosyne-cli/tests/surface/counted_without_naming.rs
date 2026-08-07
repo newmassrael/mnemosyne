@@ -104,11 +104,8 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use mnemosyne_atomic::AtomicStore;
 
-mod common;
-use common::{
-    ask_panel, audit_dir, corruptions, dnd_quest_manifests, panel, registered_ids, telling_of,
-    workspace_try, wrote_about, Answer, Wrote, SIDECAR,
-};
+use crate::common;
+use common::{registered_ids, wrote_about, Answer, Wrote, SIDECAR};
 
 /// Every number in one answer, keyed by the FIELD it sits at.
 ///
@@ -538,18 +535,13 @@ const NOT_A_COUNT_OF_NAMES: [&str; 6] = [
 
 #[test]
 fn the_reads_that_count_what_they_do_not_name() {
-    let manifests = dnd_quest_manifests();
-    let ws = workspace_try(&manifests, Some(&audit_dir())).expect("the authored corpus must load");
-    let store = AtomicStore::load(&ws.path().join(SIDECAR)).expect("the imported store loads");
-    let ids = registered_ids(&store);
-    let telling = telling_of(&store);
-    let (panel, unaskable) = panel(ws.path(), &telling);
-    let baseline = ask_panel(ws.path(), &panel);
-    assert!(
-        baseline.failed.is_empty(),
-        "the panel is exactly the reads that answered at baseline: {:?}",
-        baseline.failed
-    );
+    // ONE SWEEP, THREE LAWS (Round 1071): the corpus, the panel and every
+    // trial are built once for this binary and read here.
+    let sweep = common::sweep();
+    let ids = registered_ids(&sweep.store);
+    let panel = &sweep.panel;
+    let unaskable = &sweep.unaskable;
+    let baseline = &sweep.baseline;
     let verb_of: BTreeMap<String, String> = panel
         .iter()
         .map(|read| (read.label(), read.verb.clone()))
@@ -607,7 +599,6 @@ fn the_reads_that_count_what_they_do_not_name() {
         }
     }
 
-    let population = corruptions(&store, &manifests);
     let mut applied = 0usize;
     let mut refused = 0usize;
     // The edits no read on the panel answered differently for. A member of the
@@ -620,16 +611,17 @@ fn the_reads_that_count_what_they_do_not_name() {
     // HERE, and a walk that let it fall in with the answers it could not compare
     // would read a store it could not ask as a store with nothing to say.
     let mut read_failures: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
-    for corruption in &population {
-        let Ok(mutated_ws) = workspace_try(&corruption.applied(&manifests), Some(&audit_dir()))
-        else {
+    for trial in &sweep.trials {
+        let Ok(seen) = &trial.seen else {
             // The write path refuses it: not a move an author could make.
             refused += 1;
             continue;
         };
         applied += 1;
-        let edit = corruption.label();
-        let seen = ask_panel(mutated_ws.path(), &panel);
+        let edit = trial.corruption.label();
+        // Parsed for this iteration and dropped with it — the sweep holds the
+        // bytes, never 312 parsed panels.
+        let seen = seen.parsed();
         // A read that answered at baseline and refuses this store MOVED — from
         // an answer to a refusal. Counting it as an answer this walk could not
         // compare would file the loudest reaction on the panel as silence.
@@ -737,7 +729,7 @@ fn the_reads_that_count_what_they_do_not_name() {
         applied,
         refused,
     );
-    for (verb, reason) in &unaskable {
+    for (verb, reason) in unaskable {
         println!("  UNASKABLE {verb}: {reason}");
     }
     // THE SWEEP ASSERTS ITS OWN REACH (the R1054 rule: an empty answer is the

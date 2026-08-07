@@ -72,13 +72,8 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use mnemosyne_atomic::AtomicStore;
-
-mod common;
-use common::{
-    ask_panel, audit_dir, corruptions, dnd_quest_manifests, panel, permutations, registered_ids,
-    telling_of, workspace_try, wrote_about, Answer, Wrote, SIDECAR,
-};
+use crate::common;
+use common::{permutations, registered_ids, wrote_about, Answer, Wrote};
 
 /// Every read's records for one store. The derivation itself is
 /// [`common::wrote_about`] — since Round 1056 the census of lossy numbers needs
@@ -179,18 +174,13 @@ const BACKLOG: [&str; 74] = [
 
 #[test]
 fn the_population_of_subjects_more_than_one_shipped_read_answers_about() {
-    let manifests = dnd_quest_manifests();
-    let ws = workspace_try(&manifests, Some(&audit_dir())).expect("the authored corpus must load");
-    let store = AtomicStore::load(&ws.path().join(SIDECAR)).expect("the imported store loads");
-    let subjects = registered_ids(&store);
-    let telling = telling_of(&store);
-    let (panel, unaskable) = panel(ws.path(), &telling);
-    let baseline = ask_panel(ws.path(), &panel);
-    assert!(
-        baseline.failed.is_empty(),
-        "the panel is exactly the reads that answered at baseline: {:?}",
-        baseline.failed
-    );
+    // ONE SWEEP, THREE LAWS (Round 1071): the corpus, the panel and every
+    // trial are built once for this binary and read here.
+    let sweep = common::sweep();
+    let subjects = registered_ids(&sweep.store);
+    let panel = &sweep.panel;
+    let unaskable = &sweep.unaskable;
+    let baseline = &sweep.baseline;
     let baseline_records = panel_records(&baseline.answers, &subjects);
     // The panel is keyed by read-and-question since Round 1051 — one verb can
     // be asked several. Every verdict below is about the READ, so the label
@@ -238,7 +228,6 @@ fn the_population_of_subjects_more_than_one_shipped_read_answers_about() {
     let mut responsive: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
     // Lists that came back holding the same ids in a different order.
     let mut permuted: BTreeSet<String> = BTreeSet::new();
-    let population = corruptions(&store, &manifests);
     let mut applied = 0usize;
     let mut refused = 0usize;
     // Reads that stopped answering under some edit. `order.json` is read at read
@@ -246,16 +235,18 @@ fn the_population_of_subjects_more_than_one_shipped_read_answers_about() {
     // refused HERE and nowhere else; a walk that did not look would record the
     // subjects that read went quiet about as subjects it does not answer about.
     let mut read_failures: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
-    for corruption in &population {
-        let Ok(mutated_ws) = workspace_try(&corruption.applied(&manifests), Some(&audit_dir()))
-        else {
+    for trial in &sweep.trials {
+        let corruption = &trial.corruption;
+        let Ok(seen) = &trial.seen else {
             // The write path refuses it: not a move an author could make, so it
             // is evidence about nothing here.
             refused += 1;
             continue;
         };
         applied += 1;
-        let seen = ask_panel(mutated_ws.path(), &panel);
+        // Parsed for this iteration and dropped with it — the sweep holds the
+        // bytes, never 312 parsed panels.
+        let seen = seen.parsed();
         for label in &seen.failed {
             read_failures
                 .entry(verb_of[label].clone())
@@ -337,7 +328,7 @@ fn the_population_of_subjects_more_than_one_shipped_read_answers_about() {
     // four reads behind it were outside every population this walk derives —
     // including the backlog that says which pair to compare next. An exclusion
     // nobody can read is an exclusion nobody removes (the R1029 rule).
-    for (verb, reason) in &unaskable {
+    for (verb, reason) in unaskable {
         println!("  UNASKABLE {verb}: {reason}");
     }
     // The addressing's own two failure modes, printed every run: a row no
