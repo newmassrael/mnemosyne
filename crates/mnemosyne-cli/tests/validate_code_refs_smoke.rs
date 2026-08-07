@@ -523,3 +523,57 @@ fn case_xiv_an_unbuildable_symbol_resolver_entry_is_refused() {
         String::from_utf8_lossy(&out.stderr)
     );
 }
+
+/// Round 1080 — a tree named in `paths` is read whatever language it holds, and
+/// a tree not named there is not read at all.
+///
+/// This is the capability the gate's reach rests on. `.githooks/` was in `paths`
+/// and the two trees those hooks CALL were not: `scripts/`, which holds the gate
+/// scripts they delegate to, and `.github/`, which holds the CI running the same
+/// checks. Twenty distinct rounds were cited across the two and nothing read
+/// them; one of the twenty resolved to nothing, and a second — two digits, which
+/// a hand-written pattern had missed — was found by the gate itself the moment
+/// the trees were enrolled.
+///
+/// Both directions, because a path entry that changes no answer is config that
+/// looks like it works (the Round 860 shape).
+#[test]
+fn case_xv_a_non_rust_tree_is_read_when_paths_names_it_and_not_when_it_does_not() {
+    let tmp = TempDir::new().unwrap();
+    write_workspace(tmp.path(), true);
+    fs::create_dir_all(tmp.path().join("ci")).unwrap();
+    fs::write(
+        tmp.path().join("ci/pipeline.yml"),
+        "# Round 4242 — a round this store does not have.\nname: ci\n",
+    )
+    .unwrap();
+
+    // NOT enrolled: `paths = ["src/"]` from the fixture. The citation is there
+    // and nothing reads it.
+    let out = run_cli(tmp.path(), &["validate-code-refs"]);
+    assert!(
+        out.status.success(),
+        "an unenrolled tree must not be read; stdout: {}",
+        String::from_utf8_lossy(&out.stdout)
+    );
+
+    // Enrolled: the same bytes, now inside the gate's reach.
+    fs::write(
+        tmp.path().join("mnemosyne.toml"),
+        "[workspace]\n[schema]\nentry_id_prefix = \"Round \"\n\
+         [plugins.set_equality_validator]\npaths = [\"src/\", \"ci/\"]\n\
+         scan_exclusions = [\"docs/\"]\n",
+    )
+    .unwrap();
+    let out = run_cli(tmp.path(), &["validate-code-refs"]);
+    assert!(
+        !out.status.success(),
+        "a citation naming no entry must be rejected once its tree is enrolled; stdout: {}",
+        String::from_utf8_lossy(&out.stdout)
+    );
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        stdout.contains("Round 4242") && stdout.contains("ci/pipeline.yml"),
+        "the rejection must name the citation and the file it is in: {stdout}"
+    );
+}

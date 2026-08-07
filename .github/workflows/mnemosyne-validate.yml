@@ -1,9 +1,11 @@
 name: mnemosyne-validate
 
-# Phase 0 self-application (Round 79 OPTION C carry). Mnemosyne dogfoods its
+# Phase 0 self-application — the option-C carry from the legacy rounds, which
+# are off-main by construction and which this store does not hold, so the number
+# is not written here as though it could be looked up. Mnemosyne dogfoods its
 # own validate-workspace + validate-code-refs on every push / PR. (The atomic
 # store is the sole directly-validated SSOT; GENERATED.md / DESIGN.md were
-# retired in Round 251/400.)
+# retired in Round 400, and the markdown source documents before it.)
 #
 # R583: this file was rewritten from a malformed (unparseable) indentation
 # state — the GitHub CI had been silently non-running — and an `msrv` job was

@@ -104,8 +104,25 @@ max_section_body_length = 5000
 # `tools/*/src/` were never scanned. `scan_exclusions` below inverts the failure
 # mode — validate-workspace now fails on any `.rs` in neither list, so a tree
 # merely absent is loud and only a tree written down stays out.
+# Round 1080 — the same claim, one level up again. `.githooks/` was scanned and
+# the two trees the hooks CALL were not: `scripts/`, which holds the gate scripts
+# the hooks delegate to, and `.github/`, which holds the CI that runs the same
+# checks. Measured before adding them: 20 distinct rounds cited across the two,
+# 19 of which resolve — the twentieth was `Round 251/400` in the workflow header,
+# a citation to a round that is off-main by construction and which CLAUDE.md's own
+# rule says must not be written as though it were verifiable. A tree that carries
+# citations and is in neither list is the drift R777 and R783 each closed one
+# level lower.
 [plugins.set_equality_validator]
-paths = ["crates/*/src/", "crates/*/build.rs", "tools/*/src/", "studio/", ".githooks/"]
+paths = [
+  "crates/*/src/",
+  "crates/*/build.rs",
+  "tools/*/src/",
+  "studio/",
+  ".githooks/",
+  "scripts/",
+  ".github/",
+]
 scan_exclusions = ["crates/*/tests/", "tools/*/tests/", "bench/"]
 severity_missing = "reject"
 severity_binding = "reject"

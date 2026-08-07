@@ -5200,6 +5200,88 @@
         "`rustdoc::private_intra_doc_links` remains ungated in every workspace, on the same open question as the root: whether this documentation is for a downstream consumer or for an agent reading the internals."
       ]
     },
+    "Round 1080 — the trees the hooks call": {
+      "decision_summary": "The citation gate read the hooks and not the two trees the hooks call. Twenty\ndistinct rounds were cited there, one resolved to nothing, and a second — which\na hand-written pattern had missed because its number has two digits — was found\nby the gate itself the moment those trees were enrolled.\n\nRound 777 fixed this one level down: `paths` was a HAND LIST of sixteen sibling\ndirectories that had drifted from the tree by four crates, so the glob replaced\nthe list. Round 783 fixed it one level up: the glob was itself a claim about\nwhich TREES hold citations, and `crates/*/build.rs` and `tools/*/src/` were\nnever scanned. This is the same claim, one level up again. `.githooks/` was in\n`paths`; `scripts/`, which holds the gate scripts those hooks delegate to since\nRound 1066, and `.github/`, which holds the CI running the same checks, were in\nneither `paths` nor `scan_exclusions`. A tree merely absent looks exactly like a\ntree deliberately left out.\n\nWHAT WAS IN THERE, measured before the change and then by the gate after it:\n\n- 20 distinct rounds cited across the two trees. 19 resolve.\n- `Round 251/400` in the workflow header. Round 251 is off-main by construction\n  — the legacy-migration closure, before the store's first entry — and\n  `CLAUDE.md`'s own rule says a citation to one \"must not be written as though\n  it were\" verifiable. Rewritten to cite the round that can be looked up and to\n  describe the rest as history.\n- `Round 79`, which THIS ROUND'S OWN MEASUREMENT MISSED. The pattern used to\n  count citations required three or more digits; the gate found it on the first\n  run with the trees enrolled. That is the second time in two rounds that asking\n  the machine returned something the pattern did not, and it is the argument for\n  the enrolment rather than a footnote to it.\n\nBoth are repaired and the gate reports 0 violations over 114 scanned files.\n\nSTAR THE AXIS THAT WOULD HAVE CAUGHT THIS AUTOMATICALLY IS EXTENSION-BASED, AND\nWIDENING IT IS NOT AN EFFORT QUESTION. `scan_coverage` asserts that every `.rs`\nunder the root is either scanned or excluded — that is why no Rust tree can\ndrift out — and it says `rust source(s)` because the universe it walks is\nfiltered to `.rs`. The generalisation is not \"walk every file instead\": every\nfile that MENTIONS a round includes `docs/.atomic/workspace.atomic.json`, which\nis the ledger itself and cites nothing; it includes `ARCHITECTURE.md` with 55,\n`RULEBOOK.md` with 9, and whatever `claudedocs/` holds. Widening the axis\ntherefore means DECIDING which trees this gate is responsible for across the\nwhole repository — documentation, design notes, the store — and that is a\ndecision, not a mechanical change. It is named here rather than made in passing.\n\nWhat this round can pin, and does, is the capability the enrolment rests on: a\ntree named in `paths` is read whatever language it holds, and a tree not named\nthere is not read at all. Both directions, because a path entry that changes no\nanswer is config that looks like it works.",
+      "changes_bullets": [
+        "`mnemosyne.toml` enrols `scripts/` and `.github/` in `[plugins.set_equality_validator].paths`, beside the `.githooks/` entry whose scripts and CI they are. The list is written one entry per line now, because a seven-element array on one line is where the next entry gets appended without anyone reading the six before it.",
+        "`.github/workflows/mnemosyne-validate.yml` no longer writes two unverifiable citations as though they could be looked up: `Round 251/400` cites the round that resolves and describes the rest as history, and the `Round 79` header states the option-C carry as a legacy decision this store does not hold.",
+        "`validate_code_refs_smoke::case_xv` pins the capability in both directions: a non-Rust tree named in `paths` is read and its hallucinated citation rejected by file and by name; the same bytes in a tree `paths` does not name are not read at all."
+      ],
+      "verification_bullets": [
+        "`validate-code-refs` over this repository with the two trees enrolled: 114 scanned files, `violations: total=0`, and `scanned_paths` naming `.github` and `scripts` beside the twenty-nine it already read.",
+        "The two repairs were found BY THE GATE, not by reading: its first run with the trees enrolled reported `[missing] .github/workflows/mnemosyne-validate.yml:3 Round 79`, which this round's own hand-written count had missed.",
+        "Every round cited across the two trees was resolved through `query --changelog-entry` before the enrolment: 19 of 20, with the twentieth (`Round 251`) the pre-252 case the rule already covers.",
+        "`crates/mnemosyne-cli/tests/validate_code_refs_smoke.rs`: 15 tests, including the new both-directions case over a `ci/pipeline.yml` fixture.",
+        "Full root workspace suite, `validate-workspace`, clippy `-D warnings` and `cargo fmt --check` on the committed tree."
+      ],
+      "carry_forward_bullets": [
+        "A DECISION, NOT AN OMISSION — the coverage axis that makes a Rust tree impossible to drop is extension-based (`scan_coverage` walks every `.rs` and requires each to be scanned or excluded). Generalising it to \"every file that mentions a round\" enrols the atomic store, `ARCHITECTURE.md` (55 citations), `RULEBOOK.md` (9) and `claudedocs/`, none of which are code citing a ledger in the sense this gate means. Which of those this gate is responsible for is a scope question about the whole repository, and it is the owner's rather than a change made in passing.",
+        "Commit messages, ledger prose, `CLAUDE.md` and the agent's memory are still outside every automated citation check, exactly as `CLAUDE.md` says. The rule there remains the agent's to run at the writing moment.",
+        "`bench/` stays excluded and this round re-read why: 76 `DESIGN §N` citations across ten files of `codegen-prototype`, to a document Round 400 removed, in a closed measurement spike. The exclusion was decided at Round 783 on the same grounds and the carry that kept asking \"repair or remove\" was a question already answered."
+      ],
+      "population_census": [
+        {
+          "axis": "transition rules by `undirected`",
+          "left_label": "undirected",
+          "left": 10,
+          "right_label": "directed",
+          "right": 27
+        },
+        {
+          "axis": "map corpora by leg-kind declaration",
+          "left_label": "omitted",
+          "left": 6,
+          "right_label": "declared",
+          "right": 24
+        },
+        {
+          "axis": "cost-carrying corpora by direction-dependent pricing",
+          "left_label": "prices a way by direction",
+          "left": 4,
+          "right_label": "prices no way by direction",
+          "right": 6
+        },
+        {
+          "axis": "run trees by authoring mode",
+          "left_label": "hand script",
+          "left": 10,
+          "right_label": "file-only",
+          "right": 239
+        },
+        {
+          "axis": "map corpora by declared boundary crossing",
+          "left_label": "declares an exit",
+          "left": 6,
+          "right_label": "declares none",
+          "right": 24
+        },
+        {
+          "axis": "authored submissions by map and telling",
+          "left_label": "carries both",
+          "left": 10,
+          "right_label": "carries one",
+          "right": 24
+        }
+      ],
+      "publishable_decision_summary": "The citation gate read the hooks and not the two trees the hooks call. Twenty\ndistinct rounds were cited there, one resolved to nothing, and a second — which\na hand-written pattern had missed because its number has two digits — was found\nby the gate itself the moment those trees were enrolled.\n\nRound 777 fixed this one level down: `paths` was a HAND LIST of sixteen sibling\ndirectories that had drifted from the tree by four crates, so the glob replaced\nthe list. Round 783 fixed it one level up: the glob was itself a claim about\nwhich TREES hold citations, and `crates/*/build.rs` and `tools/*/src/` were\nnever scanned. This is the same claim, one level up again. `.githooks/` was in\n`paths`; `scripts/`, which holds the gate scripts those hooks delegate to since\nRound 1066, and `.github/`, which holds the CI running the same checks, were in\nneither `paths` nor `scan_exclusions`. A tree merely absent looks exactly like a\ntree deliberately left out.\n\nWHAT WAS IN THERE, measured before the change and then by the gate after it:\n\n- 20 distinct rounds cited across the two trees. 19 resolve.\n- `Round 251/400` in the workflow header. Round 251 is off-main by construction\n  — the legacy-migration closure, before the store's first entry — and\n  `CLAUDE.md`'s own rule says a citation to one \"must not be written as though\n  it were\" verifiable. Rewritten to cite the round that can be looked up and to\n  describe the rest as history.\n- `Round 79`, which THIS ROUND'S OWN MEASUREMENT MISSED. The pattern used to\n  count citations required three or more digits; the gate found it on the first\n  run with the trees enrolled. That is the second time in two rounds that asking\n  the machine returned something the pattern did not, and it is the argument for\n  the enrolment rather than a footnote to it.\n\nBoth are repaired and the gate reports 0 violations over 114 scanned files.\n\nSTAR THE AXIS THAT WOULD HAVE CAUGHT THIS AUTOMATICALLY IS EXTENSION-BASED, AND\nWIDENING IT IS NOT AN EFFORT QUESTION. `scan_coverage` asserts that every `.rs`\nunder the root is either scanned or excluded — that is why no Rust tree can\ndrift out — and it says `rust source(s)` because the universe it walks is\nfiltered to `.rs`. The generalisation is not \"walk every file instead\": every\nfile that MENTIONS a round includes `docs/.atomic/workspace.atomic.json`, which\nis the ledger itself and cites nothing; it includes `ARCHITECTURE.md` with 55,\n`RULEBOOK.md` with 9, and whatever `claudedocs/` holds. Widening the axis\ntherefore means DECIDING which trees this gate is responsible for across the\nwhole repository — documentation, design notes, the store — and that is a\ndecision, not a mechanical change. It is named here rather than made in passing.\n\nWhat this round can pin, and does, is the capability the enrolment rests on: a\ntree named in `paths` is read whatever language it holds, and a tree not named\nthere is not read at all. Both directions, because a path entry that changes no\nanswer is config that looks like it works.",
+      "publishable_changes_bullets": [
+        "`mnemosyne.toml` enrols `scripts/` and `.github/` in `[plugins.set_equality_validator].paths`, beside the `.githooks/` entry whose scripts and CI they are. The list is written one entry per line now, because a seven-element array on one line is where the next entry gets appended without anyone reading the six before it.",
+        "`.github/workflows/mnemosyne-validate.yml` no longer writes two unverifiable citations as though they could be looked up: `Round 251/400` cites the round that resolves and describes the rest as history, and the `Round 79` header states the option-C carry as a legacy decision this store does not hold.",
+        "`validate_code_refs_smoke::case_xv` pins the capability in both directions: a non-Rust tree named in `paths` is read and its hallucinated citation rejected by file and by name; the same bytes in a tree `paths` does not name are not read at all."
+      ],
+      "publishable_verification_bullets": [
+        "`validate-code-refs` over this repository with the two trees enrolled: 114 scanned files, `violations: total=0`, and `scanned_paths` naming `.github` and `scripts` beside the twenty-nine it already read.",
+        "The two repairs were found BY THE GATE, not by reading: its first run with the trees enrolled reported `[missing] .github/workflows/mnemosyne-validate.yml:3 Round 79`, which this round's own hand-written count had missed.",
+        "Every round cited across the two trees was resolved through `query --changelog-entry` before the enrolment: 19 of 20, with the twentieth (`Round 251`) the pre-252 case the rule already covers.",
+        "`crates/mnemosyne-cli/tests/validate_code_refs_smoke.rs`: 15 tests, including the new both-directions case over a `ci/pipeline.yml` fixture.",
+        "Full root workspace suite, `validate-workspace`, clippy `-D warnings` and `cargo fmt --check` on the committed tree."
+      ],
+      "publishable_carry_forward_bullets": [
+        "A DECISION, NOT AN OMISSION — the coverage axis that makes a Rust tree impossible to drop is extension-based (`scan_coverage` walks every `.rs` and requires each to be scanned or excluded). Generalising it to \"every file that mentions a round\" enrols the atomic store, `ARCHITECTURE.md` (55 citations), `RULEBOOK.md` (9) and `claudedocs/`, none of which are code citing a ledger in the sense this gate means. Which of those this gate is responsible for is a scope question about the whole repository, and it is the owner's rather than a change made in passing.",
+        "Commit messages, ledger prose, `CLAUDE.md` and the agent's memory are still outside every automated citation check, exactly as `CLAUDE.md` says. The rule there remains the agent's to run at the writing moment.",
+        "`bench/` stays excluded and this round re-read why: 76 `DESIGN §N` citations across ten files of `codegen-prototype`, to a document Round 400 removed, in a closed measurement spike. The exclusion was decided at Round 783 on the same grounds and the carry that kept asking \"repair or remove\" was a question already answered."
+      ]
+    },
     "Round 252": {
       "decision_summary": "Parser CommonMark conformance — recognize indented fenced code blocks (§98) and require whitespace after ATX hash sequence (§62)",
       "changes_bullets": [
