@@ -73,7 +73,9 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::common;
-use common::{permutations, registered_ids, wrote_about, Answer, Wrote};
+use crate::sweep;
+use common::{permutations, registered_ids, wrote_about, Wrote};
+use sweep::Answer;
 
 /// Every read's records for one store. The derivation itself is
 /// [`common::wrote_about`] — since Round 1056 the census of lossy numbers needs
@@ -189,7 +191,7 @@ const BACKLOG: [&str; 87] = [
 fn the_population_of_subjects_more_than_one_shipped_read_answers_about() {
     // ONE SWEEP, THREE LAWS (Round 1071): the corpus, the panel and every
     // trial are built once for this binary and read here.
-    let sweep = common::sweep();
+    let sweep = sweep::sweep();
     let subjects = registered_ids(&sweep.store);
     let panel = &sweep.panel;
     let unaskable = &sweep.unaskable;

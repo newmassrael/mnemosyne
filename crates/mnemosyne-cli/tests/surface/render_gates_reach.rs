@@ -27,11 +27,12 @@
 use std::collections::BTreeSet;
 
 use crate::common;
-use common::Answer;
+use crate::sweep;
+use sweep::Answer;
 
 /// Every panel question put to one verb.
 fn asked_of(verb: &str) -> Vec<&'static common::Read> {
-    common::sweep()
+    sweep::sweep()
         .panel
         .iter()
         .filter(|read| read.verb == verb)
@@ -40,7 +41,7 @@ fn asked_of(verb: &str) -> Vec<&'static common::Read> {
 
 #[test]
 fn the_render_acceptance_gates_are_on_the_panel_at_all() {
-    let sweep = common::sweep();
+    let sweep = sweep::sweep();
     let unaskable: Vec<&str> = sweep
         .unaskable
         .iter()
@@ -78,7 +79,7 @@ fn the_render_acceptance_gates_are_on_the_panel_at_all() {
 
 #[test]
 fn the_fixture_the_gates_were_handed_is_not_empty() {
-    let sweep = common::sweep();
+    let sweep = sweep::sweep();
     let mut counts = Vec::new();
     for read in asked_of("validate-render-fidelity") {
         let Answer::Json(answer) = &sweep.baseline.answers[&read.label()] else {
@@ -109,7 +110,7 @@ fn the_fixture_the_gates_were_handed_is_not_empty() {
 
 #[test]
 fn some_authorable_edit_moves_what_the_gates_say() {
-    let sweep = common::sweep();
+    let sweep = sweep::sweep();
     let gates: Vec<&common::Read> = asked_of("validate-render-fidelity")
         .into_iter()
         .chain(asked_of("validate-disclosure-leak"))

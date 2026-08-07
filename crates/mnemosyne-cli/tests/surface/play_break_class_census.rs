@@ -71,7 +71,9 @@ use std::collections::{BTreeMap, BTreeSet};
 use mnemosyne_atomic::AtomicStore;
 
 use crate::common;
-use common::{authored_corpora, corpus_workspace_try, read_json, repo_root, run, Answer, SIDECAR};
+use crate::sweep;
+use common::{authored_corpora, corpus_workspace_try, read_json, repo_root, run, SIDECAR};
+use sweep::Answer;
 
 /// Where a read RECLASSIFIED something: the JSON paths whose list holds a
 /// different NUMBER of entries than it did at baseline.
@@ -268,7 +270,7 @@ impl Bucket {
 fn the_walk_says_what_stands_between_an_authoring_slip_and_the_runtime() {
     // ONE SWEEP, THREE LAWS (Round 1071): the corpus, the panel and every
     // trial are built once for this binary and read here.
-    let sweep = common::sweep();
+    let sweep = sweep::sweep();
     let baseline_sidecar = &sweep.baseline_sidecar;
     let telling = sweep.telling.as_str();
     let panel = &sweep.panel;

@@ -105,7 +105,9 @@ use std::collections::{BTreeMap, BTreeSet};
 use mnemosyne_atomic::AtomicStore;
 
 use crate::common;
-use common::{registered_ids, wrote_about, Answer, Wrote, SIDECAR};
+use crate::sweep;
+use common::{registered_ids, wrote_about, Wrote, SIDECAR};
+use sweep::Answer;
 
 /// Every number in one answer, keyed by the FIELD it sits at.
 ///
@@ -541,7 +543,7 @@ const NOT_A_COUNT_OF_NAMES: [&str; 6] = [
 fn the_reads_that_count_what_they_do_not_name() {
     // ONE SWEEP, THREE LAWS (Round 1071): the corpus, the panel and every
     // trial are built once for this binary and read here.
-    let sweep = common::sweep();
+    let sweep = sweep::sweep();
     let ids = registered_ids(&sweep.store);
     let panel = &sweep.panel;
     let unaskable = &sweep.unaskable;
