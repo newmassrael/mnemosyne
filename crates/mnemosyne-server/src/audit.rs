@@ -93,7 +93,7 @@ pub const AUDIT_BROADCAST_CAPACITY: usize = 256;
 /// Trait surface: write-side only. Inbound relay (external records →
 /// local broadcast) is a transport-specific concern handled by the
 /// concrete impl (the in-memory broker exposes
-/// [`InMemoryAuditBroker::subscriber`] for that path; a redis-backed
+/// [`InMemoryAuditBroker::subscribe`] for that path; a redis-backed
 /// or NATS impl spawns its own listener task).
 ///
 /// Note on framing: the audit append-only invariant lives on each
@@ -205,7 +205,7 @@ pub struct AuditAppender {
     broadcast_tx: tokio::sync::broadcast::Sender<AuditRecord>,
     /// outbound fanout for cross-process audit observers.
     /// Defaults to [`NoopAuditFanout`] for single-process deployments;
-    /// [`AuditAppender::with_fanout`] swaps in a real implementation
+    /// [`AuditAppender::with_broadcast_capacity_and_fanout`] swaps in a real implementation
     /// (in-memory broker, redis pub/sub, NATS, etc.).
     fanout: Arc<dyn AuditFanout>,
 }
@@ -233,7 +233,7 @@ impl AuditAppender {
     /// construct with a custom [`AuditFanout`]. Used by
     /// deployments that fan out audit observation to other servers
     /// (multi-host clusters) via an in-memory broker, redis pub/sub, or
-    /// any other AuditFanout-compatible transport. Pass [`Arc::new(NoopAuditFanout)`]
+    /// any other AuditFanout-compatible transport. Pass `Arc::new(NoopAuditFanout)`
     /// for single-process operation.
     pub fn with_broadcast_capacity_and_fanout(
         store: Arc<MnemosyneStore>,

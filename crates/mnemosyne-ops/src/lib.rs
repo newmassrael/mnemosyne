@@ -1161,7 +1161,7 @@ pub struct AuthoringFrontierReport {
     /// so the loop's work source could not pull map work, and a store whose
     /// scenes have no way between them reported its OTHER gaps and read as
     /// healthy on this one. `transition_rules: 0` is the third state, not zero
-    /// work: see [`MapFrontierReport`].
+    /// work: see [`mnemosyne_validate::continuity::MapFrontierReport`].
     pub map_frontier: mnemosyne_validate::continuity::MapFrontierReport,
     /// Total distinct gap items across every category — the loop's "work
     /// remaining" gauge (a dangling setup counted once across worlds).

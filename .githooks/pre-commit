@@ -113,6 +113,20 @@ if printf '%s\n' "$staged" | grep -qE '\.rs$'; then
     cargo clippy --workspace --all-targets -- -D warnings
 fi
 
+# Gate 5a — intra-doc links, the sibling `validate-code-refs` never had. That
+# gate rejects a `Round NNN` in code that names no ledger entry; nothing rejected
+# a `[`foo`]` that names no ITEM, and rustdoc — the resolver the toolchain
+# already ships — had never been pointed at this workspace. When R1077 first ran
+# it, 34 links in `crates/*/src` resolved to nothing, including two that
+# advertised `mnemosyne-query`'s entry points by names the crate no longer has.
+# `--document-private-items` because the internals here are documented for an
+# agent reading them, not only for a downstream consumer.
+if printf '%s\n' "$staged" | grep -qE '\.rs$'; then
+    echo "[mnemosyne pre-commit] .rs staged — cargo doc -D rustdoc::broken_intra_doc_links" >&2
+    RUSTDOCFLAGS="-D rustdoc::broken_intra_doc_links" \
+        cargo doc --workspace --no-deps --document-private-items -q
+fi
+
 # Gate 5b — separate in-repo workspaces (own `[workspace]`; Gates 4/5 above,
 # `--all`/`--workspace`, never reach them). Structural: for each staged `.rs`,
 # walk up to its owning `[workspace]` root and gate any non-root one on its own

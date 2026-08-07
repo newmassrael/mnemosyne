@@ -37,7 +37,7 @@ pub enum ValidationError {
 /// Scan each section's synthesized prose for numeric `§N` references and
 /// reject any that resolve to no section. The substrate is the atomic store
 /// (the SSOT): the resolution set is the store's section-id set
-/// ([`AtomicStore::atomic_section_id_set`], which already includes ancestor
+/// ([`mnemosyne_atomic::AtomicStore::atomic_section_id_set`], which already includes ancestor
 /// prefixes) plus a trailing-segment alias set so a nested id like `2/2.1`
 /// resolves by its `2.1` tail. Structured references (impact_scope /
 /// impact_refs / parent / superseded) are validated separately by the atomic

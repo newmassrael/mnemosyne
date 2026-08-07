@@ -555,7 +555,7 @@ impl Mnemosyne for MnemosyneGrpcService {
     }
 }
 
-/// client-side helper that builds a tonic [`Channel`] which
+/// client-side helper that builds a [`tonic::transport::Channel`] which
 /// load-balances inbound RPCs across a fixed list of server endpoints. Each
 /// endpoint string must be a fully-qualified URL (e.g. `http://host:port`).
 /// The returned channel uses tonic's built-in round-robin discovery — every

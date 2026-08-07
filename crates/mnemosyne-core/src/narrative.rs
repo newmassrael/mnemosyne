@@ -356,7 +356,7 @@ pub fn is_known_world(
 /// Whether an in-frame succession edge whose successor and predecessor sit on
 /// DIFFERENT world-lines is legitimate (Rounds 438 + 535 + 612) — THE single
 /// definition of cross-branch succession legitimacy, called by BOTH enforcement
-/// points (the write path [`check_succession_edge`] in mnemosyne-atomic and the
+/// points (the write path `check_succession_edge` in mnemosyne-atomic and the
 /// out-of-band scan re-check in mnemosyne-validate's continuity gate), so the
 /// two cannot drift (the multi-write-path-one-invariant discipline).
 ///
@@ -1078,7 +1078,7 @@ pub struct DisclosureSurface {
 /// SET at which a fact may first legitimately reach the reader, plus an optional
 /// K-of-N threshold. The value type of a [`DisclosureOverride::first_at`] world
 /// key (a single-coord `String` before R752). The exact SHAPE-mirror of the
-/// access-axis [`EdgeGuard`](crate::EdgeGuard) — a `BTreeSet` of triggers + an
+/// access-axis `EdgeGuard` (mnemosyne-atomic) — a `BTreeSet` of triggers + an
 /// `Option<usize>` threshold — but the DEFAULT differs on purpose: an edge
 /// guard's `None` is require-ALL (AND, access is conjunctive), while a reveal's
 /// `None` is FIRST-REACHED (k = 1, the reveal fires at the EARLIEST trigger a

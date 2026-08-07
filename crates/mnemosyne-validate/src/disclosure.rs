@@ -244,7 +244,7 @@ pub struct DisclosureLeakReport {
     pub telling: String,
     pub world: String,
     pub truth_frame: String,
-    /// Plan-targeted facts checked for this world (withhold or first_at[world];
+    /// Plan-targeted facts checked for this world (withhold or `first_at[world]`;
     /// all carry a typed claim by the set_disclosure invariant).
     pub targeted: usize,
     /// The gate failures: withheld facts that appear, or facts re-extractable

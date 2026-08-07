@@ -67,7 +67,7 @@ pub struct RedactRequest {
     pub case_insensitive: bool,
     pub scope: RedactScope,
     pub dry_run: bool,
-    /// Required: written verbatim to the [[publishable_override_ledger]]
+    /// Required: written verbatim to the `[[publishable_override_ledger]]`
     /// draft so the audit trail explains *why*. RedactError::MissingReason
     /// if empty after trim.
     pub reason: String,

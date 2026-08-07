@@ -354,7 +354,7 @@ fn scan_blanket_verifies(snapshot: &mnemosyne_core::AtomicSnapshot) -> Vec<CodeR
 /// The positive coverage projection (Round 390): the 3-way breakdown of every
 /// section into implemented / normative-gap / informative-exempt, plus the
 /// `Removed` tombstones excluded from the denominator. Read-only — derived
-/// from an [`AtomicSnapshot`] with no authoritative state of its own (an L3
+/// from an [`mnemosyne_core::AtomicSnapshot`] with no authoritative state of its own (an L3
 /// view, mirroring `report-binding-migration`). The `validate-code-refs`
 /// coverage axis already emits the precise gap list; this is its positive
 /// aggregate counterpart, so a maintainer can read coverage as a ratio rather

@@ -45,7 +45,7 @@ pub fn workspace_root_from(anchor: &Path) -> Result<PathBuf> {
 /// CWD-correct on the explicit override):
 /// 1. Explicit `--sidecar` CLI flag wins absolutely — resolved **CWD-relative**
 ///    (R538: a path typed on the command line is relative to where the user
-///    stands; see [`resolve_explicit_cli_path`]).
+///    stands; the caller hands in an already-resolved `AbsolutePath`).
 /// 2. `[atomic] sidecar_path` from `mnemosyne.toml` (workspace-relative or
 ///    absolute) when discoverable — a config declaration, **workspace-rooted**.
 /// 3. Default `<workspace_root>/docs/.atomic/workspace.atomic.json`.

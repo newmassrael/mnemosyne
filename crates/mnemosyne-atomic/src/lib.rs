@@ -952,7 +952,7 @@ pub struct AtomicStore {
     /// AND low tide"). The set is AND-semantics: the consumer evaluates each
     /// condition and ANDs them; OR is expressed as MULTIPLE guarded edges to the
     /// same target (graph-level, never a stored boolean expression tree — the R717
-    /// layering line). A SIDE-TABLE like [`edge_costs`], not a reified fact: the
+    /// layering line). A SIDE-TABLE like [`AtomicStore::edge_costs`], not a reified fact: the
     /// LINK (edge → conditions) is frame-invariant edge metadata; each CONDITION is
     /// a real fact carrying its own frame/branch/evidence. Mnemosyne holds the
     /// DECLARATION and integrity-checks only that the edge and EVERY condition
@@ -980,7 +980,7 @@ pub struct AtomicStore {
     /// Per-beat parameter DELTAS side-table (Round 728 design → Round 729 build,
     /// DEBT-K) — keyed by the FACT ID of the beat that grants the change, value =
     /// a map from parameter id to a SIGNED delta (`+2` a gift, `-1` an insult).
-    /// One beat may move several meters. A SIDE-TABLE like [`edge_costs`], not a
+    /// One beat may move several meters. A SIDE-TABLE like [`AtomicStore::edge_costs`], not a
     /// reified fact: the delta is frame-invariant game-mechanic ground truth
     /// (which BRANCH it applies on is captured by which branch-scoped fact it is
     /// keyed to; the VALUE is invariant), so it needs no per-fact
@@ -999,7 +999,7 @@ pub struct AtomicStore {
     /// [`ParameterGate`] (`{parameter, op, threshold}`). The thing K-of-N
     /// (`edge_guards.threshold`, R724) cannot express: a signed/weighted meter
     /// compared to a numeric threshold ("romance route unlocks if affection >= 4").
-    /// A SIDE-TABLE like [`edge_costs`], not a reified fact: the gate is
+    /// A SIDE-TABLE like [`AtomicStore::edge_costs`], not a reified fact: the gate is
     /// frame-invariant choice metadata. Because the gate references the METER
     /// DIRECTLY (via the `parameters` registry), the R725 boolean-proxy silent hole
     /// is UNREPRESENTABLE — there is no disconnected "sufficient" fact to leave
@@ -1025,7 +1025,7 @@ pub struct AtomicStore {
     /// fact SURVIVES, validating clean — a phantom stack with no holder). Currency
     /// (100 gold) is a DEBT-K global meter; this is the DISTINCT part — a count
     /// bound to a SPECIFIC fact (per-holder-per-item, which a global meter cannot
-    /// express). A SIDE-TABLE like [`edge_costs`], not a reified fact: the count is
+    /// express). A SIDE-TABLE like [`AtomicStore::edge_costs`], not a reified fact: the count is
     /// frame-invariant metadata. A BARE `i64` (no unit — the thing counted is the
     /// fact's OBJECT leg, `holds(A, potion)` = 5 *potions*), unlike [`EdgeCost`]'s
     /// number+unit. Because the count is keyed BY the fact, `retract_fact`
@@ -2226,7 +2226,7 @@ impl AtomicStore {
     /// empty `text_sha256` — hand-authored or pre-v8 excerpts whose `text` is
     /// not yet revalidatable against an EPUB. Re-importing via
     /// `import_epub_excerpts` populates the hash and clears the row. Unlike
-    /// [`kind_migration_report`] this is schema-independent: the gap is a real
+    /// [`AtomicStore::kind_migration_report`] this is schema-independent: the gap is a real
     /// empty field that persists across saves, not a defaulted-then-blessed
     /// claim. Ordered by `section_id` for stable output.
     pub fn excerpt_hash_backfill_report(&self) -> ExcerptHashBackfillReport {
@@ -2292,7 +2292,7 @@ impl AtomicStore {
     /// Orphan check + atomic-store cross-ref resolution when 7 source MD files
     /// are deleted.
     ///
-    /// Parallel to [`crate::query::workspace_section_id_set`] which sources
+    /// Parallel to the removed markdown-era `workspace_section_id_set`, which sourced
     /// from `Workspace.docs.values().sections` (markdown-derived). When the
     /// atomic store is the sole source of truth (paradigm shift
     /// complete), this becomes the canonical section_id set.
@@ -3971,15 +3971,13 @@ pub struct ContentExcerptImport {
 /// whose section exists gets `content_excerpt = ContentExcerpt { anchor, text,
 /// text_sha256: sha256(text) }`; the store COMPUTES the hash (there is no external
 /// extractor sha to verify against, unlike [`import_epub_excerpts`] — the consumer
-/// supplies the projection, the store pins its hash so [`scan_content_drift`] can
+/// supplies the projection, the store pins its hash so `scan_content_drift` can
 /// later catch an out-of-band edit). An empty `text` or empty anchor `source` is a
 /// malformed excerpt and returns `Err` BEFORE the save (never a partial import).
 /// Sections absent from the store are returned as `unmatched` (the caller decides
 /// whether that is an error). One in-memory pass + one save (single write path,
 /// like [`import_epub_anchors`]). The excerpt is a derived cache, so overwrite is
 /// allowed (no frozen-ledger gate).
-///
-/// [`scan_content_drift`]: mnemosyne_validate::scan_content_drift
 /// Normalize a line for grounding comparison: collapse whitespace runs and trim.
 /// Dep-free (NO Unicode normalization) — an excerpt line is a trimmed copy of a
 /// source line from the SAME content-SSOT, so a whitespace-collapse absorbs the
@@ -4086,7 +4084,7 @@ pub struct ScenePresenceImport {
 /// id order); each existing section's `scene_cast` is REPLACED by its group's
 /// presences (idempotent on re-import, the `content_excerpt` derived-cache rule),
 /// each stored as a [`ScenePresence`] whose `excerpt.text_sha256` the store
-/// COMPUTES via the P3a validator so [`scan_content_drift`] can later catch an
+/// COMPUTES via the P3a validator so `scan_content_drift` can later catch an
 /// out-of-band edit. An empty `entity`, `text`, or anchor `source` is a malformed
 /// presence and returns `Err` BEFORE the save (never a partial import). Sections
 /// absent from the store are returned as `unmatched` (the caller decides whether
@@ -4221,7 +4219,6 @@ pub fn import_evidence_reviews(
     )
 }
 
-/// [`scan_content_drift`]: mnemosyne_validate::scan_content_drift
 pub fn import_scene_cast(
     store: &mut AtomicStore,
     sidecar_path: &Path,

@@ -1225,7 +1225,7 @@ fn rung(r: &Rung) -> String {
 /// and the third to end in [`artifact`], so the composition rule and the
 /// `&'static` handle hold on this axis without being re-derived.
 ///
-/// Deterministic for the same reason the other two are: [`passages_to_parts`]
+/// Deterministic for the same reason the other two are: [`mnemosyne_engine::passages_to_parts`]
 /// sorts by section id, so the same store emits byte-identical source.
 ///
 /// # Why the passage set is chunked at all

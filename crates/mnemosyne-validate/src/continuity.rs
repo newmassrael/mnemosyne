@@ -833,7 +833,7 @@ pub enum NarrativeRuleSpec {
     /// So the connectivity walk and the route count were both asking four maps a
     /// question and hearing "state machine". Neither reads it now, and the genre
     /// question turned out to have no answer in any declared field
-    /// ([`genre_is_not_inferable_from_any_declared_field`] pins the refutations).
+    /// (`genre_is_not_inferable_from_any_declared_field` pins the refutations).
     /// A rule that admits both directions is undirected; that is the whole claim.
     ///
     /// Round 703 (store-native map, DESIGN R696 sec 2) — `containment` names the
@@ -1579,7 +1579,7 @@ pub enum ContinuityViolation {
     /// `supersedes_in_frame` crosses world-lines into a branch that does NOT
     /// inherit the predecessor's belief (Round 433 + 535). A cross-branch
     /// succession is legitimate in exactly two inheritance directions
-    /// ([`succession_branch_inherits`]): the predecessor is a BACKWARD fork
+    /// (`succession_branch_inherits`): the predecessor is a BACKWARD fork
     /// ancestor of the successor (a fork revises an inherited belief), or the
     /// successor is a FORWARD confluence-suffix of the predecessor (a merge's
     /// shared continuation reconciles a parent belief at the join, R535 —
@@ -2006,7 +2006,7 @@ pub enum ContinuityViolation {
     /// Round 715 — the `contains` relation closes a loop AT some canon point `at`
     /// within one (frame, branch) world: a place transitively contains its own
     /// container (design R713.4). TIME-scoped (review Finding 1): the loop must
-    /// hold at one point (a→b [early] then b→a [late] is a legal reorganization,
+    /// hold at one point (a→b `early` then b→a `late` is a legal reorganization,
     /// never a cycle at any point). Acyclicity is the precondition that makes a
     /// containment walk (ancestry / scope) terminate. Reported once per cycle,
     /// members in walk order from the minimum id (mirror `SuccessionCycle` Round
@@ -5140,7 +5140,7 @@ fn judge_steps<'a>(
 /// declares two different kinds — all three kinded corpora say `place` on both
 /// legs — so this is verdict-neutral on every authored store, and the
 /// discriminating input has to be constructed
-/// ([`both_declared_legs_are_read_not_only_the_first`]).
+/// (`both_declared_legs_are_read_not_only_the_first`).
 ///
 /// An EMPTY set is the map's "unaskable" state: the store cannot be asked which
 /// entities are places, so completeness is not inert-by-accident but
@@ -6735,7 +6735,7 @@ pub struct ForkTreeReport {
 /// point + the choice-label description), the fork point resolved against
 /// the PARENT world's composed order via [`CanonOrder::names`] (Round 488 —
 /// one node-membership semantics, no parallel fork engine; the R441 binding
-/// rule). Fail-loud on a fork whose parent is neither [`MAIN_BRANCH`] nor a
+/// rule). Fail-loud on a fork whose parent is neither `MAIN_BRANCH_ID` nor a
 /// registered branch (a store-integrity violation the write path forbids —
 /// a typo'd parent must not read as a silent root). This guard covers ONLY
 /// the dangling-parent case; cycle and self-fork integrity are delegated

@@ -136,7 +136,7 @@ impl PlayableProjection {
     /// The store-aware core: index a report AND the store's per-section content
     /// prose, so an anchored ladder question ([`Rung::question_anchor`]) resolves
     /// against the section's [`Passage`]. Both public constructors delegate here —
-    /// [`Self::from_report`] with no passages, [`Self::from_workspace`] with the
+    /// the `#[cfg(test)]` `from_report` with no passages, [`PlayableProjection::from_workspace`] with the
     /// live store's. Crate-internal: the only injection point for passages is the
     /// real store read (or an in-crate test), never a downstream fabrication.
     ///

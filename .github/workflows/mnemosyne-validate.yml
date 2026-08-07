@@ -71,6 +71,18 @@ jobs:
       - name: cargo test --workspace
         run: cargo test --workspace --locked
 
+      # R1077 — the sibling `validate-code-refs` never had. That gate rejects a
+      # `Round NNN` in code naming no ledger entry; nothing rejected a `[`foo`]`
+      # naming no ITEM, because `cargo doc` had never been run here. Its first
+      # run found 34, two of which advertised `mnemosyne-query`'s entry points
+      # under names the crate no longer has. Integration-test targets are NOT
+      # reached by this: `cargo doc` does not document them, and rustdoc cannot
+      # see a `#[test]` or `#[cfg(test)]` item at all.
+      - name: rustdoc intra-doc links (Round 1077)
+        env:
+          RUSTDOCFLAGS: -D rustdoc::broken_intra_doc_links
+        run: cargo doc --workspace --no-deps --document-private-items -q
+
       - name: mnemosyne-cli validate-workspace
         run: cargo run --release -q -p mnemosyne-cli -- validate-workspace
 

@@ -12,13 +12,13 @@
 //! - [`section_by_id`] — deterministic section_id scan across the workspace (BTreeMap
 //! path order) in first match carry, body + line_anchor + decision_status
 //! surface.
-//! - [`related_sections`] — outbound + inbound 1-hop CrossRef traversal
+//! - [`related_sections_with_atomic`] — outbound + inbound 1-hop CrossRef traversal
 //! (self doc in + cross-doc form `{path}#§N` tail anchor consistency
 //! OPTION H-2 carry).
 //! - [`changelog_entries_for_section`] — workspace in all doc in
 //! Detects §N citations in changelog_entries fulltext (with boundary checks against longer
 //! Blocks false positives on numeric forms `` / ``.
-//! - [`workspace_section_id_set`] — full section_id dict across all docs.
+//! - [`AtomicStore::atomic_section_id_set`] — full section_id dict across all docs.
 //!
 //! ## JSON envelope shape (Claude-consumable; body-registered carry)
 //!

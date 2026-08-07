@@ -449,8 +449,8 @@ pub struct DisclosedPlace<'m> {
 impl DisclosedPlace<'_> {
     /// Is this place a character's belief/report rather than the world's fact?
     ///
-    /// Reads [`crate::types::frame_is_belief`], the same resolver [`Line`]'s own
-    /// [`is_belief`](Line::is_belief) reads, so the two axes cannot drift.
+    /// Reads [`crate::types::frame_is_belief`], the same resolver [`crate::types::Line`]'s own
+    /// [`is_belief`](crate::types::Line::is_belief) reads, so the two axes cannot drift.
     #[must_use]
     pub fn is_belief(&self) -> bool {
         crate::types::frame_is_belief(&self.frame)
@@ -458,7 +458,7 @@ impl DisclosedPlace<'_> {
 
     /// Is this place asserted by the world (not a character's belief/report)?
     /// An unframed disclosure counts as ground truth, exactly as it does for a
-    /// [`Line`].
+    /// [`crate::types::Line`].
     #[must_use]
     pub fn is_ground_truth(&self) -> bool {
         !self.is_belief()
