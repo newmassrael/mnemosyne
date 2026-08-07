@@ -85,6 +85,28 @@ pub struct AbortRateReport {
     pub per_writer: Vec<WriterStats>,
 }
 
+impl AbortRateReport {
+    /// This run as the shared contention rule reads it (Round 1075).
+    ///
+    /// The mapping lives here because only this type knows which of its
+    /// counters is the contention one: for an optimistic transaction that is
+    /// `total_aborts`.
+    pub fn writer_run(&self, requested: Duration) -> workload_gen::contention::WriterRun {
+        workload_gen::contention::WriterRun {
+            writers_requested: self.num_writers,
+            commits: self.total_commits,
+            contended: self.total_aborts,
+            per_writer: self
+                .per_writer
+                .iter()
+                .map(|w| (w.commits, w.aborts))
+                .collect(),
+            elapsed_ms: self.duration_ms,
+            requested_ms: requested.as_millis() as u64,
+        }
+    }
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct WriterStats {
     pub writer_id: u64,
@@ -217,29 +239,113 @@ mod tests {
     use super::*;
     use tempfile::TempDir;
 
+    /// THE REFUTER FOR EVERYTHING THE SHARED RULE CLAIMS (Round 1075).
+    ///
+    /// One writer is the limiting case of the schedule a loaded machine is
+    /// allowed to produce: no overlap, so every abort counter is
+    /// deterministically zero. It asks the SAME `assert_guarantees` the
+    /// contended run does, so a claim needing writers to collide fails here
+    /// the moment it is added.
     #[test]
-    fn solo_writer_zero_aborts() {
+    fn a_solo_writer_meets_every_guarantee_and_aborts_against_nobody() {
         let dir = TempDir::new().unwrap();
         let store = ConcurrentStore::open(dir.path(), 16).unwrap();
         let hot: Vec<u64> = (1..=16).collect();
         store.seed_hot_set(0, &hot).unwrap();
-        let report = run_abort_rate(&store, 0, &hot, 1, Duration::from_millis(200)).unwrap();
-        assert!(report.total_commits > 0, "no commits in 200ms?");
-        assert_eq!(report.total_aborts, 0, "solo writer should not abort");
+        let asked = Duration::from_millis(200);
+        let report = run_abort_rate(&store, 0, &hot, 1, asked).unwrap();
+        let run = report.writer_run(asked);
+        println!("{}", run.observed());
+        run.assert_guarantees();
+        assert_eq!(
+            report.total_aborts, 0,
+            "a lone writer has nobody to lose a transaction to"
+        );
     }
 
+    /// A READ THAT MOVED UNDER THE TRANSACTION IS REFUSED AT COMMIT — the
+    /// property the eight-writer race was reaching for, asserted where it is a
+    /// fact rather than an outcome (Round 1075).
+    ///
+    /// `many_writers_show_some_aborts` ran 8 writers over 4 hot keys for 500 ms
+    /// and required `total_aborts > 0`, reading a zero as "race detection
+    /// broken?". That is the assertion Round 1073 removed from `sled-baseline`,
+    /// in the same words, left standing here: a scheduler that serialises the
+    /// writers produces zero aborts from a perfectly working optimistic
+    /// transaction, so the green measured the runner. What it meant to check
+    /// needs no second thread — read a key for update, let a committed
+    /// transaction move it, and require the first commit to be refused.
     #[test]
-    fn many_writers_show_some_aborts() {
+    fn a_read_that_moved_underneath_is_refused_at_commit() {
+        let dir = TempDir::new().unwrap();
+        let store = ConcurrentStore::open(dir.path(), 16).unwrap();
+        store.seed_hot_set(0, &[1]).unwrap();
+        let cf = store.db.cf_handle(CF_ENTITIES).unwrap();
+        let key = CompositeKey {
+            branch_id: 0,
+            entity_id: 1,
+            valid_from: 0,
+        }
+        .encode();
+
+        // `get_for_update` records the key for validation at commit, which is
+        // the same tracking the writer loop relies on — the property under
+        // test is the one the measurement's own transactions depend on.
+        let doomed = store.db.transaction();
+        doomed
+            .get_for_update_cf(cf, key, true)
+            .unwrap()
+            .expect("the seeded record is there to be read");
+
+        let mover = store.db.transaction();
+        let moved = bincode::serialize(&EntityRecord {
+            kind: 0,
+            name: "moved under the reader".to_string(),
+        })
+        .unwrap();
+        mover.put_cf(cf, key, &moved).unwrap();
+        mover.commit().expect(
+            "an uncontended transaction commits, which is also this \
+                    test's proof that a commit is possible at all",
+        );
+
+        let late = bincode::serialize(&EntityRecord {
+            kind: 0,
+            name: "written from a read that had already moved".to_string(),
+        })
+        .unwrap();
+        doomed.put_cf(cf, key, &late).unwrap();
+        assert!(
+            doomed.commit().is_err(),
+            "the transaction committed over a key that had moved since it read \
+             it, so optimistic conflict detection accepted a lost update"
+        );
+        assert_eq!(
+            store.db.get_cf(cf, key).unwrap().as_deref(),
+            Some(&moved[..]),
+            "the refused write must not have landed"
+        );
+    }
+
+    /// The contended run, asserted on what it GUARANTEES and nothing else.
+    /// Round 1075 took `total_commits > 0` off that list along with the abort
+    /// floor: a writer the OS starts after the stop flag is set contributes no
+    /// iterations, so it is a claim about the runner too.
+    #[test]
+    fn many_writers_commit_and_every_attempt_is_accounted() {
         let dir = TempDir::new().unwrap();
         let store = ConcurrentStore::open(dir.path(), 16).unwrap();
         let hot: Vec<u64> = (1..=4).collect();
         store.seed_hot_set(0, &hot).unwrap();
-        let report = run_abort_rate(&store, 0, &hot, 8, Duration::from_millis(500)).unwrap();
-        assert!(report.total_commits > 0);
-        // With 8 writers on 4 hot keys, abort rate should be observable.
-        assert!(
-            report.total_aborts > 0,
-            "8 writers / 4 hot keys produced zero aborts in 500 ms — race detection broken?"
+        let asked = Duration::from_millis(500);
+        let report = run_abort_rate(&store, 0, &hot, 8, asked).unwrap();
+        let run = report.writer_run(asked);
+        println!(
+            "4 hot keys, {} — {:.1} commits/s, abort rate {:.3}",
+            run.observed(),
+            report.commits_per_sec,
+            report.abort_rate
         );
+        run.assert_guarantees();
     }
 }

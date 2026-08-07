@@ -81,6 +81,29 @@ pub struct ThroughputReport {
     pub per_writer: Vec<WriterStats>,
 }
 
+impl ThroughputReport {
+    /// This run as the shared contention rule reads it (Round 1075).
+    ///
+    /// The mapping lives here because only this type knows which of its
+    /// counters is the contention one. LMDB's writer mutex means it should
+    /// stay at zero by construction — which is a claim about the STORE, and is
+    /// asserted separately from the guarantees that hold for any backend.
+    pub fn writer_run(&self, requested: Duration) -> workload_gen::contention::WriterRun {
+        workload_gen::contention::WriterRun {
+            writers_requested: self.num_writers,
+            commits: self.total_commits,
+            contended: self.total_conflicts,
+            per_writer: self
+                .per_writer
+                .iter()
+                .map(|w| (w.commits, w.conflicts))
+                .collect(),
+            elapsed_ms: self.duration_ms,
+            requested_ms: requested.as_millis() as u64,
+        }
+    }
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct WriterStats {
     pub writer_id: u64,
@@ -221,30 +244,89 @@ mod tests {
     use super::*;
     use tempfile::TempDir;
 
+    /// THE REFUTER FOR EVERYTHING THE SHARED RULE CLAIMS (Round 1075).
+    ///
+    /// One writer is the limiting case of the schedule a loaded machine is
+    /// allowed to produce. It asks the SAME `assert_guarantees` the contended
+    /// run does, so a claim needing writers to collide fails here rather than
+    /// on whichever CI runner is slow enough first.
     #[test]
-    fn solo_writer_no_conflicts() {
+    fn a_solo_writer_meets_every_guarantee_and_conflicts_with_nobody() {
         let dir = TempDir::new().unwrap();
         let store = ConcurrentStore::open(dir.path()).unwrap();
         let hot: Vec<u64> = (1..=16).collect();
         store.seed_hot_set(0, &hot).unwrap();
-        let report = run_throughput(&store, 0, &hot, 1, Duration::from_millis(200)).unwrap();
-        assert!(report.total_commits > 0, "no commits in 200ms?");
-        assert_eq!(report.total_conflicts, 0, "solo writer should not conflict");
+        let asked = Duration::from_millis(200);
+        let report = run_throughput(&store, 0, &hot, 1, asked).unwrap();
+        let run = report.writer_run(asked);
+        println!("{}", run.observed());
+        run.assert_guarantees();
+        assert_eq!(
+            report.total_conflicts, 0,
+            "a lone writer contends with nobody"
+        );
     }
 
+    /// A COMMITTED WRITE IS THE ONE A LATER READ SEES — asserted where it is a
+    /// fact rather than an outcome (Round 1075).
+    ///
+    /// Every test here used to carry `total_commits > 0` over a timed run. That
+    /// is a claim about the runner, weaker in degree than the conflict floor
+    /// Round 1073 removed but the same in kind: a writer thread the OS starts
+    /// after the stop flag is set contributes no iterations. What it was
+    /// reaching for — that a write commits and is readable — needs no timer.
     #[test]
-    fn many_writers_serialize() {
+    fn a_committed_write_is_what_the_next_read_returns() {
+        let dir = TempDir::new().unwrap();
+        let store = ConcurrentStore::open(dir.path()).unwrap();
+        store.seed_hot_set(0, &[1]).unwrap();
+        let key = CompositeKey {
+            branch_id: 0,
+            entity_id: 1,
+            valid_from: 0,
+        }
+        .encode();
+        let written = bincode::serialize(&EntityRecord {
+            kind: 0,
+            name: "committed under the writer mutex".to_string(),
+        })
+        .unwrap();
+
+        let mut wtxn = store.env.write_txn().unwrap();
+        store.entities.put(&mut wtxn, &key, &written).unwrap();
+        wtxn.commit().unwrap();
+
+        let rtxn = store.env.read_txn().unwrap();
+        assert_eq!(
+            store.entities.get(&rtxn, &key).unwrap(),
+            Some(&written[..]),
+            "a committed write is not what the next read returns"
+        );
+    }
+
+    /// The contended run, asserted on what it GUARANTEES, plus the one claim
+    /// that is about LMDB rather than about the machine: the env-wide writer
+    /// mutex means there is no logical conflict path at all, so zero is a
+    /// property of the store here and holds under every schedule.
+    #[test]
+    fn many_writers_serialize_on_the_writer_mutex() {
         let dir = TempDir::new().unwrap();
         let store = ConcurrentStore::open(dir.path()).unwrap();
         let hot: Vec<u64> = (1..=4).collect();
         store.seed_hot_set(0, &hot).unwrap();
-        let report = run_throughput(&store, 0, &hot, 8, Duration::from_millis(500)).unwrap();
-        assert!(report.total_commits > 0);
-        // LMDB single-writer mutex serialises writers — conflicts should be ~0
-        // because there is no logical OCC conflict path.
+        let asked = Duration::from_millis(500);
+        let report = run_throughput(&store, 0, &hot, 8, asked).unwrap();
+        let run = report.writer_run(asked);
+        println!(
+            "4 hot keys, {} — {:.1} commits/s",
+            run.observed(),
+            report.commits_per_sec
+        );
+        run.assert_guarantees();
         assert_eq!(
             report.total_conflicts, 0,
-            "LMDB writer mutex should serialize, not produce logical conflicts"
+            "LMDB serialises writers on an env-wide mutex, so a logical \
+             conflict has no path to occur"
         );
     }
 }

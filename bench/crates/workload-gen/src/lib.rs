@@ -18,6 +18,8 @@ use rand_chacha::ChaCha20Rng;
 use rand_distr::{Distribution, Poisson};
 use serde::{Deserialize, Serialize};
 
+pub mod contention;
+
 /// Workload schema version. Bump on any layout change that breaks byte-equality
 /// across builds — downstream stages refuse to load mismatched versions.
 pub const PROTOCOL_VERSION: u32 = 1;

@@ -74,6 +74,28 @@ pub struct ThroughputReport {
     pub per_writer: Vec<WriterStats>,
 }
 
+impl ThroughputReport {
+    /// This run as the shared contention rule reads it (Round 1075).
+    ///
+    /// The mapping lives here because only this type knows which of its
+    /// counters is the contention one: for sled's CAS loop that is
+    /// `total_conflicts`.
+    pub fn writer_run(&self, requested: Duration) -> workload_gen::contention::WriterRun {
+        workload_gen::contention::WriterRun {
+            writers_requested: self.num_writers,
+            commits: self.total_commits,
+            contended: self.total_conflicts,
+            per_writer: self
+                .per_writer
+                .iter()
+                .map(|w| (w.commits, w.conflicts))
+                .collect(),
+            elapsed_ms: self.duration_ms,
+            requested_ms: requested.as_millis() as u64,
+        }
+    }
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct WriterStats {
     pub writer_id: u64,
@@ -199,15 +221,29 @@ mod tests {
     use super::*;
     use tempfile::TempDir;
 
+    /// THE REFUTER FOR EVERYTHING THE SHARED RULE CLAIMS (Round 1075).
+    ///
+    /// One writer is the limiting case of the schedule a loaded machine is
+    /// allowed to produce: no overlap at all, so every contention counter is
+    /// deterministically zero and every commit count may be. It asks the SAME
+    /// `assert_guarantees` the contended run does, so a claim that needs
+    /// writers to collide fails here the moment it is added, rather than on
+    /// whichever CI runner is slow enough first.
     #[test]
-    fn solo_writer_no_conflicts() {
+    fn a_solo_writer_meets_every_guarantee_and_collides_with_nobody() {
         let dir = TempDir::new().unwrap();
         let store = ConcurrentStore::open(dir.path(), 16).unwrap();
         let hot: Vec<u64> = (1..=16).collect();
         store.seed_hot_set(0, &hot).unwrap();
-        let report = run_throughput(&store, 0, &hot, 1, Duration::from_millis(200)).unwrap();
-        assert!(report.total_commits > 0, "no commits in 200ms?");
-        assert_eq!(report.total_conflicts, 0, "solo writer should not conflict");
+        let asked = Duration::from_millis(200);
+        let report = run_throughput(&store, 0, &hot, 1, asked).unwrap();
+        let run = report.writer_run(asked);
+        println!("{}", run.observed());
+        run.assert_guarantees();
+        assert_eq!(
+            report.total_conflicts, 0,
+            "a lone writer has nobody to lose a CAS to"
+        );
     }
 
     /// A STALE EXPECTED VALUE IS REJECTED — the property the eight-writer race
@@ -263,35 +299,27 @@ mod tests {
         );
     }
 
-    /// The throughput run itself, asserted on what it GUARANTEES. Conflicts are
-    /// an emergent outcome and are reported, never required; every attempt is
-    /// one or the other, and that identity is the report's own arithmetic.
+    /// The throughput run itself, asserted on what it GUARANTEES and nothing
+    /// else. Round 1075 took `total_commits > 0` off this list: a writer thread
+    /// the OS starts after the stop flag is set performs zero iterations, so
+    /// "some commit happened in 500 ms" is a claim about the runner, weaker in
+    /// degree than the conflict count Round 1073 removed but the same in kind.
+    /// That a commit is possible at all is asserted where it is a fact —
+    /// [`a_stale_expected_value_is_refused_by_cas`], which commits one.
     #[test]
     fn many_writers_commit_and_every_attempt_is_accounted() {
         let dir = TempDir::new().unwrap();
         let store = ConcurrentStore::open(dir.path(), 16).unwrap();
         let hot: Vec<u64> = (1..=4).collect();
         store.seed_hot_set(0, &hot).unwrap();
-        let report = run_throughput(&store, 0, &hot, 8, Duration::from_millis(500)).unwrap();
+        let asked = Duration::from_millis(500);
+        let report = run_throughput(&store, 0, &hot, 8, asked).unwrap();
+        let run = report.writer_run(asked);
         println!(
-            "8 writers / 4 hot keys: {} commit(s), {} conflict(s), {:.1} commits/s",
-            report.total_commits, report.total_conflicts, report.commits_per_sec
+            "4 hot keys, {} — {:.1} commits/s",
+            run.observed(),
+            report.commits_per_sec
         );
-        assert!(report.total_commits > 0, "no commits in 500ms?");
-        assert_eq!(
-            report.per_writer.len(),
-            8,
-            "every writer reports, or the totals are over a smaller crowd"
-        );
-        let attempts: u64 = report
-            .per_writer
-            .iter()
-            .map(|w| w.commits + w.conflicts)
-            .sum();
-        assert_eq!(
-            attempts,
-            report.total_commits + report.total_conflicts,
-            "an attempt is a commit or a conflict and the totals must say so"
-        );
+        run.assert_guarantees();
     }
 }
