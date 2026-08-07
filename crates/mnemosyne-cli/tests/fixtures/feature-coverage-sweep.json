@@ -1,0 +1,78 @@
+{
+  "_": [
+    "THE SWEEP THAT SAYS `feature_coverage_smoke` IS NOT VACUOUS — run it from",
+    "the repository root:",
+    "    cargo run -q --manifest-path tools/injection-harness/Cargo.toml -- \\",
+    "        crates/mnemosyne-cli/tests/fixtures/feature-coverage-sweep.json",
+    "",
+    "The gate passes today because both of its sides answer: two features are",
+    "turned on by the default workspace build and two by a CI job. A gate that",
+    "passes is indistinguishable from a gate that reads nothing, so the two",
+    "injections below remove each way a feature can be covered and require the",
+    "gate to say so.",
+    "",
+    "The first is the exact state this repository was in one commit ago: with",
+    "the `server-features` job's feature flags gone, `mnemosyne-server/tls` and",
+    "`/otlp` are compiled by nobody — which is how six integration test targets",
+    "printed `running 0 tests` for an unknown number of rounds while a 50ms",
+    "`sleep` sat inside one of them."
+  ],
+  "repo": ".",
+  "test_command": [
+    "cargo",
+    "test",
+    "--workspace",
+    "--locked",
+    "--no-fail-fast",
+    "--test",
+    "feature_coverage_smoke"
+  ],
+  "logs": "target/injection-logs",
+  "min_free_mb": 4000,
+  "injections": [
+    {
+      "name": "the-job-that-compiles-the-server-features-stops-naming-them",
+      "why": "this restores the pre-R1081 tree, where `tls` and `otlp` were declared and compiled by nothing; the gate must name them, and its reach assertion must notice that its CI side has gone silent rather than passing unread",
+      "edits": [
+        {
+          "file": ".github/workflows/mnemosyne-validate.yml",
+          "from": "          cargo clippy -p mnemosyne-server --all-features --all-targets",
+          "to": "          cargo clippy -p mnemosyne-server --all-targets"
+        },
+        {
+          "file": ".github/workflows/mnemosyne-validate.yml",
+          "from": "        run: cargo test -p mnemosyne-server --all-features --locked --no-fail-fast",
+          "to": "        run: cargo test -p mnemosyne-server --locked --no-fail-fast"
+        }
+      ],
+      "expect_red": [
+        "every_feature_this_workspace_declares_is_compiled_by_somebody",
+        "the_two_sides_are_asked_of_the_program_and_both_answer"
+      ]
+    },
+    {
+      "name": "a-fourth-feature-appears-and-nobody-enables-it",
+      "why": "the case this gate is FOR — a feature added tomorrow, compiled by no default build and named by no job. Nothing else in this repository would notice it, which is the whole of R777, R783 and R1080's shape one level up",
+      "edits": [
+        {
+          "file": "crates/mnemosyne-core/Cargo.toml",
+          "from": "schemars = [\"dep:schemars\"]",
+          "to": "schemars = [\"dep:schemars\"]\nunreached-by-anything = []"
+        }
+      ],
+      "expect_red": ["every_feature_this_workspace_declares_is_compiled_by_somebody"]
+    },
+    {
+      "name": "the-dark-feature-is-one-directory-over",
+      "why": "the population is EVERY workspace, not the one CI's main job builds — R1079 and R1080 each found a check that took only the root. A feature declared in a separate workspace is enabled by no default build of the root and named by no job, and the gate must say so from there too",
+      "edits": [
+        {
+          "file": "tools/item-citations/Cargo.toml",
+          "from": "[dependencies]\n# The census and the message stream are both cargo's JSON.",
+          "to": "[features]\nunreached-in-a-side-workspace = []\n\n[dependencies]\n# The census and the message stream are both cargo's JSON."
+        }
+      ],
+      "expect_red": ["every_feature_this_workspace_declares_is_compiled_by_somebody"]
+    }
+  ]
+}

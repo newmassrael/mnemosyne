@@ -2246,26 +2246,21 @@ fn every_replay_rebuilds_the_store_its_record_says_it_does() {
 // check is a cross-check between the record and the CI config, and it needs
 // both.
 
-use yaml_rust2::{Yaml, YamlLoader};
+use yaml_rust2::Yaml;
+
+/// WHICH workflows there are, and how one is parsed, now live in `tests/ci`,
+/// because `feature_coverage_smoke` asks its own question of the same files and
+/// two loaders are two answers to "which workflows are there" (R1082).
+mod ci;
 
 const REPLAY_WORKFLOW: &str = ".github/workflows/evidence-replay.yml";
 
 fn workflow_files() -> Vec<String> {
-    let mut out: Vec<String> = git(&["ls-files", ".github/workflows"])
-        .lines()
-        .map(str::to_string)
-        .collect();
-    out.sort();
-    out
+    ci::workflow_files(&repo_root())
 }
 
 fn load_workflow(path: &str) -> Yaml {
-    let raw = std::fs::read_to_string(repo_root().join(path)).expect("read workflow");
-    let docs = YamlLoader::load_from_str(&raw).unwrap_or_else(|e| {
-        panic!("{path} is not parseable YAML — GitHub would silently not run it: {e}")
-    });
-    assert_eq!(docs.len(), 1, "{path}: expected exactly one YAML document");
-    docs.into_iter().next().expect("one document")
+    ci::load_workflow(&repo_root(), path)
 }
 
 /// A workflow's trigger block. YAML 1.1 reads a bare `on` as the boolean true
