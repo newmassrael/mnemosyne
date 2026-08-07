@@ -32,8 +32,18 @@
 #   scripts/check-side-workspaces.sh bench …       # check exactly these, skipping nothing
 set -euo pipefail
 
-root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
-cd "$root"
+# THE TREE UNDER CHECK IS THE WORKING DIRECTORY, not this script's own location.
+# A git hook runs with the repository root as its working directory and may be
+# THIS repository's hook running over ANOTHER tree — which is exactly what the
+# hook's own smoke test does, and what broke when this script resolved its root
+# from `$BASH_SOURCE`: it walked its own checkout and found none of the caller's
+# workspaces. The requirement is stated rather than assumed.
+root=$(pwd)
+if [[ ! -f "$root/Cargo.toml" ]]; then
+  echo "[side-workspaces] $root has no Cargo.toml — run this from the root of the" \
+    "tree to check, which is where a git hook and CI both start" >&2
+  exit 2
+fi
 
 # Workspaces this gate does not run, and why. A skip written here is a claim
 # somebody has to defend in review; the skip below it is a claim about the

@@ -483,8 +483,13 @@ fn pre_commit_gates_a_separate_in_repo_workspace_the_root_gates_miss() {
     );
     let err = stderr_of(&out);
     assert!(
-        err.contains("unformatted code in tools/sub"),
+        err.contains("tools/sub is unformatted"),
         "the rejection must name the separate workspace:\n{err}"
+    );
+    assert!(
+        err.contains("side-workspaces"),
+        "and it must come from the ONE gate CI runs too, not from a copy of its \
+         two commands that this hook used to carry (R1066):\n{err}"
     );
 
     // The other direction: the walk-up must not reject a clean one, or the

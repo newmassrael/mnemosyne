@@ -141,7 +141,17 @@ if [[ -n "${sub_ws//[$'\n']/}" ]]; then
         # did not: without `--all` a VIRTUAL manifest has no targets, so
         # `cargo fmt` printed its usage, exited non-zero, and this gate rejected
         # every commit touching `bench` as "unformatted" having checked nothing.
-        if ! scripts/check-side-workspaces.sh --lint-only "$ws"; then
+        # Resolved from THIS HOOK's location, not the working directory: the
+        # hook may be run over another tree (its own smoke test does exactly
+        # that), and a gate that silently vanishes when its script is not under
+        # the caller's cwd is a gate that stops existing without saying so.
+        gate="$(cd "$(dirname "$0")/.." && pwd)/scripts/check-side-workspaces.sh"
+        if [[ ! -x "$gate" ]]; then
+            echo "[mnemosyne pre-commit] commit rejected — the separate-workspace gate" \
+                 "is missing at $gate" >&2
+            exit 1
+        fi
+        if ! "$gate" --lint-only "$ws"; then
             {
                 echo "[mnemosyne pre-commit] commit rejected — $ws does not pass its own gate"
                 echo "  run: scripts/check-side-workspaces.sh $ws"
