@@ -95,7 +95,22 @@ jobs:
   side-workspaces:
     name: separate in-repo workspaces
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    # R1067 — 60 rather than the 30 the other jobs carry, because this one's
+    # cost changed under it. Its first run took 28 SECONDS: `bench` and `studio`
+    # were both skipped and only the two tool workspaces were built. `bench` is
+    # in it now — five crates over RocksDB and sled — and it is checked twice,
+    # once by clippy and once by the test build. Measured cold at four cores
+    # (the runner's count) on the machine this was written on: 4m11s for the
+    # test build alone, and a hosted core is slower than that machine's. A job
+    # that runs out of budget is a red CI nobody can read a result from, and the
+    # minutes are free on a public repository.
+    #
+    # ITS ARTIFACTS ARE DELIBERATELY NOT CACHED, and that is measured too: the
+    # four workspaces' `target` directories come to 3.9 GB, against a 10 GB
+    # per-repository cache that the `validate` job's own cache already lives in.
+    # Caching these would evict that one, trading a job that rebuilds for a job
+    # that rebuilds AND a slower one beside it.
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v7
 
