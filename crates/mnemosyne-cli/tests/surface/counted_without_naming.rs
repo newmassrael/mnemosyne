@@ -165,9 +165,13 @@ fn counts_of(wrote: &Wrote) -> (Vec<(&str, &str, usize)>, usize) {
 ///
 /// The addresses of nested records all begin with this one's, and lexicographic
 /// order puts exactly those together, so the scope is one contiguous range.
-fn scope_of<'a>(names: &'a Named, record: &str) -> Scope<'a> {
+fn scope_of<'a>(wrote: &'a Wrote, record: &str) -> Scope<'a> {
     let mut out: Scope<'a> = BTreeMap::new();
-    for (address, fields) in names.range(record.to_string()..) {
+    // (the field, the field classifying it) -> value -> the ids named at the
+    // first in the records where the second holds that value.
+    let mut classified: BTreeMap<(&'a str, &'a str), BTreeMap<&'a str, BTreeSet<&'a str>>> =
+        BTreeMap::new();
+    for (address, fields) in wrote.names.range(record.to_string()..) {
         let nested = record.is_empty()
             || address == record
             || address
@@ -176,13 +180,145 @@ fn scope_of<'a>(names: &'a Named, record: &str) -> Scope<'a> {
         if !nested {
             break;
         }
+        let classifiers = classifiers_of(wrote.records.get(address));
         for (field, ids) in fields {
-            out.entry(field.as_str())
+            out.entry(Place::Spelled(field.clone()))
                 .or_default()
                 .extend(ids.iter().map(String::as_str));
+            for (key, value) in &classifiers {
+                classified
+                    .entry((field.as_str(), key))
+                    .or_default()
+                    .entry(value)
+                    .or_default()
+                    .extend(ids.iter().map(String::as_str));
+            }
+        }
+    }
+    // EVERY CLASS THIS ANSWER SORTS THOSE NAMES INTO, with none left out. Which
+    // of them a search may COMPOSE with is a separate question and a separate
+    // function ([`spelled`]), because the two answer to different things: an
+    // account is proposed by one answer and put to all 93, and [`accounted`]
+    // reads a place this answer lacks as one it names nothing at — the same
+    // thing an empty list says. A scope that dropped a place because THIS store
+    // happened to sort its rows finely would make that reading false, and would
+    // refute an account for the shape of the store refuting it.
+    for ((field, key), by_value) in classified {
+        for (value, ids) in by_value {
+            out.insert(
+                Place::Classified {
+                    field: field.to_string(),
+                    key: key.to_string(),
+                    value: value.to_string(),
+                },
+                ids,
+            );
         }
     }
     out
+}
+
+/// The places the union search composes with, the empty-naming ones first.
+///
+/// ONLY THE FIELDS THE ANSWER SPELLS, and that bound is the subject of
+/// [`classes_matching`]. An empty list goes first because it is where a store
+/// puts ids it happens not to have, and an account that omits it is one the very
+/// next store refutes for a reason that is not a defect.
+fn spelled<'s, 'a>(scope: &'s Scope<'a>) -> Vec<(&'s Place, &'s BTreeSet<&'a str>)> {
+    let mut out: Vec<(&'s Place, &'s BTreeSet<&'a str>)> = scope
+        .iter()
+        .filter(|(place, _)| !place.is_classified())
+        .collect();
+    out.sort_by(|a, b| (!a.1.is_empty(), a.0).cmp(&(!b.1.is_empty(), b.0)));
+    out
+}
+
+/// The classified subsets of this scope that hold exactly `value` ids — each one
+/// a WHOLE account rather than a term the search may add to others.
+///
+/// THIS IS THE MEASURED BOUND, and it is a bound on what an account may SAY, not
+/// on how hard the walk tries. Round 1076 first let classified places into the
+/// union search and ran it: the process reached 23.9 GiB resident and 24.2 GiB
+/// of swap without finishing, because [`accountings`] accumulates every account
+/// it finds and the count of unions reaching a given size grows with the size of
+/// the vocabulary. That is a measurement the machine cannot afford — and the
+/// answer it was buying is one nobody can read either, since a number explained
+/// by any of a hundred thousand surviving hypotheses is a number nothing has
+/// explained. Precision and cost failed in the same direction, which is what
+/// says the bound belongs in the vocabulary rather than in the budget.
+///
+/// SO A SELECTION IS COMPLETE OR IT IS NOT AN ACCOUNT. A consumer holding the
+/// answer either filters one list by one field and gets the number, or does not;
+/// "these three lists plus the rows of that class" is not a shape any read on
+/// this surface emits. If one ever does, it arrives here as a number no account
+/// explains — printed, named in [`NOT_A_COUNT_OF_NAMES`], and the round that
+/// meets it will have measured the need before paying for it.
+///
+/// A CLASSIFIER IS NOT A KEY is the one rule here, and the difference is the
+/// data's rather than a constant: a key taking fewer values than there are ids
+/// it sorts is sorting them into classes, and one taking as many is naming them
+/// one apiece — a singleton per row, which accounts for the number 1 and for
+/// nothing else.
+///
+/// "ONE CLASS IS NOT A CLASSIFICATION" WAS ALSO A RULE HERE FOR ONE RUN, and it
+/// was wrong in a way worth keeping written down: it is true of one answer and
+/// false of a population. A key holding a single value across the unedited store
+/// does select everything it sorts THERE, so the subset is the spelled field and
+/// proposing it looks redundant — and it is exactly the description that stops
+/// being redundant the moment an edit splits the value, which is the only moment
+/// this walk is asking about. Refusing to propose it cost the round the two
+/// numbers it was built to reach: the account was never made in the baseline, so
+/// what refuted the spelled one read as "nothing the answer names".
+///
+/// The rule that remains is contingent on the proposing answer too, and its
+/// failure mode is the honest one: a number nothing proposed an account for
+/// stays in [`NOT_A_COUNT_OF_NAMES`], printed beside how many accounts were
+/// proposed for it and how many named a class. A search that cannot reach a
+/// hypothesis says so; it never says "clean".
+fn classes_matching<'s, 'a>(scope: &'s Scope<'a>, value: usize) -> Vec<&'s Place> {
+    let mut taken: BTreeMap<(&str, &str), usize> = BTreeMap::new();
+    for place in scope.keys() {
+        if let Place::Classified { field, key, .. } = place {
+            *taken.entry((field.as_str(), key.as_str())).or_default() += 1;
+        }
+    }
+    scope
+        .iter()
+        .filter(|(place, ids)| {
+            let Place::Classified { field, key, .. } = place else {
+                return false;
+            };
+            let classes = taken
+                .get(&(field.as_str(), key.as_str()))
+                .copied()
+                .unwrap_or_default();
+            let named_here = scope
+                .get(&Place::Spelled(field.clone()))
+                .map_or(0, BTreeSet::len);
+            ids.len() == value && classes < named_here
+        })
+        .map(|(place, _)| place)
+        .collect()
+}
+
+/// The scalar fields of one record that could SORT the ids it names, as
+/// `(key, value)`.
+///
+/// Only strings and booleans: a number in a record is the thing this whole walk
+/// is trying to account for, and using one as a class would let a count excuse
+/// itself with another count.
+fn classifiers_of(record: Option<&serde_json::Value>) -> Vec<(&str, &str)> {
+    record
+        .and_then(serde_json::Value::as_object)
+        .into_iter()
+        .flatten()
+        .filter_map(|(key, value)| match value {
+            serde_json::Value::String(text) => Some((key.as_str(), text.as_str())),
+            serde_json::Value::Bool(true) => Some((key.as_str(), "true")),
+            serde_json::Value::Bool(false) => Some((key.as_str(), "false")),
+            _ => None,
+        })
+        .collect()
 }
 
 /// Every set of name-fields whose union holds exactly `value` ids — the
@@ -191,10 +327,8 @@ fn scope_of<'a>(names: &'a Named, record: &str) -> Scope<'a> {
 /// A union only grows, so a set already holding too many is pruned with
 /// everything under it, a set that could not reach the value even by taking
 /// every field left is pruned with everything after it, and a set holding
-/// exactly enough is not deepened. The fields that name NOTHING here go first:
-/// an empty list is where a store puts ids it happens not to have, and an
-/// account that omits it is one the very next store refutes for a reason that
-/// is not a defect.
+/// exactly enough is not deepened. Which places it composes, and in what order,
+/// is [`spelled`].
 ///
 /// PROPOSING IS NOT DECIDING. What one answer can express is bounded by what it
 /// holds — a frame whose view is empty cannot propose "the facts you list",
@@ -206,16 +340,14 @@ fn scope_of<'a>(names: &'a Named, record: &str) -> Scope<'a> {
 /// search that exhausts it is REPORTED rather than silently truncated — the
 /// hypotheses it did not reach are hypotheses that cannot exonerate a number.
 fn accountings(scope: &Scope, value: usize, budget: &mut usize) -> BTreeSet<Accounting> {
-    let mut fields: Vec<(&str, &BTreeSet<&str>)> =
-        scope.iter().map(|(field, ids)| (*field, ids)).collect();
-    fields.sort_by_key(|(field, ids)| (!ids.is_empty(), *field));
+    let fields = spelled(scope);
     // The most the fields from here on could add between them.
     let mut reach: Vec<usize> = vec![0; fields.len() + 1];
     for index in (0..fields.len()).rev() {
         reach[index] = reach[index + 1] + fields[index].1.len();
     }
     let mut found = BTreeSet::new();
-    let mut chosen: Vec<String> = Vec::new();
+    let mut chosen: Accounting = Vec::new();
     search(
         &fields,
         &reach,
@@ -226,12 +358,22 @@ fn accountings(scope: &Scope, value: usize, budget: &mut usize) -> BTreeSet<Acco
         budget,
         &mut found,
     );
+    // AND THE SELECTIONS, EACH ONE WHOLE (Round 1076). A classified subset is
+    // not a term the search may add to others — [`classes_matching`] is where
+    // that bound is stated and what it cost to learn — so it enters here as a
+    // one-place account, proposed like any other and refuted by any store whose
+    // rows that class does not hold `value` of.
+    found.extend(
+        classes_matching(scope, value)
+            .into_iter()
+            .map(|place| vec![place.clone()]),
+    );
     found
 }
 
 #[allow(clippy::too_many_arguments)]
 fn search(
-    fields: &[(&str, &BTreeSet<&str>)],
+    fields: &[(&Place, &BTreeSet<&str>)],
     reach: &[usize],
     from: usize,
     union: &BTreeSet<&str>,
@@ -255,7 +397,7 @@ fn search(
         if next.len() > value {
             continue;
         }
-        chosen.push(field.to_string());
+        chosen.push(field.clone());
         if next.len() == value {
             found.insert(chosen.clone());
         } else {
@@ -279,8 +421,8 @@ fn search(
 /// account: an empty list and an absent one say the same thing to a reader.
 fn accounted(scope: &Scope, of: &Accounting) -> usize {
     let mut union: BTreeSet<&str> = BTreeSet::new();
-    for field in of {
-        if let Some(ids) = scope.get(field.as_str()) {
+    for place in of {
+        if let Some(ids) = scope.get(place) {
             union.extend(ids.iter().copied());
         }
     }
@@ -296,12 +438,37 @@ struct Memo<'a> {
 }
 
 impl<'a> Memo<'a> {
-    fn of(&mut self, names: &'a Named, record: &str) -> &Scope<'a> {
+    fn of(&mut self, wrote: &'a Wrote, record: &str) -> &Scope<'a> {
         if self.at.as_ref().is_none_or(|(was, _)| was != record) {
-            self.at = Some((record.to_string(), scope_of(names, record)));
+            self.at = Some((record.to_string(), scope_of(wrote, record)));
         }
         &self.at.as_ref().expect("just filled").1
     }
+}
+
+/// What was proposed for one number by the unedited store, before any answer
+/// had a chance to refute it.
+///
+/// "NOTHING THE ANSWER NAMES" IS ONE SENTENCE FOR TWO FINDINGS, and Round 1076
+/// spent a whole run unable to tell them apart on the two numbers it was built
+/// to reach. Either the walk proposed the right account and some store refuted
+/// it — a fact about the READ, and the defect this file exists to find — or the
+/// walk never proposed it, which is a limit of THIS SEARCH and says nothing
+/// about the read at all. These four say which.
+#[derive(Default)]
+struct Proposed {
+    /// How many accounts, over every question this verb was asked.
+    accounts: usize,
+    /// How many of them named a class — the places Round 1076 added.
+    naming_a_class: usize,
+    /// The smallest of them, spelled.
+    smallest: String,
+    /// What the number actually SAID in the unedited store. Zero is the value
+    /// that most often explains an unproposed class: a class with no rows is a
+    /// place the answer does not hold, and an account can be composed only of
+    /// places it does (the rule [`accountings`] already states for the frame
+    /// whose view is empty).
+    said: BTreeSet<usize>,
 }
 
 /// What this walk still believes each number counts.
@@ -311,6 +478,8 @@ struct Accounts {
     alive: BTreeMap<(String, String), BTreeSet<Accounting>>,
     /// (verb, field) -> the answer that refuted the last one.
     died: BTreeMap<(String, String), String>,
+    /// (verb, field) -> what was PROPOSED for it before any answer refuted it.
+    proposed: BTreeMap<(String, String), Proposed>,
     /// Numbers this law does not judge: a fraction is not a count of anything
     /// nameable, and a field carrying several numbers in one record is a list of
     /// numbers rather than a count.
@@ -328,7 +497,7 @@ impl Accounts {
         let mut scope = Memo::default();
         for (field, record, value) in counts_of(wrote).0 {
             let mut budget = SEARCH_BUDGET;
-            let found = accountings(scope.of(&wrote.names, record), value, &mut budget);
+            let found = accountings(scope.of(wrote, record), value, &mut budget);
             if budget == 0 {
                 self.exhausted.insert(format!("{verb} {field}"));
             }
@@ -336,8 +505,21 @@ impl Accounts {
                 self.capped
                     .insert(format!("{verb} {field} ({} proposed)", found.len()));
             }
+            let key = (verb.to_string(), field.to_string());
+            let noted = self.proposed.entry(key.clone()).or_default();
+            noted.accounts += found.len();
+            noted.naming_a_class += found
+                .iter()
+                .filter(|account| account.iter().any(Place::is_classified))
+                .count();
+            noted.said.insert(value);
+            if noted.smallest.is_empty() {
+                if let Some(one) = found.iter().min_by_key(|a| (a.len(), (*a).clone())) {
+                    noted.smallest = spell(one);
+                }
+            }
             self.alive
-                .entry((verb.to_string(), field.to_string()))
+                .entry(key)
                 .or_default()
                 .extend(found.into_iter().take(HYPOTHESIS_CAP));
         }
@@ -366,7 +548,7 @@ impl Accounts {
             if alive.is_empty() {
                 continue;
             }
-            let scope = scope.of(&wrote.names, record);
+            let scope = scope.of(wrote, record);
             alive.retain(|hypothesis| accounted(scope, hypothesis) == value);
             if alive.is_empty() {
                 // The FIRST answer that left the number unaccounted for: every
@@ -391,16 +573,66 @@ type Numbers = BTreeMap<String, Vec<String>>;
 /// the names.
 type ByNames = BTreeMap<String, BTreeMap<Fingerprint, (Numbers, String)>>;
 
-/// What one answer NAMES, keyed by the record it named it in and then the
-/// field — [`common::Wrote::names`].
-type Named = BTreeMap<String, BTreeMap<String, BTreeSet<String>>>;
-
-/// One hypothesis about a number: the name-fields it counts between them.
-type Accounting = Vec<String>;
+/// One hypothesis about a number: the places it counts between them.
+type Accounting = Vec<Place>;
 
 /// The places one record and everything under it names ids, borrowed from the
 /// answer's own walk.
-type Scope<'a> = BTreeMap<&'a str, BTreeSet<&'a str>>;
+type Scope<'a> = BTreeMap<Place, BTreeSet<&'a str>>;
+
+/// One place in an answer whose names a number could be counting.
+///
+/// A PLACE IS NOT ALWAYS A FIELD (Round 1076). An account is composed as a
+/// union, and until this round the only things it could union were fields the
+/// answer spells — so a number counting the rows of ONE CLASS of a
+/// classification had no account, however plainly the answer named both the
+/// rows and their classes. `report-spec-map` names every section and every
+/// section's `coverage_class`, and its `by_class` totals sat in
+/// [`NOT_A_COUNT_OF_NAMES`] as a limit of THIS SEARCH rather than of that read.
+///
+/// A TYPE RATHER THAN A FORMATTED KEY, because the third component is authored
+/// content: a classifier is any scalar field of a record, so its value can be a
+/// `claim` or a `title` holding whatever words this walk would print around it.
+/// Two different triples that printed alike would be ONE key in a [`Scope`],
+/// each silently taking the other's ids, and every account naming that place
+/// would afterwards be judged against names that are not the ones it names.
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+enum Place {
+    /// A field the answer spells, addressed as [`common::wrote_about`] does.
+    Spelled(String),
+    /// The ids `field` names in the records where `key` holds `value`. The
+    /// answer spells no list of these, and spells everything one is made of.
+    Classified {
+        field: String,
+        key: String,
+        value: String,
+    },
+}
+
+impl Place {
+    /// Whether this place is one the answer does not spell — what makes an
+    /// account depend on Round 1076 rather than merely survive it.
+    fn is_classified(&self) -> bool {
+        matches!(self, Place::Classified { .. })
+    }
+}
+
+impl std::fmt::Display for Place {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Place::Spelled(field) => write!(f, "{field}"),
+            Place::Classified { field, key, value } => write!(f, "{field} where {key}={value}"),
+        }
+    }
+}
+
+/// One accounting as a reader sees it: the places it counts, joined.
+fn spell(of: &Accounting) -> String {
+    of.iter()
+        .map(Place::to_string)
+        .collect::<Vec<_>>()
+        .join(" + ")
+}
 
 /// What an answer NAMES, as a fixed-width key — two independent 64-bit hashes of
 /// the number-blanked answer, so answers that name identical things land in one
@@ -522,21 +754,59 @@ const HYPOTHESIS_CAP: usize = 100_000;
 /// The one number the law does not reach at all is the frontier's `density`,
 /// which is a FRACTION: [`the_density_is_the_facts_it_names_over_the_road_it_names`]
 /// is what that one is, and where the loss in it actually sits.
-/// The two spec-map entries arrived in Round 1061 with the scene registry, and
-/// they are a limit of THIS SEARCH rather than of the read. `report-spec-map`
-/// names every section AND its `coverage_class`, so `by_class.normative_gap` is
-/// exactly the rows whose class is that one — but an account here is composed as
-/// a UNION of named lists, and a subset selected by a field's value is not a
-/// union of anything. Teaching the search filtered subsets is the next round's
-/// work, and it is not free: the hypothesis space multiplies by every (list,
-/// field, value), and this walk already measures its own budget.
-const NOT_A_COUNT_OF_NAMES: [&str; 6] = [
+///
+/// TWO SPEC-MAP ENTRIES USED TO BE ON THIS LIST and neither was about the read.
+/// They arrived in Round 1061 with the scene registry and Round 1057 filed them
+/// as a limit of THIS SEARCH: `report-spec-map` names every section AND its
+/// `coverage_class`, so `by_class.normative_gap` is exactly the rows whose class
+/// is that one — but an account was composed as a UNION of named lists, and a
+/// subset selected by a field's value is not a union of anything. Round 1076
+/// gave a [`Place`] the second shape, and which numbers NEED it is asserted
+/// rather than implied ([`ACCOUNTED_FOR_ONLY_BY_A_CLASS`]) — a wider vocabulary
+/// makes leaving this list strictly easier, so the shrink alone would be no
+/// evidence at all.
+///
+/// - A CLASS WITH NO ROWS IS NOT A PLACE, which is why one of the two is still
+///   here. Measured rather than argued: the unedited store says
+///   `by_class.normative_gap` is 0, and it says so because no section carries
+///   that class — so there is nothing in that answer for a [`Place::Classified`]
+///   to be built out of, and an account can be composed only of places the
+///   answer holds. That is the rule [`accountings`] already states for the frame
+///   whose view is empty, met a second time from the other side. The vocabulary
+///   that would supply the missing class is either the read's own (`by_class`'s
+///   keys are `coverage_class` values, which is knowledge of THIS report and not
+///   a derivation) or every string in the answer, which would hand each of the
+///   many zeroes on this surface a pile of accounts that are true because
+///   nothing is in them. Both are worse than the printed limit.
+const NOT_A_COUNT_OF_NAMES: [&str; 5] = [
     "report-playable-world worlds.*.locators[].scene_ordinal",
     "report-playable-world worlds.*.manuscript.scenes[].holding_count",
     "report-playthrough-manuscript worlds.*.scenes[].holding_count",
     "report-quest-graph quests[].locators[].scene_ordinal",
-    "report-spec-map summary.by_class.informative_exempt",
     "report-spec-map summary.by_class.normative_gap",
+];
+
+/// The numbers whose ONLY surviving account names a place the answer does not
+/// spell, as `verb field = the account`. (Round 1076.)
+///
+/// THIS IS WHAT THE WIDER VOCABULARY BOUGHT, and stating it is the difference
+/// between buying something and moving a name off a list. A number leaves
+/// [`NOT_A_COUNT_OF_NAMES`] the moment ANY hypothesis survives every store, and
+/// widening what a hypothesis may say makes that strictly easier — so a round
+/// that only checked the census shrink could have excused these two numbers with
+/// a coincidence and read the same from here. A field is on THIS list when every
+/// account that survived names a [`Place::Classified`]: no union of the fields
+/// the answer spells reaches the value at all, in any of the 93 stores.
+///
+/// The one member is `report-spec-map`, and the account is the read's own words:
+/// it names every section AND that section's `coverage_class`, so the total for
+/// one class is exactly the sections carrying it. Round 1057 filed it as a limit
+/// of THIS SEARCH rather than of the read — "an account here is composed as a
+/// UNION of named lists, and a subset selected by a field's value is not a union
+/// of anything" — which is a sentence describing work, and this is that work.
+const ACCOUNTED_FOR_ONLY_BY_A_CLASS: [&str; 1] = [
+    "report-spec-map summary.by_class.informative_exempt = sections[].section_id where \
+      coverage_class=informative_exempt",
 ];
 
 #[test]
@@ -808,13 +1078,15 @@ fn the_reads_that_count_what_they_do_not_name() {
     {
         println!("  OUT OF REACH {line}");
     }
-    let account = |alive: &BTreeSet<Accounting>| match alive
-        .iter()
-        .min_by_key(|hypothesis| (hypothesis.len(), (*hypothesis).clone()))
-    {
-        Some(smallest) => format!(
-            "|{}|{}",
-            smallest.join(" + "),
+    let smallest = |alive: &BTreeSet<Accounting>| {
+        alive
+            .iter()
+            .min_by_key(|hypothesis| (hypothesis.len(), (*hypothesis).clone()))
+            .map(spell)
+    };
+    let account = |alive: &BTreeSet<Accounting>| match smallest(alive) {
+        Some(spelled) => format!(
+            "|{spelled}|{}",
             if alive.len() > 1 {
                 format!("   ({} accounts survive)", alive.len())
             } else {
@@ -826,11 +1098,25 @@ fn the_reads_that_count_what_they_do_not_name() {
     for ((verb, field), alive) in &tested {
         println!("  {verb} {field} = {}", account(alive));
         if alive.is_empty() {
+            let key = (verb.clone(), field.clone());
+            let none = Proposed::default();
+            let it = accounts.proposed.get(&key).unwrap_or(&none);
+            let said: Vec<String> = it.said.iter().take(4).map(usize::to_string).collect();
             println!(
-                "        last account died at {}",
+                "        the unedited store said {}{}; {} account(s) proposed, {} of them naming \
+                 a class{}; last died at {}",
+                said.join("/"),
+                if it.said.len() > 4 { " ..." } else { "" },
+                it.accounts,
+                it.naming_a_class,
+                if it.smallest.is_empty() {
+                    String::new()
+                } else {
+                    format!(" (smallest |{}|)", it.smallest)
+                },
                 accounts
                     .died
-                    .get(&(verb.clone(), field.clone()))
+                    .get(&key)
                     .map_or("the unedited store", String::as_str),
             );
         }
@@ -838,6 +1124,35 @@ fn the_reads_that_count_what_they_do_not_name() {
     println!("\nproposed but never put to a second value — no edit in this population moves them:");
     for ((verb, field), alive) in &untested {
         println!("  {verb} {field} = {}", account(alive));
+    }
+
+    // WHICH ACCOUNTS THE ANSWER DOES NOT SPELL (Round 1076). A number is here
+    // when EVERY account that survived every store names a classified subset —
+    // so it is not that a class happened to be among the ways to reach the
+    // value, it is that a union of spelled fields cannot reach it at all. That
+    // is the non-vacuity of this round: without these lines, teaching the
+    // search a wider vocabulary and teaching it nothing look the same from
+    // here, and both print an empty census.
+    let by_a_class: Vec<String> = tested
+        .iter()
+        .filter(|(_, alive)| {
+            !alive.is_empty()
+                && alive
+                    .iter()
+                    .all(|hypothesis| hypothesis.iter().any(Place::is_classified))
+        })
+        .map(|((verb, field), alive)| {
+            format!(
+                "{verb} {field} = {}",
+                smallest(alive).expect("a surviving account"),
+            )
+        })
+        .collect();
+    println!(
+        "\nACCOUNTED FOR ONLY BY A CLASS — no union of fields the answer spells reaches these:"
+    );
+    for line in &by_a_class {
+        println!("  {line}");
     }
 
     let mut broken: Vec<String> = Vec::new();
@@ -922,6 +1237,17 @@ fn the_reads_that_count_what_they_do_not_name() {
          that something named moved alongside — the upgrade Round 1056 filed as \
          undone for ten of its eleven fields, since a number that moves beside a \
          name can still carry what no name carries",
+    );
+    check(
+        by_a_class == ACCOUNTED_FOR_ONLY_BY_A_CLASS,
+        "WHAT THE CLASSES BOUGHT: the numbers a union of spelled fields cannot \
+         reach at all, and the account that does reach them. Widening what a \
+         hypothesis may SAY makes leaving the census above strictly easier, so \
+         the shrink is not evidence on its own — a coincidence in a bigger \
+         search space reads exactly the same. This list is the evidence, and it \
+         is also the guard the other way: a number that stops needing a class \
+         has had its read start naming the subset, and one that starts needing \
+         a class is a read that stopped",
     );
     check(
         moved_nothing.is_empty(),

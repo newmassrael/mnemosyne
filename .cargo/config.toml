@@ -1,0 +1,39 @@
+# Parallelism, bounded — because this machine's scarce resource is memory, not
+# cores, and nothing here was asking it how much it had.
+#
+# WHAT HAPPENED. Round 1076 ran one test of `authoring_surface` and the process
+# reached 23.9 GiB resident with 24.2 GiB more in swap, on a host with 31 GiB of
+# RAM and 32 GiB of swap that is shared with sibling checkouts (`pinion`,
+# `scxml-core-engine`) running their own sessions. Swap went to 100% full and
+# every other process on the box slowed with it. The run was killed at 22m33s,
+# having finished nothing.
+#
+# The defect that produced THAT number was in the test and is repaired there.
+# What this file is about is the multiplier that stood behind it: cargo defaults
+# `jobs` to the CPU count and libtest defaults its thread count the same way, so
+# on 32 cores both were 32. Neither had ever been told what the memory budget
+# was, so neither could stay inside it, and a single crate that grows heavy at
+# compile time or a single test that grows heavy at run time gets multiplied by
+# thirty-two before anyone sees a number.
+#
+# THE NUMBER IS FOUR, and it is not new here: Round 1067 measured a cold `-j4`
+# build of the `bench` workspace at 250.7 seconds and that is the width the
+# side-workspace gate has used since. Reusing it keeps one answer to "how wide
+# may this repository build" rather than inventing a second constant beside it.
+# Four rustc processes at the one-to-two GiB a heavy crate reaches leave room for
+# a sibling checkout to be doing the same thing, which is the actual operating
+# condition rather than the ideal one.
+#
+# BOTH DEFAULTS, NOT ONE. `jobs` bounds the compile side; `RUST_TEST_THREADS`
+# bounds the run side, which is where the memory in this repository actually
+# lives — `authoring_surface` is one binary holding twelve tests over a shared
+# sweep (Round 1071), and running twelve of those at once multiplies whatever
+# each one holds. `[env]` here does not override a value already in the
+# environment, so `RUST_TEST_THREADS=1 cargo test` and `-- --test-threads=N`
+# both still win, and CI may raise it where the runner is the one being sized.
+
+[build]
+jobs = 4
+
+[env]
+RUST_TEST_THREADS = "4"
