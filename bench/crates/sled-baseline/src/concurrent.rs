@@ -210,17 +210,88 @@ mod tests {
         assert_eq!(report.total_conflicts, 0, "solo writer should not conflict");
     }
 
+    /// A STALE EXPECTED VALUE IS REJECTED — the property the eight-writer race
+    /// was reaching for, asserted where it is a fact rather than an outcome.
+    ///
+    /// Round 1072: `many_writers_show_some_conflicts` ran 8 writers over 4 hot
+    /// keys for 500 ms and required `total_conflicts > 0`, reading a zero as
+    /// "CAS detection broken?". It is not: a scheduler that serialises the
+    /// writers produces zero conflicts with a perfectly working CAS, and a
+    /// loaded CI runner did exactly that — the assertion measured the MACHINE.
+    /// What it meant to check is constructible in one thread.
     #[test]
-    fn many_writers_show_some_conflicts() {
+    fn a_stale_expected_value_is_refused_by_cas() {
+        let dir = TempDir::new().unwrap();
+        let store = ConcurrentStore::open(dir.path(), 16).unwrap();
+        store.seed_hot_set(0, &[1]).unwrap();
+        let key = CompositeKey {
+            branch_id: 0,
+            entity_id: 1,
+            valid_from: 0,
+        }
+        .encode();
+
+        let stale = store.entities.get(key).unwrap();
+        let moved = bincode::serialize(&EntityRecord {
+            kind: 0,
+            name: "moved under the reader".to_string(),
+        })
+        .unwrap();
+        store
+            .entities
+            .compare_and_swap(key, stale.as_ref().map(|v| v.as_ref()), Some(&moved[..]))
+            .unwrap()
+            .expect("the first CAS holds the value it read");
+
+        let late = bincode::serialize(&EntityRecord {
+            kind: 0,
+            name: "written from a stale read".to_string(),
+        })
+        .unwrap();
+        let verdict = store
+            .entities
+            .compare_and_swap(key, stale.as_ref().map(|v| v.as_ref()), Some(&late[..]))
+            .unwrap();
+        assert!(
+            verdict.is_err(),
+            "CAS accepted a write whose expected value had already moved"
+        );
+        assert_eq!(
+            store.entities.get(key).unwrap().as_deref(),
+            Some(&moved[..]),
+            "the refused write must not have landed"
+        );
+    }
+
+    /// The throughput run itself, asserted on what it GUARANTEES. Conflicts are
+    /// an emergent outcome and are reported, never required; every attempt is
+    /// one or the other, and that identity is the report's own arithmetic.
+    #[test]
+    fn many_writers_commit_and_every_attempt_is_accounted() {
         let dir = TempDir::new().unwrap();
         let store = ConcurrentStore::open(dir.path(), 16).unwrap();
         let hot: Vec<u64> = (1..=4).collect();
         store.seed_hot_set(0, &hot).unwrap();
         let report = run_throughput(&store, 0, &hot, 8, Duration::from_millis(500)).unwrap();
-        assert!(report.total_commits > 0);
-        assert!(
-            report.total_conflicts > 0,
-            "8 writers / 4 hot keys produced zero conflicts in 500 ms — CAS detection broken?"
+        println!(
+            "8 writers / 4 hot keys: {} commit(s), {} conflict(s), {:.1} commits/s",
+            report.total_commits, report.total_conflicts, report.commits_per_sec
+        );
+        assert!(report.total_commits > 0, "no commits in 500ms?");
+        assert_eq!(
+            report.per_writer.len(),
+            8,
+            "every writer reports, or the totals are over a smaller crowd"
+        );
+        let attempts: u64 = report
+            .per_writer
+            .iter()
+            .map(|w| w.commits + w.conflicts)
+            .sum();
+        assert_eq!(
+            attempts,
+            report.total_commits + report.total_conflicts,
+            "an attempt is a commit or a conflict and the totals must say so"
         );
     }
 }
