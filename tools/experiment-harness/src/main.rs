@@ -13,7 +13,6 @@
 mod assemble;
 mod declare;
 mod playthrough;
-mod project;
 mod seal;
 mod shuffle;
 mod splice;
@@ -33,7 +32,6 @@ USAGE:
   experiment-harness shuffle --experiment <name> [--note <text>] --out <json> <arm> <arm> [arm...]
   experiment-harness verify-seal --map <json> --sha256 <hex>
   experiment-harness cast-sustainment --facts <facts.json> --order <order.json> [--ground-frame <id>] [--principals <n>] [--min-active <n>] [--min-nonprincipal <n>] [--min-frames <n>]
-  experiment-harness project-world --store <reextracted.atomic.json> --world <name> --out <store.json> [--main-branch <id>]
   experiment-harness splice --base <manuscript.md> --out <md> --replace <scene.md> [--replace <scene.md>...]
   experiment-harness stamp-inputs --record <replay.json> [--record <replay.json>...]
   experiment-harness declare-run-tree --record <replay.json> [--record <replay.json>...]
@@ -63,11 +61,6 @@ cast-sustainment
   distinct person-frames stay active in the deep tail (scenes after the fork). The
   thresholds are explicit flags (default: principals 3, min-active 6,
   min-nonprincipal 4, min-frames 10; ground frame `gt`). Exits 1 if the floor fails.
-
-project-world
-  Emit the single-world projection of a re-extracted store for validate-render-
-  fidelity: keep every narrative_fact on the target world or the spine (--main-branch,
-  default `main`), drop sibling-branch facts. A store missing narrative_facts errors.
 
 splice
   Replace named `## sc-NN` scene blocks in --base with the re-rendered --replace
@@ -136,7 +129,6 @@ fn run(args: &[String]) -> HResult<ExitCode> {
         "shuffle" => cmd_shuffle(&args[1..]),
         "verify-seal" => cmd_verify_seal(&args[1..]),
         "cast-sustainment" => cmd_cast_sustainment(&args[1..]),
-        "project-world" => cmd_project_world(&args[1..]),
         "splice" => cmd_splice(&args[1..]),
         "stamp-inputs" => cmd_stamp_inputs(&args[1..]),
         "declare-run-tree" => cmd_declare_run_tree(&args[1..]),
@@ -350,23 +342,6 @@ fn cmd_cast_sustainment(args: &[String]) -> HResult<ExitCode> {
     } else {
         Ok(ExitCode::from(1))
     }
-}
-
-fn cmd_project_world(args: &[String]) -> HResult<ExitCode> {
-    let mut p = Flags::new(args);
-    let store = p.require("--store")?;
-    let world = p.require("--world")?;
-    let out = p.require("--out")?;
-    let main_branch = p
-        .optional("--main-branch")?
-        .unwrap_or_else(|| "main".to_string());
-    p.finish()?;
-
-    let (kept, dropped) = project::run(&store, &world, &main_branch, &out)?;
-    eprintln!(
-        "world `{world}`: kept {kept} fact(s), dropped {dropped} sibling-branch fact(s) -> {out}"
-    );
-    Ok(ExitCode::SUCCESS)
 }
 
 fn cmd_splice(args: &[String]) -> HResult<ExitCode> {

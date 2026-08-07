@@ -1825,6 +1825,68 @@ pub fn render_fidelity_report(
     ))
 }
 
+/// What one single-world projection did (Round 1070) — the counts a caller
+/// needs to see that the file it just wrote is about something.
+#[derive(Debug, Clone, Serialize)]
+pub struct WorldProjectionReport {
+    pub world: String,
+    /// Where the projected store was written.
+    pub out: String,
+    /// Narrative facts the projection KEPT — the count
+    /// `validate-render-fidelity` will report as `reextracted_facts`.
+    pub kept: usize,
+    /// Narrative facts dropped as belonging to another world-line.
+    pub dropped: usize,
+}
+
+/// Emit the single-world projection of a store — the input shape
+/// `validate-render-fidelity` requires (Round 1070).
+///
+/// `subject` is the store being projected, defaulting to the workspace's own
+/// sidecar; the BRANCH REGISTRY always comes from the authored workspace store,
+/// because a re-extracted prose store is prose and need not carry the world
+/// lattice at all. `world` is guarded against that registry exactly as the
+/// fidelity gate guards it, so a typo is refused here rather than yielding an
+/// empty projection that reads as a clean render downstream.
+///
+/// # Errors
+///
+/// [`OpError`] if a store cannot be read, the world is not registered, the
+/// branch lineage is cyclic, or the output cannot be written.
+pub fn project_world_store(
+    workspace_root: &Path,
+    sidecar: Option<&AbsolutePath>,
+    subject: Option<&AbsolutePath>,
+    world: &str,
+    out: &AbsolutePath,
+) -> Result<WorldProjectionReport, OpError> {
+    let authored = load_atomic_store(workspace_root, sidecar)?;
+    let world = &mnemosyne_core::BranchId::from(world);
+    if !mnemosyne_core::is_known_world(&authored.branches, world) {
+        return Err(OpError::Other(format!(
+            "world `{world}` not present in the branch registry (fail-loud)"
+        )));
+    }
+    let subject = match subject {
+        Some(named) => load_named_store(named, "the store to project")?,
+        None => authored.clone(),
+    };
+    let before = subject.narrative_facts.len();
+    let projected =
+        mnemosyne_validate::disclosure::project_world(&subject, &authored.branches, world)
+            .map_err(OpError::Other)?;
+    let kept = projected.narrative_facts.len();
+    projected
+        .save(out.as_path())
+        .map_err(|e| OpError::Other(format!("{e}")))?;
+    Ok(WorldProjectionReport {
+        world: world.to_string(),
+        out: out.as_path().display().to_string(),
+        kept,
+        dropped: before - kept,
+    })
+}
+
 /// One fact row in an entity dossier (Round 437) — raw authoring-time view
 /// (no holds evaluation; the frame-at-T projection is `continuity_frame_view`
 /// with the entity filter).

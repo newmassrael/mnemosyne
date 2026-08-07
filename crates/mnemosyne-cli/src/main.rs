@@ -1007,6 +1007,22 @@ static COMMANDS: &[Command] = &[
         run: |c| cmd_validate_disclosure_leak(c.rest()).map_err(CliError::from),
     },
     Command {
+        name: "project-world",
+        aliases: &[],
+        group: Some(&GROUP_ATOMIC_MUTATE),
+        blank_before: false,
+        usage: &["project-world --world <branch> --out <path> [--store <path>] [--sidecar <path>] [--json]"],
+        notes: &[
+            "   Round 1070 — emit the SINGLE-WORLD projection validate-render-fidelity requires:",
+            "   keep every fact whose declared world is part of `--world`'s world-line (the",
+            "   world_membership lattice), drop the rest. --store defaults to the workspace store;",
+            "   the branch registry is always the workspace's. Selection is by the fact's BRANCH so",
+            "   the gate can still disagree on its COORDINATE — projecting by coordinate would hand",
+            "   the gate its own predicate and report clean forever",
+        ],
+        run: |c| cmd_project_world(c.rest()).map_err(CliError::from),
+    },
+    Command {
         name: "validate-render-fidelity",
         aliases: &[],
         group: Some(&GROUP_ATOMIC_MUTATE),
@@ -4962,6 +4978,70 @@ fn cmd_validate_disclosure_leak(args: &[String]) -> Result<()> {
         bail!(
             "disclosure leak gate FAILED: {} leak(s)",
             report.leaks.len()
+        );
+    }
+    Ok(())
+}
+
+/// Round 1070 — emit the single-world projection `validate-render-fidelity`
+/// requires of its `--against` store. The gate is single-world by contract, so a
+/// store spanning several world-lines draws its siblings off-path in bulk: this
+/// is the operation that hands the gate the world it expects, and until now it
+/// existed only inside the experiment harness, which ships to nobody.
+fn cmd_project_world(args: &[String]) -> Result<()> {
+    let mut world: Option<String> = None;
+    let mut out: Option<String> = None;
+    let mut store: Option<String> = None;
+    let mut sidecar: Option<String> = None;
+    let mut json = false;
+    let mut iter = args.iter();
+    while let Some(arg) = iter.next() {
+        match arg.as_str() {
+            "--world" => {
+                world = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--world missing"))?
+                        .clone(),
+                )
+            }
+            "--out" => out = Some(iter.next().ok_or_else(|| anyhow!("--out missing"))?.clone()),
+            "--store" => {
+                store = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--store missing"))?
+                        .clone(),
+                )
+            }
+            "--sidecar" => {
+                sidecar = Some(
+                    iter.next()
+                        .ok_or_else(|| anyhow!("--sidecar missing"))?
+                        .clone(),
+                )
+            }
+            "--json" => json = true,
+            other => bail!("unknown flag `{}`", other),
+        }
+    }
+    let world = world.ok_or_else(|| anyhow!("--world arg required"))?;
+    let out = out.ok_or_else(|| anyhow!("--out arg required"))?;
+    let anchor = report_anchor()?;
+    let report = mnemosyne_ops::project_world_store(
+        &anchor,
+        atomic_cli::cli_path(sidecar.as_deref())?.as_ref(),
+        atomic_cli::cli_path(store.as_deref())?.as_ref(),
+        &world,
+        atomic_cli::cli_path(Some(&out))?
+            .as_ref()
+            .expect("a Some input yields a Some path"),
+    )
+    .map_err(|e| anyhow!("{e}"))?;
+    if json {
+        println!("{}", serde_json::to_string(&report)?);
+    } else {
+        println!(
+            "=== world projection — `{}` — {} fact(s) kept, {} dropped -> {} ===",
+            report.world, report.kept, report.dropped, report.out
         );
     }
     Ok(())

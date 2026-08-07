@@ -1061,6 +1061,17 @@ pub struct RenderFidelityArgs {
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct ProjectWorldArgs {
+    /// The world-line to project onto.
+    pub world: ExistingRef,
+    /// Where to write the projected store.
+    pub out: AgentPath,
+    /// The store to project. Omitted = the workspace's own store.
+    #[serde(default)]
+    pub store: Option<AgentPath>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct ImportTypingProposalsArgs {
     /// Path to a `typing-proposals/v1` JSON artifact (workspace-relative
     /// or absolute).
@@ -3265,6 +3276,31 @@ impl MnemosyneServer {
             &a.telling,
             &a.world,
             &a.truth_frame,
+        ) {
+            Ok(report) => self.tool_json(&report),
+            Err(e) => self.op_error(e),
+        }
+    }
+
+    #[tool(
+        description = "Emit the SINGLE-WORLD PROJECTION validate_render_fidelity requires of its `against` store (R1070). That gate is single-world by contract, so a store spanning several world-lines draws its siblings off-path in bulk — a verdict about the caller, not the prose. Keeps every fact whose DECLARED world is part of `world`'s world-line (the world_membership lattice) and drops the rest; `store` omitted = the workspace's own store. Selection is by branch so the gate can still disagree on the COORDINATE — projecting by coordinate would hand the gate its own predicate and report clean forever. Fail-loud on a typo'd world."
+    )]
+    async fn project_world(&self, args: Parameters<ProjectWorldArgs>) -> CallToolResult {
+        let a = args.0;
+        let out = match mcp_path(&self.workspace, Some(&a.out)) {
+            Ok(p) => p.expect("a Some input yields a Some path"),
+            Err(e) => return Self::tool_error(e),
+        };
+        match ops::project_world_store(
+            &self.workspace,
+            None,
+            match mcp_path(&self.workspace, a.store.as_ref()) {
+                Ok(v) => v,
+                Err(e) => return Self::tool_error(e),
+            }
+            .as_ref(),
+            &a.world,
+            &out,
         ) {
             Ok(report) => self.tool_json(&report),
             Err(e) => self.op_error(e),
@@ -6970,6 +7006,28 @@ mod tests {
             @branch_story
             report_quest_graph(ReportQuestGraphArgs) {"telling": "t-quiet", "order_path": "order-b.json"}
             ."world" = "b-alt" seen "main" in output;
+        // THE PROJECTION'S THREE ARGUMENTS (Round 1070). `world` is the one that
+        // decides the ANSWER rather than where it lands: `b-alt` forks off the
+        // spine, so its world-line holds the spine's six facts AND its own,
+        // while `main`'s holds six. `out` is judged by the resolved path the
+        // report echoes — the R1014 defect was exactly a path argument reaching
+        // the filesystem unresolved and the answer reading clean anyway.
+        project_world_world_reaches_the_answer:
+            @branch_story
+            project_world(ProjectWorldArgs) {"world": "main", "out": "projected.json"}
+            ."world" = "b-alt" seen "\"kept\": 7" in output;
+        project_world_out_reaches_the_answer:
+            @branch_story
+            project_world(ProjectWorldArgs) {"world": "main", "out": "projected.json"}
+            ."out" = "elsewhere.json" seen "elsewhere.json" in output;
+        project_world_store_reaches_the_answer:
+            @branch_story
+            (store "one-fact.json" =
+                [import_sections(ImportSectionsArgs) {"sections": [{"section_id": "sc-01", "parent_doc": "spec", "title": "one"}]}]
+                [import_facts(atomic::FactsManifest) {"frames": [{"frame_id": "ground-truth"}], "facts": [{"fact_id": "r-lone", "frame": "ground-truth", "claim": "the prose says one thing", "canon_from": "sc-01", "evidence": ["sc-01"]}]}]
+            )
+            project_world(ProjectWorldArgs) {"world": "main", "out": "projected.json"}
+            ."store" = "one-fact.json" seen "\"kept\": 1" in output;
         report_playthrough_manuscript_telling_reaches_the_answer:
             @branch_story
             report_playthrough_manuscript(ReportPlaythroughManuscriptArgs) {"telling": "t-quiet", "order_path": "order-b.json"}

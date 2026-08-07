@@ -90,6 +90,12 @@ gate that actually checks it is `validate-continuity` (plus
 `validate-disclosure-leak` / `validate-render-fidelity` for a telling). Run the
 one that matches what you are authoring; run both if you author both.
 
+Those two gates are SINGLE-WORLD by contract: they classify every fact in the
+store handed to `--against` against ONE world's composed order, so a store that
+spans several world-lines draws its siblings off-path in bulk — a verdict about
+the caller rather than about the prose. Run `project-world --world <w> --out
+<file>` first and hand the gate that file (Round 1070).
+
 (`verify-generated`, which this page recommended until R622, was removed in
 Round 400 along with the GENERATED.md model. It has not existed for ~220
 rounds.)

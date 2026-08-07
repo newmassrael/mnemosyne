@@ -474,6 +474,53 @@ pub fn render_fidelity(
     report
 }
 
+/// The SINGLE-WORLD PROJECTION of a store — the shape [`render_fidelity`]
+/// requires of its `--against` input (Round 1070).
+///
+/// The gate is single-world BY CONTRACT: it classifies every fact in the store
+/// it is handed against ONE world's composed order, so a store spanning several
+/// world-lines reads as off-path in bulk. That verdict is about the CALLER, not
+/// about the prose — the authored corpus of this repository hands the gate 136
+/// facts and draws 57 off-path at `main`, 39 / 38 / 37 at its three forks, with
+/// no drift anywhere in it. The textbook fix is not to teach the gate about
+/// branch tags (that would muddy its coordinate-based job) but to hand it the
+/// world it expects, and this is the operation that does it.
+///
+/// **The selection is by the fact's DECLARED world; the classification
+/// downstream is by its COORDINATE.** That those are two different declarations
+/// is the whole reason the gate has anything to say. So the branch axis is
+/// resolved through [`mnemosyne_core::world_membership`] — THE definition of
+/// which branches are part of a world-line, the same one
+/// [`crate::continuity::world_order_composition`] reads — and the departure
+/// BOUNDS that membership carries are deliberately NOT applied. Applying them
+/// is [`crate::continuity`]'s `visibility`, which decides a fact's membership by
+/// comparing its `canon_from` against the bound: that is the gate's own
+/// predicate, and a projection built on it would hand the gate back its own
+/// answer and report clean forever.
+///
+/// A fact declared on a member branch but sitting at a coordinate this world
+/// does not walk is therefore KEPT, and the gate names it off-path. That is the
+/// disagreement the gate exists to find, not noise to filter out on its behalf.
+///
+/// The world lattice is a separate argument for the same reason
+/// [`render_fidelity`] takes a separate [`CanonOrder`]: the store being
+/// projected is PROSE, re-extracted, and need not carry the branch registry its
+/// author wrote. The authored store is the authority on both.
+///
+/// Errs on a cyclic branch registry, which is where `world_membership` fails
+/// loud rather than looping.
+pub fn project_world(
+    store: &AtomicStore,
+    branches: &std::collections::BTreeMap<mnemosyne_core::BranchId, mnemosyne_core::Branch>,
+    world: &mnemosyne_core::BranchId,
+) -> Result<AtomicStore, String> {
+    let members = mnemosyne_core::world_membership(branches, world)?;
+    let mut out = store.clone();
+    out.narrative_facts
+        .retain(|_, fact| members.contains_key(&fact.branch));
+    Ok(out)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1106,5 +1153,179 @@ mod tests {
             .insert("ghost".into(), nf("gt", "zzz", None));
         let r = render_fidelity(&un, &order, &"route".into());
         assert_eq!(r.unplaced.len(), 1);
+    }
+
+    /// A fact on a named world — the branch axis the projection selects on,
+    /// which `nf` cannot express because it defaults every fact to the spine.
+    fn on_world(world: &str, canon_from: &str) -> NarrativeFact {
+        NarrativeFact {
+            branch: world.into(),
+            ..nf("gt", canon_from, None)
+        }
+    }
+
+    /// The trunk with two forks off it at `ch-2`, and a fork off one of THOSE —
+    /// the shape that separates world-line MEMBERSHIP from "the world or the
+    /// spine".
+    fn forked_registry() -> BTreeMap<mnemosyne_core::BranchId, mnemosyne_core::Branch> {
+        let fork = |from: &str, at: &str| mnemosyne_core::Branch {
+            forks_from: Some(mnemosyne_core::BranchFork {
+                branch: from.into(),
+                at: at.into(),
+            }),
+            ..Default::default()
+        };
+        BTreeMap::from([
+            ("route".into(), fork(mnemosyne_core::MAIN_BRANCH, "ch-2")),
+            ("other".into(), fork(mnemosyne_core::MAIN_BRANCH, "ch-2")),
+            ("leaf".into(), fork("route", "r-1")),
+        ])
+    }
+
+    #[test]
+    fn the_projection_is_what_makes_a_many_world_store_askable_at_all() {
+        let decl = CanonOrderFile {
+            edges: vec![["ch-1".to_string(), "ch-2".to_string()]],
+            branches: BTreeMap::from([
+                (
+                    "route".to_string(),
+                    vec![["ch-2".to_string(), "r-1".to_string()]],
+                ),
+                (
+                    "other".to_string(),
+                    vec![["ch-2".to_string(), "b-1".to_string()]],
+                ),
+            ]),
+            ..Default::default()
+        };
+        let branches = forked_registry();
+        let order = CanonOrder::from_declaration(&decl, &branches).unwrap();
+
+        let mut combined = AtomicStore::new();
+        combined.narrative_facts.insert(
+            "spine".into(),
+            on_world(mnemosyne_core::MAIN_BRANCH, "ch-1"),
+        );
+        combined
+            .narrative_facts
+            .insert("r".into(), on_world("route", "r-1"));
+        combined
+            .narrative_facts
+            .insert("o".into(), on_world("other", "b-1"));
+
+        // HANDED THE WHOLE THING, the gate reports the sibling world as drift —
+        // a verdict about the caller, since nothing in this store disagrees with
+        // itself.
+        let whole = render_fidelity(&combined, &order, &"route".into());
+        assert_eq!(
+            whole
+                .off_path
+                .iter()
+                .map(|f| f.fact_id.as_str())
+                .collect::<Vec<_>>(),
+            ["o"],
+            "the sibling world's fact is what a multi-world store draws off-path"
+        );
+
+        // PROJECTED, the same store answers clean, about something: the count is
+        // the evidence the projection did not simply empty it.
+        let projected =
+            project_world(&combined, &branches, &"route".into()).expect("acyclic registry");
+        let report = render_fidelity(&projected, &order, &"route".into());
+        assert_eq!(report.reextracted_facts, 2, "the spine rides in with route");
+        assert!(report.off_path.is_empty() && report.unplaced.is_empty());
+        assert!(report.reached_terminal, "r-1 is route's maximal node");
+    }
+
+    #[test]
+    fn the_projection_keeps_the_disagreement_the_gate_exists_to_find() {
+        let decl = CanonOrderFile {
+            edges: vec![["ch-1".to_string(), "ch-2".to_string()]],
+            branches: BTreeMap::from([
+                (
+                    "route".to_string(),
+                    vec![["ch-2".to_string(), "r-1".to_string()]],
+                ),
+                (
+                    "other".to_string(),
+                    vec![["ch-2".to_string(), "b-1".to_string()]],
+                ),
+            ]),
+            ..Default::default()
+        };
+        let branches = forked_registry();
+        let order = CanonOrder::from_declaration(&decl, &branches).unwrap();
+
+        // The drift itself: prose DECLARED on `route` that landed on `other`'s
+        // node. Selecting by coordinate — which is what applying the departure
+        // bounds would do — drops exactly this fact and reports a clean render.
+        let mut drifted = AtomicStore::new();
+        drifted
+            .narrative_facts
+            .insert("drift".into(), on_world("route", "b-1"));
+
+        let projected =
+            project_world(&drifted, &branches, &"route".into()).expect("acyclic registry");
+        assert!(
+            projected.narrative_facts.contains_key(&"drift".into()),
+            "a fact whose declared world is a member SURVIVES the projection \
+             however far off its coordinate sits — the projection selects on \
+             the branch and the gate classifies on the coordinate, and a \
+             projection that used the coordinate would answer clean forever"
+        );
+        let report = render_fidelity(&projected, &order, &"route".into());
+        assert_eq!(
+            report
+                .off_path
+                .iter()
+                .map(|f| f.fact_id.as_str())
+                .collect::<Vec<_>>(),
+            ["drift"]
+        );
+    }
+
+    #[test]
+    fn membership_reaches_past_the_world_and_the_spine() {
+        let branches = forked_registry();
+        let mut store = AtomicStore::new();
+        for (id, world) in [
+            ("spine", mnemosyne_core::MAIN_BRANCH),
+            ("mid", "route"),
+            ("tip", "leaf"),
+            ("sibling", "other"),
+        ] {
+            store
+                .narrative_facts
+                .insert(id.into(), on_world(world, "ch-1"));
+        }
+
+        let projected = project_world(&store, &branches, &"leaf".into()).expect("acyclic registry");
+        assert_eq!(
+            projected
+                .narrative_facts
+                .keys()
+                .map(ToString::to_string)
+                .collect::<Vec<_>>(),
+            ["mid", "spine", "tip"],
+            "`leaf` forks off `route`, so route's own facts are part of its \
+             world-line — a rule reading `this world or main` would drop them"
+        );
+    }
+
+    #[test]
+    fn a_cyclic_registry_is_refused_rather_than_projected() {
+        let cycle = |from: &str| mnemosyne_core::Branch {
+            forks_from: Some(mnemosyne_core::BranchFork {
+                branch: from.into(),
+                at: "ch-1".into(),
+            }),
+            ..Default::default()
+        };
+        let store = AtomicStore::new();
+        let branches = BTreeMap::from([("a".into(), cycle("b")), ("b".into(), cycle("a"))]);
+        assert!(
+            project_world(&store, &branches, &"a".into()).is_err(),
+            "a lineage that cannot be computed is not a projection of nothing"
+        );
     }
 }
