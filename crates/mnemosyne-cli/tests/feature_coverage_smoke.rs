@@ -80,29 +80,104 @@ struct ResolveNode {
 /// call. A feature declared in one of those and enabled by nobody is the same
 /// darkness one directory over.
 ///
-/// Discovered the way `scripts/check-side-workspaces.sh` discovers them — a
-/// tracked manifest whose own line says `[workspace]` — so adding a workspace
-/// adds it here.
-fn workspace_manifests() -> Vec<String> {
+/// WHICH of them can be asked on THIS machine is `scripts/check-side-workspaces.sh
+/// --list`'s answer, consumed rather than restated.
+///
+/// The first version of this test wrote its own discovery and turned main red on
+/// the first push: `studio` depends on a sibling `../pinion` checkout, which
+/// exists on this project's machine and not on a CI runner, so `cargo metadata`
+/// for it dies there. That script had solved exactly this — R1079 named the
+/// class ("a gate that fails on somebody else's file is a gate that gets
+/// ignored") and gave it the `missing_siblings` walk — and asking it is what
+/// keeps the two from drifting, which is R1066's correction for fmt and clippy.
+///
+/// Returns (askable, skipped-with-reason). The skipped ones are PRINTED, never
+/// silently dropped: a workspace nobody could ask about is a fact, and a fact
+/// that does not appear in the output is one nobody can act on.
+fn workspaces() -> (Vec<String>, Vec<String>) {
     let root = common::repo_root();
-    let out = Command::new("git")
-        .args(["ls-files", "*Cargo.toml"])
+    let out = Command::new("bash")
+        .arg("scripts/check-side-workspaces.sh")
+        .arg("--list")
         .current_dir(&root)
         .output()
-        .expect("git ls-files runs");
-    assert!(out.status.success(), "git ls-files failed");
-    let mut manifests = vec!["Cargo.toml".to_string()];
-    for path in String::from_utf8_lossy(&out.stdout).lines() {
-        if path == "Cargo.toml" {
-            continue;
-        }
-        let text = std::fs::read_to_string(root.join(path)).expect("read manifest");
-        if text.lines().any(|line| line.trim_end() == "[workspace]") {
-            manifests.push(path.to_string());
+        .expect("check-side-workspaces.sh runs");
+    assert!(
+        out.status.success(),
+        "check-side-workspaces.sh --list failed: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let text = String::from_utf8_lossy(&out.stdout);
+    let (askable, skipped) = parse_lister(&text);
+    assert!(
+        askable.len() > 1 || !skipped.is_empty(),
+        "the workspace lister named nothing at all — this repository has \
+         separate workspaces, so an empty answer is the gate not reading:\n{text}"
+    );
+    for reason in &skipped {
+        println!("not asked (the lister says why): {reason}");
+    }
+    (askable, skipped)
+}
+
+/// The lister's output, read. A pure function so the SKIP branch — which only
+/// happens where a sibling checkout is absent, i.e. on a CI runner and not on
+/// the machine this is written on — is pinned by a test rather than by hope.
+fn parse_lister(text: &str) -> (Vec<String>, Vec<String>) {
+    // The root workspace is not in that script's population by construction —
+    // it exists to reach the ones the root gates never compile — so it is added
+    // here and is never skipped.
+    let mut askable = vec!["Cargo.toml".to_string()];
+    let mut skipped = Vec::new();
+    for line in text.lines() {
+        if let Some(rest) = line.strip_prefix("[side-workspaces] CHECKABLE ") {
+            askable.push(format!("{}/Cargo.toml", rest.trim()));
+        } else if let Some(rest) = line.strip_prefix("[side-workspaces] SKIP ") {
+            skipped.push(rest.trim().to_string());
         }
     }
-    manifests.sort();
-    manifests
+    askable.sort();
+    (askable, skipped)
+}
+
+#[test]
+fn the_lister_is_read_for_what_it_can_and_cannot_be_asked() {
+    // THE BRANCH THIS MACHINE NEVER TAKES. `studio` depends on a sibling
+    // `../pinion` checkout that exists here and not on a CI runner, so the SKIP
+    // line only appears there — and the first version of this gate, which had
+    // no SKIP branch at all, turned main red on its first push for exactly that
+    // reason. Pinned against the string the script prints.
+    let (askable, skipped) = parse_lister(
+        "[side-workspaces] CHECKABLE bench\n\
+         [side-workspaces] SKIP studio — its path dependencies leave this \
+         repository and are not on this machine: ../pinion/crates/pinion-a11y\n\
+         [side-workspaces] CHECKABLE tools/item-citations\n\
+         [side-workspaces] checked 2 (bench tools/item-citations), skipped 1 (studio)\n",
+    );
+    assert_eq!(
+        askable,
+        vec![
+            "Cargo.toml".to_string(),
+            "bench/Cargo.toml".to_string(),
+            "tools/item-citations/Cargo.toml".to_string(),
+        ],
+        "the root is always asked; a skipped workspace is not"
+    );
+    assert_eq!(skipped.len(), 1, "{skipped:?}");
+    assert!(
+        skipped[0].starts_with("studio "),
+        "the skip carries the workspace AND the reason, so the print says why: \
+         {skipped:?}"
+    );
+    assert!(
+        !askable.iter().any(|m| m.starts_with("studio")),
+        "a workspace the lister could not check must not be asked anyway: \
+         {askable:?}"
+    );
+}
+
+fn workspace_manifests() -> Vec<String> {
+    workspaces().0
 }
 
 fn metadata(manifest: &str, with_deps: bool) -> Metadata {
@@ -351,9 +426,9 @@ fn every_tracked_manifest_is_inside_a_workspace_this_gate_asks() {
     // construction. This is R1080's rule at the manifest level: a tree merely
     // absent looks exactly like a tree deliberately excluded.
     let root = common::repo_root();
-    let manifests = workspace_manifests();
+    let (manifests, skipped) = workspaces();
     assert!(
-        manifests.len() > 1,
+        manifests.len() > 1 || !skipped.is_empty(),
         "this repository has separate workspaces; a census that found only the \
          root one is not reading them: {manifests:?}"
     );
@@ -377,17 +452,31 @@ fn every_tracked_manifest_is_inside_a_workspace_this_gate_asks() {
         .current_dir(&root)
         .output()
         .expect("git ls-files runs");
+    // A manifest under a SKIPPED workspace is accounted for: the lister said,
+    // out loud and with a reason, why nobody can ask about it on this machine.
+    // That is a different thing from a manifest nobody's list mentions, which
+    // is what this test rejects.
+    let under_a_skip = |path: &str| {
+        skipped
+            .iter()
+            .any(|ws| path.starts_with(&format!("{}/", ws.split_whitespace().next().unwrap_or(ws))))
+    };
     let missed: Vec<String> = String::from_utf8_lossy(&tracked.stdout)
         .lines()
-        .filter(|path| !asked.contains(*path))
+        .filter(|path| !asked.contains(*path) && !under_a_skip(path))
         .map(str::to_string)
         .collect();
 
-    println!("{} workspace(s) asked: {manifests:?}", manifests.len());
+    println!(
+        "{} workspace(s) asked: {manifests:?}; {} skipped with a reason",
+        manifests.len(),
+        skipped.len()
+    );
     assert!(
         missed.is_empty(),
-        "these tracked manifests belong to no workspace this gate asks, so \
-         whatever features they declare are outside the census:\n  {missed:?}"
+        "these tracked manifests belong to no workspace this gate asks and to \
+         no workspace the lister explained away, so whatever features they \
+         declare are outside the census:\n  {missed:?}"
     );
 }
 

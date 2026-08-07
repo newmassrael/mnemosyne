@@ -85,10 +85,12 @@ missing_siblings() {
 }
 
 lint_only=false
+list_only=false
 named=()
 for argument in "$@"; do
   case "$argument" in
     --lint-only) lint_only=true ;;
+    --list) list_only=true ;;
     -*) echo "check-side-workspaces: unknown flag $argument" >&2; exit 2 ;;
     *) named+=("$argument") ;;
   esac
@@ -114,6 +116,17 @@ for ws in "${workspaces[@]}"; do
     echo "[side-workspaces] SKIP $ws — its path dependencies leave this repository" \
       "and are not on this machine: ${absent% }"
     skipped+=("$ws")
+    continue
+  fi
+  # `--list` answers WHICH workspaces are checkable on this machine and stops.
+  # R1082's feature gate needs exactly that answer and had written its own: on a
+  # CI runner, `cargo metadata` for `studio` dies on the sibling `../pinion`
+  # checkout that is not there, and the gate turned main red asking a question
+  # this script had already solved twelve lines up. One definition, consumed
+  # rather than restated — the same correction R1066 made for fmt and clippy.
+  if $list_only; then
+    echo "[side-workspaces] CHECKABLE $ws"
+    checked+=("$ws")
     continue
   fi
   echo "[side-workspaces] CHECK $ws — fmt, clippy, item citations, blind waits$($lint_only || echo ', tests')"
