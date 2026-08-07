@@ -463,8 +463,17 @@ fn slow_once_injected(root: &Path, source: &str) -> PathBuf {
     suite
 }
 
+/// THE liveness budget for this file's waits — one decision, in one place.
+///
+/// Its whole job is to turn "this never happens" from a hang into a failure.
+/// No test's green may depend on its value: these waits end when the condition
+/// holds, and on a slower machine they simply poll more times. R1081 named it
+/// rather than leaving `30` at the site, because a budget spelled where it is
+/// used is a claim about the runner that nobody reviews as one.
+const LIVENESS: std::time::Duration = std::time::Duration::from_secs(30);
+
 fn until(what: &str, mut condition: impl FnMut() -> bool) {
-    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
+    let deadline = std::time::Instant::now() + LIVENESS;
     while std::time::Instant::now() < deadline {
         if condition() {
             return;

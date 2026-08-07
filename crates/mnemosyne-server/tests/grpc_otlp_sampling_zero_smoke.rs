@@ -9,6 +9,8 @@
 
 #![cfg(feature = "otlp")]
 
+mod common;
+
 use mnemosyne_server::grpc::{
     encode_proposal, init_otlp_tracing_subscriber_with_config, MnemosyneClient,
     MnemosyneGrpcService, OtlpExporterConfig,
@@ -150,10 +152,28 @@ async fn zero_rate_sampling_drops_all_spans() {
             .expect("submit");
     }
 
-    drop(guard);
-    tokio::time::sleep(Duration::from_millis(300)).await;
+    // THE ONE THAT HAD NO RED SIDE. What stood here was `sleep(300ms)` before
+    // requiring that the collector had received nothing — and a wait too SHORT
+    // does not fail that assertion, it PASSES it, for precisely the reason this
+    // test exists to rule out. No length of sleep can establish an absence.
+    //
+    // `quiesce` can: it joins the server (every handler future dropped, every
+    // span closed and queued) and then shuts the provider down, which returns
+    // only after the collector has answered the flush. After it, the collector
+    // holds everything it will ever hold, so zero means zero.
+    //
+    // ITS CONTROL IS ANOTHER TEST. An absence proves nothing about a path that
+    // was never exercised, so what says this one was is that
+    // `resource_attributes_and_full_sampling_emit_to_collector` runs the same
+    // `quiesce` at rate 1.0 and requires a NON-empty capture. The two share the
+    // function rather than a comment, so the claim cannot hold in one and rot
+    // in the other.
+    common::quiesce(guard, m_shutdown_tx, m_server).await;
 
-    let captured = received.lock().expect("collector mutex");
+    // Taken out of the mutex in one move: the collector is quiesced, so this IS
+    // everything, and a guard that stays alive across the `await` below is a
+    // deadlock shape nothing had ever linted here.
+    let captured: Vec<ResourceSpans> = received.lock().expect("collector mutex").clone();
     let total_spans: usize = captured
         .iter()
         .flat_map(|rs| rs.scope_spans.iter().map(|ss| ss.spans.len()))
@@ -164,9 +184,7 @@ async fn zero_rate_sampling_drops_all_spans() {
  captured.len()
  );
 
-    drop(captured);
-    m_shutdown_tx.send(()).ok();
-    m_server.await.ok();
+    // The mnemosyne server is already down — `quiesce` joined it above.
     col_shutdown_tx.send(()).ok();
     col_server.await.ok();
 }

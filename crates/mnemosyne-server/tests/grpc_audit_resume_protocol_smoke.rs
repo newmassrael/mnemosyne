@@ -16,6 +16,8 @@
 //! when no lag occurs), and (2) the cursor metadata key advertised on
 //! Lagged is the documented `lagged-at-txn` shape.
 
+mod common;
+
 use mnemosyne_server::audit::AuditRecord;
 use mnemosyne_server::grpc::proto::SubscribeAuditRequest;
 use mnemosyne_server::grpc::{decode_audit_record, MnemosyneClient, MnemosyneGrpcService};
@@ -24,7 +26,6 @@ use mnemosyne_server::proposal::{Proposal, ProposalKind};
 use mnemosyne_store::MnemosyneStore;
 use std::net::SocketAddr;
 use std::sync::Arc;
-use std::time::Duration;
 use tempfile::TempDir;
 use tokio::net::TcpListener;
 use tokio::sync::oneshot;
@@ -119,7 +120,7 @@ async fn resume_on_lag_field_round_trips_with_follow_tail_no_regression() {
         .expect("post-subscribe commit");
 
     let third: AuditRecord = decode_audit_record(
-        tokio::time::timeout(Duration::from_millis(500), response.next())
+        tokio::time::timeout(common::LIVENESS, response.next())
             .await
             .expect("tail push timeout")
             .expect("tail rec")

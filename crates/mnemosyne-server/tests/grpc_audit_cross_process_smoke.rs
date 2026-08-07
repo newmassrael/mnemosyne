@@ -25,12 +25,13 @@
 //! (`publish_external`) — wiring through the gRPC layer adds runtime
 //! complexity without strengthening the assertion.
 
+mod common;
+
 use mnemosyne_server::audit::{AuditRecord, InMemoryAuditBroker, AUDIT_BROADCAST_CAPACITY};
 use mnemosyne_server::handler::ProposalHandler;
 use mnemosyne_server::proposal::{Proposal, ProposalKind};
 use mnemosyne_store::MnemosyneStore;
 use std::sync::Arc;
-use std::time::Duration;
 use tempfile::TempDir;
 
 fn entity_create(id: &str, entity_id: u64) -> Proposal {
@@ -93,7 +94,11 @@ async fn audit_fanout_relays_record_from_writing_server_to_observer() {
         .append_accepted(&entity_create("p-cross-1", 1), &[])
         .expect("commit on A");
 
-    let received: AuditRecord = tokio::time::timeout(Duration::from_secs(2), observer_rx.recv())
+    // The budget is named, not spelled: it bounds a HANG and nothing else, and
+    // no green here may depend on its value. The `2` it replaced was one of
+    // five numbers scattered across this crate's tests, none of them measured
+    // and each one a separate claim about how fast the runner is.
+    let received: AuditRecord = tokio::time::timeout(common::LIVENESS, observer_rx.recv())
         .await
         .expect("cross-process delivery timed out")
         .expect("broadcast recv ok");
@@ -141,7 +146,7 @@ async fn publish_external_does_not_touch_local_audit_cf() {
         tracestate: None,
     });
 
-    let received = tokio::time::timeout(Duration::from_millis(500), rx.recv())
+    let received = tokio::time::timeout(common::LIVENESS, rx.recv())
         .await
         .expect("subscribe must observe externally-pushed record")
         .expect("recv ok");

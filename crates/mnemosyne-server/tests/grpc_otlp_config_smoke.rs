@@ -21,6 +21,8 @@
 
 #![cfg(feature = "otlp")]
 
+mod common;
+
 use mnemosyne_server::grpc::{
     encode_proposal, init_otlp_tracing_subscriber_with_config, MnemosyneClient,
     MnemosyneGrpcService, OtlpExporterConfig,
@@ -161,10 +163,22 @@ async fn resource_attributes_and_full_sampling_emit_to_collector() {
         .await
         .expect("submit");
 
-    drop(guard);
-    tokio::time::sleep(Duration::from_millis(300)).await;
+    // Drive the traced system to rest rather than waiting a duration for it:
+    // join the server so every handler future is dropped and every span closed,
+    // then shut the provider down, which blocks until the collector has
+    // ANSWERED the flush. What stood here was `drop(guard)` followed by
+    // `sleep(300ms)` — a green that meant "300ms was enough on this machine".
+    // See `common::quiesce` for the chain, and note that THIS test is the
+    // control that keeps `zero_rate_sampling_drops_all_spans` honest: the two
+    // share the function, so if the chain stopped delivering, this assertion is
+    // what goes red.
+    common::quiesce(guard, m_shutdown_tx, m_server).await;
 
-    let captured = received.lock().expect("collector mutex");
+    // Taken out of the mutex in one move rather than read under a guard that
+    // then lives to the end of the function: the collector is quiesced, so this
+    // IS everything, and a guard alive across the later `await` is a deadlock
+    // shape that only never bit because nothing has ever linted this build.
+    let captured: Vec<ResourceSpans> = received.lock().expect("collector mutex").clone();
     assert!(
         !captured.is_empty(),
         "sampling_rate=1.0 must emit at least one ResourceSpans batch"
@@ -201,9 +215,8 @@ async fn resource_attributes_and_full_sampling_emit_to_collector() {
         "configured `deployment.environment` resource attribute must appear on the wire"
     );
 
-    drop(captured);
-    m_shutdown_tx.send(()).ok();
-    m_server.await.ok();
+    // The mnemosyne server is already down — `quiesce` joined it above, which
+    // is what made the capture a settled answer. Only the collector is left.
     col_shutdown_tx.send(()).ok();
     col_server.await.ok();
 }

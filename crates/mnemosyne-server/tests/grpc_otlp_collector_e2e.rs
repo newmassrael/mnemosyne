@@ -17,6 +17,8 @@
 
 #![cfg(feature = "otlp")]
 
+mod common;
+
 use mnemosyne_server::grpc::{
     encode_proposal, init_otlp_tracing_subscriber, MnemosyneClient, MnemosyneGrpcService,
 };
@@ -32,7 +34,6 @@ use opentelemetry_proto::tonic::collector::trace::v1::{
 use opentelemetry_proto::tonic::trace::v1::ResourceSpans;
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
 use tempfile::TempDir;
 use tokio::net::TcpListener;
 use tokio::sync::oneshot;
@@ -166,16 +167,19 @@ async fn end_to_end_otlp_collector_receives_handler_emitted_spans() {
         .into_inner();
     assert!(resp.accepted, "submit_proposal must succeed");
 
-    // 5. Drop the OTLP guard to force a flush. The SDK's batch processor
-    // drains pending spans through the exporter on shutdown; the mock
-    // collector receives the export RPC before this thread continues.
-    drop(guard);
-
-    // 6. Allow the in-process tonic server one more tick to settle the
-    // final export response. The drop-shutdown is synchronous on the
-    // SDK side, but the collector's response handler runs on the tokio
-    // runtime — give it a chance to commit the captured payload.
-    tokio::time::sleep(Duration::from_millis(200)).await;
+    // 5. Drive the traced system to rest. Joining the mnemosyne server first is
+    // the part that used to be missing: the SDK's shutdown flush is synchronous
+    // through the collector's response, but a span still open when it runs is a
+    // span that never gets exported, and the handler's span closes when its
+    // future is dropped — which races the response this test already awaited.
+    // The join settles that race; the provider shutdown behind it settles the
+    // export.
+    //
+    // What stood here instead was `drop(guard)` and then `sleep(200ms)`, under
+    // a comment giving the tonic server "one more tick to settle". A tick is a
+    // duration, and a green that depends on one is a claim about the machine —
+    // the class that turned main red in Round 1073.
+    common::quiesce(guard, m_shutdown_tx, m_server).await;
 
     // 7. Assert: the collector received at least one ResourceSpans whose
     // scope_spans carries a span named "submit_proposal" *or*
@@ -184,7 +188,10 @@ async fn end_to_end_otlp_collector_receives_handler_emitted_spans() {
     // + the handler's instrumentation; the assertion accepts any of the
     // handler-emitted names so the test is robust to tonic span-name
     // changes across versions.
-    let captured = received.lock().expect("collector mutex");
+    // Taken out of the mutex in one move: the collector is quiesced, so this IS
+    // everything, and a guard alive across the `await` below is a deadlock
+    // shape nothing had ever linted here.
+    let captured: Vec<ResourceSpans> = received.lock().expect("collector mutex").clone();
     assert!(
         !captured.is_empty(),
         "OTLP collector must receive at least one ResourceSpans batch"
@@ -227,10 +234,8 @@ async fn end_to_end_otlp_collector_receives_handler_emitted_spans() {
  all_span_names
  );
 
-    // 8. Cleanup.
-    drop(captured);
-    m_shutdown_tx.send(()).ok();
-    m_server.await.ok();
+    // 8. Cleanup. The mnemosyne server is already down — `quiesce` joined it,
+    // which is what made this capture a settled answer rather than a snapshot.
     col_shutdown_tx.send(()).ok();
     col_server.await.ok();
 }

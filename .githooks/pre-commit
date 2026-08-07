@@ -32,6 +32,20 @@
 #      (`result_large_err` on tonic interceptors; `too_many_arguments` on
 #      the `scan_paths_no_resolvers` test helper).
 #
+#   5a. Item-citation gate (R1077/R1078) — `tools/item-citations` when any
+#      `.rs` is staged: every `[`name`]` in this workspace's code names an
+#      item rustdoc can resolve, over every target `cargo metadata` lists
+#      rather than the 25 of 136 `cargo doc --workspace` reaches.
+#
+#   5c. Blind-wait gate (R1081) — `tools/blind-waits` when any `.rs` is
+#      staged: in test code a wait ends on a CONDITION and the budget that
+#      bounds it is NAMED. R1073's red main was `conflicts > 0` after 500ms
+#      of eight writers — an assertion about the scheduler dressed as one
+#      about the store — and the root workspace held four more of the shape,
+#      including one whose too-short sleep PASSED an assertion of absence.
+#      Parses with `syn`: no pattern can tell a synchronising `sleep` from
+#      the retry step of a poll, and that difference is the whole law.
+#
 #   5b. Separate-workspace gate (R517) — fmt + clippy on the in-repo
 #      crates that carry their OWN `[workspace]` (tools/experiment-harness,
 #      bench/, studio/), which Gates 4/5 above never reach (`--all` /
@@ -148,6 +162,62 @@ if printf '%s\n' "$staged" | grep -qE '\.rs$'; then
             echo "[mnemosyne pre-commit] commit rejected — a citation names no item"
             echo "  run: cargo run -q --manifest-path tools/item-citations/Cargo.toml \\"
             echo "         --bin item-citations -- --workspace Cargo.toml"
+        } >&2
+        exit 1
+    fi
+fi
+
+# Gate 5c — in test code a wait ends on a condition and its budget is named.
+#
+# R1073 turned main red with `conflicts > 0` after running eight writers for
+# 500ms: an assertion whose subject is how the scheduler interleaved, wearing
+# the clothes of an assertion about the store. R1075 swept `bench` and found the
+# same shape in a neighbouring crate under the same comment. NOBODY had asked
+# the root workspace, which is the tree that runs on every push — and it held
+# four waits that end on a clock, one of which (`zero_rate_sampling_drops_all_
+# spans`) had no red side at all: it slept 300ms and then required that nothing
+# had arrived, so a wait too SHORT passed it.
+#
+# The gate parses (`syn`) rather than searching for text, because the difference
+# between a `sleep` that IS the synchronisation and a `sleep` that is the retry
+# step of a poll is the entire law, and no pattern sees it. Measured at 9.5s
+# warm on this workspace — cheaper than Gate 5a above.
+#
+# Resolved from THIS HOOK's location, pointed at the WORKING DIRECTORY, for the
+# reason spelled out under Gate 5a.
+if printf '%s\n' "$staged" | grep -qE '\.rs$'; then
+    echo "[mnemosyne pre-commit] .rs staged — waits end on conditions" >&2
+    waits="$(cd "$(dirname "$0")/.." && pwd)/tools/blind-waits/Cargo.toml"
+    if [[ ! -f "$waits" ]]; then
+        echo "[mnemosyne pre-commit] commit rejected — the blind-wait gate is" \
+             "missing at $waits" >&2
+        exit 1
+    fi
+    # THE TWO NON-ZERO EXITS MEAN DIFFERENT THINGS and printing one message for
+    # both is how a gate teaches people the wrong lesson: 1 is "these sites
+    # break the law", 2 is "I could not read enough of this tree to have an
+    # opinion". The second one already misreported once, when a workspace
+    # holding no test code was an exit 2 and this line called it a wait on a
+    # clock.
+    # `|| waits_verdict=$?` rather than a bare call and `$?`: this file runs
+    # under `set -e`, which kills it at the failing command before any exit-code
+    # branch can read one. The first version of this block did exactly that, and
+    # the hook's own smoke test caught it — the gate's message reached stderr
+    # and the hook's did not.
+    waits_verdict=0
+    cargo run -q --manifest-path "$waits" --bin blind-waits -- \
+        --workspace "$(pwd)/Cargo.toml" || waits_verdict=$?
+    if [[ $waits_verdict -eq 1 ]]; then
+        {
+            echo "[mnemosyne pre-commit] commit rejected — a test waits on a clock"
+            echo "  run: cargo run -q --manifest-path tools/blind-waits/Cargo.toml \\"
+            echo "         --bin blind-waits -- --workspace Cargo.toml"
+        } >&2
+        exit 1
+    elif [[ $waits_verdict -ne 0 ]]; then
+        {
+            echo "[mnemosyne pre-commit] commit rejected — the blind-wait gate could" \
+                 "not read this tree (exit $waits_verdict); its own message is above"
         } >&2
         exit 1
     fi

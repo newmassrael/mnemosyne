@@ -464,6 +464,46 @@ fn pre_commit_rejects_lint_dirty_rust() {
 }
 
 #[test]
+fn pre_commit_rejects_a_test_that_waits_on_a_clock() {
+    // Gate 5c. R1073 turned main red with an assertion whose subject was the
+    // scheduler rather than the store, and R1081 found four more of the shape
+    // in the tree that runs on every push. The fixture's test sleeps and then
+    // asserts — nothing re-checks anything, so its green is a claim that this
+    // machine got there in time.
+    //
+    // rustfmt-clean and clippy-clean on purpose, so the case REACHES 5c instead
+    // of stopping at Gate 4 or 5 in front of it.
+    let f = Fixture::new();
+    f.write(
+        "src/lib.rs",
+        "pub fn one() -> u8 {\n    1\n}\n\n#[cfg(test)]\nmod tests {\n    #[test]\n    fn \
+         the_other_thread_got_there() {\n        \
+         std::thread::sleep(std::time::Duration::from_millis(300));\n        \
+         assert_eq!(super::one(), 1);\n    }\n}\n",
+    );
+    f.stage_all();
+
+    let out = f.run_hook("pre-commit", &[], "", &[]);
+    assert!(
+        !out.status.success(),
+        "a wait no condition ends must be rejected"
+    );
+    let err = stderr_of(&out);
+    assert!(
+        err.contains("commit rejected — a test waits on a clock"),
+        "the rejection must name the blind-wait gate:\n{err}"
+    );
+    // The hook announces every gate it RUNS, so the presence of `cargo clippy`
+    // in this stream says nothing about who rejected — only a `commit rejected`
+    // line does. The first version of this assertion read the announcement as a
+    // verdict and went red on a passing run.
+    assert!(
+        !err.contains("unformatted code"),
+        "this case must not be stopped by the format gate in front of it:\n{err}"
+    );
+}
+
+#[test]
 fn pre_commit_gates_a_separate_in_repo_workspace_the_root_gates_miss() {
     // `cargo fmt --all` / `clippy --workspace` only see root members, so a
     // crate carrying its OWN `[workspace]` is invisible to Gates 4 and 5. This

@@ -651,8 +651,8 @@ mod tests {
         );
     }
 
-    #[tokio::test]
-    async fn subscribe_receives_newly_committed_records() {
+    #[test]
+    fn subscribe_receives_newly_committed_records() {
         // broadcast channel correctness. A subscriber attached
         // before any commits observes every subsequent record; appends
         // before subscription are not replayed (snapshot semantics covered
@@ -673,10 +673,18 @@ mod tests {
         };
         let txn_id = appender.append_accepted(&p, &[]).unwrap();
 
-        let received = tokio::time::timeout(std::time::Duration::from_millis(200), rx.recv())
-            .await
-            .expect("broadcast must deliver within timeout")
-            .expect("broadcast send must succeed");
+        // `try_recv`, not a timed `recv`. `AuditAppender::write` sends on the
+        // broadcast channel inside the same synchronous call that does the
+        // durable put, so by the time `append_accepted` has RETURNED the record
+        // is already in the receiver's buffer. Asking without waiting asserts
+        // that — the stronger property — and it is the property the durable
+        // write actually gives. The 200ms this replaced asserted something
+        // weaker AND about the machine: it passed if delivery happened within a
+        // deadline, and a regression that lost the send would have cost the
+        // suite that deadline before failing instead of failing at once.
+        let received = rx
+            .try_recv()
+            .expect("append_accepted must have already published to subscribers");
 
         assert_eq!(received.transaction_id, txn_id);
         assert_eq!(received.proposal_id, "p-live");

@@ -1,0 +1,88 @@
+{
+  "_": [
+    "THE SWEEP THAT SAYS ROUND 1081's REPAIRS ARE NOT VACUOUS — run it from the",
+    "repository root:",
+    "    cargo run -q --manifest-path tools/injection-harness/Cargo.toml -- \\",
+    "        tools/blind-waits/injection-sweep.json",
+    "",
+    "The gate in this crate proves ITSELF with `tests/gate.rs`, which puts each",
+    "shape into a throwaway workspace and reads the verdict. This file proves the",
+    "other half: that the four waits it made this repository delete were load-",
+    "bearing, and that what replaced them still fails when the thing it waits for",
+    "does not happen. A repair that removes a sleep and leaves a test green for a",
+    "NEW wrong reason is the failure mode here, and `zero_rate_sampling_drops_",
+    "all_spans` is where it would live — an assertion of ABSENCE passes when the",
+    "path it forbids was never exercised.",
+    "",
+    "The test command is scoped to the targets the repairs touch, and it carries",
+    "`--features mnemosyne-server/otlp,mnemosyne-server/tls` because WITHOUT THEM",
+    "four of these five targets compile to nothing: R1081 measured six of this",
+    "crate's integration test targets running `0 tests` under the workspace suite",
+    "CI has been running, which is how a 50ms `sleep` called a 'tiny grace' lived",
+    "in `grpc_mtls_smoke.rs` without anything ever executing it."
+  ],
+  "repo": ".",
+  "test_command": [
+    "cargo",
+    "test",
+    "--workspace",
+    "--features",
+    "mnemosyne-server/otlp,mnemosyne-server/tls",
+    "--no-fail-fast",
+    "--lib",
+    "--test",
+    "grpc_otlp_sampling_zero_smoke",
+    "--test",
+    "grpc_otlp_config_smoke",
+    "--test",
+    "grpc_otlp_collector_e2e",
+    "--test",
+    "grpc_mtls_smoke",
+    "--test",
+    "grpc_audit_live_tail_smoke"
+  ],
+  "logs": "target/injection-logs",
+  "min_free_mb": 8000,
+  "injections": [
+    {
+      "name": "the-zero-rate-test-is-shown-what-it-forbids",
+      "why": "an absence proves nothing about a path that was never exercised; with the sampler at 1.0 the SAME quiesce chain must carry spans all the way to the collector, so a red here is what says the zero-rate green was a measurement rather than a silence",
+      "edits": [
+        {
+          "file": "crates/mnemosyne-server/tests/grpc_otlp_sampling_zero_smoke.rs",
+          "from": "        .with_sampling_rate(0.0)",
+          "to": "        .with_sampling_rate(1.0)"
+        }
+      ],
+      "expect_red": ["zero_rate_sampling_drops_all_spans"]
+    },
+    {
+      "name": "the-rotation-retry-is-given-nothing-to-succeed-at",
+      "why": "the sleep this replaced made the test's green a claim that the acceptor published within 50ms; the retry must instead be unable to pass at all when the rotation never happens, and it must say so by exhausting the named budget rather than by hanging",
+      "edits": [
+        {
+          "file": "crates/mnemosyne-server/tests/grpc_mtls_smoke.rs",
+          "from": "    rotator.rotate(rotated_cfg).expect(\"rotation must succeed\");",
+          "to": "    let _ = (&rotator, rotated_cfg);"
+        }
+      ],
+      "expect_red": ["cert_rotation_swaps_server_identity_at_runtime"]
+    },
+    {
+      "name": "the-audit-append-stops-publishing-to-subscribers",
+      "why": "R1081 replaced a 200ms timed `recv` with a wait-free `try_recv`, which asserts the STRONGER property that the record is already in the subscriber's buffer when the append returns; removing the publish must make that fail at once, and the live-tail target going red with it is the same claim seen from the gRPC side. THE NAMES ARE MODULE-QUALIFIED because that is how the harness reads a unit test out of libtest's output — the first run of this file aimed at the bare name, was told `did not reach it`, and the answer was to correct the address rather than to relax the expectation",
+      "edits": [
+        {
+          "file": "crates/mnemosyne-server/src/audit.rs",
+          "from": "        let _ = self.broadcast_tx.send(record.clone());",
+          "to": "        let _ = &self.broadcast_tx;"
+        }
+      ],
+      "expect_red": [
+        "audit::tests::subscribe_receives_newly_committed_records",
+        "audit::tests::slow_subscriber_with_full_broadcast_returns_lagged",
+        "subscribe_audit_trail_pushes_post_subscription_records"
+      ]
+    }
+  ]
+}

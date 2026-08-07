@@ -11,6 +11,8 @@
 //! `follow_tail=true` and `max_records=2`. Only the historical 2 records
 //! appear; the cap fires before any tail push, the stream closes cleanly.
 
+mod common;
+
 use mnemosyne_server::grpc::proto::SubscribeAuditRequest;
 use mnemosyne_server::grpc::{decode_audit_record, MnemosyneClient, MnemosyneGrpcService};
 use mnemosyne_server::handler::ProposalHandler;
@@ -109,7 +111,10 @@ async fn subscribe_audit_trail_pushes_post_subscription_records() {
     let proposal = entity_create_proposal("p-tail-3", 3);
     handler.handle(&proposal).expect("post-subscription commit");
 
-    let third = tokio::time::timeout(std::time::Duration::from_millis(500), response.next())
+    // Named budget: it turns "the push never arrives" from a hang into a
+    // failure. It is NOT how long the push is allowed to take — the test's
+    // green is the arrival, not the latency.
+    let third = tokio::time::timeout(common::LIVENESS, response.next())
         .await
         .expect("tail push must arrive within timeout")
         .expect("tail record present")

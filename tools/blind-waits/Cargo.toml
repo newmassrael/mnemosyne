@@ -1,0 +1,86 @@
+# blind-waits — the gate for what a test asks of the machine rather than of the
+# code.
+#
+# Round 1073 turned this repository's main branch red with an assertion that had
+# never been about the store it named: `sled-baseline` ran eight writers over
+# four hot keys for 500 milliseconds and required `conflicts > 0`, which a
+# scheduler that serialises those eight threads makes false with a perfect CAS
+# underneath. Round 1075 swept the rest of `bench` and found the same claim in a
+# neighbouring crate under the same comment, plus a third shape — `commits > 0`
+# — in all six tests of three baselines. What NOBODY had asked, and what the
+# ledger carried as AA12 from that round to this one, is whether the ROOT
+# workspace and `tools/` hold the same thing. They run on every push; `bench`
+# runs on two.
+#
+# They hold it. Measured on the commit that shipped this crate, the root
+# workspace had four waits that end on a clock instead of on a condition, all in
+# `mnemosyne-server`'s integration tests, and one of the four is the shape that
+# does not go red at all: `zero_rate_sampling_drops_all_spans` slept 300ms and
+# then asserted that the collector had received nothing. A wait too short there
+# does not fail the test — it PASSES it, for the reason the test exists to rule
+# out.
+#
+# THE LAW IS ONE SENTENCE: in test code, a wait must end on a condition, and the
+# budget that bounds it must be named.
+#
+#   - A `sleep` outside a loop is a wait no condition ends. Its verdict is a
+#     function of how fast the machine is, which is not what any of these tests
+#     is about.
+#   - A budget spelled at the wait site is a machine assumption written once per
+#     site. Named, it is one decision a person can find and defend; spelled, it
+#     is `500` in six places and nobody knows which of them were measured.
+#
+# It is checked with a real parser (`syn`), not a text pattern, because this
+# repository has already paid for the other kind: R1064's bulk substitution
+# edited string literals inside `bench` and the build stayed green, and R1080's
+# hand pattern missed a two-digit `Round 79` that the gate found on its first
+# run. And it REPORTS WHAT IT REACHED — files scanned, files another workspace
+# owns, test-context files, wait sites classified — because a gate that opened
+# nothing and a gate that found nothing print the same thing otherwise (R1054,
+# and R1078's `coherence` refusal for the run that never happened).
+#
+# A SEPARATE in-repo workspace (the same pattern as `bench/`, `studio/` and the
+# other `tools/*`): its own `[workspace]` so the root workspace's build gates
+# never compile it. It depends on nothing in the core crates — it runs cargo and
+# parses Rust.
+[workspace]
+
+[package]
+name = "blind-waits"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.94"
+license = "MIT OR Apache-2.0"
+publish = false
+description = "Fail-loud gate: in test code a wait ends on a condition and its budget is named"
+
+[[bin]]
+name = "blind-waits"
+path = "src/main.rs"
+
+[lib]
+name = "blind_waits"
+path = "src/lib.rs"
+
+[dependencies]
+# The workspace census is cargo's JSON. Scraping it with text patterns is a
+# second parser that drifts from the first.
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# THE PARSER, and the reason this gate is not a grep. `full` for statement and
+# expression syntax, `visit` for the borrowing walk, `extra-traits` for the
+# Debug the tests read.
+syn = { version = "3", features = ["full", "visit", "extra-traits"] }
+# `span-locations` is what turns a matched expression into a line and column a
+# person can open. It is a proc-macro2 feature rather than a syn one, and
+# without it every finding reports line 1.
+proc-macro2 = { version = "1", features = ["span-locations"] }
+
+[dev-dependencies]
+# The end-to-end tests build throwaway cargo workspaces OUTSIDE this repository
+# and run the real gate over them. Outside, because a fixture carrying its own
+# `[workspace]` inside the tree would be discovered by
+# `scripts/check-side-workspaces.sh`, which would then try to lint a workspace
+# whose whole purpose is to be rejected.
+tempfile = "3"

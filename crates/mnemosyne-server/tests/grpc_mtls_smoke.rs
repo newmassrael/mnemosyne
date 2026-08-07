@@ -15,6 +15,8 @@
 
 #![cfg(feature = "tls")]
 
+mod common;
+
 use mnemosyne_server::grpc::{
     build_rustls_server_config, encode_proposal, install_default_crypto_provider,
     server_tls_config_mtls, spawn_rotating_tls_acceptor, tls_identity_from_pem, MnemosyneClient,
@@ -292,23 +294,35 @@ async fn cert_rotation_swaps_server_identity_at_runtime() {
     // Rotate the server identity. Subsequent handshakes pick up the new cert.
     rotator.rotate(rotated_cfg).expect("rotation must succeed");
 
-    // Tiny grace: ensure the watch publish settles before the new handshake.
-    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-
-    // Client trusting the *rotated* CA opens a fresh channel. The
-    // pre-rotation channel (initial_client) is still alive on the old TCP
-    // connection — we only assert the *new* handshake succeeds.
-    let rotated_ca = Certificate::from_pem(id_rotated.ca_pem.as_bytes());
-    let rotated_tls = ClientTlsConfig::new()
-        .ca_certificate(rotated_ca)
-        .domain_name("localhost");
-    let new_channel = Channel::from_shared(endpoint)
-        .expect("endpoint parse")
-        .tls_config(rotated_tls)
-        .expect("rotated client tls config")
-        .connect()
-        .await
-        .expect("rotated handshake");
+    // Client trusting the *rotated* CA opens a fresh channel, RETRYING until
+    // the handshake succeeds. The pre-rotation channel (initial_client) is
+    // still alive on the old TCP connection — we only assert the *new*
+    // handshake succeeds.
+    //
+    // What stood here was `sleep(50ms)` under the comment "tiny grace: ensure
+    // the watch publish settles". That made this test's green a claim that the
+    // acceptor's watch publishes within fifty milliseconds on whatever machine
+    // is running — a claim about the runner, of exactly the kind that turned
+    // main red in Round 1073. The retry ends on the thing the test is about
+    // instead, and it cannot pass early: until the rotation takes effect the
+    // acceptor still presents the initial leaf, which this client's CA does not
+    // trust, so every attempt before it lands FAILS.
+    let new_channel = common::until_ok("a handshake against the rotated identity", || {
+        let rotated_ca = Certificate::from_pem(id_rotated.ca_pem.as_bytes());
+        let endpoint = endpoint.clone();
+        async move {
+            let rotated_tls = ClientTlsConfig::new()
+                .ca_certificate(rotated_ca)
+                .domain_name("localhost");
+            Channel::from_shared(endpoint)
+                .expect("endpoint parse")
+                .tls_config(rotated_tls)
+                .expect("rotated client tls config")
+                .connect()
+                .await
+        }
+    })
+    .await;
     let mut rotated_client = MnemosyneClient::new(new_channel);
     let resp_rotated = rotated_client
         .submit_proposal(encode_proposal(entity_create_proposal("p-rot-post", 2)))

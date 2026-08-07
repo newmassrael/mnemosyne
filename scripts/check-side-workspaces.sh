@@ -116,7 +116,7 @@ for ws in "${workspaces[@]}"; do
     skipped+=("$ws")
     continue
   fi
-  echo "[side-workspaces] CHECK $ws — fmt, clippy, item citations$($lint_only || echo ', tests')"
+  echo "[side-workspaces] CHECK $ws — fmt, clippy, item citations, blind waits$($lint_only || echo ', tests')"
   # PACKAGE BY PACKAGE, over the manifests that live INSIDE this workspace's
   # directory, which is the same thing as "the packages this repository owns".
   #
@@ -174,6 +174,42 @@ for ws in "${workspaces[@]}"; do
       "--bin item-citations -- --workspace $ws/Cargo.toml" >&2
     exit 1
   fi
+  # R1081 — in test code a wait ends on a condition and its budget is named.
+  # The root workspace gets this from its own CI step and the pre-commit hook,
+  # and pointing it ONLY at the root is the hole R1080 closed for the citation
+  # gate one round earlier. It is pointed at a manifest for the same reason that
+  # one is: `bench` is where the class was first found (R1073's red main), and
+  # `tools/injection-harness` deliberately uses processes, signals and real
+  # time, so it is the likeliest place for the next one.
+  #
+  # Resolved from THIS SCRIPT's checkout, run against the WORKING DIRECTORY —
+  # two different trees whenever this repository's gate runs over another one.
+  waits="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/tools/blind-waits/Cargo.toml"
+  if [[ ! -f "$waits" ]]; then
+    echo "[side-workspaces] the blind-wait gate is missing at $waits" >&2
+    exit 1
+  fi
+  # Exit 1 and exit 2 are different answers — "these sites break the law" and
+  # "I could not read enough of this tree to have one" — and one message for
+  # both mislabels whichever it did not mean.
+  cargo run -q --manifest-path "$waits" --bin blind-waits -- \
+    --workspace "$root/$ws/Cargo.toml" || waits_verdict=$?
+  case "${waits_verdict:-0}" in
+    0) ;;
+    1)
+      echo "[side-workspaces] $ws carries a wait that ends on a clock, or a" \
+        "budget spelled where nobody reviews it —" \
+        "fix: cargo run -q --manifest-path tools/blind-waits/Cargo.toml" \
+        "--bin blind-waits -- --workspace $ws/Cargo.toml" >&2
+      exit 1
+      ;;
+    *)
+      echo "[side-workspaces] the blind-wait gate could not read $ws" \
+        "(exit ${waits_verdict}); its own message is above" >&2
+      exit 1
+      ;;
+  esac
+  unset waits_verdict
   if ! $lint_only; then
     # `--no-fail-fast`, because a gate that stops at the first failing target
     # reports a smaller number than the truth and somebody fixes to it. This gate

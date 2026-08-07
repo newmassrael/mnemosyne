@@ -82,6 +82,19 @@ jobs:
         # missing citations fail the build.
         run: cargo run --release -q -p mnemosyne-cli -- validate-code-refs
 
+      # R1081 — in test code a wait ends on a condition and its budget is named.
+      # R1073 turned this branch red with an assertion whose subject was the
+      # scheduler; R1075 swept `bench` and found the same shape twice more; this
+      # is the sweep of the tree that runs on EVERY push, and it found nine
+      # sites, four of them waits that end on a clock. A step here rather than
+      # its own job because the gate parses instead of building: measured at
+      # 9.5s warm and 33.4s including its own cold compile, against this job's
+      # 30-minute budget with 15 minutes of headroom.
+      - name: blind-waits (a wait ends on a condition, its budget is named)
+        run: >
+          cargo run -q --manifest-path tools/blind-waits/Cargo.toml
+          --bin blind-waits -- --workspace Cargo.toml
+
   # R1077 pointed rustdoc at this workspace for the first time and gave the
   # `[`foo`]` citation the gate `validate-code-refs` gives `Round NNN`. It ran
   # `cargo doc --workspace`, and R1078 measured what that reaches: 25 of this
@@ -185,6 +198,67 @@ jobs:
 
       - name: fmt, clippy and test in every separate in-repo workspace
         run: ./scripts/check-side-workspaces.sh
+
+  # R1081 — the targets `cargo test --workspace` compiles to NOTHING.
+  #
+  # `mnemosyne-server` declares `default = []` and puts its TLS and OTLP
+  # surfaces behind `tls` and `otlp`. Every test file for them opens with
+  # `#![cfg(feature = ...)]`, so under the workspace suite this repository has
+  # been running since R583 they are empty crates. Measured on the commit that
+  # added this job, from that suite's own output: SIX integration test targets
+  # reported `running 0 tests` — `grpc_tls_smoke`, `grpc_mtls_smoke`,
+  # `grpc_otlp_smoke`, `grpc_otlp_collector_e2e`, `grpc_otlp_config_smoke` and
+  # `grpc_otlp_sampling_zero_smoke`. Nine tests, none of which had ever run in
+  # CI, and four of R1081's blind waits lived in them: a 50ms `sleep` under the
+  # comment "tiny grace" survives indefinitely when nothing executes it.
+  #
+  # `--all-features` rather than the two named, so a feature added tomorrow is
+  # covered without anybody remembering this file. `-p mnemosyne-server` rather
+  # than `--workspace`, because feature unification across the whole workspace
+  # rebuilds far more than the crate under test for no added coverage.
+  #
+  # Measured before it was written down: 354.9s wall and 1.43 GiB peak RSS on
+  # this project's 32-core machine, INCLUDING a cold librocksdb-sys build. A
+  # hosted core is slower and there are four of them, hence 45 rather than 30.
+  server-features:
+    name: the server targets the workspace suite compiles to nothing
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install protoc (mnemosyne-server build script)
+        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
+
+      - name: Install rust toolchain (rust-toolchain.toml)
+        run: rustup show
+
+      # Its own key: this build resolves different features than `validate`'s,
+      # so sharing a cache would make each run evict the other's artifacts.
+      - name: Cache cargo (server features)
+        uses: actions/cache@v6
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-serverfeat-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-serverfeat-
+
+      # LINT IT TOO, and that is not symmetry for its own sake: the first time
+      # anything linted this build it found a `MutexGuard` held across an await
+      # in `grpc_otlp_config_smoke.rs` — a deadlock shape that never bit only
+      # because the code it is in had never been compiled by a gate. The
+      # workspace clippy above cannot see it: `--all-targets` still resolves
+      # `default = []`.
+      - name: cargo clippy -p mnemosyne-server --all-features
+        run: >
+          cargo clippy -p mnemosyne-server --all-features --all-targets
+          --locked -- -D warnings
+
+      - name: cargo test -p mnemosyne-server --all-features
+        run: cargo test -p mnemosyne-server --all-features --locked --no-fail-fast
 
   msrv:
     name: MSRV (workspace.package.rust-version)
