@@ -32,10 +32,16 @@ fn the_lister_is_read_for_what_it_can_and_cannot_be_asked() {
         "the root is always asked; a skipped workspace is not"
     );
     assert_eq!(listed.skipped.len(), 1, "{:?}", listed.skipped);
+    assert_eq!(
+        listed.skipped[0].directory, "studio",
+        "the directory is a field, not a prefix of a sentence — a gate deciding \
+         whether a FILE is inside a workspace this machine cannot compile needs \
+         it without re-splitting the reason: {:?}",
+        listed.skipped
+    );
     assert!(
-        listed.skipped[0].starts_with("studio "),
-        "the skip carries the workspace AND the reason, so the print says why: \
-         {:?}",
+        listed.skipped[0].reason.contains("../pinion"),
+        "and the reason is kept beside it, so the print still says why: {:?}",
         listed.skipped
     );
     assert!(

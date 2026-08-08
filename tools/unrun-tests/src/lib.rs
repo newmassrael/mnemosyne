@@ -169,7 +169,7 @@ pub struct Report {
     /// The population probes, one per workspace this machine can build.
     pub population_probes: Vec<Probe>,
     /// Workspaces the lister declined, with the reason it gave.
-    pub skipped_workspaces: Vec<String>,
+    pub skipped_workspaces: Vec<ci_plan::SkippedWorkspace>,
     /// The CI commands that run tests, probed.
     pub ci_probes: Vec<Probe>,
     /// Cargo commands CI issues that are not `cargo test`, counted so that a

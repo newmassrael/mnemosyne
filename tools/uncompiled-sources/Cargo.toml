@@ -1,0 +1,65 @@
+# uncompiled-sources — the gate for Rust that exists and that nothing compiles.
+#
+# R1084 built the level below this one: every test this repository COMPILES is
+# one some CI command runs. Its population is what cargo compiles, and that is
+# where it ends — a `#[test]` in a file cargo never opens is missing from the
+# population and from the run set AT THE SAME TIME, so it produces no finding.
+# R1084 shipped with that named as HH1 and with today's instance count measured
+# at zero, which is a statement about today and not about the gate.
+#
+# Symmetric invisibility is the failure mode R1084 found in ITSELF, one round
+# earlier, and only by chasing a disagreement between two instruments: doc-tests
+# were absent from both of its sides at once and its verdict was a confident
+# "dark 0". The lesson it wrote down is that a gate which never re-measures its
+# own answer a second way cannot see its own hole. This crate is that second
+# way, made a law of its own.
+#
+# A SEPARATE in-repo workspace, like every other gate under `tools/`, so the
+# root workspace's build never compiles it. `ci-plan` is a path dependency
+# reaching INTO the root workspace, which is the one direction that works.
+[workspace]
+
+[package]
+name = "uncompiled-sources"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.94"
+publish = false
+license = "MIT OR Apache-2.0"
+description = "Mnemosyne — every Rust file this repository tracks is one cargo compiles"
+
+[[bin]]
+name = "uncompiled-sources"
+path = "src/main.rs"
+
+[lib]
+name = "uncompiled_sources"
+path = "src/lib.rs"
+
+[dependencies]
+# WHICH WORKSPACES THIS MACHINE CAN BE ASKED ABOUT — one answer, the workspace
+# lister's, shared with every other gate. R1083 turned main red by re-deriving
+# it.
+ci-plan = { path = "../ci-plan" }
+
+# Cargo's answers are JSON. Scraping them with text patterns is a second parser
+# that drifts from the first.
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# THE PARSER, for the one question dep-info cannot answer: whether the file
+# nothing compiles holds tests. `full` for item and statement syntax,
+# `extra-traits` for the Debug the tests read.
+syn = { version = "3", features = ["full", "extra-traits"] }
+
+[dev-dependencies]
+# The end-to-end tests build throwaway cargo workspaces OUTSIDE this repository
+# and run the real probes over them. Outside, because a fixture carrying its own
+# `[workspace]` inside the tree would be discovered by
+# `scripts/check-side-workspaces.sh` — and, for this gate specifically, because
+# a fixture whose whole purpose is to hold a file nobody compiles would be a
+# finding of the very gate it tests.
+tempfile = "3"
+
+[lints.clippy]
+all = "deny"

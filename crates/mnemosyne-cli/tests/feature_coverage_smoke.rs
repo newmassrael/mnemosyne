@@ -370,10 +370,15 @@ fn every_tracked_manifest_is_inside_a_workspace_this_gate_asks() {
     // out loud and with a reason, why nobody can ask about it on this machine.
     // That is a different thing from a manifest nobody's list mentions, which
     // is what this test rejects.
+    //
+    // The directory is a FIELD of what the lister said, not the first word of
+    // its sentence: this test split the reason apart to get at it until the
+    // gate one level up needed the same thing per file and the split became a
+    // second reader of the same line.
     let under_a_skip = |path: &str| {
         skipped
             .iter()
-            .any(|ws| path.starts_with(&format!("{}/", ws.split_whitespace().next().unwrap_or(ws))))
+            .any(|ws| path.starts_with(&format!("{}/", ws.directory)))
     };
     let missed: Vec<String> = String::from_utf8_lossy(&tracked.stdout)
         .lines()

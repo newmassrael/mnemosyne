@@ -324,6 +324,66 @@ jobs:
           cargo run -q --manifest-path tools/unrun-tests/Cargo.toml
           --bin unrun-tests
 
+  # The level above `unrun-tests`, and the hole that job named in itself. Its
+  # population is what cargo COMPILES, so a test in a file cargo never opens is
+  # missing from its population and from its run set at the same time — two
+  # absences that cancel into a clean report. Measured, not argued: with
+  # `autotests = false` added to `crates/mnemosyne-atomic/Cargo.toml`, three
+  # test files and the eight tests in them leave every build, and `unrun-tests`
+  # still says `every test this repository compiles is run by CI`, 2150 of 2150.
+  #
+  # Both sides are asked of the machine. TRACKED: `git ls-files '*.rs'` — a file
+  # git does not track is not this repository's and a checkout does not have it.
+  # COMPILED: for every workspace the lister says this machine can build,
+  # `cargo check --workspace --all-targets`, once with `--all-features` and once
+  # without, then the files each compilation READ out of rustc's own dep-info.
+  # Dep-info rather than a walk over `mod` declarations, because this repository
+  # already holds the file that breaks a walker: `codegen-prototype`'s golden
+  # fixture is reached only through `include!(concat!(env!(…)))`.
+  #
+  # ITS OWN JOB, for the reason `unrun-tests` has one: it resolves every
+  # workspace twice, which is neither resolve any other job caches.
+  #
+  # THE BUDGET IS AN UPPER BOUND ARGUED FROM THE OTHER JOBS, not a number
+  # measured on a runner — it takes 11s fully warm on a 32-core machine, which
+  # says nothing about a cold one. `cargo check` skips the codegen and linking
+  # that `unrun-tests` pays for (27 minutes of its 90), and then doubles because
+  # a second feature resolve is a second dependency graph, C dependencies
+  # included. 90 is that product with room; a job that runs out of minutes is a
+  # red CI nobody can read a result from, and the first run is what measures it.
+  uncompiled-sources:
+    name: every file tracked is one cargo compiles
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install protoc (mnemosyne-server build script)
+        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
+
+      - name: Install rust toolchain (rust-toolchain.toml)
+        run: rustup show
+
+      # Its own key: two feature resolves of every workspace, which no other
+      # job holds, so sharing a cache would make each run evict the other's.
+      - name: Cache cargo (uncompiled sources)
+        uses: actions/cache@v6
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+            bench/target
+            tools/uncompiled-sources/target
+          key: ${{ runner.os }}-cargo-uncompiled-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-uncompiled-
+
+      - name: every Rust file this repository tracks is one cargo compiles
+        run: >
+          cargo run -q --manifest-path tools/uncompiled-sources/Cargo.toml
+          --bin uncompiled-sources
+
   msrv:
     name: MSRV (workspace.package.rust-version)
     runs-on: ubuntu-latest

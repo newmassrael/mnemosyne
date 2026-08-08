@@ -1,0 +1,162 @@
+{
+  "_": [
+    "THE SWEEP THAT SAYS THIS GATE IS NOT VACUOUS — run it from the repository",
+    "root:",
+    "    cargo run -q --manifest-path tools/injection-harness/Cargo.toml -- \\",
+    "        tools/uncompiled-sources/injection-sweep.json",
+    "",
+    "The other half of the proof is already recorded and is not repeatable from",
+    "here: `autotests = false` added to `crates/mnemosyne-atomic/Cargo.toml`",
+    "takes three test files out of every build, and this gate names all three",
+    "and the eight tests inside them while R1084's gate — pointed at the same",
+    "tree, in the same minute — reports `every test this repository compiles is",
+    "run by CI`, 2150 of 2150. That is the hole HH1 named, measured rather than",
+    "argued.",
+    "",
+    "What that cannot show is whether `tests/gate.rs` would notice if a",
+    "mechanism stopped working: a fixture-based test can pass because the",
+    "fixture is wrong as easily as because the code is right. Each injection",
+    "below removes ONE mechanism and names the test that must go red for it.",
+    "",
+    "Scoped to this crate's own suite: nothing here touches the tree it judges."
+  ],
+  "repo": ".",
+  "test_command": [
+    "cargo",
+    "test",
+    "--manifest-path",
+    "tools/uncompiled-sources/Cargo.toml",
+    "--no-fail-fast"
+  ],
+  "logs": "target/injection-logs",
+  "min_free_mb": 8000,
+  "injections": [
+    {
+      "name": "the-artifact-join-is-removed",
+      "why": "cargo never garbage-collects dep-info, so sweeping the target directory credits units that no longer exist; the credit is invisible on a cold runner and decisive on a warm machine, which is the worst kind of disagreement",
+      "edits": [
+        {
+          "file": "tools/uncompiled-sources/src/lib.rs",
+          "from": "        joined.extend(matched);",
+          "to": "        joined.extend(0..records.len());"
+        }
+      ],
+      "expect_red": ["a_warm_target_directory_does_not_credit_a_unit_that_is_gone"]
+    },
+    {
+      "name": "the-default-feature-resolve-is-dropped",
+      "why": "`--all-features` is what makes a file behind a feature visible and what makes a file behind `not(feature)` invisible; with only the first resolve the second class is reported as uncompiled while cargo compiles it on every push",
+      "edits": [
+        {
+          "file": "tools/uncompiled-sources/src/lib.rs",
+          "from": "    [true, false]",
+          "to": "    [true]"
+        }
+      ],
+      "expect_red": ["one_feature_resolve_cannot_see_what_the_other_hides"]
+    },
+    {
+      "name": "the-probe-stops-asking-for-every-target",
+      "why": "`cargo check` without `--all-targets` compiles neither examples nor test entry points, so the population shrinks to libraries and binaries and every `tests/*.rs` in the repository reads as uncompiled",
+      "edits": [
+        {
+          "file": "tools/uncompiled-sources/src/lib.rs",
+          "from": "        \"--all-targets\",",
+          "to": ""
+        }
+      ],
+      "expect_red": [
+        "the_probe_asks_for_every_target",
+        "a_tests_entry_point_the_manifest_disowns_is_rust_nothing_compiles",
+        "a_warm_target_directory_does_not_credit_a_unit_that_is_gone"
+      ]
+    },
+    {
+      "name": "a-build-script-joins-by-a-name-cargo-does-not-write",
+      "why": "cargo reports `build/<unit>/build-script-build` and rustc wrote `build/<unit>/build_script_build-<hash>`; joined by filename alone no build script ever matches, and every package with one turns the gate into a refusal",
+      "edits": [
+        {
+          "file": "tools/uncompiled-sources/src/lib.rs",
+          "from": "            let found = if *is_build_script {",
+          "to": "            let found = if false {"
+        }
+      ],
+      "expect_red": ["a_build_script_is_compiled_too"]
+    },
+    {
+      "name": "the-self-check-against-cargos-own-target-list-is-removed",
+      "why": "cargo naming a target whose root nothing was measured to read is two answers disagreeing; without the check the gate reports whatever the mismatched record happened to name, confidently and about another unit",
+      "edits": [
+        {
+          "file": "tools/uncompiled-sources/src/lib.rs",
+          "from": "    if command.has(\"--all-features\") {",
+          "to": "    if false {"
+        }
+      ],
+      "expect_red": ["a_target_root_the_build_never_read_is_a_disagreement_and_not_a_finding"]
+    },
+    {
+      "name": "an-unreadable-file-swallows-the-finding-it-is",
+      "why": "whether anything compiles a file was already decided by two sets; letting the second question — what is inside it — cancel the first lets an unreadable file hide the defect it is",
+      "edits": [
+        {
+          "file": "tools/uncompiled-sources/src/lib.rs",
+          "from": "                    message,\n                });\n                Vec::new()",
+          "to": "                    message,\n                });\n                continue"
+        }
+      ],
+      "expect_red": ["a_candidate_that_does_not_parse_refuses_rather_than_reporting_no_tests"]
+    },
+    {
+      "name": "source-that-does-not-parse-reports-no-tests",
+      "why": "an empty answer and an unknown one are the same list; reporting zero tests for a file syn could not read understates every finding it appears in",
+      "edits": [
+        {
+          "file": "tools/uncompiled-sources/src/lib.rs",
+          "from": "    let file = syn::parse_file(source).map_err(|e| e.to_string())?;",
+          "to": "    let file = syn::parse_file(source).unwrap_or_else(|_| syn::parse_file(\"\").expect(\"the empty file parses\"));"
+        }
+      ],
+      "expect_red": [
+        "tests::source_that_does_not_parse_is_not_source_with_no_tests",
+        "a_candidate_that_does_not_parse_refuses_rather_than_reporting_no_tests"
+      ]
+    },
+    {
+      "name": "the-population-stops-being-what-git-tracks",
+      "why": "a file git does not track is not this repository's and a CI checkout does not have it; walking the disk instead makes the verdict a fact about the machine the gate ran on",
+      "edits": [
+        {
+          "file": "tools/uncompiled-sources/src/lib.rs",
+          "from": "        .args([\"ls-files\", \"-z\", \"--\", \"*.rs\"])",
+          "to": "        .args([\"ls-files\", \"-z\", \"--cached\", \"--others\", \"--\", \"*.rs\"])"
+        }
+      ],
+      "expect_red": ["git_is_what_says_which_files_are_this_repositorys"]
+    },
+    {
+      "name": "a-tree-holding-no-rust-becomes-a-pass",
+      "why": "zero tracked files is the shape of a gate pointed at the wrong tree, and it prints exactly like a repository where every file compiles",
+      "edits": [
+        {
+          "file": "tools/uncompiled-sources/src/lib.rs",
+          "from": "    if tracked.is_empty() {",
+          "to": "    if false {"
+        }
+      ],
+      "expect_red": ["a_tree_holding_no_rust_is_a_refusal_and_not_a_clean_answer"]
+    },
+    {
+      "name": "a-workspace-this-machine-cannot-compile-stops-being-exempt",
+      "why": "`studio` is checkable here and skipped on every hosted runner, so counting its files as uncompiled makes the verdict a fact about which machine ran the gate rather than about the repository",
+      "edits": [
+        {
+          "file": "tools/uncompiled-sources/src/lib.rs",
+          "from": "            .any(|workspace| file.starts_with(&workspace.directory))",
+          "to": "            .any(|workspace| workspace.directory.is_empty())"
+        }
+      ],
+      "expect_red": ["a_file_in_a_workspace_this_machine_cannot_compile_is_not_a_finding"]
+    }
+  ]
+}

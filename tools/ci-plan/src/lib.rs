@@ -277,6 +277,29 @@ fn split_operators(line: &str) -> Vec<String> {
 
 // --- the workspace lister ---------------------------------------------------
 
+/// A workspace the lister declined, and why.
+///
+/// The two halves are separate fields rather than one printed sentence because
+/// they answer different questions and one of them is machine-readable: the
+/// reason is for a person reading the run, and the directory is what a gate
+/// needs in order to say "this machine cannot compile anything under here" — a
+/// judgement R1084's successor makes per file. Recovering the directory by
+/// splitting the sentence is the kind of re-derivation this crate exists to
+/// remove.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SkippedWorkspace {
+    /// Its directory, relative to the repository root.
+    pub directory: String,
+    /// The lister's own words for why it was not checked.
+    pub reason: String,
+}
+
+impl std::fmt::Display for SkippedWorkspace {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{} {}", self.directory, self.reason)
+    }
+}
+
 /// What `scripts/check-side-workspaces.sh --list` says.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Workspaces {
@@ -288,7 +311,7 @@ pub struct Workspaces {
     /// Workspaces the lister declined, each with the reason it printed. On a
     /// hosted runner `studio` is one of these: its path dependencies name a
     /// sibling checkout no runner has.
-    pub skipped: Vec<String>,
+    pub skipped: Vec<SkippedWorkspace>,
     /// The suite command the lister runs for each askable separate workspace,
     /// keyed by its directory. The root workspace has none here — its suite is
     /// written in a workflow, not in the lister.
@@ -332,7 +355,14 @@ pub fn parse_lister(text: &str) -> Workspaces {
         if let Some(rest) = line.strip_prefix("[side-workspaces] CHECKABLE ") {
             listed.askable.push(format!("{}/Cargo.toml", rest.trim()));
         } else if let Some(rest) = line.strip_prefix("[side-workspaces] SKIP ") {
-            listed.skipped.push(rest.trim().to_string());
+            // `SKIP <ws> — <reason>`: the directory is the first word, the same
+            // shape `SUITE <ws> <command…>` already relies on.
+            let rest = rest.trim();
+            let (directory, reason) = rest.split_once(char::is_whitespace).unwrap_or((rest, ""));
+            listed.skipped.push(SkippedWorkspace {
+                directory: directory.to_string(),
+                reason: reason.trim_start().to_string(),
+            });
         } else if let Some(rest) = line.strip_prefix("[side-workspaces] SUITE ") {
             let mut words = words_of(rest);
             if words.is_empty() {
