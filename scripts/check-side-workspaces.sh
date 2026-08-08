@@ -118,6 +118,17 @@ for ws in "${workspaces[@]}"; do
     skipped+=("$ws")
     continue
   fi
+  # THE SUITE COMMAND, WRITTEN ONCE. `--list` prints it and the run below
+  # executes this same array, because a reader that has to know what this script
+  # runs must not be re-deriving it: R1084's gate asks which tests every CI
+  # command executes, and a separate workspace's suite is a command only this
+  # file knows. A second spelling of it drifts the first time a flag changes.
+  #
+  # `--no-fail-fast`, because a gate that stops at the first failing target
+  # reports a smaller number than the truth and somebody fixes to it. This gate
+  # did exactly that on its first run: it said `bench` had 6 failures, and the
+  # 6 were one target's — there were 18.
+  suite=(cargo test --manifest-path "$ws/Cargo.toml" --locked --no-fail-fast)
   # `--list` answers WHICH workspaces are checkable on this machine and stops.
   # R1082's feature gate needs exactly that answer and had written its own: on a
   # CI runner, `cargo metadata` for `studio` dies on the sibling `../pinion`
@@ -126,6 +137,7 @@ for ws in "${workspaces[@]}"; do
   # rather than restated — the same correction R1066 made for fmt and clippy.
   if $list_only; then
     echo "[side-workspaces] CHECKABLE $ws"
+    $lint_only || echo "[side-workspaces] SUITE $ws ${suite[*]}"
     checked+=("$ws")
     continue
   fi
@@ -224,11 +236,7 @@ for ws in "${workspaces[@]}"; do
   esac
   unset waits_verdict
   if ! $lint_only; then
-    # `--no-fail-fast`, because a gate that stops at the first failing target
-    # reports a smaller number than the truth and somebody fixes to it. This gate
-    # did exactly that on its first run: it said `bench` had 6 failures, and the
-    # 6 were one target's — there were 18.
-    cargo test --manifest-path "$ws/Cargo.toml" --locked --no-fail-fast
+    "${suite[@]}"
   fi
   checked+=("$ws")
 done

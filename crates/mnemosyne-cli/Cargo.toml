@@ -46,6 +46,10 @@ libc = "0.2"
 tempfile = { workspace = true }
 serde_json = { workspace = true }
 yaml-rust2 = { workspace = true }
+# THE one answer to what this repository's CI runs. Shared with the gate in
+# `tools/unrun-tests` rather than copied into each — R1083 is what a second
+# derivation of it costs.
+ci-plan = { path = "../../tools/ci-plan" }
 # The ledger tests ask whether an entry id carries a round pin. That question
 # already has one answer in production (`project::parse_round_number`, the
 # resolver the changelog projection keys on), so the tests borrow it rather

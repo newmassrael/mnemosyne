@@ -34,7 +34,7 @@
 //! closed the same shape one level up, and each found something on its first
 //! run because a list that restates the tree drifts from it in silence.
 
-mod ci;
+use ci_plan as ci;
 mod common;
 
 use std::collections::{BTreeMap, BTreeSet};
@@ -91,93 +91,22 @@ struct ResolveNode {
 /// ignored") and gave it the `missing_siblings` walk — and asking it is what
 /// keeps the two from drifting, which is R1066's correction for fmt and clippy.
 ///
-/// Returns (askable, skipped-with-reason). The skipped ones are PRINTED, never
-/// silently dropped: a workspace nobody could ask about is a fact, and a fact
-/// that does not appear in the output is one nobody can act on.
-fn workspaces() -> (Vec<String>, Vec<String>) {
-    let root = common::repo_root();
-    let out = Command::new("bash")
-        .arg("scripts/check-side-workspaces.sh")
-        .arg("--list")
-        .current_dir(&root)
-        .output()
-        .expect("check-side-workspaces.sh runs");
-    assert!(
-        out.status.success(),
-        "check-side-workspaces.sh --list failed: {}",
-        String::from_utf8_lossy(&out.stderr)
-    );
-    let text = String::from_utf8_lossy(&out.stdout);
-    let (askable, skipped) = parse_lister(&text);
-    assert!(
-        askable.len() > 1 || !skipped.is_empty(),
-        "the workspace lister named nothing at all — this repository has \
-         separate workspaces, so an empty answer is the gate not reading:\n{text}"
-    );
-    for reason in &skipped {
+/// Reading the lister's output is `ci_plan`'s job, not this file's: R1084 made
+/// a third gate ask the same question, and a third parser of the same lines is
+/// a third answer.
+fn workspaces() -> ci::Workspaces {
+    let listed = ci::workspaces(&common::repo_root());
+    // The skipped ones are PRINTED, never silently dropped: a workspace nobody
+    // could ask about is a fact, and a fact that does not appear in the output
+    // is one nobody can act on.
+    for reason in &listed.skipped {
         println!("not asked (the lister says why): {reason}");
     }
-    (askable, skipped)
-}
-
-/// The lister's output, read. A pure function so the SKIP branch — which only
-/// happens where a sibling checkout is absent, i.e. on a CI runner and not on
-/// the machine this is written on — is pinned by a test rather than by hope.
-fn parse_lister(text: &str) -> (Vec<String>, Vec<String>) {
-    // The root workspace is not in that script's population by construction —
-    // it exists to reach the ones the root gates never compile — so it is added
-    // here and is never skipped.
-    let mut askable = vec!["Cargo.toml".to_string()];
-    let mut skipped = Vec::new();
-    for line in text.lines() {
-        if let Some(rest) = line.strip_prefix("[side-workspaces] CHECKABLE ") {
-            askable.push(format!("{}/Cargo.toml", rest.trim()));
-        } else if let Some(rest) = line.strip_prefix("[side-workspaces] SKIP ") {
-            skipped.push(rest.trim().to_string());
-        }
-    }
-    askable.sort();
-    (askable, skipped)
-}
-
-#[test]
-fn the_lister_is_read_for_what_it_can_and_cannot_be_asked() {
-    // THE BRANCH THIS MACHINE NEVER TAKES. `studio` depends on a sibling
-    // `../pinion` checkout that exists here and not on a CI runner, so the SKIP
-    // line only appears there — and the first version of this gate, which had
-    // no SKIP branch at all, turned main red on its first push for exactly that
-    // reason. Pinned against the string the script prints.
-    let (askable, skipped) = parse_lister(
-        "[side-workspaces] CHECKABLE bench\n\
-         [side-workspaces] SKIP studio — its path dependencies leave this \
-         repository and are not on this machine: ../pinion/crates/pinion-a11y\n\
-         [side-workspaces] CHECKABLE tools/item-citations\n\
-         [side-workspaces] checked 2 (bench tools/item-citations), skipped 1 (studio)\n",
-    );
-    assert_eq!(
-        askable,
-        vec![
-            "Cargo.toml".to_string(),
-            "bench/Cargo.toml".to_string(),
-            "tools/item-citations/Cargo.toml".to_string(),
-        ],
-        "the root is always asked; a skipped workspace is not"
-    );
-    assert_eq!(skipped.len(), 1, "{skipped:?}");
-    assert!(
-        skipped[0].starts_with("studio "),
-        "the skip carries the workspace AND the reason, so the print says why: \
-         {skipped:?}"
-    );
-    assert!(
-        !askable.iter().any(|m| m.starts_with("studio")),
-        "a workspace the lister could not check must not be asked anyway: \
-         {askable:?}"
-    );
+    listed
 }
 
 fn workspace_manifests() -> Vec<String> {
-    workspaces().0
+    workspaces().askable
 }
 
 fn metadata(manifest: &str, with_deps: bool) -> Metadata {
@@ -275,13 +204,10 @@ fn enabled_by_ci() -> BTreeMap<String, String> {
     let declared = declared();
     let root_declared = declared_in("Cargo.toml");
     let mut out = BTreeMap::new();
-    for path in ci::workflow_files(&root) {
-        let doc = ci::load_workflow(&root, &path);
-        for (job, script) in ci::run_steps(&doc) {
-            let where_it_runs = format!("{path} job `{job}`");
-            for feature in features_enabled(&script, &declared, &root_declared) {
-                out.entry(feature).or_insert_with(|| where_it_runs.clone());
-            }
+    for command in ci::workflow_cargo_commands(&root) {
+        let where_it_runs = command.origin();
+        for feature in features_enabled(&command, &declared, &root_declared) {
+            out.entry(feature).or_insert_with(|| where_it_runs.clone());
         }
     }
     out
@@ -298,49 +224,36 @@ fn enabled_by_ci() -> BTreeMap<String, String> {
 /// grows a feature is therefore DARK until a job names it, and that is the
 /// intended answer rather than a gap.
 fn features_enabled(
-    script: &str,
+    command: &ci::CargoCommand,
     declared: &BTreeSet<String>,
     root_declared: &BTreeSet<String>,
 ) -> BTreeSet<String> {
     let mut out = BTreeSet::new();
-    // A `run:` block can hold several lines; only the cargo ones say anything.
-    for line in script.lines() {
-        let words: Vec<&str> = line.split_whitespace().collect();
-        if !words.contains(&"cargo") {
-            continue;
-        }
-        let package = words
-            .iter()
-            .position(|w| *w == "-p" || *w == "--package")
-            .and_then(|i| words.get(i + 1))
-            .map(|s| s.to_string());
+    let package = command.value(&["-p", "--package"]).map(str::to_string);
 
-        if words.contains(&"--all-features") {
-            match &package {
-                Some(only) => {
-                    for feature in declared {
-                        if feature.split('/').next() == Some(only.as_str()) {
-                            out.insert(feature.clone());
-                        }
+    if command.has("--all-features") {
+        match &package {
+            Some(only) => {
+                for feature in declared {
+                    if feature.split('/').next() == Some(only.as_str()) {
+                        out.insert(feature.clone());
                     }
                 }
-                None => out.extend(root_declared.iter().cloned()),
             }
+            None => out.extend(root_declared.iter().cloned()),
         }
+    }
 
-        if let Some(i) = words.iter().position(|w| *w == "--features") {
-            if let Some(list) = words.get(i + 1) {
-                for item in list.split(',') {
-                    let item = item.trim();
-                    if item.is_empty() {
-                        continue;
-                    }
-                    if item.contains('/') {
-                        out.insert(item.to_string());
-                    } else if let Some(owner) = &package {
-                        out.insert(format!("{owner}/{item}"));
-                    }
-                }
+    if let Some(list) = command.value(&["--features"]) {
+        for item in list.split(',') {
+            let item = item.trim();
+            if item.is_empty() {
+                continue;
+            }
+            if item.contains('/') {
+                out.insert(item.to_string());
+            } else if let Some(owner) = &package {
+                out.insert(format!("{owner}/{item}"));
             }
         }
     }
@@ -426,7 +339,8 @@ fn every_tracked_manifest_is_inside_a_workspace_this_gate_asks() {
     // construction. This is R1080's rule at the manifest level: a tree merely
     // absent looks exactly like a tree deliberately excluded.
     let root = common::repo_root();
-    let (manifests, skipped) = workspaces();
+    let listed = workspaces();
+    let (manifests, skipped) = (listed.askable, listed.skipped);
     assert!(
         manifests.len() > 1 || !skipped.is_empty(),
         "this repository has separate workspaces; a census that found only the \
@@ -489,7 +403,21 @@ fn a_command_is_read_for_the_features_it_actually_enables() {
         .iter()
         .map(|s| s.to_string())
         .collect();
-    let read = |line: &str| features_enabled(line, &declared, &declared);
+    // Through the SAME reader the live census uses, so a change to how a shell
+    // line becomes a cargo command is checked here rather than only in the tree.
+    let read = |line: &str| match ci::parse_script(line).into_iter().next() {
+        Some((cargo_args, harness_args)) => features_enabled(
+            &ci::CargoCommand {
+                source: "pinned".to_string(),
+                owner: "pinned".to_string(),
+                cargo_args,
+                harness_args,
+            },
+            &declared,
+            &declared,
+        ),
+        None => BTreeSet::new(),
+    };
 
     assert_eq!(
         read("cargo test -p server --all-features --locked"),
@@ -527,5 +455,10 @@ fn a_command_is_read_for_the_features_it_actually_enables() {
     assert!(
         read("sudo apt-get install -y protobuf-compiler").is_empty(),
         "a step that is not cargo says nothing about features"
+    );
+    assert!(
+        ci::parse_script("sudo apt-get install -y protobuf-compiler").is_empty(),
+        "and it is not a cargo command at all — the emptiness above must come \
+         from the reader, not from a command it read and found nothing in"
     );
 }

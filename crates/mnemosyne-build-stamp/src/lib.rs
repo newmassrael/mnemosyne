@@ -21,11 +21,19 @@
 ///
 /// Call it from a build script and nothing else:
 ///
-/// ```ignore
-/// fn main() {
-///     mnemosyne_build_stamp::emit();
-/// }
+/// ```no_run
+/// mnemosyne_build_stamp::emit();
 /// ```
+///
+/// `no_run` rather than `ignore`: an `ignore`d example is not compiled by
+/// anything, so it is a code sample that can name a function this crate no
+/// longer has and nothing goes red. R1084's gate found it as a test that
+/// exists and that no CI command runs — which is what an `ignore`d example is.
+/// `no_run` compiles it, and not running it is right: `emit` talks to git and
+/// writes cargo directives, which is a build script's job and not a doc-test's.
+/// The `fn main` wrapper this carried while nothing compiled it went with the
+/// same change: clippy's `needless_doctest_main` rejected it the moment the
+/// example became one, which is the first thing anything had ever said about it.
 ///
 /// The value is [`revision`] — a short commit hash, `-dirty` when the tracked
 /// tree differs from it, `unknown` when git cannot say. A `-dirty` build

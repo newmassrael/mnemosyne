@@ -2248,10 +2248,10 @@ fn every_replay_rebuilds_the_store_its_record_says_it_does() {
 
 use yaml_rust2::Yaml;
 
-/// WHICH workflows there are, and how one is parsed, now live in `tests/ci`,
-/// because `feature_coverage_smoke` asks its own question of the same files and
-/// two loaders are two answers to "which workflows are there" (R1082).
-mod ci;
+/// WHICH workflows there are, and how one is parsed, live in `tools/ci-plan`,
+/// because two other gates ask their own questions of the same files and two
+/// loaders are two answers to "which workflows are there" (R1082, R1084).
+use ci_plan as ci;
 
 const REPLAY_WORKFLOW: &str = ".github/workflows/evidence-replay.yml";
 

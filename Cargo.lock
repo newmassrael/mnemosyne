@@ -266,6 +266,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "ci-plan"
+version = "0.1.0"
+dependencies = [
+ "yaml-rust2",
+]
+
+[[package]]
 name = "clang-sys"
 version = "1.8.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1050,6 +1057,7 @@ name = "mnemosyne-cli"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "ci-plan",
  "libc",
  "mnemosyne-atomic",
  "mnemosyne-build-stamp",

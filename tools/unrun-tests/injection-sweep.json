@@ -1,0 +1,111 @@
+{
+  "_": [
+    "THE SWEEP THAT SAYS ROUND 1084's GATE IS NOT VACUOUS — run it from the",
+    "repository root:",
+    "    cargo run -q --manifest-path tools/injection-harness/Cargo.toml -- \\",
+    "        tools/unrun-tests/injection-sweep.json",
+    "",
+    "The gate's OWN first three runs are the other half of the proof and they are",
+    "already recorded: pointed at the tree one commit before this round's",
+    "repairs, it named eleven tests that exist and that no CI command runs, and",
+    "pointed at the tree after them it names none. What that cannot show is",
+    "whether the tests in `tests/gate.rs` would notice if a mechanism stopped",
+    "working — a fixture-based test can pass because the fixture is wrong as",
+    "easily as because the code is right. Each injection below removes one",
+    "mechanism and names the test that must go red for it.",
+    "",
+    "Scoped to this crate's own suite: nothing here touches the tree it judges,",
+    "so running the repository's whole suite would be five minutes of proving",
+    "nothing."
+  ],
+  "repo": ".",
+  "test_command": [
+    "cargo",
+    "test",
+    "--manifest-path",
+    "tools/unrun-tests/Cargo.toml",
+    "--no-fail-fast"
+  ],
+  "logs": "target/injection-logs",
+  "min_free_mb": 8000,
+  "injections": [
+    {
+      "name": "the-ignored-subtraction-is-removed",
+      "why": "`--list` prints ignored tests too, so crediting a command with what it LISTS credits it with tests it skips; without the subtraction an `#[ignore]` nobody ever passes `--ignored` for reads as covered, which is nine of the eleven this gate found",
+      "edits": [
+        {
+          "file": "tools/unrun-tests/src/lib.rs",
+          "from": "    let executed = listed.difference(&ignored).cloned().collect();",
+          "to": "    let executed = listed.clone();"
+        }
+      ],
+      "expect_red": ["a_command_runs_what_it_lists_minus_what_it_leaves_ignored"]
+    },
+    {
+      "name": "the-doc-tests-are-not-asked-for",
+      "why": "a doc-test has no test binary, so cargo's artifact record never mentions one; without its own probe they are missing from the population AND from the run set at once, which produces no finding and hid a `​```ignore` example this gate later named",
+      "edits": [
+        {
+          "file": "tools/unrun-tests/src/lib.rs",
+          "from": "    if runs_doc_tests(command) && library {",
+          "to": "    if false {"
+        }
+      ],
+      "expect_red": [
+        "a_test_with_no_binary_is_still_a_test",
+        "a_command_runs_what_it_lists_minus_what_it_leaves_ignored"
+      ]
+    },
+    {
+      "name": "every-target-counts-as-a-library",
+      "why": "`cargo test --doc` on a package with no library exits non-zero saying so; reading that as a refusal makes this gate reject three of this repository's workspaces for a reason outside its own law, which is the shape R1081 shipped and had to repair inside the round",
+      "edits": [
+        {
+          "file": "tools/unrun-tests/src/lib.rs",
+          "from": "                .any(|kind| kind == \"lib\" || kind == \"rlib\" || kind == \"proc-macro\")",
+          "to": "                .any(|kind| !kind.is_empty())"
+        }
+      ],
+      "expect_red": ["a_package_with_no_library_has_no_doc_tests_and_that_is_an_answer"]
+    },
+    {
+      "name": "the-population-stops-asking-for-every-feature",
+      "why": "a test behind a feature is invisible to a build that does not enable it — the mechanism that hid nine `mnemosyne-server` tests through R583..R1081 — so a population probe without `--all-features` cannot see the very class this gate exists for",
+      "edits": [
+        {
+          "file": "tools/unrun-tests/src/lib.rs",
+          "from": "            \"--all-features\",",
+          "to": "            \"--locked\","
+        }
+      ],
+      "expect_red": [
+        "the_population_probe_asks_for_every_feature",
+        "the_population_probe_sees_what_a_default_build_hides"
+      ]
+    },
+    {
+      "name": "a-tree-that-did-not-compile-reports-clean",
+      "why": "a gate that could not look and a gate that looked and found nothing print the same silence; R1078 shipped a run reporting zero unresolved citations because rustdoc had refused to start, and this is where that cannot happen again",
+      "edits": [
+        {
+          "file": "tools/unrun-tests/src/lib.rs",
+          "from": "        Err(message) => {\n            refusals.push(Refusal::BuildFailed {\n                label: label.clone(),\n                message,\n            });\n            return None;\n        }\n    };\n    if binaries.is_empty() {",
+          "to": "        Err(_) => {\n            return Some(Probe {\n                label,\n                origin: command.origin(),\n                binaries: Vec::new(),\n                listed: BTreeSet::new(),\n                executed: BTreeSet::new(),\n            });\n        }\n    };\n    if binaries.is_empty() && false {"
+        }
+      ],
+      "expect_red": ["a_probe_that_cannot_build_refuses_instead_of_reporting_nothing"]
+    },
+    {
+      "name": "dark-is-inverted",
+      "why": "the finding set is the whole verdict and it had no test at all until this sweep went looking for something to break here; inverted, the gate reports a covered repository as an uncovered one and every other test in the crate stays green",
+      "edits": [
+        {
+          "file": "tools/unrun-tests/src/lib.rs",
+          "from": "            .filter(|test| !self.run.contains_key(*test))",
+          "to": "            .filter(|test| self.run.contains_key(*test))"
+        }
+      ],
+      "expect_red": ["the_verdict_and_the_findings_are_two_different_answers"]
+    }
+  ]
+}

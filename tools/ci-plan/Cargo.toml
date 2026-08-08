@@ -1,0 +1,23 @@
+[package]
+name = "ci-plan"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+license.workspace = true
+description = "Mnemosyne — the one answer to what this repository's CI runs, shared by every gate that asks"
+keywords = ["ci", "workflow", "gate"]
+categories = ["development-tools"]
+
+# A MEMBER OF THE ROOT WORKSPACE, unlike its neighbours under `tools/`, and that
+# is forced rather than chosen: cargo makes a path dependency living inside a
+# workspace directory a member of that workspace, so a crate the root workspace
+# dev-depends on cannot also carry its own `[workspace]`. Its consumers are a
+# root test target and a separate-workspace gate, and a package can be a member
+# of one workspace while being a path dependency of another.
+
+[dependencies]
+yaml-rust2 = { workspace = true }
+
+[lints]
+workspace = true

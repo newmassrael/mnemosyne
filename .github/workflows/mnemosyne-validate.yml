@@ -260,6 +260,70 @@ jobs:
       - name: cargo test -p mnemosyne-server --all-features
         run: cargo test -p mnemosyne-server --all-features --locked --no-fail-fast
 
+  # R1084 — the level above `server-features`. That job exists because six test
+  # targets compiled to nothing; R1082 then gated the general form of WHY they
+  # were dark (a feature nobody compiles). Compiling is not running: an
+  # `--all-features` build keeps passing after every test behind those features
+  # is deleted, and an `#[ignore]` nobody ever passes `--ignored` for is a test
+  # that exists and that nothing executes.
+  #
+  # This asks both sides of the machine. POPULATION: for every workspace the
+  # lister says this machine can build, `cargo test --workspace --all-features
+  # --no-run`, then each test binary's own `--list`, plus `--doc` for the tests
+  # that have no binary. RUN: every `cargo test` this repository's workflows and
+  # its workspace lister issue, re-run with `--list` appended to ITS OWN harness
+  # arguments, minus what that command leaves `#[ignore]`d.
+  #
+  # ITS OWN JOB, for the reason `item-citations` has one: it compiles every
+  # workspace twice over, once as CI configures it and once with every feature.
+  #
+  # THE BUDGET IS AN UPPER BOUND ARGUED FROM THE OTHER JOBS, not a number this
+  # round measured on a runner — it has run only on a 32-core machine, where it
+  # takes 71s fully warm. What it builds is strictly more than either of the two
+  # jobs that build: everything `validate` compiles (30 minutes, and it has used
+  # 20) plus everything `separate in-repo workspaces` compiles (60 minutes, and
+  # it has used 19), plus an `--all-features` resolve of each, which is a
+  # different resolve and therefore a different build. 90 is the sum with room;
+  # the minutes are free on a public repository and a job that runs out of them
+  # is a red CI nobody can read a result from.
+  #
+  # Its first run found eleven, and every one was real: nine tests disabled in
+  # Round 252 against a document model Round 400 deleted, an `#[ignore]`d proof
+  # whose own header wrote out the command nobody ran, and a `​```ignore` doc
+  # example that no compiler had ever read.
+  unrun-tests:
+    name: every test compiled is one CI runs
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install protoc (mnemosyne-server build script)
+        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
+
+      - name: Install rust toolchain (rust-toolchain.toml)
+        run: rustup show
+
+      # Its own key: this job resolves `--all-features` for the whole workspace,
+      # which is neither `validate`'s resolve nor `server-features`', so sharing
+      # a cache would make each run evict the other's artifacts.
+      - name: Cache cargo (unrun tests)
+        uses: actions/cache@v6
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+            tools/unrun-tests/target
+          key: ${{ runner.os }}-cargo-unrun-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-unrun-
+
+      - name: every test this repository compiles is one some CI command runs
+        run: >
+          cargo run -q --manifest-path tools/unrun-tests/Cargo.toml
+          --bin unrun-tests
+
   msrv:
     name: MSRV (workspace.package.rust-version)
     runs-on: ubuntu-latest

@@ -1,0 +1,27 @@
+[workspace]
+
+[package]
+name = "unrun-tests"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.88"
+publish = false
+license = "MIT OR Apache-2.0"
+description = "Mnemosyne — every test this repository compiles is one some CI command runs"
+
+# ITS OWN WORKSPACE, like every other gate under `tools/`: these are separate
+# programs with their own dependency trees, and compiling them into the tree
+# they judge is how a gate starts depending on what it is checking.
+#
+# `ci-plan` is a path dependency reaching INTO the root workspace, which is the
+# one direction that works: cargo makes a path dependency living inside a
+# workspace a member of it, so the shared crate belongs to the root and is
+# borrowed from here.
+
+[dependencies]
+ci-plan = { path = "../ci-plan" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[lints.clippy]
+all = "deny"

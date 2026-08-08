@@ -39,11 +39,13 @@ on:
     paths:
       - 'claudedocs/phase1-*/**'
       - 'crates/mnemosyne-cli/tests/evidence_replay_smoke.rs'
+      - 'crates/mnemosyne-cli/tests/pinned_revision_rechecks_evidence_smoke.rs'
       - '.github/workflows/evidence-replay.yml'
   pull_request:
     paths:
       - 'claudedocs/phase1-*/**'
       - 'crates/mnemosyne-cli/tests/evidence_replay_smoke.rs'
+      - 'crates/mnemosyne-cli/tests/pinned_revision_rechecks_evidence_smoke.rs'
       - '.github/workflows/evidence-replay.yml'
   schedule:
     # Mondays, 04:17 UTC. Off the hour so it does not queue behind everything
@@ -95,3 +97,25 @@ jobs:
 
       - name: replay
         run: cargo test -p mnemosyne-cli --test evidence_replay_smoke --locked -- --ignored --nocapture
+
+      # R1084 — the other `#[ignore]` of this family, which nothing ran.
+      #
+      # R880 wrote it to measure the one unmeasured assumption the whole
+      # `[tool] pin` design rests on: that the revision a kit was authored under
+      # STILL BUILDS and still eats the kit's original bytes. It was ignored for
+      # cost ("extracts and compiles a second copy of the workspace") with the
+      # command to run it written in its own header — and no job ran that
+      # command, so the assumption went back to being unmeasured the day it was
+      # written. `tools/unrun-tests` found it by asking which tests every CI
+      # command executes.
+      #
+      # HERE rather than in `validate`, and that is the same reasoning this
+      # workflow already carries: what breaks it is the world moving — a pinned
+      # revision that stops building, a registry that no longer serves an old
+      # `Cargo.lock` — which no commit of ours triggers and only the weekly
+      # clock finds. It needs exactly what the replay needs and this job already
+      # has: full history for `git archive`, and a warm registry for old locks.
+      - name: an old revision still builds and still reads its own evidence
+        run: >
+          cargo test -p mnemosyne-cli --test pinned_revision_rechecks_evidence_smoke
+          --locked -- --ignored --nocapture
