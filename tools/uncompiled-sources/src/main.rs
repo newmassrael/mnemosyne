@@ -72,10 +72,10 @@ fn main() -> ExitCode {
         }
     );
     println!(
-        "[uncompiled-sources] reach: {} tracked Rust file(s), {} compiled by {} \
-         probe(s) over {} workspace(s)",
+        "[uncompiled-sources] reach: {} tracked Rust file(s), {} of them \
+         compiled by {} probe(s) over {} workspace(s)",
         report.tracked.len(),
-        report.read.len(),
+        report.compiled(),
         report.probes.len(),
         report.probes.len().div_ceil(2),
     );

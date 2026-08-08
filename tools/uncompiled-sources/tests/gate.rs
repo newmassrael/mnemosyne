@@ -2,10 +2,11 @@
 //!
 //! Every mechanism that decides a verdict here needs a repository shaped in a
 //! way this one is not: a file no `mod` reaches, a `tests/` entry point the
-//! manifest disowns, a target directory holding the record of a unit that no
-//! longer exists. Putting any of them into this repository to test the gate
-//! would create the very thing the gate rejects, so they live in fixture
-//! workspaces built for one assertion and thrown away.
+//! manifest disowns, a package the root workspace excludes, a target directory
+//! holding the record of a unit that no longer exists. Putting any of them into
+//! this repository to test the gate would create the very thing the gate
+//! rejects, so they live in fixture workspaces built for one assertion and
+//! thrown away.
 //!
 //! They are built OUTSIDE this repository, for two reasons. A fixture carrying
 //! its own `[workspace]` inside the tree is discovered by
@@ -71,7 +72,14 @@ impl Fixture {
     }
 
     fn judged(&self) -> Report {
-        examine(&self.root, &["Cargo.toml".to_string()], &[])
+        self.judged_excusing(&[])
+    }
+
+    /// The same run, under an exception table this repository does not have.
+    /// `DECLARED` ships empty and is meant to stay empty, so the only way to
+    /// exercise what an entry DOES is to hand one in.
+    fn judged_excusing(&self, declared: &[(&str, &str)]) -> Report {
+        examine(&self.root, &["Cargo.toml".to_string()], &[], declared)
     }
 
     fn read(&self) -> BTreeSet<PathBuf> {
@@ -181,6 +189,76 @@ fn a_tests_entry_point_the_manifest_disowns_is_rust_nothing_compiles() {
         "and with the same file under an ordinary manifest there is nothing to \
          report: {:?}",
         control.findings
+    );
+}
+
+#[test]
+fn a_package_no_workspace_claims_is_rust_nothing_compiles() {
+    // THE THIRD SHAPE, WHICH UNTIL NOW WAS ONLY ARGUED. A file no `mod` reaches
+    // and a `tests/` entry point the manifest disowns each have a fixture
+    // above; "a whole package no workspace claims" had a sentence. It is the
+    // same defect one directory up and it is quieter, because the crate looks
+    // completely ordinary from inside: an `exclude` in the root manifest is
+    // enough for no `cargo check --workspace` anywhere to reach it, so nothing
+    // in it is type-checked, nothing in it is linted, and the tests in it are
+    // invisible to R1084's gate for want of a build to see them in.
+    let claimed_package =
+        "[package]\nname = \"claimed\"\nversion = \"0.1.0\"\nedition = \"2021\"\n";
+    let disowned_package =
+        "[package]\nname = \"disowned\"\nversion = \"0.1.0\"\nedition = \"2021\"\n";
+    let disowned_source = "pub fn never_built() {}\n\
+                           \n\
+                           #[test]\n\
+                           fn nothing_can_run_this() {}\n";
+
+    let excluded = Fixture::new(&[
+        (
+            "Cargo.toml",
+            "[workspace]\nresolver = \"2\"\nmembers = [\"claimed\"]\nexclude = [\"disowned\"]\n",
+        ),
+        ("claimed/Cargo.toml", claimed_package),
+        ("claimed/src/lib.rs", "pub fn reached() {}\n"),
+        ("disowned/Cargo.toml", disowned_package),
+        ("disowned/src/lib.rs", disowned_source),
+    ]);
+    let report = excluded.judged();
+
+    assert_eq!(
+        files(&report),
+        vec![Path::new("disowned/src/lib.rs")],
+        "the root workspace excludes it and no other workspace claims it, so \
+         nothing compiles it"
+    );
+    assert_eq!(
+        found(&report)[0].tests,
+        vec!["nothing_can_run_this".to_string()],
+        "and the test inside it is named, because a build that never happens \
+         produces no harness line for the gate below to miss"
+    );
+    // NON-VACUITY, and it is the whole difference between this and a gate that
+    // reports every directory: the sibling package IS read.
+    assert!(
+        report.read.contains(Path::new("claimed/src/lib.rs")),
+        "the probe must have compiled the workspace it does claim: {:?}",
+        report.read
+    );
+
+    // THE CONTROL, through the same function: the identical package, claimed.
+    let claimed = Fixture::new(&[
+        (
+            "Cargo.toml",
+            "[workspace]\nresolver = \"2\"\nmembers = [\"claimed\", \"disowned\"]\n",
+        ),
+        ("claimed/Cargo.toml", claimed_package),
+        ("claimed/src/lib.rs", "pub fn reached() {}\n"),
+        ("disowned/Cargo.toml", disowned_package),
+        ("disowned/src/lib.rs", disowned_source),
+    ]);
+    assert_eq!(
+        files(&claimed.judged()),
+        Vec::<&Path>::new(),
+        "membership is the only thing that changed, so membership is what the \
+         finding was about"
     );
 }
 
@@ -504,11 +582,44 @@ fn the_verdict_and_the_findings_are_two_different_answers() {
 }
 
 #[test]
+fn what_the_probes_read_is_more_than_what_this_repository_tracks() {
+    // THE HEADLINE NUMBER, WHICH WAS NOT A NUMBER ABOUT THE SAME SET. A probe's
+    // read set is every file inside the repository that some compilation
+    // opened, and generated Rust under `target/` is in it while git tracks none
+    // of it. Printed beside the tracked count it reads as a subset — this
+    // repository said "271 tracked, 375 compiled", a pair whose two halves
+    // cannot both be true of one set. The verdict was never made of that
+    // number; the summary above it was.
+    let tracked: BTreeSet<PathBuf> = [PathBuf::from("src/lib.rs")].into_iter().collect();
+    let read: BTreeSet<PathBuf> = ["src/lib.rs", "target/debug/build/x/out/generated.rs"]
+        .iter()
+        .map(PathBuf::from)
+        .collect();
+
+    let report = conclude(Path::new("/nowhere"), &tracked, &read, &[], &[]);
+    assert_eq!(
+        report.compiled(),
+        1,
+        "a file git does not track cannot be one of the tracked files that got \
+         compiled, whoever opened it"
+    );
+    assert!(
+        report.compiled() <= report.tracked.len(),
+        "the summary's second number is a share of its first, or it is not a \
+         summary: {} of {}",
+        report.compiled(),
+        report.tracked.len()
+    );
+    assert_eq!(report.findings, Vec::new(), "{:?}", report.findings);
+}
+
+#[test]
 fn a_tree_holding_no_rust_is_a_refusal_and_not_a_clean_answer() {
     let empty = conclude(
         Path::new("/nowhere"),
         &BTreeSet::new(),
         &BTreeSet::new(),
+        &[],
         &[],
     );
     assert!(
@@ -535,7 +646,7 @@ fn a_file_in_a_workspace_this_machine_cannot_compile_is_not_a_finding() {
         directory: "studio".to_string(),
         reason: "its path dependencies leave this repository".to_string(),
     }];
-    let declined = conclude(Path::new("/nowhere"), &tracked, &read, &skipped);
+    let declined = conclude(Path::new("/nowhere"), &tracked, &read, &skipped, &[]);
     assert_eq!(declined.findings, Vec::new(), "{:?}", declined.findings);
     assert_eq!(
         declined.in_skipped_workspace,
@@ -546,7 +657,7 @@ fn a_file_in_a_workspace_this_machine_cannot_compile_is_not_a_finding() {
     // THE CONTROL, through the same function: with nothing declined, the same
     // unread file IS a finding. Otherwise this test passes for a gate that
     // reports nothing at all.
-    let checked = conclude(Path::new("/nowhere"), &tracked, &read, &[]);
+    let checked = conclude(Path::new("/nowhere"), &tracked, &read, &[], &[]);
     assert_eq!(
         checked
             .findings
@@ -556,6 +667,151 @@ fn a_file_in_a_workspace_this_machine_cannot_compile_is_not_a_finding() {
         vec![Path::new("studio/src/lib.rs")],
         "{:?}",
         checked.findings
+    );
+}
+
+#[test]
+fn a_declared_exception_excuses_the_file_it_names() {
+    // THE EXCEPTION TABLE, AIMED AT. `DECLARED` ships empty and is meant to
+    // stay empty, and that is exactly how this branch went untested: an
+    // injection sweep of ten mutations over this crate reported all ten caught,
+    // and not one of them could be aimed here, because there was no entry to
+    // aim at and no way to hand one in. Emptiness looked like coverage. The
+    // table is a parameter now, so what an entry DOES is a question with an
+    // answer.
+    let fixture = Fixture::new(&[
+        ("Cargo.toml", MANIFEST),
+        ("src/lib.rs", "pub fn reached() {}\n"),
+        ("src/orphan.rs", "#[test]\nfn orphaned() {}\n"),
+    ]);
+    let reason = "kept for a reason someone defended in review";
+
+    let excused = fixture.judged_excusing(&[("src/orphan.rs", reason)]);
+    assert_eq!(
+        files(&excused),
+        Vec::<&Path>::new(),
+        "the entry is what makes an uncompiled file not a finding"
+    );
+    assert_eq!(
+        excused.declared,
+        vec![(PathBuf::from("src/orphan.rs"), reason.to_string())],
+        "and it is carried out with its reason rather than silently dropped — \
+         the run PRINTS this list, which is the whole of how an exception gets \
+         reviewed after the day it was added"
+    );
+
+    // THE CONTROL, through the same function: the same tree, no entry.
+    assert_eq!(
+        files(&fixture.judged()),
+        vec![Path::new("src/orphan.rs")],
+        "without the entry the file is a finding, so the entry is what the \
+         assertion above was about"
+    );
+}
+
+#[test]
+fn a_declared_exception_that_excuses_nothing_is_a_refusal() {
+    // THE OTHER DIRECTION, which is the one a table only ever grows without. An
+    // entry stops applying when someone wires the file up or deletes it, and a
+    // dead entry is INVISIBLE in a printed list of live ones: it matches
+    // nothing, so it prints nothing. Refusing is what makes removing it
+    // somebody's job — the same reasoning that made "I could not compile" a
+    // refusal rather than a clean report.
+    let fixture = Fixture::new(&[
+        ("Cargo.toml", MANIFEST),
+        ("src/lib.rs", "pub fn reached() {}\n"),
+        ("src/orphan.rs", "#[test]\nfn orphaned() {}\n"),
+    ]);
+    let reason = "kept for a reason someone defended in review";
+
+    let compiled_now = fixture.judged_excusing(&[("src/lib.rs", reason)]);
+    assert!(
+        matches!(
+            compiled_now.refusals.as_slice(),
+            [Refusal::StaleDeclaration { file, because }]
+                if file == Path::new("src/lib.rs") && because.contains("compiles it now")
+        ),
+        "the crate root is compiled, so an exception for it excuses nothing: \
+         {:?}",
+        compiled_now.refusals
+    );
+
+    let gone = fixture.judged_excusing(&[("src/deleted.rs", reason)]);
+    assert!(
+        matches!(
+            gone.refusals.as_slice(),
+            [Refusal::StaleDeclaration { file, because }]
+                if file == Path::new("src/deleted.rs") && because.contains("no longer tracks")
+        ),
+        "and an exception for a file this repository does not have is the same \
+         dead entry reached the other way: {:?}",
+        gone.refusals
+    );
+
+    // THE CONTROL, through the same function: a LIVE entry refuses nothing.
+    // Without this, both assertions above are satisfied by a gate that calls
+    // every entry stale.
+    let live = fixture.judged_excusing(&[("src/orphan.rs", reason)]);
+    assert!(
+        live.verdict().is_ok(),
+        "an entry that is excusing a file right now is not stale: {:?}",
+        live.refusals
+    );
+}
+
+#[test]
+fn an_exception_in_a_workspace_this_machine_declines_is_neither_honoured_nor_stale() {
+    // WHERE STALENESS HAS TO STOP. `studio` is a workspace the lister declines
+    // on a machine that cannot build it, and this machine can. An entry for a
+    // file inside one is a question this run has no answer to: it cannot see
+    // the file compiled, so it must not report the entry as live, and it cannot
+    // see it uncompiled either, so it must not report it as dead. Getting this
+    // wrong would make the gate REJECT on the runner and PASS here, off the
+    // same table — a verdict about which machine ran it.
+    let tracked: BTreeSet<PathBuf> = ["studio/src/lib.rs", "crates/x/src/lib.rs"]
+        .iter()
+        .map(PathBuf::from)
+        .collect();
+    let read: BTreeSet<PathBuf> = [PathBuf::from("crates/x/src/lib.rs")].into_iter().collect();
+    let declared = [("studio/src/lib.rs", "a reason someone defended in review")];
+
+    let skipped = [SkippedWorkspace {
+        directory: "studio".to_string(),
+        reason: "its path dependencies leave this repository".to_string(),
+    }];
+    let declined = conclude(Path::new("/nowhere"), &tracked, &read, &skipped, &declared);
+    assert!(
+        declined.verdict().is_ok(),
+        "the entry is not stale here, because this machine cannot compile the \
+         file it names: {:?}",
+        declined.refusals
+    );
+    assert_eq!(
+        declined.declared,
+        Vec::new(),
+        "and it is not honoured either — being unread is what it would be \
+         excusing, and being unread is exactly what was not established: {:?}",
+        declined.declared
+    );
+    assert_eq!(
+        declined.in_skipped_workspace,
+        [PathBuf::from("studio/src/lib.rs")].into_iter().collect(),
+        "the file is counted where a limit is counted"
+    );
+
+    // THE CONTROL, through the same function: with the workspace checkable, the
+    // very same entry is honoured. So the guard above is about the lister's
+    // answer and not about entries under `studio` being ignored.
+    let checkable = conclude(Path::new("/nowhere"), &tracked, &read, &[], &declared);
+    assert!(checkable.verdict().is_ok(), "{:?}", checkable.refusals);
+    assert_eq!(
+        checkable.declared,
+        vec![(
+            PathBuf::from("studio/src/lib.rs"),
+            "a reason someone defended in review".to_string()
+        )],
+        "{:?}",
+        checkable.declared
     );
 }
 

@@ -82,6 +82,18 @@ use serde::Deserialize;
 /// decision a person made and can defend in review — not like a failure
 /// somebody stepped around — and it is printed on every run so that adding one
 /// is visible forever after.
+///
+/// It is this repository's table and not the gate's: [`conclude`] takes the
+/// table it is to honour as an argument, so that what an exception DOES is
+/// something a test can aim at. Read out of the `const` by the function it
+/// steers, the branch below it was reachable only by editing this line — a
+/// calculation with no test, hidden by the table being empty rather than by the
+/// code being subtle.
+///
+/// An entry stops excusing anything the moment its file is compiled or leaves
+/// the repository, and the gate REFUSES rather than passing then
+/// ([`Refusal::StaleDeclaration`]): a dead exception is invisible in a printed
+/// list of live ones, and this table is reviewed by being printed.
 pub const DECLARED: &[(&str, &str)] = &[];
 
 /// One tracked Rust file no compilation read.
@@ -128,6 +140,9 @@ pub enum Refusal {
     /// `git ls-files` named no Rust at all — the gate is pointed at something
     /// that is not this repository, or git answered nothing.
     NothingTracked,
+    /// A [`DECLARED`] exception excuses nothing: the file it names is compiled
+    /// now, or this repository no longer tracks it.
+    StaleDeclaration { file: PathBuf, because: String },
     /// A candidate file would not parse, so what is inside it is unknown.
     Unparsed { file: PathBuf, message: String },
 }
@@ -157,6 +172,15 @@ impl fmt::Display for Refusal {
             Refusal::NothingTracked => f.write_str(
                 "`git ls-files` named no Rust file at all — this is not the \
                  repository this gate is for, or git answered nothing",
+            ),
+            Refusal::StaleDeclaration { file, because } => write!(
+                f,
+                "{} is declared deliberately uncompiled and {because}, so the \
+                 exception excuses nothing — a table that is reviewed by being \
+                 printed cannot show an entry that no longer applies, and the \
+                 law this run enforced is not the one the table describes. \
+                 Fix: delete the entry.",
+                file.display()
             ),
             Refusal::Unparsed { file, message } => write!(
                 f,
@@ -209,6 +233,18 @@ pub struct Report {
 }
 
 impl Report {
+    /// How many TRACKED files the probes read.
+    ///
+    /// Not `read.len()`, which is every file inside the repository some
+    /// compilation opened — including generated Rust under `target/`, which git
+    /// tracks none of. Reported beside `tracked.len()` the raw count reads as a
+    /// subset of it and is not one: this repository prints 271 tracked against
+    /// 375 read, a pair no reader can hold both halves of. The comparison the
+    /// verdict is actually made of is this intersection.
+    pub fn compiled(&self) -> usize {
+        self.tracked.intersection(&self.read).count()
+    }
+
     /// `Ok(())` when the gate could judge, `Err` when it could not. Findings are
     /// read separately: a report can be judgeable AND defective.
     pub fn verdict(&self) -> Result<(), &[Refusal]> {
@@ -686,16 +722,21 @@ fn is_test(attrs: &[syn::Attribute]) -> bool {
 
 // --- the run ------------------------------------------------------------------
 
-/// Compare the two sides and say what is in the first and not the second.
+/// Compare the two sides and say what is in the first and not the second,
+/// excusing the files `declared` deliberately uncompiled.
 ///
 /// Pure, so that what the gate CONCLUDES is testable without a build — the
 /// separation R1084 had to add after an injection sweep found its own verdict
-/// had no test aimed at it.
+/// had no test aimed at it. `declared` is an argument for the same reason one
+/// step further on: a policy the function reads out of a `const` steers a
+/// branch no caller can vary, so no test can aim at it either. That the table
+/// ships empty is what kept it looking covered.
 pub fn conclude(
     root: &Path,
     tracked: &BTreeSet<PathBuf>,
     read: &BTreeSet<PathBuf>,
     skipped_workspaces: &[ci_plan::SkippedWorkspace],
+    declared: &[(&str, &str)],
 ) -> Report {
     let mut report = Report {
         root: root.to_path_buf(),
@@ -709,7 +750,7 @@ pub fn conclude(
         return report;
     }
 
-    let declared: BTreeMap<&str, &str> = DECLARED.iter().copied().collect();
+    let excused: BTreeMap<&str, &str> = declared.iter().copied().collect();
     for file in tracked {
         if read.contains(file) {
             continue;
@@ -725,7 +766,7 @@ pub fn conclude(
             report.in_skipped_workspace.insert(file.clone());
             continue;
         }
-        if let Some(reason) = file.to_str().and_then(|name| declared.get(name)) {
+        if let Some(reason) = file.to_str().and_then(|name| excused.get(name)) {
             report.declared.push((file.clone(), (*reason).to_string()));
             continue;
         }
@@ -752,16 +793,54 @@ pub fn conclude(
             tests,
         });
     }
+
+    // AND THE OTHER DIRECTION. An exception is reviewed by being printed, so an
+    // entry that has stopped excusing anything is invisible: it does not appear
+    // in the run's declared list, because nothing matched it. The table would
+    // then only ever grow, each dead line making the next one easier to add.
+    // A workspace the lister declined is left out of this, and not because it
+    // is convenient: this machine cannot compile those files at all, so whether
+    // their exceptions still apply is not a question it has an answer to, and
+    // refusing here would make the gate's verdict a fact about which machine
+    // ran it — the asymmetry `in_skipped_workspace` exists to keep out.
+    for (name, _) in declared {
+        let file = PathBuf::from(name);
+        if report.declared.iter().any(|(at, _)| at == &file) {
+            continue;
+        }
+        if skipped_workspaces
+            .iter()
+            .any(|workspace| file.starts_with(&workspace.directory))
+        {
+            continue;
+        }
+        let because = if tracked.contains(&file) {
+            "something compiles it now"
+        } else {
+            "this repository no longer tracks a file by that name"
+        };
+        report.refusals.push(Refusal::StaleDeclaration {
+            file,
+            because: because.to_string(),
+        });
+    }
     report
 }
 
-/// Probe these workspaces, then judge the tree against what they read.
+/// Probe these workspaces, then judge the tree against what they read,
+/// excusing the files `declared` deliberately uncompiled.
 ///
-/// Separate from [`run`] by exactly one thing — asking the lister which
-/// workspaces this machine has — so that a fixture tree, which has no lister,
-/// still goes through the whole of the rest of the gate rather than through a
-/// second assembly written for tests.
-pub fn examine(root: &Path, manifests: &[String], skipped: &[ci_plan::SkippedWorkspace]) -> Report {
+/// Separate from [`run`] by exactly what [`run`] goes and asks its environment
+/// for — which workspaces this machine has, and which exceptions this
+/// repository declares — so that a fixture tree, which has neither, still goes
+/// through the whole of the rest of the gate rather than through a second
+/// assembly written for tests.
+pub fn examine(
+    root: &Path,
+    manifests: &[String],
+    skipped: &[ci_plan::SkippedWorkspace],
+    declared: &[(&str, &str)],
+) -> Report {
     let mut refusals = Vec::new();
     let mut probes = Vec::new();
     for manifest in manifests {
@@ -773,7 +852,7 @@ pub fn examine(root: &Path, manifests: &[String], skipped: &[ci_plan::SkippedWor
         .collect();
 
     let mut report = match tracked_sources(root) {
-        Ok(tracked) => conclude(root, &tracked, &read, skipped),
+        Ok(tracked) => conclude(root, &tracked, &read, skipped, declared),
         Err(message) => {
             refusals.push(Refusal::Unparsed {
                 file: PathBuf::from("git ls-files"),
@@ -796,10 +875,11 @@ pub fn examine(root: &Path, manifests: &[String], skipped: &[ci_plan::SkippedWor
     report
 }
 
-/// Run the gate over the repository rooted here.
+/// Run the gate over the repository rooted here, under this repository's own
+/// exception table.
 pub fn run(root: &Path) -> Report {
     let listed = ci_plan::workspaces(root);
-    examine(root, &listed.askable, &listed.skipped)
+    examine(root, &listed.askable, &listed.skipped, DECLARED)
 }
 
 #[cfg(test)]
