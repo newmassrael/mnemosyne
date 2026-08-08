@@ -308,7 +308,7 @@ fn a_contract_that_declares_nothing_is_named_and_one_that_declares_is_not() {
 const BACKLOG: [&str; 87] = [
     "200 DECLARED report-authoring-frontier <-> report-playable-world",
     "179 DECLARED report-playable-world <-> report-playthrough-manuscript",
-    "158 report-authoring-frontier <-> report-playthrough-manuscript",
+    "158 DECLARED report-authoring-frontier <-> report-playthrough-manuscript",
     "135 report-frame-view <-> report-playable-world",
     "135 report-frame-view <-> report-playthrough-manuscript",
     "114 report-authoring-frontier <-> report-frame-view",
@@ -780,11 +780,14 @@ fn the_population_of_subjects_more_than_one_shipped_read_answers_about() {
          findings",
     );
     check(
-        next.as_deref() == Some("158 report-authoring-frontier <-> report-playthrough-manuscript"),
+        next.as_deref() == Some("135 report-frame-view <-> report-playable-world"),
         "NEXT: the highest-ranked pair no contract judges. It moves when a \
          round declares one, which is what makes it a pin rather than a note — \
-         and until this round it was taken from a session's memory, where it \
-         named the top row for six sessions after Round 1052 declared it",
+         and until Round 1087 it was taken from a session's memory, where it \
+         named the top row for six sessions after Round 1052 declared it. Round \
+         1088 is the first round to READ this line off a green run rather than \
+         out of a memory file, declare the pair it named, and watch the pin move \
+         here on its own",
     );
 
     assert_eq!(
