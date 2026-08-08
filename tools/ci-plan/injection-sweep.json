@@ -68,6 +68,18 @@
       "expect_red": ["a_restore_only_step_is_still_a_declaration"]
     },
     {
+      "name": "an-unreadable-hashfiles-argument-is-taken-as-a-glob",
+      "why": "the globs a key hashes are what excuses a cache this run had to rebuild; reading an expression like `env.LOCKS` as though it were a literal path would excuse a cold build that nothing justifies, and the strict direction is to excuse nothing",
+      "edits": [
+        {
+          "file": "tools/ci-plan/src/lib.rs",
+          "from": "            if let Some(glob) = unquoted {",
+          "to": "            if let Some(glob) = unquoted.or(Some(argument)) {"
+        }
+      ],
+      "expect_red": ["a_key_says_which_files_would_legitimately_invalidate_it"]
+    },
+    {
       "name": "needs-is-only-ever-a-list",
       "why": "GitHub allows a single job id as well as a list, and a reader knowing only the list form answers \"waits for nothing\" for the single form — the same class of defect as reading `--flag value` but not `--flag=value`",
       "edits": [

@@ -2,8 +2,20 @@
 //! network — `conclude` takes both sides as arguments precisely so this file can
 //! supply them.
 
-use cache_budget::{conclude, Held, Refusal};
+use std::collections::BTreeSet;
+
+use cache_budget::{conclude, Held, Refusal, Run};
 use ci_plan::CacheDeclaration;
+
+/// A run that started after every cache in these populations was created, so
+/// every one of them reads as RESTORED. The budget tests pass `None` instead:
+/// they are about arithmetic, not about which run built what.
+fn run_after(created: &str, invalidated: &[&str]) -> Run {
+    Run {
+        started_at: created.to_string(),
+        inputs_changed: invalidated.iter().map(|key| key.to_string()).collect(),
+    }
+}
 
 const GB: u64 = 1_000_000_000;
 const LIMIT: u64 = 10 * GB;
@@ -18,6 +30,7 @@ fn declaration(owner: &str, prefix: &str, paths: &[&str]) -> CacheDeclaration {
         key: format!("{prefix}${{{{ hashFiles('**/Cargo.lock') }}}}"),
         prefix: prefix.to_string(),
         paths: paths.iter().map(|path| path.to_string()).collect(),
+        hashed: vec!["**/Cargo.lock".to_string()],
     }
 }
 
@@ -43,7 +56,7 @@ fn a_repository_that_keeps_every_cache_it_declares_passes() {
         held("Linux-cargo-abc", 4.0),
         held("Linux-cargo-side-def", 0.06),
     ];
-    let report = conclude(LIMIT, &declared, &held);
+    let report = conclude(LIMIT, &declared, &held, None);
     assert_eq!(report.refusals(), Vec::new());
     assert_eq!(report.absent(), Vec::<String>::new());
 }
@@ -68,7 +81,7 @@ fn caches_that_cannot_all_exist_are_refused_although_the_total_never_exceeds_the
         held("Linux-cargo-1-abc", 4.0),
     ];
 
-    let report = conclude(LIMIT, &declared, &held);
+    let report = conclude(LIMIT, &declared, &held, None);
     let present: u64 = held.iter().map(|cache| cache.size_in_bytes).sum();
     assert!(
         present <= LIMIT,
@@ -110,7 +123,7 @@ fn an_absent_cache_is_priced_from_the_largest_one_holding_a_subset_of_its_paths(
         ),
     ];
     let held = [held("Linux-cargo-abc", 9.0)];
-    let report = conclude(LIMIT, &declared, &held);
+    let report = conclude(LIMIT, &declared, &held, None);
 
     let priced = report
         .rows
@@ -143,7 +156,12 @@ fn a_missing_build_tree_priced_off_a_registry_cache_does_not_pass() {
         declaration("validate", "Linux-cargo-", TARGET),
         declaration("msrv", "Linux-cargo-msrv-", REGISTRY),
     ];
-    let evicted = conclude(LIMIT, &declared, &[held("Linux-cargo-msrv-abc", 0.10)]);
+    let evicted = conclude(
+        LIMIT,
+        &declared,
+        &[held("Linux-cargo-msrv-abc", 0.10)],
+        None,
+    );
     assert!(
         evicted.demand().is_some_and(|demand| demand < LIMIT),
         "the premise: the arithmetic says this repository is well inside its \
@@ -168,9 +186,199 @@ fn a_missing_build_tree_priced_off_a_registry_cache_does_not_pass() {
             held("Linux-cargo-msrv-abc", 0.10),
             held("Linux-cargo-abc", 3.06),
         ],
+        None,
     );
     assert_eq!(kept.refusals(), Vec::new());
     assert_eq!(kept.absent(), Vec::<String>::new());
+}
+
+#[test]
+fn a_cache_this_run_built_from_nothing_is_a_job_that_was_never_warm() {
+    // THE HOLE THE BUDGET LAW LEAVES, and the one Round 1089 had to reach by
+    // hand: it read three runs of job durations and concluded `unrun-tests` was
+    // never once warm. Every one of those runs ENDED with that cache present, so
+    // a gate asking only "is it held" says the repository is fine while the job
+    // rebuilds from nothing every time and takes twenty-eight minutes.
+    //
+    // `actions/cache` saves ONLY when it did not find an exact hit, so a cache
+    // created inside this run is that job saying it restored nothing.
+    let declared = [declaration("unrun", "Linux-cargo-unrun-", TARGET)];
+    let rebuilt = [held_on(
+        "Linux-cargo-unrun-abc",
+        3.0,
+        "2026-08-09T02:30:00.000000000Z",
+    )];
+    let run = run_after("2026-08-09T02:00:00.000000000Z", &[]);
+
+    let budget_only = conclude(LIMIT, &declared, &rebuilt, None);
+    assert_eq!(
+        budget_only.refusals(),
+        Vec::new(),
+        "the premise: judged on the budget alone this repository is spotless — \
+         one cache, 3 GB, well inside 10"
+    );
+
+    match conclude(LIMIT, &declared, &rebuilt, Some(&run))
+        .refusals()
+        .as_slice()
+    {
+        [Refusal::Recreated { prefix, owners, .. }] => {
+            assert_eq!(prefix, "Linux-cargo-unrun-");
+            assert_eq!(owners.len(), 1, "and it names who paid for it: {owners:?}");
+        }
+        other => panic!("expected the cold build to be refused, got {other:?}"),
+    }
+}
+
+#[test]
+fn a_cache_built_because_this_commit_moved_what_the_key_hashes_is_not_refused() {
+    // THE CONTROL, and it is not a loophole: a dependency change invalidates the
+    // key by design, and exactly one cold run is the honest price of it. Refusing
+    // that would make every lockfile bump a red build, and a gate that is red for
+    // a correct commit is one somebody switches off.
+    //
+    // The exception is DERIVED, not declared: the key says it hashes
+    // `**/Cargo.lock`, git says whether anything matching that moved in this
+    // commit, and this function is only told the answer.
+    let declared = [declaration("unrun", "Linux-cargo-unrun-", TARGET)];
+    let rebuilt = [held_on(
+        "Linux-cargo-unrun-abc",
+        3.0,
+        "2026-08-09T02:30:00.000000000Z",
+    )];
+    let bumped = run_after("2026-08-09T02:00:00.000000000Z", &["Linux-cargo-unrun-"]);
+    assert_eq!(
+        conclude(LIMIT, &declared, &rebuilt, Some(&bumped)).refusals(),
+        Vec::new()
+    );
+
+    // And the excuse belongs to the key whose inputs moved, not to its
+    // neighbours: this repository's side-workspace key hashes a different pair of
+    // globs from every other key in the file.
+    let two = [
+        declaration("unrun", "Linux-cargo-unrun-", TARGET),
+        declaration("side", "Linux-cargo-side-", REGISTRY),
+    ];
+    let both_rebuilt = [
+        held_on(
+            "Linux-cargo-unrun-abc",
+            3.0,
+            "2026-08-09T02:30:00.000000000Z",
+        ),
+        held_on(
+            "Linux-cargo-side-abc",
+            0.06,
+            "2026-08-09T02:30:00.000000000Z",
+        ),
+    ];
+    match conclude(LIMIT, &two, &both_rebuilt, Some(&bumped))
+        .refusals()
+        .as_slice()
+    {
+        [Refusal::Recreated { prefix, .. }] => assert_eq!(prefix, "Linux-cargo-side-"),
+        other => panic!("expected only the unexcused key to be refused, got {other:?}"),
+    }
+}
+
+#[test]
+fn the_two_endpoints_spell_a_timestamp_differently_and_are_still_compared_correctly() {
+    // MEASURED, NOT ASSUMED, and it is the reason these are not compared as plain
+    // strings. GitHub's runs endpoint answers `2026-08-08T22:17:13Z` and its
+    // caches endpoint answers `2026-08-08T17:13:25.229538000Z` — both real,
+    // copied from this repository's own API responses. Compared byte by byte they
+    // order on what follows the seconds, where `.` sits below `Z`, so a cache
+    // built a minute INTO a run would read as older than the run and the whole
+    // law would quietly never fire.
+    let declared = [declaration("unrun", "Linux-cargo-unrun-", TARGET)];
+    let run = Run {
+        started_at: "2026-08-09T02:00:00Z".to_string(),
+        inputs_changed: BTreeSet::new(),
+    };
+
+    let after = [held_on(
+        "Linux-cargo-unrun-abc",
+        3.0,
+        "2026-08-09T02:00:01.229538000Z",
+    )];
+    assert!(
+        matches!(
+            conclude(LIMIT, &declared, &after, Some(&run))
+                .refusals()
+                .as_slice(),
+            [Refusal::Recreated { .. }]
+        ),
+        "one second after the run started, in the spelling the caches endpoint \
+         uses, is INSIDE the run"
+    );
+
+    let before = [held_on(
+        "Linux-cargo-unrun-abc",
+        3.0,
+        "2026-08-09T01:59:59.229538000Z",
+    )];
+    assert_eq!(
+        conclude(LIMIT, &declared, &before, Some(&run)).refusals(),
+        Vec::new(),
+        "and one second before it is outside"
+    );
+
+    // AND SUB-SECOND ORDER DOES NOT DECIDE WHETHER A JOB REBUILT. Today the two
+    // spellings differ, and a plain string comparison of them lands on the right
+    // answer only by an accident of ASCII — `.` sorts below `Z`, so a
+    // nanosecond-stamped cache always reads as older than a whole-second run. The
+    // day GitHub gives the runs endpoint fractional seconds, that accident stops
+    // holding and this comparison starts deciding a half-hour verdict on
+    // four hundred milliseconds. A job does not finish and save a cache inside its
+    // run's opening second, so the tie is what the law means.
+    let fractional_start = Run {
+        started_at: "2026-08-09T02:00:00.100000000Z".to_string(),
+        inputs_changed: BTreeSet::new(),
+    };
+    let same_second = [held_on(
+        "Linux-cargo-unrun-abc",
+        3.0,
+        "2026-08-09T02:00:00.500000000Z",
+    )];
+    assert_eq!(
+        conclude(LIMIT, &declared, &same_second, Some(&fractional_start)).refusals(),
+        Vec::new(),
+        "four hundred milliseconds is not a cold build"
+    );
+}
+
+#[test]
+fn a_cache_older_than_this_run_is_one_the_run_restored() {
+    // The other side of the same clock comparison, and the reason it is a
+    // comparison rather than a flag: a cache GitHub already held when this run
+    // started is one no job in this run had to build.
+    let declared = [declaration("unrun", "Linux-cargo-unrun-", TARGET)];
+    let kept = [held_on(
+        "Linux-cargo-unrun-abc",
+        3.0,
+        "2026-08-08T09:00:00.000000000Z",
+    )];
+    let run = run_after("2026-08-09T02:00:00.000000000Z", &[]);
+    assert_eq!(
+        conclude(LIMIT, &declared, &kept, Some(&run)).refusals(),
+        Vec::new()
+    );
+}
+
+#[test]
+fn without_a_run_the_gate_says_so_rather_than_judging_one() {
+    // Run on a developer's machine there is no run to be inside, and a gate that
+    // invented one would read every cache in the repository as freshly built and
+    // refuse the lot. The budget half still answers; the other half is absent
+    // from the verdict and the binary prints that it was.
+    let declared = [declaration("unrun", "Linux-cargo-unrun-", TARGET)];
+    let rebuilt = [held_on(
+        "Linux-cargo-unrun-abc",
+        3.0,
+        "2026-08-09T02:30:00.000000000Z",
+    )];
+    let report = conclude(LIMIT, &declared, &rebuilt, None);
+    assert_eq!(report.run, None);
+    assert_eq!(report.refusals(), Vec::new());
 }
 
 #[test]
@@ -185,7 +393,7 @@ fn a_registry_only_cache_is_never_priced_as_a_whole_target() {
         declaration("side", "Linux-cargo-side-", REGISTRY),
     ];
     let held = [held("Linux-cargo-unrun-abc", 9.0)];
-    let report = conclude(LIMIT, &declared, &held);
+    let report = conclude(LIMIT, &declared, &held, None);
     let side = report
         .rows
         .iter()
@@ -210,7 +418,7 @@ fn a_prefix_still_matches_after_a_lockfile_bump() {
     // key would call every cache in the repository absent the day after one.
     let declared = [declaration("validate", "Linux-cargo-", TARGET)];
     let held = [held("Linux-cargo-a-brand-new-lockfile-hash", 4.0)];
-    let report = conclude(LIMIT, &declared, &held);
+    let report = conclude(LIMIT, &declared, &held, None);
     assert_eq!(report.absent(), Vec::<String>::new());
     assert_eq!(report.refusals(), Vec::new());
 }
@@ -225,7 +433,7 @@ fn a_cache_no_workflow_declares_is_a_refusal() {
         held("Linux-cargo-abc", 4.0),
         held("Linux-deleted-job-abc", 3.0),
     ];
-    let report = conclude(LIMIT, &declared, &held);
+    let report = conclude(LIMIT, &declared, &held, None);
     match report.refusals().as_slice() {
         [Refusal::Orphan { key, size_in_bytes }] => {
             assert_eq!(key, "Linux-deleted-job-abc");
@@ -241,7 +449,7 @@ fn a_gate_that_measured_nothing_does_not_pass() {
     // not look and a gate that looked and found nothing print the same silence.
     // Declarations with no observation anywhere are UNKNOWN, not acceptable.
     let declared = [declaration("validate", "Linux-cargo-", TARGET)];
-    let report = conclude(LIMIT, &declared, &[]);
+    let report = conclude(LIMIT, &declared, &[], None);
     assert_eq!(report.demand(), None);
     assert!(matches!(
         report.refusals().as_slice(),
@@ -254,7 +462,7 @@ fn a_repository_declaring_no_cache_at_all_is_unreached_not_clean() {
     // The other end of the same rule, and the one a parser bug produces: a reader
     // that stopped recognising `actions/cache` hands this function an empty list,
     // and an empty list satisfies "every declared cache is present" vacuously.
-    let report = conclude(LIMIT, &[], &[held("Linux-cargo-abc", 4.0)]);
+    let report = conclude(LIMIT, &[], &[held("Linux-cargo-abc", 4.0)], None);
     assert!(matches!(
         report.refusals().as_slice(),
         [Refusal::Unreached(_)]
@@ -275,7 +483,7 @@ fn a_cache_belongs_to_the_most_specific_key_that_claims_it() {
         declaration("unrun", "Linux-cargo-unrun-", TARGET),
     ];
     let held = [held("Linux-cargo-unrun-abc", 9.0)];
-    let report = conclude(LIMIT, &declared, &held);
+    let report = conclude(LIMIT, &declared, &held, None);
 
     let row = |prefix: &str| {
         report
@@ -311,7 +519,7 @@ fn the_newest_generation_under_one_key_is_the_one_judged() {
         held_on("Linux-cargo-old", 9.0, "2026-08-01T00:00:00.000000000Z"),
         held_on("Linux-cargo-new", 4.0, "2026-08-08T00:00:00.000000000Z"),
     ];
-    let report = conclude(LIMIT, &declared, &held);
+    let report = conclude(LIMIT, &declared, &held, None);
     assert_eq!(
         report.rows[0].held.as_ref().map(|cache| cache.key.as_str()),
         Some("Linux-cargo-new")
@@ -342,8 +550,8 @@ fn the_order_a_generation_arrives_in_does_not_decide_which_one_is_judged() {
     let declared = [declaration("validate", "Linux-cargo-", TARGET)];
     let newest = held_on("Linux-cargo-new", 4.0, "2026-08-08T00:00:00.000000000Z");
     let oldest = held_on("Linux-cargo-old", 9.0, "2026-08-01T00:00:00.000000000Z");
-    let forwards = conclude(LIMIT, &declared, &[newest.clone(), oldest.clone()]);
-    let backwards = conclude(LIMIT, &declared, &[oldest, newest]);
+    let forwards = conclude(LIMIT, &declared, &[newest.clone(), oldest.clone()], None);
+    let backwards = conclude(LIMIT, &declared, &[oldest, newest], None);
     assert_eq!(forwards, backwards);
     assert_eq!(forwards.demand(), Some(4 * GB));
 }
@@ -359,7 +567,7 @@ fn two_jobs_naming_one_key_cost_the_budget_once() {
         declaration("reader", "Linux-cargo-shared-", TARGET),
     ];
     let held = [held("Linux-cargo-shared-abc", 6.0)];
-    let report = conclude(LIMIT, &declared, &held);
+    let report = conclude(LIMIT, &declared, &held, None);
     assert_eq!(report.rows.len(), 1, "one key, one row: {:?}", report.rows);
     assert_eq!(report.rows[0].owners.len(), 2, "and both jobs are named");
     assert_eq!(report.demand(), Some(6 * GB));
@@ -378,7 +586,7 @@ fn two_jobs_disagreeing_about_what_one_key_holds_are_refused() {
         declaration("reader", "Linux-cargo-shared-", REGISTRY),
     ];
     let held = [held("Linux-cargo-shared-abc", 6.0)];
-    let report = conclude(LIMIT, &declared, &held);
+    let report = conclude(LIMIT, &declared, &held, None);
     match report.refusals().as_slice() {
         [Refusal::Divergent { prefix, owners }] => {
             assert_eq!(prefix, "Linux-cargo-shared-");

@@ -1,9 +1,11 @@
 //! Ask both sides, print what was reached, and only then judge any of it.
 
+use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-use cache_budget::{conclude, Held, Refusal, DEFAULT_LIMIT_BYTES};
+use cache_budget::{conclude, Held, Refusal, Run, DEFAULT_LIMIT_BYTES};
+use ci_plan::CacheDeclaration;
 
 fn main() {
     let root: PathBuf = std::env::args()
@@ -27,7 +29,22 @@ fn main() {
         }
     };
 
-    let report = conclude(DEFAULT_LIMIT_BYTES, &declared, &held);
+    // THE RUN, when there is one to be inside. `GITHUB_RUN_ID` is set by the
+    // runner and by nothing else, so a developer's machine gets the budget
+    // verdict and is TOLD that the other half was not evaluated — inventing a
+    // run here would read every cache in the repository as freshly built.
+    let run = match std::env::var("GITHUB_RUN_ID").ok() {
+        Some(id) => match run_window(&root, &id, &declared) {
+            Ok(run) => Some(run),
+            Err(why) => {
+                eprintln!("cache-budget: {}", Refusal::Unreached(why));
+                std::process::exit(2);
+            }
+        },
+        None => None,
+    };
+
+    let report = conclude(DEFAULT_LIMIT_BYTES, &declared, &held, run.as_ref());
 
     // WHAT WAS REACHED, first and unconditionally. A gate that never opened
     // anything and a gate that found nothing wrong print the same silence.
@@ -81,6 +98,33 @@ fn main() {
         Some(demand) => println!("demand {:.2} GB", demand as f64 / 1e9),
         None => println!("demand UNKNOWN — nothing comparable has been observed"),
     }
+    // WHETHER THE SECOND HALF WAS EVALUATED AT ALL, said out loud. A gate that
+    // silently skipped a law and a gate that found nothing wrong under it print
+    // the same clean line otherwise.
+    match &report.run {
+        Some(run) => println!(
+            "run started {}, so a cache created after that is a job that rebuilt; \
+             {} key(s) had their hashed inputs moved by this commit{}",
+            run.started_at,
+            run.inputs_changed.len(),
+            if run.inputs_changed.is_empty() {
+                String::new()
+            } else {
+                format!(
+                    " ({})",
+                    run.inputs_changed
+                        .iter()
+                        .cloned()
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                )
+            }
+        ),
+        None => println!(
+            "NOT INSIDE A RUN (`GITHUB_RUN_ID` unset), so whether these caches were \
+             restored or rebuilt was NOT evaluated — only the budget was"
+        ),
+    }
 
     // THEN judge it, and print every refusal. Stopping at the first reports one
     // line of a distribution that is itself the finding.
@@ -96,6 +140,93 @@ fn main() {
         .iter()
         .any(|refusal| matches!(refusal, Refusal::Unreached(_)));
     std::process::exit(if unreached { 2 } else { 1 });
+}
+
+/// When this run started, and which keys this commit legitimately invalidated.
+///
+/// BOTH SIDES ASKED OF A MACHINE. The start time is GitHub's own, from the same
+/// clock that stamps a cache's `created_at`, so the two are comparable without
+/// this program owning a notion of time. Which keys were invalidated is git's
+/// answer to the globs the keys themselves name — `:(glob)` pathspec magic rather
+/// than a second implementation of glob matching, which would be a second answer
+/// free to disagree with the one GitHub used to build the key.
+fn run_window(root: &Path, run_id: &str, declared: &[CacheDeclaration]) -> Result<Run, String> {
+    let started_at = gh(
+        root,
+        &[
+            "api",
+            &format!("repos/{{owner}}/{{repo}}/actions/runs/{run_id}"),
+            "--jq",
+            ".run_started_at",
+        ],
+    )?
+    .trim()
+    .to_string();
+    if started_at.is_empty() {
+        return Err(format!("run {run_id} reports no start time"));
+    }
+
+    let mut inputs_changed = BTreeSet::new();
+    for declaration in declared {
+        if declaration.hashed.is_empty() || inputs_changed.contains(&declaration.prefix) {
+            continue;
+        }
+        let mut arguments = vec![
+            "diff".to_string(),
+            "--name-only".to_string(),
+            "HEAD~1".to_string(),
+            "HEAD".to_string(),
+            "--".to_string(),
+        ];
+        arguments.extend(
+            declaration
+                .hashed
+                .iter()
+                .map(|glob| format!(":(glob){glob}")),
+        );
+        let out = Command::new("git")
+            .args(&arguments)
+            .current_dir(root)
+            .output()
+            .map_err(|e| format!("`git diff` could not be run at all: {e}"))?;
+        if !out.status.success() {
+            // A REFUSAL, NOT A GUESS. The usual cause is a checkout with no
+            // parent commit, and answering "nothing changed" there would refuse
+            // every key this run legitimately rebuilt.
+            return Err(format!(
+                "`git diff HEAD~1 HEAD` failed ({}), so which keys this commit \
+                 invalidated is unknown rather than empty — a checkout of depth 1 \
+                 has no parent to compare against: {}",
+                out.status,
+                String::from_utf8_lossy(&out.stderr).trim()
+            ));
+        }
+        if !String::from_utf8_lossy(&out.stdout).trim().is_empty() {
+            inputs_changed.insert(declaration.prefix.clone());
+        }
+    }
+    Ok(Run {
+        started_at,
+        inputs_changed,
+    })
+}
+
+/// Run `gh` and hand back its output, or say why it could not be asked.
+fn gh(root: &Path, arguments: &[&str]) -> Result<String, String> {
+    let out = Command::new("gh")
+        .args(arguments)
+        .current_dir(root)
+        .output()
+        .map_err(|e| format!("`gh` could not be run at all: {e}"))?;
+    if !out.status.success() {
+        return Err(format!(
+            "`gh {}` failed ({}): {}",
+            arguments.join(" "),
+            out.status,
+            String::from_utf8_lossy(&out.stderr).trim()
+        ));
+    }
+    Ok(String::from_utf8_lossy(&out.stdout).into_owned())
 }
 
 /// Every cache this repository holds, from the GitHub API.

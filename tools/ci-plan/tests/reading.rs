@@ -72,6 +72,37 @@ fn the_paths_are_read_because_they_are_what_a_cache_costs() {
 }
 
 #[test]
+fn a_key_says_which_files_would_legitimately_invalidate_it() {
+    // A cache this run had to build from nothing is a job that paid for a cold
+    // build — except when the thing the key hashes actually moved, and then one
+    // cold run is the price of a dependency change. That exception is DERIVED
+    // from the key rather than assumed, and it is a different question per key:
+    // this repository's side-workspace key hashes two globs and none of them is
+    // the `**/Cargo.lock` every other key hashes.
+    let found = caches_of(TWO_CACHES);
+    assert_eq!(found[0].hashed, vec!["**/Cargo.lock"]);
+    assert_eq!(found[1].hashed, vec!["tools/*/Cargo.lock"]);
+
+    assert_eq!(
+        ci_plan::hashed_globs(
+            "${{ runner.os }}-cargo-side-${{ hashFiles('bench/Cargo.lock', 'tools/*/Cargo.lock') }}"
+        ),
+        vec!["bench/Cargo.lock", "tools/*/Cargo.lock"],
+        "several arguments to one call are several globs"
+    );
+    assert!(
+        ci_plan::hashed_globs("${{ runner.os }}-cargo-shared-").is_empty(),
+        "a key that hashes nothing can never be excused for having been rebuilt"
+    );
+    assert!(
+        ci_plan::hashed_globs("${{ runner.os }}-${{ hashFiles(env.LOCKS) }}").is_empty(),
+        "AND AN ARGUMENT THAT IS NOT A PLAIN LITERAL IS NOT GUESSED AT — reading \
+         it wrong would excuse a cold build that nothing justifies, so an \
+         unreadable input excuses nothing, which is the strict direction"
+    );
+}
+
+#[test]
 fn a_restore_only_step_is_still_a_declaration() {
     // A job that only restores still depends on that key surviving, which is the
     // whole subject. Reading `actions/cache` alone would count it as asking for

@@ -94,7 +94,11 @@ jobs:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-          key: ${{ runner.os }}-cargo-replay-${{ hashFiles('**/Cargo.lock') }}
+          # R1091 — hashes this workflow too, for the reason recorded once in
+          # `mnemosyne-validate.yml`: what a cache holds is decided by the file
+          # that declares it, so a key that ignores that file goes on serving an
+          # archive of whatever it used to hold.
+          key: ${{ runner.os }}-cargo-replay-${{ hashFiles('**/Cargo.lock', '.github/workflows/evidence-replay.yml') }}
           restore-keys: |
             ${{ runner.os }}-cargo-replay-
             ${{ runner.os }}-cargo-

@@ -135,6 +135,18 @@ pub struct CacheDeclaration {
     /// costs, so this is what lets one cache's size be reasoned about from
     /// another's.
     pub paths: Vec<String>,
+    /// The file globs the key's `hashFiles(…)` calls name, in the order written.
+    ///
+    /// THE KEY SAYS WHAT WOULD LEGITIMATELY INVALIDATE IT. A cache that this run
+    /// had to build from nothing is a job that paid for a cold build, which is
+    /// the cost the whole budget exists to avoid — EXCEPT when the thing the key
+    /// hashes actually moved, and then one cold run is simply the price of a
+    /// dependency change. Reading the globs off the declaration is how that
+    /// exception is derived rather than assumed: `side-workspaces` hashes
+    /// `bench/Cargo.lock` and `tools/*/Cargo.lock` while every other key here
+    /// hashes `**/Cargo.lock`, so "the lockfiles changed" is a different question
+    /// per key and only the key can answer it.
+    pub hashed: Vec<String>,
 }
 
 /// What GitHub sets `runner.os` to for a `runs-on` label.
@@ -155,6 +167,41 @@ fn runner_os(runs_on: &str) -> String {
              guessing it would report every cache in the repository as missing"
         ),
     }
+}
+
+/// Every glob a key's `hashFiles(…)` calls name.
+///
+/// A hand-written scan rather than a grammar, and the shape it reads is the one
+/// GitHub documents: `hashFiles('a', 'b')`, single-quoted, comma-separated. An
+/// argument that is not a plain quoted literal is NOT guessed at — it is left
+/// out, and a key whose inputs cannot be read simply excuses nothing, which is
+/// the strict direction.
+pub fn hashed_globs(key: &str) -> Vec<String> {
+    let mut globs = Vec::new();
+    let mut rest = key;
+    while let Some(at) = rest.find("hashFiles(") {
+        rest = &rest[at + "hashFiles(".len()..];
+        let Some(end) = rest.find(')') else { break };
+        let arguments = &rest[..end];
+        rest = &rest[end..];
+        for argument in arguments.split(',') {
+            let argument = argument.trim();
+            let unquoted = argument
+                .strip_prefix('\'')
+                .and_then(|inner| inner.strip_suffix('\''))
+                .or_else(|| {
+                    argument
+                        .strip_prefix('"')
+                        .and_then(|inner| inner.strip_suffix('"'))
+                });
+            if let Some(glob) = unquoted {
+                if !glob.is_empty() {
+                    globs.push(glob.to_string());
+                }
+            }
+        }
+    }
+    globs
 }
 
 /// The literal head of a key: everything before the first `${{ … }}` that is not
@@ -216,6 +263,7 @@ pub fn cache_steps(doc: &Yaml, source: &str) -> Vec<CacheDeclaration> {
                 key: key.to_string(),
                 prefix: key_prefix(key, os),
                 paths,
+                hashed: hashed_globs(key),
             });
         }
     }

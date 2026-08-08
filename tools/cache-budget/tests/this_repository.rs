@@ -51,6 +51,7 @@ fn declaration(owner: &str, prefix: &str, paths: &[&str]) -> CacheDeclaration {
         key: format!("{prefix}${{{{ hashFiles('**/Cargo.lock') }}}}"),
         prefix: prefix.to_string(),
         paths: paths.iter().map(|path| path.to_string()).collect(),
+        hashed: vec!["**/Cargo.lock".to_string()],
     }
 }
 
@@ -125,7 +126,7 @@ fn the_tree_this_gate_was_written_to_repair_is_one_it_refuses() {
     // and the two that survived were each larger than the entire budget the eight
     // were sharing. A gate that cannot fail on THAT is a gate that cannot fail.
     let before = declared_before_the_repair();
-    let report = conclude(DEFAULT_LIMIT_BYTES, &before, &measured_by_r1089());
+    let report = conclude(DEFAULT_LIMIT_BYTES, &before, &measured_by_r1089(), None);
     let demand = report
         .demand()
         .expect("every key is priceable from the three");
@@ -152,24 +153,22 @@ fn the_tree_this_gate_was_written_to_repair_is_one_it_refuses() {
 #[test]
 fn this_repository_now_asks_for_strictly_less_than_that() {
     // The other half of the same measurement, and the one that goes red the day
-    // somebody adds a seventh whole-`target` cache with a locally correct comment
-    // about why sharing a key would evict. Both sides are priced from the SAME
-    // observed caches, so the only thing that moved is what the workflows ask
-    // for.
-    let held = measured_by_r1089();
+    // somebody adds a whole-`target` cache back with a locally correct comment
+    // about why sharing a key would evict.
+    //
+    // COUNTED RATHER THAN PRICED, and R1091 is why. This test used to reckon
+    // both trees' demand from the caches Round 1089 measured and require today's
+    // to be smaller. That comparison stopped meaning anything the moment a key's
+    // declared contents changed: the archive stored under `Linux-cargo-` held a
+    // whole build tree, the declaration now says it holds a registry, and pricing
+    // one against the other prices a registry cache at ten gigabytes. That
+    // mismatch is not a flaw in the arithmetic — it IS the defect this round
+    // repaired, which is why the keys now hash the workflow that decides what
+    // they hold. What survives it is the thing the repair actually did: fewer
+    // keys asking to keep a whole build tree, derived from the real file with no
+    // policy number anywhere in it.
     let before = declared_before_the_repair();
     let now = ci_plan::workflow_cache_declarations(&repository_root());
-
-    let was = conclude(DEFAULT_LIMIT_BYTES, &before, &held)
-        .demand()
-        .expect("priceable");
-    let is = conclude(DEFAULT_LIMIT_BYTES, &now, &held)
-        .demand()
-        .expect("every key this repository declares is priceable from the three");
-    assert!(
-        is < was,
-        "the repair that created this gate has been undone: {is} >= {was}"
-    );
 
     let holders = keys_holding_the_root_target(&now);
     assert!(

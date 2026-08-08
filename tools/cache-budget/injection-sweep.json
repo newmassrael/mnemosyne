@@ -114,6 +114,44 @@
       "expect_red": ["two_jobs_naming_one_key_cost_the_budget_once"]
     },
     {
+      "name": "a-cache-that-exists-is-a-job-that-was-warm",
+      "why": "`actions/cache` saves only when it did NOT find an exact hit, so a cache created inside this run is a job that restored nothing and rebuilt; without the clock comparison the gate reports a repository whose jobs each take half an hour as spotless, which is the verdict Round 1089 had to overturn by hand",
+      "edits": [
+        {
+          "file": "tools/cache-budget/src/lib.rs",
+          "from": "                if to_the_second(&held.created_at) <= to_the_second(&run.started_at) {",
+          "to": "                if true {"
+        }
+      ],
+      "expect_red": ["a_cache_this_run_built_from_nothing_is_a_job_that_was_never_warm"]
+    },
+    {
+      "name": "two-endpoints-two-spellings-compared-as-plain-strings",
+      "why": "the runs endpoint gives whole seconds and the caches endpoint gives nanoseconds; comparing them as text lands on the right answer only because `.` sorts below `Z`, and the day the runs endpoint gains a fractional part that accident stops holding and four hundred milliseconds decides a half-hour verdict",
+      "edits": [
+        {
+          "file": "tools/cache-budget/src/lib.rs",
+          "from": "                if to_the_second(&held.created_at) <= to_the_second(&run.started_at) {",
+          "to": "                if held.created_at <= run.started_at {"
+        }
+      ],
+      "expect_red": [
+        "the_two_endpoints_spell_a_timestamp_differently_and_are_still_compared_correctly"
+      ]
+    },
+    {
+      "name": "a-dependency-bump-is-refused-like-any-other-cold-build",
+      "why": "a key hashing lockfiles that moved MUST be rebuilt, and refusing that makes every dependency change a red build — a gate that is red for a correct commit is one somebody switches off",
+      "edits": [
+        {
+          "file": "tools/cache-budget/src/lib.rs",
+          "from": "                if run.inputs_changed.contains(&row.prefix) {",
+          "to": "                if false {"
+        }
+      ],
+      "expect_red": ["a_cache_built_because_this_commit_moved_what_the_key_hashes_is_not_refused"]
+    },
+    {
       "name": "nothing-held-is-ever-undeclared",
       "why": "a key outlives the job that wrote it and keeps its share of the budget; the workflows do not mention it and the API cannot know it is unwanted, so only holding both sides against each other finds it",
       "edits": [

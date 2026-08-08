@@ -44,6 +44,21 @@ env:
   CARGO_PROFILE_DEV_DEBUG: line-tables-only
   CARGO_INCREMENTAL: 0
 
+# R1091 — EVERY CACHE KEY IN THIS FILE HASHES THIS FILE, and that is a defect
+# repair rather than belt-and-braces. A key that hashes only the lockfiles says
+# "this cache is valid while the dependencies are", but what a cache HOLDS is
+# decided here, in its `path:` list. R1090 removed the root `target` from four
+# keys and nothing happened: `actions/cache` had an exact hit on every one of
+# them, so it never saved, and GitHub went on serving archives containing the
+# very directory the workflow had just stopped asking for. The repair could not
+# take effect until something unrelated moved a lockfile — and the same trap sat
+# under R1091's own repair, which is how it was found.
+#
+# So the key depends on the file that decides the key. A workflow edit costs one
+# cold run of everything, which is the honest price of changing what CI keeps,
+# and `tools/cache-budget` reads these globs off the key to know that such a run
+# is legitimate rather than a job that lost its cache.
+
 # R893 — the `@v4` lines of both actions declare `runs.using: node20`, which
 # GitHub deprecated on 2025-09-19 and now force-runs on Node 24. Every run in
 # this repo's visible history carried the warning (measured back to 2026-05-07,
@@ -105,14 +120,31 @@ jobs:
       #
       # `tools/cache-budget` is what keeps this true; a comment is what it was
       # before, and four rounds each contradicted it locally-correctly.
+      #
+      # R1091 — AND THAT GATE IMMEDIATELY CORRECTED THE PARAGRAPH ABOVE. It turned
+      # this branch red at 11.81 GB, because `unrun-tests` saved 7.83 GB rather
+      # than the ~3.9 GB predicted for it. The run that failed is the first in
+      # this repository's history where EVERY job was cold — the stale
+      # generations had been deleted before it — so it is the first comparable
+      # timetable this file has ever had:
+      #
+      #   unrun-tests        23m45s   (7.83 GB, and it keeps its build tree)
+      #   side-workspaces    20m48s   (caches no `target` at all)
+      #   validate           20m5s    (this job)
+      #   uncompiled 14m25s, server-features 13m43s, item-citations 13m37s
+      #
+      # SO THIS JOB GIVES UP ITS BUILD TREE TOO, and it costs no wall-clock to do
+      # it: `separate in-repo workspaces` keeps nothing and runs LONGER than this
+      # job does cold, so it is the floor a push waits on and warming this one
+      # cannot get underneath it. `unrun-tests` is the only job above that floor,
+      # which makes it the only one whose build tree is worth the budget.
       - name: Cache cargo
         uses: actions/cache@v6
         with:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-            target
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock', '.github/workflows/mnemosyne-validate.yml') }}
           restore-keys: |
             ${{ runner.os }}-cargo-
 
@@ -189,7 +221,7 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             tools/item-citations/target
-          key: ${{ runner.os }}-cargo-citations-${{ hashFiles('**/Cargo.lock') }}
+          key: ${{ runner.os }}-cargo-citations-${{ hashFiles('**/Cargo.lock', '.github/workflows/mnemosyne-validate.yml') }}
           restore-keys: |
             ${{ runner.os }}-cargo-citations-
 
@@ -241,7 +273,7 @@ jobs:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-          key: ${{ runner.os }}-cargo-side-${{ hashFiles('bench/Cargo.lock', 'tools/*/Cargo.lock') }}
+          key: ${{ runner.os }}-cargo-side-${{ hashFiles('bench/Cargo.lock', 'tools/*/Cargo.lock', '.github/workflows/mnemosyne-validate.yml') }}
           restore-keys: |
             ${{ runner.os }}-cargo-side-
 
@@ -297,7 +329,7 @@ jobs:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-          key: ${{ runner.os }}-cargo-serverfeat-${{ hashFiles('**/Cargo.lock') }}
+          key: ${{ runner.os }}-cargo-serverfeat-${{ hashFiles('**/Cargo.lock', '.github/workflows/mnemosyne-validate.yml') }}
           restore-keys: |
             ${{ runner.os }}-cargo-serverfeat-
 
@@ -370,7 +402,7 @@ jobs:
             ~/.cargo/git
             target
             tools/unrun-tests/target
-          key: ${{ runner.os }}-cargo-unrun-${{ hashFiles('**/Cargo.lock') }}
+          key: ${{ runner.os }}-cargo-unrun-${{ hashFiles('**/Cargo.lock', '.github/workflows/mnemosyne-validate.yml') }}
           restore-keys: |
             ${{ runner.os }}-cargo-unrun-
 
@@ -433,7 +465,7 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             tools/uncompiled-sources/target
-          key: ${{ runner.os }}-cargo-uncompiled-${{ hashFiles('**/Cargo.lock') }}
+          key: ${{ runner.os }}-cargo-uncompiled-${{ hashFiles('**/Cargo.lock', '.github/workflows/mnemosyne-validate.yml') }}
           restore-keys: |
             ${{ runner.os }}-cargo-uncompiled-
 
@@ -475,7 +507,7 @@ jobs:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-          key: ${{ runner.os }}-cargo-msrv-${{ hashFiles('**/Cargo.lock') }}
+          key: ${{ runner.os }}-cargo-msrv-${{ hashFiles('**/Cargo.lock', '.github/workflows/mnemosyne-validate.yml') }}
           restore-keys: |
             ${{ runner.os }}-cargo-msrv-
 
@@ -514,6 +546,14 @@ jobs:
   #
   # IT TAKES NO CACHE OF ITS OWN, which is the point rather than an oversight, and
   # its suite asserts that too.
+  #
+  # R1091 — AND IT ASKS THE SECOND QUESTION: not "is this cache held" but "did
+  # this run RESTORE it". `actions/cache` saves only when it did not find an exact
+  # hit, so a cache whose `created_at` falls inside this run is a job that
+  # rebuilt from nothing — green, unannotated, and half an hour long, which is the
+  # cost the budget exists to buy off and the one a held-or-not check cannot see.
+  # Excused when the key's own `hashFiles` globs moved in this commit, which is
+  # why this checkout needs a parent commit to diff against.
   cache-budget:
     name: every cache declared is one CI keeps
     needs:
@@ -533,6 +573,15 @@ jobs:
       actions: read
     steps:
       - uses: actions/checkout@v7
+        with:
+          # A PARENT COMMIT TO DIFF AGAINST, and depth 2 is exactly what that
+          # needs: the gate asks git whether this commit moved anything matching
+          # a key's own `hashFiles` globs, because a cache rebuilt after a
+          # dependency bump is the one cold run nobody should be refused for.
+          # Without it the gate cannot answer and REFUSES rather than assuming
+          # nothing changed, which would fail every key a legitimate bump
+          # invalidated.
+          fetch-depth: 2
 
       - name: Install rust toolchain (rust-toolchain.toml)
         run: rustup show

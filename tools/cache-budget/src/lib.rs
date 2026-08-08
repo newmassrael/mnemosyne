@@ -78,6 +78,9 @@ pub struct Row {
     /// What this key holds. The union when its declarations disagree, which is
     /// the loud direction and is refused separately.
     pub paths: BTreeSet<String>,
+    /// The globs this key hashes, from the first declaration of it — what would
+    /// legitimately have forced it to be rebuilt.
+    pub hashed: Vec<String>,
     /// The NEWEST cache held under this prefix, if any.
     pub held: Option<Held>,
     /// The generations under this prefix that the newest one replaced, oldest
@@ -136,6 +139,13 @@ pub enum Refusal {
     Orphan { key: String, size_in_bytes: u64 },
     /// One key, two jobs, two different answers about what it holds.
     Divergent { prefix: String, owners: Vec<String> },
+    /// Held, and built from nothing BY THIS RUN — the job missed and paid for a
+    /// cold build, which is the cost the whole budget exists to buy off.
+    Recreated {
+        prefix: String,
+        owners: Vec<String>,
+        hashed: Vec<String>,
+    },
     /// The gate could not reach, or could not price, enough to have a verdict.
     /// Distinct from a pass.
     Unreached(String),
@@ -174,14 +184,76 @@ impl std::fmt::Display for Refusal {
                  did not ask for",
                 owners.join(" and ")
             ),
+            Refusal::Recreated {
+                prefix,
+                owners,
+                hashed,
+            } => write!(
+                f,
+                "`{prefix}` was BUILT FROM NOTHING by this run, so {} paid for a \
+                 cold build — `actions/cache` saves only when it did not find an \
+                 exact hit, and {}. This is the cost the budget exists to buy \
+                 off, and it is invisible: the job is green and merely slow",
+                owners.join(" and "),
+                if hashed.is_empty() {
+                    "this key hashes nothing, so nothing could have invalidated it".to_string()
+                } else {
+                    format!(
+                        "nothing matching {} changed in this commit",
+                        hashed.join(", ")
+                    )
+                }
+            ),
             Refusal::Unreached(why) => write!(f, "this gate reached nothing it could judge: {why}"),
         }
     }
 }
 
+/// An ISO-8601 UTC stamp cut to whole seconds — the widest prefix two GitHub
+/// endpoints spell the same way.
+///
+/// `2026-08-08T22:17:13Z` from the runs endpoint and
+/// `2026-08-08T17:13:25.229538000Z` from the caches endpoint agree on the first
+/// nineteen characters and disagree immediately after, so that prefix is the only
+/// part of them that can be compared as text. Cutting rather than parsing keeps
+/// this program without a notion of time: the two stamps are GitHub's, and the
+/// only thing being asked of them is which came first.
+///
+/// A tie — a cache created within the same second the run started — reads as
+/// created BEFORE it, which is the lenient direction and the correct one: no job
+/// finishes and saves a cache in its run's opening second.
+fn to_the_second(stamp: &str) -> &str {
+    const SECONDS: usize = "2026-08-08T22:17:13".len();
+    stamp.get(..SECONDS).unwrap_or(stamp)
+}
+
 /// Bytes as the unit a budget is argued in.
 fn gigabytes(bytes: u64) -> String {
     format!("{:.2} GB", bytes as f64 / 1e9)
+}
+
+/// The run being judged, when there is one.
+///
+/// WITHOUT IT THE GATE STILL ANSWERS THE BUDGET QUESTION AND SAYS SO. Run on a
+/// developer's machine there is no run to be inside, and a gate that invented one
+/// would judge every cache in the repository as freshly built.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Run {
+    /// When it started, verbatim — `2026-08-08T22:17:13Z`.
+    ///
+    /// NOT THE SAME SPELLING AS A CACHE'S `created_at`, which is why the two are
+    /// compared through [`to_the_second`] rather than directly. The runs endpoint
+    /// gives whole seconds and the caches endpoint gives nanoseconds, and a plain
+    /// string comparison of `…13Z` against `…13.229538000Z` orders them by the
+    /// byte after the seconds — `.` is below `Z`, so it silently decides ties in
+    /// one direction for a reason that has nothing to do with time. Both come
+    /// from GitHub's clock; only their precision differs.
+    pub started_at: String,
+    /// The key prefixes whose hashed inputs moved in this commit, so that a
+    /// cache this run had to build is excused rather than refused. Computed by
+    /// asking git with the globs the key itself names, because a second
+    /// implementation of GitHub's glob matching is a second answer.
+    pub inputs_changed: BTreeSet<String>,
 }
 
 /// What one repository's caching looks like.
@@ -191,6 +263,8 @@ pub struct Report {
     pub rows: Vec<Row>,
     pub orphans: Vec<Held>,
     pub divergent: Vec<Refusal>,
+    /// The run this report is about, if it is about one.
+    pub run: Option<Run>,
 }
 
 impl Report {
@@ -284,6 +358,33 @@ impl Report {
                 }
             }
         }
+        // A CACHE THAT EXISTS IS NOT THE SAME AS A JOB THAT WAS WARM, and the
+        // difference is the whole cost. `actions/cache` saves only when it did
+        // NOT find an exact hit, so a cache whose `created_at` falls inside this
+        // run is a job that restored nothing and rebuilt — green, unannotated,
+        // and half an hour long. Round 1089 reached that verdict by hand, reading
+        // three runs of job durations; this is the same judgement, made by the
+        // program, from the one field that says it.
+        //
+        // Excused when the key's own hashed inputs moved in this commit: one cold
+        // run is the honest price of a dependency change, and the key names the
+        // globs that decide it.
+        if let Some(run) = &self.run {
+            for row in &self.rows {
+                let Some(held) = &row.held else { continue };
+                if to_the_second(&held.created_at) <= to_the_second(&run.started_at) {
+                    continue;
+                }
+                if run.inputs_changed.contains(&row.prefix) {
+                    continue;
+                }
+                out.push(Refusal::Recreated {
+                    prefix: row.prefix.clone(),
+                    owners: row.owners.clone(),
+                    hashed: row.hashed.clone(),
+                });
+            }
+        }
         for orphan in &self.orphans {
             out.push(Refusal::Orphan {
                 key: orphan.key.clone(),
@@ -312,9 +413,16 @@ fn owner_of<'a>(prefixes: &'a [String], key: &str) -> Option<&'a String> {
 }
 
 /// Hold the two sides against each other. PURE, and every input is an argument:
-/// the limit so the boundary can be tested, and both populations so the verdict
-/// can be driven without a repository and without a network.
-pub fn conclude(limit: u64, declared: &[CacheDeclaration], held: &[Held]) -> Report {
+/// the limit so the boundary can be tested, both populations so the verdict can
+/// be driven without a repository and without a network, and the run so that
+/// "this cache was built just now" can be asked of a clock this function does not
+/// read.
+pub fn conclude(
+    limit: u64,
+    declared: &[CacheDeclaration],
+    held: &[Held],
+    run: Option<&Run>,
+) -> Report {
     let mut rows: Vec<Row> = Vec::new();
     let mut divergent = Vec::new();
     let mut at: BTreeMap<&str, usize> = BTreeMap::new();
@@ -344,6 +452,7 @@ pub fn conclude(limit: u64, declared: &[CacheDeclaration], held: &[Held]) -> Rep
                     prefix: declaration.prefix.clone(),
                     owners: vec![owner],
                     paths,
+                    hashed: declaration.hashed.clone(),
                     held: None,
                     superseded: Vec::new(),
                     estimate: None,
@@ -424,5 +533,6 @@ pub fn conclude(limit: u64, declared: &[CacheDeclaration], held: &[Held]) -> Rep
         rows,
         orphans,
         divergent,
+        run: run.cloned(),
     }
 }
