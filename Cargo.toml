@@ -79,6 +79,23 @@ sha2 = "0.11"
 # this repo forbids.
 yaml-rust2 = { version = "0.11", default-features = false }
 
+# TEST-ONLY (dev-dependency of mnemosyne-cli, never in a shipped binary): read
+# this crate's own contracts to find out which pair of shipped reads each one
+# judges. The backlog that says which pair to compare NEXT could not see which
+# were already done, and named finished work for six sessions. The declaration
+# is a `const DECLARES` in the contract, and a real parser is what separates it
+# from prose: every one of those files NAMES other reads in its header, so a
+# text match reports a pair as judged because a comment mentioned it — the same
+# reasoning that put yaml-rust2 above rather than a substring check. `full` for
+# item syntax, `extra-traits` for the Debug an error message prints.
+syn = { version = "3", default-features = false, features = [
+  "parsing",
+  "printing",
+  "full",
+  "extra-traits",
+  "proc-macro",
+] }
+
 # Round 292 — regex backend for `query_term` read primitive
 # (literal+regex search over atomic-store fields, replacing external grep).
 # Used by mnemosyne-validate::query::query_term; not pulled into runtime

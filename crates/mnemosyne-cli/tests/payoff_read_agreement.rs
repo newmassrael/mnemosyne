@@ -61,6 +61,13 @@ use std::collections::{BTreeMap, BTreeSet};
 mod common;
 use common::{authored_stores, run};
 
+/// The pair of shipped reads this contract judges, named ONCE and run from
+/// here. The backlog walk (`surface/read_agreement_population.rs`) reads this
+/// declaration out of the source, because it ranks 87 pairs by shared subjects
+/// to say which to compare next and could not otherwise tell which of them
+/// already have a contract.
+const DECLARES: [&str; 2] = ["report-payoff-coverage", "report-payoff-substantiation"];
+
 /// A read's `[{setup, payoffs}]` list as a map, with the duplicate-setup case
 /// made loud: two rows for one setup would make "the same population" ambiguous
 /// and silently drop one of them.
@@ -114,10 +121,7 @@ fn the_two_payoff_reads_partition_the_same_paid_setups() {
                 })
                 .ok_or_else(|| verb.to_string())
         };
-        let (coverage, substantiation) = match (
-            read("report-payoff-coverage"),
-            read("report-payoff-substantiation"),
-        ) {
+        let (coverage, substantiation) = match (read(DECLARES[0]), read(DECLARES[1])) {
             (Ok(c), Ok(s)) => (c, s),
             (c, s) => {
                 let refused: Vec<String> = [c, s].into_iter().filter_map(Result::err).collect();
@@ -148,9 +152,9 @@ fn the_two_payoff_reads_partition_the_same_paid_setups() {
                 disagreements.push(format!(
                     "{name}/{road}: only {} carries this road",
                     if cov_worlds.contains_key(road) {
-                        "report-payoff-coverage"
+                        DECLARES[0]
                     } else {
-                        "report-payoff-substantiation"
+                        DECLARES[1]
                     },
                 ));
                 continue;

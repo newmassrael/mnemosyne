@@ -45,6 +45,13 @@ use std::collections::{BTreeMap, BTreeSet};
 mod common;
 use common::{authored_stores, run};
 
+/// The pair of shipped reads this contract judges, named ONCE and run from
+/// here. The backlog walk (`surface/read_agreement_population.rs`) reads this
+/// declaration out of the source, because it ranks 87 pairs by shared subjects
+/// to say which to compare next and could not otherwise tell which of them
+/// already have a contract.
+const DECLARES: [&str; 2] = ["report-edge-candidates", "report-payoff-substantiation"];
+
 /// The `supersedes_in_frame` chain, from the read's own rows: fact -> the fact
 /// it supersedes. One backward pointer per fact, so the walk up is linear.
 fn chained(rows: &[serde_json::Value]) -> BTreeSet<(String, String)> {
@@ -107,10 +114,7 @@ fn every_same_frame_discharge_is_a_step_the_edge_report_can_see() {
                 })
                 .ok_or_else(|| verb.to_string())
         };
-        let (edges, substantiation) = match (
-            read("report-edge-candidates"),
-            read("report-payoff-substantiation"),
-        ) {
+        let (edges, substantiation) = match (read(DECLARES[0]), read(DECLARES[1])) {
             (Ok(e), Ok(s)) => (e, s),
             _ => continue,
         };

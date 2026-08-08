@@ -45,6 +45,13 @@ use mnemosyne_atomic::AtomicStore;
 mod common;
 use common::{authored_stores, declared_tellings, run, SIDECAR};
 
+/// The pair of shipped reads this contract judges, named ONCE and run from
+/// here. The backlog walk (`surface/read_agreement_population.rs`) reads this
+/// declaration out of the source, because it ranks 87 pairs by shared subjects
+/// to say which to compare next and could not otherwise tell which of them
+/// already have a contract.
+const DECLARES: [&str; 2] = ["report-playable-world", "report-playthrough-manuscript"];
+
 #[test]
 fn the_playable_world_embeds_the_manuscript_it_was_asked_for() {
     let (stores, unloadable) = authored_stores();
@@ -89,12 +96,7 @@ fn the_playable_world_embeds_the_manuscript_it_was_asked_for() {
             continue;
         }
         for telling in &tellings {
-            let manuscript = match read(&[
-                "report-playthrough-manuscript",
-                "--telling",
-                telling,
-                "--json",
-            ]) {
+            let manuscript = match read(&[DECLARES[1], "--telling", telling, "--json"]) {
                 Ok(m) => m,
                 Err(why) => {
                     note(
@@ -104,7 +106,7 @@ fn the_playable_world_embeds_the_manuscript_it_was_asked_for() {
                     continue;
                 }
             };
-            let playable = match read(&["report-playable-world", "--telling", telling, "--json"]) {
+            let playable = match read(&[DECLARES[0], "--telling", telling, "--json"]) {
                 Ok(p) => p,
                 Err(why) => {
                     note(
@@ -169,10 +171,7 @@ fn the_playable_world_embeds_the_manuscript_it_was_asked_for() {
                 // the one a runtime actually makes.
                 let filtered =
                     |verb: &str| read(&[verb, "--telling", telling, "--world", road, "--json"]);
-                match (
-                    filtered("report-playthrough-manuscript"),
-                    filtered("report-playable-world"),
-                ) {
+                match (filtered(DECLARES[1]), filtered(DECLARES[0])) {
                     (Ok(manuscript), Ok(playable)) => {
                         filtered_roads += 1;
                         for (whose, report) in [

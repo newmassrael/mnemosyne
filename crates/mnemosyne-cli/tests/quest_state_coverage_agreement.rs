@@ -48,6 +48,13 @@ use mnemosyne_atomic::AtomicStore;
 mod common;
 use common::{authored_stores, declared_tellings, run, SIDECAR};
 
+/// The pair of shipped reads this contract judges, named ONCE and run from
+/// here. The backlog walk (`surface/read_agreement_population.rs`) reads this
+/// declaration out of the source, because it ranks 87 pairs by shared subjects
+/// to say which to compare next and could not otherwise tell which of them
+/// already have a contract.
+const DECLARES: [&str; 2] = ["report-payoff-coverage", "report-quest-graph"];
+
 /// The setups coverage reports as DANGLING in one world — the obligations it
 /// says are outstanding there.
 fn dangling_setups(world: &serde_json::Value) -> BTreeSet<&str> {
@@ -243,7 +250,7 @@ fn a_quest_is_open_exactly_where_its_own_giving_still_dangles() {
             );
             continue;
         }
-        let coverage = match read(&["report-payoff-coverage", "--json"]) {
+        let coverage = match read(&[DECLARES[0], "--json"]) {
             Ok(c) => c,
             Err(why) => {
                 note("payoff coverage refuses", format!("{name}: {why}"));
@@ -251,7 +258,7 @@ fn a_quest_is_open_exactly_where_its_own_giving_still_dangles() {
             }
         };
         for telling in &tellings {
-            let graph = match read(&["report-quest-graph", "--telling", telling, "--json"]) {
+            let graph = match read(&[DECLARES[1], "--telling", telling, "--json"]) {
                 Ok(g) => g,
                 Err(why) => {
                     note(
@@ -383,7 +390,7 @@ fn the_prose_line_says_what_the_road_still_owes() {
             continue;
         };
         for telling in declared_tellings(&atomic) {
-            let argv = ["report-quest-graph", "--telling", telling.as_str()];
+            let argv = [DECLARES[1], "--telling", telling.as_str()];
             let prose = run(ws.path(), &argv);
             let mut json_argv = argv.to_vec();
             json_argv.push("--json");

@@ -95,6 +95,13 @@ use mnemosyne_validate::continuity::{
 mod common;
 use common::{authored_stores, constructed_corpus, declared_tellings, run, SIDECAR};
 
+/// The pair of shipped reads this contract judges, named ONCE and run from
+/// here. The backlog walk (`surface/read_agreement_population.rs`) reads this
+/// declaration out of the source, because it ranks 87 pairs by shared subjects
+/// to say which to compare next and could not otherwise tell which of them
+/// already have a contract.
+const DECLARES: [&str; 2] = ["report-authoring-frontier", "report-playable-world"];
+
 /// The ids in a `[{fact_id: ...}, ...]` list.
 fn fact_ids(list: &serde_json::Value) -> Vec<String> {
     list.as_array()
@@ -219,14 +226,14 @@ fn judge(ws: &Path, name: &str, telling: &str, ev: &mut Evidence) {
             .unwrap_or("(no stderr)")
             .to_string())
     };
-    let frontier = match read(&["report-authoring-frontier", "--telling", telling, "--json"]) {
+    let frontier = match read(&[DECLARES[0], "--telling", telling, "--json"]) {
         Ok(f) => f,
         Err(why) => {
             ev.note("the frontier refuses", format!("{name} [{telling}]: {why}"));
             return;
         }
     };
-    let playable = match read(&["report-playable-world", "--telling", telling, "--json"]) {
+    let playable = match read(&[DECLARES[1], "--telling", telling, "--json"]) {
         Ok(p) => p,
         Err(why) => {
             ev.note(
@@ -345,14 +352,7 @@ fn judge(ws: &Path, name: &str, telling: &str, ev: &mut Evidence) {
             manuscripts.insert(road, world.clone());
             continue;
         }
-        match read(&[
-            "report-playable-world",
-            "--telling",
-            telling,
-            "--world",
-            road,
-            "--json",
-        ]) {
+        match read(&[DECLARES[1], "--telling", telling, "--world", road, "--json"]) {
             Ok(filtered) => {
                 ev.filtered_roads += 1;
                 if filtered["world"].as_str() != Some(road) {
@@ -1172,12 +1172,12 @@ fn the_frontier_census_names_the_facts_it_counts() {
         serde_json::from_slice(&out.stdout).unwrap_or_else(|e| panic!("{verb} is not json: {e}"))
     };
     let frontier = (
-        ask(before.path(), "report-authoring-frontier"),
-        ask(after.path(), "report-authoring-frontier"),
+        ask(before.path(), DECLARES[0]),
+        ask(after.path(), DECLARES[0]),
     );
     let playable = (
-        ask(before.path(), "report-playable-world"),
-        ask(after.path(), "report-playable-world"),
+        ask(before.path(), DECLARES[1]),
+        ask(after.path(), DECLARES[1]),
     );
 
     let empty: Vec<serde_json::Value> = Vec::new();

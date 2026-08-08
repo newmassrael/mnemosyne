@@ -124,6 +124,32 @@ struct Run {
     log: PathBuf,
 }
 
+/// Whether one expected name is among the tests that went red.
+///
+/// A harness prints a test by the path its target reaches it through —
+/// `read_agreement_population::the_walk` for a `#[test]` inside a module — and
+/// the person writing a plan writes down the name they gave the function. Held
+/// against each other as plain strings, a sweep in which every injection landed
+/// exactly where it was aimed comes back "aimed at X and did not reach it" for
+/// all of it. That happened, on six injections and forty minutes of suite runs,
+/// and the message it prints is the strongest one this tool has: a misaimed
+/// injection. A refusal a gate makes for a reason outside its own law is the
+/// same defect as a gate that does not fire.
+///
+/// So a name matches its own suffix at a MODULE BOUNDARY, and nowhere else:
+/// `a::b::name` answers to `name` and to `b::name`, and `other_name` does not
+/// answer to `name`. Not a substring test — that would let `judges` match
+/// `the_walk_judges_nothing` and quietly credit an injection with a red it did
+/// not cause.
+fn reached(fired: &BTreeSet<String>, expected: &str) -> bool {
+    fired.iter().any(|red| {
+        red == expected
+            || red
+                .strip_suffix(expected)
+                .is_some_and(|prefix| prefix.ends_with("::"))
+    })
+}
+
 /// The two halves of a run's verdict — the status the suite exited with, and the
 /// names its log listed — must tell the same story.
 ///
@@ -429,7 +455,7 @@ fn run() -> Result<(), String> {
         let missed: BTreeSet<String> = injection
             .expect_red
             .iter()
-            .filter(|name| !fired.contains(*name))
+            .filter(|name| !reached(&fired, name))
             .cloned()
             .collect();
         let drift = run.targets as i64 - control.targets as i64;
@@ -728,6 +754,43 @@ fn summarize(text: &str) -> Run {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_test_answers_to_its_own_name_and_not_to_a_name_it_merely_contains() {
+        // THE REFUSAL THIS TOOL MADE FOR A REASON OUTSIDE ITS OWN LAW. A plan
+        // names the `#[test]` function; a harness prints the path its target
+        // reaches it through. Compared as plain strings, six injections that
+        // each landed exactly where they were aimed came back as six misaimed
+        // injections — the loudest verdict this tool has, spent on nothing.
+        let fired = BTreeSet::from([
+            "read_agreement_population::the_walk".to_string(),
+            "plain".to_string(),
+        ]);
+        assert!(
+            reached(&fired, "the_walk"),
+            "the name a plan is written with is the name the function has"
+        );
+        assert!(
+            reached(&fired, "read_agreement_population::the_walk"),
+            "and the path the harness prints is still itself"
+        );
+        assert!(reached(&fired, "plain"), "an unqualified red is unchanged");
+
+        // AND THE OTHER DIRECTION, which is why this is a suffix at a module
+        // boundary rather than a substring: crediting an injection with a red
+        // it did not cause is how a sweep says a contract is alive when the
+        // thing that went red was its neighbour.
+        assert!(
+            !reached(&fired, "walk"),
+            "`the_walk` is not the test called `walk` — a substring match would \
+             credit this injection with somebody else's failure"
+        );
+        assert!(
+            !reached(&fired, "population::the_walk"),
+            "half a module segment is not a module path"
+        );
+        assert!(!reached(&fired, "the_walk_that_is_not_this_one"));
+    }
 
     #[test]
     fn a_log_is_read_for_its_totals_and_its_names() {

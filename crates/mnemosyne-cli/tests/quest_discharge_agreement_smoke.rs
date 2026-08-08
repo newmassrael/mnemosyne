@@ -32,6 +32,13 @@ use std::collections::{BTreeMap, BTreeSet};
 /// The telling the corpus declares — the graph read needs one.
 const TELLING: &str = "delve";
 
+/// The pair of shipped reads this contract judges, named ONCE and run from
+/// here. The backlog walk (`surface/read_agreement_population.rs`) reads this
+/// declaration out of the source, because it ranks 87 pairs by shared subjects
+/// to say which to compare next and could not otherwise tell which of them
+/// already have a contract.
+const DECLARES: [&str; 2] = ["report-quest-graph", "validate-continuity"];
+
 #[test]
 fn the_gate_and_the_runtime_projection_agree_on_which_roads_finish_a_quest() {
     let ws = dnd_quest_workspace_from(&dnd_quest_facts());
@@ -39,7 +46,7 @@ fn the_gate_and_the_runtime_projection_agree_on_which_roads_finish_a_quest() {
     // What the GATE says: a prerequisite judgement carries `quest_at` exactly
     // when this road discharges the subject quest (`satisfied` / `late`);
     // `inapplicable` is the walk's word for "this road never discharges it".
-    let gate = json_report(ws.path(), &["validate-continuity"]);
+    let gate = json_report(ws.path(), &[DECLARES[1]]);
     let mut discharged: BTreeMap<(String, String), Option<String>> = BTreeMap::new();
     for row in gate["quest_prerequisite_judgements"]
         .as_array()
@@ -66,7 +73,7 @@ fn the_gate_and_the_runtime_projection_agree_on_which_roads_finish_a_quest() {
     );
 
     // What the RUNTIME PROJECTION says: the quest's derived state per road.
-    let graph = json_report(ws.path(), &["report-quest-graph", "--telling", TELLING]);
+    let graph = json_report(ws.path(), &[DECLARES[0], "--telling", TELLING]);
     let mut state: BTreeMap<(String, String), String> = BTreeMap::new();
     for node in graph["quests"].as_array().expect("quests array") {
         let quest = node["quest_id"].as_str().expect("quest id").to_string();

@@ -55,6 +55,9 @@ ci-plan = { path = "../../tools/ci-plan" }
 # resolver the changelog projection keys on), so the tests borrow it rather
 # than re-deciding what a pin looks like.
 mnemosyne-atomic = { path = "../mnemosyne-atomic" }
+# The backlog walk asks each contract in `tests/` which pair of reads it judges,
+# by reading the `const DECLARES` out of its source. See the workspace entry.
+syn = { workspace = true }
 
 [lints]
 workspace = true

@@ -36,6 +36,13 @@ use std::collections::BTreeSet;
 mod common;
 use common::{authored_stores, run};
 
+/// The pair of shipped reads this contract judges, named ONCE and run from
+/// here. The backlog walk (`surface/read_agreement_population.rs`) reads this
+/// declaration out of the source, because it ranks 87 pairs by shared subjects
+/// to say which to compare next and could not otherwise tell which of them
+/// already have a contract.
+const DECLARES: [&str; 2] = ["report-authoring-frontier", "report-payoff-coverage"];
+
 /// A read's `[id, ...]` list of setup ids.
 fn ids(list: &serde_json::Value, whose: &str) -> Vec<String> {
     list.as_array()
@@ -76,10 +83,7 @@ fn the_frontier_carries_exactly_the_roads_coverage_says_still_dangle() {
                 })
                 .ok_or_else(|| verb.to_string())
         };
-        let (frontier, coverage) = match (
-            read("report-authoring-frontier"),
-            read("report-payoff-coverage"),
-        ) {
+        let (frontier, coverage) = match (read(DECLARES[0]), read(DECLARES[1])) {
             (Ok(f), Ok(c)) => (f, c),
             (f, c) => {
                 let refused: Vec<String> = [f, c].into_iter().filter_map(Result::err).collect();

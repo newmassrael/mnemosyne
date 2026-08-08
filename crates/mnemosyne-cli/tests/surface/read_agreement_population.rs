@@ -94,17 +94,225 @@ fn panel_records(
     out
 }
 
+/// Which pair one contract declares it judges, or the reason this walk could
+/// not tell.
+///
+/// A real parser rather than a search for the verb's name: every one of these
+/// files NAMES other reads in its header prose — the arc's history is written
+/// there — so a text match would report a pair as judged because a comment
+/// mentioned it. `syn` sees the `const DECLARES` item and nothing a comment
+/// says. The pair comes back in the order the backlog sorts, so a contract may
+/// name its two reads whichever way round reads best.
+fn declared_in(source: &str) -> Result<Option<(String, String)>, String> {
+    let file = syn::parse_file(source).map_err(|e| e.to_string())?;
+    for item in &file.items {
+        let syn::Item::Const(declaration) = item else {
+            continue;
+        };
+        if declaration.ident != "DECLARES" {
+            continue;
+        }
+        let syn::Expr::Array(array) = &*declaration.expr else {
+            return Err("DECLARES is not an array of two read verbs".to_string());
+        };
+        let verbs: Vec<String> = array
+            .elems
+            .iter()
+            .map(|element| match element {
+                syn::Expr::Lit(syn::ExprLit {
+                    lit: syn::Lit::Str(verb),
+                    ..
+                }) => Ok(verb.value()),
+                other => Err(format!("{other:?} is not a read verb spelled out")),
+            })
+            .collect::<Result<_, _>>()?;
+        let [a, b] = verbs.as_slice() else {
+            return Err(format!("DECLARES names {} verb(s), not two", verbs.len()));
+        };
+        return Ok(Some(if a <= b {
+            (a.clone(), b.clone())
+        } else {
+            (b.clone(), a.clone())
+        }));
+    }
+    Ok(None)
+}
+
+/// Every pair some contract in this crate's test suite declares it judges, and
+/// the files a declaration was expected from and not found in.
+///
+/// THE DECLARATION LIVES IN THE CONTRACT. A list of judged pairs kept beside
+/// this walk would be a second thing to update, and this whole round exists
+/// because the FIRST one went stale: the top two rows of [`BACKLOG`] were
+/// declared in Rounds 1048 and 1052 and nothing here knew, so "the pair to
+/// compare next" named work already shipped. A contract states its pair in one
+/// `const DECLARES` that the contract itself runs on, and this reads that
+/// statement out of the source — one place to write it, and it cannot say a
+/// pair the test does not ask.
+///
+/// The second return is the safety net in the direction that matters: a file
+/// this repository named `*agreement*` and that declares nothing is a contract
+/// this walk cannot see, which is how the list would go stale again.
+///
+/// The directory is an argument because every contract in this tree DOES
+/// declare, so pointed at the real one the net's finding arm never runs and no
+/// test could reach it — a calculation with nothing aimed at it, which is the
+/// defect Round 1086 closed one crate over and this is the same repair. The
+/// caller passes `tests/`; the tests below pass trees built to make each arm
+/// fire.
+fn declared_pairs(
+    tests: &std::path::Path,
+) -> (BTreeSet<(String, String)>, Vec<String>, Vec<String>) {
+    let mut declared = BTreeSet::new();
+    let mut silent = Vec::new();
+    let mut unreadable = Vec::new();
+    let mut entries: Vec<std::path::PathBuf> = std::fs::read_dir(tests)
+        .unwrap_or_else(|e| panic!("{} is readable: {e}", tests.display()))
+        .filter_map(|entry| entry.ok().map(|entry| entry.path()))
+        .filter(|path| path.extension().is_some_and(|kind| kind == "rs"))
+        .collect();
+    entries.sort();
+    for path in entries {
+        let name = path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .unwrap_or_default()
+            .to_string();
+        let source = match std::fs::read_to_string(&path) {
+            Ok(source) => source,
+            Err(e) => {
+                unreadable.push(format!("{name}: {e}"));
+                continue;
+            }
+        };
+        match declared_in(&source) {
+            Ok(Some(pair)) => {
+                declared.insert(pair);
+            }
+            Ok(None) => {
+                if name.contains("agreement") {
+                    silent.push(name);
+                }
+            }
+            Err(why) => unreadable.push(format!("{name}: {why}")),
+        }
+    }
+    (declared, silent, unreadable)
+}
+
+#[test]
+fn a_read_a_contract_only_mentions_is_not_a_read_it_judges() {
+    // THE CONTROL FOR THE INSTRUMENT, and the reason it is a parser. Every
+    // contract in this suite names other reads in its header — the arc's own
+    // history is written there — so a search for the verb's text answers
+    // "judged" off a comment. The declaration is an ITEM; a comment is not.
+    let source = "//! Round 1052 declared `report-playable-world <-> \
+                  report-authoring-frontier`, and this one is about something \
+                  else. See `validate-continuity`.\n\
+                  const DECLARES: [&str; 2] = [\"report-quest-graph\", \
+                  \"report-payoff-coverage\"];\n\
+                  fn main() {}\n";
+    assert_eq!(
+        declared_in(source).expect("the source parses"),
+        Some((
+            "report-payoff-coverage".to_string(),
+            "report-quest-graph".to_string(),
+        )),
+        "the pair is the one the const states — sorted the way the backlog \
+         sorts, so a contract may name its two reads whichever way round reads \
+         best — and never one a comment mentions"
+    );
+}
+
+#[test]
+fn a_file_declaring_nothing_and_a_file_this_walk_cannot_read_are_different_answers() {
+    // An empty answer and an unreadable one look identical downstream: both
+    // leave the pair unmarked, and an unmarked pair sends the next round to do
+    // work that is already shipped. So a declaration this walk cannot make
+    // sense of is an ERROR that the surrounding checks report, not a silent
+    // None.
+    assert_eq!(
+        declared_in("fn main() {}\n").expect("the source parses"),
+        None,
+        "a test file that is not a contract declares no pair, and that is not a \
+         failure"
+    );
+    assert!(
+        declared_in("fn ( this is not rust\n").is_err(),
+        "a file that does not parse holds an UNKNOWN declaration; answering \
+         None would report its pair as nobody's"
+    );
+    assert!(
+        declared_in("const DECLARES: [&str; 2] = [FIRST, \"report-entity\"];\nfn main() {}\n")
+            .is_err(),
+        "a declaration that names something other than the verb itself is one \
+         this walk cannot resolve, and resolving it half way is worse than \
+         saying so"
+    );
+    assert!(
+        declared_in("const DECLARES: [&str; 1] = [\"report-entity\"];\nfn main() {}\n").is_err(),
+        "an agreement is between TWO reads"
+    );
+}
+
+#[test]
+fn a_contract_that_declares_nothing_is_named_and_one_that_declares_is_not() {
+    // THE NET'S FINDING ARM, which the real tree cannot reach: every contract
+    // in it declares, so pointed there this arm never runs and the walk would
+    // ship a rule nothing has ever seen fire. The tree is built to make it
+    // fire, and the control is the SAME tree with the declaration added.
+    let at = tempfile::tempdir().expect("a scratch directory");
+    let contract = at.path().join("newest_agreement.rs");
+    let declaration = "const DECLARES: [&str; 2] = [\"report-entity\", \"report-frame-view\"];\n";
+    std::fs::write(&contract, "fn main() {}\n").expect("write the contract");
+    std::fs::write(at.path().join("something_else.rs"), "fn main() {}\n").expect("write a test");
+
+    let (declared, silent, unreadable) = declared_pairs(at.path());
+    assert_eq!(
+        silent,
+        vec!["newest_agreement.rs".to_string()],
+        "a file this repository named a contract and that states no pair is a \
+         contract this walk cannot see — and an unseen contract is how the \
+         DECLARED marks go stale again, silently"
+    );
+    assert!(declared.is_empty() && unreadable.is_empty(), "{declared:?}");
+
+    // THE CONTROL: the same file, declaring. If the net fired on the name
+    // alone, this would still be listed.
+    std::fs::write(&contract, format!("{declaration}fn main() {{}}\n")).expect("declare");
+    let (declared, silent, unreadable) = declared_pairs(at.path());
+    assert!(
+        silent.is_empty() && unreadable.is_empty(),
+        "the net is about the DECLARATION, not the file name: {silent:?}"
+    );
+    assert_eq!(
+        declared,
+        [("report-entity".to_string(), "report-frame-view".to_string())]
+            .into_iter()
+            .collect::<BTreeSet<_>>(),
+        "and the pair it states is the one that comes back"
+    );
+}
+
 /// The pairs of shipped reads that both ANSWER ABOUT a subject — both of their
 /// records for it move under some authorable edit. Most-shared first; this is
 /// the backlog, and R1037's hand-picked pair sits inside it.
+///
+/// `DECLARED` marks a pair some contract in this crate's test suite already
+/// judges, read out of that contract's own source by [`declared_pairs`] rather
+/// than kept in a list beside it. Without the mark this list said which pair to
+/// compare next and could not see which were done: its top two rows had
+/// contracts from Rounds 1052 and 1048, and every reader — including the memory
+/// a session starts from — was told the top row was the next job for six
+/// sessions after it stopped being one.
 const BACKLOG: [&str; 87] = [
-    "200 report-authoring-frontier <-> report-playable-world",
-    "179 report-playable-world <-> report-playthrough-manuscript",
+    "200 DECLARED report-authoring-frontier <-> report-playable-world",
+    "179 DECLARED report-playable-world <-> report-playthrough-manuscript",
     "158 report-authoring-frontier <-> report-playthrough-manuscript",
     "135 report-frame-view <-> report-playable-world",
     "135 report-frame-view <-> report-playthrough-manuscript",
     "114 report-authoring-frontier <-> report-frame-view",
-    "98 report-authoring-frontier <-> report-payoff-coverage",
+    "98 DECLARED report-authoring-frontier <-> report-payoff-coverage",
     "98 report-payoff-coverage <-> report-playable-world",
     "92 report-payoff-coverage <-> report-playthrough-manuscript",
     "83 report-frame-view <-> report-payoff-coverage",
@@ -114,7 +322,7 @@ const BACKLOG: [&str; 87] = [
     "62 report-authoring-frontier <-> validate-continuity",
     "62 report-playable-world <-> validate-continuity",
     "62 report-playthrough-manuscript <-> validate-continuity",
-    "62 report-quest-graph <-> validate-continuity",
+    "62 DECLARED report-quest-graph <-> validate-continuity",
     "59 report-entity <-> report-playable-world",
     "59 report-entity <-> report-playthrough-manuscript",
     "58 report-edge-candidates <-> report-playable-world",
@@ -141,14 +349,14 @@ const BACKLOG: [&str; 87] = [
     "31 report-edge-candidates <-> report-payoff-coverage",
     "30 report-authoring-frontier <-> report-payoff-substantiation",
     "30 report-frame-view <-> validate-continuity",
-    "30 report-payoff-coverage <-> report-payoff-substantiation",
+    "30 DECLARED report-payoff-coverage <-> report-payoff-substantiation",
     "30 report-payoff-substantiation <-> report-playable-world",
     "26 report-coverage <-> report-frame-view",
     "26 report-frame-view <-> report-spec-map",
     "24 report-entity <-> report-payoff-coverage",
     "24 report-payoff-substantiation <-> report-playthrough-manuscript",
     "22 report-entity <-> validate-continuity",
-    "20 report-edge-candidates <-> report-payoff-substantiation",
+    "20 DECLARED report-edge-candidates <-> report-payoff-substantiation",
     "20 report-edge-candidates <-> validate-continuity",
     "17 report-frame-view <-> report-payoff-substantiation",
     "16 report-coverage <-> report-entity",
@@ -159,7 +367,7 @@ const BACKLOG: [&str; 87] = [
     "14 report-edge-candidates <-> report-typing-candidates",
     "14 report-entity <-> report-payoff-substantiation",
     "14 report-entity <-> report-typing-candidates",
-    "14 report-payoff-coverage <-> report-quest-graph",
+    "14 DECLARED report-payoff-coverage <-> report-quest-graph",
     "14 report-playable-world <-> report-typing-candidates",
     "14 report-playable-world <-> validate-render-fidelity",
     "14 report-playthrough-manuscript <-> report-typing-candidates",
@@ -398,9 +606,41 @@ fn the_population_of_subjects_more_than_one_shipped_read_answers_about() {
         unanswered.len(),
         unanswered.join(" "),
     );
+    // WHICH OF THEM ARE ALREADY JUDGED, asked of the contracts rather than
+    // remembered. Every row this marks is a pair some test in this crate runs
+    // both halves of and asserts about; the rest are the backlog proper.
+    let (declared, undeclared_contracts, unreadable) =
+        declared_pairs(&std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests"));
+    let judged = |a: &str, b: &str| declared.contains(&(a.to_string(), b.to_string()));
+    let row = |a: &str, b: &str, n: usize| match judged(a, b) {
+        true => format!("{n} DECLARED {a} <-> {b}"),
+        false => format!("{n} {a} <-> {b}"),
+    };
     println!("\nread pairs by shared subjects — the backlog, most-shared first:");
     for ((a, b), n) in &ranked {
-        println!("  {n:4}  {a} <-> {b}");
+        println!("  {n:4}  {}", row(a, b, *n));
+    }
+    println!(
+        "\n{} of {} pairs are judged by a contract in this suite",
+        declared.len(),
+        ranked.len(),
+    );
+    // THE LINE THIS WALK EXISTS TO PRODUCE. Printed rather than left to be
+    // derived by whoever reads the list next, which is what went wrong: the
+    // first two rows had contracts and the reader could not tell.
+    let next = ranked
+        .iter()
+        .find(|((a, b), _)| !judged(a, b))
+        .map(|((a, b), n)| format!("{n} {a} <-> {b}"));
+    println!(
+        "NEXT — the highest-ranked pair no contract judges: {}",
+        next.clone().unwrap_or_else(|| "none left".to_string()),
+    );
+    for name in &undeclared_contracts {
+        println!("  UNDECLARED CONTRACT {name}");
+    }
+    for why in &unreadable {
+        println!("  UNREADABLE {why}");
     }
 
     // EVERY CHECK RUNS AND THE FAILURES COME OUT AS A LIST. Stopping at the
@@ -508,11 +748,43 @@ fn the_population_of_subjects_more_than_one_shipped_read_answers_about() {
     check(
         ranked
             .iter()
-            .map(|((a, b), n)| format!("{n} {a} <-> {b}"))
+            .map(|((a, b), n)| row(a, b, *n))
             .collect::<Vec<_>>()
             == BACKLOG,
         "BACKLOG: every read pair that answers about a subject in common, \
-         most-shared first",
+         most-shared first, each marked DECLARED when a contract in this suite \
+         judges it",
+    );
+    check(
+        unreadable.is_empty(),
+        "CONTRACTS READ: a test file this walk could not parse is a contract it \
+         cannot see, and a contract it cannot see reads here as a pair nobody \
+         judges — the next round would then do work that is already shipped",
+    );
+    check(
+        undeclared_contracts.is_empty(),
+        "CONTRACTS DECLARE: every file this repository named `*agreement*` \
+         states its pair in a `const DECLARES` the test itself runs on. This is \
+         the net in the direction that matters: a new contract whose pair this \
+         walk cannot see is exactly how the mark above goes stale, and it goes \
+         stale silently",
+    );
+    check(
+        declared
+            .iter()
+            .all(|(a, b)| ranked.iter().any(|(pair, _)| *pair == (&**a, &**b))),
+        "CONTRACTS ARE IN THE POPULATION: a pair some contract judges answers \
+         about at least one subject in common. A declaration outside this \
+         ranking is a contract over two reads that no longer share anything — \
+         either the contract is stale or this walk lost the pair, and both are \
+         findings",
+    );
+    check(
+        next.as_deref() == Some("158 report-authoring-frontier <-> report-playthrough-manuscript"),
+        "NEXT: the highest-ranked pair no contract judges. It moves when a \
+         round declares one, which is what makes it a pin rather than a note — \
+         and until this round it was taken from a session's memory, where it \
+         named the top row for six sessions after Round 1052 declared it",
     );
 
     assert_eq!(
