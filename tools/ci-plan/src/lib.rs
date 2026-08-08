@@ -8,6 +8,10 @@
 //!   is compiled by somebody.
 //! - `tools/unrun-tests` checks that every test this repository compiles is one
 //!   some CI command runs.
+//! - `tools/cache-budget` checks that every cache this repository's CI declares
+//!   is one it gets to keep. That is a second question about the same files —
+//!   what CI asks to KEEP rather than what it RUNS — and it is answered here for
+//!   the reason the others are: a second reader is a second answer.
 //!
 //! A second loader is a second answer, free to drift from the first — the shape
 //! R777, R783, R1080 and R1082 each closed one level at a time, where a list
@@ -66,10 +70,22 @@ pub fn workflow_files(root: &Path) -> Vec<String> {
 /// stretch of CI to exactly that.
 pub fn load_workflow(root: &Path, path: &str) -> Yaml {
     let raw = std::fs::read_to_string(root.join(path)).expect("read workflow");
-    let docs = YamlLoader::load_from_str(&raw).unwrap_or_else(|e| {
-        panic!("{path} is not parseable YAML — GitHub would silently not run it: {e}")
+    parse_workflow(&raw, path)
+}
+
+/// The same parse, over text rather than a file — so a test can pin a reading
+/// rule against a workflow shape this repository does not happen to contain
+/// (`reading.rs` explains why those are the branches that matter) without
+/// needing its own copy of a YAML library, which would be a second parser.
+pub fn parse_workflow(raw: &str, source: &str) -> Yaml {
+    let docs = YamlLoader::load_from_str(raw).unwrap_or_else(|e| {
+        panic!("{source} is not parseable YAML — GitHub would silently not run it: {e}")
     });
-    assert_eq!(docs.len(), 1, "{path}: expected exactly one YAML document");
+    assert_eq!(
+        docs.len(),
+        1,
+        "{source}: expected exactly one YAML document"
+    );
     docs.into_iter().next().expect("one document")
 }
 
@@ -91,6 +107,155 @@ pub fn run_steps(doc: &Yaml) -> Vec<(String, String)> {
         }
     }
     steps
+}
+
+// --- caches -----------------------------------------------------------------
+
+/// One `actions/cache` step, as a workflow declares it.
+///
+/// The KEY IS KEPT TWICE on purpose. `key` is what the workflow says and what a
+/// person greps for. `prefix` is what a restore actually matches on: every key in
+/// this repository ends in a `hashFiles` of the lockfiles, so a dependency bump
+/// changes all of them at once, and a reader joining on the whole key would call
+/// every cache in the repository missing the day after one. `restore-keys` is the
+/// workflows' own statement that the prefix is the identity.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CacheDeclaration {
+    /// The workflow file it is written in.
+    pub source: String,
+    /// The id of the job that runs it — the same spelling `needs:` uses.
+    pub owner: String,
+    /// The `key:` exactly as written, expressions and all.
+    pub key: String,
+    /// The key with `${{ runner.os }}` resolved from the job's own `runs-on`,
+    /// truncated at the first expression that cannot be resolved without running
+    /// the job — `Linux-cargo-unrun-`.
+    pub prefix: String,
+    /// The `path:` entries, in the order written. What a cache HOLDS is what it
+    /// costs, so this is what lets one cache's size be reasoned about from
+    /// another's.
+    pub paths: Vec<String>,
+}
+
+/// What GitHub sets `runner.os` to for a `runs-on` label.
+///
+/// A REFUSAL RATHER THAN A GUESS for a label this does not know. The prefix is
+/// the identity every later join is made on, so a wrong one reports every cache
+/// in the repository as absent — the loudest possible wrong answer, wearing the
+/// shape of a finding.
+fn runner_os(runs_on: &str) -> String {
+    let label = runs_on.trim();
+    match label.split('-').next().unwrap_or(label) {
+        "ubuntu" => "Linux".to_string(),
+        "windows" => "Windows".to_string(),
+        "macos" => "macOS".to_string(),
+        _ => panic!(
+            "`runs-on: {label}` is a runner this reader has no `runner.os` for — \
+             the cache key prefix is what every later comparison joins on, so \
+             guessing it would report every cache in the repository as missing"
+        ),
+    }
+}
+
+/// The literal head of a key: everything before the first `${{ … }}` that is not
+/// `runner.os`.
+fn key_prefix(key: &str, os: &str) -> String {
+    let resolved = key.replace("${{ runner.os }}", os);
+    match resolved.find("${{") {
+        Some(at) => resolved[..at].to_string(),
+        None => resolved,
+    }
+}
+
+/// Every `actions/cache` step in every job of one workflow.
+///
+/// `actions/cache/restore` counts too: a job that only restores still declares a
+/// dependence on that key surviving, which is the very thing being judged.
+/// `actions/cache/save` does not appear in this repository and would be read the
+/// same way if it did.
+pub fn cache_steps(doc: &Yaml, source: &str) -> Vec<CacheDeclaration> {
+    let mut out = Vec::new();
+    let Some(jobs) = doc["jobs"].as_hash() else {
+        return out;
+    };
+    for (name, job) in jobs {
+        let owner = name.as_str().unwrap_or("<unnamed>").to_string();
+        let Some(steps) = job["steps"].as_vec() else {
+            continue;
+        };
+        let mut os = None;
+        for step in steps {
+            let Some(uses) = step["uses"].as_str() else {
+                continue;
+            };
+            let action = uses.split('@').next().unwrap_or(uses);
+            if action != "actions/cache" && action != "actions/cache/restore" {
+                continue;
+            }
+            // Resolved LAZILY, so a job with no cache step is never asked for a
+            // `runs-on` this reader would have to refuse.
+            let os = os.get_or_insert_with(|| {
+                runner_os(job["runs-on"].as_str().unwrap_or_else(|| {
+                    panic!("{source}: job `{owner}` caches but declares no `runs-on`")
+                }))
+            });
+            let Some(key) = step["with"]["key"].as_str() else {
+                panic!("{source}: job `{owner}` caches with no key at all");
+            };
+            let paths: Vec<String> = step["with"]["path"]
+                .as_str()
+                .unwrap_or_else(|| panic!("{source}: job `{owner}` caches no path"))
+                .lines()
+                .map(str::trim)
+                .filter(|line| !line.is_empty())
+                .map(str::to_string)
+                .collect();
+            out.push(CacheDeclaration {
+                source: source.to_string(),
+                owner: owner.clone(),
+                key: key.to_string(),
+                prefix: key_prefix(key, os),
+                paths,
+            });
+        }
+    }
+    out
+}
+
+/// Every cache declared by every tracked workflow.
+pub fn workflow_cache_declarations(root: &Path) -> Vec<CacheDeclaration> {
+    let mut out = Vec::new();
+    for path in workflow_files(root) {
+        let doc = load_workflow(root, &path);
+        out.extend(cache_steps(&doc, &path));
+    }
+    out
+}
+
+/// What each job of one workflow waits for, by job id.
+///
+/// `needs:` is written either as one job id or as a list of them, and both
+/// spellings are one thing — a reader that knew only the list form would answer
+/// "waits for nothing" for the single form, which is the same class of defect as
+/// R1082's `--flag=value`.
+pub fn job_needs(doc: &Yaml) -> BTreeMap<String, Vec<String>> {
+    let mut out = BTreeMap::new();
+    let Some(jobs) = doc["jobs"].as_hash() else {
+        return out;
+    };
+    for (name, job) in jobs {
+        let id = name.as_str().unwrap_or("<unnamed>").to_string();
+        let needs = match &job["needs"] {
+            Yaml::String(one) => vec![one.clone()],
+            Yaml::Array(many) => many
+                .iter()
+                .filter_map(|item| item.as_str().map(str::to_string))
+                .collect(),
+            _ => Vec::new(),
+        };
+        out.insert(id, needs);
+    }
+    out
 }
 
 // --- cargo commands ---------------------------------------------------------

@@ -1,0 +1,83 @@
+{
+  "_": [
+    "THE SWEEP THAT SAYS THE CACHE-READING RULES ARE NOT VACUOUS — run it from",
+    "the repository root:",
+    "    cargo run -q --manifest-path tools/injection-harness/Cargo.toml -- \\",
+    "        tools/ci-plan/injection-sweep.json",
+    "",
+    "`reading.rs` pins these rules against TEXT rather than against the tree,",
+    "because the branches that matter are the ones this machine never takes. A",
+    "test over pinned text passes because the text is wrong as easily as because",
+    "the reader is right, so each injection below removes one reading rule and",
+    "names the test that must go red for it.",
+    "",
+    "Scoped to this crate, not the workspace: these edits cannot reach a test",
+    "outside it, and the root suite is five minutes of proving nothing."
+  ],
+  "repo": ".",
+  "test_command": ["cargo", "test", "-p", "ci-plan", "--no-fail-fast"],
+  "logs": "target/injection-logs",
+  "min_free_mb": 8000,
+  "injections": [
+    {
+      "name": "an-unknown-runner-is-guessed-at",
+      "why": "the key prefix is the identity every later comparison joins on, so a wrong `runner.os` reports every cache in the repository as missing — the loudest possible wrong answer, wearing the shape of a finding",
+      "edits": [
+        {
+          "file": "tools/ci-plan/src/lib.rs",
+          "from": "    match label.split('-').next().unwrap_or(label) {",
+          "to": "    match \"ubuntu\" {"
+        }
+      ],
+      "expect_red": ["a_runner_this_reader_cannot_name_refuses_instead_of_guessing"]
+    },
+    {
+      "name": "a-runner-is-resolved-for-every-job-not-every-caching-job",
+      "why": "one exotic uncached job would then make the whole workflow unreadable and the gate would report zero declarations — which reads as a tidy repository rather than as a reader that stopped",
+      "edits": [
+        {
+          "file": "tools/ci-plan/src/lib.rs",
+          "from": "        let mut os = None;",
+          "to": "        let mut os = Some(runner_os(job[\"runs-on\"].as_str().unwrap_or(\"?\")));"
+        }
+      ],
+      "expect_red": ["a_job_with_no_cache_is_never_asked_for_a_runner_this_reader_must_refuse"]
+    },
+    {
+      "name": "the-whole-key-is-the-identity",
+      "why": "every key here ends in a `hashFiles` of the lockfiles, so a reader joining on the whole key calls every cache in the repository missing the day after a dependency bump",
+      "edits": [
+        {
+          "file": "tools/ci-plan/src/lib.rs",
+          "from": "    match resolved.find(\"${{\") {",
+          "to": "    match None::<usize> {"
+        }
+      ],
+      "expect_red": ["a_cache_key_is_read_down_to_the_prefix_a_restore_matches_on"]
+    },
+    {
+      "name": "only-a-saving-step-declares-a-cache",
+      "why": "a job that only restores still depends on that key surviving, which is the whole subject; reading `actions/cache` alone counts it as asking for nothing",
+      "edits": [
+        {
+          "file": "tools/ci-plan/src/lib.rs",
+          "from": "            if action != \"actions/cache\" && action != \"actions/cache/restore\" {",
+          "to": "            if action != \"actions/cache\" {"
+        }
+      ],
+      "expect_red": ["a_restore_only_step_is_still_a_declaration"]
+    },
+    {
+      "name": "needs-is-only-ever-a-list",
+      "why": "GitHub allows a single job id as well as a list, and a reader knowing only the list form answers \"waits for nothing\" for the single form — the same class of defect as reading `--flag value` but not `--flag=value`",
+      "edits": [
+        {
+          "file": "tools/ci-plan/src/lib.rs",
+          "from": "            Yaml::String(one) => vec![one.clone()],",
+          "to": "            Yaml::String(_) => Vec::new(),"
+        }
+      ],
+      "expect_red": ["what_a_job_waits_for_is_read_in_both_spellings_github_allows"]
+    }
+  ]
+}

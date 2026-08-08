@@ -1,0 +1,129 @@
+{
+  "_": [
+    "THE SWEEP THAT SAYS ROUND 1090's GATE IS NOT VACUOUS — run it from the",
+    "repository root:",
+    "    cargo run -q --manifest-path tools/injection-harness/Cargo.toml -- \\",
+    "        tools/cache-budget/injection-sweep.json",
+    "",
+    "The gate's own first run is the other half of the proof and it is already",
+    "recorded: pointed at this repository's live cache storage it answered 24.78",
+    "GB against a 10.00 GB budget and exited 1, and pointed at the tree BEFORE",
+    "this round's repair its two real-tree tests failed at 63.07 GB. What that",
+    "cannot show is whether `tests/law.rs` would notice if a mechanism stopped",
+    "working — a test over an injected population passes because the population",
+    "is wrong as easily as because the code is right. Each injection below",
+    "removes one mechanism and names the test that must go red for it.",
+    "",
+    "Scoped to this crate's own suite: nothing here touches the tree it judges,",
+    "so running the repository's whole suite would be five minutes of proving",
+    "nothing."
+  ],
+  "repo": ".",
+  "test_command": [
+    "cargo",
+    "test",
+    "--manifest-path",
+    "tools/cache-budget/Cargo.toml",
+    "--no-fail-fast"
+  ],
+  "logs": "target/injection-logs",
+  "min_free_mb": 8000,
+  "injections": [
+    {
+      "name": "an-absent-cache-is-priced-from-anything-at-all",
+      "why": "every key in this repository holds `~/.cargo/registry`, so pricing an absent cache from any cache it merely OVERLAPS prices a 0.10 GB registry cache as a 3 GB build tree and invents demand that is not there — a gate turning red at a repository doing nothing wrong",
+      "edits": [
+        {
+          "file": "tools/cache-budget/src/lib.rs",
+          "from": "            .filter(|(paths, _)| paths.is_subset(&row.paths))",
+          "to": "            .filter(|(paths, _)| !paths.is_empty() || row.paths.is_empty())"
+        }
+      ],
+      "expect_red": ["a_registry_only_cache_is_never_priced_as_a_whole_target"]
+    },
+    {
+      "name": "a-lower-bound-is-good-enough-to-pass",
+      "why": "this repository's registry cache is 0.10 GB and its build tree 3.06 GB, a factor of thirty, so an evicted `target` cache priced off the registry cache that survived it reads as well inside budget — a green verdict on exactly the failure this gate was built for",
+      "edits": [
+        {
+          "file": "tools/cache-budget/src/lib.rs",
+          "from": "                        (!estimate.unpriced_paths.is_empty()).then(|| {",
+          "to": "                        (false).then(|| {"
+        }
+      ],
+      "expect_red": ["a_missing_build_tree_priced_off_a_registry_cache_does_not_pass"]
+    },
+    {
+      "name": "a-cache-belongs-to-the-first-key-that-claims-it",
+      "why": "this repository's oldest key `Linux-cargo-` is a prefix of every other key in the file, so a join that is not most-specific-wins credits the small general job with the huge specific job's cache, leaves the specific one looking satisfied, and reports a third of the real demand",
+      "edits": [
+        {
+          "file": "tools/cache-budget/src/lib.rs",
+          "from": "        .max_by_key(|prefix| prefix.len())",
+          "to": "        .next()"
+        }
+      ],
+      "expect_red": ["a_cache_belongs_to_the_most_specific_key_that_claims_it"]
+    },
+    {
+      "name": "a-repository-declaring-no-cache-is-simply-clean",
+      "why": "a reader that stopped recognising `actions/cache` hands the law an empty list, and an empty list satisfies every one of its clauses vacuously — the parser bug that reports the tidiest possible repository",
+      "edits": [
+        {
+          "file": "tools/cache-budget/src/lib.rs",
+          "from": "        if self.rows.is_empty() {",
+          "to": "        if false {"
+        }
+      ],
+      "expect_red": ["a_repository_declaring_no_cache_at_all_is_unreached_not_clean"]
+    },
+    {
+      "name": "the-biggest-generation-under-a-key-is-the-one-judged",
+      "why": "a lockfile bump changes every key at once and leaves the previous generation held until it ages out, and the previous one is the BIGGER one whenever a repository has just made its caches smaller — so judging by size keeps this round's own repair red for the seven days that takes",
+      "edits": [
+        {
+          "file": "tools/cache-budget/src/lib.rs",
+          "from": "            Some(previous) if previous.created_at > cache.created_at => {",
+          "to": "            Some(previous) if previous.size_in_bytes > cache.size_in_bytes => {"
+        }
+      ],
+      "expect_red": ["the_newest_generation_under_one_key_is_the_one_judged"]
+    },
+    {
+      "name": "one-key-may-mean-two-different-things",
+      "why": "GitHub stores one archive per key, so two jobs declaring one key with different paths get whatever the first saver wrote; the workflow reads as though both were true and nothing else in this repository can see it",
+      "edits": [
+        {
+          "file": "tools/cache-budget/src/lib.rs",
+          "from": "                if row.paths != paths {",
+          "to": "                if false {"
+        }
+      ],
+      "expect_red": ["two_jobs_disagreeing_about_what_one_key_holds_are_refused"]
+    },
+    {
+      "name": "a-row-is-a-declaration-rather-than-a-key",
+      "why": "two jobs naming one key share one entry in GitHub's storage and cost the budget once; counting per declaration prices a shared cache twice and refuses a repository for reading one cache from two places, which is what sharing a key is for",
+      "edits": [
+        {
+          "file": "tools/cache-budget/src/lib.rs",
+          "from": "        match at.get(declaration.prefix.as_str()) {",
+          "to": "        match None::<&usize> {"
+        }
+      ],
+      "expect_red": ["two_jobs_naming_one_key_cost_the_budget_once"]
+    },
+    {
+      "name": "nothing-held-is-ever-undeclared",
+      "why": "a key outlives the job that wrote it and keeps its share of the budget; the workflows do not mention it and the API cannot know it is unwanted, so only holding both sides against each other finds it",
+      "edits": [
+        {
+          "file": "tools/cache-budget/src/lib.rs",
+          "from": "        .filter(|(_, taken)| !**taken)",
+          "to": "        .filter(|(_, taken)| !**taken && false)"
+        }
+      ],
+      "expect_red": ["a_cache_no_workflow_declares_is_a_refusal"]
+    }
+  ]
+}

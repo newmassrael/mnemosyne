@@ -7,7 +7,217 @@
 //! turned main red on its first push. Pinned text is how a branch nobody here
 //! can execute still has a control.
 
-use ci_plan::{lister_cargo_commands, parse_lister, parse_script, CargoCommand};
+use ci_plan::{
+    cache_steps, job_needs, lister_cargo_commands, parse_lister, parse_script, CacheDeclaration,
+    CargoCommand,
+};
+
+/// A workflow with two cached jobs, one of them registry-only.
+const TWO_CACHES: &str = r#"
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Cache cargo
+        uses: actions/cache@v6
+        with:
+          path: |
+            ~/.cargo/registry
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+      - run: cargo test --workspace
+  side:
+    runs-on: ubuntu-latest
+    needs: validate
+    steps:
+      - name: Cache cargo (side)
+        uses: actions/cache@v6
+        with:
+          path: |
+            ~/.cargo/registry
+          key: ${{ runner.os }}-cargo-side-${{ hashFiles('tools/*/Cargo.lock') }}
+"#;
+
+fn caches_of(yaml: &str) -> Vec<CacheDeclaration> {
+    cache_steps(&ci_plan::parse_workflow(yaml, "w.yml"), "w.yml")
+}
+
+#[test]
+fn a_cache_key_is_read_down_to_the_prefix_a_restore_matches_on() {
+    let found = caches_of(TWO_CACHES);
+    assert_eq!(found.len(), 2, "{found:?}");
+    // `${{ runner.os }}` resolved from the job's OWN `runs-on`, and everything
+    // from the lockfile hash onwards dropped: that hash changes on every
+    // dependency bump, so a reader joining on the whole key would call every
+    // cache in the repository missing the day after one.
+    assert_eq!(found[0].prefix, "Linux-cargo-");
+    assert_eq!(found[1].prefix, "Linux-cargo-side-");
+    // And the key as written is kept beside it, because that is what a person
+    // greps for.
+    assert!(found[0].key.contains("hashFiles"), "{:?}", found[0].key);
+    assert_eq!(
+        found[0].owner, "validate",
+        "the job id, as `needs:` spells it"
+    );
+}
+
+#[test]
+fn the_paths_are_read_because_they_are_what_a_cache_costs() {
+    let found = caches_of(TWO_CACHES);
+    assert_eq!(found[0].paths, vec!["~/.cargo/registry", "target"]);
+    assert_eq!(found[1].paths, vec!["~/.cargo/registry"]);
+}
+
+#[test]
+fn a_restore_only_step_is_still_a_declaration() {
+    // A job that only restores still depends on that key surviving, which is the
+    // whole subject. Reading `actions/cache` alone would count it as asking for
+    // nothing.
+    let found = caches_of(
+        r#"
+jobs:
+  reader:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/cache/restore@v6
+        with:
+          path: target
+          key: ${{ runner.os }}-cargo-shared-
+"#,
+    );
+    assert_eq!(found.len(), 1, "{found:?}");
+    assert_eq!(found[0].prefix, "Linux-cargo-shared-");
+}
+
+#[test]
+fn a_step_that_is_not_a_cache_is_not_read_as_one() {
+    assert!(caches_of(
+        r#"
+jobs:
+  plain:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - run: cargo test
+"#,
+    )
+    .is_empty());
+}
+
+#[test]
+#[should_panic(expected = "runner.os")]
+fn a_runner_this_reader_cannot_name_refuses_instead_of_guessing() {
+    // The prefix is the identity every later comparison joins on. Guessing it for
+    // an unknown label reports every cache as absent — a finding-shaped wrong
+    // answer, which is worse than stopping.
+    caches_of(
+        r#"
+jobs:
+  exotic:
+    runs-on: freebsd-14
+    steps:
+      - uses: actions/cache@v6
+        with:
+          path: target
+          key: ${{ runner.os }}-cargo-
+"#,
+    );
+}
+
+#[test]
+fn a_job_with_no_cache_is_never_asked_for_a_runner_this_reader_must_refuse() {
+    // The control for the test above, and it is not symmetry for its own sake:
+    // resolving `runner.os` for every job rather than every CACHING job would
+    // make one exotic uncached job unreadable for the whole workflow, and the
+    // gate would report zero declarations — which reads as a tidy repository.
+    let found = caches_of(
+        r#"
+jobs:
+  exotic:
+    runs-on: freebsd-14
+    steps:
+      - run: uname -a
+  ordinary:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/cache@v6
+        with:
+          path: target
+          key: ${{ runner.os }}-cargo-
+"#,
+    );
+    assert_eq!(found.len(), 1, "{found:?}");
+    assert_eq!(found[0].prefix, "Linux-cargo-");
+}
+
+#[test]
+fn what_a_job_waits_for_is_read_in_both_spellings_github_allows() {
+    // A single id and a list are one thing. A reader knowing only the list form
+    // answers "waits for nothing" for the single form — the same class of defect
+    // as reading `--flag value` but not `--flag=value`.
+    let needs = job_needs(&ci_plan::parse_workflow(TWO_CACHES, "w.yml"));
+    assert_eq!(needs.get("side"), Some(&vec!["validate".to_string()]));
+    assert_eq!(
+        needs.get("validate"),
+        Some(&Vec::new()),
+        "a job that waits for nothing is present with an empty list, not absent \
+         — a gate asking `needs` for an unknown job must be able to tell \
+         \"waits for nothing\" from \"there is no such job\""
+    );
+
+    let listed = ci_plan::parse_workflow(
+        r#"
+jobs:
+  last:
+    runs-on: ubuntu-latest
+    needs: [one, two]
+    steps:
+      - run: true
+"#,
+        "w.yml",
+    );
+    assert_eq!(
+        job_needs(&listed).get("last"),
+        Some(&vec!["one".to_string(), "two".to_string()])
+    );
+}
+
+#[test]
+fn this_repository_declares_the_caches_its_jobs_are_slow_without() {
+    // Against the real tree, asserting REACH rather than a fixed list: pinning
+    // the count would make this test the second list that goes stale, which is
+    // the shape this crate exists to remove.
+    let root = repository_root();
+    let declared = ci_plan::workflow_cache_declarations(&root);
+    assert!(
+        declared.len() >= 2,
+        "this repository's CI compiles Rust in more than one job, so it cannot \
+         declare fewer than two caches — an empty answer here is the reader \
+         failing, not the repository being tidy"
+    );
+    assert!(
+        declared
+            .iter()
+            .all(|d| !d.prefix.is_empty() && !d.paths.is_empty()),
+        "every declaration carries a prefix to join on and the paths that say \
+         what it costs: {declared:?}"
+    );
+    // Every workflow declaring a cache is one `workflow_files` tracked, so an
+    // untracked workflow — which GitHub does not run — cannot contribute.
+    let tracked = ci_plan::workflow_files(&root);
+    assert!(declared.iter().all(|d| tracked.contains(&d.source)));
+}
+
+fn repository_root() -> std::path::PathBuf {
+    std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .and_then(std::path::Path::parent)
+        .expect("this crate lives two directories below the repository root")
+        .to_path_buf()
+}
 
 /// The lister's output as `scripts/check-side-workspaces.sh --list` prints it,
 /// including the skip this machine cannot produce.

@@ -1,0 +1,28 @@
+[workspace]
+
+[package]
+name = "cache-budget"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.88"
+publish = false
+license = "MIT OR Apache-2.0"
+description = "Mnemosyne — every cache this repository's CI declares is one it gets to keep"
+keywords = ["ci", "cache", "gate"]
+categories = ["development-tools"]
+
+# ITS OWN WORKSPACE, like every other gate under `tools/`: a separate program with
+# its own dependency tree, because compiling a gate into the tree it judges is how
+# a gate starts depending on what it is checking.
+#
+# `ci-plan` is a path dependency reaching INTO the root workspace, which is the
+# one direction that works — cargo makes a path dependency living inside a
+# workspace a member of it, so the shared reader belongs to the root and is
+# borrowed here. This gate asks it what the workflows DECLARE; `unrun-tests` asks
+# the same crate what they RUN. Two questions, one reader, no drift.
+
+[dependencies]
+ci-plan = { path = "../ci-plan" }
+
+[lints.clippy]
+all = "deny"
