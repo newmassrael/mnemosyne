@@ -1,0 +1,148 @@
+{
+  "_": [
+    "THE SWEEP THAT SAYS ROUND 1088's CONTRACT IS NOT VACUOUS — run it from the",
+    "repository root:",
+    "    cargo run -q --manifest-path tools/injection-harness/Cargo.toml -- \\",
+    "        crates/mnemosyne-cli/tests/frontier_manuscript_agreement.sweep.json",
+    "",
+    "`frontier_manuscript_agreement.rs` states seven laws plus the reading copy,",
+    "and shipped GREEN — which says the laws hold, and says nothing at all about",
+    "whether they could break. Each injection below breaks ONE READ, never a test,",
+    "and names the test that must go red for it.",
+    "",
+    "WHY THIS MANIFEST IS TRACKED, unlike the ones the contract sweeps before it",
+    "used. Round 1088 wrote these nine by hand into a scratch directory, verified",
+    "every anchor, started the sweep — and the machine rebooted, taking the plan,",
+    "the logs, and the harness's own record of which files it had edited. One",
+    "injection was still in the tree; `git status` found it, and nothing else",
+    "would have. A sweep plan is a round's finding, not its scratch work: living",
+    "here it survives the machine, `logs` under the repository's own `target/`",
+    "leaves the originals index where the next sweep looks for it, and the plan",
+    "can be re-run against a later tree to ask whether the laws are still",
+    "breakable.",
+    "",
+    "SCOPE IS THE WHOLE WORKSPACE, deliberately, unlike the tool manifests that",
+    "scope to their own crate. These injections break `mnemosyne-ops` and",
+    "`mnemosyne-validate`, which everything downstream reads, so what ELSE goes",
+    "red is the measurement: this contract's own case is that it says things no",
+    "other pair can. A run scoped to one target could not tell a law nothing else",
+    "guards from a law three suites already cover."
+  ],
+  "repo": ".",
+  "test_command": ["cargo", "test", "--workspace", "--no-fail-fast"],
+  "logs": "target/injection-logs",
+  "min_free_mb": 8000,
+  "injections": [
+    {
+      "name": "the-reading-prune-is-inverted",
+      "why": "the reading copy is the whole law no other pair can state; inverted, the STRUCTURAL walk is the pruned one and the reading walk keeps every scene, so a reader is walked through exactly the scenes the frontier calls empty",
+      "edits": [
+        {
+          "file": "crates/mnemosyne-ops/src/lib.rs",
+          "from": "    report.reading_walk = reading_walk;\n    if reading_walk {",
+          "to": "    report.reading_walk = reading_walk;\n    if !reading_walk {"
+        }
+      ],
+      "expect_red": ["the_reading_copy_drops_the_scenes_the_frontier_calls_empty"]
+    },
+    {
+      "name": "the-report-does-not-say-which-walk-produced-it",
+      "why": "R1048 recorded the flag where the prune is APPLIED precisely so a consumer holding two manuscripts of one store can tell the pruned one from a store with no empty scenes; pinned false, both answers claim to be the structural walk and the difference between them becomes unattributable",
+      "edits": [
+        {
+          "file": "crates/mnemosyne-ops/src/lib.rs",
+          "from": "    report.reading_walk = reading_walk;",
+          "to": "    report.reading_walk = false;"
+        }
+      ],
+      "expect_red": ["the_reading_copy_drops_the_scenes_the_frontier_calls_empty"]
+    },
+    {
+      "name": "the-prune-takes-something-it-does-not-own",
+      "why": "the prune's licence is the scene lists and nothing else — a reading copy that also dropped a road's undecidable facts would be a second derivation of the walk rather than the walk with scenes removed, and the only thing standing between those two readings is that the rest of the two answers are equal",
+      "edits": [
+        {
+          "file": "crates/mnemosyne-ops/src/lib.rs",
+          "from": "            world.scenes.retain(|scene| !scene.begins.is_empty());",
+          "to": "            world.scenes.retain(|scene| !scene.begins.is_empty());\n            world.undecidable.clear();"
+        }
+      ],
+      "expect_red": ["the_reading_copy_drops_the_scenes_the_frontier_calls_empty"]
+    },
+    {
+      "name": "the-frontier-road-is-not-the-road-travelled",
+      "why": "R611's own defect, named in the field's doc: `nodes()` is the whole section space and `linearize(&world)` is the road THIS world travels, so the density denominator and the road it reports become the same for every world-line — the drift LAW ROAD exists to catch, and two roads of one length through different scenes are exactly what a length comparison would miss",
+      "edits": [
+        {
+          "file": "crates/mnemosyne-ops/src/lib.rs",
+          "from": "        let road: Vec<String> = order\n            .linearize(&world)\n            .iter()\n            .map(ToString::to_string)\n            .collect();",
+          "to": "        let road: Vec<String> = order.nodes().map(ToString::to_string).collect();"
+        }
+      ],
+      "expect_red": ["the_frontier_counts_per_scene_what_the_manuscript_walks_per_road"]
+    },
+    {
+      "name": "zero-fact-scenes-are-the-full-ones",
+      "why": "the frontier's list of scenes with nothing in them is the ORACLE for two laws at once — LAW EMPTY on the structural walk and the reading copy on the pruned one — so inverting it must be visible from both sides or one of them is reading a list it does not actually depend on",
+      "edits": [
+        {
+          "file": "crates/mnemosyne-ops/src/lib.rs",
+          "from": "        .filter(|(_, facts)| facts.is_empty())",
+          "to": "        .filter(|(_, facts)| !facts.is_empty())"
+        }
+      ],
+      "expect_red": [
+        "the_frontier_counts_per_scene_what_the_manuscript_walks_per_road",
+        "the_reading_copy_drops_the_scenes_the_frontier_calls_empty"
+      ]
+    },
+    {
+      "name": "unplaced-scenes-are-the-placed-ones",
+      "why": "R667 made placement ONE resolver and this is it; inverted, the sections the frontier says no order positions are precisely the ones every road walks, which is the loudest possible disagreement between the placement claim and the roads that answer it",
+      "edits": [
+        {
+          "file": "crates/mnemosyne-ops/src/lib.rs",
+          "from": "        .filter(|scene| !ordered.contains(&mnemosyne_core::SectionId::from(scene.as_str())))",
+          "to": "        .filter(|scene| ordered.contains(&mnemosyne_core::SectionId::from(scene.as_str())))"
+        }
+      ],
+      "expect_red": ["the_frontier_counts_per_scene_what_the_manuscript_walks_per_road"]
+    },
+    {
+      "name": "the-renderability-signal-points-at-the-empty-half",
+      "why": "R596 split the placement set on content for a reason — `unordered_scenes` is the FACT-BEARING half, the facts no consumer can ever place — and a signal filtered to the empty half names sections with nothing to render, so the law about it checks nothing while still reading a populated list",
+      "edits": [
+        {
+          "file": "crates/mnemosyne-ops/src/lib.rs",
+          "from": "        .filter(|scene| anchored.get(scene.as_str()).is_some_and(|f| !f.is_empty()))",
+          "to": "        .filter(|scene| anchored.get(scene.as_str()).is_some_and(|f| f.is_empty()))"
+        }
+      ],
+      "expect_red": ["the_frontier_counts_per_scene_what_the_manuscript_walks_per_road"]
+    },
+    {
+      "name": "no-world-admits-it-is-a-confluence-fragment",
+      "why": "LAW ROADS proves its own exception with the OTHER read's marker rather than by consulting the store: a road the unfiltered dump omits must come back from a `--world` ask saying it is a fragment. Pinned false, the omission has no explanation the contract can see, and the law degrades to `the manuscript walks some subset of the roads`",
+      "edits": [
+        {
+          "file": "crates/mnemosyne-validate/src/continuity.rs",
+          "from": "            confluence_fragment: mnemosyne_core::is_confluence(&store.branches, &world),",
+          "to": "            confluence_fragment: false,"
+        }
+      ],
+      "expect_red": ["the_frontier_counts_per_scene_what_the_manuscript_walks_per_road"]
+    },
+    {
+      "name": "off-road-means-on-this-road",
+      "why": "LAW PARTITION is the join that makes the two keyings one answer — scenes walked plus sections called off-road are the frontier's whole census, disjointly. Inverted, every section is claimed twice by the roads that walk it and no section is claimed at all by the ones that do not, so both halves of the partition fail at once",
+      "edits": [
+        {
+          "file": "crates/mnemosyne-validate/src/continuity.rs",
+          "from": "                .filter(|s| !node_set.contains(s))",
+          "to": "                .filter(|s| node_set.contains(s))"
+        }
+      ],
+      "expect_red": ["the_frontier_counts_per_scene_what_the_manuscript_walks_per_road"]
+    }
+  ]
+}

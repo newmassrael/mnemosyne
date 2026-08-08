@@ -304,16 +304,44 @@ fn run() -> Result<(), String> {
     // injection touches, as bytes. The restore is compared against this rather
     // than against a hash of it, so "restored" is a fact about the content and
     // not about a digest agreeing with itself.
+    //
+    // AND, IN THE SAME PASS, A DRY RUN OF EVERY INJECTION — because the only
+    // other place an anchor is checked is `apply`, which runs after the control
+    // and after every injection before it. A typo in the ninth of nine costs the
+    // control plus eight whole-suite runs, on a machine where one of those is
+    // tens of minutes, and the sweep then ends having measured nothing and
+    // having edited the tree eight times. The nine-injection plan this tool
+    // exists to run is written by hand against two files; that is exactly the
+    // shape.
+    //
+    // It is a DRY RUN and not a count against the pristine bytes: an injection's
+    // second edit may legitimately rewrite what its first one wrote, and a gate
+    // that refused that would be refusing for a reason outside its own law.
+    // Folding it into the snapshot pass is what keeps the two from disagreeing —
+    // the bytes checked here are the bytes `apply` will edit, by construction
+    // rather than by argument.
     let mut snapshot: BTreeMap<PathBuf, Vec<u8>> = BTreeMap::new();
     for injection in &manifest.injections {
+        let mut staged: BTreeMap<PathBuf, String> = BTreeMap::new();
         for edit in &injection.edits {
             let path = manifest.repo.join(&edit.file);
-            if snapshot.contains_key(&path) {
-                continue;
+            if !snapshot.contains_key(&path) {
+                let bytes =
+                    fs::read(&path).map_err(|e| format!("{} unreadable: {e}", path.display()))?;
+                snapshot.insert(path.clone(), bytes);
             }
-            let bytes =
-                fs::read(&path).map_err(|e| format!("{} unreadable: {e}", path.display()))?;
-            snapshot.insert(path, bytes);
+            let text = match staged.remove(&path) {
+                Some(edited) => edited,
+                None => String::from_utf8(snapshot[&path].clone()).map_err(|_| {
+                    format!(
+                        "{} is not text, so no replacement in it can be described",
+                        path.display()
+                    )
+                })?,
+            };
+            let edited = replace_once(&text, edit)
+                .map_err(|problem| format!("{}: {problem}", injection.name))?;
+            staged.insert(path, edited);
         }
     }
 
@@ -547,24 +575,39 @@ fn err<E: std::fmt::Display>(e: E) -> String {
     e.to_string()
 }
 
-/// Apply every edit, each of which must match EXACTLY once.
+/// One replacement, as the law the dry run above and the write below BOTH obey:
+/// the anchor occurs EXACTLY once, and what comes back is the text with that one
+/// occurrence replaced.
 ///
 /// A replacement that matched nothing produces a run whose silence reads as "the
 /// injection did not fire", and one that matched twice produces a change nobody
-/// described. Both are refused before the suite is asked anything.
+/// described. Two places decide that here — the pre-flight, which refuses before
+/// any run, and the write, which is what actually edits the tree — and a law
+/// only one of them enforced is the shape where the dry run accepts an edit the
+/// write refuses, or worse, the reverse.
+fn replace_once(text: &str, edit: &Edit) -> Result<String, String> {
+    let hits = text.matches(&edit.from).count();
+    if hits != 1 {
+        return Err(format!(
+            "{} : the text to replace occurs {hits} times, not once",
+            edit.file
+        ));
+    }
+    Ok(text.replacen(&edit.from, &edit.to, 1))
+}
+
+/// Apply every edit, each of which must match EXACTLY once.
+///
+/// The pre-flight has already dry-run this whole sequence against the snapshot,
+/// so reaching a refusal here means the tree changed under the sweep — which is
+/// worth refusing on its own, and is why the check lives on the write path too
+/// rather than being trusted to the run that happened minutes ago.
 fn apply(repo: &Path, edits: &[Edit]) -> Result<(), String> {
     for edit in edits {
         let path = repo.join(&edit.file);
         let text =
             fs::read_to_string(&path).map_err(|e| format!("{} unreadable: {e}", path.display()))?;
-        let hits = text.matches(&edit.from).count();
-        if hits != 1 {
-            return Err(format!(
-                "{} : the text to replace occurs {hits} times, not once",
-                edit.file
-            ));
-        }
-        fs::write(&path, text.replacen(&edit.from, &edit.to, 1))
+        fs::write(&path, replace_once(&text, edit)?)
             .map_err(|e| format!("{} unwritable: {e}", path.display()))?;
     }
     Ok(())

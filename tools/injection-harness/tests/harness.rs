@@ -171,6 +171,13 @@ fn an_edit_that_matches_twice_is_refused_before_the_suite_is_asked() {
         !root.path().join("logs").join("I1.log").exists(),
         "the suite was never asked"
     );
+    assert!(
+        !root.path().join("logs").join("control.log").exists(),
+        "NOR WAS THE CONTROL — which is what this test's name has always \
+         claimed. An anchor is a property of the manifest and the tree, and \
+         both are known before a single target is built; paying a whole-suite \
+         run to find out is paying for nothing"
+    );
 }
 
 #[test]
@@ -190,6 +197,103 @@ fn an_edit_that_matches_nothing_is_refused_too() {
         String::from_utf8_lossy(&out.stderr).contains("occurs 0 times"),
         "a replacement that landed nowhere produces a run whose silence reads \
          as `the injection did not fire`"
+    );
+    assert!(
+        !root.path().join("logs").join("control.log").exists(),
+        "and nothing was built to find that out"
+    );
+}
+
+#[test]
+fn a_typo_in_the_last_injection_costs_no_run_at_all() {
+    // THE CASE THE PRE-FLIGHT EXISTS FOR, and the one a single-injection
+    // manifest cannot show: the anchors are checked where `apply` calls for
+    // them, which is after the control AND after every injection ahead of this
+    // one. A nine-injection plan whose last anchor has a typo therefore spends
+    // the control plus eight whole-suite runs — tens of minutes each on this
+    // machine — to arrive at a message about a string, having measured nothing
+    // and having edited the tree eight times on the way.
+    //
+    // So the assertion is not "it refused" — it refused before too — but WHEN:
+    // no log exists at all, which means no target was built.
+    let root = tempdir();
+    tree(root.path(), "the wire is HEALTHY here\n");
+    let path = manifest(
+        root.path(),
+        serde_json::json!([
+            {
+                "name": "I1",
+                "edits": [{"file": "src.txt", "from": "HEALTHY", "to": "BROKEN"}],
+                "expect_red": ["the_law"],
+            },
+            {
+                "name": "I2",
+                "edits": [{"file": "src.txt", "from": "ABSENT", "to": "BROKEN"}],
+            },
+        ]),
+    );
+    let out = harness(&path);
+    assert!(!out.status.success());
+    let said = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        said.lines()
+            .any(|line| line.contains("I2") && line.contains("occurs 0 times")),
+        "ONE LINE names both which injection cannot apply and why, because a \
+         manifest with nine of them is where this matters. Asserted per line \
+         rather than over the whole of stderr: the sweep also announces each \
+         injection by name as it starts one, so `contains(\"I2\")` anywhere is \
+         satisfied by a progress line and would pass a build that dropped the \
+         name from the refusal itself: {said}"
+    );
+    assert!(
+        !root.path().join("logs").join("control.log").exists()
+            && !root.path().join("logs").join("I1.log").exists(),
+        "and NOTHING ran — not the control, and not the injection ahead of the \
+         broken one, which is the whole cost this check removes"
+    );
+    assert_eq!(
+        fs::read_to_string(root.path().join("src.txt")).expect("read back"),
+        "the wire is HEALTHY here\n",
+        "the tree was never edited either"
+    );
+}
+
+#[test]
+fn an_injection_whose_second_edit_rewrites_its_first_is_allowed_through() {
+    // THE CONTROL GROUP FOR THE PRE-FLIGHT, and the reason it is a dry run
+    // rather than a count against the pristine bytes. Edits inside one injection
+    // are sequential, so an anchor that exists only because the edit before it
+    // wrote it occurs ZERO times in the file on disk. A pre-flight that counted
+    // against the snapshot would refuse this manifest for a reason outside its
+    // own law — the KK6 defect, where a gate rejects exactly what it was aimed
+    // at and tells the author the evidence is untrustworthy.
+    let root = tempdir();
+    tree(root.path(), "the wire is HEALTHY here\n");
+    let path = manifest(
+        root.path(),
+        serde_json::json!([{
+            "name": "I1",
+            "edits": [
+                {"file": "src.txt", "from": "HEALTHY", "to": "MIDWAY"},
+                {"file": "src.txt", "from": "MIDWAY", "to": "BROKEN"},
+            ],
+            "expect_red": ["the_law"],
+        }]),
+    );
+    let out = harness(&path);
+    assert!(
+        out.status.success(),
+        "a chained pair of edits is a legitimate injection: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert!(
+        root.path().join("logs").join("I1.log").exists(),
+        "and it actually ran"
+    );
+    assert_eq!(
+        fs::read_to_string(root.path().join("src.txt")).expect("read back"),
+        "the wire is HEALTHY here\n",
+        "and the tree came back"
     );
 }
 
