@@ -43,6 +43,11 @@ fn declaration(owner: &str, prefix: &str, paths: &[&str]) -> CacheDeclaration {
     CacheDeclaration {
         source: ".github/workflows/w.yml".to_string(),
         owner: owner.to_string(),
+        // WHERE IN ITS JOB THE CACHE STEP SITS is what lets a reader put a
+        // measurement on one side of it or the other. This gate asks nothing
+        // about order — `tools/twice-compiled` owns that law — so any position
+        // does here.
+        index: 1,
         key: format!("{prefix}${{{{ hashFiles('**/Cargo.lock') }}}}"),
         prefix: prefix.to_string(),
         paths: paths.iter().map(|path| path.to_string()).collect(),

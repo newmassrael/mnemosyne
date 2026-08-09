@@ -274,7 +274,10 @@ pub fn encode_exact(exact: bool) -> Vec<u8> {
 }
 
 /// Which side of the restore a measurement is from.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+///
+/// ORDERED, and the order is the real one: `Before` sorts before `After`, so a
+/// reader holding both can ask which came first without a second convention.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Side {
     Before,
     After,
@@ -289,6 +292,55 @@ impl Side {
             Side::After => "after",
         }
     }
+
+    /// Both sides, in the order a job takes them.
+    pub const BOTH: [Side; 2] = [Side::Before, Side::After];
+}
+
+/// This program's own name, which is what every spelling of it ends in.
+///
+/// KEPT HERE BECAUSE THIS CRATE OWNS THE SPELLING, the same reason
+/// [`Side::word`] is: a gate asking which step of a job measures the restore has
+/// to recognise the command, and a copy of the path in that gate is a second
+/// thing to keep in step with the workflow.
+///
+/// THE NAME AND NOT THE PATH, because there is more than one path and both are
+/// real. The workflow runs `./tools/restored/target/release/restored`; the local
+/// replay builds this crate without `--release` and runs the debug binary. A
+/// constant holding one of those recognises one entrance and is blind to the
+/// other — which is a gate that reports a job as measuring nothing when it
+/// measures perfectly well.
+pub const PROGRAM: &str = "restored";
+
+/// Which sides of the restore one `run:` step measures, in the order it does.
+///
+/// EMPTY FOR EVERY OTHER STEP. The word has to BE this program or END IN it
+/// after a `/`, which is what keeps the step that BUILDS it out of the answer:
+/// that one names `tools/restored/Cargo.toml`, and a reader matching the
+/// substring would call it a measurement — leaving a job with one it never takes
+/// and no way to be refused for taking none.
+///
+/// Empty as well for an invocation whose next word this program does not define:
+/// that is a step which exits 1 the moment it runs, and reading it as a
+/// measurement would let a job whose wiring is broken pass a check about where
+/// its measurements sit.
+pub fn sides_measured(script: &str) -> Vec<Side> {
+    let words: Vec<&str> = script.split_whitespace().collect();
+    let mut sides = Vec::new();
+    for pair in words.windows(2) {
+        let [word, next] = pair else { continue };
+        let invoked = *word == PROGRAM
+            || word
+                .rsplit_once('/')
+                .is_some_and(|(_, name)| name == PROGRAM);
+        if !invoked {
+            continue;
+        }
+        if let Some(side) = Side::BOTH.into_iter().find(|side| side.word() == *next) {
+            sides.push(side);
+        }
+    }
+    sides
 }
 
 fn line(fields: &[&str]) -> Vec<u8> {

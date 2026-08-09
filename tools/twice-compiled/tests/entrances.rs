@@ -54,17 +54,33 @@ const BUILDS: &[&str] = &["cargo build --manifest-path crates/shared/Cargo.toml"
 /// A job that measures its own cache restore, the way every cached job of this
 /// repository's workflow does.
 ///
-/// THE TWO MEASUREMENTS ARE ADJACENT because in a replay there is nothing
+/// THE TWO MEASUREMENTS RUN BACK TO BACK because in a replay there is nothing
 /// between them: an `actions/cache` step is a `uses:` step and the replay runs
 /// only `run:` ones. That is the point of running this here — a replay restores
 /// no cache, so its census is one taken from an empty tree, and the record has
 /// to say so rather than leave the reader to remember it.
+///
+/// IN THE FILE, THOUGH, THE CACHE STEP SITS BETWEEN THEM — see [`CACHES_AT`].
+/// The two are not in tension: the workflow declares a restore between the two
+/// readings and the replay simply does not perform it, which is exactly why its
+/// census reads as taken from nothing.
 const MEASURES_A_RESTORE: &[&str] = &[
     "cargo build --manifest-path tools/restored/Cargo.toml",
     "./tools/restored/target/debug/restored before 'target'",
     "./tools/restored/target/debug/restored after",
     "cargo build --manifest-path crates/shared/Cargo.toml",
 ];
+
+/// Where the cache step of [`MEASURES_A_RESTORE`] goes in the emitted `steps:`
+/// list: after the measurement that opens the record and before the one that
+/// closes it.
+///
+/// A FIXTURE THAT APPENDED IT AFTER BOTH would declare the very defect the gate
+/// refuses — two readings on one side of the restore, whose difference is zero
+/// and therefore indistinguishable from a job that compiled from an empty tree.
+/// The fixture used to do that, and nothing could see it until the steps carried
+/// their positions.
+const CACHES_AT: usize = 2;
 
 /// A job that installs what this machine already has, compiles, and then fails.
 ///
@@ -87,14 +103,18 @@ struct Job {
     also: &'static str,
     /// The `run:` scripts it is made of, in order.
     steps: &'static [&'static str],
-    /// The paths an `actions/cache` step of this job holds, if it has one.
+    /// The `actions/cache` step of this job: WHERE it goes among the steps, and
+    /// the paths it holds. `None` for a job with no cache.
     ///
     /// A `uses:` STEP AND NOT A NOTE BESIDE THE FIXTURE, because that is what
     /// the gate reads: `ci_plan::cache_steps` parses the same block out of the
     /// fixture that it parses out of this repository's workflow. A fixture that
     /// declared its caches to the test some other way would be asserting about
     /// a reader nothing uses.
-    caches: &'static [&'static str],
+    ///
+    /// ONE FIELD AND NOT TWO, so that a position without a cache cannot be
+    /// written down at all.
+    caches: Option<(usize, &'static [&'static str])>,
 }
 
 impl Job {
@@ -103,7 +123,7 @@ impl Job {
             name,
             also: "",
             steps: BUILDS,
-            caches: &[],
+            caches: None,
         }
     }
 }
@@ -131,27 +151,48 @@ fn workflow(jobs: &[Job]) -> String {
         out.push_str(&format!(
             "      MNEMOSYNE_RUSTC_LOG: ${{{{ github.workspace }}}}/rustc-log/{name}.log\n"
         ));
-        if !job.caches.is_empty() {
+        if job.caches.is_some() {
             out.push_str(&format!(
                 "      MNEMOSYNE_RESTORED: ${{{{ github.workspace }}}}/rustc-log/{name}.restored\n"
             ));
         }
         out.push_str(job.also);
+        // A POSITION PAST THE END WOULD APPEND THE CACHE SILENTLY, leaving both
+        // measurements on one side of the restore — the defect the gate refuses,
+        // written into the fixture that is supposed to be the control for it.
+        if let Some((at, _)) = job.caches {
+            assert!(
+                at < job.steps.len(),
+                "job `{name}` puts its cache step at {at} of {} step(s)",
+                job.steps.len()
+            );
+        }
         out.push_str("    steps:\n");
-        for step in job.steps {
+        // THE CACHE STEP IS WOVEN IN AT ITS POSITION rather than appended, so
+        // that the fixture declares the shape a real workflow has.
+        for (index, step) in job.steps.iter().enumerate() {
+            if let Some((at, paths)) = job.caches {
+                if index == at {
+                    out.push_str(&cache_step(name, paths));
+                }
+            }
             out.push_str(&format!("      - run: {step}\n"));
         }
-        if !job.caches.is_empty() {
-            out.push_str("      - uses: actions/cache@v6\n        with:\n          path: |\n");
-            for path in job.caches {
-                out.push_str(&format!("            {path}\n"));
-            }
-            out.push_str(&format!(
-                "          key: ${{{{ runner.os }}}}-fixture-{name}-\
-                 ${{{{ hashFiles('**/Cargo.lock') }}}}\n"
-            ));
-        }
     }
+    out
+}
+
+/// One `actions/cache` step over the paths a fixture job holds.
+fn cache_step(job: &str, paths: &[&str]) -> String {
+    let mut out =
+        String::from("      - uses: actions/cache@v6\n        with:\n          path: |\n");
+    for path in paths {
+        out.push_str(&format!("            {path}\n"));
+    }
+    out.push_str(&format!(
+        "          key: ${{{{ runner.os }}}}-fixture-{job}-\
+         ${{{{ hashFiles('**/Cargo.lock') }}}}\n"
+    ));
     out
 }
 
@@ -507,7 +548,7 @@ fn a_replay_that_reaches_one_job_is_refused_rather_than_reported() {
             name: "the-other-job",
             also: UNRESOLVABLE,
             steps: BUILDS,
-            caches: &[],
+            caches: None,
         },
     ]);
     assert_eq!(
@@ -556,13 +597,13 @@ fn a_replay_that_reaches_no_job_does_not_sign_off_as_clean() {
             name: "one-job",
             also: UNRESOLVABLE,
             steps: BUILDS,
-            caches: &[],
+            caches: None,
         },
         Job {
             name: "the-other-job",
             also: UNRESOLVABLE,
             steps: BUILDS,
-            caches: &[],
+            caches: None,
         },
     ]);
     assert_eq!(
@@ -605,7 +646,7 @@ fn a_replay_skips_what_it_cannot_install_and_carries_on_past_what_fails() {
             name: "the-other-job",
             also: "",
             steps: INSTALLS_THEN_FAILS,
-            caches: &[],
+            caches: None,
         },
     ]);
     assert!(
@@ -759,7 +800,7 @@ fn a_replayed_job_records_that_it_started_from_nothing() {
             name: "unrun-tests",
             also: "",
             steps: MEASURES_A_RESTORE,
-            caches: &["target"],
+            caches: Some((CACHES_AT, &["target"])),
         },
         Job::plain("validate"),
     ]);

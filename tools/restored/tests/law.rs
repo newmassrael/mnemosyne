@@ -309,3 +309,87 @@ fn a_declared_path_keeps_its_spelling_and_is_expanded_only_to_be_measured() {
         std::path::Path::new("~cargo/registry")
     );
 }
+
+// --- which step of a job measures which side --------------------------------
+//
+// A GATE ASKING WHERE THE MEASUREMENTS SIT HAS TO RECOGNISE THE COMMAND, and the
+// spelling belongs here for the reason `Side::word` does: a second copy of it in
+// that gate is a second thing to keep in step with the workflow.
+
+/// The two spellings of this program that THIS REPOSITORY actually runs. The
+/// workflow builds it with `--release`; the local replay does not, and runs the
+/// debug binary. A rule that knew one of them would report the other's job as
+/// measuring nothing — the gate's own replay suite is what found that.
+const SPELLINGS: [&str; 2] = [
+    "./tools/restored/target/release/restored",
+    "./tools/restored/target/debug/restored",
+];
+
+#[test]
+fn a_step_is_read_for_the_side_of_the_restore_it_measures() {
+    for spelling in SPELLINGS {
+        assert_eq!(
+            restored::sides_measured(&format!(
+                "{spelling} before '~/.cargo/registry' '~/.cargo/git'"
+            )),
+            vec![restored::Side::Before],
+            "{spelling}: the `./` a shell wants is not part of the program's \
+             name, the profile it was built in is not either, and neither are \
+             the paths after the word"
+        );
+        assert_eq!(
+            restored::sides_measured(&format!("{spelling} after")),
+            vec![restored::Side::After],
+            "{spelling}"
+        );
+    }
+    // AND THE BARE NAME, for a caller that has it on its `PATH`.
+    assert_eq!(
+        restored::sides_measured("restored after"),
+        vec![restored::Side::After]
+    );
+}
+
+#[test]
+fn the_step_that_builds_this_program_does_not_measure_anything() {
+    // THE STEP THAT WOULD BE READ WRONG BY A READER MATCHING THE DIRECTORY. It
+    // names this crate's manifest, and calling it a measurement leaves a job with
+    // one it never takes — so the job could never be refused for taking none.
+    assert!(restored::sides_measured(
+        "cargo build --release -q --manifest-path tools/restored/Cargo.toml"
+    )
+    .is_empty());
+    assert!(restored::sides_measured("cargo test --workspace --locked").is_empty());
+    // AND THE SAME MANIFEST WITH A WORD AFTER IT, which is where a reader
+    // matching the substring rather than the name goes wrong. The two lines
+    // above cannot tell the two readers apart: the manifest is the LAST word of
+    // a build step, so nothing follows it to be mistaken for a side. An
+    // injection making this a substring match proved exactly that — it went red
+    // somewhere else and left this test green.
+    assert!(
+        restored::sides_measured("--manifest-path tools/restored/Cargo.toml before").is_empty(),
+        "the word has to BE the program, not merely hold its letters"
+    );
+}
+
+#[test]
+fn an_invocation_with_a_word_this_program_does_not_define_measures_nothing() {
+    // It exits 1 the moment it runs. Reading it as a measurement would let a job
+    // whose wiring is broken pass a check about where its measurements sit —
+    // the strict direction is to see no measurement there at all.
+    assert!(restored::sides_measured(&format!("{} midway", SPELLINGS[0])).is_empty());
+    assert!(restored::sides_measured(SPELLINGS[0]).is_empty());
+}
+
+#[test]
+fn every_invocation_in_one_step_is_read_and_not_only_the_first() {
+    // ONE STEP CAN RUN IT TWICE, and the second reading overwrites the first —
+    // so a caller counting STEPS would call that one measurement.
+    assert_eq!(
+        restored::sides_measured(&format!(
+            "{binary} before 'target' && {binary} after",
+            binary = SPELLINGS[0]
+        )),
+        vec![restored::Side::Before, restored::Side::After]
+    );
+}

@@ -486,3 +486,58 @@ fn a_step_carries_the_environment_of_all_three_levels_that_set_it() {
          toolchains: {second:?}"
     );
 }
+
+/// A job whose cache sits between two `run:` steps, with steps that are neither
+/// on both sides of it.
+const BRACKETED: &str = r#"
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - run: measure before
+      - name: Cache cargo
+        uses: actions/cache@v6
+        with:
+          path: target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+      - run: measure after
+      - uses: actions/upload-artifact@v7
+      - run: cargo test --workspace
+"#;
+
+#[test]
+fn a_step_is_read_with_where_it_sits_in_its_job() {
+    // THE TWO POPULATIONS COME OUT OF ONE ORDERED LIST, and until they carried a
+    // shared coordinate a caller holding both could say WHICH steps a job has
+    // and never WHICH CAME FIRST. A measurement taken on both sides of a cache
+    // restore is the difference between them, so "is this step before that one?"
+    // is a question the file has to be able to answer — R1102 could only answer
+    // it by OBSERVING a run.
+    let document = parse_workflow(BRACKETED, "w.yml");
+    let steps = run_steps(&document);
+    assert_eq!(
+        steps
+            .iter()
+            .map(|step| (step.index, step.script.as_str()))
+            .collect::<Vec<_>>(),
+        vec![
+            (1, "measure before"),
+            (3, "measure after"),
+            (5, "cargo test --workspace"),
+        ],
+        "EVERY STEP IS COUNTED, not only the ones that `run:` — an index among \
+         `run:` steps alone would make the first of these 0 and the cache 2, \
+         and a reader comparing those two numbers would place a step before a \
+         cache step it in fact follows"
+    );
+    let caches = cache_steps(&document, "w.yml");
+    assert_eq!(
+        caches.iter().map(|cache| cache.index).collect::<Vec<_>>(),
+        vec![2],
+        "and the cache is counted in the same list, which is what makes the two \
+         numbers comparable at all"
+    );
+    // The property the whole coordinate exists for, read off this fixture.
+    assert!(steps[0].index < caches[0].index && caches[0].index < steps[1].index);
+}

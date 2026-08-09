@@ -360,6 +360,9 @@ fn a_merge_estimate_does_not_shorten_the_time_no_compiler_was_alive() {
 fn step(job: &str, env: &[(&str, &str)]) -> RunStep {
     RunStep {
         job: job.to_string(),
+        // WHERE IN THE JOB IT SITS matters only to the laws about the restore
+        // measurements, and the fixtures for those set it deliberately.
+        index: 0,
         script: "cargo test --workspace".to_string(),
         env: env
             .iter()
@@ -975,11 +978,20 @@ fn merging_a_pair_states_what_it_removes_and_what_it_spends() {
 // `restore-keys` prefix match, and a job warmed by one still saves a new entry,
 // which is what the cache gate reads as a cache built from nothing.
 
+/// Where a cached job's cache sits in its `steps:` list. The measurements are
+/// steps [`BEFORE_AT`] and [`AFTER_AT`], which is what makes them its two sides.
+const CACHE_AT: usize = 1;
+/// Where the measurement taken before the restore sits.
+const BEFORE_AT: usize = 0;
+/// Where the measurement taken after it sits.
+const AFTER_AT: usize = 2;
+
 /// A cache one job declares, over the paths it names.
 fn cache(job: &str, paths: &[&str]) -> ci_plan::CacheDeclaration {
     ci_plan::CacheDeclaration {
         source: "fixture.yml".to_string(),
         owner: job.to_string(),
+        index: CACHE_AT,
         key: format!("${{{{ runner.os }}}}-cargo-{job}-abc"),
         prefix: format!("Linux-cargo-{job}-"),
         paths: paths.iter().map(|path| (*path).to_string()).collect(),
@@ -995,6 +1007,37 @@ fn wired_with_cache(job: &str) -> RunStep {
         format!("/w/rustc-log/{job}.restored"),
     );
     step
+}
+
+/// A step that measures one side of the restore, SPELLED AS THIS REPOSITORY'S
+/// WORKFLOW SPELLS IT — the built binary, and the word `restored` itself defines
+/// for that side. A fixture that merely called a step "the before one" would
+/// pass a law about where the measurements sit while measuring nothing.
+fn measuring(job: &str, side: restored::Side, index: usize, paths: &[&str]) -> RunStep {
+    let mut step = wired_with_cache(job);
+    step.index = index;
+    step.script = format!(
+        "./tools/{program}/target/release/{program} {side}{paths}",
+        program = restored::PROGRAM,
+        side = side.word(),
+        paths = paths
+            .iter()
+            .map(|path| format!(" '{path}'"))
+            .collect::<String>()
+    );
+    step
+}
+
+/// Every `run:` step of a job with a cache, laid out AROUND it: the measurement
+/// before the restore, the measurement after it, and the work.
+fn cached_job(job: &str, paths: &[&str]) -> Vec<RunStep> {
+    let mut work = wired_with_cache(job);
+    work.index = AFTER_AT + 1;
+    vec![
+        measuring(job, restored::Side::Before, BEFORE_AT, paths),
+        measuring(job, restored::Side::After, AFTER_AT, &[]),
+        work,
+    ]
 }
 
 /// The record such a job leaves, with what arrived under each path.
@@ -1023,11 +1066,10 @@ fn restore_record(job: &str, exact: bool, paths: &[(&str, u64)]) -> String {
 
 /// The two jobs both compile and both cache, and both said what they restored.
 fn cached_and_said(exact: bool, arrived: u64) -> (Declared, Census) {
+    let mut steps = cached_job("validate", &["~/.cargo/registry"]);
+    steps.extend(cached_job("unrun-tests", &["~/.cargo/registry", "target"]));
     let declared = Declared::of(
-        &[
-            wired_with_cache("validate"),
-            wired_with_cache("unrun-tests"),
-        ],
+        &steps,
         &[
             cache("validate", &["~/.cargo/registry"]),
             cache("unrun-tests", &["~/.cargo/registry", "target"]),
@@ -1103,10 +1145,9 @@ fn a_job_with_a_cache_that_did_not_say_what_it_restored_is_refused() {
 /// cache nothing.
 #[test]
 fn a_job_with_no_cache_owes_no_record_of_what_it_restored() {
-    let declared = Declared::of(
-        &[wired_with_cache("validate"), wired("twice-compiled")],
-        &[cache("validate", &["~/.cargo/registry"])],
-    );
+    let mut steps = cached_job("validate", &["~/.cargo/registry"]);
+    steps.push(wired("twice-compiled"));
+    let declared = Declared::of(&steps, &[cache("validate", &["~/.cargo/registry"])]);
     let mut census = census_of(&["validate", "twice-compiled"]);
     census.restored.insert(
         "validate".to_string(),
@@ -1187,13 +1228,16 @@ fn a_record_whose_contents_name_another_job_is_refused() {
 /// And caught on the workflow's side, before any run produces anything.
 #[test]
 fn a_job_writing_its_state_to_another_jobs_file_is_refused() {
-    let mut wrong = wired_with_cache("unrun-tests");
-    wrong.env.insert(
-        restored::VARIABLE.to_string(),
-        "/w/rustc-log/validate.restored".to_string(),
-    );
+    let mut steps = cached_job("unrun-tests", &["~/.cargo/registry"]);
+    for step in &mut steps {
+        step.env.insert(
+            restored::VARIABLE.to_string(),
+            "/w/rustc-log/validate.restored".to_string(),
+        );
+    }
+    steps.extend(cached_job("validate", &["~/.cargo/registry"]));
     let declared = Declared::of(
-        &[wrong, wired_with_cache("validate")],
+        &steps,
         &[
             cache("validate", &["~/.cargo/registry"]),
             cache("unrun-tests", &["~/.cargo/registry"]),
@@ -1217,8 +1261,15 @@ fn a_job_writing_its_state_to_another_jobs_file_is_refused() {
 
 #[test]
 fn a_step_of_a_cached_job_that_does_not_say_where_to_write_it_is_refused() {
+    let mut steps = cached_job("validate", &["~/.cargo/registry"]);
+    steps
+        .last_mut()
+        .expect("the job has a step that does the work")
+        .env
+        .remove(restored::VARIABLE);
+    steps.extend(cached_job("unrun-tests", &["~/.cargo/registry"]));
     let declared = Declared::of(
-        &[wired("validate"), wired_with_cache("unrun-tests")],
+        &steps,
         &[
             cache("validate", &["~/.cargo/registry"]),
             cache("unrun-tests", &["~/.cargo/registry"]),
@@ -1278,5 +1329,207 @@ fn a_record_from_a_job_this_workflow_gives_no_cache_is_refused() {
         vec![Refusal::RestoreRecordFromAJobWithNoCache {
             job: "deleted".to_string()
         }]
+    );
+}
+
+// --- where the two measurements sit -----------------------------------------
+//
+// WHAT A JOB STARTED FROM IS A DIFFERENCE, and a difference is only a
+// measurement if the two readings are taken on opposite sides of the thing being
+// measured. Both on one side gives zero, and zero is indistinguishable from the
+// answer that matters most — a job that compiled from an empty tree, the state
+// Round 1099 misread at the cost of a cache that was saving ten minutes a run.
+//
+// Round 1102 could only catch that AT RUNTIME (a job reporting an empty tree
+// next to a restorable generation is refused), because the two populations came
+// out of the workflow with no shared coordinate: `run:` steps and cache steps
+// were two unordered lists, and "is this step before that one?" had no answer in
+// the file. `ci_plan::RunStep::index` is that coordinate, and these are the laws
+// it makes askable.
+
+/// The layout every cached job in this repository has, and the control for all
+/// of the refusals below.
+#[test]
+fn measurements_on_the_two_sides_of_the_restore_are_accepted() {
+    let mut steps = cached_job("validate", &["~/.cargo/registry"]);
+    steps.extend(cached_job("unrun-tests", &["~/.cargo/registry", "target"]));
+    let declared = Declared::of(
+        &steps,
+        &[
+            cache("validate", &["~/.cargo/registry"]),
+            cache("unrun-tests", &["~/.cargo/registry", "target"]),
+        ],
+    );
+    assert!(twice_compiled::judge_wiring(&declared).is_empty());
+    // AND IT IS NOT THE EMPTY ANSWER. A law that reached no job at all also
+    // returns nothing, and every refusal below would then be unreachable.
+    assert_eq!(
+        declared.caches_at.len(),
+        2,
+        "two jobs declare a cache and both were judged"
+    );
+}
+
+/// THE DEFECT THAT LOOKS LIKE A FINDING, caught in the file.
+#[test]
+fn a_measurement_taken_after_the_restore_it_precedes_is_refused() {
+    let mut steps = cached_job("validate", &["~/.cargo/registry"]);
+    steps[0].index = CACHE_AT + 10;
+    steps.extend(cached_job("unrun-tests", &["~/.cargo/registry"]));
+    let declared = Declared::of(
+        &steps,
+        &[
+            cache("validate", &["~/.cargo/registry"]),
+            cache("unrun-tests", &["~/.cargo/registry"]),
+        ],
+    );
+    assert_eq!(
+        twice_compiled::judge_wiring(&declared),
+        vec![Refusal::RestoreIsMeasuredOnTheWrongSide {
+            job: "validate".to_string(),
+            side: restored::Side::Before,
+            measured_at: CACHE_AT + 10,
+            cache_at: CACHE_AT,
+        }],
+        "with both readings after the restore the difference is zero, which is \
+         exactly what a job that compiled from an empty tree reports"
+    );
+}
+
+/// The same defect from the other end, and it is a separate arm rather than the
+/// same one read backwards.
+#[test]
+fn a_measurement_taken_before_the_restore_it_follows_is_refused() {
+    let mut steps = cached_job("validate", &["~/.cargo/registry"]);
+    steps[1].index = BEFORE_AT;
+    let declared = Declared::of(&steps, &[cache("validate", &["~/.cargo/registry"])]);
+    assert_eq!(
+        twice_compiled::judge_wiring(&declared),
+        vec![Refusal::RestoreIsMeasuredOnTheWrongSide {
+            job: "validate".to_string(),
+            side: restored::Side::After,
+            measured_at: BEFORE_AT,
+            cache_at: CACHE_AT,
+        }]
+    );
+}
+
+/// A JOB WITH A CACHE AND NO MEASUREMENT AT ALL. Today the census says so an
+/// hour later, from a run, by way of the record that never arrived; the file was
+/// already wrong when it was written.
+#[test]
+fn a_cached_job_that_measures_neither_side_is_refused() {
+    let declared = Declared::of(
+        &[wired_with_cache("validate")],
+        &[cache("validate", &["~/.cargo/registry"])],
+    );
+    assert_eq!(
+        twice_compiled::judge_wiring(&declared),
+        vec![
+            Refusal::RestoreSideIsNotMeasuredOnce {
+                job: "validate".to_string(),
+                side: restored::Side::Before,
+                times: 0,
+            },
+            Refusal::RestoreSideIsNotMeasuredOnce {
+                job: "validate".to_string(),
+                side: restored::Side::After,
+                times: 0,
+            },
+        ]
+    );
+}
+
+/// TWICE IS NOT ONCE. The second reading overwrites the first, and a step that
+/// runs the measurement twice is one step — so counting steps rather than
+/// invocations would call this a job that measured its restore properly.
+#[test]
+fn a_side_measured_twice_is_refused() {
+    let mut steps = cached_job("validate", &["~/.cargo/registry"]);
+    let twice = measuring("validate", restored::Side::Before, BEFORE_AT, &["target"]);
+    steps[0].script = format!("{} && {}", steps[0].script, twice.script);
+    let declared = Declared::of(&steps, &[cache("validate", &["~/.cargo/registry"])]);
+    assert_eq!(
+        twice_compiled::judge_wiring(&declared),
+        vec![Refusal::RestoreSideIsNotMeasuredOnce {
+            job: "validate".to_string(),
+            side: restored::Side::Before,
+            times: 2,
+        }]
+    );
+}
+
+/// The mirror, read off the workflow: a measurement with nothing between its two
+/// halves reports an empty tree for a job that never had one to fill.
+#[test]
+fn a_job_with_no_cache_that_measures_a_restore_is_refused() {
+    let mut steps = cached_job("validate", &["~/.cargo/registry"]);
+    steps.extend(cached_job("twice-compiled", &["target"]));
+    let declared = Declared::of(&steps, &[cache("validate", &["~/.cargo/registry"])]);
+    assert_eq!(
+        twice_compiled::judge_wiring(&declared),
+        vec![Refusal::RestoreIsMeasuredWithNoCache {
+            job: "twice-compiled".to_string()
+        }]
+    );
+}
+
+/// A RECORD BRACKETS A REGION, and a job with two caches has an outer edge on
+/// each side of it. A measurement that has slipped between them reports the
+/// second cache's arrival as nothing — which is why the law is against EVERY
+/// cache the job declares and not against one of them.
+#[test]
+fn a_measurement_between_two_caches_of_one_job_is_refused() {
+    let steps = cached_job("validate", &["~/.cargo/registry", "target"]);
+    let mut second = cache("validate", &["target"]);
+    second.index = AFTER_AT + 1;
+    let declared = Declared::of(&steps, &[cache("validate", &["~/.cargo/registry"]), second]);
+    assert_eq!(
+        twice_compiled::judge_wiring(&declared),
+        vec![Refusal::RestoreIsMeasuredOnTheWrongSide {
+            job: "validate".to_string(),
+            side: restored::Side::After,
+            measured_at: AFTER_AT,
+            cache_at: AFTER_AT + 1,
+        }]
+    );
+}
+
+/// THE CONTROL FOR WHAT COUNTS AS A MEASUREMENT. The step that BUILDS this
+/// program names its crate, and a reader matching the directory rather than the
+/// built binary would read that step as a measurement — leaving a job with two
+/// of them and no way to be refused for having none.
+#[test]
+fn the_step_that_builds_the_measuring_program_is_not_a_measurement() {
+    let mut steps = cached_job("validate", &["~/.cargo/registry"]);
+    let mut building = wired_with_cache("validate");
+    building.index = AFTER_AT + 2;
+    building.script =
+        "cargo build --release -q --manifest-path tools/restored/Cargo.toml".to_string();
+    steps.push(building);
+    let declared = Declared::of(&steps, &[cache("validate", &["~/.cargo/registry"])]);
+    assert!(twice_compiled::judge_wiring(&declared).is_empty());
+}
+
+/// AND THE WIRING LAWS REACH THE VERDICT A CONSUMER READS. `judge_wiring` is
+/// separate because it needs no census; a law nothing calls refuses nothing.
+#[test]
+fn the_wiring_refusals_reach_the_gates_own_verdict() {
+    let (declared, census) = cached_and_said(true, 1_000);
+    let mut broken = declared.clone();
+    let steps = broken
+        .jobs
+        .get_mut("validate")
+        .expect("the fixture declares it");
+    steps[0].index = CACHE_AT + 10;
+    let refusals = judge(&census, &broken, &nothing());
+    assert!(
+        refusals.contains(&Refusal::RestoreIsMeasuredOnTheWrongSide {
+            job: "validate".to_string(),
+            side: restored::Side::Before,
+            measured_at: CACHE_AT + 10,
+            cache_at: CACHE_AT,
+        }),
+        "{refusals:?}"
     );
 }

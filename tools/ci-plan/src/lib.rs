@@ -101,6 +101,22 @@ pub fn parse_workflow(raw: &str, source: &str) -> Yaml {
 pub struct RunStep {
     /// The job id — the spelling `needs:` uses.
     pub job: String,
+    /// Where it sits in its job's `steps:` list, counting every step and not
+    /// only the ones that `run:`.
+    ///
+    /// A JOB'S STEPS ARE AN ORDERED LIST AND THIS IS THE ONLY PLACE THAT SAYS SO.
+    /// [`run_steps`] and [`cache_steps`] read the same list twice and each
+    /// returns its own population, so without a shared coordinate a caller
+    /// holding both can say WHICH steps a job has and never WHICH CAME FIRST.
+    /// R1102 wired two measuring steps around a cache restore — the difference
+    /// between them is what a job started from — and could not assert from the
+    /// file that they bracket the restore at all; a workflow with both of them
+    /// on the same side of it measures nothing, reports every job as having
+    /// started from an empty tree, and is a file nobody's gate reads as wrong.
+    /// Counting every step is what makes the two numbers comparable: an index
+    /// among `run:` steps only would say a `run:` step precedes a cache step it
+    /// in fact follows.
+    pub index: usize,
     /// The shell of the `run:` key.
     pub script: String,
     /// Workflow `env:`, overlaid by the job's, overlaid by the step's — GitHub's
@@ -151,12 +167,13 @@ pub fn run_steps(doc: &Yaml) -> Vec<RunStep> {
         };
         let mut job_env = workflow_env.clone();
         job_env.extend(env_at(job));
-        for step in job_steps {
+        for (index, step) in job_steps.iter().enumerate() {
             if let Some(script) = step["run"].as_str() {
                 let mut env = job_env.clone();
                 env.extend(env_at(step));
                 steps.push(RunStep {
                     job: name.clone(),
+                    index,
                     script: script.to_string(),
                     env,
                 });
@@ -182,6 +199,10 @@ pub struct CacheDeclaration {
     pub source: String,
     /// The id of the job that runs it — the same spelling `needs:` uses.
     pub owner: String,
+    /// Where it sits in its job's `steps:` list — the SAME counting
+    /// [`RunStep::index`] uses, which is what lets a caller holding both
+    /// populations put one before the other.
+    pub index: usize,
     /// The `key:` exactly as written, expressions and all.
     pub key: String,
     /// The key with `${{ runner.os }}` resolved from the job's own `runs-on`,
@@ -288,7 +309,7 @@ pub fn cache_steps(doc: &Yaml, source: &str) -> Vec<CacheDeclaration> {
             continue;
         };
         let mut os = None;
-        for step in steps {
+        for (index, step) in steps.iter().enumerate() {
             let Some(uses) = step["uses"].as_str() else {
                 continue;
             };
@@ -317,6 +338,7 @@ pub fn cache_steps(doc: &Yaml, source: &str) -> Vec<CacheDeclaration> {
             out.push(CacheDeclaration {
                 source: source.to_string(),
                 owner: owner.clone(),
+                index,
                 key: key.to_string(),
                 prefix: key_prefix(key, os),
                 paths,

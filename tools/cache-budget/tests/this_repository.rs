@@ -51,6 +51,9 @@ fn declaration(owner: &str, prefix: &str, paths: &[&str]) -> CacheDeclaration {
     CacheDeclaration {
         source: ".github/workflows/mnemosyne-validate.yml".to_string(),
         owner: owner.to_string(),
+        // This gate asks what a cache HOLDS, never where its step sits; the law
+        // about the order is `tools/twice-compiled`'s.
+        index: 1,
         key: format!("{prefix}${{{{ hashFiles('**/Cargo.lock') }}}}"),
         prefix: prefix.to_string(),
         paths: paths.iter().map(|path| path.to_string()).collect(),

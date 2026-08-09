@@ -228,3 +228,51 @@ fn the_gate_waits_for_every_job_whose_log_it_reads() {
         waited.difference(&others).collect::<Vec<_>>()
     );
 }
+
+#[test]
+fn every_cached_job_of_this_workflow_measures_the_restore_around_it() {
+    // THE LAW THAT NEEDS NO RUN, held against the live file. What a job started
+    // from is the DIFFERENCE between two measurements, so both of them being on
+    // one side of the restore is not a smaller reading — it is zero, which is
+    // exactly what a job that compiled from an empty tree reports. Round 1099
+    // read that shape and deleted a cache that was saving ten minutes a run.
+    let declared = declared_jobs(&workflow_steps());
+    let refusals = twice_compiled::judge_wiring(&declared);
+    assert!(
+        refusals.is_empty(),
+        "{WORKFLOW}:\n{}",
+        refusals
+            .iter()
+            .map(|refusal| format!("  {refusal}"))
+            .collect::<Vec<_>>()
+            .join("\n")
+    );
+    // NON-VACUITY, FIRST HALF: the population is not empty. A law over no job
+    // returns the same nothing as a law over a file that is right.
+    assert!(
+        declared.caches_at.len() >= 5,
+        "{WORKFLOW} declares caches in {:?} — a wiring law over fewer jobs than \
+         this repository has cached jobs is one that stopped reading",
+        declared.caches_at.keys().collect::<Vec<_>>()
+    );
+    // NON-VACUITY, SECOND HALF, AND IT IS THE ONE THAT MATTERS: the law bites on
+    // THIS population, not merely on a fixture. Every cached job in the live
+    // file is walked, its first measurement moved past its own cache step, and
+    // the refusal demanded — so a reader that had quietly stopped comparing
+    // indices would turn this red rather than print an empty verdict.
+    for job in declared.caches_at.keys().cloned().collect::<Vec<_>>() {
+        let mut moved = declared.clone();
+        let past = moved.caches_at[&job].iter().max().copied().unwrap_or(0) + 1;
+        let steps = moved.jobs.get_mut(&job).expect("a cached job with steps");
+        let before = steps
+            .iter_mut()
+            .find(|step| restored::sides_measured(&step.script).contains(&restored::Side::Before))
+            .unwrap_or_else(|| panic!("job `{job}` measures the restore before it happens"));
+        before.index = past;
+        assert!(
+            !twice_compiled::judge_wiring(&moved).is_empty(),
+            "moving `{job}`'s first measurement past its cache step is the \
+             defect this law exists for, and it was not refused"
+        );
+    }
+}

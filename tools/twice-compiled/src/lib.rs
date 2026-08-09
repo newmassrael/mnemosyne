@@ -716,6 +716,38 @@ pub enum Refusal {
     /// read off the workflow rather than off the record, so it fires on a job
     /// that has not run yet.
     RestoreIsNotRecorded { job: String, path: String },
+    /// A job with a cache does not measure one side of its restore exactly once.
+    ///
+    /// WHAT A JOB STARTED FROM IS A DIFFERENCE, so it takes two measurements and
+    /// exactly two. A side measured twice is a record whose second reading
+    /// overwrites the first; a side not measured at all is a job that writes no
+    /// record, which the census then reports as a job that did not say — the
+    /// right verdict arrived at an hour late, from a run, rather than from the
+    /// file that is already wrong.
+    RestoreSideIsNotMeasuredOnce {
+        job: String,
+        side: restored::Side,
+        times: usize,
+    },
+    /// A job measures one side of its restore on the WRONG side of the cache
+    /// step.
+    ///
+    /// THE FAILURE THAT LOOKS LIKE A FINDING. Both measurements on one side of
+    /// the restore give a difference of zero, and zero is exactly the shape of a
+    /// job that compiled from an empty tree — the state R1099 misread, at the
+    /// cost of a cache that was saving ten minutes a run. R1102 made the runtime
+    /// verdict loud for it; this is the same defect caught in the file, where it
+    /// is a wiring mistake anyone can see rather than a census nobody can trust.
+    RestoreIsMeasuredOnTheWrongSide {
+        job: String,
+        side: restored::Side,
+        measured_at: usize,
+        cache_at: usize,
+    },
+    /// A step measures a cache restore in a job that declares no cache — the
+    /// mirror of `RestoreRecordFromAJobWithNoCache`, read off the workflow, so
+    /// it fires before any run leaves a record behind.
+    RestoreIsMeasuredWithNoCache { job: String },
 }
 
 impl std::fmt::Display for Refusal {
@@ -814,6 +846,32 @@ impl std::fmt::Display for Refusal {
                  `{path}`, which is not `{job}.restored` — the census reads the \
                  job's name off the file, so two jobs sharing a path leave one \
                  of them with no state at all"
+            ),
+            Refusal::RestoreSideIsNotMeasuredOnce { job, side, times } => write!(
+                f,
+                "job `{job}` declares a cache and runs `restored {}` {times} \
+                 time(s) — what a job started from is the DIFFERENCE between two \
+                 measurements, so it takes one of each and no more",
+                side.word()
+            ),
+            Refusal::RestoreIsMeasuredOnTheWrongSide {
+                job,
+                side,
+                measured_at,
+                cache_at,
+            } => write!(
+                f,
+                "job `{job}` runs `restored {}` as step {measured_at} and its \
+                 cache is step {cache_at} — with both measurements on one side \
+                 of the restore the difference is zero, which is exactly what a \
+                 job that compiled from an empty tree reports",
+                side.word()
+            ),
+            Refusal::RestoreIsMeasuredWithNoCache { job } => write!(
+                f,
+                "job `{job}` measures a cache restore and declares no cache — \
+                 there is nothing between its two measurements, so it would \
+                 report an empty tree for a job that never had one to fill"
             ),
         }
     }
@@ -960,6 +1018,15 @@ pub struct Declared {
     /// is dropped and the order of first mention kept, because that is the order
     /// the measuring step is written in.
     pub caches: BTreeMap<String, Vec<String>>,
+    /// WHERE in each job's `steps:` list its caches sit.
+    ///
+    /// Kept beside the paths rather than folded into them because it answers a
+    /// different question, and one the merge above destroys: the paths of two
+    /// caches are one region, but that region has an outer edge on each side and
+    /// a measurement has to be outside both of them. Every index counts the
+    /// whole `steps:` list, so it is directly comparable with
+    /// [`ci_plan::RunStep::index`].
+    pub caches_at: BTreeMap<String, Vec<usize>>,
 }
 
 impl Declared {
@@ -970,6 +1037,7 @@ impl Declared {
             jobs.entry(step.job.clone()).or_default().push(step.clone());
         }
         let mut cached: BTreeMap<String, Vec<String>> = BTreeMap::new();
+        let mut at: BTreeMap<String, Vec<usize>> = BTreeMap::new();
         for cache in caches {
             let paths = cached.entry(cache.owner.clone()).or_default();
             for path in &cache.paths {
@@ -977,10 +1045,12 @@ impl Declared {
                     paths.push(path.clone());
                 }
             }
+            at.entry(cache.owner.clone()).or_default().push(cache.index);
         }
         Declared {
             jobs,
             caches: cached,
+            caches_at: at,
         }
     }
 }
@@ -1063,21 +1133,28 @@ pub fn judge(census: &Census, declared: &Declared, absent: &BTreeSet<String>) ->
     refusals
 }
 
-/// What every job says it STARTED FROM, held against what its cache declares.
+/// What the WORKFLOW says about the restore measurements, judged with no census
+/// at all.
 ///
-/// SEPARATE FROM THE COMPILATION LAWS because it is a different population: the
-/// jobs with a cache, which is not the jobs that compile. This repository's two
-/// gate jobs compile plenty and cache nothing, and requiring a restore record of
-/// them would refuse a workflow that is right.
-fn judge_restores(census: &Census, declared: &Declared, absent: &BTreeSet<String>) -> Vec<Refusal> {
+/// SEPARATE FROM THE RECORD LAWS BECAUSE IT NEEDS NOTHING THAT RAN. Every other
+/// restore law joins a record to a declaration, so it can only speak about jobs
+/// that left one and is rightly silent about the jobs a caller declares absent.
+/// These are properties of the file: they hold for a job that has never run,
+/// for the job the gate is itself running in, and for a job a local replay
+/// refused — and a wiring mistake caught here is caught before it costs a run.
+///
+/// WHY IT CAN BE ASKED AT ALL is `ci_plan::RunStep::index`. The `run:` steps and
+/// the cache steps are two populations read out of one ordered list, and until
+/// they carried a shared coordinate the question "does the measurement bracket
+/// the restore?" had no answer in the file — R1102 closed it by OBSERVATION
+/// instead (a job whose measurements both sit on one side reports an empty tree,
+/// and an empty tree next to a restorable generation is a refusal), which
+/// detects the mistake from a run rather than firing on the file that is wrong.
+pub fn judge_wiring(declared: &Declared) -> Vec<Refusal> {
     let mut refusals = Vec::new();
-    for (job, paths) in &declared.caches {
-        if absent.contains(job) || !declared.jobs.contains_key(job) {
-            continue;
-        }
-        // WHERE IT WILL BE WRITTEN, read off the workflow, so this fires on a
-        // job that has not run yet — the same law the compilation log has, on
-        // the other record.
+    for (job, caches_at) in &declared.caches_at {
+        // WHERE THE RECORD WILL BE WRITTEN — the same law the compilation log
+        // has, on the other record.
         for step in declared.jobs.get(job).into_iter().flatten() {
             match step.env.get(restored::VARIABLE) {
                 Some(path) if !path.is_empty() && restored::names_its_job(path, job) => {}
@@ -1090,6 +1167,82 @@ fn judge_restores(census: &Census, declared: &Declared, absent: &BTreeSet<String
                     path: String::new(),
                 }),
             }
+        }
+        // EVERY INVOCATION AND NOT EVERY STEP: one step whose script runs the
+        // measurement twice writes the second reading over the first, and
+        // counting steps would call that one measurement.
+        let measured: Vec<(usize, restored::Side)> = declared
+            .jobs
+            .get(job)
+            .into_iter()
+            .flatten()
+            .flat_map(|step| {
+                restored::sides_measured(&step.script)
+                    .into_iter()
+                    .map(|side| (step.index, side))
+            })
+            .collect();
+        for side in restored::Side::BOTH {
+            let ours: Vec<usize> = measured
+                .iter()
+                .filter(|(_, measured)| *measured == side)
+                .map(|(index, _)| *index)
+                .collect();
+            let [measured_at] = ours.as_slice() else {
+                refusals.push(Refusal::RestoreSideIsNotMeasuredOnce {
+                    job: job.clone(),
+                    side,
+                    times: ours.len(),
+                });
+                continue;
+            };
+            // OUTSIDE EVERY CACHE THE JOB DECLARES, not merely outside one of
+            // them: the record brackets a REGION, and a measurement that has
+            // slipped between two cache steps reports the second one's arrival
+            // as nothing.
+            for cache_at in caches_at {
+                let wrong = match side {
+                    restored::Side::Before => measured_at >= cache_at,
+                    restored::Side::After => measured_at <= cache_at,
+                };
+                if wrong {
+                    refusals.push(Refusal::RestoreIsMeasuredOnTheWrongSide {
+                        job: job.clone(),
+                        side,
+                        measured_at: *measured_at,
+                        cache_at: *cache_at,
+                    });
+                }
+            }
+        }
+    }
+    // THE OTHER DIRECTION, which no record can report until one arrives: a job
+    // measuring a restore that never happens.
+    for (job, steps) in &declared.jobs {
+        if declared.caches_at.contains_key(job) {
+            continue;
+        }
+        if steps
+            .iter()
+            .any(|step| !restored::sides_measured(&step.script).is_empty())
+        {
+            refusals.push(Refusal::RestoreIsMeasuredWithNoCache { job: job.clone() });
+        }
+    }
+    refusals
+}
+
+/// What every job says it STARTED FROM, held against what its cache declares.
+///
+/// SEPARATE FROM THE COMPILATION LAWS because it is a different population: the
+/// jobs with a cache, which is not the jobs that compile. This repository's two
+/// gate jobs compile plenty and cache nothing, and requiring a restore record of
+/// them would refuse a workflow that is right.
+fn judge_restores(census: &Census, declared: &Declared, absent: &BTreeSet<String>) -> Vec<Refusal> {
+    let mut refusals = judge_wiring(declared);
+    for (job, paths) in &declared.caches {
+        if absent.contains(job) || !declared.jobs.contains_key(job) {
+            continue;
         }
         match census.restored.get(job) {
             None => refusals.push(Refusal::JobDidNotSayWhatItRestored { job: job.clone() }),
