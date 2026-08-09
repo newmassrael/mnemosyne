@@ -157,8 +157,40 @@ impl Fixture {
         f.write("src/lib.rs", CLEAN_LIB);
         f.write(".gitignore", "mn-calls.log\n/target\n");
         write_exec(&f.path().join("scripts/mn"), MN_STUB);
+        f.generate_lockfile("Cargo.toml");
         f.stage_all();
         f
+    }
+
+    /// A REPOSITORY HAS A LOCKFILE. R1115 put `--locked` on every cargo command
+    /// this repository issues, the hooks included, and a hook is pointed at the
+    /// WORKING DIRECTORY — so a fixture without one is a tree the hooks
+    /// correctly refuse, and seven tests here said so the moment the flag went
+    /// on. R1112 made the same correction for `.cargo/config.toml`: a fixture
+    /// that does not look like a repository fails for a reason that is about
+    /// the fixture.
+    ///
+    /// CARGO WRITES IT, not this file. A hand-written lockfile pins a format
+    /// version, and the day cargo moves to the next one these tests would fail
+    /// for a third reason that is again about the fixture. `--offline` because
+    /// these trees have no dependencies and a test must not need a network.
+    fn generate_lockfile(&self, manifest: &str) {
+        let out = Command::new(std::env::var("CARGO").unwrap_or_else(|_| "cargo".to_string()))
+            .args([
+                "generate-lockfile",
+                "--offline",
+                "--manifest-path",
+                manifest,
+            ])
+            .current_dir(self.path())
+            .env("CARGO_TARGET_DIR", self.path().join("target"))
+            .output()
+            .expect("cargo exec");
+        assert!(
+            out.status.success(),
+            "cargo generate-lockfile for {manifest} failed: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
     }
 
     fn path(&self) -> &Path {
@@ -514,6 +546,7 @@ fn pre_commit_gates_a_separate_in_repo_workspace_the_root_gates_miss() {
         "[package]\nname = \"sub\"\nversion = \"0.0.0\"\nedition = \"2021\"\n\n[workspace]\n",
     );
     dirty.write("tools/sub/src/lib.rs", "pub fn two()->u8{2}\n");
+    dirty.generate_lockfile("tools/sub/Cargo.toml");
     dirty.stage_all();
 
     let out = dirty.run_hook("pre-commit", &[], "", &[]);
@@ -540,6 +573,7 @@ fn pre_commit_gates_a_separate_in_repo_workspace_the_root_gates_miss() {
         "[package]\nname = \"sub\"\nversion = \"0.0.0\"\nedition = \"2021\"\n\n[workspace]\n",
     );
     clean.write("tools/sub/src/lib.rs", "pub fn two() -> u8 {\n    2\n}\n");
+    clean.generate_lockfile("tools/sub/Cargo.toml");
     clean.stage_all();
     let out = clean.run_hook("pre-commit", &[], "", &[]);
     assert!(

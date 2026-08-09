@@ -123,8 +123,8 @@ fi
 # every warning to deny. Workspace allow list (root Cargo.toml) carries
 # stylistic exemptions; per-site `#[allow]` for API-shape exemptions.
 if printf '%s\n' "$staged" | grep -qE '\.rs$'; then
-    echo "[mnemosyne pre-commit] .rs staged — cargo clippy --workspace --all-targets -- -D warnings" >&2
-    cargo clippy --workspace --all-targets -- -D warnings
+    echo "[mnemosyne pre-commit] .rs staged — cargo clippy --workspace --locked --all-targets -- -D warnings" >&2
+    cargo clippy --workspace --locked --all-targets -- -D warnings
 fi
 
 # Gate 5a — item citations, the sibling `validate-code-refs` never had. That
@@ -150,14 +150,20 @@ fi
 # existing without saying so.
 if printf '%s\n' "$staged" | grep -qE '\.rs$'; then
     echo "[mnemosyne pre-commit] .rs staged — item citations name items" >&2
-    citations="$(cd "$(dirname "$0")/.." && pwd)/tools/item-citations/Cargo.toml"
-    if [[ ! -f "$citations" ]]; then
+    # THE VARIABLE HOLDS THE CHECKOUT, NOT THE MANIFEST. R1115: the gate that
+    # asks whether every cargo command in this repository pins its lockfile has
+    # to know WHICH lockfile each one resolves, and `--manifest-path "$gate"`
+    # names nothing it can read — `"$gates/tools/item-citations/Cargo.toml"`
+    # names one manifest whatever the prefix expands to. The tree this hook is
+    # pointed at is still the working directory; only the program moves.
+    gates="$(cd "$(dirname "$0")/.." && pwd)"
+    if [[ ! -f "$gates/tools/item-citations/Cargo.toml" ]]; then
         echo "[mnemosyne pre-commit] commit rejected — the item-citation gate is" \
-             "missing at $citations" >&2
+             "missing at $gates/tools/item-citations/Cargo.toml" >&2
         exit 1
     fi
-    if ! cargo run -q --manifest-path "$citations" --bin item-citations -- \
-        --workspace "$(pwd)/Cargo.toml"; then
+    if ! cargo run -q --locked --manifest-path "$gates/tools/item-citations/Cargo.toml" \
+        --bin item-citations -- --workspace "$(pwd)/Cargo.toml"; then
         {
             echo "[mnemosyne pre-commit] commit rejected — a citation names no item"
             echo "  run: cargo run -q --manifest-path tools/item-citations/Cargo.toml \\"
@@ -187,10 +193,11 @@ fi
 # reason spelled out under Gate 5a.
 if printf '%s\n' "$staged" | grep -qE '\.rs$'; then
     echo "[mnemosyne pre-commit] .rs staged — waits end on conditions" >&2
-    waits="$(cd "$(dirname "$0")/.." && pwd)/tools/blind-waits/Cargo.toml"
-    if [[ ! -f "$waits" ]]; then
+    # The checkout, not the manifest — see Gate 5b.
+    gates="$(cd "$(dirname "$0")/.." && pwd)"
+    if [[ ! -f "$gates/tools/blind-waits/Cargo.toml" ]]; then
         echo "[mnemosyne pre-commit] commit rejected — the blind-wait gate is" \
-             "missing at $waits" >&2
+             "missing at $gates/tools/blind-waits/Cargo.toml" >&2
         exit 1
     fi
     # THE TWO NON-ZERO EXITS MEAN DIFFERENT THINGS and printing one message for
@@ -205,8 +212,8 @@ if printf '%s\n' "$staged" | grep -qE '\.rs$'; then
     # the hook's own smoke test caught it — the gate's message reached stderr
     # and the hook's did not.
     waits_verdict=0
-    cargo run -q --manifest-path "$waits" --bin blind-waits -- \
-        --workspace "$(pwd)/Cargo.toml" || waits_verdict=$?
+    cargo run -q --locked --manifest-path "$gates/tools/blind-waits/Cargo.toml" \
+        --bin blind-waits -- --workspace "$(pwd)/Cargo.toml" || waits_verdict=$?
     if [[ $waits_verdict -eq 1 ]]; then
         {
             echo "[mnemosyne pre-commit] commit rejected — a test waits on a clock"

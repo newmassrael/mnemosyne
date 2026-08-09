@@ -141,6 +141,126 @@
         }
       ],
       "expect_red": ["what_a_workflow_collects_is_read_because_it_decides_what_can_be_read_back"]
+    },
+    {
+      "name": "the-shallowest-manifest-match-wins",
+      "why": "`Cargo.toml` is itself a tracked manifest and is a suffix of every other one, so taking any match rather than the deepest reads every `--manifest-path bench/Cargo.toml` as the root workspace — and the root is one this repository pins, so a command over a workspace it CANNOT pin would be reported as compliant",
+      "edits": [
+        {
+          "file": "tools/ci-plan/src/lib.rs",
+          "from": "            .max_by_key(|candidate| candidate.len())",
+          "to": "            .min_by_key(|candidate| candidate.len())"
+        }
+      ],
+      "expect_red": ["the_flag_is_wrong_on_a_workspace_whose_resolution_belongs_to_another_tree"]
+    },
+    {
+      "name": "a-tail-under-a-variable-need-not-be-qualified",
+      "why": "`$ws/Cargo.toml` has a literal tail and it is `Cargo.toml`; without the qualification rule that resolves to the root workspace, and a gate pointed at a workspace chosen at runtime would be reported as pinning one it may never touch",
+      "edits": [
+        {
+          "file": "tools/ci-plan/src/lib.rs",
+          "from": "        if must_be_qualified && !needle.contains('/') {",
+          "to": "        if false && must_be_qualified && !needle.contains('/') {"
+        }
+      ],
+      "expect_red": ["a_command_this_reader_cannot_place_is_not_read_as_compliant"]
+    },
+    {
+      "name": "an-unmeasured-subcommand-is-assumed-harmless",
+      "why": "the whole law rests on knowing which subcommands rewrite a lockfile they disagree with; answering `leaves it alone` for one nobody has measured exempts it silently, which is the empty answer that reads like a clean one",
+      "edits": [
+        {
+          "file": "tools/ci-plan/src/lib.rs",
+          "from": "        \"fmt\" | \"sweep\" => Some(false),\n        _ => None,",
+          "to": "        \"fmt\" | \"sweep\" => Some(false),\n        _ => Some(false),"
+        }
+      ],
+      "expect_red": ["a_command_this_reader_cannot_place_is_not_read_as_compliant"]
+    },
+    {
+      "name": "fmt-is-treated-as-a-resolve",
+      "why": "`cargo fmt` REJECTS `--locked`, so a law that required the flag of it is one no correct command can satisfy — and the gate would then demand a change that breaks every hook it touches",
+      "edits": [
+        {
+          "file": "tools/ci-plan/src/lib.rs",
+          "from": "        \"fmt\" | \"sweep\" => Some(false),",
+          "to": "        \"sweep\" => Some(false),\n        \"fmt\" => Some(true),"
+        }
+      ],
+      "expect_red": ["a_resolve_without_the_flag_rewrites_the_lockfile_it_should_have_reported"]
+    },
+    {
+      "name": "a-free-resolve-over-an-owned-workspace-is-compliant",
+      "why": "this is the defect itself: a command that resolves without the flag rewrites the lockfile it disagrees with, so the check after it in the same run reads a repaired file. Calling it compliant is the state this repository was in for an unknown number of rounds",
+      "edits": [
+        {
+          "file": "tools/ci-plan/src/lib.rs",
+          "from": "        (true, false) => LockVerdict::RepairsWhatItShouldReport,",
+          "to": "        (true, false) => LockVerdict::Pinned,"
+        }
+      ],
+      "expect_red": ["a_resolve_without_the_flag_rewrites_the_lockfile_it_should_have_reported"]
+    },
+    {
+      "name": "the-flag-is-demanded-of-a-workspace-nobody-here-owns",
+      "why": "`studio` resolves against the sibling `pinion` checkout, so `--locked` there is a gate that turns red on a commit made in another repository — R1110's defect, which this law must forbid rather than merely permit",
+      "edits": [
+        {
+          "file": "tools/ci-plan/src/lib.rs",
+          "from": "        (false, true) => LockVerdict::PinsWhatItDoesNotOwn,",
+          "to": "        (false, true) => LockVerdict::Pinned,"
+        }
+      ],
+      "expect_red": ["the_flag_is_wrong_on_a_workspace_whose_resolution_belongs_to_another_tree"]
+    },
+    {
+      "name": "a-command-behind-a-shell-keyword-is-not-a-command",
+      "why": "`if ! cargo test …` is how the git hooks write four of their five cargo invocations; a reader taking the first word literally answers `if` and leaves every one of them out of the population that the lockfile law walks",
+      "edits": [
+        {
+          "file": "tools/ci-plan/src/lib.rs",
+          "from": "    \"if\", \"then\", \"else\", \"elif\", \"while\", \"until\", \"do\", \"!\", \"{\",",
+          "to": ""
+        }
+      ],
+      "expect_red": ["a_command_written_behind_a_shell_keyword_is_still_a_command"]
+    },
+    {
+      "name": "every-word-in-front-of-cargo-is-skipped",
+      "why": "the mirror: skipping any leading word attributes `cargo test` to a line that runs some OTHER program with cargo as its argument, which puts a command nobody issues into the population and sends a later round fixing a flag on it",
+      "edits": [
+        {
+          "file": "tools/ci-plan/src/lib.rs",
+          "from": "                .is_some_and(|word| SHELL_PREFIXES.contains(&word.as_str()))",
+          "to": "                .is_some_and(|word| word != \"cargo\")"
+        }
+      ],
+      "expect_red": ["a_word_that_merely_starts_with_a_keyword_does_not_hide_a_command"]
+    },
+    {
+      "name": "an-unknown-ownership-verdict-is-read-as-owned",
+      "why": "the lister prints `ours` or `foreign`; a third word is a state nobody has written yet, and folding it into either answer decides the law for a case this reader has never seen",
+      "edits": [
+        {
+          "file": "tools/ci-plan/src/lib.rs",
+          "from": "                _ => continue,\n            };\n            listed.ownership.insert(workspace.to_string(), ownership);",
+          "to": "                _ => Ownership::Ours,\n            };\n            listed.ownership.insert(workspace.to_string(), ownership);"
+        }
+      ],
+      "expect_red": ["a_verdict_this_reader_does_not_know_is_not_read_as_either_answer"]
+    },
+    {
+      "name": "every-declared-command-is-a-suite",
+      "why": "`unrun-tests` asks which tests each CI command executes; handing it the lint and citation commands as though they ran tests puts targets in its population that no command runs",
+      "edits": [
+        {
+          "file": "tools/ci-plan/src/lib.rs",
+          "from": "        .filter(|(declared, _)| declared.role == \"suite\")",
+          "to": "        .filter(|(declared, _)| !declared.role.is_empty())"
+        }
+      ],
+      "expect_red": ["a_skipped_workspace_contributes_no_suite_to_run"]
     }
   ]
 }

@@ -7,9 +7,12 @@
 //! turned main red on its first push. Pinned text is how a branch nobody here
 //! can execute still has a control.
 
+use std::collections::BTreeSet;
+
 use ci_plan::{
-    cache_steps, job_needs, lister_cargo_commands, parse_lister, parse_script, parse_workflow,
-    run_steps, CacheDeclaration, CargoCommand,
+    cache_steps, job_needs, lister_declared_commands, lister_suite_commands, lock_verdict,
+    parse_lister, parse_script, parse_workflow, run_steps, CacheDeclaration, CargoCommand,
+    LockVerdict, Ownership,
 };
 
 /// A workflow with two cached jobs, one of them registry-only.
@@ -252,13 +255,29 @@ fn repository_root() -> std::path::PathBuf {
 
 /// The lister's output as `scripts/check-side-workspaces.sh --list` prints it,
 /// including the skip this machine cannot produce.
-const LISTED: &str = "[side-workspaces] CHECKABLE bench\n\
-     [side-workspaces] SUITE bench cargo test --manifest-path bench/Cargo.toml --locked --no-fail-fast\n\
+const LISTED: &str = "[side-workspaces] LOCK bench ours\n\
+     [side-workspaces] CHECKABLE bench\n\
+     [side-workspaces] COMMAND bench clippy cargo clippy --manifest-path bench/Cargo.toml --locked --all-targets -- -D warnings\n\
+     [side-workspaces] COMMAND bench suite cargo test --manifest-path bench/Cargo.toml --locked --no-fail-fast\n\
      [side-workspaces] SKIP studio — its path dependencies leave this \
      repository and are not on this machine: ../pinion/crates/pinion-a11y\n\
+     [side-workspaces] LOCK tools/item-citations ours\n\
      [side-workspaces] CHECKABLE tools/item-citations\n\
-     [side-workspaces] SUITE tools/item-citations cargo test --manifest-path tools/item-citations/Cargo.toml --locked --no-fail-fast\n\
+     [side-workspaces] COMMAND tools/item-citations suite cargo test --manifest-path tools/item-citations/Cargo.toml --locked --no-fail-fast\n\
      [side-workspaces] checked 2 (bench tools/item-citations), skipped 1 (studio)\n";
+
+/// The same lister over a machine that HAS the sibling checkout: `studio` is
+/// checkable there and still foreign, which is the pair no single predicate can
+/// express and the reason R1115 split them.
+const LISTED_WITH_THE_SIBLING: &str = "[side-workspaces] LOCK bench ours\n\
+     [side-workspaces] CHECKABLE bench\n\
+     [side-workspaces] COMMAND bench suite cargo test --manifest-path bench/Cargo.toml --locked --no-fail-fast\n\
+     [side-workspaces] LOCK studio foreign — it resolves against trees this \
+     repository does not own, so its lockfile is not this repository's to pin: \
+     ../../pinion/crates/pinion-core\n\
+     [side-workspaces] CHECKABLE studio\n\
+     [side-workspaces] COMMAND studio suite cargo test --manifest-path studio/Cargo.toml --no-fail-fast\n\
+     [side-workspaces] checked 2 (bench studio), skipped 0 ()\n";
 
 #[test]
 fn the_lister_is_read_for_what_it_can_and_cannot_be_asked() {
@@ -296,12 +315,17 @@ fn the_lister_is_read_for_what_it_can_and_cannot_be_asked() {
 fn a_skipped_workspace_contributes_no_suite_to_run() {
     let listed = parse_lister(LISTED);
     assert_eq!(
-        listed.suites.keys().collect::<Vec<_>>(),
+        listed
+            .commands
+            .iter()
+            .filter(|declared| declared.role == "suite")
+            .map(|declared| declared.workspace.as_str())
+            .collect::<Vec<_>>(),
         vec!["bench", "tools/item-citations"],
         "only the checkable ones have a suite: {:?}",
-        listed.suites
+        listed.commands
     );
-    let commands = lister_cargo_commands(&listed);
+    let commands = lister_suite_commands(&listed);
     assert_eq!(commands.len(), 2, "{commands:?}");
     assert!(
         commands
@@ -320,6 +344,244 @@ fn a_skipped_workspace_contributes_no_suite_to_run() {
             .all(|command| command.harness_args.is_empty()),
         "the lister passes the harness nothing, so it runs every test the \
          command's targets hold: {commands:?}"
+    );
+}
+
+#[test]
+fn every_command_the_lister_runs_is_read_and_not_only_the_suite() {
+    let listed = parse_lister(LISTED);
+    let commands = lister_declared_commands(&listed);
+    assert_eq!(
+        commands.len(),
+        3,
+        "the four checks that run BEFORE the suite are the ones that were \
+         invisible, so reading only the suite is reading the one command that \
+         already carried the flag: {commands:?}"
+    );
+    let clippy = commands
+        .iter()
+        .find(|command| command.subcommand() == Some("clippy"))
+        .expect("the lister declares its lint command");
+    assert!(
+        clippy.has("--locked"),
+        "and the flag is readable off it: {clippy:?}"
+    );
+    assert_eq!(
+        clippy.harness_args,
+        vec!["-D".to_string(), "warnings".to_string()],
+        "a declared command splits at the bare `--` like any other: {clippy:?}"
+    );
+}
+
+#[test]
+fn a_workspace_can_be_checkable_here_and_still_not_this_repositorys_to_pin() {
+    let listed = parse_lister(LISTED_WITH_THE_SIBLING);
+    assert!(
+        listed.skipped.is_empty(),
+        "this machine has the sibling checkout: {:?}",
+        listed.skipped
+    );
+    assert_eq!(
+        listed.ownership.get("bench"),
+        Some(&Ownership::Ours),
+        "{:?}",
+        listed.ownership
+    );
+    let Some(Ownership::Foreign(reason)) = listed.ownership.get("studio") else {
+        panic!(
+            "studio resolves against a tree outside this repository whether \
+                or not that tree is here: {:?}",
+            listed.ownership
+        );
+    };
+    assert!(
+        reason.contains("pinion"),
+        "and the lister's own words say which dependencies made it so: {reason}"
+    );
+    let studio = lister_declared_commands(&listed)
+        .into_iter()
+        .find(|command| command.owner == "studio")
+        .expect("studio has a declared command");
+    assert!(
+        !studio.has("--locked"),
+        "a foreign workspace gets no `--locked`, because the commit that would \
+         break it is one in another repository: {studio:?}"
+    );
+}
+
+#[test]
+fn a_verdict_this_reader_does_not_know_is_not_read_as_either_answer() {
+    let listed = parse_lister(
+        "[side-workspaces] CHECKABLE bench\n\
+         [side-workspaces] LOCK bench vendored — a third state nobody has written yet\n",
+    );
+    assert!(
+        listed.ownership.is_empty(),
+        "an unknown verdict is absent rather than guessed: a reader that folded \
+         it into `ours` would demand `--locked`, and one that folded it into \
+         `foreign` would stop demanding it — both are answers about a state this \
+         reader has never seen: {:?}",
+        listed.ownership
+    );
+}
+
+#[test]
+fn a_command_written_behind_a_shell_keyword_is_still_a_command() {
+    let parsed = parse_script(
+        "if ! cargo test --workspace; then\n  echo no\nfi\n\
+         while ! cargo build; do :; done\n",
+    );
+    assert_eq!(
+        parsed.len(),
+        2,
+        "`if ! cargo …` is a cargo invocation and reading the first word \
+         literally answers `if`: {parsed:?}"
+    );
+    assert_eq!(parsed[0].0[0], "cargo", "{parsed:?}");
+    assert_eq!(parsed[0].0[1], "test", "{parsed:?}");
+    assert_eq!(parsed[1].0[1], "build", "{parsed:?}");
+}
+
+#[test]
+fn a_word_that_merely_starts_with_a_keyword_does_not_hide_a_command() {
+    let parsed = parse_script("iffy cargo test\n");
+    assert!(
+        parsed.is_empty(),
+        "`iffy` is a program, not a shell keyword, and the command it runs is \
+         its own — skipping it would attribute `cargo test` to a line that does \
+         not issue it: {parsed:?}"
+    );
+}
+
+/// Build a `CargoCommand` from a line, the way a workflow or a script writes it.
+fn issued(line: &str) -> CargoCommand {
+    let mut words: Vec<String> = line.split_whitespace().map(str::to_string).collect();
+    let harness_args = match words.iter().position(|word| word == "--") {
+        Some(at) => words.split_off(at).split_off(1),
+        None => Vec::new(),
+    };
+    CargoCommand {
+        source: "a fixture".to_string(),
+        owner: "a fixture".to_string(),
+        cargo_args: words,
+        harness_args,
+        env: Default::default(),
+    }
+}
+
+const TWO_MANIFESTS: [&str; 2] = ["Cargo.toml", "bench/Cargo.toml"];
+
+fn tracked_pair() -> Vec<String> {
+    TWO_MANIFESTS.iter().map(|m| m.to_string()).collect()
+}
+
+#[test]
+fn a_resolve_without_the_flag_rewrites_the_lockfile_it_should_have_reported() {
+    let tracked = tracked_pair();
+    let nothing_foreign = BTreeSet::new();
+    assert_eq!(
+        lock_verdict(
+            &issued("cargo clippy --manifest-path bench/Cargo.toml --all-targets"),
+            &tracked,
+            &nothing_foreign
+        ),
+        LockVerdict::RepairsWhatItShouldReport,
+        "this is the defect the whole law exists for: the lint step repairs the \
+         lockfile that the suite two steps later was going to check"
+    );
+    assert_eq!(
+        lock_verdict(
+            &issued("cargo clippy --manifest-path bench/Cargo.toml --locked --all-targets"),
+            &tracked,
+            &nothing_foreign
+        ),
+        LockVerdict::Pinned,
+    );
+    assert_eq!(
+        lock_verdict(&issued("cargo fmt --check"), &tracked, &nothing_foreign),
+        LockVerdict::ResolvesNothing,
+        "`cargo fmt` cannot rewrite a lockfile and REJECTS `--locked`, so a law \
+         that demanded the flag of everything would be unsatisfiable"
+    );
+}
+
+#[test]
+fn the_flag_is_wrong_on_a_workspace_whose_resolution_belongs_to_another_tree() {
+    let tracked = tracked_pair();
+    // `bench` stands in for `studio` here: which workspace is foreign is an
+    // answer the lister gives, and this is the reading of that answer.
+    let foreign = BTreeSet::from(["bench".to_string()]);
+    assert_eq!(
+        lock_verdict(
+            &issued("cargo test --manifest-path bench/Cargo.toml --no-fail-fast"),
+            &tracked,
+            &foreign
+        ),
+        LockVerdict::NotOursToPin,
+        "its resolution changes when another repository commits — and reading \
+         `bench/Cargo.toml` as the root manifest, which is a suffix of it, would \
+         report this as a workspace this repository pins"
+    );
+    assert_eq!(
+        lock_verdict(
+            &issued("cargo test --manifest-path bench/Cargo.toml --locked"),
+            &tracked,
+            &foreign
+        ),
+        LockVerdict::PinsWhatItDoesNotOwn,
+        "and pinning it is a gate that goes red for a commit nobody here made"
+    );
+}
+
+#[test]
+fn a_command_this_reader_cannot_place_is_not_read_as_compliant() {
+    let tracked = tracked_pair();
+    let nothing_foreign = BTreeSet::new();
+    assert!(
+        matches!(
+            lock_verdict(
+                &issued("cargo test --manifest-path $ws/Cargo.toml --locked"),
+                &tracked,
+                &nothing_foreign
+            ),
+            LockVerdict::Unreadable(_)
+        ),
+        "`$ws/Cargo.toml` has a literal tail and it is `Cargo.toml`, which every \
+         workspace here has one of — resolving it to the root would say the \
+         command pins a workspace it may never touch"
+    );
+    assert!(
+        matches!(
+            lock_verdict(
+                &issued("cargo frobnicate --workspace"),
+                &tracked,
+                &nothing_foreign
+            ),
+            LockVerdict::Unreadable(_)
+        ),
+        "a subcommand nobody has measured against a disagreeing lockfile is not \
+         evidence that it leaves one alone"
+    );
+    assert_eq!(
+        lock_verdict(
+            &issued("cargo run --manifest-path $root/bench/Cargo.toml --locked"),
+            &tracked,
+            &nothing_foreign
+        ),
+        LockVerdict::Pinned,
+        "a variable PREFIX still names one manifest, and refusing that would push \
+         the git hooks into spelling paths they must not spell — they run over \
+         another checkout than their own"
+    );
+    assert_eq!(
+        lock_verdict(
+            &issued("cargo build --workspace --locked"),
+            &tracked,
+            &nothing_foreign
+        ),
+        LockVerdict::Pinned,
+        "a command with no `--manifest-path` resolves the tree it runs in, which \
+         for every caller of this crate is the repository root"
     );
 }
 

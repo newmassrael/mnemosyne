@@ -22,7 +22,7 @@
 //! here is either read from a tracked file or asked of the program that owns
 //! the answer, and nothing is restated.
 //!
-//! Two sources, one per thing CI is made of:
+//! Three sources, one per place a cargo command in this repository is written:
 //!
 //! - **Workflows** — [`workflow_files`] lists them from `git ls-files` rather
 //!   than a directory walk, so a workflow that is not tracked (and which GitHub
@@ -30,9 +30,16 @@
 //! - **The workspace lister** — [`workspaces`] runs
 //!   `scripts/check-side-workspaces.sh --list`, which is the file CI actually
 //!   invokes for every separate in-repo workspace and the only place that knows
-//!   which of them this machine can build.
+//!   which of them this machine can build. Its commands are ASSEMBLED at
+//!   runtime, so its output is the only place they are fully spelled — reading
+//!   its text would ask whether a variable is spelled `--locked`.
+//! - **Tracked shell** — [`script_files`] takes the git hooks and `scripts/`,
+//!   which is where the checks a developer gets before a push are written.
+//!   R1115 added it: `locked_resolution_smoke` asks whether every cargo command
+//!   this repository issues pins the lockfile it resolves, and four of the ones
+//!   that did not were in the hooks, where no gate's population reached.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 use std::process::Command;
 
@@ -615,6 +622,222 @@ impl CargoCommand {
     pub fn origin(&self) -> String {
         format!("{} `{}`", self.source, self.owner)
     }
+
+    /// Which workspace's lockfile this command resolves.
+    ///
+    /// A command with no `--manifest-path` resolves the tree it is run in, and
+    /// every caller of this crate runs its commands from the repository root.
+    pub fn manifest(&self, tracked: &[String]) -> ManifestTarget {
+        let Some(written) = self.value(&["--manifest-path"]) else {
+            return ManifestTarget::Root;
+        };
+        // A path a shell assembles at runtime still NAMES a manifest, as long as
+        // the name is in the literal part: `"$program_root/tools/x/Cargo.toml"`
+        // is one manifest whatever `$program_root` turns out to be. What it is
+        // not allowed to be is ambiguous — `"$ws/Cargo.toml"` has a literal tail
+        // too, and that tail is `Cargo.toml`, which every workspace in the
+        // repository has one of. So a tail under a variable must carry a
+        // directory of its own; `Cargo.toml` alone names the root workspace when
+        // it is the whole path and names nothing when something precedes it.
+        let literal = written
+            .rsplit_once('$')
+            .map(|(_, after)| after.split_once('/').map(|(_, tail)| tail).unwrap_or(""));
+        let (needle, must_be_qualified) = match literal {
+            Some(tail) => (tail, true),
+            None => (written, false),
+        };
+        if must_be_qualified && !needle.contains('/') {
+            return ManifestTarget::Unreadable(written.to_string());
+        }
+        // THE DEEPEST MATCH WINS, and this is not a tie-break — it is the whole
+        // reading. `Cargo.toml` is itself a tracked manifest (the root one) and
+        // it is a suffix of every other, so a walk that demanded exactly one
+        // match would call every path in this repository ambiguous. Two tracked
+        // manifests cannot both be proper suffixes of the same string at the
+        // same length, so the longest is unique.
+        tracked
+            .iter()
+            .filter(|candidate| {
+                needle == candidate.as_str() || needle.ends_with(&format!("/{candidate}"))
+            })
+            .max_by_key(|candidate| candidate.len())
+            .map_or_else(
+                || ManifestTarget::Unreadable(written.to_string()),
+                |found| ManifestTarget::Named(found.clone()),
+            )
+    }
+}
+
+/// Which manifest a command was pointed at.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ManifestTarget {
+    /// No `--manifest-path`: the workspace of the directory it runs in.
+    Root,
+    /// A tracked manifest, named by the literal tail of what was written.
+    Named(String),
+    /// Written in a way this reader cannot resolve to one tracked manifest.
+    /// NOT a pass — a gate that cannot say which workspace a command resolves
+    /// cannot say whether that workspace's lockfile is one this repository
+    /// pins, and reporting it as compliant is the empty answer that reads like
+    /// a clean one.
+    Unreadable(String),
+}
+
+/// Does this cargo subcommand REWRITE a lockfile it disagrees with?
+///
+/// `None` for a subcommand this table does not know. Every answer here is
+/// measured against cargo itself by `locked_resolution_smoke`, which builds a
+/// workspace whose lockfile names a version its manifest does not and runs each
+/// of these to see which files move — so this is a recording of an experiment
+/// rather than a reading of the documentation, and a cargo release that changes
+/// one of them turns that test red instead of quietly widening the hole.
+///
+/// The two `false`s are the interesting ones: `fmt` and `sweep` both REFUSE
+/// `--locked` outright, so requiring the flag everywhere would be a law no
+/// correct command could satisfy.
+pub fn resolves_the_lockfile(subcommand: &str) -> Option<bool> {
+    match subcommand {
+        "bench" | "build" | "check" | "clean" | "clippy" | "doc" | "fix" | "metadata"
+        | "package" | "run" | "rustc" | "rustdoc" | "test" | "tree" => Some(true),
+        "fmt" | "sweep" => Some(false),
+        _ => None,
+    }
+}
+
+/// Every `Cargo.toml` this repository tracks, sorted.
+pub fn tracked_manifests(root: &Path) -> Vec<String> {
+    let mut found = tracked_files(root, &["ls-files", "*Cargo.toml"]);
+    found.sort();
+    assert!(
+        !found.is_empty(),
+        "this repository tracks no Cargo.toml at all — the empty answer that \
+         looks like a clean one"
+    );
+    found
+}
+
+/// Every tracked shell file that can issue a cargo command: the git hooks and
+/// `scripts/`. Read from `git ls-files` for [`workflow_files`]'s reason — an
+/// untracked script is not one a fresh clone runs.
+pub fn script_files(root: &Path) -> Vec<String> {
+    let mut found = tracked_files(root, &["ls-files", ".githooks", "scripts"]);
+    found.retain(|path| {
+        let head = std::fs::read_to_string(root.join(path)).unwrap_or_default();
+        head.starts_with("#!")
+            && head
+                .lines()
+                .next()
+                .is_some_and(|line| line.contains("bash"))
+    });
+    found.sort();
+    assert!(
+        !found.is_empty(),
+        "this repository tracks no shell script at all — the empty answer that \
+         looks like a clean one"
+    );
+    found
+}
+
+fn tracked_files(root: &Path, args: &[&str]) -> Vec<String> {
+    let out = Command::new("git")
+        .args(args)
+        .current_dir(root)
+        .output()
+        .expect("git ls-files runs");
+    assert!(
+        out.status.success(),
+        "git ls-files failed: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    String::from_utf8_lossy(&out.stdout)
+        .lines()
+        .map(str::to_string)
+        .collect()
+}
+
+/// What one cargo command says about the lockfile it resolves.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum LockVerdict {
+    /// It resolves a workspace this repository pins, and it says `--locked`.
+    Pinned,
+    /// It cannot rewrite a lockfile, so the flag would be wrong (and `fmt` and
+    /// `sweep` both reject it).
+    ResolvesNothing,
+    /// It resolves a workspace this repository does not pin, and correctly does
+    /// not say `--locked` — the flag there is a gate that another repository's
+    /// commit turns red.
+    NotOursToPin,
+    /// THE DEFECT: it resolves a workspace this repository pins, without the
+    /// flag, so a lockfile that disagrees with its manifests is REWRITTEN
+    /// instead of reported — and every check after it in the same run reads the
+    /// repaired file.
+    RepairsWhatItShouldReport,
+    /// THE MIRROR: `--locked` on a workspace whose resolution belongs to
+    /// another tree, which fails on a commit nobody here made.
+    PinsWhatItDoesNotOwn,
+    /// This reader could not say which workspace the command resolves, or what
+    /// its subcommand does to a lockfile. Not a pass.
+    Unreadable(String),
+}
+
+/// Judge one command. `foreign` holds the workspace directories the lister
+/// reported as resolving against trees outside this repository.
+pub fn lock_verdict(
+    command: &CargoCommand,
+    tracked: &[String],
+    foreign: &BTreeSet<String>,
+) -> LockVerdict {
+    let Some(subcommand) = command.subcommand() else {
+        return LockVerdict::Unreadable("no subcommand at all".to_string());
+    };
+    match resolves_the_lockfile(subcommand) {
+        None => {
+            return LockVerdict::Unreadable(format!(
+                "`cargo {subcommand}` is a subcommand nobody has measured against a \
+                 disagreeing lockfile"
+            ))
+        }
+        Some(false) => return LockVerdict::ResolvesNothing,
+        Some(true) => {}
+    }
+    let manifest = match command.manifest(tracked) {
+        ManifestTarget::Root => "Cargo.toml".to_string(),
+        ManifestTarget::Named(path) => path,
+        ManifestTarget::Unreadable(written) => {
+            return LockVerdict::Unreadable(format!(
+                "`--manifest-path {written}` does not name one manifest this \
+                 repository tracks"
+            ))
+        }
+    };
+    let ours = !foreign.iter().any(|directory| {
+        manifest == format!("{directory}/Cargo.toml")
+            || manifest.starts_with(&format!("{directory}/"))
+    });
+    match (ours, command.has("--locked")) {
+        (true, true) => LockVerdict::Pinned,
+        (true, false) => LockVerdict::RepairsWhatItShouldReport,
+        (false, false) => LockVerdict::NotOursToPin,
+        (false, true) => LockVerdict::PinsWhatItDoesNotOwn,
+    }
+}
+
+/// Every cargo invocation in every tracked shell script.
+pub fn script_cargo_commands(root: &Path) -> Vec<CargoCommand> {
+    let mut out = Vec::new();
+    for path in script_files(root) {
+        let text = std::fs::read_to_string(root.join(&path)).expect("read script");
+        for (cargo_args, harness_args) in parse_script(&text) {
+            out.push(CargoCommand {
+                source: path.clone(),
+                owner: path.clone(),
+                cargo_args,
+                harness_args,
+                env: BTreeMap::new(),
+            });
+        }
+    }
+    out
 }
 
 /// Every cargo invocation in every job of every tracked workflow.
@@ -649,7 +872,18 @@ pub fn parse_script(script: &str) -> Vec<(Vec<String>, Vec<String>)> {
     let mut out = Vec::new();
     for line in join_continuations(script) {
         for segment in split_operators(&line) {
-            let words = words_of(&segment);
+            let mut words = words_of(&segment);
+            // `if ! cargo test …` is a cargo command, and a reader that took the
+            // first word literally answers `if`. R1115 found four of them in the
+            // git hooks — every one an unlocked resolve, none of them in any
+            // gate's population, because the word in front of `cargo` was a
+            // shell keyword rather than another command.
+            while words
+                .first()
+                .is_some_and(|word| SHELL_PREFIXES.contains(&word.as_str()))
+            {
+                words.remove(0);
+            }
             if words.first().map(String::as_str) != Some("cargo") {
                 continue;
             }
@@ -661,6 +895,13 @@ pub fn parse_script(script: &str) -> Vec<(Vec<String>, Vec<String>)> {
     }
     out
 }
+
+/// Words a shell may put in front of a command without making it a different
+/// one. `time` and `env` are deliberately absent: both take arguments of their
+/// own, so skipping them would read the wrong word as the subcommand.
+const SHELL_PREFIXES: &[&str] = &[
+    "if", "then", "else", "elif", "while", "until", "do", "!", "{",
+];
 
 fn words_of(segment: &str) -> Vec<String> {
     segment
@@ -740,6 +981,39 @@ impl std::fmt::Display for SkippedWorkspace {
     }
 }
 
+/// Whose resolution a workspace's lockfile records.
+///
+/// NOT THE SAME QUESTION AS [`SkippedWorkspace`], which is about this machine.
+/// A workspace is `Foreign` on every machine including the one that can compile
+/// it, because what makes it foreign is a path dependency landing outside this
+/// checkout — and a lockfile over somebody else's tree changes when they
+/// commit. R1115 separated the two after one predicate served both and the
+/// second fact had nowhere to be said: `studio/Cargo.lock` was tracked, stale,
+/// and rewritten by every run of the gate that was supposed to check it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Ownership {
+    /// Every path dependency lands inside this checkout, so this repository can
+    /// pin the resolution and every resolving command over it says `--locked`.
+    Ours,
+    /// It resolves against a tree this repository does not own. The lister's own
+    /// words for which dependencies those are.
+    Foreign(String),
+}
+
+/// One cargo command the lister declares it runs, in the words it runs.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DeclaredCommand {
+    /// The workspace directory it is issued for.
+    pub workspace: String,
+    /// Which of the gate's checks it is — `fmt`, `clippy`, `citations`,
+    /// `waits`, `suite`. A ROLE RATHER THAN A GUESS FROM THE SUBCOMMAND: two
+    /// roles here are `cargo run` of a different gate, and a reader that
+    /// recovered the role from the words would have to know their binaries.
+    pub role: String,
+    /// `cargo` first, exactly as the shell expands it.
+    pub words: Vec<String>,
+}
+
 /// What `scripts/check-side-workspaces.sh --list` says.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Workspaces {
@@ -752,10 +1026,15 @@ pub struct Workspaces {
     /// hosted runner `studio` is one of these: its path dependencies name a
     /// sibling checkout no runner has.
     pub skipped: Vec<SkippedWorkspace>,
-    /// The suite command the lister runs for each askable separate workspace,
-    /// keyed by its directory. The root workspace has none here — its suite is
-    /// written in a workflow, not in the lister.
-    pub suites: BTreeMap<String, Vec<String>>,
+    /// Whose resolution each separate workspace's lockfile records. The root
+    /// workspace is not in the lister's population, so it is not in here.
+    pub ownership: BTreeMap<String, Ownership>,
+    /// Every command the lister declares, in order. ONE LIST RATHER THAN ONE
+    /// PER ROLE: the suite used to be the only declared command and the four
+    /// that run before it were invisible, which is how four unlocked resolves
+    /// sat in front of the one `--locked` that was supposed to catch a stale
+    /// lockfile.
+    pub commands: Vec<DeclaredCommand>,
 }
 
 /// Ask the lister. Panics rather than guessing: a gate that cannot reach the
@@ -803,34 +1082,79 @@ pub fn parse_lister(text: &str) -> Workspaces {
                 directory: directory.to_string(),
                 reason: reason.trim_start().to_string(),
             });
-        } else if let Some(rest) = line.strip_prefix("[side-workspaces] SUITE ") {
+        } else if let Some(rest) = line.strip_prefix("[side-workspaces] LOCK ") {
+            let rest = rest.trim();
+            let Some((workspace, verdict)) = rest.split_once(char::is_whitespace) else {
+                continue;
+            };
+            let verdict = verdict.trim_start();
+            // `ours` is one word and `foreign` carries the lister's sentence
+            // after it. Anything else is a verdict this reader does not know,
+            // and guessing which side of the law it falls on is how a gate
+            // reports "compliant" for a state nobody has thought about.
+            let ownership = match verdict.split_whitespace().next() {
+                Some("ours") => Ownership::Ours,
+                Some("foreign") => Ownership::Foreign(
+                    verdict
+                        .strip_prefix("foreign")
+                        .unwrap_or_default()
+                        .trim_start_matches([' ', '\u{2014}', '-'])
+                        .trim()
+                        .to_string(),
+                ),
+                _ => continue,
+            };
+            listed.ownership.insert(workspace.to_string(), ownership);
+        } else if let Some(rest) = line.strip_prefix("[side-workspaces] COMMAND ") {
             let mut words = words_of(rest);
-            if words.is_empty() {
+            if words.len() < 3 {
                 continue;
             }
             let workspace = words.remove(0);
-            listed.suites.insert(workspace, words);
+            let role = words.remove(0);
+            listed.commands.push(DeclaredCommand {
+                workspace,
+                role,
+                words,
+            });
         }
     }
     listed.askable.sort();
     listed
 }
 
-/// The suite commands the lister runs, as [`CargoCommand`]s a gate can re-issue.
-pub fn lister_cargo_commands(listed: &Workspaces) -> Vec<CargoCommand> {
-    let mut out = Vec::new();
-    for (workspace, words) in &listed.suites {
-        let (cargo_args, harness_args) = match words.iter().position(|word| word == "--") {
-            Some(at) => (words[..at].to_vec(), words[at + 1..].to_vec()),
-            None => (words.clone(), Vec::new()),
-        };
-        out.push(CargoCommand {
-            source: "scripts/check-side-workspaces.sh".to_string(),
-            owner: workspace.clone(),
-            cargo_args,
-            harness_args,
-            env: BTreeMap::new(),
-        });
-    }
-    out
+/// Every command the lister declares, as [`CargoCommand`]s a gate can read.
+pub fn lister_declared_commands(listed: &Workspaces) -> Vec<CargoCommand> {
+    listed
+        .commands
+        .iter()
+        .map(|declared| {
+            let words = &declared.words;
+            let (cargo_args, harness_args) = match words.iter().position(|word| word == "--") {
+                Some(at) => (words[..at].to_vec(), words[at + 1..].to_vec()),
+                None => (words.clone(), Vec::new()),
+            };
+            CargoCommand {
+                source: "scripts/check-side-workspaces.sh".to_string(),
+                owner: declared.workspace.clone(),
+                cargo_args,
+                harness_args,
+                env: BTreeMap::new(),
+            }
+        })
+        .collect()
+}
+
+/// The subset of those that RUN A SUITE, which is what a gate asking "which
+/// tests does CI execute" wants. Filtered from the one list rather than read
+/// from a second line in the lister's output, so the two cannot disagree about
+/// what the suite command is.
+pub fn lister_suite_commands(listed: &Workspaces) -> Vec<CargoCommand> {
+    listed
+        .commands
+        .iter()
+        .zip(lister_declared_commands(listed))
+        .filter(|(declared, _)| declared.role == "suite")
+        .map(|(_, command)| command)
+        .collect()
 }

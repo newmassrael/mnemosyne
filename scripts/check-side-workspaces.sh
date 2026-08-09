@@ -66,22 +66,43 @@ discover() {
     done
 }
 
-# The path dependencies a workspace names OUTSIDE this repository that are not
-# on this machine. `studio/` depends on the sibling pinion checkout, so it is
-# testable exactly where that checkout is: here, and not on a CI runner. Asking
-# the machine beats declaring the answer — a hardcoded "CI cannot build studio"
-# would also skip it on the one machine that can, which is where its rot was
-# found in the first place.
-missing_siblings() {
+# The path dependencies a workspace names OUTSIDE this repository — whether or
+# not the tree they name is on this machine. THIS IS THE OWNERSHIP QUESTION and
+# it is not the same as the one below it: a workspace that resolves against a
+# tree this repository does not own has a resolution this repository cannot
+# pin, on every machine, including the one that can compile it.
+# Each line is `<resolved tree><TAB><the dependency as written>`: the resolved
+# path is what a caller asks the disk about, the spelling is what a reader is
+# shown. Deriving the first from the second a second time would resolve it
+# against the wrong directory the moment a member manifest sits below the
+# workspace root, which is exactly where a relative path stops meaning the same
+# thing from two places.
+outside_dependencies() {
   local ws=$1 manifest dep target
   while IFS= read -r -d '' manifest; do
     while IFS= read -r dep; do
       target=$(realpath -m "$(dirname "$manifest")/$dep")
       case "$target" in "$root"/*) continue ;; esac
-      [[ -d "$target" ]] || echo "$dep"
+      printf '%s\t%s\n' "$target" "$dep"
     done < <(grep -oE 'path[[:space:]]*=[[:space:]]*"[^"]+"' "$manifest" |
       sed -E 's/.*"([^"]+)".*/\1/')
   done < <(find "$ws" -name Cargo.toml -not -path '*/target/*' -print0)
+}
+
+# THE CHECKABILITY QUESTION: of those, the ones whose tree is not here. `studio/`
+# depends on the sibling pinion checkout, so it is testable exactly where that
+# checkout is: here, and not on a CI runner. Asking the machine beats declaring
+# the answer — a hardcoded "CI cannot build studio" would also skip it on the one
+# machine that can, which is where its rot was found in the first place.
+#
+# The two are different answers and R1115 is what separated them: `studio` was
+# UNCHECKABLE on a runner and UNOWNED everywhere, and while one predicate served
+# both, the second fact had nowhere to be said. What it cost is below.
+missing_siblings() {
+  local ws=$1 target dep
+  while IFS=$'\t' read -r target dep; do
+    [[ -d "$target" ]] || echo "$dep"
+  done < <(outside_dependencies "$ws")
 }
 
 lint_only=false
@@ -103,6 +124,20 @@ else
   mapfile -t workspaces < <(discover)
 fi
 
+# Print a command in the one shape a reader parses, then run those same words.
+# ONE ARRAY EXPANDED TWICE is the whole point: `${words[*]}` is what a gate reads
+# and `"${words[@]}"` is what the shell executes, so a flag cannot be in the
+# report and out of the run. `$ws` is the loop's, read when this is called.
+declare_and_run() {
+  local role=$1
+  shift
+  echo "[side-workspaces] COMMAND $ws $role $*"
+  if $list_only; then
+    return 0
+  fi
+  "$@"
+}
+
 checked=()
 skipped=()
 for ws in "${workspaces[@]}"; do
@@ -111,6 +146,40 @@ for ws in "${workspaces[@]}"; do
     skipped+=("$ws")
     continue
   fi
+  # WHOSE RESOLUTION IS THIS? R1115. A cargo command that is allowed to resolve
+  # freely REWRITES the lockfile it disagrees with — measured, for every
+  # subcommand this repository issues, by `locked_resolution_smoke`. So a gate
+  # that lints before it tests REPAIRS the evidence the test was going to read,
+  # and the `--locked` on the suite below was structurally unable to fail.
+  #
+  # `--locked` is therefore on every command here, and the one thing that can
+  # take it off is the workspace resolving against a tree this repository does
+  # not own. `studio` path-depends on the sibling `pinion` checkout: its
+  # resolution changes when SOMEBODY ELSE commits, so `--locked` there is a gate
+  # that goes red for another repository's work — R1110's defect exactly — and a
+  # tracked lockfile there is a file every run of this script rewrites. It had
+  # both: `studio/Cargo.lock` was stale in the tree for an unknown number of
+  # rounds and was nearly swept into an unrelated commit.
+  #
+  # The answer is asked of the manifests, not written down: a workspace whose
+  # path dependencies all land inside this checkout is one whose lockfile this
+  # repository can pin, and nothing else is.
+  foreign=$(outside_dependencies "$ws" | cut -f2 | sort -u | tr '\n' ' ')
+  if [[ -n "${foreign// /}" ]]; then
+    locked=()
+    echo "[side-workspaces] LOCK $ws foreign — it resolves against trees this" \
+      "repository does not own, so its lockfile is not this repository's to pin:" \
+      "${foreign% }"
+  else
+    locked=(--locked)
+    echo "[side-workspaces] LOCK $ws ours"
+  fi
+  # AFTER the ownership line and not before it. Ownership is the same answer on
+  # every machine — `realpath -m` does not need the tree to exist — so a runner
+  # that cannot COMPILE `studio` can still say whose resolution it records, and
+  # the gate that asks whether an unpinnable workspace tracks a lockfile has to
+  # be able to ask it there. Skipping first would make that fact visible only on
+  # the one machine holding the sibling checkout.
   absent=$(missing_siblings "$ws" | sort -u | tr '\n' ' ')
   if [[ -n "${absent// /}" ]]; then
     echo "[side-workspaces] SKIP $ws — its path dependencies leave this repository" \
@@ -118,17 +187,22 @@ for ws in "${workspaces[@]}"; do
     skipped+=("$ws")
     continue
   fi
-  # THE SUITE COMMAND, WRITTEN ONCE. `--list` prints it and the run below
-  # executes this same array, because a reader that has to know what this script
-  # runs must not be re-deriving it: R1084's gate asks which tests every CI
-  # command executes, and a separate workspace's suite is a command only this
-  # file knows. A second spelling of it drifts the first time a flag changes.
+  # EVERY COMMAND THIS SCRIPT RUNS, DECLARED ONCE. `--list` prints them and the
+  # run below executes the same words, because a reader that has to know what
+  # this script runs must not be re-deriving it: R1084's gate asks which tests
+  # every CI command executes, and a separate workspace's suite is a command
+  # only this file knows. A second spelling drifts the first time a flag changes.
+  #
+  # R1115 widened this from the suite alone to all five. The suite was declared
+  # and the four around it were not, so the gate that reads what this repository
+  # runs could see the one command that already carried `--locked` and none of
+  # the four that did not — and the four are the ones that run first.
   #
   # `--no-fail-fast`, because a gate that stops at the first failing target
   # reports a smaller number than the truth and somebody fixes to it. This gate
   # did exactly that on its first run: it said `bench` had 6 failures, and the
   # 6 were one target's — there were 18.
-  suite=(cargo test --manifest-path "$ws/Cargo.toml" --locked --no-fail-fast)
+  suite=(cargo test --manifest-path "$ws/Cargo.toml" "${locked[@]}" --no-fail-fast)
   # `--list` answers WHICH workspaces are checkable on this machine and stops.
   # R1082's feature gate needs exactly that answer and had written its own: on a
   # CI runner, `cargo metadata` for `studio` dies on the sibling `../pinion`
@@ -137,11 +211,9 @@ for ws in "${workspaces[@]}"; do
   # rather than restated — the same correction R1066 made for fmt and clippy.
   if $list_only; then
     echo "[side-workspaces] CHECKABLE $ws"
-    $lint_only || echo "[side-workspaces] SUITE $ws ${suite[*]}"
-    checked+=("$ws")
-    continue
+  else
+    echo "[side-workspaces] CHECK $ws — fmt, clippy, item citations, blind waits$($lint_only || echo ', tests')"
   fi
-  echo "[side-workspaces] CHECK $ws — fmt, clippy, item citations, blind waits$($lint_only || echo ', tests')"
   # PACKAGE BY PACKAGE, over the manifests that live INSIDE this workspace's
   # directory, which is the same thing as "the packages this repository owns".
   #
@@ -160,7 +232,11 @@ for ws in "${workspaces[@]}"; do
   while IFS= read -r -d '' member; do
     grep -qE '^\[package\]' "$member" || continue
     formatted=$((formatted + 1))
-    if ! cargo fmt --manifest-path "$member" --check; then
+    # NO `--locked` HERE AND THAT IS MEASURED, NOT AN OVERSIGHT: `cargo fmt`
+    # rejects the flag outright, and it is the one subcommand this repository
+    # issues that leaves a disagreeing lockfile alone. `locked_resolution_smoke`
+    # asks cargo which is which rather than trusting this sentence.
+    if ! declare_and_run fmt cargo fmt --manifest-path "$member" --check; then
       echo "[side-workspaces] $ws is unformatted —" \
         "fix: cargo fmt --manifest-path $member" >&2
       exit 1
@@ -171,7 +247,8 @@ for ws in "${workspaces[@]}"; do
       "gate formats nothing in is one it is not checking" >&2
     exit 1
   fi
-  cargo clippy --manifest-path "$ws/Cargo.toml" --all-targets -- -D warnings
+  declare_and_run clippy \
+    cargo clippy --manifest-path "$ws/Cargo.toml" "${locked[@]}" --all-targets -- -D warnings
   # R1078 — every item citation in this workspace names an item. The root
   # workspace gets this from the pre-commit hook and its own CI job; ZZ10 named
   # the general hole that a check taking only the root leaves these four out,
@@ -192,8 +269,11 @@ for ws in "${workspaces[@]}"; do
     echo "[side-workspaces] the item-citation gate is missing at $citations" >&2
     exit 1
   fi
-  if ! cargo run -q --manifest-path "$citations" --bin item-citations -- \
-    --workspace "$root/$ws/Cargo.toml"; then
+  # `--locked` UNCONDITIONALLY, and not `"${locked[@]}"`: this command resolves
+  # the GATE's own workspace, which is always one of this repository's, whatever
+  # the workspace it is pointed at turns out to be.
+  if ! declare_and_run citations cargo run -q --manifest-path "$citations" --locked \
+    --bin item-citations -- --workspace "$root/$ws/Cargo.toml"; then
     echo "[side-workspaces] $ws carries a citation that names no item —" \
       "fix: cargo run -q --manifest-path tools/item-citations/Cargo.toml" \
       "--bin item-citations -- --workspace $ws/Cargo.toml" >&2
@@ -217,8 +297,8 @@ for ws in "${workspaces[@]}"; do
   # Exit 1 and exit 2 are different answers — "these sites break the law" and
   # "I could not read enough of this tree to have one" — and one message for
   # both mislabels whichever it did not mean.
-  cargo run -q --manifest-path "$waits" --bin blind-waits -- \
-    --workspace "$root/$ws/Cargo.toml" || waits_verdict=$?
+  declare_and_run waits cargo run -q --manifest-path "$waits" --locked \
+    --bin blind-waits -- --workspace "$root/$ws/Cargo.toml" || waits_verdict=$?
   case "${waits_verdict:-0}" in
     0) ;;
     1)
@@ -236,7 +316,7 @@ for ws in "${workspaces[@]}"; do
   esac
   unset waits_verdict
   if ! $lint_only; then
-    "${suite[@]}"
+    declare_and_run suite "${suite[@]}"
   fi
   checked+=("$ws")
 done

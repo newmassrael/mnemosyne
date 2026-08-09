@@ -1,0 +1,122 @@
+{
+  "_": [
+    "THE SWEEP THAT SAYS THE LOCKFILE LAW IS NOT VACUOUS — run it from the",
+    "repository root:",
+    "    cargo run -q --locked --manifest-path tools/injection-harness/Cargo.toml \\",
+    "        -- tools/ci-plan/locked-resolution-sweep.json",
+    "",
+    "A SECOND SWEEP BESIDE `injection-sweep.json` BECAUSE IT RUNS A DIFFERENT",
+    "SUITE. That one breaks the READING rules and watches `ci-plan`'s own tests;",
+    "this one breaks THIS REPOSITORY — a flag in a workflow, a flag in a hook,",
+    "the ownership answer the workspace lister gives — and watches the gate that",
+    "walks the tree. Neither could be folded into the other: a manifest names one",
+    "test command, and a sweep that ran both suites for every injection would",
+    "spend the expensive one proving things the cheap one already proves.",
+    "",
+    "THE FIRST FOUR ARE THE DEFECT ITSELF. On the tree this law arrived in, THIRTY",
+    "cargo commands resolved without `--locked`, so each of these puts one of them",
+    "back and asks whether anybody notices."
+  ],
+  "repo": "../..",
+  "test_command": [
+    "cargo",
+    "test",
+    "-p",
+    "mnemosyne-cli",
+    "--locked",
+    "--test",
+    "locked_resolution_smoke",
+    "--no-fail-fast"
+  ],
+  "logs": "../../target/injection-logs",
+  "min_free_mb": 8000,
+  "injections": [
+    {
+      "name": "a-workflow-step-resolves-freely",
+      "why": "this is the shape the gate was written for: a step that resolves without the flag rewrites a disagreeing lockfile before any later step in the same job can be asked about one",
+      "edits": [
+        {
+          "file": ".github/workflows/mnemosyne-validate.yml",
+          "from": "        run: cargo run --release -q --locked -p mnemosyne-cli -- validate-code-refs",
+          "to": "        run: cargo run --release -q -p mnemosyne-cli -- validate-code-refs"
+        }
+      ],
+      "expect_red": ["every_command_this_repository_issues_pins_the_lockfiles_it_can"]
+    },
+    {
+      "name": "a-git-hook-resolves-freely",
+      "why": "the hooks are the half of this repository's checks that no gate's population reached until R1115, and a developer meets them before CI does",
+      "edits": [
+        {
+          "file": ".githooks/pre-push",
+          "from": "if ! cargo clippy --workspace --locked --all-targets -- -D warnings; then",
+          "to": "if ! cargo clippy --workspace --all-targets -- -D warnings; then"
+        }
+      ],
+      "expect_red": ["every_command_this_repository_issues_pins_the_lockfiles_it_can"]
+    },
+    {
+      "name": "the-lister-stops-pinning-anything",
+      "why": "the workspace lister assembles its commands at runtime, so a flag can leave every one of them at once and no reading of its text would show it — this is why the gate reads what the lister PRINTS",
+      "edits": [
+        {
+          "file": "scripts/check-side-workspaces.sh",
+          "from": "    locked=(--locked)\n    echo \"[side-workspaces] LOCK $ws ours\"",
+          "to": "    locked=()\n    echo \"[side-workspaces] LOCK $ws ours\""
+        }
+      ],
+      "expect_red": ["every_command_this_repository_issues_pins_the_lockfiles_it_can"]
+    },
+    {
+      "name": "a-script-resolves-freely",
+      "why": "`scripts/gc` builds the whole workspace to warm the artifacts it is about to sweep; a free resolve there rewrites the root lockfile in the working tree of whoever ran it",
+      "edits": [
+        {
+          "file": "scripts/gc",
+          "from": "  cargo build --workspace --locked --all-targets\n",
+          "to": "  cargo build --workspace --all-targets\n"
+        }
+      ],
+      "expect_red": ["every_command_this_repository_issues_pins_the_lockfiles_it_can"]
+    },
+    {
+      "name": "every-workspace-is-this-repositorys-to-pin",
+      "why": "`studio` resolves against the sibling `pinion` checkout. An ownership answer that never says so puts `--locked` on a workspace another repository's commit can break, and leaves the lockfile it cannot pin looking like one it should keep",
+      "edits": [
+        {
+          "file": "scripts/check-side-workspaces.sh",
+          "from": "  foreign=$(outside_dependencies \"$ws\" | cut -f2 | sort -u | tr '\\n' ' ')",
+          "to": "  foreign=\"\""
+        }
+      ],
+      "expect_red": ["a_workspace_this_repository_cannot_pin_does_not_track_a_lockfile"]
+    },
+    {
+      "name": "the-measured-fixture-agrees-with-its-manifest",
+      "why": "every claim about what cargo does to a lockfile rests on that fixture actually HOLDING a disagreement; if the version matches, a free resolve leaves the file alone and the measurement records `leaves it alone` for every subcommand there is",
+      "edits": [
+        {
+          "file": "crates/mnemosyne-cli/tests/locked_resolution_smoke.rs",
+          "from": "        \"[package]\\nname = \\\"a\\\"\\nversion = \\\"0.2.0\\\"\\nedition = \\\"2021\\\"\\n\",",
+          "to": "        \"[package]\\nname = \\\"a\\\"\\nversion = \\\"0.1.0\\\"\\nedition = \\\"2021\\\"\\n\","
+        }
+      ],
+      "expect_red": ["what_a_free_resolve_does_to_a_disagreeing_lockfile_is_asked_of_cargo"]
+    },
+    {
+      "name": "the-tracked-shell-is-not-in-the-population",
+      "why": "three sources are bolted together here and dropping one takes the count down without taking it to zero — fifty compliant workflow commands read exactly like a clean repository, which is why the non-vacuity floor is per source rather than a total",
+      "edits": [
+        {
+          "file": "tools/ci-plan/src/lib.rs",
+          "from": "        head.starts_with(\"#!\")\n",
+          "to": "        head.starts_with(\"#!not-a-shebang\")\n"
+        }
+      ],
+      "expect_red": [
+        "every_command_this_repository_issues_pins_the_lockfiles_it_can",
+        "what_a_free_resolve_does_to_a_disagreeing_lockfile_is_asked_of_cargo"
+      ]
+    }
+  ]
+}

@@ -87,8 +87,8 @@ if ! cargo fmt --all --check; then
     exit 1
 fi
 
-echo "pre-push: cargo clippy --workspace --all-targets -- -D warnings ..." >&2
-if ! cargo clippy --workspace --all-targets -- -D warnings; then
+echo "pre-push: cargo clippy --workspace --locked --all-targets -- -D warnings ..." >&2
+if ! cargo clippy --workspace --locked --all-targets -- -D warnings; then
     echo "pre-push: clippy failed — fix violations before push" >&2
     exit 1
 fi

@@ -103,3 +103,12 @@ Cargo.lock.bak
 # `actions/upload-artifact` can reach, and ignored because it is a build record
 # rather than a source.
 /rustc-log/
+
+# R1115 — `studio/` path-depends on the sibling `pinion` checkout, so its
+# resolution is a fact about a tree this repository does not own: it changes
+# when SOMEBODY ELSE commits, and every run of the side-workspace gate rewrites
+# this file. Tracked, it was stale in the working tree for an unknown number of
+# rounds and was nearly swept into an unrelated commit. The law that says which
+# workspaces may keep one is `locked_resolution_smoke`, and it derives the
+# answer from the manifests rather than from this line.
+/studio/Cargo.lock

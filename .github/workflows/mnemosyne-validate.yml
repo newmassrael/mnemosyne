@@ -139,8 +139,8 @@ jobs:
         env:
           RUSTC_WRAPPER: ""
         run: |
-          cargo build --release -q --manifest-path tools/rustc-log/Cargo.toml
-          cargo build --release -q --manifest-path tools/restored/Cargo.toml
+          cargo build --release -q --locked --manifest-path tools/rustc-log/Cargo.toml
+          cargo build --release -q --locked --manifest-path tools/restored/Cargo.toml
 
       # ONE OF THE TWO JOBS IN THIS FILE THAT KEEPS A `target`, and R1090
       # measured which two. GitHub gives a repository 10 GB of cache and deletes,
@@ -220,13 +220,13 @@ jobs:
         run: cargo test --workspace --locked
 
       - name: mnemosyne-cli validate-workspace
-        run: cargo run --release -q -p mnemosyne-cli -- validate-workspace
+        run: cargo run --release -q --locked -p mnemosyne-cli -- validate-workspace
 
       - name: mnemosyne-cli validate-code-refs (Round 257 Stage 2)
         # Subcommand skips when [plugins.set_equality_validator] is
         # unconfigured; when configured with severity_missing = "reject",
         # missing citations fail the build.
-        run: cargo run --release -q -p mnemosyne-cli -- validate-code-refs
+        run: cargo run --release -q --locked -p mnemosyne-cli -- validate-code-refs
 
       # R1081 — in test code a wait ends on a condition and its budget is named.
       # R1073 turned this branch red with an assertion whose subject was the
@@ -238,7 +238,7 @@ jobs:
       # 30-minute budget with 15 minutes of headroom.
       - name: blind-waits (a wait ends on a condition, its budget is named)
         run: >
-          cargo run -q --manifest-path tools/blind-waits/Cargo.toml
+          cargo run -q --locked --manifest-path tools/blind-waits/Cargo.toml
           --bin blind-waits -- --workspace Cargo.toml
 
       # R1092 — what this job compiled, for `twice-compiled` to join with every
@@ -309,8 +309,8 @@ jobs:
         env:
           RUSTC_WRAPPER: ""
         run: |
-          cargo build --release -q --manifest-path tools/rustc-log/Cargo.toml
-          cargo build --release -q --manifest-path tools/restored/Cargo.toml
+          cargo build --release -q --locked --manifest-path tools/rustc-log/Cargo.toml
+          cargo build --release -q --locked --manifest-path tools/restored/Cargo.toml
 
       # NO ROOT `target` — see the `validate` job's cache for the measurement.
       # The key is unchanged on purpose: a renamed key leaves the old one held
@@ -347,7 +347,7 @@ jobs:
 
       - name: every item citation in the workspace names an item
         run: >
-          cargo run -q --manifest-path tools/item-citations/Cargo.toml
+          cargo run -q --locked --manifest-path tools/item-citations/Cargo.toml
           --bin item-citations -- --workspace Cargo.toml
 
       # R1092 — see `validate`'s copy of this step.
@@ -413,8 +413,8 @@ jobs:
         env:
           RUSTC_WRAPPER: ""
         run: |
-          cargo build --release -q --manifest-path tools/rustc-log/Cargo.toml
-          cargo build --release -q --manifest-path tools/restored/Cargo.toml
+          cargo build --release -q --locked --manifest-path tools/rustc-log/Cargo.toml
+          cargo build --release -q --locked --manifest-path tools/restored/Cargo.toml
 
       # R1101 — see `validate`'s copy of these two steps.
       - name: What is on disk before the cache is restored
@@ -505,8 +505,8 @@ jobs:
         env:
           RUSTC_WRAPPER: ""
         run: |
-          cargo build --release -q --manifest-path tools/rustc-log/Cargo.toml
-          cargo build --release -q --manifest-path tools/restored/Cargo.toml
+          cargo build --release -q --locked --manifest-path tools/rustc-log/Cargo.toml
+          cargo build --release -q --locked --manifest-path tools/restored/Cargo.toml
 
       # Its own key, because this build resolves different features than
       # `validate`'s and a shared key would hold whichever job saved first.
@@ -625,8 +625,8 @@ jobs:
         env:
           RUSTC_WRAPPER: ""
         run: |
-          cargo build --release -q --manifest-path tools/rustc-log/Cargo.toml
-          cargo build --release -q --manifest-path tools/restored/Cargo.toml
+          cargo build --release -q --locked --manifest-path tools/rustc-log/Cargo.toml
+          cargo build --release -q --locked --manifest-path tools/restored/Cargo.toml
 
       # Its own key: this job resolves `--all-features` for the whole workspace,
       # which is neither `validate`'s resolve nor `server-features`', so sharing
@@ -681,7 +681,7 @@ jobs:
 
       - name: every test this repository compiles is one some CI command runs
         run: >
-          cargo run -q --manifest-path tools/unrun-tests/Cargo.toml
+          cargo run -q --locked --manifest-path tools/unrun-tests/Cargo.toml
           --bin unrun-tests
 
       # R1092 — see `validate`'s copy of this step.
@@ -750,8 +750,8 @@ jobs:
         env:
           RUSTC_WRAPPER: ""
         run: |
-          cargo build --release -q --manifest-path tools/rustc-log/Cargo.toml
-          cargo build --release -q --manifest-path tools/restored/Cargo.toml
+          cargo build --release -q --locked --manifest-path tools/rustc-log/Cargo.toml
+          cargo build --release -q --locked --manifest-path tools/restored/Cargo.toml
 
       # Its own key: two feature resolves of every workspace, which no other job
       # holds, so a shared key would hold whichever job saved first.
@@ -786,7 +786,7 @@ jobs:
 
       - name: every Rust file this repository tracks is one cargo compiles
         run: >
-          cargo run -q --manifest-path tools/uncompiled-sources/Cargo.toml
+          cargo run -q --locked --manifest-path tools/uncompiled-sources/Cargo.toml
           --bin uncompiled-sources
 
       # R1092 — see `validate`'s copy of this step.
@@ -837,8 +837,8 @@ jobs:
           RUSTC_WRAPPER: ""
           RUSTUP_TOOLCHAIN: ${{ steps.msrv.outputs.version }}
         run: |
-          cargo build --release -q --manifest-path tools/rustc-log/Cargo.toml
-          cargo build --release -q --manifest-path tools/restored/Cargo.toml
+          cargo build --release -q --locked --manifest-path tools/rustc-log/Cargo.toml
+          cargo build --release -q --locked --manifest-path tools/restored/Cargo.toml
 
       # R1101 — see `validate`'s copy of these two steps.
       - name: What is on disk before the cache is restored
@@ -978,7 +978,7 @@ jobs:
       - name: Build the compilation recorder
         env:
           RUSTC_WRAPPER: ""
-        run: cargo build --release -q --manifest-path tools/rustc-log/Cargo.toml
+        run: cargo build --release -q --locked --manifest-path tools/rustc-log/Cargo.toml
 
       # R1101 — WHAT EACH JOB'S DISK RECEIVED, which is the other half of this
       # gate's question and the half it could not see. `actions/cache` reports
@@ -1003,7 +1003,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: >
-          cargo run -q --manifest-path tools/cache-budget/Cargo.toml
+          cargo run -q --locked --manifest-path tools/cache-budget/Cargo.toml
           --bin cache-budget -- --restored collected
 
       # R1092 — see `validate`'s copy of this step.
@@ -1081,7 +1081,7 @@ jobs:
       - name: Build the compilation recorder
         env:
           RUSTC_WRAPPER: ""
-        run: cargo build --release -q --manifest-path tools/rustc-log/Cargo.toml
+        run: cargo build --release -q --locked --manifest-path tools/rustc-log/Cargo.toml
 
       - name: Collect what every job compiled
         uses: actions/download-artifact@v8
@@ -1092,5 +1092,5 @@ jobs:
 
       - name: every compilation this repository's CI pays for is one job's
         run: >
-          cargo run -q --manifest-path tools/twice-compiled/Cargo.toml
+          cargo run -q --locked --manifest-path tools/twice-compiled/Cargo.toml
           --bin twice-compiled -- rustc-log

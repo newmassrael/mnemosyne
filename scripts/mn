@@ -36,5 +36,5 @@
 set -euo pipefail
 
 repo="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-(cd "$repo" && cargo build -q -p mnemosyne-cli)
+(cd "$repo" && cargo build -q --locked -p mnemosyne-cli)
 exec "$repo/target/debug/mnemosyne-cli" "$@"

@@ -71,7 +71,7 @@ if [[ "$fresh" == 1 ]]; then
   if [[ -n "${changed_crates// }" ]]; then
     for c in $changed_crates; do
       echo "[verify] fresh: cargo clean -p $c"
-      cargo clean -p "$c" >/dev/null 2>&1 || true
+      cargo clean -p "$c" --locked >/dev/null 2>&1 || true
     done
   else
     echo "[verify] fresh: no uncommitted crate changes; nothing to clean."

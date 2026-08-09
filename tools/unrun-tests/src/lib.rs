@@ -624,7 +624,7 @@ pub fn run(root: &Path) -> Report {
     }
 
     let mut commands = ci_plan::workflow_cargo_commands(root);
-    commands.extend(ci_plan::lister_cargo_commands(&listed));
+    commands.extend(ci_plan::lister_suite_commands(&listed));
     let non_test_commands = commands
         .iter()
         .filter(|command| command.subcommand() != Some("test"))

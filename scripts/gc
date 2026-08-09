@@ -103,8 +103,8 @@ if [[ $deep == 1 ]]; then
   echo "[gc] deep: stamp"
   cargo sweep --stamp >/dev/null
   echo "[gc] deep: build (debug, all targets)$([[ $release == 1 ]] && echo ' + release')"
-  cargo build --workspace --all-targets
-  [[ $release == 1 ]] && cargo build --workspace --all-targets --release
+  cargo build --workspace --locked --all-targets
+  [[ $release == 1 ]] && cargo build --workspace --locked --all-targets --release
   echo "[gc] deep: sweep"
   "${sweep[@]}" --file
 else
