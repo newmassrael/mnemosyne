@@ -1,0 +1,658 @@
+//! BOTH WAYS INTO THIS GATE, RUN AS THE PROGRAM A PERSON RUNS.
+//!
+//! The census has two entrances and they are not watched alike. One reads the
+//! logs a CI run already left, costs nothing beyond the builds that were
+//! happening anyway, and runs on every push — so a break in it turns main red the
+//! same hour. The other REPRODUCES those logs on this machine, running each job's
+//! steps in a worktree of its own; it is how the question gets answered without a
+//! push, it takes hours over this repository, and nobody runs it twice.
+//!
+//! What the second one cost, measured rather than supposed: the day the recorder
+//! was wired into every job of `mnemosyne-validate.yml`, all nine of them gained
+//! `MNEMOSYNE_RUSTC_LOG: ${{ github.workspace }}/…` — an expression the replay
+//! REPLACES before running anything, and which the replay read as one only GitHub
+//! can resolve. It refused all nine jobs, produced a census of none, and signed
+//! off with `every one of the 0 job(s) … recorded what it compiled`. The suite
+//! was green the whole time and stayed that way for a round.
+//!
+//! Neither entrance lived in the library. Both are `main.rs` — the worktree per
+//! job, the two variables the replay owns, the log named for the job that wrote
+//! it, the workflow read off the runner, the gate's own job dropped from its own
+//! reading — and nothing here ran the binary, so none of it had a reader.
+//!
+//! So the binary is run as a process, over a workflow small enough to be a test,
+//! and its EXIT CODE and REPORT are the assertions. That is deliberate: the
+//! defect being guarded against was an exit code of 0 under a report of clean
+//! zeroes, and a test that called a function would not have been reading the
+//! thing that lied.
+
+use std::collections::{BTreeMap, BTreeSet};
+use std::path::{Path, PathBuf};
+use std::process::{Command, Output};
+
+use rustc_log::Record;
+use tempfile::TempDir;
+use twice_compiled::{declared_jobs, judge, load, Census, Refusal};
+
+/// The fixture workflow, written into the fixture repository as a TRACKED file,
+/// because a replay checks each job out of `HEAD`.
+const WORKFLOW: &str = ".github/workflows/fixture.yml";
+
+/// A GitHub expression this machine genuinely cannot resolve, in the variable the
+/// `msrv` job carries it in.
+///
+/// THE CONTROL FOR THE WHOLE FILE. The two variables every fixture job spells
+/// with `${{ … }}` are ones the replay OWNS and must run anyway; this is one it
+/// does not own and must refuse over. A replay that could not tell the two apart
+/// would be green on one of these tests and red on the others whichever way round
+/// it was wrong.
+const UNRESOLVABLE: &str = "      RUSTUP_TOOLCHAIN: ${{ steps.msrv.outputs.version }}\n";
+
+/// The one step a fixture job usually has: it compiles the shared crate.
+const BUILDS: &[&str] = &["cargo build --manifest-path crates/shared/Cargo.toml"];
+
+/// A job that installs what this machine already has, compiles, and then fails.
+///
+/// THREE DECISIONS OF THE REPLAY IN ONE JOB. `rustup show` is one of the two
+/// named prefixes a replay does not run, because it installs a toolchain this
+/// machine has; the build after it is what the census is made of; and the failing
+/// step is the one the replay refuses to treat as fatal, because the compilations
+/// it already paid for are already in the log.
+const INSTALLS_THEN_FAILS: &[&str] = &[
+    "rustup show",
+    "cargo build --manifest-path crates/shared/Cargo.toml",
+    "exit 3",
+];
+
+/// One job of the fixture workflow.
+struct Job {
+    /// The job id, which is also the name of the log its records belong in.
+    name: &'static str,
+    /// Extra `env:` lines it carries, indented for the job's `env:` mapping.
+    also: &'static str,
+    /// The `run:` scripts it is made of, in order.
+    steps: &'static [&'static str],
+}
+
+impl Job {
+    fn plain(name: &'static str) -> Job {
+        Job {
+            name,
+            also: "",
+            steps: BUILDS,
+        }
+    }
+}
+
+/// A workflow of jobs that all compile the same crate.
+///
+/// THE SAME CRATE ON PURPOSE. A census of jobs with nothing in common prints
+/// every total it has and holds no finding, and the finding is what this gate is
+/// for: the units two jobs both compile are what merging them would remove.
+///
+/// EVERY JOB SPELLS THE RECORDER'S TWO VARIABLES THE WAY THIS REPOSITORY'S OWN
+/// WORKFLOW SPELLS THEM — `${{ github.workspace }}/…`, the exact shape that closed
+/// the replay for a round. A simplified fixture would have been green on the day.
+fn workflow(jobs: &[Job]) -> String {
+    let mut out = String::from("name: a fixture, and not this repository's CI\njobs:\n");
+    for job in jobs {
+        let name = job.name;
+        out.push_str(&format!("  {name}:\n"));
+        out.push_str("    runs-on: ubuntu-latest\n");
+        out.push_str("    env:\n");
+        out.push_str(
+            "      RUSTC_WRAPPER: ${{ github.workspace \
+             }}/tools/rustc-log/target/release/rustc-log\n",
+        );
+        out.push_str(&format!(
+            "      MNEMOSYNE_RUSTC_LOG: ${{{{ github.workspace }}}}/rustc-log/{name}.log\n"
+        ));
+        out.push_str(job.also);
+        out.push_str("    steps:\n");
+        for step in job.steps {
+            out.push_str(&format!("      - run: {step}\n"));
+        }
+    }
+    out
+}
+
+/// The recorder's own source, beside this crate because the dependency on it is
+/// declared as `path = "../rustc-log"`.
+///
+/// COPIED INTO THE FIXTURE rather than reached into, because a replay builds the
+/// recorder from the root it is given and would otherwise write a release binary
+/// into this repository's own tree while the tests run.
+fn recorder_source() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .expect("this crate has a directory beside it")
+        .join("rustc-log")
+}
+
+/// One end-to-end run of the gate: the process, and the trees either side of it.
+struct Run {
+    /// The process, whole. This gate's verdict is its exit code and its report is
+    /// its stdout, and both are what a person running it reads.
+    output: Output,
+    /// The fixture repository. Held because dropping it deletes the tree.
+    root: TempDir,
+    /// The scratch. Held for the same reason.
+    scratch: TempDir,
+}
+
+impl Run {
+    fn stdout(&self) -> String {
+        String::from_utf8_lossy(&self.output.stdout).into_owned()
+    }
+
+    /// Everything the process said, so a failing assertion explains itself with
+    /// the run rather than with a boolean.
+    fn transcript(&self) -> String {
+        format!(
+            "exit {:?}\n--- stdout ---\n{}\n--- stderr ---\n{}",
+            self.output.status.code(),
+            self.stdout(),
+            String::from_utf8_lossy(&self.output.stderr),
+        )
+    }
+
+    fn logs(&self) -> PathBuf {
+        self.scratch.path().join("logs")
+    }
+
+    /// The census READ BACK OUT OF THE LOGS — a second reading of what the
+    /// process reported, and the one a test can assert against.
+    fn census(&self) -> Census {
+        load(&self.logs(), &BTreeSet::new()).unwrap_or_else(|error| {
+            panic!(
+                "cannot read {}: {error}\n{}",
+                self.logs().display(),
+                self.transcript()
+            )
+        })
+    }
+
+    fn declared(&self) -> BTreeMap<String, Vec<ci_plan::RunStep>> {
+        declared_jobs(&ci_plan::run_steps(&ci_plan::load_workflow(
+            self.root.path(),
+            WORKFLOW,
+        )))
+    }
+
+    /// Where a record lands if the replay stops setting the log variable for the
+    /// steps it runs. Nothing may ever be written here.
+    fn escaped(&self) -> PathBuf {
+        self.scratch.path().join("escaped.log")
+    }
+}
+
+/// Write the fixture repository: the workflow, the crate the jobs compile, the
+/// recorder's source, and one commit for `git worktree add … HEAD` to check out.
+fn repository(jobs: &[Job]) -> (TempDir, TempDir) {
+    let root = tempfile::tempdir().expect("a fixture repository");
+    let scratch = tempfile::tempdir().expect("a scratch directory");
+    write(&root.path().join(WORKFLOW), &workflow(jobs));
+    write(
+        &root.path().join("crates/shared/Cargo.toml"),
+        "[workspace]\n\n[package]\nname = \"shared\"\nversion = \"0.1.0\"\n\
+         edition = \"2021\"\n",
+    );
+    write(
+        &root.path().join("crates/shared/src/lib.rs"),
+        "//! One crate, no dependencies, compiled by every job of the fixture.\n\
+         pub fn shared() -> u8 {\n    1\n}\n",
+    );
+    copy_recorder(&root.path().join("tools/rustc-log"));
+    commit(root.path());
+    (root, scratch)
+}
+
+/// Run the real binary with `--replay`, which reproduces every job it can.
+fn replay(jobs: &[Job]) -> Run {
+    let (root, scratch) = repository(jobs);
+    // A POISONED VALUE FOR A VARIABLE THE REPLAY OWNS. If it stops applying its
+    // own, every record goes here instead of into a job's log — a file the test
+    // can find, rather than an absence it would have to explain.
+    let output = gate(root.path(), scratch.path())
+        .arg("--replay")
+        .arg(scratch.path())
+        .args(["--workflow", WORKFLOW])
+        .output()
+        .expect("the gate runs");
+    Run {
+        output,
+        root,
+        scratch,
+    }
+}
+
+/// Run the real binary the way a runner runs it: over a directory of logs the
+/// other jobs already wrote, with the workflow read off the runner's own
+/// environment rather than from a flag.
+fn on_a_runner(jobs: &[Job], recorded: &[&str], own_job: Option<&str>) -> Run {
+    let (root, scratch) = repository(jobs);
+    let logs = scratch.path().join("logs");
+    for job in recorded {
+        record_a_compilation(&logs.join(format!("{job}.log")));
+    }
+    let mut gate = gate(root.path(), scratch.path());
+    gate.arg(&logs).env(
+        "GITHUB_WORKFLOW_REF",
+        format!("newmassrael/mnemosyne/{WORKFLOW}@refs/heads/main"),
+    );
+    match own_job {
+        Some(job) => gate.env("GITHUB_JOB", job),
+        // EXPLICITLY REMOVED AND NOT MERELY UNSET BY THE TEST. On a runner this
+        // suite is itself inside a job, so the variable is in the environment
+        // with somebody else's job in it.
+        None => gate.env_remove("GITHUB_JOB"),
+    };
+    let output = gate.output().expect("the gate runs");
+    Run {
+        output,
+        root,
+        scratch,
+    }
+}
+
+fn gate(root: &Path, scratch: &Path) -> Command {
+    let mut command = Command::new(env!("CARGO_BIN_EXE_twice-compiled"));
+    command
+        .current_dir(root)
+        .env(rustc_log::LOG_VARIABLE, scratch.join("escaped.log"));
+    command
+}
+
+/// One job's log, written through the recorder's own writer rather than by
+/// spelling its format a second time here.
+///
+/// TWO RECORDS OF THE SAME UNIT, at times that are not zero: a job whose
+/// compilations took no time at all is refused, and so is one whose log holds
+/// nothing. The unit is the same in every job, so a census of two of these has
+/// the finding this gate exists to report in it.
+fn record_a_compilation(log: &Path) {
+    for start in [1_000_000_u64, 1_200_000] {
+        let record = Record {
+            started_at: start,
+            micros: 150_000,
+            argv: [
+                "/usr/bin/rustc",
+                "--crate-name",
+                "shared",
+                "--emit=dep-info,link",
+                "-C",
+                "metadata=57ac1f0b",
+                "--crate-type",
+                "lib",
+                "src/lib.rs",
+            ]
+            .iter()
+            .map(|word| (*word).to_string())
+            .collect(),
+        };
+        rustc_log::append(log, &record).expect("a record is appended");
+    }
+}
+
+fn write(path: &Path, text: &str) {
+    std::fs::create_dir_all(path.parent().expect("a parent directory"))
+        .expect("a directory for the fixture file");
+    std::fs::write(path, text).unwrap_or_else(|error| {
+        panic!("cannot write {}: {error}", path.display());
+    });
+}
+
+/// Copy the recorder's manifest and sources into the fixture.
+///
+/// The count is asserted: a copy that moved nothing leaves a fixture whose
+/// recorder cannot be built, and the replay would then fail for a reason that has
+/// nothing to do with what is being tested.
+fn copy_recorder(into: &Path) {
+    let from = recorder_source();
+    std::fs::create_dir_all(into.join("src")).expect("a recorder directory");
+    std::fs::copy(from.join("Cargo.toml"), into.join("Cargo.toml"))
+        .expect("the recorder's manifest");
+    let mut copied = 0;
+    for entry in std::fs::read_dir(from.join("src")).expect("the recorder's sources") {
+        let path = entry.expect("a source file").path();
+        if path.extension().and_then(|end| end.to_str()) != Some("rs") {
+            continue;
+        }
+        let name = path.file_name().expect("a file name");
+        std::fs::copy(&path, into.join("src").join(name)).expect("a recorder source");
+        copied += 1;
+    }
+    assert!(
+        copied >= 2,
+        "the recorder is a library and a binary; {} source file(s) were copied \
+         from {}",
+        copied,
+        from.display()
+    );
+}
+
+/// Make the fixture a repository with one commit, which is what `git worktree
+/// add … HEAD` needs.
+fn commit(root: &Path) {
+    git(root, &["init", "--quiet"]);
+    git(root, &["add", "-A"]);
+    git(
+        root,
+        &[
+            "-c",
+            "user.email=fixture@example.invalid",
+            "-c",
+            "user.name=fixture",
+            "-c",
+            "commit.gpgsign=false",
+            "commit",
+            "--quiet",
+            "--no-verify",
+            "-m",
+            "the fixture this gate runs over",
+        ],
+    );
+}
+
+fn git(root: &Path, arguments: &[&str]) {
+    let out = Command::new("git")
+        .args(arguments)
+        .current_dir(root)
+        .output()
+        .expect("git runs");
+    assert!(
+        out.status.success(),
+        "git {arguments:?} failed in {}: {}",
+        root.display(),
+        String::from_utf8_lossy(&out.stderr)
+    );
+}
+
+#[test]
+fn a_replay_reaches_every_job_it_can_and_the_census_holds_what_they_share() {
+    // THE TEST THE ROUND BEFORE THIS ONE DID NOT HAVE. Every assertion below was
+    // false on a tree whose suite was green: the replay ran no job, wrote no log,
+    // read a census of nothing, and exited 0.
+    let run = replay(&[Job::plain("one-job"), Job::plain("the-other-job")]);
+    assert!(
+        run.output.status.success(),
+        "a replay of two replayable jobs must produce a census\n{}",
+        run.transcript()
+    );
+    let stdout = run.stdout();
+    assert!(
+        !stdout.contains("SKIP"),
+        "neither job carries anything this machine cannot resolve\n{}",
+        run.transcript()
+    );
+    assert!(
+        stdout.contains("every one of the 2 job(s)"),
+        "the sign-off says how far the census reached\n{}",
+        run.transcript()
+    );
+
+    let census = run.census();
+    let reached: BTreeSet<&str> = census.jobs.keys().map(String::as_str).collect();
+    assert_eq!(
+        reached,
+        BTreeSet::from(["one-job", "the-other-job"]),
+        "one log per job, named for it\n{}",
+        run.transcript()
+    );
+    for (job, log) in &census.jobs {
+        assert!(
+            !log.units.is_empty(),
+            "job `{job}` ran a build and recorded no compilation\n{}",
+            run.transcript()
+        );
+        // THE CLOCK, ASSERTED APART FROM THE COUNT. A recorder that stopped
+        // timing leaves counts that all add up and seconds that are all zero,
+        // which reads as work that is free.
+        assert!(
+            log.compiled_micros() > 0,
+            "job `{job}` compiled {} unit(s) in no time at all\n{}",
+            log.units.len(),
+            run.transcript()
+        );
+        assert!(
+            log.span_micros() > 0,
+            "job `{job}` has a compiling window of zero\n{}",
+            run.transcript()
+        );
+    }
+
+    // THE FINDING, AND NOT MERELY A NON-EMPTY FILE. Both jobs compile the same
+    // crate in worktrees of their own, so the census must say they share it —
+    // the number this gate exists to report, produced end to end rather than
+    // assembled by a fixture.
+    assert!(
+        census.shared_between_jobs() > 0,
+        "both jobs compile `crates/shared`, so the census must hold a unit they \
+         both paid for\n{}",
+        run.transcript()
+    );
+    let refusals: Vec<Refusal> = judge(&census, &run.declared(), &BTreeSet::new());
+    assert!(
+        refusals.is_empty(),
+        "the census this replay produced is refused: {refusals:?}\n{}",
+        run.transcript()
+    );
+    assert!(
+        !run.escaped().exists(),
+        "a record was written to {} — the replay stopped setting ${} for the \
+         steps it runs, so what those steps compiled is outside every job's \
+         log\n{}",
+        run.escaped().display(),
+        rustc_log::LOG_VARIABLE,
+        run.transcript()
+    );
+}
+
+#[test]
+fn a_replay_that_reaches_one_job_is_refused_rather_than_reported() {
+    // A CENSUS OF ONE JOB IS NOT A SMALL CENSUS. Its subject is what TWO jobs both
+    // compile, so one job has no finding available to it — and it prints a clean
+    // zero for every total, which is the same output as a repository with no
+    // duplication in it at all.
+    let run = replay(&[
+        Job::plain("one-job"),
+        Job {
+            name: "the-other-job",
+            also: UNRESOLVABLE,
+            steps: BUILDS,
+        },
+    ]);
+    assert_eq!(
+        run.output.status.code(),
+        Some(1),
+        "a replay that could run only one of two jobs must refuse\n{}",
+        run.transcript()
+    );
+    let stdout = run.stdout();
+    assert!(
+        stdout.contains("[replay] SKIP the-other-job"),
+        "the job carrying an expression GitHub resolves is named, not dropped\n{}",
+        run.transcript()
+    );
+    assert!(
+        stdout.contains("covers 1 job(s)"),
+        "the refusal says how far the census reached\n{}",
+        run.transcript()
+    );
+
+    // AND THE REPLAY ITSELF STILL WORKED. Without this the assertions above would
+    // pass on a tree where nothing runs at all: the refusal is about REACH, and
+    // the job it did reach has to be in the logs with its compilations in it.
+    let census = run.census();
+    let reached: BTreeSet<&str> = census.jobs.keys().map(String::as_str).collect();
+    assert_eq!(
+        reached,
+        BTreeSet::from(["one-job"]),
+        "the replayable job runs and records even though the census is refused\n{}",
+        run.transcript()
+    );
+    assert!(
+        !census.jobs["one-job"].units.is_empty(),
+        "the job that ran compiled nothing\n{}",
+        run.transcript()
+    );
+}
+
+#[test]
+fn a_replay_that_reaches_no_job_does_not_sign_off_as_clean() {
+    // THE EXACT SHAPE OF THE DEFECT: every job unresolvable, no log written, and a
+    // report of zeroes — the state a real replay was in for a round while the
+    // suite stayed green. What must not happen is the sign-off.
+    let run = replay(&[
+        Job {
+            name: "one-job",
+            also: UNRESOLVABLE,
+            steps: BUILDS,
+        },
+        Job {
+            name: "the-other-job",
+            also: UNRESOLVABLE,
+            steps: BUILDS,
+        },
+    ]);
+    assert_eq!(
+        run.output.status.code(),
+        Some(1),
+        "a replay that ran no job at all must refuse\n{}",
+        run.transcript()
+    );
+    let stdout = run.stdout();
+    assert!(
+        !stdout.contains("recorded what it compiled"),
+        "a census of no jobs printed the sign-off of a file in good order\n{}",
+        run.transcript()
+    );
+    assert!(
+        stdout.contains("covers 0 job(s)"),
+        "the refusal says how far the census reached\n{}",
+        run.transcript()
+    );
+    assert!(
+        !run.logs().join("one-job.log").exists(),
+        "a skipped job left a log\n{}",
+        run.transcript()
+    );
+}
+
+#[test]
+fn a_replay_skips_what_it_cannot_install_and_carries_on_past_what_fails() {
+    // TWO DECISIONS OF THE REPLAY THAT HAD NO READER, in one job that carries
+    // both. A replay runs a job's steps VERBATIM except for two named prefixes —
+    // `sudo` and `rustup`, which install what a hosted runner lacks and this
+    // machine already has — and a step that fails is NAMED rather than fatal,
+    // because the compilations it already paid for are already in the log and the
+    // census is of what CI paid for. Get the first wrong and the replay installs
+    // a toolchain over the one it is measuring; get the second wrong and one
+    // failing gate throws away every job after it.
+    let run = replay(&[
+        Job::plain("one-job"),
+        Job {
+            name: "the-other-job",
+            also: "",
+            steps: INSTALLS_THEN_FAILS,
+        },
+    ]);
+    assert!(
+        run.output.status.success(),
+        "a step that failed is not a census that failed\n{}",
+        run.transcript()
+    );
+    let stdout = run.stdout();
+    assert!(
+        stdout.contains("skipping `rustup`"),
+        "the step this machine does not need is named as skipped, not silently \
+         dropped\n{}",
+        run.transcript()
+    );
+    assert!(
+        stdout.contains("its compilations still count"),
+        "the step that exited 3 is named, and its build is still in the census\n{}",
+        run.transcript()
+    );
+    let census = run.census();
+    assert!(
+        !census.jobs["the-other-job"].units.is_empty(),
+        "the job whose last step failed compiled before it did\n{}",
+        run.transcript()
+    );
+    assert!(
+        census.shared_between_jobs() > 0,
+        "the failing job still contributes what it shares with the other\n{}",
+        run.transcript()
+    );
+}
+
+/// The three jobs the runner tests are about: two that leave logs, and the one
+/// the gate itself runs in.
+fn a_runners_jobs() -> [Job; 3] {
+    [
+        Job::plain("one-job"),
+        Job::plain("the-other-job"),
+        Job::plain("the-gate"),
+    ]
+}
+
+#[test]
+fn on_a_runner_the_workflow_is_read_off_the_runner_and_the_gate_leaves_itself_out() {
+    // THE OTHER ENTRANCE, and two decisions in it that had no reader. Which
+    // workflow this census is of comes from `$GITHUB_WORKFLOW_REF` — the runner's
+    // own answer, so a file renamed tomorrow does not leave a gate pointed at a
+    // path that is gone. And the job the gate is RUNNING IN is dropped from the
+    // census: its build is still in flight while it judges, so it can have no log
+    // yet, and counting it would refuse the gate on every push.
+    let run = on_a_runner(
+        &a_runners_jobs(),
+        &["one-job", "the-other-job"],
+        Some("the-gate"),
+    );
+    assert!(
+        run.output.status.success(),
+        "two jobs recorded and the third is the gate itself\n{}",
+        run.transcript()
+    );
+    let stdout = run.stdout();
+    assert!(
+        stdout.contains("every one of the 2 job(s)"),
+        "three jobs declared, one of them this gate: the census is of two\n{}",
+        run.transcript()
+    );
+    assert!(
+        stdout.contains("the-gate") && stdout.contains("not in this census"),
+        "the job left out is PRINTED, because a reader cannot tell a gate that \
+         skipped a job from one that never saw it\n{}",
+        run.transcript()
+    );
+    // The census is still a census: the two jobs that did record share a unit,
+    // which is the finding this entrance exists to report.
+    assert!(
+        run.census().shared_between_jobs() > 0,
+        "the two recorded jobs compiled the same unit\n{}",
+        run.transcript()
+    );
+}
+
+#[test]
+fn on_a_runner_a_gate_that_did_not_know_its_own_job_would_refuse_every_push() {
+    // THE CONTROL FOR THE TEST ABOVE, and the reason that drop is load-bearing
+    // rather than tidy. With nothing saying which job this is, the gate's own job
+    // is a declared job with no log — the same shape as a job whose recorder was
+    // never wired in — and the gate refuses the push it is part of.
+    let run = on_a_runner(&a_runners_jobs(), &["one-job", "the-other-job"], None);
+    assert_eq!(
+        run.output.status.code(),
+        Some(1),
+        "a gate that counts its own half-built job must refuse it\n{}",
+        run.transcript()
+    );
+    assert!(
+        run.stdout()
+            .contains("job `the-gate` recorded no compilation"),
+        "the refusal names the job, which is what makes it diagnosable\n{}",
+        run.transcript()
+    );
+}

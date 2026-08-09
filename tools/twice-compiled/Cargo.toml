@@ -23,5 +23,12 @@ categories = ["development-tools"]
 ci-plan = { path = "../ci-plan" }
 rustc-log = { path = "../rustc-log" }
 
+# `tests/replay.rs` builds a whole fixture repository — a workflow, a crate the
+# jobs compile, and a copy of the recorder — and the replay it then runs checks
+# worktrees out of it. A directory that removes itself is what keeps a suite that
+# writes repositories from leaving them behind.
+[dev-dependencies]
+tempfile = "3"
+
 [lints.clippy]
 all = "deny"

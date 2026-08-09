@@ -13,8 +13,19 @@
     "seconds of a job's own repeats, the law against a census with no clocks in",
     "it — and names the test that must go red for it.",
     "",
-    "Scoped to this crate's own suite, which reads records rather than building",
-    "anything: the whole sweep is seconds."
+    "The last seven are of the OTHER kind. Everything above breaks a reading of",
+    "records that already exist; those break `main.rs`, which is BOTH ways into",
+    "this gate and had no test of any kind because nothing here ran the binary.",
+    "Five break the replay — not applying the variables it owns, running every job",
+    "in one tree, writing every job's records to one file, running the steps that",
+    "install what this machine has, and letting a failed step end the run — and",
+    "two break the runner entrance, where the workflow is read off the runner and",
+    "the gate's own half-built job is left out of its own census. Every one of the",
+    "seven was unreadable before `tests/entrances.rs`.",
+    "",
+    "Scoped to this crate's own suite. The reading tests build nothing; the four",
+    "replay tests compile one dependency-free crate in a worktree apiece and the",
+    "two runner tests compile nothing at all, so the whole sweep is still seconds."
   ],
   "repo": ".",
   "test_command": [
@@ -180,6 +191,107 @@
         }
       ],
       "expect_red": ["a_job_whose_compilations_took_no_time_at_all_is_refused"]
+    },
+    {
+      "name": "the-replay-does-not-set-the-variables-it-owns",
+      "why": "the replay overwrites `RUSTC_WRAPPER` and `MNEMOSYNE_RUSTC_LOG` for every step it runs, because the workflow spells both as GitHub expressions; a step run without them either records nothing or records into whatever the caller's environment named, and both leave a job's log absent — which is the same output as a job with nothing to build",
+      "edits": [
+        {
+          "file": "tools/twice-compiled/src/main.rs",
+          "from": "                .envs(&step.env)\n                .envs(mine)\n",
+          "to": "                .envs(&step.env)\n"
+        }
+      ],
+      "expect_red": [
+        "a_replay_reaches_every_job_it_can_and_the_census_holds_what_they_share",
+        "a_replay_that_reaches_one_job_is_refused_rather_than_reported"
+      ]
+    },
+    {
+      "name": "every-job-replays-into-the-same-tree",
+      "why": "a worktree per job is what makes each job's build COLD, and a cold build is the only one a wrapper can see: cargo runs no compiler for a unit that is already fresh. Replaying every job in one tree leaves the first job with a census and every job after it with an empty log, so the duplication this gate exists to count disappears into what looks like jobs that compile nothing",
+      "edits": [
+        {
+          "file": "tools/twice-compiled/src/main.rs",
+          "from": "                .current_dir(&tree)",
+          "to": "                .current_dir(root)"
+        }
+      ],
+      "expect_red": [
+        "a_replay_reaches_every_job_it_can_and_the_census_holds_what_they_share"
+      ]
+    },
+    {
+      "name": "every-job-records-into-one-file",
+      "why": "the census reads a job's name off the file its records are in, so a replay writing every job to one path produces one blob wearing the shape of a census — every unit in it, no two jobs sharing anything, and a clean zero for the duplication. `Refusal::LogIsNotNamedForItsJob` is the same mistake caught in the WORKFLOW's wiring; nothing was watching the replay's own",
+      "edits": [
+        {
+          "file": "tools/twice-compiled/src/main.rs",
+          "from": "        let log = logs.join(format!(\"{job}.log\"));",
+          "to": "        let log = logs.join(\"compilations.log\");"
+        }
+      ],
+      "expect_red": [
+        "a_replay_reaches_every_job_it_can_and_the_census_holds_what_they_share",
+        "a_replay_that_reaches_one_job_is_refused_rather_than_reported"
+      ]
+    },
+    {
+      "name": "the-replay-installs-what-this-machine-already-has",
+      "why": "a replay runs a job's steps verbatim EXCEPT two named prefixes, and `rustup` is one of them: a hosted runner installs a toolchain this machine already has, and running that step would change the compiler under the very measurement being taken — the units would then be shared with nothing and the census would report a repository with no duplication in it",
+      "edits": [
+        {
+          "file": "tools/twice-compiled/src/main.rs",
+          "from": "            if let Some((_, why)) = NOT_OURS.iter().find(|(word, _)| *word == head) {",
+          "to": "            if let Some((_, why)) = NOT_OURS.iter().find(|(word, _)| *word == \"nothing a step starts with\") {"
+        }
+      ],
+      "expect_red": [
+        "a_replay_skips_what_it_cannot_install_and_carries_on_past_what_fails"
+      ]
+    },
+    {
+      "name": "a-step-that-failed-ends-the-replay",
+      "why": "the compilations a failing step paid for are already in the log and the census is of what CI PAID FOR, so a failure is named and the replay carries on. Making it fatal throws away every job after the first gate that goes red — and the jobs of this workflow are gates, so a replay would be abandoned by the ordinary case rather than the exceptional one",
+      "edits": [
+        {
+          "file": "tools/twice-compiled/src/main.rs",
+          "from": "                println!(\"[replay] {job}: exited {status} — its compilations still count\");",
+          "to": "                panic!(\"[replay] {job}: exited {status}\");"
+        }
+      ],
+      "expect_red": [
+        "a_replay_skips_what_it_cannot_install_and_carries_on_past_what_fails"
+      ]
+    },
+    {
+      "name": "the-gate-counts-its-own-half-built-job",
+      "why": "on a runner this gate reads a directory of logs while its OWN job is still building, so its own log cannot be there yet; counting it makes the gate refuse the very push it is part of, every time, for a job that did nothing wrong. The control is the test that removes `$GITHUB_JOB` entirely and requires exactly that refusal — so the pair says the drop is load-bearing rather than tidy",
+      "edits": [
+        {
+          "file": "tools/twice-compiled/src/main.rs",
+          "from": "            if let Ok(mine) = std::env::var(\"GITHUB_JOB\") {\n                absent.insert(mine);\n            }\n",
+          "to": ""
+        }
+      ],
+      "expect_red": [
+        "on_a_runner_the_workflow_is_read_off_the_runner_and_the_gate_leaves_itself_out"
+      ]
+    },
+    {
+      "name": "the-workflow-reference-is-read-whole",
+      "why": "`$GITHUB_WORKFLOW_REF` is `owner/repo/.github/workflows/x.yml@refs/heads/main`, and the census is of ONE workflow read out of the middle of it. Taking the reference whole points the gate at a path that does not exist in the checkout, which is how a gate ends up judging a file nobody has",
+      "edits": [
+        {
+          "file": "tools/twice-compiled/src/main.rs",
+          "from": "    path[at..].to_string()",
+          "to": "    path.to_string()"
+        }
+      ],
+      "expect_red": [
+        "on_a_runner_the_workflow_is_read_off_the_runner_and_the_gate_leaves_itself_out",
+        "on_a_runner_a_gate_that_did_not_know_its_own_job_would_refuse_every_push"
+      ]
     }
   ]
 }
