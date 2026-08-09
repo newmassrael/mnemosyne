@@ -337,6 +337,40 @@ fn every_cargo_home_tree_this_workflow_caches_is_one_the_split_can_name() {
 }
 
 #[test]
+fn this_workflow_caches_one_build_directory_and_not_a_workspaces_own() {
+    // ONE `target` FOR THE WHOLE CHECKOUT. `.cargo/config.toml` sets
+    // `build.target-dir`, which cargo resolves against the directory holding
+    // that file, so all of this repository's workspaces compile into the same
+    // place. That is what lets a cache of ONE directory reach the work that
+    // used to land in `bench/target` and eleven `tools/*/target` trees — where
+    // every one of a run's 4095 fetched compilations was measured to go.
+    //
+    // A `path:` naming a workspace's own `target` is now a directory nothing
+    // writes into: the cache would save an empty tree and the job would read as
+    // having had its output held. This is the file law that says so before a
+    // run pays for it.
+    let declared = declared_jobs(&workflow_steps());
+    let build: Vec<&String> = declared
+        .caches
+        .values()
+        .flatten()
+        .filter(|path| path.ends_with("target"))
+        .collect();
+    assert!(
+        build.len() >= 2,
+        "{WORKFLOW} caches no build directory at all — a law over an empty \
+         population returns the same nothing as a law over a file that is right"
+    );
+    for path in build {
+        assert_eq!(
+            path, "target",
+            "{WORKFLOW} caches `{path}`, and this checkout compiles nothing into \
+             a workspace's own `target` — see `.cargo/config.toml`"
+        );
+    }
+}
+
+#[test]
 fn every_tracked_workflow_wires_its_restore_measurements_or_collects_nothing() {
     // THE LAW REACHED ONE FILE AND THIS REPOSITORY TRACKS TWO. `judge_wiring`
     // needs no census, so nothing about it was ever per-workflow except which

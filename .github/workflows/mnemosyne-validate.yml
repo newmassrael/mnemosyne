@@ -65,7 +65,7 @@ concurrency:
 env:
   CARGO_PROFILE_DEV_DEBUG: line-tables-only
   CARGO_INCREMENTAL: 0
-  RUSTC_WRAPPER: ${{ github.workspace }}/tools/rustc-log/target/release/rustc-log
+  RUSTC_WRAPPER: ${{ github.workspace }}/target/release/rustc-log
 
 # R1091 — EVERY CACHE KEY IN THIS FILE HASHES THIS FILE, and that is a defect
 # repair rather than belt-and-braces. A key that hashes only the lockfiles says
@@ -197,7 +197,7 @@ jobs:
       # ever say different things.
       - name: What is on disk before the cache is restored
         run: >
-          ./tools/restored/target/release/restored before
+          ./target/release/restored before
           '~/.cargo/registry' '~/.cargo/git'
 
       - name: Cache cargo
@@ -214,7 +214,7 @@ jobs:
       - name: What the cache restored
         env:
           MNEMOSYNE_CACHE_HIT: ${{ steps.cache.outputs.cache-hit }}
-        run: ./tools/restored/target/release/restored after
+        run: ./target/release/restored after
 
       - name: cargo test --workspace
         run: cargo test --workspace --locked
@@ -319,8 +319,8 @@ jobs:
       # R1101 — see `validate`'s copy of these two steps.
       - name: What is on disk before the cache is restored
         run: >
-          ./tools/restored/target/release/restored before
-          '~/.cargo/registry' '~/.cargo/git' 'tools/item-citations/target'
+          ./target/release/restored before
+          '~/.cargo/registry' '~/.cargo/git' 'target'
 
       - name: Cache cargo (item citations)
         id: cache
@@ -329,7 +329,7 @@ jobs:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-            tools/item-citations/target
+            target
           key: ${{ runner.os }}-cargo-citations-${{ hashFiles('**/Cargo.lock', '.github/workflows/mnemosyne-validate.yml') }}
           restore-keys: |
             ${{ runner.os }}-cargo-citations-
@@ -337,7 +337,7 @@ jobs:
       - name: What the cache restored
         env:
           MNEMOSYNE_CACHE_HIT: ${{ steps.cache.outputs.cache-hit }}
-        run: ./tools/restored/target/release/restored after
+        run: ./target/release/restored after
 
       - name: every item citation in the workspace names an item
         run: >
@@ -413,7 +413,7 @@ jobs:
       # R1101 — see `validate`'s copy of these two steps.
       - name: What is on disk before the cache is restored
         run: >
-          ./tools/restored/target/release/restored before
+          ./target/release/restored before
           '~/.cargo/registry' '~/.cargo/git'
 
       - name: Cache cargo (side workspaces)
@@ -430,7 +430,7 @@ jobs:
       - name: What the cache restored
         env:
           MNEMOSYNE_CACHE_HIT: ${{ steps.cache.outputs.cache-hit }}
-        run: ./tools/restored/target/release/restored after
+        run: ./target/release/restored after
 
       - name: fmt, clippy and test in every separate in-repo workspace
         run: ./scripts/check-side-workspaces.sh
@@ -514,7 +514,7 @@ jobs:
       # R1101 — see `validate`'s copy of these two steps.
       - name: What is on disk before the cache is restored
         run: >
-          ./tools/restored/target/release/restored before
+          ./target/release/restored before
           '~/.cargo/registry' '~/.cargo/git'
 
       - name: Cache cargo (server features)
@@ -531,7 +531,7 @@ jobs:
       - name: What the cache restored
         env:
           MNEMOSYNE_CACHE_HIT: ${{ steps.cache.outputs.cache-hit }}
-        run: ./tools/restored/target/release/restored after
+        run: ./target/release/restored after
 
       # LINT IT TOO, and that is not symmetry for its own sake: the first time
       # anything linted this build it found a `MutexGuard` held across an await
@@ -653,8 +653,8 @@ jobs:
       # whether a tree arrived at all. See `validate`'s copy of these two steps.
       - name: What is on disk before the cache is restored
         run: >
-          ./tools/restored/target/release/restored before
-          '~/.cargo/registry' '~/.cargo/git' 'target' 'tools/unrun-tests/target'
+          ./target/release/restored before
+          '~/.cargo/registry' '~/.cargo/git' 'target'
 
       - name: Cache cargo (unrun tests)
         id: cache
@@ -664,7 +664,6 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             target
-            tools/unrun-tests/target
           key: ${{ runner.os }}-cargo-unrun-${{ hashFiles('**/Cargo.lock', '.github/workflows/mnemosyne-validate.yml') }}
           restore-keys: |
             ${{ runner.os }}-cargo-unrun-
@@ -672,7 +671,7 @@ jobs:
       - name: What the cache restored
         env:
           MNEMOSYNE_CACHE_HIT: ${{ steps.cache.outputs.cache-hit }}
-        run: ./tools/restored/target/release/restored after
+        run: ./target/release/restored after
 
       - name: every test this repository compiles is one some CI command runs
         run: >
@@ -758,8 +757,8 @@ jobs:
       # R1101 — see `validate`'s copy of these two steps.
       - name: What is on disk before the cache is restored
         run: >
-          ./tools/restored/target/release/restored before
-          '~/.cargo/registry' '~/.cargo/git' 'tools/uncompiled-sources/target'
+          ./target/release/restored before
+          '~/.cargo/registry' '~/.cargo/git' 'target'
 
       - name: Cache cargo (uncompiled sources)
         id: cache
@@ -768,7 +767,7 @@ jobs:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-            tools/uncompiled-sources/target
+            target
           key: ${{ runner.os }}-cargo-uncompiled-${{ hashFiles('**/Cargo.lock', '.github/workflows/mnemosyne-validate.yml') }}
           restore-keys: |
             ${{ runner.os }}-cargo-uncompiled-
@@ -776,7 +775,7 @@ jobs:
       - name: What the cache restored
         env:
           MNEMOSYNE_CACHE_HIT: ${{ steps.cache.outputs.cache-hit }}
-        run: ./tools/restored/target/release/restored after
+        run: ./target/release/restored after
 
       - name: every Rust file this repository tracks is one cargo compiles
         run: >
@@ -837,7 +836,7 @@ jobs:
       # R1101 — see `validate`'s copy of these two steps.
       - name: What is on disk before the cache is restored
         run: >
-          ./tools/restored/target/release/restored before
+          ./target/release/restored before
           '~/.cargo/registry' '~/.cargo/git'
 
       # NO ROOT `target`: this job is 6m54s cold, the cheapest in the file, and
@@ -856,7 +855,7 @@ jobs:
       - name: What the cache restored
         env:
           MNEMOSYNE_CACHE_HIT: ${{ steps.cache.outputs.cache-hit }}
-        run: ./tools/restored/target/release/restored after
+        run: ./target/release/restored after
 
       - name: cargo check --workspace on MSRV
         env:

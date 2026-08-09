@@ -661,15 +661,23 @@ fn replay(
 
 fn build_wrapper(root: &Path) -> PathBuf {
     let manifest = root.join("tools/rustc-log/Cargo.toml");
+    // WHERE IT GOES IS TOLD AND NOT DISCOVERED. This checkout's
+    // `.cargo/config.toml` sets `build.target-dir`, which cargo resolves against
+    // the directory holding that file — but a replay builds this in a REPOSITORY
+    // OF ITS OWN, and a fixture that carries no such file puts the binary under
+    // the tool's own workspace instead. A path assumed either way is a guess
+    // about somebody else's tree; saying it makes the answer the same in both.
+    let build = root.join("target");
     let status = Command::new("cargo")
         .args(["build", "--release", "-q", "--manifest-path"])
         .arg(&manifest)
+        .env("CARGO_TARGET_DIR", &build)
         // The recorder cannot record its own build: it does not exist yet.
         .env(WRAPPER_VARIABLE, "")
         .status()
         .expect("cargo builds the recorder");
     assert!(status.success(), "cannot build the recorder");
-    let wrapper = root.join("tools/rustc-log/target/release/rustc-log");
+    let wrapper = build.join("release/rustc-log");
     assert!(wrapper.is_file(), "no recorder at {}", wrapper.display());
     wrapper
 }

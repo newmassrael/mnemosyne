@@ -328,8 +328,8 @@ impl Side {
 /// thing to keep in step with the workflow.
 ///
 /// THE NAME AND NOT THE PATH, because there is more than one path and both are
-/// real. The workflow runs `./tools/restored/target/release/restored`; the local
-/// replay builds this crate without `--release` and runs the debug binary. A
+/// real. The workflow runs `./target/release/restored`; the local replay builds
+/// this crate without `--release` and runs the debug binary. A
 /// constant holding one of those recognises one entrance and is blind to the
 /// other — which is a gate that reports a job as measuring nothing when it
 /// measures perfectly well.

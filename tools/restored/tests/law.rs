@@ -320,10 +320,7 @@ fn a_declared_path_keeps_its_spelling_and_is_expanded_only_to_be_measured() {
 /// workflow builds it with `--release`; the local replay does not, and runs the
 /// debug binary. A rule that knew one of them would report the other's job as
 /// measuring nothing — the gate's own replay suite is what found that.
-const SPELLINGS: [&str; 2] = [
-    "./tools/restored/target/release/restored",
-    "./tools/restored/target/debug/restored",
-];
+const SPELLINGS: [&str; 2] = ["./target/release/restored", "./target/debug/restored"];
 
 #[test]
 fn a_step_is_read_for_the_side_of_the_restore_it_measures() {

@@ -66,8 +66,8 @@ const BUILDS: &[&str] = &["cargo build --manifest-path crates/shared/Cargo.toml"
 /// census reads as taken from nothing.
 const MEASURES_A_RESTORE: &[&str] = &[
     "cargo build --manifest-path tools/restored/Cargo.toml",
-    "./tools/restored/target/debug/restored before 'target'",
-    "./tools/restored/target/debug/restored after",
+    "./target/debug/restored before 'target'",
+    "./target/debug/restored after",
     "cargo build --manifest-path crates/shared/Cargo.toml",
 ];
 
@@ -146,7 +146,7 @@ fn workflow(jobs: &[Job]) -> String {
         out.push_str("    env:\n");
         out.push_str(
             "      RUSTC_WRAPPER: ${{ github.workspace \
-             }}/tools/rustc-log/target/release/rustc-log\n",
+             }}/target/release/rustc-log\n",
         );
         out.push_str(&format!(
             "      MNEMOSYNE_RUSTC_LOG: ${{{{ github.workspace }}}}/rustc-log/{name}.log\n"
@@ -299,6 +299,16 @@ fn repository(jobs: &[Job]) -> (TempDir, TempDir) {
         &root.path().join("crates/shared/src/lib.rs"),
         "//! One crate, no dependencies, compiled by every job of the fixture.\n\
          pub fn shared() -> u8 {\n    1\n}\n",
+    );
+    // THE FIXTURE IS SHAPED LIKE THE REPOSITORY IT STANDS FOR. This checkout
+    // builds every one of its workspaces into ONE directory, which is why the
+    // steps below can name `./target/debug/restored` for a crate whose manifest
+    // lives under `tools/`. A fixture without this file puts that binary
+    // somewhere else and the step exits 127 — a job that measured nothing, for
+    // a reason that has nothing to do with what the test is about.
+    write(
+        &root.path().join(".cargo/config.toml"),
+        "[build]\ntarget-dir = \"target\"\n",
     );
     copy_instrument(&recorder_source(), &root.path().join("tools/rustc-log"));
     copy_instrument(&sibling("restored"), &root.path().join("tools/restored"));

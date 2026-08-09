@@ -34,6 +34,7 @@
 
 [build]
 jobs = 4
+target-dir = "target"
 
 [env]
 RUST_TEST_THREADS = "4"

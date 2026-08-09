@@ -589,6 +589,18 @@
       "expect_red": [
         "on_a_runner_the_workflow_is_read_off_the_runner_and_the_gate_leaves_itself_out"
       ]
+    },
+    {
+      "name": "a-cache-may-name-a-workspaces-own-target",
+      "why": "this checkout compiles every one of its workspaces into ONE directory, so a `path:` naming a workspace's own `target` saves an empty tree while the job reads as having had its output held — and that is the shape the round before this measured: all 4095 fetched compilations of a run landed in trees no cache reached",
+      "edits": [
+        {
+          "file": ".github/workflows/mnemosyne-validate.yml",
+          "from": "          key: ${{ runner.os }}-cargo-unrun-${{ hashFiles('**/Cargo.lock', '.github/workflows/mnemosyne-validate.yml') }}",
+          "to": "            tools/unrun-tests/target\n          key: ${{ runner.os }}-cargo-unrun-${{ hashFiles('**/Cargo.lock', '.github/workflows/mnemosyne-validate.yml') }}"
+        }
+      ],
+      "expect_red": ["this_workflow_caches_one_build_directory_and_not_a_workspaces_own"]
     }
   ]
 }
