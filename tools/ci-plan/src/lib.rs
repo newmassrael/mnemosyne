@@ -89,20 +89,77 @@ pub fn parse_workflow(raw: &str, source: &str) -> Yaml {
     docs.into_iter().next().expect("one document")
 }
 
-/// Every `run:` script in every job of one workflow, with the job's name.
-pub fn run_steps(doc: &Yaml) -> Vec<(String, String)> {
+/// One `run:` step, with the job it belongs to and the environment it runs in.
+///
+/// THE ENVIRONMENT IS PART OF THE COMMAND, and this repository holds the two
+/// proofs of it. The `msrv` job's `cargo check --workspace` is the same words as
+/// `validate`'s half of the same, and what makes it a different build is
+/// `RUSTUP_TOOLCHAIN` on the step. R1090 then set `CARGO_PROFILE_DEV_DEBUG` at
+/// the top of the file, which changes what every job in it compiles. A reader
+/// that took only the words would call those the same command.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RunStep {
+    /// The job id — the spelling `needs:` uses.
+    pub job: String,
+    /// The shell of the `run:` key.
+    pub script: String,
+    /// Workflow `env:`, overlaid by the job's, overlaid by the step's — GitHub's
+    /// own precedence, resolved here so no caller has to know there are three
+    /// places to look.
+    pub env: BTreeMap<String, String>,
+}
+
+/// How a YAML scalar spells an environment value. `CARGO_INCREMENTAL: 0` is an
+/// integer to a YAML parser and a string to a process, and a reader that took
+/// only `as_str` would drop it.
+fn scalar(value: &Yaml) -> Option<String> {
+    match value {
+        Yaml::String(text) => Some(text.clone()),
+        Yaml::Integer(number) => Some(number.to_string()),
+        Yaml::Real(number) => Some(number.clone()),
+        Yaml::Boolean(flag) => Some(flag.to_string()),
+        _ => None,
+    }
+}
+
+/// The `env:` mapping at one level, if there is one.
+fn env_at(node: &Yaml) -> BTreeMap<String, String> {
+    let mut out = BTreeMap::new();
+    let Some(pairs) = node["env"].as_hash() else {
+        return out;
+    };
+    for (name, value) in pairs {
+        let (Some(name), Some(value)) = (name.as_str(), scalar(value)) else {
+            continue;
+        };
+        out.insert(name.to_string(), value);
+    }
+    out
+}
+
+/// Every `run:` step in every job of one workflow.
+pub fn run_steps(doc: &Yaml) -> Vec<RunStep> {
     let mut steps = Vec::new();
     let Some(jobs) = doc["jobs"].as_hash() else {
         return steps;
     };
+    let workflow_env = env_at(doc);
     for (name, job) in jobs {
         let name = name.as_str().unwrap_or("<unnamed>").to_string();
         let Some(job_steps) = job["steps"].as_vec() else {
             continue;
         };
+        let mut job_env = workflow_env.clone();
+        job_env.extend(env_at(job));
         for step in job_steps {
             if let Some(script) = step["run"].as_str() {
-                steps.push((name.clone(), script.to_string()));
+                let mut env = job_env.clone();
+                env.extend(env_at(step));
+                steps.push(RunStep {
+                    job: name.clone(),
+                    script: script.to_string(),
+                    env,
+                });
             }
         }
     }
@@ -326,6 +383,9 @@ pub struct CargoCommand {
     pub cargo_args: Vec<String>,
     /// Words after the first bare `--`.
     pub harness_args: Vec<String>,
+    /// The environment the command runs in — see [`RunStep::env`]. Empty for a
+    /// command a gate builds for itself rather than reads out of a workflow.
+    pub env: BTreeMap<String, String>,
 }
 
 impl CargoCommand {
@@ -396,13 +456,14 @@ pub fn workflow_cargo_commands(root: &Path) -> Vec<CargoCommand> {
     let mut out = Vec::new();
     for path in workflow_files(root) {
         let doc = load_workflow(root, &path);
-        for (job, script) in run_steps(&doc) {
-            for (cargo_args, harness_args) in parse_script(&script) {
+        for step in run_steps(&doc) {
+            for (cargo_args, harness_args) in parse_script(&step.script) {
                 out.push(CargoCommand {
                     source: path.clone(),
-                    owner: job.clone(),
+                    owner: step.job.clone(),
                     cargo_args,
                     harness_args,
+                    env: step.env.clone(),
                 });
             }
         }
@@ -602,6 +663,7 @@ pub fn lister_cargo_commands(listed: &Workspaces) -> Vec<CargoCommand> {
             owner: workspace.clone(),
             cargo_args,
             harness_args,
+            env: BTreeMap::new(),
         });
     }
     out

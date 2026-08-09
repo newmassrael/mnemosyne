@@ -8,8 +8,8 @@
 //! can execute still has a control.
 
 use ci_plan::{
-    cache_steps, job_needs, lister_cargo_commands, parse_lister, parse_script, CacheDeclaration,
-    CargoCommand,
+    cache_steps, job_needs, lister_cargo_commands, parse_lister, parse_script, parse_workflow,
+    run_steps, CacheDeclaration, CargoCommand,
 };
 
 /// A workflow with two cached jobs, one of them registry-only.
@@ -333,6 +333,7 @@ fn a_shell_line_is_split_where_cargo_stops_and_the_harness_starts() {
                 owner: "pinned".to_string(),
                 cargo_args,
                 harness_args,
+                env: Default::default(),
             })
             .collect::<Vec<_>>()
     };
@@ -401,5 +402,87 @@ fn a_shell_line_is_split_where_cargo_stops_and_the_harness_starts() {
     assert!(
         folded[0].has("--all-targets"),
         "and the continued half is part of it: {folded:?}"
+    );
+}
+
+/// A workflow whose environment is written at all three levels GitHub allows.
+const THREE_LEVELS: &str = r#"
+env:
+  CARGO_INCREMENTAL: 0
+  CARGO_PROFILE_DEV_DEBUG: line-tables-only
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: build
+        run: cargo test --workspace
+  msrv:
+    runs-on: ubuntu-latest
+    env:
+      CARGO_PROFILE_DEV_DEBUG: "2"
+    steps:
+      - name: check
+        env:
+          RUSTUP_TOOLCHAIN: 1.88
+        run: cargo check --workspace
+      - name: check again
+        run: cargo check --workspace --all-targets
+"#;
+
+#[test]
+fn a_step_carries_the_environment_of_all_three_levels_that_set_it() {
+    // WHY THIS IS PART OF A COMMAND. `msrv` runs the same words as `validate`
+    // over the same sources, and the only thing that makes it a different build
+    // is a variable on the step. R1090 then set the debug level for the whole
+    // file, which changes what every job in it compiles. A reader that took only
+    // the words would call those the same command.
+    let steps = run_steps(&parse_workflow(THREE_LEVELS, "pinned"));
+    let of = |job: &str, index: usize| {
+        steps
+            .iter()
+            .filter(|step| step.job == job)
+            .nth(index)
+            .unwrap_or_else(|| panic!("no step {index} of {job}"))
+            .env
+            .clone()
+    };
+
+    let validate = of("validate", 0);
+    assert_eq!(
+        validate.get("CARGO_INCREMENTAL").map(String::as_str),
+        Some("0"),
+        "`CARGO_INCREMENTAL: 0` is an integer to a YAML parser and a string to a \
+         process — a reader that took only `as_str` would drop it: {validate:?}"
+    );
+    assert_eq!(
+        validate.get("CARGO_PROFILE_DEV_DEBUG").map(String::as_str),
+        Some("line-tables-only"),
+        "the workflow's own env reaches a job that sets none"
+    );
+
+    let first = of("msrv", 0);
+    assert_eq!(
+        first.get("CARGO_PROFILE_DEV_DEBUG").map(String::as_str),
+        Some("2"),
+        "the job's env overrides the workflow's"
+    );
+    assert_eq!(
+        first.get("RUSTUP_TOOLCHAIN").map(String::as_str),
+        Some("1.88"),
+        "and the step's own env is there too"
+    );
+    assert_eq!(
+        first.get("CARGO_INCREMENTAL").map(String::as_str),
+        Some("0"),
+        "overriding one variable does not drop the others"
+    );
+
+    let second = of("msrv", 1);
+    assert_eq!(
+        second.get("RUSTUP_TOOLCHAIN"),
+        None,
+        "a step's env is the STEP's — the next step in the same job does not \
+         inherit it, which is exactly how a job can build twice on two \
+         toolchains: {second:?}"
     );
 }

@@ -1,0 +1,27 @@
+[workspace]
+
+[package]
+name = "twice-compiled"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.88"
+publish = false
+license = "MIT OR Apache-2.0"
+description = "Mnemosyne — every compilation this repository's CI pays for is one job's"
+keywords = ["ci", "cargo", "gate"]
+categories = ["development-tools"]
+
+# ITS OWN WORKSPACE, like every other gate under `tools/`. `ci-plan` is a path
+# dependency reaching INTO the root workspace, which is the direction that works:
+# `cache-budget` asks it what the workflows DECLARE, `unrun-tests` asks it what
+# they RUN, and this asks it WHICH JOBS THERE ARE. Three questions, one reader.
+#
+# `rustc-log` is the wrapper whose records this reads, and the dependency is what
+# keeps the format from being written down twice.
+
+[dependencies]
+ci-plan = { path = "../ci-plan" }
+rustc-log = { path = "../rustc-log" }
+
+[lints.clippy]
+all = "deny"

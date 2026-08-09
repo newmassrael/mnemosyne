@@ -97,3 +97,9 @@ Cargo.lock.bak
 /claudedocs/phase1-k-of-n-authoring-experiment/**/*.atomic.json
 /claudedocs/phase1-k-of-n-authoring-experiment/**/*.playthrough.json
 /claudedocs/phase1-k-of-n-authoring-experiment/*/run/*/contract.txt
+
+# R1092 — where every job of `mnemosyne-validate.yml` writes what it compiled,
+# for `tools/twice-compiled` to join. Inside the checkout because that is what
+# `actions/upload-artifact` can reach, and ignored because it is a build record
+# rather than a source.
+/rustc-log/

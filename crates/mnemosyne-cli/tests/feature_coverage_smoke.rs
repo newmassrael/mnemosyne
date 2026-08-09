@@ -417,6 +417,7 @@ fn a_command_is_read_for_the_features_it_actually_enables() {
                 owner: "pinned".to_string(),
                 cargo_args,
                 harness_args,
+                env: Default::default(),
             },
             &declared,
             &declared,

@@ -75,6 +75,7 @@ fn command(manifest: &Path, extra: &[&str], harness: &[&str]) -> CargoCommand {
         owner: "fixture".to_string(),
         cargo_args,
         harness_args: harness.iter().map(|word| (*word).to_string()).collect(),
+        env: Default::default(),
     }
 }
 

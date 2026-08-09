@@ -1,0 +1,22 @@
+[workspace]
+
+[package]
+name = "rustc-log"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.88"
+publish = false
+license = "MIT OR Apache-2.0"
+description = "Mnemosyne — records every rustc invocation a CI job makes, then execs rustc"
+keywords = ["ci", "cargo", "gate"]
+categories = ["development-tools"]
+
+# NO DEPENDENCIES AT ALL, and that is a requirement rather than a preference.
+# This binary is `RUSTC_WRAPPER`, so it has to exist before the build it records
+# starts, and every crate it pulled in would be a compilation this repository
+# pays for in order to measure what it pays for. It is also the reason it is its
+# own workspace: compiled inside the root one it would be a unit in the very
+# population it reports on.
+
+[lints.clippy]
+all = "deny"

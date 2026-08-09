@@ -40,9 +40,25 @@ concurrency:
 # `CARGO_INCREMENTAL=0` because incremental state is a per-machine, per-build
 # scratch space that every one of these jobs writes once and no job ever reads
 # twice — pure cache weight, and cargo's own advice for CI.
+#
+# R1092 — `RUSTC_WRAPPER` IS HOW THIS FILE GETS MEASURED. Seven jobs below build
+# this workspace, and the reason given for keeping them apart has always been
+# that they resolve different features — written as prose, in four separate
+# comments, never once counted. `tools/rustc-log` sits in front of every `rustc`
+# and records the invocation; `tools/twice-compiled` joins the logs and reports
+# how many compilations two jobs both pay for. It reaches the builds a GATE
+# spawns by shelling out to cargo, which is most of the work in three of these
+# jobs and is invisible to `--message-format=json`.
+#
+# The log path is per job and is set on each job rather than here, because
+# `${{ github.job }}` is defined by the runner only INSIDE a step and evaluates
+# to nothing in an `env:` block — every job would append to one file, and a
+# census of one job reports no duplication at all. So each job names its own log
+# by hand, and `tools/twice-compiled` checks that the name is the job's.
 env:
   CARGO_PROFILE_DEV_DEBUG: line-tables-only
   CARGO_INCREMENTAL: 0
+  RUSTC_WRAPPER: ${{ github.workspace }}/tools/rustc-log/target/release/rustc-log
 
 # R1091 — EVERY CACHE KEY IN THIS FILE HASHES THIS FILE, and that is a defect
 # repair rather than belt-and-braces. A key that hashes only the lockfiles says
@@ -75,6 +91,8 @@ jobs:
   validate:
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    env:
+      MNEMOSYNE_RUSTC_LOG: ${{ github.workspace }}/rustc-log/validate.log
     steps:
       - uses: actions/checkout@v7
         with:
@@ -96,6 +114,18 @@ jobs:
 
       - name: Install rust toolchain (rust-toolchain.toml)
         run: rustup show
+
+      # R1092 — the recorder cannot record its own build: it does not exist yet,
+      # and an empty `RUSTC_WRAPPER` is how cargo is told there is none. This is
+      # the ONE step in this file excused from recording, and
+      # `tools/twice-compiled` derives that excuse from the manifest this line
+      # names rather than from a list of jobs, so it stays one step wide. What it
+      # costs is the recorder's own compilation, which is one crate with no
+      # dependencies — the reason it has none.
+      - name: Build the compilation recorder
+        env:
+          RUSTC_WRAPPER: ""
+        run: cargo build --release -q --manifest-path tools/rustc-log/Cargo.toml
 
       # ONE OF THE TWO JOBS IN THIS FILE THAT KEEPS A `target`, and R1090
       # measured which two. GitHub gives a repository 10 GB of cache and deletes,
@@ -173,6 +203,20 @@ jobs:
           cargo run -q --manifest-path tools/blind-waits/Cargo.toml
           --bin blind-waits -- --workspace Cargo.toml
 
+      # R1092 — what this job compiled, for `twice-compiled` to join with every
+      # other job's. `always()` because a job that failed still compiled
+      # everything up to the point it failed, and a missing log would have the
+      # gate report an absence on top of the real failure. `if-no-files-found:
+      # error` is a second, independent guard on the same silence the gate's own
+      # law covers: a job that recorded nothing must not upload nothing quietly.
+      - name: Keep what this job compiled
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: rustc-log-${{ github.job }}
+          path: rustc-log/
+          if-no-files-found: error
+
   # R1077 pointed rustdoc at this workspace for the first time and gave the
   # `[`foo`]` citation the gate `validate-code-refs` gives `Round NNN`. It ran
   # `cargo doc --workspace`, and R1078 measured what that reaches: 25 of this
@@ -199,6 +243,8 @@ jobs:
     name: item citations name items
     runs-on: ubuntu-latest
     timeout-minutes: 60
+    env:
+      MNEMOSYNE_RUSTC_LOG: ${{ github.workspace }}/rustc-log/item-citations.log
     steps:
       - uses: actions/checkout@v7
 
@@ -209,6 +255,18 @@ jobs:
 
       - name: Install rust toolchain (rust-toolchain.toml)
         run: rustup show
+
+      # R1092 — the recorder cannot record its own build: it does not exist yet,
+      # and an empty `RUSTC_WRAPPER` is how cargo is told there is none. This is
+      # the ONE step in this file excused from recording, and
+      # `tools/twice-compiled` derives that excuse from the manifest this line
+      # names rather than from a list of jobs, so it stays one step wide. What it
+      # costs is the recorder's own compilation, which is one crate with no
+      # dependencies — the reason it has none.
+      - name: Build the compilation recorder
+        env:
+          RUSTC_WRAPPER: ""
+        run: cargo build --release -q --manifest-path tools/rustc-log/Cargo.toml
 
       # NO ROOT `target` — see the `validate` job's cache for the measurement.
       # The key is unchanged on purpose: a renamed key leaves the old one held
@@ -229,6 +287,15 @@ jobs:
         run: >
           cargo run -q --manifest-path tools/item-citations/Cargo.toml
           --bin item-citations -- --workspace Cargo.toml
+
+      # R1092 — see `validate`'s copy of this step.
+      - name: Keep what this job compiled
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: rustc-log-${{ github.job }}
+          path: rustc-log/
+          if-no-files-found: error
 
   # R1062 built an instrument nothing ran. This repository has four SEPARATE
   # workspaces (`bench/`, `studio/`, `tools/*`) which carry their own
@@ -261,11 +328,25 @@ jobs:
     # Caching these would evict that one, trading a job that rebuilds for a job
     # that rebuilds AND a slower one beside it.
     timeout-minutes: 60
+    env:
+      MNEMOSYNE_RUSTC_LOG: ${{ github.workspace }}/rustc-log/side-workspaces.log
     steps:
       - uses: actions/checkout@v7
 
       - name: Install rust toolchain (rust-toolchain.toml)
         run: rustup show
+
+      # R1092 — the recorder cannot record its own build: it does not exist yet,
+      # and an empty `RUSTC_WRAPPER` is how cargo is told there is none. This is
+      # the ONE step in this file excused from recording, and
+      # `tools/twice-compiled` derives that excuse from the manifest this line
+      # names rather than from a list of jobs, so it stays one step wide. What it
+      # costs is the recorder's own compilation, which is one crate with no
+      # dependencies — the reason it has none.
+      - name: Build the compilation recorder
+        env:
+          RUSTC_WRAPPER: ""
+        run: cargo build --release -q --manifest-path tools/rustc-log/Cargo.toml
 
       - name: Cache cargo (side workspaces)
         uses: actions/cache@v6
@@ -279,6 +360,19 @@ jobs:
 
       - name: fmt, clippy and test in every separate in-repo workspace
         run: ./scripts/check-side-workspaces.sh
+
+      # R1092 — see `validate`'s copy of this step. This job's compilations reach
+      # the recorder through a shell script rather than a `run:` cargo line, and
+      # that is the reason the recorder is an environment variable: a child
+      # process inherits it, so what the script builds is recorded without the
+      # script knowing anything about this.
+      - name: Keep what this job compiled
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: rustc-log-${{ github.job }}
+          path: rustc-log/
+          if-no-files-found: error
 
   # R1081 — the targets `cargo test --workspace` compiles to NOTHING.
   #
@@ -305,6 +399,8 @@ jobs:
     name: the server targets the workspace suite compiles to nothing
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    env:
+      MNEMOSYNE_RUSTC_LOG: ${{ github.workspace }}/rustc-log/server-features.log
     steps:
       - uses: actions/checkout@v7
 
@@ -313,6 +409,18 @@ jobs:
 
       - name: Install rust toolchain (rust-toolchain.toml)
         run: rustup show
+
+      # R1092 — the recorder cannot record its own build: it does not exist yet,
+      # and an empty `RUSTC_WRAPPER` is how cargo is told there is none. This is
+      # the ONE step in this file excused from recording, and
+      # `tools/twice-compiled` derives that excuse from the manifest this line
+      # names rather than from a list of jobs, so it stays one step wide. What it
+      # costs is the recorder's own compilation, which is one crate with no
+      # dependencies — the reason it has none.
+      - name: Build the compilation recorder
+        env:
+          RUSTC_WRAPPER: ""
+        run: cargo build --release -q --manifest-path tools/rustc-log/Cargo.toml
 
       # Its own key, because this build resolves different features than
       # `validate`'s and a shared key would hold whichever job saved first.
@@ -346,6 +454,15 @@ jobs:
 
       - name: cargo test -p mnemosyne-server --all-features
         run: cargo test -p mnemosyne-server --all-features --locked --no-fail-fast
+
+      # R1092 — see `validate`'s copy of this step.
+      - name: Keep what this job compiled
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: rustc-log-${{ github.job }}
+          path: rustc-log/
+          if-no-files-found: error
 
   # R1084 — the level above `server-features`. That job exists because six test
   # targets compiled to nothing; R1082 then gated the general form of WHY they
@@ -382,6 +499,8 @@ jobs:
     name: every test compiled is one CI runs
     runs-on: ubuntu-latest
     timeout-minutes: 90
+    env:
+      MNEMOSYNE_RUSTC_LOG: ${{ github.workspace }}/rustc-log/unrun-tests.log
     steps:
       - uses: actions/checkout@v7
 
@@ -390,6 +509,18 @@ jobs:
 
       - name: Install rust toolchain (rust-toolchain.toml)
         run: rustup show
+
+      # R1092 — the recorder cannot record its own build: it does not exist yet,
+      # and an empty `RUSTC_WRAPPER` is how cargo is told there is none. This is
+      # the ONE step in this file excused from recording, and
+      # `tools/twice-compiled` derives that excuse from the manifest this line
+      # names rather than from a list of jobs, so it stays one step wide. What it
+      # costs is the recorder's own compilation, which is one crate with no
+      # dependencies — the reason it has none.
+      - name: Build the compilation recorder
+        env:
+          RUSTC_WRAPPER: ""
+        run: cargo build --release -q --manifest-path tools/rustc-log/Cargo.toml
 
       # Its own key: this job resolves `--all-features` for the whole workspace,
       # which is neither `validate`'s resolve nor `server-features`', so sharing
@@ -410,6 +541,15 @@ jobs:
         run: >
           cargo run -q --manifest-path tools/unrun-tests/Cargo.toml
           --bin unrun-tests
+
+      # R1092 — see `validate`'s copy of this step.
+      - name: Keep what this job compiled
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: rustc-log-${{ github.job }}
+          path: rustc-log/
+          if-no-files-found: error
 
   # The level above `unrun-tests`, and the hole that job named in itself. Its
   # population is what cargo COMPILES, so a test in a file cargo never opens is
@@ -442,6 +582,8 @@ jobs:
     name: every file tracked is one cargo compiles
     runs-on: ubuntu-latest
     timeout-minutes: 90
+    env:
+      MNEMOSYNE_RUSTC_LOG: ${{ github.workspace }}/rustc-log/uncompiled-sources.log
     steps:
       - uses: actions/checkout@v7
 
@@ -450,6 +592,18 @@ jobs:
 
       - name: Install rust toolchain (rust-toolchain.toml)
         run: rustup show
+
+      # R1092 — the recorder cannot record its own build: it does not exist yet,
+      # and an empty `RUSTC_WRAPPER` is how cargo is told there is none. This is
+      # the ONE step in this file excused from recording, and
+      # `tools/twice-compiled` derives that excuse from the manifest this line
+      # names rather than from a list of jobs, so it stays one step wide. What it
+      # costs is the recorder's own compilation, which is one crate with no
+      # dependencies — the reason it has none.
+      - name: Build the compilation recorder
+        env:
+          RUSTC_WRAPPER: ""
+        run: cargo build --release -q --manifest-path tools/rustc-log/Cargo.toml
 
       # Its own key: two feature resolves of every workspace, which no other job
       # holds, so a shared key would hold whichever job saved first.
@@ -474,10 +628,21 @@ jobs:
           cargo run -q --manifest-path tools/uncompiled-sources/Cargo.toml
           --bin uncompiled-sources
 
+      # R1092 — see `validate`'s copy of this step.
+      - name: Keep what this job compiled
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: rustc-log-${{ github.job }}
+          path: rustc-log/
+          if-no-files-found: error
+
   msrv:
     name: MSRV (workspace.package.rust-version)
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    env:
+      MNEMOSYNE_RUSTC_LOG: ${{ github.workspace }}/rustc-log/msrv.log
     steps:
       - uses: actions/checkout@v7
 
@@ -499,6 +664,17 @@ jobs:
       - name: Install MSRV toolchain
         run: rustup toolchain install ${{ steps.msrv.outputs.version }} --profile minimal
 
+      # ON THE MSRV TOOLCHAIN, unlike the other jobs' copies of this step: this
+      # job installs only that one, and building the recorder on the dev
+      # toolchain would make rustup fetch a second one for a crate with no
+      # dependencies. The recorder declares the same `rust-version` the workspace
+      # does, so the MSRV compiles it by construction.
+      - name: Build the compilation recorder
+        env:
+          RUSTC_WRAPPER: ""
+          RUSTUP_TOOLCHAIN: ${{ steps.msrv.outputs.version }}
+        run: cargo build --release -q --manifest-path tools/rustc-log/Cargo.toml
+
       # NO ROOT `target`: this job is 6m54s cold, the cheapest in the file, and
       # it was one of the six holding a whole build tree. See `validate`'s cache.
       - name: Cache cargo (MSRV)
@@ -515,6 +691,19 @@ jobs:
         env:
           RUSTUP_TOOLCHAIN: ${{ steps.msrv.outputs.version }}
         run: cargo check --workspace --locked
+
+      # R1092 — see `validate`'s copy of this step. THIS JOB IS THE CONTROL for
+      # the whole census: it runs the same words over the same sources as
+      # `validate` does, on a different compiler. cargo's `-C metadata` hash
+      # takes in the compiler's version, so its units must come back disjoint
+      # from every other job's — and if they did not, the key would be wrong.
+      - name: Keep what this job compiled
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: rustc-log-${{ github.job }}
+          path: rustc-log/
+          if-no-files-found: error
 
   # The level above every cache step in this file, and the constraint four rounds
   # broke without noticing.
@@ -566,6 +755,8 @@ jobs:
       - msrv
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    env:
+      MNEMOSYNE_RUSTC_LOG: ${{ github.workspace }}/rustc-log/cache-budget.log
     permissions:
       contents: read
       # The cache list is an Actions read, and it is the only permission beyond
@@ -586,9 +777,105 @@ jobs:
       - name: Install rust toolchain (rust-toolchain.toml)
         run: rustup show
 
+      # R1092 — the recorder cannot record its own build: it does not exist yet,
+      # and an empty `RUSTC_WRAPPER` is how cargo is told there is none. This is
+      # the ONE step in this file excused from recording, and
+      # `tools/twice-compiled` derives that excuse from the manifest this line
+      # names rather than from a list of jobs, so it stays one step wide. What it
+      # costs is the recorder's own compilation, which is one crate with no
+      # dependencies — the reason it has none.
+      - name: Build the compilation recorder
+        env:
+          RUSTC_WRAPPER: ""
+        run: cargo build --release -q --manifest-path tools/rustc-log/Cargo.toml
+
       - name: every cache this repository declares is one it keeps
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: >
           cargo run -q --manifest-path tools/cache-budget/Cargo.toml
           --bin cache-budget
+
+      # R1092 — see `validate`'s copy of this step.
+      - name: Keep what this job compiled
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: rustc-log-${{ github.job }}
+          path: rustc-log/
+          if-no-files-found: error
+
+  # R1092 — every compilation this repository's CI pays for is one job's.
+  #
+  # SEVEN JOBS ABOVE BUILD THIS WORKSPACE, and what has always kept them apart is
+  # a sentence: they resolve different features. It is written in four separate
+  # comments, none of which counted anything, and the bill for it is visible in
+  # the job beside this one — `unrun-tests` holds 7.83 GB of a 10 GB cache budget
+  # because a build tree per job is what a job per build tree costs.
+  #
+  # WHY IT IS FREE. The population is not gathered by building anything: every
+  # job already ran `rustc` thousands of times, and `tools/rustc-log` sat in
+  # front of each of those and wrote down the invocation. This job downloads
+  # what they wrote and joins it. The unit key is cargo's own `-C metadata`
+  # fingerprint — the hash it computes from the package, the resolved features,
+  # the profile and the compiler's version — so "they resolve differently" is
+  # answered by cargo rather than argued here, and `msrv` is the control that
+  # shows the key can tell two compilers apart.
+  #
+  # WHAT IT ASSERTS TODAY is that it reached every job. The duplication itself is
+  # REPORTED and not yet refused: the number is what licenses the repair, and
+  # there is no honest limit to assert before the repair exists. R1090 shipped a
+  # gate whose limit was a prediction and it was wrong by a factor of two.
+  #
+  # IT WAITS FOR EVERY OTHER JOB, and that list is not trusted:
+  # `tools/twice-compiled`'s own suite reads the jobs out of this file and fails
+  # if one of them is missing here.
+  twice-compiled:
+    name: every compilation is one job's
+    needs:
+      - validate
+      - item-citations
+      - side-workspaces
+      - server-features
+      - unrun-tests
+      - uncompiled-sources
+      - msrv
+      - cache-budget
+    # NO `if: always()`, deliberately. A job that was SKIPPED because something
+    # it needed failed uploads no log, and this gate cannot tell that from a job
+    # whose recorder is unwired — it would report a finding about a job that
+    # never ran, on a run that already has a real failure to read. So the census
+    # is of a complete run, which is the same scope `cache-budget` takes.
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      MNEMOSYNE_RUSTC_LOG: ${{ github.workspace }}/rustc-log/twice-compiled.log
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install rust toolchain (rust-toolchain.toml)
+        run: rustup show
+
+      # R1092 — the recorder cannot record its own build: it does not exist yet,
+      # and an empty `RUSTC_WRAPPER` is how cargo is told there is none. This is
+      # the ONE step in this file excused from recording, and
+      # `tools/twice-compiled` derives that excuse from the manifest this line
+      # names rather than from a list of jobs, so it stays one step wide. What it
+      # costs is the recorder's own compilation, which is one crate with no
+      # dependencies — the reason it has none.
+      - name: Build the compilation recorder
+        env:
+          RUSTC_WRAPPER: ""
+        run: cargo build --release -q --manifest-path tools/rustc-log/Cargo.toml
+
+      - name: Collect what every job compiled
+        uses: actions/download-artifact@v8
+        with:
+          pattern: rustc-log-*
+          merge-multiple: true
+          path: rustc-log
+
+      - name: every compilation this repository's CI pays for is one job's
+        run: >
+          cargo run -q --manifest-path tools/twice-compiled/Cargo.toml
+          --bin twice-compiled -- rustc-log

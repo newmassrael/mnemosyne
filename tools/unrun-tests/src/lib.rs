@@ -605,6 +605,7 @@ pub fn population_command(manifest: &str) -> CargoCommand {
         .map(|word| (*word).to_string())
         .collect(),
         harness_args: Vec::new(),
+        env: Default::default(),
     }
 }
 

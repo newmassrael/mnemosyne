@@ -314,6 +314,7 @@ pub fn check_command(manifest: &str, all_features: bool) -> CargoCommand {
         owner: manifest.to_string(),
         cargo_args,
         harness_args: Vec::new(),
+        env: Default::default(),
     }
 }
 
