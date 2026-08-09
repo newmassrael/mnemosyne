@@ -87,6 +87,36 @@ fn make_runnable(suite: &Path) {
     }
 }
 
+/// Run a program this process wrote a moment ago, past the kernel's window for
+/// saying it is still being written.
+///
+/// WHY THIS IS NOT A FLAKE TO SHRUG AT. `ETXTBSY` on exec means some process
+/// holds the file open for writing, and after `fs::copy` returns this one does
+/// not. Another does: a sibling test thread that forks between our write and our
+/// exec hands its child a copy of the whole descriptor table, and until that
+/// child reaches its own `exec` — which is where `O_CLOEXEC` finally closes our
+/// descriptor — the kernel is right that somebody has the file open. The window
+/// is microseconds wide and CI is where it gets hit, which is exactly the shape
+/// that reads as a gate being unreliable rather than a gate being right.
+///
+/// A CONDITION AND NOT A SLEEP. This retries on that one error kind and on
+/// nothing else, so a program that is genuinely missing or not executable fails
+/// on the first attempt with its own message. The bound exists so that a real
+/// permanent `ETXTBSY` ends as a failure rather than a hang.
+fn run_a_freshly_written_program(program: &Path, argument: &Path) -> std::process::Output {
+    for _ in 0..1_000 {
+        match Command::new(program).arg(argument).output() {
+            Err(busy) if busy.kind() == std::io::ErrorKind::ExecutableFileBusy => continue,
+            other => return other.expect("the copied tool runs"),
+        }
+    }
+    panic!(
+        "{} was reported as still being written on every attempt — that is no \
+         longer another thread's fork-and-exec window",
+        program.display()
+    )
+}
+
 fn manifest(root: &Path, injections: serde_json::Value) -> PathBuf {
     manifest_with(root, injections, serde_json::Value::Null)
 }
@@ -821,10 +851,7 @@ fn a_suite_that_replaces_the_tool_does_not_end_the_sweep() {
             {"name": "I2", "edits": [{"file": "src.txt", "from": "SOUND", "to": "BROKEN"}]},
         ]),
     );
-    let out = Command::new(&tool)
-        .arg(&path)
-        .output()
-        .expect("the copied tool runs");
+    let out = run_a_freshly_written_program(&tool, &path);
     assert!(
         !tool.exists(),
         "the suite really did replace the binary the sweep was started from"
