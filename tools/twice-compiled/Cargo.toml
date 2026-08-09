@@ -17,10 +17,15 @@ categories = ["development-tools"]
 # they RUN, and this asks it WHICH JOBS THERE ARE. Three questions, one reader.
 #
 # `rustc-log` is the wrapper whose records this reads, and the dependency is what
-# keeps the format from being written down twice.
+# keeps the format from being written down twice. `restored` is the other record
+# every job leaves — what its cache restore put on disk — and it is here for the
+# same reason: a census that cannot say what state it was taken in is one nobody
+# can compare against another, which is how Round 1099 deleted a cache that was
+# saving ten minutes.
 
 [dependencies]
 ci-plan = { path = "../ci-plan" }
+restored = { path = "../restored" }
 rustc-log = { path = "../rustc-log" }
 
 # `tests/replay.rs` builds a whole fixture repository — a workflow, a crate the

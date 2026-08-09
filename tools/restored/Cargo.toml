@@ -1,0 +1,31 @@
+[workspace]
+
+[package]
+name = "restored"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.88"
+publish = false
+license = "MIT OR Apache-2.0"
+description = "Mnemosyne — measures what a CI job's cache restore actually put on disk"
+keywords = ["ci", "cache", "gate"]
+categories = ["development-tools"]
+
+# NOTHING SHIPS INTO A JOB, for the reason `tools/rustc-log` has no
+# dependencies: this is built and run by every job of the workflow whose
+# compilations another gate is counting, so every crate it pulled in would be a
+# compilation this repository pays for in order to measure what it pays for. It
+# is its own workspace for the same reason — compiled inside the root one it
+# would be a unit in the population it reports on.
+#
+# The one dev-dependency is compiled by `scripts/check-side-workspaces.sh` and
+# by nothing a measured job runs. It is `tempfile` rather than a temporary
+# directory made by hand because this repository has already answered that
+# question three times, and a second answer to it is a second thing to get
+# wrong.
+
+[dev-dependencies]
+tempfile = "3"
+
+[lints.clippy]
+all = "deny"

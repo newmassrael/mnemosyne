@@ -1,0 +1,160 @@
+{
+  "_": [
+    "THE SWEEP THAT SAYS THE THIRD STATE IS ACTUALLY DISTINGUISHED — run it from",
+    "the repository root:",
+    "    cargo run -q --manifest-path tools/injection-harness/Cargo.toml -- \\",
+    "        tools/restored/injection-sweep.json",
+    "",
+    "Round 1099 read a run whose cache keys had all moved as a run that built",
+    "from nothing, and deleted a 7.5 GB cache that was saving 426 compilations.",
+    "The run had restored a whole previous generation through `restore-keys`, and",
+    "neither instrument in this repository could say so: `actions/cache` reports",
+    "`cache-hit: false` for a prefix match, and a job warmed by one still saves a",
+    "new entry, which is what the cache gate reads as a cache built from nothing.",
+    "",
+    "So every injection below collapses one of the distinctions that make the",
+    "third state visible — the before measurement that is the control, the",
+    "action's own answer about the primary key, the contradiction between the",
+    "two, and the refusal that keeps a half-written record from decoding as a",
+    "cold job. The first one is the mistake itself, written as code.",
+    "",
+    "Scoped to this crate's own suite. Nothing here builds anything: the walk",
+    "runs over temporary trees of a few files, so the whole sweep is seconds."
+  ],
+  "repo": ".",
+  "test_command": [
+    "cargo",
+    "test",
+    "--manifest-path",
+    "tools/restored/Cargo.toml",
+    "--no-fail-fast"
+  ],
+  "logs": "target/injection-logs",
+  "min_free_mb": 4000,
+  "injections": [
+    {
+      "name": "a-missed-key-is-a-cold-job",
+      "why": "ROUND 1099's MISTAKE AS CODE. `cache-hit: false` means the primary key missed, and `restore-keys` is exactly the mechanism that makes a missed key a warm job anyway. Folding the two together is what deleted a working cache, and it leaves no trace: the counts are all still there and only their units are wrong",
+      "edits": [
+        {
+          "file": "tools/restored/src/lib.rs",
+          "from": "            (false, bytes) => Warmth::PrefixHit { bytes },",
+          "to": "            (false, _) => Warmth::Nothing,"
+        }
+      ],
+      "expect_red": ["a_missed_key_that_restored_a_previous_generation_is_not_a_cold_job"]
+    },
+    {
+      "name": "what-is-there-after-is-what-arrived",
+      "why": "the steps before the cache run cargo, so `~/.cargo` is not empty when the restore starts; reading the AFTER figure alone calls a cold job warm for whatever those steps left behind, and the before measurement is the only control there is",
+      "edits": [
+        {
+          "file": "tools/restored/src/lib.rs",
+          "from": "        self.after.bytes.saturating_sub(self.before.bytes)",
+          "to": "        self.after.bytes"
+        }
+      ],
+      "expect_red": [
+        "only_what_arrived_across_the_restore_counts_as_restored",
+        "what_the_steps_before_the_cache_left_behind_is_not_counted_as_restored",
+        "a_path_shrinking_across_the_restore_does_not_read_as_negative_warmth"
+      ]
+    },
+    {
+      "name": "an-exact-hit-that-brought-nothing-is-an-exact-hit",
+      "why": "the action saying the primary key matched and the disk saying nothing arrived is the two instruments contradicting each other, and which of them is wrong decides whether the census is of a warm run or a cold one; folding it into the warm state answers that question by assumption",
+      "edits": [
+        {
+          "file": "tools/restored/src/lib.rs",
+          "from": "            (true, 0) => Warmth::HitThatBroughtNothing,",
+          "to": "            (true, 0) => Warmth::ExactHit { bytes: 0 },"
+        }
+      ],
+      "expect_red": ["an_exact_hit_that_brought_nothing_is_neither_warm_nor_cold"]
+    },
+    {
+      "name": "a-record-with-no-cache-hit-line-is-a-miss",
+      "why": "the `exact` line is the last thing the second step writes, so a record without one is a job that died between the restore and the measurement — and reading that as `cache-hit: false` turns every such job into the state this whole record exists to distinguish",
+      "edits": [
+        {
+          "file": "tools/restored/src/lib.rs",
+          "from": "    if exact.len() != 1 {\n        return Err(Malformed::ExactIsNotSaidOnce { times: exact.len() });\n    }",
+          "to": "    if exact.len() > 1 {\n        return Err(Malformed::ExactIsNotSaidOnce { times: exact.len() });\n    }\n    let exact = if exact.is_empty() {\n        vec![\"false\".to_string()]\n    } else {\n        exact\n    };"
+        }
+      ],
+      "expect_red": ["a_record_the_second_step_never_finished_is_refused_rather_than_read_as_cold"]
+    },
+    {
+      "name": "an-absent-cache-hit-output-is-a-miss",
+      "why": "`cache-hit` is the only thing that can tell an exact hit from a prefix hit; a step that reads its absence as `false` reports every warm job as the invisible state, and the step is silent about it",
+      "edits": [
+        {
+          "file": "tools/restored/src/main.rs",
+          "from": "    let exact = match required(restored::EXACT_VARIABLE).as_str() {",
+          "to": "    let exact = match std::env::var(restored::EXACT_VARIABLE)\n        .unwrap_or_else(|_| \"false\".to_string())\n        .as_str()\n    {"
+        }
+      ],
+      "expect_red": ["without_the_cache_hit_output_it_refuses_rather_than_assuming_a_miss"]
+    },
+    {
+      "name": "the-first-step-appends",
+      "why": "a runner re-using a workspace, or a job restarted, leaves a previous record in place; appending to it makes one file name two jobs and the measurements of one run be differenced against another's",
+      "edits": [
+        {
+          "file": "tools/restored/src/main.rs",
+          "from": "    write(record, &out, false);\n}",
+          "to": "    write(record, &out, true);\n}"
+        }
+      ],
+      "expect_red": ["the_first_step_truncates_whatever_was_there_before_it"]
+    },
+    {
+      "name": "the-walk-follows-a-symlink",
+      "why": "a `target` directory holds symlinks and this walk is over up to seven and a half gigabytes of one; following them counts a tree more than once and can walk forever, and either way the bytes it reports are not the bytes that arrived",
+      "edits": [
+        {
+          "file": "tools/restored/src/lib.rs",
+          "from": "            let metadata = entry.path().symlink_metadata()?;",
+          "to": "            let metadata = entry.path().metadata()?;"
+        }
+      ],
+      "expect_red": ["the_walk_reaches_every_depth_and_does_not_follow_a_symlink"]
+    },
+    {
+      "name": "a-path-measured-on-one-side-only-is-taken-as-zero",
+      "why": "what arrived is a difference, so a path present on one side and not the other has no difference to take; defaulting the missing side to zero reports a restore of everything under it, or of nothing, and neither is a measurement",
+      "edits": [
+        {
+          "file": "tools/restored/src/lib.rs",
+          "from": "        let [(_, after)] = matching.as_slice() else {\n            return Err(Malformed::PathIsNotOnBothSides { path: path.clone() });\n        };",
+          "to": "        let fallback = Measurement::default();\n        let after = matching.first().map(|(_, after)| after).unwrap_or(&fallback);"
+        }
+      ],
+      "expect_red": ["a_path_measured_on_one_side_only_is_refused"]
+    },
+    {
+      "name": "the-job-is-read-off-its-own-file",
+      "why": "the record's job comes from the runner and its file name is written by hand in the workflow; taking both from one source is what makes the paste error — two jobs writing one path — undetectable, and it is the error this repository already has a rule about",
+      "edits": [
+        {
+          "file": "tools/restored/src/main.rs",
+          "from": "    let job = required(\"GITHUB_JOB\");",
+          "to": "    let job = record\n        .file_stem()\n        .and_then(|stem| stem.to_str())\n        .unwrap_or(\"unknown\")\n        .to_string();"
+        }
+      ],
+      "expect_red": ["without_the_job_it_refuses_rather_than_reading_the_name_off_its_own_file"]
+    },
+    {
+      "name": "the-second-step-without-the-first-says-something-else",
+      "why": "`restored after` re-measures what `restored before` wrote down, so a missing record means the cache step is wired ABOVE the measurement rather than between the two — a mistake with one symptom, every job reading as cold. The program still stops without this line, at the read-back two screens later, and it stops saying something a person cannot act on: the test reads the message and not only the exit code",
+      "edits": [
+        {
+          "file": "tools/restored/src/main.rs",
+          "from": "    let text = std::fs::read_to_string(record).unwrap_or_else(|error| {\n        fail(&format!(\n            \"cannot read {} ({error}) — `restored after` re-measures what \\\n             `restored before` wrote down, so a missing record means the step \\\n             before the cache did not run\",\n            record.display()\n        ))\n    });",
+          "to": "    let text = std::fs::read_to_string(record).unwrap_or_default();"
+        }
+      ],
+      "expect_red": ["the_second_step_without_the_first_refuses"]
+    }
+  ]
+}

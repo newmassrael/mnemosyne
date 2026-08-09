@@ -311,6 +311,96 @@
         "on_a_runner_the_workflow_is_read_off_the_runner_and_the_gate_leaves_itself_out",
         "on_a_runner_a_gate_that_did_not_know_its_own_job_would_refuse_every_push"
       ]
+    },
+    {
+      "name": "a-job-with-a-cache-need-not-say-what-it-restored",
+      "why": "THE SILENCE THIS ROUND EXISTS FOR. Every count in this census is of a COLD build by construction, so the cache state is the units they are in; a job that leaves no record hands the reader a state to supply, and Round 1099 supplied the wrong one and deleted a cache that was saving ten minutes a run",
+      "edits": [
+        {
+          "file": "tools/twice-compiled/src/lib.rs",
+          "from": "            None => refusals.push(Refusal::JobDidNotSayWhatItRestored { job: job.clone() }),",
+          "to": "            None => {}"
+        }
+      ],
+      "expect_red": ["a_job_with_a_cache_that_did_not_say_what_it_restored_is_refused"]
+    },
+    {
+      "name": "the-measured-paths-need-not-be-the-cached-paths",
+      "why": "the cache's `path:` and the measuring step's arguments are two spellings of one list, written in two places because nothing can hand one to the other, and this comparison is the ONLY thing holding them together — a path added to the cache and not to the measurement makes every restore of it read smaller than it was, silently and forever",
+      "edits": [
+        {
+          "file": "tools/twice-compiled/src/lib.rs",
+          "from": "                if record.measured() != paths.iter().map(String::as_str).collect::<Vec<_>>() {",
+          "to": "                if record.measured().is_empty() && !paths.is_empty() {"
+        }
+      ],
+      "expect_red": ["a_record_measuring_paths_the_cache_does_not_hold_is_refused"]
+    },
+    {
+      "name": "the-two-instruments-may-contradict-each-other",
+      "why": "the action reporting an exact hit while the disk says nothing arrived is not a third state of the world, it is one of the two instruments being wrong — and which one decides whether the census is of a warm run or a cold one, which is the question the whole record exists to answer",
+      "edits": [
+        {
+          "file": "tools/twice-compiled/src/lib.rs",
+          "from": "                if record.warmth() == restored::Warmth::HitThatBroughtNothing {",
+          "to": "                if false {"
+        }
+      ],
+      "expect_red": ["an_exact_hit_that_brought_nothing_is_refused_rather_than_counted"]
+    },
+    {
+      "name": "a-record-may-name-a-job-that-is-not-its-file",
+      "why": "the record carries the job the RUNNER named and the file carries the job the workflow spelled by hand; two jobs writing one path leave exactly this disagreement, and it is the direction the workflow-side check cannot see because the surviving record is well formed and measures real paths",
+      "edits": [
+        {
+          "file": "tools/twice-compiled/src/lib.rs",
+          "from": "            if &record.job != file {",
+          "to": "            if false {"
+        }
+      ],
+      "expect_red": ["a_record_whose_contents_name_another_job_is_refused"]
+    },
+    {
+      "name": "the-loader-reads-logs-and-not-states",
+      "why": "the two records are uploaded together because they are one measurement; a loader that reads only the compilations leaves every job's state absent, which the law then reports as seven findings rather than as the reader having skipped a file — and in a report it reads as a census taken in no state at all",
+      "edits": [
+        {
+          "file": "tools/twice-compiled/src/lib.rs",
+          "from": "            Some(\"restored\") => {",
+          "to": "            Some(\"restored\") if false => {"
+        }
+      ],
+      "expect_red": ["a_replayed_job_records_that_it_started_from_nothing"]
+    },
+    {
+      "name": "every-job-owes-a-restore-record",
+      "why": "the population that owes a record is the jobs with a CACHE, and it is not the jobs that compile: this repository's two gate jobs compile plenty and cache nothing. A law over the wrong population refuses a workflow that is right, which is how a gate stops being read",
+      "edits": [
+        {
+          "file": "tools/twice-compiled/src/lib.rs",
+          "from": "        let mut cached: BTreeMap<String, Vec<String>> = BTreeMap::new();\n        for cache in caches {",
+          "to": "        let mut cached: BTreeMap<String, Vec<String>> = BTreeMap::new();\n        for job in jobs.keys() {\n            cached.entry(job.clone()).or_default();\n        }\n        for cache in caches {"
+        }
+      ],
+      "expect_red": [
+        "a_job_with_no_cache_owes_no_record_of_what_it_restored",
+        "a_job_with_no_cache_leaves_no_record_and_is_not_refused_for_it"
+      ]
+    },
+    {
+      "name": "the-workflow-need-not-say-where-the-state-goes",
+      "why": "read off the workflow rather than off a record, so it fires on a job that has not run yet — the same law the compilation log has. Without it a job added tomorrow with the cache wired and the measurement forgotten produces a census that is short one state and says nothing until somebody compares two runs by hand. NOTE the live-workflow test is NOT among the readers: it asserts that this repository's own file is refused for nothing, so deleting a law can only make it greener. Non-vacuity for a law lives in a fixture that breaks it",
+      "edits": [
+        {
+          "file": "tools/twice-compiled/src/lib.rs",
+          "from": "        for step in declared.jobs.get(job).into_iter().flatten() {",
+          "to": "        for step in declared.jobs.get(job).into_iter().flatten().take(0) {"
+        }
+      ],
+      "expect_red": [
+        "a_job_writing_its_state_to_another_jobs_file_is_refused",
+        "a_step_of_a_cached_job_that_does_not_say_where_to_write_it_is_refused"
+      ]
     }
   ]
 }

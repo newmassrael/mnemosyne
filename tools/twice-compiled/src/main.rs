@@ -10,11 +10,12 @@
 //!   expensive way, and the one that answers the question without a push.
 
 use std::collections::{BTreeMap, BTreeSet};
+use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use ci_plan::RunStep;
-use twice_compiled::{declared_jobs, judge, load, unresolvable, Census, WRAPPER_VARIABLE};
+use twice_compiled::{judge, load, unresolvable, Census, Declared, JOB_VARIABLE, WRAPPER_VARIABLE};
 
 fn main() {
     let arguments: Vec<String> = std::env::args().skip(1).collect();
@@ -26,10 +27,15 @@ fn main() {
     );
 
     let workflow = workflow_path(&arguments);
-    let steps = ci_plan::run_steps(&ci_plan::load_workflow(&root, &workflow));
-    let declared = declared_jobs(&steps);
+    let document = ci_plan::load_workflow(&root, &workflow);
+    let steps = ci_plan::run_steps(&document);
+    // BOTH POPULATIONS, FROM ONE FILE AND ONE READER. The jobs that compile are
+    // what the census is of; the jobs that restore a cache are what owes it a
+    // record of the state it was taken in, and they are not the same jobs —
+    // `tools/cache-budget` asks the second question of this same reader.
+    let declared = Declared::of(&steps, &ci_plan::cache_steps(&document, &workflow));
     assert!(
-        !declared.is_empty(),
+        !declared.jobs.is_empty(),
         "{workflow} declares no job with a `run:` step at all — a census over \
          zero jobs is the empty answer that looks like a clean one"
     );
@@ -64,7 +70,7 @@ fn main() {
         println!(
             "\nevery one of the {} job(s) {workflow} declares recorded what it \
              compiled",
-            declared.len() - absent.len()
+            declared.jobs.len() - absent.len()
         );
         return;
     }
@@ -107,9 +113,9 @@ fn seconds(micros: u64) -> f64 {
 
 /// Print the census. Everything, including the classes this reader cannot key —
 /// a gate that prints only its findings cannot be told from one that never ran.
-fn report(census: &Census, declared: &BTreeMap<String, Vec<RunStep>>, absent: &BTreeSet<String>) {
+fn report(census: &Census, declared: &Declared, absent: &BTreeSet<String>) {
     println!("twice-compiled — every compilation CI pays for is one job's\n");
-    for job in declared.keys() {
+    for job in declared.jobs.keys() {
         if absent.contains(job) {
             println!("  {job:<22} not in this census");
             continue;
@@ -149,6 +155,26 @@ fn report(census: &Census, declared: &BTreeMap<String, Vec<RunStep>>, absent: &B
             seconds(window),
             seconds(log.idle_micros()),
         );
+        // THE THIRD LINE IS THE UNITS THE FIRST TWO ARE IN. cargo runs no
+        // compiler for a unit that is already fresh, so this whole census is of
+        // whatever was NOT restored, and the same job in two cache states is two
+        // different numbers that are each correct. Round 1099 read two of them
+        // as a controlled comparison and deleted the cache.
+        //
+        // A JOB WITH NO CACHE IS NOT A JOB WITH NO STATE — it is a job that
+        // started from nothing every time, which is what having no cache means.
+        // Saying so is the difference between the two silences.
+        match (declared.caches.contains_key(job), census.restored.get(job)) {
+            (_, Some(Ok(record))) => {
+                println!("  {:<22} started from: {}", "", record.warmth().why())
+            }
+            (_, Some(Err(why))) => println!("  {:<22} started from: UNREADABLE — {why}", ""),
+            (true, None) => println!("  {:<22} started from: NOT SAID", ""),
+            (false, None) => println!(
+                "  {:<22} started from: an empty tree — this job declares no cache",
+                ""
+            ),
+        }
     }
 
     let paid = census.paid();
@@ -201,6 +227,10 @@ fn report(census: &Census, declared: &BTreeMap<String, Vec<RunStep>>, absent: &B
         census.repeated_within_jobs(),
         seconds(census.repeated_within_jobs_micros()),
     );
+    // THE STATE THE TOTALS ARE IN, printed with them rather than left in the
+    // per-job lines above, because the number that gets quoted is this one and
+    // the number that got quoted is what deleted a cache that was working.
+    started_in(census, declared, absent);
 
     let pairwise = census.pairwise();
     if pairwise.is_empty() {
@@ -269,6 +299,78 @@ fn report(census: &Census, declared: &BTreeMap<String, Vec<RunStep>>, absent: &B
     }
 }
 
+/// The cache state the totals above were measured in, in one sentence.
+///
+/// A CENSUS IS NOT COMPARABLE TO ANOTHER CENSUS TAKEN IN A DIFFERENT ONE, and
+/// the whole cost of learning that was a 7.5 GB cache deleted for saving nothing
+/// while it was saving 426 compilations. The sentence is printed even when every
+/// job started the same way, because the reader who needs it is the one holding
+/// two reports, and a line that appears only sometimes is a line nobody looks
+/// for.
+fn started_in(census: &Census, declared: &Declared, absent: &BTreeSet<String>) {
+    let started = census.started();
+    // A JOB WITH NO CACHE STARTS FROM NOTHING EVERY RUN, which is a state that
+    // cannot vary and therefore cannot be the difference between two censuses.
+    // It is counted apart from the jobs that restored nothing DESPITE a cache,
+    // because those two are the same disk and different findings.
+    let cacheless: Vec<&str> = census
+        .jobs
+        .keys()
+        .filter(|job| !declared.caches.contains_key(*job) && !absent.contains(*job))
+        .map(String::as_str)
+        .collect();
+    if started.is_empty() {
+        println!(
+            "\n  no job with a cache in this census said what it started from, \
+             so these totals are in no units at all — they are of whatever was \
+             not already on the disk, and nothing here says what that was \
+             ({} job(s) declare no cache and always start from nothing)",
+            cacheless.len()
+        );
+        return;
+    }
+    let mut exact = Vec::new();
+    let mut prefix = Vec::new();
+    let mut nothing = Vec::new();
+    let mut contradictory = Vec::new();
+    for (job, warmth) in &started {
+        match warmth {
+            restored::Warmth::ExactHit { .. } => exact.push(*job),
+            restored::Warmth::PrefixHit { .. } => prefix.push(*job),
+            restored::Warmth::Nothing => nothing.push(*job),
+            restored::Warmth::HitThatBroughtNothing => contradictory.push(*job),
+        }
+    }
+    println!(
+        "\n  taken with {} job(s) warm from an exact hit, {} warm from an \
+         earlier generation, {} from nothing{}",
+        exact.len(),
+        prefix.len(),
+        nothing.len(),
+        if contradictory.is_empty() {
+            String::new()
+        } else {
+            format!(", {} contradicting itself", contradictory.len())
+        }
+    );
+    for (label, jobs) in [
+        ("exact hit", &exact),
+        ("earlier generation", &prefix),
+        ("nothing", &nothing),
+        ("contradiction", &contradictory),
+        ("no cache at all", &cacheless),
+    ] {
+        if !jobs.is_empty() {
+            println!("    {label:<20} {}", jobs.join(", "));
+        }
+    }
+    println!(
+        "  a census taken in another state is not this one's control: cargo \
+         runs no compiler for a unit that is already fresh, so these counts are \
+         of what was NOT restored"
+    );
+}
+
 /// Steps a replay on this machine must not run, and why.
 ///
 /// NAMED PREFIXES rather than a general judgement about what a step does: these
@@ -329,6 +431,8 @@ fn replay(
         make_worktree(root, &tree, &revision);
         let log = logs.join(format!("{job}.log"));
         let _ = std::fs::remove_file(&log);
+        let restore = logs.join(format!("{job}.restored"));
+        let _ = std::fs::remove_file(&restore);
 
         for step in steps {
             let head = step.script.split_whitespace().next().unwrap_or_default();
@@ -341,9 +445,18 @@ fn replay(
             // the workflow spells for them is replaced. `twice_compiled::
             // unresolvable` skips exactly these names for that reason, and both
             // sides read the one list so they cannot come apart.
+            // THE VARIABLES THIS REPLAY OWNS. The last three are what make a
+            // replayed census say what it is: a replay runs a job's `run:`
+            // steps and never its `uses:` cache step, so nothing is restored,
+            // `cache-hit` is honestly `false`, and the two measurements around
+            // the absent restore record a job that started from an empty tree —
+            // which is exactly what it did.
             let mine = [
                 (WRAPPER_VARIABLE, wrapper.as_os_str()),
                 (rustc_log::LOG_VARIABLE, log.as_os_str()),
+                (restored::VARIABLE, restore.as_os_str()),
+                (restored::EXACT_VARIABLE, OsStr::new("false")),
+                (JOB_VARIABLE, OsStr::new(job)),
             ];
             debug_assert!(
                 mine.iter()

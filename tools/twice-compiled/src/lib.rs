@@ -44,14 +44,38 @@
 //! sources on a different toolchain, so if its units did not come back disjoint,
 //! the key would be wrong.
 //!
-//! WHAT IT ASSERTS TODAY is that it reached every job, and that every job it
-//! reached left a clock behind. A workflow job that issues a cargo command and
-//! leaves no record is the empty answer that reads like a clean one, which is
-//! the failure this repository keeps meeting; a job whose records carry counts
-//! and no seconds is the quieter version of it, where every total adds up and
-//! the work reads as free. The duplication itself is REPORTED rather than
-//! refused, because the number is what licenses the repair and the repair is
-//! what makes a limit assertable.
+//! A CENSUS IS ALSO A STATE, and until Round 1101 this one could not say which.
+//! The counts here are of a COLD build by construction — cargo runs no compiler
+//! for a unit that is already fresh, so a job whose cache came back compiles
+//! less and this reader sees less. That makes the cache state a control variable
+//! of every number below, and two censuses taken under different ones are not
+//! each other's control.
+//!
+//! Round 1099 compared two of them by hand. It read a run whose cache keys had
+//! all moved as a run that had built from nothing, found its census identical to
+//! the next run's, concluded that a 7.5 GB cache was skipping no compilations,
+//! and deleted it. The cache was saving 426 compilations and ten minutes; Round
+//! 1100 put it back. The run called cold had restored a whole previous
+//! generation through `restore-keys`, and NEITHER of this repository's cache
+//! instruments could have said so — `actions/cache` reports `cache-hit: false`
+//! for a prefix match, and a job warmed by one still saves a new entry, which is
+//! what `tools/cache-budget` reads as a cache built from nothing.
+//!
+//! So every job now writes what its restore put on disk (`tools/restored`), and
+//! that record is joined to the log beside it here. The census REPORTS the state
+//! rather than judging it, and REFUSES when a job that declares a cache did not
+//! say — a number quoted without the state it was taken in is the number that
+//! got deleted.
+//!
+//! WHAT IT ASSERTS TODAY is that it reached every job, that every job it reached
+//! left a clock behind, and that every job with a cache said what that cache
+//! brought. A workflow job that issues a cargo command and leaves no record is
+//! the empty answer that reads like a clean one, which is the failure this
+//! repository keeps meeting; a job whose records carry counts and no seconds is
+//! the quieter version of it, where every total adds up and the work reads as
+//! free. The duplication itself is REPORTED rather than refused, because the
+//! number is what licenses the repair and the repair is what makes a limit
+//! assertable.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
@@ -346,6 +370,16 @@ pub struct Census {
     /// of the reasons a census covers a single workflow: two files could each
     /// declare a `validate`, and their logs would be one another's.
     pub jobs: BTreeMap<String, JobLog>,
+    /// What each job STARTED FROM: the record `tools/restored` leaves either
+    /// side of the job's cache restore, keyed by the file it arrived in.
+    ///
+    /// THE STATE THE COUNTS WERE TAKEN IN, kept beside them rather than derived
+    /// from them, because it cannot be derived from them: a job that compiled
+    /// 773 units because its tree was empty and a job that compiled 773 units
+    /// because its tree was stale are the same census and different runs. The
+    /// error is kept rather than dropped so that a record which did not decode
+    /// travels as a refusal and not as a job with no cache at all.
+    pub restored: BTreeMap<String, Result<restored::Restored, restored::Malformed>>,
 }
 
 impl Census {
@@ -495,6 +529,19 @@ impl Census {
         paid
     }
 
+    /// The state each job started in — the control variable every count above
+    /// is taken under.
+    ///
+    /// ONLY THE RECORDS THAT DECODED, because the alternative is a job appearing
+    /// here with a state invented for it; the ones that did not are refusals and
+    /// travel as those.
+    pub fn started(&self) -> BTreeMap<&str, restored::Warmth> {
+        self.restored
+            .iter()
+            .filter_map(|(job, record)| Some((job.as_str(), record.as_ref().ok()?.warmth())))
+            .collect()
+    }
+
     /// What merging each pair of jobs would remove, and what it would cost.
     pub fn pairwise(&self) -> BTreeMap<(&str, &str), Merge> {
         let mut out = BTreeMap::new();
@@ -632,6 +679,43 @@ pub enum Refusal {
     /// another with the name not changed, which is the paste error this
     /// repository already has a rule about.
     LogIsNotNamedForItsJob { job: String, path: String },
+    /// A job with a cache left no record of what that cache brought.
+    ///
+    /// THE STATE IS A CONTROL VARIABLE OF THE COUNTS, and a census missing it
+    /// reads exactly like one taken in whatever state the reader assumed. Round
+    /// 1099 assumed cold, and the assumption cost a cache that was saving ten
+    /// minutes a run.
+    JobDidNotSayWhatItRestored { job: String },
+    /// A record arrived and could not be read.
+    RestoreRecordIsMalformed { job: String, why: String },
+    /// A record measured paths that are not the ones the job's cache holds.
+    ///
+    /// THE LIST IS WRITTEN TWICE — once as the cache's `path:` and once as the
+    /// argument to the step that measures it — and this is what makes that safe.
+    /// Both sides are read off the machine and compared here, so a path added to
+    /// a cache and not to the measurement is a refusal rather than a silently
+    /// smaller difference.
+    RestoreRecordMeasuredOtherPaths {
+        job: String,
+        measured: Vec<String>,
+        declared: Vec<String>,
+    },
+    /// A record says the primary key matched exactly and that nothing arrived on
+    /// disk. The two instruments contradict each other, and which of them is
+    /// wrong decides whether this census is of a warm run or a cold one.
+    RestoredNothingAfterAnExactHit { job: String },
+    /// A record's file is named for one job and its contents for another — the
+    /// same paste error `LogIsNotNamedForItsJob` covers, caught on the other
+    /// side, because the record carries the job the runner said it was in.
+    RestoreRecordNamesAnotherJob { file: String, said: String },
+    /// A record from a job whose cache this workflow does not declare, or from
+    /// no job of this workflow at all.
+    RestoreRecordFromAJobWithNoCache { job: String },
+    /// A job with a cache does not say WHERE to write what it restored, or says
+    /// a path that is another job's — the mirror of `LogIsNotNamedForItsJob`,
+    /// read off the workflow rather than off the record, so it fires on a job
+    /// that has not run yet.
+    RestoreIsNotRecorded { job: String, path: String },
 }
 
 impl std::fmt::Display for Refusal {
@@ -670,6 +754,67 @@ impl std::fmt::Display for Refusal {
                  census reads the job's name off the file, so two jobs sharing a \
                  path become one blob wearing the shape of a census"
             ),
+            Refusal::JobDidNotSayWhatItRestored { job } => write!(
+                f,
+                "job `{job}` declares a cache and left no record of what it \
+                 brought — this census counts a COLD build by construction, so \
+                 the cache state is a control variable of every number in it, \
+                 and a census missing it reads as one taken in whatever state \
+                 the reader assumed"
+            ),
+            Refusal::RestoreRecordIsMalformed { job, why } => write!(
+                f,
+                "job `{job}` left a record of what it restored that does not \
+                 read: {why}"
+            ),
+            Refusal::RestoreRecordMeasuredOtherPaths {
+                job,
+                measured,
+                declared,
+            } => write!(
+                f,
+                "job `{job}` measured {} across its cache restore and its cache \
+                 holds {} — the two lists are written in two places and this is \
+                 the only thing holding them together, so a path in one and not \
+                 the other is a restore measured smaller than it was",
+                measured.join(", "),
+                declared.join(", ")
+            ),
+            Refusal::RestoredNothingAfterAnExactHit { job } => write!(
+                f,
+                "job `{job}` was told by `actions/cache` that its primary key \
+                 matched exactly, and not one byte arrived under the paths that \
+                 cache holds — one of the two instruments is wrong, and which \
+                 one decides whether this census is of a warm run or a cold one"
+            ),
+            Refusal::RestoreRecordNamesAnotherJob { file, said } => write!(
+                f,
+                "`{file}.restored` says it was written by job `{said}` — a \
+                 record carries the job the runner named, so this is two jobs \
+                 writing one path and one of them has no record at all"
+            ),
+            Refusal::RestoreRecordFromAJobWithNoCache { job } => write!(
+                f,
+                "a record of what job `{job}` restored arrived, and this \
+                 workflow declares no cache for it — either the census is of a \
+                 CI that is gone, or a job is measuring a restore that never \
+                 happens"
+            ),
+            Refusal::RestoreIsNotRecorded { job, path } if path.is_empty() => write!(
+                f,
+                "a step of job `{job}` runs without ${}, and that job declares a \
+                 cache — so nothing says what its build tree held when it \
+                 started, and this census reads as one taken in whatever state \
+                 its reader assumed",
+                restored::VARIABLE
+            ),
+            Refusal::RestoreIsNotRecorded { job, path } => write!(
+                f,
+                "job `{job}` declares a cache and writes what it restored to \
+                 `{path}`, which is not `{job}.restored` — the census reads the \
+                 job's name off the file, so two jobs sharing a path leave one \
+                 of them with no state at all"
+            ),
         }
     }
 }
@@ -689,7 +834,26 @@ pub const WRAPPER_VARIABLE: &str = "RUSTC_WRAPPER";
 /// That is not hypothetical: it is what happened the day the recorder was wired
 /// into every job, and it stayed that way because a replay is expensive and
 /// nobody ran it again.
-pub const REPLAY_SETS: [&str; 2] = [WRAPPER_VARIABLE, rustc_log::LOG_VARIABLE];
+///
+/// FIVE OF THEM, AND THE LAST THREE ARE WHY A REPLAY IS COMPARABLE TO ITSELF AND
+/// NOT TO CI. A replay restores no cache — it runs a job's `run:` steps and nothing
+/// else — so it sets `cache-hit` to `false` and lets the two measurements around
+/// the (absent) restore say what they truly say: nothing arrived. Its censuses
+/// are therefore recorded as taken from an empty tree, which is what they are,
+/// and the comparison a reader might make against a warm CI run is one the
+/// records now refuse to make quietly. `GITHUB_JOB` is the job id the recorder
+/// asks the runner for; a replay is running that job, so it says so.
+pub const REPLAY_SETS: [&str; 5] = [
+    WRAPPER_VARIABLE,
+    rustc_log::LOG_VARIABLE,
+    restored::VARIABLE,
+    restored::EXACT_VARIABLE,
+    JOB_VARIABLE,
+];
+
+/// The variable the runner names the job id in, and the one `tools/restored`
+/// takes the name in its record from.
+pub const JOB_VARIABLE: &str = "GITHUB_JOB";
 
 /// This crate's own manifest.
 ///
@@ -749,30 +913,76 @@ pub fn names_its_job(path: &str, job: &str) -> bool {
     path.rsplit('/').next() == Some(&format!("{job}.log"))
 }
 
+/// The manifests of the programs that MEASURE this census.
+///
+/// THE ONE STEP THAT CANNOT BE RECORDED is the step that builds them. The
+/// recorder cannot record its own build, because the binary does not exist while
+/// it runs, and cargo reads an empty `RUSTC_WRAPPER` as none — which is how that
+/// step switches recording off for itself. `tools/restored` runs in the same
+/// step for the reason the gate's own job is left out of its own census: an
+/// instrument's build is not a cost this repository's CI pays for the
+/// repository's sake, and counting it would put the instrument inside its own
+/// reading.
+///
+/// The exemption is DERIVED from what the step does rather than kept as a job
+/// name in a list, so it stays exactly one step wide: a second step that
+/// switched recording off would have to build one of these to be excused.
+///
+/// What it costs is two dependency-free crates, which is why neither has
+/// dependencies.
+pub const INSTRUMENT_MANIFESTS: [&str; 2] = [RECORDER_MANIFEST, "tools/restored/Cargo.toml"];
+
 /// The recorder's own manifest.
-///
-/// THE ONE STEP THAT CANNOT BE RECORDED is the step that builds the recorder,
-/// because the binary does not exist while it runs — and cargo reads an empty
-/// `RUSTC_WRAPPER` as none, which is how that step switches recording off for
-/// itself. The exemption is DERIVED from what the step does rather than kept as
-/// a job name in a list, so it stays exactly one step wide: a second step that
-/// switched recording off would have to build the recorder to be excused.
-///
-/// What it costs is the recorder's own compilation, which is one dependency-free
-/// crate and is why it has no dependencies.
 pub const RECORDER_MANIFEST: &str = "tools/rustc-log/Cargo.toml";
 
-/// Every job one workflow declares, with the `run:` steps it is made of.
+/// What one workflow declares: every job with the `run:` steps it is made of,
+/// and the cached paths each job restores.
 ///
-/// Read from the workflow rather than kept beside it, so a job added tomorrow is
-/// in the population the moment it exists — the property the four rounds before
-/// R1090 each broke by hand-maintaining a list.
-pub fn declared_jobs(steps: &[ci_plan::RunStep]) -> BTreeMap<String, Vec<ci_plan::RunStep>> {
-    let mut out: BTreeMap<String, Vec<ci_plan::RunStep>> = BTreeMap::new();
-    for step in steps {
-        out.entry(step.job.clone()).or_default().push(step.clone());
+/// ONE VALUE BECAUSE THEY COME FROM ONE FILE, and every law below reads both.
+/// The two populations are NOT the same population — this repository's two gate
+/// jobs compile plenty and cache nothing — and a signature taking them as two
+/// arguments is one a caller can fill from two different workflows. That is not
+/// a hypothetical failure mode here: the census is per-workflow precisely
+/// because two files may each declare a `validate`.
+///
+/// Both are read from the workflow rather than kept beside it, so a job added
+/// tomorrow is in the population the moment it exists — the property the four
+/// rounds before R1090 each broke by hand-maintaining a list.
+#[derive(Debug, Clone, Default)]
+pub struct Declared {
+    /// Every job with a `run:` step, and the steps.
+    pub jobs: BTreeMap<String, Vec<ci_plan::RunStep>>,
+    /// The cached paths each job declares, in the order it declares them.
+    ///
+    /// Merged when one job declares more than one cache: the restore record
+    /// brackets a REGION of the job, and what arrived in that region is what
+    /// arrived under every path any of those caches holds. A duplicate spelling
+    /// is dropped and the order of first mention kept, because that is the order
+    /// the measuring step is written in.
+    pub caches: BTreeMap<String, Vec<String>>,
+}
+
+impl Declared {
+    /// Read both populations out of one workflow's already-parsed halves.
+    pub fn of(steps: &[ci_plan::RunStep], caches: &[ci_plan::CacheDeclaration]) -> Declared {
+        let mut jobs: BTreeMap<String, Vec<ci_plan::RunStep>> = BTreeMap::new();
+        for step in steps {
+            jobs.entry(step.job.clone()).or_default().push(step.clone());
+        }
+        let mut cached: BTreeMap<String, Vec<String>> = BTreeMap::new();
+        for cache in caches {
+            let paths = cached.entry(cache.owner.clone()).or_default();
+            for path in &cache.paths {
+                if !paths.contains(path) {
+                    paths.push(path.clone());
+                }
+            }
+        }
+        Declared {
+            jobs,
+            caches: cached,
+        }
     }
-    out
 }
 
 /// Judge a census against the jobs one workflow declares.
@@ -783,27 +993,30 @@ pub fn declared_jobs(steps: &[ci_plan::RunStep]) -> BTreeMap<String, Vec<ci_plan
 /// whose build is still happening while it judges (`GITHUB_JOB`), and in a local
 /// replay it is the jobs the replay refused to run because GitHub, not this
 /// machine, resolves their environment.
-pub fn judge(
-    census: &Census,
-    declared: &BTreeMap<String, Vec<ci_plan::RunStep>>,
-    absent: &BTreeSet<String>,
-) -> Vec<Refusal> {
+pub fn judge(census: &Census, declared: &Declared, absent: &BTreeSet<String>) -> Vec<Refusal> {
     let mut refusals = Vec::new();
+    refusals.extend(judge_restores(census, declared, absent));
     // HOW FAR THIS CENSUS REACHED, ASSERTED BEFORE ANYTHING IS READ FROM IT. The
     // jobs a caller declares absent are legitimate — the gate's own job on a
     // runner, the jobs a local replay cannot reproduce — but a census in which
     // that list has swallowed everything is not a clean file, it is a
     // measurement that did not happen.
-    let covered = declared.keys().filter(|job| !absent.contains(*job)).count();
+    let covered = declared
+        .jobs
+        .keys()
+        .filter(|job| !absent.contains(*job))
+        .count();
     if covered < 2 {
         refusals.push(Refusal::CensusCoversTooFewJobs { covered });
     }
-    for (job, steps) in declared {
+    for (job, steps) in &declared.jobs {
         if absent.contains(job) {
             continue;
         }
         for step in steps {
-            let builds_the_recorder = step.script.contains(RECORDER_MANIFEST);
+            let builds_the_recorder = INSTRUMENT_MANIFESTS
+                .iter()
+                .any(|manifest| step.script.contains(manifest));
             for variable in [WRAPPER_VARIABLE, rustc_log::LOG_VARIABLE] {
                 // AN EMPTY VALUE IS UNSET to cargo, and that is exactly how the
                 // recorder's own build step turns itself off — so it has to
@@ -841,12 +1054,93 @@ pub fn judge(
         }
     }
     for job in census.jobs.keys() {
-        if !declared.contains_key(job) {
+        if !declared.jobs.contains_key(job) {
             refusals.push(Refusal::RecordFromNoJob { job: job.clone() });
         }
     }
     refusals.sort();
     refusals.dedup();
+    refusals
+}
+
+/// What every job says it STARTED FROM, held against what its cache declares.
+///
+/// SEPARATE FROM THE COMPILATION LAWS because it is a different population: the
+/// jobs with a cache, which is not the jobs that compile. This repository's two
+/// gate jobs compile plenty and cache nothing, and requiring a restore record of
+/// them would refuse a workflow that is right.
+fn judge_restores(census: &Census, declared: &Declared, absent: &BTreeSet<String>) -> Vec<Refusal> {
+    let mut refusals = Vec::new();
+    for (job, paths) in &declared.caches {
+        if absent.contains(job) || !declared.jobs.contains_key(job) {
+            continue;
+        }
+        // WHERE IT WILL BE WRITTEN, read off the workflow, so this fires on a
+        // job that has not run yet — the same law the compilation log has, on
+        // the other record.
+        for step in declared.jobs.get(job).into_iter().flatten() {
+            match step.env.get(restored::VARIABLE) {
+                Some(path) if !path.is_empty() && restored::names_its_job(path, job) => {}
+                Some(path) => refusals.push(Refusal::RestoreIsNotRecorded {
+                    job: job.clone(),
+                    path: path.clone(),
+                }),
+                None => refusals.push(Refusal::RestoreIsNotRecorded {
+                    job: job.clone(),
+                    path: String::new(),
+                }),
+            }
+        }
+        match census.restored.get(job) {
+            None => refusals.push(Refusal::JobDidNotSayWhatItRestored { job: job.clone() }),
+            Some(Err(why)) => refusals.push(Refusal::RestoreRecordIsMalformed {
+                job: job.clone(),
+                why: why.to_string(),
+            }),
+            Some(Ok(record)) => {
+                if record.measured() != paths.iter().map(String::as_str).collect::<Vec<_>>() {
+                    refusals.push(Refusal::RestoreRecordMeasuredOtherPaths {
+                        job: job.clone(),
+                        measured: record
+                            .measured()
+                            .iter()
+                            .map(|one| one.to_string())
+                            .collect(),
+                        declared: paths.clone(),
+                    });
+                }
+                // THE CONTRADICTION IS A REFUSAL AND NOT A THIRD READING. The
+                // other three states of `restored::Warmth` are states of the
+                // world; this one is the two instruments disagreeing, and a
+                // census cannot be quoted while it is unresolved.
+                if record.warmth() == restored::Warmth::HitThatBroughtNothing {
+                    refusals.push(Refusal::RestoredNothingAfterAnExactHit { job: job.clone() });
+                }
+            }
+        }
+    }
+    for (file, record) in &census.restored {
+        if absent.contains(file) {
+            continue;
+        }
+        if !declared.caches.contains_key(file) {
+            refusals.push(Refusal::RestoreRecordFromAJobWithNoCache { job: file.clone() });
+            continue;
+        }
+        // THE RECORD CARRIES THE JOB THE RUNNER NAMED, and the file carries the
+        // job the workflow spelled by hand. Two jobs writing one path leaves
+        // exactly this disagreement behind, and it is the one direction the
+        // check above cannot see: the surviving record is well-formed and
+        // measures real paths.
+        if let Ok(record) = record {
+            if &record.job != file {
+                refusals.push(Refusal::RestoreRecordNamesAnotherJob {
+                    file: file.clone(),
+                    said: record.job.clone(),
+                });
+            }
+        }
+    }
     refusals
 }
 
@@ -867,17 +1161,30 @@ pub fn load(directory: &Path, absent: &BTreeSet<String>) -> std::io::Result<Cens
     let mut census = Census::default();
     for entry in std::fs::read_dir(directory)? {
         let path = entry?.path();
-        if path.extension().and_then(|extension| extension.to_str()) != Some("log") {
-            continue;
-        }
+        let extension = path.extension().and_then(|extension| extension.to_str());
         let Some(job) = path.file_stem().and_then(|stem| stem.to_str()) else {
             continue;
         };
         if absent.contains(job) {
             continue;
         }
-        let text = std::fs::read_to_string(&path)?;
-        census.jobs.insert(job.to_string(), read_log(&text));
+        // TWO RECORDS PER JOB, IN ONE DIRECTORY, READ BY ONE LOADER: what the
+        // job compiled and what it started from. They are uploaded together
+        // because they are one measurement — the counts are of a cold build by
+        // construction, so the state is the units they are in.
+        match extension {
+            Some("log") => {
+                let text = std::fs::read_to_string(&path)?;
+                census.jobs.insert(job.to_string(), read_log(&text));
+            }
+            Some("restored") => {
+                let text = std::fs::read_to_string(&path)?;
+                census
+                    .restored
+                    .insert(job.to_string(), restored::decode(&text));
+            }
+            _ => continue,
+        }
     }
     Ok(census)
 }

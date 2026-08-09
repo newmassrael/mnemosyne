@@ -1,10 +1,10 @@
 //! The law against THIS repository's own workflow, which is where the gate has
 //! to be non-vacuous rather than merely correct.
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 
-use twice_compiled::{declared_jobs, judge, Census, Cost, JobLog, Refusal, Unit};
+use twice_compiled::{judge, Census, Cost, Declared, JobLog, Refusal, Unit};
 
 /// The workflow this gate judges. One file, because a census can only be taken
 /// of jobs that share a run: artifacts do not cross from one workflow run to
@@ -27,13 +27,21 @@ fn workflow_steps() -> Vec<ci_plan::RunStep> {
     ci_plan::run_steps(&ci_plan::load_workflow(&root, WORKFLOW))
 }
 
+/// What THIS repository's workflow declares — both populations, from the live
+/// file.
+fn declared_jobs(steps: &[ci_plan::RunStep]) -> Declared {
+    let root = repository_root();
+    let document = ci_plan::load_workflow(&root, WORKFLOW);
+    Declared::of(steps, &ci_plan::cache_steps(&document, WORKFLOW))
+}
+
 /// A census in which every declared job compiled something AND took time doing
 /// it, so that the only thing left for [`judge`] to refuse is the WIRING.
 /// Separating the two is what lets this test be about the workflow rather than
 /// about a build.
-fn everybody_compiled(declared: &BTreeMap<String, Vec<ci_plan::RunStep>>) -> Census {
+fn everybody_compiled(declared: &Declared) -> Census {
     let mut census = Census::default();
-    for (index, job) in declared.keys().enumerate() {
+    for (index, job) in declared.jobs.keys().enumerate() {
         let mut log = JobLog {
             invocations: 1,
             micros: PINNED.micros,
@@ -51,6 +59,36 @@ fn everybody_compiled(declared: &BTreeMap<String, Vec<ci_plan::RunStep>>) -> Cen
             PINNED,
         );
         census.jobs.insert(job.clone(), log);
+    }
+    // AND EVERY JOB WITH A CACHE SAID WHAT IT STARTED FROM, for the same reason
+    // the compilations are pinned: this fixture exists to leave only the WIRING
+    // for the judge to speak about. What is asserted below is that the workflow
+    // asks each of these jobs to write the record — not that any run produced
+    // one.
+    for (job, paths) in &declared.caches {
+        let mut written = restored::encode_job(job);
+        for path in paths {
+            written.extend_from_slice(&restored::encode_side(
+                restored::Side::Before,
+                path,
+                &restored::Measurement::default(),
+            ));
+        }
+        for path in paths {
+            written.extend_from_slice(&restored::encode_side(
+                restored::Side::After,
+                path,
+                &restored::Measurement {
+                    entries: 1,
+                    bytes: 1_000,
+                },
+            ));
+        }
+        written.extend_from_slice(&restored::encode_exact(true));
+        census.restored.insert(
+            job.clone(),
+            restored::decode(&String::from_utf8(written).expect("the record is text")),
+        );
     }
     census
 }
@@ -76,7 +114,7 @@ fn every_job_this_workflow_runs_records_what_it_compiles() {
     assert!(
         refusals.is_empty(),
         "{WORKFLOW} has {} job(s) and these are not recorded:\n{}",
-        declared.len(),
+        declared.jobs.len(),
         refusals
             .iter()
             .map(|refusal| format!("  {refusal}"))
@@ -91,15 +129,30 @@ fn this_workflow_has_the_jobs_the_census_is_worth_taking_of() {
     // CONSTRUCTION and would report a clean zero forever.
     let declared = declared_jobs(&workflow_steps());
     assert!(
-        declared.len() > 2,
+        declared.jobs.len() > 2,
         "{WORKFLOW} declares {} job(s) with `run:` steps — this gate's whole \
          subject is what TWO of them both compile",
-        declared.len()
+        declared.jobs.len()
     );
     assert!(
-        declared.contains_key(GATE),
+        declared.jobs.contains_key(GATE),
         "the job running this gate is `{GATE}`, and {WORKFLOW} declares {:?}",
-        declared.keys().collect::<Vec<_>>()
+        declared.jobs.keys().collect::<Vec<_>>()
+    );
+    // AND THE TWO POPULATIONS ARE NOT THE SAME POPULATION, which is why they
+    // travel together but apart. Every job with a cache owes this census a
+    // record of what that cache brought; the two gate jobs cache nothing and
+    // owe none, and a law that asked them for one would refuse a workflow that
+    // is right.
+    assert!(
+        declared.caches.len() >= 2,
+        "{WORKFLOW} declares caches for {:?} — a census whose jobs restore \
+         nothing has no cache state to be taken in",
+        declared.caches.keys().collect::<Vec<_>>()
+    );
+    assert!(
+        !declared.caches.contains_key(GATE),
+        "`{GATE}` takes no cache of its own, and its own suite says so"
     );
 }
 
@@ -119,6 +172,7 @@ fn the_jobs_a_local_replay_cannot_run_are_exactly_these_three() {
     // the census.
     let declared = declared_jobs(&workflow_steps());
     let skipped: BTreeSet<&str> = declared
+        .jobs
         .iter()
         .filter(|(_, steps)| {
             let borrowed: Vec<&ci_plan::RunStep> = steps.iter().collect();
@@ -137,7 +191,7 @@ fn the_jobs_a_local_replay_cannot_run_are_exactly_these_three() {
          census, and a census of fewer than two jobs is refused"
     );
     assert!(
-        declared.len() - skipped.len() >= 2,
+        declared.jobs.len() - skipped.len() >= 2,
         "a replay that can run fewer than two jobs cannot produce a census at \
          all: {declared:?}"
     );

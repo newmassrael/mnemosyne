@@ -6,13 +6,23 @@
 //! deleted, two jobs sharing a unit — none of those exist in this repository on
 //! the day this is written, and every one of them is what the gate is for.
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeSet;
 
 use ci_plan::RunStep;
 use twice_compiled::{
-    declared_jobs, judge, names_its_job, read, read_log, unresolvable, Census, Cost, Invocation,
-    JobLog, Refusal, Unit, WRAPPER_VARIABLE,
+    judge, names_its_job, read, read_log, unresolvable, Census, Cost, Declared, Invocation, JobLog,
+    Refusal, Unit, WRAPPER_VARIABLE,
 };
+
+/// The jobs of a fixture workflow, NONE of which declares a cache.
+///
+/// Said once here rather than at each call below, because it is a property of
+/// every fixture in this file: the laws in it are about what a job compiled and
+/// how that was recorded, and the laws about what a job RESTORED have their own
+/// fixtures further down, which declare caches on purpose.
+fn declared_jobs(steps: &[RunStep]) -> Declared {
+    Declared::of(steps, &[])
+}
 
 /// A record as `rustc-log` writes it: when the compiler started, how long it
 /// ran, then the compiler and its arguments.
@@ -421,7 +431,7 @@ fn a_census_that_reached_fewer_than_two_jobs_is_refused() {
     // The subject here is what TWO jobs both compile, so fewer than two cannot
     // hold a finding and must not print as though it had looked for one.
     let declared = declared_jobs(&[wired("validate"), wired("unrun-tests"), wired("msrv")]);
-    let everything: BTreeSet<String> = declared.keys().cloned().collect();
+    let everything: BTreeSet<String> = declared.jobs.keys().cloned().collect();
     assert_eq!(
         judge(&Census::default(), &declared, &everything),
         vec![Refusal::CensusCoversTooFewJobs { covered: 0 }],
@@ -671,15 +681,14 @@ fn a_job_recording_to_another_jobs_log_is_refused() {
 
 #[test]
 fn the_jobs_are_read_off_the_workflow_and_not_kept_beside_it() {
-    let declared: BTreeMap<_, _> =
-        declared_jobs(&[wired("validate"), step("validate", &[]), wired("msrv")]);
+    let declared = declared_jobs(&[wired("validate"), step("validate", &[]), wired("msrv")]);
     assert_eq!(
-        declared.keys().collect::<Vec<_>>(),
+        declared.jobs.keys().collect::<Vec<_>>(),
         vec!["msrv", "validate"],
         "one entry per job"
     );
     assert_eq!(
-        declared["validate"].len(),
+        declared.jobs["validate"].len(),
         2,
         "and one environment per STEP, because a job is wired step by step"
     );
@@ -951,5 +960,323 @@ fn merging_a_pair_states_what_it_removes_and_what_it_spends() {
         "MERGING SPENDS WALL-CLOCK. Today these two run beside one another and \
          cost the run {} µs; merged they cost more, and the saving is compute",
         merge.floor_micros
+    );
+}
+
+// --- what a job started from ------------------------------------------------
+//
+// A CENSUS IS ALSO A STATE. Every count above is of a COLD build by
+// construction — cargo runs no compiler for a unit that is already fresh — so
+// the cache state is the units the numbers are in, and two censuses taken in
+// different ones are not each other's control. Round 1099 held two of them side
+// by side, called the first cold because its keys had moved, and deleted a
+// 7.5 GB cache that was saving 426 compilations. Nothing in the repository
+// could have contradicted it: `actions/cache` reports `cache-hit: false` for a
+// `restore-keys` prefix match, and a job warmed by one still saves a new entry,
+// which is what the cache gate reads as a cache built from nothing.
+
+/// A cache one job declares, over the paths it names.
+fn cache(job: &str, paths: &[&str]) -> ci_plan::CacheDeclaration {
+    ci_plan::CacheDeclaration {
+        source: "fixture.yml".to_string(),
+        owner: job.to_string(),
+        key: format!("${{{{ runner.os }}}}-cargo-{job}-abc"),
+        prefix: format!("Linux-cargo-{job}-"),
+        paths: paths.iter().map(|path| (*path).to_string()).collect(),
+        hashed: vec!["**/Cargo.lock".to_string()],
+    }
+}
+
+/// A step of a job that has a cache: wired for both records.
+fn wired_with_cache(job: &str) -> RunStep {
+    let mut step = wired(job);
+    step.env.insert(
+        restored::VARIABLE.to_string(),
+        format!("/w/rustc-log/{job}.restored"),
+    );
+    step
+}
+
+/// The record such a job leaves, with what arrived under each path.
+fn restore_record(job: &str, exact: bool, paths: &[(&str, u64)]) -> String {
+    let mut out = restored::encode_job(job);
+    for (path, _) in paths {
+        out.extend_from_slice(&restored::encode_side(
+            restored::Side::Before,
+            path,
+            &restored::Measurement::default(),
+        ));
+    }
+    for (path, arrived) in paths {
+        out.extend_from_slice(&restored::encode_side(
+            restored::Side::After,
+            path,
+            &restored::Measurement {
+                entries: 1,
+                bytes: *arrived,
+            },
+        ));
+    }
+    out.extend_from_slice(&restored::encode_exact(exact));
+    String::from_utf8(out).expect("the record is text")
+}
+
+/// The two jobs both compile and both cache, and both said what they restored.
+fn cached_and_said(exact: bool, arrived: u64) -> (Declared, Census) {
+    let declared = Declared::of(
+        &[
+            wired_with_cache("validate"),
+            wired_with_cache("unrun-tests"),
+        ],
+        &[
+            cache("validate", &["~/.cargo/registry"]),
+            cache("unrun-tests", &["~/.cargo/registry", "target"]),
+        ],
+    );
+    let mut census = census_of(&["validate", "unrun-tests"]);
+    census.restored.insert(
+        "validate".to_string(),
+        restored::decode(&restore_record(
+            "validate",
+            exact,
+            &[("~/.cargo/registry", arrived)],
+        )),
+    );
+    census.restored.insert(
+        "unrun-tests".to_string(),
+        restored::decode(&restore_record(
+            "unrun-tests",
+            exact,
+            &[("~/.cargo/registry", arrived), ("target", arrived)],
+        )),
+    );
+    (declared, census)
+}
+
+#[test]
+fn a_census_whose_jobs_all_said_what_they_restored_is_accepted() {
+    let (declared, census) = cached_and_said(true, 1_000);
+    assert!(judge(&census, &declared, &nothing()).is_empty());
+}
+
+/// THE STATE TRAVELS INTO THE CENSUS as a value, not as a sentence: it is what
+/// one census is compared to another by.
+#[test]
+fn the_three_states_reach_the_census_as_three_different_values() {
+    let (_, warm) = cached_and_said(true, 1_000);
+    let (_, stale) = cached_and_said(false, 1_000);
+    let (_, cold) = cached_and_said(false, 0);
+    assert_eq!(
+        warm.started().get("unrun-tests"),
+        Some(&restored::Warmth::ExactHit { bytes: 2_000 })
+    );
+    assert_eq!(
+        stale.started().get("unrun-tests"),
+        Some(&restored::Warmth::PrefixHit { bytes: 2_000 })
+    );
+    assert_eq!(
+        cold.started().get("unrun-tests"),
+        Some(&restored::Warmth::Nothing)
+    );
+    // AND THE TWO THAT LOOK ALIKE TO EVERY OTHER INSTRUMENT DIFFER HERE. A
+    // prefix hit and a cold build both report `cache-hit: false` and both make
+    // `actions/cache` save a new entry.
+    assert_ne!(stale.started(), cold.started());
+}
+
+/// THE SILENCE LAW. A job with a cache that left no record hands the census a
+/// state the reader has to supply, and Round 1099 supplied the wrong one.
+#[test]
+fn a_job_with_a_cache_that_did_not_say_what_it_restored_is_refused() {
+    let (declared, mut census) = cached_and_said(true, 1_000);
+    census.restored.remove("unrun-tests");
+    assert_eq!(
+        judge(&census, &declared, &nothing()),
+        vec![Refusal::JobDidNotSayWhatItRestored {
+            job: "unrun-tests".to_string()
+        }]
+    );
+}
+
+/// The control for the law above: the population is the jobs with a CACHE, not
+/// the jobs that compile. This repository's two gate jobs compile plenty and
+/// cache nothing.
+#[test]
+fn a_job_with_no_cache_owes_no_record_of_what_it_restored() {
+    let declared = Declared::of(
+        &[wired_with_cache("validate"), wired("twice-compiled")],
+        &[cache("validate", &["~/.cargo/registry"])],
+    );
+    let mut census = census_of(&["validate", "twice-compiled"]);
+    census.restored.insert(
+        "validate".to_string(),
+        restored::decode(&restore_record(
+            "validate",
+            true,
+            &[("~/.cargo/registry", 10)],
+        )),
+    );
+    assert!(judge(&census, &declared, &nothing()).is_empty());
+}
+
+/// WHAT MAKES THE LIST BEING WRITTEN TWICE SAFE. The cache's `path:` and the
+/// measuring step's arguments are two spellings of one list, and this is the
+/// only thing holding them together.
+#[test]
+fn a_record_measuring_paths_the_cache_does_not_hold_is_refused() {
+    let (declared, mut census) = cached_and_said(true, 1_000);
+    census.restored.insert(
+        "unrun-tests".to_string(),
+        restored::decode(&restore_record(
+            "unrun-tests",
+            true,
+            &[("~/.cargo/registry", 1_000)],
+        )),
+    );
+    assert_eq!(
+        judge(&census, &declared, &nothing()),
+        vec![Refusal::RestoreRecordMeasuredOtherPaths {
+            job: "unrun-tests".to_string(),
+            measured: vec!["~/.cargo/registry".to_string()],
+            declared: vec!["~/.cargo/registry".to_string(), "target".to_string()],
+        }],
+        "a `target` added to the cache and not to the measurement makes every \
+         restore of it read smaller than it was"
+    );
+}
+
+/// The two instruments disagreeing is not a third reading of the world.
+#[test]
+fn an_exact_hit_that_brought_nothing_is_refused_rather_than_counted() {
+    let (declared, census) = cached_and_said(true, 0);
+    assert_eq!(
+        judge(&census, &declared, &nothing()),
+        vec![
+            Refusal::RestoredNothingAfterAnExactHit {
+                job: "unrun-tests".to_string()
+            },
+            Refusal::RestoredNothingAfterAnExactHit {
+                job: "validate".to_string()
+            },
+        ]
+    );
+}
+
+/// THE PASTE ERROR, caught on the record's side: the file is named for one job
+/// by hand and the contents carry the job the runner named.
+#[test]
+fn a_record_whose_contents_name_another_job_is_refused() {
+    let (declared, mut census) = cached_and_said(true, 1_000);
+    census.restored.insert(
+        "unrun-tests".to_string(),
+        restored::decode(&restore_record(
+            "validate",
+            true,
+            &[("~/.cargo/registry", 1_000), ("target", 1_000)],
+        )),
+    );
+    assert_eq!(
+        judge(&census, &declared, &nothing()),
+        vec![Refusal::RestoreRecordNamesAnotherJob {
+            file: "unrun-tests".to_string(),
+            said: "validate".to_string(),
+        }]
+    );
+}
+
+/// And caught on the workflow's side, before any run produces anything.
+#[test]
+fn a_job_writing_its_state_to_another_jobs_file_is_refused() {
+    let mut wrong = wired_with_cache("unrun-tests");
+    wrong.env.insert(
+        restored::VARIABLE.to_string(),
+        "/w/rustc-log/validate.restored".to_string(),
+    );
+    let declared = Declared::of(
+        &[wrong, wired_with_cache("validate")],
+        &[
+            cache("validate", &["~/.cargo/registry"]),
+            cache("unrun-tests", &["~/.cargo/registry"]),
+        ],
+    );
+    let mut census = census_of(&["validate", "unrun-tests"]);
+    for job in ["validate", "unrun-tests"] {
+        census.restored.insert(
+            job.to_string(),
+            restored::decode(&restore_record(job, true, &[("~/.cargo/registry", 10)])),
+        );
+    }
+    assert_eq!(
+        judge(&census, &declared, &nothing()),
+        vec![Refusal::RestoreIsNotRecorded {
+            job: "unrun-tests".to_string(),
+            path: "/w/rustc-log/validate.restored".to_string(),
+        }]
+    );
+}
+
+#[test]
+fn a_step_of_a_cached_job_that_does_not_say_where_to_write_it_is_refused() {
+    let declared = Declared::of(
+        &[wired("validate"), wired_with_cache("unrun-tests")],
+        &[
+            cache("validate", &["~/.cargo/registry"]),
+            cache("unrun-tests", &["~/.cargo/registry"]),
+        ],
+    );
+    let mut census = census_of(&["validate", "unrun-tests"]);
+    for job in ["validate", "unrun-tests"] {
+        census.restored.insert(
+            job.to_string(),
+            restored::decode(&restore_record(job, true, &[("~/.cargo/registry", 10)])),
+        );
+    }
+    assert_eq!(
+        judge(&census, &declared, &nothing()),
+        vec![Refusal::RestoreIsNotRecorded {
+            job: "validate".to_string(),
+            path: String::new(),
+        }]
+    );
+}
+
+/// A HALF-WRITTEN RECORD IS NOT A COLD JOB. The `exact` line is the last thing
+/// the second step writes, so a job that died between the restore and the
+/// measurement leaves a file that would otherwise decode as one that restored
+/// nothing.
+#[test]
+fn a_record_that_does_not_decode_is_refused_rather_than_read_as_cold() {
+    let (declared, mut census) = cached_and_said(true, 1_000);
+    let torn = restore_record("unrun-tests", true, &[("~/.cargo/registry", 1_000)]);
+    let torn = torn
+        .lines()
+        .filter(|line| !line.starts_with("exact"))
+        .collect::<Vec<_>>()
+        .join("\n");
+    census
+        .restored
+        .insert("unrun-tests".to_string(), restored::decode(&torn));
+    let refusals = judge(&census, &declared, &nothing());
+    assert!(
+        matches!(
+            refusals.as_slice(),
+            [Refusal::RestoreRecordIsMalformed { job, .. }] if job == "unrun-tests"
+        ),
+        "{refusals:?}"
+    );
+}
+
+#[test]
+fn a_record_from_a_job_this_workflow_gives_no_cache_is_refused() {
+    let (declared, mut census) = cached_and_said(true, 1_000);
+    census.restored.insert(
+        "deleted".to_string(),
+        restored::decode(&restore_record("deleted", true, &[("target", 1)])),
+    );
+    assert_eq!(
+        judge(&census, &declared, &nothing()),
+        vec![Refusal::RestoreRecordFromAJobWithNoCache {
+            job: "deleted".to_string()
+        }]
     );
 }

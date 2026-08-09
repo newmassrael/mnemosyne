@@ -100,6 +100,10 @@ jobs:
     timeout-minutes: 30
     env:
       MNEMOSYNE_RUSTC_LOG: ${{ github.workspace }}/rustc-log/validate.log
+      # R1101 — and what this job STARTED FROM, beside what it compiled, because
+      # the second is measured in the units of the first: cargo runs no compiler
+      # for a unit that is already fresh.
+      MNEMOSYNE_RESTORED: ${{ github.workspace }}/rustc-log/validate.restored
     steps:
       - uses: actions/checkout@v7
         with:
@@ -124,15 +128,19 @@ jobs:
 
       # R1092 — the recorder cannot record its own build: it does not exist yet,
       # and an empty `RUSTC_WRAPPER` is how cargo is told there is none. This is
-      # the ONE step in this file excused from recording, and
-      # `tools/twice-compiled` derives that excuse from the manifest this line
-      # names rather than from a list of jobs, so it stays one step wide. What it
-      # costs is the recorder's own compilation, which is one crate with no
-      # dependencies — the reason it has none.
-      - name: Build the compilation recorder
+      # the ONE step in a job excused from recording, and `tools/twice-compiled`
+      # derives that excuse from the manifests these lines name rather than from
+      # a list of jobs, so it stays one step wide. R1101 put the restore measure
+      # here too: an instrument's own build is not a cost CI pays for this
+      # repository's sake, and counting it would put the instrument inside its
+      # own reading. What it costs is two crates with no dependencies — the
+      # reason neither has any.
+      - name: Build the instruments
         env:
           RUSTC_WRAPPER: ""
-        run: cargo build --release -q --manifest-path tools/rustc-log/Cargo.toml
+        run: |
+          cargo build --release -q --manifest-path tools/rustc-log/Cargo.toml
+          cargo build --release -q --manifest-path tools/restored/Cargo.toml
 
       # ONE OF THE TWO JOBS IN THIS FILE THAT KEEPS A `target`, and R1090
       # measured which two. GitHub gives a repository 10 GB of cache and deletes,
@@ -175,7 +183,25 @@ jobs:
       # job does cold, so it is the floor a push waits on and warming this one
       # cannot get underneath it. `unrun-tests` is the only job above that floor,
       # which makes it the only one whose build tree is worth the budget.
+      # R1101 — WHAT THIS JOB STARTED FROM, measured either side of the restore.
+      # `actions/cache` declares exactly one output, `cache-hit`, and its own
+      # documentation says a `restore-keys` prefix match returns `false` for it:
+      # the action that did the restoring cannot say whether anything arrived.
+      # Neither can the cache API — a job warmed by a prefix hit still saves a
+      # new entry, which is what `cache-budget` reads as a cache built from
+      # nothing. That third state is the one R1099 misread, and the only place
+      # it is legible is the disk.
+      #
+      # The paths are this cache's own `path:` list, written a second time
+      # because nothing can hand them over; `twice-compiled` refuses if the two
+      # ever say different things.
+      - name: What is on disk before the cache is restored
+        run: >
+          ./tools/restored/target/release/restored before
+          '~/.cargo/registry' '~/.cargo/git'
+
       - name: Cache cargo
+        id: cache
         uses: actions/cache@v6
         with:
           path: |
@@ -184,6 +210,11 @@ jobs:
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock', '.github/workflows/mnemosyne-validate.yml') }}
           restore-keys: |
             ${{ runner.os }}-cargo-
+
+      - name: What the cache restored
+        env:
+          MNEMOSYNE_CACHE_HIT: ${{ steps.cache.outputs.cache-hit }}
+        run: ./tools/restored/target/release/restored after
 
       - name: cargo test --workspace
         run: cargo test --workspace --locked
@@ -252,6 +283,8 @@ jobs:
     timeout-minutes: 60
     env:
       MNEMOSYNE_RUSTC_LOG: ${{ github.workspace }}/rustc-log/item-citations.log
+      # R1101 — see `validate`'s copy of this variable.
+      MNEMOSYNE_RESTORED: ${{ github.workspace }}/rustc-log/item-citations.restored
     steps:
       - uses: actions/checkout@v7
 
@@ -265,21 +298,32 @@ jobs:
 
       # R1092 — the recorder cannot record its own build: it does not exist yet,
       # and an empty `RUSTC_WRAPPER` is how cargo is told there is none. This is
-      # the ONE step in this file excused from recording, and
-      # `tools/twice-compiled` derives that excuse from the manifest this line
-      # names rather than from a list of jobs, so it stays one step wide. What it
-      # costs is the recorder's own compilation, which is one crate with no
-      # dependencies — the reason it has none.
-      - name: Build the compilation recorder
+      # the ONE step in a job excused from recording, and `tools/twice-compiled`
+      # derives that excuse from the manifests these lines name rather than from
+      # a list of jobs, so it stays one step wide. R1101 put the restore measure
+      # here too: an instrument's own build is not a cost CI pays for this
+      # repository's sake, and counting it would put the instrument inside its
+      # own reading. What it costs is two crates with no dependencies — the
+      # reason neither has any.
+      - name: Build the instruments
         env:
           RUSTC_WRAPPER: ""
-        run: cargo build --release -q --manifest-path tools/rustc-log/Cargo.toml
+        run: |
+          cargo build --release -q --manifest-path tools/rustc-log/Cargo.toml
+          cargo build --release -q --manifest-path tools/restored/Cargo.toml
 
       # NO ROOT `target` — see the `validate` job's cache for the measurement.
       # The key is unchanged on purpose: a renamed key leaves the old one held
       # and declared by nothing, which `tools/cache-budget` calls an orphan for
       # the seven days it takes to age out.
+      # R1101 — see `validate`'s copy of these two steps.
+      - name: What is on disk before the cache is restored
+        run: >
+          ./tools/restored/target/release/restored before
+          '~/.cargo/registry' '~/.cargo/git' 'tools/item-citations/target'
+
       - name: Cache cargo (item citations)
+        id: cache
         uses: actions/cache@v6
         with:
           path: |
@@ -289,6 +333,11 @@ jobs:
           key: ${{ runner.os }}-cargo-citations-${{ hashFiles('**/Cargo.lock', '.github/workflows/mnemosyne-validate.yml') }}
           restore-keys: |
             ${{ runner.os }}-cargo-citations-
+
+      - name: What the cache restored
+        env:
+          MNEMOSYNE_CACHE_HIT: ${{ steps.cache.outputs.cache-hit }}
+        run: ./tools/restored/target/release/restored after
 
       - name: every item citation in the workspace names an item
         run: >
@@ -337,6 +386,8 @@ jobs:
     timeout-minutes: 60
     env:
       MNEMOSYNE_RUSTC_LOG: ${{ github.workspace }}/rustc-log/side-workspaces.log
+      # R1101 — see `validate`'s copy of this variable.
+      MNEMOSYNE_RESTORED: ${{ github.workspace }}/rustc-log/side-workspaces.restored
     steps:
       - uses: actions/checkout@v7
 
@@ -345,17 +396,28 @@ jobs:
 
       # R1092 — the recorder cannot record its own build: it does not exist yet,
       # and an empty `RUSTC_WRAPPER` is how cargo is told there is none. This is
-      # the ONE step in this file excused from recording, and
-      # `tools/twice-compiled` derives that excuse from the manifest this line
-      # names rather than from a list of jobs, so it stays one step wide. What it
-      # costs is the recorder's own compilation, which is one crate with no
-      # dependencies — the reason it has none.
-      - name: Build the compilation recorder
+      # the ONE step in a job excused from recording, and `tools/twice-compiled`
+      # derives that excuse from the manifests these lines name rather than from
+      # a list of jobs, so it stays one step wide. R1101 put the restore measure
+      # here too: an instrument's own build is not a cost CI pays for this
+      # repository's sake, and counting it would put the instrument inside its
+      # own reading. What it costs is two crates with no dependencies — the
+      # reason neither has any.
+      - name: Build the instruments
         env:
           RUSTC_WRAPPER: ""
-        run: cargo build --release -q --manifest-path tools/rustc-log/Cargo.toml
+        run: |
+          cargo build --release -q --manifest-path tools/rustc-log/Cargo.toml
+          cargo build --release -q --manifest-path tools/restored/Cargo.toml
+
+      # R1101 — see `validate`'s copy of these two steps.
+      - name: What is on disk before the cache is restored
+        run: >
+          ./tools/restored/target/release/restored before
+          '~/.cargo/registry' '~/.cargo/git'
 
       - name: Cache cargo (side workspaces)
+        id: cache
         uses: actions/cache@v6
         with:
           path: |
@@ -364,6 +426,11 @@ jobs:
           key: ${{ runner.os }}-cargo-side-${{ hashFiles('bench/Cargo.lock', 'tools/*/Cargo.lock', '.github/workflows/mnemosyne-validate.yml') }}
           restore-keys: |
             ${{ runner.os }}-cargo-side-
+
+      - name: What the cache restored
+        env:
+          MNEMOSYNE_CACHE_HIT: ${{ steps.cache.outputs.cache-hit }}
+        run: ./tools/restored/target/release/restored after
 
       - name: fmt, clippy and test in every separate in-repo workspace
         run: ./scripts/check-side-workspaces.sh
@@ -408,6 +475,8 @@ jobs:
     timeout-minutes: 45
     env:
       MNEMOSYNE_RUSTC_LOG: ${{ github.workspace }}/rustc-log/server-features.log
+      # R1101 — see `validate`'s copy of this variable.
+      MNEMOSYNE_RESTORED: ${{ github.workspace }}/rustc-log/server-features.restored
     steps:
       - uses: actions/checkout@v7
 
@@ -419,15 +488,19 @@ jobs:
 
       # R1092 — the recorder cannot record its own build: it does not exist yet,
       # and an empty `RUSTC_WRAPPER` is how cargo is told there is none. This is
-      # the ONE step in this file excused from recording, and
-      # `tools/twice-compiled` derives that excuse from the manifest this line
-      # names rather than from a list of jobs, so it stays one step wide. What it
-      # costs is the recorder's own compilation, which is one crate with no
-      # dependencies — the reason it has none.
-      - name: Build the compilation recorder
+      # the ONE step in a job excused from recording, and `tools/twice-compiled`
+      # derives that excuse from the manifests these lines name rather than from
+      # a list of jobs, so it stays one step wide. R1101 put the restore measure
+      # here too: an instrument's own build is not a cost CI pays for this
+      # repository's sake, and counting it would put the instrument inside its
+      # own reading. What it costs is two crates with no dependencies — the
+      # reason neither has any.
+      - name: Build the instruments
         env:
           RUSTC_WRAPPER: ""
-        run: cargo build --release -q --manifest-path tools/rustc-log/Cargo.toml
+        run: |
+          cargo build --release -q --manifest-path tools/rustc-log/Cargo.toml
+          cargo build --release -q --manifest-path tools/restored/Cargo.toml
 
       # Its own key, because this build resolves different features than
       # `validate`'s and a shared key would hold whichever job saved first.
@@ -438,7 +511,14 @@ jobs:
       # of them together asked for 63 GB of a 10 GB budget, so GitHub evicted all
       # of it instead. This job is 14m24s cold, under the 20m14s floor
       # `separate in-repo workspaces` sets. See `validate`'s cache.
+      # R1101 — see `validate`'s copy of these two steps.
+      - name: What is on disk before the cache is restored
+        run: >
+          ./tools/restored/target/release/restored before
+          '~/.cargo/registry' '~/.cargo/git'
+
       - name: Cache cargo (server features)
+        id: cache
         uses: actions/cache@v6
         with:
           path: |
@@ -447,6 +527,11 @@ jobs:
           key: ${{ runner.os }}-cargo-serverfeat-${{ hashFiles('**/Cargo.lock', '.github/workflows/mnemosyne-validate.yml') }}
           restore-keys: |
             ${{ runner.os }}-cargo-serverfeat-
+
+      - name: What the cache restored
+        env:
+          MNEMOSYNE_CACHE_HIT: ${{ steps.cache.outputs.cache-hit }}
+        run: ./tools/restored/target/release/restored after
 
       # LINT IT TOO, and that is not symmetry for its own sake: the first time
       # anything linted this build it found a `MutexGuard` held across an await
@@ -508,6 +593,10 @@ jobs:
     timeout-minutes: 90
     env:
       MNEMOSYNE_RUSTC_LOG: ${{ github.workspace }}/rustc-log/unrun-tests.log
+      # R1101 — see `validate`'s copy of this variable. THIS job is the one the
+      # measurement was built for: its cache is the only one holding a whole
+      # build tree, and it is the one Round 1099 deleted for saving nothing.
+      MNEMOSYNE_RESTORED: ${{ github.workspace }}/rustc-log/unrun-tests.restored
     steps:
       - uses: actions/checkout@v7
 
@@ -519,15 +608,19 @@ jobs:
 
       # R1092 — the recorder cannot record its own build: it does not exist yet,
       # and an empty `RUSTC_WRAPPER` is how cargo is told there is none. This is
-      # the ONE step in this file excused from recording, and
-      # `tools/twice-compiled` derives that excuse from the manifest this line
-      # names rather than from a list of jobs, so it stays one step wide. What it
-      # costs is the recorder's own compilation, which is one crate with no
-      # dependencies — the reason it has none.
-      - name: Build the compilation recorder
+      # the ONE step in a job excused from recording, and `tools/twice-compiled`
+      # derives that excuse from the manifests these lines name rather than from
+      # a list of jobs, so it stays one step wide. R1101 put the restore measure
+      # here too: an instrument's own build is not a cost CI pays for this
+      # repository's sake, and counting it would put the instrument inside its
+      # own reading. What it costs is two crates with no dependencies — the
+      # reason neither has any.
+      - name: Build the instruments
         env:
           RUSTC_WRAPPER: ""
-        run: cargo build --release -q --manifest-path tools/rustc-log/Cargo.toml
+        run: |
+          cargo build --release -q --manifest-path tools/rustc-log/Cargo.toml
+          cargo build --release -q --manifest-path tools/restored/Cargo.toml
 
       # Its own key: this job resolves `--all-features` for the whole workspace,
       # which is neither `validate`'s resolve nor `server-features`', so sharing
@@ -554,7 +647,17 @@ jobs:
       # mechanism that makes both true, and the only reading that settles it is
       # the one printed per job by `cache-budget` — whether a cache was built from
       # nothing — which R1099 did not consult for this key.
+      # R1101 — THE MEASUREMENT THIS PARAGRAPH WAS MISSING. Everything above is a
+      # reading of two runs' job durations and censuses held side by side by a
+      # person; what follows measures, per run and on this job's own disk,
+      # whether a tree arrived at all. See `validate`'s copy of these two steps.
+      - name: What is on disk before the cache is restored
+        run: >
+          ./tools/restored/target/release/restored before
+          '~/.cargo/registry' '~/.cargo/git' 'target' 'tools/unrun-tests/target'
+
       - name: Cache cargo (unrun tests)
+        id: cache
         uses: actions/cache@v6
         with:
           path: |
@@ -565,6 +668,11 @@ jobs:
           key: ${{ runner.os }}-cargo-unrun-${{ hashFiles('**/Cargo.lock', '.github/workflows/mnemosyne-validate.yml') }}
           restore-keys: |
             ${{ runner.os }}-cargo-unrun-
+
+      - name: What the cache restored
+        env:
+          MNEMOSYNE_CACHE_HIT: ${{ steps.cache.outputs.cache-hit }}
+        run: ./tools/restored/target/release/restored after
 
       - name: every test this repository compiles is one some CI command runs
         run: >
@@ -613,6 +721,8 @@ jobs:
     timeout-minutes: 90
     env:
       MNEMOSYNE_RUSTC_LOG: ${{ github.workspace }}/rustc-log/uncompiled-sources.log
+      # R1101 — see `validate`'s copy of this variable.
+      MNEMOSYNE_RESTORED: ${{ github.workspace }}/rustc-log/uncompiled-sources.restored
     steps:
       - uses: actions/checkout@v7
 
@@ -624,15 +734,19 @@ jobs:
 
       # R1092 — the recorder cannot record its own build: it does not exist yet,
       # and an empty `RUSTC_WRAPPER` is how cargo is told there is none. This is
-      # the ONE step in this file excused from recording, and
-      # `tools/twice-compiled` derives that excuse from the manifest this line
-      # names rather than from a list of jobs, so it stays one step wide. What it
-      # costs is the recorder's own compilation, which is one crate with no
-      # dependencies — the reason it has none.
-      - name: Build the compilation recorder
+      # the ONE step in a job excused from recording, and `tools/twice-compiled`
+      # derives that excuse from the manifests these lines name rather than from
+      # a list of jobs, so it stays one step wide. R1101 put the restore measure
+      # here too: an instrument's own build is not a cost CI pays for this
+      # repository's sake, and counting it would put the instrument inside its
+      # own reading. What it costs is two crates with no dependencies — the
+      # reason neither has any.
+      - name: Build the instruments
         env:
           RUSTC_WRAPPER: ""
-        run: cargo build --release -q --manifest-path tools/rustc-log/Cargo.toml
+        run: |
+          cargo build --release -q --manifest-path tools/rustc-log/Cargo.toml
+          cargo build --release -q --manifest-path tools/restored/Cargo.toml
 
       # Its own key: two feature resolves of every workspace, which no other job
       # holds, so a shared key would hold whichever job saved first.
@@ -641,7 +755,14 @@ jobs:
       # to keep, and the ones the four rounds before R1090 each added without
       # re-adding the total. This job is 14m43s cold, under the 20m14s floor.
       # See `validate`'s cache.
+      # R1101 — see `validate`'s copy of these two steps.
+      - name: What is on disk before the cache is restored
+        run: >
+          ./tools/restored/target/release/restored before
+          '~/.cargo/registry' '~/.cargo/git' 'tools/uncompiled-sources/target'
+
       - name: Cache cargo (uncompiled sources)
+        id: cache
         uses: actions/cache@v6
         with:
           path: |
@@ -651,6 +772,11 @@ jobs:
           key: ${{ runner.os }}-cargo-uncompiled-${{ hashFiles('**/Cargo.lock', '.github/workflows/mnemosyne-validate.yml') }}
           restore-keys: |
             ${{ runner.os }}-cargo-uncompiled-
+
+      - name: What the cache restored
+        env:
+          MNEMOSYNE_CACHE_HIT: ${{ steps.cache.outputs.cache-hit }}
+        run: ./tools/restored/target/release/restored after
 
       - name: every Rust file this repository tracks is one cargo compiles
         run: >
@@ -672,6 +798,8 @@ jobs:
     timeout-minutes: 30
     env:
       MNEMOSYNE_RUSTC_LOG: ${{ github.workspace }}/rustc-log/msrv.log
+      # R1101 — see `validate`'s copy of this variable.
+      MNEMOSYNE_RESTORED: ${{ github.workspace }}/rustc-log/msrv.restored
     steps:
       - uses: actions/checkout@v7
 
@@ -694,19 +822,28 @@ jobs:
         run: rustup toolchain install ${{ steps.msrv.outputs.version }} --profile minimal
 
       # ON THE MSRV TOOLCHAIN, unlike the other jobs' copies of this step: this
-      # job installs only that one, and building the recorder on the dev
-      # toolchain would make rustup fetch a second one for a crate with no
-      # dependencies. The recorder declares the same `rust-version` the workspace
-      # does, so the MSRV compiles it by construction.
-      - name: Build the compilation recorder
+      # job installs only that one, and building the instruments on the dev
+      # toolchain would make rustup fetch a second one for two crates with no
+      # dependencies. Both declare the same `rust-version` the workspace does, so
+      # the MSRV compiles them by construction.
+      - name: Build the instruments
         env:
           RUSTC_WRAPPER: ""
           RUSTUP_TOOLCHAIN: ${{ steps.msrv.outputs.version }}
-        run: cargo build --release -q --manifest-path tools/rustc-log/Cargo.toml
+        run: |
+          cargo build --release -q --manifest-path tools/rustc-log/Cargo.toml
+          cargo build --release -q --manifest-path tools/restored/Cargo.toml
+
+      # R1101 — see `validate`'s copy of these two steps.
+      - name: What is on disk before the cache is restored
+        run: >
+          ./tools/restored/target/release/restored before
+          '~/.cargo/registry' '~/.cargo/git'
 
       # NO ROOT `target`: this job is 6m54s cold, the cheapest in the file, and
       # it was one of the six holding a whole build tree. See `validate`'s cache.
       - name: Cache cargo (MSRV)
+        id: cache
         uses: actions/cache@v6
         with:
           path: |
@@ -715,6 +852,11 @@ jobs:
           key: ${{ runner.os }}-cargo-msrv-${{ hashFiles('**/Cargo.lock', '.github/workflows/mnemosyne-validate.yml') }}
           restore-keys: |
             ${{ runner.os }}-cargo-msrv-
+
+      - name: What the cache restored
+        env:
+          MNEMOSYNE_CACHE_HIT: ${{ steps.cache.outputs.cache-hit }}
+        run: ./tools/restored/target/release/restored after
 
       - name: cargo check --workspace on MSRV
         env:
@@ -820,11 +962,13 @@ jobs:
 
       # R1092 — the recorder cannot record its own build: it does not exist yet,
       # and an empty `RUSTC_WRAPPER` is how cargo is told there is none. This is
-      # the ONE step in this file excused from recording, and
-      # `tools/twice-compiled` derives that excuse from the manifest this line
-      # names rather than from a list of jobs, so it stays one step wide. What it
-      # costs is the recorder's own compilation, which is one crate with no
-      # dependencies — the reason it has none.
+      # the ONE step in a job excused from recording, and `tools/twice-compiled`
+      # derives that excuse from the manifests these lines name rather than from
+      # a list of jobs, so it stays one step wide. R1101 put the restore measure
+      # here too: an instrument's own build is not a cost CI pays for this
+      # repository's sake, and counting it would put the instrument inside its
+      # own reading. What it costs is two crates with no dependencies — the
+      # reason neither has any.
       - name: Build the compilation recorder
         env:
           RUSTC_WRAPPER: ""
@@ -902,11 +1046,13 @@ jobs:
 
       # R1092 — the recorder cannot record its own build: it does not exist yet,
       # and an empty `RUSTC_WRAPPER` is how cargo is told there is none. This is
-      # the ONE step in this file excused from recording, and
-      # `tools/twice-compiled` derives that excuse from the manifest this line
-      # names rather than from a list of jobs, so it stays one step wide. What it
-      # costs is the recorder's own compilation, which is one crate with no
-      # dependencies — the reason it has none.
+      # the ONE step in a job excused from recording, and `tools/twice-compiled`
+      # derives that excuse from the manifests these lines name rather than from
+      # a list of jobs, so it stays one step wide. R1101 put the restore measure
+      # here too: an instrument's own build is not a cost CI pays for this
+      # repository's sake, and counting it would put the instrument inside its
+      # own reading. What it costs is two crates with no dependencies — the
+      # reason neither has any.
       - name: Build the compilation recorder
         env:
           RUSTC_WRAPPER: ""

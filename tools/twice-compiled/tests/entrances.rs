@@ -26,13 +26,13 @@
 //! zeroes, and a test that called a function would not have been reading the
 //! thing that lied.
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 
 use rustc_log::Record;
 use tempfile::TempDir;
-use twice_compiled::{declared_jobs, judge, load, Census, Refusal};
+use twice_compiled::{judge, load, Census, Declared, Refusal};
 
 /// The fixture workflow, written into the fixture repository as a TRACKED file,
 /// because a replay checks each job out of a commit rather than out of the tree.
@@ -50,6 +50,21 @@ const UNRESOLVABLE: &str = "      RUSTUP_TOOLCHAIN: ${{ steps.msrv.outputs.versi
 
 /// The one step a fixture job usually has: it compiles the shared crate.
 const BUILDS: &[&str] = &["cargo build --manifest-path crates/shared/Cargo.toml"];
+
+/// A job that measures its own cache restore, the way every cached job of this
+/// repository's workflow does.
+///
+/// THE TWO MEASUREMENTS ARE ADJACENT because in a replay there is nothing
+/// between them: an `actions/cache` step is a `uses:` step and the replay runs
+/// only `run:` ones. That is the point of running this here — a replay restores
+/// no cache, so its census is one taken from an empty tree, and the record has
+/// to say so rather than leave the reader to remember it.
+const MEASURES_A_RESTORE: &[&str] = &[
+    "cargo build --manifest-path tools/restored/Cargo.toml",
+    "./tools/restored/target/debug/restored before 'target'",
+    "./tools/restored/target/debug/restored after",
+    "cargo build --manifest-path crates/shared/Cargo.toml",
+];
 
 /// A job that installs what this machine already has, compiles, and then fails.
 ///
@@ -72,6 +87,14 @@ struct Job {
     also: &'static str,
     /// The `run:` scripts it is made of, in order.
     steps: &'static [&'static str],
+    /// The paths an `actions/cache` step of this job holds, if it has one.
+    ///
+    /// A `uses:` STEP AND NOT A NOTE BESIDE THE FIXTURE, because that is what
+    /// the gate reads: `ci_plan::cache_steps` parses the same block out of the
+    /// fixture that it parses out of this repository's workflow. A fixture that
+    /// declared its caches to the test some other way would be asserting about
+    /// a reader nothing uses.
+    caches: &'static [&'static str],
 }
 
 impl Job {
@@ -80,6 +103,7 @@ impl Job {
             name,
             also: "",
             steps: BUILDS,
+            caches: &[],
         }
     }
 }
@@ -107,10 +131,25 @@ fn workflow(jobs: &[Job]) -> String {
         out.push_str(&format!(
             "      MNEMOSYNE_RUSTC_LOG: ${{{{ github.workspace }}}}/rustc-log/{name}.log\n"
         ));
+        if !job.caches.is_empty() {
+            out.push_str(&format!(
+                "      MNEMOSYNE_RESTORED: ${{{{ github.workspace }}}}/rustc-log/{name}.restored\n"
+            ));
+        }
         out.push_str(job.also);
         out.push_str("    steps:\n");
         for step in job.steps {
             out.push_str(&format!("      - run: {step}\n"));
+        }
+        if !job.caches.is_empty() {
+            out.push_str("      - uses: actions/cache@v6\n        with:\n          path: |\n");
+            for path in job.caches {
+                out.push_str(&format!("            {path}\n"));
+            }
+            out.push_str(&format!(
+                "          key: ${{{{ runner.os }}}}-fixture-{name}-\
+                 ${{{{ hashFiles('**/Cargo.lock') }}}}\n"
+            ));
         }
     }
     out
@@ -123,10 +162,15 @@ fn workflow(jobs: &[Job]) -> String {
 /// recorder from the root it is given and would otherwise write a release binary
 /// into this repository's own tree while the tests run.
 fn recorder_source() -> PathBuf {
+    sibling("rustc-log")
+}
+
+/// A tool workspace beside this one.
+fn sibling(name: &str) -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
         .parent()
         .expect("this crate has a directory beside it")
-        .join("rustc-log")
+        .join(name)
 }
 
 /// One end-to-end run of the gate: the process, and the trees either side of it.
@@ -172,11 +216,14 @@ impl Run {
         })
     }
 
-    fn declared(&self) -> BTreeMap<String, Vec<ci_plan::RunStep>> {
-        declared_jobs(&ci_plan::run_steps(&ci_plan::load_workflow(
-            self.root.path(),
-            WORKFLOW,
-        )))
+    /// What the fixture workflow declares — both populations, read out of the
+    /// fixture by the same reader that reads this repository's own workflow.
+    fn declared(&self) -> Declared {
+        let document = ci_plan::load_workflow(self.root.path(), WORKFLOW);
+        Declared::of(
+            &ci_plan::run_steps(&document),
+            &ci_plan::cache_steps(&document, WORKFLOW),
+        )
     }
 
     /// Where a record lands if the replay stops setting the log variable for the
@@ -202,7 +249,8 @@ fn repository(jobs: &[Job]) -> (TempDir, TempDir) {
         "//! One crate, no dependencies, compiled by every job of the fixture.\n\
          pub fn shared() -> u8 {\n    1\n}\n",
     );
-    copy_recorder(&root.path().join("tools/rustc-log"));
+    copy_instrument(&recorder_source(), &root.path().join("tools/rustc-log"));
+    copy_instrument(&sibling("restored"), &root.path().join("tools/restored"));
     commit(root.path());
     (root, scratch)
 }
@@ -302,30 +350,29 @@ fn write(path: &Path, text: &str) {
     });
 }
 
-/// Copy the recorder's manifest and sources into the fixture.
+/// Copy one instrument's manifest and sources into the fixture.
 ///
 /// The count is asserted: a copy that moved nothing leaves a fixture whose
-/// recorder cannot be built, and the replay would then fail for a reason that has
-/// nothing to do with what is being tested.
-fn copy_recorder(into: &Path) {
-    let from = recorder_source();
-    std::fs::create_dir_all(into.join("src")).expect("a recorder directory");
+/// instrument cannot be built, and the replay would then fail for a reason that
+/// has nothing to do with what is being tested.
+fn copy_instrument(from: &Path, into: &Path) {
+    std::fs::create_dir_all(into.join("src")).expect("an instrument directory");
     std::fs::copy(from.join("Cargo.toml"), into.join("Cargo.toml"))
-        .expect("the recorder's manifest");
+        .expect("the instrument's manifest");
     let mut copied = 0;
-    for entry in std::fs::read_dir(from.join("src")).expect("the recorder's sources") {
+    for entry in std::fs::read_dir(from.join("src")).expect("the instrument's sources") {
         let path = entry.expect("a source file").path();
         if path.extension().and_then(|end| end.to_str()) != Some("rs") {
             continue;
         }
         let name = path.file_name().expect("a file name");
-        std::fs::copy(&path, into.join("src").join(name)).expect("a recorder source");
+        std::fs::copy(&path, into.join("src").join(name)).expect("an instrument source");
         copied += 1;
     }
     assert!(
         copied >= 2,
-        "the recorder is a library and a binary; {} source file(s) were copied \
-         from {}",
+        "each instrument is a library and a binary; {} source file(s) were \
+         copied from {}",
         copied,
         from.display()
     );
@@ -460,6 +507,7 @@ fn a_replay_that_reaches_one_job_is_refused_rather_than_reported() {
             name: "the-other-job",
             also: UNRESOLVABLE,
             steps: BUILDS,
+            caches: &[],
         },
     ]);
     assert_eq!(
@@ -508,11 +556,13 @@ fn a_replay_that_reaches_no_job_does_not_sign_off_as_clean() {
             name: "one-job",
             also: UNRESOLVABLE,
             steps: BUILDS,
+            caches: &[],
         },
         Job {
             name: "the-other-job",
             also: UNRESOLVABLE,
             steps: BUILDS,
+            caches: &[],
         },
     ]);
     assert_eq!(
@@ -555,6 +605,7 @@ fn a_replay_skips_what_it_cannot_install_and_carries_on_past_what_fails() {
             name: "the-other-job",
             also: "",
             steps: INSTALLS_THEN_FAILS,
+            caches: &[],
         },
     ]);
     assert!(
@@ -688,6 +739,98 @@ fn on_a_runner_a_gate_that_did_not_know_its_own_job_would_refuse_every_push() {
         run.stdout()
             .contains("job `the-gate` recorded no compilation"),
         "the refusal names the job, which is what makes it diagnosable\n{}",
+        run.transcript()
+    );
+}
+
+/// THE REPLAY SAYS WHAT ITS CENSUS WAS TAKEN FROM, end to end.
+///
+/// A replay runs a job's `run:` steps in a worktree and never its cache step, so
+/// every census it produces is of a build from nothing. That was true before
+/// this round too, and nothing said it: a reader holding a replay's numbers
+/// beside a CI run's was comparing a cold tree against a warm one with no line
+/// anywhere to notice. The three variables the replay now owns are what put it
+/// in the record — the file to write, the job's own name, and `cache-hit`, which
+/// is honestly `false` because no key was consulted at all.
+#[test]
+fn a_replayed_job_records_that_it_started_from_nothing() {
+    let run = replay(&[
+        Job {
+            name: "unrun-tests",
+            also: "",
+            steps: MEASURES_A_RESTORE,
+            caches: &["target"],
+        },
+        Job::plain("validate"),
+    ]);
+    assert!(run.output.status.success(), "{}", run.transcript());
+
+    let record = run.logs().join("unrun-tests.restored");
+    assert!(
+        record.is_file(),
+        "the replay set ${} for the steps it ran, so the record is beside the \
+         log at {}\n{}",
+        restored::VARIABLE,
+        record.display(),
+        run.transcript()
+    );
+    let census = run.census();
+    let read = census
+        .restored
+        .get("unrun-tests")
+        .expect("the census loaded the record beside the log")
+        .as_ref()
+        .unwrap_or_else(|why| panic!("{why}\n{}", run.transcript()));
+    assert_eq!(
+        read.job,
+        "unrun-tests",
+        "the name came from the runner's own variable, which the replay sets to \
+         the job it is running\n{}",
+        run.transcript()
+    );
+    assert_eq!(
+        read.measured(),
+        vec!["target"],
+        "the paths are the ones the first step named\n{}",
+        run.transcript()
+    );
+    assert_eq!(
+        read.warmth(),
+        restored::Warmth::Nothing,
+        "a replay restores nothing, and the two measurements around the absent \
+         restore are what say so\n{}",
+        run.transcript()
+    );
+    // AND THE REPORT CARRIES IT, because the number that gets quoted is the one
+    // printed, and the number that got quoted is what deleted a working cache.
+    assert!(
+        run.stdout().contains("started from"),
+        "the report says what each job started from\n{}",
+        run.transcript()
+    );
+    assert!(
+        run.stdout().contains("is not this one's control"),
+        "and says it of the totals, where a reader takes them from\n{}",
+        run.transcript()
+    );
+}
+
+/// The control for the test above: the same gate over a fixture whose jobs
+/// declare no cache reports no state and refuses nothing, because the population
+/// that owes a record is the jobs with something to restore.
+#[test]
+fn a_job_with_no_cache_leaves_no_record_and_is_not_refused_for_it() {
+    let run = replay(&[Job::plain("validate"), Job::plain("unrun-tests")]);
+    assert!(run.output.status.success(), "{}", run.transcript());
+    assert!(
+        run.census().restored.is_empty(),
+        "nothing wrote a restore record: {}",
+        run.transcript()
+    );
+    assert!(
+        run.stdout().contains("declares no cache"),
+        "and the report says that is what happened, rather than leaving a job \
+         with no line at all\n{}",
         run.transcript()
     );
 }
