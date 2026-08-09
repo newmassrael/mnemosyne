@@ -533,36 +533,35 @@ jobs:
       # which is neither `validate`'s resolve nor `server-features`', so sharing
       # a cache would make each run evict the other's artifacts.
       #
-      # R1099 — THE BUILD TREES ARE GONE BECAUSE THEY WERE MEASURED AND THEY SAVED
-      # NOTHING. This key held `target` and `tools/unrun-tests/target` and was the
-      # last whole-`target` cache in the file, 7.83 GB of an 8.57 GB demand against
-      # a 10 GB budget, and 135 seconds of this job spent restoring it. Two runs
-      # settle what it bought: run 31294232766 built every key from nothing and
-      # this job compiled 773 units; run 31295304780 restored 7466 MB on an exact
-      # hit — `Cache restored successfully` in its log — and this job compiled 773
-      # units. The same 773, the same 670 distinct, the same 103 repeats. Not one
-      # compilation was skipped for the seven and a half gigabytes.
+      # R1100 — THE BUILD TREE IS BACK, AND NOW IT HAS A NUMBER BEHIND IT. R1099
+      # removed it on the strength of two runs whose censuses for this job were
+      # identical (773 compiled / 670 distinct / 103 repeated), reading that as a
+      # cache which skipped nothing. Both of those runs were WARM. The exact key
+      # missed in one of them because the workflow had moved, but `restore-keys`
+      # matched the prefix and GitHub served the previous generation — its own log
+      # says `Cache hit for restore-key: Linux-cargo-unrun-…`. Comparing warm
+      # against warm is how a cache that works reads as a cache that does nothing.
       #
-      # WHY, AS FAR AS IT IS MEASURED: a fresh checkout gives every source this
-      # repository owns a new mtime, and cargo's fingerprint is an mtime
-      # comparison, so everything this repository owns is dirty before the first
-      # step runs. Measured locally: a workspace built cold takes 33 compilations,
-      # rebuilds in 0, and after touching only this repository's own sources
-      # rebuilds 9 — every one of them this repository's own crate, and no
-      # dependency. A tar round-trip of the tree alone does the same 9. That
-      # accounts for the repository's own units and not for its dependencies',
-      # which stayed fresh in every local variant; what the runner does that these
-      # do not is round-trip `~/.cargo/registry` through the same cache, and that
-      # remains the untested half.
+      # Run 31296883662 is the one that was actually cold here, because the tree
+      # was not in the declaration at all, and it says what the cache is worth:
+      # 1199 compiled / 1006 distinct / 193 repeated, against 773 / 670 / 103 —
+      # 426 compilations and about 600 seconds of this job. It costs 7.83 GB of a
+      # 10 GB budget and 135 seconds to restore, and it buys ten minutes.
       #
-      # The registry and git caches STAY. They are 0.65 GB between them, they are
-      # what a cold `cargo fetch` costs, and nothing here measures them as idle.
+      # THE LESSON IS R1091'S, MIRRORED. That round established that a cache which
+      # EXISTS is not a job that was warm. This one is the other direction: a run
+      # whose key MOVED is not a job that was cold. `restore-keys` is exactly the
+      # mechanism that makes both true, and the only reading that settles it is
+      # the one printed per job by `cache-budget` — whether a cache was built from
+      # nothing — which R1099 did not consult for this key.
       - name: Cache cargo (unrun tests)
         uses: actions/cache@v6
         with:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
+            target
+            tools/unrun-tests/target
           key: ${{ runner.os }}-cargo-unrun-${{ hashFiles('**/Cargo.lock', '.github/workflows/mnemosyne-validate.yml') }}
           restore-keys: |
             ${{ runner.os }}-cargo-unrun-

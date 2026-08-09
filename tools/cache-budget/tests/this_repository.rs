@@ -179,26 +179,32 @@ fn this_repository_now_asks_for_strictly_less_than_that() {
         "fewer keys hold a whole build tree than did before — no policy number, \
          just the comparison: {holders:?}"
     );
-    // R1099 — AND NOW IT IS NONE OF THEM, WHICH THIS TEST USED TO FORBID. The
-    // assertion that stood here required at least one key to keep a build tree,
-    // and its reason was a sentence rather than a number: that this repository's
-    // slowest jobs are the ones a cold `target` costs half an hour each. The last
-    // such key was `unrun-`, and two runs priced what it bought. Run 31294232766
-    // built every key from nothing and `unrun-tests` compiled 773 units; run
-    // 31295304780 restored 7466 MB on an exact hit and `unrun-tests` compiled 773
-    // units — the same 773, the same 670 distinct, the same 103 repeats, for 7.83
-    // GB of a 10 GB budget and 135 seconds of restore. Nothing was saved.
+    // R1100 — AND NOT ZERO EITHER, WHICH IS NOW A NUMBER RATHER THAN A SENTENCE.
+    // This assertion stood on prose: that this repository's slowest jobs are the
+    // ones a cold `target` costs half an hour each. R1099 removed the last such
+    // key believing it had measured that prose false — two runs, identical
+    // censuses for `unrun-tests` at 773 compiled / 670 distinct / 103 repeated,
+    // read as a cache which skipped nothing.
     //
-    // So the law is inverted rather than relaxed: a whole build tree in a cache
-    // is REFUSED, and the way to add one back is to bring a measurement showing
-    // it skips compilations — which is a thing `tools/twice-compiled` now prints
-    // for every run, so the evidence is a push away rather than an argument.
+    // BOTH OF THOSE RUNS WERE WARM. The exact key missed in one of them because
+    // the workflow had moved, but `restore-keys` matched the prefix and GitHub
+    // served the previous generation — `Cache hit for restore-key:
+    // Linux-cargo-unrun-…` in that job's own log. Warm against warm is how a
+    // cache that works reads as a cache that does nothing.
+    //
+    // Run 31296883662 ran with the tree out of the declaration, which is the only
+    // genuinely cold reading this repository has of it: 1199 compiled / 1006
+    // distinct / 193 repeated. The cache is worth 426 compilations and about ten
+    // minutes of that job. So the prose was right, and it is replaced here by the
+    // measurement rather than restored as prose.
     assert!(
-        holders.is_empty(),
-        "no key may keep a whole build tree: the last one that did was measured \
-         over two runs and skipped ZERO compilations while holding 91% of the \
-         budget. Adding one back takes a census showing otherwise, not a comment \
-         about how slow a cold build is: {holders:?}"
+        !holders.is_empty(),
+        "at least one key keeps a whole build tree, and this is what it buys: \
+         with `unrun-`'s tree in the declaration that job compiles 773 units, \
+         without it 1199 (run 31296883662) — 426 compilations and about ten \
+         minutes for 7.83 GB. Removing the last one takes a census showing it \
+         skips nothing, taken against a job that was COLD and not one that \
+         restored a prefix match: {holders:?}"
     );
 }
 
