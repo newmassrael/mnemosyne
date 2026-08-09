@@ -216,6 +216,25 @@ pub struct CacheDeclaration {
     /// truncated at the first expression that cannot be resolved without running
     /// the job — `Linux-cargo-unrun-`.
     pub prefix: String,
+    /// The `restore-keys:` the step declares, `${{ runner.os }}` resolved.
+    ///
+    /// THE SAME IDENTITY, SPELLED A SECOND TIME BY A HUMAN, and until R1116
+    /// nothing read it. [`prefix`](Self::prefix) is DERIVED from the key and is
+    /// what every gate in this repository joins on; `restore-keys` is what
+    /// GitHub actually falls back to. A workflow where those two disagree is one
+    /// where every joining gate is answering about a key GitHub never tries.
+    ///
+    /// IT IS ALSO THE PREMISE OF EVERY MEASUREMENT IN THE CACHING ARC. Because
+    /// each key ends in a `hashFiles` of the lockfiles AND of the workflow
+    /// itself, every edit to this file moves all eight primary keys at once —
+    /// and the run stays warm anyway, through this fallback. Run 31337461298
+    /// changed the workflow and five of seven jobs reported `no exact hit`
+    /// against 221, 246, 281, 756 and 32063 MB that arrived regardless. R1115
+    /// wrote the opposite into the ledger as a carry — that an edit costs a cold
+    /// run — while editing the very file whose comment records the measurement.
+    /// A property load-bearing for an arc of measurements was declared in a
+    /// field nobody read, so nothing could contradict a sentence about it.
+    pub restore_keys: Vec<String>,
     /// The `path:` entries, in the order written. What a cache HOLDS is what it
     /// costs, so this is what lets one cache's size be reasoned about from
     /// another's.
@@ -342,6 +361,14 @@ pub fn cache_steps(doc: &Yaml, source: &str) -> Vec<CacheDeclaration> {
                 .filter(|line| !line.is_empty())
                 .map(str::to_string)
                 .collect();
+            let restore_keys: Vec<String> = step["with"]["restore-keys"]
+                .as_str()
+                .unwrap_or_default()
+                .lines()
+                .map(str::trim)
+                .filter(|line| !line.is_empty())
+                .map(|line| line.replace("${{ runner.os }}", os))
+                .collect();
             out.push(CacheDeclaration {
                 source: source.to_string(),
                 owner: owner.clone(),
@@ -350,10 +377,58 @@ pub fn cache_steps(doc: &Yaml, source: &str) -> Vec<CacheDeclaration> {
                 prefix: key_prefix(key, os),
                 paths,
                 hashed: hashed_globs(key),
+                restore_keys,
             });
         }
     }
     out
+}
+
+/// Why a cache declaration cannot survive an edit to the workflow it sits in.
+///
+/// `None` means it can: some declared `restore-key` matches an earlier
+/// generation whatever the primary key hashes, so an edit costs an exact miss
+/// and nothing else. This is the property every cross-run comparison in the
+/// caching arc rests on, and R1116 is where it stopped being a sentence.
+pub fn survives_an_edit(declaration: &CacheDeclaration) -> Option<String> {
+    if declaration.restore_keys.is_empty() {
+        return Some(format!(
+            "`{}` declares no `restore-keys`, so the only thing GitHub tries is \
+             a primary key that hashes this workflow — every edit to it is a \
+             cold run for this cache, and no two runs either side of one are \
+             comparable",
+            declaration.prefix
+        ));
+    }
+    // A fallback that still carries an expression is one that moves when that
+    // expression's inputs move — the same cold run, one level down.
+    if let Some(hashing) = declaration
+        .restore_keys
+        .iter()
+        .find(|fallback| fallback.contains("${{"))
+    {
+        return Some(format!(
+            "`{hashing}` is a fallback that still carries an expression, so it \
+             moves whenever the primary key does and falls back to nothing"
+        ));
+    }
+    // AND IT HAS TO BE THE PREFIX THIS READER USES. Every gate here joins on
+    // `prefix`, DERIVED from the key; GitHub falls back to what is WRITTEN in
+    // `restore-keys`. Two spellings of one identity that disagree leave the
+    // gates answering about a key nothing ever tries — silently, because each
+    // spelling looks right on its own.
+    if !declaration
+        .restore_keys
+        .iter()
+        .any(|fallback| fallback == &declaration.prefix)
+    {
+        return Some(format!(
+            "this reader joins on `{}` and GitHub falls back to {:?} — two \
+             spellings of one identity that do not agree",
+            declaration.prefix, declaration.restore_keys
+        ));
+    }
+    None
 }
 
 /// One `actions/upload-artifact` step, as a workflow declares it.

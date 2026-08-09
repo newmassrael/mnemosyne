@@ -261,6 +261,45 @@
         }
       ],
       "expect_red": ["a_skipped_workspace_contributes_no_suite_to_run"]
+    },
+    {
+      "name": "restore-keys-goes-back-to-being-unread",
+      "why": "R1116: the field that keeps two runs either side of a workflow edit comparable was DECLARED and read by nothing, so no measurement could contradict a sentence about it — and R1115 wrote the wrong sentence into the ledger",
+      "edits": [
+        {
+          "file": "tools/ci-plan/src/lib.rs",
+          "from": "            let restore_keys: Vec<String> = step[\"with\"][\"restore-keys\"]\n                .as_str()\n                .unwrap_or_default()",
+          "to": "            let restore_keys: Vec<String> = step[\"with\"][\"restore-keys\"]\n                .as_str()\n                .map(|_| \"\")\n                .unwrap_or_default()"
+        }
+      ],
+      "expect_red": [
+        "a_fallback_that_cannot_serve_an_earlier_generation_is_named",
+        "every_cache_here_survives_an_edit_to_the_workflow_it_is_written_in"
+      ]
+    },
+    {
+      "name": "a-fallback-that-still-hashes-is-accepted",
+      "why": "a `restore-keys` carrying the same expression as the primary key moves when it moves, so it falls back to nothing — the cold run one level down, wearing the shape of a fallback",
+      "edits": [
+        {
+          "file": "tools/ci-plan/src/lib.rs",
+          "from": "        .find(|fallback| fallback.contains(\"${{\"))",
+          "to": "        .find(|fallback| fallback.contains(\"\\u{0}\"))"
+        }
+      ],
+      "expect_red": ["a_fallback_that_cannot_serve_an_earlier_generation_is_named"]
+    },
+    {
+      "name": "the-two-spellings-of-the-identity-need-not-agree",
+      "why": "THE QUIET ONE. A fallback that restores SOMETHING makes every job look warm while every gate here joins on a prefix GitHub is never asked for; both spellings read correctly alone, which is why only comparing them finds it",
+      "edits": [
+        {
+          "file": "tools/ci-plan/src/lib.rs",
+          "from": "        .any(|fallback| fallback == &declaration.prefix)",
+          "to": "        .any(|fallback| !fallback.is_empty())"
+        }
+      ],
+      "expect_red": ["a_fallback_that_cannot_serve_an_earlier_generation_is_named"]
     }
   ]
 }

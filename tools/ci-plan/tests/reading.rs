@@ -245,6 +245,100 @@ fn this_repository_declares_the_caches_its_jobs_are_slow_without() {
     assert!(declared.iter().all(|d| tracked.contains(&d.source)));
 }
 
+/// One cache step, so the three ways a fallback fails can each be taken. This
+/// repository has none of them — which is exactly why they are written here and
+/// not left to the tree to demonstrate.
+fn one_cache(key: &str, restore_keys: &str) -> CacheDeclaration {
+    let with_restore = if restore_keys.is_empty() {
+        String::new()
+    } else {
+        format!("          restore-keys: |\n            {restore_keys}\n")
+    };
+    let yaml = format!(
+        "jobs:\n  j:\n    runs-on: ubuntu-latest\n    steps:\n      - uses: actions/cache@v6\n\
+         \x20       with:\n          path: |\n            target\n          key: {key}\n{with_restore}"
+    );
+    let declared = cache_steps(&parse_workflow(&yaml, "fixture"), "fixture");
+    assert_eq!(declared.len(), 1, "{declared:?}");
+    declared.into_iter().next().expect("one declaration")
+}
+
+#[test]
+fn a_fallback_that_cannot_serve_an_earlier_generation_is_named() {
+    let good = one_cache(
+        "${{ runner.os }}-cargo-unrun-${{ hashFiles('**/Cargo.lock') }}",
+        "${{ runner.os }}-cargo-unrun-",
+    );
+    assert_eq!(
+        ci_plan::survives_an_edit(&good),
+        None,
+        "the fallback is the prefix with no expression left in it, which is what \
+         keeps a run after an edit warm: {good:?}"
+    );
+
+    let none = one_cache(
+        "${{ runner.os }}-cargo-unrun-${{ hashFiles('**/Cargo.lock') }}",
+        "",
+    );
+    assert!(
+        ci_plan::survives_an_edit(&none).is_some_and(|why| why.contains("no `restore-keys`")),
+        "with nothing to fall back to, every edit to the workflow the key hashes \
+         is a cold run for this cache"
+    );
+
+    let still_hashing = one_cache(
+        "${{ runner.os }}-cargo-unrun-${{ hashFiles('**/Cargo.lock') }}",
+        "${{ runner.os }}-cargo-unrun-${{ hashFiles('**/Cargo.lock') }}",
+    );
+    assert!(
+        ci_plan::survives_an_edit(&still_hashing).is_some_and(|why| why.contains("expression")),
+        "a fallback that still hashes moves whenever the primary key does, so it \
+         is the same cold run one level down"
+    );
+
+    let disagreeing = one_cache(
+        "${{ runner.os }}-cargo-unrun-${{ hashFiles('**/Cargo.lock') }}",
+        "${{ runner.os }}-cargo-",
+    );
+    assert!(
+        ci_plan::survives_an_edit(&disagreeing).is_some_and(|why| why.contains("do not agree")),
+        "THE QUIET ONE: this restores something, so every job looks warm, while \
+         every gate in this repository joins on `Linux-cargo-unrun-` — a key \
+         GitHub is never asked for. Both spellings read correctly alone."
+    );
+}
+
+#[test]
+fn every_cache_here_survives_an_edit_to_the_workflow_it_is_written_in() {
+    // THE PREMISE OF EVERY CROSS-RUN COMPARISON THIS REPOSITORY MAKES, and it
+    // was a sentence until R1116. Each key here ends in a `hashFiles` of the
+    // lockfiles AND of the workflow file, so every edit to that file moves all
+    // eight primary keys at once. What keeps the runs either side of an edit
+    // comparable is `restore-keys` — and nothing read it, so no measurement
+    // could contradict a claim about it. R1115 put the opposite into the ledger
+    // as a carry (that an edit costs a cold run) while editing the file whose
+    // own comment records run 31337461298 measuring otherwise: five of seven
+    // jobs reported `no exact hit` and 221, 246, 281, 756 and 32063 MB arrived.
+    let root = repository_root();
+    let declared = ci_plan::workflow_cache_declarations(&root);
+    let broken: Vec<String> = declared
+        .iter()
+        .filter_map(|d| ci_plan::survives_an_edit(d).map(|why| format!("{} — {why}", d.owner)))
+        .collect();
+    assert!(
+        broken.is_empty(),
+        "a cache that cannot survive an edit to its own workflow makes every \
+         run either side of one incomparable, which is the licence R1105's law \
+         checks and this is what would silently revoke it:\n  {}",
+        broken.join("\n  ")
+    );
+    assert!(
+        declared.len() >= 2 && declared.iter().all(|d| !d.restore_keys.is_empty()),
+        "and the reach is asserted, because a walk that found no declaration \
+         passes the loop above without looking at anything: {declared:?}"
+    );
+}
+
 fn repository_root() -> std::path::PathBuf {
     std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .parent()
