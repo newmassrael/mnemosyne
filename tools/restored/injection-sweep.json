@@ -86,12 +86,12 @@
     },
     {
       "name": "an-absent-cache-hit-output-is-a-miss",
-      "why": "`cache-hit` is the only thing that can tell an exact hit from a prefix hit; a step that reads its absence as `false` reports every warm job as the invisible state, and the step is silent about it",
+      "why": "`cache-hit` is the only thing that can tell an exact hit from a prefix hit; a step that reads its ABSENCE as `false` reports every warm job as the invisible state, and the step is silent about it. An UNSET variable is a step not reading the action at all, which is a different thing from the empty value the action sets when nothing matched",
       "edits": [
         {
           "file": "tools/restored/src/main.rs",
-          "from": "    let exact = match required(restored::EXACT_VARIABLE).as_str() {",
-          "to": "    let exact = match std::env::var(restored::EXACT_VARIABLE)\n        .unwrap_or_else(|_| \"false\".to_string())\n        .as_str()\n    {"
+          "from": "    let said = std::env::var(restored::EXACT_VARIABLE).unwrap_or_else(|_| {\n        fail(&format!(\n            \"${} is unset — `actions/cache` always sets it, to `true`, `false` \\\n             or the empty string, so this step is not reading the action at all\",\n            restored::EXACT_VARIABLE\n        ))\n    });",
+          "to": "    let said = std::env::var(restored::EXACT_VARIABLE).unwrap_or_default();"
         }
       ],
       "expect_red": ["without_the_cache_hit_output_it_refuses_rather_than_assuming_a_miss"]
@@ -155,6 +155,42 @@
         }
       ],
       "expect_red": ["the_second_step_without_the_first_refuses"]
+    },
+    {
+      "name": "nothing-matched-is-read-as-a-prefix-hit",
+      "why": "`actions/cache` has THREE answers and `false` is not the cold one — it means a `restore-keys` prefix matched, which is the state R1099 misread when it deleted a cache that was saving ten minutes. Folding the empty answer into `false` puts a cold job into the record as a prefix hit, and the whole crate exists to keep those apart",
+      "edits": [
+        {
+          "file": "tools/restored/src/main.rs",
+          "from": "        \"\" if arrived == 0 => false,",
+          "to": "        _ if arrived == 0 => false,"
+        }
+      ],
+      "expect_red": ["a_cache_hit_that_is_not_a_boolean_is_refused_by_the_step_that_reads_it"]
+    },
+    {
+      "name": "an-empty-cache-hit-is-cold-whatever-the-disk-says",
+      "why": "an empty value is also what a step reading the WRONG step's output sees, and the disk is the only thing that tells the two apart — a job whose cache genuinely restored gigabytes while its `cache-hit` reads empty is two steps pointed at two caches, and recording it as cold makes every number downstream a number about a run that did not happen",
+      "edits": [
+        {
+          "file": "tools/restored/src/main.rs",
+          "from": "        \"\" if arrived == 0 => false,\n        \"\" => fail(&format!(",
+          "to": "        \"\" => false,\n        \"unreachable\" => fail(&format!("
+        }
+      ],
+      "expect_red": ["nothing_matched_while_something_arrived_is_two_steps_reading_two_caches"]
+    },
+    {
+      "name": "the-record-need-not-say-when",
+      "why": "the two readings already bracket the `actions/cache` step, so the interval between them IS what the restore cost — and a record without it prices every cache at zero seconds, which answers `was this cache worth having` silently in the direction of keeping every one. R1099 deleted one on a guess and R1100 put it back",
+      "edits": [
+        {
+          "file": "tools/restored/src/main.rs",
+          "from": "    out.extend_from_slice(&restored::encode_at(Side::Before, restored::now_micros()));",
+          "to": ""
+        }
+      ],
+      "expect_red": ["an_exact_hit_with_a_tree_arriving_is_recorded_as_one"]
     }
   ]
 }

@@ -110,6 +110,28 @@ pub struct Restored {
     pub exact: bool,
     /// Every path the job's cache declares, in the order it declares them.
     pub paths: Vec<Restoration>,
+    /// When each side was measured, in microseconds since the epoch.
+    ///
+    /// WHAT A CACHE COST, WHICH NOTHING HERE COULD SAY. The two readings already
+    /// bracket the `actions/cache` step, so the interval between them IS the
+    /// restore's wall-clock — the record was throwing it away by not writing the
+    /// clock down. Without it "this cache brought 27 GB" is a fact with no price
+    /// beside it, and whether a cache is worth having is a question about its
+    /// price: R1099 deleted one on a guess and R1100 put it back.
+    pub at: (u64, u64),
+}
+
+impl Restored {
+    /// How long the restore took, in microseconds.
+    ///
+    /// THE INTERVAL BETWEEN TWO PROCESSES, so it includes everything the cache
+    /// step did and nothing this repository chose — which is exactly the cost a
+    /// job pays for having the cache at all. It saturates rather than wrapping
+    /// because a runner whose clock stepped backwards between the two readings
+    /// is not a restore that took negative time.
+    pub fn restore_micros(&self) -> u64 {
+        self.at.1.saturating_sub(self.at.0)
+    }
 }
 
 /// The state a job's build tree was in when it started compiling.
@@ -233,6 +255,12 @@ pub enum Malformed {
     NoPathsAtAll,
     /// `cache-hit` was neither `true` nor `false`.
     ExactIsNotABoolean { value: String },
+    /// No clock for one side of the restore, or more than one.
+    ///
+    /// REFUSED RATHER THAN DEFAULTED, because a record with no interval would
+    /// price every cache at zero seconds — the shape where a measurement that
+    /// did not happen and a cache that cost nothing print the same number.
+    TimeIsNotSaidOnce { side: Side, times: usize },
 }
 
 impl std::fmt::Display for Malformed {
@@ -272,6 +300,13 @@ impl std::fmt::Display for Malformed {
                  nor `false` — the step that reads it ran without the output it \
                  reads"
             ),
+            Malformed::TimeIsNotSaidOnce { side, times } => write!(
+                f,
+                "the `{}` side said when it was measured {times} time(s) and owes \
+                 exactly one — the interval between the two IS what the restore \
+                 cost, and a record without it prices every cache at nothing",
+                side.word()
+            ),
         }
     }
 }
@@ -294,6 +329,25 @@ pub fn encode_side(side: Side, path: &str, measured: &Measurement) -> Vec<u8> {
 /// The `exact` line the `after` step closes the record with.
 pub fn encode_exact(exact: bool) -> Vec<u8> {
     line(&["exact", if exact { "true" } else { "false" }])
+}
+
+/// When one side of the restore was measured, in microseconds since the epoch.
+pub fn encode_at(side: Side, micros: u64) -> Vec<u8> {
+    line(&["at", side.word(), &micros.to_string()])
+}
+
+/// Now, in microseconds since the Unix epoch.
+///
+/// A WALL CLOCK, because the two readings are taken by two PROCESSES with the
+/// cache step between them, and a monotonic instant has no meaning outside the
+/// process that read it. A clock set before 1970 reads as 0 rather than
+/// refusing: this runs in front of every job's build, and a job that stops
+/// because the runner's clock is odd is a worse outcome than a span nobody uses.
+pub fn now_micros() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|since| u64::try_from(since.as_micros()).unwrap_or(u64::MAX))
+        .unwrap_or(0)
 }
 
 /// Which side of the restore a measurement is from.
@@ -389,6 +443,8 @@ pub fn decode(text: &str) -> Result<Restored, Malformed> {
     // a record measure the right paths in an order nobody wrote.
     let mut before: Vec<(String, Measurement)> = Vec::new();
     let mut after: Vec<(String, Measurement)> = Vec::new();
+    let mut said_before_at: Vec<u64> = Vec::new();
+    let mut said_after_at: Vec<u64> = Vec::new();
     for line in text.lines() {
         if line.is_empty() {
             continue;
@@ -415,6 +471,17 @@ pub fn decode(text: &str) -> Result<Restored, Malformed> {
                         &mut after
                     };
                     side.push(((*path).to_string(), measured));
+                }
+                _ => return Err(Malformed::WrongShape { line: line.into() }),
+            },
+            Some("at") => match fields.as_slice() {
+                [_, word @ ("before" | "after"), micros] => {
+                    let side = if *word == "before" {
+                        &mut said_before_at
+                    } else {
+                        &mut said_after_at
+                    };
+                    side.push(number(micros, line)?);
                 }
                 _ => return Err(Malformed::WrongShape { line: line.into() }),
             },
@@ -460,10 +527,29 @@ pub fn decode(text: &str) -> Result<Restored, Malformed> {
             return Err(Malformed::PathIsNotOnBothSides { path: path.clone() });
         }
     }
+    // ONE CLOCK PER SIDE, REFUSED RATHER THAN DEFAULTED, and asked LAST. A
+    // record whose interval is missing would price every cache at zero seconds
+    // — the shape where a measurement that did not happen and a cache that cost
+    // nothing print the same number. It is asked after everything else because
+    // a record that died between the two steps is missing its clock AND its
+    // `exact` line, and that event already has a name: two names for one defect
+    // send two readers to two different repairs.
+    for (side, said) in [
+        (Side::Before, &said_before_at),
+        (Side::After, &said_after_at),
+    ] {
+        if said.len() != 1 {
+            return Err(Malformed::TimeIsNotSaidOnce {
+                side,
+                times: said.len(),
+            });
+        }
+    }
     Ok(Restored {
         job: job.remove(0),
         exact,
         paths,
+        at: (said_before_at[0], said_after_at[0]),
     })
 }
 

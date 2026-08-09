@@ -13,6 +13,7 @@ use restored::{decode, Malformed, Measurement, Restoration, Restored, Side, Warm
 /// would have written rather than a hand-built string.
 fn written(job: &str, exact: bool, paths: &[(&str, u64, u64)]) -> String {
     let mut out = restored::encode_job(job);
+    out.extend_from_slice(&restored::encode_at(Side::Before, MEASURED_AT.0));
     for (path, before, _) in paths {
         out.extend_from_slice(&restored::encode_side(
             Side::Before,
@@ -33,9 +34,15 @@ fn written(job: &str, exact: bool, paths: &[(&str, u64, u64)]) -> String {
             },
         ));
     }
+    out.extend_from_slice(&restored::encode_at(Side::After, MEASURED_AT.1));
     out.extend_from_slice(&restored::encode_exact(exact));
     String::from_utf8(out).expect("the record is text")
 }
+
+/// When the two sides of a fixture's restore were measured. The interval is a
+/// round two minutes, which is the order of a real one: R1099 read 135 seconds
+/// for the 27 GB tree these tests stand in for.
+const MEASURED_AT: (u64, u64) = (1_000_000_000, 1_120_000_000);
 
 #[test]
 fn a_record_reads_back_as_what_was_written() {
@@ -74,9 +81,14 @@ fn a_record_reads_back_as_what_was_written() {
                     },
                 },
             ],
+            at: MEASURED_AT,
         }
     );
     assert_eq!(record.measured(), vec!["~/.cargo/registry", "target"]);
+    // WHAT THE CACHE COST, which is the half of "was it worth having" that no
+    // record here could say. The two readings already bracketed the restore;
+    // only the clock was missing.
+    assert_eq!(record.restore_micros(), 120_000_000);
 }
 
 /// THE STATE ROUND 1099 COULD NOT SEE, and the reason this crate exists: the
@@ -146,6 +158,58 @@ fn a_path_shrinking_across_the_restore_does_not_read_as_negative_warmth() {
 #[test]
 fn a_record_the_second_step_never_finished_is_refused_rather_than_read_as_cold() {
     let mut out = restored::encode_job("unrun-tests");
+    out.extend_from_slice(&restored::encode_side(
+        Side::Before,
+        "target",
+        &Measurement::default(),
+    ));
+    let text = String::from_utf8(out).expect("text");
+    assert_eq!(
+        decode(&text),
+        Err(Malformed::ExactIsNotSaidOnce { times: 0 })
+    );
+}
+
+#[test]
+fn a_whole_record_that_never_said_when_is_refused_rather_than_priced_at_nothing() {
+    // A CACHE WITH NO PRICE BESIDE IT CANNOT BE JUDGED. "This job restored 27 GB"
+    // is a fact; whether the cache was worth having is a question about what that
+    // cost, and a record read as zero seconds answers it wrongly and silently in
+    // the direction of keeping every cache. Round 1099 deleted one on a guess and
+    // Round 1100 put it back.
+    let mut out = restored::encode_job("unrun-tests");
+    out.extend_from_slice(&restored::encode_side(
+        Side::Before,
+        "target",
+        &Measurement::default(),
+    ));
+    out.extend_from_slice(&restored::encode_side(
+        Side::After,
+        "target",
+        &Measurement {
+            entries: 1,
+            bytes: 7_000,
+        },
+    ));
+    out.extend_from_slice(&restored::encode_exact(true));
+    let text = String::from_utf8(out).expect("text");
+    assert_eq!(
+        decode(&text),
+        Err(Malformed::TimeIsNotSaidOnce {
+            side: Side::Before,
+            times: 0
+        })
+    );
+}
+
+#[test]
+fn a_record_that_died_between_the_steps_keeps_its_own_name() {
+    // THE CONTROL FOR THE REFUSAL ABOVE, and the reason it is asked last: a job
+    // that died before the second step wrote neither its clock nor its `exact`
+    // line, and naming that event twice would send two readers to two different
+    // repairs. The truncated record is still `ExactIsNotSaidOnce`.
+    let mut out = restored::encode_job("unrun-tests");
+    out.extend_from_slice(&restored::encode_at(Side::Before, MEASURED_AT.0));
     out.extend_from_slice(&restored::encode_side(
         Side::Before,
         "target",

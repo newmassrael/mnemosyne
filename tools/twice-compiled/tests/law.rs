@@ -1577,6 +1577,7 @@ fn cached_job(job: &str, paths: &[&str]) -> Vec<RunStep> {
 /// The record such a job leaves, with what arrived under each path.
 fn restore_record(job: &str, exact: bool, paths: &[(&str, u64)]) -> String {
     let mut out = restored::encode_job(job);
+    out.extend_from_slice(&restored::encode_at(restored::Side::Before, 1_000_000_000));
     for (path, _) in paths {
         out.extend_from_slice(&restored::encode_side(
             restored::Side::Before,
@@ -1594,6 +1595,7 @@ fn restore_record(job: &str, exact: bool, paths: &[(&str, u64)]) -> String {
             },
         ));
     }
+    out.extend_from_slice(&restored::encode_at(restored::Side::After, 1_030_000_000));
     out.extend_from_slice(&restored::encode_exact(exact));
     String::from_utf8(out).expect("the record is text")
 }

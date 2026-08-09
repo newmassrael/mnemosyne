@@ -310,9 +310,59 @@ fn a_cache_hit_that_is_not_a_boolean_is_refused_by_the_step_that_reads_it() {
     let mut wiring = Wiring::wired(home.path(), &record);
     let before = wiring.run(tree.path(), &["before", "target"]);
     assert_eq!(before.code(), 0, "{}", before.transcript());
+    wiring.exact = Some("maybe");
+    let after = wiring.run(tree.path(), &["after"]);
+    assert_eq!(after.code(), 1, "{}", after.transcript());
+}
+
+#[test]
+fn nothing_matched_at_all_is_the_actions_third_answer_and_not_a_refusal() {
+    // `actions/cache` SETS `cache-hit` TO THE EMPTY STRING WHEN NOTHING MATCHED
+    // — `false` means a `restore-keys` prefix matched, which is a different
+    // state and the one R1099 misread. Until R1112 moved every key this
+    // repository had never had a fully cold run, so this answer had never
+    // arrived and the step refused it; three jobs of that run died here.
+    let (home, tree) = workspace();
+    let record = tree.path().join("rustc-log/unrun-tests.restored");
+    let mut wiring = Wiring::wired(home.path(), &record);
+    let before = wiring.run(tree.path(), &["before", "target"]);
+    assert_eq!(before.code(), 0, "{}", before.transcript());
+    wiring.exact = Some("");
+    let after = wiring.run(tree.path(), &["after"]);
+    assert_eq!(after.code(), 0, "{}", after.transcript());
+    let written = std::fs::read_to_string(&record).expect("the record");
+    let whole = restored::decode(&written).expect("a cold record decodes");
+    assert!(!whole.exact);
+    assert_eq!(whole.warmth(), restored::Warmth::Nothing);
+}
+
+#[test]
+fn nothing_matched_while_something_arrived_is_two_steps_reading_two_caches() {
+    // THE CONTRADICTION THE EMPTY VALUE COULD OTHERWISE HIDE. An empty
+    // `cache-hit` is also what a step reading the WRONG step's output sees, and
+    // the two are told apart by the disk rather than by the string: nothing
+    // matched means nothing arrived.
+    let (home, tree) = workspace();
+    let record = tree.path().join("rustc-log/unrun-tests.restored");
+    let mut wiring = Wiring::wired(home.path(), &record);
+    let before = wiring.run(tree.path(), &["before", "target"]);
+    assert_eq!(before.code(), 0, "{}", before.transcript());
+    // A restore happening between the two readings, which is what the cache step
+    // does when it matches something.
+    std::fs::create_dir_all(tree.path().join("target/debug")).expect("the tree");
+    std::fs::write(
+        tree.path().join("target/debug/libserde.rlib"),
+        vec![0_u8; 4_096],
+    )
+    .expect("what the cache brought");
     wiring.exact = Some("");
     let after = wiring.run(tree.path(), &["after"]);
     assert_eq!(after.code(), 1, "{}", after.transcript());
+    assert!(
+        after.stderr().contains("reading a different step"),
+        "{}",
+        after.transcript()
+    );
 }
 
 /// The second step without the first is a job whose cache step is wired above

@@ -52,6 +52,11 @@ fn before(record: &PathBuf, paths: &[String]) {
     // leave a previous job's measurements in front of this one's.
     let mut out = Vec::new();
     out.extend_from_slice(&restored::encode_job(&job));
+    // THE CLOCK BEFORE THE MEASURING, and its twin after the `after` step's, so
+    // the interval the record carries is the widest one this program can see —
+    // the cache step and both readings. Erring wide is the safe direction for a
+    // number a reader uses to decide whether a cache is worth its price.
+    out.extend_from_slice(&restored::encode_at(Side::Before, restored::now_micros()));
     for path in paths {
         let measured = measure(path, &home);
         out.extend_from_slice(&restored::encode_side(Side::Before, path, &measured));
@@ -75,30 +80,60 @@ fn after(record: &PathBuf) {
             record.display()
         ))
     });
-    let paths = opened(&text);
-    // THE ACTION'S OWN OUTPUT, and an unreadable one is a refusal rather than a
-    // `false`: `cache-hit` is the only thing that can tell an exact hit from a
-    // prefix hit, and reading its absence as "no exact hit" would report every
-    // warm job as the state this whole record exists to distinguish.
-    let exact = match required(restored::EXACT_VARIABLE).as_str() {
-        "true" => true,
-        "false" => false,
-        other => fail(&format!(
-            "${} is {other:?}, which is neither `true` nor `false` — \
-             `actions/cache` sets it from the primary key, so this step is \
-             reading an output that is not there",
-            restored::EXACT_VARIABLE
-        )),
-    };
+    let opened = opened(&text);
+    // MEASURED FIRST, because what the disk says is what tells the action's
+    // THIRD answer from a miswired step — see below.
     let mut out = Vec::new();
-    for path in &paths {
+    let mut arrived = 0_u64;
+    for (path, before) in &opened {
         let measured = measure(path, &home);
+        arrived = arrived.saturating_add(measured.bytes.saturating_sub(before.bytes));
         out.extend_from_slice(&restored::encode_side(Side::After, path, &measured));
         println!(
             "[restored] after   {path}: {} entries, {} bytes",
             measured.entries, measured.bytes
         );
     }
+    // THE ACTION'S OWN OUTPUT, AND IT HAS THREE ANSWERS AND NOT TWO.
+    // `actions/cache` sets `cache-hit` to `true` on an exact key match, to
+    // `false` when a `restore-keys` PREFIX matched, and to the EMPTY STRING when
+    // nothing matched at all. Until R1112 moved every key this repository had
+    // never had a fully cold run, so the third answer had never arrived and this
+    // program refused it — three jobs of that run died here.
+    //
+    // AN EMPTY VALUE IS ALSO WHAT A MISWIRED STEP READS, and the two are told
+    // apart by the DISK rather than by the string: nothing matched means nothing
+    // arrived. A step reading another step's output while a cache genuinely
+    // restored something is the contradiction, and it is still refused.
+    // READ DIRECTLY AND NOT THROUGH `required`, which treats empty as missing —
+    // right for every other variable here and wrong for this one, because empty
+    // is a VALUE `actions/cache` sets and means. An UNSET variable is still a
+    // wiring mistake and is still refused.
+    let said = std::env::var(restored::EXACT_VARIABLE).unwrap_or_else(|_| {
+        fail(&format!(
+            "${} is unset — `actions/cache` always sets it, to `true`, `false` \
+             or the empty string, so this step is not reading the action at all",
+            restored::EXACT_VARIABLE
+        ))
+    });
+    let exact = match said.as_str() {
+        "true" => true,
+        "false" => false,
+        "" if arrived == 0 => false,
+        "" => fail(&format!(
+            "${} is empty, which `actions/cache` means as `nothing matched` — \
+             and yet {arrived} bytes arrived across the restore. One of those \
+             two is reading a different step than the other",
+            restored::EXACT_VARIABLE
+        )),
+        other => fail(&format!(
+            "${} is {other:?}, which is none of `true`, `false` or empty — \
+             `actions/cache` sets it from the primary key, so this step is \
+             reading an output that is not there",
+            restored::EXACT_VARIABLE
+        )),
+    };
+    out.extend_from_slice(&restored::encode_at(Side::After, restored::now_micros()));
     out.extend_from_slice(&restored::encode_exact(exact));
     write(record, &out, true);
 
@@ -123,13 +158,25 @@ fn after(record: &PathBuf) {
 /// restore was read. But this step is the one that finishes it, so it reads the
 /// `before` lines directly and refuses only on what would make its own
 /// measurement wrong.
-fn opened(text: &str) -> Vec<String> {
+fn opened(text: &str) -> Vec<(String, Measurement)> {
     let mut paths = Vec::new();
     for line in text.lines() {
         let fields: Vec<&str> = line.split(restored::FIELD as char).collect();
         match fields.as_slice() {
             ["job", _] => {}
-            [side, path, _, _] if *side == Side::Before.word() => paths.push((*path).to_string()),
+            // The clock the first step wrote. This step adds its own and reads
+            // neither: what the interval is FOR is downstream of both.
+            ["at", _, _] => {}
+            // WHAT WAS THERE BEFORE COMES BACK WITH THE PATH, because whether
+            // anything ARRIVED is what tells `actions/cache`'s empty answer from
+            // a step reading the wrong output.
+            [side, path, entries, bytes] if *side == Side::Before.word() => paths.push((
+                (*path).to_string(),
+                Measurement {
+                    entries: reading(entries, line),
+                    bytes: reading(bytes, line),
+                },
+            )),
             _ => fail(&format!(
                 "the record `restored before` wrote holds a line this step \
                  cannot read: {line:?}"
@@ -143,6 +190,16 @@ fn opened(text: &str) -> Vec<String> {
         );
     }
     paths
+}
+
+/// A number this step's predecessor wrote, or a refusal naming the line.
+fn reading(field: &str, line: &str) -> u64 {
+    field.parse().unwrap_or_else(|_| {
+        fail(&format!(
+            "the record `restored before` wrote holds a measurement that is not \
+             a number: {line:?}"
+        ))
+    })
 }
 
 fn measure(path: &str, home: &str) -> Measurement {

@@ -313,7 +313,20 @@ fn report(census: &Census, declared: &Declared, absent: &BTreeSet<String>, root:
         // Saying so is the difference between the two silences.
         match (declared.caches.contains_key(job), census.restored.get(job)) {
             (_, Some(Ok(record))) => {
-                println!("  {:<22} started from: {}", "", record.warmth().why())
+                // AND WHAT THAT COST, beside the seconds the job spent
+                // compiling. The two numbers are the whole of "was this cache
+                // worth having": a restore that takes longer than the compiling
+                // it spared is a cache that made the job slower, and until the
+                // record carried a clock neither this gate nor anything else
+                // could put them next to each other.
+                println!(
+                    "  {:<22} started from: {} — the restore took {:.1} s, \
+                     against {:.1} s this job spent compiling",
+                    "",
+                    record.warmth().why(),
+                    seconds(record.restore_micros()),
+                    seconds(log.busy_micros()),
+                )
             }
             (_, Some(Err(why))) => println!("  {:<22} started from: UNREADABLE — {why}", ""),
             (true, None) => println!("  {:<22} started from: NOT SAID", ""),

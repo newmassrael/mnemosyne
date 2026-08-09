@@ -970,6 +970,7 @@ fn downloaded(under: &Path, jobs: &[(&str, bool, u64)]) -> PathBuf {
         std::fs::create_dir_all(&artifact).expect("the artifact directory");
         record_a_compilation(&artifact.join(format!("{job}.log")));
         let mut written = restored::encode_job(job);
+        written.extend_from_slice(&restored::encode_at(restored::Side::Before, 1_000_000_000));
         written.extend_from_slice(&restored::encode_side(
             restored::Side::Before,
             "target",
@@ -983,6 +984,7 @@ fn downloaded(under: &Path, jobs: &[(&str, bool, u64)]) -> PathBuf {
                 bytes: *arrived,
             },
         ));
+        written.extend_from_slice(&restored::encode_at(restored::Side::After, 1_030_000_000));
         written.extend_from_slice(&restored::encode_exact(*exact));
         std::fs::write(artifact.join(format!("{job}.restored")), written)
             .expect("the restore record");

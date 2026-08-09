@@ -85,6 +85,7 @@ fn everybody_compiled(declared: &Declared) -> Census {
     // one.
     for (job, paths) in &declared.caches {
         let mut written = restored::encode_job(job);
+        written.extend_from_slice(&restored::encode_at(restored::Side::Before, 1_000_000_000));
         for path in paths {
             written.extend_from_slice(&restored::encode_side(
                 restored::Side::Before,
@@ -102,6 +103,7 @@ fn everybody_compiled(declared: &Declared) -> Census {
                 },
             ));
         }
+        written.extend_from_slice(&restored::encode_at(restored::Side::After, 1_030_000_000));
         written.extend_from_slice(&restored::encode_exact(true));
         census.restored.insert(
             job.clone(),
