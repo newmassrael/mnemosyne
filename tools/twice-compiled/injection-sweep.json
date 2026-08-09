@@ -128,6 +128,48 @@
       ]
     },
     {
+      "name": "a-census-of-no-jobs-reads-as-clean",
+      "why": "this is not hypothetical: a local replay refused all nine jobs of the workflow, and the census printed `0 compilations across 0 job(s)`, every total a clean zero, and signed off with `every one of the 0 job(s) recorded what it compiled` — a measurement that never happened wearing the exact shape of a file in good order",
+      "edits": [
+        {
+          "file": "tools/twice-compiled/src/lib.rs",
+          "from": "    if covered < 2 {",
+          "to": "    if covered > 9_999 {"
+        }
+      ],
+      "expect_red": ["a_census_that_reached_fewer_than_two_jobs_is_refused"]
+    },
+    {
+      "name": "a-job-is-skipped-for-a-variable-the-replay-replaces",
+      "why": "every job in this workflow carries `MNEMOSYNE_RUSTC_LOG: ${{ github.workspace }}/…`, which the replay overwrites before running a step; reading it as an expression only GitHub can resolve refuses all nine jobs over a value nobody reads, which is what closed the replay entrance the day the recorder was wired in",
+      "edits": [
+        {
+          "file": "tools/twice-compiled/src/lib.rs",
+          "from": "            .filter(|(name, _)| !REPLAY_SETS.contains(&name.as_str()))",
+          "to": "            .filter(|(name, _)| !name.is_empty())"
+        }
+      ],
+      "expect_red": [
+        "a_job_is_not_skipped_for_a_variable_the_replay_sets_itself",
+        "the_jobs_a_local_replay_cannot_run_are_exactly_these_three"
+      ]
+    },
+    {
+      "name": "the-replay-replays-the-gate-itself",
+      "why": "the gate's job downloads what the others wrote and joins it, so replaying it reads a directory the replay is still filling and puts the instrument's own build into its own reading — the mistake this crate already corrects once, for the log the gate writes on a runner",
+      "edits": [
+        {
+          "file": "tools/twice-compiled/src/lib.rs",
+          "from": "        if step.script.contains(GATE_MANIFEST) {",
+          "to": "        if step.script.contains(\"a manifest no step names\") {"
+        }
+      ],
+      "expect_red": [
+        "the_replay_does_not_replay_the_gate_itself",
+        "the_jobs_a_local_replay_cannot_run_are_exactly_these_three"
+      ]
+    },
+    {
       "name": "a-census-with-no-clocks-in-it-is-accepted",
       "why": "a job running an older recorder leaves a log whose counts are all present and whose seconds are all zero — every total adds up, and the report says the work is free, which is the finding that would argue for merging every job in the file",
       "edits": [

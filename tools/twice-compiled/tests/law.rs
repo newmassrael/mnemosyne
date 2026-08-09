@@ -10,8 +10,8 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use ci_plan::RunStep;
 use twice_compiled::{
-    declared_jobs, judge, names_its_job, read, read_log, Census, Cost, Invocation, JobLog, Refusal,
-    Unit, WRAPPER_VARIABLE,
+    declared_jobs, judge, names_its_job, read, read_log, unresolvable, Census, Cost, Invocation,
+    JobLog, Refusal, Unit, WRAPPER_VARIABLE,
 };
 
 /// A record as `rustc-log` writes it: when the compiler started, how long it
@@ -412,6 +412,89 @@ fn a_job_that_recorded_nothing_is_refused() {
 }
 
 #[test]
+fn a_census_that_reached_fewer_than_two_jobs_is_refused() {
+    // THE VACUOUS GREEN THIS GATE ALMOST SHIPPED. A local replay refused all
+    // nine jobs of the workflow — for a variable it replaces itself — and the
+    // census then printed `0 compilations across 0 job(s)`, every total a clean
+    // zero, and signed off with "every one of the 0 job(s) recorded what it
+    // compiled". Nothing was wrong with the file; nothing had been measured.
+    // The subject here is what TWO jobs both compile, so fewer than two cannot
+    // hold a finding and must not print as though it had looked for one.
+    let declared = declared_jobs(&[wired("validate"), wired("unrun-tests"), wired("msrv")]);
+    let everything: BTreeSet<String> = declared.keys().cloned().collect();
+    assert_eq!(
+        judge(&Census::default(), &declared, &everything),
+        vec![Refusal::CensusCoversTooFewJobs { covered: 0 }],
+        "a census the absent list has swallowed whole"
+    );
+
+    let mut all_but_one: BTreeSet<String> = everything.clone();
+    all_but_one.remove("validate");
+    assert_eq!(
+        judge(&census_of(&["validate"]), &declared, &all_but_one),
+        vec![Refusal::CensusCoversTooFewJobs { covered: 1 }],
+        "and one job has no cross-job duplication BY CONSTRUCTION, so its zero \
+         is arithmetic rather than a finding"
+    );
+
+    // The control: two covered jobs, and the same census is accepted.
+    let mut mine = BTreeSet::new();
+    mine.insert("msrv".to_string());
+    assert!(judge(&census_of(&["validate", "unrun-tests"]), &declared, &mine).is_empty());
+}
+
+#[test]
+fn a_job_is_not_skipped_for_a_variable_the_replay_sets_itself() {
+    // WHAT CLOSED THE REPLAY. Every job in this workflow carries
+    // `MNEMOSYNE_RUSTC_LOG: ${{ github.workspace }}/rustc-log/<job>.log`, which
+    // is an expression only GitHub resolves — and which the replay overwrites
+    // with a path of its own before running a single step. Reading it anyway
+    // refuses every job in the file over a value nobody reads.
+    let replayable = step(
+        "validate",
+        &[
+            (WRAPPER_VARIABLE, "${{ github.workspace }}/recorder"),
+            (
+                rustc_log::LOG_VARIABLE,
+                "${{ github.workspace }}/rustc-log/validate.log",
+            ),
+        ],
+    );
+    assert_eq!(unresolvable(&[&replayable]), None);
+
+    // Its control, and the case the refusal is actually for: a toolchain
+    // resolved from a step this replay does not run. Replayed on the dev
+    // toolchain, `msrv`'s units would collide with every other job's.
+    let msrv = step(
+        "msrv",
+        &[
+            (WRAPPER_VARIABLE, "/recorder"),
+            (rustc_log::LOG_VARIABLE, "/w/rustc-log/msrv.log"),
+            ("RUSTUP_TOOLCHAIN", "${{ steps.msrv.outputs.version }}"),
+        ],
+    );
+    assert!(unresolvable(&[&msrv]).is_some_and(|why| why.contains("RUSTUP_TOOLCHAIN")));
+
+    let mut scripted = replayable.clone();
+    scripted.script = "cargo test -- ${{ github.sha }}".to_string();
+    assert!(unresolvable(&[&scripted]).is_some_and(|why| why.contains("script")));
+}
+
+#[test]
+fn the_replay_does_not_replay_the_gate_itself() {
+    // The gate's job downloads what the others wrote and joins it. Replayed, it
+    // would read a directory the replay is still filling AND put the
+    // instrument's own build into the reading — the mistake this crate already
+    // corrects once, for the log the gate's own job writes on a runner.
+    let mut gate = step("twice-compiled", &[]);
+    gate.script = format!(
+        "cargo run -q --manifest-path {} --bin twice-compiled -- rustc-log",
+        twice_compiled::GATE_MANIFEST
+    );
+    assert!(unresolvable(&[&gate]).is_some_and(|why| why.contains("this gate")));
+}
+
+#[test]
 fn a_job_whose_compilations_took_no_time_at_all_is_refused() {
     // THE QUIETER WAY AN INSTRUMENT GOES SILENT, and the one the law above
     // cannot reach: the counts are all present, every total adds up, and only
@@ -459,17 +542,25 @@ fn a_job_the_census_cannot_hold_is_not_refused_for_being_absent() {
     // judges, so its own build is still in flight while it judges; and a local
     // replay cannot run a job whose environment GitHub resolves. Both are named
     // by the caller from the machine, and neither is a finding.
-    let declared = declared_jobs(&[wired("validate"), wired("twice-compiled")]);
+    let declared = declared_jobs(&[
+        wired("validate"),
+        wired("unrun-tests"),
+        wired("twice-compiled"),
+    ]);
     let mut absent = BTreeSet::new();
     absent.insert("twice-compiled".to_string());
-    assert!(judge(&census_of(&["validate"]), &declared, &absent).is_empty());
+    assert!(judge(&census_of(&["validate", "unrun-tests"]), &declared, &absent).is_empty());
 }
 
 #[test]
 fn a_log_from_a_job_the_workflow_no_longer_declares_is_refused() {
-    let declared = declared_jobs(&[wired("validate")]);
+    let declared = declared_jobs(&[wired("validate"), wired("unrun-tests")]);
     assert_eq!(
-        judge(&census_of(&["validate", "deleted"]), &declared, &nothing()),
+        judge(
+            &census_of(&["validate", "unrun-tests", "deleted"]),
+            &declared,
+            &nothing()
+        ),
         vec![Refusal::RecordFromNoJob {
             job: "deleted".to_string()
         }]
@@ -482,8 +573,16 @@ fn a_step_running_without_the_recorder_is_refused_even_when_the_job_recorded() {
     // second is not still produces a non-empty log, so the count above passes
     // while whatever the second step compiled is missing. The wiring is read off
     // the workflow so that it cannot be removed to make the count go green.
-    let declared = declared_jobs(&[wired("validate"), step("validate", &[])]);
-    let refusals = judge(&census_of(&["validate"]), &declared, &nothing());
+    let declared = declared_jobs(&[
+        wired("validate"),
+        step("validate", &[]),
+        wired("unrun-tests"),
+    ]);
+    let refusals = judge(
+        &census_of(&["validate", "unrun-tests"]),
+        &declared,
+        &nothing(),
+    );
     assert_eq!(
         refusals,
         vec![
@@ -506,15 +605,22 @@ fn an_empty_recorder_variable_is_as_missing_as_no_variable_at_all() {
     // step turns itself off, and cargo reads an empty value as unset. A reader
     // checking only for the key's presence would accept a workflow that had
     // switched recording off everywhere.
-    let declared = declared_jobs(&[step(
-        "validate",
-        &[
-            (WRAPPER_VARIABLE, ""),
-            (rustc_log::LOG_VARIABLE, "/w/rustc-log/validate.log"),
-        ],
-    )]);
+    let declared = declared_jobs(&[
+        step(
+            "validate",
+            &[
+                (WRAPPER_VARIABLE, ""),
+                (rustc_log::LOG_VARIABLE, "/w/rustc-log/validate.log"),
+            ],
+        ),
+        wired("unrun-tests"),
+    ]);
     assert_eq!(
-        judge(&census_of(&["validate"]), &declared, &nothing()),
+        judge(
+            &census_of(&["validate", "unrun-tests"]),
+            &declared,
+            &nothing()
+        ),
         vec![Refusal::StepIsNotRecorded {
             job: "validate".to_string(),
             missing: WRAPPER_VARIABLE.to_string(),
@@ -530,15 +636,22 @@ fn a_job_recording_to_another_jobs_log_is_refused() {
     // clean one. `${{ github.job }}` cannot spell this, because the runner
     // defines that only inside a step and it is empty in a job's `env:`, so the
     // name is written by hand and this is what makes a hand-written name safe.
-    let declared = declared_jobs(&[step(
-        "unrun-tests",
-        &[
-            (WRAPPER_VARIABLE, "/recorder"),
-            (rustc_log::LOG_VARIABLE, "/w/rustc-log/validate.log"),
-        ],
-    )]);
+    let declared = declared_jobs(&[
+        step(
+            "unrun-tests",
+            &[
+                (WRAPPER_VARIABLE, "/recorder"),
+                (rustc_log::LOG_VARIABLE, "/w/rustc-log/validate.log"),
+            ],
+        ),
+        wired("validate"),
+    ]);
     assert_eq!(
-        judge(&census_of(&["unrun-tests"]), &declared, &nothing()),
+        judge(
+            &census_of(&["unrun-tests", "validate"]),
+            &declared,
+            &nothing()
+        ),
         vec![Refusal::LogIsNotNamedForItsJob {
             job: "unrun-tests".to_string(),
             path: "/w/rustc-log/validate.log".to_string(),
@@ -589,9 +702,14 @@ fn the_step_that_builds_the_recorder_is_the_one_step_excused_from_using_it() {
         "cargo build --release -q --manifest-path {}",
         twice_compiled::RECORDER_MANIFEST
     );
-    let declared = declared_jobs(&[building, wired("validate")]);
+    let declared = declared_jobs(&[building, wired("validate"), wired("unrun-tests")]);
     assert!(
-        judge(&census_of(&["validate"]), &declared, &nothing()).is_empty(),
+        judge(
+            &census_of(&["validate", "unrun-tests"]),
+            &declared,
+            &nothing()
+        )
+        .is_empty(),
         "the recorder's own build cannot be recorded by it"
     );
 }

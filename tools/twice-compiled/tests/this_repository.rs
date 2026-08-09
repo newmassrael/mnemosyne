@@ -104,6 +104,46 @@ fn this_workflow_has_the_jobs_the_census_is_worth_taking_of() {
 }
 
 #[test]
+fn the_jobs_a_local_replay_cannot_run_are_exactly_these_three() {
+    // THE SECOND ENTRANCE, HELD OPEN BY A TEST THAT READS THE LIVE FILE. The
+    // gate has two ways in: the logs a CI run leaves, and a replay of the same
+    // jobs on this machine. The day the recorder was wired into all nine jobs,
+    // every one of them gained `MNEMOSYNE_RUSTC_LOG: ${{ github.workspace }}/…`
+    // — an expression only GitHub resolves, and one the replay REPLACES before
+    // running anything. The replay read it anyway and refused all nine, then
+    // reported a census of no jobs as a clean file. Nothing noticed for a round,
+    // because a replay costs hours and nobody ran it again.
+    //
+    // So the skip list is asserted against the workflow itself. A job that
+    // becomes unreplayable tomorrow turns this red instead of quietly leaving
+    // the census.
+    let declared = declared_jobs(&workflow_steps());
+    let skipped: BTreeSet<&str> = declared
+        .iter()
+        .filter(|(_, steps)| {
+            let borrowed: Vec<&ci_plan::RunStep> = steps.iter().collect();
+            twice_compiled::unresolvable(&borrowed).is_some()
+        })
+        .map(|(job, _)| job.as_str())
+        .collect();
+    let expected: BTreeSet<&str> = ["cache-budget", "msrv", "twice-compiled"]
+        .into_iter()
+        .collect();
+    assert_eq!(
+        skipped, expected,
+        "`msrv` reads a toolchain GitHub resolves from a step this machine does \
+         not run, `cache-budget` needs a token, and the gate does not replay \
+         itself. Every OTHER job must be replayable — six of them are the \
+         census, and a census of fewer than two jobs is refused"
+    );
+    assert!(
+        declared.len() - skipped.len() >= 2,
+        "a replay that can run fewer than two jobs cannot produce a census at \
+         all: {declared:?}"
+    );
+}
+
+#[test]
 fn the_gate_waits_for_every_job_whose_log_it_reads() {
     // The same constraint `cache-budget` carries, for the same reason and read
     // the same way: a gate running BESIDE the jobs it judges reads an absence

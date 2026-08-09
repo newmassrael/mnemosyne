@@ -14,7 +14,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use ci_plan::RunStep;
-use twice_compiled::{declared_jobs, judge, load, Census, WRAPPER_VARIABLE};
+use twice_compiled::{declared_jobs, judge, load, unresolvable, Census, WRAPPER_VARIABLE};
 
 fn main() {
     let arguments: Vec<String> = std::env::args().skip(1).collect();
@@ -325,12 +325,25 @@ fn replay(
                 continue;
             }
             println!("[replay] {job}: {}", step.script.replace('\n', " "));
+            // THE TWO VARIABLES THIS REPLAY OWNS, applied last so that whatever
+            // the workflow spells for them is replaced. `twice_compiled::
+            // unresolvable` skips exactly these names for that reason, and both
+            // sides read the one list so they cannot come apart.
+            let mine = [
+                (WRAPPER_VARIABLE, wrapper.as_os_str()),
+                (rustc_log::LOG_VARIABLE, log.as_os_str()),
+            ];
+            debug_assert!(
+                mine.iter()
+                    .all(|(name, _)| twice_compiled::REPLAY_SETS.contains(name)),
+                "a variable set here and not named in REPLAY_SETS is one \
+                 `unresolvable` would refuse a job over"
+            );
             let status = Command::new("bash")
                 .arg("-c")
                 .arg(&step.script)
                 .envs(&step.env)
-                .env(rustc_log::LOG_VARIABLE, &log)
-                .env(WRAPPER_VARIABLE, &wrapper)
+                .envs(mine)
                 .current_dir(&tree)
                 .status()
                 .expect("the step runs");
@@ -345,22 +358,6 @@ fn replay(
         drop_worktree(root, &tree);
     }
     logs
-}
-
-/// The first thing in a job that only GitHub can resolve, if there is one.
-fn unresolvable(steps: &[&RunStep]) -> Option<String> {
-    for step in steps {
-        if let Some((name, value)) = step.env.iter().find(|(_, value)| value.contains("${{")) {
-            return Some(format!("{name}={value} is resolved by GitHub, not here"));
-        }
-        if step.script.contains("${{") {
-            return Some(format!(
-                "a step's own script holds a GitHub expression: {}",
-                step.script.replace('\n', " ")
-            ));
-        }
-    }
-    None
 }
 
 fn build_wrapper(root: &Path) -> PathBuf {

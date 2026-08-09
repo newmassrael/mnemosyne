@@ -599,6 +599,17 @@ pub enum Refusal {
     /// it, or its log never arrived — and both look exactly like a job with
     /// nothing to build.
     JobLeftNoRecord { job: String },
+    /// The census covers fewer than two jobs.
+    ///
+    /// THE SUBJECT OF THIS GATE IS WHAT TWO JOBS BOTH COMPILE, so a census of
+    /// one job has no cross-job duplication BY CONSTRUCTION and a census of none
+    /// has nothing at all — and both print every total as a clean zero and exit
+    /// as though the file were in good order. A local replay did exactly that:
+    /// it refused all nine jobs, printed `0 compilations across 0 job(s)`, and
+    /// signed off with "every one of the 0 job(s) recorded what it compiled".
+    /// A gate that cannot say how far it reached is a gate whose silence and
+    /// whose success are the same output.
+    CensusCoversTooFewJobs { covered: usize },
     /// A job's compilations took no time at all.
     ///
     /// THE SECOND WAY AN INSTRUMENT GOES SILENT, and it is quieter than the
@@ -631,6 +642,12 @@ impl std::fmt::Display for Refusal {
                 "job `{job}` recorded no compilation — a job whose recorder is \
                  unwired reads exactly like a job with nothing to build"
             ),
+            Refusal::CensusCoversTooFewJobs { covered } => write!(
+                f,
+                "this census covers {covered} job(s), and its whole subject is \
+                 what TWO of them both compile — fewer than two has no finding \
+                 available to it and prints a clean zero for every total"
+            ),
             Refusal::JobRecordedNoTime { job } => write!(
                 f,
                 "job `{job}` compiled, and every compilation took no time at \
@@ -659,6 +676,65 @@ impl std::fmt::Display for Refusal {
 
 /// The environment variable naming the recorder, as cargo spells it.
 pub const WRAPPER_VARIABLE: &str = "RUSTC_WRAPPER";
+
+/// The variables a local replay sets for itself, whatever the workflow spells
+/// for them.
+///
+/// ONE LIST, TWO USES, and the second one is why it is here rather than beside
+/// the replay: these names are applied to every step the replay runs, AND they
+/// are the names `twice_compiled::unresolvable` must not read. The workflow
+/// spells both as `${{ github.workspace }}/…`, which is an expression only
+/// GitHub resolves — so a replay that looked for expressions without skipping
+/// the ones it replaces refuses every job in the file for a value nobody reads.
+/// That is not hypothetical: it is what happened the day the recorder was wired
+/// into every job, and it stayed that way because a replay is expensive and
+/// nobody ran it again.
+pub const REPLAY_SETS: [&str; 2] = [WRAPPER_VARIABLE, rustc_log::LOG_VARIABLE];
+
+/// This crate's own manifest.
+///
+/// THE GATE DOES NOT REPLAY ITSELF. Its job downloads what the others wrote and
+/// joins it, so replaying it means running the census over a directory the
+/// replay is in the middle of filling — and counting the instrument's own build
+/// as a cost CI pays. Derived from the manifest the step names, like the
+/// recorder's exemption, so it stays exactly as wide as the thing it excuses.
+pub const GATE_MANIFEST: &str = "tools/twice-compiled/Cargo.toml";
+
+/// The first thing in a job that this machine cannot reproduce, if there is one.
+///
+/// TWO KINDS, and both are refusals rather than guesses. An expression only
+/// GitHub resolves — `RUSTUP_TOOLCHAIN: ${{ steps.msrv.outputs.version }}`, a
+/// token from `secrets` — would otherwise be replayed as the literal text or as
+/// nothing, and a job replayed on the wrong toolchain reports its units as
+/// shared with every other job, which is the loudest wrong answer available
+/// here. And the gate's own job, which is not a build this CI pays for but the
+/// reading of one.
+pub fn unresolvable(steps: &[&RunStep]) -> Option<String> {
+    for step in steps {
+        if step.script.contains(GATE_MANIFEST) {
+            return Some(format!(
+                "it runs {GATE_MANIFEST}, which is this gate — replaying it \
+                 would read a log directory this replay is still filling and \
+                 count the instrument's own build as a cost CI pays"
+            ));
+        }
+        if let Some((name, value)) = step
+            .env
+            .iter()
+            .filter(|(name, _)| !REPLAY_SETS.contains(&name.as_str()))
+            .find(|(_, value)| value.contains("${{"))
+        {
+            return Some(format!("{name}={value} is resolved by GitHub, not here"));
+        }
+        if step.script.contains("${{") {
+            return Some(format!(
+                "a step's own script holds a GitHub expression: {}",
+                step.script.replace('\n', " ")
+            ));
+        }
+    }
+    None
+}
 
 /// Does this log path belong to this job, and to no other?
 ///
@@ -713,6 +789,15 @@ pub fn judge(
     absent: &BTreeSet<String>,
 ) -> Vec<Refusal> {
     let mut refusals = Vec::new();
+    // HOW FAR THIS CENSUS REACHED, ASSERTED BEFORE ANYTHING IS READ FROM IT. The
+    // jobs a caller declares absent are legitimate — the gate's own job on a
+    // runner, the jobs a local replay cannot reproduce — but a census in which
+    // that list has swallowed everything is not a clean file, it is a
+    // measurement that did not happen.
+    let covered = declared.keys().filter(|job| !absent.contains(*job)).count();
+    if covered < 2 {
+        refusals.push(Refusal::CensusCoversTooFewJobs { covered });
+    }
     for (job, steps) in declared {
         if absent.contains(job) {
             continue;
