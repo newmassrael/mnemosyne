@@ -349,6 +349,72 @@ pub fn cache_steps(doc: &Yaml, source: &str) -> Vec<CacheDeclaration> {
     out
 }
 
+/// One `actions/upload-artifact` step, as a workflow declares it.
+///
+/// WHAT MAKES A RECORD READABLE. Every record this repository's gates join —
+/// what a job compiled, what its cache restore brought — is written to a file on
+/// a runner that is destroyed when the job ends, and the only thing that
+/// survives is what an upload step collected. So a workflow that uploads nothing
+/// produces no record any later job can download, and a measurement written in
+/// it is unreadable BY CONSTRUCTION rather than by anybody's choice.
+///
+/// That is why this is read rather than assumed: it is the derivation behind
+/// which jobs owe a restore record at all, and the alternative is a list of
+/// exempt workflows kept beside the law, which is the shape R777, R783, R1080
+/// and R1082 each closed one level at a time.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ArtifactUpload {
+    /// The workflow file it is written in.
+    pub source: String,
+    /// The id of the job that runs it.
+    pub owner: String,
+    /// Where it sits in that job's `steps:` list — the same counting
+    /// [`RunStep::index`] uses.
+    pub index: usize,
+    /// The `path:` entries, in the order written.
+    pub paths: Vec<String>,
+}
+
+/// Every `actions/upload-artifact` step in every job of one workflow.
+pub fn artifact_uploads(doc: &Yaml, source: &str) -> Vec<ArtifactUpload> {
+    let mut out = Vec::new();
+    let Some(jobs) = doc["jobs"].as_hash() else {
+        return out;
+    };
+    for (name, job) in jobs {
+        let owner = name.as_str().unwrap_or("<unnamed>").to_string();
+        let Some(steps) = job["steps"].as_vec() else {
+            continue;
+        };
+        for (index, step) in steps.iter().enumerate() {
+            let Some(uses) = step["uses"].as_str() else {
+                continue;
+            };
+            if uses.split('@').next().unwrap_or(uses) != "actions/upload-artifact" {
+                continue;
+            }
+            let paths: Vec<String> = step["with"]["path"]
+                .as_str()
+                .unwrap_or_else(|| panic!("{source}: job `{owner}` uploads no path"))
+                .lines()
+                .map(str::trim)
+                .filter(|line| !line.is_empty())
+                .map(str::to_string)
+                .collect();
+            // EVERY UPLOAD STEP AND NOT THE FIRST: a job may collect more than
+            // one thing, and stopping at one is a truncation that reads as a
+            // workflow collecting less than it does.
+            out.push(ArtifactUpload {
+                source: source.to_string(),
+                owner: owner.clone(),
+                index,
+                paths,
+            });
+        }
+    }
+    out
+}
+
 /// Every cache declared by every tracked workflow.
 pub fn workflow_cache_declarations(root: &Path) -> Vec<CacheDeclaration> {
     let mut out = Vec::new();

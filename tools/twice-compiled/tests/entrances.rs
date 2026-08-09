@@ -178,6 +178,15 @@ fn workflow(jobs: &[Job]) -> String {
             }
             out.push_str(&format!("      - run: {step}\n"));
         }
+        // WHAT MAKES THE RECORDS READABLE, and a fixture without it declares the
+        // defect it is the control for: a job that writes a record in a workflow
+        // uploading nothing puts it on a runner that is destroyed when the job
+        // ends. This repository's own workflow uploads `rustc-log/` from every
+        // job, which is how the gate job gets nine of them.
+        out.push_str(&format!(
+            "      - uses: actions/upload-artifact@v7\n        with:\n          \
+             name: rustc-log-{name}\n          path: rustc-log/\n"
+        ));
     }
     out
 }
@@ -264,6 +273,7 @@ impl Run {
         Declared::of(
             &ci_plan::run_steps(&document),
             &ci_plan::cache_steps(&document, WORKFLOW),
+            &ci_plan::artifact_uploads(&document, WORKFLOW),
         )
     }
 

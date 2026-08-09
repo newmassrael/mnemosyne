@@ -6874,6 +6874,94 @@
         "XX2 STANDS AND STILL GATES THE ARC: why the runner recompiles DEPENDENCIES is unmeasured, and the untested difference is that `~/.cargo/registry` rides the cache too."
       ]
     },
+    "Round 1106 — a record nothing can collect is one nobody owes": {
+      "decision_summary": "THE WIRING LAW READ ONE FILE AND THIS REPOSITORY TRACKS TWO. R1103 built a law\nthat needs no census at all — it judges the workflow — and then only ever pointed\nit at `mnemosyne-validate.yml`, because that is the file the gate judges at run\ntime. The other tracked workflow declares a cache. So the law's population was\n\"the file somebody remembered\", which is the shape R777, R783, R1080 and R1082\neach closed one level at a time and which R1102's ledger recorded as an open\ndecision rather than an omission.\n\nTHE DECISION HAD AN ANSWER IN THE FILE, and it is not the one the ledger\nguessed. `evidence-replay.yml` should NOT be wired to measure its restore,\nbecause nothing could ever read what it wrote: every record these gates join\ngoes onto a runner that is destroyed when the job ends, and the only thing that\nsurvives is what an `actions/upload-artifact` step collected. That workflow\nuploads nothing at all. A record written there is unreadable BY CONSTRUCTION.\n\nSO THE EXEMPTION IS DERIVED RATHER THAN LISTED. `ci_plan::artifact_uploads`\nreads what each workflow collects, `Declared` carries whether this one collects\nanything, and a workflow that collects nothing owes no restore record. The\nalternative — a list of exempt workflows kept beside the law — is exactly the\nrestatement this crate exists to remove, and it goes stale the first time a\nworkflow is added.\n\nAND THE DERIVATION HAS TWO DIRECTIONS, which is what makes it a derivation and\nnot a hole. A job that MEASURES a restore in a workflow that collects nothing is\nrefused: it writes a file that dies with its runner. Both answers come out of one\nreading of the same steps, so neither can drift from the other.\n\nTHE FIXTURE WAS ON THE WRONG SIDE OF IT, for the second time in this arc. The\nreplay fixture's workflow wrote restore records and uploaded nothing — the exact\nshape the new refusal names — and the suite went red the moment the law existed.\nThis repository's own workflow uploads `rustc-log/` from every job, which is how\nthe gate job gets nine of them; the fixture now says so too.",
+      "changes_bullets": [
+        "`tools/ci-plan/src/lib.rs` — `ArtifactUpload` + `artifact_uploads`: what each job of a workflow collects. Every upload step of a job and not the first, because a job may collect more than one thing and stopping at one reads a workflow as collecting less than it does.",
+        "`tools/twice-compiled/src/lib.rs` — `Declared::of` takes the uploads and carries `collects_records`. A workflow that collects nothing owes no restore record; a job that measures one there is refused as `RestoreIsMeasuredWhereNothingCollectsIt`, since the file it writes dies with its runner.",
+        "`tools/twice-compiled/tests/this_repository.rs` — the wiring law now sweeps EVERY tracked workflow, and the sweep asserts both sides of the derivation are live: eight cached jobs across two workflows, exactly one of which collects.",
+        "`tools/twice-compiled/tests/entrances.rs` — the replay fixture wrote records and uploaded nothing, which is the shape the new refusal names. It now uploads `rustc-log/` per job, as this repository's workflow does."
+      ],
+      "verification_bullets": [
+        "INJECTION, two sweeps: 6 injections, 6 fired, 0 missed, drift 0. Controls green — `tools/twice-compiled` 78, `ci-plan` 15. Every workflow taken to collect, no workflow taken to collect, the inverse refusal removed, the sweep narrowed back to one file, only the first upload step read, and an action matched by prefix rather than by name.",
+        "BOTH DIRECTIONS OF THE EXEMPTION ARE INJECTED, which is what separates a derivation from a hole: taking every workflow to collect makes the live sweep red, and taking none to collect makes twenty-three tests red — the second is the shape an exemption that swallowed its population would have.",
+        "AN ORACLE WAS TOO WEAK AND THE INJECTION FOUND IT, for the third time this session: the `ci-plan` fixture gave its job ONE upload step, so \"stop after the first\" changed nothing and came back green. The fixture now has two, and the injection fires.",
+        "AND ONE EXPECTATION OF MINE WAS SIMPLY WRONG: I named a test that constructs `Declared` by hand, so no change to what `Declared::of` derives can reach it. The `missed` was mine to fix, not the suite's.",
+        "THE FIXTURE WENT RED THE MOMENT THE LAW EXISTED — the replay fixture wrote records into a workflow that uploaded nothing, which is the defect the new refusal names, in the file that is supposed to be the control for it. That is the second time in this arc a fixture declared what the law refuses.",
+        "GATES: `scripts/check-side-workspaces.sh` clean over all twelve separate workspaces, `cargo clippy --workspace --all-targets` clean, `cargo fmt --all` clean, `mnemosyne-cli validate-workspace` clean, root `cargo test --workspace --locked` green."
+      ],
+      "carry_forward_bullets": [
+        "COLLECTING SOMETHING IS NOT COLLECTING THE RECORDS. The derivation asks whether a workflow uploads ANY artifact, not whether it uploads the directory the records are written to. That is the strict direction — a workflow that starts uploading anything begins owing a measurement — and matching the upload's `path:` against `$MNEMOSYNE_RESTORED`'s directory would need `${{ github.workspace }}` resolved, which only GitHub can do. Named because the looser question is the one being asked.",
+        "`cache-budget` PRINTS A LIMIT OF ITS OWN REACH AS A FINDING ABOUT A JOB. It says \"`replay` did not say what it started from\", which reads as a shortfall of that job; the truth is that artifacts do not cross runs, so a gate inside the `mnemosyne-validate` run can never see a record written in `evidence-replay`. It is the same class as this round's — a sentence that misattributes the gate's blind spot — and it is undone work, not a limit.",
+        "THE FIRST COMPARABLE PAIR STILL DOES NOT EXIST: `31307111606` is the only run whose jobs say what they started from, so R1105's `compare` has nothing to hold it against until the next push produces a second.",
+        "XX2 STANDS AND STILL GATES THE ARC: why the runner recompiles DEPENDENCIES is unmeasured, and the untested difference is that `~/.cargo/registry` rides the cache too."
+      ],
+      "population_census": [
+        {
+          "axis": "transition rules by `undirected`",
+          "left_label": "undirected",
+          "left": 10,
+          "right_label": "directed",
+          "right": 27
+        },
+        {
+          "axis": "map corpora by leg-kind declaration",
+          "left_label": "omitted",
+          "left": 6,
+          "right_label": "declared",
+          "right": 24
+        },
+        {
+          "axis": "cost-carrying corpora by direction-dependent pricing",
+          "left_label": "prices a way by direction",
+          "left": 4,
+          "right_label": "prices no way by direction",
+          "right": 6
+        },
+        {
+          "axis": "run trees by authoring mode",
+          "left_label": "hand script",
+          "left": 10,
+          "right_label": "file-only",
+          "right": 239
+        },
+        {
+          "axis": "map corpora by declared boundary crossing",
+          "left_label": "declares an exit",
+          "left": 6,
+          "right_label": "declares none",
+          "right": 24
+        },
+        {
+          "axis": "authored submissions by map and telling",
+          "left_label": "carries both",
+          "left": 10,
+          "right_label": "carries one",
+          "right": 24
+        }
+      ],
+      "publishable_decision_summary": "THE WIRING LAW READ ONE FILE AND THIS REPOSITORY TRACKS TWO. R1103 built a law\nthat needs no census at all — it judges the workflow — and then only ever pointed\nit at `mnemosyne-validate.yml`, because that is the file the gate judges at run\ntime. The other tracked workflow declares a cache. So the law's population was\n\"the file somebody remembered\", which is the shape R777, R783, R1080 and R1082\neach closed one level at a time and which R1102's ledger recorded as an open\ndecision rather than an omission.\n\nTHE DECISION HAD AN ANSWER IN THE FILE, and it is not the one the ledger\nguessed. `evidence-replay.yml` should NOT be wired to measure its restore,\nbecause nothing could ever read what it wrote: every record these gates join\ngoes onto a runner that is destroyed when the job ends, and the only thing that\nsurvives is what an `actions/upload-artifact` step collected. That workflow\nuploads nothing at all. A record written there is unreadable BY CONSTRUCTION.\n\nSO THE EXEMPTION IS DERIVED RATHER THAN LISTED. `ci_plan::artifact_uploads`\nreads what each workflow collects, `Declared` carries whether this one collects\nanything, and a workflow that collects nothing owes no restore record. The\nalternative — a list of exempt workflows kept beside the law — is exactly the\nrestatement this crate exists to remove, and it goes stale the first time a\nworkflow is added.\n\nAND THE DERIVATION HAS TWO DIRECTIONS, which is what makes it a derivation and\nnot a hole. A job that MEASURES a restore in a workflow that collects nothing is\nrefused: it writes a file that dies with its runner. Both answers come out of one\nreading of the same steps, so neither can drift from the other.\n\nTHE FIXTURE WAS ON THE WRONG SIDE OF IT, for the second time in this arc. The\nreplay fixture's workflow wrote restore records and uploaded nothing — the exact\nshape the new refusal names — and the suite went red the moment the law existed.\nThis repository's own workflow uploads `rustc-log/` from every job, which is how\nthe gate job gets nine of them; the fixture now says so too.",
+      "publishable_changes_bullets": [
+        "`tools/ci-plan/src/lib.rs` — `ArtifactUpload` + `artifact_uploads`: what each job of a workflow collects. Every upload step of a job and not the first, because a job may collect more than one thing and stopping at one reads a workflow as collecting less than it does.",
+        "`tools/twice-compiled/src/lib.rs` — `Declared::of` takes the uploads and carries `collects_records`. A workflow that collects nothing owes no restore record; a job that measures one there is refused as `RestoreIsMeasuredWhereNothingCollectsIt`, since the file it writes dies with its runner.",
+        "`tools/twice-compiled/tests/this_repository.rs` — the wiring law now sweeps EVERY tracked workflow, and the sweep asserts both sides of the derivation are live: eight cached jobs across two workflows, exactly one of which collects.",
+        "`tools/twice-compiled/tests/entrances.rs` — the replay fixture wrote records and uploaded nothing, which is the shape the new refusal names. It now uploads `rustc-log/` per job, as this repository's workflow does."
+      ],
+      "publishable_verification_bullets": [
+        "INJECTION, two sweeps: 6 injections, 6 fired, 0 missed, drift 0. Controls green — `tools/twice-compiled` 78, `ci-plan` 15. Every workflow taken to collect, no workflow taken to collect, the inverse refusal removed, the sweep narrowed back to one file, only the first upload step read, and an action matched by prefix rather than by name.",
+        "BOTH DIRECTIONS OF THE EXEMPTION ARE INJECTED, which is what separates a derivation from a hole: taking every workflow to collect makes the live sweep red, and taking none to collect makes twenty-three tests red — the second is the shape an exemption that swallowed its population would have.",
+        "AN ORACLE WAS TOO WEAK AND THE INJECTION FOUND IT, for the third time this session: the `ci-plan` fixture gave its job ONE upload step, so \"stop after the first\" changed nothing and came back green. The fixture now has two, and the injection fires.",
+        "AND ONE EXPECTATION OF MINE WAS SIMPLY WRONG: I named a test that constructs `Declared` by hand, so no change to what `Declared::of` derives can reach it. The `missed` was mine to fix, not the suite's.",
+        "THE FIXTURE WENT RED THE MOMENT THE LAW EXISTED — the replay fixture wrote records into a workflow that uploaded nothing, which is the defect the new refusal names, in the file that is supposed to be the control for it. That is the second time in this arc a fixture declared what the law refuses.",
+        "GATES: `scripts/check-side-workspaces.sh` clean over all twelve separate workspaces, `cargo clippy --workspace --all-targets` clean, `cargo fmt --all` clean, `mnemosyne-cli validate-workspace` clean, root `cargo test --workspace --locked` green."
+      ],
+      "publishable_carry_forward_bullets": [
+        "COLLECTING SOMETHING IS NOT COLLECTING THE RECORDS. The derivation asks whether a workflow uploads ANY artifact, not whether it uploads the directory the records are written to. That is the strict direction — a workflow that starts uploading anything begins owing a measurement — and matching the upload's `path:` against `$MNEMOSYNE_RESTORED`'s directory would need `${{ github.workspace }}` resolved, which only GitHub can do. Named because the looser question is the one being asked.",
+        "`cache-budget` PRINTS A LIMIT OF ITS OWN REACH AS A FINDING ABOUT A JOB. It says \"`replay` did not say what it started from\", which reads as a shortfall of that job; the truth is that artifacts do not cross runs, so a gate inside the `mnemosyne-validate` run can never see a record written in `evidence-replay`. It is the same class as this round's — a sentence that misattributes the gate's blind spot — and it is undone work, not a limit.",
+        "THE FIRST COMPARABLE PAIR STILL DOES NOT EXIST: `31307111606` is the only run whose jobs say what they started from, so R1105's `compare` has nothing to hold it against until the next push produces a second.",
+        "XX2 STANDS AND STILL GATES THE ARC: why the runner recompiles DEPENDENCIES is unmeasured, and the untested difference is that `~/.cargo/registry` rides the cache too."
+      ]
+    },
     "Round 252": {
       "decision_summary": "Parser CommonMark conformance — recognize indented fenced code blocks (§98) and require whitespace after ATX hash sequence (§62)",
       "changes_bullets": [

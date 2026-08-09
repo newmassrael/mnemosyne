@@ -32,7 +32,23 @@ fn workflow_steps() -> Vec<ci_plan::RunStep> {
 fn declared_jobs(steps: &[ci_plan::RunStep]) -> Declared {
     let root = repository_root();
     let document = ci_plan::load_workflow(&root, WORKFLOW);
-    Declared::of(steps, &ci_plan::cache_steps(&document, WORKFLOW))
+    Declared::of(
+        steps,
+        &ci_plan::cache_steps(&document, WORKFLOW),
+        &ci_plan::artifact_uploads(&document, WORKFLOW),
+    )
+}
+
+/// What ONE tracked workflow declares, whichever it is — the same three readers,
+/// pointed anywhere.
+fn declared_in(path: &str) -> Declared {
+    let root = repository_root();
+    let document = ci_plan::load_workflow(&root, path);
+    Declared::of(
+        &ci_plan::run_steps(&document),
+        &ci_plan::cache_steps(&document, path),
+        &ci_plan::artifact_uploads(&document, path),
+    )
 }
 
 /// A census in which every declared job compiled something AND took time doing
@@ -275,4 +291,106 @@ fn every_cached_job_of_this_workflow_measures_the_restore_around_it() {
              defect this law exists for, and it was not refused"
         );
     }
+}
+
+#[test]
+fn every_tracked_workflow_wires_its_restore_measurements_or_collects_nothing() {
+    // THE LAW REACHED ONE FILE AND THIS REPOSITORY TRACKS TWO. `judge_wiring`
+    // needs no census, so nothing about it was ever per-workflow except which
+    // file somebody happened to point it at — and the file nobody pointed it at
+    // declares a cache. A law whose population is "the file the author
+    // remembered" is the shape R777, R783, R1080 and R1082 each closed once.
+    let root = repository_root();
+    let tracked = ci_plan::workflow_files(&root);
+    assert!(
+        tracked.len() >= 2,
+        "this repository tracks {tracked:?} — a sweep over one file is the \
+         population that was already being read"
+    );
+    let mut cached = 0;
+    let mut collecting = 0;
+    for path in &tracked {
+        let declared = declared_in(path);
+        let refusals = twice_compiled::judge_wiring(&declared);
+        assert!(
+            refusals.is_empty(),
+            "{path}:\n{}",
+            refusals
+                .iter()
+                .map(|refusal| format!("  {refusal}"))
+                .collect::<Vec<_>>()
+                .join("\n")
+        );
+        cached += declared.caches_at.len();
+        collecting += usize::from(declared.collects_records);
+    }
+    // NON-VACUITY: both sides of the derivation exist in this repository today.
+    // If every tracked workflow collected records the exemption would never be
+    // exercised, and if none did the law would never bite.
+    assert!(
+        cached >= 8 && collecting >= 1 && collecting < tracked.len(),
+        "{cached} cached job(s) across {} workflow(s), {collecting} of which \
+         collect records — this sweep needs both sides to be real",
+        tracked.len()
+    );
+}
+
+#[test]
+fn a_workflow_that_collects_nothing_owes_no_restore_record_and_is_refused_for_writing_one() {
+    // THE EXEMPTION IS DERIVED FROM THE FILE, and this is what makes it
+    // load-bearing rather than a silence. `evidence-replay.yml` declares a
+    // cache, measures neither side, and uploads no artifact at all — so the
+    // record it would write goes onto a runner that is destroyed when the job
+    // ends. Nothing can ever read it.
+    let replay = declared_in(".github/workflows/evidence-replay.yml");
+    assert!(
+        !replay.collects_records,
+        "the premise: that workflow uploads nothing"
+    );
+    assert!(
+        !replay.caches_at.is_empty(),
+        "and it does declare a cache, which is why the exemption is needed at all"
+    );
+    assert!(twice_compiled::judge_wiring(&replay).is_empty());
+
+    // AND THE EXEMPTION BITES THE MOMENT THE FILE CHANGES. Told that the same
+    // workflow collects records, the same jobs are refused for measuring
+    // neither side — so this is a derivation and not a hole.
+    let collecting = Declared {
+        collects_records: true,
+        ..replay.clone()
+    };
+    assert!(
+        !twice_compiled::judge_wiring(&collecting).is_empty(),
+        "a workflow that collects records owes one per cached job"
+    );
+
+    // THE OTHER DIRECTION, which nothing else in this repository can say: a job
+    // measuring a restore where no artifact is uploaded writes a file nobody
+    // can read.
+    let mut measuring = replay.clone();
+    let job = measuring
+        .caches_at
+        .keys()
+        .next()
+        .expect("the cached job")
+        .clone();
+    let mut step = ci_plan::RunStep {
+        job: job.clone(),
+        index: 0,
+        script: format!(
+            "./tools/{p}/target/release/{p} before 'target'",
+            p = restored::PROGRAM
+        ),
+        env: std::collections::BTreeMap::new(),
+    };
+    step.env.insert(
+        restored::VARIABLE.to_string(),
+        format!("rustc-log/{job}.restored"),
+    );
+    measuring.jobs.entry(job.clone()).or_default().push(step);
+    assert_eq!(
+        twice_compiled::judge_wiring(&measuring),
+        vec![Refusal::RestoreIsMeasuredWhereNothingCollectsIt { job }]
+    );
 }

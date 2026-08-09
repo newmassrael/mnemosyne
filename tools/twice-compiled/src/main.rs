@@ -76,7 +76,11 @@ fn judge_a_run(entrance: Entrance) -> ! {
     // what the census is of; the jobs that restore a cache are what owes it a
     // record of the state it was taken in, and they are not the same jobs —
     // `tools/cache-budget` asks the second question of this same reader.
-    let declared = Declared::of(&steps, &ci_plan::cache_steps(&document, &workflow));
+    let declared = Declared::of(
+        &steps,
+        &ci_plan::cache_steps(&document, &workflow),
+        &ci_plan::artifact_uploads(&document, &workflow),
+    );
     assert!(
         !declared.jobs.is_empty(),
         "{workflow} declares no job with a `run:` step at all — a census over \

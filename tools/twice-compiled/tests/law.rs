@@ -21,7 +21,28 @@ use twice_compiled::{
 /// how that was recorded, and the laws about what a job RESTORED have their own
 /// fixtures further down, which declare caches on purpose.
 fn declared_jobs(steps: &[RunStep]) -> Declared {
-    Declared::of(steps, &[])
+    declared_of(steps, &[])
+}
+
+/// `Declared::of` over a workflow that COLLECTS its records.
+///
+/// THE ORDINARY CASE, AND THE ONE EVERY LAW IN THIS FILE IS ABOUT. A workflow
+/// that uploads no artifact leaves nothing behind when its runners are
+/// destroyed, so its jobs owe no restore record at all — that derivation has its
+/// own tests, and a fixture silently on the wrong side of it would make every
+/// law below vacuous.
+fn declared_of(steps: &[RunStep], caches: &[ci_plan::CacheDeclaration]) -> Declared {
+    Declared::of(steps, caches, &[collecting("validate")])
+}
+
+/// One `actions/upload-artifact` step, which is what makes a record readable.
+fn collecting(job: &str) -> ci_plan::ArtifactUpload {
+    ci_plan::ArtifactUpload {
+        source: "fixture.yml".to_string(),
+        owner: job.to_string(),
+        index: 9,
+        paths: vec!["rustc-log/".to_string()],
+    }
 }
 
 /// A record as `rustc-log` writes it: when the compiler started, how long it
@@ -1068,7 +1089,7 @@ fn restore_record(job: &str, exact: bool, paths: &[(&str, u64)]) -> String {
 fn cached_and_said(exact: bool, arrived: u64) -> (Declared, Census) {
     let mut steps = cached_job("validate", &["~/.cargo/registry"]);
     steps.extend(cached_job("unrun-tests", &["~/.cargo/registry", "target"]));
-    let declared = Declared::of(
+    let declared = declared_of(
         &steps,
         &[
             cache("validate", &["~/.cargo/registry"]),
@@ -1147,7 +1168,7 @@ fn a_job_with_a_cache_that_did_not_say_what_it_restored_is_refused() {
 fn a_job_with_no_cache_owes_no_record_of_what_it_restored() {
     let mut steps = cached_job("validate", &["~/.cargo/registry"]);
     steps.push(wired("twice-compiled"));
-    let declared = Declared::of(&steps, &[cache("validate", &["~/.cargo/registry"])]);
+    let declared = declared_of(&steps, &[cache("validate", &["~/.cargo/registry"])]);
     let mut census = census_of(&["validate", "twice-compiled"]);
     census.restored.insert(
         "validate".to_string(),
@@ -1236,7 +1257,7 @@ fn a_job_writing_its_state_to_another_jobs_file_is_refused() {
         );
     }
     steps.extend(cached_job("validate", &["~/.cargo/registry"]));
-    let declared = Declared::of(
+    let declared = declared_of(
         &steps,
         &[
             cache("validate", &["~/.cargo/registry"]),
@@ -1268,7 +1289,7 @@ fn a_step_of_a_cached_job_that_does_not_say_where_to_write_it_is_refused() {
         .env
         .remove(restored::VARIABLE);
     steps.extend(cached_job("unrun-tests", &["~/.cargo/registry"]));
-    let declared = Declared::of(
+    let declared = declared_of(
         &steps,
         &[
             cache("validate", &["~/.cargo/registry"]),
@@ -1353,7 +1374,7 @@ fn a_record_from_a_job_this_workflow_gives_no_cache_is_refused() {
 fn measurements_on_the_two_sides_of_the_restore_are_accepted() {
     let mut steps = cached_job("validate", &["~/.cargo/registry"]);
     steps.extend(cached_job("unrun-tests", &["~/.cargo/registry", "target"]));
-    let declared = Declared::of(
+    let declared = declared_of(
         &steps,
         &[
             cache("validate", &["~/.cargo/registry"]),
@@ -1376,7 +1397,7 @@ fn a_measurement_taken_after_the_restore_it_precedes_is_refused() {
     let mut steps = cached_job("validate", &["~/.cargo/registry"]);
     steps[0].index = CACHE_AT + 10;
     steps.extend(cached_job("unrun-tests", &["~/.cargo/registry"]));
-    let declared = Declared::of(
+    let declared = declared_of(
         &steps,
         &[
             cache("validate", &["~/.cargo/registry"]),
@@ -1402,7 +1423,7 @@ fn a_measurement_taken_after_the_restore_it_precedes_is_refused() {
 fn a_measurement_taken_before_the_restore_it_follows_is_refused() {
     let mut steps = cached_job("validate", &["~/.cargo/registry"]);
     steps[1].index = BEFORE_AT;
-    let declared = Declared::of(&steps, &[cache("validate", &["~/.cargo/registry"])]);
+    let declared = declared_of(&steps, &[cache("validate", &["~/.cargo/registry"])]);
     assert_eq!(
         twice_compiled::judge_wiring(&declared),
         vec![Refusal::RestoreIsMeasuredOnTheWrongSide {
@@ -1419,7 +1440,7 @@ fn a_measurement_taken_before_the_restore_it_follows_is_refused() {
 /// already wrong when it was written.
 #[test]
 fn a_cached_job_that_measures_neither_side_is_refused() {
-    let declared = Declared::of(
+    let declared = declared_of(
         &[wired_with_cache("validate")],
         &[cache("validate", &["~/.cargo/registry"])],
     );
@@ -1448,7 +1469,7 @@ fn a_side_measured_twice_is_refused() {
     let mut steps = cached_job("validate", &["~/.cargo/registry"]);
     let twice = measuring("validate", restored::Side::Before, BEFORE_AT, &["target"]);
     steps[0].script = format!("{} && {}", steps[0].script, twice.script);
-    let declared = Declared::of(&steps, &[cache("validate", &["~/.cargo/registry"])]);
+    let declared = declared_of(&steps, &[cache("validate", &["~/.cargo/registry"])]);
     assert_eq!(
         twice_compiled::judge_wiring(&declared),
         vec![Refusal::RestoreSideIsNotMeasuredOnce {
@@ -1465,7 +1486,7 @@ fn a_side_measured_twice_is_refused() {
 fn a_job_with_no_cache_that_measures_a_restore_is_refused() {
     let mut steps = cached_job("validate", &["~/.cargo/registry"]);
     steps.extend(cached_job("twice-compiled", &["target"]));
-    let declared = Declared::of(&steps, &[cache("validate", &["~/.cargo/registry"])]);
+    let declared = declared_of(&steps, &[cache("validate", &["~/.cargo/registry"])]);
     assert_eq!(
         twice_compiled::judge_wiring(&declared),
         vec![Refusal::RestoreIsMeasuredWithNoCache {
@@ -1483,7 +1504,7 @@ fn a_measurement_between_two_caches_of_one_job_is_refused() {
     let steps = cached_job("validate", &["~/.cargo/registry", "target"]);
     let mut second = cache("validate", &["target"]);
     second.index = AFTER_AT + 1;
-    let declared = Declared::of(&steps, &[cache("validate", &["~/.cargo/registry"]), second]);
+    let declared = declared_of(&steps, &[cache("validate", &["~/.cargo/registry"]), second]);
     assert_eq!(
         twice_compiled::judge_wiring(&declared),
         vec![Refusal::RestoreIsMeasuredOnTheWrongSide {
@@ -1507,7 +1528,7 @@ fn the_step_that_builds_the_measuring_program_is_not_a_measurement() {
     building.script =
         "cargo build --release -q --manifest-path tools/restored/Cargo.toml".to_string();
     steps.push(building);
-    let declared = Declared::of(&steps, &[cache("validate", &["~/.cargo/registry"])]);
+    let declared = declared_of(&steps, &[cache("validate", &["~/.cargo/registry"])]);
     assert!(twice_compiled::judge_wiring(&declared).is_empty());
 }
 

@@ -541,3 +541,75 @@ fn a_step_is_read_with_where_it_sits_in_its_job() {
     // The property the whole coordinate exists for, read off this fixture.
     assert!(steps[0].index < caches[0].index && caches[0].index < steps[1].index);
 }
+
+/// A workflow whose two jobs differ in the one thing that decides whether a
+/// record written in them can ever be read.
+const ONE_COLLECTS: &str = r#"
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - run: cargo test --workspace
+      - name: Keep what this job compiled
+        uses: actions/upload-artifact@v7
+        with:
+          name: rustc-log-validate
+          path: |
+            rustc-log/
+            other/
+      - name: And what it measured, which a job may collect separately
+        uses: actions/upload-artifact@v7
+        with:
+          name: restored-validate
+          path: restored/
+  replay:
+    runs-on: ubuntu-latest
+    steps:
+      - run: cargo test -p mnemosyne-cli --test evidence_replay_smoke
+"#;
+
+#[test]
+fn what_a_workflow_collects_is_read_because_it_decides_what_can_be_read_back() {
+    // EVERY RECORD THESE GATES JOIN goes onto a runner that is destroyed when
+    // the job ends, and the only thing that survives is what an upload step
+    // collected. So a workflow that uploads nothing produces no record anything
+    // can download — which is the derivation behind which jobs owe a restore
+    // record at all, and the alternative is a list of exempt workflows kept
+    // beside the law.
+    let document = parse_workflow(ONE_COLLECTS, "w.yml");
+    let uploads = ci_plan::artifact_uploads(&document, "w.yml");
+    assert_eq!(
+        uploads.len(),
+        2,
+        "EVERY UPLOAD STEP AND NOT THE FIRST — a job may collect more than one \
+         thing, and stopping at one reads a workflow as collecting less than it \
+         does: {uploads:?}"
+    );
+    assert!(uploads.iter().all(|one| one.owner == "validate"));
+    assert_eq!(uploads[0].paths, vec!["rustc-log/", "other/"]);
+    assert_eq!(uploads[1].paths, vec!["restored/"]);
+    assert_eq!(
+        (uploads[0].index, uploads[1].index),
+        (1, 2),
+        "the same counting every other step of this crate uses"
+    );
+
+    // AND THIS REPOSITORY HAS BOTH SIDES, which is what keeps the derivation
+    // from being a rule about a case that does not occur.
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .and_then(std::path::Path::parent)
+        .expect("this crate lives two directories below the root");
+    let collecting: Vec<String> = ci_plan::workflow_files(root)
+        .into_iter()
+        .filter(|path| {
+            !ci_plan::artifact_uploads(&ci_plan::load_workflow(root, path), path).is_empty()
+        })
+        .collect();
+    assert_eq!(
+        collecting,
+        vec![".github/workflows/mnemosyne-validate.yml"],
+        "exactly one tracked workflow collects anything, and the other declares \
+         a cache — so both sides of the derivation are live"
+    );
+}

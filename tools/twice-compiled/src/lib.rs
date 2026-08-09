@@ -748,6 +748,13 @@ pub enum Refusal {
     /// mirror of `RestoreRecordFromAJobWithNoCache`, read off the workflow, so
     /// it fires before any run leaves a record behind.
     RestoreIsMeasuredWithNoCache { job: String },
+    /// A job measures a cache restore in a workflow that uploads no artifact at
+    /// all, so the record it writes is destroyed with its runner.
+    ///
+    /// THE OTHER HALF OF THE DERIVATION that exempts such a workflow from owing
+    /// a record. Both directions come out of one reading of the file, which is
+    /// what stops the exemption from being a list somebody has to remember.
+    RestoreIsMeasuredWhereNothingCollectsIt { job: String },
 }
 
 impl std::fmt::Display for Refusal {
@@ -872,6 +879,12 @@ impl std::fmt::Display for Refusal {
                 "job `{job}` measures a cache restore and declares no cache — \
                  there is nothing between its two measurements, so it would \
                  report an empty tree for a job that never had one to fill"
+            ),
+            Refusal::RestoreIsMeasuredWhereNothingCollectsIt { job } => write!(
+                f,
+                "job `{job}` measures a cache restore in a workflow that uploads \
+                 no artifact at all — the record goes onto a runner that is \
+                 destroyed when the job ends, so nothing can ever read it"
             ),
         }
     }
@@ -1027,11 +1040,35 @@ pub struct Declared {
     /// whole `steps:` list, so it is directly comparable with
     /// [`ci_plan::RunStep::index`].
     pub caches_at: BTreeMap<String, Vec<usize>>,
+    /// Does this workflow collect anything a later job could download?
+    ///
+    /// A BOOLEAN BECAUSE THE QUESTION IS ONE: a workflow that uploads no
+    /// artifact at all leaves nothing behind when its runners are destroyed, so
+    /// a record written in it is unreadable however carefully it is written. It
+    /// is read off the file rather than kept as a list of exempt workflows —
+    /// see [`Declared::of`].
+    pub collects_records: bool,
 }
 
 impl Declared {
-    /// Read both populations out of one workflow's already-parsed halves.
-    pub fn of(steps: &[ci_plan::RunStep], caches: &[ci_plan::CacheDeclaration]) -> Declared {
+    /// Read the populations out of one workflow's already-parsed parts.
+    ///
+    /// `uploads` IS THE THIRD ONE AND IT DECIDES WHO OWES A RECORD AT ALL. Every
+    /// record these gates join is written to a file on a runner that is
+    /// destroyed when the job ends; what survives is what an upload step
+    /// collected. So a workflow that uploads nothing produces no record anything
+    /// can download, and asking its jobs to measure a restore would be asking
+    /// them to write a file nobody can read.
+    ///
+    /// DERIVED AND NOT LISTED. `evidence-replay.yml` is exactly that workflow
+    /// today — it declares a cache, uploads nothing, and until this was read the
+    /// wiring law simply never looked at it. A list of exempt workflows beside
+    /// the law is the shape four rounds have each closed one level at a time.
+    pub fn of(
+        steps: &[ci_plan::RunStep],
+        caches: &[ci_plan::CacheDeclaration],
+        uploads: &[ci_plan::ArtifactUpload],
+    ) -> Declared {
         let mut jobs: BTreeMap<String, Vec<ci_plan::RunStep>> = BTreeMap::new();
         for step in steps {
             jobs.entry(step.job.clone()).or_default().push(step.clone());
@@ -1051,6 +1088,7 @@ impl Declared {
             jobs,
             caches: cached,
             caches_at: at,
+            collects_records: !uploads.is_empty(),
         }
     }
 }
@@ -1152,6 +1190,22 @@ pub fn judge(census: &Census, declared: &Declared, absent: &BTreeSet<String>) ->
 /// detects the mistake from a run rather than firing on the file that is wrong.
 pub fn judge_wiring(declared: &Declared) -> Vec<Refusal> {
     let mut refusals = Vec::new();
+    // A WORKFLOW THAT COLLECTS NOTHING OWES NOTHING, and the inverse is a
+    // refusal: a job measuring a restore where no artifact is uploaded writes a
+    // file that is destroyed with its runner. Both directions are derived from
+    // the same reading, so neither is a list.
+    if !declared.collects_records {
+        for (job, steps) in &declared.jobs {
+            if steps
+                .iter()
+                .any(|step| !restored::sides_measured(&step.script).is_empty())
+            {
+                refusals
+                    .push(Refusal::RestoreIsMeasuredWhereNothingCollectsIt { job: job.clone() });
+            }
+        }
+        return refusals;
+    }
     for (job, caches_at) in &declared.caches_at {
         // WHERE THE RECORD WILL BE WRITTEN — the same law the compilation log
         // has, on the other record.
