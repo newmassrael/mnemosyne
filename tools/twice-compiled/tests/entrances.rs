@@ -332,7 +332,14 @@ fn on_a_runner(jobs: &[Job], recorded: &[&str], own_job: Option<&str>) -> Run {
     let (root, scratch) = repository(jobs);
     let logs = scratch.path().join("logs");
     for job in recorded {
-        record_a_compilation(&logs.join(format!("{job}.log")));
+        // ANCHORED TO THE CHECKOUT THE GATE WILL RUN IN, because the coverage
+        // reading joins an absolute `--out-dir` against the workflow's relative
+        // `path:` and a destination on another machine is one it refuses to
+        // read. This harness is where that join is exercised at all.
+        record_a_compilation_into(
+            &logs.join(format!("{job}.log")),
+            &root.path().join("target/debug/deps").display().to_string(),
+        );
         // AND ONE CRATE CARGO FETCHED, so every census this harness builds has a
         // row on BOTH sides of the split. A report whose fetched row is only
         // ever zero is one no test can tell from a report that stopped counting.
@@ -373,7 +380,17 @@ fn gate(root: &Path, scratch: &Path) -> Command {
 /// compilations took no time at all is refused, and so is one whose log holds
 /// nothing. The unit is the same in every job, so a census of two of these has
 /// the finding this gate exists to report in it.
+///
+/// AND IT SAYS WHERE IT WROTE. cargo passes `--out-dir` to every compilation it
+/// drives, and a fixture that left it out was a fixture the gate rightly refuses
+/// — a destination nothing said is one no coverage can be read from. `TARGET` is
+/// spelled relative here because the caller knows the checkout and this does not.
 fn record_a_compilation(log: &Path) {
+    record_a_compilation_into(log, "target/debug/deps")
+}
+
+/// Where the fixtures above write, when the caller has a checkout to anchor to.
+fn record_a_compilation_into(log: &Path, out_dir: &str) {
     for start in [1_000_000_u64, 1_200_000] {
         let record = Record {
             started_at: start,
@@ -388,6 +405,8 @@ fn record_a_compilation(log: &Path) {
                 "--crate-type",
                 "lib",
                 "src/lib.rs",
+                "--out-dir",
+                out_dir,
             ]
             .iter()
             .map(|word| (*word).to_string())
@@ -785,9 +804,32 @@ fn on_a_runner_the_workflow_is_read_off_the_runner_and_the_gate_leaves_itself_ou
         "the per-job split is printed with both sides of it\n{}",
         run.transcript()
     );
+    // THE TOTALS ROW IS NAMED BY ITS SHARE AND NOT BY ITS WORDS. The coverage
+    // rows below spell the same origins, so an assertion that the origin words
+    // appear anywhere was satisfied by them the moment they existed — and the
+    // injection that removes the totals loop came back green. A percentage is
+    // printed by that line and by nothing else here.
     assert!(
-        stdout.contains("fetched from a registry") && stdout.contains("in the checkout"),
+        stdout
+            .lines()
+            .any(|line| line.contains("fetched from a registry") && line.contains("%)")),
         "and so is the total it is a share of\n{}",
+        run.transcript()
+    );
+    // AND WHETHER THE CACHE REACHES WHERE THAT WORK WENT. These fixture jobs
+    // declare no cache at all, so every destination is outside it — which is
+    // the row that says the work no restore could have spared, and it names
+    // the tree because the repair is a `path:` line.
+    assert!(
+        stdout.contains("WHERE NO PATH OF ITS CACHE REACHES"),
+        "the coverage row is printed, and the census is on this machine so it \
+         is readable at all\n{}",
+        run.transcript()
+    );
+    assert!(
+        !stdout.contains("taken on another machine"),
+        "these destinations ARE under the checkout the gate ran in — a reader \
+         that said otherwise is joining against the wrong root\n{}",
         run.transcript()
     );
 }
@@ -1073,6 +1115,8 @@ fn record_a_fetched_compilation(log: &Path) {
             "lib",
             "/home/runner/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/\
              serde-1.0.219/src/lib.rs",
+            "--out-dir",
+            "target/debug/deps",
         ]
         .iter()
         .map(|word| (*word).to_string())

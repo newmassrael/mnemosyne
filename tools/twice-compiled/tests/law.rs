@@ -6,7 +6,8 @@
 //! deleted, two jobs sharing a unit — none of those exist in this repository on
 //! the day this is written, and every one of them is what the gate is for.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
+use std::path::Path;
 
 use ci_plan::RunStep;
 use twice_compiled::{
@@ -111,11 +112,11 @@ fn a_compilation_is_keyed_by_the_fingerprint_cargo_computed_for_it() {
         "469b061dbaa2f2d3",
         "dep-info,metadata,link",
     );
-    let Invocation::Compilation(unit) = read(&argv) else {
+    let Invocation::Compilation(compiled) = read(&argv) else {
         panic!("that is a compilation: {argv:?}");
     };
     assert_eq!(
-        *unit,
+        compiled.unit,
         Unit {
             crate_name: "mnemosyne_core".to_string(),
             metadata: "469b061dbaa2f2d3".to_string(),
@@ -169,10 +170,14 @@ const TOOLCHAIN: &str = "/home/runner/.rustup/toolchains/1.94.1-x86_64-unknown-l
 /// Where a compilation reading this file is placed.
 fn origin_of(input: &str) -> Origin {
     let argv = compiling("serde", "abcd", input);
-    let Invocation::Compilation(unit) = read(&argv) else {
+    let Invocation::Compilation(compiled) = read(&argv) else {
         panic!("that is a compilation: {argv:?}");
     };
-    unit.origin
+    assert_eq!(
+        compiled.unit.origin, compiled.into.origin,
+        "the two axes read the same source and must not come to two answers"
+    );
+    compiled.unit.origin
 }
 
 #[test]
@@ -241,12 +246,12 @@ fn the_pass_cargo_clippy_makes_is_read_through_the_chain_that_ran_it() {
         .into_iter()
         .skip(1),
     );
-    let Invocation::Compilation(unit) = read(&argv) else {
+    let Invocation::Compilation(compiled) = read(&argv) else {
         panic!("a clippy pass is a compilation this CI pays for: {argv:?}");
     };
-    assert_eq!(unit.origin, Origin::Tree);
+    assert_eq!(compiled.unit.origin, Origin::Tree);
     assert_eq!(
-        unit.driver,
+        compiled.unit.driver,
         "/home/runner/.rustup/toolchains/1.94.1-x86_64-unknown-linux-gnu/bin/clippy-driver",
         "the program the recorder ran is the one that did the work, and it is \
          not the `rustc` it was handed to pass along"
@@ -367,6 +372,232 @@ fn the_split_by_origin_accounts_for_every_compilation_the_job_counted() {
     );
     assert_eq!(log.fetched().times, 3);
     assert_eq!(log.fetched().micros, 3_000);
+    // AND THE OTHER BREAKDOWN OF THE SAME POPULATION AGREES. `by_origin` folds
+    // the unit table and `written` is folded per compilation; nothing about the
+    // way either is built makes them agree by construction, and two breakdowns
+    // of one population that disagree are one report nobody can act on.
+    let mut crossed: BTreeMap<Origin, Cost> = BTreeMap::new();
+    for (into, cost) in &log.written {
+        crossed.entry(into.origin).or_default().absorb(*cost);
+    }
+    assert_eq!(crossed, split);
+}
+
+/// A job's log built from `(crate, metadata, source, out-dir)` rows, one
+/// compilation each, laid end to end on the clock.
+fn log_written(rows: &[(&str, &str, &str, &str)]) -> JobLog {
+    let mut clock = EPOCH;
+    let mut text = String::new();
+    for (crate_name, metadata, source, out_dir) in rows {
+        let mut argv = compiling(crate_name, metadata, source);
+        argv.push("--out-dir".to_string());
+        argv.push((*out_dir).to_string());
+        let words: Vec<&str> = argv.iter().map(String::as_str).collect();
+        text.push_str(&record(clock, 1_000, &words));
+        clock += 1_000;
+    }
+    read_log(&text)
+}
+
+const REGISTRY: &str =
+    "/home/runner/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.219/src/lib.rs";
+
+#[test]
+fn what_a_cache_could_not_have_spared_is_told_from_what_it_missed() {
+    // THE FINDING THIS EXISTS FOR. A job that restored its `target` on an exact
+    // hit and still compiled hundreds of fetched crates reads as a cache that
+    // failed — until somebody asks WHERE that work was written. This
+    // repository's jobs build side workspaces whose `target` directories are in
+    // nobody's `path:` list, and no restore of the declared ones could ever
+    // have spared a compilation that landed there.
+    let log = log_written(&[
+        ("serde", "0001", REGISTRY, "/w/repo/target/debug/deps"),
+        (
+            "core",
+            "0002",
+            "crates/core/src/lib.rs",
+            "/w/repo/target/debug/deps",
+        ),
+        ("tokio", "0003", REGISTRY, "/w/repo/bench/target/debug/deps"),
+        (
+            "bench_gen",
+            "0004",
+            "bench/src/lib.rs",
+            "/w/repo/bench/target/debug/deps",
+        ),
+        (
+            "rayon",
+            "0005",
+            REGISTRY,
+            "/w/repo/tools/gate/target/debug/deps",
+        ),
+    ]);
+    let found = log
+        .coverage(Path::new("/w/repo"), &["target".to_string()])
+        .expect("these destinations are under that checkout");
+
+    let held = &found.held["target"];
+    assert_eq!(held[&Origin::Registry].times, 1);
+    assert_eq!(held[&Origin::Tree].times, 1);
+    assert_eq!(
+        found.outside.keys().collect::<Vec<_>>(),
+        vec!["/w/repo/bench/target", "/w/repo/tools/gate/target"],
+        "the rows name the trees, because the repair is a `path:` line and a \
+         reader owed one needs to know which directory to write"
+    );
+    assert_eq!(
+        found.outside["/w/repo/bench/target"][&Origin::Registry].times,
+        1
+    );
+    assert_eq!(
+        found.outside["/w/repo/tools/gate/target"][&Origin::Registry].times,
+        1
+    );
+    let counted: usize = found
+        .held
+        .values()
+        .chain(found.outside.values())
+        .flat_map(BTreeMap::values)
+        .map(|cost| cost.times)
+        .sum();
+    assert_eq!(
+        counted,
+        log.compilations(),
+        "the two halves are one walk over one population and must sum to it"
+    );
+}
+
+#[test]
+fn two_declared_paths_holding_one_destination_credit_the_deeper() {
+    // MAKING THE PATHS ABSOLUTE IS WHAT REMOVES MOST OF THIS QUESTION:
+    // `<root>/bench/target` does not begin with `<root>/target` however much
+    // the two spellings share, so a job caching sibling trees needs no tie to
+    // be broken. What remains is a `path:` list whose entries NEST, where both
+    // genuinely hold the destination and only one of them is the answer a
+    // reader can act on. The deeper is that one, and without the ordering the
+    // row is whichever the workflow happened to list first.
+    let log = log_written(&[
+        ("serde", "0001", REGISTRY, "/w/repo/target/debug/deps"),
+        ("tokio", "0002", REGISTRY, "/w/repo/bench/target/debug/deps"),
+    ]);
+    let found = log
+        .coverage(
+            Path::new("/w/repo"),
+            &["target".to_string(), "target/debug".to_string()],
+        )
+        .expect("these destinations are under that checkout");
+    assert_eq!(
+        found.held.keys().collect::<Vec<_>>(),
+        vec!["target/debug"],
+        "both hold it and the deeper is the row: {:?}",
+        found.held
+    );
+    assert_eq!(
+        found.outside.keys().collect::<Vec<_>>(),
+        vec!["/w/repo/bench/target"],
+        "and the sibling tree is under neither, which the absolute join settles \
+         without any ordering at all"
+    );
+}
+
+#[test]
+fn a_cache_path_a_shell_would_expand_holds_no_compiler_output_here() {
+    // `~/.cargo/registry` is every job's first cached path and only a shell
+    // expands it. It covers nothing this reader can see, which is right — a
+    // cargo home holds sources — and is said rather than left as a silence.
+    let log = log_written(&[("serde", "0001", REGISTRY, "/w/repo/target/debug/deps")]);
+    let found = log
+        .coverage(Path::new("/w/repo"), &["~/.cargo/registry".to_string()])
+        .expect("the destination is under that checkout");
+    assert!(found.held.is_empty());
+    assert_eq!(found.outside["/w/repo/target"][&Origin::Registry].times, 1);
+}
+
+#[test]
+fn a_census_from_another_machine_is_not_read_as_a_cache_that_reaches_nothing() {
+    // THE CATASTROPHIC-LOOKING NUMBER THAT IS ONLY A WRONG ROOT. An `--out-dir`
+    // written on a runner begins `/home/runner/work/…`, and no path under a
+    // different checkout will ever prefix it — so a reader that answered anyway
+    // would report EVERY compilation as work no cache could spare.
+    let log = log_written(&[(
+        "serde",
+        "0001",
+        REGISTRY,
+        "/home/runner/work/mnemosyne/mnemosyne/target/debug/deps",
+    )]);
+    assert!(log
+        .coverage(Path::new("/home/coin/mnemosyne"), &["target".to_string()])
+        .is_none());
+    assert!(
+        log.coverage(
+            Path::new("/home/runner/work/mnemosyne/mnemosyne"),
+            &["target".to_string()]
+        )
+        .is_some(),
+        "and the same census read from the machine it was taken on resolves"
+    );
+}
+
+#[test]
+fn a_job_that_wrote_where_nothing_said_is_refused() {
+    // A DESTINATION THIS READER NEVER SAW IS ABSENT FROM BOTH HALVES, and both
+    // still sum and still print — the job simply reads as having compiled less
+    // than it did, in whichever direction happens to matter.
+    let mut census = census_of(&["validate", "unrun-tests"]);
+    let mut text = record(
+        EPOCH,
+        500,
+        &compiling("adrift", "beef", "crates/core/src/lib.rs")
+            .iter()
+            .map(String::as_str)
+            .collect::<Vec<_>>(),
+    );
+    text.push_str(&record(
+        EPOCH + 500,
+        500,
+        &{
+            let mut argv = compiling("placed", "d00d", "crates/core/src/lib.rs");
+            argv.push("--out-dir".to_string());
+            argv.push("/w/repo/target/debug/deps".to_string());
+            argv
+        }
+        .iter()
+        .map(String::as_str)
+        .collect::<Vec<_>>(),
+    ));
+    census.jobs.insert("validate".to_string(), read_log(&text));
+
+    let refusals = judge(
+        &census,
+        &declared_jobs(&[wired("validate"), wired("unrun-tests")]),
+        &nothing(),
+    );
+    assert!(
+        refusals.iter().any(|refusal| matches!(
+            refusal,
+            Refusal::JobWroteWhereNothingSaid { job, compilations }
+                if job == "validate" && *compilations == 1
+        )),
+        "{refusals:?}"
+    );
+}
+
+#[test]
+fn a_job_that_said_where_every_compilation_went_is_not_refused_for_this() {
+    // THE CONTROL, through the same judge on the same fixture shape: `census_of`
+    // builds its logs from `compiled`, which names an `--out-dir` — so an
+    // assertion that the refusal fires is held against a sibling that accepts.
+    let refusals = judge(
+        &census_of(&["validate", "unrun-tests"]),
+        &declared_jobs(&[wired("validate"), wired("unrun-tests")]),
+        &nothing(),
+    );
+    assert!(
+        !refusals
+            .iter()
+            .any(|refusal| matches!(refusal, Refusal::JobWroteWhereNothingSaid { .. })),
+        "{refusals:?}"
+    );
 }
 
 #[test]

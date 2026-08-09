@@ -306,11 +306,47 @@ fn input_of(argv: &[String]) -> Result<&str, Vec<String>> {
     }
 }
 
+/// One compilation: what was compiled, and where its output was written.
+///
+/// THE DESTINATION IS NOT PART OF THE UNIT AND MUST NOT BECOME ONE. A job that
+/// holds two `target` directories compiles a shared crate into both, and that
+/// second compilation is the FINDING — the within-job repetition no merge of
+/// jobs can remove. Putting the destination in the key would split those two
+/// into two units and erase it, reporting a job that pays twice as one that
+/// pays once for two different things.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Compiled {
+    /// What was compiled.
+    pub unit: Unit,
+    /// Where it was written, as [`Destination`] reads it.
+    pub into: Destination,
+}
+
+/// Where one compilation's output went, and whose source it read.
+///
+/// THE TWO AXES TRAVEL TOGETHER BECAUSE THE QUESTION NEEDS BOTH. "This job
+/// restored its `target` exactly and still compiled 461 crates cargo had
+/// fetched" is answerable only by crossing them: the fetched share alone cannot
+/// say whether that work went into the tree the cache brought back or into one
+/// no cache holds, and those are opposite findings about the same number.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub struct Destination {
+    /// `--out-dir`, spelled as the record spells it.
+    ///
+    /// `None` when the compiler was given none, which rustc allows and cargo
+    /// does not do. Kept as a class rather than dropped, for the reason every
+    /// other class this reader cannot key is kept: a destination it could not
+    /// read must not be counted as a destination it read as covered.
+    pub out_dir: Option<String>,
+    /// Whose source the compilation read.
+    pub origin: Origin,
+}
+
 /// What one `rustc` invocation was.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Invocation {
     /// A compilation cargo drives.
-    Compilation(Box<Unit>),
+    Compilation(Box<Compiled>),
     /// `rustc -vV`, `--print=cfg`, the crate-type probe — cargo asking the
     /// compiler about itself. Real processes, no compilation.
     Probe,
@@ -507,18 +543,73 @@ pub fn read(record: &[String]) -> Invocation {
             })
         }
     };
-    Invocation::Compilation(Box::new(Unit {
-        crate_name: crate_name.to_string(),
-        metadata: metadata.to_string(),
-        emit: flag_value(argv, "--emit").unwrap_or_default().to_string(),
-        crate_types: crate_types(argv),
-        test: argv.iter().any(|word| word == "--test"),
-        driver,
-        origin: Origin::of(input),
+    let origin = Origin::of(input);
+    Invocation::Compilation(Box::new(Compiled {
+        unit: Unit {
+            crate_name: crate_name.to_string(),
+            metadata: metadata.to_string(),
+            emit: flag_value(argv, "--emit").unwrap_or_default().to_string(),
+            crate_types: crate_types(argv),
+            test: argv.iter().any(|word| word == "--test"),
+            driver,
+            origin,
+        },
+        into: Destination {
+            out_dir: flag_value(argv, "--out-dir").map(str::to_string),
+            origin,
+        },
     }))
 }
 
 // --- one job ----------------------------------------------------------------
+
+/// What one job compiled, grouped by which of its cache's paths would hold the
+/// output.
+///
+/// THE TWO HALVES ARE ONE ANSWER AND ARE BUILT TOGETHER. "The cache spared this"
+/// and "no cache could have" are the same walk over the same destinations, and a
+/// caller assembling them from two calls could be given a pair that does not sum
+/// to the job.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Coverage {
+    /// Per declared cache path that resolves against the checkout, what was
+    /// written under it — split by whose source it was.
+    pub held: BTreeMap<String, BTreeMap<Origin, Cost>>,
+    /// What was written where no declared path of this job's cache reaches.
+    ///
+    /// WORK NO RESTORE OF THIS CACHE COULD EVER SPARE, which is a different
+    /// finding from a cache that missed: this repository's jobs build side
+    /// workspaces whose `target` directories are in nobody's `path:` list.
+    ///
+    /// KEYED BY THE TREE AND NOT SUMMED INTO ONE NUMBER, because the repair is
+    /// a `path:` line and a reader owed one needs to know WHICH directory to
+    /// write. One total says a cache is not reaching; the rows say where to
+    /// point it.
+    pub outside: BTreeMap<String, BTreeMap<Origin, Cost>>,
+}
+
+impl Destination {
+    /// The build directory this compilation's output sits under.
+    ///
+    /// CARGO'S LAYOUT IS `<target directory>/<profile>/…`, so the output of one
+    /// workspace arrives under dozens of `--out-dir` values — one per build
+    /// script, one per profile — and a report listing them is a report nobody
+    /// reads. What a reader needs is the tree, because the repair is a `path:`
+    /// line naming one.
+    ///
+    /// THE RULE IS THE LAST COMPONENT CALLED `target`, WHICH IS AN ASSUMPTION
+    /// AND IS STATED. It is cargo's default and this repository sets no
+    /// `CARGO_TARGET_DIR`; a destination with no such component is returned
+    /// WHOLE rather than cut at a guess, so a checkout that renamed it prints
+    /// long rows instead of wrong ones.
+    pub fn tree(&self) -> Option<&str> {
+        let dir = self.out_dir.as_deref()?;
+        match dir.rfind("/target/") {
+            Some(at) => Some(&dir[..at + "/target".len()]),
+            None => Some(dir),
+        }
+    }
+}
 
 /// What one job compiled.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -529,6 +620,16 @@ pub struct JobLog {
     pub probes: usize,
     /// Compilations with no `-C metadata` — see [`Invocation::Unkeyed`].
     pub unkeyed: usize,
+    /// Where this job's compilations were written, crossed with whose source
+    /// they read — see [`Destination`].
+    ///
+    /// A SECOND AXIS AND NOT A FINER KEY, for the reason [`Compiled`] gives.
+    /// Its rows sum to the same compilations and the same seconds as
+    /// [`JobLog::units`] does, which is asserted rather than assumed: two
+    /// breakdowns of one population that disagree are one report nobody can act
+    /// on, and nothing about the way each is folded makes them agree by
+    /// construction.
+    pub written: BTreeMap<Destination, Cost>,
     /// Keyed compilations whose input file could not be placed, by what they
     /// were and how the reading failed — see [`Invocation::Unplaced`].
     ///
@@ -585,6 +686,92 @@ impl JobLog {
             out.entry(unit.origin).or_default().absorb(*cost);
         }
         out
+    }
+
+    /// What this job compiled into trees NONE of its cache's paths hold,
+    /// split by whose source it was.
+    ///
+    /// THE OTHER HALF OF "DID THE CACHE SPARE THIS". A restore can only spare
+    /// work whose output it brought back, so a compilation written somewhere the
+    /// cache does not reach is work no hit of that cache could ever have
+    /// avoided — and this repository's jobs build side workspaces whose `target`
+    /// directories are not in any `path:` list. Until this existed, a job that
+    /// restored 27 GB exactly and compiled 461 fetched crates read as a cache
+    /// that had failed, when it may be a cache that was never asked.
+    ///
+    /// `root` IS THE CHECKOUT, because a workflow's `path:` is relative to it
+    /// and an `--out-dir` is absolute. A declared path that does not resolve
+    /// against the checkout — `~/.cargo/registry`, which only a shell expands —
+    /// covers nothing here, which is right for a cargo home and is stated
+    /// because it is a silence: those paths hold no compiler output at all.
+    ///
+    /// A COMPILATION WITH NO DESTINATION IS IN NEITHER HALF. It is counted by
+    /// [`JobLog::wrote_nowhere_named`] and refused over, because "written
+    /// outside the cache" and "written where this reader could not look" are
+    /// the same zero to everything downstream.
+    ///
+    /// `None` WHEN THE CENSUS WAS TAKEN ON ANOTHER MACHINE, which is the whole
+    /// reason this returns an option. An `--out-dir` written on a runner begins
+    /// `/home/runner/work/…` and no path under a different checkout will ever
+    /// prefix it, so a reader that answered anyway would report every
+    /// compilation as written outside the cache — a catastrophic-looking number
+    /// produced by looking in the wrong place. Not one destination under `root`
+    /// is that, and it is said rather than answered.
+    pub fn coverage(&self, root: &Path, cached: &[String]) -> Option<Coverage> {
+        if !self.written.iter().any(|(into, _)| {
+            into.out_dir
+                .as_ref()
+                .is_some_and(|dir| Path::new(dir).starts_with(root))
+        }) {
+            return None;
+        }
+        // LONGEST DECLARED PATH WINS, and the paths are made absolute first so
+        // there is nothing to be ambiguous about: `<root>/bench/target` does not
+        // begin with `<root>/target`, however much the two spellings share.
+        let mut reachable: Vec<(&String, PathBuf)> = cached
+            .iter()
+            .filter(|path| !path.starts_with('~'))
+            .map(|path| (path, root.join(path)))
+            .collect();
+        reachable.sort_by_key(|(_, absolute)| std::cmp::Reverse(absolute.components().count()));
+        let mut found = Coverage::default();
+        for (into, cost) in &self.written {
+            let Some(dir) = &into.out_dir else { continue };
+            let dir = Path::new(dir);
+            match reachable
+                .iter()
+                .find(|(_, absolute)| dir.starts_with(absolute))
+            {
+                Some((declared, _)) => found
+                    .held
+                    .entry((*declared).clone())
+                    .or_default()
+                    .entry(into.origin)
+                    .or_default()
+                    .absorb(*cost),
+                None => found
+                    .outside
+                    .entry(
+                        into.tree()
+                            .unwrap_or(dir.to_str().unwrap_or(""))
+                            .to_string(),
+                    )
+                    .or_default()
+                    .entry(into.origin)
+                    .or_default()
+                    .absorb(*cost),
+            }
+        }
+        Some(found)
+    }
+
+    /// Compilations whose arguments named no `--out-dir` at all.
+    pub fn wrote_nowhere_named(&self) -> usize {
+        self.written
+            .iter()
+            .filter(|(into, _)| into.out_dir.is_none())
+            .map(|(_, cost)| cost.times)
+            .sum()
     }
 
     /// Compilations this reader could not place, counted with their repeats.
@@ -693,7 +880,16 @@ pub fn read_log(text: &str) -> JobLog {
             Invocation::Probe => log.probes += 1,
             Invocation::Unkeyed => log.unkeyed += 1,
             Invocation::Unplaced(what) => log.unplaced.entry(what).or_default().add(record.micros),
-            Invocation::Compilation(unit) => log.units.entry(*unit).or_default().add(record.micros),
+            Invocation::Compilation(compiled) => {
+                log.units
+                    .entry(compiled.unit)
+                    .or_default()
+                    .add(record.micros);
+                log.written
+                    .entry(compiled.into)
+                    .or_default()
+                    .add(record.micros);
+            }
         }
     }
     log
@@ -1045,6 +1241,14 @@ pub enum Refusal {
         /// than to a megabyte of records.
         what: Vec<Unplaceable>,
     },
+    /// A job ran compilations that named no `--out-dir`, so nothing can say
+    /// whether the cache holds where their output went.
+    ///
+    /// THE SAME ZERO AS WORK THE CACHE DOES HOLD. A destination this reader
+    /// never saw is absent from both halves of [`Coverage`], and both halves
+    /// still sum and still print — the job simply reads as having compiled less
+    /// than it did, in whichever direction happens to matter.
+    JobWroteWhereNothingSaid { job: String, compilations: usize },
     /// A step runs without the recorder in its environment, so whatever it
     /// compiles is invisible here. Named per variable, because the two do
     /// different jobs and either one missing is the same silence.
@@ -1167,6 +1371,13 @@ impl std::fmt::Display for Refusal {
                     .map(|one| format!("`{}` — {}", one.crate_name, one.why()))
                     .collect::<Vec<_>>()
                     .join("; ")
+            ),
+            Refusal::JobWroteWhereNothingSaid { job, compilations } => write!(
+                f,
+                "job `{job}` ran {compilations} compilation(s) that named no \
+                 `--out-dir`, so nothing can say whether its cache holds where \
+                 that output went — and a destination this reader never saw is \
+                 absent from both halves of the coverage, which still sum"
             ),
             Refusal::RecordFromNoJob { job } => write!(
                 f,
@@ -1559,6 +1770,12 @@ pub fn judge(census: &Census, declared: &Declared, absent: &BTreeSet<String>) ->
                     job: job.clone(),
                     compilations: log.unplaced_compilations(),
                     what: log.unplaced.keys().cloned().collect(),
+                })
+            }
+            Some(log) if log.wrote_nowhere_named() > 0 => {
+                refusals.push(Refusal::JobWroteWhereNothingSaid {
+                    job: job.clone(),
+                    compilations: log.wrote_nowhere_named(),
                 })
             }
             Some(_) => {}

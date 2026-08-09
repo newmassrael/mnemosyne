@@ -21,7 +21,8 @@ use std::process::Command;
 
 use ci_plan::RunStep;
 use twice_compiled::{
-    judge, load, unresolvable, Census, Declared, Entrance, JOB_VARIABLE, WRAPPER_VARIABLE,
+    judge, load, unresolvable, Census, Cost, Declared, Entrance, Origin, JOB_VARIABLE,
+    WRAPPER_VARIABLE,
 };
 
 fn main() {
@@ -103,7 +104,7 @@ fn judge_a_run(entrance: Entrance) -> ! {
 
     let census = load(&logs, &absent)
         .unwrap_or_else(|error| panic!("cannot read {}: {error}", logs.display()));
-    report(&census, &declared, &absent);
+    report(&census, &declared, &absent, &root);
 
     let refusals = judge(&census, &declared, &absent);
     if refusals.is_empty() {
@@ -153,9 +154,24 @@ fn seconds(micros: u64) -> f64 {
     micros as f64 / 1_000_000.0
 }
 
+/// A coverage row's split, spelled for the end of a line.
+///
+/// EMPTY WHEN THERE IS NOTHING IN IT, so a row that is honestly zero does not
+/// carry a breakdown of zeros that reads like a measurement.
+fn naming(split: &BTreeMap<Origin, Cost>) -> String {
+    if split.is_empty() {
+        return String::new();
+    }
+    let parts: Vec<String> = split
+        .iter()
+        .map(|(origin, cost)| format!("{} {}", cost.times, origin.why()))
+        .collect();
+    format!(" ({})", parts.join(", "))
+}
+
 /// Print the census. Everything, including the classes this reader cannot key —
 /// a gate that prints only its findings cannot be told from one that never ran.
-fn report(census: &Census, declared: &Declared, absent: &BTreeSet<String>) {
+fn report(census: &Census, declared: &Declared, absent: &BTreeSet<String>, root: &Path) {
     println!("twice-compiled — every compilation CI pays for is one job's\n");
     for job in declared.jobs.keys() {
         if absent.contains(job) {
@@ -213,6 +229,67 @@ fn report(census: &Census, declared: &Declared, absent: &BTreeSet<String>) {
             log.compilations() - fetched.times,
             seconds(log.compiled_micros().saturating_sub(fetched.micros)),
         );
+        // THE FOURTH LINE IS WHETHER THIS JOB'S CACHE REACHES WHERE THAT WORK
+        // WENT. A restore can only spare what it brings back, so a compilation
+        // written outside every path the cache declares is work no hit of it
+        // could ever have avoided — a different finding from a cache that
+        // missed, and until this was read the two were one number.
+        match log.coverage(
+            root,
+            declared.caches.get(job).map_or(&[][..], Vec::as_slice),
+        ) {
+            Some(found) => {
+                for (path, split) in &found.held {
+                    println!(
+                        "  {:<22} {:>6} into `{path}`, which its cache holds{}",
+                        "",
+                        split.values().map(|cost| cost.times).sum::<usize>(),
+                        naming(split),
+                    );
+                }
+                for (tree, split) in &found.outside {
+                    println!(
+                        "  {:<22} {:>6} into `{tree}`, WHERE NO PATH OF ITS CACHE \
+                         REACHES — no restore could have spared this{}",
+                        "",
+                        split.values().map(|cost| cost.times).sum::<usize>(),
+                        naming(split),
+                    );
+                }
+            }
+            // WHERE IT WAS TAKEN IS PART OF WHAT IT SAYS. Answering anyway would
+            // print every compilation as written outside the cache, which is
+            // what looking in the wrong place produces rather than a finding.
+            None => {
+                println!(
+                    "  {:<22} none of its destinations are under {} — this census \
+                     was taken on another machine, so what its cache reaches \
+                     cannot be read here; the destinations themselves can:",
+                    "",
+                    root.display(),
+                );
+                // THE DATA IT DOES HOLD, UNINTERPRETED. A reader told only that
+                // the joining is unavailable has been handed nothing, and these
+                // rows are what the join would have been made of.
+                let mut written: BTreeMap<&str, BTreeMap<Origin, Cost>> = BTreeMap::new();
+                for (into, cost) in &log.written {
+                    written
+                        .entry(into.tree().unwrap_or("<none named>"))
+                        .or_default()
+                        .entry(into.origin)
+                        .or_default()
+                        .absorb(*cost);
+                }
+                for (dir, split) in written {
+                    println!(
+                        "  {:<22} {:>6} into {dir}{}",
+                        "",
+                        split.values().map(|cost| cost.times).sum::<usize>(),
+                        naming(&split),
+                    );
+                }
+            }
+        }
         if !log.unplaced.is_empty() {
             for (what, cost) in &log.unplaced {
                 println!(

@@ -525,6 +525,70 @@
       "expect_red": [
         "on_a_runner_the_workflow_is_read_off_the_runner_and_the_gate_leaves_itself_out"
       ]
+    },
+    {
+      "name": "a-census-from-anywhere-is-read-against-this-checkout",
+      "why": "an `--out-dir` written on a runner begins `/home/runner/work/…` and no path under a different checkout will ever prefix it, so a reader that answers anyway reports EVERY compilation as work no cache could spare — a catastrophic-looking number produced by looking in the wrong place rather than a finding",
+      "edits": [
+        {
+          "file": "tools/twice-compiled/src/lib.rs",
+          "from": "        if !self.written.iter().any(|(into, _)| {",
+          "to": "        if false && !self.written.iter().any(|(into, _)| {"
+        }
+      ],
+      "expect_red": [
+        "a_census_from_another_machine_is_not_read_as_a_cache_that_reaches_nothing"
+      ]
+    },
+    {
+      "name": "the-first-declared-path-that-matches-wins",
+      "why": "a job caching both `target` and `tools/gate/target` writes into both, and the shorter path is a prefix of nothing the longer one holds only because the paths were made absolute first — assigning to whichever was declared first reports the deeper tree's work under the shallower one, and the repair is chosen from these rows",
+      "edits": [
+        {
+          "file": "tools/twice-compiled/src/lib.rs",
+          "from": "        reachable.sort_by_key(|(_, absolute)| std::cmp::Reverse(absolute.components().count()));",
+          "to": "        reachable.sort_by_key(|(_, absolute)| absolute.components().count());"
+        }
+      ],
+      "expect_red": ["two_declared_paths_holding_one_destination_credit_the_deeper"]
+    },
+    {
+      "name": "everything-a-cache-does-not-hold-is-one-number",
+      "why": "the repair for work outside a cache is a `path:` line naming a directory, and a single total says a cache is not reaching without saying where to point it — this repository's jobs write into a dozen `target` trees and only some of them are worth declaring",
+      "edits": [
+        {
+          "file": "tools/twice-compiled/src/lib.rs",
+          "from": "        match dir.rfind(\"/target/\") {\n            Some(at) => Some(&dir[..at + \"/target\".len()]),\n            None => Some(dir),\n        }",
+          "to": "        Some(dir)"
+        }
+      ],
+      "expect_red": ["what_a_cache_could_not_have_spared_is_told_from_what_it_missed"]
+    },
+    {
+      "name": "a-compilation-that-said-no-destination-is-not-refused",
+      "why": "a destination this reader never saw is absent from BOTH halves of the coverage, and both still sum and still print — the job reads as having compiled less than it did, in whichever direction happens to matter",
+      "edits": [
+        {
+          "file": "tools/twice-compiled/src/lib.rs",
+          "from": "            Some(log) if log.wrote_nowhere_named() > 0 => {",
+          "to": "            Some(log) if log.wrote_nowhere_named() > 0 && false => {"
+        }
+      ],
+      "expect_red": ["a_job_that_wrote_where_nothing_said_is_refused"]
+    },
+    {
+      "name": "the-report-need-not-say-what-no-restore-could-spare",
+      "why": "the reading lives in `main.rs`, where R1096 measured what a decision with no reader costs; a job that restored 27 GB exactly and compiled hundreds of fetched crates reads as a cache that failed until this row says the work went where the cache never reached",
+      "edits": [
+        {
+          "file": "tools/twice-compiled/src/main.rs",
+          "from": "                for (tree, split) in &found.outside {",
+          "to": "                for (tree, split) in found.outside.iter().take(0) {"
+        }
+      ],
+      "expect_red": [
+        "on_a_runner_the_workflow_is_read_off_the_runner_and_the_gate_leaves_itself_out"
+      ]
     }
   ]
 }
