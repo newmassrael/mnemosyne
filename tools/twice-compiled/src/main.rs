@@ -100,6 +100,11 @@ fn workflow_path(arguments: &[String]) -> String {
     path[at..].to_string()
 }
 
+/// Seconds, from the microseconds every number here is measured in.
+fn seconds(micros: u64) -> f64 {
+    micros as f64 / 1_000_000.0
+}
+
 /// Print the census. Everything, including the classes this reader cannot key —
 /// a gate that prints only its findings cannot be told from one that never ran.
 fn report(census: &Census, declared: &BTreeMap<String, Vec<RunStep>>, absent: &BTreeSet<String>) {
@@ -122,22 +127,61 @@ fn report(census: &Census, declared: &BTreeMap<String, Vec<RunStep>>, absent: &B
             log.probes,
             log.unkeyed,
         );
+        // THE SECOND LINE IS THE ONE THAT PRICES THE FIRST. `compiling` is the
+        // area under every compiler the job ran and is larger than the job; the
+        // window is from the first compiler's start to the last one's exit, so
+        // their ratio is how many compilers were alive on average. The idle
+        // figure is the part of that window with NO compiler in it at all —
+        // a suite running what it just built — and it is what says how much of
+        // this job removing work can actually reach.
+        let window = log.span_micros();
+        let busy = log.busy_micros();
+        let at_once = if busy == 0 {
+            0.0
+        } else {
+            log.micros as f64 / busy as f64
+        };
+        println!(
+            "  {:<22} {:>8.1} s compiling within a {:>8.1} s window \
+             ({at_once:.1} at once while busy, {:.1} s of it idle)",
+            "",
+            seconds(log.compiled_micros()),
+            seconds(window),
+            seconds(log.idle_micros()),
+        );
     }
 
     let paid = census.paid();
     let floor = census.floor();
     println!(
-        "\n  CI pays for   {paid:>6} compilations across {} job(s)",
-        census.jobs.len()
+        "\n  CI pays for   {paid:>6} compilations across {} job(s)  \
+         {:>9.1} s of compiling",
+        census.jobs.len(),
+        seconds(census.paid_micros()),
     );
-    println!("  the floor is  {floor:>6} distinct units");
+    println!(
+        "  the floor is  {floor:>6} distinct units{:<26}{:>9.1} s",
+        "",
+        seconds(census.floor_micros()),
+    );
     let duplicated = paid.saturating_sub(floor);
     let share = if paid == 0 {
         0.0
     } else {
         100.0 * duplicated as f64 / paid as f64
     };
-    println!("  duplicated    {duplicated:>6} ({share:.1}% of what CI compiles)");
+    let surplus_micros = census.paid_micros().saturating_sub(census.floor_micros());
+    let share_micros = if census.paid_micros() == 0 {
+        0.0
+    } else {
+        100.0 * surplus_micros as f64 / census.paid_micros() as f64
+    };
+    println!(
+        "  duplicated    {duplicated:>6} ({share:.1}% of what CI compiles){:<10}\
+         {:>9.1} s ({share_micros:.1}%)",
+        "",
+        seconds(surplus_micros),
+    );
     // THE SPLIT IS THE DECISION. One half exists because the work is spread over
     // jobs and would go away if those jobs were one job; the other half is a job
     // compiling the same unit twice inside itself, which no amount of merging
@@ -145,13 +189,17 @@ fn report(census: &Census, declared: &BTreeMap<String, Vec<RunStep>>, absent: &B
     // per workspace. A single percentage licenses whichever repair was already
     // preferred; these two lines say which one the number is actually about.
     println!(
-        "    of which  {:>6} because the work is split across jobs (merging removes)",
-        census.shared_between_jobs()
+        "    of which  {:>6} because the work is split across jobs (merging \
+         removes){:<1}{:>9.1} s",
+        census.shared_between_jobs(),
+        "",
+        seconds(census.shared_between_jobs_micros()),
     );
     println!(
         "              {:>6} inside one job, over its own separate workspaces \
-         (merging does not)",
-        census.repeated_within_jobs()
+         (merging does not){:>9.1} s",
+        census.repeated_within_jobs(),
+        seconds(census.repeated_within_jobs_micros()),
     );
 
     let pairwise = census.pairwise();
@@ -159,11 +207,32 @@ fn report(census: &Census, declared: &BTreeMap<String, Vec<RunStep>>, absent: &B
         println!("\n  no two jobs compile the same unit");
         return;
     }
-    println!("\n  units two jobs both compile:");
-    let mut rows: Vec<((&str, &str), usize)> = pairwise.into_iter().collect();
-    rows.sort_by_key(|(pair, count)| (std::cmp::Reverse(*count), *pair));
-    for ((left, right), count) in rows {
-        println!("    {count:>6}  {left} + {right}");
+    // RANKED BY SECONDS AND NOT BY ROWS. The two orders are different orders,
+    // and the round that built this reader had already written the repair list
+    // in the row order before it could see the other one.
+    println!("\n  what merging a pair would remove, and what it would cost:");
+    let mut rows: Vec<((&str, &str), twice_compiled::Merge)> = pairwise.into_iter().collect();
+    rows.sort_by_key(|(pair, merge)| (std::cmp::Reverse(merge.saved_micros), *pair));
+    for ((left, right), merge) in rows {
+        println!("    {left} + {right}");
+        println!(
+            "      {:>6} compilations  {:>8.1} s of compiling removed",
+            merge.units,
+            seconds(merge.saved_micros),
+        );
+        // THE OTHER SIDE OF THE TRADE, printed beside the saving rather than
+        // left to whoever acts on it: the two jobs run at the same time today,
+        // so the merged one starts from the longer of them and can only grow.
+        println!(
+            "      window  {:>8.1} s today  ->  {:>8.1} s estimated \
+             (never below {:.1} s, never above {:.1} s; {:.1} s of it is idle \
+             and scales with nothing)",
+            seconds(merge.floor_micros),
+            seconds(merge.estimate_micros),
+            seconds(merge.floor_micros),
+            seconds(merge.ceiling_micros),
+            seconds(merge.idle_micros),
+        );
     }
 
     // WHICH REPAIR the number licenses depends on what is in it: duplication in
@@ -171,20 +240,32 @@ fn report(census: &Census, declared: &BTreeMap<String, Vec<RunStep>>, absent: &B
     // duplication in this repository's own crates is answered by the jobs being
     // one job. Twenty rows because the tail is long and the head is the decision.
     let surplus = census.surplus_by_crate();
-    let total: usize = surplus.values().sum();
+    let total: usize = surplus.values().map(|cost| cost.times).sum();
     println!(
         "\n  the {} crate(s) compiled more than once, {total} surplus \
-         compilation(s), heaviest first:",
+         compilation(s), dearest first:",
         surplus.len()
     );
-    let mut crates: Vec<(&str, usize)> = surplus.into_iter().collect();
-    crates.sort_by_key(|(name, count)| (std::cmp::Reverse(*count), *name));
-    for (name, count) in crates.iter().take(20) {
-        println!("    {count:>6}  {name}");
+    // DEAREST AND NOT MOST NUMEROUS. A build script is a row and almost no
+    // money; a test binary of this repository's own is the other way round, and
+    // which of them heads this list is which repair the number licenses.
+    let mut crates: Vec<(&str, twice_compiled::Cost)> = surplus.into_iter().collect();
+    crates.sort_by_key(|(name, cost)| (std::cmp::Reverse(cost.micros), *name));
+    for (name, cost) in crates.iter().take(20) {
+        println!(
+            "    {:>6}  {:>8.1} s  {name}",
+            cost.times,
+            seconds(cost.micros)
+        );
     }
     if crates.len() > 20 {
-        let tail: usize = crates[20..].iter().map(|(_, count)| count).sum();
-        println!("    {tail:>6}  … and {} more crate(s)", crates.len() - 20);
+        let times: usize = crates[20..].iter().map(|(_, cost)| cost.times).sum();
+        let micros: u64 = crates[20..].iter().map(|(_, cost)| cost.micros).sum();
+        println!(
+            "    {times:>6}  {:>8.1} s  … and {} more crate(s)",
+            seconds(micros),
+            crates.len() - 20
+        );
     }
 }
 

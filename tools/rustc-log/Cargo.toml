@@ -7,7 +7,7 @@ edition = "2021"
 rust-version = "1.88"
 publish = false
 license = "MIT OR Apache-2.0"
-description = "Mnemosyne — records every rustc invocation a CI job makes, then execs rustc"
+description = "Mnemosyne — runs rustc for a CI job, times it, and records what it was"
 keywords = ["ci", "cargo", "gate"]
 categories = ["development-tools"]
 

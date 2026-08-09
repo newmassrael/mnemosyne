@@ -4,7 +4,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
-use twice_compiled::{declared_jobs, judge, Census, JobLog, Refusal, Unit};
+use twice_compiled::{declared_jobs, judge, Census, Cost, JobLog, Refusal, Unit};
 
 /// The workflow this gate judges. One file, because a census can only be taken
 /// of jobs that share a run: artifacts do not cross from one workflow run to
@@ -27,14 +27,17 @@ fn workflow_steps() -> Vec<ci_plan::RunStep> {
     ci_plan::run_steps(&ci_plan::load_workflow(&root, WORKFLOW))
 }
 
-/// A census in which every declared job compiled something, so that the only
-/// thing left for [`judge`] to refuse is the WIRING. Separating the two is what
-/// lets this test be about the workflow rather than about a build.
+/// A census in which every declared job compiled something AND took time doing
+/// it, so that the only thing left for [`judge`] to refuse is the WIRING.
+/// Separating the two is what lets this test be about the workflow rather than
+/// about a build.
 fn everybody_compiled(declared: &BTreeMap<String, Vec<ci_plan::RunStep>>) -> Census {
     let mut census = Census::default();
     for (index, job) in declared.keys().enumerate() {
         let mut log = JobLog {
             invocations: 1,
+            micros: PINNED.micros,
+            intervals: vec![(1_000_000, 1_000_000 + PINNED.micros)],
             ..JobLog::default()
         };
         log.units.insert(
@@ -45,12 +48,21 @@ fn everybody_compiled(declared: &BTreeMap<String, Vec<ci_plan::RunStep>>) -> Cen
                 crate_types: vec!["lib".to_string()],
                 test: false,
             },
-            1,
+            PINNED,
         );
         census.jobs.insert(job.clone(), log);
     }
     census
 }
+
+/// What each pinned job compiled: one unit, once, in a time that is not zero.
+///
+/// NOT ZERO ON PURPOSE. A census whose seconds are all zero is refused, and this
+/// fixture exists to leave only the wiring for the judge to speak about.
+const PINNED: Cost = Cost {
+    times: 1,
+    micros: 1_000,
+};
 
 #[test]
 fn every_job_this_workflow_runs_records_what_it_compiles() {

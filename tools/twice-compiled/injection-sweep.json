@@ -1,0 +1,143 @@
+{
+  "_": [
+    "THE SWEEP THAT SAYS THE SECONDS ARE COUNTED AND NOT DECORATION — run it",
+    "from the repository root:",
+    "    cargo run -q --manifest-path tools/injection-harness/Cargo.toml -- \\",
+    "        tools/twice-compiled/injection-sweep.json",
+    "",
+    "Round 1092 built this census over counts and its report ranked the repair by",
+    "rows. This round priced every row, and a price is easier to get wrong than a",
+    "count in a way no total shows: the two halves still add up, the percentages",
+    "still print, and only the ORDER of the list is a lie. Each injection below",
+    "removes one mechanism — the window, the direction each figure errs in, the",
+    "seconds of a job's own repeats, the law against a census with no clocks in",
+    "it — and names the test that must go red for it.",
+    "",
+    "Scoped to this crate's own suite, which reads records rather than building",
+    "anything: the whole sweep is seconds."
+  ],
+  "repo": ".",
+  "test_command": [
+    "cargo",
+    "test",
+    "--manifest-path",
+    "tools/twice-compiled/Cargo.toml",
+    "--no-fail-fast"
+  ],
+  "logs": "target/injection-logs",
+  "min_free_mb": 4000,
+  "injections": [
+    {
+      "name": "the-window-is-the-first-line-to-the-last",
+      "why": "records are appended when a compiler EXITS and cargo runs as many as the machine has cores, so the earliest start routinely arrives last; a window read off the order of the lines is short every time, and a job that looks busier than it was is a job whose duplication looks cheaper to remove than it is",
+      "edits": [
+        {
+          "file": "tools/twice-compiled/src/lib.rs",
+          "from": "        let first = self.intervals.iter().map(|(start, _)| *start).min()?;",
+          "to": "        let first = self.intervals.iter().map(|(start, _)| *start).next()?;"
+        },
+        {
+          "file": "tools/twice-compiled/src/lib.rs",
+          "from": "        let last = self.intervals.iter().map(|(_, end)| *end).max()?;",
+          "to": "        let last = self.intervals.iter().map(|(_, end)| *end).last()?;"
+        }
+      ],
+      "expect_red": ["the_window_is_read_off_the_clocks_and_not_off_the_order_of_the_lines"]
+    },
+    {
+      "name": "a-job-is-busy-for-the-sum-of-its-compilers",
+      "why": "cargo runs as many compilers as the machine has cores, so summing their durations reports a job busy for longer than the clock allows and leaves it with no idle time at all — and idle time is exactly the part of a window that removing compilations cannot shorten",
+      "edits": [
+        {
+          "file": "tools/twice-compiled/src/lib.rs",
+          "from": "                Some((from, until)) if start <= until => open = Some((from, until.max(end))),",
+          "to": "                Some((from, until)) if start <= until && false => open = Some((from, until.max(end))),"
+        }
+      ],
+      "expect_red": ["the_part_of_a_window_with_no_compiler_alive_is_measured_and_not_assumed"]
+    },
+    {
+      "name": "the-estimate-scales-the-whole-window",
+      "why": "this is the assumption the round refused to carry: scaling a job's whole window by the work removed treats the minutes it spends running what it just built as though they compiled, and the two jobs in this repository with the most to share are the two that spend the longest running what they built — the estimate would promise a merged job shorter than either of the two it replaces",
+      "edits": [
+        {
+          "file": "tools/twice-compiled/src/lib.rs",
+          "from": "        let compiling = if work == 0 {\n            busy_micros\n        } else {\n            let remaining = u128::from(work.saturating_sub(saved_micros));\n            let scaled = u128::from(busy_micros) * remaining / u128::from(work);",
+          "to": "        let compiling = if work == 0 {\n            ceiling_micros\n        } else {\n            let remaining = u128::from(work.saturating_sub(saved_micros));\n            let scaled = u128::from(ceiling_micros) * remaining / u128::from(work);"
+        },
+        {
+          "file": "tools/twice-compiled/src/lib.rs",
+          "from": "            estimate_micros: compiling.saturating_add(idle_micros).max(floor_micros),",
+          "to": "            estimate_micros: compiling.max(floor_micros),"
+        }
+      ],
+      "expect_red": ["a_merge_estimate_does_not_shorten_the_time_no_compiler_was_alive"]
+    },
+    {
+      "name": "the-surviving-compilation-is-priced-at-the-cheapest",
+      "why": "the same unit takes different times in different jobs and the one compilation that survives a repair has to be priced at one of them — taking the cheapest makes the floor as low as the evidence allows and every saving reported as large as it can be, which is a gate arguing for the repair rather than measuring it",
+      "edits": [
+        {
+          "file": "tools/twice-compiled/src/lib.rs",
+          "from": "                *entry = (*entry).max(cost.each());",
+          "to": "                *entry = if *entry == 0 { cost.each() } else { (*entry).min(cost.each()) };"
+        }
+      ],
+      "expect_red": ["what_two_jobs_both_compile_is_what_one_job_would_compile_once"]
+    },
+    {
+      "name": "a-merge-is-credited-with-the-dearer-of-the-two",
+      "why": "the same error one step further on, from the other side: merging removes ONE of the two compilations of a shared unit, and crediting the merge with the dearer one reports a saving larger than the least it can win — the number this report exists to keep somebody from overstating",
+      "edits": [
+        {
+          "file": "tools/twice-compiled/src/lib.rs",
+          "from": "                saved_micros = saved_micros.saturating_add(cost.each().min(other.each()));",
+          "to": "                saved_micros = saved_micros.saturating_add(cost.each().max(other.each()));"
+        }
+      ],
+      "expect_red": [
+        "what_two_jobs_both_compile_is_what_one_job_would_compile_once",
+        "merging_a_pair_states_what_it_removes_and_what_it_spends"
+      ]
+    },
+    {
+      "name": "a-jobs-own-repeats-cost-nothing",
+      "why": "the half of the surplus merging CANNOT reach is a job compiling one unit twice over its own separate workspaces, and pricing it at zero moves those seconds into the cross-job half by arithmetic — the report then recommends merging for minutes that merging cannot win",
+      "edits": [
+        {
+          "file": "tools/twice-compiled/src/lib.rs",
+          "from": "            .map(|cost| cost.micros.saturating_sub(cost.each()))",
+          "to": "            .map(|_| 0)"
+        }
+      ],
+      "expect_red": ["the_surplus_splits_into_the_half_merging_reaches_and_the_half_it_does_not"]
+    },
+    {
+      "name": "the-crate-breakdown-is-counted-and-not-priced",
+      "why": "this is the whole finding of the round: ranked by rows the head of the duplication is `build_script_build`, and a breakdown that carries counts with the seconds left at zero prints that ranking as though it were the price — the repair goes where the rows are and the money stays where it was",
+      "edits": [
+        {
+          "file": "tools/twice-compiled/src/lib.rs",
+          "from": "                entry.micros = entry.micros.saturating_add(cost.micros);",
+          "to": "                entry.micros = entry.micros.saturating_add(0);"
+        }
+      ],
+      "expect_red": [
+        "the_surplus_is_reported_per_crate_because_that_is_what_picks_the_repair",
+        "the_most_numerous_surplus_and_the_dearest_are_not_the_same_crate"
+      ]
+    },
+    {
+      "name": "a-census-with-no-clocks-in-it-is-accepted",
+      "why": "a job running an older recorder leaves a log whose counts are all present and whose seconds are all zero — every total adds up, and the report says the work is free, which is the finding that would argue for merging every job in the file",
+      "edits": [
+        {
+          "file": "tools/twice-compiled/src/lib.rs",
+          "from": "            Some(log) if log.compiled_micros() == 0 => {",
+          "to": "            Some(log) if log.compiled_micros() == u64::MAX => {"
+        }
+      ],
+      "expect_red": ["a_job_whose_compilations_took_no_time_at_all_is_refused"]
+    }
+  ]
+}

@@ -50,6 +50,13 @@ concurrency:
 # spawns by shelling out to cargo, which is most of the work in three of these
 # jobs and is invisible to `--message-format=json`.
 #
+# R1093 — AND WHAT EACH ONE COST. The wrapper runs the compiler and waits for it
+# rather than becoming it, so every record carries when the compilation started
+# and how long it ran. A count says how much work is done twice; only the seconds
+# say whether removing a given half of it is worth the wall-clock that merging
+# two jobs spends, and the first census ranked by rows put a build script at the
+# head of a list nobody would repair a build script for.
+#
 # The log path is per job and is set on each job rather than here, because
 # `${{ github.job }}` is defined by the runner only INSIDE a step and evaluates
 # to nothing in an `env:` block — every job would append to one file, and a
@@ -822,10 +829,13 @@ jobs:
   # answered by cargo rather than argued here, and `msrv` is the control that
   # shows the key can tell two compilers apart.
   #
-  # WHAT IT ASSERTS TODAY is that it reached every job. The duplication itself is
-  # REPORTED and not yet refused: the number is what licenses the repair, and
-  # there is no honest limit to assert before the repair exists. R1090 shipped a
-  # gate whose limit was a prediction and it was wrong by a factor of two.
+  # WHAT IT ASSERTS TODAY is that it reached every job, and that every job it
+  # reached left a clock behind — a log with counts and no seconds says the work
+  # is free, which is the finding this report exists to make. The duplication
+  # itself is REPORTED and not yet refused: the number is what licenses the
+  # repair, and there is no honest limit to assert before the repair exists.
+  # R1090 shipped a gate whose limit was a prediction and it was wrong by a
+  # factor of two.
   #
   # IT WAITS FOR EVERY OTHER JOB, and that list is not trusted:
   # `tools/twice-compiled`'s own suite reads the jobs out of this file and fails

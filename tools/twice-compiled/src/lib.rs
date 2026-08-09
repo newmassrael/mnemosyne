@@ -18,6 +18,22 @@
 //!   shelling out to cargo, which is the majority of the work in three of these
 //!   jobs and is invisible to `--message-format=json`.
 //!
+//! A COMPILATION IS NOT A COMPILATION, which is why every number here comes in
+//! two: how many, and what they cost. The first census this took found the head
+//! of the duplication to be `build_script_build` at 409 surplus compilations —
+//! and a build script is among the cheapest units cargo drives, while one
+//! `mnemosyne-store` test binary is among the dearest. Ranked by rows, the
+//! repair goes to the dependencies; ranked by seconds it may not, and nothing
+//! could tell the two rankings apart until the recorder carried a clock.
+//!
+//! THE SECONDS ANSWER A QUESTION THE ROWS CANNOT. Merging two jobs removes the
+//! compilations they share, and it also puts one job's minutes after the other's
+//! instead of beside them — the pair that saves the most work can still be the
+//! pair that lengthens the run. `twice_compiled::Merge` states that trade in the
+//! measured units of both sides: the work merging removes, and the window the
+//! merged job would run in, bounded above and below by what was observed rather
+//! than modelled.
+//!
 //! A UNIT IS CARGO'S OWN, not this crate's idea of one. `-C metadata=<hash>` is
 //! the fingerprint cargo computes for a compilation from the package, its
 //! resolved features, the profile and the compiler's own version, and it is on
@@ -28,11 +44,14 @@
 //! sources on a different toolchain, so if its units did not come back disjoint,
 //! the key would be wrong.
 //!
-//! WHAT IT ASSERTS TODAY is that it reached every job: a workflow job that
-//! issues a cargo command and leaves no record is the empty answer that reads
-//! like a clean one, which is the failure this repository keeps meeting. The
-//! duplication itself is REPORTED rather than refused, because the number is
-//! what licenses the repair and the repair is what makes a limit assertable.
+//! WHAT IT ASSERTS TODAY is that it reached every job, and that every job it
+//! reached left a clock behind. A workflow job that issues a cargo command and
+//! leaves no record is the empty answer that reads like a clean one, which is
+//! the failure this repository keeps meeting; a job whose records carry counts
+//! and no seconds is the quieter version of it, where every total adds up and
+//! the work reads as free. The duplication itself is REPORTED rather than
+//! refused, because the number is what licenses the repair and the repair is
+//! what makes a limit assertable.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
@@ -122,6 +141,41 @@ fn crate_types(argv: &[String]) -> Vec<String> {
     out
 }
 
+/// What one job paid for one unit: how many compilations, and how long they ran.
+///
+/// The two travel together because every question here needs both and neither
+/// can be recovered from the other — a job that compiles a unit twice pays twice
+/// the seconds, and two jobs' single compilations of the same unit are two rows
+/// at two prices.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct Cost {
+    /// Compilations.
+    pub times: usize,
+    /// Microseconds they took, summed.
+    pub micros: u64,
+}
+
+impl Cost {
+    /// What ONE compilation of this unit cost, in this job.
+    ///
+    /// Integer division, and the remainder is dropped on purpose: every total
+    /// below is built from sums of `micros` and only the per-compilation figures
+    /// use this, so a rounded microsecond cannot make two lines of the report
+    /// disagree.
+    pub fn each(&self) -> u64 {
+        if self.times == 0 {
+            return 0;
+        }
+        self.micros / self.times as u64
+    }
+
+    /// Add one compilation.
+    pub fn add(&mut self, micros: u64) {
+        self.times += 1;
+        self.micros = self.micros.saturating_add(micros);
+    }
+}
+
 /// Read one record. The first word is the compiler; the rest are its arguments.
 pub fn read(record: &[String]) -> Invocation {
     let argv = &record[1..];
@@ -156,7 +210,8 @@ pub struct JobLog {
     pub probes: usize,
     /// Compilations with no `-C metadata` — see [`Invocation::Unkeyed`].
     pub unkeyed: usize,
-    /// Each unit this job compiled, and HOW MANY TIMES it compiled it.
+    /// Each unit this job compiled, HOW MANY TIMES it compiled it, and what
+    /// that cost.
     ///
     /// A count rather than a set, because a job can compile one unit twice: a
     /// job holding two `target` directories — the root one and a tool
@@ -164,18 +219,104 @@ pub struct JobLog {
     /// makes those repeats vanish from every breakdown while staying in the
     /// total, and two numbers in one report that do not add up is a report
     /// nobody can act on.
-    pub units: BTreeMap<Unit, usize>,
+    pub units: BTreeMap<Unit, Cost>,
+    /// Every invocation's duration summed, probes and unkeyed compilations
+    /// included — the whole of what the job's `rustc` processes cost.
+    pub micros: u64,
+    /// When each of this job's compilers ran: start and exit, one pair per
+    /// invocation, in the order the records arrived.
+    ///
+    /// KEPT RATHER THAN FOLDED INTO A WINDOW, because a window cannot answer the
+    /// question the window is asked for. Merging two jobs is worth wall-clock
+    /// only where a compiler was actually alive; the minutes a job spends
+    /// running the tests it just built are inside its window and are not made
+    /// shorter by compiling less. Separating the two takes the intervals, so
+    /// they are what is stored and everything else here is derived from them.
+    pub intervals: Vec<(u64, u64)>,
 }
 
 impl JobLog {
     /// Keyed compilations, counted with their repeats.
     pub fn compilations(&self) -> usize {
-        self.units.values().sum()
+        self.units.values().map(|cost| cost.times).sum()
     }
 
     /// Compilations this job paid for twice by itself.
     pub fn repeats(&self) -> usize {
         self.compilations() - self.units.len()
+    }
+
+    /// What the keyed compilations cost — the job's WORK.
+    ///
+    /// Not its wall-clock: cargo runs as many compilers as the machine has
+    /// cores, so this is the area under all of them and is larger than the time
+    /// the job took. `JobLog::span_micros` is the other half of that pair.
+    pub fn compiled_micros(&self) -> u64 {
+        self.units.values().map(|cost| cost.micros).sum()
+    }
+
+    /// The first compiler's start and the last one's exit.
+    ///
+    /// TAKEN FROM THE CLOCKS AND NOT FROM THE ORDER OF THE RECORDS. A record is
+    /// appended when a compiler EXITS, and cargo runs as many at once as the
+    /// machine has cores, so the long compilation that began the job arrives
+    /// after the short ones that began later. A reader taking the first and last
+    /// LINES would read a window shorter than the job's, every time.
+    pub fn window(&self) -> Option<(u64, u64)> {
+        let first = self.intervals.iter().map(|(start, _)| *start).min()?;
+        let last = self.intervals.iter().map(|(_, end)| *end).max()?;
+        Some((first, last))
+    }
+
+    /// From the first compiler's start to the last one's exit — the job's
+    /// COMPILING WINDOW.
+    ///
+    /// WHAT IT IS NOT is the job's duration. It excludes the checkout, the cache
+    /// restore and the artifact upload that bracket it, and it INCLUDES every
+    /// gap inside it. Both differences are named because the number is used to
+    /// reason about merging jobs, and a reader who took it for the job's
+    /// duration would be over-counting what a repair can reach.
+    pub fn span_micros(&self) -> u64 {
+        self.window()
+            .map(|(first, last)| last.saturating_sub(first))
+            .unwrap_or(0)
+    }
+
+    /// How much of the window had AT LEAST ONE compiler alive.
+    ///
+    /// The union of the intervals, not their sum: a job running eight compilers
+    /// at once is busy for as long as the eight of them overlap, and summing
+    /// would report a job busier than the clock allows. This is the part of a
+    /// job's window that compiling less can shorten.
+    pub fn busy_micros(&self) -> u64 {
+        let mut intervals = self.intervals.clone();
+        intervals.sort_unstable();
+        let mut busy: u64 = 0;
+        let mut open: Option<(u64, u64)> = None;
+        for (start, end) in intervals {
+            match open {
+                Some((from, until)) if start <= until => open = Some((from, until.max(end))),
+                Some((from, until)) => {
+                    busy = busy.saturating_add(until.saturating_sub(from));
+                    open = Some((start, end));
+                }
+                None => open = Some((start, end)),
+            }
+        }
+        if let Some((from, until)) = open {
+            busy = busy.saturating_add(until.saturating_sub(from));
+        }
+        busy
+    }
+
+    /// How much of the window had NO compiler alive at all.
+    ///
+    /// THE PART OF A JOB THAT COMPILING LESS CANNOT REACH: a suite running the
+    /// binaries it just built, a gate reading a store, a download. It is
+    /// measured rather than assumed away because a merge estimate that scaled it
+    /// with the compiling would promise minutes that are not there.
+    pub fn idle_micros(&self) -> u64 {
+        self.span_micros().saturating_sub(self.busy_micros())
     }
 }
 
@@ -184,10 +325,12 @@ pub fn read_log(text: &str) -> JobLog {
     let mut log = JobLog::default();
     for record in rustc_log::decode_all(text) {
         log.invocations += 1;
-        match read(&record) {
+        log.micros = log.micros.saturating_add(record.micros);
+        log.intervals.push((record.started_at, record.ended_at()));
+        match read(&record.argv) {
             Invocation::Probe => log.probes += 1,
             Invocation::Unkeyed => log.unkeyed += 1,
-            Invocation::Compilation(unit) => *log.units.entry(*unit).or_default() += 1,
+            Invocation::Compilation(unit) => log.units.entry(*unit).or_default().add(record.micros),
         }
     }
     log
@@ -223,6 +366,64 @@ impl Census {
     /// floor, and the number the sum above is worth comparing to.
     pub fn floor(&self) -> usize {
         self.distinct().len()
+    }
+
+    /// What CI's compilations cost, summed over jobs.
+    ///
+    /// WORK AND NOT WALL-CLOCK, for the reason `JobLog::compiled_micros` gives:
+    /// these are areas under processes that ran in parallel.
+    pub fn paid_micros(&self) -> u64 {
+        self.jobs.values().map(JobLog::compiled_micros).sum()
+    }
+
+    /// For each distinct unit, what the ONE compilation of it that would survive
+    /// costs.
+    ///
+    /// THE DEAREST OBSERVED, and that choice is the direction this errs in. The
+    /// same unit takes different times in different jobs — a runner under a
+    /// different load, a cache in a different state — and the surviving
+    /// compilation has to be priced at one of them. Taking the dearest makes the
+    /// floor as high as the evidence allows, so every saving reported below is
+    /// the LEAST that the repair could win. A gate that talks somebody into a
+    /// repair should quote the smaller number.
+    pub fn retained_micros(&self) -> BTreeMap<&Unit, u64> {
+        let mut out: BTreeMap<&Unit, u64> = BTreeMap::new();
+        for log in self.jobs.values() {
+            for (unit, cost) in &log.units {
+                let entry = out.entry(unit).or_default();
+                *entry = (*entry).max(cost.each());
+            }
+        }
+        out
+    }
+
+    /// What one machine sharing one `target` would pay in seconds — the floor
+    /// the sum above is worth comparing to.
+    pub fn floor_micros(&self) -> u64 {
+        self.retained_micros().values().sum()
+    }
+
+    /// The seconds a job spends compiling something it already compiled.
+    ///
+    /// The time half of `Census::repeated_within_jobs`, and merging jobs cannot
+    /// reach it for the same reason.
+    pub fn repeated_within_jobs_micros(&self) -> u64 {
+        self.jobs
+            .values()
+            .flat_map(|log| log.units.values())
+            .map(|cost| cost.micros.saturating_sub(cost.each()))
+            .sum()
+    }
+
+    /// The seconds that exist because the work is split across jobs.
+    ///
+    /// Defined as what is left rather than summed on its own, exactly as
+    /// `Census::shared_between_jobs` is, so that the two halves and the whole
+    /// cannot drift apart by a rounded microsecond.
+    pub fn shared_between_jobs_micros(&self) -> u64 {
+        self.paid_micros()
+            .saturating_sub(self.floor_micros())
+            .saturating_sub(self.repeated_within_jobs_micros())
     }
 
     /// Surplus compilations a job pays for inside itself.
@@ -267,24 +468,35 @@ impl Census {
     /// repository's own crates is answered by the jobs being one job. A number
     /// with no breakdown behind it licenses whichever repair was already
     /// preferred.
-    pub fn surplus_by_crate(&self) -> BTreeMap<&str, usize> {
-        let mut paid: BTreeMap<&str, usize> = BTreeMap::new();
+    /// How many compilations of each crate CI pays for beyond the first, and
+    /// what they cost.
+    ///
+    /// THE TWO RANKINGS ARE NOT THE SAME RANKING, which is the whole reason the
+    /// seconds are here: a build script is a surplus row and very nearly no
+    /// money, and one test binary of this repository's own is the other way
+    /// round. Ranked by rows alone this reads as an argument for a shared
+    /// compilation cache; the seconds are what say whether it is.
+    pub fn surplus_by_crate(&self) -> BTreeMap<&str, Cost> {
+        let mut paid: BTreeMap<&str, Cost> = BTreeMap::new();
         for log in self.jobs.values() {
-            for (unit, times) in &log.units {
-                *paid.entry(unit.crate_name.as_str()).or_default() += times;
+            for (unit, cost) in &log.units {
+                let entry = paid.entry(unit.crate_name.as_str()).or_default();
+                entry.times += cost.times;
+                entry.micros = entry.micros.saturating_add(cost.micros);
             }
         }
-        for unit in self.distinct() {
-            if let Some(count) = paid.get_mut(unit.crate_name.as_str()) {
-                *count -= 1;
+        for (unit, retained) in self.retained_micros() {
+            if let Some(surplus) = paid.get_mut(unit.crate_name.as_str()) {
+                surplus.times -= 1;
+                surplus.micros = surplus.micros.saturating_sub(retained);
             }
         }
-        paid.retain(|_, surplus| *surplus > 0);
+        paid.retain(|_, surplus| surplus.times > 0);
         paid
     }
 
-    /// How many units each pair of jobs both compile.
-    pub fn pairwise(&self) -> BTreeMap<(&str, &str), usize> {
+    /// What merging each pair of jobs would remove, and what it would cost.
+    pub fn pairwise(&self) -> BTreeMap<(&str, &str), Merge> {
         let mut out = BTreeMap::new();
         let jobs: Vec<(&str, &JobLog)> = self
             .jobs
@@ -293,17 +505,88 @@ impl Census {
             .collect();
         for (index, (left, left_log)) in jobs.iter().enumerate() {
             for (right, right_log) in &jobs[index + 1..] {
-                let shared = left_log
-                    .units
-                    .keys()
-                    .filter(|unit| right_log.units.contains_key(*unit))
-                    .count();
-                if shared > 0 {
-                    out.insert((*left, *right), shared);
+                let merge = Merge::of(left_log, right_log);
+                if merge.units > 0 {
+                    out.insert((*left, *right), merge);
                 }
             }
         }
         out
+    }
+}
+
+/// What making two jobs one job would remove, and what it would cost.
+///
+/// BOTH SIDES OF THE TRADE, because this repository has already written down one
+/// side of it four times. Merging removes the compilations two jobs share — that
+/// is `Merge::units` and `Merge::saved_micros`, both measured. It also puts one
+/// job's minutes AFTER the other's rather than beside them, and a pair that
+/// saves the most work can still be the pair that lengthens the run: the jobs
+/// that share the most here are the two longest.
+///
+/// The window is given as a range and not a number. Its ends are arithmetic on
+/// observed spans and nothing else. The estimate between them scales only the
+/// part of each window that had a compiler ALIVE in it, and carries the part
+/// that did not across untouched — the minutes a job spends running the tests it
+/// just built do not get shorter because it compiled less. What is left assumed
+/// is that the merged job compiles at the rate the two of them did, which a
+/// runner with a fixed core count makes very nearly true.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct Merge {
+    /// Compilations merging removes: the units both jobs compile.
+    pub units: usize,
+    /// What those compilations cost, priced at the CHEAPER of the two jobs'
+    /// figures for each — the least the merge can win.
+    pub saved_micros: u64,
+    /// The merged job's compiling window cannot be shorter than the longer of
+    /// the two it replaces — which is also what the pair costs the run TODAY,
+    /// running beside one another. Merging can spend wall-clock; it can never
+    /// win any.
+    pub floor_micros: u64,
+    /// Nor longer than the two of them end to end, which is what merging and
+    /// sharing nothing would cost.
+    pub ceiling_micros: u64,
+    /// Between the two: the compiling part of the pair's windows scaled by the
+    /// work that remains, plus the idle part carried across whole.
+    pub estimate_micros: u64,
+    /// How much of the pair's two windows had no compiler alive — the part of
+    /// the estimate that no amount of removed compiling can shorten.
+    pub idle_micros: u64,
+}
+
+impl Merge {
+    /// Measure the trade for one pair.
+    fn of(left: &JobLog, right: &JobLog) -> Merge {
+        let mut units = 0;
+        let mut saved_micros: u64 = 0;
+        for (unit, cost) in &left.units {
+            if let Some(other) = right.units.get(unit) {
+                units += 1;
+                saved_micros = saved_micros.saturating_add(cost.each().min(other.each()));
+            }
+        }
+        let work = left
+            .compiled_micros()
+            .saturating_add(right.compiled_micros());
+        let floor_micros = left.span_micros().max(right.span_micros());
+        let ceiling_micros = left.span_micros().saturating_add(right.span_micros());
+        let idle_micros = left.idle_micros().saturating_add(right.idle_micros());
+        let busy_micros = left.busy_micros().saturating_add(right.busy_micros());
+        let compiling = if work == 0 {
+            busy_micros
+        } else {
+            let remaining = u128::from(work.saturating_sub(saved_micros));
+            let scaled = u128::from(busy_micros) * remaining / u128::from(work);
+            u64::try_from(scaled).unwrap_or(u64::MAX)
+        };
+        Merge {
+            units,
+            saved_micros,
+            floor_micros,
+            ceiling_micros,
+            estimate_micros: compiling.saturating_add(idle_micros).max(floor_micros),
+            idle_micros,
+        }
     }
 }
 
@@ -316,6 +599,15 @@ pub enum Refusal {
     /// it, or its log never arrived — and both look exactly like a job with
     /// nothing to build.
     JobLeftNoRecord { job: String },
+    /// A job's compilations took no time at all.
+    ///
+    /// THE SECOND WAY AN INSTRUMENT GOES SILENT, and it is quieter than the
+    /// first: the counts are all there, every total adds up, and only the
+    /// seconds are zero — which reads as work that is free, the exact finding
+    /// that would argue for merging every job in the file. It happens when a job
+    /// runs an older recorder than the one this reads, which is a real state on
+    /// a runner restoring a cached binary, and no count can notice it.
+    JobRecordedNoTime { job: String },
     /// A log names a job this workflow does not declare. The measurement would
     /// be of a CI that no longer exists.
     RecordFromNoJob { job: String },
@@ -338,6 +630,12 @@ impl std::fmt::Display for Refusal {
                 f,
                 "job `{job}` recorded no compilation — a job whose recorder is \
                  unwired reads exactly like a job with nothing to build"
+            ),
+            Refusal::JobRecordedNoTime { job } => write!(
+                f,
+                "job `{job}` compiled, and every compilation took no time at \
+                 all — work that is free is the finding a reader of this report \
+                 is hunting for, and a recorder older than this reader prints it"
             ),
             Refusal::RecordFromNoJob { job } => write!(
                 f,
@@ -443,8 +741,18 @@ pub fn judge(
                 }
             }
         }
-        if census.jobs.get(job).is_none_or(|log| log.units.is_empty()) {
-            refusals.push(Refusal::JobLeftNoRecord { job: job.clone() });
+        match census.jobs.get(job) {
+            None => refusals.push(Refusal::JobLeftNoRecord { job: job.clone() }),
+            Some(log) if log.units.is_empty() => {
+                refusals.push(Refusal::JobLeftNoRecord { job: job.clone() })
+            }
+            // ONE REFUSAL PER JOB, NOT TWO: a job with no compilations has no
+            // seconds either, and saying both would report the same silence
+            // twice under two names.
+            Some(log) if log.compiled_micros() == 0 => {
+                refusals.push(Refusal::JobRecordedNoTime { job: job.clone() })
+            }
+            Some(_) => {}
         }
     }
     for job in census.jobs.keys() {

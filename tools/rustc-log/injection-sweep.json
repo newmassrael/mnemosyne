@@ -1,0 +1,94 @@
+{
+  "_": [
+    "THE SWEEP THAT SAYS THE RECORDER'S CLOCK IS NOT DECORATION — run it from",
+    "the repository root:",
+    "    cargo run -q --manifest-path tools/injection-harness/Cargo.toml -- \\",
+    "        tools/rustc-log/injection-sweep.json",
+    "",
+    "This round stopped the wrapper `exec`-ing the compiler and made it wait for",
+    "one, so that a record could say what the compilation cost. Everything that",
+    "buys is downstream and everything it risks is here: a duration that is not",
+    "measured, a start that is not a clock, and an exit status that no longer",
+    "reaches cargo because a process now stands between them. A green suite says",
+    "none of those happened today; it does not say the suite would notice. Each",
+    "injection below removes one mechanism and names the test that must go red.",
+    "",
+    "Scoped to this crate's own suite. It has no dependencies and nine tests, so",
+    "the whole sweep is seconds — the reason this crate is where the clock lives."
+  ],
+  "repo": ".",
+  "test_command": [
+    "cargo",
+    "test",
+    "--manifest-path",
+    "tools/rustc-log/Cargo.toml",
+    "--no-fail-fast"
+  ],
+  "logs": "target/injection-logs",
+  "min_free_mb": 4000,
+  "injections": [
+    {
+      "name": "the-duration-is-a-constant",
+      "why": "a wrapper that writes a plausible number instead of measuring one passes every lower bound a test can assert about a compilation, and every second in the census downstream is then fiction — this is the injection the duration assertion alone cannot catch, and the window assertion is what does",
+      "edits": [
+        {
+          "file": "tools/rustc-log/src/main.rs",
+          "from": "    let micros = u64::try_from(elapsing.elapsed().as_micros()).unwrap_or(u64::MAX);",
+          "to": "    let micros = 1_000_000;"
+        }
+      ],
+      "expect_red": ["the_record_says_how_long_the_compiler_ran_and_when"]
+    },
+    {
+      "name": "the-start-is-not-a-clock",
+      "why": "the start is what joins one wrapper's record to the dozens running beside it, and a zero start makes every job's compiling window begin at the epoch — a span of decades, which reads as a job that was never busy at all",
+      "edits": [
+        {
+          "file": "tools/rustc-log/src/main.rs",
+          "from": "    let started_at = rustc_log::now_micros();",
+          "to": "    let started_at = 0;"
+        }
+      ],
+      "expect_red": ["the_record_says_how_long_the_compiler_ran_and_when"]
+    },
+    {
+      "name": "the-compilers-exit-code-is-swallowed",
+      "why": "with `exec` cargo saw the compiler's status because the wrapper WAS the compiler; waiting for it means handing the status over, and a wrapper that reports success for a failed compilation turns every broken build green with nothing else in this repository able to notice",
+      "edits": [
+        {
+          "file": "tools/rustc-log/src/main.rs",
+          "from": "    std::process::exit(status.code().unwrap_or_else(|| killed_by_a_signal(&status)));",
+          "to": "    std::process::exit(0);"
+        }
+      ],
+      "expect_red": [
+        "a_compilation_that_failed_is_reported_as_failed_and_still_recorded",
+        "a_compiler_the_kernel_killed_is_not_handed_over_as_success"
+      ]
+    },
+    {
+      "name": "a-killed-compiler-exits-zero",
+      "why": "a `rustc` the kernel kills has no exit code of its own, which is how a runner reports being out of memory; `unwrap_or(0)` is the obvious spelling and it turns the loudest failure a build can have into a pass",
+      "edits": [
+        {
+          "file": "tools/rustc-log/src/main.rs",
+          "from": "    128 + status.signal().unwrap_or(0)",
+          "to": "    0"
+        }
+      ],
+      "expect_red": ["a_compiler_the_kernel_killed_is_not_handed_over_as_success"]
+    },
+    {
+      "name": "an-unreadable-clock-reads-as-zero",
+      "why": "a log written by an older wrapper decodes into perfectly plausible arguments with every compilation costing nothing, and free work is exactly the finding a reader of these logs is hunting for — the tolerant `unwrap_or(0)` is how that arrives as a number nobody questions",
+      "edits": [
+        {
+          "file": "tools/rustc-log/src/lib.rs",
+          "from": "    field.parse().unwrap_or_else(|error| {",
+          "to": "    return field.parse().unwrap_or(0);\n    field.parse().unwrap_or_else(|error| {"
+        }
+      ],
+      "expect_red": ["a_record_whose_first_field_is_not_a_clock_is_refused"]
+    }
+  ]
+}
