@@ -320,8 +320,15 @@ jobs:
       - name: What is on disk before the cache is restored
         run: >
           ./target/release/restored before
-          '~/.cargo/registry' '~/.cargo/git' 'target'
+          '~/.cargo/registry' '~/.cargo/git'
 
+      # ONE JOB HOLDS THE BUILD DIRECTORY AND IT IS NOT THIS ONE. R1112 made
+      # every workspace compile into one tree, and this job's cache — which used
+      # to hold only its own 0.08 GB tool tree — then held the whole of it, 1.20
+      # GB of very nearly the same archive `unrun-tests` already stores. Three
+      # copies came to 11.87 GB against a 10 GB budget and GitHub began evicting.
+      # A cache keyed by a PATH stores one copy per job, so the arithmetic allows
+      # exactly one build directory in this repository, and it is `unrun-tests`'s.
       - name: Cache cargo (item citations)
         id: cache
         uses: actions/cache@v6
@@ -329,7 +336,6 @@ jobs:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-            target
           key: ${{ runner.os }}-cargo-citations-${{ hashFiles('**/Cargo.lock', '.github/workflows/mnemosyne-validate.yml') }}
           restore-keys: |
             ${{ runner.os }}-cargo-citations-
@@ -758,8 +764,10 @@ jobs:
       - name: What is on disk before the cache is restored
         run: >
           ./target/release/restored before
-          '~/.cargo/registry' '~/.cargo/git' 'target'
+          '~/.cargo/registry' '~/.cargo/git'
 
+      # See `item-citations`' cache: one job holds the build directory, and the
+      # arithmetic that says so is the 10 GB budget divided by its size.
       - name: Cache cargo (uncompiled sources)
         id: cache
         uses: actions/cache@v6
@@ -767,7 +775,6 @@ jobs:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-            target
           key: ${{ runner.os }}-cargo-uncompiled-${{ hashFiles('**/Cargo.lock', '.github/workflows/mnemosyne-validate.yml') }}
           restore-keys: |
             ${{ runner.os }}-cargo-uncompiled-

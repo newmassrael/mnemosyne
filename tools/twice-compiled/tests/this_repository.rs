@@ -349,26 +349,37 @@ fn this_workflow_caches_one_build_directory_and_not_a_workspaces_own() {
     //
     // A `path:` naming a workspace's own `target` is now a directory nothing
     // writes into: the cache would save an empty tree and the job would read as
-    // having had its output held. This is the file law that says so before a
-    // run pays for it.
+    // having had its output held.
+    //
+    // AND EXACTLY ONE JOB MAY HOLD IT, which is arithmetic and not taste. A
+    // cache keyed by a PATH stores one copy per job, this repository's build
+    // directory archives to 8.90 GB, and GitHub gives a repository 10. R1112
+    // left three jobs each holding it, the demand came to 11.87 GB, and GitHub
+    // began evicting least-recently-used — which is the failure whose only
+    // symptom is a green job that takes half an hour. The number of copies the
+    // budget allows is one, so the law is `== 1`.
     let declared = declared_jobs(&workflow_steps());
-    let build: Vec<&String> = declared
+    let holders: Vec<&String> = declared
         .caches
-        .values()
-        .flatten()
-        .filter(|path| path.ends_with("target"))
+        .iter()
+        .filter(|(_, paths)| paths.iter().any(|path| path.ends_with("target")))
+        .map(|(job, _)| job)
         .collect();
-    assert!(
-        build.len() >= 2,
-        "{WORKFLOW} caches no build directory at all — a law over an empty \
-         population returns the same nothing as a law over a file that is right"
+    assert_eq!(
+        holders.len(),
+        1,
+        "{WORKFLOW} has {} job(s) caching a build directory and the budget \
+         affords one copy of it: {holders:?}",
+        holders.len()
     );
-    for path in build {
-        assert_eq!(
-            path, "target",
-            "{WORKFLOW} caches `{path}`, and this checkout compiles nothing into \
-             a workspace's own `target` — see `.cargo/config.toml`"
-        );
+    for path in declared.caches.values().flatten() {
+        if path.ends_with("target") {
+            assert_eq!(
+                path, "target",
+                "{WORKFLOW} caches `{path}`, and this checkout compiles nothing \
+                 into a workspace's own `target` — see `.cargo/config.toml`"
+            );
+        }
     }
 }
 

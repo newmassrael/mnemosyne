@@ -601,6 +601,18 @@
         }
       ],
       "expect_red": ["this_workflow_caches_one_build_directory_and_not_a_workspaces_own"]
+    },
+    {
+      "name": "a-second-job-may-hold-the-build-directory-too",
+      "why": "a cache keyed by a PATH stores one copy per job, this repository's build directory archives to 8.90 GB and GitHub gives a repository 10 — so the number of copies the budget affords is one. R1112 left three jobs holding it, the demand came to 11.87 GB, and GitHub began evicting least-recently-used, whose only symptom is a green job that takes half an hour",
+      "edits": [
+        {
+          "file": ".github/workflows/mnemosyne-validate.yml",
+          "from": "          key: ${{ runner.os }}-cargo-citations-${{ hashFiles('**/Cargo.lock', '.github/workflows/mnemosyne-validate.yml') }}",
+          "to": "            target\n          key: ${{ runner.os }}-cargo-citations-${{ hashFiles('**/Cargo.lock', '.github/workflows/mnemosyne-validate.yml') }}"
+        }
+      ],
+      "expect_red": ["this_workflow_caches_one_build_directory_and_not_a_workspaces_own"]
     }
   ]
 }
