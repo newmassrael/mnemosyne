@@ -104,9 +104,10 @@ fn main() {
     match &report.run {
         Some(run) => println!(
             "run started {}, so a cache created after that is a job that rebuilt; \
-             {} key(s) had their hashed inputs moved by this commit{}",
+             {} key(s) had their hashed inputs moved {}{}",
             run.started_at,
             run.inputs_changed.len(),
+            run.range.why(),
             if run.inputs_changed.is_empty() {
                 String::new()
             } else {
@@ -166,6 +167,14 @@ fn run_window(root: &Path, run_id: &str, declared: &[CacheDeclaration]) -> Resul
         return Err(format!("run {run_id} reports no start time"));
     }
 
+    // THE RANGE THIS RUN COVERS, not the commit it ends at. A push carries as
+    // many commits as it carries, and the one that moved a cache key's hashed
+    // inputs is routinely not the tip.
+    let range = cache_budget::range_start(
+        std::env::var(cache_budget::RANGE_VARIABLE).ok().as_deref(),
+        |sha| commit_is_here(root, sha),
+    );
+
     let mut inputs_changed = BTreeSet::new();
     for declaration in declared {
         if declaration.hashed.is_empty() || inputs_changed.contains(&declaration.prefix) {
@@ -174,7 +183,7 @@ fn run_window(root: &Path, run_id: &str, declared: &[CacheDeclaration]) -> Resul
         let mut arguments = vec![
             "diff".to_string(),
             "--name-only".to_string(),
-            "HEAD~1".to_string(),
+            range.rev().to_string(),
             "HEAD".to_string(),
             "--".to_string(),
         ];
@@ -194,9 +203,10 @@ fn run_window(root: &Path, run_id: &str, declared: &[CacheDeclaration]) -> Resul
             // parent commit, and answering "nothing changed" there would refuse
             // every key this run legitimately rebuilt.
             return Err(format!(
-                "`git diff HEAD~1 HEAD` failed ({}), so which keys this commit \
+                "`git diff {} HEAD` failed ({}), so which keys this run \
                  invalidated is unknown rather than empty — a checkout of depth 1 \
                  has no parent to compare against: {}",
+                range.rev(),
                 out.status,
                 String::from_utf8_lossy(&out.stderr).trim()
             ));
@@ -208,7 +218,22 @@ fn run_window(root: &Path, run_id: &str, declared: &[CacheDeclaration]) -> Resul
     Ok(Run {
         started_at,
         inputs_changed,
+        range,
     })
+}
+
+/// Is this commit in this checkout at all?
+///
+/// A shallow clone holds only what it was asked for, and a revision it does not
+/// hold makes `git diff` fail — which this gate turns into a refusal to judge.
+/// Asked before the diff rather than recovered from afterwards, so the narrow
+/// range is a decision with a reason rather than an error swallowed.
+fn commit_is_here(root: &Path, sha: &str) -> bool {
+    Command::new("git")
+        .args(["cat-file", "-e", &format!("{sha}^{{commit}}")])
+        .current_dir(root)
+        .output()
+        .is_ok_and(|out| out.status.success())
 }
 
 /// Run `gh` and hand back its output, or say why it could not be asked.

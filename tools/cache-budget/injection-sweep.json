@@ -162,6 +162,54 @@
         }
       ],
       "expect_red": ["a_cache_no_workflow_declares_is_a_refusal"]
+    },
+    {
+      "name": "the-range-is-the-tip-commit-alone",
+      "why": "THIS IS THE TREE THAT TURNED MAIN RED. Two commits went up in one push, the workflow moved in the first, and the gate asked `git diff HEAD~1 HEAD` — the tip had touched no hashed input, so eight jobs that had legitimately rebuilt from nothing were reported as a defect. Restoring it must turn the range law red and nothing else",
+      "edits": [
+        {
+          "file": "tools/cache-budget/src/lib.rs",
+          "from": "    RangeStart::Push(sha.to_string())",
+          "to": "    let _ = sha;\n    RangeStart::ParentOfHead(\"the tip commit alone\")"
+        }
+      ],
+      "expect_red": ["the_question_is_asked_over_the_whole_push_and_not_over_its_tip"]
+    },
+    {
+      "name": "a-commit-that-is-not-in-the-checkout-is-diffed-from-anyway",
+      "why": "the runner names the commit a push started from whether or not the checkout fetched it, and diffing from a revision that is not here makes git fail — the gate then refuses to judge a repository that is fine, which is the same defect in the other direction",
+      "edits": [
+        {
+          "file": "tools/cache-budget/src/lib.rs",
+          "from": "    if !present(sha) {",
+          "to": "    if false {"
+        }
+      ],
+      "expect_red": ["a_commit_the_checkout_does_not_hold_narrows_the_range_and_says_so"]
+    },
+    {
+      "name": "the-workflow-stops-saying-where-the-push-began",
+      "why": "the program can only ask over the range if the runner is told to hand it over; the wiring is one line in a YAML file and nothing in the program notices its absence — the gate simply narrows back to the range that failed, silently",
+      "edits": [
+        {
+          "file": ".github/workflows/mnemosyne-validate.yml",
+          "from": "      MNEMOSYNE_RANGE_FROM: ${{ github.event.before }}",
+          "to": "      MNEMOSYNE_RANGE_NAMED_NOWHERE: ${{ github.event.before }}"
+        }
+      ],
+      "expect_red": ["the_gates_own_job_is_given_the_range_the_run_covers_and_the_history_to_read_it"]
+    },
+    {
+      "name": "the-checkout-goes-back-to-two-commits",
+      "why": "with the variable set and a shallow clone the gate narrows to HEAD~1..HEAD and says so — correct behaviour, and useless: the push range it was told about is not in the checkout, so the repair is only wired if BOTH halves are there. A depth that is a number is a guess about how many commits somebody pushes",
+      "edits": [
+        {
+          "file": ".github/workflows/mnemosyne-validate.yml",
+          "from": "          # over 891 commits, against a job that otherwise takes 17 seconds.\n          fetch-depth: 0",
+          "to": "          # over 891 commits, against a job that otherwise takes 17 seconds.\n          fetch-depth: 2"
+        }
+      ],
+      "expect_red": ["the_gates_own_job_is_given_the_range_the_run_covers_and_the_history_to_read_it"]
     }
   ]
 }

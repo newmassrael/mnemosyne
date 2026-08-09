@@ -10,6 +10,9 @@ use ci_plan::CacheDeclaration;
 /// The job that runs this gate.
 const GATE: &str = "cache-budget";
 
+/// The workflow that runs this gate.
+const WORKFLOW: &str = ".github/workflows/mnemosyne-validate.yml";
+
 /// The root `target` directory, which is the path six jobs asked to keep a copy
 /// of and the reason this gate exists.
 const ROOT_TARGET: &str = "target";
@@ -226,6 +229,51 @@ fn the_gate_waits_for_every_job_in_its_own_workflow_that_saves_a_cache() {
         workflows_with_the_gate, 1,
         "exactly one workflow runs this gate — zero means the check above looped \
          over nothing and passed, which is the empty answer that looks clean"
+    );
+}
+
+#[test]
+fn the_gates_own_job_is_given_the_range_the_run_covers_and_the_history_to_read_it() {
+    // THE WIRING THAT TURNED MAIN RED BY ITS ABSENCE. This gate excuses a cold
+    // build when the key's hashed inputs legitimately moved, and it used to ask
+    // that of ONE commit. A push carries a range: two commits went up together,
+    // the workflow moved in the first, and the tip had touched no hashed input —
+    // so eight jobs that correctly rebuilt from nothing were called a defect.
+    //
+    // Both halves are asserted because either one alone is silent. Without the
+    // variable the gate never sees the range; with it but a shallow checkout,
+    // the commit it names is not here and the gate quietly narrows back to the
+    // range that failed. `fetch-depth: 0` rather than a number, because a push's
+    // commit count is unbounded and every fixed depth is a guess.
+    let root = repository_root();
+    let raw = std::fs::read_to_string(root.join(WORKFLOW)).expect("the workflow is readable");
+    let doc = ci_plan::load_workflow(&root, WORKFLOW);
+    let job = &doc["jobs"][GATE];
+    assert!(!job.is_badvalue(), "{WORKFLOW} declares no job `{GATE}`");
+
+    assert_eq!(
+        job["env"][cache_budget::RANGE_VARIABLE].as_str(),
+        Some("${{ github.event.before }}"),
+        "`{GATE}` must be told the commit this push started from, in \
+         ${}: without it the gate asks about the tip commit alone",
+        cache_budget::RANGE_VARIABLE
+    );
+
+    let checkout = job["steps"][0]["with"]["fetch-depth"].as_i64();
+    assert_eq!(
+        checkout,
+        Some(0),
+        "`{GATE}` checks out {checkout:?} commit(s) of history — the commit a \
+         push started from is not in a shallow clone, and the gate would narrow \
+         to HEAD~1..HEAD, which is exactly the range that reported eight \
+         legitimate cold builds as a defect"
+    );
+
+    // The variable is the program's, not a string this test agrees with by
+    // coincidence: it must be the one the gate actually reads.
+    assert!(
+        raw.contains(cache_budget::RANGE_VARIABLE),
+        "the workflow names no variable this program reads"
     );
 }
 

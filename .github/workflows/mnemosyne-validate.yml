@@ -764,6 +764,15 @@ jobs:
     timeout-minutes: 15
     env:
       MNEMOSYNE_RUSTC_LOG: ${{ github.workspace }}/rustc-log/cache-budget.log
+      # R1095 — THE COMMIT THIS PUSH STARTED FROM, because a push carries a range
+      # and the gate used to ask about one commit. Two commits went up together,
+      # the workflow moved in the FIRST of them, every cache key was legitimately
+      # invalidated, and the tip commit had touched none of them — so eight jobs
+      # that correctly rebuilt from nothing were reported as a defect and main
+      # went red. Empty on a `pull_request`, where the checkout is a merge commit
+      # whose first parent is the base branch, so the gate's `HEAD~1..HEAD`
+      # fallback is exactly the change the pull request proposes.
+      MNEMOSYNE_RANGE_FROM: ${{ github.event.before }}
     permissions:
       contents: read
       # The cache list is an Actions read, and it is the only permission beyond
@@ -772,14 +781,17 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          # A PARENT COMMIT TO DIFF AGAINST, and depth 2 is exactly what that
-          # needs: the gate asks git whether this commit moved anything matching
-          # a key's own `hashFiles` globs, because a cache rebuilt after a
-          # dependency bump is the one cold run nobody should be refused for.
-          # Without it the gate cannot answer and REFUSES rather than assuming
-          # nothing changed, which would fail every key a legitimate bump
-          # invalidated.
-          fetch-depth: 2
+          # THE WHOLE HISTORY, because the range this gate asks over is a push,
+          # and a push carries an unbounded number of commits: every fixed depth
+          # is a guess that fails silently the day somebody pushes one commit
+          # more. The gate asks git whether anything matching a key's own
+          # `hashFiles` globs moved, because a cache rebuilt after a dependency
+          # bump is the one cold run nobody should be refused for; a commit the
+          # checkout does not hold makes that question unanswerable, and the gate
+          # then narrows the range and SAYS SO rather than assuming nothing
+          # changed. Cheap here and measured: this repository's pack is 13 MB
+          # over 891 commits, against a job that otherwise takes 17 seconds.
+          fetch-depth: 0
 
       - name: Install rust toolchain (rust-toolchain.toml)
         run: rustup show

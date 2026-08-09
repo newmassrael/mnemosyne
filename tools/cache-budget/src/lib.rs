@@ -249,11 +249,95 @@ pub struct Run {
     /// one direction for a reason that has nothing to do with time. Both come
     /// from GitHub's clock; only their precision differs.
     pub started_at: String,
-    /// The key prefixes whose hashed inputs moved in this commit, so that a
-    /// cache this run had to build is excused rather than refused. Computed by
-    /// asking git with the globs the key itself names, because a second
-    /// implementation of GitHub's glob matching is a second answer.
+    /// The key prefixes whose hashed inputs moved in the range this run covers,
+    /// so that a cache this run had to build is excused rather than refused.
+    /// Computed by asking git with the globs the key itself names, because a
+    /// second implementation of GitHub's glob matching is a second answer.
     pub inputs_changed: BTreeSet<String>,
+    /// Where that question was asked FROM, and why — printed with the verdict,
+    /// because two different ranges answer two different questions and a reader
+    /// cannot tell which one a number came from.
+    pub range: RangeStart,
+}
+
+/// The commit the "did the hashed inputs move" question is asked from.
+///
+/// A PUSH CARRIES A RANGE AND THIS ONCE ASKED ABOUT ONE COMMIT. That is not a
+/// hypothetical: two commits went up together, the workflow moved in the FIRST
+/// of them, and `git diff HEAD~1 HEAD` saw a tip commit that had touched no
+/// hashed input — so eight jobs that had legitimately rebuilt from nothing were
+/// reported as a defect and turned main red. The gate refused for a reason
+/// outside its own law, which is the same failure as a gate that does not fire.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum RangeStart {
+    /// The commit this push started from, named by the runner
+    /// (`github.event.before`) and present in this checkout.
+    Push(String),
+    /// The parent of `HEAD`, with the reason the push range was not used.
+    ///
+    /// CORRECT BY CONSTRUCTION FOR A PULL REQUEST, which is the case that
+    /// reaches it in normal operation: the runner checks out a merge commit
+    /// whose first parent is the base branch, so `HEAD~1..HEAD` is exactly the
+    /// change the pull request proposes. For a multi-commit PUSH it is the
+    /// narrow answer that caused the failure above, which is why the workflow
+    /// passes the range and why this says out loud when it could not use it.
+    ParentOfHead(&'static str),
+}
+
+impl RangeStart {
+    /// The revision to diff from.
+    pub fn rev(&self) -> &str {
+        match self {
+            RangeStart::Push(sha) => sha,
+            RangeStart::ParentOfHead(_) => "HEAD~1",
+        }
+    }
+
+    /// One line naming the range and, when it is the narrow one, why.
+    pub fn why(&self) -> String {
+        match self {
+            RangeStart::Push(sha) => {
+                format!(
+                    "over {}..HEAD, the commits this push carried",
+                    &sha[..7.min(sha.len())]
+                )
+            }
+            RangeStart::ParentOfHead(reason) => {
+                format!("over HEAD~1..HEAD ({reason})")
+            }
+        }
+    }
+}
+
+/// The variable the workflow names the push's starting commit in.
+pub const RANGE_VARIABLE: &str = "MNEMOSYNE_RANGE_FROM";
+
+/// Which commit to ask from, given what the runner said and what the checkout
+/// actually holds.
+///
+/// `present` IS A PARAMETER because the answer depends on the checkout depth,
+/// which is a property of the machine and not of this decision. A commit named
+/// but not fetched is the shallow-clone case, and diffing from it would make git
+/// fail — the gate would then refuse to judge a repository that is fine.
+pub fn range_start(named: Option<&str>, present: impl Fn(&str) -> bool) -> RangeStart {
+    let Some(sha) = named.map(str::trim).filter(|sha| !sha.is_empty()) else {
+        return RangeStart::ParentOfHead("no push range in the environment: not a push event");
+    };
+    // ALL ZEROS IS GITHUB'S "there was no previous tip" — a branch created by
+    // this push. Everything in it is new, so there is no earlier commit to ask
+    // about and the narrow range is the whole of what there is to see.
+    if sha.chars().all(|digit| digit == '0') {
+        return RangeStart::ParentOfHead(
+            "this push created the branch, so it started from nothing",
+        );
+    }
+    if !present(sha) {
+        return RangeStart::ParentOfHead(
+            "the commit this push started from is not in this checkout — it is \
+             too shallow to see the whole push",
+        );
+    }
+    RangeStart::Push(sha.to_string())
 }
 
 /// What one repository's caching looks like.

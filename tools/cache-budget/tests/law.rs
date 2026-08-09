@@ -4,7 +4,7 @@
 
 use std::collections::BTreeSet;
 
-use cache_budget::{conclude, Held, Refusal, Run};
+use cache_budget::{conclude, range_start, Held, RangeStart, Refusal, Run};
 use ci_plan::CacheDeclaration;
 
 /// A run that started after every cache in these populations was created, so
@@ -14,8 +14,14 @@ fn run_after(created: &str, invalidated: &[&str]) -> Run {
     Run {
         started_at: created.to_string(),
         inputs_changed: invalidated.iter().map(|key| key.to_string()).collect(),
+        range: PUSH_RANGE,
     }
 }
+
+/// The range these fixtures were judged over. Which one it is changes nothing
+/// about the budget arithmetic below — it is carried so that a verdict always
+/// says which question it answered.
+const PUSH_RANGE: RangeStart = RangeStart::ParentOfHead("a fixture, judged over no repository");
 
 const GB: u64 = 1_000_000_000;
 const LIMIT: u64 = 10 * GB;
@@ -293,6 +299,7 @@ fn the_two_endpoints_spell_a_timestamp_differently_and_are_still_compared_correc
     let run = Run {
         started_at: "2026-08-09T02:00:00Z".to_string(),
         inputs_changed: BTreeSet::new(),
+        range: PUSH_RANGE,
     };
 
     let after = [held_on(
@@ -333,6 +340,7 @@ fn the_two_endpoints_spell_a_timestamp_differently_and_are_still_compared_correc
     let fractional_start = Run {
         started_at: "2026-08-09T02:00:00.100000000Z".to_string(),
         inputs_changed: BTreeSet::new(),
+        range: PUSH_RANGE,
     };
     let same_second = [held_on(
         "Linux-cargo-unrun-abc",
@@ -600,4 +608,85 @@ fn two_jobs_disagreeing_about_what_one_key_holds_are_refused() {
         "and the key is priced at the UNION, which is the loud direction: {:?}",
         report.rows[0].paths
     );
+}
+
+// --- the range the invalidation question is asked over -----------------------
+
+/// Every commit named below is present in the checkout, which is the case a
+/// full-history clone gives.
+fn everything_is_here(_sha: &str) -> bool {
+    true
+}
+
+#[test]
+fn the_question_is_asked_over_the_whole_push_and_not_over_its_tip() {
+    // THE DEFECT THIS PAIR EXISTS FOR, and it is not hypothetical: two commits
+    // went up in one push, the workflow moved in the FIRST of them, and the gate
+    // asked `git diff HEAD~1 HEAD`. The tip had touched no hashed input, so
+    // eight jobs that had legitimately rebuilt from nothing were reported as a
+    // defect and main went red — the gate refusing for a reason outside its own
+    // law, which is the same failure as a gate that does not fire.
+    let before = "df48a8ddf661fa490e4f6c3a3994787847492452";
+    let start = range_start(Some(before), everything_is_here);
+    assert_eq!(start, RangeStart::Push(before.to_string()));
+    assert_eq!(
+        start.rev(),
+        before,
+        "the diff runs from where the push began"
+    );
+    assert!(
+        start.why().contains("this push carried"),
+        "the verdict must name the range it answered over: {}",
+        start.why()
+    );
+}
+
+#[test]
+fn a_commit_the_checkout_does_not_hold_narrows_the_range_and_says_so() {
+    // A SHALLOW CLONE IS THE SILENT VERSION OF THE SAME DEFECT. The runner names
+    // the commit the push started from whether or not the checkout fetched it,
+    // and diffing from a revision that is not here makes git fail — so the gate
+    // would refuse to judge a repository that is fine. It narrows instead, and
+    // the narrowing is printed, because a number from a different question is
+    // worse than no number.
+    let start = range_start(Some("df48a8ddf661fa490e4f6c3a3994787847492452"), |_| false);
+    assert!(matches!(start, RangeStart::ParentOfHead(_)));
+    assert_eq!(start.rev(), "HEAD~1");
+    assert!(
+        start.why().contains("too shallow"),
+        "the reason must be the checkout, not the event: {}",
+        start.why()
+    );
+}
+
+#[test]
+fn a_push_that_created_the_branch_started_from_nothing() {
+    // GitHub spells "there was no previous tip" as all zeros. There is no
+    // earlier commit to ask about, so the narrow range is the whole of what
+    // there is to see — and it is a decision with a reason rather than a diff
+    // against a revision that does not exist.
+    let start = range_start(Some("0000000000000000000000000000000000000000"), |_| {
+        panic!("all zeros is not a commit to look for")
+    });
+    assert!(matches!(start, RangeStart::ParentOfHead(_)));
+    assert!(
+        start.why().contains("created the branch"),
+        "{}",
+        start.why()
+    );
+}
+
+#[test]
+fn a_pull_request_falls_back_to_the_parent_of_head_which_is_its_base() {
+    // NOT A WEAKNESS HERE, A PROPERTY: on `pull_request` the runner checks out a
+    // merge commit whose FIRST PARENT is the base branch, so `HEAD~1..HEAD` is
+    // exactly the change the pull request proposes. The environment carries no
+    // push range there, and this is the case that reaches the fallback in normal
+    // operation.
+    for absent in [None, Some(""), Some("   ")] {
+        let start = range_start(absent, |_| panic!("nothing to look for"));
+        assert!(matches!(start, RangeStart::ParentOfHead(_)), "{absent:?}");
+        assert_eq!(start.rev(), "HEAD~1");
+        assert!(start.why().contains("not a push event"), "{}", start.why());
+    }
 }
