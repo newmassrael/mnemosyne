@@ -103,6 +103,207 @@ pub struct Unit {
     pub crate_types: Vec<String>,
     /// `--test`: a test harness build of a target is not the target.
     pub test: bool,
+    /// The program the recorder ran, whole and as the record spells it.
+    ///
+    /// WHICH COMPILER DID THE WORK IS PART OF WHAT THE WORK WAS, and this crate
+    /// has said so since its first line — the record keeps the compiler's path
+    /// because "the MSRV job runs a different `rustc` over the same sources".
+    /// The key dropped it, and it is here for the reason the fields above it are
+    /// given: so that a cargo release which narrows what goes into `-C metadata`
+    /// makes this reader SPLIT units rather than merge them.
+    ///
+    /// IT SPLITS NOTHING TODAY, AND THAT IS MEASURED RATHER THAN HOPED. Adding
+    /// it to the key left the floor of a real eight-job census at 2707 distinct
+    /// units, exactly where it was — so no two records that shared a unit
+    /// disagreed about their compiler. The MSRV job's compilations were already
+    /// separate, and so were the `clippy-driver` passes `cargo clippy` runs over
+    /// every workspace member in three of these jobs. The duplication this crate
+    /// reports was NOT inflated by either, which is the opposite of what the
+    /// round that added this field expected to find.
+    ///
+    /// THE WHOLE STRING, machine-specific prefix and all, because it is what the
+    /// record says and this reader invents nothing. Two censuses taken on
+    /// different machines therefore share no unit, which is why [`compare`] is
+    /// for two runs of the same CI rather than a run and a local replay.
+    pub driver: String,
+    /// Whose source the compiler read — see [`Origin`].
+    ///
+    /// PART OF THE KEY AND NOT BESIDE IT, for the reason the fields above it
+    /// are: `metadata` already hashes the package's source, so two units that
+    /// agree on everything else cannot honestly disagree here, and if a cargo
+    /// release ever makes them the split under-reports duplication rather than
+    /// inventing it.
+    pub origin: Origin,
+}
+
+/// Where the file one compilation read lives.
+///
+/// WHY A CENSUS THAT CANNOT SAY THIS CANNOT SAY WHAT A CACHE MISSED. Every job
+/// in this repository's workflow caches `~/.cargo/registry` and `~/.cargo/git`,
+/// and both of those hold SOURCES rather than compiled artifacts: a job that
+/// restores them and no `target` still compiles every crate it depends on. So
+/// "how many of these compilations were of crates cargo fetched" is the question
+/// that separates a cache which is saving nothing from one which is, and until
+/// this existed nothing could be asked it — the input path is in every record
+/// and [`read`] was dropping it on the floor.
+///
+/// READ OFF CARGO'S LAYOUT, NOT OFF THIS REPOSITORY'S WORKFLOW. Where cargo
+/// unpacks a registry crate is a fact about cargo and is true in a checkout that
+/// caches nothing; which of those trees a workflow chooses to carry is a
+/// separate reading, and [`compare`] — which holds two censuses that may be of
+/// two different commits — has no workflow to consult.
+///
+/// WHICH WAY IT IS WRONG WHEN IT IS WRONG. Both fetched variants demand the rest
+/// of cargo's layout below the pair of directories that names them, so a crate
+/// of this repository's own called `registry` with a `src/` in it reads as
+/// [`Origin::Tree`] rather than as a dependency. That direction is chosen: this
+/// reading exists to find out whether the runner recompiles dependencies, and a
+/// rule that guessed generously would be answering its own question.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum Origin {
+    /// `<cargo home>/registry/src/<index>/<name>-<version>/…` — a crate cargo
+    /// downloaded from a registry and unpacked.
+    Registry,
+    /// `<cargo home>/git/checkouts/<name>-<hash>/<rev>/…` — a git dependency.
+    Git,
+    /// Anything else: the sources this checkout holds, and a path dependency's.
+    Tree,
+}
+
+impl Origin {
+    /// Did cargo fetch this source rather than find it in the checkout?
+    ///
+    /// THE TWO TREES THIS IS TRUE OF ARE THE TWO EVERY CACHE IN THIS WORKFLOW
+    /// CARRIES, which is what makes it the predicate to ask of a cache: a
+    /// fetched crate compiled anyway is one whose sources arrived and whose
+    /// compiled form did not.
+    pub fn fetched(self) -> bool {
+        matches!(self, Origin::Registry | Origin::Git)
+    }
+
+    /// How a reader says it.
+    pub fn why(self) -> &'static str {
+        match self {
+            Origin::Registry => "fetched from a registry",
+            Origin::Git => "fetched from a git dependency",
+            Origin::Tree => "in the checkout",
+        }
+    }
+
+    /// Where a compiler's input file lived.
+    pub fn of(input: &str) -> Origin {
+        let parts: Vec<&str> = Path::new(input)
+            .components()
+            .filter_map(|part| match part {
+                std::path::Component::Normal(word) => word.to_str(),
+                _ => None,
+            })
+            .collect();
+        for window in parts.windows(4) {
+            // FOUR COMPONENTS, NOT TWO. `registry/src` on its own is a directory
+            // pair any repository may have; what says cargo made it is the index
+            // directory and the `<name>-<version>` under it, and demanding both
+            // is what keeps a crate of ours called `registry` out of the answer.
+            if window[0] == "registry" && window[1] == "src" && names_a_package(window[3]) {
+                return Origin::Registry;
+            }
+            if window[0] == "git" && window[1] == "checkouts" {
+                return Origin::Git;
+            }
+        }
+        Origin::Tree
+    }
+}
+
+/// Does this component name an unpacked crate — `<name>-<version>`?
+///
+/// A VERSION BEGINS WITH A DIGIT, which is the whole of the test: cargo's own
+/// directory names are the package name, a `-`, and the semantic version, and
+/// nothing weaker distinguishes `serde-1.0.219` from an ordinary directory whose
+/// name happens to hold a hyphen.
+fn names_a_package(component: &str) -> bool {
+    component.rsplit_once('-').is_some_and(|(name, version)| {
+        !name.is_empty() && version.starts_with(|first: char| first.is_ascii_digit())
+    })
+}
+
+/// The rustc flags whose value is the NEXT word rather than part of this one.
+///
+/// WHY THERE IS A LIST HERE AT ALL, in a crate whose every other law is derived.
+/// rustc takes exactly one free-standing input, so finding it means knowing
+/// which of the words that do not begin with `-` belong to somebody else:
+/// `--crate-name ci_plan` is two words and `ci_plan` is not a path. Each entry
+/// is a flag rustc defines as taking a separated value; a flag written joined
+/// (`--edition=2021`) needs no entry, because its value never becomes a word.
+///
+/// A LIST THAT IS WRONG IS CAUGHT RATHER THAN BELIEVED, which is what makes it
+/// safe to be a list. A missing entry leaves two free-standing words and a
+/// spurious one leaves none, and BOTH are [`Invocation::Unplaced`] — a refusal
+/// this census counts and a job's worth of which it refuses over. There is no
+/// arrangement of this list that produces a wrong origin quietly.
+const FLAGS_TAKING_THE_NEXT_WORD: &[&str] = &[
+    "--crate-name",
+    "--crate-type",
+    "--edition",
+    "--emit",
+    "--print",
+    "--out-dir",
+    "-o",
+    "--explain",
+    "--target",
+    "--cfg",
+    "--check-cfg",
+    "--extern",
+    "--sysroot",
+    "--error-format",
+    "--color",
+    "--cap-lints",
+    "--remap-path-prefix",
+    "--json",
+    "--diagnostic-width",
+    "--env-set",
+    "--crate-attr",
+    "--codegen",
+    "-C",
+    "-L",
+    "-l",
+    "-A",
+    "--allow",
+    "-W",
+    "--warn",
+    "-D",
+    "--deny",
+    "-F",
+    "--forbid",
+    "--force-warn",
+    "-Z",
+];
+
+/// The one file the compiler was told to read.
+///
+/// `None` WHEN THERE IS NOT EXACTLY ONE, rather than the first or the last of
+/// several. rustc accepts a single input, so a reader that finds two has
+/// mistaken somebody's value for a path and a reader that finds none has eaten
+/// the path as somebody's value — and in both cases the honest output is that
+/// this invocation was not placed, not a guess at which candidate to believe.
+fn input_of(argv: &[String]) -> Result<&str, Vec<String>> {
+    let mut free: Vec<&str> = Vec::new();
+    let mut expecting_a_value = false;
+    for word in argv {
+        if expecting_a_value {
+            expecting_a_value = false;
+            continue;
+        }
+        if word.starts_with('-') {
+            expecting_a_value = FLAGS_TAKING_THE_NEXT_WORD.contains(&word.as_str());
+            continue;
+        }
+        free.push(word.as_str());
+    }
+    match free.as_slice() {
+        [only] => Ok(only),
+        many => Err(many.iter().map(|word| (*word).to_string()).collect()),
+    }
 }
 
 /// What one `rustc` invocation was.
@@ -118,6 +319,54 @@ pub enum Invocation {
     /// rather than dropped, because a class this reader cannot key is a class it
     /// must not silently call absent.
     Unkeyed,
+    /// A keyed compilation whose arguments do not hold exactly one free-standing
+    /// input file, so there is no path to say the source came from.
+    ///
+    /// KEPT AS ITS OWN CLASS FOR THE REASON `Unkeyed` IS, and with more at
+    /// stake: a unit whose origin were guessed would be counted under a heading
+    /// — "compiled although cargo had fetched it" — that decides whether this
+    /// repository builds a compile cache at all. So an invocation this reader
+    /// cannot place leaves the units entirely and is counted here, where
+    /// [`Refusal::JobRanCompilationsThisReaderCannotPlace`] can refuse over it.
+    Unplaced(Unplaceable),
+}
+
+/// A keyed compilation this reader could not place, and how it failed to.
+///
+/// NAMED RATHER THAN COUNTED, because the two things a person fixing this needs
+/// are which compilations were lost and WHICH DIRECTION the reading was wrong
+/// in, and a refusal that reports a bare number sends them to read a megabyte of
+/// records to recover both.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub struct Unplaceable {
+    /// `--crate-name`.
+    pub crate_name: String,
+    /// The free-standing words the arguments held — never exactly one.
+    ///
+    /// THE WORDS AND NOT THEIR COUNT. Empty says a flag in
+    /// [`FLAGS_TAKING_THE_NEXT_WORD`] ate the input path; two or more says a
+    /// flag taking a separated value is missing from that list, and then the
+    /// words themselves are the whole of the repair — one of them is the path
+    /// and the others name the flag that should have consumed them. A count
+    /// sends its reader back to the records to recover what this already had.
+    pub candidates: Vec<String>,
+}
+
+impl Unplaceable {
+    /// How a reader says what went wrong, with the words that say it.
+    pub fn why(&self) -> String {
+        match self.candidates.as_slice() {
+            [] => "no free-standing word at all — a flag in this reader's list \
+                   ate the input path"
+                .to_string(),
+            many => format!(
+                "{} free-standing words where one path should be, so a flag \
+                 taking a separated value is missing from this reader's list: {}",
+                many.len(),
+                many.join(" ")
+            ),
+        }
+    }
 }
 
 /// The value of `--flag value` or `--flag=value`, for a flag written either way.
@@ -198,11 +447,46 @@ impl Cost {
         self.times += 1;
         self.micros = self.micros.saturating_add(micros);
     }
+
+    /// Take in what another row of this table cost.
+    ///
+    /// Both halves, because they are the pair this type exists to keep together:
+    /// a fold that summed the compilations and left the seconds behind would
+    /// give every breakdown a count no price could be read against, which is the
+    /// mistake `rustc-log`'s own header names.
+    pub fn absorb(&mut self, other: Cost) {
+        self.times += other.times;
+        self.micros = self.micros.saturating_add(other.micros);
+    }
 }
 
-/// Read one record. The first word is the compiler; the rest are its arguments.
+/// The words the compiler itself was given, with the chain that reached it gone.
+///
+/// CARGO HANDS A WRAPPER THE NEXT PROGRAM IN THE CHAIN as that wrapper's first
+/// argument. `RUSTC_WRAPPER` is run as `<wrapper> <rustc> <arguments…>`, and
+/// when a `RUSTC_WORKSPACE_WRAPPER` is set as well — which is exactly what
+/// `cargo clippy` does, for workspace members only — as `<wrapper> <workspace
+/// wrapper> <rustc> <arguments…>`. The recorder writes down the program it ran
+/// and the words it passed on, so a record of a clippy pass carries TWO program
+/// paths ahead of the first flag.
+///
+/// THE RULE IS THAT CONTRACT AND NOT A LIST OF PROGRAM NAMES: the chain is every
+/// word before the first one beginning with `-`, and the compiler's own
+/// arguments start there. It holds for a chain of any depth and for a driver
+/// this repository has never heard of, which a list of names does not.
+fn arguments_of(argv: &[String]) -> &[String] {
+    let first_flag = argv
+        .iter()
+        .position(|word| word.starts_with('-'))
+        .unwrap_or(argv.len());
+    &argv[first_flag..]
+}
+
+/// Read one record. The first word is the program that ran; the rest are what it
+/// was passed, which for a wrapper chain begins with the next program along.
 pub fn read(record: &[String]) -> Invocation {
-    let argv = &record[1..];
+    let driver = record[0].clone();
+    let argv = arguments_of(&record[1..]);
     // A PROBE FIRST, because cargo's crate-type probe carries `--crate-name ___`
     // and would otherwise look like a compilation of a crate called `___`.
     if argv.iter().any(|word| word.starts_with("--print")) {
@@ -214,12 +498,23 @@ pub fn read(record: &[String]) -> Invocation {
     let Some(metadata) = codegen_value(argv, "metadata") else {
         return Invocation::Unkeyed;
     };
+    let input = match input_of(argv) {
+        Ok(input) => input,
+        Err(candidates) => {
+            return Invocation::Unplaced(Unplaceable {
+                crate_name: crate_name.to_string(),
+                candidates,
+            })
+        }
+    };
     Invocation::Compilation(Box::new(Unit {
         crate_name: crate_name.to_string(),
         metadata: metadata.to_string(),
         emit: flag_value(argv, "--emit").unwrap_or_default().to_string(),
         crate_types: crate_types(argv),
         test: argv.iter().any(|word| word == "--test"),
+        driver,
+        origin: Origin::of(input),
     }))
 }
 
@@ -234,6 +529,13 @@ pub struct JobLog {
     pub probes: usize,
     /// Compilations with no `-C metadata` — see [`Invocation::Unkeyed`].
     pub unkeyed: usize,
+    /// Keyed compilations whose input file could not be placed, by what they
+    /// were and how the reading failed — see [`Invocation::Unplaced`].
+    ///
+    /// THE COST IS KEPT TOO, because these seconds are inside the job's total
+    /// and outside [`JobLog::compiled_micros`], and a reader owed the size of
+    /// what is missing cannot be handed only its count.
+    pub unplaced: BTreeMap<Unplaceable, Cost>,
     /// Each unit this job compiled, HOW MANY TIMES it compiled it, and what
     /// that cost.
     ///
@@ -268,6 +570,42 @@ impl JobLog {
     /// Compilations this job paid for twice by itself.
     pub fn repeats(&self) -> usize {
         self.compilations() - self.units.len()
+    }
+
+    /// What this job compiled, split by whose source it was.
+    ///
+    /// DERIVED AND NOT STORED, because [`Unit`] already carries the origin and a
+    /// second copy of the same fact is a second thing to keep true. An origin no
+    /// unit had is absent rather than zero — the caller that wants "and none at
+    /// all from a registry" asks for it and is told nothing is there, which is
+    /// the honest shape when the alternative is a row invented by the reader.
+    pub fn by_origin(&self) -> BTreeMap<Origin, Cost> {
+        let mut out: BTreeMap<Origin, Cost> = BTreeMap::new();
+        for (unit, cost) in &self.units {
+            out.entry(unit.origin).or_default().absorb(*cost);
+        }
+        out
+    }
+
+    /// Compilations this reader could not place, counted with their repeats.
+    pub fn unplaced_compilations(&self) -> usize {
+        self.unplaced.values().map(|cost| cost.times).sum()
+    }
+
+    /// What this job spent compiling crates cargo had fetched.
+    ///
+    /// THE NUMBER A CACHE IS JUDGED BY: every cache in this workflow carries
+    /// `~/.cargo/registry` and `~/.cargo/git`, so a job whose restore hit and
+    /// whose fetched cost is still large is a job whose cache brought sources
+    /// and no compiled form of them.
+    pub fn fetched(&self) -> Cost {
+        let mut out = Cost::default();
+        for (unit, cost) in &self.units {
+            if unit.origin.fetched() {
+                out.absorb(*cost);
+            }
+        }
+        out
     }
 
     /// What the keyed compilations cost — the job's WORK.
@@ -354,6 +692,7 @@ pub fn read_log(text: &str) -> JobLog {
         match read(&record.argv) {
             Invocation::Probe => log.probes += 1,
             Invocation::Unkeyed => log.unkeyed += 1,
+            Invocation::Unplaced(what) => log.unplaced.entry(what).or_default().add(record.micros),
             Invocation::Compilation(unit) => log.units.entry(*unit).or_default().add(record.micros),
         }
     }
@@ -394,6 +733,26 @@ impl Census {
     /// Compilations summed over jobs — what CI actually pays for.
     pub fn paid(&self) -> usize {
         self.jobs.values().map(JobLog::compilations).sum()
+    }
+
+    /// What CI pays for, split by whose source each compilation read.
+    ///
+    /// SUMMED OVER JOBS AND NOT OVER DISTINCT UNITS, because the question this
+    /// answers is what the runners spent: one dependency compiled in eight jobs
+    /// is eight compilations of a crate eight caches had already fetched.
+    pub fn by_origin(&self) -> BTreeMap<Origin, Cost> {
+        let mut out: BTreeMap<Origin, Cost> = BTreeMap::new();
+        for log in self.jobs.values() {
+            for (origin, cost) in log.by_origin() {
+                out.entry(origin).or_default().absorb(cost);
+            }
+        }
+        out
+    }
+
+    /// Compilations no job could place — see [`Invocation::Unplaced`].
+    pub fn unplaced(&self) -> usize {
+        self.jobs.values().map(JobLog::unplaced_compilations).sum()
     }
 
     /// Compilations a single machine sharing one `target` would pay for — the
@@ -669,6 +1028,23 @@ pub enum Refusal {
     /// A log names a job this workflow does not declare. The measurement would
     /// be of a CI that no longer exists.
     RecordFromNoJob { job: String },
+    /// A job ran compilations whose input file this reader could not place, so
+    /// the census cannot say whose sources that job compiled.
+    ///
+    /// THE THIRD WAY AN INSTRUMENT GOES SILENT, and the one that is invisible in
+    /// every total: the counts still add up, the seconds are still there, and
+    /// only the SPLIT is short — a job with four hundred unplaced compilations
+    /// reports a small fetched cost and a small tree cost and looks like a job
+    /// with little to build. The split is what says whether a cache that brought
+    /// sources brought anything worth having, so it must not be read off a
+    /// population this reader silently lost part of.
+    JobRanCompilationsThisReaderCannotPlace {
+        job: String,
+        compilations: usize,
+        /// What they were, so the refusal sends its reader to a crate rather
+        /// than to a megabyte of records.
+        what: Vec<Unplaceable>,
+    },
     /// A step runs without the recorder in its environment, so whatever it
     /// compiles is invisible here. Named per variable, because the two do
     /// different jobs and either one missing is the same silence.
@@ -776,6 +1152,21 @@ impl std::fmt::Display for Refusal {
                 "job `{job}` compiled, and every compilation took no time at \
                  all — work that is free is the finding a reader of this report \
                  is hunting for, and a recorder older than this reader prints it"
+            ),
+            Refusal::JobRanCompilationsThisReaderCannotPlace {
+                job,
+                compilations,
+                what,
+            } => write!(
+                f,
+                "job `{job}` ran {compilations} compilation(s) whose input file \
+                 this reader could not find exactly one of — the counts are \
+                 whole and the split by whose source they were is not, and the \
+                 split is what says whether a restored cache was worth having: {}",
+                what.iter()
+                    .map(|one| format!("`{}` — {}", one.crate_name, one.why()))
+                    .collect::<Vec<_>>()
+                    .join("; ")
             ),
             Refusal::RecordFromNoJob { job } => write!(
                 f,
@@ -1158,6 +1549,18 @@ pub fn judge(census: &Census, declared: &Declared, absent: &BTreeSet<String>) ->
             Some(log) if log.compiled_micros() == 0 => {
                 refusals.push(Refusal::JobRecordedNoTime { job: job.clone() })
             }
+            // NOT AN ARM OF THE MATCH ABOVE, because it is not the same silence
+            // wearing a third name: those two are a job that recorded nothing
+            // this reader could use at all, and this is a job that recorded
+            // plenty and lost part of it. A job can be refused for this while
+            // every count it reports is real.
+            Some(log) if !log.unplaced.is_empty() => {
+                refusals.push(Refusal::JobRanCompilationsThisReaderCannotPlace {
+                    job: job.clone(),
+                    compilations: log.unplaced_compilations(),
+                    what: log.unplaced.keys().cloned().collect(),
+                })
+            }
             Some(_) => {}
         }
     }
@@ -1513,6 +1916,28 @@ pub struct Delta {
     pub compilations: (usize, usize),
     /// What they cost, earlier then later.
     pub micros: (u64, u64),
+    /// The same pair, split by whose source each compilation read.
+    ///
+    /// WITHOUT THIS A DELTA NAMES NO CAUSE. Four hundred compilations appearing
+    /// between two runs is one finding if they are this repository's own crates
+    /// — somebody added code, or a fingerprint moved — and an entirely different
+    /// one if they are crates cargo had already fetched, because the second says
+    /// a cache brought sources whose compiled form it did not bring. The counts
+    /// above cannot tell those apart, and the pair that can is the one below.
+    ///
+    /// EVERY ORIGIN EITHER SIDE HAD, with the missing side's cost zero: an
+    /// origin present in one census and absent from the other is exactly the
+    /// difference a reader is here for, and dropping the row would hide the
+    /// largest kind of change this can find.
+    pub origins: BTreeMap<Origin, (Cost, Cost)>,
+    /// What each side ran that this reader could not place, earlier then later
+    /// — see [`Invocation::Unplaced`].
+    ///
+    /// BESIDE THE SPLIT AND NOT INSTEAD OF IT. These are missing from every
+    /// number above, including the compilations, so a row of them is the reader
+    /// saying how much of the job it is not describing. `compare` has no
+    /// workflow to refuse against, so what it owes is this line.
+    pub unplaced: BTreeMap<Unplaceable, (Cost, Cost)>,
 }
 
 impl Delta {
@@ -1526,6 +1951,32 @@ impl Delta {
     pub fn micros_changed(&self) -> i64 {
         self.micros.1 as i64 - self.micros.0 as i64
     }
+}
+
+/// Hold two breakdowns of the same kind side by side.
+///
+/// A KEY ONLY ONE SIDE HAD IS A ROW WHOSE OTHER SIDE IS ZERO, and never a row
+/// that is dropped: an origin present in one census and absent from the other,
+/// or a crate one run could not place and the other could, is exactly the
+/// difference a reader came for.
+///
+/// ONE FUNCTION FOR BOTH BREAKDOWNS, because "how are two of these held
+/// together" must not have a second answer that fills the gaps differently.
+fn side_by_side<K: Ord + Clone>(
+    earlier: &BTreeMap<K, Cost>,
+    later: &BTreeMap<K, Cost>,
+) -> BTreeMap<K, (Cost, Cost)> {
+    earlier
+        .keys()
+        .chain(later.keys())
+        .map(|key| {
+            let pair = (
+                earlier.get(key).copied().unwrap_or_default(),
+                later.get(key).copied().unwrap_or_default(),
+            );
+            (key.clone(), pair)
+        })
+        .collect()
 }
 
 /// Two censuses held against each other.
@@ -1623,6 +2074,8 @@ pub fn compare(earlier: &Census, later: &Census) -> Comparison {
                 started,
                 compilations: (before.compilations(), after.compilations()),
                 micros: (before.compiled_micros(), after.compiled_micros()),
+                origins: side_by_side(&before.by_origin(), &after.by_origin()),
+                unplaced: side_by_side(&before.unplaced, &after.unplaced),
             },
         );
     }
@@ -1822,6 +2275,31 @@ pub fn render_comparison(held: &Comparison, earlier: &str, later: &str) -> Strin
             delta.micros.1 as f64 / 1e6,
             delta.micros_changed() as f64 / 1e6,
         ));
+        // WHOSE CODE THE DIFFERENCE IS IN, under the difference itself. A row
+        // here is what makes the count above actionable: the same delta means a
+        // repair to this repository's crates or a cache that carried sources
+        // without their compiled form, and those are not the same finding.
+        for (origin, (before, after)) in &delta.origins {
+            out.push_str(&format!(
+                "  {:<22} {:>6} -> {:<6} {:<28} {:>8.1} -> {:<8.1} s\n",
+                "",
+                before.times,
+                after.times,
+                origin.why(),
+                before.micros as f64 / 1e6,
+                after.micros as f64 / 1e6,
+            ));
+        }
+        for (what, (before, after)) in &delta.unplaced {
+            out.push_str(&format!(
+                "  {:<22} {:>6} -> {:<6} NOT PLACED: `{}` — missing from every number above; {}\n",
+                "",
+                before.times,
+                after.times,
+                what.crate_name,
+                what.why(),
+            ));
+        }
         match &delta.started {
             Some((before, after)) => out.push_str(&format!(
                 "  {:<22} both began the same way — earlier: {}; later: {}\n",

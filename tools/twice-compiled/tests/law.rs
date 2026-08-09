@@ -11,7 +11,7 @@ use std::collections::BTreeSet;
 use ci_plan::RunStep;
 use twice_compiled::{
     judge, names_its_job, read, read_log, unresolvable, Census, Cost, Declared, Invocation, JobLog,
-    Refusal, Unit, WRAPPER_VARIABLE,
+    Origin, Refusal, Unit, WRAPPER_VARIABLE,
 };
 
 /// The jobs of a fixture workflow, NONE of which declares a cache.
@@ -122,6 +122,8 @@ fn a_compilation_is_keyed_by_the_fingerprint_cargo_computed_for_it() {
             emit: "dep-info,metadata,link".to_string(),
             crate_types: vec!["lib".to_string()],
             test: false,
+            driver: "/home/runner/.rustup/toolchains/stable/bin/rustc".to_string(),
+            origin: twice_compiled::Origin::Tree,
         },
         "the key is cargo's own: the hash it computed from the package, the \
          resolved features, the profile and the compiler's version"
@@ -142,6 +144,286 @@ fn a_check_of_a_crate_is_not_the_build_of_it() {
         "dep-info,metadata,link",
     ));
     assert_ne!(checked, built);
+}
+
+// --- whose source, and which compiler -----------------------------------------
+
+/// One unit's arguments with the input file named, which `compilation` above
+/// does not vary because the laws it serves are about the key.
+fn compiling(crate_name: &str, metadata: &str, input: &str) -> Vec<String> {
+    vec![
+        TOOLCHAIN.to_string(),
+        "--crate-name".to_string(),
+        crate_name.to_string(),
+        "--edition=2021".to_string(),
+        input.to_string(),
+        "--emit=dep-info,metadata".to_string(),
+        "-C".to_string(),
+        format!("metadata={metadata}"),
+    ]
+}
+
+/// The compiler the fixtures above are compiled by.
+const TOOLCHAIN: &str = "/home/runner/.rustup/toolchains/1.94.1-x86_64-unknown-linux-gnu/bin/rustc";
+
+/// Where a compilation reading this file is placed.
+fn origin_of(input: &str) -> Origin {
+    let argv = compiling("serde", "abcd", input);
+    let Invocation::Compilation(unit) = read(&argv) else {
+        panic!("that is a compilation: {argv:?}");
+    };
+    unit.origin
+}
+
+#[test]
+fn a_crate_cargo_fetched_is_told_from_one_the_checkout_holds() {
+    assert_eq!(
+        origin_of(
+            "/home/runner/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/\
+             serde-1.0.219/src/lib.rs"
+        ),
+        Origin::Registry
+    );
+    assert_eq!(origin_of("crates/mnemosyne-core/src/lib.rs"), Origin::Tree);
+    assert_eq!(
+        origin_of("/home/runner/work/mnemosyne/mnemosyne/tools/ci-plan/src/lib.rs"),
+        Origin::Tree
+    );
+    assert!(
+        Origin::Registry.fetched() && !Origin::Tree.fetched(),
+        "the trees every cache in this workflow carries are the fetched ones, \
+         and that predicate is what a reader asks of a cache"
+    );
+}
+
+#[test]
+fn a_git_dependencys_checkout_is_fetched_as_well() {
+    assert_eq!(
+        origin_of("/home/runner/.cargo/git/checkouts/tonic-3a1f6c5d9b2e/9b2ef41/tonic/src/lib.rs"),
+        Origin::Git
+    );
+    assert!(Origin::Git.fetched());
+}
+
+#[test]
+fn a_directory_pair_of_ours_spelled_like_cargos_is_not_cargos() {
+    // THE CONTROL THAT TELLS THE RULE FROM A SUBSTRING SEARCH. `registry/src`
+    // is a pair any repository may have, and a reader that stopped there would
+    // report a crate of this repository's own as a fetched dependency — in the
+    // direction that answers this instrument's own question for it.
+    assert_eq!(
+        origin_of("/home/runner/work/mnemosyne/crates/registry/src/lib.rs"),
+        Origin::Tree
+    );
+    // The pair AND an index directory, and still no unpacked crate below it.
+    assert_eq!(origin_of("/work/registry/src/vendor/lib.rs"), Origin::Tree);
+}
+
+#[test]
+fn the_pass_cargo_clippy_makes_is_read_through_the_chain_that_ran_it() {
+    // `cargo clippy` sets `RUSTC_WORKSPACE_WRAPPER`, so for every workspace
+    // member cargo runs `<recorder> <clippy-driver> <rustc> <arguments…>` and
+    // the record carries TWO program paths ahead of the first flag. A reader
+    // that took the first word after the recorder's own for the input file
+    // finds two free-standing words and can place neither — which is how 153
+    // compilations of a real eight-job census went missing from the split.
+    let mut argv = vec![
+        "/home/runner/.rustup/toolchains/1.94.1-x86_64-unknown-linux-gnu/bin/clippy-driver"
+            .to_string(),
+        TOOLCHAIN.to_string(),
+    ];
+    argv.extend(
+        compiling(
+            "grpc_smoke",
+            "d00d",
+            "crates/mnemosyne-server/tests/grpc_smoke.rs",
+        )
+        .into_iter()
+        .skip(1),
+    );
+    let Invocation::Compilation(unit) = read(&argv) else {
+        panic!("a clippy pass is a compilation this CI pays for: {argv:?}");
+    };
+    assert_eq!(unit.origin, Origin::Tree);
+    assert_eq!(
+        unit.driver,
+        "/home/runner/.rustup/toolchains/1.94.1-x86_64-unknown-linux-gnu/bin/clippy-driver",
+        "the program the recorder ran is the one that did the work, and it is \
+         not the `rustc` it was handed to pass along"
+    );
+}
+
+#[test]
+fn two_compilations_that_differ_only_in_which_compiler_ran_are_two_units() {
+    // WHY THE DRIVER IS IN THE KEY, and it is the reason the fields beside it
+    // are given: cargo's `-C metadata` hashes the compiler today, and this
+    // reader must split rather than merge if a release ever narrows that.
+    let source = "crates/mnemosyne-core/src/lib.rs";
+    let stable = read(&compiling("mnemosyne_core", "469b", source));
+    let mut older = compiling("mnemosyne_core", "469b", source);
+    older[0] =
+        "/home/runner/.rustup/toolchains/1.88.0-x86_64-unknown-linux-gnu/bin/rustc".to_string();
+    assert_ne!(
+        stable,
+        read(&older),
+        "the MSRV job compiles the same sources with another toolchain, and \
+         calling those one unit reports a duplication no merge can remove"
+    );
+}
+
+#[test]
+fn a_compilation_with_a_second_free_standing_word_is_not_placed() {
+    let mut argv = compiling("serde", "abcd", "crates/mnemosyne-core/src/lib.rs");
+    // A flag this reader does not know, in the form that takes a separated
+    // value: the value stands where a path should, and nothing says which of
+    // the two is the input.
+    argv.push("--a-flag-this-reader-does-not-know".to_string());
+    argv.push("its-value".to_string());
+    let Invocation::Unplaced(what) = read(&argv) else {
+        panic!("two free-standing words are not one input: {argv:?}");
+    };
+    assert_eq!(what.crate_name, "serde");
+    assert_eq!(
+        what.candidates,
+        vec!["crates/mnemosyne-core/src/lib.rs", "its-value"],
+        "the words are the whole of the repair — one is the path and the other \
+         names the flag missing from this reader's list"
+    );
+    assert!(what.why().contains("its-value"));
+}
+
+#[test]
+fn a_compilation_whose_input_a_flag_swallowed_is_not_placed_either() {
+    // THE OTHER DIRECTION THE LIST CAN BE WRONG IN, and it is a different
+    // shape: no candidate at all rather than too many. Both are refused, which
+    // is what makes a list safe to keep in a crate that derives everything else.
+    let argv = vec![
+        TOOLCHAIN.to_string(),
+        "--crate-name".to_string(),
+        "serde".to_string(),
+        "-C".to_string(),
+        "metadata=abcd".to_string(),
+        "--sysroot".to_string(),
+        "crates/mnemosyne-core/src/lib.rs".to_string(),
+    ];
+    let Invocation::Unplaced(what) = read(&argv) else {
+        panic!("no free-standing word is not one input: {argv:?}");
+    };
+    assert!(what.candidates.is_empty());
+    assert!(
+        what.why().contains("ate the input path"),
+        "a reader is owed which way it was wrong: {}",
+        what.why()
+    );
+}
+
+#[test]
+fn the_split_by_origin_accounts_for_every_compilation_the_job_counted() {
+    // THE LAW THAT KEEPS THE SPLIT HONEST. A breakdown that loses a row is a
+    // report where the fetched share reads smaller than it is, and nothing in
+    // the totals says so — the numbers still add up, against a population one
+    // short.
+    // THE LAST TWO ROWS ARE ONE UNIT COMPILED TWICE, and they are what makes
+    // this test able to fail. A job holding two `target` directories pays for a
+    // shared crate in both, so the split must count COMPILATIONS and not the
+    // rows of the unit table — and over a fixture where every unit is compiled
+    // once those two readings are the same number. The injection that swaps one
+    // for the other came back green until this pair was here.
+    let sources = [
+        ("serde", "0001", "/home/runner/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.219/src/lib.rs"),
+        ("tokio", "0002", "/home/runner/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tokio-1.47.1/src/lib.rs"),
+        ("tonic", "0003", "/home/runner/.cargo/git/checkouts/tonic-3a1f6c5d9b2e/9b2ef41/tonic/src/lib.rs"),
+        ("mnemosyne_core", "0004", "crates/mnemosyne-core/src/lib.rs"),
+        ("mnemosyne_core", "0004", "crates/mnemosyne-core/src/lib.rs"),
+    ];
+    let mut clock = EPOCH;
+    let mut text = String::new();
+    for (crate_name, metadata, source) in sources {
+        let argv = compiling(crate_name, metadata, source);
+        let words: Vec<&str> = argv.iter().map(String::as_str).collect();
+        text.push_str(&record(clock, 1_000, &words));
+        clock += 1_000;
+    }
+    let log = read_log(&text);
+    assert_eq!(
+        (log.compilations(), log.units.len()),
+        (5, 4),
+        "the fixture must hold a repeat, or counting units and counting \
+         compilations are the same number and this test cannot tell them apart"
+    );
+    let split = log.by_origin();
+    assert_eq!(split[&Origin::Registry].times, 2);
+    assert_eq!(split[&Origin::Git].times, 1);
+    assert_eq!(split[&Origin::Tree].times, 2);
+    assert_eq!(
+        split.values().map(|cost| cost.times).sum::<usize>(),
+        log.compilations(),
+        "every compilation the job counted is in exactly one row of the split"
+    );
+    assert_eq!(
+        split.values().map(|cost| cost.micros).sum::<u64>(),
+        log.compiled_micros(),
+        "and so is every second of it"
+    );
+    assert_eq!(log.fetched().times, 3);
+    assert_eq!(log.fetched().micros, 3_000);
+}
+
+#[test]
+fn a_job_that_ran_a_compilation_this_reader_cannot_place_is_refused() {
+    // AN EMPTY SPLIT AND AN UNREACHED ONE HAVE THE SAME SHAPE, which is the
+    // failure this repository keeps meeting. A job whose fetched row reads zero
+    // because nothing was fetched and one whose fetched row reads zero because
+    // the reader lost the population print the same line.
+    let mut argv = compiling("serde", "abcd", "crates/mnemosyne-core/src/lib.rs");
+    argv.push("--a-flag-this-reader-does-not-know".to_string());
+    argv.push("its-value".to_string());
+    let words: Vec<&str> = argv.iter().map(String::as_str).collect();
+    let mut census = census_of(&["validate", "unrun-tests"]);
+    let mut text = record(EPOCH, 500, &words);
+    text.push_str(&compiled(EPOCH + 500, 500, "placed", "beef", "link"));
+    census.jobs.insert("validate".to_string(), read_log(&text));
+
+    let refusals = judge(
+        &census,
+        &declared_jobs(&[wired("validate"), wired("unrun-tests")]),
+        &nothing(),
+    );
+    let named: Vec<String> = refusals.iter().map(Refusal::to_string).collect();
+    assert!(
+        refusals.iter().any(|refusal| matches!(
+            refusal,
+            Refusal::JobRanCompilationsThisReaderCannotPlace { job, compilations, .. }
+                if job == "validate" && *compilations == 1
+        )),
+        "a job whose split rests on a population the reader lost is refused: {named:?}"
+    );
+    assert!(
+        named
+            .iter()
+            .any(|why| why.contains("`serde`") && why.contains("its-value")),
+        "and the refusal names what was lost, so its reader is sent to a crate \
+         rather than to a megabyte of records: {named:?}"
+    );
+}
+
+#[test]
+fn a_job_that_placed_every_compilation_is_not_refused_for_this() {
+    // THE CONTROL FOR THE REFUSAL ABOVE, and it goes through the same judge on
+    // the same fixture shape: an assertion that something is refused says
+    // nothing until the same call accepts its sibling.
+    let refusals = judge(
+        &census_of(&["validate", "unrun-tests"]),
+        &declared_jobs(&[wired("validate"), wired("unrun-tests")]),
+        &nothing(),
+    );
+    assert!(
+        !refusals.iter().any(|refusal| matches!(
+            refusal,
+            Refusal::JobRanCompilationsThisReaderCannotPlace { .. }
+        )),
+        "{refusals:?}"
+    );
 }
 
 #[test]

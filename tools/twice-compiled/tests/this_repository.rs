@@ -4,7 +4,7 @@
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 
-use twice_compiled::{judge, Census, Cost, Declared, JobLog, Refusal, Unit};
+use twice_compiled::{judge, Census, Cost, Declared, JobLog, Origin, Refusal, Unit};
 
 /// The workflow this gate judges. One file, because a census can only be taken
 /// of jobs that share a run: artifacts do not cross from one workflow run to
@@ -71,6 +71,8 @@ fn everybody_compiled(declared: &Declared) -> Census {
                 emit: "link".to_string(),
                 crate_types: vec!["lib".to_string()],
                 test: false,
+                driver: "/toolchain/bin/rustc".to_string(),
+                origin: twice_compiled::Origin::Tree,
             },
             PINNED,
         );
@@ -291,6 +293,47 @@ fn every_cached_job_of_this_workflow_measures_the_restore_around_it() {
              defect this law exists for, and it was not refused"
         );
     }
+}
+
+#[test]
+fn every_cargo_home_tree_this_workflow_caches_is_one_the_split_can_name() {
+    // WHAT MAKES THE SPLIT ANSWERABLE ABOUT A CACHE. `Origin` reads cargo's own
+    // layout, which is a fact about cargo and true in a checkout that caches
+    // nothing; what makes "this job compiled 461 crates its cache had fetched"
+    // a statement about THIS cache is that the cache carries those trees and no
+    // others. A third one added here — `~/.cargo/bin`, a vendor directory —
+    // would compile into units the split calls the checkout's, and the fetched
+    // share would quietly shrink while every total still added up.
+    //
+    // ONE SIDE READ OFF THE LIVE FILE, so this goes red when the workflow moves
+    // rather than when somebody remembers to come back here.
+    let declared = declared_jobs(&workflow_steps());
+    let cached: BTreeSet<String> = declared
+        .caches
+        .values()
+        .flatten()
+        .filter_map(|path| path.split("/.cargo/").nth(1))
+        .map(str::to_string)
+        .collect();
+    let named: BTreeSet<String> = ["git".to_string(), "registry".to_string()]
+        .into_iter()
+        .collect();
+    assert_eq!(
+        cached, named,
+        "{WORKFLOW} caches these trees under a cargo home, and `Origin` names \
+         those two — teach the split about a third BEFORE caching it, or its \
+         compilations are reported as the checkout's"
+    );
+    // AND THE NAMING IS THE LIVE READING, not a coincidence of spelling: a
+    // source in each of the two trees is one this split calls fetched.
+    assert!(Origin::of(
+        "/home/runner/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.219/src/lib.rs"
+    )
+    .fetched());
+    assert!(Origin::of(
+        "/home/runner/.cargo/git/checkouts/tonic-3a1f6c5d9b2e/9b2ef41/tonic/src/lib.rs"
+    )
+    .fetched());
 }
 
 #[test]

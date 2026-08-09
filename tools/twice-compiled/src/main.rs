@@ -197,7 +197,35 @@ fn report(census: &Census, declared: &Declared, absent: &BTreeSet<String>) {
             seconds(window),
             seconds(log.idle_micros()),
         );
-        // THE THIRD LINE IS THE UNITS THE FIRST TWO ARE IN. cargo runs no
+        // THE THIRD LINE IS WHOSE CODE THE FIRST TWO WERE ABOUT, and it is the
+        // one the line below is answerable against: every cache in this workflow
+        // carries `~/.cargo/registry` and `~/.cargo/git`, which hold SOURCES.
+        // A job that restored them exactly and still compiled hundreds of
+        // fetched crates has a cache that brought the sources of work it then
+        // did anyway, and no reading of the state alone can say that.
+        let fetched = log.fetched();
+        println!(
+            "  {:<22} {:>6} of them fetched by cargo ({:>7.1} s), {:>5} from the \
+             checkout ({:.1} s)",
+            "",
+            fetched.times,
+            seconds(fetched.micros),
+            log.compilations() - fetched.times,
+            seconds(log.compiled_micros().saturating_sub(fetched.micros)),
+        );
+        if !log.unplaced.is_empty() {
+            for (what, cost) in &log.unplaced {
+                println!(
+                    "  {:<22} {:>6} NOT PLACED, missing from the line above: \
+                     `{}` — {}",
+                    "",
+                    cost.times,
+                    what.crate_name,
+                    what.why(),
+                );
+            }
+        }
+        // THE FOURTH LINE IS THE UNITS THE FIRST TWO ARE IN. cargo runs no
         // compiler for a unit that is already fresh, so this whole census is of
         // whatever was NOT restored, and the same job in two cache states is two
         // different numbers that are each correct. Round 1099 read two of them
@@ -232,6 +260,33 @@ fn report(census: &Census, declared: &Declared, absent: &BTreeSet<String>) {
         "",
         seconds(census.floor_micros()),
     );
+    // WHOSE CODE CI IS PAYING TO COMPILE, under the total it is a share of. A
+    // repair aimed at this repository's own crates cannot reach the fetched
+    // rows, and a compile cache is a repair aimed at nothing else — so which of
+    // these two lines is the large one decides what is worth building.
+    for (origin, cost) in census.by_origin() {
+        let share = if paid == 0 {
+            0.0
+        } else {
+            100.0 * cost.times as f64 / paid as f64
+        };
+        println!(
+            "  {:<13} {:>6} {:<20} ({share:.1}%){:<11}{:>9.1} s",
+            "",
+            cost.times,
+            origin.why(),
+            "",
+            seconds(cost.micros),
+        );
+    }
+    let unplaced = census.unplaced();
+    if unplaced > 0 {
+        println!(
+            "  {:<13} {unplaced:>6} NOT PLACED — the two lines above are of a \
+             population this reader lost part of",
+            "",
+        );
+    }
     let duplicated = paid.saturating_sub(floor);
     let share = if paid == 0 {
         0.0

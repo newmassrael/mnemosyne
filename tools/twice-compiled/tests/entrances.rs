@@ -333,6 +333,10 @@ fn on_a_runner(jobs: &[Job], recorded: &[&str], own_job: Option<&str>) -> Run {
     let logs = scratch.path().join("logs");
     for job in recorded {
         record_a_compilation(&logs.join(format!("{job}.log")));
+        // AND ONE CRATE CARGO FETCHED, so every census this harness builds has a
+        // row on BOTH sides of the split. A report whose fetched row is only
+        // ever zero is one no test can tell from a report that stopped counting.
+        record_a_fetched_compilation(&logs.join(format!("{job}.log")));
     }
     let mut gate = gate(root.path(), scratch.path());
     gate.arg(&logs).env(
@@ -771,6 +775,21 @@ fn on_a_runner_the_workflow_is_read_off_the_runner_and_the_gate_leaves_itself_ou
         "the two recorded jobs compiled the same unit\n{}",
         run.transcript()
     );
+    // AND THE REPORT SAYS WHOSE CODE IT WAS. Every cache in this workflow
+    // carries `~/.cargo/registry` and `~/.cargo/git`, which hold sources; a job
+    // that restored them exactly and still compiled crates out of them is the
+    // reading this line exists for, and it lives in `main.rs`, where R1096
+    // measured what a decision with no reader costs.
+    assert!(
+        stdout.contains("1 of them fetched by cargo") && stdout.contains("2 from the checkout"),
+        "the per-job split is printed with both sides of it\n{}",
+        run.transcript()
+    );
+    assert!(
+        stdout.contains("fetched from a registry") && stdout.contains("in the checkout"),
+        "and so is the total it is a share of\n{}",
+        run.transcript()
+    );
 }
 
 #[test]
@@ -1035,6 +1054,112 @@ fn the_comparison_entrance_refuses_a_workflow_rather_than_ignoring_it() {
         String::from_utf8_lossy(&out.stderr)
     );
     let _ = earlier;
+}
+
+/// Append one compilation of a crate cargo fetched, so a census holds a row on
+/// each side of the split rather than only the checkout's.
+fn record_a_fetched_compilation(log: &Path) {
+    let record = Record {
+        started_at: 1_400_000,
+        micros: 250_000,
+        argv: [
+            "/usr/bin/rustc",
+            "--crate-name",
+            "serde",
+            "--emit=dep-info,metadata",
+            "-C",
+            "metadata=9911aabb",
+            "--crate-type",
+            "lib",
+            "/home/runner/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/\
+             serde-1.0.219/src/lib.rs",
+        ]
+        .iter()
+        .map(|word| (*word).to_string())
+        .collect(),
+    };
+    rustc_log::append(log, &record).expect("a record is appended");
+}
+
+#[test]
+fn a_comparison_says_whose_code_each_jobs_difference_is_in() {
+    // A DELTA WITH NO CAUSE IN IT IS A NUMBER NOBODY CAN ACT ON. The same
+    // hundred compilations mean "somebody added code" if they are the
+    // checkout's and "a cache brought sources whose compiled form it did not
+    // bring" if they are crates cargo fetched, and the count cannot tell those
+    // apart.
+    let scratch = TempDir::new().expect("a scratch directory");
+    let earlier = downloaded(
+        &scratch.path().join("earlier"),
+        &[("validate", false, 7_000)],
+    );
+    let later = downloaded(&scratch.path().join("later"), &[("validate", false, 7_000)]);
+    record_a_fetched_compilation(&later.join("rustc-log-validate").join("validate.log"));
+
+    let out = compared(&earlier, &later);
+    let printed = String::from_utf8_lossy(&out.stdout);
+    assert!(out.status.success(), "{printed}");
+    assert!(
+        printed.contains("fetched from a registry"),
+        "the row names the tree the difference is in\n{printed}"
+    );
+    assert!(
+        printed.contains("in the checkout"),
+        "and both sides of the split are printed, not only the one that moved\
+         \n{printed}"
+    );
+    assert!(
+        printed.contains("     0 -> 1"),
+        "an origin only the later census had is a row whose earlier side is \
+         zero, and never a row that is dropped\n{printed}"
+    );
+}
+
+#[test]
+fn a_comparison_says_what_neither_side_could_place() {
+    // `compare` READS NO WORKFLOW, so it has nothing to refuse against — what
+    // it owes instead is to say how much of each job it is not describing.
+    // Without the line, compilations missing from every number above read as
+    // compilations that did not happen.
+    let scratch = TempDir::new().expect("a scratch directory");
+    let earlier = downloaded(
+        &scratch.path().join("earlier"),
+        &[("validate", false, 7_000)],
+    );
+    let later = downloaded(&scratch.path().join("later"), &[("validate", false, 7_000)]);
+    let unplaceable = Record {
+        started_at: 1_600_000,
+        micros: 10_000,
+        argv: [
+            "/usr/bin/rustc",
+            "--crate-name",
+            "adrift",
+            "--emit=link",
+            "-C",
+            "metadata=1234",
+            "--a-flag-this-reader-does-not-know",
+            "its-value",
+            "src/lib.rs",
+        ]
+        .iter()
+        .map(|word| (*word).to_string())
+        .collect(),
+    };
+    rustc_log::append(
+        &later.join("rustc-log-validate").join("validate.log"),
+        &unplaceable,
+    )
+    .expect("a record is appended");
+
+    let printed = String::from_utf8_lossy(&compared(&earlier, &later).stdout).into_owned();
+    assert!(
+        printed.contains("NOT PLACED: `adrift`"),
+        "the line names the crate\n{printed}"
+    );
+    assert!(
+        printed.contains("its-value"),
+        "and the words that stood where one path should be\n{printed}"
+    );
 }
 
 #[test]

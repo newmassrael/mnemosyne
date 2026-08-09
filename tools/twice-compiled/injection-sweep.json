@@ -401,6 +401,130 @@
         "a_job_writing_its_state_to_another_jobs_file_is_refused",
         "a_step_of_a_cached_job_that_does_not_say_where_to_write_it_is_refused"
       ]
+    },
+    {
+      "name": "the-first-argument-is-the-input-file",
+      "why": "cargo hands a wrapper the next program in the chain as its first argument, and `cargo clippy` makes that chain two long — so a record of a workspace member carries `clippy-driver` AND `rustc` ahead of the first flag. A reader that starts at the first argument finds two free-standing words and places neither, which is how 153 compilations of a real eight-job census went missing from the split while every total still added up",
+      "edits": [
+        {
+          "file": "tools/twice-compiled/src/lib.rs",
+          "from": "    let first_flag = argv\n        .iter()\n        .position(|word| word.starts_with('-'))\n        .unwrap_or(argv.len());\n    &argv[first_flag..]",
+          "to": "    argv"
+        }
+      ],
+      "expect_red": ["the_pass_cargo_clippy_makes_is_read_through_the_chain_that_ran_it"]
+    },
+    {
+      "name": "a-directory-pair-named-registry-src-is-cargos",
+      "why": "`registry/src` is a pair any repository may have, and this instrument exists to find out whether the runner recompiles DEPENDENCIES — a rule that guesses generously answers its own question, reporting a crate of ours as a fetched crate the cache should have spared",
+      "edits": [
+        {
+          "file": "tools/twice-compiled/src/lib.rs",
+          "from": "            if window[0] == \"registry\" && window[1] == \"src\" && names_a_package(window[3]) {",
+          "to": "            if window[0] == \"registry\" && window[1] == \"src\" {"
+        }
+      ],
+      "expect_red": ["a_directory_pair_of_ours_spelled_like_cargos_is_not_cargos"]
+    },
+    {
+      "name": "the-first-free-standing-word-is-the-input",
+      "why": "rustc takes exactly one input, so a reader that finds two has mistaken somebody's value for a path — and believing the first of them produces an ORIGIN, silently, for a compilation nothing placed. The whole reason a flag list is safe here is that both ways of being wrong refuse instead of answering",
+      "edits": [
+        {
+          "file": "tools/twice-compiled/src/lib.rs",
+          "from": "        [only] => Ok(only),\n        many => Err(many.iter().map(|word| (*word).to_string()).collect()),",
+          "to": "        [] => Err(Vec::new()),\n        many => Ok(many[0]),"
+        }
+      ],
+      "expect_red": ["a_compilation_with_a_second_free_standing_word_is_not_placed"]
+    },
+    {
+      "name": "a-census-need-not-say-what-it-could-not-place",
+      "why": "an empty split and an unreached one have the same shape: a job whose fetched row reads zero because nothing was fetched and one whose fetched row reads zero because the reader lost the population print the same line, and only one of them is a measurement",
+      "edits": [
+        {
+          "file": "tools/twice-compiled/src/lib.rs",
+          "from": "            Some(log) if !log.unplaced.is_empty() => {",
+          "to": "            Some(log) if !log.unplaced.is_empty() && false => {"
+        }
+      ],
+      "expect_red": ["a_job_that_ran_a_compilation_this_reader_cannot_place_is_refused"]
+    },
+    {
+      "name": "the-split-counts-units-and-not-compilations",
+      "why": "a job can compile one unit twice, and a split that counts the row once reports a fetched share smaller than what CI paid for — the numbers still add up, against a population one short, which is the shape no total can show",
+      "edits": [
+        {
+          "file": "tools/twice-compiled/src/lib.rs",
+          "from": "            out.entry(unit.origin).or_default().absorb(*cost);",
+          "to": "            out.entry(unit.origin).or_default().add(cost.each());"
+        }
+      ],
+      "expect_red": ["the_split_by_origin_accounts_for_every_compilation_the_job_counted"]
+    },
+    {
+      "name": "which-compiler-ran-is-not-part-of-the-unit",
+      "why": "the record keeps the compiler's path because the MSRV job runs a different rustc over the same sources; a key that drops it depends on cargo continuing to hash the compiler into `-C metadata`, and the fields beside it are given precisely so this reader SPLITS rather than merges when a release narrows that hash",
+      "edits": [
+        {
+          "file": "tools/twice-compiled/src/lib.rs",
+          "from": "    let driver = record[0].clone();",
+          "to": "    let driver = String::new();"
+        }
+      ],
+      "expect_red": ["two_compilations_that_differ_only_in_which_compiler_ran_are_two_units"]
+    },
+    {
+      "name": "a-comparison-shows-only-the-rows-both-runs-had",
+      "why": "an origin present in one census and absent from the other is exactly the difference a reader came for — the row that appears when a cache stops sparing a tree — and dropping it leaves a comparison whose largest finding is the one it cannot print",
+      "edits": [
+        {
+          "file": "tools/twice-compiled/src/lib.rs",
+          "from": "    earlier\n        .keys()\n        .chain(later.keys())\n        .map(|key| {",
+          "to": "    earlier\n        .keys()\n        .map(|key| {"
+        }
+      ],
+      "expect_red": ["a_comparison_says_whose_code_each_jobs_difference_is_in"]
+    },
+    {
+      "name": "a-comparison-need-not-say-what-it-lost",
+      "why": "`compare` reads no workflow, so it has nothing to refuse against — the line is the whole of what it owes, and without it compilations missing from every number above read as compilations that did not happen",
+      "edits": [
+        {
+          "file": "tools/twice-compiled/src/lib.rs",
+          "from": "        for (what, (before, after)) in &delta.unplaced {",
+          "to": "        for (what, (before, after)) in delta.unplaced.iter().take(0) {"
+        }
+      ],
+      "expect_red": ["a_comparison_says_what_neither_side_could_place"]
+    },
+    {
+      "name": "a-jobs-line-need-not-say-whose-code-it-compiled",
+      "why": "the reading lives in `main.rs`, where R1096 measured what a decision with no reader costs: a job that restored `~/.cargo/registry` exactly and still compiled hundreds of crates out of it is the whole finding, and a report that prints the counts without the split leaves it to be recovered by hand",
+      "edits": [
+        {
+          "file": "tools/twice-compiled/src/main.rs",
+          "from": "        let fetched = log.fetched();",
+          "to": "        let fetched = twice_compiled::Cost::default();"
+        }
+      ],
+      "expect_red": [
+        "on_a_runner_the_workflow_is_read_off_the_runner_and_the_gate_leaves_itself_out"
+      ]
+    },
+    {
+      "name": "the-totals-need-not-say-whose-code-they-are",
+      "why": "which of the two rows is the large one decides what is worth building — a repair aimed at this repository's own crates cannot reach the fetched rows, and a compile cache is a repair aimed at nothing else",
+      "edits": [
+        {
+          "file": "tools/twice-compiled/src/main.rs",
+          "from": "    for (origin, cost) in census.by_origin() {",
+          "to": "    for (origin, cost) in census.by_origin().into_iter().take(0) {"
+        }
+      ],
+      "expect_red": [
+        "on_a_runner_the_workflow_is_read_off_the_runner_and_the_gate_leaves_itself_out"
+      ]
     }
   ]
 }
