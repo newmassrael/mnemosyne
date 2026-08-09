@@ -957,3 +957,98 @@ fn a_flags_value_is_not_the_tree_to_judge() {
         "and without the flag the other half is NOT MEASURED rather than empty"
     );
 }
+
+// --- what the report says ----------------------------------------------------
+//
+// THE WORDS ARE A DECISION AND A DECISION NEEDS A READER. The rendering used to
+// live in `main.rs`, where the only thing a suite could ask of it was an exit
+// code — R1096's lesson, paid for once already in this repository.
+
+/// The state where the two instruments both speak: a key GitHub holds, and a
+/// record from the job that declares it.
+fn report_with_both_instruments() -> Report {
+    let declared = [declaration("unrun-tests", "Linux-cargo-unrun-", TARGET)];
+    let caches = [held("Linux-cargo-unrun-abc", 7.83)];
+    let mut started = BTreeMap::new();
+    started.insert(
+        "unrun-tests".to_string(),
+        restored::Warmth::PrefixHit {
+            bytes: 27_258_000_000,
+        },
+    );
+    cache_budget::conclude(LIMIT, &declared, &caches, None, &started)
+}
+
+#[test]
+fn the_report_says_the_stored_archive_and_the_restored_disk_are_not_one_quantity() {
+    // RUN 31307111606 IS WHY. Its report printed `7.83 GB held` and, on the very
+    // next line, `27258 MB restored` for the same key — the compressed archive
+    // against the tree it expands into, a factor of three and a half. The line
+    // below it read 0.15 GB against 246 MB. Both numbers are right and neither
+    // says which quantity it is, one line apart, which is where a reader divides.
+    let printed = cache_budget::render(&report_with_both_instruments());
+    assert!(
+        printed.contains("7.83 GB held"),
+        "the premise: the archive size is printed\n{printed}"
+    );
+    assert!(
+        printed.contains("27258 MB restored"),
+        "the premise: the disk figure is printed too, and it is the larger\n{printed}"
+    );
+    assert!(
+        printed.contains("the archive GitHub stores")
+            && printed.contains("what arrived on its disk"),
+        "and the report says the two are not the same quantity\n{printed}"
+    );
+}
+
+#[test]
+fn a_report_with_no_record_to_compare_against_does_not_explain_a_comparison() {
+    // THE CONTROL, and it is the reason the sentence is conditional. On a run
+    // that read no restore record there is no second quantity, and a line about
+    // a comparison nobody can make is what teaches a reader to skip lines.
+    let declared = [declaration("unrun-tests", "Linux-cargo-unrun-", TARGET)];
+    let caches = [held("Linux-cargo-unrun-abc", 7.83)];
+    let printed = cache_budget::render(&cache_budget::conclude(
+        LIMIT,
+        &declared,
+        &caches,
+        None,
+        &BTreeMap::new(),
+    ));
+    assert!(printed.contains("7.83 GB held"), "{printed}");
+    assert!(
+        printed.contains("did not say what it started from"),
+        "the absence is still said out loud\n{printed}"
+    );
+    assert!(
+        !printed.contains("the archive GitHub stores"),
+        "and nothing explains a comparison this report cannot make\n{printed}"
+    );
+}
+
+#[test]
+fn the_report_counts_the_steps_and_the_held_caches_it_was_reckoned_against() {
+    // A REPORT THAT CANNOT SAY HOW FAR IT REACHED prints the same header whether
+    // it read eight cache steps or none. The two counts are not `rows.len()`:
+    // several steps may share one key, and held caches include the superseded
+    // generations and the ones no workflow declares.
+    let declared = [
+        declaration("validate", "Linux-cargo-", TARGET),
+        declaration("side", "Linux-cargo-", TARGET),
+        declaration("msrv", "Linux-cargo-msrv-", REGISTRY),
+    ];
+    let caches = [
+        held("Linux-cargo-abc", 4.0),
+        held_on("Linux-cargo-old", 4.0, "2026-08-01T00:00:00.000000000Z"),
+    ];
+    let report = cache_budget::conclude(LIMIT, &declared, &caches, None, &BTreeMap::new());
+    assert_eq!((report.declared_steps, report.held_caches), (3, 2));
+    assert_eq!(report.rows.len(), 2, "three steps under two keys");
+    assert!(
+        cache_budget::render(&report).contains("3 cache step(s)")
+            && cache_budget::render(&report).contains("under 2 key(s), 2 held by GitHub"),
+        "{}",
+        cache_budget::render(&report)
+    );
+}

@@ -459,6 +459,13 @@ pub struct Report {
     /// backwards. Empty where no record was read, which is a state this report
     /// says out loud rather than treating as "nothing was restored".
     pub started: BTreeMap<String, restored::Warmth>,
+    /// How many `actions/cache` steps the workflows declare. NOT `rows.len()`:
+    /// several steps may share one key, and the gap between the two counts is
+    /// the first thing a reader of this report checks.
+    pub declared_steps: usize,
+    /// How many caches GitHub holds, superseded generations and undeclared ones
+    /// included — the population this report was reckoned against.
+    pub held_caches: usize,
 }
 
 impl Report {
@@ -761,7 +768,144 @@ pub fn conclude(
         divergent,
         run: run.cloned(),
         started: started.clone(),
+        declared_steps: declared.len(),
+        held_caches: held.len(),
     }
+}
+
+/// The report as a person reads it: what was reached, then every key, then the
+/// totals, then whether the second half was evaluated at all.
+///
+/// A STRING AND NOT A `println!`, for the reason [`read_arguments`] is here: a
+/// decision that lives in `main.rs` has no reader. R1096 measured what that
+/// costs — the thing that lied was an exit code, and nothing in the suite could
+/// ask it a question.
+///
+/// TWO INSTRUMENTS AND TWO UNITS, WHICH IS WHY THE LAST LINE OF THE ROWS EXISTS.
+/// The GB against a key is what GitHub STORES, a compressed archive taken from
+/// the caches API. The MB beside one of its jobs is what arrived on that job's
+/// DISK, measured by `tools/restored` either side of the restore. On run
+/// 31307111606 those two read 7.83 GB and 27258 MB for the same key — a factor
+/// of three and a half — and 0.15 GB against 246 MB for the next one along.
+/// Both numbers are right; neither says which quantity it is; and they are
+/// printed one line apart, which is where a reader divides one by the other.
+pub fn render(report: &Report) -> String {
+    let mut out = String::new();
+    // WHAT WAS REACHED, first and unconditionally. A gate that never opened
+    // anything and a gate that found nothing wrong print the same silence.
+    out.push_str(&format!(
+        "{} cache step(s) across this repository's workflows under {} key(s), {} \
+         held by GitHub, budget {:.2} GB\n",
+        report.declared_steps,
+        report.rows.len(),
+        report.held_caches,
+        report.limit as f64 / 1e9
+    ));
+    for row in &report.rows {
+        let size = match (&row.held, &row.estimate) {
+            (Some(held), _) => format!("{:>8.2} GB held", held.size_in_bytes as f64 / 1e9),
+            (None, Some(estimate)) => format!(
+                "{:>8.2} GB ABSENT, priced from {}",
+                estimate.bytes as f64 / 1e9,
+                estimate.from
+            ),
+            (None, None) => "       ? ABSENT, never observed".to_string(),
+        };
+        out.push_str(&format!(
+            "  {size}  {}  [{}]  {}\n",
+            row.prefix,
+            row.paths.iter().cloned().collect::<Vec<_>>().join(" "),
+            row.owners
+                .iter()
+                .map(ToString::to_string)
+                .collect::<Vec<_>>()
+                .join(", ")
+        ));
+        // WHAT ITS OWNERS ACTUALLY GOT, printed beside what storage holds. These
+        // are the two instruments, and holding them apart is what let a warm run
+        // be read as a cold one.
+        for owner in &row.owners {
+            match report.started.get(&owner.job) {
+                Some(warmth) => {
+                    out.push_str(&format!("            `{}` {}\n", owner.job, warmth.why()))
+                }
+                None => out.push_str(&format!(
+                    "            `{}` did not say what it started from\n",
+                    owner.job
+                )),
+            }
+        }
+        // PRINTED THOUGH NOT COUNTED. These are real bytes GitHub is holding, and
+        // a gate that judged one generation while silently dropping the others
+        // from its output would be reporting a smaller world than it looked at.
+        for old in &row.superseded {
+            out.push_str(&format!(
+                "  {:>8.2} GB held under the same key, superseded on {} and aging \
+                 out — not counted, because no workflow can stop a lockfile bump \
+                 leaving one behind\n",
+                old.size_in_bytes as f64 / 1e9,
+                row.held
+                    .as_ref()
+                    .map_or("—", |newest| newest.created_at.as_str())
+            ));
+        }
+    }
+    for orphan in &report.orphans {
+        out.push_str(&format!(
+            "  {:>8.2} GB held, declared by nothing: {}\n",
+            orphan.size_in_bytes as f64 / 1e9,
+            orphan.key
+        ));
+    }
+    // SAID ONLY WHERE BOTH KINDS OF NUMBER WERE ACTUALLY PRINTED. On a run that
+    // read no record there is no second quantity to be confused with the first,
+    // and a sentence about a comparison nobody can make is noise that teaches a
+    // reader to skip the line.
+    if report.rows.iter().any(|row| {
+        row.held.is_some()
+            && row
+                .owners
+                .iter()
+                .any(|owner| report.started.contains_key(&owner.job))
+    }) {
+        out.push_str(
+            "  the GB against a key is the archive GitHub stores; the MB beside a \
+             job is what arrived on its disk, and one is not the other\n",
+        );
+    }
+    match report.demand() {
+        Some(demand) => out.push_str(&format!("demand {:.2} GB\n", demand as f64 / 1e9)),
+        None => out.push_str("demand UNKNOWN — nothing comparable has been observed\n"),
+    }
+    // WHETHER THE SECOND HALF WAS EVALUATED AT ALL, said out loud. A gate that
+    // silently skipped a law and a gate that found nothing wrong under it print
+    // the same clean line otherwise.
+    match &report.run {
+        Some(run) => out.push_str(&format!(
+            "run started {}, so a cache created after that is a job that rebuilt; \
+             {} key(s) had their hashed inputs moved {}{}\n",
+            run.started_at,
+            run.inputs_changed.len(),
+            run.range.why(),
+            if run.inputs_changed.is_empty() {
+                String::new()
+            } else {
+                format!(
+                    " ({})",
+                    run.inputs_changed
+                        .iter()
+                        .cloned()
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                )
+            }
+        )),
+        None => out.push_str(
+            "NOT INSIDE A RUN (`GITHUB_RUN_ID` unset), so whether these caches were \
+             restored or rebuilt was NOT evaluated — only the budget was\n",
+        ),
+    }
+    out
 }
 
 /// The tree to judge, and where the restore records were collected.

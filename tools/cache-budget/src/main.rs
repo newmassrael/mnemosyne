@@ -71,100 +71,11 @@ fn main() {
 
     // WHAT WAS REACHED, first and unconditionally. A gate that never opened
     // anything and a gate that found nothing wrong print the same silence.
-    println!(
-        "{} cache step(s) across this repository's workflows under {} key(s), {} \
-         held by GitHub, budget {:.2} GB",
-        declared.len(),
-        report.rows.len(),
-        held.len(),
-        DEFAULT_LIMIT_BYTES as f64 / 1e9
-    );
-    for row in &report.rows {
-        let size = match (&row.held, &row.estimate) {
-            (Some(held), _) => format!("{:>8.2} GB held", held.size_in_bytes as f64 / 1e9),
-            (None, Some(estimate)) => format!(
-                "{:>8.2} GB ABSENT, priced from {}",
-                estimate.bytes as f64 / 1e9,
-                estimate.from
-            ),
-            (None, None) => "       ? ABSENT, never observed".to_string(),
-        };
-        println!(
-            "  {size}  {}  [{}]  {}",
-            row.prefix,
-            row.paths.iter().cloned().collect::<Vec<_>>().join(" "),
-            row.owners
-                .iter()
-                .map(ToString::to_string)
-                .collect::<Vec<_>>()
-                .join(", ")
-        );
-        // WHAT ITS OWNERS ACTUALLY GOT, printed beside what storage holds. These
-        // are the two instruments, and holding them apart is what let a warm run
-        // be read as a cold one.
-        for owner in &row.owners {
-            match report.started.get(&owner.job) {
-                Some(warmth) => println!("            `{}` {}", owner.job, warmth.why()),
-                None => println!(
-                    "            `{}` did not say what it started from",
-                    owner.job
-                ),
-            }
-        }
-        // PRINTED THOUGH NOT COUNTED. These are real bytes GitHub is holding, and
-        // a gate that judged one generation while silently dropping the others
-        // from its output would be reporting a smaller world than it looked at.
-        for old in &row.superseded {
-            println!(
-                "  {:>8.2} GB held under the same key, superseded on {} and aging \
-                 out — not counted, because no workflow can stop a lockfile bump \
-                 leaving one behind",
-                old.size_in_bytes as f64 / 1e9,
-                row.held
-                    .as_ref()
-                    .map_or("—", |newest| newest.created_at.as_str())
-            );
-        }
-    }
-    for orphan in &report.orphans {
-        println!(
-            "  {:>8.2} GB held, declared by nothing: {}",
-            orphan.size_in_bytes as f64 / 1e9,
-            orphan.key
-        );
-    }
-    match report.demand() {
-        Some(demand) => println!("demand {:.2} GB", demand as f64 / 1e9),
-        None => println!("demand UNKNOWN — nothing comparable has been observed"),
-    }
-    // WHETHER THE SECOND HALF WAS EVALUATED AT ALL, said out loud. A gate that
-    // silently skipped a law and a gate that found nothing wrong under it print
-    // the same clean line otherwise.
-    match &report.run {
-        Some(run) => println!(
-            "run started {}, so a cache created after that is a job that rebuilt; \
-             {} key(s) had their hashed inputs moved {}{}",
-            run.started_at,
-            run.inputs_changed.len(),
-            run.range.why(),
-            if run.inputs_changed.is_empty() {
-                String::new()
-            } else {
-                format!(
-                    " ({})",
-                    run.inputs_changed
-                        .iter()
-                        .cloned()
-                        .collect::<Vec<_>>()
-                        .join(", ")
-                )
-            }
-        ),
-        None => println!(
-            "NOT INSIDE A RUN (`GITHUB_RUN_ID` unset), so whether these caches were \
-             restored or rebuilt was NOT evaluated — only the budget was"
-        ),
-    }
+    //
+    // THE WORDS ARE THE LIBRARY'S. What this gate SAYS is a decision, and a
+    // decision written here has no reader — the whole of what a suite can ask of
+    // `main` is its exit code, which is the shape R1096 paid for.
+    print!("{}", cache_budget::render(&report));
 
     // THEN judge it, and print every refusal. Stopping at the first reports one
     // line of a distribution that is itself the finding.

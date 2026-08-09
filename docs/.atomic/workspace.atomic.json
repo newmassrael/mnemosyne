@@ -6702,6 +6702,88 @@
         "XX2 STANDS AND STILL GATES THE ARC: why the runner recompiles DEPENDENCIES is unmeasured, and the untested difference is that `~/.cargo/registry` rides the cache too. No compilation cache can be judged before that is known."
       ]
     },
+    "Round 1104 — a stored archive and a restored disk are not one number": {
+      "decision_summary": "TWO INSTRUMENTS, TWO UNITS, ONE LINE APART — and R1102 put them there. Reading\nrun 31307111606 to its annotations, the cache gate printed `7.83 GB held` for\n`Linux-cargo-unrun-` and, on the line under it, `27258 MB restored from an\nearlier generation` for the job that declares it. The one above is the\nCOMPRESSED ARCHIVE the caches API reports; the one below is what\n`tools/restored` measured arriving on the job's DISK. A factor of three and a\nhalf, and the next key along reads 0.15 GB against 246 MB, a factor of 1.6.\nBoth numbers are correct. Neither says which quantity it is. They are adjacent,\nin one report, in units a reader will divide.\n\nThat is not a wrong number, which is why nothing could refuse it: every law\nhere is about a value and this is about what a value MEANS. So the report says\nit, once, where the two adjoin — and only where BOTH were actually printed. On a\nrun that read no restore record there is no second quantity, and a sentence\nexplaining a comparison nobody can make is what teaches a reader to skip lines.\n\nTHE REPORT IS A DECISION AND A DECISION NEEDS A READER. It could not be said\nuntil the words moved: the whole rendering was `println!` in `main.rs`, where\nthe only thing a suite can ask is an exit code. R1096 already paid for that\nlesson in this repository — a gate whose exit code lied, with nothing able to\nquestion it, until the binary was run as a process. `render` is a function\nreturning a `String` now, and what it says is under test: the sentence present\nwhere both instruments spoke, ABSENT where only one did, which is the arm that\nkeeps it meaningful.\n\nAND THE REPORT SAYS HOW FAR IT REACHED FROM ITS OWN FIELDS. The header counted\n`declared.len()` and `held.len()` from variables `main` happened to still be\nholding — the numbers were right and no reader could have checked them. They are\n`Report::declared_steps` and `Report::held_caches` now, put there by `conclude`,\nwhich sees both populations. They are deliberately not `rows.len()`: several\ncache steps may share one key, and the gap between those two counts is the first\nthing a person reading this report checks.",
+      "changes_bullets": [
+        "`tools/cache-budget/src/lib.rs` — `render(&Report) -> String`, moved whole out of `main.rs`. What a gate SAYS is a decision, and a decision in `main.rs` can only be asked its exit code.",
+        "The rows end with one sentence when both instruments spoke: the GB against a key is the archive GitHub stores, the MB beside a job is what arrived on its disk, and one is not the other. Absent when no record was read, because there is then no second quantity to confuse with the first.",
+        "`Report::declared_steps` / `Report::held_caches` — how far the report reached, from `conclude` rather than from whatever `main` still had in scope. Not `rows.len()`: several cache steps may share one key."
+      ],
+      "verification_bullets": [
+        "INJECTION, `tools/cache-budget`: 3 injections, 3 fired, 0 missed, drift 0, control 40 green. The sentence removed, the sentence made unconditional, and the reach taken from the rows instead of the steps — the middle one is what holds the conditional arm, which is the half a reader loses if it is always printed.",
+        "AN INJECTION THAT DID NOT COMPILE IS NOT A FINDING, and the harness said so rather than reporting a clean run: the first spelling of the third injection borrowed a moved value, the suite built nothing, the failure list was empty, and `missed` is what turned the sweep red. Rewritten as two edits, it fires.",
+        "END TO END THROUGH THE BINARY, on this run's own records. `gh run download 31307111606` collected, `cache-budget --restored <dir>` printed the eight keys with their owners' states and the new sentence exactly between `7.83 GB held` and `27258 MB restored`. Run without the records, the same binary prints the same report and OMITS it. That is the arm no library test can reach: whether `main` calls what was moved.",
+        "GATES: `scripts/check-side-workspaces.sh` clean over all twelve separate workspaces, `cargo clippy --workspace --all-targets` clean, `mnemosyne-cli validate-workspace` clean."
+      ],
+      "carry_forward_bullets": [
+        "HOW MUCH OF WHAT ARRIVED WAS USEFUL IS STILL NOT ASKED, and this round makes the question sharper rather than answering it. A prefix hit restores a tree that is warm and stale at once; which units cargo then throws away is a fingerprint question no instrument here reads. The only measurement of it remains R1100's single pair — 773 warm against 1199 cold, one job.",
+        "THE COMPRESSION RATIO IS NOW VISIBLE AND UNEXPLAINED: 7.83 GB against 27258 MB for the key holding two build trees, 0.15 GB against 246 MB for a registry-only key. That is data this repository did not have before and has not looked at.",
+        "NOTHING COMPARES TWO CENSUSES, unchanged through R1101 to R1103. `twice-compiled compare <run> <run>` refusing a delta whose two sides started in different states is the shape, and the inputs are two `gh run download` directories.",
+        "XX2 STANDS AND STILL GATES THE ARC: why the runner recompiles DEPENDENCIES is unmeasured, and the untested difference is that `~/.cargo/registry` rides the cache too."
+      ],
+      "population_census": [
+        {
+          "axis": "transition rules by `undirected`",
+          "left_label": "undirected",
+          "left": 10,
+          "right_label": "directed",
+          "right": 27
+        },
+        {
+          "axis": "map corpora by leg-kind declaration",
+          "left_label": "omitted",
+          "left": 6,
+          "right_label": "declared",
+          "right": 24
+        },
+        {
+          "axis": "cost-carrying corpora by direction-dependent pricing",
+          "left_label": "prices a way by direction",
+          "left": 4,
+          "right_label": "prices no way by direction",
+          "right": 6
+        },
+        {
+          "axis": "run trees by authoring mode",
+          "left_label": "hand script",
+          "left": 10,
+          "right_label": "file-only",
+          "right": 239
+        },
+        {
+          "axis": "map corpora by declared boundary crossing",
+          "left_label": "declares an exit",
+          "left": 6,
+          "right_label": "declares none",
+          "right": 24
+        },
+        {
+          "axis": "authored submissions by map and telling",
+          "left_label": "carries both",
+          "left": 10,
+          "right_label": "carries one",
+          "right": 24
+        }
+      ],
+      "publishable_decision_summary": "TWO INSTRUMENTS, TWO UNITS, ONE LINE APART — and R1102 put them there. Reading\nrun 31307111606 to its annotations, the cache gate printed `7.83 GB held` for\n`Linux-cargo-unrun-` and, on the line under it, `27258 MB restored from an\nearlier generation` for the job that declares it. The one above is the\nCOMPRESSED ARCHIVE the caches API reports; the one below is what\n`tools/restored` measured arriving on the job's DISK. A factor of three and a\nhalf, and the next key along reads 0.15 GB against 246 MB, a factor of 1.6.\nBoth numbers are correct. Neither says which quantity it is. They are adjacent,\nin one report, in units a reader will divide.\n\nThat is not a wrong number, which is why nothing could refuse it: every law\nhere is about a value and this is about what a value MEANS. So the report says\nit, once, where the two adjoin — and only where BOTH were actually printed. On a\nrun that read no restore record there is no second quantity, and a sentence\nexplaining a comparison nobody can make is what teaches a reader to skip lines.\n\nTHE REPORT IS A DECISION AND A DECISION NEEDS A READER. It could not be said\nuntil the words moved: the whole rendering was `println!` in `main.rs`, where\nthe only thing a suite can ask is an exit code. R1096 already paid for that\nlesson in this repository — a gate whose exit code lied, with nothing able to\nquestion it, until the binary was run as a process. `render` is a function\nreturning a `String` now, and what it says is under test: the sentence present\nwhere both instruments spoke, ABSENT where only one did, which is the arm that\nkeeps it meaningful.\n\nAND THE REPORT SAYS HOW FAR IT REACHED FROM ITS OWN FIELDS. The header counted\n`declared.len()` and `held.len()` from variables `main` happened to still be\nholding — the numbers were right and no reader could have checked them. They are\n`Report::declared_steps` and `Report::held_caches` now, put there by `conclude`,\nwhich sees both populations. They are deliberately not `rows.len()`: several\ncache steps may share one key, and the gap between those two counts is the first\nthing a person reading this report checks.",
+      "publishable_changes_bullets": [
+        "`tools/cache-budget/src/lib.rs` — `render(&Report) -> String`, moved whole out of `main.rs`. What a gate SAYS is a decision, and a decision in `main.rs` can only be asked its exit code.",
+        "The rows end with one sentence when both instruments spoke: the GB against a key is the archive GitHub stores, the MB beside a job is what arrived on its disk, and one is not the other. Absent when no record was read, because there is then no second quantity to confuse with the first.",
+        "`Report::declared_steps` / `Report::held_caches` — how far the report reached, from `conclude` rather than from whatever `main` still had in scope. Not `rows.len()`: several cache steps may share one key."
+      ],
+      "publishable_verification_bullets": [
+        "INJECTION, `tools/cache-budget`: 3 injections, 3 fired, 0 missed, drift 0, control 40 green. The sentence removed, the sentence made unconditional, and the reach taken from the rows instead of the steps — the middle one is what holds the conditional arm, which is the half a reader loses if it is always printed.",
+        "AN INJECTION THAT DID NOT COMPILE IS NOT A FINDING, and the harness said so rather than reporting a clean run: the first spelling of the third injection borrowed a moved value, the suite built nothing, the failure list was empty, and `missed` is what turned the sweep red. Rewritten as two edits, it fires.",
+        "END TO END THROUGH THE BINARY, on this run's own records. `gh run download 31307111606` collected, `cache-budget --restored <dir>` printed the eight keys with their owners' states and the new sentence exactly between `7.83 GB held` and `27258 MB restored`. Run without the records, the same binary prints the same report and OMITS it. That is the arm no library test can reach: whether `main` calls what was moved.",
+        "GATES: `scripts/check-side-workspaces.sh` clean over all twelve separate workspaces, `cargo clippy --workspace --all-targets` clean, `mnemosyne-cli validate-workspace` clean."
+      ],
+      "publishable_carry_forward_bullets": [
+        "HOW MUCH OF WHAT ARRIVED WAS USEFUL IS STILL NOT ASKED, and this round makes the question sharper rather than answering it. A prefix hit restores a tree that is warm and stale at once; which units cargo then throws away is a fingerprint question no instrument here reads. The only measurement of it remains R1100's single pair — 773 warm against 1199 cold, one job.",
+        "THE COMPRESSION RATIO IS NOW VISIBLE AND UNEXPLAINED: 7.83 GB against 27258 MB for the key holding two build trees, 0.15 GB against 246 MB for a registry-only key. That is data this repository did not have before and has not looked at.",
+        "NOTHING COMPARES TWO CENSUSES, unchanged through R1101 to R1103. `twice-compiled compare <run> <run>` refusing a delta whose two sides started in different states is the shape, and the inputs are two `gh run download` directories.",
+        "XX2 STANDS AND STILL GATES THE ARC: why the runner recompiles DEPENDENCIES is unmeasured, and the untested difference is that `~/.cargo/registry` rides the cache too."
+      ]
+    },
     "Round 252": {
       "decision_summary": "Parser CommonMark conformance — recognize indented fenced code blocks (§98) and require whitespace after ATX hash sequence (§62)",
       "changes_bullets": [
