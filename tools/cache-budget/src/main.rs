@@ -1,16 +1,33 @@
 //! Ask both sides, print what was reached, and only then judge any of it.
 
-use std::collections::BTreeSet;
-use std::path::{Path, PathBuf};
+use std::collections::{BTreeMap, BTreeSet};
+use std::path::Path;
 use std::process::Command;
 
 use cache_budget::{conclude, Held, Refusal, Run, DEFAULT_LIMIT_BYTES};
 use ci_plan::CacheDeclaration;
 
 fn main() {
-    let root: PathBuf = std::env::args()
-        .nth(1)
-        .map_or_else(|| PathBuf::from("."), PathBuf::from);
+    let (root, restored) =
+        cache_budget::read_arguments(&std::env::args().skip(1).collect::<Vec<_>>());
+
+    // WHAT EACH JOB'S DISK RECEIVED, when this run collected the records. A
+    // directory that was not given is not an empty one: without it this gate
+    // still answers the budget question and says the other half was not
+    // measured, exactly as it does without a run.
+    let started = match &restored {
+        Some(directory) => match cache_budget::started_from(Path::new(directory)) {
+            Ok(started) => started,
+            Err(why) => {
+                eprintln!(
+                    "cache-budget: {}",
+                    Refusal::Unreached(format!("cannot read {directory}: {why}"))
+                );
+                std::process::exit(2);
+            }
+        },
+        None => BTreeMap::new(),
+    };
 
     // DECLARED — through `ci-plan`, this repository's one reader of what its CI
     // says, so this gate cannot drift from the gates asking the same files what
@@ -44,7 +61,13 @@ fn main() {
         None => None,
     };
 
-    let report = conclude(DEFAULT_LIMIT_BYTES, &declared, &held, run.as_ref());
+    let report = conclude(
+        DEFAULT_LIMIT_BYTES,
+        &declared,
+        &held,
+        run.as_ref(),
+        &started,
+    );
 
     // WHAT WAS REACHED, first and unconditionally. A gate that never opened
     // anything and a gate that found nothing wrong print the same silence.
@@ -70,8 +93,24 @@ fn main() {
             "  {size}  {}  [{}]  {}",
             row.prefix,
             row.paths.iter().cloned().collect::<Vec<_>>().join(" "),
-            row.owners.join(", ")
+            row.owners
+                .iter()
+                .map(ToString::to_string)
+                .collect::<Vec<_>>()
+                .join(", ")
         );
+        // WHAT ITS OWNERS ACTUALLY GOT, printed beside what storage holds. These
+        // are the two instruments, and holding them apart is what let a warm run
+        // be read as a cold one.
+        for owner in &row.owners {
+            match report.started.get(&owner.job) {
+                Some(warmth) => println!("            `{}` {}", owner.job, warmth.why()),
+                None => println!(
+                    "            `{}` did not say what it started from",
+                    owner.job
+                ),
+            }
+        }
         // PRINTED THOUGH NOT COUNTED. These are real bytes GitHub is holding, and
         // a gate that judged one generation while silently dropping the others
         // from its output would be reporting a smaller world than it looked at.

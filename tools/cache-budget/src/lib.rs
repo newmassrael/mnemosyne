@@ -48,6 +48,33 @@ use ci_plan::CacheDeclaration;
 /// passes.
 pub const DEFAULT_LIMIT_BYTES: u64 = 10 * 1000 * 1000 * 1000;
 
+/// A job that declares a key, and the workflow it declares it in.
+///
+/// THE TWO HALVES KEPT APART rather than formatted into one string, because one
+/// of them is a JOIN KEY: what a job's cache actually restored is measured by
+/// `tools/restored` and filed under the job id, and a reader that had to take
+/// that id back out of `mnemosyne-validate.yml \`validate\`` would be parsing a
+/// rendering. The rendering is `Display`.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub struct Owner {
+    /// The workflow file it is written in.
+    pub source: String,
+    /// The job id — the same spelling `needs:` uses, and the name a restore
+    /// record is filed under.
+    pub job: String,
+}
+
+impl std::fmt::Display for Owner {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{} `{}`", self.source, self.job)
+    }
+}
+
+/// Every owner, as one phrase.
+fn named(owners: &[Owner]) -> Vec<String> {
+    owners.iter().map(Owner::to_string).collect()
+}
+
 /// One cache GitHub actually holds.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Held {
@@ -73,8 +100,8 @@ pub struct Held {
 pub struct Row {
     /// The prefix a restore matches on — `Linux-cargo-unrun-`.
     pub prefix: String,
-    /// Every job that declares this key, as `<workflow> \`<job>\``.
-    pub owners: Vec<String>,
+    /// Every job that declares this key.
+    pub owners: Vec<Owner>,
     /// What this key holds. The union when its declarations disagree, which is
     /// the loud direction and is refused separately.
     pub paths: BTreeSet<String>,
@@ -102,6 +129,23 @@ impl Row {
             Some(held) => Some(held.size_in_bytes),
             None => self.estimate.as_ref().map(|estimate| estimate.bytes),
         }
+    }
+
+    /// The newest archive under this prefix that already existed when the run
+    /// began — what `restore-keys` had to fall back to.
+    ///
+    /// EVERY GENERATION, NOT JUST THE NEWEST, because the newest is routinely the
+    /// one THIS run saved: a job that missed its key writes a new archive in its
+    /// post step, and by the time this gate asks the API that archive is the
+    /// head of the prefix. The one that was available to the job is whichever
+    /// predates the run's start, which is the same comparison `Recreated` makes
+    /// and the same reason it is made to the second.
+    pub fn restorable_when(&self, started_at: &str) -> Option<&Held> {
+        self.held
+            .iter()
+            .chain(self.superseded.iter())
+            .filter(|generation| to_the_second(&generation.created_at) <= to_the_second(started_at))
+            .max_by(|left, right| left.created_at.cmp(&right.created_at))
     }
 }
 
@@ -138,13 +182,44 @@ pub enum Refusal {
     /// exists, which shows up only when both sides are asked.
     Orphan { key: String, size_in_bytes: u64 },
     /// One key, two jobs, two different answers about what it holds.
-    Divergent { prefix: String, owners: Vec<String> },
-    /// Held, and built from nothing BY THIS RUN — the job missed and paid for a
-    /// cold build, which is the cost the whole budget exists to buy off.
+    Divergent { prefix: String, owners: Vec<Owner> },
+    /// Saved BY THIS RUN, which means the primary key did not hit exactly, with
+    /// nothing this key hashes having moved to explain it.
+    ///
+    /// WHAT THIS DOES NOT SAY, AND SAID WRONGLY UNTIL R1101 MEASURED IT: that the
+    /// job paid for a cold build. `actions/cache` saves whenever the PRIMARY key
+    /// missed, and `restore-keys` is a separate mechanism that can have served an
+    /// earlier generation in the same job — so this signal alone cannot tell a
+    /// cold build from a warm-but-stale one. Round 1099 read a warm run as cold
+    /// and deleted a cache that was saving ten minutes; the sentence this refusal
+    /// printed would have agreed with it. What each owner actually started from
+    /// is measured now, and travels here so the message can stop guessing.
     Recreated {
         prefix: String,
-        owners: Vec<String>,
+        owners: Vec<Owner>,
         hashed: Vec<String>,
+        /// What each owner's disk said, where a record for it was read.
+        started: Vec<(String, restored::Warmth)>,
+    },
+    /// A job restored NOTHING, and a generation it could have restored was
+    /// already there when the run started.
+    ///
+    /// THE COST THE BUDGET EXISTS TO BUY OFF, and until R1101 nothing in this
+    /// repository could see it. `cache-hit` is false for a prefix match, the
+    /// cache API cannot say what a job's disk received, and a legitimately
+    /// invalidated key was EXCUSED here — so a job that fell all the way through
+    /// to an empty tree while a restorable archive sat in storage was reported as
+    /// the honest price of a dependency bump.
+    ///
+    /// It is also what a wrong wiring looks like: the two measuring steps must
+    /// bracket the `actions/cache` step, and one that does not brackets nothing
+    /// and reports every job as having restored nothing. Both readings are worth
+    /// stopping a run for.
+    RestoredNothingWithAGenerationHeld {
+        job: String,
+        prefix: String,
+        /// The newest archive under that prefix that predates this run.
+        generation: Held,
     },
     /// The gate could not reach, or could not price, enough to have a verdict.
     /// Distinct from a pass.
@@ -182,19 +257,19 @@ impl std::fmt::Display for Refusal {
                  one cache, so what it holds would depend on which job saved it \
                  first, and every job restoring the other spelling gets a tree it \
                  did not ask for",
-                owners.join(" and ")
+                named(owners).join(" and ")
             ),
             Refusal::Recreated {
                 prefix,
                 owners,
                 hashed,
+                started,
             } => write!(
                 f,
-                "`{prefix}` was BUILT FROM NOTHING by this run, so {} paid for a \
-                 cold build — `actions/cache` saves only when it did not find an \
-                 exact hit, and {}. This is the cost the budget exists to buy \
-                 off, and it is invisible: the job is green and merely slow",
-                owners.join(" and "),
+                "`{prefix}` was SAVED BY THIS RUN, so the primary key {} asked \
+                 for did not hit, and {}. What that cost is a separate question \
+                 and this is the answer to it: {}",
+                named(owners).join(" and "),
                 if hashed.is_empty() {
                     "this key hashes nothing, so nothing could have invalidated it".to_string()
                 } else {
@@ -202,7 +277,34 @@ impl std::fmt::Display for Refusal {
                         "nothing matching {} changed in this commit",
                         hashed.join(", ")
                     )
+                },
+                if started.is_empty() {
+                    "NOT MEASURED on this run — a missed key is not a cold job, \
+                     because `restore-keys` can serve an earlier generation, and \
+                     no restore record was read here to say which happened"
+                        .to_string()
+                } else {
+                    started
+                        .iter()
+                        .map(|(job, warmth)| format!("`{job}` {}", warmth.why()))
+                        .collect::<Vec<_>>()
+                        .join("; ")
                 }
+            ),
+            Refusal::RestoredNothingWithAGenerationHeld {
+                job,
+                prefix,
+                generation,
+            } => write!(
+                f,
+                "job `{job}` began with an EMPTY tree — not one byte arrived under \
+                 the paths `{prefix}` holds — while `{}` ({}, created {}) was \
+                 already in storage for `restore-keys` to fall back to. Either \
+                 that archive was never offered, or the two measuring steps do \
+                 not bracket the cache step and this run measured nothing at all",
+                generation.key,
+                gigabytes(generation.size_in_bytes),
+                generation.created_at
             ),
             Refusal::Unreached(why) => write!(f, "this gate reached nothing it could judge: {why}"),
         }
@@ -349,6 +451,14 @@ pub struct Report {
     pub divergent: Vec<Refusal>,
     /// The run this report is about, if it is about one.
     pub run: Option<Run>,
+    /// What each job's disk held after its restore, by job id.
+    ///
+    /// THE OTHER INSTRUMENT, JOINED HERE. This gate reads what STORAGE holds and
+    /// `tools/restored` reads what a job's DISK received, and until R1101 nothing
+    /// put the two together — a reader had to, and the one who did got it
+    /// backwards. Empty where no record was read, which is a state this report
+    /// says out loud rather than treating as "nothing was restored".
+    pub started: BTreeMap<String, restored::Warmth>,
 }
 
 impl Report {
@@ -455,6 +565,27 @@ impl Report {
         // globs that decide it.
         if let Some(run) = &self.run {
             for row in &self.rows {
+                // WHAT A JOB'S DISK RECEIVED, WHICH IS NOT WHAT STORAGE HOLDS,
+                // and the join this repository did not have. A generation that
+                // predates the run is one `restore-keys` could have served; a job
+                // that started from nothing anyway is the failure the budget
+                // exists to prevent, and it is invisible on either instrument
+                // alone. Checked whether or not the key was legitimately
+                // invalidated: a dependency bump excuses a MISSED KEY, never an
+                // empty disk.
+                for owner in &row.owners {
+                    if self.started.get(&owner.job) != Some(&restored::Warmth::Nothing) {
+                        continue;
+                    }
+                    let Some(generation) = row.restorable_when(&run.started_at) else {
+                        continue;
+                    };
+                    out.push(Refusal::RestoredNothingWithAGenerationHeld {
+                        job: owner.job.clone(),
+                        prefix: row.prefix.clone(),
+                        generation: generation.clone(),
+                    });
+                }
                 let Some(held) = &row.held else { continue };
                 if to_the_second(&held.created_at) <= to_the_second(&run.started_at) {
                     continue;
@@ -466,6 +597,13 @@ impl Report {
                     prefix: row.prefix.clone(),
                     owners: row.owners.clone(),
                     hashed: row.hashed.clone(),
+                    started: row
+                        .owners
+                        .iter()
+                        .filter_map(|owner| {
+                            Some((owner.job.clone(), *self.started.get(&owner.job)?))
+                        })
+                        .collect(),
                 });
             }
         }
@@ -506,12 +644,16 @@ pub fn conclude(
     declared: &[CacheDeclaration],
     held: &[Held],
     run: Option<&Run>,
+    started: &BTreeMap<String, restored::Warmth>,
 ) -> Report {
     let mut rows: Vec<Row> = Vec::new();
     let mut divergent = Vec::new();
     let mut at: BTreeMap<&str, usize> = BTreeMap::new();
     for declaration in declared {
-        let owner = format!("{} `{}`", declaration.source, declaration.owner);
+        let owner = Owner {
+            source: declaration.source.clone(),
+            job: declaration.owner.clone(),
+        };
         let paths: BTreeSet<String> = declaration.paths.iter().cloned().collect();
         match at.get(declaration.prefix.as_str()) {
             Some(&index) => {
@@ -618,5 +760,76 @@ pub fn conclude(
         orphans,
         divergent,
         run: run.cloned(),
+        started: started.clone(),
     }
+}
+
+/// The tree to judge, and where the restore records were collected.
+///
+/// A FLAG'S VALUE IS NOT A POSITIONAL ARGUMENT, and reading it as one is a whole
+/// class of silent wrong answer: `--restored rustc-log` under a reader that took
+/// the first word not beginning with `--` would judge the caches of a repository
+/// rooted at `rustc-log`, find no workflow there, and refuse for a reason with
+/// nothing to do with any cache. So the words are walked once, in order, and a
+/// flag consumes its own value.
+///
+/// IN THE LIBRARY BECAUSE IT IS THE ONE PART OF THE ENTRANCE THAT CAN BE ASKED A
+/// QUESTION. The rest of `main` needs a network and a repository; this is pure,
+/// and R1096 measured what living in `main.rs` costs a decision — nothing had a
+/// reader, because nothing ran the binary.
+pub fn read_arguments(arguments: &[String]) -> (std::path::PathBuf, Option<String>) {
+    let mut root = None;
+    let mut restored = None;
+    let mut words = arguments.iter();
+    while let Some(word) = words.next() {
+        match word.as_str() {
+            "--restored" => {
+                restored = Some(
+                    words
+                        .next()
+                        .unwrap_or_else(|| panic!("--restored needs a directory"))
+                        .clone(),
+                );
+            }
+            other if other.starts_with("--") => panic!("unknown flag {other}"),
+            other => {
+                assert!(
+                    root.is_none(),
+                    "one tree at a time: already judging {root:?}, and now given {other:?}"
+                );
+                root = Some(std::path::PathBuf::from(other));
+            }
+        }
+    }
+    (
+        root.unwrap_or_else(|| std::path::PathBuf::from(".")),
+        restored,
+    )
+}
+
+/// Every job's measured start, read out of the records the jobs uploaded.
+///
+/// A RECORD THAT DOES NOT DECODE IS DROPPED HERE AND REFUSED THERE. The census
+/// gate reads the same directory and turns an unreadable record into a refusal
+/// naming the job; this gate would be reporting the same defect a second time
+/// under a different name, and a second reader of one datum is where two answers
+/// come from. What it must not do is read the absence as "restored nothing",
+/// which is why the map is keyed only by what was actually said.
+pub fn started_from(
+    directory: &std::path::Path,
+) -> std::io::Result<BTreeMap<String, restored::Warmth>> {
+    let mut out = BTreeMap::new();
+    for entry in std::fs::read_dir(directory)? {
+        let path = entry?.path();
+        if path.extension().and_then(|end| end.to_str()) != Some("restored") {
+            continue;
+        }
+        let Some(job) = path.file_stem().and_then(|stem| stem.to_str()) else {
+            continue;
+        };
+        if let Ok(record) = restored::decode(&std::fs::read_to_string(&path)?) {
+            out.insert(job.to_string(), record.warmth());
+        }
+    }
+    Ok(out)
 }

@@ -974,12 +974,31 @@ jobs:
           RUSTC_WRAPPER: ""
         run: cargo build --release -q --manifest-path tools/rustc-log/Cargo.toml
 
+      # R1101 — WHAT EACH JOB'S DISK RECEIVED, which is the other half of this
+      # gate's question and the half it could not see. `actions/cache` reports
+      # `cache-hit: false` for a `restore-keys` prefix match and saves a new
+      # archive anyway, so "this key was saved by this run" — the only signal
+      # this gate had — describes a job warmed by an earlier generation in the
+      # same words as one that compiled from an empty disk. Round 1099 read the
+      # first as the second. The records are uploaded by the jobs themselves and
+      # joined here.
+      #
+      # INTO A DIRECTORY OF ITS OWN, and not into `rustc-log/`: this job uploads
+      # that directory as its own artifact, so downloading eight other jobs'
+      # records into it would upload all of them again under this job's name.
+      - name: Collect what every job started from
+        uses: actions/download-artifact@v8
+        with:
+          pattern: rustc-log-*
+          merge-multiple: true
+          path: collected
+
       - name: every cache this repository declares is one it keeps
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: >
           cargo run -q --manifest-path tools/cache-budget/Cargo.toml
-          --bin cache-budget
+          --bin cache-budget -- --restored collected
 
       # R1092 — see `validate`'s copy of this step.
       - name: Keep what this job compiled

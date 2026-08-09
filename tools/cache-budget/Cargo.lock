@@ -13,6 +13,7 @@ name = "cache-budget"
 version = "0.1.0"
 dependencies = [
  "ci-plan",
+ "restored",
 ]
 
 [[package]]
@@ -45,6 +46,10 @@ checksum = "824e001ac4f3012dd16a264bec811403a67ca9deb6c102fc5049b32c4574b35f"
 dependencies = [
  "hashbrown",
 ]
+
+[[package]]
+name = "restored"
+version = "0.1.0"
 
 [[package]]
 name = "yaml-rust2"

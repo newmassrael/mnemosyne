@@ -210,6 +210,95 @@
         }
       ],
       "expect_red": ["the_gates_own_job_is_given_the_range_the_run_covers_and_the_history_to_read_it"]
+    },
+    {
+      "name": "a-saved-key-is-a-cold-build",
+      "why": "R1102 — THE SENTENCE THAT WAS FALSE. `actions/cache` saves whenever the PRIMARY key missed, and `restore-keys` can have served an earlier generation to that same job; asserting a cold build from the save alone is the reading that deleted a 7.5 GB cache which was saving ten minutes, and this gate's own message agreed with it",
+      "edits": [
+        {
+          "file": "tools/cache-budget/src/lib.rs",
+          "from": "                if started.is_empty() {",
+          "to": "                if true {"
+        }
+      ],
+      "expect_red": [
+        "a_missed_key_whose_owner_was_warm_stops_claiming_it_paid_for_a_cold_build"
+      ]
+    },
+    {
+      "name": "an-empty-disk-beside-a-held-generation-is-not-a-finding",
+      "why": "the cost the whole budget exists to buy off, and it is invisible on either instrument alone: storage says an archive is there, `cache-hit` says false for a prefix match either way, and only the job's own disk says nothing arrived. It is also what a mis-ordered pair of measuring steps looks like",
+      "edits": [
+        {
+          "file": "tools/cache-budget/src/lib.rs",
+          "from": "                    if self.started.get(&owner.job) != Some(&restored::Warmth::Nothing) {",
+          "to": "                    if true {"
+        }
+      ],
+      "expect_red": ["a_job_that_restored_nothing_with_a_generation_held_is_refused"]
+    },
+    {
+      "name": "any-warmth-is-an-empty-disk",
+      "why": "the other direction of the same law: a gate that refuses every job regardless of what it received is one that fires on a repository doing nothing wrong, and a refusal nobody can act on is one somebody switches off",
+      "edits": [
+        {
+          "file": "tools/cache-budget/src/lib.rs",
+          "from": "                    if self.started.get(&owner.job) != Some(&restored::Warmth::Nothing) {",
+          "to": "                    if self.started.get(&owner.job).is_none() {"
+        }
+      ],
+      "expect_red": ["a_job_that_was_warm_is_not_refused_for_starting_from_nothing"]
+    },
+    {
+      "name": "the-archive-this-run-saved-was-one-it-could-have-restored",
+      "why": "a job that missed its key writes a new archive in its post step, so by the time this gate asks the API that archive heads the prefix — counting it makes every genuinely cold first run of a key look like a job that ignored a cache that was there",
+      "edits": [
+        {
+          "file": "tools/cache-budget/src/lib.rs",
+          "from": "            .filter(|generation| to_the_second(&generation.created_at) <= to_the_second(started_at))",
+          "to": "            .filter(|generation| !generation.key.is_empty() && !started_at.is_empty())"
+        }
+      ],
+      "expect_red": [
+        "a_job_that_restored_nothing_with_nothing_to_restore_is_not_refused_for_it",
+        "the_generation_that_counts_is_the_one_that_predates_the_run"
+      ]
+    },
+    {
+      "name": "only-the-newest-generation-could-have-been-restored",
+      "why": "`restore-keys` matches a PREFIX, so a superseded generation is one GitHub would have served; reading only the newest asks whether the archive this run just wrote was available to the job that wrote it",
+      "edits": [
+        {
+          "file": "tools/cache-budget/src/lib.rs",
+          "from": "        self.held\n            .iter()\n            .chain(self.superseded.iter())",
+          "to": "        self.held.iter().chain([].iter())"
+        }
+      ],
+      "expect_red": ["the_generation_that_counts_is_the_one_that_predates_the_run"]
+    },
+    {
+      "name": "a-flags-value-is-the-tree-to-judge",
+      "why": "`-- --restored rustc-log` under a reader taking the first word not beginning with `--` judges a repository rooted at `rustc-log`, finds no workflow, and refuses for a reason with nothing to do with any cache — and in the workflow file the mistake looks exactly like what was meant",
+      "edits": [
+        {
+          "file": "tools/cache-budget/src/lib.rs",
+          "from": "            \"--restored\" => {\n                restored = Some(\n                    words\n                        .next()\n                        .unwrap_or_else(|| panic!(\"--restored needs a directory\"))\n                        .clone(),\n                );\n            }",
+          "to": "            \"--restored\" => {}"
+        }
+      ],
+      "expect_red": ["a_flags_value_is_not_the_tree_to_judge"]
+    },
+    {
+      "name": "the-gate-judges-storage-alone",
+      "why": "both halves of the wiring are green-looking when absent: with no download step the directory is empty and every job reads as `did not say`, and with no flag the gate never looks. Either way the verdict that would have contradicted Round 1099 is the one that is suppressed",
+      "edits": [
+        {
+          "file": ".github/workflows/mnemosyne-validate.yml",
+          "from": "          --bin cache-budget -- --restored collected",
+          "to": "          --bin cache-budget"
+        }
+      ],
+      "expect_red": ["the_gates_own_job_collects_the_records_it_now_judges_against"]
     }
   ]
 }

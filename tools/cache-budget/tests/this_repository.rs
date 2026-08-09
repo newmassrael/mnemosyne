@@ -1,7 +1,7 @@
 //! The law against THIS repository's own workflows, which is where the gate has
 //! to be non-vacuous rather than merely correct.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
 use cache_budget::{conclude, Held, Refusal, DEFAULT_LIMIT_BYTES};
@@ -129,7 +129,13 @@ fn the_tree_this_gate_was_written_to_repair_is_one_it_refuses() {
     // and the two that survived were each larger than the entire budget the eight
     // were sharing. A gate that cannot fail on THAT is a gate that cannot fail.
     let before = declared_before_the_repair();
-    let report = conclude(DEFAULT_LIMIT_BYTES, &before, &measured_by_r1089(), None);
+    let report = conclude(
+        DEFAULT_LIMIT_BYTES,
+        &before,
+        &measured_by_r1089(),
+        None,
+        &BTreeMap::new(),
+    );
     let demand = report
         .demand()
         .expect("every key is priceable from the three");
@@ -311,3 +317,68 @@ fn the_gate_takes_no_cache_of_its_own() {
         "the job judging the budget declares a cache of its own"
     );
 }
+
+#[test]
+fn the_gates_own_job_collects_the_records_it_now_judges_against() {
+    // R1101 — BOTH HALVES, AGAIN, BECAUSE EITHER ALONE IS SILENT. Without the
+    // download step the directory is empty and every job reads as "did not say";
+    // without the flag the gate never looks at it and says the other half was
+    // not measured. Both are green-looking states, and the verdict they suppress
+    // is the one that would have contradicted Round 1099.
+    //
+    // Read off the file rather than agreed with by hand: the step that runs this
+    // gate is found by the manifest it names, so renaming the job or reordering
+    // its steps cannot make this pass by accident.
+    let root = repository_root();
+    let doc = ci_plan::load_workflow(&root, WORKFLOW);
+    let steps = doc["jobs"][GATE]["steps"]
+        .as_vec()
+        .unwrap_or_else(|| panic!("{WORKFLOW} declares no steps for `{GATE}`"));
+
+    let collecting = steps
+        .iter()
+        .position(|step| {
+            step["uses"]
+                .as_str()
+                .is_some_and(|uses| uses.starts_with("actions/download-artifact"))
+        })
+        .unwrap_or_else(|| {
+            panic!(
+                "`{GATE}` downloads no artifact, so the records every job \
+                 uploaded are not in its workspace and what each job's disk \
+                 received cannot be read"
+            )
+        });
+    assert_eq!(
+        steps[collecting]["with"]["path"].as_str(),
+        Some(RECORDS),
+        "the records land where the flag below points"
+    );
+
+    let running = steps
+        .iter()
+        .position(|step| {
+            step["run"]
+                .as_str()
+                .is_some_and(|script| script.contains("tools/cache-budget/Cargo.toml"))
+        })
+        .expect("the step that runs this gate");
+    let script = steps[running]["run"].as_str().expect("a script");
+    assert!(
+        script.contains(&format!("--restored {RECORDS}")),
+        "`{GATE}` runs without `--restored {RECORDS}`, so it judges storage \
+         alone and reports what each job started from as unmeasured: {script}"
+    );
+    assert!(
+        collecting < running,
+        "the records are collected before they are read, not after"
+    );
+}
+
+/// Where the records the jobs uploaded are collected — one spelling, asserted on
+/// both sides of the step that reads them.
+///
+/// NOT `rustc-log`, which is this job's OWN record directory and is uploaded as
+/// this job's artifact: collecting eight other jobs' records into it would
+/// upload all of them again under this job's name.
+const RECORDS: &str = "collected";

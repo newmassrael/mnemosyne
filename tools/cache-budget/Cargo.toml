@@ -23,6 +23,12 @@ categories = ["development-tools"]
 
 [dependencies]
 ci-plan = { path = "../ci-plan" }
+# R1101 — what a job's DISK received after its restore, which is the question
+# this gate's own signals cannot answer: `actions/cache` reports `cache-hit:
+# false` for a `restore-keys` prefix match, and a job warmed by one still saves a
+# new archive, which is what this gate reads as a key built from nothing. The
+# format of that record is written down once, in the crate that writes it.
+restored = { path = "../restored" }
 
 [lints.clippy]
 all = "deny"

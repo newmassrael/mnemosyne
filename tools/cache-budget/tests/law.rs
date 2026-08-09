@@ -2,10 +2,20 @@
 //! network — `conclude` takes both sides as arguments precisely so this file can
 //! supply them.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
-use cache_budget::{conclude, range_start, Held, RangeStart, Refusal, Run};
+use cache_budget::{range_start, Held, Owner, RangeStart, Refusal, Report, Run};
 use ci_plan::CacheDeclaration;
+
+/// `conclude` over a run where NOTHING measured what it started from.
+///
+/// Said once here rather than at each call below, because it is the state every
+/// law in this file is about: what STORAGE holds, judged on its own. The laws
+/// that need the other instrument — what a job's DISK received — are at the
+/// bottom of the file and call the real function with a population.
+fn conclude(limit: u64, declared: &[CacheDeclaration], held: &[Held], run: Option<&Run>) -> Report {
+    cache_budget::conclude(limit, declared, held, run, &BTreeMap::new())
+}
 
 /// A run that started after every cache in these populations was created, so
 /// every one of them reads as RESTORED. The budget tests pass `None` instead:
@@ -689,4 +699,256 @@ fn a_pull_request_falls_back_to_the_parent_of_head_which_is_its_base() {
         assert_eq!(start.rev(), "HEAD~1");
         assert!(start.why().contains("not a push event"), "{}", start.why());
     }
+}
+
+// --- what the job's disk received -------------------------------------------
+//
+// THE OTHER INSTRUMENT. Everything above judges what STORAGE holds, and that is
+// the only thing this gate could see until Round 1101: whether an archive
+// exists, when it was created, and — from the fact that `actions/cache` saves
+// only on a miss — whether the primary key hit. None of that is what a job
+// RECEIVED. `restore-keys` can serve an earlier generation to a job whose key
+// missed, and Round 1099 read exactly that state as a cold build and deleted a
+// cache that was saving ten minutes. The verdicts below are the join.
+
+/// What a job's disk said, by job id.
+fn started(measured: &[(&str, restored::Warmth)]) -> BTreeMap<String, restored::Warmth> {
+    measured
+        .iter()
+        .map(|(job, warmth)| ((*job).to_string(), *warmth))
+        .collect()
+}
+
+/// One key, one owner, one archive — the shape both laws below are about.
+fn one_key(created_at: &str) -> (Vec<CacheDeclaration>, Vec<Held>) {
+    (
+        vec![declaration("unrun", "Linux-cargo-unrun-", TARGET)],
+        vec![held_on("Linux-cargo-unrun-abc", 3.0, created_at)],
+    )
+}
+
+const BEFORE_THE_RUN: &str = "2026-08-08T10:00:00.000000000Z";
+const RUN_STARTED: &str = "2026-08-08T12:00:00Z";
+const DURING_THE_RUN: &str = "2026-08-08T12:30:00.000000000Z";
+
+/// THE SENTENCE THAT WAS FALSE. A missed key with a warm owner is not a cold
+/// build, and this refusal used to say it was.
+#[test]
+fn a_missed_key_whose_owner_was_warm_stops_claiming_it_paid_for_a_cold_build() {
+    let (declared, held) = one_key(DURING_THE_RUN);
+    let run = Run {
+        started_at: RUN_STARTED.to_string(),
+        inputs_changed: BTreeSet::new(),
+        range: PUSH_RANGE,
+    };
+    let warm = started(&[(
+        "unrun",
+        restored::Warmth::PrefixHit {
+            bytes: 7_466_000_000,
+        },
+    )]);
+    let report = cache_budget::conclude(LIMIT, &declared, &held, Some(&run), &warm);
+    let refusals = report.refusals();
+    match refusals.as_slice() {
+        [Refusal::Recreated { started, .. }] => {
+            assert_eq!(started.len(), 1, "{started:?}");
+            let said = refusals[0].to_string();
+            // THE ORACLE IS THE MEASUREMENT, NOT A PHRASE. An earlier spelling of
+            // this test looked for the words "earlier generation", and the
+            // sentence printed when NOTHING was measured contains them too — so
+            // an injection that threw the measurement away came back green. What
+            // distinguishes the two is the reading itself, which the type can
+            // produce and the test therefore does not spell.
+            let measured = restored::Warmth::PrefixHit {
+                bytes: 7_466_000_000,
+            };
+            assert!(
+                said.contains(&measured.why()),
+                "the message says what the disk received: {said}"
+            );
+            assert!(
+                !said.contains("NOT MEASURED"),
+                "and does not claim it was unmeasured when it was: {said}"
+            );
+            assert!(
+                !said.contains("cold build"),
+                "and no longer asserts what it cannot see: {said}"
+            );
+        }
+        other => panic!("the key still missed, so it is still a finding: {other:?}"),
+    }
+}
+
+/// And with nothing measured it says so, rather than falling back to the claim.
+#[test]
+fn a_missed_key_with_no_record_says_what_it_did_not_measure() {
+    let (declared, held) = one_key(DURING_THE_RUN);
+    let run = Run {
+        started_at: RUN_STARTED.to_string(),
+        inputs_changed: BTreeSet::new(),
+        range: PUSH_RANGE,
+    };
+    let report = cache_budget::conclude(LIMIT, &declared, &held, Some(&run), &BTreeMap::new());
+    let said = report.refusals()[0].to_string();
+    assert!(said.contains("NOT MEASURED"), "{said}");
+    assert!(!said.contains("cold build"), "{said}");
+}
+
+/// THE FINDING NEITHER INSTRUMENT COULD REACH ALONE: an empty disk while an
+/// archive `restore-keys` could have served was already in storage.
+#[test]
+fn a_job_that_restored_nothing_with_a_generation_held_is_refused() {
+    let (declared, held) = one_key(BEFORE_THE_RUN);
+    let run = Run {
+        started_at: RUN_STARTED.to_string(),
+        inputs_changed: BTreeSet::new(),
+        range: PUSH_RANGE,
+    };
+    let cold = started(&[("unrun", restored::Warmth::Nothing)]);
+    let report = cache_budget::conclude(LIMIT, &declared, &held, Some(&run), &cold);
+    match report.refusals().as_slice() {
+        [Refusal::RestoredNothingWithAGenerationHeld {
+            job,
+            prefix,
+            generation,
+        }] => {
+            assert_eq!(job, "unrun");
+            assert_eq!(prefix, "Linux-cargo-unrun-");
+            assert_eq!(generation.key, "Linux-cargo-unrun-abc");
+        }
+        other => panic!("{other:?}"),
+    }
+}
+
+/// THE CONTROL, and it is the state a NEW key is in on its first run: nothing
+/// was restored because there was nothing to restore.
+#[test]
+fn a_job_that_restored_nothing_with_nothing_to_restore_is_not_refused_for_it() {
+    let (declared, held) = one_key(DURING_THE_RUN);
+    let run = Run {
+        started_at: RUN_STARTED.to_string(),
+        // Excused as a key, so the only verdict left available is the new one.
+        inputs_changed: ["Linux-cargo-unrun-".to_string()].into_iter().collect(),
+        range: PUSH_RANGE,
+    };
+    let cold = started(&[("unrun", restored::Warmth::Nothing)]);
+    let report = cache_budget::conclude(LIMIT, &declared, &held, Some(&run), &cold);
+    assert_eq!(
+        report.refusals(),
+        Vec::new(),
+        "the only archive under this prefix is the one THIS run saved, so there \
+         was nothing for `restore-keys` to fall back to"
+    );
+}
+
+/// The other control: a warm job is not refused for an empty disk it did not
+/// have. Without this the law above would pass for a gate that refused
+/// everything.
+#[test]
+fn a_job_that_was_warm_is_not_refused_for_starting_from_nothing() {
+    let (declared, held) = one_key(BEFORE_THE_RUN);
+    let run = Run {
+        started_at: RUN_STARTED.to_string(),
+        inputs_changed: BTreeSet::new(),
+        range: PUSH_RANGE,
+    };
+    for warmth in [
+        restored::Warmth::ExactHit { bytes: 1 },
+        restored::Warmth::PrefixHit { bytes: 1 },
+    ] {
+        let report = cache_budget::conclude(
+            LIMIT,
+            &declared,
+            &held,
+            Some(&run),
+            &started(&[("unrun", warmth)]),
+        );
+        assert_eq!(report.refusals(), Vec::new(), "{warmth:?}");
+    }
+}
+
+/// A SUPERSEDED GENERATION IS STILL ONE `restore-keys` COULD HAVE SERVED, and
+/// the newest archive is routinely the one this run just saved.
+#[test]
+fn the_generation_that_counts_is_the_one_that_predates_the_run() {
+    let declared = [declaration("unrun", "Linux-cargo-unrun-", TARGET)];
+    let held = [
+        held_on("Linux-cargo-unrun-new", 3.0, DURING_THE_RUN),
+        held_on("Linux-cargo-unrun-old", 2.0, BEFORE_THE_RUN),
+    ];
+    let run = Run {
+        started_at: RUN_STARTED.to_string(),
+        inputs_changed: ["Linux-cargo-unrun-".to_string()].into_iter().collect(),
+        range: PUSH_RANGE,
+    };
+    let report = cache_budget::conclude(
+        LIMIT,
+        &declared,
+        &held,
+        Some(&run),
+        &started(&[("unrun", restored::Warmth::Nothing)]),
+    );
+    match report.refusals().as_slice() {
+        [Refusal::RestoredNothingWithAGenerationHeld { generation, .. }] => assert_eq!(
+            generation.key, "Linux-cargo-unrun-old",
+            "the one this run saved is not one it could have restored"
+        ),
+        other => panic!("{other:?}"),
+    }
+}
+
+/// An owner is a join key and not a rendering.
+#[test]
+fn a_rows_owner_carries_the_job_id_the_records_are_filed_under() {
+    let declared = [declaration("unrun", "Linux-cargo-unrun-", TARGET)];
+    let report = conclude(
+        LIMIT,
+        &declared,
+        &[held("Linux-cargo-unrun-abc", 3.0)],
+        None,
+    );
+    assert_eq!(
+        report.rows[0].owners,
+        vec![Owner {
+            source: ".github/workflows/w.yml".to_string(),
+            job: "unrun".to_string(),
+        }]
+    );
+    assert_eq!(
+        report.rows[0].owners[0].to_string(),
+        ".github/workflows/w.yml `unrun`",
+        "and renders as it always did, so the two are one datum and one view"
+    );
+}
+
+/// THE ENTRANCE'S ONE DECISION THAT CAN BE ASKED A QUESTION.
+///
+/// A flag whose value is read as the tree to judge is a gate pointed at a
+/// directory with no workflow in it, refusing for a reason that has nothing to
+/// do with any cache — and the shape of the mistake is invisible in a workflow
+/// file, where `-- --restored rustc-log` looks exactly like what was meant.
+#[test]
+fn a_flags_value_is_not_the_tree_to_judge() {
+    let words = |list: &[&str]| {
+        list.iter()
+            .map(|word| (*word).to_string())
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(
+        cache_budget::read_arguments(&words(&["--restored", "rustc-log"])),
+        (std::path::PathBuf::from("."), Some("rustc-log".to_string())),
+        "the tree defaults to here, and `rustc-log` is the records"
+    );
+    assert_eq!(
+        cache_budget::read_arguments(&words(&["/some/tree", "--restored", "logs"])),
+        (
+            std::path::PathBuf::from("/some/tree"),
+            Some("logs".to_string())
+        )
+    );
+    assert_eq!(
+        cache_budget::read_arguments(&words(&["/some/tree"])),
+        (std::path::PathBuf::from("/some/tree"), None),
+        "and without the flag the other half is NOT MEASURED rather than empty"
+    );
 }
