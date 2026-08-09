@@ -20,7 +20,7 @@
     "",
     "Scoped to this crate's own suite: nothing here touches the tree it judges."
   ],
-  "repo": ".",
+  "repo": "../..",
   "test_command": [
     "cargo",
     "test",
@@ -28,7 +28,7 @@
     "tools/uncompiled-sources/Cargo.toml",
     "--no-fail-fast"
   ],
-  "logs": "target/injection-logs",
+  "logs": "../../target/injection-logs",
   "min_free_mb": 8000,
   "injections": [
     {
@@ -152,11 +152,23 @@
       "edits": [
         {
           "file": "tools/uncompiled-sources/src/lib.rs",
-          "from": "            .any(|workspace| file.starts_with(&workspace.directory))",
-          "to": "            .any(|workspace| workspace.directory.is_empty())"
+          "from": "        // machine ran the gate.\n        if skipped_workspaces\n            .iter()\n            .any(|workspace| file.starts_with(&workspace.directory))",
+          "to": "        // machine ran the gate.\n        if skipped_workspaces\n            .iter()\n            .any(|workspace| workspace.directory.is_empty())"
         }
       ],
       "expect_red": ["a_file_in_a_workspace_this_machine_cannot_compile_is_not_a_finding"]
+    },
+    {
+      "name": "an-exception-in-a-declined-workspace-is-judged-anyway",
+      "why": "R1108 — the other side of the same asymmetry, and it had no injection because a second call site appeared with the same three lines and left the one above matching twice, which made the WHOLE sweep refuse. An entry for a file in a workspace this machine declines is a question this run has no answer to: it cannot see the file compiled, so it must not call the entry live, and it cannot see it uncompiled either, so it must not call it dead. Judging it anyway makes the gate reject on the runner and pass here off the same table",
+      "edits": [
+        {
+          "file": "tools/uncompiled-sources/src/lib.rs",
+          "from": "    for (name, _) in declared {\n        let file = PathBuf::from(name);\n        if report.declared.iter().any(|(at, _)| at == &file) {\n            continue;\n        }\n        if skipped_workspaces\n            .iter()\n            .any(|workspace| file.starts_with(&workspace.directory))",
+          "to": "    for (name, _) in declared {\n        let file = PathBuf::from(name);\n        if report.declared.iter().any(|(at, _)| at == &file) {\n            continue;\n        }\n        if skipped_workspaces\n            .iter()\n            .any(|workspace| workspace.directory.is_empty())"
+        }
+      ],
+      "expect_red": ["an_exception_in_a_workspace_this_machine_declines_is_neither_honoured_nor_stale"]
     }
   ]
 }

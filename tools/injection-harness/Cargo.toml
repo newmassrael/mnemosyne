@@ -38,6 +38,10 @@ license = "MIT OR Apache-2.0"
 publish = false
 description = "Fail-loud apply / run / restore for injection sweeps over a test suite"
 
+[lib]
+name = "injection_harness"
+path = "src/lib.rs"
+
 [[bin]]
 name = "injection-harness"
 path = "src/main.rs"

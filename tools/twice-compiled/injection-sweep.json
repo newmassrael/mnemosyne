@@ -27,7 +27,7 @@
     "replay tests compile one dependency-free crate in a worktree apiece and the",
     "two runner tests compile nothing at all, so the whole sweep is still seconds."
   ],
-  "repo": ".",
+  "repo": "../..",
   "test_command": [
     "cargo",
     "test",
@@ -35,7 +35,7 @@
     "tools/twice-compiled/Cargo.toml",
     "--no-fail-fast"
   ],
-  "logs": "target/injection-logs",
+  "logs": "../../target/injection-logs",
   "min_free_mb": 4000,
   "injections": [
     {

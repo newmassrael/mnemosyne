@@ -760,19 +760,34 @@ fn a_manifest_that_names_its_paths_relatively_is_still_run_from_one_place() {
         .to_string(),
     )
     .expect("write manifest");
+    // AND IT IS RUN FROM SOMEWHERE THAT IS NEITHER THE TREE NOR THE MANIFEST'S
+    // OWN DIRECTORY. R1108 made the base the manifest's directory rather than
+    // the caller's working directory, because a second reader — the law over
+    // every sweep this repository tracks — cannot know where each was meant to
+    // be run from, and that answer was in prose. A fixture started in the
+    // manifest's own directory resolves both rules to the same path and cannot
+    // tell them apart: this test did exactly that, and stayed green when the
+    // base was changed under it.
+    let elsewhere = root.path().join("elsewhere");
+    fs::create_dir_all(&elsewhere).expect("mkdir");
     let out = Command::new(binary())
-        .arg("manifest.json")
-        .current_dir(&from)
+        .arg("../tool/manifest.json")
+        .current_dir(&elsewhere)
         .output()
         .expect("harness runs");
     assert!(
         out.status.success(),
-        "a relative manifest is the tracked shape: {}",
+        "a relative manifest is the tracked shape, and its paths are its own: {}",
         String::from_utf8_lossy(&out.stderr)
     );
     assert!(
         String::from_utf8_lossy(&out.stdout).contains("\"the_law\""),
         "and the injection still fires under it"
+    );
+    assert!(
+        from.join("logs").is_dir(),
+        "the logs landed beside the manifest, which is what it named — not \
+         beside whoever ran it"
     );
 }
 

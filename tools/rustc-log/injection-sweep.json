@@ -16,7 +16,7 @@
     "Scoped to this crate's own suite. It has no dependencies and nine tests, so",
     "the whole sweep is seconds — the reason this crate is where the clock lives."
   ],
-  "repo": ".",
+  "repo": "../..",
   "test_command": [
     "cargo",
     "test",
@@ -24,7 +24,7 @@
     "tools/rustc-log/Cargo.toml",
     "--no-fail-fast"
   ],
-  "logs": "target/injection-logs",
+  "logs": "../../target/injection-logs",
   "min_free_mb": 4000,
   "injections": [
     {

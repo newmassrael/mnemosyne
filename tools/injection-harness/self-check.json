@@ -90,13 +90,13 @@
       "expect_red": ["a_suite_that_replaces_the_tool_does_not_end_the_sweep"]
     },
     {
-      "name": "the-manifest-paths-stay-relative-to-wherever-they-were-read",
-      "why": "the suite runs with the TREE as its working directory, so a relative log path resolves somewhere else the moment it is handed across — the first real sweep under a supervisor died of exactly this",
+      "name": "the-manifest-paths-are-resolved-against-whoever-ran-it",
+      "why": "the suite runs with the TREE as its working directory, so a relative log path resolves somewhere else the moment it is handed across — the first real sweep under a supervisor died of exactly this. R1108 moved the base from the caller's directory to the MANIFEST'S, because a reader of every tracked sweep cannot know where each was meant to be run from and that answer lived in prose; taking the caller's directory back reads `../..` from wherever somebody happened to stand",
       "edits": [
         {
-          "file": "src/main.rs",
-          "from": "    manifest.logs = absolute(&manifest.logs)?;",
-          "to": "    manifest.logs = manifest.logs.clone();"
+          "file": "src/lib.rs",
+          "from": "    let beside = path.parent().unwrap_or(Path::new(\".\"));",
+          "to": "    let beside = Path::new(\".\");"
         }
       ],
       "expect_red": ["a_manifest_that_names_its_paths_relatively_is_still_run_from_one_place"]
@@ -112,6 +112,42 @@
         }
       ],
       "expect_red": ["a_tree_left_injected_by_a_dead_sweep_stops_the_next_one"]
+    },
+    {
+      "name": "a-sweep-whose-anchor-came-loose-goes-unnoticed",
+      "why": "R1108 — THE DEFECT THIS LAW IS ABOUT, injected into a real tracked sweep. An anchor is exact text and the source it names moves; R1103 put one line between the two lines the census gate's sweep matched on, and from that commit that sweep applied to nothing and NEITHER DID THE TWENTY-FIVE INJECTIONS BESIDE IT, because the pre-flight refuses whole. Four rounds passed before anybody ran it. A file that has stopped proving reads exactly like one that holds",
+      "edits": [
+        {
+          "file": "../cache-budget/injection-sweep.json",
+          "from": "        let contradicted = self.heard_where_nothing_collects();",
+          "to": "        let contradicted = self.heard_where_nothing_collects(); // moved"
+        }
+      ],
+      "expect_red": ["every_tracked_sweep_still_applies_to_the_tree_it_names"]
+    },
+    {
+      "name": "an-anchor-that-matches-twice-is-close-enough",
+      "why": "matching nothing and matching twice are the two ways an anchor stops describing one change — the second is the quieter, because the edit still lands, on whichever copy came first, and the sweep reports a red nobody described. `tools/uncompiled-sources` grew a second call site with the same three lines and its sweep had been refusing on that ever since",
+      "edits": [
+        {
+          "file": "src/lib.rs",
+          "from": "    if hits != 1 {",
+          "to": "    if hits == 0 {"
+        }
+      ],
+      "expect_red": ["a_sweep_whose_anchor_has_come_loose_is_named_rather_than_skipped"]
+    },
+    {
+      "name": "the-population-of-sweeps-is-whatever-a-glob-finds",
+      "why": "a law over zero files passes, and it passes in the shape of a clean run. The harness's own sweep is not called `injection-sweep.json`, so the obvious glob leaves out the one aimed at the tool every other sweep is run by",
+      "edits": [
+        {
+          "file": "tests/sweeps.rs",
+          "from": "        .args([\"ls-files\", \"tools/**/*.json\"])",
+          "to": "        .args([\"ls-files\", \"tools/**/no-such-sweep.json\"])"
+        }
+      ],
+      "expect_red": ["every_tracked_sweep_still_applies_to_the_tree_it_names"]
     }
   ]
 }

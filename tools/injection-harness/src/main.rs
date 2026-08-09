@@ -43,7 +43,7 @@ use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use std::sync::atomic::{AtomicI32, Ordering};
 
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 
 /// The process group of the supervisor now running the suite, or 0 when no run
 /// is in flight. Global because a signal is delivered to the process, not to
@@ -55,53 +55,10 @@ static SUITE_GROUP: AtomicI32 = AtomicI32::new(0);
 /// one owner at every moment.
 static INTERRUPTED: AtomicI32 = AtomicI32::new(0);
 
-/// One textual replacement in one file. `from` must occur EXACTLY once.
-#[derive(Debug, Clone, Deserialize, Serialize)]
-struct Edit {
-    file: String,
-    from: String,
-    to: String,
-}
-
-/// One injection: what it breaks, and what the sweep expects to go red.
-#[derive(Debug, Clone, Deserialize, Serialize)]
-struct Injection {
-    name: String,
-    /// What this injection is FOR, in the author's words — carried into the
-    /// report so a number is never read without the claim it is evidence for.
-    #[serde(default)]
-    why: String,
-    edits: Vec<Edit>,
-    /// Test names this injection is expected to turn red. Empty means "say what
-    /// went red and judge nothing", which is honest for an exploratory sweep;
-    /// naming them makes the harness itself fail when the sweep does not reach
-    /// what it was aimed at (the "0 means suspect the injection" rule).
-    #[serde(default)]
-    expect_red: Vec<String>,
-}
-
-#[derive(Debug, Deserialize)]
-struct Manifest {
-    /// The tree to edit and run in.
-    repo: PathBuf,
-    /// The suite, argv-style. Kept in the manifest rather than assumed, because
-    /// a harness that hardcodes `cargo test` cannot be tested without running
-    /// one.
-    test_command: Vec<String>,
-    /// Where the full logs go. One file per run, never truncated.
-    logs: PathBuf,
-    /// Refuse to start a run when less than this much memory is available.
-    ///
-    /// The standing rule on this machine is to re-check occupancy BEFORE EVERY
-    /// BUILD, because other checkouts share the RAM and a measurement that runs
-    /// the machine out of memory is not a measurement. Eight rounds running, the
-    /// re-check happened at the start of a session and before the big sweeps and
-    /// not before every build — which is what a person does and a program need
-    /// not.
-    #[serde(default)]
-    min_free_mb: Option<u64>,
-    injections: Vec<Injection>,
-}
+// THE MANIFEST TYPES AND THE ANCHOR LAW ARE THE LIBRARY'S, because a second
+// reader of every sweep this repository tracks needs them and a decision in
+// `main.rs` has no reader (R1096). See `lib.rs`.
+use injection_harness::{replace_once, Edit, Manifest};
 
 /// What one run of the suite said.
 #[derive(Debug, Clone, Default, Serialize)]
@@ -232,16 +189,6 @@ fn main() {
     }
 }
 
-/// A manifest's path as an absolute one, resolved against where the sweep was
-/// started rather than against wherever a child is about to be run.
-///
-/// Lexical rather than `canonicalize`, which requires the path to exist: the log
-/// directory is created after this, and a gate that refused a manifest for
-/// naming a directory it is about to make would be a gate about nothing.
-fn absolute(path: &Path) -> Result<PathBuf, String> {
-    std::path::absolute(path).map_err(|e| format!("{}: {e}", path.display()))
-}
-
 /// The interrupt this sweep has been asked to stop on, if one has arrived.
 fn interrupted() -> Option<i32> {
     match INTERRUPTED.load(Ordering::SeqCst) {
@@ -281,20 +228,17 @@ fn run() -> Result<(), String> {
         .ok_or("usage: injection-harness <manifest.json> [--control-only]")?;
     let control_only = args.any(|flag| flag == "--control-only");
 
-    let mut manifest: Manifest = serde_json::from_str(
-        &fs::read_to_string(&manifest_path)
-            .map_err(|e| format!("{manifest_path} unreadable: {e}"))?,
-    )
-    .map_err(|e| format!("{manifest_path} is not a manifest: {e}"))?;
-    // EVERY PATH IS MADE ABSOLUTE HERE, ONCE. A manifest names its tree and its
-    // logs relative to wherever it is run from — the tracked ones say `../..`
-    // and `target/injection-logs` — and the suite is started with the tree as
-    // its working directory. A relative path handed across that change of
-    // directory resolves somewhere else entirely: the first real sweep under the
+    // EVERY PATH IS ABSOLUTE BY THE TIME IT ARRIVES, resolved once, in the
+    // library, against the MANIFEST'S OWN DIRECTORY. A manifest names its tree
+    // and its logs, and the suite is started with the tree as its working
+    // directory — a relative path handed across that change of directory
+    // resolves somewhere else entirely: the first real sweep under the
     // supervisor died with `No such file or directory`, and a relative backup
-    // path would have restored the tree into a directory beside it.
-    manifest.repo = absolute(&manifest.repo)?;
-    manifest.logs = absolute(&manifest.logs)?;
+    // path would have restored the tree into a directory beside it. Resolving
+    // from the file rather than from the caller's cwd is R1108's half: it is
+    // what lets a second reader open every tracked sweep without knowing where
+    // each was meant to be run from.
+    let manifest: Manifest = injection_harness::read_manifest(Path::new(&manifest_path))?;
     if manifest.test_command.is_empty() {
         return Err("the manifest names no test command".to_string());
     }
@@ -320,30 +264,7 @@ fn run() -> Result<(), String> {
     // Folding it into the snapshot pass is what keeps the two from disagreeing —
     // the bytes checked here are the bytes `apply` will edit, by construction
     // rather than by argument.
-    let mut snapshot: BTreeMap<PathBuf, Vec<u8>> = BTreeMap::new();
-    for injection in &manifest.injections {
-        let mut staged: BTreeMap<PathBuf, String> = BTreeMap::new();
-        for edit in &injection.edits {
-            let path = manifest.repo.join(&edit.file);
-            if !snapshot.contains_key(&path) {
-                let bytes =
-                    fs::read(&path).map_err(|e| format!("{} unreadable: {e}", path.display()))?;
-                snapshot.insert(path.clone(), bytes);
-            }
-            let text = match staged.remove(&path) {
-                Some(edited) => edited,
-                None => String::from_utf8(snapshot[&path].clone()).map_err(|_| {
-                    format!(
-                        "{} is not text, so no replacement in it can be described",
-                        path.display()
-                    )
-                })?,
-            };
-            let edited = replace_once(&text, edit)
-                .map_err(|problem| format!("{}: {problem}", injection.name))?;
-            staged.insert(path, edited);
-        }
-    }
+    let snapshot = injection_harness::snapshot_and_dry_run(&manifest.repo, &manifest.injections)?;
 
     // WHAT A PREVIOUS SWEEP LEFT BEHIND, before this one writes its own. A sweep
     // that ended under its own control removes these; finding them means one
@@ -573,27 +494,6 @@ fn clone_result(result: &InjectionResult) -> InjectionResult {
 
 fn err<E: std::fmt::Display>(e: E) -> String {
     e.to_string()
-}
-
-/// One replacement, as the law the dry run above and the write below BOTH obey:
-/// the anchor occurs EXACTLY once, and what comes back is the text with that one
-/// occurrence replaced.
-///
-/// A replacement that matched nothing produces a run whose silence reads as "the
-/// injection did not fire", and one that matched twice produces a change nobody
-/// described. Two places decide that here — the pre-flight, which refuses before
-/// any run, and the write, which is what actually edits the tree — and a law
-/// only one of them enforced is the shape where the dry run accepts an edit the
-/// write refuses, or worse, the reverse.
-fn replace_once(text: &str, edit: &Edit) -> Result<String, String> {
-    let hits = text.matches(&edit.from).count();
-    if hits != 1 {
-        return Err(format!(
-            "{} : the text to replace occurs {hits} times, not once",
-            edit.file
-        ));
-    }
-    Ok(text.replacen(&edit.from, &edit.to, 1))
 }
 
 /// Apply every edit, each of which must match EXACTLY once.

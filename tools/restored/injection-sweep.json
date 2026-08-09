@@ -21,7 +21,7 @@
     "Scoped to this crate's own suite. Nothing here builds anything: the walk",
     "runs over temporary trees of a few files, so the whole sweep is seconds."
   ],
-  "repo": ".",
+  "repo": "../..",
   "test_command": [
     "cargo",
     "test",
@@ -29,7 +29,7 @@
     "tools/restored/Cargo.toml",
     "--no-fail-fast"
   ],
-  "logs": "target/injection-logs",
+  "logs": "../../target/injection-logs",
   "min_free_mb": 4000,
   "injections": [
     {

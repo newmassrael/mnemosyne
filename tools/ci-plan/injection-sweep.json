@@ -14,9 +14,9 @@
     "Scoped to this crate, not the workspace: these edits cannot reach a test",
     "outside it, and the root suite is five minutes of proving nothing."
   ],
-  "repo": ".",
+  "repo": "../..",
   "test_command": ["cargo", "test", "-p", "ci-plan", "--no-fail-fast"],
-  "logs": "target/injection-logs",
+  "logs": "../../target/injection-logs",
   "min_free_mb": 8000,
   "injections": [
     {

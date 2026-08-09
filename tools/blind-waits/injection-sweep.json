@@ -21,7 +21,7 @@
     "CI has been running, which is how a 50ms `sleep` called a 'tiny grace' lived",
     "in `grpc_mtls_smoke.rs` without anything ever executing it."
   ],
-  "repo": ".",
+  "repo": "../..",
   "test_command": [
     "cargo",
     "test",
@@ -41,7 +41,7 @@
     "--test",
     "grpc_audit_live_tail_smoke"
   ],
-  "logs": "target/injection-logs",
+  "logs": "../../target/injection-logs",
   "min_free_mb": 8000,
   "injections": [
     {
