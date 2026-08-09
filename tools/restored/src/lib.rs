@@ -120,7 +120,11 @@ pub struct Restored {
 /// that every consumer has to say what it does about it. A census is compared
 /// against another census by this value; a state nobody handled would be
 /// compared as though it were one of the ordinary three.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// ORDERED so that a refusal naming two of them can be sorted and deduplicated
+/// alongside its neighbours. The order carries no meaning of its own — the four
+/// states are not a scale, which is why [`Warmth::same_state`] is a predicate
+/// rather than a comparison.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Warmth {
     /// The primary key matched, and a tree arrived.
     ExactHit { bytes: u64 },
@@ -139,6 +143,25 @@ pub enum Warmth {
 }
 
 impl Warmth {
+    /// Did two jobs start in the SAME state — the question one census being
+    /// held against another turns on.
+    ///
+    /// THE VARIANT AND NOT THE SIZE. No two runs restore the same number of
+    /// bytes, so comparing the whole value would call every real pair
+    /// incomparable and the check would be one nobody could ever satisfy. What
+    /// confounded Round 1099 was a variant: a job warmed through `restore-keys`
+    /// read as one that had compiled from nothing. The discriminant is taken
+    /// from the type rather than spelled out here, so a fifth state cannot be
+    /// added and quietly left out of this.
+    ///
+    /// WHAT IT THEREFORE DOES NOT MODEL is magnitude: two prefix hits of 246 MB
+    /// and 27 GB are one state here. That is why a report of a comparison prints
+    /// both figures rather than only the verdict — the reader is owed the
+    /// numbers this predicate does not look at.
+    pub fn same_state(&self, other: &Warmth) -> bool {
+        std::mem::discriminant(self) == std::mem::discriminant(other)
+    }
+
     /// One line, for a report that must not be quotable without it.
     pub fn why(&self) -> String {
         match self {

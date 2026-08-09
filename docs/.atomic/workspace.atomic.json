@@ -6784,6 +6784,96 @@
         "XX2 STANDS AND STILL GATES THE ARC: why the runner recompiles DEPENDENCIES is unmeasured, and the untested difference is that `~/.cargo/registry` rides the cache too."
       ]
     },
+    "Round 1105 — a delta between two runs that began differently is not a delta": {
+      "decision_summary": "FOUR ROUNDS MADE EACH CENSUS SELF-DESCRIBING AND NOTHING HELD TWO OF THEM\nTOGETHER. That was the standing carry from R1101, R1102, R1103 and R1104: a\ncensus now says what it compiled AND what each job started from, which is what a\ncomparison needs and is not itself one. The reader was still doing the join by\nhand, and the one time a reader did it, they got it backwards — R1099 read two\ncensuses side by side, called the first cold because its keys had moved, found\nthe counts equal, and deleted a 7.5 GB cache that was saving 426 compilations\nand ten minutes. Both runs had been warmed through `restore-keys`.\n\nSO THE LAW IS ABOUT THE UNITS. Every count in a census is of a COLD build by\nconstruction — cargo runs no compiler for a unit that is already fresh — so what\na job began with is the unit its numbers are in, and a subtraction across two\ndifferent units is not a measurement. `compare` reports a per-job difference\nonly where both sides began in the same state, and names why each of the others\nis not a difference: a job that began differently, a job that said what it\nstarted from on one side only, a job in one census and not the other.\n\nTHE TOTALS ARE BEHIND A FUNCTION AND THE FIELDS ARE PRIVATE. That is the whole\nof the design, because the totals are what a reader quotes and a total is a sum\nover a POPULATION — one job in a different state spoils all of it and not merely\nits own row. `Comparison::totals()` returns `None` while anything is\nincomparable, so the number R1099 quoted cannot be reached at all rather than\nbeing available beside a warning. The process exits 1 on it, because the verdict\nof this entrance is its exit code.\n\nTHE STATE IS THE VARIANT AND NOT THE SIZE. No two runs restore the same number\nof bytes, so comparing whole values would call every real pair incomparable —\nand a check nobody can ever satisfy is a check nobody keeps. `Warmth::same_state`\ntakes the discriminant FROM THE TYPE, so a fifth state cannot be added and\nquietly left out of it. What that does not model is magnitude: 246 MB and 27 GB\nare one state to it. So the report prints BOTH figures rather than only the\nverdict — the reader is owed the numbers the predicate does not look at.\n\nIT READS NO WORKFLOW, WHICH IS A DECISION AND NOT AN OMISSION. The two censuses\nmay be of two different commits, whose workflows declare different jobs; that is\nsomething this ANSWERS rather than needs told. Being handed `--workflow` is\ntherefore a refusal, not something to drop on the floor. And the input shape is\nwhat `gh run download` actually writes — one subdirectory per artifact — because\na loader that knew only the flat shape a runner hands the gate reads that as a\nrun in which nothing recorded anything, and nothing prints as a clean zero.",
+      "changes_bullets": [
+        "`tools/twice-compiled/src/lib.rs` — `compare`, `Comparison`, `Delta`, `Incomparable`, `Totals`. The totals are behind `Comparison::totals()` with private fields, so a sum over a population in which one job changed state cannot be reached at all rather than being available beside a warning.",
+        "`restored::Warmth::same_state` — the discriminant, taken from the type. Two prefix hits of 246 MB and 27 GB are one state; comparing whole values would call every real pair incomparable, so the report prints both figures instead.",
+        "`load_collected` reads the per-artifact subdirectories `gh run download` writes, as well as the flat directory a runner hands the gate. One job recorded in two places is an error, not whichever the walk reached last.",
+        "`Entrance` + `read_arguments` — the three ways in, read in the library where a test can ask. `compare` refuses `--workflow`: the two censuses may be of different commits, which it answers rather than needs told."
+      ],
+      "verification_bullets": [
+        "INJECTION: 8 injections, 8 fired, 0 missed, drift 0, control 76 green. The size taken for the state, the totals reachable through a confounded job, the same silence read as a difference, only the flat directory read, a job recorded twice overwritten, a workflow silently ignored, a comparison of nothing signing off, and the verdict never reaching the exit code.",
+        "THE EXIT CODE IS INJECTED TOO, which is why this entrance is also run as a process: `main` returning 0 regardless leaves every library test green and the report perfect. That injection turns red exactly the tests that run the binary.",
+        "ZERO AGAINST ZERO IS NOT A DIFFERENCE OF NONE, and the first cut of `totals()` got it wrong: two empty directories have nothing incomparable, because nothing was compared, and both totals are honestly empty. It was caught reading the control back rather than by a test, so a test and an injection now hold it — the exit code says 1 and the report says NEITHER CENSUS HOLDS A JOB.",
+        "END TO END ON TWO REAL RUNS, and it refused them — correctly. `31301559640` predates `tools/restored`, so seven of its jobs left no record of what they started from while the same jobs in `31307111606` did. The tool names all seven and withholds the totals rather than subtracting counts taken in unknown units. That is the first cross-run comparison this repository has been able to make, and its answer is that this particular pair cannot be compared.",
+        "THE STALE-BINARY TRAP CAUGHT ME AND IS WORTH RECORDING: that end-to-end run first printed NO TOTALS and exited 0, because `target/debug` still held the binary the last injection had built with `exit(0)`. A sweep restores sources, not artefacts. Rebuilding gave exit 1.",
+        "GATES: `scripts/check-side-workspaces.sh` clean over all twelve separate workspaces, root `cargo test --workspace --locked` 155 targets green, `cargo clippy --workspace --all-targets` clean, `cargo fmt --all --check` clean, `mnemosyne-cli validate-workspace` clean."
+      ],
+      "carry_forward_bullets": [
+        "THE FIRST COMPARABLE PAIR DOES NOT EXIST YET, and no round can make it exist alone. `31307111606` is the earliest run whose jobs say what they started from, so the first real delta needs a second such run — the next push produces it. What is proved today is the other arm: a run predating the instrument is refused per job rather than subtracted.",
+        "MAGNITUDE IS NOT MODELLED, deliberately. Two prefix hits of 246 MB and 27 GB are one state, because the alternative is a threshold to tune and this instrument has none. Both figures are printed, so the reader sees what the predicate did not look at, but nothing turns a large gap into a verdict.",
+        "WHETHER THE BYTES THAT ARRIVED WERE USEFUL is still unasked, unchanged since R1101: a prefix hit is warm and stale at once, and which units cargo discards is a fingerprint question no instrument here reads. The only measurement remains R1100's single pair, 773 warm against 1199 cold, one job.",
+        "THE ORDER LAW REACHES ONE WORKFLOW. `evidence-replay.yml`'s `replay` job declares a cache, writes no restore record, and R1103's wiring law never looks at it. Widening it or naming the exemption is a decision about that workflow, not effort.",
+        "XX2 STANDS AND STILL GATES THE ARC: why the runner recompiles DEPENDENCIES is unmeasured, and the untested difference is that `~/.cargo/registry` rides the cache too."
+      ],
+      "population_census": [
+        {
+          "axis": "transition rules by `undirected`",
+          "left_label": "undirected",
+          "left": 10,
+          "right_label": "directed",
+          "right": 27
+        },
+        {
+          "axis": "map corpora by leg-kind declaration",
+          "left_label": "omitted",
+          "left": 6,
+          "right_label": "declared",
+          "right": 24
+        },
+        {
+          "axis": "cost-carrying corpora by direction-dependent pricing",
+          "left_label": "prices a way by direction",
+          "left": 4,
+          "right_label": "prices no way by direction",
+          "right": 6
+        },
+        {
+          "axis": "run trees by authoring mode",
+          "left_label": "hand script",
+          "left": 10,
+          "right_label": "file-only",
+          "right": 239
+        },
+        {
+          "axis": "map corpora by declared boundary crossing",
+          "left_label": "declares an exit",
+          "left": 6,
+          "right_label": "declares none",
+          "right": 24
+        },
+        {
+          "axis": "authored submissions by map and telling",
+          "left_label": "carries both",
+          "left": 10,
+          "right_label": "carries one",
+          "right": 24
+        }
+      ],
+      "publishable_decision_summary": "FOUR ROUNDS MADE EACH CENSUS SELF-DESCRIBING AND NOTHING HELD TWO OF THEM\nTOGETHER. That was the standing carry from R1101, R1102, R1103 and R1104: a\ncensus now says what it compiled AND what each job started from, which is what a\ncomparison needs and is not itself one. The reader was still doing the join by\nhand, and the one time a reader did it, they got it backwards — R1099 read two\ncensuses side by side, called the first cold because its keys had moved, found\nthe counts equal, and deleted a 7.5 GB cache that was saving 426 compilations\nand ten minutes. Both runs had been warmed through `restore-keys`.\n\nSO THE LAW IS ABOUT THE UNITS. Every count in a census is of a COLD build by\nconstruction — cargo runs no compiler for a unit that is already fresh — so what\na job began with is the unit its numbers are in, and a subtraction across two\ndifferent units is not a measurement. `compare` reports a per-job difference\nonly where both sides began in the same state, and names why each of the others\nis not a difference: a job that began differently, a job that said what it\nstarted from on one side only, a job in one census and not the other.\n\nTHE TOTALS ARE BEHIND A FUNCTION AND THE FIELDS ARE PRIVATE. That is the whole\nof the design, because the totals are what a reader quotes and a total is a sum\nover a POPULATION — one job in a different state spoils all of it and not merely\nits own row. `Comparison::totals()` returns `None` while anything is\nincomparable, so the number R1099 quoted cannot be reached at all rather than\nbeing available beside a warning. The process exits 1 on it, because the verdict\nof this entrance is its exit code.\n\nTHE STATE IS THE VARIANT AND NOT THE SIZE. No two runs restore the same number\nof bytes, so comparing whole values would call every real pair incomparable —\nand a check nobody can ever satisfy is a check nobody keeps. `Warmth::same_state`\ntakes the discriminant FROM THE TYPE, so a fifth state cannot be added and\nquietly left out of it. What that does not model is magnitude: 246 MB and 27 GB\nare one state to it. So the report prints BOTH figures rather than only the\nverdict — the reader is owed the numbers the predicate does not look at.\n\nIT READS NO WORKFLOW, WHICH IS A DECISION AND NOT AN OMISSION. The two censuses\nmay be of two different commits, whose workflows declare different jobs; that is\nsomething this ANSWERS rather than needs told. Being handed `--workflow` is\ntherefore a refusal, not something to drop on the floor. And the input shape is\nwhat `gh run download` actually writes — one subdirectory per artifact — because\na loader that knew only the flat shape a runner hands the gate reads that as a\nrun in which nothing recorded anything, and nothing prints as a clean zero.",
+      "publishable_changes_bullets": [
+        "`tools/twice-compiled/src/lib.rs` — `compare`, `Comparison`, `Delta`, `Incomparable`, `Totals`. The totals are behind `Comparison::totals()` with private fields, so a sum over a population in which one job changed state cannot be reached at all rather than being available beside a warning.",
+        "`restored::Warmth::same_state` — the discriminant, taken from the type. Two prefix hits of 246 MB and 27 GB are one state; comparing whole values would call every real pair incomparable, so the report prints both figures instead.",
+        "`load_collected` reads the per-artifact subdirectories `gh run download` writes, as well as the flat directory a runner hands the gate. One job recorded in two places is an error, not whichever the walk reached last.",
+        "`Entrance` + `read_arguments` — the three ways in, read in the library where a test can ask. `compare` refuses `--workflow`: the two censuses may be of different commits, which it answers rather than needs told."
+      ],
+      "publishable_verification_bullets": [
+        "INJECTION: 8 injections, 8 fired, 0 missed, drift 0, control 76 green. The size taken for the state, the totals reachable through a confounded job, the same silence read as a difference, only the flat directory read, a job recorded twice overwritten, a workflow silently ignored, a comparison of nothing signing off, and the verdict never reaching the exit code.",
+        "THE EXIT CODE IS INJECTED TOO, which is why this entrance is also run as a process: `main` returning 0 regardless leaves every library test green and the report perfect. That injection turns red exactly the tests that run the binary.",
+        "ZERO AGAINST ZERO IS NOT A DIFFERENCE OF NONE, and the first cut of `totals()` got it wrong: two empty directories have nothing incomparable, because nothing was compared, and both totals are honestly empty. It was caught reading the control back rather than by a test, so a test and an injection now hold it — the exit code says 1 and the report says NEITHER CENSUS HOLDS A JOB.",
+        "END TO END ON TWO REAL RUNS, and it refused them — correctly. `31301559640` predates `tools/restored`, so seven of its jobs left no record of what they started from while the same jobs in `31307111606` did. The tool names all seven and withholds the totals rather than subtracting counts taken in unknown units. That is the first cross-run comparison this repository has been able to make, and its answer is that this particular pair cannot be compared.",
+        "THE STALE-BINARY TRAP CAUGHT ME AND IS WORTH RECORDING: that end-to-end run first printed NO TOTALS and exited 0, because `target/debug` still held the binary the last injection had built with `exit(0)`. A sweep restores sources, not artefacts. Rebuilding gave exit 1.",
+        "GATES: `scripts/check-side-workspaces.sh` clean over all twelve separate workspaces, root `cargo test --workspace --locked` 155 targets green, `cargo clippy --workspace --all-targets` clean, `cargo fmt --all --check` clean, `mnemosyne-cli validate-workspace` clean."
+      ],
+      "publishable_carry_forward_bullets": [
+        "THE FIRST COMPARABLE PAIR DOES NOT EXIST YET, and no round can make it exist alone. `31307111606` is the earliest run whose jobs say what they started from, so the first real delta needs a second such run — the next push produces it. What is proved today is the other arm: a run predating the instrument is refused per job rather than subtracted.",
+        "MAGNITUDE IS NOT MODELLED, deliberately. Two prefix hits of 246 MB and 27 GB are one state, because the alternative is a threshold to tune and this instrument has none. Both figures are printed, so the reader sees what the predicate did not look at, but nothing turns a large gap into a verdict.",
+        "WHETHER THE BYTES THAT ARRIVED WERE USEFUL is still unasked, unchanged since R1101: a prefix hit is warm and stale at once, and which units cargo discards is a fingerprint question no instrument here reads. The only measurement remains R1100's single pair, 773 warm against 1199 cold, one job.",
+        "THE ORDER LAW REACHES ONE WORKFLOW. `evidence-replay.yml`'s `replay` job declares a cache, writes no restore record, and R1103's wiring law never looks at it. Widening it or naming the exemption is a decision about that workflow, not effort.",
+        "XX2 STANDS AND STILL GATES THE ARC: why the runner recompiles DEPENDENCIES is unmeasured, and the untested difference is that `~/.cargo/registry` rides the cache too."
+      ]
+    },
     "Round 252": {
       "decision_summary": "Parser CommonMark conformance — recognize indented fenced code blocks (§98) and require whitespace after ATX hash sequence (§62)",
       "changes_bullets": [

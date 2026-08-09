@@ -1533,3 +1533,235 @@ fn the_wiring_refusals_reach_the_gates_own_verdict() {
         "{refusals:?}"
     );
 }
+
+// --- holding one census against another --------------------------------------
+//
+// EVERY COUNT IN A CENSUS IS OF A COLD BUILD BY CONSTRUCTION — cargo runs no
+// compiler for a unit that is already fresh — so what a job began with is the
+// UNIT its numbers are in, and a subtraction across two different units is not a
+// measurement. Round 1099 made exactly that subtraction: two censuses side by
+// side, one of them called cold because its keys had moved, equal counts, and a
+// 7.5 GB cache deleted that was saving 426 compilations and ten minutes. Both
+// runs had been warmed through `restore-keys`.
+
+/// A census of two jobs, each having compiled `units` units, and each having
+/// started in the state named for it.
+fn census_started(jobs: &[(&str, usize, Option<restored::Warmth>)]) -> Census {
+    let mut census = Census::default();
+    for (job, units, warmth) in jobs {
+        let built: Vec<(&str, &str, &str, u64)> = (0..*units)
+            .map(|n| ("crate", METADATA[n % METADATA.len()], "link", 100))
+            .collect();
+        census.jobs.insert((*job).to_string(), log_of(&built));
+        let Some(warmth) = warmth else { continue };
+        let (exact, arrived) = match warmth {
+            restored::Warmth::ExactHit { bytes } => (true, *bytes),
+            restored::Warmth::PrefixHit { bytes } => (false, *bytes),
+            restored::Warmth::Nothing => (false, 0),
+            restored::Warmth::HitThatBroughtNothing => (true, 0),
+        };
+        census.restored.insert(
+            (*job).to_string(),
+            restored::decode(&restore_record(job, exact, &[("target", arrived)])),
+        );
+    }
+    census
+}
+
+/// Distinct fingerprints, so a job compiling `n` units compiles `n` DISTINCT
+/// ones — the counts below are then about the comparison and not about
+/// deduplication.
+const METADATA: [&str; 6] = ["a1", "b2", "c3", "d4", "e5", "f6"];
+
+/// Warm from an earlier generation. TWO OF THEM, WITH DIFFERENT SIZES, because
+/// no two runs restore the same number of bytes and a fixture that gave them one
+/// figure would be green under a comparison nobody could ever satisfy.
+const WARM: Option<restored::Warmth> = Some(restored::Warmth::PrefixHit { bytes: 7_000 });
+const WARM_AGAIN: Option<restored::Warmth> = Some(restored::Warmth::PrefixHit { bytes: 7_144 });
+const COLD: Option<restored::Warmth> = Some(restored::Warmth::Nothing);
+
+#[test]
+fn two_censuses_whose_jobs_began_the_same_way_are_a_difference() {
+    let held = twice_compiled::compare(
+        &census_started(&[("validate", 4, WARM), ("gate", 2, None)]),
+        &census_started(&[("validate", 2, WARM_AGAIN), ("gate", 2, None)]),
+    );
+    assert_eq!(held.incomparable, Vec::new());
+    let validate = held.jobs.get("validate").expect("a comparable job");
+    assert_eq!(validate.compilations, (4, 2));
+    assert_eq!(validate.compilations_changed(), -2);
+    assert!(
+        validate.started.is_some(),
+        "and it carries BOTH start states, because the predicate that let this \
+         pair through looks at the variant and not the size"
+    );
+    // THE SAME SILENCE TWICE IS NOT A DIFFERENCE: a job with no cache always
+    // begins with an empty tree, and a comparison that refused those would refuse
+    // every pair this repository can take.
+    assert_eq!(held.jobs.get("gate").map(|delta| delta.started), Some(None));
+    let (before, after) = held.totals().expect("every job is comparable");
+    assert_eq!((before.paid, after.paid), (6, 4));
+}
+
+/// THE ROUND 1099 PAIR, and the whole reason this exists.
+#[test]
+fn a_job_that_began_differently_is_refused_rather_than_subtracted() {
+    let held = twice_compiled::compare(
+        &census_started(&[("validate", 4, COLD), ("gate", 2, None)]),
+        &census_started(&[("validate", 4, WARM), ("gate", 2, None)]),
+    );
+    assert_eq!(
+        held.incomparable,
+        vec![twice_compiled::Incomparable::StartedInDifferentStates {
+            job: "validate".to_string(),
+            earlier: restored::Warmth::Nothing,
+            later: restored::Warmth::PrefixHit { bytes: 7_000 },
+        }]
+    );
+    assert!(
+        !held.jobs.contains_key("validate"),
+        "the confounded job is not also reported as a delta"
+    );
+}
+
+/// AND THE TOTALS GO WITH IT. A total is a sum over a population, so one job in
+/// a different state spoils the whole of it — which is the arm that matters,
+/// because the totals are what a reader quotes.
+#[test]
+fn the_totals_are_unreachable_while_any_job_is_incomparable() {
+    let held = twice_compiled::compare(
+        &census_started(&[("validate", 4, COLD), ("gate", 2, None)]),
+        &census_started(&[("validate", 4, WARM), ("gate", 2, None)]),
+    );
+    assert_eq!(held.totals(), None);
+    // The other job IS still a difference — the refusal is about the sum, not
+    // about every row.
+    assert!(held.jobs.contains_key("gate"));
+}
+
+#[test]
+fn a_job_that_said_nothing_on_one_side_only_is_refused() {
+    let held = twice_compiled::compare(
+        &census_started(&[("validate", 4, WARM), ("gate", 2, None)]),
+        &census_started(&[("validate", 4, None), ("gate", 2, None)]),
+    );
+    assert_eq!(
+        held.incomparable,
+        vec![
+            twice_compiled::Incomparable::OnlyOneSideSaidWhatItStartedFrom {
+                job: "validate".to_string(),
+                silent: twice_compiled::Side::Later,
+            }
+        ]
+    );
+}
+
+#[test]
+fn a_job_in_one_census_and_not_the_other_has_nothing_to_be_subtracted_from() {
+    let held = twice_compiled::compare(
+        &census_started(&[("validate", 4, WARM), ("gate", 2, None)]),
+        &census_started(&[("validate", 4, WARM)]),
+    );
+    assert_eq!(
+        held.incomparable,
+        vec![twice_compiled::Incomparable::OnlyInOneCensus {
+            job: "gate".to_string(),
+            missing: twice_compiled::Side::Later,
+        }]
+    );
+    assert_eq!(held.totals(), None);
+}
+
+/// THE SIZE IS NOT THE STATE. No two runs restore the same number of bytes, so
+/// a comparison that took the whole value would call every real pair
+/// incomparable — a check nobody could ever satisfy is a check nobody keeps.
+#[test]
+fn two_prefix_hits_of_different_sizes_are_one_state() {
+    let held = twice_compiled::compare(
+        &census_started(&[
+            (
+                "validate",
+                4,
+                Some(restored::Warmth::PrefixHit { bytes: 246_000_000 }),
+            ),
+            ("gate", 1, None),
+        ]),
+        &census_started(&[
+            (
+                "validate",
+                4,
+                Some(restored::Warmth::PrefixHit {
+                    bytes: 27_258_000_000,
+                }),
+            ),
+            ("gate", 1, None),
+        ]),
+    );
+    assert_eq!(held.incomparable, Vec::new());
+    // AND THE REPORT PRINTS BOTH SIZES, because that is exactly what the
+    // predicate did not look at.
+    let printed = twice_compiled::render_comparison(&held, "a", "b");
+    assert!(
+        printed.contains("246 MB") && printed.contains("27258 MB"),
+        "{printed}"
+    );
+}
+
+/// TWO EMPTY DIRECTORIES COMPARE EQUAL, and that reads exactly like two runs
+/// that agreed — the same shape every gate in this repository has a line about.
+#[test]
+fn a_comparison_that_reached_no_job_says_so_rather_than_agreeing() {
+    let held = twice_compiled::compare(&Census::default(), &Census::default());
+    assert_eq!(
+        held.totals(),
+        None,
+        "ZERO AGAINST ZERO IS NOT A DIFFERENCE OF NONE. Both totals are honestly \
+         empty, which is what makes them dangerous: a caller reaching them would \
+         read two censuses that agreed perfectly"
+    );
+    let printed = twice_compiled::render_comparison(&held, "a", "b");
+    assert!(printed.contains("NEITHER CENSUS HOLDS A JOB"), "{printed}");
+    // AND THE REFUSAL LIST IS EMPTY, which is the trap: nothing is incomparable
+    // because nothing was compared, so a `totals()` guarded on that alone signs
+    // off on a measurement that did not happen.
+    assert_eq!(held.incomparable, Vec::new());
+}
+
+// --- the words this gate was given -------------------------------------------
+
+#[test]
+fn a_comparison_is_read_as_two_directories_and_no_workflow() {
+    let words = |all: &[&str]| {
+        twice_compiled::read_arguments(&all.iter().map(|word| word.to_string()).collect::<Vec<_>>())
+    };
+    assert_eq!(
+        words(&["compare", "earlier", "later"]),
+        Ok(twice_compiled::Entrance::Compare {
+            earlier: "earlier".to_string(),
+            later: "later".to_string(),
+        })
+    );
+    // A FLAG CONSUMES ITS OWN VALUE. `--workflow compare` under a reader taking
+    // the first word not beginning with `--` would enter the comparison with one
+    // directory named `compare`.
+    assert!(matches!(
+        words(&["--workflow", ".github/workflows/w.yml", "logs"]),
+        Ok(twice_compiled::Entrance::Logs { ref directory, ref workflow })
+            if directory == "logs" && workflow.as_deref() == Some(".github/workflows/w.yml")
+    ));
+    assert!(matches!(
+        words(&["--replay", "scratch"]),
+        Ok(twice_compiled::Entrance::Replay { ref scratch, .. }) if scratch == "scratch"
+    ));
+    // AND A COMPARISON HANDED A WORKFLOW IS A MISUNDERSTANDING WORTH SAYING:
+    // the two censuses may be of two different commits, and a job in one and not
+    // the other is part of the answer rather than something to be told.
+    assert!(words(&["compare", "a", "b", "--workflow", "w.yml"]).is_err());
+    assert!(words(&["compare", "a"]).is_err());
+    assert!(words(&["compare", "a", "b", "c"]).is_err());
+    assert!(words(&[]).is_err());
+    assert!(
+        words(&["--wat", "logs"]).is_err(),
+        "an unknown flag is a refusal rather than a directory"
+    );
+}

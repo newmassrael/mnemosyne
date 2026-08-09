@@ -78,7 +78,7 @@
 //! assertable.
 
 use std::collections::{BTreeMap, BTreeSet};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 pub use ci_plan::RunStep;
 
@@ -1340,4 +1340,472 @@ pub fn load(directory: &Path, absent: &BTreeSet<String>) -> std::io::Result<Cens
         }
     }
     Ok(census)
+}
+
+// --- holding one census against another -------------------------------------
+
+/// One of the two censuses in a comparison.
+///
+/// NOT `restored::Side`, which names the two sides of a cache restore inside one
+/// job. These are two whole measurements, and the words are `Earlier` and
+/// `Later` so that no use of them can be read as the other.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum Side {
+    Earlier,
+    Later,
+}
+
+impl std::fmt::Display for Side {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Side::Earlier => write!(f, "the earlier census"),
+            Side::Later => write!(f, "the later census"),
+        }
+    }
+}
+
+/// Why one job's two sides are not a difference.
+///
+/// THE WHOLE SUBJECT OF THIS TYPE IS ROUND 1099. Two censuses were read side by
+/// side, one of them was called cold because its keys had moved, the counts came
+/// out equal, and a 7.5 GB cache that was saving 426 compilations and ten
+/// minutes was deleted. Both runs had in fact been warmed through
+/// `restore-keys`. Every count in a census is of a COLD build by construction —
+/// cargo runs no compiler for a unit that is already fresh — so what a job began
+/// with is the unit its numbers are in, and a subtraction across two different
+/// units is not a measurement.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub enum Incomparable {
+    /// The job began in a different state in the two censuses, so any change in
+    /// what it compiled is confounded by what it began with.
+    StartedInDifferentStates {
+        job: String,
+        earlier: restored::Warmth,
+        later: restored::Warmth,
+    },
+    /// One side said what it started from and the other did not. The same
+    /// silence on both sides is not a difference; a silence on one is.
+    OnlyOneSideSaidWhatItStartedFrom { job: String, silent: Side },
+    /// The job left a compilation record in one census and not the other — a job
+    /// added, removed or renamed between the two runs. Its numbers have nothing
+    /// to be subtracted from.
+    OnlyInOneCensus { job: String, missing: Side },
+}
+
+impl std::fmt::Display for Incomparable {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Incomparable::StartedInDifferentStates {
+                job,
+                earlier,
+                later,
+            } => write!(
+                f,
+                "job `{job}` began in different states — earlier: {}; later: {} \
+                 — and every count in a census is of a cold build, so the state \
+                 is the unit those counts are in and the difference is not one",
+                earlier.why(),
+                later.why()
+            ),
+            Incomparable::OnlyOneSideSaidWhatItStartedFrom { job, silent } => write!(
+                f,
+                "job `{job}` said what it started from in one census and not in \
+                 {silent} — the same silence on both sides is no difference, and \
+                 a silence on one side is a state nobody can supply"
+            ),
+            Incomparable::OnlyInOneCensus { job, missing } => write!(
+                f,
+                "job `{job}` left no record in {missing}, so its numbers have \
+                 nothing to be subtracted from"
+            ),
+        }
+    }
+}
+
+/// What one census says, whole.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct Totals {
+    /// Compilations summed over jobs — what CI paid for.
+    pub paid: usize,
+    /// What one machine sharing a `target` would have paid.
+    pub floor: usize,
+    /// What the compilations cost, summed over jobs.
+    pub micros: u64,
+}
+
+impl Totals {
+    /// What one census says about itself.
+    pub fn of(census: &Census) -> Totals {
+        Totals {
+            paid: census.paid(),
+            floor: census.floor(),
+            micros: census.paid_micros(),
+        }
+    }
+}
+
+/// What one job's two censuses say, when they are a difference at all.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Delta {
+    /// What each side started from — the SAME state on both sides, which is the
+    /// only case there is a difference to read, and BOTH values because the
+    /// sizes differ and the predicate that let this pair through does not look
+    /// at them.
+    ///
+    /// `None` when neither side said: a job with no cache always begins with an
+    /// empty tree, so the same silence twice is not a difference.
+    pub started: Option<(restored::Warmth, restored::Warmth)>,
+    /// Compilations, earlier then later.
+    pub compilations: (usize, usize),
+    /// What they cost, earlier then later.
+    pub micros: (u64, u64),
+}
+
+impl Delta {
+    /// Compilations the later census pays that the earlier did not, negative
+    /// when it pays fewer.
+    pub fn compilations_changed(&self) -> i64 {
+        self.compilations.1 as i64 - self.compilations.0 as i64
+    }
+
+    /// The same for what they cost.
+    pub fn micros_changed(&self) -> i64 {
+        self.micros.1 as i64 - self.micros.0 as i64
+    }
+}
+
+/// Two censuses held against each other.
+///
+/// THE TOTALS ARE BEHIND A FUNCTION AND THE FIELDS ARE PRIVATE, which is the
+/// whole design. A caller cannot reach a sum over a set in which one job changed
+/// state, because that sum is the one Round 1099 quoted — and a law that a
+/// caller has to remember to consult is one it will read past.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Comparison {
+    /// The jobs whose two sides are a difference, by job id.
+    pub jobs: BTreeMap<String, Delta>,
+    /// Why the others are not, sorted.
+    pub incomparable: Vec<Incomparable>,
+    earlier: Totals,
+    later: Totals,
+}
+
+impl Comparison {
+    /// The two censuses' totals — ONLY when every job in either of them is
+    /// comparable.
+    ///
+    /// A TOTAL IS A SUM OVER A POPULATION, so one job in a different state
+    /// spoils the whole of it and not merely its own row. That is not
+    /// conservatism: the counts of a job that was cold in one run and warm in
+    /// the other differ by hundreds, which is larger than any real change the
+    /// comparison is being made to find.
+    /// AND NOT OVER NOTHING. Two empty directories compare equal, and equal is
+    /// exactly what two runs that agreed look like — the shape every gate in
+    /// this repository has already been caught by once. A comparison that
+    /// reached no comparable job has no difference available to it and must not
+    /// sign off as one that found none.
+    pub fn totals(&self) -> Option<(Totals, Totals)> {
+        (self.incomparable.is_empty() && !self.jobs.is_empty())
+            .then_some((self.earlier, self.later))
+    }
+}
+
+/// Hold one census against another.
+///
+/// NO WORKFLOW IS READ. The two censuses may be of two different commits, whose
+/// workflows declare different jobs — which is a thing this can say (a job in
+/// one census and not the other) rather than a thing it needs told. What it has
+/// is what both runs uploaded, and that is enough because R1101 made every
+/// census say what it was taken under.
+pub fn compare(earlier: &Census, later: &Census) -> Comparison {
+    let earlier_started = earlier.started();
+    let later_started = later.started();
+    let mut jobs = BTreeMap::new();
+    let mut incomparable = Vec::new();
+    let names: BTreeSet<&str> = earlier
+        .jobs
+        .keys()
+        .chain(later.jobs.keys())
+        .map(String::as_str)
+        .collect();
+    for job in names {
+        let (Some(before), Some(after)) = (earlier.jobs.get(job), later.jobs.get(job)) else {
+            incomparable.push(Incomparable::OnlyInOneCensus {
+                job: job.to_string(),
+                missing: if earlier.jobs.contains_key(job) {
+                    Side::Later
+                } else {
+                    Side::Earlier
+                },
+            });
+            continue;
+        };
+        let started = match (earlier_started.get(job), later_started.get(job)) {
+            (Some(before), Some(after)) if before.same_state(after) => Some((*before, *after)),
+            (Some(before), Some(after)) => {
+                incomparable.push(Incomparable::StartedInDifferentStates {
+                    job: job.to_string(),
+                    earlier: *before,
+                    later: *after,
+                });
+                continue;
+            }
+            (None, None) => None,
+            (present, _) => {
+                incomparable.push(Incomparable::OnlyOneSideSaidWhatItStartedFrom {
+                    job: job.to_string(),
+                    silent: if present.is_some() {
+                        Side::Later
+                    } else {
+                        Side::Earlier
+                    },
+                });
+                continue;
+            }
+        };
+        jobs.insert(
+            job.to_string(),
+            Delta {
+                started,
+                compilations: (before.compilations(), after.compilations()),
+                micros: (before.compiled_micros(), after.compiled_micros()),
+            },
+        );
+    }
+    incomparable.sort();
+    incomparable.dedup();
+    Comparison {
+        jobs,
+        incomparable,
+        earlier: Totals::of(earlier),
+        later: Totals::of(later),
+    }
+}
+
+/// Load a census from a directory of records, or from the per-artifact
+/// subdirectories `gh run download` leaves behind.
+///
+/// BOTH SHAPES, BECAUSE BOTH ARE REAL. On a runner the gate is handed one
+/// directory with every job's records merged into it; a person comparing two
+/// runs types `gh run download <id>`, which writes one subdirectory per
+/// artifact. A loader that knew only the first reads the second as a run in
+/// which no job recorded anything — an empty census, which prints every total as
+/// a clean zero.
+///
+/// A JOB FOUND TWICE IS AN ERROR AND NOT AN OVERWRITE: two records for one job
+/// means two runs' artifacts were unpacked into one directory, and whichever the
+/// walk reached last would silently become the answer.
+pub fn load_collected(directory: &Path) -> std::io::Result<Census> {
+    let mut census = load(directory, &BTreeSet::new())?;
+    let mut entries: Vec<PathBuf> = std::fs::read_dir(directory)?
+        .map(|entry| entry.map(|entry| entry.path()))
+        .collect::<std::io::Result<_>>()?;
+    entries.sort();
+    for path in entries {
+        if !path.is_dir() {
+            continue;
+        }
+        let inner = load(&path, &BTreeSet::new())?;
+        for (job, log) in inner.jobs {
+            if census.jobs.insert(job.clone(), log).is_some() {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::InvalidData,
+                    format!(
+                        "job `{job}` left a compilation record in two places under \
+                         {} — that is two runs unpacked into one directory, and \
+                         whichever this walk reached last would become the answer",
+                        directory.display()
+                    ),
+                ));
+            }
+        }
+        for (job, record) in inner.restored {
+            if census.restored.insert(job.clone(), record).is_some() {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::InvalidData,
+                    format!(
+                        "job `{job}` left a restore record in two places under {}",
+                        directory.display()
+                    ),
+                ));
+            }
+        }
+    }
+    Ok(census)
+}
+
+/// What this gate was asked to do.
+///
+/// A TYPE RATHER THAN A LOOK AT `arguments.first()`, because the three entrances
+/// need different things and one of them needs NOTHING this repository holds:
+/// a comparison of two censuses reads no workflow, no repository and no run, so
+/// the checks the other two must make would refuse it for lacking what it does
+/// not use.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Entrance {
+    /// Judge the records a run already wrote.
+    Logs {
+        directory: String,
+        workflow: Option<String>,
+    },
+    /// Produce those records on this machine.
+    Replay {
+        scratch: String,
+        workflow: Option<String>,
+    },
+    /// Hold one census against another.
+    Compare { earlier: String, later: String },
+}
+
+/// Read the words this gate was given.
+///
+/// IN THE LIBRARY, WITH A READER, for the reason `cache-budget`'s is: R1096
+/// measured what a decision in `main.rs` costs, and the flag bug R1102 caught
+/// before it shipped was a value read as a positional argument. So a flag
+/// consumes its own value here, an unknown flag is a refusal rather than a
+/// directory, and every one of those is a question a test can ask.
+///
+/// AN ERROR RATHER THAN A PANIC, because every one of these is somebody typing
+/// a command and the answer belongs on stderr.
+pub fn read_arguments(arguments: &[String]) -> Result<Entrance, String> {
+    let mut words = arguments.iter();
+    let mut positional: Vec<&str> = Vec::new();
+    let mut workflow: Option<String> = None;
+    let mut scratch: Option<String> = None;
+    let mut comparing = false;
+    while let Some(word) = words.next() {
+        match word.as_str() {
+            "--workflow" => workflow = Some(words.next().ok_or("--workflow needs a path")?.clone()),
+            "--replay" => {
+                scratch = Some(
+                    words
+                        .next()
+                        .ok_or("--replay needs a scratch directory")?
+                        .clone(),
+                )
+            }
+            "compare" => comparing = true,
+            other if other.starts_with("--") => {
+                return Err(format!(
+                    "`{other}` is not a flag this gate defines — refusing rather \
+                     than reading it as a directory"
+                ))
+            }
+            other => positional.push(other),
+        }
+    }
+    if comparing {
+        // THE ONE ENTRANCE THAT READS NO WORKFLOW, and being handed one is a
+        // misunderstanding worth saying out loud rather than ignoring: the two
+        // censuses may be of two different commits, whose workflows declare
+        // different jobs, and that is something this ANSWERS rather than needs.
+        if workflow.is_some() || scratch.is_some() {
+            return Err(
+                "`compare` reads no workflow and runs nothing — the two censuses \
+                 may be of two different commits, and a job in one and not the \
+                 other is part of its answer"
+                    .to_string(),
+            );
+        }
+        let [earlier, later] = positional.as_slice() else {
+            return Err(format!(
+                "usage: twice-compiled compare <earlier records> <later records> \
+                 — {} directory(ies) given",
+                positional.len()
+            ));
+        };
+        return Ok(Entrance::Compare {
+            earlier: (*earlier).to_string(),
+            later: (*later).to_string(),
+        });
+    }
+    if let Some(scratch) = scratch {
+        return Ok(Entrance::Replay { scratch, workflow });
+    }
+    match positional.as_slice() {
+        [directory] => Ok(Entrance::Logs {
+            directory: (*directory).to_string(),
+            workflow,
+        }),
+        [] => Err(
+            "usage: twice-compiled <log directory> | --replay <scratch> | \
+                   compare <earlier records> <later records>"
+                .to_string(),
+        ),
+        many => Err(format!(
+            "one log directory, and {} were given: {many:?}",
+            many.len()
+        )),
+    }
+}
+
+/// A comparison as a person reads it.
+///
+/// IN THE LIBRARY FOR THE REASON THE READING RULES ARE: what a gate SAYS is a
+/// decision, and a decision in `main.rs` can only be asked its exit code —
+/// R1096, and R1104 for the sibling gate.
+///
+/// BOTH START STATES ARE PRINTED EVEN THOUGH THEY MATCHED, because the predicate
+/// that let the pair through looks at the variant and not the size: two prefix
+/// hits of 246 MB and 27 GB are one state to it. A reader is owed the numbers
+/// the check does not look at.
+pub fn render_comparison(held: &Comparison, earlier: &str, later: &str) -> String {
+    let mut out = format!("twice-compiled — {earlier} held against {later}\n\n");
+    if held.jobs.is_empty() && held.incomparable.is_empty() {
+        out.push_str(
+            "  NEITHER CENSUS HOLDS A JOB — two empty directories compare equal, \
+             and that reads exactly like two runs that agreed\n",
+        );
+        return out;
+    }
+    for (job, delta) in &held.jobs {
+        out.push_str(&format!(
+            "  {job:<22} {:>6} -> {:<6} compilations ({:+})   {:>8.1} -> {:<8.1} s ({:+.1})\n",
+            delta.compilations.0,
+            delta.compilations.1,
+            delta.compilations_changed(),
+            delta.micros.0 as f64 / 1e6,
+            delta.micros.1 as f64 / 1e6,
+            delta.micros_changed() as f64 / 1e6,
+        ));
+        match &delta.started {
+            Some((before, after)) => out.push_str(&format!(
+                "  {:<22} both began the same way — earlier: {}; later: {}\n",
+                "",
+                before.why(),
+                after.why()
+            )),
+            None => out.push_str(&format!(
+                "  {:<22} neither census said what it started from, which is the \
+                 same silence rather than a difference\n",
+                ""
+            )),
+        }
+    }
+    match held.totals() {
+        Some((before, after)) => out.push_str(&format!(
+            "\n  CI paid          {:>6} -> {:<6} compilations ({:+})   {:>8.1} -> {:<8.1} s\n  \
+             the floor was    {:>6} -> {:<6} distinct units\n",
+            before.paid,
+            after.paid,
+            after.paid as i64 - before.paid as i64,
+            before.micros as f64 / 1e6,
+            after.micros as f64 / 1e6,
+            before.floor,
+            after.floor,
+        )),
+        None => out.push_str(
+            "\n  NO TOTALS. A total is a sum over a population, so one job in a \
+             different state spoils the whole of it — and the counts of a job \
+             that was cold in one run and warm in the other differ by hundreds, \
+             which is larger than any change a comparison is made to find\n",
+        ),
+    }
+    for why in &held.incomparable {
+        out.push_str(&format!("\n  REFUSED {why}"));
+    }
+    if !held.incomparable.is_empty() {
+        out.push('\n');
+    }
+    out
 }

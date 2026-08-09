@@ -1,6 +1,6 @@
 //! Report what CI compiled, and refuse if a job that compiles left no record.
 //!
-//! Two ways in, one report:
+//! Three ways in:
 //!
 //! - `twice-compiled <log directory>` reads logs the jobs of this run already
 //!   wrote. This is what runs on a push: the measurement costs nothing beyond
@@ -8,6 +8,11 @@
 //! - `twice-compiled --replay <scratch>` produces those logs on this machine, by
 //!   running each job's `run:` steps in a git worktree of its own. That is the
 //!   expensive way, and the one that answers the question without a push.
+//! - `twice-compiled compare <earlier> <later>` holds one census against
+//!   another, each a `gh run download` directory. It reads no workflow and no
+//!   repository — the two may be of different commits — and it REFUSES to total
+//!   a pair whose jobs did not begin in the same state, which is the number
+//!   Round 1099 quoted when it deleted a cache that was saving ten minutes.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::ffi::OsStr;
@@ -15,10 +20,48 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use ci_plan::RunStep;
-use twice_compiled::{judge, load, unresolvable, Census, Declared, JOB_VARIABLE, WRAPPER_VARIABLE};
+use twice_compiled::{
+    judge, load, unresolvable, Census, Declared, Entrance, JOB_VARIABLE, WRAPPER_VARIABLE,
+};
 
 fn main() {
     let arguments: Vec<String> = std::env::args().skip(1).collect();
+    let entrance = twice_compiled::read_arguments(&arguments).unwrap_or_else(|why| {
+        eprintln!("twice-compiled: {why}");
+        std::process::exit(2);
+    });
+    match entrance {
+        // THE ENTRANCE THAT NEEDS NOTHING THIS CHECKOUT HOLDS. Two censuses may
+        // be of two different commits, so there is no workflow to read and no
+        // repository to be in — what both runs uploaded is enough, because R1101
+        // made every census say what it was taken under.
+        Entrance::Compare { earlier, later } => hold_against(&earlier, &later),
+        judged => judge_a_run(judged),
+    }
+}
+
+/// Read two censuses and hold them against each other.
+///
+/// EXIT 1 WHEN THE TOTALS ARE NOT QUOTABLE, which is the verdict rather than an
+/// aside: a delta between two runs that began in different states is the number
+/// Round 1099 quoted, and it deleted a cache that was saving ten minutes.
+fn hold_against(earlier: &str, later: &str) -> ! {
+    let read = |directory: &str| {
+        twice_compiled::load_collected(Path::new(directory)).unwrap_or_else(|error| {
+            eprintln!("twice-compiled: cannot read {directory}: {error}");
+            std::process::exit(2);
+        })
+    };
+    let held = twice_compiled::compare(&read(earlier), &read(later));
+    print!(
+        "{}",
+        twice_compiled::render_comparison(&held, earlier, later)
+    );
+    std::process::exit(if held.totals().is_some() { 0 } else { 1 })
+}
+
+/// The gate proper: judge one run's records, or a replay of them.
+fn judge_a_run(entrance: Entrance) -> ! {
     let root = std::env::current_dir().expect("a working directory");
     assert!(
         root.join(".github/workflows").is_dir(),
@@ -26,7 +69,7 @@ fn main() {
         root.display()
     );
 
-    let workflow = workflow_path(&arguments);
+    let workflow = workflow_path(&entrance);
     let document = ci_plan::load_workflow(&root, &workflow);
     let steps = ci_plan::run_steps(&document);
     // BOTH POPULATIONS, FROM ONE FILE AND ONE READER. The jobs that compile are
@@ -41,16 +84,9 @@ fn main() {
     );
 
     let mut absent = BTreeSet::new();
-    let logs = match arguments.first().map(String::as_str) {
-        Some("--replay") => {
-            let scratch = PathBuf::from(
-                arguments
-                    .get(1)
-                    .unwrap_or_else(|| panic!("--replay needs a scratch directory")),
-            );
-            replay(&root, &steps, &scratch, &mut absent)
-        }
-        Some(directory) => {
+    let logs = match &entrance {
+        Entrance::Replay { scratch, .. } => replay(&root, &steps, Path::new(scratch), &mut absent),
+        Entrance::Logs { directory, .. } => {
             // THE JOB THIS IS RUNNING IN, asked of the runner. Its own build is
             // still in flight while it judges, so it can have no log yet.
             if let Ok(mine) = std::env::var("GITHUB_JOB") {
@@ -58,7 +94,7 @@ fn main() {
             }
             PathBuf::from(directory)
         }
-        None => panic!("usage: twice-compiled <log directory> | --replay <scratch>"),
+        Entrance::Compare { .. } => unreachable!("`main` sends a comparison elsewhere"),
     };
 
     let census = load(&logs, &absent)
@@ -72,7 +108,7 @@ fn main() {
              compiled",
             declared.jobs.len() - absent.len()
         );
-        return;
+        std::process::exit(0);
     }
     println!();
     for refusal in &refusals {
@@ -86,12 +122,13 @@ fn main() {
 /// `GITHUB_WORKFLOW_REF` is `owner/repo/.github/workflows/x.yml@refs/heads/main`
 /// — the runner's own answer to which file it is executing, so a workflow
 /// renamed tomorrow does not leave a gate pointed at a path that is gone.
-fn workflow_path(arguments: &[String]) -> String {
-    if let Some(at) = arguments.iter().position(|word| word == "--workflow") {
-        return arguments
-            .get(at + 1)
-            .unwrap_or_else(|| panic!("--workflow needs a path"))
-            .clone();
+fn workflow_path(entrance: &Entrance) -> String {
+    let named = match entrance {
+        Entrance::Logs { workflow, .. } | Entrance::Replay { workflow, .. } => workflow.clone(),
+        Entrance::Compare { .. } => unreachable!("a comparison reads no workflow"),
+    };
+    if let Some(path) = named {
+        return path;
     }
     let reference = std::env::var("GITHUB_WORKFLOW_REF").unwrap_or_else(|_| {
         panic!(

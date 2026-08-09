@@ -875,3 +875,176 @@ fn a_job_with_no_cache_leaves_no_record_and_is_not_refused_for_it() {
         run.transcript()
     );
 }
+
+// --- the third entrance: one census held against another ---------------------
+
+/// A `gh run download` directory: one subdirectory per artifact, each holding
+/// the records of one job. NOT the shape a runner hands the gate, and that is
+/// the point — a loader that knew only the flat one reads this as a run in which
+/// nothing recorded anything, which prints every total as a clean zero.
+fn downloaded(under: &Path, jobs: &[(&str, bool, u64)]) -> PathBuf {
+    let directory = under.to_path_buf();
+    for (job, exact, arrived) in jobs {
+        let artifact = directory.join(format!("rustc-log-{job}"));
+        std::fs::create_dir_all(&artifact).expect("the artifact directory");
+        record_a_compilation(&artifact.join(format!("{job}.log")));
+        let mut written = restored::encode_job(job);
+        written.extend_from_slice(&restored::encode_side(
+            restored::Side::Before,
+            "target",
+            &restored::Measurement::default(),
+        ));
+        written.extend_from_slice(&restored::encode_side(
+            restored::Side::After,
+            "target",
+            &restored::Measurement {
+                entries: 1,
+                bytes: *arrived,
+            },
+        ));
+        written.extend_from_slice(&restored::encode_exact(*exact));
+        std::fs::write(artifact.join(format!("{job}.restored")), written)
+            .expect("the restore record");
+    }
+    directory
+}
+
+#[test]
+fn a_census_is_read_out_of_the_shape_gh_run_download_leaves() {
+    let scratch = TempDir::new().expect("a scratch directory");
+    let collected = downloaded(
+        &scratch.path().join("run"),
+        &[("validate", false, 7_000), ("unrun-tests", false, 9_000)],
+    );
+    let census = twice_compiled::load_collected(&collected).expect("the census loads");
+    assert_eq!(
+        census.jobs.keys().collect::<Vec<_>>(),
+        vec!["unrun-tests", "validate"],
+        "a loader that read only the top level would find nothing here, and \
+         nothing prints as a clean zero"
+    );
+    assert_eq!(
+        census.started().get("validate"),
+        Some(&restored::Warmth::PrefixHit { bytes: 7_000 }),
+        "and the state each job started in comes with it"
+    );
+}
+
+#[test]
+fn one_job_recorded_in_two_places_is_an_error_rather_than_an_overwrite() {
+    // TWO RUNS UNPACKED INTO ONE DIRECTORY. Whichever the walk reached last would
+    // silently become the answer, and the walk's order is the filesystem's.
+    let scratch = TempDir::new().expect("a scratch directory");
+    let collected = downloaded(&scratch.path().join("run"), &[("validate", false, 7_000)]);
+    let twice = collected.join("rustc-log-validate-again");
+    std::fs::create_dir_all(&twice).expect("the second directory");
+    record_a_compilation(&twice.join("validate.log"));
+    let why = twice_compiled::load_collected(&collected).expect_err("two records for one job");
+    assert!(
+        why.to_string().contains("validate") && why.to_string().contains("two places"),
+        "{why}"
+    );
+}
+
+/// Run the third entrance as a PROCESS, because its verdict is an exit code and
+/// an exit code is the one thing no library test can be handed.
+fn compared(earlier: &Path, later: &Path) -> Output {
+    Command::new(env!("CARGO_BIN_EXE_twice-compiled"))
+        .args(["compare"])
+        .arg(earlier)
+        .arg(later)
+        // NO REPOSITORY AND NO WORKFLOW REFERENCE, deliberately: this entrance
+        // must not need either, and a temporary directory is where that is
+        // provable rather than assumed.
+        .current_dir(earlier)
+        .env_remove("GITHUB_WORKFLOW_REF")
+        .env_remove("GITHUB_JOB")
+        .output()
+        .expect("the gate runs")
+}
+
+#[test]
+fn two_censuses_taken_in_one_state_compare_and_the_gate_says_so() {
+    let scratch = TempDir::new().expect("a scratch directory");
+    let earlier = downloaded(
+        &scratch.path().join("earlier"),
+        &[("validate", false, 7_000)],
+    );
+    let later = downloaded(&scratch.path().join("later"), &[("validate", false, 9_000)]);
+    let out = compared(&earlier, &later);
+    let printed = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        out.status.success(),
+        "both jobs began warm from an earlier generation\n{printed}\n{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert!(printed.contains("CI paid"), "{printed}");
+}
+
+#[test]
+fn a_pair_that_began_differently_is_refused_by_the_process_and_not_only_by_a_type() {
+    let scratch = TempDir::new().expect("a scratch directory");
+    // COLD ON ONE SIDE, WARM ON THE OTHER — the Round 1099 pair, and the counts
+    // are deliberately identical, which is exactly what made it convincing.
+    let earlier = downloaded(&scratch.path().join("earlier"), &[("validate", false, 0)]);
+    let later = downloaded(&scratch.path().join("later"), &[("validate", false, 9_000)]);
+    let out = compared(&earlier, &later);
+    let printed = String::from_utf8_lossy(&out.stdout);
+    assert_eq!(
+        out.status.code(),
+        Some(1),
+        "the exit code is the verdict\n{printed}"
+    );
+    assert!(printed.contains("NO TOTALS"), "{printed}");
+    assert!(
+        printed.contains("began in different states"),
+        "and it names the job and both states\n{printed}"
+    );
+}
+
+#[test]
+fn the_comparison_entrance_refuses_a_workflow_rather_than_ignoring_it() {
+    let scratch = TempDir::new().expect("a scratch directory");
+    let earlier = downloaded(
+        &scratch.path().join("earlier"),
+        &[("validate", false, 7_000)],
+    );
+    let out = Command::new(env!("CARGO_BIN_EXE_twice-compiled"))
+        .args(["compare", "a", "b", "--workflow", "w.yml"])
+        .current_dir(scratch.path())
+        .output()
+        .expect("the gate runs");
+    assert_eq!(
+        out.status.code(),
+        Some(2),
+        "could-not-look and these-break-the-law are different answers"
+    );
+    assert!(
+        String::from_utf8_lossy(&out.stderr).contains("reads no workflow"),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let _ = earlier;
+}
+
+#[test]
+fn two_directories_holding_nothing_do_not_compare_as_two_runs_that_agreed() {
+    // THE EMPTY ANSWER THAT LOOKS LIKE A CLEAN ONE, at the entrance where it is
+    // cheapest to produce: a mistyped path, an artifact pattern that matched
+    // nothing, a download that failed. Both totals are honestly zero and every
+    // job is honestly comparable, because there is no job.
+    let scratch = TempDir::new().expect("a scratch directory");
+    let earlier = scratch.path().join("earlier");
+    let later = scratch.path().join("later");
+    std::fs::create_dir_all(&earlier).expect("the directory");
+    std::fs::create_dir_all(&later).expect("the directory");
+    let out = compared(&earlier, &later);
+    let printed = String::from_utf8_lossy(&out.stdout);
+    assert_eq!(
+        out.status.code(),
+        Some(1),
+        "the exit code is the verdict, and there was no measurement to sign off \
+         on\n{printed}"
+    );
+    assert!(printed.contains("NEITHER CENSUS HOLDS A JOB"), "{printed}");
+}
