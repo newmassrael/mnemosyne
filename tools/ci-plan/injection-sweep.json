@@ -90,6 +90,57 @@
         }
       ],
       "expect_red": ["what_a_job_waits_for_is_read_in_both_spellings_github_allows"]
+    },
+    {
+      "name": "the-runners-name-for-the-workflow-is-taken-as-read",
+      "why": "R1107 — the reference is a JOIN KEY against the files this repository tracks, not a string to cut. A path nothing tracks compares unequal to every cache declaration's source, so `tools/cache-budget` would report every job in the repository as belonging to some other workflow — a verdict shaped like a reading with nothing behind it — and the census gate would load a file that is not there",
+      "edits": [
+        {
+          "file": "tools/ci-plan/src/lib.rs",
+          "from": "    if !tracked.iter().any(|file| file == path) {",
+          "to": "    if false {"
+        }
+      ],
+      "expect_red": ["a_reference_naming_a_workflow_this_repository_does_not_track_is_refused"]
+    },
+    {
+      "name": "the-ref-is-cut-at-the-last-at-sign",
+      "why": "a branch name may hold anything a ref may hold, and the workflow path holds no `@` at all — so the first `@` ends the path and a reader taking the last one hands back a path with a ref glued to it, which then matches no tracked file and refuses a run that is fine",
+      "edits": [
+        {
+          "file": "tools/ci-plan/src/lib.rs",
+          "from": "        .map(|rest| rest.split('@').next().unwrap_or(rest))",
+          "to": "        .map(|rest| rest.rsplit('@').next().unwrap_or(rest))"
+        }
+      ],
+      "expect_red": ["a_runners_workflow_reference_resolves_to_the_file_it_names"]
+    },
+    {
+      "name": "the-repository-segments-are-not-skipped",
+      "why": "the reference begins `owner/repo/` and the path this repository tracks begins `.github/`; a reader that kept the head would answer with a spelling no tracked file has and refuse every run",
+      "edits": [
+        {
+          "file": "tools/ci-plan/src/lib.rs",
+          "from": "        .splitn(3, '/')\n        .nth(2)",
+          "to": "        .splitn(3, '/')\n        .next()"
+        }
+      ],
+      "expect_red": [
+        "a_runners_workflow_reference_resolves_to_the_file_it_names",
+        "a_reference_naming_a_workflow_this_repository_does_not_track_is_refused"
+      ]
+    },
+    {
+      "name": "a-workflow-that-uploads-nothing-still-collects",
+      "why": "R1106's derivation, and R1107 leans on it from a second gate: a workflow uploading no artifact leaves nothing behind when its runners are destroyed, so a record written in it is unreadable by construction. A predicate that answered yes for every workflow would make the exemption cover the whole population and both gates would stop saying anything",
+      "edits": [
+        {
+          "file": "tools/ci-plan/src/lib.rs",
+          "from": "pub fn collects_artifacts(uploads: &[ArtifactUpload]) -> bool {\n    !uploads.is_empty()\n}",
+          "to": "pub fn collects_artifacts(uploads: &[ArtifactUpload]) -> bool {\n    let _ = uploads;\n    true\n}"
+        }
+      ],
+      "expect_red": ["what_a_workflow_collects_is_read_because_it_decides_what_can_be_read_back"]
     }
   ]
 }

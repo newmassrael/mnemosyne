@@ -600,11 +600,8 @@ fn what_a_workflow_collects_is_read_because_it_decides_what_can_be_read_back() {
         .parent()
         .and_then(std::path::Path::parent)
         .expect("this crate lives two directories below the root");
-    let collecting: Vec<String> = ci_plan::workflow_files(root)
+    let collecting: Vec<String> = ci_plan::workflows_collecting_artifacts(root)
         .into_iter()
-        .filter(|path| {
-            !ci_plan::artifact_uploads(&ci_plan::load_workflow(root, path), path).is_empty()
-        })
         .collect();
     assert_eq!(
         collecting,
@@ -612,4 +609,92 @@ fn what_a_workflow_collects_is_read_because_it_decides_what_can_be_read_back() {
         "exactly one tracked workflow collects anything, and the other declares \
          a cache — so both sides of the derivation are live"
     );
+    // AND THE PREDICATE HAS ONE HOME. Two gates ask "does this workflow collect
+    // anything" — the census gate to decide who owes a restore record, the cache
+    // gate to decide whose silence about one is its own — and the sweep above is
+    // the same question asked of every tracked file. A second spelling of it is
+    // where the two start disagreeing.
+    assert!(
+        !ci_plan::collects_artifacts(&[]) && ci_plan::collects_artifacts(&uploads),
+        "the sweep and the per-workflow answer are one reading"
+    );
+}
+
+// --- which workflow a runner says it is executing ----------------------------
+//
+// R1107. Two gates need it: the census gate loads that file, and
+// `tools/cache-budget` holds it against each cache declaration's source to
+// decide whose restore records could have been collected in this run at all —
+// records are artifacts, and artifacts belong to a run. The census gate cut the
+// string for itself until this round, which is two answers about which file a
+// gate is judging.
+
+/// The workflows a reader of this repository's `.github/workflows` would have.
+fn tracked() -> Vec<String> {
+    vec![
+        ".github/workflows/evidence-replay.yml".to_string(),
+        ".github/workflows/mnemosyne-validate.yml".to_string(),
+    ]
+}
+
+#[test]
+fn a_runners_workflow_reference_resolves_to_the_file_it_names() {
+    assert_eq!(
+        ci_plan::workflow_of_reference(
+            Some("newmassrael/mnemosyne/.github/workflows/mnemosyne-validate.yml@refs/heads/main"),
+            &tracked()
+        ),
+        Ok(".github/workflows/mnemosyne-validate.yml".to_string()),
+        "the middle of `owner/repo/<path>@<ref>` is the path"
+    );
+    // A BRANCH NAME MAY HOLD A `/`, and the ref is everything after the FIRST
+    // `@` — a workflow path holds neither, which is what makes the cut sound.
+    assert_eq!(
+        ci_plan::workflow_of_reference(
+            Some("o/r/.github/workflows/evidence-replay.yml@refs/heads/feature/x"),
+            &tracked()
+        ),
+        Ok(".github/workflows/evidence-replay.yml".to_string())
+    );
+}
+
+#[test]
+fn a_reference_naming_a_workflow_this_repository_does_not_track_is_refused() {
+    // A CUT STRING IS NOT A JOIN KEY, and this is the half the census gate never
+    // had. A path nothing tracks compares unequal to every cache declaration's
+    // source, so a gate that merely cut would report every job in the repository
+    // as belonging to some other workflow — a verdict shaped like a reading with
+    // nothing behind it. The census gate's own failure is louder and just as
+    // wrong: it would load a file that is not there.
+    let refused = ci_plan::workflow_of_reference(
+        Some("o/r/.github/workflows/gone.yml@refs/heads/main"),
+        &tracked(),
+    )
+    .expect_err("a workflow nothing tracks");
+    // THE PARSED PATH AND NOT THE REFERENCE. The message quotes both, and an
+    // injection that stopped skipping `owner/repo/` came back green against an
+    // assertion that looked only for `gone.yml` — which is in the input, so it is
+    // in the message however badly the input was read. What distinguishes a
+    // reader that got there is the path it says it arrived at.
+    assert!(
+        refused.contains("\".github/workflows/gone.yml\""),
+        "the refusal says which workflow it read the reference AS: {refused}"
+    );
+    assert!(
+        refused.contains("mnemosyne-validate.yml"),
+        "and it names what IS tracked, so the reader can see the join it failed: \
+         {refused}"
+    );
+}
+
+#[test]
+fn a_reference_that_is_not_there_at_all_is_refused_rather_than_guessed() {
+    for absent in [None, Some(""), Some("   ")] {
+        let refused = ci_plan::workflow_of_reference(absent, &tracked())
+            .expect_err("nothing to join on, so there is nothing to answer");
+        assert!(
+            refused.contains(ci_plan::WORKFLOW_VARIABLE),
+            "the refusal names the variable that was not set: {refused}"
+        );
+    }
 }

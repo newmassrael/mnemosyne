@@ -46,6 +46,14 @@ fn main() {
         }
     };
 
+    // WHO CAN BE HEARD AT ALL, read off the same files. A record is an artifact,
+    // an artifact belongs to a run, and a workflow that uploads none leaves
+    // nothing behind — so the two halves of this gate's horizon are which
+    // workflows collect anything and which workflow this run is of. Both are
+    // asked rather than assumed, because the sentence they decide used to name a
+    // job as deficient for a limit that was the reader's.
+    let collecting = ci_plan::workflows_collecting_artifacts(&root);
+
     // THE RUN, when there is one to be inside. `GITHUB_RUN_ID` is set by the
     // runner and by nothing else, so a developer's machine gets the budget
     // verdict and is TOLD that the other half was not evaluated — inventing a
@@ -67,6 +75,7 @@ fn main() {
         &held,
         run.as_ref(),
         &started,
+        &collecting,
     );
 
     // WHAT WAS REACHED, first and unconditionally. A gate that never opened
@@ -165,7 +174,18 @@ fn run_window(root: &Path, run_id: &str, declared: &[CacheDeclaration]) -> Resul
             inputs_changed.insert(declaration.prefix.clone());
         }
     }
+    // WHICH WORKFLOW THIS RUN IS OF, asked of the runner and checked against the
+    // workflows this gate read. It is what decides whose restore records could
+    // have been collected here, so a name nothing recognises is a refusal: the
+    // alternative is a report explaining every job's silence with a reason it
+    // made up.
+    let workflow = ci_plan::workflow_of_reference(
+        std::env::var(ci_plan::WORKFLOW_VARIABLE).ok().as_deref(),
+        &ci_plan::workflow_files(root),
+    )?;
+
     Ok(Run {
+        workflow,
         started_at,
         inputs_changed,
         range,

@@ -341,6 +341,18 @@ fn gigabytes(bytes: u64) -> String {
 /// would judge every cache in the repository as freshly built.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Run {
+    /// The workflow file this run is of — `.github/workflows/mnemosyne-validate.yml`.
+    ///
+    /// WHICH RECORDS COULD POSSIBLY BE HERE. A restore record is an artifact and
+    /// an artifact belongs to A RUN: the download step in this gate's job
+    /// collects the artifacts of the run it is itself inside, and a run's jobs
+    /// are exactly one workflow's jobs. So a cache declared in another workflow
+    /// has an owner whose record this gate can never be handed, and until R1107
+    /// the report printed that as `did not say what it started from` — a
+    /// sentence that reads as the job's shortcoming and is in fact this gate's
+    /// horizon. It is carried on [`Run`] because it is a property of the run
+    /// being judged and is unknowable without one.
+    pub workflow: String,
     /// When it started, verbatim — `2026-08-08T22:17:13Z`.
     ///
     /// NOT THE SAME SPELLING AS A CACHE'S `created_at`, which is why the two are
@@ -442,6 +454,58 @@ pub fn range_start(named: Option<&str>, present: impl Fn(&str) -> bool) -> Range
     RangeStart::Push(sha.to_string())
 }
 
+/// Why no record was read for one owner — the job's silence, or this gate's
+/// horizon.
+///
+/// THE DISTINCTION THIS GATE PRINTED BACKWARDS. `evidence-replay.yml` declares a
+/// cache, so its `replay` job is an owner in this report; its records are written
+/// on a runner in a different run and no download step in a `mnemosyne-validate`
+/// run can ever be handed them. The report said `replay` "did not say what it
+/// started from", which names a job as deficient for a limit belonging to the
+/// reader — and R1106 had just established that the repair such a sentence asks
+/// for (wire the measurement into that workflow too) is the WRONG repair, because
+/// that workflow uploads nothing and the record would die with its runner.
+///
+/// Every reason below is DERIVED — from the workflow files for what collects, and
+/// from the runner for which run this is — so none of them is a list of exempt
+/// jobs kept beside the law.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Unheard {
+    /// Its records were collectable here and it left none. The job's own silence,
+    /// and the only one of these that is a gap in the repository.
+    ItsOwnSilence,
+    /// Its workflow uploads no artifact at all, so anything it writes is
+    /// destroyed with its runner — unreadable from anywhere, not merely here.
+    NothingCollectsIt { workflow: String },
+    /// Its workflow is not this run's, and artifacts belong to a run.
+    AnotherWorkflow { workflow: String },
+    /// This gate is not inside a run, so no run's artifacts were collected.
+    NoRun,
+}
+
+impl std::fmt::Display for Unheard {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Unheard::ItsOwnSilence => write!(f, "did not say what it started from"),
+            Unheard::NothingCollectsIt { workflow } => write!(
+                f,
+                "cannot be heard from anywhere: nothing in {workflow} uploads an \
+                 artifact, so a record written there is destroyed with its runner"
+            ),
+            Unheard::AnotherWorkflow { workflow } => write!(
+                f,
+                "cannot be heard from here: it is declared in {workflow}, and a \
+                 record is an artifact of the run that wrote it"
+            ),
+            Unheard::NoRun => write!(
+                f,
+                "cannot be heard from here: this is not a run, so no run's \
+                 artifacts were collected"
+            ),
+        }
+    }
+}
+
 /// What one repository's caching looks like.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Report {
@@ -466,9 +530,63 @@ pub struct Report {
     /// How many caches GitHub holds, superseded generations and undeclared ones
     /// included — the population this report was reckoned against.
     pub held_caches: usize,
+    /// Which tracked workflows collect an artifact at all, by path.
+    ///
+    /// HALF OF THIS GATE'S HORIZON, read off the files through the one reader
+    /// that owns the question (`ci_plan::collects_artifacts`) so that this gate
+    /// and the census gate cannot come to different answers about who can be
+    /// heard. The other half is [`Run::workflow`].
+    pub collecting: BTreeSet<String>,
 }
 
 impl Report {
+    /// Why nothing was read for this owner — asked only when nothing was.
+    ///
+    /// ORDERED BY HOW FAR THE STATEMENT REACHES, most far-reaching first. "No
+    /// artifact collects it" holds for every reader there will ever be and is the
+    /// one that says a cross-run download would not help; "another workflow's"
+    /// holds only from here and leaves that door open. A reader given the weaker
+    /// reason when the stronger one is true would go and build the thing R1106
+    /// established must not be built.
+    pub fn unheard(&self, owner: &Owner) -> Unheard {
+        if !self.collecting.contains(&owner.source) {
+            return Unheard::NothingCollectsIt {
+                workflow: owner.source.clone(),
+            };
+        }
+        match &self.run {
+            None => Unheard::NoRun,
+            Some(run) if run.workflow != owner.source => Unheard::AnotherWorkflow {
+                workflow: owner.source.clone(),
+            },
+            Some(_) => Unheard::ItsOwnSilence,
+        }
+    }
+
+    /// Every owner whose record was READ although this gate reckons its workflow
+    /// collects nothing — a derivation contradicted by what it was handed.
+    ///
+    /// THE ONE ANCHOR THAT DOES NOT COME FROM THE SAME READING IT CHECKS. Every
+    /// sentence about who can be heard rests on `collecting`, and a reader that
+    /// returned an empty set would explain all eight owners' silence with
+    /// "nothing collects it" — a report that has become entirely self-consistent
+    /// and entirely wrong, which is the class of defect this whole repair is
+    /// about. A record in hand is the observation that reading cannot argue with.
+    fn heard_where_nothing_collects(&self) -> Vec<Owner> {
+        let mut out: Vec<Owner> = self
+            .rows
+            .iter()
+            .flat_map(|row| &row.owners)
+            .filter(|owner| {
+                self.started.contains_key(&owner.job) && !self.collecting.contains(&owner.source)
+            })
+            .cloned()
+            .collect();
+        out.sort();
+        out.dedup();
+        out
+    }
+
     /// The total the declared caches want, when it can be reckoned at all.
     pub fn demand(&self) -> Option<u64> {
         self.rows.iter().map(Row::bytes).sum()
@@ -495,6 +613,16 @@ impl Report {
     /// Everything wrong, most consequential first.
     pub fn refusals(&self) -> Vec<Refusal> {
         let mut out = self.divergent.clone();
+        let contradicted = self.heard_where_nothing_collects();
+        if !contradicted.is_empty() {
+            out.push(Refusal::Unreached(format!(
+                "a record was read for {} whose workflow this gate reckons \
+                 uploads no artifact at all — the record is in hand, so that \
+                 reading is wrong, and every sentence this report makes about \
+                 whose silence is whose rests on it",
+                named(&contradicted).join(" and ")
+            )));
+        }
         if self.rows.is_empty() {
             out.push(Refusal::Unreached(
                 "no workflow in this repository declares a cache, which cannot be \
@@ -652,6 +780,7 @@ pub fn conclude(
     held: &[Held],
     run: Option<&Run>,
     started: &BTreeMap<String, restored::Warmth>,
+    collecting: &BTreeSet<String>,
 ) -> Report {
     let mut rows: Vec<Row> = Vec::new();
     let mut divergent = Vec::new();
@@ -770,6 +899,7 @@ pub fn conclude(
         started: started.clone(),
         declared_steps: declared.len(),
         held_caches: held.len(),
+        collecting: collecting.clone(),
     }
 }
 
@@ -824,14 +954,22 @@ pub fn render(report: &Report) -> String {
         // WHAT ITS OWNERS ACTUALLY GOT, printed beside what storage holds. These
         // are the two instruments, and holding them apart is what let a warm run
         // be read as a cold one.
+        //
+        // AND WHOSE THE SILENCE IS WHEN THERE IS NO READING. A job that could
+        // have been heard and was not is a gap in this repository; a job whose
+        // records this gate can never be handed is a gap in the gate, and
+        // printing one sentence for both puts the reader's attention on the
+        // wrong side of the horizon. `replay` was reported as the first for two
+        // rounds while being the second.
         for owner in &row.owners {
             match report.started.get(&owner.job) {
                 Some(warmth) => {
                     out.push_str(&format!("            `{}` {}\n", owner.job, warmth.why()))
                 }
                 None => out.push_str(&format!(
-                    "            `{}` did not say what it started from\n",
-                    owner.job
+                    "            `{}` {}\n",
+                    owner.job,
+                    report.unheard(owner)
                 )),
             }
         }
@@ -881,9 +1019,14 @@ pub fn render(report: &Report) -> String {
     // silently skipped a law and a gate that found nothing wrong under it print
     // the same clean line otherwise.
     match &report.run {
+        // NAMED ONCE, BECAUSE THE PER-OWNER LINES POINT AT IT. Which workflow
+        // this run is of decides whose records could have been collected here,
+        // and a reader seeing "cannot be heard from here" needs to know what
+        // "here" is without going to the runner for it.
         Some(run) => out.push_str(&format!(
-            "run started {}, so a cache created after that is a job that rebuilt; \
-             {} key(s) had their hashed inputs moved {}{}\n",
+            "run of {} started {}, so a cache created after that is a job that \
+             rebuilt; {} key(s) had their hashed inputs moved {}{}\n",
+            run.workflow,
             run.started_at,
             run.inputs_changed.len(),
             run.range.why(),

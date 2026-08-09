@@ -1088,7 +1088,7 @@ impl Declared {
             jobs,
             caches: cached,
             caches_at: at,
-            collects_records: !uploads.is_empty(),
+            collects_records: ci_plan::collects_artifacts(uploads),
         }
     }
 }

@@ -375,6 +375,84 @@ pub struct ArtifactUpload {
     pub paths: Vec<String>,
 }
 
+/// The variable a runner names the workflow it is executing in.
+pub const WORKFLOW_VARIABLE: &str = "GITHUB_WORKFLOW_REF";
+
+/// Which TRACKED workflow a runner's [`WORKFLOW_VARIABLE`] names.
+///
+/// A JOIN AND NOT A PARSE, AND ONE OF THEM RATHER THAN TWO. The runner spells it
+/// `owner/repo/.github/workflows/x.yml@refs/heads/main`, and two gates need the
+/// middle: the census gate loads that file, and `tools/cache-budget` compares it
+/// with [`CacheDeclaration::source`] to decide whose restore records could have
+/// been collected in this run at all. Two cuts of one string are two answers
+/// free to disagree, which is the shape this crate exists to remove — so the cut
+/// lives here, and it is checked against the files this repository actually
+/// tracks rather than trusted.
+///
+/// The check is the part that matters. A path nothing tracks compares unequal to
+/// every declaration's source, so a gate that merely cut the string would report
+/// every job in the repository as belonging to some other workflow — a verdict
+/// wearing the shape of a reading, with nothing behind it.
+pub fn workflow_of_reference(
+    reference: Option<&str>,
+    tracked: &[String],
+) -> Result<String, String> {
+    let Some(reference) = reference.map(str::trim).filter(|it| !it.is_empty()) else {
+        return Err(format!(
+            "no {WORKFLOW_VARIABLE} in the environment, so which workflow this is \
+             a run of is unknown — and every gate that asks is one that must not \
+             guess"
+        ));
+    };
+    // The two leading segments are the repository's and the tail from `@` is the
+    // ref; a workflow path holds neither.
+    let path = reference
+        .splitn(3, '/')
+        .nth(2)
+        .map(|rest| rest.split('@').next().unwrap_or(rest))
+        .unwrap_or_default();
+    if !tracked.iter().any(|file| file == path) {
+        return Err(format!(
+            "{WORKFLOW_VARIABLE} is {reference:?}, whose workflow reads as \
+             {path:?} — not one of the {} this repository tracks ({})",
+            tracked.len(),
+            tracked.join(", ")
+        ));
+    }
+    Ok(path.to_string())
+}
+
+/// Does this workflow collect anything a later reader could download?
+///
+/// THE PREDICATE ITSELF, WITH ONE HOME. Two gates ask it — `tools/twice-compiled`
+/// to decide which jobs owe a restore record, `tools/cache-budget` to decide
+/// whose silence about a restore is the job's and whose is the gate's — and a
+/// second spelling of it is a second answer free to drift from the first. It is
+/// deliberately the loosest reading that is still true: a workflow uploading
+/// ANYTHING can carry a record out, and matching an upload's `path:` against
+/// where a record is written would need `${{ github.workspace }}` resolved,
+/// which only GitHub can do.
+pub fn collects_artifacts(uploads: &[ArtifactUpload]) -> bool {
+    !uploads.is_empty()
+}
+
+/// Every tracked workflow that collects an artifact at all, by path.
+///
+/// The population a reader needs in order to say WHERE a record could have come
+/// from. Read from the files for the reason everything else here is: a list of
+/// collecting workflows kept beside a law is the shape R777, R783, R1080 and
+/// R1082 each closed one level at a time.
+pub fn workflows_collecting_artifacts(root: &Path) -> std::collections::BTreeSet<String> {
+    let mut out = std::collections::BTreeSet::new();
+    for path in workflow_files(root) {
+        let doc = load_workflow(root, &path);
+        if collects_artifacts(&artifact_uploads(&doc, &path)) {
+            out.insert(path);
+        }
+    }
+    out
+}
+
 /// Every `actions/upload-artifact` step in every job of one workflow.
 pub fn artifact_uploads(doc: &Yaml, source: &str) -> Vec<ArtifactUpload> {
     let mut out = Vec::new();

@@ -4,7 +4,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use cache_budget::{range_start, Held, Owner, RangeStart, Refusal, Report, Run};
+use cache_budget::{range_start, Held, Owner, RangeStart, Refusal, Report, Run, Unheard};
 use ci_plan::CacheDeclaration;
 
 /// `conclude` over a run where NOTHING measured what it started from.
@@ -14,7 +14,32 @@ use ci_plan::CacheDeclaration;
 /// that need the other instrument — what a job's DISK received — are at the
 /// bottom of the file and call the real function with a population.
 fn conclude(limit: u64, declared: &[CacheDeclaration], held: &[Held], run: Option<&Run>) -> Report {
-    cache_budget::conclude(limit, declared, held, run, &BTreeMap::new())
+    judging(limit, declared, held, run, &BTreeMap::new())
+}
+
+/// The same, with what each job's disk said — and with the fixture's horizon.
+///
+/// EVERY FIXTURE HERE IS WRITTEN IN ONE WORKFLOW AND THAT WORKFLOW COLLECTS, so
+/// an owner that left no record in these tests is a job that was silent rather
+/// than one this gate could never hear. The laws about the other cases build
+/// their own populations, because that is the whole of what they are about.
+fn judging(
+    limit: u64,
+    declared: &[CacheDeclaration],
+    held: &[Held],
+    run: Option<&Run>,
+    started: &BTreeMap<String, restored::Warmth>,
+) -> Report {
+    cache_budget::conclude(limit, declared, held, run, started, &collecting())
+}
+
+/// The workflow every fixture below is declared in.
+const WORKFLOW: &str = ".github/workflows/w.yml";
+
+/// The workflows that upload an artifact at all — this gate's horizon, as
+/// `ci-plan` reads it off the files.
+fn collecting() -> BTreeSet<String> {
+    [WORKFLOW.to_string()].into_iter().collect()
 }
 
 /// A run that started after every cache in these populations was created, so
@@ -22,6 +47,7 @@ fn conclude(limit: u64, declared: &[CacheDeclaration], held: &[Held], run: Optio
 /// they are about arithmetic, not about which run built what.
 fn run_after(created: &str, invalidated: &[&str]) -> Run {
     Run {
+        workflow: WORKFLOW.to_string(),
         started_at: created.to_string(),
         inputs_changed: invalidated.iter().map(|key| key.to_string()).collect(),
         range: PUSH_RANGE,
@@ -41,7 +67,7 @@ const REGISTRY: &[&str] = &["~/.cargo/registry"];
 
 fn declaration(owner: &str, prefix: &str, paths: &[&str]) -> CacheDeclaration {
     CacheDeclaration {
-        source: ".github/workflows/w.yml".to_string(),
+        source: WORKFLOW.to_string(),
         owner: owner.to_string(),
         // WHERE IN ITS JOB THE CACHE STEP SITS is what lets a reader put a
         // measurement on one side of it or the other. This gate asks nothing
@@ -312,6 +338,7 @@ fn the_two_endpoints_spell_a_timestamp_differently_and_are_still_compared_correc
     // law would quietly never fire.
     let declared = [declaration("unrun", "Linux-cargo-unrun-", TARGET)];
     let run = Run {
+        workflow: WORKFLOW.to_string(),
         started_at: "2026-08-09T02:00:00Z".to_string(),
         inputs_changed: BTreeSet::new(),
         range: PUSH_RANGE,
@@ -353,6 +380,7 @@ fn the_two_endpoints_spell_a_timestamp_differently_and_are_still_compared_correc
     // four hundred milliseconds. A job does not finish and save a cache inside its
     // run's opening second, so the tie is what the law means.
     let fractional_start = Run {
+        workflow: WORKFLOW.to_string(),
         started_at: "2026-08-09T02:00:00.100000000Z".to_string(),
         inputs_changed: BTreeSet::new(),
         range: PUSH_RANGE,
@@ -736,23 +764,30 @@ const BEFORE_THE_RUN: &str = "2026-08-08T10:00:00.000000000Z";
 const RUN_STARTED: &str = "2026-08-08T12:00:00Z";
 const DURING_THE_RUN: &str = "2026-08-08T12:30:00.000000000Z";
 
+/// The run these fixtures are judged inside — of the workflow they declare their
+/// caches in, so an owner that says nothing here is a job that was silent.
+fn the_run(invalidated: &[&str]) -> Run {
+    Run {
+        workflow: WORKFLOW.to_string(),
+        started_at: RUN_STARTED.to_string(),
+        inputs_changed: invalidated.iter().map(|key| key.to_string()).collect(),
+        range: PUSH_RANGE,
+    }
+}
+
 /// THE SENTENCE THAT WAS FALSE. A missed key with a warm owner is not a cold
 /// build, and this refusal used to say it was.
 #[test]
 fn a_missed_key_whose_owner_was_warm_stops_claiming_it_paid_for_a_cold_build() {
     let (declared, held) = one_key(DURING_THE_RUN);
-    let run = Run {
-        started_at: RUN_STARTED.to_string(),
-        inputs_changed: BTreeSet::new(),
-        range: PUSH_RANGE,
-    };
+    let run = the_run(&[]);
     let warm = started(&[(
         "unrun",
         restored::Warmth::PrefixHit {
             bytes: 7_466_000_000,
         },
     )]);
-    let report = cache_budget::conclude(LIMIT, &declared, &held, Some(&run), &warm);
+    let report = judging(LIMIT, &declared, &held, Some(&run), &warm);
     let refusals = report.refusals();
     match refusals.as_slice() {
         [Refusal::Recreated { started, .. }] => {
@@ -788,12 +823,8 @@ fn a_missed_key_whose_owner_was_warm_stops_claiming_it_paid_for_a_cold_build() {
 #[test]
 fn a_missed_key_with_no_record_says_what_it_did_not_measure() {
     let (declared, held) = one_key(DURING_THE_RUN);
-    let run = Run {
-        started_at: RUN_STARTED.to_string(),
-        inputs_changed: BTreeSet::new(),
-        range: PUSH_RANGE,
-    };
-    let report = cache_budget::conclude(LIMIT, &declared, &held, Some(&run), &BTreeMap::new());
+    let run = the_run(&[]);
+    let report = judging(LIMIT, &declared, &held, Some(&run), &BTreeMap::new());
     let said = report.refusals()[0].to_string();
     assert!(said.contains("NOT MEASURED"), "{said}");
     assert!(!said.contains("cold build"), "{said}");
@@ -804,13 +835,9 @@ fn a_missed_key_with_no_record_says_what_it_did_not_measure() {
 #[test]
 fn a_job_that_restored_nothing_with_a_generation_held_is_refused() {
     let (declared, held) = one_key(BEFORE_THE_RUN);
-    let run = Run {
-        started_at: RUN_STARTED.to_string(),
-        inputs_changed: BTreeSet::new(),
-        range: PUSH_RANGE,
-    };
+    let run = the_run(&[]);
     let cold = started(&[("unrun", restored::Warmth::Nothing)]);
-    let report = cache_budget::conclude(LIMIT, &declared, &held, Some(&run), &cold);
+    let report = judging(LIMIT, &declared, &held, Some(&run), &cold);
     match report.refusals().as_slice() {
         [Refusal::RestoredNothingWithAGenerationHeld {
             job,
@@ -830,14 +857,10 @@ fn a_job_that_restored_nothing_with_a_generation_held_is_refused() {
 #[test]
 fn a_job_that_restored_nothing_with_nothing_to_restore_is_not_refused_for_it() {
     let (declared, held) = one_key(DURING_THE_RUN);
-    let run = Run {
-        started_at: RUN_STARTED.to_string(),
-        // Excused as a key, so the only verdict left available is the new one.
-        inputs_changed: ["Linux-cargo-unrun-".to_string()].into_iter().collect(),
-        range: PUSH_RANGE,
-    };
+    // Excused as a key, so the only verdict left available is the new one.
+    let run = the_run(&["Linux-cargo-unrun-"]);
     let cold = started(&[("unrun", restored::Warmth::Nothing)]);
-    let report = cache_budget::conclude(LIMIT, &declared, &held, Some(&run), &cold);
+    let report = judging(LIMIT, &declared, &held, Some(&run), &cold);
     assert_eq!(
         report.refusals(),
         Vec::new(),
@@ -852,16 +875,12 @@ fn a_job_that_restored_nothing_with_nothing_to_restore_is_not_refused_for_it() {
 #[test]
 fn a_job_that_was_warm_is_not_refused_for_starting_from_nothing() {
     let (declared, held) = one_key(BEFORE_THE_RUN);
-    let run = Run {
-        started_at: RUN_STARTED.to_string(),
-        inputs_changed: BTreeSet::new(),
-        range: PUSH_RANGE,
-    };
+    let run = the_run(&[]);
     for warmth in [
         restored::Warmth::ExactHit { bytes: 1 },
         restored::Warmth::PrefixHit { bytes: 1 },
     ] {
-        let report = cache_budget::conclude(
+        let report = judging(
             LIMIT,
             &declared,
             &held,
@@ -881,12 +900,8 @@ fn the_generation_that_counts_is_the_one_that_predates_the_run() {
         held_on("Linux-cargo-unrun-new", 3.0, DURING_THE_RUN),
         held_on("Linux-cargo-unrun-old", 2.0, BEFORE_THE_RUN),
     ];
-    let run = Run {
-        started_at: RUN_STARTED.to_string(),
-        inputs_changed: ["Linux-cargo-unrun-".to_string()].into_iter().collect(),
-        range: PUSH_RANGE,
-    };
-    let report = cache_budget::conclude(
+    let run = the_run(&["Linux-cargo-unrun-"]);
+    let report = judging(
         LIMIT,
         &declared,
         &held,
@@ -976,7 +991,7 @@ fn report_with_both_instruments() -> Report {
             bytes: 27_258_000_000,
         },
     );
-    cache_budget::conclude(LIMIT, &declared, &caches, None, &started)
+    judging(LIMIT, &declared, &caches, None, &started)
 }
 
 #[test]
@@ -1009,16 +1024,10 @@ fn a_report_with_no_record_to_compare_against_does_not_explain_a_comparison() {
     // a comparison nobody can make is what teaches a reader to skip lines.
     let declared = [declaration("unrun-tests", "Linux-cargo-unrun-", TARGET)];
     let caches = [held("Linux-cargo-unrun-abc", 7.83)];
-    let printed = cache_budget::render(&cache_budget::conclude(
-        LIMIT,
-        &declared,
-        &caches,
-        None,
-        &BTreeMap::new(),
-    ));
+    let printed = cache_budget::render(&judging(LIMIT, &declared, &caches, None, &BTreeMap::new()));
     assert!(printed.contains("7.83 GB held"), "{printed}");
     assert!(
-        printed.contains("did not say what it started from"),
+        printed.contains(&Unheard::NoRun.to_string()),
         "the absence is still said out loud\n{printed}"
     );
     assert!(
@@ -1042,7 +1051,7 @@ fn the_report_counts_the_steps_and_the_held_caches_it_was_reckoned_against() {
         held("Linux-cargo-abc", 4.0),
         held_on("Linux-cargo-old", 4.0, "2026-08-01T00:00:00.000000000Z"),
     ];
-    let report = cache_budget::conclude(LIMIT, &declared, &caches, None, &BTreeMap::new());
+    let report = judging(LIMIT, &declared, &caches, None, &BTreeMap::new());
     assert_eq!((report.declared_steps, report.held_caches), (3, 2));
     assert_eq!(report.rows.len(), 2, "three steps under two keys");
     assert!(
@@ -1052,3 +1061,167 @@ fn the_report_counts_the_steps_and_the_held_caches_it_was_reckoned_against() {
         cache_budget::render(&report)
     );
 }
+
+// --- whose silence it is -----------------------------------------------------
+//
+// R1107. A record is an artifact and an artifact belongs to A RUN, so a cache
+// declared in another workflow has an owner this gate cannot ever be handed a
+// record for. It printed that as `did not say what it started from` — the
+// sentence for a job that could have been heard and was not — and a reader
+// acting on it would go and wire a measurement into a workflow that uploads
+// nothing, which is precisely the repair R1106 established must NOT be made.
+//
+// The populations below are the ones a report is built from, so each law is a
+// verdict of `Report::unheard` AND the line `render` prints for it: the enum is
+// the decision and the sentence is what anybody actually reads.
+
+/// A second workflow, whose caches this repository's other gates also read.
+const OTHER_WORKFLOW: &str = ".github/workflows/other.yml";
+
+/// One key declared in `where_`, held, with nothing measured about its owner.
+fn silent_owner(where_: &str) -> (Vec<CacheDeclaration>, Vec<Held>) {
+    let mut only = declaration("replay", "Linux-cargo-replay-", REGISTRY);
+    only.source = where_.to_string();
+    (vec![only], vec![held("Linux-cargo-replay-abc", 0.15)])
+}
+
+#[test]
+fn a_job_that_could_have_been_heard_and_was_not_is_the_one_that_said_nothing() {
+    // THE CONTROL FOR ALL THREE BELOW. Without it every law here would pass for a
+    // gate that had simply stopped accusing anybody, and the accusation is right
+    // exactly once: a job inside this run's own workflow, which collects, and
+    // which left no record anyway. That is a gap in the repository.
+    let (declared, held) = silent_owner(WORKFLOW);
+    let run = the_run(&[]);
+    let report = judging(LIMIT, &declared, &held, Some(&run), &BTreeMap::new());
+    let owner = &report.rows[0].owners[0];
+    assert_eq!(report.unheard(owner), Unheard::ItsOwnSilence);
+    assert!(
+        cache_budget::render(&report).contains("`replay` did not say what it started from"),
+        "{}",
+        cache_budget::render(&report)
+    );
+}
+
+#[test]
+fn a_job_whose_workflow_collects_nothing_is_not_one_that_said_nothing() {
+    // THE STATE THIS REPOSITORY IS ACTUALLY IN, and the sentence that was wrong
+    // for two rounds. `evidence-replay.yml` declares a cache and uploads no
+    // artifact, so whatever its job writes is destroyed with its runner — not
+    // withheld, unreadable, and unreadable from ANYWHERE rather than merely from
+    // inside a `mnemosyne-validate` run.
+    let (declared, held) = silent_owner(OTHER_WORKFLOW);
+    let run = the_run(&[]);
+    let report = cache_budget::conclude(
+        LIMIT,
+        &declared,
+        &held,
+        Some(&run),
+        &BTreeMap::new(),
+        // The other workflow is not in it: nothing there uploads.
+        &collecting(),
+    );
+    let owner = &report.rows[0].owners[0];
+    assert_eq!(
+        report.unheard(owner),
+        Unheard::NothingCollectsIt {
+            workflow: OTHER_WORKFLOW.to_string()
+        }
+    );
+    let printed = cache_budget::render(&report);
+    assert!(
+        !printed.contains("did not say what it started from"),
+        "and the job is not named as deficient for this gate's horizon\n{printed}"
+    );
+    assert!(
+        printed.contains(OTHER_WORKFLOW) && printed.contains("destroyed with its runner"),
+        "the reason names the file it was read off\n{printed}"
+    );
+}
+
+#[test]
+fn a_job_in_another_workflow_that_does_collect_is_out_of_this_runs_reach() {
+    // THE OTHER HALF, and the reason the two are separate verdicts: this one says
+    // a cross-run reader COULD be built, and the one above says it could not.
+    // Collapsing them would either invite the repair R1106 refused or forbid one
+    // that is merely absent.
+    let (declared, held) = silent_owner(OTHER_WORKFLOW);
+    let run = the_run(&[]);
+    let both: BTreeSet<String> = [WORKFLOW.to_string(), OTHER_WORKFLOW.to_string()]
+        .into_iter()
+        .collect();
+    let report =
+        cache_budget::conclude(LIMIT, &declared, &held, Some(&run), &BTreeMap::new(), &both);
+    let owner = &report.rows[0].owners[0];
+    assert_eq!(
+        report.unheard(owner),
+        Unheard::AnotherWorkflow {
+            workflow: OTHER_WORKFLOW.to_string()
+        }
+    );
+    let printed = cache_budget::render(&report);
+    assert!(
+        !printed.contains("did not say what it started from"),
+        "{printed}"
+    );
+    assert!(
+        printed.contains(&format!("run of {WORKFLOW} started")),
+        "and the report names what `here` is, once, where the run is described\n{printed}"
+    );
+}
+
+#[test]
+fn the_reason_that_holds_everywhere_is_the_one_printed() {
+    // ORDER IS A DECISION. An owner in another workflow that also collects
+    // nothing is both, and the two sentences are not equally useful: one says
+    // "build a cross-run reader and you will hear it", the other says "there is
+    // nothing to hear, ever". The far-reaching one wins, because acting on the
+    // weaker one is the wasted repair.
+    let (declared, held) = silent_owner(OTHER_WORKFLOW);
+    let run = the_run(&[]);
+    let report = cache_budget::conclude(
+        LIMIT,
+        &declared,
+        &held,
+        Some(&run),
+        &BTreeMap::new(),
+        &collecting(),
+    );
+    let owner = &report.rows[0].owners[0];
+    assert!(
+        matches!(report.unheard(owner), Unheard::NothingCollectsIt { .. }),
+        "both are true of it; the one that holds for every reader is said: {:?}",
+        report.unheard(owner)
+    );
+}
+
+#[test]
+fn a_record_in_hand_contradicts_a_reading_that_says_nothing_collects_it() {
+    // THE ONE ANCHOR OUTSIDE THE READING IT CHECKS. Every sentence above rests on
+    // which workflows collect, and a reader that answered "none" would explain
+    // all eight owners' silence with a reason nobody wrote — a report entirely
+    // self-consistent and entirely wrong, which is the class of defect this whole
+    // repair is about. A record actually in hand cannot be argued with.
+    let (declared, held) = silent_owner(OTHER_WORKFLOW);
+    let heard = started(&[("replay", restored::Warmth::PrefixHit { bytes: 246_000_000 })]);
+    let report = cache_budget::conclude(LIMIT, &declared, &held, None, &heard, &collecting());
+    match report.refusals().as_slice() {
+        [Refusal::Unreached(why)] => {
+            assert!(why.contains("replay"), "{why}");
+            assert!(why.contains("uploads no artifact at all"), "{why}");
+        }
+        other => panic!("a record was read for an owner this gate reckons unhearable: {other:?}"),
+    }
+    // And the control: the same record where the reading agrees with it.
+    let (mut declared, held) = silent_owner(OTHER_WORKFLOW);
+    declared[0].source = WORKFLOW.to_string();
+    assert_eq!(
+        judging(LIMIT, &declared, &held, None, &heard).refusals(),
+        Vec::new()
+    );
+}
+
+// WHICH WORKFLOW THIS RUN IS OF is `ci-plan`'s reading and so are its laws —
+// `tools/ci-plan/tests/reading.rs`. The census gate cut the same
+// `owner/repo/<path>@<ref>` for itself until R1107, and two cuts of one string
+// are two answers free to disagree about which file a gate is judging.

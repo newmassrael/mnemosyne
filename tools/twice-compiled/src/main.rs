@@ -69,7 +69,7 @@ fn judge_a_run(entrance: Entrance) -> ! {
         root.display()
     );
 
-    let workflow = workflow_path(&entrance);
+    let workflow = workflow_path(&root, &entrance);
     let document = ci_plan::load_workflow(&root, &workflow);
     let steps = ci_plan::run_steps(&document);
     // BOTH POPULATIONS, FROM ONE FILE AND ONE READER. The jobs that compile are
@@ -123,10 +123,15 @@ fn judge_a_run(entrance: Entrance) -> ! {
 
 /// `--workflow <path>`, or the one the runner says this job belongs to.
 ///
-/// `GITHUB_WORKFLOW_REF` is `owner/repo/.github/workflows/x.yml@refs/heads/main`
-/// — the runner's own answer to which file it is executing, so a workflow
-/// renamed tomorrow does not leave a gate pointed at a path that is gone.
-fn workflow_path(entrance: &Entrance) -> String {
+/// THE READING IS `ci-plan`'S, and R1107 is why it is not this function's any
+/// more. `tools/cache-budget` came to need the same answer — which workflow this
+/// run is of decides whose restore records could have been collected in it —
+/// and a second cut of `owner/repo/<path>@<ref>` is a second answer free to
+/// disagree with this one, which is the shape that crate exists to remove. It
+/// also gained the check this had never made: the name is held against the files
+/// this repository tracks, so a reference nothing recognises stops the gate
+/// instead of pointing it at a path that is gone.
+fn workflow_path(root: &Path, entrance: &Entrance) -> String {
     let named = match entrance {
         Entrance::Logs { workflow, .. } | Entrance::Replay { workflow, .. } => workflow.clone(),
         Entrance::Compare { .. } => unreachable!("a comparison reads no workflow"),
@@ -134,17 +139,13 @@ fn workflow_path(entrance: &Entrance) -> String {
     if let Some(path) = named {
         return path;
     }
-    let reference = std::env::var("GITHUB_WORKFLOW_REF").unwrap_or_else(|_| {
-        panic!(
-            "no --workflow and no $GITHUB_WORKFLOW_REF — this gate judges the \
-             jobs of ONE workflow and will not guess which"
-        )
-    });
-    let path = reference.split('@').next().unwrap_or(&reference);
-    let at = path
-        .find(".github/")
-        .unwrap_or_else(|| panic!("$GITHUB_WORKFLOW_REF={reference} holds no workflow path"));
-    path[at..].to_string()
+    ci_plan::workflow_of_reference(
+        std::env::var(ci_plan::WORKFLOW_VARIABLE).ok().as_deref(),
+        &ci_plan::workflow_files(root),
+    )
+    .unwrap_or_else(|why| {
+        panic!("no --workflow, and {why} — this gate judges the jobs of ONE workflow")
+    })
 }
 
 /// Seconds, from the microseconds every number here is measured in.

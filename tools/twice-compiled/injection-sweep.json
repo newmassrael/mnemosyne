@@ -299,12 +299,12 @@
     },
     {
       "name": "the-workflow-reference-is-read-whole",
-      "why": "`$GITHUB_WORKFLOW_REF` is `owner/repo/.github/workflows/x.yml@refs/heads/main`, and the census is of ONE workflow read out of the middle of it. Taking the reference whole points the gate at a path that does not exist in the checkout, which is how a gate ends up judging a file nobody has",
+      "why": "`$GITHUB_WORKFLOW_REF` is `owner/repo/.github/workflows/x.yml@refs/heads/main`, and the census is of ONE workflow read out of the middle of it. Taking the reference whole points the gate at a path that does not exist in the checkout, which is how a gate ends up judging a file nobody has. R1107 moved the reading itself to `ci-plan` (two gates need it, and two cuts of one string are two answers) — so what is broken here is this gate's USE of it",
       "edits": [
         {
           "file": "tools/twice-compiled/src/main.rs",
-          "from": "    path[at..].to_string()",
-          "to": "    path.to_string()"
+          "from": "    ci_plan::workflow_of_reference(\n        std::env::var(ci_plan::WORKFLOW_VARIABLE).ok().as_deref(),\n        &ci_plan::workflow_files(root),\n    )\n    .unwrap_or_else(|why| {\n        panic!(\"no --workflow, and {why} — this gate judges the jobs of ONE workflow\")\n    })",
+          "to": "    std::env::var(ci_plan::WORKFLOW_VARIABLE).unwrap_or_default()"
         }
       ],
       "expect_red": [
@@ -378,8 +378,8 @@
       "edits": [
         {
           "file": "tools/twice-compiled/src/lib.rs",
-          "from": "        let mut cached: BTreeMap<String, Vec<String>> = BTreeMap::new();\n        for cache in caches {",
-          "to": "        let mut cached: BTreeMap<String, Vec<String>> = BTreeMap::new();\n        for job in jobs.keys() {\n            cached.entry(job.clone()).or_default();\n        }\n        for cache in caches {"
+          "from": "        for cache in caches {\n            let paths = cached.entry(cache.owner.clone()).or_default();",
+          "to": "        for job in jobs.keys() {\n            cached.entry(job.clone()).or_default();\n        }\n        for cache in caches {\n            let paths = cached.entry(cache.owner.clone()).or_default();"
         }
       ],
       "expect_red": [

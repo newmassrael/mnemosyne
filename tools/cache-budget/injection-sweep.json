@@ -299,6 +299,102 @@
         }
       ],
       "expect_red": ["the_gates_own_job_collects_the_records_it_now_judges_against"]
+    },
+    {
+      "name": "every-silence-is-a-job-that-withheld-something",
+      "why": "R1107 — the sentence this repair is about. `replay` is an owner whose record is written in another workflow that uploads nothing, and the report named it as a job that `did not say what it started from`: a reader acting on that goes and wires a measurement into a workflow where the file dies with its runner, which is exactly the repair R1106 established must not be made",
+      "edits": [
+        {
+          "file": "tools/cache-budget/src/lib.rs",
+          "from": "                None => out.push_str(&format!(\n                    \"            `{}` {}\\n\",\n                    owner.job,\n                    report.unheard(owner)\n                )),",
+          "to": "                None => out.push_str(&format!(\n                    \"            `{}` did not say what it started from\\n\",\n                    owner.job\n                )),"
+        }
+      ],
+      "expect_red": [
+        "a_job_whose_workflow_collects_nothing_is_not_one_that_said_nothing",
+        "a_job_in_another_workflow_that_does_collect_is_out_of_this_runs_reach",
+        "a_report_with_no_record_to_compare_against_does_not_explain_a_comparison",
+        "every_cache_owner_in_this_repository_falls_on_one_side_of_this_gates_horizon"
+      ]
+    },
+    {
+      "name": "reach-does-not-ask-what-a-workflow-collects",
+      "why": "a record is a file on a runner that is destroyed when the job ends, and only an upload step carries it out — a gate that never asks whether a workflow uploads anything reports the unhearable as the withheld",
+      "edits": [
+        {
+          "file": "tools/cache-budget/src/lib.rs",
+          "from": "        if !self.collecting.contains(&owner.source) {",
+          "to": "        if false {"
+        }
+      ],
+      "expect_red": [
+        "a_job_whose_workflow_collects_nothing_is_not_one_that_said_nothing",
+        "the_reason_that_holds_everywhere_is_the_one_printed",
+        "every_cache_owner_in_this_repository_falls_on_one_side_of_this_gates_horizon"
+      ]
+    },
+    {
+      "name": "reach-does-not-ask-which-run-this-is",
+      "why": "artifacts belong to a run, so a job of another workflow cannot be heard here however carefully it records — a gate that forgets it accuses that job of silence the day the other workflow starts uploading",
+      "edits": [
+        {
+          "file": "tools/cache-budget/src/lib.rs",
+          "from": "            Some(run) if run.workflow != owner.source => Unheard::AnotherWorkflow {\n                workflow: owner.source.clone(),\n            },\n",
+          "to": ""
+        }
+      ],
+      "expect_red": ["a_job_in_another_workflow_that_does_collect_is_out_of_this_runs_reach"]
+    },
+    {
+      "name": "the-nearer-reason-is-printed-first",
+      "why": "an owner in another workflow that also collects nothing is both, and the two sentences send a reader to different places: one says a cross-run reader would hear it, the other says nothing will ever hear it. Printing the weaker one is how the wasted repair gets commissioned",
+      "edits": [
+        {
+          "file": "tools/cache-budget/src/lib.rs",
+          "from": "        if !self.collecting.contains(&owner.source) {\n            return Unheard::NothingCollectsIt {",
+          "to": "        if let Some(run) = &self.run {\n            if run.workflow != owner.source {\n                return Unheard::AnotherWorkflow {\n                    workflow: owner.source.clone(),\n                };\n            }\n        }\n        if !self.collecting.contains(&owner.source) {\n            return Unheard::NothingCollectsIt {"
+        }
+      ],
+      "expect_red": [
+        "the_reason_that_holds_everywhere_is_the_one_printed",
+        "a_job_whose_workflow_collects_nothing_is_not_one_that_said_nothing"
+      ]
+    },
+    {
+      "name": "the-reading-about-who-can-be-heard-is-checked-against-nothing",
+      "why": "every sentence about whose silence is whose rests on which workflows collect, so a reader returning an empty set explains all eight owners with a reason nobody wrote — self-consistent and entirely wrong. A record actually in hand is the one observation that reading cannot argue with",
+      "edits": [
+        {
+          "file": "tools/cache-budget/src/lib.rs",
+          "from": "        let contradicted = self.heard_where_nothing_collects();",
+          "to": "        let contradicted: Vec<Owner> = Vec::new();"
+        }
+      ],
+      "expect_red": ["a_record_in_hand_contradicts_a_reading_that_says_nothing_collects_it"]
+    },
+    {
+      "name": "every-workflow-collects-something",
+      "why": "the exemption swallowing nothing: if every tracked workflow read as collecting, no owner would ever be beyond this gate's reach and the whole distinction would be decoration that never fires",
+      "edits": [
+        {
+          "file": "tools/ci-plan/src/lib.rs",
+          "from": "pub fn collects_artifacts(uploads: &[ArtifactUpload]) -> bool {\n    !uploads.is_empty()\n}",
+          "to": "pub fn collects_artifacts(uploads: &[ArtifactUpload]) -> bool {\n    let _ = uploads;\n    true\n}"
+        }
+      ],
+      "expect_red": ["every_cache_owner_in_this_repository_falls_on_one_side_of_this_gates_horizon"]
+    },
+    {
+      "name": "no-workflow-collects-anything",
+      "why": "the other direction, and the one that looks like an explanation: if nothing read as collecting, every owner would be reported unhearable and the gate would have stopped asking anybody for anything — an exemption that has swallowed its population",
+      "edits": [
+        {
+          "file": "tools/ci-plan/src/lib.rs",
+          "from": "pub fn collects_artifacts(uploads: &[ArtifactUpload]) -> bool {\n    !uploads.is_empty()\n}",
+          "to": "pub fn collects_artifacts(uploads: &[ArtifactUpload]) -> bool {\n    let _ = uploads;\n    false\n}"
+        }
+      ],
+      "expect_red": ["every_cache_owner_in_this_repository_falls_on_one_side_of_this_gates_horizon"]
     }
   ]
 }

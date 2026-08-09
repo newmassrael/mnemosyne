@@ -4,7 +4,9 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
-use cache_budget::{conclude, Held, Refusal, DEFAULT_LIMIT_BYTES};
+use cache_budget::{
+    conclude, render, Held, RangeStart, Refusal, Run, Unheard, DEFAULT_LIMIT_BYTES,
+};
 use ci_plan::CacheDeclaration;
 
 /// The job that runs this gate.
@@ -138,6 +140,7 @@ fn the_tree_this_gate_was_written_to_repair_is_one_it_refuses() {
         &measured_by_r1089(),
         None,
         &BTreeMap::new(),
+        &ci_plan::workflows_collecting_artifacts(&repository_root()),
     );
     let demand = report
         .demand()
@@ -375,6 +378,110 @@ fn the_gates_own_job_collects_the_records_it_now_judges_against() {
     assert!(
         collecting < running,
         "the records are collected before they are read, not after"
+    );
+}
+
+#[test]
+fn every_cache_owner_in_this_repository_falls_on_one_side_of_this_gates_horizon() {
+    // R1107 — THE SWEEP THAT MAKES THE DISTINCTION LOAD-BEARING. This gate joins
+    // storage against records, and a record is an artifact of the run that wrote
+    // it: the download step in this job collects THIS run's artifacts, whose jobs
+    // are this workflow's jobs. `evidence-replay.yml` also declares a cache, so
+    // its owner is in this report and its record can never be handed here — and
+    // for two rounds the report printed that as `did not say what it started
+    // from`, which reads as a job failing to do something it never could.
+    //
+    // Both populations are asserted alive against the real files. If nothing were
+    // beyond the horizon the distinction would be decoration; if nothing were
+    // within it the gate would have stopped asking anybody anything, which is the
+    // shape an exemption takes when it has swallowed its population.
+    let root = repository_root();
+    let declared = ci_plan::workflow_cache_declarations(&root);
+    let report = conclude(
+        DEFAULT_LIMIT_BYTES,
+        &declared,
+        // No cache list and no records: this law is about who COULD be heard,
+        // which is a property of the files and not of what storage holds today.
+        &[],
+        Some(&Run {
+            workflow: WORKFLOW.to_string(),
+            started_at: "2026-08-09T00:00:00Z".to_string(),
+            inputs_changed: BTreeSet::new(),
+            range: RangeStart::ParentOfHead("a fixture, judged over no push"),
+        }),
+        &BTreeMap::new(),
+        &ci_plan::workflows_collecting_artifacts(&root),
+    );
+
+    // THE TWO POPULATIONS, SPLIT BY THE FILES AND NOT BY THE FUNCTION UNDER TEST.
+    // Which owners exist at all and where they are written is `ci-plan`'s
+    // reading; what `unheard` is asked below is whether it puts each of them on
+    // the side the files put it on. Deriving the expectation from `unheard`
+    // itself would be a test that agrees with anything.
+    let collecting = ci_plan::workflows_collecting_artifacts(&root);
+    let owners: Vec<_> = report.rows.iter().flat_map(|row| &row.owners).collect();
+    let unhearable: Vec<_> = owners
+        .iter()
+        .filter(|owner| !collecting.contains(&owner.source))
+        .collect();
+    let within: Vec<_> = owners
+        .iter()
+        .filter(|owner| collecting.contains(&owner.source) && owner.source == WORKFLOW)
+        .collect();
+    assert!(
+        !unhearable.is_empty(),
+        "this repository declares a cache in a workflow that uploads nothing, and \
+         that owner is the whole reason this law exists — with none of them the \
+         far-reaching reason never fires: {owners:?}"
+    );
+    assert!(
+        within.len() >= 6,
+        "and the jobs of this gate's own workflow are the ones whose silence IS \
+         theirs — a gate that has stopped asking anybody is what an exemption \
+         looks like once it has swallowed its population: {within:?}"
+    );
+
+    let printed = render(&report);
+    for owner in &unhearable {
+        assert_eq!(
+            report.unheard(owner),
+            Unheard::NothingCollectsIt {
+                workflow: owner.source.clone()
+            },
+            "nothing carries `{}`'s record off its runner, which holds for every \
+             reader there will ever be and not merely for this run",
+            owner.job
+        );
+        assert!(
+            !printed.contains(&format!("`{}` {}", owner.job, Unheard::ItsOwnSilence)),
+            "and it is not named as a job that withheld something\n{printed}"
+        );
+    }
+    // THE CONTROL: the accusation still exists. A gate that had merely stopped
+    // making it would pass every assertion above.
+    for owner in &within {
+        assert_eq!(report.unheard(owner), Unheard::ItsOwnSilence);
+        assert!(
+            printed.contains(&format!("`{}` {}", owner.job, Unheard::ItsOwnSilence)),
+            "`{}` left no record and could have, which is still a gap\n{printed}",
+            owner.job
+        );
+    }
+
+    // AND THE ARM THIS REPOSITORY CANNOT WALK TODAY, asserted as the zero it is.
+    // `AnotherWorkflow` needs a second workflow that both declares a cache and
+    // uploads an artifact, and there is none — so the arm is exercised in
+    // `law.rs` over a built population and nowhere here. Saying the count out
+    // loud is the difference between "no case reached it" and "it was never
+    // looked for": the day `evidence-replay.yml` starts collecting, this goes red
+    // and the reason for its owner legitimately becomes the nearer one.
+    assert_eq!(
+        owners
+            .iter()
+            .filter(|owner| matches!(report.unheard(owner), Unheard::AnotherWorkflow { .. }))
+            .count(),
+        0,
+        "no tracked workflow other than {WORKFLOW} both caches and collects"
     );
 }
 
