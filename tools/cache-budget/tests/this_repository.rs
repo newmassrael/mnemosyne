@@ -179,11 +179,26 @@ fn this_repository_now_asks_for_strictly_less_than_that() {
         "fewer keys hold a whole build tree than did before — no policy number, \
          just the comparison: {holders:?}"
     );
+    // R1099 — AND NOW IT IS NONE OF THEM, WHICH THIS TEST USED TO FORBID. The
+    // assertion that stood here required at least one key to keep a build tree,
+    // and its reason was a sentence rather than a number: that this repository's
+    // slowest jobs are the ones a cold `target` costs half an hour each. The last
+    // such key was `unrun-`, and two runs priced what it bought. Run 31294232766
+    // built every key from nothing and `unrun-tests` compiled 773 units; run
+    // 31295304780 restored 7466 MB on an exact hit and `unrun-tests` compiled 773
+    // units — the same 773, the same 670 distinct, the same 103 repeats, for 7.83
+    // GB of a 10 GB budget and 135 seconds of restore. Nothing was saved.
+    //
+    // So the law is inverted rather than relaxed: a whole build tree in a cache
+    // is REFUSED, and the way to add one back is to bring a measurement showing
+    // it skips compilations — which is a thing `tools/twice-compiled` now prints
+    // for every run, so the evidence is a push away rather than an argument.
     assert!(
-        !holders.is_empty(),
-        "and not zero either: this repository's two slowest jobs are the ones a \
-         cold `target` costs half an hour each, so a tree caching NONE of it is \
-         not the repair, it is the other failure"
+        holders.is_empty(),
+        "no key may keep a whole build tree: the last one that did was measured \
+         over two runs and skipped ZERO compilations while holding 91% of the \
+         budget. Adding one back takes a census showing otherwise, not a comment \
+         about how slow a cold build is: {holders:?}"
     );
 }
 
