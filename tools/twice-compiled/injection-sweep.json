@@ -237,6 +237,25 @@
       ]
     },
     {
+      "name": "every-job-resolves-head-for-itself",
+      "why": "`HEAD` is a name for whatever the repository is on and a replay takes hours, so reading it per job is how a census comes to be of two source trees at once — which happened here: four jobs from one commit and the fifth from another that landed mid-run, with nothing in the report saying so. The numbers survived only because that commit touched no manifest",
+      "edits": [
+        {
+          "file": "tools/twice-compiled/src/main.rs",
+          "from": "    let revision = resolve_head(root);\n    println!(\"[replay] every job from {revision}, resolved once\");\n    let wrapper = build_wrapper(root);",
+          "to": "    let wrapper = build_wrapper(root);"
+        },
+        {
+          "file": "tools/twice-compiled/src/main.rs",
+          "from": "        let tree = scratch.join(\"trees\").join(job);\n        make_worktree(root, &tree, &revision);",
+          "to": "        let tree = scratch.join(\"trees\").join(job);\n        let revision = resolve_head(root);\n        println!(\"[replay] every job from {revision}, resolved once\");\n        make_worktree(root, &tree, &revision);"
+        }
+      ],
+      "expect_red": [
+        "a_replay_takes_every_job_from_one_revision_and_says_which"
+      ]
+    },
+    {
       "name": "the-replay-installs-what-this-machine-already-has",
       "why": "a replay runs a job's steps verbatim EXCEPT two named prefixes, and `rustup` is one of them: a hosted runner installs a toolchain this machine already has, and running that step would change the compiler under the very measurement being taken — the units would then be shared with nothing and the census would report a repository with no duplication in it",
       "edits": [

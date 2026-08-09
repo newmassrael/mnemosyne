@@ -35,7 +35,7 @@ use tempfile::TempDir;
 use twice_compiled::{declared_jobs, judge, load, Census, Refusal};
 
 /// The fixture workflow, written into the fixture repository as a TRACKED file,
-/// because a replay checks each job out of `HEAD`.
+/// because a replay checks each job out of a commit rather than out of the tree.
 const WORKFLOW: &str = ".github/workflows/fixture.yml";
 
 /// A GitHub expression this machine genuinely cannot resolve, in the variable the
@@ -583,6 +583,41 @@ fn a_replay_skips_what_it_cannot_install_and_carries_on_past_what_fails() {
     assert!(
         census.shared_between_jobs() > 0,
         "the failing job still contributes what it shares with the other\n{}",
+        run.transcript()
+    );
+}
+
+#[test]
+fn a_replay_takes_every_job_from_one_revision_and_says_which() {
+    // A CI RUN MEASURES ONE COMMIT AND A REPLAY TAKES HOURS, so `HEAD` — a name
+    // for whatever the repository is on — is not a revision. A commit landing
+    // while a replay works moves it, and the census then covers two source trees
+    // with nothing in the report saying so. That happened: a replay of this
+    // workflow took four jobs from one commit and its fifth from another that
+    // arrived mid-run, and the only reason the numbers survived is that the
+    // commit touched no manifest.
+    let run = replay(&[Job::plain("one-job"), Job::plain("the-other-job")]);
+    assert!(run.output.status.success(), "{}", run.transcript());
+    let head = String::from_utf8_lossy(
+        &Command::new("git")
+            .args(["rev-parse", "HEAD"])
+            .current_dir(run.root.path())
+            .output()
+            .expect("git resolves the fixture's HEAD")
+            .stdout,
+    )
+    .trim()
+    .to_string();
+    // ONCE, AND WITH THE HASH IN IT. Once is the law — a line per job would mean
+    // the revision is re-read per job, which is the defect itself — and the hash
+    // is what makes the census comparable to any other measurement of this
+    // repository. A gate that cannot name what it measured is one nobody can put
+    // beside anything else.
+    let said = format!("[replay] every job from {head}, resolved once");
+    assert_eq!(
+        run.stdout().matches(&said).count(),
+        1,
+        "the replay must resolve `{head}` once and say so once\n{}",
         run.transcript()
     );
 }

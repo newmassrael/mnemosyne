@@ -287,12 +287,24 @@ const NOT_OURS: [(&str, &str); 2] = [
 /// root one, and one per tool workspace a gate shells into. Redirecting them all
 /// into one would make cargo share units between them that a runner compiles
 /// twice, which is the very number being measured.
+///
+/// EVERY WORKTREE FROM ONE REVISION, RESOLVED ONCE AND PRINTED. A CI run measures
+/// a single commit; a replay takes hours, and `HEAD` is a moving name — a commit
+/// landing in the repository while it works silently splits the census across two
+/// source trees. That is not hypothetical: a replay of this workflow took its
+/// first four jobs from one commit and its fifth from another that arrived
+/// mid-run, and nothing in the report said so. The revision is therefore resolved
+/// before the first worktree and passed to all of them, and the report says which
+/// one it was — a census that cannot name what it measured is one nobody can
+/// compare against anything.
 fn replay(
     root: &Path,
     steps: &[RunStep],
     scratch: &Path,
     absent: &mut BTreeSet<String>,
 ) -> PathBuf {
+    let revision = resolve_head(root);
+    println!("[replay] every job from {revision}, resolved once");
     let wrapper = build_wrapper(root);
     let logs = scratch.join("logs");
     std::fs::create_dir_all(&logs).expect("a log directory");
@@ -314,7 +326,7 @@ fn replay(
         }
 
         let tree = scratch.join("trees").join(job);
-        make_worktree(root, &tree);
+        make_worktree(root, &tree, &revision);
         let log = logs.join(format!("{job}.log"));
         let _ = std::fs::remove_file(&log);
 
@@ -375,13 +387,39 @@ fn build_wrapper(root: &Path) -> PathBuf {
     wrapper
 }
 
-fn make_worktree(root: &Path, tree: &Path) {
+/// The commit `HEAD` names right now, as a hash that will not move.
+///
+/// ASKED ONCE AND OF GIT. `HEAD` is a name for whatever the repository is on, and
+/// a replay outlives that: resolving it per job is how a census comes to be of two
+/// trees at once.
+fn resolve_head(root: &Path) -> String {
+    let out = Command::new("git")
+        .args(["rev-parse", "HEAD"])
+        .current_dir(root)
+        .output()
+        .expect("git rev-parse runs");
+    assert!(
+        out.status.success(),
+        "cannot resolve HEAD in {}: {}",
+        root.display(),
+        String::from_utf8_lossy(&out.stderr).trim()
+    );
+    let revision = String::from_utf8_lossy(&out.stdout).trim().to_string();
+    assert!(
+        !revision.is_empty(),
+        "git resolved HEAD to nothing in {}",
+        root.display()
+    );
+    revision
+}
+
+fn make_worktree(root: &Path, tree: &Path, revision: &str) {
     let _ = std::fs::remove_dir_all(tree);
     std::fs::create_dir_all(tree.parent().expect("a parent")).expect("a worktree parent");
     let status = Command::new("git")
         .args(["worktree", "add", "--detach", "--force"])
         .arg(tree)
-        .arg("HEAD")
+        .arg(revision)
         .current_dir(root)
         .status()
         .expect("git worktree add runs");
