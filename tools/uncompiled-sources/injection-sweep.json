@@ -32,7 +32,79 @@
   "min_free_mb": 8000,
   "injections": [
     {
-      "name": "the-artifact-join-is-removed",
+      "name": "the-gate-that-could-not-look-reports-clean",
+  "why": "R1128, AND IT WAS MEASURED SILENT BEFORE IT WAS FIXED — the same question R1127 asked of `tools/unrun-tests` and got the same silence for. This file's doc comment says the three exit codes are the point — `0` the law holds, `1` Rust exists that nothing compiles, `2` the gate could not judge — and that one code for the last two is the failure R1078 shipped. Run against the suite as it stood, this put that defect back and NOTHING went red across twenty-five tests, while the eleven library injections beside it all fired. `tests/entrance.rs` is the reader that was missing",
+  "edits": [
+   {
+    "file": "tools/uncompiled-sources/src/main.rs",
+    "from": "        return ExitCode::from(2);\n    }\n\n    if report.findings.is_empty() {",
+    "to": "        return ExitCode::SUCCESS;\n    }\n\n    if report.findings.is_empty() {"
+   }
+  ],
+  "expect_red": ["a_tree_git_tracks_nothing_of_is_unjudged_rather_than_clean"]
+ },
+ {
+  "name": "a-tree-with-no-manifest-is-judged-anyway",
+  "why": "the other road to `2`, and a reader who saw only the refusal case could conclude the code means `git tracks no Rust`. A hook runs with the repository root as its working directory and may be this gate pointed at another tree entirely; answering `clean` for a directory that is not a cargo tree at all is the loudest version of reporting on nothing",
+  "edits": [
+   {
+    "file": "tools/uncompiled-sources/src/main.rs",
+    "from": "        return ExitCode::from(2);\n    }\n\n    let report = uncompiled_sources::run(&root);",
+    "to": "        return ExitCode::SUCCESS;\n    }\n\n    let report = uncompiled_sources::run(&root);"
+   }
+  ],
+  "expect_red": ["a_directory_that_is_not_a_cargo_tree_is_unjudged_too"]
+ },
+ {
+  "name": "findings-are-reported-and-then-passed",
+  "why": "the findings and the verdict are two answers, and a gate that prints its findings and exits 0 is one no hook can act on — source no compiler reads would go on having no opinion held about it while CI stayed green",
+  "edits": [
+   {
+    "file": "tools/uncompiled-sources/src/main.rs",
+    "from": "    ExitCode::from(1)\n}",
+    "to": "    ExitCode::SUCCESS\n}"
+   }
+  ],
+  "expect_red": ["a_tree_holding_rust_nothing_compiles_exits_one_and_names_the_file"]
+ },
+ {
+  "name": "a-finding-is-counted-but-the-file-is-not-named",
+  "why": "`3 tracked Rust file(s) that no compilation reads` is not actionable: the fix is per file — give it a target, or delete it — and which file it is decides which. A count without the names is a finding a reader has to reproduce by hand before they can do anything about it",
+  "edits": [
+   {
+    "file": "tools/uncompiled-sources/src/main.rs",
+    "from": "    for finding in &report.findings {\n        eprintln!(\"    {finding}\");",
+    "to": "    for finding in report.findings.iter().take(0) {\n        eprintln!(\"    {finding}\");"
+   }
+  ],
+  "expect_red": ["a_tree_holding_rust_nothing_compiles_exits_one_and_names_the_file"]
+ },
+ {
+  "name": "the-tests-a-finding-hides-are-not-listed",
+  "why": "the count of hidden tests is in the headline and the tests themselves are what make the file worth fixing rather than deleting: a test in source no compiler reads is one no gate can see, and a reader deciding between `give it a target` and `delete it` needs to know what is in there",
+  "edits": [
+   {
+    "file": "tools/uncompiled-sources/src/main.rs",
+    "from": "        for test in &finding.tests {\n            eprintln!(\"        {test}\");\n        }",
+    "to": "        for test in finding.tests.iter().take(0) {\n            eprintln!(\"        {test}\");\n        }"
+   }
+  ],
+  "expect_red": ["a_tree_holding_rust_nothing_compiles_exits_one_and_names_the_file"]
+ },
+ {
+  "name": "the-clean-answer-is-an-exit-code-and-nothing-said",
+  "why": "a gate that prints only its findings cannot be told from one that never ran — the sentence on the clean path is what says the reading HAPPENED, and it is the line a person looks for in a green log",
+  "edits": [
+   {
+    "file": "tools/uncompiled-sources/src/main.rs",
+    "from": "            \"[uncompiled-sources] every Rust file this repository tracks is one cargo compiles\"",
+    "to": "            \"[uncompiled-sources] done\""
+   }
+  ],
+  "expect_red": ["a_tree_cargo_compiles_all_of_exits_zero_and_says_which_answer_that_is"]
+ },
+ {
+  "name": "the-artifact-join-is-removed",
       "why": "cargo never garbage-collects dep-info, so sweeping the target directory credits units that no longer exist; the credit is invisible on a cold runner and decisive on a warm machine, which is the worst kind of disagreement",
       "edits": [
         {
