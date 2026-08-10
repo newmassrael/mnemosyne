@@ -7734,6 +7734,104 @@
         "WHETHER TWO ARCHIVES FIT WHERE ONE DID is that run's other answer. Demand was 9.57 GB of 10 on run 31355607697 with `unrun-tests` at 8.90; the split adds a row priced from `validate`'s 0.15 and should shrink the 8.90 by the registry it no longer carries."
       ]
     },
+    "Round 1123": {
+      "decision_summary": "THE GATE REFUSED THE ONLY REPAIR FOR A DEFECT IT HAD ITSELF FOUND, AND THAT IS\nWHY R1122 COULD NOT CLOSE IT. That round measured a real one — `Linux-cargo-`,\nthis repository's oldest key, is a prefix of every other key in the file, so\n`validate` missing its own key falls back onto whatever archive is newest under\nit, and one of those is an 8.90 GB build directory. An archive unpacks AS IT WAS\nSTORED: `path:` says what a cache SAVES and cannot stop a tree landing that\nnothing measured, nothing declared and nothing can price. The repair is to give\n`validate` a key of its own like every other job has. R1122 wrote that repair\ndown as blocked by an outward action — deleting the archive the rename would\nleave behind — and pinned the finding instead.\n\nTHE BLOCK WAS THIS GATE'S OWN LAW, NOT THE WORLD. A held archive that no\ndeclaration matches was a refusal of its own, one per key, on the reasoning that\nsuch a key \"keeps its share of the budget\". The harm named there is the BUDGET,\nand a budget is arithmetic — so the honest place for those bytes is INSIDE it.\nEvery rename in this repository orphans its own archive for the seven days it\ntakes to age out, so the categorical form refused a tree for repairing itself,\nwhich is the shape R1110 wrote down and R1115 paid for again: a gate that refuses\nfor a reason outside its own law is as useless as one that does not fire.\n\nAND THE CATEGORICAL FORM MISSED THE OTHER DIRECTION ENTIRELY. It answered the\nharm twice on one side and never on the other: a 0.15 GB archive left by a\nrename was refused, and a repository whose declarations fit only because an\n8.90 GB orphan was excluded from the sum was not. The bytes are GitHub's and they\nare against the same 10 GB whoever declared them; leaving them out of the\ncomparison was the arithmetic error, and the refusal was standing in for it.\n\nSO THE ORPHANS ARE COUNTED AND STILL PRINTED, KEY BY KEY. Nothing is hidden —\nwhat changed is that the verdict is the sum rather than the presence, and the\nreport's last line now names both quantities and adds them, because the 10 GB\ndoes not care which half is declared.\n\nWITH THAT, THE RENAME LANDS AND THE PINNED FINDING BECOMES A REFUSAL. A cache\nwhose `restore-keys` reach another cache's archives, where that archive holds a\npath the first never declared, is refused by `tools/cache-budget` — over the\ndeclarations alone, so it holds for a repository that has never run. The subset\ntest is what keeps it from refusing the mechanism working: five of this file's\nkeys nested under `Linux-cargo-` and held exactly the two cargo-home trees\n`validate` held, and falling back onto one of their generations got it the paths\nit asked for.\n\nWHAT THE RENAME COSTS, MEASURED AGAINST LIVE STORAGE RATHER THAN ARGUED: demand\n9.60 GB declared plus 0.15 GB declared by nothing = 9.75 GB of 10, and the gate\npasses. The 0.15 is the archive under the old key, and it ages out. `validate`\nruns cold once for its cargo home, which this file measures elsewhere at 6.1 s of\nrestore against 394.7 s of compiling.\n\nTHE ARM THE LIVE FILE CAN NO LONGER WALK IS ASSERTED AS THE ZERO IT IS. After the\nrename NO key in this repository nests under another, so the subset branch — the\none that says a nesting is harmless — has no live example left and is exercised\nonly over a built population. Saying that count out loud is the difference\nbetween \"no case reached it\" and \"nobody looked\", and it is the same discipline\nR1107 wrote for `Unheard::AnotherWorkflow`.\n\nWHAT THIS DOES NOT CLAIM. That an orphan is harmless: it is priced, and a big one\nnow fails the budget where before it failed a category. And that the fallback law\nsees everything: it reads DECLARATIONS, so a key created by hand or by another\nbranch is not in its population — that key shows up on the other instrument, as\nan archive nothing declares, counted.",
+      "changes_bullets": [
+        "`tools/cache-budget` — `Report::held_by_nothing` puts the archives no declaration matches inside the budget comparison, and `Refusal::Orphan` is deleted rather than kept beside it; `Refusal::OverBudget` carries that figure and names it; `render` prints both quantities and their sum.",
+        "`tools/cache-budget` — `Refusal::FallbackReachesAnotherCache` refuses a cache whose `restore-keys` reach another's archives holding a path it never declared, computed from the declarations alone through `ci_plan::fallback_reaches`, so it holds for a repository that has never run.",
+        "`.github/workflows/mnemosyne-validate.yml` — `validate` takes `${{ runner.os }}-cargo-validate-`, a key of its own like every other job, closing the pair R1122 could only pin.",
+        "`tools/cache-budget/tests/this_repository.rs` — the pin becomes a law (`no_declared_cache_reaches_anothers_archive`), and the subset branch's now-empty live population is asserted as the zero it is, pointing at the built fixture that still exercises it."
+      ],
+      "verification_bullets": [
+        "MEASURED AGAINST LIVE STORAGE, not argued: `cache-budget` run against this repository's real caches with the rename in place prints `demand 9.60 GB declared + 0.15 GB declared by nothing = 9.75 GB`, names the orphan (`Linux-cargo-c568b114…`) and exits 0. Under the law this round replaced, the same tree was RED.",
+        "FULL TREE GREEN: `scripts/verify.sh` exit 0 over `cargo fmt --all --check`, `cargo clippy --workspace --locked --all-targets -- -D warnings`, `cargo test --workspace --locked --no-fail-fast` and `check-side-workspaces.sh` (12 workspaces, 0 skipped) — 2413 passed, 0 failed, 230 targets.",
+        "THE FOUR SWEEPS ALL FIRE: `cache-budget` 35 injections / 0 missed / control 52 green; `twice-compiled` 60 / 0 / 110; `restored` 18 / 0 / 49; `ci-plan` 23 / 0 / 28. The anchor law over every tracked sweep is green.",
+        "SIX OF THOSE INJECTIONS ARE NEW AND EACH NAMES A MECHANISM THIS ROUND BUILT OR MOVED: the orphan bytes left out of the budget sum; the orphan refused categorically again; the fallback reading computed and not acted on; the fallback read without direction (which needs a fixture whose two caches hold DISJOINT paths, because with one a subset of the other the subset test answers both directions and a reader that lost the direction would still agree); the subset test dropped; and prefixes compared for equality rather than as prefixes.",
+        "ONE INJECTION HAD TO BE RE-AIMED AND IT MOVED IN THE RIGHT DIRECTION: `nothing-held-is-ever-undeclared` used to name one test and now names three, because these bytes reach the verdict through the arithmetic rather than through a refusal of their own — a reader collecting no orphans reports a smaller total than GitHub is holding.",
+        "ONE FIXTURE WAS DECLARING THE DEFECT ITS NEIGHBOUR REFUSES:",
+        "`an_absent_cache_is_priced_from_the_largest_one_holding_a_subset_of_its_paths`",
+        "spelled its two keys `Linux-cargo-` and `Linux-cargo-unrun-`, which is exactly",
+        "the shape the new law rejects — so it tested two laws by accident and neither",
+        "on purpose. Its prefixes no longer nest. That is the fourth round in this arc",
+        "where turning a law on found the fixture wrong rather than the tree.",
+        "THE LIVE FILE IS THE POPULATION for the law: `fallback_reaches` over all nine declared caches of both tracked workflows returns nothing, and `survives_an_edit` still holds for every one of them after the rename."
+      ],
+      "carry_forward_bullets": [
+        "⛳THE MARGIN IS 0.25 GB AND THAT IS THE WHOLE OF WHAT IS LEFT UNKNOWN HERE. Measured against live storage: 9.60 GB declared + 0.15 GB declared by nothing = 9.75 of 10. The `Linux-cargo-unrun-` archive is 8.90 GB of that and still holds a cargo home inside it from before R1122 split the step; its next save is `target` alone, so the number should FALL. Nothing here can say by how much, because nothing has ever archived this repository's build directory on its own.",
+        "THE ARM RUNS ARE STILL THE NEXT MEASUREMENT and are unchanged by this round: R1122 made the build directory's price separately readable and two runs are what say whether it is worth having. R1121's run put the whole of `unrun-tests`' restore at 134.2 s against 194.5 s of compiling wall-clock, with the other six restores at 2.1–6.1 s.",
+        "WHAT THE FALLBACK LAW DOES NOT SEE, stated rather than assumed: it reads DECLARATIONS, so an archive written by a branch or by hand under a key no workflow declares is outside its population. That key is not invisible — it lands on the other instrument, as an archive nothing declares, counted against the budget."
+      ],
+      "population_census": [
+        {
+          "axis": "transition rules by `undirected`",
+          "left_label": "undirected",
+          "left": 10,
+          "right_label": "directed",
+          "right": 27
+        },
+        {
+          "axis": "map corpora by leg-kind declaration",
+          "left_label": "omitted",
+          "left": 6,
+          "right_label": "declared",
+          "right": 24
+        },
+        {
+          "axis": "cost-carrying corpora by direction-dependent pricing",
+          "left_label": "prices a way by direction",
+          "left": 4,
+          "right_label": "prices no way by direction",
+          "right": 6
+        },
+        {
+          "axis": "run trees by authoring mode",
+          "left_label": "hand script",
+          "left": 10,
+          "right_label": "file-only",
+          "right": 239
+        },
+        {
+          "axis": "map corpora by declared boundary crossing",
+          "left_label": "declares an exit",
+          "left": 6,
+          "right_label": "declares none",
+          "right": 24
+        },
+        {
+          "axis": "authored submissions by map and telling",
+          "left_label": "carries both",
+          "left": 10,
+          "right_label": "carries one",
+          "right": 24
+        }
+      ],
+      "publishable_decision_summary": "THE GATE REFUSED THE ONLY REPAIR FOR A DEFECT IT HAD ITSELF FOUND, AND THAT IS\nWHY R1122 COULD NOT CLOSE IT. That round measured a real one — `Linux-cargo-`,\nthis repository's oldest key, is a prefix of every other key in the file, so\n`validate` missing its own key falls back onto whatever archive is newest under\nit, and one of those is an 8.90 GB build directory. An archive unpacks AS IT WAS\nSTORED: `path:` says what a cache SAVES and cannot stop a tree landing that\nnothing measured, nothing declared and nothing can price. The repair is to give\n`validate` a key of its own like every other job has. R1122 wrote that repair\ndown as blocked by an outward action — deleting the archive the rename would\nleave behind — and pinned the finding instead.\n\nTHE BLOCK WAS THIS GATE'S OWN LAW, NOT THE WORLD. A held archive that no\ndeclaration matches was a refusal of its own, one per key, on the reasoning that\nsuch a key \"keeps its share of the budget\". The harm named there is the BUDGET,\nand a budget is arithmetic — so the honest place for those bytes is INSIDE it.\nEvery rename in this repository orphans its own archive for the seven days it\ntakes to age out, so the categorical form refused a tree for repairing itself,\nwhich is the shape R1110 wrote down and R1115 paid for again: a gate that refuses\nfor a reason outside its own law is as useless as one that does not fire.\n\nAND THE CATEGORICAL FORM MISSED THE OTHER DIRECTION ENTIRELY. It answered the\nharm twice on one side and never on the other: a 0.15 GB archive left by a\nrename was refused, and a repository whose declarations fit only because an\n8.90 GB orphan was excluded from the sum was not. The bytes are GitHub's and they\nare against the same 10 GB whoever declared them; leaving them out of the\ncomparison was the arithmetic error, and the refusal was standing in for it.\n\nSO THE ORPHANS ARE COUNTED AND STILL PRINTED, KEY BY KEY. Nothing is hidden —\nwhat changed is that the verdict is the sum rather than the presence, and the\nreport's last line now names both quantities and adds them, because the 10 GB\ndoes not care which half is declared.\n\nWITH THAT, THE RENAME LANDS AND THE PINNED FINDING BECOMES A REFUSAL. A cache\nwhose `restore-keys` reach another cache's archives, where that archive holds a\npath the first never declared, is refused by `tools/cache-budget` — over the\ndeclarations alone, so it holds for a repository that has never run. The subset\ntest is what keeps it from refusing the mechanism working: five of this file's\nkeys nested under `Linux-cargo-` and held exactly the two cargo-home trees\n`validate` held, and falling back onto one of their generations got it the paths\nit asked for.\n\nWHAT THE RENAME COSTS, MEASURED AGAINST LIVE STORAGE RATHER THAN ARGUED: demand\n9.60 GB declared plus 0.15 GB declared by nothing = 9.75 GB of 10, and the gate\npasses. The 0.15 is the archive under the old key, and it ages out. `validate`\nruns cold once for its cargo home, which this file measures elsewhere at 6.1 s of\nrestore against 394.7 s of compiling.\n\nTHE ARM THE LIVE FILE CAN NO LONGER WALK IS ASSERTED AS THE ZERO IT IS. After the\nrename NO key in this repository nests under another, so the subset branch — the\none that says a nesting is harmless — has no live example left and is exercised\nonly over a built population. Saying that count out loud is the difference\nbetween \"no case reached it\" and \"nobody looked\", and it is the same discipline\nR1107 wrote for `Unheard::AnotherWorkflow`.\n\nWHAT THIS DOES NOT CLAIM. That an orphan is harmless: it is priced, and a big one\nnow fails the budget where before it failed a category. And that the fallback law\nsees everything: it reads DECLARATIONS, so a key created by hand or by another\nbranch is not in its population — that key shows up on the other instrument, as\nan archive nothing declares, counted.",
+      "publishable_changes_bullets": [
+        "`tools/cache-budget` — `Report::held_by_nothing` puts the archives no declaration matches inside the budget comparison, and `Refusal::Orphan` is deleted rather than kept beside it; `Refusal::OverBudget` carries that figure and names it; `render` prints both quantities and their sum.",
+        "`tools/cache-budget` — `Refusal::FallbackReachesAnotherCache` refuses a cache whose `restore-keys` reach another's archives holding a path it never declared, computed from the declarations alone through `ci_plan::fallback_reaches`, so it holds for a repository that has never run.",
+        "`.github/workflows/mnemosyne-validate.yml` — `validate` takes `${{ runner.os }}-cargo-validate-`, a key of its own like every other job, closing the pair R1122 could only pin.",
+        "`tools/cache-budget/tests/this_repository.rs` — the pin becomes a law (`no_declared_cache_reaches_anothers_archive`), and the subset branch's now-empty live population is asserted as the zero it is, pointing at the built fixture that still exercises it."
+      ],
+      "publishable_verification_bullets": [
+        "MEASURED AGAINST LIVE STORAGE, not argued: `cache-budget` run against this repository's real caches with the rename in place prints `demand 9.60 GB declared + 0.15 GB declared by nothing = 9.75 GB`, names the orphan (`Linux-cargo-c568b114…`) and exits 0. Under the law this round replaced, the same tree was RED.",
+        "FULL TREE GREEN: `scripts/verify.sh` exit 0 over `cargo fmt --all --check`, `cargo clippy --workspace --locked --all-targets -- -D warnings`, `cargo test --workspace --locked --no-fail-fast` and `check-side-workspaces.sh` (12 workspaces, 0 skipped) — 2413 passed, 0 failed, 230 targets.",
+        "THE FOUR SWEEPS ALL FIRE: `cache-budget` 35 injections / 0 missed / control 52 green; `twice-compiled` 60 / 0 / 110; `restored` 18 / 0 / 49; `ci-plan` 23 / 0 / 28. The anchor law over every tracked sweep is green.",
+        "SIX OF THOSE INJECTIONS ARE NEW AND EACH NAMES A MECHANISM THIS ROUND BUILT OR MOVED: the orphan bytes left out of the budget sum; the orphan refused categorically again; the fallback reading computed and not acted on; the fallback read without direction (which needs a fixture whose two caches hold DISJOINT paths, because with one a subset of the other the subset test answers both directions and a reader that lost the direction would still agree); the subset test dropped; and prefixes compared for equality rather than as prefixes.",
+        "ONE INJECTION HAD TO BE RE-AIMED AND IT MOVED IN THE RIGHT DIRECTION: `nothing-held-is-ever-undeclared` used to name one test and now names three, because these bytes reach the verdict through the arithmetic rather than through a refusal of their own — a reader collecting no orphans reports a smaller total than GitHub is holding.",
+        "ONE FIXTURE WAS DECLARING THE DEFECT ITS NEIGHBOUR REFUSES:",
+        "`an_absent_cache_is_priced_from_the_largest_one_holding_a_subset_of_its_paths`",
+        "spelled its two keys `Linux-cargo-` and `Linux-cargo-unrun-`, which is exactly",
+        "the shape the new law rejects — so it tested two laws by accident and neither",
+        "on purpose. Its prefixes no longer nest. That is the fourth round in this arc",
+        "where turning a law on found the fixture wrong rather than the tree.",
+        "THE LIVE FILE IS THE POPULATION for the law: `fallback_reaches` over all nine declared caches of both tracked workflows returns nothing, and `survives_an_edit` still holds for every one of them after the rename."
+      ],
+      "publishable_carry_forward_bullets": [
+        "⛳THE MARGIN IS 0.25 GB AND THAT IS THE WHOLE OF WHAT IS LEFT UNKNOWN HERE. Measured against live storage: 9.60 GB declared + 0.15 GB declared by nothing = 9.75 of 10. The `Linux-cargo-unrun-` archive is 8.90 GB of that and still holds a cargo home inside it from before R1122 split the step; its next save is `target` alone, so the number should FALL. Nothing here can say by how much, because nothing has ever archived this repository's build directory on its own.",
+        "THE ARM RUNS ARE STILL THE NEXT MEASUREMENT and are unchanged by this round: R1122 made the build directory's price separately readable and two runs are what say whether it is worth having. R1121's run put the whole of `unrun-tests`' restore at 134.2 s against 194.5 s of compiling wall-clock, with the other six restores at 2.1–6.1 s.",
+        "WHAT THE FALLBACK LAW DOES NOT SEE, stated rather than assumed: it reads DECLARATIONS, so an archive written by a branch or by hand under a key no workflow declares is outside its population. That key is not invisible — it lands on the other instrument, as an archive nothing declares, counted against the budget."
+      ]
+    },
     "Round 252": {
       "decision_summary": "Parser CommonMark conformance — recognize indented fenced code blocks (§98) and require whitespace after ATX hash sequence (§62)",
       "changes_bullets": [

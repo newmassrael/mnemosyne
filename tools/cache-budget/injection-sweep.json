@@ -153,7 +153,7 @@
     },
     {
       "name": "nothing-held-is-ever-undeclared",
-      "why": "a key outlives the job that wrote it and keeps its share of the budget; the workflows do not mention it and the API cannot know it is unwanted, so only holding both sides against each other finds it",
+      "why": "a key outlives the job that wrote it and keeps its share of the budget; the workflows do not mention it and the API cannot know it is unwanted, so only holding both sides against each other finds it. R1123 moved WHERE that shows up — these bytes are inside the budget arithmetic now rather than a refusal of their own — so a reader that collected no orphans at all reports a smaller total than GitHub is holding",
       "edits": [
         {
           "file": "tools/cache-budget/src/lib.rs",
@@ -161,7 +161,11 @@
           "to": "        .filter(|(_, taken)| !**taken && false)"
         }
       ],
-      "expect_red": ["a_cache_no_workflow_declares_is_a_refusal"]
+      "expect_red": [
+        "a_cache_no_workflow_declares_is_counted_and_not_refused_on_its_own",
+        "declarations_that_fit_only_without_the_orphans_are_over_budget",
+        "a_renamed_key_leaves_an_archive_that_does_not_turn_the_tree_red"
+      ]
     },
     {
       "name": "the-range-is-the-tip-commit-alone",
@@ -406,7 +410,7 @@
           "to": "            if true {"
         }
       ],
-      "expect_red": ["one_declared_cache_reaches_anothers_archive_and_this_is_which"]
+      "expect_red": ["a_nesting_whose_inner_cache_holds_a_subset_is_not_a_finding"]
     },
     {
       "name": "only-an-identical-prefix-reaches-another-cache",
@@ -418,7 +422,58 @@
           "to": "            if other.prefix == cache.prefix || other.prefix != cache.prefix {"
         }
       ],
-      "expect_red": ["one_declared_cache_reaches_anothers_archive_and_this_is_which"]
+      "expect_red": ["a_nesting_whose_inner_cache_holds_more_is_refused"]
+    },
+    {
+      "name": "a-fallback-that-reaches-another-cache-is-not-refused",
+      "why": "R1123: the reading existed and nothing acted on it — which is the shape R1116 found in `restore-keys` itself, a property declared and compared never. An archive unpacks AS IT WAS STORED, so a job whose primary key misses lands a tree `path:` cannot stop and nothing in the census measures",
+      "edits": [
+        {
+          "file": "tools/cache-budget/src/lib.rs",
+          "from": "    let mut divergent: Vec<Refusal> = ci_plan::fallback_reaches(declared)",
+          "to": "    let mut divergent: Vec<Refusal> = ci_plan::fallback_reaches(declared).into_iter().take(0).collect::<Vec<_>>().into_iter()"
+        }
+      ],
+      "expect_red": ["a_nesting_whose_inner_cache_holds_more_is_refused"]
+    },
+    {
+      "name": "a-fallback-is-read-in-both-directions",
+      "why": "a prefix is not symmetric — the inner cache's key is longer, so it falls back onto nothing of the outer one's. Reporting the pair without direction refuses the tree twice and sends the reader to rename whichever key they read first, which is the one that was already fine",
+      "edits": [
+        {
+          "file": "tools/ci-plan/src/lib.rs",
+          "from": "            if other.prefix == cache.prefix || !other.prefix.starts_with(&cache.prefix) {",
+          "to": "            if other.prefix == cache.prefix || !(other.prefix.starts_with(&cache.prefix) || cache.prefix.starts_with(&other.prefix)) {"
+        }
+      ],
+      "expect_red": ["the_inner_cache_of_a_nesting_reaches_nothing_of_the_outer_ones"]
+    },
+    {
+      "name": "an-archive-nothing-declares-costs-the-budget-nothing",
+      "why": "R1123 moved these bytes from a refusal of their own INTO the arithmetic, and this is the direction that move must not lose: a repository whose declarations fit only because the archives nobody declares were left out of the sum is over budget, and GitHub will evict something real to make room",
+      "edits": [
+        {
+          "file": "tools/cache-budget/src/lib.rs",
+          "from": "            Some(demand) if demand + self.held_by_nothing() > self.limit => {",
+          "to": "            Some(demand) if demand > self.limit => {"
+        }
+      ],
+      "expect_red": ["declarations_that_fit_only_without_the_orphans_are_over_budget"]
+    },
+    {
+      "name": "an-archive-nothing-declares-is-refused-on-its-own",
+      "why": "the direction R1122 was blocked by: a categorical refusal makes every RENAME red for the seven days the old archive takes to age out, so the gate refuses a repository for repairing itself — and renaming is the only repair for a key whose fallback reaches another cache's archive",
+      "edits": [
+        {
+          "file": "tools/cache-budget/src/lib.rs",
+          "from": "        out\n    }\n}\n\n/// Which row a held cache belongs to",
+          "to": "        for orphan in &self.orphans {\n            out.push(Refusal::Unreached(orphan.key.clone()));\n        }\n        out\n    }\n}\n\n/// Which row a held cache belongs to"
+        }
+      ],
+      "expect_red": [
+        "a_cache_no_workflow_declares_is_counted_and_not_refused_on_its_own",
+        "a_renamed_key_leaves_an_archive_that_does_not_turn_the_tree_red"
+      ]
     }
   ]
 }

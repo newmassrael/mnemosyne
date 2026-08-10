@@ -506,17 +506,14 @@ const RECORDS: &str = "collected";
 /// 8.90 GB of somebody else's `target`, which nothing measures and nothing asked
 /// for.
 ///
-/// PINNED RATHER THAN REFUSED, and the difference is a held cache. The repair is
-/// to give `validate` a specific key like every other job has; that leaves the
-/// archive under `Linux-cargo-` declared by nothing, which this gate refuses as
-/// an orphan for the seven days it takes to age out — so the repair is a rename
-/// AND a deletion from the repository's storage, which is an outward action.
-/// Until that is taken, the honest thing is a count that turns red the moment a
-/// SECOND such pair appears: R1122's split of `unrun-tests` chose
-/// `Linux-cargo-unruntests-home-` over the obvious `Linux-cargo-unrun-home-`
-/// precisely because the obvious one would have been the second.
+/// R1122 PINNED THIS AND R1123 CLOSED IT. The pin was a count of the violating
+/// pairs, held at one, because the only repair — giving `validate` a key of its
+/// own — leaves the archive under `Linux-cargo-` declared by nothing, and this
+/// gate refused an orphan categorically for the seven days one takes to age out.
+/// So the gate refused the only repair for a defect it had itself found. Making
+/// that cost arithmetic rather than a category is what let the rename land.
 #[test]
-fn one_declared_cache_reaches_anothers_archive_and_this_is_which() {
+fn no_declared_cache_reaches_anothers_archive() {
     let root = repository_root();
     let declared = ci_plan::workflow_cache_declarations(&root);
     let reaching: Vec<(String, String)> = ci_plan::fallback_reaches(&declared)
@@ -525,19 +522,24 @@ fn one_declared_cache_reaches_anothers_archive_and_this_is_which() {
         .collect();
     assert_eq!(
         reaching,
-        vec![("Linux-cargo-".to_string(), "Linux-cargo-unrun-".to_string())],
-        "every OTHER pair of declared caches either does not nest or holds a \
-         subset of what the outer one asked for — if this list grew, a cache \
-         key was added under another's prefix holding paths it does not declare"
+        Vec::new(),
+        "a cache key nests under another's prefix and holds a path that one \
+         never declared — an archive unpacks as it was STORED, so the outer \
+         job's `restore-keys` lands a tree it did not ask for"
     );
-    // NON-VACUITY: the population is the whole repository's caches and the
-    // harmless nesting really is there, so a reader that had stopped comparing
-    // paths would report seven pairs rather than one.
     assert!(
         declared.len() >= 9,
         "{} cache step(s) declared — this sweep is over all of them",
         declared.len()
     );
+    // AND THE ARM THIS FILE CAN NO LONGER WALK, ASSERTED AS THE ZERO IT IS. The
+    // subset test — the branch that says a nesting is HARMLESS because the inner
+    // archive holds only what the outer job asked for — had five live examples
+    // until this round, and the rename removed the prefix all five nested under.
+    // Saying the count out loud is the difference between "no case reached it"
+    // and "nobody looked": that branch is now exercised only in `law.rs`, over a
+    // built population, by
+    // `a_nesting_whose_inner_cache_holds_a_subset_is_not_a_finding`.
     let nested = declared
         .iter()
         .flat_map(|cache| declared.iter().map(move |other| (cache, other)))
@@ -545,11 +547,10 @@ fn one_declared_cache_reaches_anothers_archive_and_this_is_which() {
             other.prefix != cache.prefix && other.prefix.starts_with(&cache.prefix)
         })
         .count();
-    assert!(
-        nested > reaching.len(),
-        "{nested} declared key(s) nest under another and only {} of those \
-         reaches paths the outer cache did not ask for — if the two counts were \
-         equal this test would pass on a reader that ignored `path:` entirely",
-        reaching.len()
+    assert_eq!(
+        nested, 0,
+        "no key in this repository nests under another any more, so a reader \
+         that ignored `path:` entirely would agree with the verdict above and \
+         this file could not tell them apart"
     );
 }

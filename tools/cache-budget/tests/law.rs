@@ -162,26 +162,34 @@ fn an_absent_cache_is_priced_from_the_largest_one_holding_a_subset_of_its_paths(
     // rather than a guess, and it is why pricing is not restricted to an
     // identical path list: no two caches in this repository hold quite the same
     // set, so identity would leave every one of them unpriceable.
+    //
+    // TWO PREFIXES NEITHER OF WHICH NESTS IN THE OTHER, deliberately: this
+    // fixture used to spell them `Linux-cargo-` and `Linux-cargo-unrun-`, which
+    // is the shape R1123's fallback law refuses — the second holds a path the
+    // first never asked for, so the first's `restore-keys` would land it. A
+    // fixture declaring the defect a neighbouring law refuses tests both laws by
+    // accident and neither on purpose, which is the trap R1104 and R1105 each
+    // fell into once.
     let declared = [
-        declaration("validate", "Linux-cargo-", TARGET),
+        declaration("validate", "Linux-basic-", TARGET),
         declaration(
             "unrun",
-            "Linux-cargo-unrun-",
+            "Linux-unrun-",
             &["~/.cargo/registry", "target", "tools/unrun-tests/target"],
         ),
     ];
-    let held = [held("Linux-cargo-abc", 9.0)];
+    let held = [held("Linux-basic-abc", 9.0)];
     let report = conclude(LIMIT, &declared, &held, None);
 
     let priced = report
         .rows
         .iter()
-        .find(|row| row.prefix == "Linux-cargo-unrun-")
+        .find(|row| row.prefix == "Linux-unrun-")
         .expect("the absent row");
     let estimate = priced.estimate.as_ref().expect("it is priced");
     assert_eq!(estimate.bytes, 9 * GB);
     assert_eq!(
-        estimate.from, "Linux-cargo-abc",
+        estimate.from, "Linux-basic-abc",
         "AND IT NAMES WHERE THE NUMBER CAME FROM — an estimate nobody can trace \
          to a measurement is one nobody can argue with"
     );
@@ -475,24 +483,108 @@ fn a_prefix_still_matches_after_a_lockfile_bump() {
     assert_eq!(report.refusals(), Vec::new());
 }
 
+/// R1123 — A KEY NOTHING DECLARES IS A COST, AND THE VERDICT IS THE SUM.
+///
+/// It used to be a refusal of its own, one per key, on the reasoning that such a
+/// key "keeps its share of the budget". The harm named there is the BUDGET, and
+/// the budget is arithmetic — so these bytes belong INSIDE it. What the
+/// categorical refusal cost is measured on this repository: every rename orphans
+/// its own archive for the seven days it takes to age out, so the gate refused a
+/// tree for making a repair, and R1122 had to pin a real defect it could not
+/// close because the only repair for it is a rename.
 #[test]
-fn a_cache_no_workflow_declares_is_a_refusal() {
-    // A key outlives the job that wrote it and keeps its share of the budget.
-    // Only asking both sides finds it: the workflows do not mention it and the
-    // API cannot know it is unwanted.
+fn a_cache_no_workflow_declares_is_counted_and_not_refused_on_its_own() {
     let declared = [declaration("validate", "Linux-cargo-", TARGET)];
     let held = [
         held("Linux-cargo-abc", 4.0),
         held("Linux-deleted-job-abc", 3.0),
     ];
     let report = conclude(LIMIT, &declared, &held, None);
+    assert_eq!(report.held_by_nothing(), 3 * GB);
+    assert_eq!(
+        report.demand(),
+        Some(4 * GB),
+        "the declared demand is what this repository ASKS for, and the orphan is \
+         not one of its declarations"
+    );
+    assert_eq!(
+        report.refusals(),
+        Vec::new(),
+        "4 + 3 fits in 10, so nothing here breaks — and only asking both sides \
+         could have said so either way"
+    );
+    // AND IT IS STILL SAID OUT LOUD, key by key and in the total, because a cost
+    // nobody can see is one nobody can act on.
+    let printed = cache_budget::render(&report);
+    assert!(
+        printed.contains("Linux-deleted-job-abc") && printed.contains("declared by nothing"),
+        "{printed}"
+    );
+    assert!(
+        printed.contains("4.00 GB declared + 3.00 GB declared by nothing = 7.00 GB"),
+        "{printed}"
+    );
+}
+
+/// THE OTHER DIRECTION, AND IT IS THE ONE THE OLD SHAPE COULD NOT REACH: a
+/// repository whose declarations fit only because the archives nothing declares
+/// were left out of the sum. Under a law that refused each orphan separately
+/// this was TWO verdicts, one of them the wrong one — the budget read as healthy.
+#[test]
+fn declarations_that_fit_only_without_the_orphans_are_over_budget() {
+    let declared = [declaration("validate", "Linux-cargo-", TARGET)];
+    let held = [
+        held("Linux-cargo-abc", 4.0),
+        held("Linux-deleted-job-abc", 8.0),
+    ];
+    let report = conclude(LIMIT, &declared, &held, None);
+    assert!(
+        report.demand().is_some_and(|demand| demand <= LIMIT),
+        "the premise: what this repository DECLARES is inside the budget"
+    );
     match report.refusals().as_slice() {
-        [Refusal::Orphan { key, size_in_bytes }] => {
-            assert_eq!(key, "Linux-deleted-job-abc");
-            assert_eq!(*size_in_bytes, 3 * GB);
+        [Refusal::OverBudget {
+            demand, orphaned, ..
+        }] => {
+            assert_eq!((*demand, *orphaned), (4 * GB, 8 * GB));
+            let said = report.refusals()[0].to_string();
+            assert!(
+                said.contains("8.00 GB held under keys no workflow declares"),
+                "the message names which half of the total is nobody's: {said}"
+            );
         }
-        other => panic!("expected one orphan, got {other:?}"),
+        other => panic!("expected one over-budget refusal, got {other:?}"),
     }
+}
+
+/// AND A RENAME IS EXPRESSIBLE NOW, which is the whole point: the old archive is
+/// held, nothing declares it, and the repository is not red for having repaired
+/// itself. This is R1122's pinned defect, played forward.
+#[test]
+fn a_renamed_key_leaves_an_archive_that_does_not_turn_the_tree_red() {
+    let declared = [
+        declaration("validate", "Linux-cargo-validate-", REGISTRY),
+        declaration("unrun", "Linux-cargo-unrun-", &["target"]),
+    ];
+    let held = [
+        // What the rename left behind, under the key `validate` used to use.
+        held("Linux-cargo-a-lockfile-hash", 0.15),
+        held("Linux-cargo-validate-a-lockfile-hash", 0.15),
+        held("Linux-cargo-unrun-a-lockfile-hash", 8.9),
+    ];
+    let report = conclude(LIMIT, &declared, &held, None);
+    assert_eq!(report.held_by_nothing(), (0.15 * GB as f64) as u64);
+    assert_eq!(report.refusals(), Vec::new());
+    // NON-VACUITY: the old key really is unmatched, rather than being swallowed
+    // by the new one's prefix.
+    assert_eq!(
+        report
+            .orphans
+            .iter()
+            .map(|orphan| orphan.key.as_str())
+            .collect::<Vec<_>>(),
+        vec!["Linux-cargo-a-lockfile-hash"]
+    );
 }
 
 #[test]
@@ -1245,3 +1337,93 @@ fn a_record_in_hand_contradicts_a_reading_that_says_nothing_collects_it() {
 // `tools/ci-plan/tests/reading.rs`. The census gate cut the same
 // `owner/repo/<path>@<ref>` for itself until R1107, and two cuts of one string
 // are two answers free to disagree about which file a gate is judging.
+
+/// R1123 — THE HARMLESS NESTING, WHICH IS WHAT `restore-keys` IS FOR. A cache
+/// whose prefix is a prefix of another's falls back onto that one's archives,
+/// and when the inner cache holds only what the outer job asked for, the outer
+/// job gets exactly the paths it declared out of somebody else's generation.
+/// This repository ran on that for five keys until R1123 renamed the prefix they
+/// all nested under, so the branch has no live example left and is asserted here.
+#[test]
+fn a_nesting_whose_inner_cache_holds_a_subset_is_not_a_finding() {
+    let declared = [
+        declaration("validate", "Linux-cargo-", REGISTRY),
+        declaration("citations", "Linux-cargo-citations-", REGISTRY),
+    ];
+    let held = [
+        held("Linux-cargo-abc", 0.15),
+        held("Linux-cargo-citations-abc", 0.06),
+    ];
+    assert_eq!(
+        conclude(LIMIT, &declared, &held, None).refusals(),
+        Vec::new(),
+        "the inner cache holds exactly what the outer job declares, so falling \
+         back onto its archive is the mechanism working"
+    );
+}
+
+/// AND THE ONE PATH THAT MAKES IT A FINDING. The same nesting, with the inner
+/// cache holding a build directory the outer job never declared: `path:` says
+/// what a cache SAVES and cannot stop an archive unpacking as it was stored.
+#[test]
+fn a_nesting_whose_inner_cache_holds_more_is_refused() {
+    let declared = [
+        declaration("validate", "Linux-cargo-", REGISTRY),
+        declaration(
+            "unrun",
+            "Linux-cargo-unrun-",
+            &["~/.cargo/registry", "target"],
+        ),
+    ];
+    let held = [
+        held("Linux-cargo-abc", 0.15),
+        held("Linux-cargo-unrun-abc", 8.9),
+    ];
+    match conclude(LIMIT, &declared, &held, None)
+        .refusals()
+        .as_slice()
+    {
+        [Refusal::FallbackReachesAnotherCache {
+            prefix,
+            other,
+            holds,
+        }] => {
+            assert_eq!(prefix, "Linux-cargo-");
+            assert_eq!(other, "Linux-cargo-unrun-");
+            assert_eq!(
+                holds,
+                &vec!["target".to_string()],
+                "and it names WHAT would land, not merely that something would"
+            );
+        }
+        other => panic!("expected one fallback refusal, got {other:?}"),
+    }
+}
+
+/// THE DIRECTION IT DOES NOT HOLD IN. A prefix is not symmetric: the inner cache
+/// falls back onto nothing of the outer one's, because its own key is longer.
+#[test]
+fn the_inner_cache_of_a_nesting_reaches_nothing_of_the_outer_ones() {
+    // THE TWO HOLD DISJOINT PATHS, deliberately. With one holding a subset of the
+    // other the subset test alone answers both directions, so a reader that had
+    // lost the direction would agree with this fixture — green on two different
+    // readers, which is no control at all.
+    let declared = [
+        declaration("validate", "Linux-cargo-", REGISTRY),
+        declaration("unrun", "Linux-cargo-unrun-", &["target"]),
+    ];
+    let refusals = conclude(LIMIT, &declared, &[held("Linux-cargo-abc", 0.15)], None).refusals();
+    let named: Vec<&String> = refusals
+        .iter()
+        .filter_map(|refusal| match refusal {
+            Refusal::FallbackReachesAnotherCache { prefix, .. } => Some(prefix),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        named,
+        vec!["Linux-cargo-"],
+        "only the OUTER key reaches, and a reader comparing the pair without \
+         direction would report this twice"
+    );
+}

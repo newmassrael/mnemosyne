@@ -234,10 +234,26 @@ jobs:
       # its job does not declare, against the prefix `ci_plan` resolves from the
       # key below. Two spellings, compared — which is the rule R1116 wrote after
       # finding `restore-keys` spelled twice and compared never.
+      # R1123 — A KEY OF ITS OWN, LIKE EVERY OTHER JOB HERE, and this is a repair
+      # rather than tidiness. This was the repository's oldest key and it is a
+      # PREFIX of every other one in the file, so `restore-keys` falls back onto
+      # any of their archives — which is harmless for the five that hold exactly
+      # the two cargo-home trees this job holds, and is not for `unrun-tests`'
+      # build directory. An archive unpacks AS IT WAS STORED: `path:` says what a
+      # cache SAVES and cannot stop 8.90 GB of somebody else's `target` landing
+      # in a job that never asked for it, measured nothing of it, and prices none
+      # of it. `tools/cache-budget` refuses that shape now, which is what makes
+      # this rename load-bearing rather than cosmetic.
+      #
+      # THE OLD ARCHIVE IS LEFT HELD AND DECLARED BY NOTHING for the seven days
+      # it takes to age out. That used to be a refusal of its own and is now
+      # COUNTED against the budget instead — the harm a renamed key does is
+      # bytes, and bytes are arithmetic. R1122 had to pin this defect rather than
+      # close it precisely because the gate refused the only repair for it.
       - name: What is on disk before the cache is restored
         run: >
           ./instruments/release/restored before
-          --cache 'Linux-cargo-'
+          --cache 'Linux-cargo-validate-'
           '~/.cargo/registry' '~/.cargo/git'
 
       - name: Cache cargo
@@ -247,9 +263,9 @@ jobs:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock', '.github/workflows/mnemosyne-validate.yml') }}
+          key: ${{ runner.os }}-cargo-validate-${{ hashFiles('**/Cargo.lock', '.github/workflows/mnemosyne-validate.yml') }}
           restore-keys: |
-            ${{ runner.os }}-cargo-
+            ${{ runner.os }}-cargo-validate-
 
       - name: What the cache restored
         env:

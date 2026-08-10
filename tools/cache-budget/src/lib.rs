@@ -22,8 +22,17 @@
 //!   `target` costs at least what a cache holding that `target` costs, and six of
 //!   them are six of those — the arithmetic no round did while adding the fourth,
 //!   fifth and sixth;
-//! - nothing is HELD that nothing declares. A key outliving the job that wrote it
-//!   keeps eating the budget, and it can only be found by asking both sides;
+//! - the archives NOTHING DECLARES are inside that same total. A key outliving
+//!   the job that wrote it keeps eating the budget, and it can only be found by
+//!   asking both sides — but the harm it does is BYTES, so it is counted rather
+//!   than categorically refused. R1123 measured what the categorical form cost:
+//!   every rename orphans its own archive for the seven days it takes to age
+//!   out, so the gate refused a repository for making a repair, and R1122 had to
+//!   pin a real defect because renaming was the only way to close it;
+//! - no cache's `restore-keys` reach an archive holding paths it never declared.
+//!   An archive unpacks AS IT WAS STORED, so `path:` says what a cache SAVES and
+//!   cannot stop somebody else's build directory landing in a job that asked for
+//!   a registry;
 //! - two jobs writing ONE key agree on what that key holds, or the cache's
 //!   contents depend on which job saved first;
 //! - and a gate that could price nothing REFUSES rather than passing, because a
@@ -131,15 +140,6 @@ impl Row {
         }
     }
 
-    /// The newest archive under this prefix that already existed when the run
-    /// began — what `restore-keys` had to fall back to.
-    ///
-    /// EVERY GENERATION, NOT JUST THE NEWEST, because the newest is routinely the
-    /// one THIS run saved: a job that missed its key writes a new archive in its
-    /// post step, and by the time this gate asks the API that archive is the
-    /// head of the prefix. The one that was available to the job is whichever
-    /// predates the run's start, which is the same comparison `Recreated` makes
-    /// and the same reason it is made to the second.
     /// Which restore one of this key's owners performs — the join key the
     /// records are filed under.
     ///
@@ -154,6 +154,15 @@ impl Row {
         }
     }
 
+    /// The newest archive under this prefix that already existed when the run
+    /// began — what `restore-keys` had to fall back to.
+    ///
+    /// EVERY GENERATION, NOT JUST THE NEWEST, because the newest is routinely the
+    /// one THIS run saved: a job that missed its key writes a new archive in its
+    /// post step, and by the time this gate asks the API that archive is the
+    /// head of the prefix. The one that was available to the job is whichever
+    /// predates the run's start, which is the same comparison `Recreated` makes
+    /// and the same reason it is made to the second.
     pub fn restorable_when(&self, started_at: &str) -> Option<&Held> {
         self.held
             .iter()
@@ -186,17 +195,38 @@ pub struct Estimate {
 /// Why a repository's caching cannot work.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Refusal {
-    /// The declared caches cannot all exist at once.
+    /// The caches this repository declares, plus the archives nothing declares,
+    /// cannot all exist at once.
     OverBudget {
         demand: u64,
+        /// What the archives no declaration matches weigh — see
+        /// [`Report::held_by_nothing`].
+        orphaned: u64,
         limit: u64,
         absent: Vec<String>,
     },
-    /// Held, and declared by nothing — budget spent on a job that no longer
-    /// exists, which shows up only when both sides are asked.
-    Orphan { key: String, size_in_bytes: u64 },
     /// One key, two jobs, two different answers about what it holds.
     Divergent { prefix: String, owners: Vec<Owner> },
+    /// One cache's `restore-keys` fall back onto another cache's archives, and
+    /// that archive holds paths the first never asked for.
+    ///
+    /// AN ARCHIVE UNPACKS AS IT WAS STORED. `path:` is what a cache SAVES and has
+    /// no say in what a restore of somebody else's archive puts on disk, and
+    /// `restore-keys` is a prefix match over the WHOLE repository's storage
+    /// rather than over one job's. So a job whose primary key misses can land a
+    /// tree nothing measured and nothing asked for — in this repository, an 8.90
+    /// GB build directory arriving in a job that declares two cargo-home trees.
+    ///
+    /// SUBSET AND NOT EQUALITY, because the harmless case is the common one and
+    /// is what the mechanism is FOR: five of this repository's keys nest under
+    /// another whose paths they hold exactly, and falling back onto one of their
+    /// generations gets the outer job the paths it asked for.
+    FallbackReachesAnotherCache {
+        prefix: String,
+        other: String,
+        /// What the other cache holds that this one never asked for.
+        holds: Vec<String>,
+    },
     /// Saved BY THIS RUN, which means the primary key did not hit exactly, with
     /// nothing this key hashes having moved to explain it.
     ///
@@ -245,25 +275,28 @@ impl std::fmt::Display for Refusal {
         match self {
             Refusal::OverBudget {
                 demand,
+                orphaned,
                 limit,
                 absent,
             } => write!(
                 f,
-                "the caches this repository declares come to {} against a {} \
+                "the caches this repository declares come to {}{} against a {} \
                  budget, so GitHub deletes them, least recently used first, until \
                  they fit — {} of them are absent right now ({}). Every job \
                  restoring one of those rebuilds from nothing on every run, and \
                  the only symptom is a green job that takes half an hour",
                 gigabytes(*demand),
+                if *orphaned == 0 {
+                    String::new()
+                } else {
+                    format!(
+                        ", plus {} held under keys no workflow declares",
+                        gigabytes(*orphaned)
+                    )
+                },
                 gigabytes(*limit),
                 absent.len(),
                 absent.join(", ")
-            ),
-            Refusal::Orphan { key, size_in_bytes } => write!(
-                f,
-                "`{key}` holds {} and no workflow declares it — a key outlives the \
-                 job that wrote it and keeps its share of the budget",
-                gigabytes(*size_in_bytes)
             ),
             Refusal::Divergent { prefix, owners } => write!(
                 f,
@@ -272,6 +305,20 @@ impl std::fmt::Display for Refusal {
                  first, and every job restoring the other spelling gets a tree it \
                  did not ask for",
                 named(owners).join(" and ")
+            ),
+            Refusal::FallbackReachesAnotherCache {
+                prefix,
+                other,
+                holds,
+            } => write!(
+                f,
+                "`{prefix}` falls back onto every archive saved under `{other}`, \
+                 and those hold {} — which `{prefix}` never asked for. An archive \
+                 unpacks as it was STORED, so `path:` cannot stop it landing: a \
+                 job whose primary key misses gets a tree nothing measured, \
+                 nothing declared and nothing can price. Give one of the two a \
+                 key the other's prefix does not reach",
+                holds.join(", ")
             ),
             Refusal::Recreated {
                 prefix,
@@ -613,6 +660,30 @@ impl Report {
         self.rows.iter().map(Row::bytes).sum()
     }
 
+    /// What the archives no declaration matches weigh.
+    ///
+    /// R1123 — A COST AND NOT A CATEGORY. These used to be a refusal of their
+    /// own, one per key, on the reasoning that "a key outlives the job that
+    /// wrote it and keeps its share of the budget". The harm named there is the
+    /// BUDGET, and the budget is arithmetic — so the honest place for these
+    /// bytes is inside it, where 0.15 GB left behind by a rename passes and
+    /// 8.90 GB left behind by a forgotten job does not.
+    ///
+    /// WHAT THE CATEGORICAL REFUSAL COST, measured on this repository: every key
+    /// this file renames orphans its own archive for the seven days it takes to
+    /// age out, so the gate refused a tree for making a REPAIR — and R1122 had
+    /// to pin a real defect it could not close (`Linux-cargo-` reaching the
+    /// build directory's archive) because the only repair for it is a rename.
+    /// A gate that refuses for a reason outside its own law is the shape R1110
+    /// wrote down and R1115 paid for again.
+    ///
+    /// THEY ARE STILL PRINTED, key by key, by [`render`]. Nothing about them is
+    /// hidden; what changed is that the verdict is the sum rather than the
+    /// presence.
+    pub fn held_by_nothing(&self) -> u64 {
+        self.orphans.iter().map(|orphan| orphan.size_in_bytes).sum()
+    }
+
     /// The declared caches that are not there.
     pub fn absent(&self) -> Vec<String> {
         self.rows
@@ -664,11 +735,22 @@ impl Report {
             ))),
             // A LOWER BOUND IS ENOUGH TO REFUSE. The real demand is at least this,
             // and this is already over.
-            Some(demand) if demand > self.limit => out.push(Refusal::OverBudget {
-                demand,
-                limit: self.limit,
-                absent: self.absent(),
-            }),
+            //
+            // R1123 — AND THE ARCHIVES NOTHING DECLARES ARE PART OF IT. They are
+            // bytes GitHub is holding against the same 10 GB, so leaving them out
+            // of the comparison and refusing them separately answered the harm
+            // twice in one direction and never in the other: a 0.15 GB archive
+            // left by a rename was refused, and a repository whose declarations
+            // fit only because an 8.90 GB orphan was excluded from the sum was
+            // not.
+            Some(demand) if demand + self.held_by_nothing() > self.limit => {
+                out.push(Refusal::OverBudget {
+                    demand,
+                    orphaned: self.held_by_nothing(),
+                    limit: self.limit,
+                    absent: self.absent(),
+                })
+            }
             // AND IT IS NEVER ENOUGH TO PASS. An absent cache priced off one that
             // holds only some of its paths is read at the cost of the parts
             // somebody has seen, and in this repository the unseen part is the
@@ -767,12 +849,6 @@ impl Report {
                 });
             }
         }
-        for orphan in &self.orphans {
-            out.push(Refusal::Orphan {
-                key: orphan.key.clone(),
-                size_in_bytes: orphan.size_in_bytes,
-            });
-        }
         out
     }
 }
@@ -808,7 +884,26 @@ pub fn conclude(
     collecting: &BTreeSet<String>,
 ) -> Report {
     let mut rows: Vec<Row> = Vec::new();
-    let mut divergent = Vec::new();
+    // WHOSE ARCHIVE EACH CACHE'S FALLBACK CAN REACH — a property of the
+    // DECLARATIONS alone, so it holds for a repository that has never run, and
+    // it travels with the divergence refusals because both are the same kind of
+    // statement: two declarations that cannot both be what they say they are.
+    let mut divergent: Vec<Refusal> = ci_plan::fallback_reaches(declared)
+        .into_iter()
+        .map(|(cache, other)| {
+            let asked: BTreeSet<&str> = cache.paths.iter().map(String::as_str).collect();
+            Refusal::FallbackReachesAnotherCache {
+                prefix: cache.prefix.clone(),
+                other: other.prefix.clone(),
+                holds: other
+                    .paths
+                    .iter()
+                    .filter(|path| !asked.contains(path.as_str()))
+                    .cloned()
+                    .collect(),
+            }
+        })
+        .collect();
     let mut at: BTreeMap<&str, usize> = BTreeMap::new();
     for declaration in declared {
         let owner = Owner {
@@ -1013,9 +1108,15 @@ pub fn render(report: &Report) -> String {
             ));
         }
     }
+    // DECLARED BY NOTHING AND COUNTED ANYWAY. R1123: these are bytes GitHub is
+    // holding against the same budget, so they are in the total below rather
+    // than being a refusal of their own — which is what let a rename, the only
+    // repair for a key whose fallback reaches another cache's archive, turn this
+    // gate red for the seven days the old archive takes to age out.
     for orphan in &report.orphans {
         out.push_str(&format!(
-            "  {:>8.2} GB held, declared by nothing: {}\n",
+            "  {:>8.2} GB held, declared by nothing and counted against the \
+             budget until it ages out: {}\n",
             orphan.size_in_bytes as f64 / 1e9,
             orphan.key
         ));
@@ -1036,8 +1137,20 @@ pub fn render(report: &Report) -> String {
              job is what arrived on its disk, and one is not the other\n",
         );
     }
+    // ONE LINE, AND IT IS THE LINE THE VERDICT IS MADE ON. The two quantities
+    // are named apart because they answer different questions — what this
+    // repository ASKS for, and what GitHub is holding for nobody — and summed
+    // because the 10 GB does not care which is which.
     match report.demand() {
-        Some(demand) => out.push_str(&format!("demand {:.2} GB\n", demand as f64 / 1e9)),
+        Some(demand) if report.held_by_nothing() == 0 => {
+            out.push_str(&format!("demand {:.2} GB\n", demand as f64 / 1e9))
+        }
+        Some(demand) => out.push_str(&format!(
+            "demand {:.2} GB declared + {:.2} GB declared by nothing = {:.2} GB\n",
+            demand as f64 / 1e9,
+            report.held_by_nothing() as f64 / 1e9,
+            (demand + report.held_by_nothing()) as f64 / 1e9
+        )),
         None => out.push_str("demand UNKNOWN — nothing comparable has been observed\n"),
     }
     // WHETHER THE SECOND HALF WAS EVALUATED AT ALL, said out loud. A gate that
