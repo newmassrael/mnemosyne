@@ -30,6 +30,69 @@
   "min_free_mb": 8000,
   "injections": [
     {
+      "name": "the-gate-that-could-not-look-reports-a-finding",
+      "why": "R1129, AND IT WAS MEASURED SILENT BEFORE IT WAS FIXED. R1104 moved this gate's WORDS into the library so that a suite could read them, and left the EXIT CODES here: `2` when a refusal is `Unreached` — I could not look — and `1` when the caches themselves break the law. Those are two answers a hook acts on differently, and collapsing them is the failure R1078 named. Run against the suite as it stood, this went SILENT across fifty-two tests: moving the words was half the repair, and nothing ran the binary",
+      "edits": [
+        {
+          "file": "tools/cache-budget/src/main.rs",
+          "from": "    std::process::exit(if unreached { 2 } else { 1 });",
+          "to": "    std::process::exit(1);"
+        }
+      ],
+      "expect_red": ["a_repository_declaring_no_cache_is_unjudged_rather_than_clean"]
+    },
+    {
+      "name": "a-finding-about-the-caches-is-reported-as-a-broken-gate",
+      "why": "the other direction of the same collapse, and the one that reads as the gate being at fault rather than the repository: caches over budget are a finding a person can act on, and `2` says `do not believe what you just read`",
+      "edits": [
+        {
+          "file": "tools/cache-budget/src/main.rs",
+          "from": "    std::process::exit(if unreached { 2 } else { 1 });",
+          "to": "    std::process::exit(2);"
+        }
+      ],
+      "expect_red": ["a_repository_over_its_budget_is_a_finding_and_not_an_unreachable_gate"]
+    },
+    {
+      "name": "the-refusals-are-judged-but-never-said",
+      "why": "an exit code is one bit and this gate's findings are a distribution — which key, how large, how many absent. A run that returns 1 and prints nothing hands a person the fact that something is wrong and none of what it is",
+      "edits": [
+        {
+          "file": "tools/cache-budget/src/main.rs",
+          "from": "    for refusal in &refusals {\n        eprintln!(\"cache-budget: {refusal}\");\n    }",
+          "to": "    for refusal in refusals.iter().take(0) {\n        eprintln!(\"cache-budget: {refusal}\");\n    }"
+        }
+      ],
+      "expect_red": [
+        "a_repository_over_its_budget_is_a_finding_and_not_an_unreachable_gate",
+        "a_repository_declaring_no_cache_is_unjudged_rather_than_clean"
+      ]
+    },
+    {
+      "name": "the-clean-answer-is-an-exit-code-and-nothing-said",
+      "why": "a gate that prints only its findings cannot be told from one that never ran — the sentence on the clean path is what says the reading HAPPENED, and it is the line a person looks for in a green log",
+      "edits": [
+        {
+          "file": "tools/cache-budget/src/main.rs",
+          "from": "        println!(\"every cache this repository declares is one it keeps\");",
+          "to": "        println!(\"cache-budget: done\");"
+        }
+      ],
+      "expect_red": ["a_repository_whose_caches_fit_exits_zero_and_says_which_answer_that_is"]
+    },
+    {
+      "name": "what-was-reached-is-not-printed-before-it-is-judged",
+      "why": "the report is printed FIRST and unconditionally, because a gate that never opened anything and a gate that found nothing wrong print the same silence. Withholding it until after the verdict means the clean runs — the ones nobody reads closely — carry no evidence of what was read",
+      "edits": [
+        {
+          "file": "tools/cache-budget/src/main.rs",
+          "from": "    print!(\"{}\", cache_budget::render(&report));",
+          "to": ""
+        }
+      ],
+      "expect_red": ["a_repository_whose_caches_fit_exits_zero_and_says_which_answer_that_is"]
+    },
+    {
       "name": "an-absent-cache-is-priced-from-anything-at-all",
       "why": "every key in this repository holds `~/.cargo/registry`, so pricing an absent cache from any cache it merely OVERLAPS prices a 0.10 GB registry cache as a 3 GB build tree and invents demand that is not there — a gate turning red at a repository doing nothing wrong",
       "edits": [

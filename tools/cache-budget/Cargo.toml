@@ -30,5 +30,11 @@ ci-plan = { path = "../ci-plan" }
 # format of that record is written down once, in the crate that writes it.
 restored = { path = "../restored" }
 
+# THE ENTRANCE TESTS BUILD REPOSITORIES, one per answer this gate can give, and
+# each has to be somewhere `git init` is harmless and cleanup is automatic. The
+# sibling gates' fixture suites use the same crate for the same reason.
+[dev-dependencies]
+tempfile = "3"
+
 [lints.clippy]
 all = "deny"
