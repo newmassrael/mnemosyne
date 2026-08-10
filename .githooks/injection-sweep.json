@@ -1,0 +1,92 @@
+{
+  "_": [
+    "THE SWEEP THAT SAYS THE HOOKS' OWN GATE IS NOT VACUOUS — run it from the",
+    "repository root:",
+    "    cargo run -q --manifest-path tools/injection-harness/Cargo.toml -- \\",
+    "        .githooks/injection-sweep.json",
+    "",
+    "`crates/mnemosyne-cli/tests/git_hooks_smoke.rs` drives the REAL hook files",
+    "and the REAL side-workspace lister over throwaway repositories, which is",
+    "what makes them injectable at all: the subject is a shell script and the",
+    "oracle is a Rust suite. Every injection below removes one distinction those",
+    "scripts draw and names the case that must go red for it.",
+    "",
+    "ALL FOUR ARE ABOUT THE SAME DECISION, the one R1078 paid for and R1127 to",
+    "R1129 found unread in three gates: exit 1 says THESE SITES BREAK THE LAW",
+    "and exit 2 says I COULD NOT READ ENOUGH OF THIS TREE TO HAVE AN OPINION.",
+    "The gates answer both. Until R1132 nothing checked that their callers told",
+    "the two apart, and one of the four collapses is a tree the gate never read",
+    "being COMMITTED.",
+    "",
+    "Scoped to the hook suite: nothing here touches a gate's own laws, which",
+    "have their own sweeps under tools/."
+  ],
+  "repo": "..",
+  "test_command": [
+    "cargo",
+    "test",
+    "-p",
+    "mnemosyne-cli",
+    "--test",
+    "git_hooks_smoke",
+    "--no-fail-fast"
+  ],
+  "logs": "../target/injection-logs",
+  "min_free_mb": 8000,
+  "injections": [
+    {
+      "name": "the-hook-reports-an-unreadable-tree-as-a-blind-wait",
+      "why": "the collapse the hook's own comment says it already made once: a workspace the gate could not read was reported as a wait on a clock, which sends somebody hunting for a `sleep` in a tree that has none",
+      "edits": [
+        {
+          "file": ".githooks/pre-commit",
+          "from": "    if [[ $waits_verdict -eq 1 ]]; then",
+          "to": "    if [[ $waits_verdict -ne 0 ]]; then"
+        }
+      ],
+      "expect_red": [
+        "pre_commit_tells_a_gate_that_could_not_read_apart_from_one_that_found_a_defect"
+      ]
+    },
+    {
+      "name": "the-hook-commits-a-tree-the-gate-could-not-read",
+      "why": "the other direction, and the dangerous one: a gate with no verdict is not a gate with nothing to say. Treating exit 2 as a pass commits a tree part of which was never read, which is the shape R1078 shipped",
+      "edits": [
+        {
+          "file": ".githooks/pre-commit",
+          "from": "    elif [[ $waits_verdict -ne 0 ]]; then",
+          "to": "    elif false; then"
+        }
+      ],
+      "expect_red": [
+        "pre_commit_tells_a_gate_that_could_not_read_apart_from_one_that_found_a_defect"
+      ]
+    },
+    {
+      "name": "the-lister-reports-an-unreadable-workspace-as-a-blind-wait",
+      "why": "the same collapse one level down, where it costs more: this message NAMES THE WORKSPACE, so the wrong sentence sends a reader into whichever crate the gate merely failed to read",
+      "edits": [
+        {
+          "file": "scripts/check-side-workspaces.sh",
+          "from": "    0) ;;\n    1)",
+          "to": "    0) ;;\n    1|2)"
+        }
+      ],
+      "expect_red": [
+        "the_side_workspace_gate_tells_a_gate_it_could_not_read_from_one_that_found_a_defect"
+      ]
+    },
+    {
+      "name": "the-lister-cannot-say-it-was-never-started-in-a-tree",
+      "why": "the lister's OWN two codes, which nothing in this repository reads — the hook and CI both treat any non-zero as a rejection. A distinction with no reader drifts, so the suite is the reader: `2` is 'I was not started in a tree' and `1` is 'a workspace here failed its gate'",
+      "edits": [
+        {
+          "file": "scripts/check-side-workspaces.sh",
+          "from": "    \"tree to check, which is where a git hook and CI both start\" >&2\n  exit 2",
+          "to": "    \"tree to check, which is where a git hook and CI both start\" >&2\n  exit 1"
+        }
+      ],
+      "expect_red": ["the_side_workspace_gate_answers_two_when_it_was_not_started_in_a_tree"]
+    }
+  ]
+}

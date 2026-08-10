@@ -36,6 +36,16 @@ use tempfile::TempDir;
 /// baseline every gate must accept.
 const CLEAN_LIB: &str = "pub fn one() -> u8 {\n    1\n}\n";
 
+/// A `.rs` file the COMPILER never sees and the gates DO: a module nothing
+/// declares.
+///
+/// THAT DIFFERENCE IS WHAT MAKES IT USABLE HERE. `cargo fmt` formats what a
+/// crate root reaches and clippy compiles the same set, so an unattached file
+/// walks past Gates 4, 5 and 5a untouched; `tools/blind-waits` walks the TREE,
+/// cannot parse this, and answers `2` — "I could not read enough of this to
+/// have an opinion" — which is the one answer no case here had ever produced.
+const UNREADABLE_ORPHAN: &str = "fn ( this file is not rust\n";
+
 /// Logs the verb it was asked for, then REFUSES anything the real CLI does not
 /// answer to. Round 900: a stub that accepts every argument would let a hook
 /// call a misspelled verb and still pass — the gap Round 899 named in a carry
@@ -536,6 +546,47 @@ fn pre_commit_rejects_a_test_that_waits_on_a_clock() {
 }
 
 #[test]
+fn pre_commit_tells_a_gate_that_could_not_read_apart_from_one_that_found_a_defect() {
+    // GATE 5c's OTHER NON-ZERO EXIT, and the one nothing here ran. `1` is
+    // "these sites break the law" and `2` is "I could not read enough of this
+    // tree to have an opinion"; the hook prints a different sentence for each,
+    // and its own comment records what one message for both cost — a workspace
+    // that could not be read was reported as a wait on a clock. The case above
+    // covers `1` alone, so a hook that collapsed the two stayed green.
+    //
+    // The orphan is the lever, for the reason `UNREADABLE_ORPHAN` gives: every
+    // gate in front of 5c compiles what a crate root reaches, and this is not
+    // reachable from one.
+    let f = Fixture::new();
+    f.write("src/orphan.rs", UNREADABLE_ORPHAN);
+    f.stage_all();
+
+    let out = f.run_hook("pre-commit", &[], "", &[]);
+    assert!(
+        !out.status.success(),
+        "a gate that reached no verdict must not pass a commit"
+    );
+    let err = stderr_of(&out);
+    assert!(
+        err.contains("the blind-wait gate could not read this tree (exit 2)"),
+        "the rejection must say the gate could not judge, and with which code:\n{err}"
+    );
+    // THE MIRROR, and the whole point of this case: the sentence belonging to
+    // the other non-zero exit. A hook that answered `1` here would send somebody
+    // hunting for a `sleep` in a tree that has none.
+    assert!(
+        !err.contains("a test waits on a clock"),
+        "a tree it could not read is not a tree with a blind wait in it:\n{err}"
+    );
+    // AND THE GATE'S OWN WORDS ARE ABOVE, which is exactly what the hook's
+    // sentence promises the reader will find.
+    assert!(
+        err.contains("NO VERDICT"),
+        "the gate's own message must reach the same stream the hook points at:\n{err}"
+    );
+}
+
+#[test]
 fn pre_commit_gates_a_separate_in_repo_workspace_the_root_gates_miss() {
     // `cargo fmt --all` / `clippy --workspace` only see root members, so a
     // crate carrying its OWN `[workspace]` is invisible to Gates 4 and 5. This
@@ -584,6 +635,92 @@ fn pre_commit_gates_a_separate_in_repo_workspace_the_root_gates_miss() {
     assert!(
         stderr_of(&out).contains("separate workspace 'tools/sub'"),
         "the gate must have actually run on it:\n{}",
+        stderr_of(&out)
+    );
+}
+
+#[test]
+fn the_side_workspace_gate_tells_a_gate_it_could_not_read_from_one_that_found_a_defect() {
+    // THE SAME TWO ANSWERS, ONE LEVEL DOWN. `scripts/check-side-workspaces.sh`
+    // is where a separate workspace's blind-wait gate is run, and it too prints
+    // a different sentence for exit 1 and exit 2 — a branch nothing had ever
+    // taken. It matters more here than in the hook: the message names the
+    // WORKSPACE, so the wrong one sends somebody looking for a `sleep` in
+    // whichever crate the gate merely failed to read.
+    let f = Fixture::new();
+    f.write(
+        "tools/sub/Cargo.toml",
+        "[package]\nname = \"sub\"\nversion = \"0.0.0\"\nedition = \"2021\"\n\n[workspace]\n",
+    );
+    f.write("tools/sub/src/lib.rs", CLEAN_LIB);
+    f.write("tools/sub/src/orphan.rs", UNREADABLE_ORPHAN);
+    f.generate_lockfile("tools/sub/Cargo.toml");
+    f.stage_all();
+
+    let out = f.run_hook("pre-commit", &[], "", &[]);
+    assert!(
+        !out.status.success(),
+        "a separate workspace the gate could not read must not pass"
+    );
+    let err = stderr_of(&out);
+    assert!(
+        err.contains("the blind-wait gate could not read tools/sub (exit 2)"),
+        "the refusal must name the workspace and the code:\n{err}"
+    );
+    // THE MIRROR: the sentence the other exit prints, which is the one this
+    // branch exists to not be.
+    assert!(
+        !err.contains("carries a wait that ends on a clock"),
+        "a workspace it could not read carries no finding about waits:\n{err}"
+    );
+}
+
+#[test]
+fn the_side_workspace_gate_answers_two_when_it_was_not_started_in_a_tree() {
+    // THE LISTER'S OWN TWO CODES, which nothing anywhere reads: the hook and CI
+    // both treat any non-zero as a rejection, so the distinction between "a
+    // workspace failed its gate" and "I was not run from the root of a tree"
+    // survives only as words on a screen — and words with no reader drift. This
+    // case is that reader.
+    let gate = repo_root().join("scripts/check-side-workspaces.sh");
+    let nowhere = TempDir::new().expect("tempdir");
+    let out = Command::new(&gate)
+        .current_dir(nowhere.path())
+        .output()
+        .expect("the gate runs");
+    assert_eq!(
+        out.status.code(),
+        Some(2),
+        "a gate started outside a tree has no verdict about one:\n{}",
+        stderr_of(&out)
+    );
+    assert!(
+        stderr_of(&out).contains("has no Cargo.toml"),
+        "and it names what it wanted to find:\n{}",
+        stderr_of(&out)
+    );
+
+    // THE CONTROL, and the reason the code above means anything: pointed at a
+    // real tree with a real defect, the SAME script answers 1. Unformatted
+    // rather than unreadable, so nothing here compiles.
+    let f = Fixture::new();
+    f.write(
+        "tools/sub/Cargo.toml",
+        "[package]\nname = \"sub\"\nversion = \"0.0.0\"\nedition = \"2021\"\n\n[workspace]\n",
+    );
+    f.write("tools/sub/src/lib.rs", "pub fn two()->u8{2}\n");
+    f.generate_lockfile("tools/sub/Cargo.toml");
+    f.stage_all();
+    let out = Command::new(&gate)
+        .args(["--lint-only", "tools/sub"])
+        .current_dir(f.path())
+        .env("CARGO_TARGET_DIR", f.path().join("target"))
+        .output()
+        .expect("the gate runs");
+    assert_eq!(
+        out.status.code(),
+        Some(1),
+        "a workspace that broke a law is a finding, not an unstartable gate:\n{}",
         stderr_of(&out)
     );
 }
