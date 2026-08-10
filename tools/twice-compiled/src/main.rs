@@ -308,29 +308,63 @@ fn report(census: &Census, declared: &Declared, absent: &BTreeSet<String>, root:
         // A JOB WITH NO CACHE IS NOT A JOB WITH NO STATE — it is a job that
         // started from nothing every time, which is what having no cache means.
         // Saying so is the difference between the two silences.
-        match (declared.caches.contains_key(job), census.restored.get(job)) {
-            (_, Some(Ok(record))) => {
+        //
+        // R1125 — ONE LINE PER CACHE, AND THIS READER WAS THE ONE THAT DID NOT
+        // MOVE. R1122 keyed the census by the record's FILE, because a job may
+        // now write more than one; the judge and the budget gate were both taken
+        // to the new key and this lookup was left asking by JOB, which can never
+        // hit. It printed `NOT SAID` for all seven cached jobs of three green
+        // runs — a report announcing an absence that was entirely its own.
+        let caches = declared.caches.get(job).map(Vec::as_slice).unwrap_or(&[]);
+        if caches.is_empty() {
+            // A JOB WITH NO CACHE IS NOT A JOB WITH NO STATE — it is one that
+            // starts from nothing every time, which is what having no cache
+            // means. Saying so is the difference between the two silences.
+            println!(
+                "  {:<22} started from: an empty tree — this job declares no cache",
+                ""
+            );
+        }
+        for cache in caches {
+            let wanted = restored::Restore {
+                job: job.clone(),
+                cache: cache.prefix.clone(),
+            };
+            match census.restore(&wanted) {
                 // AND WHAT THAT COST, beside the seconds the job spent
                 // compiling. The two numbers are the whole of "was this cache
                 // worth having": a restore that takes longer than the compiling
                 // it spared is a cache that made the job slower, and until the
                 // record carried a clock neither this gate nor anything else
                 // could put them next to each other.
-                println!(
-                    "  {:<22} started from: {} — the restore took {:.1} s, \
+                //
+                // THE JOB'S COMPILING IS THE SAME FIGURE ON EVERY ONE OF ITS
+                // LINES, deliberately: what a job compiles is the job's, and
+                // splitting it between two caches would be inventing an
+                // attribution nothing measured. What the split bought is the
+                // PRICE being each cache's own.
+                Some(record) => println!(
+                    "  {:<22} started from `{}`: {} — the restore took {:.1} s, \
                      against {:.1} s this job spent compiling",
                     "",
+                    cache.prefix,
                     record.warmth().why(),
                     seconds(record.restore_micros()),
                     seconds(log.busy_micros()),
-                )
+                ),
+                None => println!("  {:<22} started from `{}`: NOT SAID", "", cache.prefix),
             }
-            (_, Some(Err(why))) => println!("  {:<22} started from: UNREADABLE — {why}", ""),
-            (true, None) => println!("  {:<22} started from: NOT SAID", ""),
-            (false, None) => println!(
-                "  {:<22} started from: an empty tree — this job declares no cache",
-                ""
-            ),
+        }
+        // A RECORD THAT DID NOT DECODE HAS NO CACHE TO BE FILED UNDER, so it is
+        // named by its file — the same reason `judge` refuses it that way.
+        for (file, why) in census
+            .restored
+            .iter()
+            .filter_map(|(file, record)| record.as_ref().err().map(|why| (file, why)))
+        {
+            if restored::names_its_job(file, job) {
+                println!("  {:<22} `{file}` is UNREADABLE — {why}", "");
+            }
         }
     }
 

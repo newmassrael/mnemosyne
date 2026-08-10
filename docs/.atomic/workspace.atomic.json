@@ -7914,6 +7914,86 @@
         "THE OTHER 75% IS STILL THE ARC THE OWNER CHOSE AND IS STILL NOT BUILT. R1098's reading redirected this project to the time a suite spends running what it built; the ledger's XX3 named the work (the same instrument, pointed at running rather than compiling) and twenty-five rounds of caching went past it. The ceiling this round prints is what says that redirect was right, and it now says so on every run."
       ]
     },
+    "Round 1125": {
+      "decision_summary": "THE REPORT ANNOUNCED AN ABSENCE THAT WAS ENTIRELY ITS OWN, AND THE SUITE AGREED\nWITH IT. R1122 keyed the census by the record's FILE, because a job may now write\nmore than one; the judge and the budget gate were both taken to the new key and\nthe REPORT was left asking `census.restored.get(job)`. That lookup can never hit,\nso every cached job of every run printed `started from: NOT SAID` — the words for\na job that wrote no record at all, said about eight records the census was\nholding in its hand.\n\nIT SHIPPED IN THREE COMMITS AND SURVIVED THE FIRST GREEN RUN THAT USED IT. The\ngates were right the whole time: `judge_restores` joins per cache and refused\nnothing, `cache-budget` printed every job's warmth correctly. Only the census\ngate's own report was lying, and it is the surface a person reads.\n\nTHE ORACLE IS WHAT LET IT THROUGH, AND IT IS THE PART WORTH WRITING DOWN. The\ntest that covers this line asserted `stdout().contains(\"started from\")` — a\nPHRASE, and one that `started from: NOT SAID` contains too. So the test passed on\nthe exact output it existed to prevent. An oracle that matches a substring of the\nfailure is not an oracle; the assertion is now the READING — the warmth in the\nwords the type itself prints, and the prefix of the cache it belongs to — plus\nthe mirror, that a record the census holds is never reported as one the job did\nnot write.\n\nONE LINE PER CACHE, WHICH IS WHAT THE SPLIT WAS FOR AND WHAT THE REPORT NEVER\nSHOWED. A job with two caches has two states and two prices; `unrun-tests` now\nprints both, each naming the cache it is the price of. The job's own compiling\nappears on both lines unchanged, deliberately: what a job compiles is the job's,\nand splitting that between two caches would be an attribution nothing measured.\nWhat the split bought is the PRICE being each cache's own.\n\nAND THE RUN'S NUMBERS WERE RECOVERED RATHER THAN LOST. The records themselves\nwere correct and are uploaded as artifacts, so the run that printed nothing\nreadable was re-read with the repaired binary: the eight restores, their warmth,\ntheir prices. A report defect costs the reading of a run only if nobody goes back\nfor it.",
+      "changes_bullets": [
+        "`tools/twice-compiled` — `Census::restore` looks a record up by the restore it says it is, and the report prints ONE LINE PER CACHE naming the prefix each price belongs to; unreadable records are listed by file, which is the only handle they have.",
+        "`tools/twice-compiled/tests/entrances.rs` — the oracle is the reading rather than the phrase: the state in the words the type prints, the cache it belongs to, and the mirror that a held record is never reported as absent. The fixture's prefix is one constant, checked against the step that names it.",
+        "`tools/twice-compiled/injection-sweep.json` — two injections, the first of them this round's own defect: the lookup put back to asking by job, and the cache name dropped from the line."
+      ],
+      "verification_bullets": [
+        "THE DEFECT IS PROVED BY INJECTION AND NOT BY READING: `tools/twice-compiled` 65 injections, all fired, missed 0, control 113 green — and two of them are new, the first being this round's own defect put back (the lookup asking by job) and the second dropping the cache name from the line. Both turn `a_replayed_job_records_that_it_started_from_nothing` red, which the OLD assertion in that test would have passed.",
+        "THE RUN THAT SHIPPED THE DEFECT WAS RE-READ WITH THE REPAIRED BINARY, over its own uploaded artifacts: eight restores, each naming its cache — `Linux-cargo-citations-` 242 MB in 2.4 s, `Linux-cargo-msrv-` 221 MB in 1.9 s, `Linux-cargo-serverfeat-` 281 MB in 2.1 s, `Linux-cargo-side-` 246 MB in 3.2 s, `Linux-cargo-uncompiled-` 419 MB in 4.1 s, and three that brought nothing at all (`Linux-cargo-unruntests-home-`, `Linux-cargo-unrun-`, `Linux-cargo-validate-`).",
+        "FULL TREE GREEN: `scripts/verify.sh` exit 0 over fmt, clippy `-D warnings`, the workspace suite and `check-side-workspaces.sh` (12 workspaces, 0 skipped) — 2416 passed, 0 failed.",
+        "THE RUN THIS SESSION PUSHED WAS READ TO ITS ANNOTATIONS: 31364512079, nine jobs success, annotations 0. `cache-budget` printed `demand 9.51 GB declared + 0.15 GB declared by nothing = 9.67 GB` and passed — which is R1123 doing exactly what it was built for, since the 0.15 is the archive the rename left behind and the old law would have refused the tree for it."
+      ],
+      "carry_forward_bullets": [
+        "📐GG1b HAS ITS FIRST PAIRED READING, and it was a gift of an eviction rather than a designed arm. Run 31364512079 found NOTHING under `Linux-cargo-unrun-` — 0.7 s, no bytes — and the gate's silence about a restorable generation is the evidence that the 8.90 GB archive had already been evicted before the run began. So `unrun-tests` ran genuinely cold, beside a warm reading from the run before it: 332 compilations / 194.6 s of compiling / 134.2 s of restore, against 1017 / 409.2 s / 0.7 s. The cache spares 685 compilations and about 214 s of compiling for 134 s of restore — a NET of roughly 81 s of that job's window, bought with 8.79 GB of a 10 GB budget.",
+        "⚠AND THE CONFOUND IS NAMED: the two runs are different commits, so this is a paired reading and not the controlled arm A/B. What makes it better than R1099's — which read two WARM runs as a cold-against-warm pair and deleted a working cache — is that both states here are MEASURED on the job's own disk rather than inferred from a key. The clean test is still two runs of one commit.",
+        "⛳THE OLD ARCHIVE WAS EVICTED BETWEEN TWO RUNS AND NOTHING SAID SO AT THE TIME. `cache-budget` reports what is held now; that a generation DISAPPEARED between this run and the last is visible only by holding two reports side by side, which nothing does. The sum of everything GitHub holds for this repository came to 10.03 GB against the 10 GB limit on the run that lost it."
+      ],
+      "population_census": [
+        {
+          "axis": "transition rules by `undirected`",
+          "left_label": "undirected",
+          "left": 10,
+          "right_label": "directed",
+          "right": 27
+        },
+        {
+          "axis": "map corpora by leg-kind declaration",
+          "left_label": "omitted",
+          "left": 6,
+          "right_label": "declared",
+          "right": 24
+        },
+        {
+          "axis": "cost-carrying corpora by direction-dependent pricing",
+          "left_label": "prices a way by direction",
+          "left": 4,
+          "right_label": "prices no way by direction",
+          "right": 6
+        },
+        {
+          "axis": "run trees by authoring mode",
+          "left_label": "hand script",
+          "left": 10,
+          "right_label": "file-only",
+          "right": 239
+        },
+        {
+          "axis": "map corpora by declared boundary crossing",
+          "left_label": "declares an exit",
+          "left": 6,
+          "right_label": "declares none",
+          "right": 24
+        },
+        {
+          "axis": "authored submissions by map and telling",
+          "left_label": "carries both",
+          "left": 10,
+          "right_label": "carries one",
+          "right": 24
+        }
+      ],
+      "publishable_decision_summary": "THE REPORT ANNOUNCED AN ABSENCE THAT WAS ENTIRELY ITS OWN, AND THE SUITE AGREED\nWITH IT. R1122 keyed the census by the record's FILE, because a job may now write\nmore than one; the judge and the budget gate were both taken to the new key and\nthe REPORT was left asking `census.restored.get(job)`. That lookup can never hit,\nso every cached job of every run printed `started from: NOT SAID` — the words for\na job that wrote no record at all, said about eight records the census was\nholding in its hand.\n\nIT SHIPPED IN THREE COMMITS AND SURVIVED THE FIRST GREEN RUN THAT USED IT. The\ngates were right the whole time: `judge_restores` joins per cache and refused\nnothing, `cache-budget` printed every job's warmth correctly. Only the census\ngate's own report was lying, and it is the surface a person reads.\n\nTHE ORACLE IS WHAT LET IT THROUGH, AND IT IS THE PART WORTH WRITING DOWN. The\ntest that covers this line asserted `stdout().contains(\"started from\")` — a\nPHRASE, and one that `started from: NOT SAID` contains too. So the test passed on\nthe exact output it existed to prevent. An oracle that matches a substring of the\nfailure is not an oracle; the assertion is now the READING — the warmth in the\nwords the type itself prints, and the prefix of the cache it belongs to — plus\nthe mirror, that a record the census holds is never reported as one the job did\nnot write.\n\nONE LINE PER CACHE, WHICH IS WHAT THE SPLIT WAS FOR AND WHAT THE REPORT NEVER\nSHOWED. A job with two caches has two states and two prices; `unrun-tests` now\nprints both, each naming the cache it is the price of. The job's own compiling\nappears on both lines unchanged, deliberately: what a job compiles is the job's,\nand splitting that between two caches would be an attribution nothing measured.\nWhat the split bought is the PRICE being each cache's own.\n\nAND THE RUN'S NUMBERS WERE RECOVERED RATHER THAN LOST. The records themselves\nwere correct and are uploaded as artifacts, so the run that printed nothing\nreadable was re-read with the repaired binary: the eight restores, their warmth,\ntheir prices. A report defect costs the reading of a run only if nobody goes back\nfor it.",
+      "publishable_changes_bullets": [
+        "`tools/twice-compiled` — `Census::restore` looks a record up by the restore it says it is, and the report prints ONE LINE PER CACHE naming the prefix each price belongs to; unreadable records are listed by file, which is the only handle they have.",
+        "`tools/twice-compiled/tests/entrances.rs` — the oracle is the reading rather than the phrase: the state in the words the type prints, the cache it belongs to, and the mirror that a held record is never reported as absent. The fixture's prefix is one constant, checked against the step that names it.",
+        "`tools/twice-compiled/injection-sweep.json` — two injections, the first of them this round's own defect: the lookup put back to asking by job, and the cache name dropped from the line."
+      ],
+      "publishable_verification_bullets": [
+        "THE DEFECT IS PROVED BY INJECTION AND NOT BY READING: `tools/twice-compiled` 65 injections, all fired, missed 0, control 113 green — and two of them are new, the first being this round's own defect put back (the lookup asking by job) and the second dropping the cache name from the line. Both turn `a_replayed_job_records_that_it_started_from_nothing` red, which the OLD assertion in that test would have passed.",
+        "THE RUN THAT SHIPPED THE DEFECT WAS RE-READ WITH THE REPAIRED BINARY, over its own uploaded artifacts: eight restores, each naming its cache — `Linux-cargo-citations-` 242 MB in 2.4 s, `Linux-cargo-msrv-` 221 MB in 1.9 s, `Linux-cargo-serverfeat-` 281 MB in 2.1 s, `Linux-cargo-side-` 246 MB in 3.2 s, `Linux-cargo-uncompiled-` 419 MB in 4.1 s, and three that brought nothing at all (`Linux-cargo-unruntests-home-`, `Linux-cargo-unrun-`, `Linux-cargo-validate-`).",
+        "FULL TREE GREEN: `scripts/verify.sh` exit 0 over fmt, clippy `-D warnings`, the workspace suite and `check-side-workspaces.sh` (12 workspaces, 0 skipped) — 2416 passed, 0 failed.",
+        "THE RUN THIS SESSION PUSHED WAS READ TO ITS ANNOTATIONS: 31364512079, nine jobs success, annotations 0. `cache-budget` printed `demand 9.51 GB declared + 0.15 GB declared by nothing = 9.67 GB` and passed — which is R1123 doing exactly what it was built for, since the 0.15 is the archive the rename left behind and the old law would have refused the tree for it."
+      ],
+      "publishable_carry_forward_bullets": [
+        "📐GG1b HAS ITS FIRST PAIRED READING, and it was a gift of an eviction rather than a designed arm. Run 31364512079 found NOTHING under `Linux-cargo-unrun-` — 0.7 s, no bytes — and the gate's silence about a restorable generation is the evidence that the 8.90 GB archive had already been evicted before the run began. So `unrun-tests` ran genuinely cold, beside a warm reading from the run before it: 332 compilations / 194.6 s of compiling / 134.2 s of restore, against 1017 / 409.2 s / 0.7 s. The cache spares 685 compilations and about 214 s of compiling for 134 s of restore — a NET of roughly 81 s of that job's window, bought with 8.79 GB of a 10 GB budget.",
+        "⚠AND THE CONFOUND IS NAMED: the two runs are different commits, so this is a paired reading and not the controlled arm A/B. What makes it better than R1099's — which read two WARM runs as a cold-against-warm pair and deleted a working cache — is that both states here are MEASURED on the job's own disk rather than inferred from a key. The clean test is still two runs of one commit.",
+        "⛳THE OLD ARCHIVE WAS EVICTED BETWEEN TWO RUNS AND NOTHING SAID SO AT THE TIME. `cache-budget` reports what is held now; that a generation DISAPPEARED between this run and the last is visible only by holding two reports side by side, which nothing does. The sum of everything GitHub holds for this repository came to 10.03 GB against the 10 GB limit on the run that lost it."
+      ]
+    },
     "Round 252": {
       "decision_summary": "Parser CommonMark conformance — recognize indented fenced code blocks (§98) and require whitespace after ATX hash sequence (§62)",
       "changes_bullets": [

@@ -80,6 +80,14 @@ const MEASURES_A_RESTORE: &[&str] = &[
     "cargo build --manifest-path crates/shared/Cargo.toml",
 ];
 
+/// The same prefix, for the assertions that read it back out of the report.
+///
+/// ONE SPELLING. The step above is a shell line and cannot interpolate, so the
+/// constant is checked against it rather than substituted into it — a second
+/// spelling that drifted would leave a test asserting about a cache the fixture
+/// does not declare, which is the shape it is here to catch.
+const FIXTURE_CACHE_PREFIX: &str = "Linux-fixture-unrun-tests-";
+
 /// Where the cache step of [`MEASURES_A_RESTORE`] goes in the emitted `steps:`
 /// list: after the measurement that opens the record and before the one that
 /// closes it.
@@ -934,9 +942,34 @@ fn a_replayed_job_records_that_it_started_from_nothing() {
     );
     // AND THE REPORT CARRIES IT, because the number that gets quoted is the one
     // printed, and the number that got quoted is what deleted a working cache.
+    //
+    // R1125 — THE PHRASE WAS THE WHOLE ORACLE AND IT WAS TRUE OF THE FAILURE.
+    // This asked only for the words `started from`, which `started from: NOT
+    // SAID` also contains — so when R1122 moved the census key and left this
+    // reader asking by job, the report announced an absence for every cached job
+    // of three green runs and the suite agreed with it. The oracle has to be the
+    // READING: the state, and which cache it is the state of.
+    let printed = run.stdout();
     assert!(
-        run.stdout().contains("started from"),
-        "the report says what each job started from\n{}",
+        MEASURES_A_RESTORE
+            .iter()
+            .any(|step| step.contains(FIXTURE_CACHE_PREFIX)),
+        "the constant below is the fixture's own prefix, checked against the \
+         step that names it rather than trusted"
+    );
+    assert!(
+        printed.contains(&format!(
+            "started from `{}`: {}",
+            FIXTURE_CACHE_PREFIX,
+            restored::Warmth::Nothing.why()
+        )),
+        "the report says what each restore brought, and which cache it was\n{}",
+        run.transcript()
+    );
+    assert!(
+        !printed.contains("NOT SAID"),
+        "and a record this census HOLDS must never be reported as one the job \
+         did not write\n{}",
         run.transcript()
     );
     assert!(

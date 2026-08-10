@@ -811,6 +811,30 @@
       "expect_red": ["a_jobs_two_restore_records_are_loaded_as_two"]
     },
     {
+      "name": "the-report-asks-for-a-restore-record-by-job",
+      "why": "R1125, and it is the defect this injection is named after rather than a hypothetical: R1122 keyed the census by the record's FILE, because a job may write more than one, and took the judge and the budget gate to the new key while leaving THIS reader asking by job. `restored.get(job)` cannot hit, so the report printed `NOT SAID` for all seven cached jobs of three green runs — an absence entirely its own. The suite agreed, because its oracle was the phrase `started from`, which `started from: NOT SAID` also contains",
+      "edits": [
+        {
+          "file": "tools/twice-compiled/src/main.rs",
+          "from": "            match census.restore(&wanted) {",
+          "to": "            match census.restored.get(job).and_then(|record| record.as_ref().ok()) {"
+        }
+      ],
+      "expect_red": ["a_replayed_job_records_that_it_started_from_nothing"]
+    },
+    {
+      "name": "the-report-does-not-say-which-cache-a-state-belongs-to",
+      "why": "a job may declare two caches whose states differ — one exact hit and one empty tree was the ordinary shape the day `unrun-tests` was split — so a line that gives the state without naming the cache is one a reader must guess at, and guessing which of a job's restores a number is about is the substitution R1117 split the record to prevent",
+      "edits": [
+        {
+          "file": "tools/twice-compiled/src/main.rs",
+          "from": "                    \"  {:<22} started from `{}`: {} — the restore took {:.1} s, \\\n                     against {:.1} s this job spent compiling\",\n                    \"\",\n                    cache.prefix,",
+          "to": "                    \"  {:<22} started from: {}{} — the restore took {:.1} s, \\\n                     against {:.1} s this job spent compiling\",\n                    \"\",\n                    \"\","
+        }
+      ],
+      "expect_red": ["a_replayed_job_records_that_it_started_from_nothing"]
+    },
+    {
       "name": "the-ceiling-is-the-sum-of-what-every-job-compiles",
       "why": "R1124: these jobs run BESIDE each other, so a repair that removed every compilation shortens the run by at most the busiest job's own compiling. Summing them prices the whole family of repairs at four times what any arrangement of caches can win — the work-seconds-against-wall-clock mistake R1120 made in a report to the owner, and the figure an arc decision was taken on",
       "edits": [

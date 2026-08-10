@@ -1002,6 +1002,25 @@ impl Census {
         self.retained_micros().values().sum()
     }
 
+    /// The record of one restore, if one decoded.
+    ///
+    /// THE LOOKUP THE REPORT NEEDS AND THE JUDGE DOES NOT. `judge_restores` walks
+    /// the records itself because it has to say things about the FILES — one
+    /// unreadable, two claiming the same restore, one named for another job —
+    /// and none of those questions has an answer once the records are indexed.
+    /// This is the display side: what decoded, filed under what it says it is.
+    ///
+    /// R1125 — AND IT EXISTS BECAUSE ASKING BY JOB SILENTLY STOPPED WORKING.
+    /// R1122 keyed the census by the record's file name, since a job may write
+    /// more than one; a reader still asking `restored.get(job)` gets `None` for
+    /// every job in every run, and prints that absence as the job's silence.
+    pub fn restore(&self, restore: &restored::Restore) -> Option<&restored::Restored> {
+        self.restored
+            .values()
+            .filter_map(|record| record.as_ref().ok())
+            .find(|record| record.restore() == *restore)
+    }
+
     /// The most any compile-side repair can take off this run's critical path.
     ///
     /// R1124 — THE NUMBER THAT CLOSED AN ARC AND THAT NOTHING PRINTED. R1098
