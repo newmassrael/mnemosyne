@@ -14,6 +14,9 @@ use restored::{decode, Malformed, Measurement, Restoration, Restored, Side, Warm
 fn written(job: &str, exact: bool, paths: &[(&str, u64, u64)]) -> String {
     let mut out = restored::encode_job(job);
     out.extend_from_slice(&restored::encode_cache(A_CACHE));
+    for instrument in restored::INSTRUMENTS {
+        out.extend_from_slice(&restored::encode_built_from(instrument, A_COMMIT));
+    }
     out.extend_from_slice(&restored::encode_at(Side::Before, MEASURED_AT.0));
     for (path, before, _) in paths {
         out.extend_from_slice(&restored::encode_side(
@@ -49,6 +52,11 @@ const MEASURED_AT: (u64, u64) = (1_000_000_000, 1_120_000_000);
 /// identity `ci_plan` derives and every gate here joins on.
 const A_CACHE: &str = "Linux-cargo-unrun-";
 
+/// The commit both instruments in a fixture record were built from. One value,
+/// because agreeing is the ordinary case — the interesting one is written out
+/// where it is tested.
+const A_COMMIT: &str = "0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f";
+
 #[test]
 fn a_record_reads_back_as_what_was_written() {
     let text = written(
@@ -62,6 +70,7 @@ fn a_record_reads_back_as_what_was_written() {
         Restored {
             job: "unrun-tests".to_string(),
             cache: A_CACHE.to_string(),
+            built_from: (A_COMMIT.to_string(), A_COMMIT.to_string()),
             exact: false,
             paths: vec![
                 Restoration {
@@ -165,6 +174,9 @@ fn a_path_shrinking_across_the_restore_does_not_read_as_negative_warmth() {
 fn a_record_the_second_step_never_finished_is_refused_rather_than_read_as_cold() {
     let mut out = restored::encode_job("unrun-tests");
     out.extend_from_slice(&restored::encode_cache(A_CACHE));
+    for instrument in restored::INSTRUMENTS {
+        out.extend_from_slice(&restored::encode_built_from(instrument, A_COMMIT));
+    }
     out.extend_from_slice(&restored::encode_side(
         Side::Before,
         "target",
@@ -186,6 +198,9 @@ fn a_whole_record_that_never_said_when_is_refused_rather_than_priced_at_nothing(
     // Round 1100 put it back.
     let mut out = restored::encode_job("unrun-tests");
     out.extend_from_slice(&restored::encode_cache(A_CACHE));
+    for instrument in restored::INSTRUMENTS {
+        out.extend_from_slice(&restored::encode_built_from(instrument, A_COMMIT));
+    }
     out.extend_from_slice(&restored::encode_side(
         Side::Before,
         "target",
@@ -218,6 +233,9 @@ fn a_record_that_died_between_the_steps_keeps_its_own_name() {
     // repairs. The truncated record is still `ExactIsNotSaidOnce`.
     let mut out = restored::encode_job("unrun-tests");
     out.extend_from_slice(&restored::encode_cache(A_CACHE));
+    for instrument in restored::INSTRUMENTS {
+        out.extend_from_slice(&restored::encode_built_from(instrument, A_COMMIT));
+    }
     out.extend_from_slice(&restored::encode_at(Side::Before, MEASURED_AT.0));
     out.extend_from_slice(&restored::encode_side(
         Side::Before,
@@ -235,6 +253,9 @@ fn a_record_that_died_between_the_steps_keeps_its_own_name() {
 fn a_path_measured_on_one_side_only_is_refused() {
     let mut out = restored::encode_job("validate");
     out.extend_from_slice(&restored::encode_cache(A_CACHE));
+    for instrument in restored::INSTRUMENTS {
+        out.extend_from_slice(&restored::encode_built_from(instrument, A_COMMIT));
+    }
     out.extend_from_slice(&restored::encode_side(
         Side::Before,
         "target",
@@ -259,6 +280,9 @@ fn a_path_measured_on_one_side_only_is_refused() {
 fn a_path_measured_after_and_not_before_is_refused_too() {
     let mut out = restored::encode_job("validate");
     out.extend_from_slice(&restored::encode_cache(A_CACHE));
+    for instrument in restored::INSTRUMENTS {
+        out.extend_from_slice(&restored::encode_built_from(instrument, A_COMMIT));
+    }
     out.extend_from_slice(&restored::encode_side(
         Side::Before,
         "target",
@@ -281,6 +305,51 @@ fn a_path_measured_after_and_not_before_is_refused_too() {
         Err(Malformed::PathIsNotOnBothSides {
             path: "~/.cargo/git".to_string()
         })
+    );
+}
+
+/// R1119 — a record names the BUILD of each instrument that measured it, and the
+/// absence is a refusal. R1118 found `unrun-tests` measured by a recorder out of
+/// its own cache for an unknown number of rounds, and nothing could say so.
+#[test]
+fn a_record_that_does_not_say_which_build_measured_it_is_refused() {
+    let whole = written("unrun-tests", false, &[("target", 0, 6_800)]);
+    for instrument in restored::INSTRUMENTS {
+        let said =
+            String::from_utf8(restored::encode_built_from(instrument, A_COMMIT)).expect("text");
+        let without = whole.replace(&said, "");
+        assert_eq!(
+            decode(&without),
+            Err(Malformed::BuiltFromIsNotSaidOncePerInstrument {
+                instrument: instrument.to_string(),
+                times: 0,
+            }),
+            "a census whose measurer cannot be named reads as one that agreed \
+             with every other"
+        );
+        let twice = format!("{whole}{said}");
+        assert_eq!(
+            decode(&twice),
+            Err(Malformed::BuiltFromIsNotSaidOncePerInstrument {
+                instrument: instrument.to_string(),
+                times: 2,
+            }),
+        );
+    }
+
+    // A THIRD INSTRUMENT NOBODY HAS TAUGHT THIS TO READ is a refusal too: a
+    // measurer this reader drops is one nobody checked, printed as one that was.
+    let stranger = format!(
+        "{whole}{}",
+        String::from_utf8(restored::encode_built_from("something-else", A_COMMIT)).expect("text")
+    );
+    assert!(
+        matches!(
+            decode(&stranger),
+            Err(Malformed::BuiltFromIsNotSaidOncePerInstrument { .. })
+        ),
+        "{:?}",
+        decode(&stranger)
     );
 }
 
@@ -328,6 +397,9 @@ fn a_record_naming_two_jobs_is_refused() {
 fn a_record_with_no_path_at_all_is_refused() {
     let mut out = restored::encode_job("validate");
     out.extend_from_slice(&restored::encode_cache(A_CACHE));
+    for instrument in restored::INSTRUMENTS {
+        out.extend_from_slice(&restored::encode_built_from(instrument, A_COMMIT));
+    }
     out.extend_from_slice(&restored::encode_exact(true));
     let text = String::from_utf8(out).expect("text");
     assert_eq!(decode(&text), Err(Malformed::NoPathsAtAll));

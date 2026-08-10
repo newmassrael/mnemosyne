@@ -1284,6 +1284,15 @@ pub enum Refusal {
     /// disk. The two instruments contradict each other, and which of them is
     /// wrong decides whether this census is of a warm run or a cold one.
     RestoredNothingAfterAnExactHit { job: String },
+    /// One job's two instruments were built from different commits.
+    InstrumentsOfOneJobDisagreeAboutTheirBuild {
+        job: String,
+        measured: String,
+        recorded: String,
+    },
+    /// Two jobs of one run were measured by instruments built from different
+    /// commits, so their censuses are not in the same units.
+    JobsOfOneRunWereMeasuredByDifferentBuilds { jobs: Vec<(String, String)> },
     /// A record says it is the price of a cache its job does not declare.
     RestoreRecordNamesACacheTheJobDoesNotDeclare {
         job: String,
@@ -1440,6 +1449,26 @@ impl std::fmt::Display for Refusal {
                  matched exactly, and not one byte arrived under the paths that \
                  cache holds — one of the two instruments is wrong, and which \
                  one decides whether this census is of a warm run or a cold one"
+            ),
+            Refusal::InstrumentsOfOneJobDisagreeAboutTheirBuild {
+                job,
+                measured,
+                recorded,
+            } => write!(
+                f,
+                "job `{job}` measured its restore with an instrument built from \
+                 `{measured}` and its compilations with a recorder built from \
+                 `{recorded}` — the two are built by one step from one commit, so \
+                 a difference is one of them having arrived from somewhere else"
+            ),
+            Refusal::JobsOfOneRunWereMeasuredByDifferentBuilds { jobs } => write!(
+                f,
+                "the jobs of this run were measured by recorders built from \
+                 different commits ({jobs:?}) — their censuses are not in the \
+                 same units, and R1118 is what that costs: `unrun-tests` restored \
+                 its own build directory over the binaries it had just made, and \
+                 its seconds moved by a factor of four when the fresh recorder \
+                 finally ran"
             ),
             Refusal::RestoreRecordNamesACacheTheJobDoesNotDeclare {
                 job,
@@ -2085,6 +2114,47 @@ fn judge_restores(census: &Census, declared: &Declared, absent: &BTreeSet<String
                 }
             }
         }
+    }
+    // WHICH BUILD OF THE INSTRUMENTS MEASURED THIS RUN. R1119. Two questions,
+    // both answered from the census alone so neither needs an environment:
+    // whether one job's two instruments agree with each other, and whether the
+    // jobs agree with one another. The second is what would have caught R1118 —
+    // six jobs measured by the commit's recorder and one by whatever its cache
+    // held.
+    //
+    // WHAT IT CANNOT SEE, stated: a run in which EVERY instrument came from a
+    // cache of the same older commit is internally consistent, and the guard for
+    // that is `ProgramRunAfterARestoreLivesUnderIt` above — the programs live
+    // where no cache reaches, so the case cannot arise while that law holds.
+    let mut recorders: Vec<(String, String)> = Vec::new();
+    for (file, record) in &census.restored {
+        if absent.contains(file) {
+            continue;
+        }
+        if let Ok(record) = record {
+            let (measured, recorded) = &record.built_from;
+            // `none` is the recorder deliberately absent — the instruments' own
+            // build sets `RUSTC_WRAPPER: ""`, and a step running under that has
+            // no recorder to disagree with.
+            if recorded != "none" && measured != recorded {
+                refusals.push(Refusal::InstrumentsOfOneJobDisagreeAboutTheirBuild {
+                    job: record.job.clone(),
+                    measured: measured.clone(),
+                    recorded: recorded.clone(),
+                });
+            }
+            if recorded != "none" {
+                recorders.push((record.job.clone(), recorded.clone()));
+            }
+        }
+    }
+    if recorders
+        .iter()
+        .any(|(_, commit)| Some(commit) != recorders.first().map(|(_, first)| first))
+    {
+        let mut jobs = recorders.clone();
+        jobs.sort();
+        refusals.push(Refusal::JobsOfOneRunWereMeasuredByDifferentBuilds { jobs });
     }
     for (file, record) in &census.restored {
         if absent.contains(file) {

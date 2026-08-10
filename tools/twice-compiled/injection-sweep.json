@@ -673,6 +673,42 @@
         }
       ],
       "expect_red": ["a_program_a_job_runs_after_a_restore_may_not_live_under_it"]
+    },
+    {
+      "name": "the-jobs-of-one-run-may-be-measured-by-different-builds",
+      "why": "R1118's run was exactly this: six jobs measured by the commit's recorder and one by whatever its cache held, summed into one total. Two censuses taken by two builds are not in the same units, and adding them prints one number for two measurements",
+      "edits": [
+        {
+          "file": "tools/twice-compiled/src/lib.rs",
+          "from": "        refusals.push(Refusal::JobsOfOneRunWereMeasuredByDifferentBuilds { jobs });",
+          "to": "        let _ = jobs;"
+        }
+      ],
+      "expect_red": ["a_run_whose_jobs_were_measured_by_different_builds_is_refused"]
+    },
+    {
+      "name": "one-jobs-two-instruments-need-not-agree",
+      "why": "one step builds both from one commit, so a difference is one of them having arrived from somewhere else — which is the shape that killed `unrun-tests`: a fresh `restored before` wrote a line the restored `restored after` refused to read",
+      "edits": [
+        {
+          "file": "tools/twice-compiled/src/lib.rs",
+          "from": "            if recorded != \"none\" && measured != recorded {",
+          "to": "            if false && recorded != \"none\" && measured != recorded {"
+        }
+      ],
+      "expect_red": ["one_jobs_two_instruments_must_agree_about_their_build"]
+    },
+    {
+      "name": "a-deliberately-absent-recorder-is-read-as-a-substitution",
+      "why": "the instruments' own build sets `RUSTC_WRAPPER: \"\"` to tell cargo there is no wrapper; reading that absence as a mismatch refuses every correct workflow in this repository, and a gate that fails on a correct file is one people learn to ignore",
+      "edits": [
+        {
+          "file": "tools/twice-compiled/src/lib.rs",
+          "from": "            if recorded != \"none\" {\n                recorders.push((record.job.clone(), recorded.clone()));\n            }",
+          "to": "            recorders.push((record.job.clone(), recorded.clone()));"
+        }
+      ],
+      "expect_red": ["a_recorder_deliberately_absent_is_not_a_disagreement"]
     }
   ]
 }

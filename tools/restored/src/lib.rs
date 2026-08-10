@@ -133,6 +133,22 @@ pub struct Restored {
     pub exact: bool,
     /// Every path the job's cache declares, in the order it declares them.
     pub paths: Vec<Restoration>,
+    /// What the two instruments say they were BUILT FROM, read immediately after
+    /// the restore: this program first, then the recorder `RUSTC_WRAPPER` names.
+    ///
+    /// R1119 — THE MOMENT A SUBSTITUTION WOULD HAVE HAPPENED IS THIS STEP'S.
+    /// R1118 found `unrun-tests` restoring its own `target` over the binaries it
+    /// had just built, so its whole compilation census had been measured by
+    /// whatever recorder the previous generation held — and the seconds moved by
+    /// a factor of four when the fresh one finally ran. Nothing could have said
+    /// so: no record carried a way to tell one build of the instrument from
+    /// another. This step runs between the restore and the compiling, which is
+    /// exactly where the answer is worth having.
+    ///
+    /// EMPTY IS NOT A DEFAULT. A record without these is one written by an
+    /// instrument that predates them, and the reader refuses it rather than
+    /// reporting a census whose measurer is unknown as one whose measurer agreed.
+    pub built_from: (String, String),
     /// When each side was measured, in microseconds since the epoch.
     ///
     /// WHAT A CACHE COST, WHICH NOTHING HERE COULD SAY. The two readings already
@@ -268,6 +284,13 @@ pub enum Malformed {
     WrongShape { line: String },
     /// No `job` line, or more than one.
     JobIsNotSaidOnce { times: usize },
+    /// An instrument did not say what it was built from, or said it twice.
+    ///
+    /// REFUSED AND NOT DEFAULTED. A record with no stamp is one whose measurer
+    /// cannot be identified, and reading that as "the instruments agreed" is the
+    /// state R1118 found: every `unrun-tests` census measured by a recorder out
+    /// of the cache, with nothing able to say so.
+    BuiltFromIsNotSaidOncePerInstrument { instrument: String, times: usize },
     /// No `cache` line, or more than one.
     ///
     /// REFUSED AND NOT DEFAULTED TO THE JOB'S ONLY CACHE. A job may declare more
@@ -309,6 +332,14 @@ impl std::fmt::Display for Malformed {
             Malformed::JobIsNotSaidOnce { times } => write!(
                 f,
                 "the job is named {times} time(s) and a record is one job's"
+            ),
+            Malformed::BuiltFromIsNotSaidOncePerInstrument { instrument, times } => write!(
+                f,
+                "the `{instrument}` instrument said what it was built from \
+                 {times} time(s) and owes exactly one — a census whose measurer \
+                 cannot be named is one that reads as agreeing with every other, \
+                 which is how a recorder out of a cache measured this job for an \
+                 unknown number of rounds"
             ),
             Malformed::CacheIsNotSaidOnce { times } => write!(
                 f,
@@ -356,6 +387,29 @@ pub fn encode_job(job: &str) -> Vec<u8> {
 /// The `cache` line naming which of the job's caches this record is of.
 pub fn encode_cache(cache: &str) -> Vec<u8> {
     line(&["cache", cache])
+}
+
+/// The `built-from` line: what one instrument says it was compiled from.
+pub fn encode_built_from(instrument: &str, commit: &str) -> Vec<u8> {
+    line(&["built-from", instrument, commit])
+}
+
+/// The two instruments a record names, in the order the record writes them.
+pub const INSTRUMENTS: [&str; 2] = ["restored", "recorder"];
+
+/// The commit THIS program was compiled from — see `rustc_log::BUILT_FROM` for
+/// why it is baked in rather than read at run time. Spelled here as well as
+/// there because neither crate depends on the other: they are the two crates in
+/// this repository with no dependencies at all, deliberately, since a wrapper in
+/// front of every compilation cannot afford a graph.
+pub const BUILT_FROM: Option<&str> = option_env!("GITHUB_SHA");
+
+/// What [`BUILT_FROM`] says, in one word a record can hold.
+pub fn built_from() -> &'static str {
+    match BUILT_FROM {
+        Some(commit) if !commit.is_empty() => commit,
+        _ => "local",
+    }
 }
 
 /// One `before` or `after` line.
@@ -480,6 +534,7 @@ fn line(fields: &[&str]) -> Vec<u8> {
 pub fn decode(text: &str) -> Result<Restored, Malformed> {
     let mut job: Vec<String> = Vec::new();
     let mut cache: Vec<String> = Vec::new();
+    let mut stamps: Vec<(String, String)> = Vec::new();
     let mut exact: Vec<String> = Vec::new();
     // ORDER PRESERVED, because the paths are compared against the `path:` list
     // of the job's cache declaration and that list is ordered. A set would let
@@ -500,6 +555,12 @@ pub fn decode(text: &str) -> Result<Restored, Malformed> {
             },
             Some("cache") => match fields.as_slice() {
                 [_, name] => cache.push((*name).to_string()),
+                _ => return Err(Malformed::WrongShape { line: line.into() }),
+            },
+            Some("built-from") => match fields.as_slice() {
+                [_, instrument, commit] => {
+                    stamps.push(((*instrument).to_string(), (*commit).to_string()))
+                }
                 _ => return Err(Malformed::WrongShape { line: line.into() }),
             },
             Some("exact") => match fields.as_slice() {
@@ -541,6 +602,33 @@ pub fn decode(text: &str) -> Result<Restored, Malformed> {
     }
     if cache.len() != 1 {
         return Err(Malformed::CacheIsNotSaidOnce { times: cache.len() });
+    }
+    let mut said = Vec::new();
+    for instrument in INSTRUMENTS {
+        let times = stamps.iter().filter(|(who, _)| who == instrument).count();
+        if times != 1 {
+            return Err(Malformed::BuiltFromIsNotSaidOncePerInstrument {
+                instrument: instrument.to_string(),
+                times,
+            });
+        }
+        said.push(
+            stamps
+                .iter()
+                .find(|(who, _)| who == instrument)
+                .map(|(_, commit)| commit.clone())
+                .expect("counted exactly one"),
+        );
+    }
+    // A NAME THIS READER DOES NOT DEFINE IS A REFUSAL, for the reason every
+    // unknown line is: a third instrument nobody has taught this to read would
+    // be dropped, and a census measured by an instrument nobody checked reads as
+    // one that was checked.
+    if stamps.len() != INSTRUMENTS.len() {
+        return Err(Malformed::BuiltFromIsNotSaidOncePerInstrument {
+            instrument: "an instrument this reader does not know".to_string(),
+            times: stamps.len(),
+        });
     }
     if exact.len() != 1 {
         return Err(Malformed::ExactIsNotSaidOnce { times: exact.len() });
@@ -598,6 +686,7 @@ pub fn decode(text: &str) -> Result<Restored, Malformed> {
     Ok(Restored {
         job: job.remove(0),
         cache: cache.remove(0),
+        built_from: (said.remove(0), said.remove(0)),
         exact,
         paths,
         at: (said_before_at[0], said_after_at[0]),

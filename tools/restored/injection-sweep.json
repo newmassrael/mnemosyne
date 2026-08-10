@@ -215,6 +215,42 @@
         }
       ],
       "expect_red": ["the_first_step_without_a_cache_to_name_refuses"]
+    },
+    {
+      "name": "the-record-need-not-say-which-build-measured-it",
+      "why": "R1118 found `unrun-tests` measured by a recorder out of its own cache for an unknown number of rounds, and the seconds moved by a factor of four when the fresh one ran. Without the stamp, a census whose measurer cannot be named reads as one that agreed with every other",
+      "edits": [
+        {
+          "file": "tools/restored/src/lib.rs",
+          "from": "        if times != 1 {\n            return Err(Malformed::BuiltFromIsNotSaidOncePerInstrument {",
+          "to": "        if false && times != 1 {\n            return Err(Malformed::BuiltFromIsNotSaidOncePerInstrument {"
+        }
+      ],
+      "expect_red": ["a_record_that_does_not_say_which_build_measured_it_is_refused"]
+    },
+    {
+      "name": "the-recorders-build-is-derived-rather-than-asked",
+      "why": "the whole point is that the binary on disk may not be the one this commit built, so a value this program worked out for itself would answer about the program it expected rather than the one that is there. R1119 runs the recorder and reads its own stdout",
+      "edits": [
+        {
+          "file": "tools/restored/src/main.rs",
+          "from": "        &recorder_built_from(),",
+          "to": "        restored::built_from(),"
+        }
+      ],
+      "expect_red": ["the_after_step_asks_the_recorder_what_it_was_built_from"]
+    },
+    {
+      "name": "a-recorder-that-cannot-be-run-is-a-blank",
+      "why": "every compilation of the job is about to go through it; a census measured by something this step cannot even start is one nobody can name, and a blank there is the empty answer that reads like a clean one",
+      "edits": [
+        {
+          "file": "tools/restored/src/main.rs",
+          "from": "        .unwrap_or_else(|error| {\n            fail(&format!(\n                \"cannot run the recorder at {wrapper} ({error}) — every \\",
+          "to": "        .unwrap_or_else(|_error| {\n            return std::process::Output { status: Default::default(), stdout: b\"unknown\".to_vec(), stderr: Vec::new() };\n            #[allow(unreachable_code)]\n            fail(&format!(\n                \"cannot run the recorder at {wrapper} ({_error}) — every \\"
+        }
+      ],
+      "expect_red": ["the_after_step_asks_the_recorder_what_it_was_built_from"]
     }
   ]
 }

@@ -88,6 +88,9 @@ fn everybody_compiled(declared: &Declared) -> Census {
         // WHICH CACHE, taken from what this workflow declares rather than
         // spelled again here: a fixture inventing a prefix would be testing that
         // the gate accepts an invented one.
+        for instrument in restored::INSTRUMENTS {
+            written.extend_from_slice(&restored::encode_built_from(instrument, "0f0f0f"));
+        }
         written.extend_from_slice(&restored::encode_cache(
             declared
                 .prefixes

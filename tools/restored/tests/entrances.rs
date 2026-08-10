@@ -57,6 +57,10 @@ struct Wiring<'a> {
     record: Option<String>,
     job: Option<&'a str>,
     exact: Option<&'a str>,
+    /// The recorder `RUSTC_WRAPPER` names, which the `after` step ASKS what it
+    /// was built from. `None` is the variable unset, which is a step running
+    /// where cargo was told there is no wrapper.
+    recorder: Option<String>,
 }
 
 impl<'a> Wiring<'a> {
@@ -66,6 +70,7 @@ impl<'a> Wiring<'a> {
             record: Some(record.display().to_string()),
             job: Some("unrun-tests"),
             exact: Some("false"),
+            recorder: None,
         }
     }
 
@@ -79,6 +84,10 @@ impl<'a> Wiring<'a> {
         command.env_remove(restored::VARIABLE);
         command.env_remove(restored::EXACT_VARIABLE);
         command.env_remove("GITHUB_JOB");
+        command.env_remove("RUSTC_WRAPPER");
+        if let Some(recorder) = &self.recorder {
+            command.env("RUSTC_WRAPPER", recorder);
+        }
         if let Some(record) = &self.record {
             command.env(restored::VARIABLE, record);
         }
@@ -376,6 +385,60 @@ fn nothing_matched_while_something_arrived_is_two_steps_reading_two_caches() {
         after.stderr().contains("reading a different step"),
         "{}",
         after.transcript()
+    );
+}
+
+/// R1119 — THE RECORDER IS ASKED, not derived. A path and a version this program
+/// worked out for itself would be a second reading of the same thing, and the
+/// whole point is that the binary on disk may not be the one this commit built:
+/// R1118 found `unrun-tests` restoring its own build directory over the binaries
+/// it had just made.
+#[test]
+fn the_after_step_asks_the_recorder_what_it_was_built_from() {
+    let (home, tree) = workspace();
+    let record = tree.path().join("rustc-log/unrun-tests.restored");
+    let recorder = tree.path().join("a-recorder");
+    std::fs::write(
+        &recorder,
+        "#!/usr/bin/env bash\n[[ \"$1\" == --built-from ]] || exit 3\necho cafe1234\n",
+    )
+    .expect("the stub recorder");
+    let mut permissions = std::fs::metadata(&recorder).expect("stat").permissions();
+    std::os::unix::fs::PermissionsExt::set_mode(&mut permissions, 0o755);
+    std::fs::set_permissions(&recorder, permissions).expect("chmod");
+
+    let mut wiring = Wiring::wired(home.path(), &record);
+    wiring.recorder = Some(recorder.display().to_string());
+    let before = wiring.run(tree.path(), &["before", "--cache", A_CACHE, "target"]);
+    assert_eq!(before.code(), 0, "{}", before.transcript());
+    let after = wiring.run(tree.path(), &["after"]);
+    assert_eq!(after.code(), 0, "{}", after.transcript());
+
+    let whole = decode(&std::fs::read_to_string(&record).expect("the record")).expect("decodes");
+    assert_eq!(
+        whole.built_from.1, "cafe1234",
+        "what the RECORDER says, read off its own stdout"
+    );
+    assert_eq!(
+        whole.built_from.0, "local",
+        "and what THIS program says, from a constant baked in when it was \
+         compiled — the suite builds it with no `GITHUB_SHA`, so `local` is the \
+         honest answer rather than an invented commit"
+    );
+
+    // A RECORDER THAT CANNOT BE RUN IS A REFUSAL, because every compilation of
+    // the job is about to go through it: a census measured by something this
+    // step cannot even start is one nobody can name.
+    let mut missing = Wiring::wired(home.path(), &record);
+    missing.recorder = Some(tree.path().join("not-there").display().to_string());
+    let opened = missing.run(tree.path(), &["before", "--cache", A_CACHE, "target"]);
+    assert_eq!(opened.code(), 0, "{}", opened.transcript());
+    let refused = missing.run(tree.path(), &["after"]);
+    assert_eq!(refused.code(), 1, "{}", refused.transcript());
+    assert!(
+        refused.stderr().contains("cannot run the recorder"),
+        "{}",
+        refused.transcript()
     );
 }
 

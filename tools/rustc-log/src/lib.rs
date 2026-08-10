@@ -62,6 +62,41 @@ pub const FIELD: u8 = 0x1f;
 /// Separates records.
 pub const RECORD: u8 = b'\n';
 
+/// The commit this binary was COMPILED from, baked in at compile time.
+///
+/// R1119 — WHICH BUILD OF THE INSTRUMENT MEASURED A CENSUS. R1118 found that
+/// `unrun-tests` restored its own `target` over the binaries it had just built,
+/// so every census that job ever produced was measured by whatever recorder the
+/// previous generation's cache happened to hold — and nothing could say so,
+/// because the record carried no way to tell one build of the recorder from
+/// another. The seconds moved by a factor of four when the fresh one finally ran.
+///
+/// `option_env!` AND NOT AN ARGUMENT, which is the whole point: a value passed in
+/// at run time is the environment's answer, and a substituted binary would read
+/// the CURRENT environment and look right. This is fixed when the crate is
+/// compiled, so a binary out of a cache answers with the commit it was built
+/// from, which is not this run's.
+///
+/// `None` off a runner — a local build has no commit to name and says so rather
+/// than inventing one; "could not tell" is a different answer from "they agree".
+pub const BUILT_FROM: Option<&str> = option_env!("GITHUB_SHA");
+
+/// What [`BUILT_FROM`] says, in one word a record can hold.
+pub fn built_from() -> &'static str {
+    match BUILT_FROM {
+        Some(commit) if !commit.is_empty() => commit,
+        _ => "local",
+    }
+}
+
+/// The argument that asks this program what it was built from rather than
+/// running a compiler.
+///
+/// SAFE BECAUSE CARGO NEVER PASSES IT. A `RUSTC_WRAPPER` is invoked as
+/// `<wrapper> <rustc> <arguments…>`, and the first word is always a path to a
+/// compiler — never a flag.
+pub const STAMP_ARGUMENT: &str = "--built-from";
+
 /// One `rustc` invocation as this wrapper saw it.
 ///
 /// The compiler path is part of `rustc_log::Record::argv` because it is what

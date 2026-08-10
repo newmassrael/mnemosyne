@@ -25,6 +25,16 @@ use rustc_log::{Record, LOG_VARIABLE};
 
 fn main() {
     let argv: Vec<String> = std::env::args().skip(1).collect();
+    // ASKED OF THE BINARY, which is the only thing that knows. See
+    // `rustc_log::BUILT_FROM`: a substituted binary reads the current
+    // environment and looks right, so the answer has to be one it was compiled
+    // with. `tools/restored` runs this immediately after the cache restore —
+    // the moment a substitution would have happened — and writes the answer into
+    // the record the gate reads.
+    if argv.first().map(String::as_str) == Some(rustc_log::STAMP_ARGUMENT) {
+        println!("{}", rustc_log::built_from());
+        return;
+    }
     let Some((compiler, arguments)) = argv.split_first() else {
         eprintln!(
             "rustc-log: cargo runs a `RUSTC_WRAPPER` as `<wrapper> <rustc> \

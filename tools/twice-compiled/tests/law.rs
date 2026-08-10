@@ -1514,6 +1514,11 @@ fn merging_a_pair_states_what_it_removes_and_what_it_spends() {
 
 /// Where a cached job's cache sits in its `steps:` list. The measurements are
 /// steps [`BEFORE_AT`] and [`AFTER_AT`], which is what makes them its two sides.
+/// The commit every fixture's instruments were built from. One value, because
+/// agreeing is the ordinary case; the run where they do not is written out where
+/// it is tested.
+const A_COMMIT: &str = "0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f";
+
 const CACHE_AT: usize = 1;
 /// Where the measurement taken before the restore sits.
 const BEFORE_AT: usize = 0;
@@ -1581,6 +1586,9 @@ fn restore_record(job: &str, exact: bool, paths: &[(&str, u64)]) -> String {
     // The same prefix `cache()` above declares for this job — the record says
     // WHICH cache its interval is the price of, and the gate checks the two.
     out.extend_from_slice(&restored::encode_cache(&format!("Linux-cargo-{job}-")));
+    for instrument in restored::INSTRUMENTS {
+        out.extend_from_slice(&restored::encode_built_from(instrument, A_COMMIT));
+    }
     out.extend_from_slice(&restored::encode_at(restored::Side::Before, 1_000_000_000));
     for (path, _) in paths {
         out.extend_from_slice(&restored::encode_side(
@@ -1740,6 +1748,94 @@ fn an_exact_hit_that_brought_nothing_is_refused_rather_than_counted() {
                 job: "validate".to_string()
             },
         ]
+    );
+}
+
+/// R1119 — WHICH BUILD OF THE INSTRUMENTS MEASURED THIS RUN. R1118 found six
+/// jobs measured by the commit's recorder and one by whatever its cache held, and
+/// nothing could say so: the seconds moved by a factor of four when the fresh one
+/// finally ran. Both directions are asked of the census alone.
+#[test]
+fn a_run_whose_jobs_were_measured_by_different_builds_is_refused() {
+    let (declared, mut census) = cached_and_said(true, 1_000);
+    let elsewhere = restore_record(
+        "unrun-tests",
+        true,
+        &[("~/.cargo/registry", 1_000), ("target", 1_000)],
+    )
+    .replace(A_COMMIT, "beefbeefbeefbeefbeefbeefbeefbeefbeefbeef");
+    census
+        .restored
+        .insert("unrun-tests".to_string(), restored::decode(&elsewhere));
+    let refusals = judge(&census, &declared, &nothing());
+    assert!(
+        refusals.iter().any(|refusal| matches!(
+            refusal,
+            Refusal::JobsOfOneRunWereMeasuredByDifferentBuilds { .. }
+        )),
+        "two censuses taken by two builds of the recorder are not in the same \
+         units, and summing them prints one number for two measurements: \
+         {refusals:?}"
+    );
+}
+
+#[test]
+fn one_jobs_two_instruments_must_agree_about_their_build() {
+    let (declared, mut census) = cached_and_said(true, 1_000);
+    // The measuring program survived the restore and the recorder did not — the
+    // exact shape of R1118, where `restored` was fresh and wrote a line the
+    // restored `restored after` could not read.
+    let mixed = restore_record(
+        "unrun-tests",
+        true,
+        &[("~/.cargo/registry", 1_000), ("target", 1_000)],
+    )
+    .replace(
+        &String::from_utf8(restored::encode_built_from("recorder", A_COMMIT)).expect("text"),
+        &String::from_utf8(restored::encode_built_from("recorder", "0a0a0a")).expect("text"),
+    );
+    census
+        .restored
+        .insert("unrun-tests".to_string(), restored::decode(&mixed));
+    assert!(
+        judge(&census, &declared, &nothing())
+            .iter()
+            .any(|refusal| matches!(
+                refusal,
+                Refusal::InstrumentsOfOneJobDisagreeAboutTheirBuild { .. }
+            )),
+        "one step builds both from one commit, so a difference is one of them \
+         having arrived from somewhere else"
+    );
+}
+
+#[test]
+fn a_recorder_deliberately_absent_is_not_a_disagreement() {
+    let (declared, mut census) = cached_and_said(true, 1_000);
+    // The instruments' own build sets `RUSTC_WRAPPER: ""`, and a step running
+    // under that has no recorder to disagree with. Reading `none` as a mismatch
+    // would refuse every correct workflow in this repository.
+    let no_recorder = restore_record(
+        "unrun-tests",
+        true,
+        &[("~/.cargo/registry", 1_000), ("target", 1_000)],
+    )
+    .replace(
+        &String::from_utf8(restored::encode_built_from("recorder", A_COMMIT)).expect("text"),
+        &String::from_utf8(restored::encode_built_from("recorder", "none")).expect("text"),
+    );
+    census
+        .restored
+        .insert("unrun-tests".to_string(), restored::decode(&no_recorder));
+    assert!(
+        !judge(&census, &declared, &nothing())
+            .iter()
+            .any(|refusal| matches!(
+                refusal,
+                Refusal::InstrumentsOfOneJobDisagreeAboutTheirBuild { .. }
+                    | Refusal::JobsOfOneRunWereMeasuredByDifferentBuilds { .. }
+            )),
+        "`none` is an absence this workflow arranges, not a substitution"
     );
 }
 

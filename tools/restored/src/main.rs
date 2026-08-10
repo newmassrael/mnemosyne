@@ -150,6 +150,21 @@ fn after(record: &PathBuf) {
             restored::EXACT_VARIABLE
         )),
     };
+    // WHICH BUILD OF EACH INSTRUMENT SURVIVED THE RESTORE. R1119, and the moment
+    // is this step's by construction: it runs between the restore and the
+    // compiling, which is exactly where a substituted binary would already be on
+    // disk and not yet have measured anything. This program answers for itself
+    // from a constant baked in at compile time; the recorder is ASKED, by running
+    // the one `RUSTC_WRAPPER` names — its own answer, not this program's guess
+    // about it.
+    out.extend_from_slice(&restored::encode_built_from(
+        restored::INSTRUMENTS[0],
+        restored::built_from(),
+    ));
+    out.extend_from_slice(&restored::encode_built_from(
+        restored::INSTRUMENTS[1],
+        &recorder_built_from(),
+    ));
     out.extend_from_slice(&restored::encode_at(Side::After, restored::now_micros()));
     out.extend_from_slice(&restored::encode_exact(exact));
     write(record, &out, true);
@@ -166,6 +181,52 @@ fn after(record: &PathBuf) {
             "the record this job just wrote does not decode: {why}"
         )),
     }
+}
+
+/// Ask the recorder `RUSTC_WRAPPER` names what IT was built from.
+///
+/// THE PROGRAM ANSWERS, not this one. A path and a version this program derived
+/// would be a second reading of the same thing, and the whole point is that the
+/// binary on disk may not be the one this commit built. Running it is the only
+/// way to be told by the thing itself.
+///
+/// A REFUSAL RATHER THAN A BLANK. If the recorder cannot be run, this census is
+/// about to be taken by something nobody can name — which is the state R1118
+/// found and nothing could report. The one case that is NOT a refusal is the
+/// variable being deliberately empty: the instruments' own build sets
+/// `RUSTC_WRAPPER: ""` to tell cargo there is no wrapper, and a step running
+/// under that is not one whose recorder is missing.
+fn recorder_built_from() -> String {
+    let wrapper = match std::env::var("RUSTC_WRAPPER") {
+        Ok(path) if !path.is_empty() => path,
+        _ => return "none".to_string(),
+    };
+    let out = std::process::Command::new(&wrapper)
+        .arg("--built-from")
+        .output()
+        .unwrap_or_else(|error| {
+            fail(&format!(
+                "cannot run the recorder at {wrapper} ({error}) — every \
+                 compilation of this job is about to go through it, so a census \
+                 measured by something this step cannot even start is one nobody \
+                 can name"
+            ))
+        });
+    if !out.status.success() {
+        fail(&format!(
+            "the recorder at {wrapper} refused `--built-from` ({}) — a recorder \
+             that cannot say which build it is predates this check, and a census \
+             it measures reads as one whose measurer agreed with every other",
+            out.status
+        ));
+    }
+    let said = String::from_utf8_lossy(&out.stdout).trim().to_string();
+    if said.is_empty() {
+        fail(&format!(
+            "the recorder at {wrapper} answered `--built-from` with nothing"
+        ));
+    }
+    said
 }
 
 /// The paths `restored before` wrote down, in the order it wrote them.

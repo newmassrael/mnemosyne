@@ -980,6 +980,11 @@ fn downloaded(under: &Path, jobs: &[(&str, bool, u64)]) -> PathBuf {
         record_a_compilation(&artifact.join(format!("{job}.log")));
         let mut written = restored::encode_job(job);
         written.extend_from_slice(&restored::encode_cache(&format!("Linux-fixture-{job}-")));
+        // ONE COMMIT FOR EVERY JOB, which is the ordinary case: the instruments
+        // are built by one step of each job from the checkout the run is of.
+        for instrument in restored::INSTRUMENTS {
+            written.extend_from_slice(&restored::encode_built_from(instrument, "0f0f0f"));
+        }
         written.extend_from_slice(&restored::encode_at(restored::Side::Before, 1_000_000_000));
         written.extend_from_slice(&restored::encode_side(
             restored::Side::Before,
