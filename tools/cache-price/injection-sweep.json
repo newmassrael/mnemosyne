@@ -1,0 +1,162 @@
+{
+  "_": [
+    "THE SWEEP THAT SAYS R1137's MEASUREMENT IS NOT VACUOUS — run it from the",
+    "repository root:",
+    "    cargo run -q --manifest-path tools/injection-harness/Cargo.toml -- \\",
+    "        tools/cache-price/injection-sweep.json",
+    "",
+    "THIS PROGRAM PRODUCES A NUMBER A DECISION RESTS ON, which is a harder thing",
+    "to hold up than a verdict: a gate that stops firing goes quiet, but a",
+    "measurement that drifts keeps printing, and every number it prints still",
+    "looks like a number. The whole point of the round was that a term nobody",
+    "counted — the `Post Cache` save — was the same size as the benefit being",
+    "claimed. Each injection below removes one distinction and names the case that",
+    "must go red for it.",
+    "",
+    "Scoped to this crate's own suite: nothing here touches the tree it reads."
+  ],
+  "repo": "../..",
+  "test_command": [
+    "cargo",
+    "test",
+    "--manifest-path",
+    "tools/cache-price/Cargo.toml",
+    "--no-fail-fast"
+  ],
+  "logs": "../../target/injection-logs",
+  "min_free_mb": 8000,
+  "injections": [
+    {
+      "name": "the-save-step-is-read-as-a-second-restore",
+      "why": "THE EXACT DEFECT THIS ROUND EXISTS TO REFUSE, expressed as code: `Post Cache x` contains `Cache `, so testing the restore prefix first files every save as a restore. The cache then appears to cost only its restore — which is precisely the arithmetic the ledger carried, and the one that made a net-negative cache look like a net-positive one",
+      "edits": [
+        {
+          "file": "tools/cache-price/src/lib.rs",
+          "from": "            if let Some(name) = step.name.strip_prefix(SAVE) {",
+          "to": "            if let Some(name) = step.name.strip_prefix(RESTORE) {"
+        }
+      ],
+      "expect_red": ["a_post_step_is_the_save_and_not_a_second_restore"]
+    },
+    {
+      "name": "half-a-pair-is-priced-as-a-whole-cache",
+      "why": "a restore with no save prices a cache at half its cost, silently and in the cheap direction. The refusal is what keeps a shape this program was not written for from arriving as a number",
+      "edits": [
+        {
+          "file": "tools/cache-price/src/lib.rs",
+          "from": "            let save = saves.remove(name).ok_or_else(|| {",
+          "to": "            let save = saves.remove(name).or(Some(*restore)).ok_or_else(|| {"
+        }
+      ],
+      "expect_red": ["half_a_pair_is_refused_from_either_side"]
+    },
+    {
+      "name": "a-step-that-never-ran-is-priced-at-zero",
+      "why": "a zero JOINS the sample and pulls every summary towards a cache that is cheaper than it is; `None` leaves it out and says so. This is the same distinction the whole round is about, one level down",
+      "edits": [
+        {
+          "file": "tools/cache-price/src/lib.rs",
+          "from": "        (None, None) => Ok(None),",
+          "to": "        (None, None) => Ok(Some(0)),"
+        }
+      ],
+      "expect_red": ["a_step_that_did_not_run_is_not_a_step_that_cost_nothing"]
+    },
+    {
+      "name": "stamps-that-run-backwards-are-read-as-almost-a-day",
+      "why": "a SKIPPED job really does report them — the recording carries `14:01:37` to `14:01:36` — and without the ceiling the midnight carry turns one second the wrong way into 86 399, a number that would dominate every total on the page",
+      "edits": [
+        {
+          "file": "tools/cache-price/src/lib.rs",
+          "from": "    if seconds > 6 * 3600 {",
+          "to": "    if seconds > 90 * 3600 {"
+        }
+      ],
+      "expect_red": ["stamps_that_run_backwards_are_refused_rather_than_read_as_a_day"]
+    },
+    {
+      "name": "an-unreadable-stamp-becomes-midnight",
+      "why": "a clock this program cannot read must refuse, not answer zero: a duration measured from a stamp nobody parsed is a number with no provenance, and it lands in a median a decision is taken from",
+      "edits": [
+        {
+          "file": "tools/cache-price/src/lib.rs",
+          "from": "            .ok_or_else(|| unreadable_stamp(stamp))\n    };",
+          "to": "            .or(Some(0))\n            .ok_or_else(|| unreadable_stamp(stamp))\n    };"
+        }
+      ],
+      "expect_red": ["an_unreadable_stamp_is_a_refusal"]
+    },
+    {
+      "name": "a-run-read-short-is-priced-as-a-cheaper-run",
+      "why": "a job missing from the answer is a cache whose cost is missing from the total, and fewer is the direction that reads as cheap. `total_count` is the only thing in the jobs answer that can catch it",
+      "edits": [
+        {
+          "file": "tools/cache-price/src/lib.rs",
+          "from": "    if jobs.len() as u64 != counted {",
+          "to": "    if jobs.len() as u64 > counted {"
+        }
+      ],
+      "expect_red": ["an_answer_that_stops_early_is_a_read_that_failed"]
+    },
+    {
+      "name": "a-short-page-of-runs-is-taken-as-the-whole-sample",
+      "why": "a sample that quietly shrank looks TIGHTER than it is, which is fatal for a measurement whose whole subject is spread. The runs endpoint's `total_count` counts every run ever, so the law here is not the jobs endpoint's and cannot be borrowed from it",
+      "edits": [
+        {
+          "file": "tools/cache-price/src/lib.rs",
+          "from": "    if (page.workflow_runs.len() as u64) < wanted as u64\n        && page.total_count > page.workflow_runs.len() as u64\n    {",
+          "to": "    if false {"
+        }
+      ],
+      "expect_red": ["a_page_shorter_than_its_request_is_refused_when_the_workflow_has_more"]
+    },
+    {
+      "name": "a-summary-of-nothing-prints-as-zeroes",
+      "why": "the empty answer that reads like a clean one. A cache that never ran in the sample and a cache that cost nothing are different facts, and only one of them is news",
+      "edits": [
+        {
+          "file": "tools/cache-price/src/lib.rs",
+          "from": "    if values.is_empty() {\n        return None;\n    }",
+          "to": "    if values.is_empty() {\n        return Some(Spread { count: 0, min: 0, median: 0, max: 0, total: 0 });\n    }"
+        }
+      ],
+      "expect_red": ["a_summary_of_no_measurements_is_none_rather_than_zero"]
+    },
+    {
+      "name": "the-median-is-averaged-into-a-value-nobody-measured",
+      "why": "every number this prints should be one that was observed; a mean of two middles is a second kind of number sharing a column with the first, and on an even sample it is not any run's cost",
+      "edits": [
+        {
+          "file": "tools/cache-price/src/lib.rs",
+          "from": "        median: sorted[(sorted.len() - 1) / 2],",
+          "to": "        median: sorted[sorted.len() / 2],"
+        }
+      ],
+      "expect_red": ["the_spread_reports_what_was_measured_and_how_many"]
+    },
+    {
+      "name": "the-timestamps-become-optional-to-serde",
+      "why": "R1136's trap, one gate over: serde treats a DERIVED `Option` field as optional, so a body that stopped carrying `started_at` reads as a run where no step ever started — every cache free, silently, in the direction that makes this whole measurement disappear",
+      "edits": [
+        {
+          "file": "tools/cache-price/src/lib.rs",
+          "from": "    #[serde(deserialize_with = \"present_but_nullable\")]\n    pub started_at: Option<String>,\n    #[serde(deserialize_with = \"present_but_nullable\")]\n    pub completed_at: Option<String>,\n}\n\n/// One job of one run, with the steps this program prices.",
+          "to": "    pub started_at: Option<String>,\n    #[serde(deserialize_with = \"present_but_nullable\")]\n    pub completed_at: Option<String>,\n}\n\n/// One job of one run, with the steps this program prices."
+        }
+      ],
+      "expect_red": ["a_step_that_does_not_carry_its_stamps_is_refused"]
+    },
+    {
+      "name": "two-jobs-restoring-one-archive-are-merged-into-one-price",
+      "why": "a cache is a job's: two jobs restoring the same archive pay for it separately, and merging them reports one price for two costs — which halves the overhead of exactly the shared archives this repository has most of",
+      "edits": [
+        {
+          "file": "tools/cache-price/src/lib.rs",
+          "from": "        out.entry((price.job.clone(), price.cache.clone()))",
+          "to": "        out.entry((String::new(), price.cache.clone()))"
+        }
+      ],
+      "expect_red": ["one_archive_restored_by_two_jobs_is_two_prices"]
+    }
+  ]
+}

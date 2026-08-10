@@ -1,0 +1,31 @@
+[workspace]
+
+[package]
+name = "cache-price"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.88"
+publish = false
+license = "MIT OR Apache-2.0"
+description = "Mnemosyne — what this repository's CI caches cost in wall-clock, read off runs already paid for"
+keywords = ["ci", "cache", "measurement"]
+categories = ["development-tools"]
+
+# ITS OWN WORKSPACE, like every other program under `tools/`.
+#
+# NO DATE CRATE, AND THAT IS A DECISION. This repository has none — the root
+# workspace's dependency list carries `serde`, `toml`, `tera` and no clock — and
+# the arithmetic needed here is one subtraction between two fixed-width UTC
+# stamps of steps in the same run. `seconds_between` states the domain it is
+# correct over (a step shorter than a day, which GitHub enforces at six hours)
+# rather than pulling a calendar in to avoid saying it.
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[dev-dependencies]
+tempfile = "3"
+
+[lints.clippy]
+all = "deny"
