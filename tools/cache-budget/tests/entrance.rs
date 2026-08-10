@@ -54,6 +54,21 @@ const ASKED: &str = "asked";
 /// input the API never sends.
 const CREATED: &str = "2026-08-01T00:00:00.000000000Z";
 
+/// One real run of this repository's CI, as GitHub answered for it.
+///
+/// A RECORDING, for the reason `tests/github.rs` gives at length: what this gate
+/// does with a run's start time is only worth as much as the spelling that start
+/// time really arrives in, and this endpoint answers to the SECOND while the
+/// cache endpoint answers to the fraction.
+const RUN_ANSWER: &str = include_str!("actions-run.json");
+
+/// That run's id, and when GitHub says it began — both read off the recording.
+const RUN_ID: &str = "31376754536";
+const RUN_STARTED: &str = "2026-08-10T09:54:23Z";
+
+/// How a runner names the workflow it is executing, pointed at the fixture's.
+const WORKFLOW_REF: &str = "owner/fixture/.github/workflows/ci.yml@refs/heads/main";
+
 /// GitHub's answer for a repository holding exactly these caches.
 fn page(held: &[(&str, u64)]) -> String {
     page_claiming(held.len() as u64, held)
@@ -87,6 +102,55 @@ fn page_claiming(counted: u64, held: &[(&str, u64)]) -> String {
 /// stops early, or nothing at all. The three are different states and this gate
 /// has to tell them apart.
 fn tree(caches: bool, answer: &str) -> tempfile::TempDir {
+    Fixture {
+        declares: caches,
+        caches: answer.to_string(),
+        ..Fixture::default()
+    }
+    .build()
+}
+
+/// A repository, and the two answers `gh` gives about it.
+///
+/// TWO, BECAUSE THE BINARY MAKES TWO CALLS. One answer for both endpoints is a
+/// stub that agrees with a gate asking the wrong one, which is the same class of
+/// hole as a stub that ignores its arguments.
+struct Fixture {
+    /// Does the workflow declare a cache at all?
+    declares: bool,
+    /// What the cache endpoint answers.
+    caches: String,
+    /// What the runs endpoint answers — asked for only inside a run.
+    run: String,
+    /// How many commits the checkout holds.
+    ///
+    /// `HEAD~1` is what this gate diffs from when the runner names no push
+    /// range, so ONE commit is a checkout too shallow to answer with — a real
+    /// state (`fetch-depth: 1`) that the gate refuses rather than reads as
+    /// "nothing changed".
+    commits: usize,
+}
+
+impl Default for Fixture {
+    fn default() -> Self {
+        Fixture {
+            declares: true,
+            caches: page(&[]),
+            run: RUN_ANSWER.to_string(),
+            commits: 2,
+        }
+    }
+}
+
+impl Fixture {
+    fn build(&self) -> tempfile::TempDir {
+        build_tree(self)
+    }
+}
+
+fn build_tree(fixture: &Fixture) -> tempfile::TempDir {
+    let caches = fixture.declares;
+    let answer = fixture.caches.as_str();
     let at = tempfile::tempdir().expect("a scratch directory");
     let root = at.path();
     std::fs::create_dir_all(root.join(".github/workflows")).expect("fixture workflows");
@@ -106,15 +170,28 @@ fn tree(caches: bool, answer: &str) -> tempfile::TempDir {
     workflow.push_str("      - run: cargo test\n");
     std::fs::write(root.join(".github/workflows/ci.yml"), workflow).expect("write the workflow");
 
-    // WHAT IT WAS ASKED, then what it answers. The question is the library's
-    // (`caches_query`) and the file below is how a test reads it back.
+    // WHAT IT WAS ASKED, then what it answers — APPENDED, one block per call,
+    // because the binary asks twice inside a run and a record that overwrote
+    // itself would show only whichever came last.
+    //
+    // AND IT DISPATCHES ON THE ENDPOINT. The two answers have nothing in common
+    // but their transport; a stub handing the cache page to a question about a
+    // run would agree with a gate that asked for the wrong thing.
+    let run = fixture.run.as_str();
     let stub = root.join("stub/gh");
     std::fs::write(
         &stub,
         format!(
             "#!/usr/bin/env bash\n\
-             printf '%s\\n' \"$@\" > \"$(dirname \"$0\")/{ASKED}\"\n\
-             cat <<'ANSWER'\n{answer}\nANSWER\n"
+             {{ printf '%s\\n' \"$@\"; echo; }} >> \"$(dirname \"$0\")/{ASKED}\"\n\
+             case \"$*\" in\n\
+             \x20 *\"/actions/runs/\"*)\n\
+             \x20   cat <<'RUN_ANSWER'\n{run}\nRUN_ANSWER\n\
+             \x20   ;;\n\
+             \x20 *)\n\
+             \x20   cat <<'CACHE_ANSWER'\n{answer}\nCACHE_ANSWER\n\
+             \x20   ;;\n\
+             esac\n"
         ),
     )
     .expect("write the gh stub");
@@ -122,6 +199,30 @@ fn tree(caches: bool, answer: &str) -> tempfile::TempDir {
 
     git(root, &["init", "--quiet"]);
     git(root, &["add", "-A"]);
+    // A HISTORY, BECAUSE THE RUN WINDOW DIFFS ONE. Which keys this push
+    // legitimately invalidated is git's answer to the globs the keys name, and
+    // the range it is asked over is `HEAD~1..HEAD` unless the runner said
+    // otherwise. The identity is passed rather than inherited: a runner has none
+    // configured, and a fixture that borrowed this machine's would be green here
+    // and red there.
+    for step in 0..fixture.commits {
+        std::fs::write(root.join(format!("commit-{step}.txt")), "a change\n")
+            .expect("something to commit");
+        git(root, &["add", "-A"]);
+        git(
+            root,
+            &[
+                "-c",
+                "user.email=fixture@example.invalid",
+                "-c",
+                "user.name=fixture",
+                "commit",
+                "--quiet",
+                "-m",
+                "a commit this fixture can be diffed from",
+            ],
+        );
+    }
     at
 }
 
@@ -147,25 +248,46 @@ fn git(at: &Path, arguments: &[&str]) {
     );
 }
 
-/// Run the gate over that tree, with the stub ahead of anything else on `PATH`.
+/// Run the gate over that tree from OUTSIDE a run, the developer's case.
 fn gate(at: &Path) -> Output {
+    run_gate(at, None)
+}
+
+/// Run it as a runner does: inside the recorded run, of the fixture's workflow.
+///
+/// THIS IS THE HALF NOTHING RAN. Clearing `GITHUB_RUN_ID` is what makes a
+/// fixture deterministic and it is ALSO what skips the whole run window — when
+/// this run began, which keys it invalidated, and which workflow it is of. Those
+/// laws have fixtures in `tests/law.rs`; what had no reader was their wiring
+/// into the binary, and R1129 named it in its own carry.
+fn gate_in_run(at: &Path) -> Output {
+    run_gate(at, Some(RUN_ID))
+}
+
+fn run_gate(at: &Path, run: Option<&str>) -> Output {
     let path = format!(
         "{}:{}",
         at.join("stub").display(),
         std::env::var("PATH").unwrap_or_default()
     );
-    Command::new(env!("CARGO_BIN_EXE_cache-budget"))
+    let mut command = Command::new(env!("CARGO_BIN_EXE_cache-budget"));
+    command
         .arg(at)
         .current_dir(at)
         .env("PATH", path)
-        // THE RUNNER'S OWN, removed rather than assumed absent: this suite runs
-        // on a runner too, and every one of these sends the gate somewhere the
-        // stub does not answer for.
-        .env_remove("GITHUB_RUN_ID")
-        .env_remove(ci_plan::WORKFLOW_VARIABLE)
-        .env_remove(cache_budget::RANGE_VARIABLE)
-        .output()
-        .expect("the gate runs")
+        // NAMED RATHER THAN INHERITED, in both directions: this suite runs on a
+        // runner too, where every one of these is already set to that run's
+        // values and would send the gate somewhere the stub does not answer for.
+        .env_remove(cache_budget::RANGE_VARIABLE);
+    match run {
+        Some(id) => command
+            .env("GITHUB_RUN_ID", id)
+            .env(ci_plan::WORKFLOW_VARIABLE, WORKFLOW_REF),
+        None => command
+            .env_remove("GITHUB_RUN_ID")
+            .env_remove(ci_plan::WORKFLOW_VARIABLE),
+    };
+    command.output().expect("the gate runs")
 }
 
 fn code(out: &Output) -> i32 {
@@ -185,12 +307,17 @@ fn stderr(out: &Output) -> String {
 /// The sentence printed on exactly one of the three paths.
 const CLEAN: &str = "every cache this repository declares is one it keeps";
 
-/// The words the stub was called with, in the order it was handed them.
-fn asked(at: &Path) -> Vec<String> {
+/// Every call the stub took, in order, each as the words it was handed.
+///
+/// ONE BLOCK PER CALL, split on the blank line the stub writes between them: the
+/// binary asks once outside a run and twice inside one, and which question got
+/// which answer is the thing these cases are here to pin.
+fn asked(at: &Path) -> Vec<Vec<String>> {
     std::fs::read_to_string(at.join("stub").join(ASKED))
         .expect("the gate asked `gh` something")
-        .lines()
-        .map(str::to_string)
+        .split("\n\n")
+        .map(|call| call.lines().map(str::to_string).collect::<Vec<_>>())
+        .filter(|call: &Vec<String>| !call.is_empty())
         .collect()
 }
 
@@ -361,7 +488,13 @@ fn the_gate_asks_github_for_every_page_of_its_cache_storage() {
     let at = tree(true, &page(&[(&format!("{PREFIX}abc"), SMALL)]));
     let out = gate(at.path());
     assert_eq!(code(&out), 0, "stderr:\n{}", stderr(&out));
-    let words = asked(at.path());
+    let calls = asked(at.path());
+    assert_eq!(
+        calls.len(),
+        1,
+        "outside a run there is one question: {calls:?}"
+    );
+    let words = calls[0].clone();
     // SPELLED OUT HERE, and not read back off `caches_query`. An oracle that
     // compared the question to the constant it came from would agree with every
     // edit to that constant, including the one that drops the flag.
@@ -381,5 +514,120 @@ fn the_gate_asks_github_for_every_page_of_its_cache_storage() {
         words,
         cache_budget::caches_query(),
         "the words handed to `gh` are the library's, verbatim"
+    );
+}
+
+/// INSIDE A RUN, the gate reads the run window and says which run it read.
+///
+/// THE SECOND HALF OF THIS GATE, and until now nothing ran it. Everything above
+/// clears `GITHUB_RUN_ID`, which is what makes a fixture deterministic and is
+/// also what skips the run window entirely — when the run began, which keys its
+/// commits invalidated, and which workflow it belongs to. The oracle is the
+/// report naming that run and its start time, plus the mirror: the sentence the
+/// no-run path prints instead.
+#[test]
+fn inside_a_run_the_gate_reads_the_window_and_names_the_run_it_read() {
+    let at = Fixture {
+        caches: page(&[(&format!("{PREFIX}abc"), SMALL)]),
+        ..Fixture::default()
+    }
+    .build();
+    let out = gate_in_run(at.path());
+    assert_eq!(
+        code(&out),
+        0,
+        "stdout:\n{}\nstderr:\n{}",
+        stdout(&out),
+        stderr(&out)
+    );
+    assert!(
+        stdout(&out).contains(RUN_STARTED),
+        "the report says when the run it judged against began\n{}",
+        stdout(&out)
+    );
+    assert!(
+        stdout(&out).contains(".github/workflows/ci.yml"),
+        "and which workflow that run is of\n{}",
+        stdout(&out)
+    );
+    // THE MIRROR: the sentence printed on the other path, which is what a gate
+    // that silently skipped the window would still be saying.
+    assert!(
+        !stdout(&out).contains("NOT INSIDE A RUN"),
+        "a run it read is not a run it skipped\n{}",
+        stdout(&out)
+    );
+    // AND THE QUESTION IT ASKED ABOUT THAT RUN NAMES THE RUN. `runs/{id}` and
+    // `runs` are different resources, and a start time belonging to some other
+    // run excuses every cache built after it.
+    let calls = asked(at.path());
+    assert_eq!(calls.len(), 2, "inside a run it asks twice: {calls:?}");
+    assert_eq!(calls[1], cache_budget::run_query(RUN_ID));
+    assert!(
+        calls[1].iter().any(|word| word.contains(RUN_ID)),
+        "and the run id is in the question: {:?}",
+        calls[1]
+    );
+}
+
+/// A run GitHub will not say the start time of is `2`, not a run at time zero.
+///
+/// EVERY CACHE IS NEWER THAN NOTHING, so a blank start time read as a zero makes
+/// this gate report every job in the repository as having rebuilt from scratch —
+/// a page of findings about jobs that were warm.
+#[test]
+fn a_run_whose_start_time_is_missing_is_unjudged_rather_than_a_run_at_time_zero() {
+    let at = Fixture {
+        caches: page(&[(&format!("{PREFIX}abc"), SMALL)]),
+        run: RUN_ANSWER.replace(RUN_STARTED, ""),
+        ..Fixture::default()
+    }
+    .build();
+    let out = gate_in_run(at.path());
+    assert_eq!(
+        code(&out),
+        2,
+        "stdout:\n{}\nstderr:\n{}",
+        stdout(&out),
+        stderr(&out)
+    );
+    assert!(
+        stderr(&out).contains(RUN_ID) && stderr(&out).contains("no start time"),
+        "and it says which run answered that way\n{}",
+        stderr(&out)
+    );
+    assert!(
+        !stdout(&out).contains(CLEAN),
+        "a window it could not read is not a clean verdict\n{}",
+        stdout(&out)
+    );
+}
+
+/// A checkout too shallow to hold the range is `2`, and not "nothing changed".
+///
+/// `fetch-depth: 1` IS A REAL RUNNER STATE, and the difference matters: which
+/// keys this push legitimately invalidated is what excuses a cache the run
+/// rebuilt, so reading an unanswerable diff as an empty one refuses every key
+/// the commit had every right to move.
+#[test]
+fn a_checkout_with_no_parent_commit_is_unjudged_rather_than_one_that_changed_nothing() {
+    let at = Fixture {
+        caches: page(&[(&format!("{PREFIX}abc"), SMALL)]),
+        commits: 1,
+        ..Fixture::default()
+    }
+    .build();
+    let out = gate_in_run(at.path());
+    assert_eq!(
+        code(&out),
+        2,
+        "stdout:\n{}\nstderr:\n{}",
+        stdout(&out),
+        stderr(&out)
+    );
+    assert!(
+        stderr(&out).contains("depth 1"),
+        "and it names the shallow checkout as the reason\n{}",
+        stderr(&out)
     );
 }

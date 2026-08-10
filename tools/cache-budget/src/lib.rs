@@ -130,8 +130,66 @@ struct Page {
 /// the exact case `tests/github.rs` builds out of the first page of a recorded
 /// real answer. `{owner}` and `{repo}` are `gh`'s own placeholders, resolved
 /// from the checkout, so this gate never names the repository it is judging.
-pub fn caches_query() -> Vec<&'static str> {
-    vec!["api", "--paginate", "repos/{owner}/{repo}/actions/caches"]
+pub fn caches_query() -> Vec<String> {
+    ["api", "--paginate", "repos/{owner}/{repo}/actions/caches"]
+        .map(str::to_string)
+        .to_vec()
+}
+
+/// What this gate asks GitHub about the run it is inside.
+///
+/// THE RUN ID IS PART OF THE QUESTION, which is the whole of what makes the
+/// answer this run's: `runs/{id}` is a different resource from `runs`, and an
+/// answer about the wrong run is a start time that excuses every cache built
+/// after it.
+pub fn run_query(run_id: &str) -> Vec<String> {
+    vec![
+        "api".to_string(),
+        format!("repos/{{owner}}/{{repo}}/actions/runs/{run_id}"),
+    ]
+}
+
+/// One run, as GitHub answers for it — the half of the body this gate reads.
+///
+/// ONE FIELD OF A HUNDRED, and named rather than projected for the reason
+/// [`caches_in`] gives: a `--jq` expression naming a field the API no longer
+/// sends prints an empty line, and an empty start time excuses nothing or
+/// everything depending on which way the comparison falls.
+#[derive(serde::Deserialize)]
+struct RunPage {
+    run_started_at: String,
+}
+
+/// Why GitHub's answer about a run could not be read, in the reader's words and
+/// this gate's — the shape [`unreadable_page`] takes for the other endpoint.
+fn unreadable_run(run_id: &str, why: &serde_json::Error) -> String {
+    format!(
+        "GitHub's answer about run {run_id} is not a shape this gate can read ({why}) — it \
+         needs `run_started_at`, and an answer without one is a read that failed, not a run \
+         that began at no particular time"
+    )
+}
+
+/// When the run this gate is inside began, read off GitHub's own answer.
+///
+/// NOT THE SAME SPELLING AS A CACHE'S `created_at` — this endpoint answers to
+/// the second (`2026-08-10T09:54:23Z`) and the cache endpoint to the fraction
+/// (`2026-08-10T10:14:11.221132000Z`). Both recordings are in `tests/`, and the
+/// comparison between them is made to the second for exactly that reason.
+///
+/// AN EMPTY STAMP IS A REFUSAL AND NOT A ZERO TIME. Every cache in the
+/// repository was created after the beginning of time, so a blank read here
+/// would report every one of them as an archive this run built from nothing.
+pub fn run_started_in(run_id: &str, body: &str) -> Result<String, String> {
+    let page: RunPage = serde_json::from_str(body).map_err(|why| unreadable_run(run_id, &why))?;
+    let started_at = page.run_started_at.trim();
+    if started_at.is_empty() {
+        return Err(format!(
+            "run {run_id} reports no start time, so which caches predate it is unknown \
+             rather than none — every cache in the repository is newer than nothing"
+        ));
+    }
+    Ok(started_at.to_string())
 }
 
 /// Why a page of the answer could not be read, in the reader's words and this

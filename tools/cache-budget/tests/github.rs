@@ -21,7 +21,7 @@
 //! smaller is the direction that passes a budget. `total_count` is the only
 //! thing in the answer that can catch it, and the projection threw it away.
 
-use cache_budget::caches_in;
+use cache_budget::{caches_in, run_started_in};
 
 /// This repository's cache storage, as GitHub answered on 2026-08-10.
 const ONE_PAGE: &str = include_str!("actions-caches.one-page.json");
@@ -183,6 +183,84 @@ fn every_recorded_stamp_carries_the_one_spelling_the_ordering_assumes() {
             .all(|cache| cache.created_at.ends_with('Z') && cache.created_at.contains('.')),
         "UTC, and to the fraction — the spelling `to_the_second` exists to trim: {:?}",
         held.first().map(|cache| &cache.created_at)
+    );
+}
+
+/// The other endpoint: one run of this repository's CI, as GitHub answered.
+const RUN: &str = include_str!("actions-run.json");
+
+/// The run that recording is of, and when GitHub says it began.
+const RUN_ID: &str = "31376754536";
+const RUN_STARTED: &str = "2026-08-10T09:54:23Z";
+
+/// The recorded run says when it began, in that endpoint's own spelling.
+#[test]
+fn the_recorded_run_says_when_it_started() {
+    let started = run_started_in(RUN_ID, RUN).expect("a real run answer is one this gate can read");
+    assert_eq!(started, RUN_STARTED);
+}
+
+/// AND IT IS NOT THE SPELLING THE OTHER ENDPOINT USES.
+///
+/// This is the premise the whole restore verdict rests on: a cache created
+/// before the run began is one the run restored, and the two timestamps being
+/// compared come from two endpoints. `law.rs` proves the comparison survives the
+/// difference; what nothing proved until now is that the difference is REAL, and
+/// a fixture writing both in one spelling would have agreed with a comparison
+/// that could not survive it.
+#[test]
+fn the_two_endpoints_really_do_spell_a_timestamp_differently() {
+    let started = run_started_in(RUN_ID, RUN).expect("a real run answer is readable");
+    let held = caches_in(ONE_PAGE).expect("a real cache answer is readable");
+    let created = &held[0].created_at;
+    assert!(
+        !started.contains('.'),
+        "the runs endpoint answers to the second: {started}"
+    );
+    assert!(
+        created.contains('.'),
+        "and the cache endpoint to the fraction: {created}"
+    );
+    assert_ne!(
+        started.len(),
+        created.len(),
+        "two widths, which is what makes comparing them whole a mistake"
+    );
+}
+
+/// A run whose start time GitHub does not send is a refusal, not a zero time.
+///
+/// EVERY CACHE IN THE REPOSITORY IS NEWER THAN NOTHING, so a blank read here
+/// reports all of them as archives this run built from scratch — a page of
+/// findings about jobs that were in fact warm.
+#[test]
+fn a_run_answer_with_no_start_time_is_a_refusal_rather_than_a_zero_time() {
+    let renamed = RUN.replace("\"run_started_at\"", "\"began\"");
+    let why = run_started_in(RUN_ID, &renamed).expect_err("a run with no start time is not a time");
+    assert!(
+        why.contains("missing field `run_started_at`"),
+        "and it names the field GitHub stopped sending: {why}"
+    );
+}
+
+/// An empty stamp is the same refusal, and it names the run.
+#[test]
+fn a_run_that_reports_an_empty_start_time_is_refused_by_name() {
+    let blank = RUN.replace(RUN_STARTED, "");
+    let why = run_started_in(RUN_ID, &blank).expect_err("an empty stamp is not a start time");
+    assert!(
+        why.contains(RUN_ID),
+        "and it says which run answered that way: {why}"
+    );
+}
+
+/// Nothing printed about a run is not a run that started at no time.
+#[test]
+fn a_run_answer_that_never_arrives_is_a_refusal() {
+    let why = run_started_in(RUN_ID, "").expect_err("silence is not an answer");
+    assert!(
+        why.contains(RUN_ID) && why.contains("read that failed"),
+        "and it says which run it could not read about: {why}"
     );
 }
 

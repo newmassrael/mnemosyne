@@ -111,20 +111,8 @@ fn main() {
 /// than a second implementation of glob matching, which would be a second answer
 /// free to disagree with the one GitHub used to build the key.
 fn run_window(root: &Path, run_id: &str, declared: &[CacheDeclaration]) -> Result<Run, String> {
-    let started_at = gh(
-        root,
-        &[
-            "api",
-            &format!("repos/{{owner}}/{{repo}}/actions/runs/{run_id}"),
-            "--jq",
-            ".run_started_at",
-        ],
-    )?
-    .trim()
-    .to_string();
-    if started_at.is_empty() {
-        return Err(format!("run {run_id} reports no start time"));
-    }
+    let answer = gh(root, &cache_budget::run_query(run_id))?;
+    let started_at = cache_budget::run_started_in(run_id, &answer)?;
 
     // THE RANGE THIS RUN COVERS, not the commit it ends at. A push carries as
     // many commits as it carries, and the one that moved a cache key's hashed
@@ -207,7 +195,12 @@ fn commit_is_here(root: &Path, sha: &str) -> bool {
 }
 
 /// Run `gh` and hand back its output, or say why it could not be asked.
-fn gh(root: &Path, arguments: &[&str]) -> Result<String, String> {
+///
+/// THE WORDS ARE THE LIBRARY'S — [`cache_budget::caches_query`] and
+/// [`cache_budget::run_query`] — and this function knows none of them. What is
+/// left here is the part a suite cannot reach: a process, its exit status, and
+/// its two streams.
+fn gh(root: &Path, arguments: &[String]) -> Result<String, String> {
     let out = Command::new("gh")
         .args(arguments)
         .current_dir(root)

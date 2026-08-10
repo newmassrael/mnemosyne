@@ -586,8 +586,8 @@
       "edits": [
         {
           "file": "tools/cache-budget/src/lib.rs",
-          "from": "    vec![\"api\", \"--paginate\", \"repos/{owner}/{repo}/actions/caches\"]",
-          "to": "    vec![\"api\", \"repos/{owner}/{repo}/actions/caches\"]"
+          "from": "    [\"api\", \"--paginate\", \"repos/{owner}/{repo}/actions/caches\"]",
+          "to": "    [\"api\", \"repos/{owner}/{repo}/actions/caches\"]"
         }
       ],
       "expect_red": ["the_gate_asks_github_for_every_page_of_its_cache_storage"]
@@ -603,6 +603,74 @@
         }
       ],
       "expect_red": ["pages_that_disagree_about_the_count_are_refused"]
+    },
+    {
+      "name": "the-run-window-is-never-read",
+      "why": "R1131 — the wiring R1129's carry named: every entrance case cleared `GITHUB_RUN_ID`, because that is what makes a fixture deterministic, and it is ALSO what skips this gate's whole second half — when the run began, which keys its commits invalidated, and which workflow it belongs to. A binary that stopped reading the window entirely would have passed the suite as it stood",
+      "edits": [
+        {
+          "file": "tools/cache-budget/src/main.rs",
+          "from": "    let run = match std::env::var(\"GITHUB_RUN_ID\").ok() {",
+          "to": "    let run = match None::<String> {"
+        }
+      ],
+      "expect_red": ["inside_a_run_the_gate_reads_the_window_and_names_the_run_it_read"]
+    },
+    {
+      "name": "a-run-that-reports-no-start-time-began-at-time-zero",
+      "why": "every cache in the repository was created after the beginning of time, so a blank start time read as a zero reports EVERY job as having rebuilt from scratch — a page of findings about jobs that were in fact warm",
+      "edits": [
+        {
+          "file": "tools/cache-budget/src/lib.rs",
+          "from": "    if started_at.is_empty() {",
+          "to": "    if false {"
+        }
+      ],
+      "expect_red": [
+        "a_run_that_reports_an_empty_start_time_is_refused_by_name",
+        "a_run_whose_start_time_is_missing_is_unjudged_rather_than_a_run_at_time_zero"
+      ]
+    },
+    {
+      "name": "whatever-gh-printed-about-the-run-is-the-start-time",
+      "why": "the projection's own behaviour, restored: `--jq .run_started_at` on a body without that field prints a line, and a reader that took the printed text as the stamp cannot tell a timestamp from an error page. Typed, the same body is a refusal that NAMES the field GitHub stopped sending",
+      "edits": [
+        {
+          "file": "tools/cache-budget/src/lib.rs",
+          "from": "    let page: RunPage = serde_json::from_str(body).map_err(|why| unreadable_run(run_id, &why))?;",
+          "to": "    let page: RunPage = serde_json::from_str(body).unwrap_or(RunPage { run_started_at: body.trim().to_string() });"
+        }
+      ],
+      "expect_red": [
+        "a_run_answer_with_no_start_time_is_a_refusal_rather_than_a_zero_time",
+        "a_run_answer_that_never_arrives_is_a_refusal"
+      ]
+    },
+    {
+      "name": "the-question-about-the-run-stops-naming-the-run",
+      "why": "`runs/{id}` and `runs` are different resources, and a start time belonging to some other run excuses every cache built after it. The stub answers a question about a run whatever run it names, which is exactly how this would go unnoticed",
+      "edits": [
+        {
+          "file": "tools/cache-budget/src/lib.rs",
+          "from": "        format!(\"repos/{{owner}}/{{repo}}/actions/runs/{run_id}\"),",
+          "to": "        \"repos/{owner}/{repo}/actions/runs\".to_string(),"
+        }
+      ],
+      "expect_red": ["inside_a_run_the_gate_reads_the_window_and_names_the_run_it_read"]
+    },
+    {
+      "name": "a-diff-that-could-not-be-taken-is-read-as-no-change",
+      "why": "`fetch-depth: 1` is a real runner state and `git diff HEAD~1 HEAD` fails in it. Which keys this push legitimately invalidated is what EXCUSES a cache the run rebuilt, so reading an unanswerable diff as an empty one refuses every key the commit had every right to move",
+      "edits": [
+        {
+          "file": "tools/cache-budget/src/main.rs",
+          "from": "        if !out.status.success() {",
+          "to": "        if false {"
+        }
+      ],
+      "expect_red": [
+        "a_checkout_with_no_parent_commit_is_unjudged_rather_than_one_that_changed_nothing"
+      ]
     }
   ]
 }
