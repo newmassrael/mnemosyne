@@ -3063,6 +3063,509 @@ pub fn read_arguments(arguments: &[String]) -> Result<Entrance, String> {
     }
 }
 
+/// Seconds, from the microseconds every number here is measured in.
+fn seconds(micros: u64) -> f64 {
+    micros as f64 / 1_000_000.0
+}
+
+/// A coverage row's split, spelled for the end of a line.
+///
+/// EMPTY WHEN THERE IS NOTHING IN IT, so a row that is honestly zero does not
+/// carry a breakdown of zeros that reads like a measurement.
+fn naming(split: &BTreeMap<Origin, Cost>) -> String {
+    if split.is_empty() {
+        return String::new();
+    }
+    let parts: Vec<String> = split
+        .iter()
+        .map(|(origin, cost)| format!("{} {}", cost.times, origin.why()))
+        .collect();
+    format!(" ({})", parts.join(", "))
+}
+
+/// What one restore is reported as: which cache, what it brought, what it cost.
+///
+/// A FUNCTION SO THAT THE SUITE AND THE REPORT CANNOT DISAGREE ABOUT IT, which
+/// is the whole of R1125's defect stated as a shape. That round's report asked
+/// the census for a record by JOB while every other reader had moved to the
+/// key R1122 gave it — the record's FILE — so the lookup could never hit and
+/// three green runs printed `NOT SAID` about eight records the census was
+/// holding. Two readers of one datum is what let them come apart; there is now
+/// one, and the law beside it holds the report against what this returns rather
+/// than against words a test spells for itself.
+///
+/// THE COMPILING IS THE JOB'S, and it is the same figure on every one of that
+/// job's lines: what a job compiles is the job's, and splitting it between two
+/// caches would be inventing an attribution nothing measured. What the split
+/// bought is the PRICE — the restore's own seconds — being each cache's.
+///
+/// THE TWO NUMBERS TOGETHER ARE "was this cache worth having": a restore that
+/// takes longer than the compiling it spared is a cache that made the job
+/// slower, and until the record carried a clock nothing could put them side by
+/// side.
+pub fn started_from(census: &Census, restore: &restored::Restore, compiling_micros: u64) -> String {
+    match census.restore(restore) {
+        Some(record) => format!(
+            "  {:<22} started from `{}`: {} — the restore took {:.1} s, \
+             against {:.1} s this job spent compiling",
+            "",
+            restore.cache,
+            record.warmth().why(),
+            seconds(record.restore_micros()),
+            seconds(compiling_micros),
+        ),
+        // WHAT A JOB THAT WROTE NO RECORD IS REPORTED AS, and the sentence
+        // R1125's broken lookup printed for every job that HAD written one.
+        None => format!("  {:<22} started from `{}`: NOT SAID", "", restore.cache),
+    }
+}
+
+/// The census as a person reads it. Everything, including the classes this
+/// reader cannot key — a gate that prints only its findings cannot be told from
+/// one that never ran.
+///
+/// IN THE LIBRARY FOR THE REASON THE COMPARISON BELOW IT IS, and R1126 is the
+/// round that finished a move R1096 began: what a gate SAYS is a decision, and
+/// a decision written in `main.rs` can be asked only its exit code. This report
+/// was the half left behind, and what that cost is measured rather than argued
+/// — R1125's defect was a lookup that could never hit, and the only test able
+/// to see it had to REPLAY a job in a worktree of its own and read the words
+/// off a subprocess.
+pub fn render(
+    census: &Census,
+    declared: &Declared,
+    absent: &BTreeSet<String>,
+    root: &Path,
+) -> String {
+    let mut out = String::from("twice-compiled — every compilation CI pays for is one job's\n\n");
+    for job in declared.jobs.keys() {
+        if absent.contains(job) {
+            out.push_str(&format!("  {job:<22} not in this census\n"));
+            continue;
+        }
+        let Some(log) = census.jobs.get(job) else {
+            out.push_str(&format!("  {job:<22} NO LOG\n"));
+            continue;
+        };
+        out.push_str(&format!(
+            "  {job:<22} {:>6} compiled  {:>6} distinct  {:>5} repeated  \
+             {:>5} probes  {:>4} unkeyed\n",
+            log.compilations(),
+            log.units.len(),
+            log.repeats(),
+            log.probes,
+            log.unkeyed,
+        ));
+        // THE SECOND LINE IS THE ONE THAT PRICES THE FIRST. `compiling` is the
+        // area under every compiler the job ran and is larger than the job; the
+        // window is from the first compiler's start to the last one's exit, so
+        // their ratio is how many compilers were alive on average. The idle
+        // figure is the part of that window with NO compiler in it at all —
+        // a suite running what it just built — and it is what says how much of
+        // this job removing work can actually reach.
+        let window = log.span_micros();
+        let busy = log.busy_micros();
+        let at_once = if busy == 0 {
+            0.0
+        } else {
+            log.micros as f64 / busy as f64
+        };
+        out.push_str(&format!(
+            "  {:<22} {:>8.1} s compiling within a {:>8.1} s window \
+             ({at_once:.1} at once while busy, {:.1} s of it idle)\n",
+            "",
+            seconds(log.compiled_micros()),
+            seconds(window),
+            seconds(log.idle_micros()),
+        ));
+        // THE THIRD LINE IS WHOSE CODE THE FIRST TWO WERE ABOUT, and it is the
+        // one the line below is answerable against: every cache in this workflow
+        // carries `~/.cargo/registry` and `~/.cargo/git`, which hold SOURCES.
+        // A job that restored them exactly and still compiled hundreds of
+        // fetched crates has a cache that brought the sources of work it then
+        // did anyway, and no reading of the state alone can say that.
+        let fetched = log.fetched();
+        out.push_str(&format!(
+            "  {:<22} {:>6} of them fetched by cargo ({:>7.1} s), {:>5} from the \
+             checkout ({:.1} s)\n",
+            "",
+            fetched.times,
+            seconds(fetched.micros),
+            log.compilations() - fetched.times,
+            seconds(log.compiled_micros().saturating_sub(fetched.micros)),
+        ));
+        // THE FOURTH LINE IS WHETHER THIS JOB'S CACHE REACHES WHERE THAT WORK
+        // WENT. A restore can only spare what it brings back, so a compilation
+        // written outside every path the cache declares is work no hit of it
+        // could ever have avoided — a different finding from a cache that
+        // missed, and until this was read the two were one number.
+        match log.coverage(root, &declared.cached_paths(job)) {
+            Some(found) => {
+                for (path, split) in &found.held {
+                    out.push_str(&format!(
+                        "  {:<22} {:>6} into `{path}`, which its cache holds{}\n",
+                        "",
+                        split.values().map(|cost| cost.times).sum::<usize>(),
+                        naming(split),
+                    ));
+                }
+                for (tree, split) in &found.outside {
+                    out.push_str(&format!(
+                        "  {:<22} {:>6} into `{tree}`, WHERE NO PATH OF ITS CACHE \
+                         REACHES — no restore could have spared this{}\n",
+                        "",
+                        split.values().map(|cost| cost.times).sum::<usize>(),
+                        naming(split),
+                    ));
+                }
+            }
+            // WHERE IT WAS TAKEN IS PART OF WHAT IT SAYS. Answering anyway would
+            // print every compilation as written outside the cache, which is
+            // what looking in the wrong place produces rather than a finding.
+            None => {
+                out.push_str(&format!(
+                    "  {:<22} none of its destinations are under {} — this census \
+                     was taken on another machine, so what its cache reaches \
+                     cannot be read here; the destinations themselves can:\n",
+                    "",
+                    root.display(),
+                ));
+                // THE DATA IT DOES HOLD, UNINTERPRETED. A reader told only that
+                // the joining is unavailable has been handed nothing, and these
+                // rows are what the join would have been made of.
+                let mut written: BTreeMap<&str, BTreeMap<Origin, Cost>> = BTreeMap::new();
+                for (into, cost) in &log.written {
+                    written
+                        .entry(into.tree().unwrap_or("<none named>"))
+                        .or_default()
+                        .entry(into.origin)
+                        .or_default()
+                        .absorb(*cost);
+                }
+                for (dir, split) in written {
+                    out.push_str(&format!(
+                        "  {:<22} {:>6} into {dir}{}\n",
+                        "",
+                        split.values().map(|cost| cost.times).sum::<usize>(),
+                        naming(&split),
+                    ));
+                }
+            }
+        }
+        if !log.unplaced.is_empty() {
+            for (what, cost) in &log.unplaced {
+                out.push_str(&format!(
+                    "  {:<22} {:>6} NOT PLACED, missing from the line above: \
+                     `{}` — {}\n",
+                    "",
+                    cost.times,
+                    what.crate_name,
+                    what.why(),
+                ));
+            }
+        }
+        // THE FIFTH LINE IS THE UNITS THE FIRST TWO ARE IN. cargo runs no
+        // compiler for a unit that is already fresh, so this whole census is of
+        // whatever was NOT restored, and the same job in two cache states is two
+        // different numbers that are each correct. Round 1099 read two of them
+        // as a controlled comparison and deleted the cache.
+        //
+        // R1125 — ONE LINE PER CACHE, AND THIS READER WAS THE ONE THAT DID NOT
+        // MOVE. R1122 keyed the census by the record's FILE, because a job may
+        // now write more than one; the judge and the budget gate were both taken
+        // to the new key and this lookup was left asking by JOB, which can never
+        // hit. It printed `NOT SAID` for all seven cached jobs of three green
+        // runs — a report announcing an absence that was entirely its own.
+        let caches = declared.caches.get(job).map(Vec::as_slice).unwrap_or(&[]);
+        if caches.is_empty() {
+            // A JOB WITH NO CACHE IS NOT A JOB WITH NO STATE — it is one that
+            // starts from nothing every time, which is what having no cache
+            // means. Saying so is the difference between the two silences.
+            out.push_str(&format!(
+                "  {:<22} started from: an empty tree — this job declares no cache\n",
+                ""
+            ));
+        }
+        for cache in caches {
+            let wanted = restored::Restore {
+                job: job.clone(),
+                cache: cache.prefix.clone(),
+            };
+            out.push_str(&started_from(census, &wanted, log.busy_micros()));
+            out.push('\n');
+        }
+        // A RECORD THAT DID NOT DECODE HAS NO CACHE TO BE FILED UNDER, so it is
+        // named by its file — the same reason `judge` refuses it that way.
+        for (file, why) in census
+            .restored
+            .iter()
+            .filter_map(|(file, record)| record.as_ref().err().map(|why| (file, why)))
+        {
+            // `restored`'S AND NOT THIS CRATE'S. Both crates have a function of
+            // this name and they answer about different files — a record is
+            // `<job>.<nickname>.restored`, a compilation log is `<job>.log` —
+            // so the unqualified spelling here would compile, resolve to the
+            // wrong one, and silently drop every unreadable record from the
+            // only line that names it.
+            if restored::names_its_job(file, job) {
+                out.push_str(&format!("  {:<22} `{file}` is UNREADABLE — {why}\n", ""));
+            }
+        }
+    }
+
+    let paid = census.paid();
+    let floor = census.floor();
+    out.push_str(&format!(
+        "\n  CI pays for   {paid:>6} compilations across {} job(s)  \
+         {:>9.1} s of compiling\n",
+        census.jobs.len(),
+        seconds(census.paid_micros()),
+    ));
+    out.push_str(&format!(
+        "  the floor is  {floor:>6} distinct units{:<26}{:>9.1} s\n",
+        "",
+        seconds(census.floor_micros()),
+    ));
+    // WHOSE CODE CI IS PAYING TO COMPILE, under the total it is a share of. A
+    // repair aimed at this repository's own crates cannot reach the fetched
+    // rows, and a compile cache is a repair aimed at nothing else — so which of
+    // these two lines is the large one decides what is worth building.
+    for (origin, cost) in census.by_origin() {
+        let share = if paid == 0 {
+            0.0
+        } else {
+            100.0 * cost.times as f64 / paid as f64
+        };
+        out.push_str(&format!(
+            "  {:<13} {:>6} {:<20} ({share:.1}%){:<11}{:>9.1} s\n",
+            "",
+            cost.times,
+            origin.why(),
+            "",
+            seconds(cost.micros),
+        ));
+    }
+    let unplaced = census.unplaced();
+    if unplaced > 0 {
+        out.push_str(&format!(
+            "  {:<13} {unplaced:>6} NOT PLACED — the two lines above are of a \
+             population this reader lost part of\n",
+            "",
+        ));
+    }
+    let duplicated = paid.saturating_sub(floor);
+    let share = if paid == 0 {
+        0.0
+    } else {
+        100.0 * duplicated as f64 / paid as f64
+    };
+    let surplus_micros = census.paid_micros().saturating_sub(census.floor_micros());
+    let share_micros = if census.paid_micros() == 0 {
+        0.0
+    } else {
+        100.0 * surplus_micros as f64 / census.paid_micros() as f64
+    };
+    out.push_str(&format!(
+        "  duplicated    {duplicated:>6} ({share:.1}% of what CI compiles){:<10}\
+         {:>9.1} s ({share_micros:.1}%)\n",
+        "",
+        seconds(surplus_micros),
+    ));
+    // THE SPLIT IS THE DECISION. One half exists because the work is spread over
+    // jobs and would go away if those jobs were one job; the other half is a job
+    // compiling the same unit twice inside itself, which no amount of merging
+    // reaches — a job that builds several SEPARATE workspaces holds a `target`
+    // per workspace. A single percentage licenses whichever repair was already
+    // preferred; these two lines say which one the number is actually about.
+    out.push_str(&format!(
+        "    of which  {:>6} because the work is split across jobs (merging \
+         removes){:<1}{:>9.1} s\n",
+        census.shared_between_jobs(),
+        "",
+        seconds(census.shared_between_jobs_micros()),
+    ));
+    out.push_str(&format!(
+        "              {:>6} inside one job, over its own separate workspaces \
+         (merging does not){:>9.1} s\n",
+        census.repeated_within_jobs(),
+        seconds(census.repeated_within_jobs_micros()),
+    ));
+    // AND WHAT THE WHOLE FAMILY OF REPAIRS IS WORTH, which is the line every
+    // number above needs beside it. R1098 measured this by hand — 75.4% of these
+    // windows idle, so all compile-side repair together was worth at most 394.5 s
+    // on the critical path — and an arc decision was taken on it. Nothing printed
+    // it, so nothing could say when it stopped being true, and the question it
+    // settled came back five times under five names.
+    //
+    // THE TWO QUANTITIES ARE NAMED APART because one is a share of TIME and the
+    // one above it is a share of WORK: 38% of the compiler-seconds being surplus
+    // and 75% of the wall-clock having no compiler in it at all are both true,
+    // and only the second says what a repair can reach.
+    let window = census.window_micros();
+    let idle = if window == 0 {
+        0.0
+    } else {
+        100.0 * census.idle_micros() as f64 / window as f64
+    };
+    out.push_str(&format!(
+        "\n  the ceiling on ALL of it is {:.1} s of critical path — these jobs run \
+         beside each other, so a repair that removed EVERY compilation shortens \
+         the run by at most the busiest job's own compiling ({:.1} s of window \
+         across the census, {idle:.1}% of it with no compiler alive at all)\n",
+        seconds(census.ceiling_micros()),
+        seconds(window),
+    ));
+    // THE STATE THE TOTALS ARE IN, printed with them rather than left in the
+    // per-job lines above, because the number that gets quoted is this one and
+    // the number that got quoted is what deleted a cache that was working.
+    started_in(&mut out, census, declared, absent);
+
+    let pairwise = census.pairwise();
+    if pairwise.is_empty() {
+        out.push_str("\n  no two jobs compile the same unit\n");
+        return out;
+    }
+    // RANKED BY SECONDS AND NOT BY ROWS. The two orders are different orders,
+    // and the round that built this reader had already written the repair list
+    // in the row order before it could see the other one.
+    out.push_str("\n  what merging a pair would remove, and what it would cost:\n");
+    let mut rows: Vec<((&str, &str), Merge)> = pairwise.into_iter().collect();
+    rows.sort_by_key(|(pair, merge)| (std::cmp::Reverse(merge.saved_micros), *pair));
+    for ((left, right), merge) in rows {
+        out.push_str(&format!("    {left} + {right}\n"));
+        out.push_str(&format!(
+            "      {:>6} compilations  {:>8.1} s of compiling removed\n",
+            merge.units,
+            seconds(merge.saved_micros),
+        ));
+        // THE OTHER SIDE OF THE TRADE, printed beside the saving rather than
+        // left to whoever acts on it: the two jobs run at the same time today,
+        // so the merged one starts from the longer of them and can only grow.
+        out.push_str(&format!(
+            "      window  {:>8.1} s today  ->  {:>8.1} s estimated \
+             (never below {:.1} s, never above {:.1} s; {:.1} s of it is idle \
+             and scales with nothing)\n",
+            seconds(merge.floor_micros),
+            seconds(merge.estimate_micros),
+            seconds(merge.floor_micros),
+            seconds(merge.ceiling_micros),
+            seconds(merge.idle_micros),
+        ));
+    }
+
+    // WHICH REPAIR the number licenses depends on what is in it: duplication in
+    // third-party dependencies is answered by a shared compilation cache, and
+    // duplication in this repository's own crates is answered by the jobs being
+    // one job. Twenty rows because the tail is long and the head is the decision.
+    let surplus = census.surplus_by_crate();
+    let total: usize = surplus.values().map(|cost| cost.times).sum();
+    out.push_str(&format!(
+        "\n  the {} crate(s) compiled more than once, {total} surplus \
+         compilation(s), dearest first:\n",
+        surplus.len()
+    ));
+    // DEAREST AND NOT MOST NUMEROUS. A build script is a row and almost no
+    // money; a test binary of this repository's own is the other way round, and
+    // which of them heads this list is which repair the number licenses.
+    let mut crates: Vec<(&str, Cost)> = surplus.into_iter().collect();
+    crates.sort_by_key(|(name, cost)| (std::cmp::Reverse(cost.micros), *name));
+    for (name, cost) in crates.iter().take(20) {
+        out.push_str(&format!(
+            "    {:>6}  {:>8.1} s  {name}\n",
+            cost.times,
+            seconds(cost.micros)
+        ));
+    }
+    if crates.len() > 20 {
+        let times: usize = crates[20..].iter().map(|(_, cost)| cost.times).sum();
+        let micros: u64 = crates[20..].iter().map(|(_, cost)| cost.micros).sum();
+        out.push_str(&format!(
+            "    {times:>6}  {:>8.1} s  … and {} more crate(s)\n",
+            seconds(micros),
+            crates.len() - 20
+        ));
+    }
+    out
+}
+
+/// The cache state the totals above were measured in, in one sentence.
+///
+/// A CENSUS IS NOT COMPARABLE TO ANOTHER CENSUS TAKEN IN A DIFFERENT ONE, and
+/// the whole cost of learning that was a 7.5 GB cache deleted for saving nothing
+/// while it was saving 426 compilations. The sentence is printed even when every
+/// job started the same way, because the reader who needs it is the one holding
+/// two reports, and a line that appears only sometimes is a line nobody looks
+/// for.
+fn started_in(out: &mut String, census: &Census, declared: &Declared, absent: &BTreeSet<String>) {
+    let started = census.started();
+    // A JOB WITH NO CACHE STARTS FROM NOTHING EVERY RUN, which is a state that
+    // cannot vary and therefore cannot be the difference between two censuses.
+    // It is counted apart from the jobs that restored nothing DESPITE a cache,
+    // because those two are the same disk and different findings.
+    let cacheless: Vec<&str> = census
+        .jobs
+        .keys()
+        .filter(|job| !declared.caches.contains_key(*job) && !absent.contains(*job))
+        .map(String::as_str)
+        .collect();
+    if started.is_empty() {
+        out.push_str(&format!(
+            "\n  no job with a cache in this census said what it started from, \
+             so these totals are in no units at all — they are of whatever was \
+             not already on the disk, and nothing here says what that was \
+             ({} job(s) declare no cache and always start from nothing)\n",
+            cacheless.len()
+        ));
+        return;
+    }
+    // COUNTED PER RESTORE, WHICH IS NO LONGER PER JOB. A job that declares two
+    // caches can be warm in one and cold in the other, and a tally that put it
+    // in one bucket would be answering about whichever cache the reader guessed
+    // — the very substitution R1117 split the record to prevent.
+    let mut exact = Vec::new();
+    let mut prefix = Vec::new();
+    let mut nothing = Vec::new();
+    let mut contradictory = Vec::new();
+    for (restore, warmth) in &started {
+        let named = restore.to_string();
+        match warmth {
+            restored::Warmth::ExactHit { .. } => exact.push(named),
+            restored::Warmth::PrefixHit { .. } => prefix.push(named),
+            restored::Warmth::Nothing => nothing.push(named),
+            restored::Warmth::HitThatBroughtNothing => contradictory.push(named),
+        }
+    }
+    let cacheless: Vec<String> = cacheless.iter().map(|job| format!("`{job}`")).collect();
+    out.push_str(&format!(
+        "\n  taken with {} restore(s) warm from an exact hit, {} warm from an \
+         earlier generation, {} from nothing{}\n",
+        exact.len(),
+        prefix.len(),
+        nothing.len(),
+        if contradictory.is_empty() {
+            String::new()
+        } else {
+            format!(", {} contradicting itself", contradictory.len())
+        }
+    ));
+    for (label, named) in [
+        ("exact hit", &exact),
+        ("earlier generation", &prefix),
+        ("nothing", &nothing),
+        ("contradiction", &contradictory),
+        ("no cache at all", &cacheless),
+    ] {
+        if !named.is_empty() {
+            out.push_str(&format!("    {label:<20} {}\n", named.join(", ")));
+        }
+    }
+    out.push_str(
+        "  a census taken in another state is not this one's control: cargo \
+         runs no compiler for a unit that is already fresh, so these counts are \
+         of what was NOT restored\n",
+    );
+}
+
 /// A comparison as a person reads it.
 ///
 /// IN THE LIBRARY FOR THE REASON THE READING RULES ARE: what a gate SAYS is a

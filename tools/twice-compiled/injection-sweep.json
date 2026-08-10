@@ -497,12 +497,12 @@
     },
     {
       "name": "a-jobs-line-need-not-say-whose-code-it-compiled",
-      "why": "the reading lives in `main.rs`, where R1096 measured what a decision with no reader costs: a job that restored `~/.cargo/registry` exactly and still compiled hundreds of crates out of it is the whole finding, and a report that prints the counts without the split leaves it to be recovered by hand",
+      "why": "a job that restored `~/.cargo/registry` exactly and still compiled hundreds of crates out of it is the whole finding, and a report that prints the counts without the split leaves it to be recovered by hand. R1126 moved the reading into the library, so this is aimed there now — and it is still an ENTRANCE test that catches it, because the binary is what a person reads",
       "edits": [
         {
-          "file": "tools/twice-compiled/src/main.rs",
+          "file": "tools/twice-compiled/src/lib.rs",
           "from": "        let fetched = log.fetched();",
-          "to": "        let fetched = twice_compiled::Cost::default();"
+          "to": "        let fetched = Cost::default();"
         }
       ],
       "expect_red": [
@@ -514,7 +514,7 @@
       "why": "which of the two rows is the large one decides what is worth building — a repair aimed at this repository's own crates cannot reach the fetched rows, and a compile cache is a repair aimed at nothing else",
       "edits": [
         {
-          "file": "tools/twice-compiled/src/main.rs",
+          "file": "tools/twice-compiled/src/lib.rs",
           "from": "    for (origin, cost) in census.by_origin() {",
           "to": "    for (origin, cost) in census.by_origin().into_iter().take(0) {"
         }
@@ -575,10 +575,10 @@
     },
     {
       "name": "the-report-need-not-say-what-no-restore-could-spare",
-      "why": "the reading lives in `main.rs`, where R1096 measured what a decision with no reader costs; a job that restored 27 GB exactly and compiled hundreds of fetched crates reads as a cache that failed until this row says the work went where the cache never reached",
+      "why": "a job that restored 27 GB exactly and compiled hundreds of fetched crates reads as a cache that failed until this row says the work went where the cache never reached. R1126 moved the reading into the library and this is aimed there now",
       "edits": [
         {
-          "file": "tools/twice-compiled/src/main.rs",
+          "file": "tools/twice-compiled/src/lib.rs",
           "from": "                for (tree, split) in &found.outside {",
           "to": "                for (tree, split) in found.outside.iter().take(0) {"
         }
@@ -812,27 +812,49 @@
     },
     {
       "name": "the-report-asks-for-a-restore-record-by-job",
-      "why": "R1125, and it is the defect this injection is named after rather than a hypothetical: R1122 keyed the census by the record's FILE, because a job may write more than one, and took the judge and the budget gate to the new key while leaving THIS reader asking by job. `restored.get(job)` cannot hit, so the report printed `NOT SAID` for all seven cached jobs of three green runs — an absence entirely its own. The suite agreed, because its oracle was the phrase `started from`, which `started from: NOT SAID` also contains",
+      "why": "R1125, and it is the defect this injection is named after rather than a hypothetical: R1122 keyed the census by the record's FILE, because a job may write more than one, and took the judge and the budget gate to the new key while leaving THIS reader asking by job. `restored.get(job)` cannot hit, so the report printed `NOT SAID` for all seven cached jobs of three green runs — an absence entirely its own. The suite agreed, because its oracle was the phrase `started from`, which `started from: NOT SAID` also contains. R1126 left ONE reader of that datum, so the defect is now stated as what it always was underneath: the report asking a census that cannot answer. Both a cheap law and the entrance test refuse it, which is the point of the move — before it, the only test that could see this had to replay a job in a worktree of its own",
       "edits": [
         {
-          "file": "tools/twice-compiled/src/main.rs",
-          "from": "            match census.restore(&wanted) {",
-          "to": "            match census.restored.get(job).and_then(|record| record.as_ref().ok()) {"
+          "file": "tools/twice-compiled/src/lib.rs",
+          "from": "            out.push_str(&started_from(census, &wanted, log.busy_micros()));",
+          "to": "            out.push_str(&started_from(&Census::default(), &wanted, log.busy_micros()));"
         }
       ],
-      "expect_red": ["a_replayed_job_records_that_it_started_from_nothing"]
+      "expect_red": [
+        "every_restore_the_census_holds_is_in_the_report_as_that_restore_reads",
+        "a_replayed_job_records_that_it_started_from_nothing"
+      ]
+    },
+    {
+      "name": "the-restore-line-does-not-ask-the-census",
+      "why": "R1125's defect one level DOWN, and the control the law above cannot be trusted without. That law holds the report against what `started_from` returns, so a `started_from` which never hits satisfies it perfectly — both sides then say `NOT SAID` and agree. What separates `the report reads the census` from `the report and the reader agree about nothing` is holding one restore against a census that no longer holds its record: a reader that cannot hit reads the same either way. This asks for a cache spelled as nothing, which is exactly the shape of a lookup that can never hit",
+      "edits": [
+        {
+          "file": "tools/twice-compiled/src/lib.rs",
+          "from": "    match census.restore(restore) {",
+          "to": "    match census.restore(&restored::Restore { job: restore.job.clone(), cache: String::new() }) {"
+        }
+      ],
+      "expect_red": [
+        "a_restore_reads_differently_once_the_census_no_longer_holds_its_record",
+        "a_restores_line_names_which_cache_it_is_of_and_what_arrived",
+        "a_replayed_job_records_that_it_started_from_nothing"
+      ]
     },
     {
       "name": "the-report-does-not-say-which-cache-a-state-belongs-to",
       "why": "a job may declare two caches whose states differ — one exact hit and one empty tree was the ordinary shape the day `unrun-tests` was split — so a line that gives the state without naming the cache is one a reader must guess at, and guessing which of a job's restores a number is about is the substitution R1117 split the record to prevent",
       "edits": [
         {
-          "file": "tools/twice-compiled/src/main.rs",
-          "from": "                    \"  {:<22} started from `{}`: {} — the restore took {:.1} s, \\\n                     against {:.1} s this job spent compiling\",\n                    \"\",\n                    cache.prefix,",
-          "to": "                    \"  {:<22} started from: {}{} — the restore took {:.1} s, \\\n                     against {:.1} s this job spent compiling\",\n                    \"\",\n                    \"\","
+          "file": "tools/twice-compiled/src/lib.rs",
+          "from": "            \"  {:<22} started from `{}`: {} — the restore took {:.1} s, \\\n             against {:.1} s this job spent compiling\",\n            \"\",\n            restore.cache,",
+          "to": "            \"  {:<22} started from: {}{} — the restore took {:.1} s, \\\n             against {:.1} s this job spent compiling\",\n            \"\",\n            \"\","
         }
       ],
-      "expect_red": ["a_replayed_job_records_that_it_started_from_nothing"]
+      "expect_red": [
+        "a_restores_line_names_which_cache_it_is_of_and_what_arrived",
+        "a_replayed_job_records_that_it_started_from_nothing"
+      ]
     },
     {
       "name": "the-ceiling-is-the-sum-of-what-every-job-compiles",
@@ -860,12 +882,12 @@
     },
     {
       "name": "the-report-does-not-price-the-family-of-repairs",
-      "why": "the figure R1098 measured by hand closed an arc, and NOTHING printed it for twenty-five rounds — so a value that had stopped being true would have gone on governing, and the question it settled came back five times under five names. A decision that lives where nobody runs it has no reader, which is what R1096 measured about this very binary",
+      "why": "the figure R1098 measured by hand closed an arc, and NOTHING printed it for twenty-five rounds — so a value that had stopped being true would have gone on governing, and the question it settled came back five times under five names. A decision that lives where nobody runs it has no reader, which is what R1096 measured about this very binary and what R1126 finally repaired by moving the words into the library",
       "edits": [
         {
-          "file": "tools/twice-compiled/src/main.rs",
-          "from": "        \"\\n  the ceiling on ALL of it is {:.1} s of critical path — these jobs run \\\n         beside each other, so a repair that removed EVERY compilation shortens \\\n         the run by at most the busiest job's own compiling ({:.1} s of window \\\n         across the census, {idle:.1}% of it with no compiler alive at all)\",",
-          "to": "        \"\\n  compiling took {:.1} s and the window was {:.1} s ({idle:.1}%)\","
+          "file": "tools/twice-compiled/src/lib.rs",
+          "from": "        \"\\n  the ceiling on ALL of it is {:.1} s of critical path — these jobs run \\\n         beside each other, so a repair that removed EVERY compilation shortens \\\n         the run by at most the busiest job's own compiling ({:.1} s of window \\\n         across the census, {idle:.1}% of it with no compiler alive at all)\\n\",",
+          "to": "        \"\\n  compiling took {:.1} s and the window was {:.1} s ({idle:.1}%)\\n\","
         }
       ],
       "expect_red": ["a_job_with_no_cache_leaves_no_record_and_is_not_refused_for_it"]

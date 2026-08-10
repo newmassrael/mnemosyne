@@ -1668,6 +1668,122 @@ fn a_census_whose_jobs_all_said_what_they_restored_is_accepted() {
     assert!(judge(&census, &declared, &nothing()).is_empty());
 }
 
+/// A directory this machine does not have, so the coverage join answers the same
+/// way on every machine that runs this suite.
+///
+/// WHAT IT DECIDES IS WHICH PARAGRAPH the per-job block carries, and neither
+/// paragraph is what the laws below read — they read the restore lines, which
+/// are printed either way. Naming a real directory would make the report depend
+/// on whose checkout ran the suite.
+const NOT_A_CHECKOUT: &str = "/nowhere-this-suite-runs";
+
+/// R1126 — THE REPORT SAYS ABOUT A RESTORE WHAT THE RESTORE SAYS ABOUT ITSELF.
+///
+/// THIS IS R1125's DEFECT AS A LAW. That round's report asked the census for a
+/// record by JOB after R1122 keyed it by the record's FILE, so the lookup could
+/// never hit: every cached job of three green runs printed `NOT SAID` about a
+/// record the census was holding in its hand. Nothing went red, because the only
+/// test covering the line asked for the words `started from` — which
+/// `started from: NOT SAID` contains too, so the suite agreed with the very
+/// output it existed to prevent.
+///
+/// THE ORACLE IS NOT SPELLED HERE. What the line should say is computed by
+/// `started_from`, the one reader of that datum, and this law asks only that the
+/// report CONTAINS it. A wording change moves both sides together; a report that
+/// stops reading the census moves one of them, which is the failure being kept
+/// reachable.
+///
+/// THE POPULATION IS ASKED OF THE CENSUS, not listed: every restore it holds.
+/// A list beside the law would go stale in the direction that reads as a pass.
+#[test]
+fn every_restore_the_census_holds_is_in_the_report_as_that_restore_reads() {
+    let (declared, census) = cached_and_said(true, 1_000);
+    let printed = twice_compiled::render(&census, &declared, &nothing(), Path::new(NOT_A_CHECKOUT));
+    let held = census.started();
+    // THE LAW ASSERTS ITS OWN REACH. An empty population passes every loop
+    // below, and a fixture that stopped holding records would read as a clean
+    // report rather than as a law that touched nothing.
+    assert_eq!(
+        held.len(),
+        2,
+        "the fixture declares a cache on both jobs and both said what they \
+         restored: {held:?}"
+    );
+    for restore in held.keys() {
+        let compiling = census.jobs[&restore.job].busy_micros();
+        let reads = twice_compiled::started_from(&census, restore, compiling);
+        assert!(
+            printed.contains(&reads),
+            "the report must carry `{reads}`, which is what this restore reads \
+             as — printing anything else about a record the census HOLDS is the \
+             defect R1125 shipped in three green runs\n{printed}"
+        );
+    }
+}
+
+/// And the reading names WHICH restore it is of, and WHAT that restore brought.
+///
+/// THE LAW ABOVE IS A CONSISTENCY LAW and cannot ask this: it holds the report
+/// against `started_from`, so a wording that dropped the cache from the line
+/// would move both sides together and pass. What the line must carry is fixed by
+/// the datum instead of by a phrase here — the cache the restore names, and the
+/// state the warmth prints for itself — because a job with two caches has two
+/// states, and a sentence that gives one without saying which is a sentence a
+/// reader has to guess at. Guessing which of a job's restores a number is about
+/// is the substitution R1117 split the record to prevent.
+#[test]
+fn a_restores_line_names_which_cache_it_is_of_and_what_arrived() {
+    let (_, census) = cached_and_said(true, 1_000);
+    let held = census.started();
+    assert_eq!(held.len(), 2, "{held:?}");
+    for (restore, warmth) in &held {
+        let reads = twice_compiled::started_from(&census, restore, 0);
+        assert!(
+            reads.contains(&restore.cache),
+            "the line must say which cache it is the state of: {reads}"
+        );
+        assert!(
+            reads.contains(&warmth.why()),
+            "and what that restore brought, in the words the state prints for \
+             itself: {reads}"
+        );
+    }
+}
+
+/// And the reading itself is of the census rather than of the argument.
+///
+/// THE CONTROL FOR THE LAW ABOVE, and it is what makes that one non-vacuous: a
+/// `started_from` that ignored the census and always printed `NOT SAID` would
+/// satisfy it, because the report would then contain that sentence too. Held
+/// against the same restore in a census that no longer holds the record, the two
+/// readings have to differ — a reader that never hits prints the same thing
+/// either way, which is exactly what a lookup that cannot hit looks like.
+#[test]
+fn a_restore_reads_differently_once_the_census_no_longer_holds_its_record() {
+    let (_, census) = cached_and_said(true, 1_000);
+    let held = census.started();
+    assert_eq!(held.len(), 2, "{held:?}");
+    for restore in held.keys() {
+        let compiling = census.jobs[&restore.job].busy_micros();
+        let mut without = census.clone();
+        // BY THE KEY THE CENSUS USES, which is the file — the very key R1122
+        // moved it to and the report was left behind by.
+        without.restored.retain(|_, record| {
+            record.as_ref().map(restored::Restored::restore) != Ok(restore.clone())
+        });
+        assert_eq!(
+            without.restored.len(),
+            census.restored.len() - 1,
+            "{restore:?}"
+        );
+        assert_ne!(
+            twice_compiled::started_from(&census, restore, compiling),
+            twice_compiled::started_from(&without, restore, compiling),
+            "a record the census holds and one it does not must not read alike"
+        );
+    }
+}
+
 /// THE STATE TRAVELS INTO THE CENSUS as a value, not as a sentence: it is what
 /// one census is compared to another by.
 #[test]
