@@ -32,7 +32,7 @@ fn repository_root() -> PathBuf {
         .to_path_buf()
 }
 
-/// Every tracked manifest, from `git ls-files`.
+/// Every tracked `.json` in this repository, from `git ls-files`.
 ///
 /// FROM GIT AND NOT FROM A WALK, for the reason `ci-plan` reads workflows that
 /// way: a manifest that is not tracked is one nobody else can run, and one that
@@ -41,16 +41,20 @@ fn repository_root() -> PathBuf {
 /// R777, R783, R1080 and R1082 each closed one level at a time, and it would go
 /// stale in the direction that reads as a pass.
 ///
-/// EVERY `.json` UNDER `tools/` AND NOT THE ONES NAMED `injection-sweep.json`.
-/// The harness's own sweep is called `self-check.json` and the worked example is
-/// `example.json`; a glob on the common name would quietly leave both out, and
-/// the harness's own is the one aimed at the tool every other sweep is run by.
-/// So the rule is the directory, every file in it must READ as a manifest, and
-/// a JSON put here that is not one turns this red on the day it is added rather
-/// than being skipped into silence.
-fn tracked_sweeps(root: &Path) -> Vec<String> {
+/// THE WHOLE REPOSITORY, AND NOT `tools/`, WHICH IS WHAT R1134 PAID FOR. This
+/// walk was `tools/**/*.json` on the argument that sweeps live there, and the
+/// argument stopped being true twice in one session: R1132 put a sweep at
+/// `.githooks/injection-sweep.json` — aimed at SHELL, which is the text most
+/// likely to move out from under an anchor — and nothing here could see it,
+/// while R1130 put three RECORDED API BODIES under `tools/cache-budget/tests/`
+/// and this law turned main red for holding a fixture. A population fixed by
+/// directory answers both questions wrongly, in both directions at once.
+///
+/// So the classification below is derived from the files instead, and every
+/// tracked `.json` is judged rather than filtered.
+fn tracked_json(root: &Path) -> Vec<String> {
     let out = Command::new("git")
-        .args(["ls-files", "tools/**/*.json"])
+        .args(["ls-files", "*.json"])
         .current_dir(root)
         .output()
         .expect("git ls-files runs");
@@ -67,35 +71,113 @@ fn tracked_sweeps(root: &Path) -> Vec<String> {
     files
 }
 
+/// The directory a tracked path sits in, as the population is grouped by.
+fn directory_of(path: &str) -> &str {
+    path.rsplit_once('/').map_or("", |(head, _)| head)
+}
+
 #[test]
 fn every_tracked_sweep_still_applies_to_the_tree_it_names() {
     let root = repository_root();
-    let sweeps = tracked_sweeps(&root);
+    let tracked = tracked_json(&root);
+
+    // WHICH OF THEM IS A SWEEP IS ASKED OF THE READER THE HARNESS USES, file by
+    // file. A directory rule answered this by where a file sits and was wrong in
+    // both directions at once (see `tracked_json`); the file itself is the only
+    // thing that knows.
+    // AND A MANIFEST IS NOT THE SAME THING AS A SWEEP SOMEBODY RUNS. Two of them
+    // are INPUTS TO TESTS: `crates/mnemosyne-cli/tests/` holds a pair whose
+    // trees the test itself materialises, so their anchors name files that exist
+    // only while that test runs.
+    //
+    // THE CLASSIFIER IS WHERE THE FILE LIVES, AND IT HAD TO BE. The obvious one
+    // — does the tree it names hold the files it edits — is the very question
+    // this law asks, so using it as a filter would reclassify every ROTTED sweep
+    // as somebody's fixture and pass. `tests/` is cargo's own word for a
+    // directory of test inputs, and no sweep this repository runs is in one.
+    let a_test_input = |path: &str| path.split('/').any(|part| part == "tests");
+    let mut manifests = Vec::new();
+    let mut inputs = Vec::new();
+    let mut others = Vec::new();
+    for path in &tracked {
+        match injection_harness::read_manifest(&root.join(path)) {
+            Ok(manifest) if !a_test_input(path) => manifests.push((path.clone(), manifest)),
+            Ok(_) => inputs.push(path.clone()),
+            Err(why) => others.push((path.clone(), why)),
+        }
+    }
+
+    // AND NOTHING RUNNABLE MAY HIDE AMONG THEM. The location rule keeps a test's
+    // input out of this law; the NAME is what stops a sweep walking the other
+    // way — `injection-sweep.json` is what this repository calls the ones it
+    // runs, and one moved under `tests/` would be skipped above without a word.
+    let disguised: Vec<&String> = inputs
+        .iter()
+        .filter(|path| path.ends_with("/injection-sweep.json"))
+        .collect();
+    assert!(
+        disguised.is_empty(),
+        "{} sweep(s) carry the name this repository gives the ones it RUNS while \
+         sitting where its test inputs live, so nothing checks their anchors and \
+         nothing runs them: {disguised:?}",
+        disguised.len()
+    );
+
     // NON-VACUITY FIRST, because a walk that found nothing and a repository
     // whose every anchor holds print the same silence — and this whole law is
     // about a proof that had quietly stopped proving.
     assert!(
-        sweeps.len() >= 11,
+        manifests.len() >= 12,
         "this repository tracks {} sweep manifest(s), which is fewer than the \
-         crates known to carry one — a check over the wrong population is the \
-         empty answer that looks like a clean one: {sweeps:?}",
-        sweeps.len()
+         crates known to carry one plus the hooks' own — a check over the wrong \
+         population is the empty answer that looks like a clean one: {:?}",
+        manifests.len(),
+        manifests.iter().map(|(path, _)| path).collect::<Vec<_>>()
+    );
+
+    // A SWEEP HOME IS A DIRECTORY THAT ALREADY HOLDS ONE, which is how the rule
+    // "every file here must read as a manifest" survives a population that also
+    // holds fixtures. It is DERIVED and not written down: `.githooks/` became a
+    // home the day R1132 put a sweep in it, with nothing to update.
+    let homes: std::collections::BTreeSet<&str> = manifests
+        .iter()
+        .map(|(path, _)| directory_of(path))
+        .collect();
+    let mut hiding = Vec::new();
+    for (path, why) in &others {
+        // IN A HOME: a sweep with a JSON typo and some other configuration are
+        // the same shape to a reader that skipped what it could not parse, and
+        // both would take a sweep out of this population without saying so.
+        if homes.contains(directory_of(path)) {
+            hiding.push(format!(
+                "{path} sits beside a sweep and does not read as one: {why}"
+            ));
+            continue;
+        }
+        // OR NAMED LIKE ONE, wherever it sits: the first sweep in a fresh
+        // directory has no neighbour to be judged against, and a typo in it
+        // would otherwise leave this population in silence.
+        if path.rsplit('/').next().is_some_and(|name| {
+            name.contains("sweep") || name == "self-check.json" || name == "example.json"
+        }) {
+            hiding.push(format!(
+                "{path} is named like a sweep and does not read as one: {why}"
+            ));
+        }
+    }
+    assert!(
+        hiding.is_empty(),
+        "{} tracked file(s) look like a sweep this repository runs and are not \
+         one. A sweep that stopped parsing is a proof nobody is running, and it \
+         is indistinguishable from a fixture unless something asks:\n  {}",
+        hiding.len(),
+        hiding.join("\n  ")
     );
 
     let mut injections = 0;
     let mut edits = 0;
     let mut broken = Vec::new();
-    for sweep in &sweeps {
-        // EVERY ONE OF THEM MUST READ AS A MANIFEST. A sweep with a JSON typo
-        // and a directory holding some other configuration are the same shape
-        // to a reader that skipped what it could not parse, and both would take
-        // a sweep out of this population without saying so.
-        let manifest = injection_harness::read_manifest(&root.join(sweep)).unwrap_or_else(|why| {
-            panic!(
-                "{sweep} does not read as a sweep manifest, and `tools/` is \
-                 where this repository's sweeps live: {why}"
-            )
-        });
+    for (path, manifest) in &manifests {
         injections += manifest.injections.len();
         edits += manifest
             .injections
@@ -109,7 +191,7 @@ fn every_tracked_sweep_still_applies_to_the_tree_it_names() {
         if let Err(why) =
             injection_harness::snapshot_and_dry_run(&manifest.repo, &manifest.injections)
         {
-            broken.push(format!("{sweep}: {why}"));
+            broken.push(format!("{path}: {why}"));
         }
     }
 
@@ -119,7 +201,7 @@ fn every_tracked_sweep_still_applies_to_the_tree_it_names() {
         injections >= 100 && edits >= injections,
         "{injections} injection(s) over {edits} edit(s) across {} sweep(s) — too \
          few to be this repository's",
-        sweeps.len()
+        manifests.len()
     );
     assert!(
         broken.is_empty(),

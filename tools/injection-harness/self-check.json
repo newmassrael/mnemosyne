@@ -139,11 +139,11 @@
     },
     {
       "name": "the-population-of-sweeps-is-whatever-a-glob-finds",
-      "why": "a law over zero files passes, and it passes in the shape of a clean run. The harness's own sweep is not called `injection-sweep.json`, so the obvious glob leaves out the one aimed at the tool every other sweep is run by",
+      "why": "a law over zero files passes, and it passes in the shape of a clean run. The harness's own sweep is not called `injection-sweep.json`, so the obvious glob leaves out the one aimed at the tool every other sweep is run by — and R1134 measured the second half of the same mistake: a glob on `tools/` left out the sweep R1132 put in `.githooks/`, which is aimed at SHELL and is the likeliest anchor in this repository to come loose",
       "edits": [
         {
           "file": "tests/sweeps.rs",
-          "from": "        .args([\"ls-files\", \"tools/**/*.json\"])",
+          "from": "        .args([\"ls-files\", \"*.json\"])",
           "to": "        .args([\"ls-files\", \"tools/**/no-such-sweep.json\"])"
         }
       ],
