@@ -537,6 +537,72 @@
         "a_cache_no_workflow_declares_is_counted_and_not_refused_on_its_own",
         "a_renamed_key_leaves_an_archive_that_does_not_turn_the_tree_red"
       ]
+    },
+    {
+      "name": "an-answer-that-stopped-early-is-believed",
+      "why": "R1130, AND IT IS THE ONE FAILURE OF THIS READ THAT ARRIVES AS GOOD NEWS. Everything else that can go wrong reading GitHub's answer is loud — a row missing a size does not parse, a body that never came is empty — but a read that STOPS EARLY is a well-formed page describing a smaller repository, and smaller is the direction that passes a budget. `total_count` is the only thing in the answer that can catch it, and until this round the `--jq` projection threw it away before this program saw it",
+      "edits": [
+        {
+          "file": "tools/cache-budget/src/lib.rs",
+          "from": "    if held.len() as u64 != counted {",
+          "to": "    if false {"
+        }
+      ],
+      "expect_red": [
+        "an_answer_that_stops_early_is_a_read_that_failed_and_not_a_smaller_repository",
+        "an_answer_that_stops_early_is_unjudged_rather_than_a_repository_that_fits"
+      ]
+    },
+    {
+      "name": "nothing-printed-is-read-as-a-repository-holding-nothing",
+      "why": "the two silences, collapsed back into one — which is how they stood while `gh` did the projection: a filter that matched nothing and a `gh` that failed quietly both arrived as an empty stdout, and both were read as a repository storing zero bytes. A repository that really holds no caches says so IN A PAGE",
+      "edits": [
+        {
+          "file": "tools/cache-budget/src/lib.rs",
+          "from": "    let counted = counted.ok_or_else(|| NOTHING_PRINTED.to_string())?;",
+          "to": "    let counted = counted.unwrap_or(held.len() as u64);"
+        }
+      ],
+      "expect_red": [
+        "nothing_printed_is_not_a_repository_holding_nothing",
+        "an_answer_that_never_arrives_is_unjudged_rather_than_an_empty_repository"
+      ]
+    },
+    {
+      "name": "a-page-this-gate-cannot-read-is-skipped",
+      "why": "the drift this seam exists for: GitHub renames a field, the rows stop deserialising, and a reader that shrugged prices every cache in the repository at nothing. It is also the injection that COULD NOT BE WRITTEN before this round — the projection was a jq expression, and there is no jq on this machine and no network in this suite, so nothing could ask whether it still named fields the API still sends",
+      "edits": [
+        {
+          "file": "tools/cache-budget/src/lib.rs",
+          "from": "        let page = page.map_err(|why| unreadable_page(index + 1, &why))?;",
+          "to": "        let Ok(page) = page else { continue };"
+        }
+      ],
+      "expect_red": ["a_size_this_gate_cannot_find_is_a_refusal_rather_than_a_zero"]
+    },
+    {
+      "name": "the-question-stops-asking-for-every-page",
+      "why": "`--paginate` decides whether the answer is the whole storage or its first page, and this repository holds more caches than one page carries — dropping it reads eleven as three. It is invisible to every other test here, because a stub that ignores its arguments answers a gate that stopped asking exactly as it answers one that did not",
+      "edits": [
+        {
+          "file": "tools/cache-budget/src/lib.rs",
+          "from": "    vec![\"api\", \"--paginate\", \"repos/{owner}/{repo}/actions/caches\"]",
+          "to": "    vec![\"api\", \"repos/{owner}/{repo}/actions/caches\"]"
+        }
+      ],
+      "expect_red": ["the_gate_asks_github_for_every_page_of_its_cache_storage"]
+    },
+    {
+      "name": "pages-that-disagree-about-the-count-are-summed-anyway",
+      "why": "a cache saved by another job of the same run lands between two pages, and the rows either side of it are a sample rather than a census — summing them produces a total that is nobody's, and this gate would then argue a budget from it",
+      "edits": [
+        {
+          "file": "tools/cache-budget/src/lib.rs",
+          "from": "            Some(first) if first != page.total_count => {",
+          "to": "            Some(first) if first != page.total_count && false => {"
+        }
+      ],
+      "expect_red": ["pages_that_disagree_about_the_count_are_refused"]
     }
   ]
 }

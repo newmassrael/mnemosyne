@@ -11,9 +11,17 @@
 //! `gh` IS STUBBED, WHICH IS THE ONLY WAY TO ASK THIS AT ALL. What GitHub holds
 //! for a repository is not something a test can arrange, and the gate's whole
 //! job is to hold that against what the workflows declare — so the stub supplies
-//! the one side and the fixture's workflow supplies the other. The stub prints
-//! the exact rows `held_caches` parses, which is the same discipline
-//! `crates/mnemosyne-cli/tests/git_hooks_smoke.rs` uses on the pre-push hook.
+//! the one side and the fixture's workflow supplies the other. The stub answers
+//! in GITHUB'S OWN SHAPE, spelled off the recording in `tests/github.rs`, which
+//! is what R1130 bought: while the answer was flattened by a `--jq` expression
+//! before this program saw it, a stub could only print rows that expression had
+//! already produced, and the two failures below — an answer that stops early,
+//! and one that never arrives — could not be posed here at all. The discipline
+//! is `crates/mnemosyne-cli/tests/git_hooks_smoke.rs`'s, on the pre-push hook.
+//!
+//! AND THE STUB RECORDS WHAT IT WAS ASKED. `--paginate` decides whether the
+//! answer is the whole storage or its first page, and a stub that ignores its
+//! arguments agrees with a gate that stopped asking for it.
 //!
 //! AND THE RUNNER'S OWN VARIABLES ARE REMOVED RATHER THAN ASSUMED ABSENT. This
 //! suite runs on a runner too, where `GITHUB_RUN_ID` is set and would send the
@@ -34,12 +42,51 @@ const HUGE: u64 = 20_000_000_000;
 const JOB: &str = "build";
 const PREFIX: &str = "Linux-fixture-build-";
 
+/// Where the stub writes the words it was called with, one per line.
+const ASKED: &str = "asked";
+
+/// The spelling GitHub stamps a cache with, from the recorded answer in
+/// `tests/actions-caches.one-page.json`.
+///
+/// TO THE FRACTION, and not the shorter form a hand-written fixture reaches for:
+/// this gate trims a stamp to the second before comparing it to a run's start
+/// time, and a fixture spelling it the short way would be testing that trim on
+/// input the API never sends.
+const CREATED: &str = "2026-08-01T00:00:00.000000000Z";
+
+/// GitHub's answer for a repository holding exactly these caches.
+fn page(held: &[(&str, u64)]) -> String {
+    page_claiming(held.len() as u64, held)
+}
+
+/// The same answer with GitHub's own count said out loud, whatever the rows.
+///
+/// THE ONE READING WHOSE FAILURE IS QUIET. A body carrying fewer rows than it
+/// counts is well-formed and describes a smaller repository, and smaller is the
+/// direction that passes a budget.
+fn page_claiming(counted: u64, held: &[(&str, u64)]) -> String {
+    let rows: Vec<String> = held
+        .iter()
+        .map(|(key, bytes)| {
+            format!(
+                "{{\"id\":1,\"ref\":\"refs/heads/main\",\"key\":\"{key}\",\
+                 \"last_accessed_at\":\"{CREATED}\",\"created_at\":\"{CREATED}\",\
+                 \"size_in_bytes\":{bytes}}}"
+            )
+        })
+        .collect();
+    format!(
+        "{{\"total_count\":{counted},\"actions_caches\":[{}]}}",
+        rows.join(",")
+    )
+}
+
 /// A repository the gate can be pointed at, and a `gh` that answers for it.
 ///
-/// `held` is what GitHub is holding, as `(key, bytes)`. An empty slice is a
-/// repository storing nothing, which is a state this gate has to tell apart
-/// from one it could not ask about.
-fn tree(caches: bool, held: &[(&str, u64)]) -> tempfile::TempDir {
+/// `answer` is what GitHub says, verbatim — a page built by [`page`], one that
+/// stops early, or nothing at all. The three are different states and this gate
+/// has to tell them apart.
+fn tree(caches: bool, answer: &str) -> tempfile::TempDir {
     let at = tempfile::tempdir().expect("a scratch directory");
     let root = at.path();
     std::fs::create_dir_all(root.join(".github/workflows")).expect("fixture workflows");
@@ -59,16 +106,16 @@ fn tree(caches: bool, held: &[(&str, u64)]) -> tempfile::TempDir {
     workflow.push_str("      - run: cargo test\n");
     std::fs::write(root.join(".github/workflows/ci.yml"), workflow).expect("write the workflow");
 
-    // THE ROWS `held_caches` PARSES, and no more: size, created_at, key,
-    // tab-separated, which is what its `--jq` asks GitHub for.
-    let mut rows = String::new();
-    for (key, bytes) in held {
-        rows.push_str(&format!("{bytes}\t2026-08-01T00:00:00Z\t{key}\n"));
-    }
+    // WHAT IT WAS ASKED, then what it answers. The question is the library's
+    // (`caches_query`) and the file below is how a test reads it back.
     let stub = root.join("stub/gh");
     std::fs::write(
         &stub,
-        format!("#!/usr/bin/env bash\ncat <<'ROWS'\n{rows}ROWS\n"),
+        format!(
+            "#!/usr/bin/env bash\n\
+             printf '%s\\n' \"$@\" > \"$(dirname \"$0\")/{ASKED}\"\n\
+             cat <<'ANSWER'\n{answer}\nANSWER\n"
+        ),
     )
     .expect("write the gh stub");
     make_runnable(&stub);
@@ -138,10 +185,19 @@ fn stderr(out: &Output) -> String {
 /// The sentence printed on exactly one of the three paths.
 const CLEAN: &str = "every cache this repository declares is one it keeps";
 
+/// The words the stub was called with, in the order it was handed them.
+fn asked(at: &Path) -> Vec<String> {
+    std::fs::read_to_string(at.join("stub").join(ASKED))
+        .expect("the gate asked `gh` something")
+        .lines()
+        .map(str::to_string)
+        .collect()
+}
+
 /// A repository whose one declared cache fits: the law holds, and it says so.
 #[test]
 fn a_repository_whose_caches_fit_exits_zero_and_says_which_answer_that_is() {
-    let at = tree(true, &[(&format!("{PREFIX}abc"), SMALL)]);
+    let at = tree(true, &page(&[(&format!("{PREFIX}abc"), SMALL)]));
     let out = gate(at.path());
     assert_eq!(
         code(&out),
@@ -180,7 +236,7 @@ fn a_repository_whose_caches_fit_exits_zero_and_says_which_answer_that_is() {
 /// from nothing. A hook told `2` here would read it as "the gate is broken".
 #[test]
 fn a_repository_over_its_budget_is_a_finding_and_not_an_unreachable_gate() {
-    let at = tree(true, &[(&format!("{PREFIX}abc"), HUGE)]);
+    let at = tree(true, &page(&[(&format!("{PREFIX}abc"), HUGE)]));
     let out = gate(at.path());
     assert_eq!(
         code(&out),
@@ -210,7 +266,7 @@ fn a_repository_over_its_budget_is_a_finding_and_not_an_unreachable_gate() {
 /// assertion with it.
 #[test]
 fn a_repository_declaring_no_cache_is_unjudged_rather_than_clean() {
-    let at = tree(false, &[]);
+    let at = tree(false, &page(&[]));
     let out = gate(at.path());
     assert_eq!(
         code(&out),
@@ -228,5 +284,102 @@ fn a_repository_declaring_no_cache_is_unjudged_rather_than_clean() {
         !stdout(&out).contains(CLEAN),
         "a repository it did not read is not one it found clean\n{}",
         stdout(&out)
+    );
+}
+
+/// An answer that stops early is `2`, and not a repository under its budget.
+///
+/// THE FAILURE THAT ARRIVES AS GOOD NEWS. Everything else that can go wrong with
+/// this read is loud, but a `gh` that stopped paginating prints a well-formed
+/// page describing a SMALLER repository — and smaller passes a budget. Here the
+/// answer says the storage holds two caches and carries the one that fits, while
+/// the one it leaves out is over the limit on its own: a gate that believed it
+/// would print the clean sentence and exit `0`.
+#[test]
+fn an_answer_that_stops_early_is_unjudged_rather_than_a_repository_that_fits() {
+    let at = tree(true, &page_claiming(2, &[(&format!("{PREFIX}abc"), SMALL)]));
+    let out = gate(at.path());
+    assert_eq!(
+        code(&out),
+        2,
+        "a partial read is not a verdict\nstdout:\n{}\nstderr:\n{}",
+        stdout(&out),
+        stderr(&out)
+    );
+    assert!(
+        stderr(&out).contains("2 caches and 1 arrived"),
+        "and it says what it was told and what arrived\n{}",
+        stderr(&out)
+    );
+    // THE MIRROR, and the whole point of the case: the verdict it would have
+    // reached on those rows is the clean one.
+    assert!(
+        !stdout(&out).contains(CLEAN),
+        "an answer it could not trust is not one it found clean\n{}",
+        stdout(&out)
+    );
+}
+
+/// A `gh` that prints nothing is `2` — not a repository holding no caches.
+///
+/// Under the projection R1130 replaced these were ONE answer: an empty stdout
+/// was read as a storage of zero bytes, so a `gh` that failed quietly, or a
+/// filter that matched nothing, became a repository comfortably inside its
+/// budget.
+#[test]
+fn an_answer_that_never_arrives_is_unjudged_rather_than_an_empty_repository() {
+    let at = tree(true, "");
+    let out = gate(at.path());
+    assert_eq!(
+        code(&out),
+        2,
+        "silence is not a reading\nstdout:\n{}\nstderr:\n{}",
+        stdout(&out),
+        stderr(&out)
+    );
+    assert!(
+        stderr(&out).contains("printed nothing"),
+        "and it says which of the two silences this is\n{}",
+        stderr(&out)
+    );
+    assert!(
+        !stdout(&out).contains(CLEAN),
+        "and it is not a clean verdict\n{}",
+        stdout(&out)
+    );
+}
+
+/// The question this gate asks GitHub is the one the library writes down.
+///
+/// `--paginate` IS THE FLAG THAT DECIDES WHETHER THE ANSWER IS THE WHOLE
+/// STORAGE, and it is invisible in every other test here: a stub that ignores
+/// its arguments answers a gate that stopped asking for it exactly as it answers
+/// one that did not. This repository holds more caches than a page carries, so
+/// dropping it in production reads eleven caches as three.
+#[test]
+fn the_gate_asks_github_for_every_page_of_its_cache_storage() {
+    let at = tree(true, &page(&[(&format!("{PREFIX}abc"), SMALL)]));
+    let out = gate(at.path());
+    assert_eq!(code(&out), 0, "stderr:\n{}", stderr(&out));
+    let words = asked(at.path());
+    // SPELLED OUT HERE, and not read back off `caches_query`. An oracle that
+    // compared the question to the constant it came from would agree with every
+    // edit to that constant, including the one that drops the flag.
+    assert!(
+        words.contains(&"--paginate".to_string()),
+        "the answer is asked for in full: {words:?}"
+    );
+    assert!(
+        words.contains(&"repos/{owner}/{repo}/actions/caches".to_string()),
+        "of the cache endpoint, with `gh`'s own placeholders so this gate never \
+         names the repository it judges: {words:?}"
+    );
+    // AND THE BINARY ASKS WHAT THE LIBRARY WRITES DOWN — that half IS the
+    // comparison to the constant, and it is what keeps a second spelling from
+    // growing in `main.rs`.
+    assert_eq!(
+        words,
+        cache_budget::caches_query(),
+        "the words handed to `gh` are the library's, verbatim"
     );
 }

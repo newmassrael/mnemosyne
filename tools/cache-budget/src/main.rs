@@ -228,42 +228,15 @@ fn gh(root: &Path, arguments: &[&str]) -> Result<String, String> {
 ///
 /// Through `gh` rather than a hand-rolled HTTP call: it is on every hosted runner
 /// and on this project's machine, and it already knows how to authenticate in
-/// both — one less credential path to get wrong. `{owner}` and `{repo}` are
-/// `gh`'s own placeholders, resolved from the checkout, so this gate never names
-/// the repository it is judging.
+/// both — one less credential path to get wrong.
+///
+/// TWO LINES, AND NEITHER OF THEM IS A DECISION. What to ask for and what the
+/// answer means both live in the library, because this function is the one place
+/// a suite cannot reach: R1126 moved this gate's words there for that reason and
+/// R1129 measured what was left behind here going unnoticed. Until R1130 the
+/// answer was flattened by a `--jq` expression written on this side of that line,
+/// where nothing could ask whether it still named fields GitHub still sends.
 fn held_caches(root: &Path) -> Result<Vec<Held>, String> {
-    let out = Command::new("gh")
-        .args([
-            "api",
-            "--paginate",
-            "repos/{owner}/{repo}/actions/caches",
-            "--jq",
-            r#".actions_caches[] | "\(.size_in_bytes)\t\(.created_at)\t\(.key)""#,
-        ])
-        .current_dir(root)
-        .output()
-        .map_err(|e| format!("`gh api` could not be run at all: {e}"))?;
-    if !out.status.success() {
-        return Err(format!(
-            "`gh api repos/{{owner}}/{{repo}}/actions/caches` failed ({}): {}",
-            out.status,
-            String::from_utf8_lossy(&out.stderr).trim()
-        ));
-    }
-    let text = String::from_utf8_lossy(&out.stdout);
-    let mut caches = Vec::new();
-    for line in text.lines().filter(|line| !line.trim().is_empty()) {
-        let unreadable = || format!("`gh` printed a row this cannot read: {line:?}");
-        let (size, rest) = line.split_once('\t').ok_or_else(unreadable)?;
-        let (created_at, key) = rest.split_once('\t').ok_or_else(unreadable)?;
-        caches.push(Held {
-            key: key.to_string(),
-            size_in_bytes: size
-                .trim()
-                .parse()
-                .map_err(|e| format!("{size:?} is not a size: {e}"))?,
-            created_at: created_at.trim().to_string(),
-        });
-    }
-    Ok(caches)
+    let answer = gh(root, &cache_budget::caches_query())?;
+    cache_budget::caches_in(&answer)
 }

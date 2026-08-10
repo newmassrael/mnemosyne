@@ -85,7 +85,16 @@ fn named(owners: &[Owner]) -> Vec<String> {
 }
 
 /// One cache GitHub actually holds.
-#[derive(Debug, Clone, PartialEq, Eq)]
+///
+/// THESE THREE NAMES ARE GITHUB'S WIRE NAMES and not this gate's choice of them,
+/// which is what `Deserialize` here means: the answer is read into the type
+/// directly, so a field renamed for tidiness renames the thing this gate asks
+/// the API for. `tests/github.rs` reads a RECORDED REAL body, so that rename is
+/// a red test rather than a gate that quietly reads nothing. Every other field
+/// GitHub sends — `id`, `ref`, `version`, `last_accessed_at` — is ignored on
+/// purpose: a reader that refused unknown fields would go red the day GitHub
+/// adds one, which is a gate failing for somebody else's work.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Deserialize)]
 pub struct Held {
     pub key: String,
     pub size_in_bytes: u64,
@@ -96,6 +105,108 @@ pub struct Held {
     /// parsed into a date: a dependency on a date library to order two strings
     /// GitHub has already zero-padded would be the more fragile of the two.
     pub created_at: String,
+}
+
+/// One page of GitHub's answer to the cache endpoint.
+///
+/// `total_count` IS THE ONLY THING IN THE ANSWER THAT SAYS WHETHER THE ROWS ARE
+/// ALL OF THEM, and it is why this gate reads pages rather than rows. Every
+/// other failure of this read is loud — a row missing a size does not parse, a
+/// body that never arrived is empty — but a read that stops early is silent and
+/// arrives as a smaller repository. Under-counting the storage is a PASS on
+/// exactly the repository this gate exists to refuse, so the count travels with
+/// the rows and is checked against them.
+#[derive(serde::Deserialize)]
+struct Page {
+    total_count: u64,
+    actions_caches: Vec<Held>,
+}
+
+/// What this gate asks GitHub, as the words `gh` is handed.
+///
+/// IN THE LIBRARY SO THE QUESTION HAS A READER. `--paginate` is load-bearing and
+/// invisible: this repository holds more caches than one page carries, and a
+/// `gh` without it answers with a body that is valid, well-shaped and short —
+/// the exact case `tests/github.rs` builds out of the first page of a recorded
+/// real answer. `{owner}` and `{repo}` are `gh`'s own placeholders, resolved
+/// from the checkout, so this gate never names the repository it is judging.
+pub fn caches_query() -> Vec<&'static str> {
+    vec!["api", "--paginate", "repos/{owner}/{repo}/actions/caches"]
+}
+
+/// Why a page of the answer could not be read, in the reader's words and this
+/// gate's.
+///
+/// BOTH, and the reader's verbatim: `missing field \`size_in_bytes\`` is what
+/// says WHICH field GitHub stopped sending, and a message that summarised it
+/// would leave the one fact a repair needs on the floor.
+fn unreadable_page(page: usize, why: &serde_json::Error) -> String {
+    format!(
+        "page {page} of `gh`'s answer is not a shape this gate can read ({why}) — it needs \
+         GitHub's own `total_count` and `actions_caches`, and in each row a `key`, a \
+         `size_in_bytes` and a `created_at`. An answer missing one of those is a read that \
+         failed, not a repository holding nothing"
+    )
+}
+
+/// The answer a `gh` that failed quietly gives, and a repository holding no
+/// caches never does.
+///
+/// SAID ONCE so that the difference between the two silences is a line a reader
+/// can find, and an injection can take away.
+const NOTHING_PRINTED: &str = "`gh` printed nothing at all, which is not the answer a \
+     repository holding no caches gives — that one arrives as a page saying so";
+
+/// Every cache GitHub holds for this repository, read off its own answer.
+///
+/// A READING AND NOT A PROJECTION. This used to be a `--jq` expression flattening
+/// the answer into tab-separated rows before this program saw it, which put the
+/// one seam between this gate and GitHub in a language no test here can execute:
+/// `jq` is not on this machine and `gh` needs a network and a credential, so
+/// nothing could ask whether the expression still named fields the API still
+/// sends. It also threw away `total_count` — see [`Page`].
+///
+/// `gh --paginate` prints one JSON object PER PAGE, concatenated, so the answer
+/// is a stream rather than a document; that shape is measured rather than
+/// assumed, and `tests/actions-caches.paginated.json` is what four pages of it
+/// actually look like.
+///
+/// EMPTY IS TWO ANSWERS AND THEY ARE TOLD APART HERE. A repository holding no
+/// caches says so in a page; a read that failed prints nothing at all. The
+/// projection this replaces gave both of them the same empty stdout.
+pub fn caches_in(body: &str) -> Result<Vec<Held>, String> {
+    let mut held = Vec::new();
+    let mut counted: Option<u64> = None;
+    for (index, page) in serde_json::Deserializer::from_str(body)
+        .into_iter::<Page>()
+        .enumerate()
+    {
+        let page = page.map_err(|why| unreadable_page(index + 1, &why))?;
+        match counted {
+            None => counted = Some(page.total_count),
+            Some(first) if first != page.total_count => {
+                return Err(format!(
+                    "GitHub said this repository holds {first} caches on the first page of \
+                     its answer and {} on page {} — the storage moved underneath this read, \
+                     and rows summed across pages that disagree are a total nobody can defend",
+                    page.total_count,
+                    index + 1
+                ));
+            }
+            Some(_) => {}
+        }
+        held.extend(page.actions_caches);
+    }
+    let counted = counted.ok_or_else(|| NOTHING_PRINTED.to_string())?;
+    if held.len() as u64 != counted {
+        return Err(format!(
+            "GitHub said this repository holds {counted} caches and {} arrived — a partial \
+             read prices the budget short, and short is the direction that PASSES the \
+             repository this gate exists to refuse",
+            held.len()
+        ));
+    }
+    Ok(held)
 }
 
 /// One cache KEY, and what became of it.

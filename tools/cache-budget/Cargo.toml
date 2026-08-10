@@ -29,6 +29,16 @@ ci-plan = { path = "../ci-plan" }
 # new archive, which is what this gate reads as a key built from nothing. The
 # format of that record is written down once, in the crate that writes it.
 restored = { path = "../restored" }
+# R1130 — GitHub's answer is READ here rather than projected by `gh`. What this
+# gate holds against the workflows arrives as JSON, and the `--jq` expression
+# that used to flatten it into tab-separated rows was a program written in a
+# language nothing in this repository can run in a test: there is no `jq` on this
+# machine, and `gh` itself needs a network and a credential. So the ONE seam
+# between this gate and the storage it judges had no oracle at all, and the count
+# GitHub prints beside its rows — the only thing in the answer that says whether
+# the rows are all of them — was thrown away before this program saw it.
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
 
 # THE ENTRANCE TESTS BUILD REPOSITORIES, one per answer this gate can give, and
 # each has to be somewhere `git init` is harmless and cleanup is automatic. The
