@@ -29,21 +29,37 @@ fn main() {
     match arguments.first().map(String::as_str) {
         Some("before") => before(&record, &arguments[1..]),
         Some("after") => after(&record),
-        _ => fail(
-            "usage: restored before <cached path>… | restored after — the first \
-             runs immediately before the `actions/cache` step and the second \
-             immediately after it",
-        ),
+        _ => fail(USAGE),
     }
 }
 
+const USAGE: &str = "usage: restored before --cache <key prefix> <cached path>… \
+                     | restored after — the first runs immediately before ONE \
+                     `actions/cache` step and the second immediately after that \
+                     same step, and the prefix says which cache the interval \
+                     between them is the price of";
+
 /// Open the record and measure every declared path as it is now.
-fn before(record: &PathBuf, paths: &[String]) {
+fn before(record: &PathBuf, arguments: &[String]) {
+    // WHICH CACHE, TAKEN AS AN ARGUMENT AND NOT DERIVED. R1117: a job may
+    // declare more than one cache step, and what a restore COST is the cost of
+    // the step it brackets. A record that did not say which cache it is of would
+    // be matched to whichever one the reader picked — the shape where a build
+    // directory's price is read off a registry's restore, which is the
+    // arithmetic R1099 got wrong. The value is the key's resolved prefix, which
+    // is what every gate here already joins on, and `tools/twice-compiled`
+    // checks it against the one `ci_plan` derives from the workflow.
+    let [flag, cache, paths @ ..] = arguments else {
+        fail(USAGE)
+    };
+    if flag != "--cache" || cache.is_empty() {
+        fail(USAGE);
+    }
     if paths.is_empty() {
         fail(
             "`restored before` was given no path — the paths are the `path:` \
-             list of this job's cache, and a record measuring nothing would read \
-             as a job that restored nothing",
+             list of the cache step this brackets, and a record measuring \
+             nothing would read as a job that restored nothing",
         );
     }
     let job = required("GITHUB_JOB");
@@ -52,6 +68,7 @@ fn before(record: &PathBuf, paths: &[String]) {
     // leave a previous job's measurements in front of this one's.
     let mut out = Vec::new();
     out.extend_from_slice(&restored::encode_job(&job));
+    out.extend_from_slice(&restored::encode_cache(cache));
     // THE CLOCK BEFORE THE MEASURING, and its twin after the `after` step's, so
     // the interval the record carries is the widest one this program can see —
     // the cache step and both readings. Erring wide is the safe direction for a
@@ -164,6 +181,9 @@ fn opened(text: &str) -> Vec<(String, Measurement)> {
         let fields: Vec<&str> = line.split(restored::FIELD as char).collect();
         match fields.as_slice() {
             ["job", _] => {}
+            // Written by `before` and read by the gate, not by this step: which
+            // cache the interval prices is not a question this measurement asks.
+            ["cache", _] => {}
             // The clock the first step wrote. This step adds its own and reads
             // neither: what the interval is FOR is downstream of both.
             ["at", _, _] => {}

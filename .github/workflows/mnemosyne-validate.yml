@@ -195,9 +195,24 @@ jobs:
       # The paths are this cache's own `path:` list, written a second time
       # because nothing can hand them over; `twice-compiled` refuses if the two
       # ever say different things.
+      # R1117 — WHICH CACHE THE INTERVAL IS THE PRICE OF. A record used to be a
+      # job's; a job may declare more than one cache, and the price of a 32 GB
+      # build directory read off a 756 MB registry's restore is the arithmetic
+      # R1099 got wrong when it deleted a cache that was saving ten minutes.
+      #
+      # THE PREFIX IS WRITTEN RESOLVED AND NOT AS `${{ runner.os }}`, and that is
+      # measured rather than preferred: an expression inside a `run:` script
+      # makes the step unreplayable, and `twice-compiled`'s local replay then
+      # drops the job from its census — putting the expression here took all
+      # seven cached jobs out of it at once. What makes the literal safe is that
+      # nothing trusts it: `tools/twice-compiled` refuses a record naming a cache
+      # its job does not declare, against the prefix `ci_plan` resolves from the
+      # key below. Two spellings, compared — which is the rule R1116 wrote after
+      # finding `restore-keys` spelled twice and compared never.
       - name: What is on disk before the cache is restored
         run: >
           ./target/release/restored before
+          --cache 'Linux-cargo-'
           '~/.cargo/registry' '~/.cargo/git'
 
       - name: Cache cargo
@@ -320,6 +335,7 @@ jobs:
       - name: What is on disk before the cache is restored
         run: >
           ./target/release/restored before
+          --cache 'Linux-cargo-citations-'
           '~/.cargo/registry' '~/.cargo/git'
 
       # ONE JOB HOLDS THE BUILD DIRECTORY AND IT IS NOT THIS ONE. R1112 made
@@ -420,6 +436,7 @@ jobs:
       - name: What is on disk before the cache is restored
         run: >
           ./target/release/restored before
+          --cache 'Linux-cargo-side-'
           '~/.cargo/registry' '~/.cargo/git'
 
       - name: Cache cargo (side workspaces)
@@ -521,6 +538,7 @@ jobs:
       - name: What is on disk before the cache is restored
         run: >
           ./target/release/restored before
+          --cache 'Linux-cargo-serverfeat-'
           '~/.cargo/registry' '~/.cargo/git'
 
       - name: Cache cargo (server features)
@@ -660,6 +678,7 @@ jobs:
       - name: What is on disk before the cache is restored
         run: >
           ./target/release/restored before
+          --cache 'Linux-cargo-unrun-'
           '~/.cargo/registry' '~/.cargo/git' 'target'
 
       - name: Cache cargo (unrun tests)
@@ -764,6 +783,7 @@ jobs:
       - name: What is on disk before the cache is restored
         run: >
           ./target/release/restored before
+          --cache 'Linux-cargo-uncompiled-'
           '~/.cargo/registry' '~/.cargo/git'
 
       # See `item-citations`' cache: one job holds the build directory, and the
@@ -844,6 +864,7 @@ jobs:
       - name: What is on disk before the cache is restored
         run: >
           ./target/release/restored before
+          --cache 'Linux-cargo-msrv-'
           '~/.cargo/registry' '~/.cargo/git'
 
       # NO ROOT `target`: this job is 6m54s cold, the cheapest in the file, and

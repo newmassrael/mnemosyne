@@ -18,6 +18,10 @@ use std::process::{Command, Output};
 use restored::{decode, Warmth};
 use tempfile::TempDir;
 
+/// Which cache the fixture's steps bracket — the resolved key prefix, the
+/// identity `ci_plan` derives from the workflow and every gate joins on.
+const A_CACHE: &str = "Linux-cargo-unrun-";
+
 /// One invocation of the binary, with the environment a workflow step gives it.
 struct Step {
     output: Output,
@@ -118,7 +122,14 @@ fn around(
     let mut wiring = Wiring::wired(home.path(), &record);
     let before = wiring.run(
         tree.path(),
-        &["before", "~/.cargo/registry", "~/.cargo/git", "target"],
+        &[
+            "before",
+            "--cache",
+            A_CACHE,
+            "~/.cargo/registry",
+            "~/.cargo/git",
+            "target",
+        ],
     );
     assert_eq!(before.code(), 0, "{}", before.transcript());
     restoring(home.path(), tree.path());
@@ -201,7 +212,10 @@ fn what_the_steps_before_the_cache_left_behind_is_not_counted_as_restored() {
     restore(home.path(), ".cargo/registry", 3, 4_096);
     let record = tree.path().join("rustc-log/unrun-tests.restored");
     let wiring = Wiring::wired(home.path(), &record);
-    let before = wiring.run(tree.path(), &["before", "~/.cargo/registry", "target"]);
+    let before = wiring.run(
+        tree.path(),
+        &["before", "--cache", A_CACHE, "~/.cargo/registry", "target"],
+    );
     assert_eq!(before.code(), 0, "{}", before.transcript());
     let after = wiring.run(tree.path(), &["after"]);
     assert_eq!(after.code(), 0, "{}", after.transcript());
@@ -244,7 +258,7 @@ fn the_first_step_truncates_whatever_was_there_before_it() {
     std::fs::create_dir_all(record.parent().expect("a parent")).expect("the directory");
     std::fs::write(&record, "job\u{1f}somebody-else\n").expect("a stale record");
     let wiring = Wiring::wired(home.path(), &record);
-    let before = wiring.run(tree.path(), &["before", "target"]);
+    let before = wiring.run(tree.path(), &["before", "--cache", A_CACHE, "target"]);
     assert_eq!(before.code(), 0, "{}", before.transcript());
     let after = wiring.run(tree.path(), &["after"]);
     assert_eq!(after.code(), 0, "{}", after.transcript());
@@ -259,7 +273,7 @@ fn without_the_record_variable_it_refuses_rather_than_choosing_a_path() {
     let (home, tree) = workspace();
     let mut wiring = Wiring::wired(home.path(), Path::new("unused"));
     wiring.record = None;
-    let step = wiring.run(tree.path(), &["before", "target"]);
+    let step = wiring.run(tree.path(), &["before", "--cache", A_CACHE, "target"]);
     assert_eq!(step.code(), 1, "{}", step.transcript());
     assert!(
         step.stderr().contains(restored::VARIABLE),
@@ -274,7 +288,7 @@ fn without_the_job_it_refuses_rather_than_reading_the_name_off_its_own_file() {
     let record = tree.path().join("rustc-log/unrun-tests.restored");
     let mut wiring = Wiring::wired(home.path(), &record);
     wiring.job = None;
-    let step = wiring.run(tree.path(), &["before", "target"]);
+    let step = wiring.run(tree.path(), &["before", "--cache", A_CACHE, "target"]);
     assert_eq!(step.code(), 1, "{}", step.transcript());
     assert!(
         step.stderr().contains("GITHUB_JOB"),
@@ -291,7 +305,7 @@ fn without_the_cache_hit_output_it_refuses_rather_than_assuming_a_miss() {
     let (home, tree) = workspace();
     let record = tree.path().join("rustc-log/unrun-tests.restored");
     let mut wiring = Wiring::wired(home.path(), &record);
-    let before = wiring.run(tree.path(), &["before", "target"]);
+    let before = wiring.run(tree.path(), &["before", "--cache", A_CACHE, "target"]);
     assert_eq!(before.code(), 0, "{}", before.transcript());
     wiring.exact = None;
     let after = wiring.run(tree.path(), &["after"]);
@@ -308,7 +322,7 @@ fn a_cache_hit_that_is_not_a_boolean_is_refused_by_the_step_that_reads_it() {
     let (home, tree) = workspace();
     let record = tree.path().join("rustc-log/unrun-tests.restored");
     let mut wiring = Wiring::wired(home.path(), &record);
-    let before = wiring.run(tree.path(), &["before", "target"]);
+    let before = wiring.run(tree.path(), &["before", "--cache", A_CACHE, "target"]);
     assert_eq!(before.code(), 0, "{}", before.transcript());
     wiring.exact = Some("maybe");
     let after = wiring.run(tree.path(), &["after"]);
@@ -325,7 +339,7 @@ fn nothing_matched_at_all_is_the_actions_third_answer_and_not_a_refusal() {
     let (home, tree) = workspace();
     let record = tree.path().join("rustc-log/unrun-tests.restored");
     let mut wiring = Wiring::wired(home.path(), &record);
-    let before = wiring.run(tree.path(), &["before", "target"]);
+    let before = wiring.run(tree.path(), &["before", "--cache", A_CACHE, "target"]);
     assert_eq!(before.code(), 0, "{}", before.transcript());
     wiring.exact = Some("");
     let after = wiring.run(tree.path(), &["after"]);
@@ -345,7 +359,7 @@ fn nothing_matched_while_something_arrived_is_two_steps_reading_two_caches() {
     let (home, tree) = workspace();
     let record = tree.path().join("rustc-log/unrun-tests.restored");
     let mut wiring = Wiring::wired(home.path(), &record);
-    let before = wiring.run(tree.path(), &["before", "target"]);
+    let before = wiring.run(tree.path(), &["before", "--cache", A_CACHE, "target"]);
     assert_eq!(before.code(), 0, "{}", before.transcript());
     // A restore happening between the two readings, which is what the cache step
     // does when it matches something.
@@ -362,6 +376,34 @@ fn nothing_matched_while_something_arrived_is_two_steps_reading_two_caches() {
         after.stderr().contains("reading a different step"),
         "{}",
         after.transcript()
+    );
+}
+
+/// R1117 — a record has to say WHICH cache it is of, and the step that opens it
+/// is the only thing that knows. A job may declare more than one; a record that
+/// did not name its own would be matched to whichever the reader picked, and the
+/// price of a 32 GB build directory would be read off a 756 MB registry.
+#[test]
+fn the_first_step_without_a_cache_to_name_refuses() {
+    let (home, tree) = workspace();
+    let record = tree.path().join("rustc-log/unrun-tests.restored");
+    let wiring = Wiring::wired(home.path(), &record);
+
+    let unnamed = wiring.run(tree.path(), &["before", "target"]);
+    assert_eq!(unnamed.code(), 1, "{}", unnamed.transcript());
+    assert!(
+        unnamed.stderr().contains("--cache"),
+        "and it says what is missing: {}",
+        unnamed.transcript()
+    );
+
+    let empty = wiring.run(tree.path(), &["before", "--cache", "", "target"]);
+    assert_eq!(
+        empty.code(),
+        1,
+        "an empty name is not a name — it decodes as a record whose cache \
+         matches no declaration, one step later and further from the mistake: {}",
+        empty.transcript()
     );
 }
 

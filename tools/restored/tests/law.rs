@@ -13,6 +13,7 @@ use restored::{decode, Malformed, Measurement, Restoration, Restored, Side, Warm
 /// would have written rather than a hand-built string.
 fn written(job: &str, exact: bool, paths: &[(&str, u64, u64)]) -> String {
     let mut out = restored::encode_job(job);
+    out.extend_from_slice(&restored::encode_cache(A_CACHE));
     out.extend_from_slice(&restored::encode_at(Side::Before, MEASURED_AT.0));
     for (path, before, _) in paths {
         out.extend_from_slice(&restored::encode_side(
@@ -44,6 +45,10 @@ fn written(job: &str, exact: bool, paths: &[(&str, u64, u64)]) -> String {
 /// for the 27 GB tree these tests stand in for.
 const MEASURED_AT: (u64, u64) = (1_000_000_000, 1_120_000_000);
 
+/// The cache a fixture record is of — the resolved key prefix, which is the
+/// identity `ci_plan` derives and every gate here joins on.
+const A_CACHE: &str = "Linux-cargo-unrun-";
+
 #[test]
 fn a_record_reads_back_as_what_was_written() {
     let text = written(
@@ -56,6 +61,7 @@ fn a_record_reads_back_as_what_was_written() {
         record,
         Restored {
             job: "unrun-tests".to_string(),
+            cache: A_CACHE.to_string(),
             exact: false,
             paths: vec![
                 Restoration {
@@ -158,6 +164,7 @@ fn a_path_shrinking_across_the_restore_does_not_read_as_negative_warmth() {
 #[test]
 fn a_record_the_second_step_never_finished_is_refused_rather_than_read_as_cold() {
     let mut out = restored::encode_job("unrun-tests");
+    out.extend_from_slice(&restored::encode_cache(A_CACHE));
     out.extend_from_slice(&restored::encode_side(
         Side::Before,
         "target",
@@ -178,6 +185,7 @@ fn a_whole_record_that_never_said_when_is_refused_rather_than_priced_at_nothing(
     // the direction of keeping every cache. Round 1099 deleted one on a guess and
     // Round 1100 put it back.
     let mut out = restored::encode_job("unrun-tests");
+    out.extend_from_slice(&restored::encode_cache(A_CACHE));
     out.extend_from_slice(&restored::encode_side(
         Side::Before,
         "target",
@@ -209,6 +217,7 @@ fn a_record_that_died_between_the_steps_keeps_its_own_name() {
     // line, and naming that event twice would send two readers to two different
     // repairs. The truncated record is still `ExactIsNotSaidOnce`.
     let mut out = restored::encode_job("unrun-tests");
+    out.extend_from_slice(&restored::encode_cache(A_CACHE));
     out.extend_from_slice(&restored::encode_at(Side::Before, MEASURED_AT.0));
     out.extend_from_slice(&restored::encode_side(
         Side::Before,
@@ -225,6 +234,7 @@ fn a_record_that_died_between_the_steps_keeps_its_own_name() {
 #[test]
 fn a_path_measured_on_one_side_only_is_refused() {
     let mut out = restored::encode_job("validate");
+    out.extend_from_slice(&restored::encode_cache(A_CACHE));
     out.extend_from_slice(&restored::encode_side(
         Side::Before,
         "target",
@@ -248,6 +258,7 @@ fn a_path_measured_on_one_side_only_is_refused() {
 #[test]
 fn a_path_measured_after_and_not_before_is_refused_too() {
     let mut out = restored::encode_job("validate");
+    out.extend_from_slice(&restored::encode_cache(A_CACHE));
     out.extend_from_slice(&restored::encode_side(
         Side::Before,
         "target",
@@ -273,6 +284,36 @@ fn a_path_measured_after_and_not_before_is_refused_too() {
     );
 }
 
+/// R1117 — a record is ONE CACHE'S, and the field that says which is refused
+/// when it is absent or doubled for the reason the job line is: a record that
+/// did not say would be matched to whichever cache the reader picked.
+#[test]
+fn a_record_that_does_not_say_which_cache_it_is_of_is_refused() {
+    let whole = written("unrun-tests", false, &[("target", 0, 6_800)]);
+    let without: String = whole
+        .lines()
+        .filter(|line| !line.starts_with("cache\u{1f}"))
+        .map(|line| format!("{line}\n"))
+        .collect();
+    assert_eq!(
+        decode(&without),
+        Err(Malformed::CacheIsNotSaidOnce { times: 0 }),
+        "a job may declare more than one cache, so an unnamed record is one \
+         whose price belongs to nothing in particular"
+    );
+
+    let twice = format!(
+        "{whole}{}",
+        String::from_utf8(restored::encode_cache("Linux-cargo-")).expect("text")
+    );
+    assert_eq!(
+        decode(&twice),
+        Err(Malformed::CacheIsNotSaidOnce { times: 2 }),
+        "and two names is two records in one file — the paste error that makes \
+         one cache's interval the other's"
+    );
+}
+
 #[test]
 fn a_record_naming_two_jobs_is_refused() {
     let text = format!(
@@ -286,6 +327,7 @@ fn a_record_naming_two_jobs_is_refused() {
 #[test]
 fn a_record_with_no_path_at_all_is_refused() {
     let mut out = restored::encode_job("validate");
+    out.extend_from_slice(&restored::encode_cache(A_CACHE));
     out.extend_from_slice(&restored::encode_exact(true));
     let text = String::from_utf8(out).expect("text");
     assert_eq!(decode(&text), Err(Malformed::NoPathsAtAll));

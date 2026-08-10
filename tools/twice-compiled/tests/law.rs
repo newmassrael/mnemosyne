@@ -1528,6 +1528,7 @@ fn cache(job: &str, paths: &[&str]) -> ci_plan::CacheDeclaration {
         index: CACHE_AT,
         key: format!("${{{{ runner.os }}}}-cargo-{job}-abc"),
         prefix: format!("Linux-cargo-{job}-"),
+        restore_keys: vec![format!("Linux-cargo-{job}-")],
         paths: paths.iter().map(|path| (*path).to_string()).collect(),
         hashed: vec!["**/Cargo.lock".to_string()],
     }
@@ -1577,6 +1578,9 @@ fn cached_job(job: &str, paths: &[&str]) -> Vec<RunStep> {
 /// The record such a job leaves, with what arrived under each path.
 fn restore_record(job: &str, exact: bool, paths: &[(&str, u64)]) -> String {
     let mut out = restored::encode_job(job);
+    // The same prefix `cache()` above declares for this job — the record says
+    // WHICH cache its interval is the price of, and the gate checks the two.
+    out.extend_from_slice(&restored::encode_cache(&format!("Linux-cargo-{job}-")));
     out.extend_from_slice(&restored::encode_at(restored::Side::Before, 1_000_000_000));
     for (path, _) in paths {
         out.extend_from_slice(&restored::encode_side(
@@ -1736,6 +1740,36 @@ fn an_exact_hit_that_brought_nothing_is_refused_rather_than_counted() {
                 job: "validate".to_string()
             },
         ]
+    );
+}
+
+/// R1117 — A RECORD SAYS WHICH CACHE ITS INTERVAL IS THE PRICE OF, and that
+/// field is only worth having if something refuses a wrong one. R1116 found the
+/// cost of the other shape: `restore-keys` was spelled by hand, derived
+/// separately, and compared never, so a sentence about it went years without
+/// anything able to contradict it.
+#[test]
+fn a_record_naming_a_cache_its_job_does_not_declare_is_refused() {
+    let (declared, mut census) = cached_and_said(true, 1_000);
+    let mut wrong = restore_record(
+        "unrun-tests",
+        true,
+        &[("~/.cargo/registry", 1_000), ("target", 1_000)],
+    );
+    wrong = wrong.replace("Linux-cargo-unrun-tests-", "Linux-cargo-somebody-elses-");
+    census
+        .restored
+        .insert("unrun-tests".to_string(), restored::decode(&wrong));
+    assert_eq!(
+        judge(&census, &declared, &nothing()),
+        vec![Refusal::RestoreRecordNamesACacheTheJobDoesNotDeclare {
+            job: "unrun-tests".to_string(),
+            named: "Linux-cargo-somebody-elses-".to_string(),
+            declared: vec!["Linux-cargo-unrun-tests-".to_string()],
+        }],
+        "an interval charged to a cache the job does not have would answer the \
+         next reader's question about what a cache costs with somebody else's \
+         number, which is worse than having no answer"
     );
 }
 

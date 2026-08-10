@@ -191,6 +191,30 @@
         }
       ],
       "expect_red": ["an_exact_hit_with_a_tree_arriving_is_recorded_as_one"]
+    },
+    {
+      "name": "the-record-need-not-say-which-cache",
+      "why": "R1117: a job may declare more than one cache and what a restore COST is the cost of the step it brackets. A record that does not say which would be matched to whichever the reader picked — the shape where a 32 GB build directory's price is read off a 756 MB registry's restore, which is the arithmetic R1099 got wrong",
+      "edits": [
+        {
+          "file": "tools/restored/src/lib.rs",
+          "from": "    if cache.len() != 1 {\n        return Err(Malformed::CacheIsNotSaidOnce { times: cache.len() });\n    }",
+          "to": ""
+        }
+      ],
+      "expect_red": ["a_record_that_does_not_say_which_cache_it_is_of_is_refused"]
+    },
+    {
+      "name": "the-first-step-need-not-be-told-which-cache",
+      "why": "the step that opens the record is the only thing that knows which cache it brackets; taking the name as optional puts an empty one into the record, and an empty name matches no declaration one step later, further from the mistake",
+      "edits": [
+        {
+          "file": "tools/restored/src/main.rs",
+          "from": "    if flag != \"--cache\" || cache.is_empty() {\n        fail(USAGE);\n    }",
+          "to": ""
+        }
+      ],
+      "expect_red": ["the_first_step_without_a_cache_to_name_refuses"]
     }
   ]
 }

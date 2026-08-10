@@ -85,6 +85,16 @@ fn everybody_compiled(declared: &Declared) -> Census {
     // one.
     for (job, paths) in &declared.caches {
         let mut written = restored::encode_job(job);
+        // WHICH CACHE, taken from what this workflow declares rather than
+        // spelled again here: a fixture inventing a prefix would be testing that
+        // the gate accepts an invented one.
+        written.extend_from_slice(&restored::encode_cache(
+            declared
+                .prefixes
+                .get(job)
+                .and_then(|declared| declared.first())
+                .expect("a job with a cache declares a prefix"),
+        ));
         written.extend_from_slice(&restored::encode_at(restored::Side::Before, 1_000_000_000));
         for path in paths {
             written.extend_from_slice(&restored::encode_side(

@@ -101,11 +101,34 @@ impl Restoration {
     }
 }
 
-/// What one job started from.
+/// What ONE CACHE brought a job.
+///
+/// R1117 — A RECORD IS A CACHE'S AND NOT A JOB'S, and the difference is what
+/// GG1b turns on. `unrun-tests` declares one cache step holding
+/// `~/.cargo/registry`, `~/.cargo/git` AND `target`, and the 385.7 seconds it
+/// costs is the step's. The registry half of that step is separately known to be
+/// overwhelmingly worth having — 756 MB in 5.4 s against 381.4 s of compiling in
+/// `validate` — so charging the whole interval to the build directory is the
+/// arithmetic R1099 got wrong when it deleted a cache that was saving ten
+/// minutes. A price that cannot be attributed cannot decide anything, and until
+/// this round the record had no place to put the attribution: one file per job,
+/// one interval, whatever the job cached.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Restored {
     /// The job id, which is also what the file is named for.
     pub job: String,
+    /// WHICH CACHE this is the record of — the resolved key prefix,
+    /// `Linux-cargo-unrun-`, which is the identity every gate in this repository
+    /// already joins on.
+    ///
+    /// A THIRD SPELLING OF IT, AND THAT IS SAFE ONLY BECAUSE IT IS COMPARED.
+    /// R1116 found the second spelling (`restore-keys`) declared and read by
+    /// nothing, which is how a property the whole caching arc rests on went
+    /// years without anything able to contradict a sentence about it. This one
+    /// is written by the workflow beside the step it measures and checked
+    /// against `ci_plan`'s derived prefix by `tools/twice-compiled`: a record
+    /// naming a cache its job does not declare is a refusal, not a reading.
+    pub cache: String,
     /// `actions/cache`'s `cache-hit`: an EXACT match on the primary key.
     pub exact: bool,
     /// Every path the job's cache declares, in the order it declares them.
@@ -245,6 +268,14 @@ pub enum Malformed {
     WrongShape { line: String },
     /// No `job` line, or more than one.
     JobIsNotSaidOnce { times: usize },
+    /// No `cache` line, or more than one.
+    ///
+    /// REFUSED AND NOT DEFAULTED TO THE JOB'S ONLY CACHE. A job may declare more
+    /// than one — that is the whole reason this field exists — and a record that
+    /// did not say which would be matched to whichever the reader picked, which
+    /// is the shape where a build directory's price is read off a registry's
+    /// restore.
+    CacheIsNotSaidOnce { times: usize },
     /// No `exact` line, or more than one — the file the `after` step finishes
     /// with, so its absence is a job that died before the restore was read.
     ExactIsNotSaidOnce { times: usize },
@@ -278,6 +309,12 @@ impl std::fmt::Display for Malformed {
             Malformed::JobIsNotSaidOnce { times } => write!(
                 f,
                 "the job is named {times} time(s) and a record is one job's"
+            ),
+            Malformed::CacheIsNotSaidOnce { times } => write!(
+                f,
+                "the cache is named {times} time(s) and a record is ONE cache's \
+                 — a job may declare more than one, and what a restore cost is \
+                 the cost of the step it brackets, not of the job"
             ),
             Malformed::ExactIsNotSaidOnce { times } => write!(
                 f,
@@ -314,6 +351,11 @@ impl std::fmt::Display for Malformed {
 /// The `job` line the `before` step opens the record with.
 pub fn encode_job(job: &str) -> Vec<u8> {
     line(&["job", job])
+}
+
+/// The `cache` line naming which of the job's caches this record is of.
+pub fn encode_cache(cache: &str) -> Vec<u8> {
+    line(&["cache", cache])
 }
 
 /// One `before` or `after` line.
@@ -437,6 +479,7 @@ fn line(fields: &[&str]) -> Vec<u8> {
 /// Read one job's record.
 pub fn decode(text: &str) -> Result<Restored, Malformed> {
     let mut job: Vec<String> = Vec::new();
+    let mut cache: Vec<String> = Vec::new();
     let mut exact: Vec<String> = Vec::new();
     // ORDER PRESERVED, because the paths are compared against the `path:` list
     // of the job's cache declaration and that list is ordered. A set would let
@@ -453,6 +496,10 @@ pub fn decode(text: &str) -> Result<Restored, Malformed> {
         match fields.first().copied() {
             Some("job") => match fields.as_slice() {
                 [_, name] => job.push((*name).to_string()),
+                _ => return Err(Malformed::WrongShape { line: line.into() }),
+            },
+            Some("cache") => match fields.as_slice() {
+                [_, name] => cache.push((*name).to_string()),
                 _ => return Err(Malformed::WrongShape { line: line.into() }),
             },
             Some("exact") => match fields.as_slice() {
@@ -491,6 +538,9 @@ pub fn decode(text: &str) -> Result<Restored, Malformed> {
 
     if job.len() != 1 {
         return Err(Malformed::JobIsNotSaidOnce { times: job.len() });
+    }
+    if cache.len() != 1 {
+        return Err(Malformed::CacheIsNotSaidOnce { times: cache.len() });
     }
     if exact.len() != 1 {
         return Err(Malformed::ExactIsNotSaidOnce { times: exact.len() });
@@ -547,6 +597,7 @@ pub fn decode(text: &str) -> Result<Restored, Malformed> {
     }
     Ok(Restored {
         job: job.remove(0),
+        cache: cache.remove(0),
         exact,
         paths,
         at: (said_before_at[0], said_after_at[0]),

@@ -1284,6 +1284,12 @@ pub enum Refusal {
     /// disk. The two instruments contradict each other, and which of them is
     /// wrong decides whether this census is of a warm run or a cold one.
     RestoredNothingAfterAnExactHit { job: String },
+    /// A record says it is the price of a cache its job does not declare.
+    RestoreRecordNamesACacheTheJobDoesNotDeclare {
+        job: String,
+        named: String,
+        declared: Vec<String>,
+    },
     /// A record's file is named for one job and its contents for another — the
     /// same paste error `LogIsNotNamedForItsJob` covers, caught on the other
     /// side, because the record carries the job the runner said it was in.
@@ -1427,6 +1433,18 @@ impl std::fmt::Display for Refusal {
                  matched exactly, and not one byte arrived under the paths that \
                  cache holds — one of the two instruments is wrong, and which \
                  one decides whether this census is of a warm run or a cold one"
+            ),
+            Refusal::RestoreRecordNamesACacheTheJobDoesNotDeclare {
+                job,
+                named,
+                declared,
+            } => write!(
+                f,
+                "job `{job}` recorded a restore it says is the price of cache \
+                 `{named}`, and the caches it declares are {declared:?} — a \
+                 record whose cache is not one of its job's is an interval \
+                 charged to nothing, and the next reader to ask what a cache \
+                 costs would be told the wrong number rather than none"
             ),
             Refusal::RestoreRecordNamesAnotherJob { file, said } => write!(
                 f,
@@ -1642,6 +1660,16 @@ pub struct Declared {
     /// whole `steps:` list, so it is directly comparable with
     /// [`ci_plan::RunStep::index`].
     pub caches_at: BTreeMap<String, Vec<usize>>,
+    /// The resolved key prefix of each cache a job declares, in the order
+    /// declared — the identity every gate here joins on, and the one a restore
+    /// record now names.
+    ///
+    /// NOT MERGED, unlike `caches`. R1117 gave the record a `cache` field so
+    /// that a job declaring two caches can have the price of each; that field
+    /// would be one more thing declared and read by nothing — the defect R1116
+    /// found in `restore-keys` — unless something checks it against what the
+    /// workflow says. This is what it is checked against.
+    pub prefixes: BTreeMap<String, Vec<String>>,
     /// Does this workflow collect anything a later job could download?
     ///
     /// A BOOLEAN BECAUSE THE QUESTION IS ONE: a workflow that uploads no
@@ -1677,6 +1705,7 @@ impl Declared {
         }
         let mut cached: BTreeMap<String, Vec<String>> = BTreeMap::new();
         let mut at: BTreeMap<String, Vec<usize>> = BTreeMap::new();
+        let mut prefixes: BTreeMap<String, Vec<String>> = BTreeMap::new();
         for cache in caches {
             let paths = cached.entry(cache.owner.clone()).or_default();
             for path in &cache.paths {
@@ -1685,11 +1714,16 @@ impl Declared {
                 }
             }
             at.entry(cache.owner.clone()).or_default().push(cache.index);
+            prefixes
+                .entry(cache.owner.clone())
+                .or_default()
+                .push(cache.prefix.clone());
         }
         Declared {
             jobs,
             caches: cached,
             caches_at: at,
+            prefixes,
             collects_records: ci_plan::collects_artifacts(uploads),
         }
     }
@@ -1925,6 +1959,25 @@ fn judge_restores(census: &Census, declared: &Declared, absent: &BTreeSet<String
                 why: why.to_string(),
             }),
             Some(Ok(record)) => {
+                // WHICH CACHE THIS IS THE PRICE OF, checked against what the
+                // workflow declares. R1117 gave the record the field; without
+                // this it would be one more identity spelled twice and compared
+                // never, which is exactly the defect R1116 found in
+                // `restore-keys` — a property nothing could contradict.
+                //
+                // ONLY WHEN THE RECORD IS THIS JOB'S. A record pasted into
+                // another job's file names the wrong cache as well as the wrong
+                // job, and that event already has a name below — two names for
+                // one defect send two readers to two different repairs, which is
+                // the discipline R1113 wrote down for the clock check.
+                let declared_prefixes = declared.prefixes.get(job).cloned().unwrap_or_default();
+                if record.job == *job && !declared_prefixes.contains(&record.cache) {
+                    refusals.push(Refusal::RestoreRecordNamesACacheTheJobDoesNotDeclare {
+                        job: job.clone(),
+                        named: record.cache.clone(),
+                        declared: declared_prefixes,
+                    });
+                }
                 if record.measured() != paths.iter().map(String::as_str).collect::<Vec<_>>() {
                     refusals.push(Refusal::RestoreRecordMeasuredOtherPaths {
                         job: job.clone(),

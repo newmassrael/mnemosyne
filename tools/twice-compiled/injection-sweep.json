@@ -613,6 +613,30 @@
         }
       ],
       "expect_red": ["this_workflow_caches_one_build_directory_and_not_a_workspaces_own"]
+    },
+    {
+      "name": "which-cache-a-record-prices-is-not-checked",
+      "why": "R1117 gave the restore record a `cache` field so a job with two caches can have the price of each. Unchecked, that is one more identity spelled twice and compared never — the exact defect R1116 found in `restore-keys`, where a property the whole caching arc rests on went years without anything able to contradict a sentence about it",
+      "edits": [
+        {
+          "file": "tools/twice-compiled/src/lib.rs",
+          "from": "                if record.job == *job && !declared_prefixes.contains(&record.cache) {",
+          "to": "                if false && record.job == *job && !declared_prefixes.contains(&record.cache) {"
+        }
+      ],
+      "expect_red": ["a_record_naming_a_cache_its_job_does_not_declare_is_refused"]
+    },
+    {
+      "name": "a-pasted-record-is-named-twice-over",
+      "why": "a record written into another job's file names the wrong cache as well as the wrong job, and that event already has a name — two names for one defect send two readers to two different repairs, which is the ordering discipline R1113 wrote down for the clock check",
+      "edits": [
+        {
+          "file": "tools/twice-compiled/src/lib.rs",
+          "from": "                if record.job == *job && !declared_prefixes.contains(&record.cache) {",
+          "to": "                if !declared_prefixes.contains(&record.cache) {"
+        }
+      ],
+      "expect_red": ["a_record_whose_contents_name_another_job_is_refused"]
     }
   ]
 }

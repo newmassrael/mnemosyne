@@ -66,7 +66,10 @@ const BUILDS: &[&str] = &["cargo build --manifest-path crates/shared/Cargo.toml"
 /// census reads as taken from nothing.
 const MEASURES_A_RESTORE: &[&str] = &[
     "cargo build --manifest-path tools/restored/Cargo.toml",
-    "./target/debug/restored before 'target'",
+    // THE PREFIX THE FIXTURE'S OWN CACHE KEY RESOLVES TO. The gate checks the
+    // record's cache against what the workflow declares, so a fixture naming
+    // some other prefix would be declaring the defect it is not testing for.
+    "./target/debug/restored before --cache 'Linux-fixture-unrun-tests-' 'target'",
     "./target/debug/restored after",
     "cargo build --manifest-path crates/shared/Cargo.toml",
 ];
@@ -970,6 +973,7 @@ fn downloaded(under: &Path, jobs: &[(&str, bool, u64)]) -> PathBuf {
         std::fs::create_dir_all(&artifact).expect("the artifact directory");
         record_a_compilation(&artifact.join(format!("{job}.log")));
         let mut written = restored::encode_job(job);
+        written.extend_from_slice(&restored::encode_cache(&format!("Linux-fixture-{job}-")));
         written.extend_from_slice(&restored::encode_at(restored::Side::Before, 1_000_000_000));
         written.extend_from_slice(&restored::encode_side(
             restored::Side::Before,
