@@ -7832,6 +7832,88 @@
         "WHAT THE FALLBACK LAW DOES NOT SEE, stated rather than assumed: it reads DECLARATIONS, so an archive written by a branch or by hand under a key no workflow declares is outside its population. That key is not invisible — it lands on the other instrument, as an archive nothing declares, counted against the budget."
       ]
     },
+    "Round 1124": {
+      "decision_summary": "THE NUMBER THAT CLOSED AN ARC WAS NEVER PRINTED BY ANYTHING, AND THAT IS WHY THE\nQUESTION IT SETTLED CAME BACK FIVE TIMES. R1098 measured that 75.4% of these\njobs' compiling windows had no compiler alive in them at all, and concluded — by\nhand, in a ledger entry — that every compile-side repair together was worth at\nmost 394.5 seconds of critical path. The owner took an arc decision on that\nfigure: sccache not adopted, attention redirected to the other 75%, the time a\nsuite spends running what it just built. Nothing has re-derived the number since.\n\nSO IT COULD NOT GO STALE LOUDLY. A figure governing a decision, held in prose,\nwith no reader — which is the shape R1116 found in `restore-keys` and R1092 found\nin four comments that had never counted anything. The consequence here is\nmeasurable and embarrassing: the question the figure settled was re-opened under\nfive successive names (CC6 → DD4 → FF2 → GG2 → KK12), each time as \"a decision\nfor the owner\", because no reader could check whether the premise still held.\n\nTHE CEILING IS THE BUSIEST JOB'S OWN COMPILING, AND IT IS AN UPPER BOUND. These\njobs run beside each other, so the run waits on whichever is longest. A repair\nthat removed EVERY compilation shortens that job by exactly the part of its\nwindow with a compiler alive in it, and shortens the run by at most that — less,\nif some other job then becomes the longest. No arrangement of caches, merges or\nshared trees can win more, so quoting it prices the whole family at once.\n\nIT IS NOT THE SUM. What every job compiles, added up, is 1282.5 s across this\ncensus and is an area under processes that ran in parallel; the bound is 394.7 s.\nHolding the two against each other is the work-seconds-against-wall-clock mistake\nR1120 made in a report to the owner, one round ago, and it is a factor of three\nhere.\n\nMEASURED ON THE LAST GREEN RUN, and the premise holds: window 5201.0 s across the\ncensus, 3918.5 s of it with no compiler alive — 75.3%, against R1098's 75.4% —\nand a ceiling of 394.7 s against R1098's 394.5. Two rounds of consolidation and a\nprofile change moved neither.\n\nWHAT THAT SETTLES. KK12 is not a fork. Its two options — one shared build\ndirectory restored by every job, or a content-addressed cache — are both\ncompile-side, so both are bounded by the 394.7 s the owner has already ruled is\nnot worth taking. The ledger item is struck rather than answered, and the round\nthat answers it would have to first show the ceiling has moved.\n\nWHAT THE LEDGER RECORDED AND WHAT IT DID NOT. It kept the NUMBER and not the\nDERIVATION, which is exactly what made rechecking impossible: this round inferred\nthat 394.5 was a maximum rather than a sum from the fact that today's maximum is\n394.7 and today's sum is 1282.5. That inference is now unnecessary for anyone\nafter this — the report states the quantity, and the tests state what it is not.",
+      "changes_bullets": [
+        "`tools/twice-compiled` — `Census::ceiling_micros` (the busiest job's own compiling, an upper bound on what ALL compile-side repair can take off the critical path), `Census::window_micros` and `Census::idle_micros`; the report prints the three together with the derivation beside them.",
+        "`tools/twice-compiled/tests/law.rs` — the bound is a maximum and not a sum; the idle share is of the clock and not of the compiler-seconds; and a census of no jobs has no ceiling rather than a zero one.",
+        "`tools/twice-compiled/tests/entrances.rs` — the line is asserted against the BINARY's own output, because a figure that governs a decision and lives where nobody runs it is the state this round is repairing."
+      ],
+      "verification_bullets": [
+        "THE PREMISE IS RE-DERIVED FROM THE LAST GREEN RUN (31355607697, nine jobs success, annotations 0) rather than from the ledger sentence: window 5201.0 s across the census, 3918.5 s of it with no compiler alive — 75.3% against R1098's 75.4% — and a ceiling of 394.7 s against R1098's 394.5. Per job the busy figures are validate 394.7, unrun-tests 194.6, side-workspaces 182.1, server-features 164.8, item-citations 140.8, uncompiled-sources 138.3, msrv 65.7, cache-budget 1.5.",
+        "AND THE SUM IS THE NUMBER IT IS NOT: 1282.5 s, a factor of three away, which is what makes the maximum-versus-sum injection the one that matters here.",
+        "FULL TREE GREEN: `scripts/verify.sh` exit 0 over `cargo fmt --all --check`, `cargo clippy --workspace --locked --all-targets -- -D warnings`, `cargo test --workspace --locked --no-fail-fast` and `check-side-workspaces.sh` (12 workspaces, 0 skipped) — 2416 passed, 0 failed.",
+        "`tools/twice-compiled` 63 injections, all fired, missed 0, control 113 green; the anchor law over every tracked sweep green.",
+        "THREE OF THOSE INJECTIONS ARE NEW: the ceiling summed instead of maximised; the idle share taken off the compiler-seconds instead of the clock; and the line removed from the report entirely — which is caught by a test that runs the BINARY, because the state being repaired is a figure with no reader.",
+        "ONE INJECTION WAS MISAIMED AND THE HARNESS SAID SO IN THE RIGHT WORDS: the first spelling of the third one did not compile, and the sweep reported it as reaching NO target rather than as a clean run. That is the guard R1103 built after a compile failure once read as a law holding."
+      ],
+      "carry_forward_bullets": [
+        "⛳THE BOUND IS OVER THE COMPILING WINDOW AND NOT THE JOB'S DURATION, and that is a limit of what the records hold rather than of this round. `span_micros` runs from the first compiler's start to the last one's exit, so everything a job does before the first compilation and after the last — checkout, toolchain install, the cache restore, and the suite running what it just built — is outside it. The bound is therefore correct as an UPPER bound on what compiling can win and says nothing about the job's wall-clock. Closing that needs the runner's own per-job `started_at`/`completed_at`, which the API has and nothing joins to the census.",
+        "THE OTHER 75% IS STILL THE ARC THE OWNER CHOSE AND IS STILL NOT BUILT. R1098's reading redirected this project to the time a suite spends running what it built; the ledger's XX3 named the work (the same instrument, pointed at running rather than compiling) and twenty-five rounds of caching went past it. The ceiling this round prints is what says that redirect was right, and it now says so on every run."
+      ],
+      "population_census": [
+        {
+          "axis": "transition rules by `undirected`",
+          "left_label": "undirected",
+          "left": 10,
+          "right_label": "directed",
+          "right": 27
+        },
+        {
+          "axis": "map corpora by leg-kind declaration",
+          "left_label": "omitted",
+          "left": 6,
+          "right_label": "declared",
+          "right": 24
+        },
+        {
+          "axis": "cost-carrying corpora by direction-dependent pricing",
+          "left_label": "prices a way by direction",
+          "left": 4,
+          "right_label": "prices no way by direction",
+          "right": 6
+        },
+        {
+          "axis": "run trees by authoring mode",
+          "left_label": "hand script",
+          "left": 10,
+          "right_label": "file-only",
+          "right": 239
+        },
+        {
+          "axis": "map corpora by declared boundary crossing",
+          "left_label": "declares an exit",
+          "left": 6,
+          "right_label": "declares none",
+          "right": 24
+        },
+        {
+          "axis": "authored submissions by map and telling",
+          "left_label": "carries both",
+          "left": 10,
+          "right_label": "carries one",
+          "right": 24
+        }
+      ],
+      "publishable_decision_summary": "THE NUMBER THAT CLOSED AN ARC WAS NEVER PRINTED BY ANYTHING, AND THAT IS WHY THE\nQUESTION IT SETTLED CAME BACK FIVE TIMES. R1098 measured that 75.4% of these\njobs' compiling windows had no compiler alive in them at all, and concluded — by\nhand, in a ledger entry — that every compile-side repair together was worth at\nmost 394.5 seconds of critical path. The owner took an arc decision on that\nfigure: sccache not adopted, attention redirected to the other 75%, the time a\nsuite spends running what it just built. Nothing has re-derived the number since.\n\nSO IT COULD NOT GO STALE LOUDLY. A figure governing a decision, held in prose,\nwith no reader — which is the shape R1116 found in `restore-keys` and R1092 found\nin four comments that had never counted anything. The consequence here is\nmeasurable and embarrassing: the question the figure settled was re-opened under\nfive successive names (CC6 → DD4 → FF2 → GG2 → KK12), each time as \"a decision\nfor the owner\", because no reader could check whether the premise still held.\n\nTHE CEILING IS THE BUSIEST JOB'S OWN COMPILING, AND IT IS AN UPPER BOUND. These\njobs run beside each other, so the run waits on whichever is longest. A repair\nthat removed EVERY compilation shortens that job by exactly the part of its\nwindow with a compiler alive in it, and shortens the run by at most that — less,\nif some other job then becomes the longest. No arrangement of caches, merges or\nshared trees can win more, so quoting it prices the whole family at once.\n\nIT IS NOT THE SUM. What every job compiles, added up, is 1282.5 s across this\ncensus and is an area under processes that ran in parallel; the bound is 394.7 s.\nHolding the two against each other is the work-seconds-against-wall-clock mistake\nR1120 made in a report to the owner, one round ago, and it is a factor of three\nhere.\n\nMEASURED ON THE LAST GREEN RUN, and the premise holds: window 5201.0 s across the\ncensus, 3918.5 s of it with no compiler alive — 75.3%, against R1098's 75.4% —\nand a ceiling of 394.7 s against R1098's 394.5. Two rounds of consolidation and a\nprofile change moved neither.\n\nWHAT THAT SETTLES. KK12 is not a fork. Its two options — one shared build\ndirectory restored by every job, or a content-addressed cache — are both\ncompile-side, so both are bounded by the 394.7 s the owner has already ruled is\nnot worth taking. The ledger item is struck rather than answered, and the round\nthat answers it would have to first show the ceiling has moved.\n\nWHAT THE LEDGER RECORDED AND WHAT IT DID NOT. It kept the NUMBER and not the\nDERIVATION, which is exactly what made rechecking impossible: this round inferred\nthat 394.5 was a maximum rather than a sum from the fact that today's maximum is\n394.7 and today's sum is 1282.5. That inference is now unnecessary for anyone\nafter this — the report states the quantity, and the tests state what it is not.",
+      "publishable_changes_bullets": [
+        "`tools/twice-compiled` — `Census::ceiling_micros` (the busiest job's own compiling, an upper bound on what ALL compile-side repair can take off the critical path), `Census::window_micros` and `Census::idle_micros`; the report prints the three together with the derivation beside them.",
+        "`tools/twice-compiled/tests/law.rs` — the bound is a maximum and not a sum; the idle share is of the clock and not of the compiler-seconds; and a census of no jobs has no ceiling rather than a zero one.",
+        "`tools/twice-compiled/tests/entrances.rs` — the line is asserted against the BINARY's own output, because a figure that governs a decision and lives where nobody runs it is the state this round is repairing."
+      ],
+      "publishable_verification_bullets": [
+        "THE PREMISE IS RE-DERIVED FROM THE LAST GREEN RUN (31355607697, nine jobs success, annotations 0) rather than from the ledger sentence: window 5201.0 s across the census, 3918.5 s of it with no compiler alive — 75.3% against R1098's 75.4% — and a ceiling of 394.7 s against R1098's 394.5. Per job the busy figures are validate 394.7, unrun-tests 194.6, side-workspaces 182.1, server-features 164.8, item-citations 140.8, uncompiled-sources 138.3, msrv 65.7, cache-budget 1.5.",
+        "AND THE SUM IS THE NUMBER IT IS NOT: 1282.5 s, a factor of three away, which is what makes the maximum-versus-sum injection the one that matters here.",
+        "FULL TREE GREEN: `scripts/verify.sh` exit 0 over `cargo fmt --all --check`, `cargo clippy --workspace --locked --all-targets -- -D warnings`, `cargo test --workspace --locked --no-fail-fast` and `check-side-workspaces.sh` (12 workspaces, 0 skipped) — 2416 passed, 0 failed.",
+        "`tools/twice-compiled` 63 injections, all fired, missed 0, control 113 green; the anchor law over every tracked sweep green.",
+        "THREE OF THOSE INJECTIONS ARE NEW: the ceiling summed instead of maximised; the idle share taken off the compiler-seconds instead of the clock; and the line removed from the report entirely — which is caught by a test that runs the BINARY, because the state being repaired is a figure with no reader.",
+        "ONE INJECTION WAS MISAIMED AND THE HARNESS SAID SO IN THE RIGHT WORDS: the first spelling of the third one did not compile, and the sweep reported it as reaching NO target rather than as a clean run. That is the guard R1103 built after a compile failure once read as a law holding."
+      ],
+      "publishable_carry_forward_bullets": [
+        "⛳THE BOUND IS OVER THE COMPILING WINDOW AND NOT THE JOB'S DURATION, and that is a limit of what the records hold rather than of this round. `span_micros` runs from the first compiler's start to the last one's exit, so everything a job does before the first compilation and after the last — checkout, toolchain install, the cache restore, and the suite running what it just built — is outside it. The bound is therefore correct as an UPPER bound on what compiling can win and says nothing about the job's wall-clock. Closing that needs the runner's own per-job `started_at`/`completed_at`, which the API has and nothing joins to the census.",
+        "THE OTHER 75% IS STILL THE ARC THE OWNER CHOSE AND IS STILL NOT BUILT. R1098's reading redirected this project to the time a suite spends running what it built; the ledger's XX3 named the work (the same instrument, pointed at running rather than compiling) and twenty-five rounds of caching went past it. The ceiling this round prints is what says that redirect was right, and it now says so on every run."
+      ]
+    },
     "Round 252": {
       "decision_summary": "Parser CommonMark conformance — recognize indented fenced code blocks (§98) and require whitespace after ATX hash sequence (§62)",
       "changes_bullets": [

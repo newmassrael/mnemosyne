@@ -964,6 +964,24 @@ fn a_job_with_no_cache_leaves_no_record_and_is_not_refused_for_it() {
          with no line at all\n{}",
         run.transcript()
     );
+
+    // R1124 — AND THE CEILING IS IN THE REPORT, not only in the library. The
+    // figure it replaces was computed by hand in R1098, an arc decision was taken
+    // on it, and nothing printed it for twenty-five rounds — so a value that had
+    // stopped being true would have gone on governing. A decision that lives
+    // where nobody runs it has no reader, which is what R1096 measured about this
+    // very binary: the thing that lied was its output.
+    let printed = run.stdout();
+    assert!(
+        printed.contains("the ceiling on ALL of it is"),
+        "the report prices the whole family of compile-side repairs\n{}",
+        run.transcript()
+    );
+    assert!(
+        printed.contains("no compiler alive at all"),
+        "and says what share of the clock no repair to compiling can reach\n{}",
+        run.transcript()
+    );
 }
 
 // --- the third entrance: one census held against another ---------------------

@@ -811,6 +811,42 @@
       "expect_red": ["a_jobs_two_restore_records_are_loaded_as_two"]
     },
     {
+      "name": "the-ceiling-is-the-sum-of-what-every-job-compiles",
+      "why": "R1124: these jobs run BESIDE each other, so a repair that removed every compilation shortens the run by at most the busiest job's own compiling. Summing them prices the whole family of repairs at four times what any arrangement of caches can win — the work-seconds-against-wall-clock mistake R1120 made in a report to the owner, and the figure an arc decision was taken on",
+      "edits": [
+        {
+          "file": "tools/twice-compiled/src/lib.rs",
+          "from": "        self.jobs\n            .values()\n            .map(JobLog::busy_micros)\n            .max()\n            .unwrap_or(0)",
+          "to": "        self.jobs.values().map(JobLog::busy_micros).sum()"
+        }
+      ],
+      "expect_red": ["the_ceiling_is_the_busiest_jobs_own_compiling_and_not_the_sum"]
+    },
+    {
+      "name": "the-idle-share-is-taken-off-the-compiler-seconds",
+      "why": "two true percentages about one run and only one says what a repair can reach: the surplus share is of COMPILER-SECONDS added up over processes that ran beside each other, and the idle share is of the CLOCK. Reading the second off the first reports a run as almost entirely busy when three quarters of its window has no compiler in it at all",
+      "edits": [
+        {
+          "file": "tools/twice-compiled/src/lib.rs",
+          "from": "    pub fn window_micros(&self) -> u64 {\n        self.jobs.values().map(JobLog::span_micros).sum()\n    }",
+          "to": "    pub fn window_micros(&self) -> u64 {\n        self.jobs.values().map(JobLog::compiled_micros).sum()\n    }"
+        }
+      ],
+      "expect_red": ["the_idle_share_is_a_share_of_wall_clock_and_not_of_work"]
+    },
+    {
+      "name": "the-report-does-not-price-the-family-of-repairs",
+      "why": "the figure R1098 measured by hand closed an arc, and NOTHING printed it for twenty-five rounds — so a value that had stopped being true would have gone on governing, and the question it settled came back five times under five names. A decision that lives where nobody runs it has no reader, which is what R1096 measured about this very binary",
+      "edits": [
+        {
+          "file": "tools/twice-compiled/src/main.rs",
+          "from": "        \"\\n  the ceiling on ALL of it is {:.1} s of critical path — these jobs run \\\n         beside each other, so a repair that removed EVERY compilation shortens \\\n         the run by at most the busiest job's own compiling ({:.1} s of window \\\n         across the census, {idle:.1}% of it with no compiler alive at all)\",",
+          "to": "        \"\\n  compiling took {:.1} s and the window was {:.1} s ({idle:.1}%)\","
+        }
+      ],
+      "expect_red": ["a_job_with_no_cache_leaves_no_record_and_is_not_refused_for_it"]
+    },
+    {
       "name": "an-absent-jobs-nicknamed-record-still-loads",
       "why": "the skip is the gate's own job on a runner, whose build is still happening while it judges. A caller naming an absent job means every record that job wrote, and comparing the STEM to the job name lets `<job>.<nickname>.restored` through — a record from a job the caller said could not be in this census",
       "edits": [

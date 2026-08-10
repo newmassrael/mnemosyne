@@ -2929,3 +2929,94 @@ fn a_comparison_is_read_as_two_directories_and_no_workflow() {
         "an unknown flag is a refusal rather than a directory"
     );
 }
+
+// --- what the whole family of repairs is worth --------------------------------
+//
+// R1124 — THE NUMBER THAT CLOSED AN ARC AND THAT NOTHING PRINTED. R1098 measured
+// that 75.4% of these jobs' compiling windows had no compiler alive in them, and
+// concluded BY HAND that every compile-side repair together was worth at most
+// 394.5 seconds of critical path. An arc decision was taken on that figure and
+// nothing has re-derived it since — so it could not go stale loudly, and the
+// question it settled came back five times under five names because no reader
+// could check whether the premise still held.
+
+/// A job whose compilations are laid out at chosen moments, so a fixture can
+/// build a window with a chosen amount of idle in it.
+fn log_at(placed: &[(u64, u64)]) -> JobLog {
+    let text: String = placed
+        .iter()
+        .enumerate()
+        .map(|(index, (start, micros))| {
+            compiled(EPOCH + start, *micros, "crate", METADATA[index], "link")
+        })
+        .collect();
+    read_log(&text)
+}
+
+#[test]
+fn the_ceiling_is_the_busiest_jobs_own_compiling_and_not_the_sum() {
+    // THESE JOBS RUN BESIDE EACH OTHER. A repair that removed EVERY compilation
+    // shortens the run by at most the busiest job's own compiling — less, if some
+    // other job then becomes the longest. Summing them instead would price the
+    // whole family at four times what any arrangement of caches can win, which is
+    // exactly the work-seconds-against-wall-clock mistake R1120 made in a report.
+    let mut census = Census::default();
+    census.jobs.insert("small".to_string(), log_at(&[(0, 100)]));
+    census
+        .jobs
+        .insert("busiest".to_string(), log_at(&[(0, 400), (900, 100)]));
+    census
+        .jobs
+        .insert("middling".to_string(), log_at(&[(0, 250)]));
+
+    assert_eq!(
+        census.ceiling_micros(),
+        500,
+        "`busiest` has a compiler alive for 400 + 100 µs of its window"
+    );
+    assert!(
+        census.ceiling_micros() < census.paid_micros(),
+        "the sum of what every job compiles is {} µs and is NOT this bound",
+        census.paid_micros()
+    );
+}
+
+#[test]
+fn the_idle_share_is_a_share_of_wall_clock_and_not_of_work() {
+    // TWO TRUE PERCENTAGES ABOUT ONE RUN, and only one of them says what a repair
+    // can reach: the surplus share is of COMPILER-SECONDS, added up over
+    // processes that ran beside each other, and this is of the CLOCK.
+    let mut census = Census::default();
+    // One compiler for 100 µs, then nothing until 1000 — a suite running what it
+    // just built, which is the half no compile-side repair touches.
+    census
+        .jobs
+        .insert("suite".to_string(), log_at(&[(0, 100), (900, 100)]));
+    assert_eq!(census.window_micros(), 1000);
+    assert_eq!(census.idle_micros(), 800);
+    assert_eq!(
+        census.idle_micros() + census.ceiling_micros(),
+        census.window_micros(),
+        "for one job the two halves are the whole window, which is what makes \
+         the share quotable"
+    );
+}
+
+#[test]
+fn a_census_of_no_jobs_has_no_ceiling_rather_than_a_zero_one() {
+    // THE EMPTY ANSWER, said out loud. `max()` over nothing is nothing, and a
+    // reader that turned that into 0 would print "no repair is worth anything"
+    // for a census that reached no job at all — which is the shape `judge`
+    // refuses separately as `CensusCoversTooFewJobs`.
+    let census = Census::default();
+    assert_eq!(census.ceiling_micros(), 0);
+    assert_eq!(census.window_micros(), 0);
+    assert_eq!(
+        judge(&census, &declared_of(&[], &[]), &nothing())
+            .iter()
+            .filter(|refusal| matches!(refusal, Refusal::CensusCoversTooFewJobs { .. }))
+            .count(),
+        1,
+        "so the zero never travels as a reading — the census is refused first"
+    );
+}

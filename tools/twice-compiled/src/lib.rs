@@ -1002,6 +1002,56 @@ impl Census {
         self.retained_micros().values().sum()
     }
 
+    /// The most any compile-side repair can take off this run's critical path.
+    ///
+    /// R1124 — THE NUMBER THAT CLOSED AN ARC AND THAT NOTHING PRINTED. R1098
+    /// measured that 75.4% of these jobs' compiling windows had no compiler alive
+    /// in them at all and concluded, BY HAND, that every compile-side repair
+    /// together was worth at most 394.5 seconds on the critical path. The owner
+    /// took an arc decision on that figure. Nothing has re-derived it since, so
+    /// it could not go stale loudly — and the question it settled came back five
+    /// times under five names, because no reader could check whether the premise
+    /// still held.
+    ///
+    /// WHY THE LARGEST JOB'S BUSY TIME IS THE BOUND, and why it is an upper one.
+    /// These jobs run in parallel, so the run waits on whichever is longest. A
+    /// repair that removed EVERY compilation shortens that job by exactly the
+    /// part of its window with a compiler alive, and shortens the run by at most
+    /// that — less, if some other job then becomes the longest. So no arrangement
+    /// of caches, merges or shared trees can win more than this, and quoting it
+    /// is the honest way to price the whole family at once.
+    ///
+    /// WHAT IT IS NOT. It is not the sum of what the jobs compile — that is
+    /// [`Census::paid_micros`], an area under processes that ran beside each
+    /// other, and it is four times larger. Comparing the two is the mistake R1120
+    /// made in a report to the owner: a sum of work-seconds held against a
+    /// wall-clock.
+    pub fn ceiling_micros(&self) -> u64 {
+        self.jobs
+            .values()
+            .map(JobLog::busy_micros)
+            .max()
+            .unwrap_or(0)
+    }
+
+    /// The compiling windows of every job, added up.
+    ///
+    /// WALL-CLOCK AND NOT WORK, which is what makes it comparable with
+    /// [`Census::idle_micros`]: both are spans on a runner's clock, so their
+    /// ratio is a share of time rather than of effort.
+    pub fn window_micros(&self) -> u64 {
+        self.jobs.values().map(JobLog::span_micros).sum()
+    }
+
+    /// The part of those windows with NO compiler alive in it.
+    ///
+    /// A SUITE RUNNING WHAT IT JUST BUILT, mostly — which is the half of CI that
+    /// no repair to compiling can reach, and the half the owner redirected this
+    /// project's attention to on the strength of R1098's reading.
+    pub fn idle_micros(&self) -> u64 {
+        self.jobs.values().map(JobLog::idle_micros).sum()
+    }
+
     /// The seconds a job spends compiling something it already compiled.
     ///
     /// The time half of `Census::repeated_within_jobs`, and merging jobs cannot

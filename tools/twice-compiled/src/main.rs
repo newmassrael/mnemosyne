@@ -411,6 +411,31 @@ fn report(census: &Census, declared: &Declared, absent: &BTreeSet<String>, root:
         census.repeated_within_jobs(),
         seconds(census.repeated_within_jobs_micros()),
     );
+    // AND WHAT THE WHOLE FAMILY OF REPAIRS IS WORTH, which is the line every
+    // number above needs beside it. R1098 measured this by hand — 75.4% of these
+    // windows idle, so all compile-side repair together was worth at most 394.5 s
+    // on the critical path — and an arc decision was taken on it. Nothing printed
+    // it, so nothing could say when it stopped being true, and the question it
+    // settled came back five times under five names.
+    //
+    // THE TWO QUANTITIES ARE NAMED APART because one is a share of TIME and the
+    // one above it is a share of WORK: 38% of the compiler-seconds being surplus
+    // and 75% of the wall-clock having no compiler in it at all are both true,
+    // and only the second says what a repair can reach.
+    let window = census.window_micros();
+    let idle = if window == 0 {
+        0.0
+    } else {
+        100.0 * census.idle_micros() as f64 / window as f64
+    };
+    println!(
+        "\n  the ceiling on ALL of it is {:.1} s of critical path — these jobs run \
+         beside each other, so a repair that removed EVERY compilation shortens \
+         the run by at most the busiest job's own compiling ({:.1} s of window \
+         across the census, {idle:.1}% of it with no compiler alive at all)",
+        seconds(census.ceiling_micros()),
+        seconds(window),
+    );
     // THE STATE THE TOTALS ARE IN, printed with them rather than left in the
     // per-job lines above, because the number that gets quoted is this one and
     // the number that got quoted is what deleted a cache that was working.
