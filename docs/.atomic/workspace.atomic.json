@@ -8268,6 +8268,32 @@
         "⛳THE SWEEP TAKES 70 s PER INJECTION because every case drives a real hook over a real cargo build. That is the price of the subject being shell, and it is why this sweep is scoped to the hook suite rather than the whole tree."
       ]
     },
+    "Round 1133": {
+      "decision_summary": "ONE FIXTURE, ONE CONSTRUCTOR, AND THIS ROUND IS THE HALF-ROUND IT TOOK TO SAY\nSO. R1131 gave this suite a `Fixture` with four fields — what the workflow\ndeclares, what each of the two GitHub endpoints answers, and how deep the\ncheckout's history is — and left the two-argument `tree(caches, answer)` in\nfront of it as a wrapper over the other two.\n\nTWO CONSTRUCTORS FOR ONE FIXTURE IS NOT A CONVENIENCE. The older one CANNOT NAME\ntwo of the four fields, so the next case that needs a run answer or a shallow\nhistory does not extend it — it grows a third constructor beside it, which is\nexactly how a suite ends up with three ways to build one thing and no way to see\nwhat varies between two cases. The house rule for a superseded path is that it\ngoes in the same change that supersedes it; this one survived by half a round,\nand half a repair is the debt this session has spent three rounds naming.\n\nWHAT THE CASES READ LIKE NOW is the argument for it: each one names the field it\ncares about and inherits the rest, so `caches: page_claiming(2, …)` and\n`commits: 1` are the whole of what makes those two cases different from the\nclean one. Nothing about the tree is expressed as a boolean whose meaning a\nreader has to go and look up.\n\nTHE ORACLE FOR CODE MOTION IS THAT THE SAME LAWS STILL FIRE. The injections all\nanchor in `src/`, so a test-side refactor that quietly disconnected a case would\nshow up as an expectation that stopped being met rather than as a red test — and\nthe sweep is what says it did not: fifty injections, all fired, none missed.",
+      "changes_bullets": [
+        "`tools/cache-budget/tests/entrance.rs` — `tree` and its free-function body are gone; `Fixture::build` is the one constructor and every case names the fields it varies."
+      ],
+      "verification_bullets": [
+        "THE SWEEP IS THE ORACLE FOR CODE MOTION: 50 injections, ALL FIRED, missed 0 — a case this refactor had disconnected would have shown as a missed expectation rather than a red test.",
+        "`tools/cache-budget` suite green: 9 entrance, 13 github, 44 law, 8 this-repository.",
+        "`cargo fmt --check` and `cargo clippy --all-targets -- -D warnings` clean."
+      ],
+      "carry_forward_bullets": [
+        "⛳EACH CASE BUILDS A REAL GIT REPOSITORY, now with two commits rather than none, which is what the run window has to diff. It is what makes these nine cases a tenth of a second instead of a millisecond, and nothing here needs them faster."
+      ],
+      "publishable_decision_summary": "ONE FIXTURE, ONE CONSTRUCTOR, AND THIS ROUND IS THE HALF-ROUND IT TOOK TO SAY\nSO. R1131 gave this suite a `Fixture` with four fields — what the workflow\ndeclares, what each of the two GitHub endpoints answers, and how deep the\ncheckout's history is — and left the two-argument `tree(caches, answer)` in\nfront of it as a wrapper over the other two.\n\nTWO CONSTRUCTORS FOR ONE FIXTURE IS NOT A CONVENIENCE. The older one CANNOT NAME\ntwo of the four fields, so the next case that needs a run answer or a shallow\nhistory does not extend it — it grows a third constructor beside it, which is\nexactly how a suite ends up with three ways to build one thing and no way to see\nwhat varies between two cases. The house rule for a superseded path is that it\ngoes in the same change that supersedes it; this one survived by half a round,\nand half a repair is the debt this session has spent three rounds naming.\n\nWHAT THE CASES READ LIKE NOW is the argument for it: each one names the field it\ncares about and inherits the rest, so `caches: page_claiming(2, …)` and\n`commits: 1` are the whole of what makes those two cases different from the\nclean one. Nothing about the tree is expressed as a boolean whose meaning a\nreader has to go and look up.\n\nTHE ORACLE FOR CODE MOTION IS THAT THE SAME LAWS STILL FIRE. The injections all\nanchor in `src/`, so a test-side refactor that quietly disconnected a case would\nshow up as an expectation that stopped being met rather than as a red test — and\nthe sweep is what says it did not: fifty injections, all fired, none missed.",
+      "publishable_changes_bullets": [
+        "`tools/cache-budget/tests/entrance.rs` — `tree` and its free-function body are gone; `Fixture::build` is the one constructor and every case names the fields it varies."
+      ],
+      "publishable_verification_bullets": [
+        "THE SWEEP IS THE ORACLE FOR CODE MOTION: 50 injections, ALL FIRED, missed 0 — a case this refactor had disconnected would have shown as a missed expectation rather than a red test.",
+        "`tools/cache-budget` suite green: 9 entrance, 13 github, 44 law, 8 this-repository.",
+        "`cargo fmt --check` and `cargo clippy --all-targets -- -D warnings` clean."
+      ],
+      "publishable_carry_forward_bullets": [
+        "⛳EACH CASE BUILDS A REAL GIT REPOSITORY, now with two commits rather than none, which is what the run window has to diff. It is what makes these nine cases a tenth of a second instead of a millisecond, and nothing here needs them faster."
+      ]
+    },
     "Round 252": {
       "decision_summary": "Parser CommonMark conformance — recognize indented fenced code blocks (§98) and require whitespace after ATX hash sequence (§62)",
       "changes_bullets": [

@@ -98,23 +98,19 @@ fn page_claiming(counted: u64, held: &[(&str, u64)]) -> String {
 
 /// A repository the gate can be pointed at, and a `gh` that answers for it.
 ///
-/// `answer` is what GitHub says, verbatim — a page built by [`page`], one that
-/// stops early, or nothing at all. The three are different states and this gate
-/// has to tell them apart.
-fn tree(caches: bool, answer: &str) -> tempfile::TempDir {
-    Fixture {
-        declares: caches,
-        caches: answer.to_string(),
-        ..Fixture::default()
-    }
-    .build()
-}
-
-/// A repository, and the two answers `gh` gives about it.
+/// ONE CONSTRUCTOR, and every case says which fields it cares about. The
+/// two-argument helper this replaced could not name the run answer or the depth
+/// of the history, so the cases that need those would have grown a second one
+/// beside it — which is how a fixture ends up with three ways to be built and
+/// no way to see what varies between two cases.
 ///
-/// TWO, BECAUSE THE BINARY MAKES TWO CALLS. One answer for both endpoints is a
-/// stub that agrees with a gate asking the wrong one, which is the same class of
-/// hole as a stub that ignores its arguments.
+/// `caches` and `run` are what GitHub says, VERBATIM: a page built by [`page`],
+/// one that stops early, or nothing at all. Those are different states and this
+/// gate has to tell them apart, so none of them is expressed as a flag.
+///
+/// TWO ANSWERS, BECAUSE THE BINARY MAKES TWO CALLS. One answer for both
+/// endpoints is a stub that agrees with a gate asking the wrong one, which is
+/// the same class of hole as a stub that ignores its arguments.
 struct Fixture {
     /// Does the workflow declare a cache at all?
     declares: bool,
@@ -144,45 +140,41 @@ impl Default for Fixture {
 
 impl Fixture {
     fn build(&self) -> tempfile::TempDir {
-        build_tree(self)
-    }
-}
+        let caches = self.declares;
+        let answer = self.caches.as_str();
+        let at = tempfile::tempdir().expect("a scratch directory");
+        let root = at.path();
+        std::fs::create_dir_all(root.join(".github/workflows")).expect("fixture workflows");
+        std::fs::create_dir_all(root.join("stub")).expect("fixture stub directory");
 
-fn build_tree(fixture: &Fixture) -> tempfile::TempDir {
-    let caches = fixture.declares;
-    let answer = fixture.caches.as_str();
-    let at = tempfile::tempdir().expect("a scratch directory");
-    let root = at.path();
-    std::fs::create_dir_all(root.join(".github/workflows")).expect("fixture workflows");
-    std::fs::create_dir_all(root.join("stub")).expect("fixture stub directory");
-
-    let mut workflow = String::from("name: a fixture, and not this repository's CI\njobs:\n");
-    workflow.push_str(&format!(
-        "  {JOB}:\n    runs-on: ubuntu-latest\n    steps:\n"
-    ));
-    if caches {
-        workflow.push_str(
-            "      - uses: actions/cache@v6\n        with:\n          path: |\n            \
+        let mut workflow = String::from("name: a fixture, and not this repository's CI\njobs:\n");
+        workflow.push_str(&format!(
+            "  {JOB}:\n    runs-on: ubuntu-latest\n    steps:\n"
+        ));
+        if caches {
+            workflow.push_str(
+                "      - uses: actions/cache@v6\n        with:\n          path: |\n            \
              ~/.cargo/registry\n          key: ${{ runner.os }}-fixture-build-\
              ${{ hashFiles('**/Cargo.lock') }}\n",
-        );
-    }
-    workflow.push_str("      - run: cargo test\n");
-    std::fs::write(root.join(".github/workflows/ci.yml"), workflow).expect("write the workflow");
+            );
+        }
+        workflow.push_str("      - run: cargo test\n");
+        std::fs::write(root.join(".github/workflows/ci.yml"), workflow)
+            .expect("write the workflow");
 
-    // WHAT IT WAS ASKED, then what it answers — APPENDED, one block per call,
-    // because the binary asks twice inside a run and a record that overwrote
-    // itself would show only whichever came last.
-    //
-    // AND IT DISPATCHES ON THE ENDPOINT. The two answers have nothing in common
-    // but their transport; a stub handing the cache page to a question about a
-    // run would agree with a gate that asked for the wrong thing.
-    let run = fixture.run.as_str();
-    let stub = root.join("stub/gh");
-    std::fs::write(
-        &stub,
-        format!(
-            "#!/usr/bin/env bash\n\
+        // WHAT IT WAS ASKED, then what it answers — APPENDED, one block per call,
+        // because the binary asks twice inside a run and a record that overwrote
+        // itself would show only whichever came last.
+        //
+        // AND IT DISPATCHES ON THE ENDPOINT. The two answers have nothing in common
+        // but their transport; a stub handing the cache page to a question about a
+        // run would agree with a gate that asked for the wrong thing.
+        let run = self.run.as_str();
+        let stub = root.join("stub/gh");
+        std::fs::write(
+            &stub,
+            format!(
+                "#!/usr/bin/env bash\n\
              {{ printf '%s\\n' \"$@\"; echo; }} >> \"$(dirname \"$0\")/{ASKED}\"\n\
              case \"$*\" in\n\
              \x20 *\"/actions/runs/\"*)\n\
@@ -192,38 +184,39 @@ fn build_tree(fixture: &Fixture) -> tempfile::TempDir {
              \x20   cat <<'CACHE_ANSWER'\n{answer}\nCACHE_ANSWER\n\
              \x20   ;;\n\
              esac\n"
-        ),
-    )
-    .expect("write the gh stub");
-    make_runnable(&stub);
+            ),
+        )
+        .expect("write the gh stub");
+        make_runnable(&stub);
 
-    git(root, &["init", "--quiet"]);
-    git(root, &["add", "-A"]);
-    // A HISTORY, BECAUSE THE RUN WINDOW DIFFS ONE. Which keys this push
-    // legitimately invalidated is git's answer to the globs the keys name, and
-    // the range it is asked over is `HEAD~1..HEAD` unless the runner said
-    // otherwise. The identity is passed rather than inherited: a runner has none
-    // configured, and a fixture that borrowed this machine's would be green here
-    // and red there.
-    for step in 0..fixture.commits {
-        std::fs::write(root.join(format!("commit-{step}.txt")), "a change\n")
-            .expect("something to commit");
+        git(root, &["init", "--quiet"]);
         git(root, &["add", "-A"]);
-        git(
-            root,
-            &[
-                "-c",
-                "user.email=fixture@example.invalid",
-                "-c",
-                "user.name=fixture",
-                "commit",
-                "--quiet",
-                "-m",
-                "a commit this fixture can be diffed from",
-            ],
-        );
+        // A HISTORY, BECAUSE THE RUN WINDOW DIFFS ONE. Which keys this push
+        // legitimately invalidated is git's answer to the globs the keys name, and
+        // the range it is asked over is `HEAD~1..HEAD` unless the runner said
+        // otherwise. The identity is passed rather than inherited: a runner has none
+        // configured, and a fixture that borrowed this machine's would be green here
+        // and red there.
+        for step in 0..self.commits {
+            std::fs::write(root.join(format!("commit-{step}.txt")), "a change\n")
+                .expect("something to commit");
+            git(root, &["add", "-A"]);
+            git(
+                root,
+                &[
+                    "-c",
+                    "user.email=fixture@example.invalid",
+                    "-c",
+                    "user.name=fixture",
+                    "commit",
+                    "--quiet",
+                    "-m",
+                    "a commit this fixture can be diffed from",
+                ],
+            );
+        }
+        at
     }
-    at
 }
 
 fn make_runnable(path: &Path) {
@@ -324,7 +317,11 @@ fn asked(at: &Path) -> Vec<Vec<String>> {
 /// A repository whose one declared cache fits: the law holds, and it says so.
 #[test]
 fn a_repository_whose_caches_fit_exits_zero_and_says_which_answer_that_is() {
-    let at = tree(true, &page(&[(&format!("{PREFIX}abc"), SMALL)]));
+    let at = Fixture {
+        caches: page(&[(&format!("{PREFIX}abc"), SMALL)]),
+        ..Fixture::default()
+    }
+    .build();
     let out = gate(at.path());
     assert_eq!(
         code(&out),
@@ -363,7 +360,11 @@ fn a_repository_whose_caches_fit_exits_zero_and_says_which_answer_that_is() {
 /// from nothing. A hook told `2` here would read it as "the gate is broken".
 #[test]
 fn a_repository_over_its_budget_is_a_finding_and_not_an_unreachable_gate() {
-    let at = tree(true, &page(&[(&format!("{PREFIX}abc"), HUGE)]));
+    let at = Fixture {
+        caches: page(&[(&format!("{PREFIX}abc"), HUGE)]),
+        ..Fixture::default()
+    }
+    .build();
     let out = gate(at.path());
     assert_eq!(
         code(&out),
@@ -393,7 +394,11 @@ fn a_repository_over_its_budget_is_a_finding_and_not_an_unreachable_gate() {
 /// assertion with it.
 #[test]
 fn a_repository_declaring_no_cache_is_unjudged_rather_than_clean() {
-    let at = tree(false, &page(&[]));
+    let at = Fixture {
+        declares: false,
+        ..Fixture::default()
+    }
+    .build();
     let out = gate(at.path());
     assert_eq!(
         code(&out),
@@ -424,7 +429,11 @@ fn a_repository_declaring_no_cache_is_unjudged_rather_than_clean() {
 /// would print the clean sentence and exit `0`.
 #[test]
 fn an_answer_that_stops_early_is_unjudged_rather_than_a_repository_that_fits() {
-    let at = tree(true, &page_claiming(2, &[(&format!("{PREFIX}abc"), SMALL)]));
+    let at = Fixture {
+        caches: page_claiming(2, &[(&format!("{PREFIX}abc"), SMALL)]),
+        ..Fixture::default()
+    }
+    .build();
     let out = gate(at.path());
     assert_eq!(
         code(&out),
@@ -455,7 +464,11 @@ fn an_answer_that_stops_early_is_unjudged_rather_than_a_repository_that_fits() {
 /// budget.
 #[test]
 fn an_answer_that_never_arrives_is_unjudged_rather_than_an_empty_repository() {
-    let at = tree(true, "");
+    let at = Fixture {
+        caches: String::new(),
+        ..Fixture::default()
+    }
+    .build();
     let out = gate(at.path());
     assert_eq!(
         code(&out),
@@ -485,7 +498,11 @@ fn an_answer_that_never_arrives_is_unjudged_rather_than_an_empty_repository() {
 /// dropping it in production reads eleven caches as three.
 #[test]
 fn the_gate_asks_github_for_every_page_of_its_cache_storage() {
-    let at = tree(true, &page(&[(&format!("{PREFIX}abc"), SMALL)]));
+    let at = Fixture {
+        caches: page(&[(&format!("{PREFIX}abc"), SMALL)]),
+        ..Fixture::default()
+    }
+    .build();
     let out = gate(at.path());
     assert_eq!(code(&out), 0, "stderr:\n{}", stderr(&out));
     let calls = asked(at.path());
