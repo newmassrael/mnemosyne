@@ -1324,6 +1324,13 @@ pub enum Refusal {
     /// cost of a cache that was saving ten minutes a run. R1102 made the runtime
     /// verdict loud for it; this is the same defect caught in the file, where it
     /// is a wiring mistake anyone can see rather than a census nobody can trust.
+    /// A program a job runs after a cache restore lives under a path that cache
+    /// holds, so the restore replaces it with the previous generation's copy.
+    ProgramRunAfterARestoreLivesUnderIt {
+        job: String,
+        program: String,
+        held: String,
+    },
     RestoreIsMeasuredOnTheWrongSide {
         job: String,
         side: restored::Side,
@@ -1480,6 +1487,16 @@ impl std::fmt::Display for Refusal {
                  time(s) — what a job started from is the DIFFERENCE between two \
                  measurements, so it takes one of each and no more",
                 side.word()
+            ),
+            Refusal::ProgramRunAfterARestoreLivesUnderIt { job, program, held } => write!(
+                f,
+                "job `{job}` runs `{program}` after a restore of a cache that \
+                 holds `{held}` — the restore replaces that binary with the one \
+                 the previous generation stored, so the program the job runs is \
+                 not the program it built. R1117's record format changed and \
+                 this killed `unrun-tests` in one step; every run before it, the \
+                 same substitution was silent and the recorder measuring that \
+                 job's whole census came out of the cache"
             ),
             Refusal::RestoreIsMeasuredOnTheWrongSide {
                 job,
@@ -1842,6 +1859,36 @@ pub fn judge(census: &Census, declared: &Declared, absent: &BTreeSet<String>) ->
 /// instead (a job whose measurements both sit on one side reports an empty tree,
 /// and an empty tree next to a restorable generation is a refusal), which
 /// detects the mistake from a run rather than firing on the file that is wrong.
+/// Every program one `run:` script executes from a path inside the checkout.
+///
+/// THE WORDS THAT LOOK LIKE A PATH TO A FILE THIS TREE HOLDS — a leading `./`,
+/// or a bare relative path with a directory in it. `cargo` and `git` are names
+/// resolved on `PATH` and are not this repository's files, so they are not
+/// candidates for being overwritten by a restore; `./instruments/release/restored`
+/// is. Read from the script rather than listed, so a step added tomorrow is
+/// under the law the day it is written.
+pub fn programs_run(script: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    for line in script.lines() {
+        // THE FIRST WORD AND ONLY THE FIRST. The rest are arguments, and an
+        // argument that looks like a path (`--manifest-path tools/x/Cargo.toml`)
+        // is read by the program rather than being one.
+        let Some(word) = line.split_whitespace().next() else {
+            continue;
+        };
+        let candidate = word.trim_matches(['"', '\'']);
+        let relative = candidate.strip_prefix("./").unwrap_or(candidate);
+        // An absolute path is somebody else's tree, and a word with no `/` is a
+        // name resolved on `PATH`. Neither is a file this checkout holds at a
+        // path some cache of this workflow could restore over.
+        if candidate.starts_with('/') || !relative.contains('/') {
+            continue;
+        }
+        out.push(relative.to_string());
+    }
+    out
+}
+
 pub fn judge_wiring(declared: &Declared) -> Vec<Refusal> {
     let mut refusals = Vec::new();
     // A WORKFLOW THAT COLLECTS NOTHING OWES NOTHING, and the inverse is a
@@ -1859,6 +1906,46 @@ pub fn judge_wiring(declared: &Declared) -> Vec<Refusal> {
             }
         }
         return refusals;
+    }
+    // WHAT A RESTORE OVERWRITES, which is a different axis from where the
+    // measurements sit. R1118: `unrun-tests` builds its instruments into
+    // `target`, caches `target`, and restores it AFTER the build — so the 8.90
+    // GB that arrives replaces the binaries the job just made, and the program
+    // it runs is the one the previous generation stored. The wiring law above
+    // reads the ORDER of steps in the file and cannot see this: both steps are
+    // in the right places and the file is still wrong.
+    //
+    // ASKED OF EVERY JOB AND NOT ONLY THE ONE THAT BROKE. A cache added tomorrow
+    // to a job whose programs live under `target/` is the same defect, and a
+    // check scoped to today's caches would not be there for it.
+    for (job, steps) in &declared.jobs {
+        // EVERY CACHED PATH AND NOT ONLY THE ONES IN THE CHECKOUT. A `~`-rooted
+        // path cannot be a prefix of a checkout-relative program, so filtering
+        // it out changed no answer — the injection sweep proved the filter dead
+        // by removing it and watching nothing go red. It was also WRONG in the
+        // one case it would have decided: a program under a restored
+        // `~/.cargo/...` is overwritten exactly as one under `target/` is.
+        let held: Vec<&String> = declared.caches.get(job).into_iter().flatten().collect();
+        if held.is_empty() {
+            continue;
+        }
+        for step in steps {
+            for program in programs_run(&step.script) {
+                for path in &held {
+                    // A PREFIX ON PATH COMPONENTS. `targeted/release/x` is not
+                    // under `target`, and a plain `starts_with` would say it is
+                    // — a refusal naming a file no cache touches is how a gate
+                    // teaches people to ignore it.
+                    if program == **path || program.starts_with(&format!("{path}/")) {
+                        refusals.push(Refusal::ProgramRunAfterARestoreLivesUnderIt {
+                            job: job.clone(),
+                            program: program.clone(),
+                            held: (*path).clone(),
+                        });
+                    }
+                }
+            }
+        }
     }
     for (job, caches_at) in &declared.caches_at {
         // WHERE THE RECORD WILL BE WRITTEN — the same law the compilation log

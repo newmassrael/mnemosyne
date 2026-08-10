@@ -637,6 +637,42 @@
         }
       ],
       "expect_red": ["a_record_whose_contents_name_another_job_is_refused"]
+    },
+    {
+      "name": "a-restore-may-overwrite-the-program-a-later-step-runs",
+      "why": "R1118: `unrun-tests` built its instruments into `target`, cached `target`, and restored it after the build — so `restored after` was a DIFFERENT PROGRAM from `restored before`, and R1117's format change killed the job. Every run before it the substitution was silent, and `RUSTC_WRAPPER` pointed at one of those binaries, so that job's whole census was measured by whatever the last generation held",
+      "edits": [
+        {
+          "file": "tools/twice-compiled/src/lib.rs",
+          "from": "                    if program == **path || program.starts_with(&format!(\"{path}/\")) {",
+          "to": "                    if false && (program == **path || program.starts_with(&format!(\"{path}/\"))) {"
+        }
+      ],
+      "expect_red": ["a_program_a_job_runs_after_a_restore_may_not_live_under_it"]
+    },
+    {
+      "name": "the-cargo-home-a-cache-holds-is-exempt",
+      "why": "a program under a restored `~/.cargo/...` is replaced exactly as one under `target/` is. R1118's first version filtered `~` paths out of the held list; the sweep found that filter dead — removing it turned nothing red — and it was also the wrong answer for the one case it would have decided",
+      "edits": [
+        {
+          "file": "tools/twice-compiled/src/lib.rs",
+          "from": "        let held: Vec<&String> = declared.caches.get(job).into_iter().flatten().collect();",
+          "to": "        let held: Vec<&String> = declared.caches.get(job).into_iter().flatten().filter(|path| !path.starts_with('~')).collect();"
+        }
+      ],
+      "expect_red": ["a_program_a_job_runs_after_a_restore_may_not_live_under_it"]
+    },
+    {
+      "name": "an-argument-is-read-instead-of-the-program",
+      "why": "only the FIRST word of a command runs; `--manifest-path tools/x/Cargo.toml` is read BY a program rather than being one. A reader taking any other word reports files nothing executes, and misses the one that is executed — the first false refusal is what teaches people a gate is noise",
+      "edits": [
+        {
+          "file": "tools/twice-compiled/src/lib.rs",
+          "from": "        let Some(word) = line.split_whitespace().next() else {",
+          "to": "        let Some(word) = line.split_whitespace().last() else {"
+        }
+      ],
+      "expect_red": ["a_program_a_job_runs_after_a_restore_may_not_live_under_it"]
     }
   ]
 }

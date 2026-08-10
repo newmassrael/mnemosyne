@@ -1743,6 +1743,74 @@ fn an_exact_hit_that_brought_nothing_is_refused_rather_than_counted() {
     );
 }
 
+/// R1118 — A RESTORE OVERWRITES, and that is a different axis from where the
+/// measurements sit. `unrun-tests` built its instruments into `target`, cached
+/// `target`, and restored it after the build: the program the job ran was the one
+/// the previous generation stored. The wiring law reads the ORDER of steps and
+/// cannot see it — every step was in the right place and the file was wrong.
+#[test]
+fn a_program_a_job_runs_after_a_restore_may_not_live_under_it() {
+    let overwritten = |program: &str, cached: &[&str]| {
+        let mut runs = cached_job("unrun-tests", cached);
+        runs[0].script = format!("{program} before 'target'");
+        runs[1].script = format!("{program} after");
+        let declared = twice_compiled::Declared::of(
+            &runs,
+            &[cache("unrun-tests", cached)],
+            &[collecting("unrun-tests")],
+        );
+        twice_compiled::judge_wiring(&declared)
+            .into_iter()
+            .filter(|refusal| {
+                matches!(refusal, Refusal::ProgramRunAfterARestoreLivesUnderIt { .. })
+            })
+            .collect::<Vec<_>>()
+    };
+
+    assert_eq!(
+        overwritten("./target/debug/restored", &["target"]),
+        vec![
+            Refusal::ProgramRunAfterARestoreLivesUnderIt {
+                job: "unrun-tests".to_string(),
+                program: "target/debug/restored".to_string(),
+                held: "target".to_string(),
+            },
+            Refusal::ProgramRunAfterARestoreLivesUnderIt {
+                job: "unrun-tests".to_string(),
+                program: "target/debug/restored".to_string(),
+                held: "target".to_string(),
+            },
+        ],
+        "the binary is replaced between the step that builds it and the step \
+         that runs it, and BOTH measuring steps name it"
+    );
+
+    // THE OTHER DIRECTION, which keeps this from being a law against relative
+    // programs: the instrument outside the cached tree is what this repository
+    // now does, and it must pass.
+    assert!(
+        overwritten("./instruments/debug/restored", &["target"]).is_empty(),
+        "a program the cache cannot reach is not one the restore replaces"
+    );
+
+    // A CACHE OF THE CARGO HOME REACHES NOTHING IN THE CHECKOUT — a refusal
+    // naming a file no cache touches is how a gate teaches people to ignore it.
+    assert!(
+        overwritten("./target/debug/restored", &["~/.cargo/registry"]).is_empty(),
+        "`~/.cargo` is not the checkout"
+    );
+    // BUT IT REACHES WHAT IT HOLDS. A program under the restored cargo home is
+    // replaced exactly as one under `target/` is, and this repository's first
+    // version of this law filtered `~` paths out — which changed no answer and
+    // would have decided this one wrongly. The sweep found the filter dead by
+    // removing it and watching nothing go red.
+    assert_eq!(
+        overwritten("~/.cargo/registry/bin/restored", &["~/.cargo/registry"]).len(),
+        2,
+        "both measuring steps run a program the restore overwrites"
+    );
+}
+
 /// R1117 — A RECORD SAYS WHICH CACHE ITS INTERVAL IS THE PRICE OF, and that
 /// field is only worth having if something refuses a wrong one. R1116 found the
 /// cost of the other shape: `restore-keys` was spelled by hand, derived

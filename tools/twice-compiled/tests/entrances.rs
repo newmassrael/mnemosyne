@@ -65,12 +65,18 @@ const BUILDS: &[&str] = &["cargo build --manifest-path crates/shared/Cargo.toml"
 /// readings and the replay simply does not perform it, which is exactly why its
 /// census reads as taken from nothing.
 const MEASURES_A_RESTORE: &[&str] = &[
-    "cargo build --manifest-path tools/restored/Cargo.toml",
+    // THE INSTRUMENT IS BUILT OUTSIDE THE TREE THIS JOB CACHES. R1118: this
+    // fixture used to build it into `target` and then cache `target`, which is
+    // the defect the gate now refuses — a restore replaces the binary between
+    // the step that builds it and the step that runs it. The fixture declared it
+    // and the new law said so on its first run, which is the fourth time in this
+    // arc that turning a law on found the fixture wrong rather than the tree.
+    "CARGO_TARGET_DIR=instruments cargo build --manifest-path tools/restored/Cargo.toml",
     // THE PREFIX THE FIXTURE'S OWN CACHE KEY RESOLVES TO. The gate checks the
     // record's cache against what the workflow declares, so a fixture naming
     // some other prefix would be declaring the defect it is not testing for.
-    "./target/debug/restored before --cache 'Linux-fixture-unrun-tests-' 'target'",
-    "./target/debug/restored after",
+    "./instruments/debug/restored before --cache 'Linux-fixture-unrun-tests-' 'target'",
+    "./instruments/debug/restored after",
     "cargo build --manifest-path crates/shared/Cargo.toml",
 ];
 

@@ -65,7 +65,7 @@ concurrency:
 env:
   CARGO_PROFILE_DEV_DEBUG: line-tables-only
   CARGO_INCREMENTAL: 0
-  RUSTC_WRAPPER: ${{ github.workspace }}/target/release/rustc-log
+  RUSTC_WRAPPER: ${{ github.workspace }}/instruments/release/rustc-log
 
 # R1091 — EVERY CACHE KEY IN THIS FILE HASHES THIS FILE, and that is a defect
 # repair rather than belt-and-braces. A key that hashes only the lockfiles says
@@ -138,6 +138,31 @@ jobs:
       - name: Build the instruments
         env:
           RUSTC_WRAPPER: ""
+          # R1118 — OUTSIDE THE TREE ANY CACHE HOLDS, and this is a repair rather
+          # than tidiness. `unrun-tests` caches `target`, and its restore runs
+          # AFTER this step: the 8.90 GB that arrives overwrites the binaries
+          # this step just built with the previous generation's. R1117 changed
+          # the record format and that job died — `restored before` wrote a line
+          # that `restored after`, a DIFFERENT PROGRAM by then, refused to read.
+          # It is the only job that caches a build directory and the only one
+          # that failed, which is what named the mechanism.
+          #
+          # WORSE THAN THE RED RUN: nothing had changed the format before, so the
+          # same substitution had been silent every run. `RUSTC_WRAPPER` points
+          # at one of these binaries, so that job's whole compilation census was
+          # taken by whatever the last generation's cache happened to hold.
+          # `tools/twice-compiled` now refuses a program a job runs after a
+          # restore that lives under a path the cache holds.
+          #
+          # RELATIVE AND NOT `${{ github.workspace }}/instruments`, for R1117's
+          # reason: a GitHub expression makes a step unreplayable, and putting one
+          # here took all nine jobs out of the local replay's census at once —
+          # including the ones with no cache at all. Cargo resolves a relative
+          # `CARGO_TARGET_DIR` against the working directory, which is the
+          # checkout root for every step in this file. Measured, by building
+          # `tools/rustc-log` with it set and finding the binary at
+          # `<root>/instruments/release/rustc-log`.
+          CARGO_TARGET_DIR: instruments
         run: |
           cargo build --release -q --locked --manifest-path tools/rustc-log/Cargo.toml
           cargo build --release -q --locked --manifest-path tools/restored/Cargo.toml
@@ -211,7 +236,7 @@ jobs:
       # finding `restore-keys` spelled twice and compared never.
       - name: What is on disk before the cache is restored
         run: >
-          ./target/release/restored before
+          ./instruments/release/restored before
           --cache 'Linux-cargo-'
           '~/.cargo/registry' '~/.cargo/git'
 
@@ -229,7 +254,7 @@ jobs:
       - name: What the cache restored
         env:
           MNEMOSYNE_CACHE_HIT: ${{ steps.cache.outputs.cache-hit }}
-        run: ./target/release/restored after
+        run: ./instruments/release/restored after
 
       - name: cargo test --workspace
         run: cargo test --workspace --locked
@@ -323,6 +348,22 @@ jobs:
       - name: Build the instruments
         env:
           RUSTC_WRAPPER: ""
+          # R1118 — OUTSIDE THE TREE ANY CACHE HOLDS, and this is a repair rather
+          # than tidiness. `unrun-tests` caches `target`, and its restore runs
+          # AFTER this step: the 8.90 GB that arrives overwrites the binaries
+          # this step just built with the previous generation's. R1117 changed
+          # the record format and that job died — `restored before` wrote a line
+          # that `restored after`, a DIFFERENT PROGRAM by then, refused to read.
+          # It is the only job that caches a build directory and the only one
+          # that failed, which is what named the mechanism.
+          #
+          # WORSE THAN THE RED RUN: nothing had changed the format before, so the
+          # same substitution had been silent every run. `RUSTC_WRAPPER` points
+          # at one of these binaries, so that job's whole compilation census was
+          # taken by whatever the last generation's cache happened to hold.
+          # `tools/twice-compiled` now refuses a program a job runs after a
+          # restore that lives under a path the cache holds.
+          CARGO_TARGET_DIR: instruments
         run: |
           cargo build --release -q --locked --manifest-path tools/rustc-log/Cargo.toml
           cargo build --release -q --locked --manifest-path tools/restored/Cargo.toml
@@ -334,7 +375,7 @@ jobs:
       # R1101 — see `validate`'s copy of these two steps.
       - name: What is on disk before the cache is restored
         run: >
-          ./target/release/restored before
+          ./instruments/release/restored before
           --cache 'Linux-cargo-citations-'
           '~/.cargo/registry' '~/.cargo/git'
 
@@ -359,7 +400,7 @@ jobs:
       - name: What the cache restored
         env:
           MNEMOSYNE_CACHE_HIT: ${{ steps.cache.outputs.cache-hit }}
-        run: ./target/release/restored after
+        run: ./instruments/release/restored after
 
       - name: every item citation in the workspace names an item
         run: >
@@ -428,6 +469,22 @@ jobs:
       - name: Build the instruments
         env:
           RUSTC_WRAPPER: ""
+          # R1118 — OUTSIDE THE TREE ANY CACHE HOLDS, and this is a repair rather
+          # than tidiness. `unrun-tests` caches `target`, and its restore runs
+          # AFTER this step: the 8.90 GB that arrives overwrites the binaries
+          # this step just built with the previous generation's. R1117 changed
+          # the record format and that job died — `restored before` wrote a line
+          # that `restored after`, a DIFFERENT PROGRAM by then, refused to read.
+          # It is the only job that caches a build directory and the only one
+          # that failed, which is what named the mechanism.
+          #
+          # WORSE THAN THE RED RUN: nothing had changed the format before, so the
+          # same substitution had been silent every run. `RUSTC_WRAPPER` points
+          # at one of these binaries, so that job's whole compilation census was
+          # taken by whatever the last generation's cache happened to hold.
+          # `tools/twice-compiled` now refuses a program a job runs after a
+          # restore that lives under a path the cache holds.
+          CARGO_TARGET_DIR: instruments
         run: |
           cargo build --release -q --locked --manifest-path tools/rustc-log/Cargo.toml
           cargo build --release -q --locked --manifest-path tools/restored/Cargo.toml
@@ -435,7 +492,7 @@ jobs:
       # R1101 — see `validate`'s copy of these two steps.
       - name: What is on disk before the cache is restored
         run: >
-          ./target/release/restored before
+          ./instruments/release/restored before
           --cache 'Linux-cargo-side-'
           '~/.cargo/registry' '~/.cargo/git'
 
@@ -453,7 +510,7 @@ jobs:
       - name: What the cache restored
         env:
           MNEMOSYNE_CACHE_HIT: ${{ steps.cache.outputs.cache-hit }}
-        run: ./target/release/restored after
+        run: ./instruments/release/restored after
 
       - name: fmt, clippy and test in every separate in-repo workspace
         run: ./scripts/check-side-workspaces.sh
@@ -521,6 +578,22 @@ jobs:
       - name: Build the instruments
         env:
           RUSTC_WRAPPER: ""
+          # R1118 — OUTSIDE THE TREE ANY CACHE HOLDS, and this is a repair rather
+          # than tidiness. `unrun-tests` caches `target`, and its restore runs
+          # AFTER this step: the 8.90 GB that arrives overwrites the binaries
+          # this step just built with the previous generation's. R1117 changed
+          # the record format and that job died — `restored before` wrote a line
+          # that `restored after`, a DIFFERENT PROGRAM by then, refused to read.
+          # It is the only job that caches a build directory and the only one
+          # that failed, which is what named the mechanism.
+          #
+          # WORSE THAN THE RED RUN: nothing had changed the format before, so the
+          # same substitution had been silent every run. `RUSTC_WRAPPER` points
+          # at one of these binaries, so that job's whole compilation census was
+          # taken by whatever the last generation's cache happened to hold.
+          # `tools/twice-compiled` now refuses a program a job runs after a
+          # restore that lives under a path the cache holds.
+          CARGO_TARGET_DIR: instruments
         run: |
           cargo build --release -q --locked --manifest-path tools/rustc-log/Cargo.toml
           cargo build --release -q --locked --manifest-path tools/restored/Cargo.toml
@@ -537,7 +610,7 @@ jobs:
       # R1101 — see `validate`'s copy of these two steps.
       - name: What is on disk before the cache is restored
         run: >
-          ./target/release/restored before
+          ./instruments/release/restored before
           --cache 'Linux-cargo-serverfeat-'
           '~/.cargo/registry' '~/.cargo/git'
 
@@ -555,7 +628,7 @@ jobs:
       - name: What the cache restored
         env:
           MNEMOSYNE_CACHE_HIT: ${{ steps.cache.outputs.cache-hit }}
-        run: ./target/release/restored after
+        run: ./instruments/release/restored after
 
       # LINT IT TOO, and that is not symmetry for its own sake: the first time
       # anything linted this build it found a `MutexGuard` held across an await
@@ -642,6 +715,22 @@ jobs:
       - name: Build the instruments
         env:
           RUSTC_WRAPPER: ""
+          # R1118 — OUTSIDE THE TREE ANY CACHE HOLDS, and this is a repair rather
+          # than tidiness. `unrun-tests` caches `target`, and its restore runs
+          # AFTER this step: the 8.90 GB that arrives overwrites the binaries
+          # this step just built with the previous generation's. R1117 changed
+          # the record format and that job died — `restored before` wrote a line
+          # that `restored after`, a DIFFERENT PROGRAM by then, refused to read.
+          # It is the only job that caches a build directory and the only one
+          # that failed, which is what named the mechanism.
+          #
+          # WORSE THAN THE RED RUN: nothing had changed the format before, so the
+          # same substitution had been silent every run. `RUSTC_WRAPPER` points
+          # at one of these binaries, so that job's whole compilation census was
+          # taken by whatever the last generation's cache happened to hold.
+          # `tools/twice-compiled` now refuses a program a job runs after a
+          # restore that lives under a path the cache holds.
+          CARGO_TARGET_DIR: instruments
         run: |
           cargo build --release -q --locked --manifest-path tools/rustc-log/Cargo.toml
           cargo build --release -q --locked --manifest-path tools/restored/Cargo.toml
@@ -677,7 +766,7 @@ jobs:
       # whether a tree arrived at all. See `validate`'s copy of these two steps.
       - name: What is on disk before the cache is restored
         run: >
-          ./target/release/restored before
+          ./instruments/release/restored before
           --cache 'Linux-cargo-unrun-'
           '~/.cargo/registry' '~/.cargo/git' 'target'
 
@@ -696,7 +785,7 @@ jobs:
       - name: What the cache restored
         env:
           MNEMOSYNE_CACHE_HIT: ${{ steps.cache.outputs.cache-hit }}
-        run: ./target/release/restored after
+        run: ./instruments/release/restored after
 
       - name: every test this repository compiles is one some CI command runs
         run: >
@@ -768,6 +857,22 @@ jobs:
       - name: Build the instruments
         env:
           RUSTC_WRAPPER: ""
+          # R1118 — OUTSIDE THE TREE ANY CACHE HOLDS, and this is a repair rather
+          # than tidiness. `unrun-tests` caches `target`, and its restore runs
+          # AFTER this step: the 8.90 GB that arrives overwrites the binaries
+          # this step just built with the previous generation's. R1117 changed
+          # the record format and that job died — `restored before` wrote a line
+          # that `restored after`, a DIFFERENT PROGRAM by then, refused to read.
+          # It is the only job that caches a build directory and the only one
+          # that failed, which is what named the mechanism.
+          #
+          # WORSE THAN THE RED RUN: nothing had changed the format before, so the
+          # same substitution had been silent every run. `RUSTC_WRAPPER` points
+          # at one of these binaries, so that job's whole compilation census was
+          # taken by whatever the last generation's cache happened to hold.
+          # `tools/twice-compiled` now refuses a program a job runs after a
+          # restore that lives under a path the cache holds.
+          CARGO_TARGET_DIR: instruments
         run: |
           cargo build --release -q --locked --manifest-path tools/rustc-log/Cargo.toml
           cargo build --release -q --locked --manifest-path tools/restored/Cargo.toml
@@ -782,7 +887,7 @@ jobs:
       # R1101 — see `validate`'s copy of these two steps.
       - name: What is on disk before the cache is restored
         run: >
-          ./target/release/restored before
+          ./instruments/release/restored before
           --cache 'Linux-cargo-uncompiled-'
           '~/.cargo/registry' '~/.cargo/git'
 
@@ -802,7 +907,7 @@ jobs:
       - name: What the cache restored
         env:
           MNEMOSYNE_CACHE_HIT: ${{ steps.cache.outputs.cache-hit }}
-        run: ./target/release/restored after
+        run: ./instruments/release/restored after
 
       - name: every Rust file this repository tracks is one cargo compiles
         run: >
@@ -856,6 +961,8 @@ jobs:
         env:
           RUSTC_WRAPPER: ""
           RUSTUP_TOOLCHAIN: ${{ steps.msrv.outputs.version }}
+          # Outside the tree any cache holds — see `validate`'s copy.
+          CARGO_TARGET_DIR: instruments
         run: |
           cargo build --release -q --locked --manifest-path tools/rustc-log/Cargo.toml
           cargo build --release -q --locked --manifest-path tools/restored/Cargo.toml
@@ -863,7 +970,7 @@ jobs:
       # R1101 — see `validate`'s copy of these two steps.
       - name: What is on disk before the cache is restored
         run: >
-          ./target/release/restored before
+          ./instruments/release/restored before
           --cache 'Linux-cargo-msrv-'
           '~/.cargo/registry' '~/.cargo/git'
 
@@ -883,7 +990,7 @@ jobs:
       - name: What the cache restored
         env:
           MNEMOSYNE_CACHE_HIT: ${{ steps.cache.outputs.cache-hit }}
-        run: ./target/release/restored after
+        run: ./instruments/release/restored after
 
       - name: cargo check --workspace on MSRV
         env:
@@ -999,6 +1106,12 @@ jobs:
       - name: Build the compilation recorder
         env:
           RUSTC_WRAPPER: ""
+          # Outside the tree any cache holds — see `validate`'s copy. Neither
+          # gate job caches a build directory, so nothing here would be
+          # overwritten today; the law is about where a program LIVES rather than
+          # about which job happens to cache what, so both jobs answer it the
+          # same way and a cache added tomorrow cannot make one of them wrong.
+          CARGO_TARGET_DIR: instruments
         run: cargo build --release -q --locked --manifest-path tools/rustc-log/Cargo.toml
 
       # R1101 — WHAT EACH JOB'S DISK RECEIVED, which is the other half of this
@@ -1102,6 +1215,12 @@ jobs:
       - name: Build the compilation recorder
         env:
           RUSTC_WRAPPER: ""
+          # Outside the tree any cache holds — see `validate`'s copy. Neither
+          # gate job caches a build directory, so nothing here would be
+          # overwritten today; the law is about where a program LIVES rather than
+          # about which job happens to cache what, so both jobs answer it the
+          # same way and a cache added tomorrow cannot make one of them wrong.
+          CARGO_TARGET_DIR: instruments
         run: cargo build --release -q --locked --manifest-path tools/rustc-log/Cargo.toml
 
       - name: Collect what every job compiled

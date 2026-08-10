@@ -112,3 +112,9 @@ Cargo.lock.bak
 # workspaces may keep one is `locked_resolution_smoke`, and it derives the
 # answer from the manifests rather than from this line.
 /studio/Cargo.lock
+
+# R1118 — where the instruments are built, OUTSIDE the tree any cache holds.
+# `unrun-tests` caches `target` and its restore runs after they are built, so a
+# binary under `target/` is replaced by the previous generation before the step
+# that runs it. See the workflow comment on `CARGO_TARGET_DIR`.
+/instruments/
