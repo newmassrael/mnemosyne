@@ -30,6 +30,66 @@
   "min_free_mb": 8000,
   "injections": [
     {
+      "name": "the-gate-that-could-not-look-reports-clean",
+      "why": "R1127, AND IT WAS MEASURED SILENT BEFORE IT WAS FIXED. This file's own doc comment says the three exit codes are the point — `0` the law holds, `1` tests are dark, `2` the gate could not judge — and that one code for the last two is the failure R1078 shipped. Run against the suite as it stood, this put that exact defect back and NOTHING went red: `main.rs` had no reader at all, because nothing ran the binary. `tests/entrance.rs` is that reader",
+      "edits": [
+        {
+          "file": "tools/unrun-tests/src/main.rs",
+          "from": "        return ExitCode::from(2);\n    }\n\n    let dark = report.dark();",
+          "to": "        return ExitCode::SUCCESS;\n    }\n\n    let dark = report.dark();"
+        }
+      ],
+      "expect_red": ["a_tree_whose_ci_runs_no_tests_is_unjudged_rather_than_clean"]
+    },
+    {
+      "name": "a-tree-with-no-manifest-is-judged-anyway",
+      "why": "the other road to `2`, and a reader who saw only the refusal case could conclude the code means `CI issues no test command`. A hook runs with the repository root as its working directory and may be this gate running over ANOTHER tree; answering `clean` for a directory that is not a cargo tree at all is the loudest possible version of reporting on nothing",
+      "edits": [
+        {
+          "file": "tools/unrun-tests/src/main.rs",
+          "from": "        return ExitCode::from(2);\n    }\n\n    let report = unrun_tests::run(&root);",
+          "to": "        return ExitCode::SUCCESS;\n    }\n\n    let report = unrun_tests::run(&root);"
+        }
+      ],
+      "expect_red": ["a_directory_that_is_not_a_cargo_tree_is_unjudged_too"]
+    },
+    {
+      "name": "dark-tests-are-reported-and-then-passed",
+      "why": "the findings and the verdict are two answers, and a gate that prints its findings and exits 0 is one no hook can act on — the whole population of dark tests would be a paragraph nobody's CI ever fails over",
+      "edits": [
+        {
+          "file": "tools/unrun-tests/src/main.rs",
+          "from": "    ExitCode::from(1)\n}",
+          "to": "    ExitCode::SUCCESS\n}"
+        }
+      ],
+      "expect_red": ["a_tree_with_a_test_ci_leaves_out_exits_one_and_names_it"]
+    },
+    {
+      "name": "a-dark-test-is-counted-but-not-named",
+      "why": "`3 test(s) exist and no CI command runs them` is not actionable: the fix is per test — run it from a job, pass `--ignored`, or delete it — and which test it is decides which of those. A count without the names is a finding a reader has to reproduce by hand before they can do anything about it",
+      "edits": [
+        {
+          "file": "tools/unrun-tests/src/main.rs",
+          "from": "        for name in names {\n            eprintln!(\"        {name}\");\n        }",
+          "to": "        for name in names.iter().take(0) {\n            eprintln!(\"        {name}\");\n        }"
+        }
+      ],
+      "expect_red": ["a_tree_with_a_test_ci_leaves_out_exits_one_and_names_it"]
+    },
+    {
+      "name": "the-clean-answer-is-an-exit-code-and-nothing-said",
+      "why": "a gate that prints only its findings cannot be told from one that never ran — the sentence on the clean path is what says the reading HAPPENED, and it is the line a person looks for in a green log",
+      "edits": [
+        {
+          "file": "tools/unrun-tests/src/main.rs",
+          "from": "        println!(\"[unrun-tests] every test this repository compiles is run by CI\");",
+          "to": "        println!(\"[unrun-tests] done\");"
+        }
+      ],
+      "expect_red": ["a_tree_whose_tests_ci_all_runs_exits_zero_and_says_which_answer_that_is"]
+    },
+    {
       "name": "the-ignored-subtraction-is-removed",
       "why": "`--list` prints ignored tests too, so crediting a command with what it LISTS credits it with tests it skips; without the subtraction an `#[ignore]` nobody ever passes `--ignored` for reads as covered, which is nine of the eleven this gate found",
       "edits": [
