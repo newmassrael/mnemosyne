@@ -78,50 +78,57 @@ fn everybody_compiled(declared: &Declared) -> Census {
         );
         census.jobs.insert(job.clone(), log);
     }
-    // AND EVERY JOB WITH A CACHE SAID WHAT IT STARTED FROM, for the same reason
-    // the compilations are pinned: this fixture exists to leave only the WIRING
-    // for the judge to speak about. What is asserted below is that the workflow
-    // asks each of these jobs to write the record — not that any run produced
-    // one.
-    for job in declared.caches.keys() {
-        let paths = &declared.cached_paths(job);
-        let mut written = restored::encode_job(job);
-        // WHICH CACHE, taken from what this workflow declares rather than
-        // spelled again here: a fixture inventing a prefix would be testing that
-        // the gate accepts an invented one.
-        for instrument in restored::INSTRUMENTS {
-            written.extend_from_slice(&restored::encode_built_from(instrument, "0f0f0f"));
+    // AND EVERY CACHE SAID WHAT IT BROUGHT, for the same reason the compilations
+    // are pinned: this fixture exists to leave only the WIRING for the judge to
+    // speak about. What is asserted below is that the workflow asks for each of
+    // these records — not that any run produced one.
+    //
+    // ONE PER CACHE AND NOT ONE PER JOB, which is R1117's shape reaching the
+    // fixture: `unrun-tests` declares two, and a fixture writing one record per
+    // job would leave the second unmeasured and be testing a workflow this
+    // repository does not have.
+    for (job, caches) in &declared.caches {
+        for (nickname, cache) in caches.iter().enumerate() {
+            let mut written = restored::encode_job(job);
+            for instrument in restored::INSTRUMENTS {
+                written.extend_from_slice(&restored::encode_built_from(instrument, "0f0f0f"));
+            }
+            // WHICH CACHE AND WHICH PATHS, both taken from what this workflow
+            // declares rather than spelled again here: a fixture inventing
+            // either would be testing that the gate accepts an invention.
+            written.extend_from_slice(&restored::encode_cache(&cache.prefix));
+            written.extend_from_slice(&restored::encode_at(restored::Side::Before, 1_000_000_000));
+            for path in &cache.paths {
+                written.extend_from_slice(&restored::encode_side(
+                    restored::Side::Before,
+                    path,
+                    &restored::Measurement::default(),
+                ));
+            }
+            for path in &cache.paths {
+                written.extend_from_slice(&restored::encode_side(
+                    restored::Side::After,
+                    path,
+                    &restored::Measurement {
+                        entries: 1,
+                        bytes: 1_000,
+                    },
+                ));
+            }
+            written.extend_from_slice(&restored::encode_at(restored::Side::After, 1_030_000_000));
+            written.extend_from_slice(&restored::encode_exact(true));
+            // THE FILE NAME OWES ONLY THAT IT IS THIS JOB'S, so a job with two
+            // caches distinguishes them however it likes — the `cache` line
+            // inside is what says which restore each is of.
+            let file = match nickname {
+                0 => format!("{job}.restored"),
+                other => format!("{job}.{other}.restored"),
+            };
+            census.restored.insert(
+                file,
+                restored::decode(&String::from_utf8(written).expect("the record is text")),
+            );
         }
-        written.extend_from_slice(&restored::encode_cache(
-            declared
-                .prefixes(job)
-                .first()
-                .expect("a job with a cache declares a prefix"),
-        ));
-        written.extend_from_slice(&restored::encode_at(restored::Side::Before, 1_000_000_000));
-        for path in paths {
-            written.extend_from_slice(&restored::encode_side(
-                restored::Side::Before,
-                path,
-                &restored::Measurement::default(),
-            ));
-        }
-        for path in paths {
-            written.extend_from_slice(&restored::encode_side(
-                restored::Side::After,
-                path,
-                &restored::Measurement {
-                    entries: 1,
-                    bytes: 1_000,
-                },
-            ));
-        }
-        written.extend_from_slice(&restored::encode_at(restored::Side::After, 1_030_000_000));
-        written.extend_from_slice(&restored::encode_exact(true));
-        census.restored.insert(
-            job.clone(),
-            restored::decode(&String::from_utf8(written).expect("the record is text")),
-        );
     }
     census
 }
@@ -186,6 +193,23 @@ fn this_workflow_has_the_jobs_the_census_is_worth_taking_of() {
     assert!(
         !declared.caches.contains_key(GATE),
         "`{GATE}` takes no cache of its own, and its own suite says so"
+    );
+    // R1122 — AND ONE JOB DECLARES MORE THAN ONE, which is what every law about
+    // a restore record being one CACHE's is for. While every job had exactly one
+    // cache, "keyed by the job" and "keyed by the restore" were the same map and
+    // nothing in this repository could tell a reader that had confused them.
+    let split: Vec<(&String, usize)> = declared
+        .caches
+        .iter()
+        .map(|(job, caches)| (job, caches.len()))
+        .filter(|(_, count)| *count > 1)
+        .collect();
+    assert_eq!(
+        split.len(),
+        1,
+        "{WORKFLOW} has {} job(s) declaring more than one cache ({split:?}) — \
+         the per-cache laws are vacuous over a file where every job has one",
+        split.len()
     );
 }
 
@@ -295,7 +319,12 @@ fn every_cached_job_of_this_workflow_measures_the_restore_around_it() {
     // indices would turn this red rather than print an empty verdict.
     for job in declared.caches.keys().cloned().collect::<Vec<_>>() {
         let mut moved = declared.clone();
-        let past = moved.caches_at(&job).iter().max().copied().unwrap_or(0) + 1;
+        let past = moved.caches[&job]
+            .iter()
+            .map(|cache| cache.index)
+            .max()
+            .unwrap_or(0)
+            + 1;
         let steps = moved.jobs.get_mut(&job).expect("a cached job with steps");
         let before = steps
             .iter_mut()
@@ -371,21 +400,23 @@ fn this_workflow_caches_one_build_directory_and_not_a_workspaces_own() {
     // symptom is a green job that takes half an hour. The number of copies the
     // budget allows is one, so the law is `== 1`.
     let declared = declared_jobs(&workflow_steps());
-    let holders: Vec<&String> = declared
+    // R1122 — COUNTED PER CACHE STEP, WHICH IS NOW FINER THAN PER JOB. The job
+    // holding the build directory declares TWO caches, and a count over jobs
+    // would go on saying "one" if a second STEP of it started holding a `target`
+    // too — two archives of the same 8.90 GB, which is the arithmetic that put
+    // this repository at 11.87 GB of a 10 GB budget.
+    let holders: Vec<(&String, &str)> = declared
         .caches
-        .keys()
-        .filter(|job| {
-            declared
-                .cached_paths(job)
-                .iter()
-                .any(|path| path.ends_with("target"))
-        })
+        .iter()
+        .flat_map(|(job, caches)| caches.iter().map(move |cache| (job, cache)))
+        .filter(|(_, cache)| cache.paths.iter().any(|path| path.ends_with("target")))
+        .map(|(job, cache)| (job, cache.prefix.as_str()))
         .collect();
     assert_eq!(
         holders.len(),
         1,
-        "{WORKFLOW} has {} job(s) caching a build directory and the budget \
-         affords one copy of it: {holders:?}",
+        "{WORKFLOW} has {} cache step(s) keeping a build directory and the \
+         budget affords one copy of it: {holders:?}",
         holders.len()
     );
     for path in declared

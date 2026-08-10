@@ -231,7 +231,7 @@
       "edits": [
         {
           "file": "tools/cache-budget/src/lib.rs",
-          "from": "                    if self.started.get(&owner.job) != Some(&restored::Warmth::Nothing) {",
+          "from": "                    if self.started.get(&row.restore_by(owner)) != Some(&restored::Warmth::Nothing)\n                    {",
           "to": "                    if true {"
         }
       ],
@@ -243,8 +243,8 @@
       "edits": [
         {
           "file": "tools/cache-budget/src/lib.rs",
-          "from": "                    if self.started.get(&owner.job) != Some(&restored::Warmth::Nothing) {",
-          "to": "                    if self.started.get(&owner.job).is_none() {"
+          "from": "                    if self.started.get(&row.restore_by(owner)) != Some(&restored::Warmth::Nothing)\n                    {",
+          "to": "                    if self.started.get(&row.restore_by(owner)).is_none() {"
         }
       ],
       "expect_red": ["a_job_that_was_warm_is_not_refused_for_starting_from_nothing"]
@@ -395,6 +395,30 @@
         }
       ],
       "expect_red": ["every_cache_owner_in_this_repository_falls_on_one_side_of_this_gates_horizon"]
+    },
+    {
+      "name": "a-nested-prefix-is-harmless-whatever-the-other-cache-holds",
+      "why": "R1122: `restore-keys` matches over the WHOLE repository's storage, and six of this file's keys sit under `Linux-cargo-`. For five that is harmless and is what the mechanism is FOR — they hold exactly the two cargo-home trees `validate` holds, so falling back onto one of their generations gets it the paths it asked for. Dropping the subset test reports all six, which is a reading that cannot tell the mechanism working from the mechanism landing 8.90 GB of somebody else's build directory",
+      "edits": [
+        {
+          "file": "tools/ci-plan/src/lib.rs",
+          "from": "            if !held.is_subset(&asked) {",
+          "to": "            if true {"
+        }
+      ],
+      "expect_red": ["one_declared_cache_reaches_anothers_archive_and_this_is_which"]
+    },
+    {
+      "name": "only-an-identical-prefix-reaches-another-cache",
+      "why": "the other direction, and it is the one that answers NOTHING and looks clean: a fallback is a PREFIX match, so a reader comparing the two prefixes for equality finds no pair in any repository that has ever existed — the empty answer wearing the shape of a tidy one",
+      "edits": [
+        {
+          "file": "tools/ci-plan/src/lib.rs",
+          "from": "            if other.prefix == cache.prefix || !other.prefix.starts_with(&cache.prefix) {",
+          "to": "            if other.prefix == cache.prefix || other.prefix != cache.prefix {"
+        }
+      ],
+      "expect_red": ["one_declared_cache_reaches_anothers_archive_and_this_is_which"]
     }
   ]
 }

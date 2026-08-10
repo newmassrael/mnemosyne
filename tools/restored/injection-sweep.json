@@ -210,7 +210,7 @@
       "edits": [
         {
           "file": "tools/restored/src/main.rs",
-          "from": "    if flag != \"--cache\" || cache.is_empty() {\n        fail(USAGE);\n    }",
+          "from": "    if flag != restored::CACHE_FLAG || cache.is_empty() {\n        fail(USAGE);\n    }",
           "to": ""
         }
       ],

@@ -571,3 +571,70 @@ fn every_invocation_in_one_step_is_read_and_not_only_the_first() {
         vec![restored::Side::Before, restored::Side::After]
     );
 }
+
+// --- which cache a step says it prices ---------------------------------------
+//
+// R1122 — THE ARGUMENT THE RECORD'S `cache` LINE IS WRITTEN FROM. A gate reading
+// the workflow has to be able to ask "which cache does this pair say it is the
+// price of", because the check on the record itself only asks whether the prefix
+// is one the JOB declares — and every one of a job's own prefixes passes that.
+// A `--cache` copied from the step above it is a well-formed record naming a
+// real cache of the right job, carrying the other restore's interval.
+
+#[test]
+fn a_before_step_is_read_for_the_cache_it_says_it_prices() {
+    for spelling in SPELLINGS {
+        assert_eq!(
+            restored::caches_named(&format!(
+                "{spelling} before {} 'Linux-cargo-unrun-' '~/.cargo/registry'",
+                restored::CACHE_FLAG
+            )),
+            vec!["Linux-cargo-unrun-".to_string()],
+            "{spelling}: the quotes are the shell's and not part of the prefix"
+        );
+    }
+    // AND UNQUOTED, because nothing makes a workflow write the quotes.
+    assert_eq!(
+        restored::caches_named(&format!(
+            "restored before {} Linux-cargo- '~/.cargo/git'",
+            restored::CACHE_FLAG
+        )),
+        vec!["Linux-cargo-".to_string()]
+    );
+}
+
+#[test]
+fn a_step_that_names_no_cache_names_no_cache() {
+    // THE `after` SIDE NEVER NAMES ONE — it re-measures what `before` wrote down,
+    // and a reader that took a prefix off it would be inventing one.
+    assert!(restored::caches_named(&format!("{} after", SPELLINGS[0])).is_empty());
+    // A `before` WITH THE FLAG MISSING is a step that exits 1 the moment it
+    // runs, and the empty answer is what makes the gate refuse it rather than
+    // accept whatever word happened to be there.
+    assert!(
+        restored::caches_named(&format!("{} before '~/.cargo/registry'", SPELLINGS[0])).is_empty(),
+        "the first path is not a prefix, and reading it as one would be a gate \
+         agreeing with a step that cannot run"
+    );
+    // AND THE STEP THAT BUILDS THIS PROGRAM, which is the reader-goes-wrong case
+    // `sides_measured` has too.
+    assert!(restored::caches_named(
+        "cargo build --release -q --manifest-path tools/restored/Cargo.toml"
+    )
+    .is_empty());
+}
+
+#[test]
+fn every_before_in_one_step_names_its_own_cache() {
+    // ONE STEP CAN RUN IT TWICE, and the caller's law is `exactly one` — so a
+    // reader stopping at the first would report a step naming two caches as a
+    // step naming one, which is the shape that passes a count it should fail.
+    assert_eq!(
+        restored::caches_named(&format!(
+            "{binary} before {flag} 'Linux-a-' 'target' && {binary} before {flag} 'Linux-b-' 'x'",
+            binary = SPELLINGS[0],
+            flag = restored::CACHE_FLAG
+        )),
+        vec!["Linux-a-".to_string(), "Linux-b-".to_string()]
+    );
+}

@@ -690,10 +690,15 @@ jobs:
     timeout-minutes: 90
     env:
       MNEMOSYNE_RUSTC_LOG: ${{ github.workspace }}/rustc-log/unrun-tests.log
-      # R1101 — see `validate`'s copy of this variable. THIS job is the one the
-      # measurement was built for: its cache is the only one holding a whole
-      # build tree, and it is the one Round 1099 deleted for saving nothing.
-      MNEMOSYNE_RESTORED: ${{ github.workspace }}/rustc-log/unrun-tests.restored
+      # R1122 — AND NO `MNEMOSYNE_RESTORED` HERE, which every other job in this
+      # file does declare. THIS job is the one the measurement was built for: it
+      # is the only one holding a whole build tree, and it is the one Round 1099
+      # deleted for saving nothing. A record is one CACHE's since R1117, and this
+      # job now declares TWO — so the path cannot be the job's, and each
+      # measuring pair carries its own. `tools/twice-compiled` asks for the
+      # variable on the steps that MEASURE rather than on every step, which is
+      # what makes a job-level value right for the six jobs with one cache and
+      # impossible for this one.
     steps:
       - uses: actions/checkout@v7
 
@@ -764,27 +769,74 @@ jobs:
       # reading of two runs' job durations and censuses held side by side by a
       # person; what follows measures, per run and on this job's own disk,
       # whether a tree arrived at all. See `validate`'s copy of these two steps.
-      - name: What is on disk before the cache is restored
+      #
+      # R1122 — TWO CACHE STEPS WHERE THERE WAS ONE, and the reason is that the
+      # question GG1b asks has no answer while there is one. This job's single
+      # step held `~/.cargo/registry`, `~/.cargo/git` AND `target`, so the
+      # interval it cost was the price of all three at once — and the registry
+      # half is separately known to be overwhelmingly worth having (756 MB in
+      # 5.4 s against 381.4 s of compiling in `validate`). Charging the whole
+      # interval to the build directory is the arithmetic R1099 got wrong when it
+      # deleted a cache that was saving ten minutes. One archive also cannot be
+      # made cold on its own: taking a path out of `path:` does not stop an
+      # archive unpacking as it was stored.
+      #
+      # THE BUILD DIRECTORY KEEPS THE OLD KEY, and that asymmetry is a constraint
+      # rather than a preference. A renamed key leaves its archive held and
+      # declared by nothing, which `tools/cache-budget` refuses as an orphan for
+      # the seven days it takes to age out — so a split may rename at most one of
+      # its halves, and the half worth keeping warm is the 8.90 GB one.
+      #
+      # NEITHER PREFIX IS A PREFIX OF THE OTHER, which is what stops one cache's
+      # `restore-keys` serving the other's archive: `Linux-cargo-unruntests-home-`
+      # and `Linux-cargo-unrun-` first differ at the character after `unrun`.
+      - name: What is on disk before the cargo home is restored
+        env:
+          MNEMOSYNE_RESTORED: ${{ github.workspace }}/rustc-log/unrun-tests.cargo-home.restored
         run: >
           ./instruments/release/restored before
-          --cache 'Linux-cargo-unrun-'
-          '~/.cargo/registry' '~/.cargo/git' 'target'
+          --cache 'Linux-cargo-unruntests-home-'
+          '~/.cargo/registry' '~/.cargo/git'
 
-      - name: Cache cargo (unrun tests)
-        id: cache
+      - name: Cache cargo (unrun tests, cargo home)
+        id: cache-home
         uses: actions/cache@v6
         with:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
+          key: ${{ runner.os }}-cargo-unruntests-home-${{ hashFiles('**/Cargo.lock', '.github/workflows/mnemosyne-validate.yml') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-unruntests-home-
+
+      - name: What the cargo home restored
+        env:
+          MNEMOSYNE_RESTORED: ${{ github.workspace }}/rustc-log/unrun-tests.cargo-home.restored
+          MNEMOSYNE_CACHE_HIT: ${{ steps.cache-home.outputs.cache-hit }}
+        run: ./instruments/release/restored after
+
+      - name: What is on disk before the build directory is restored
+        env:
+          MNEMOSYNE_RESTORED: ${{ github.workspace }}/rustc-log/unrun-tests.build-directory.restored
+        run: >
+          ./instruments/release/restored before
+          --cache 'Linux-cargo-unrun-'
+          'target'
+
+      - name: Cache cargo (unrun tests, build directory)
+        id: cache-tree
+        uses: actions/cache@v6
+        with:
+          path: |
             target
           key: ${{ runner.os }}-cargo-unrun-${{ hashFiles('**/Cargo.lock', '.github/workflows/mnemosyne-validate.yml') }}
           restore-keys: |
             ${{ runner.os }}-cargo-unrun-
 
-      - name: What the cache restored
+      - name: What the build directory restored
         env:
-          MNEMOSYNE_CACHE_HIT: ${{ steps.cache.outputs.cache-hit }}
+          MNEMOSYNE_RESTORED: ${{ github.workspace }}/rustc-log/unrun-tests.build-directory.restored
+          MNEMOSYNE_CACHE_HIT: ${{ steps.cache-tree.outputs.cache-hit }}
         run: ./instruments/release/restored after
 
       - name: every test this repository compiles is one some CI command runs

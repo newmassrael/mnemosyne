@@ -28,7 +28,7 @@ fn judging(
     declared: &[CacheDeclaration],
     held: &[Held],
     run: Option<&Run>,
-    started: &BTreeMap<String, restored::Warmth>,
+    started: &BTreeMap<restored::Restore, restored::Warmth>,
 ) -> Report {
     cache_budget::conclude(limit, declared, held, run, started, &collecting())
 }
@@ -745,11 +745,25 @@ fn a_pull_request_falls_back_to_the_parent_of_head_which_is_its_base() {
 // missed, and Round 1099 read exactly that state as a cold build and deleted a
 // cache that was saving ten minutes. The verdicts below are the join.
 
-/// What a job's disk said, by job id.
-fn started(measured: &[(&str, restored::Warmth)]) -> BTreeMap<String, restored::Warmth> {
+/// What a job's disk said after ONE of its restores.
+///
+/// R1122 — BY JOB AND CACHE, because a record is one cache's: a job declaring
+/// two writes two of these and a fixture keyed by the job could only ever hand
+/// the gate one of them.
+fn started(
+    measured: &[(&str, &str, restored::Warmth)],
+) -> BTreeMap<restored::Restore, restored::Warmth> {
     measured
         .iter()
-        .map(|(job, warmth)| ((*job).to_string(), *warmth))
+        .map(|(job, cache, warmth)| {
+            (
+                restored::Restore {
+                    job: (*job).to_string(),
+                    cache: (*cache).to_string(),
+                },
+                *warmth,
+            )
+        })
         .collect()
 }
 
@@ -784,6 +798,7 @@ fn a_missed_key_whose_owner_was_warm_stops_claiming_it_paid_for_a_cold_build() {
     let run = the_run(&[]);
     let warm = started(&[(
         "unrun",
+        "Linux-cargo-unrun-",
         restored::Warmth::PrefixHit {
             bytes: 7_466_000_000,
         },
@@ -837,7 +852,7 @@ fn a_missed_key_with_no_record_says_what_it_did_not_measure() {
 fn a_job_that_restored_nothing_with_a_generation_held_is_refused() {
     let (declared, held) = one_key(BEFORE_THE_RUN);
     let run = the_run(&[]);
-    let cold = started(&[("unrun", restored::Warmth::Nothing)]);
+    let cold = started(&[("unrun", "Linux-cargo-unrun-", restored::Warmth::Nothing)]);
     let report = judging(LIMIT, &declared, &held, Some(&run), &cold);
     match report.refusals().as_slice() {
         [Refusal::RestoredNothingWithAGenerationHeld {
@@ -860,7 +875,7 @@ fn a_job_that_restored_nothing_with_nothing_to_restore_is_not_refused_for_it() {
     let (declared, held) = one_key(DURING_THE_RUN);
     // Excused as a key, so the only verdict left available is the new one.
     let run = the_run(&["Linux-cargo-unrun-"]);
-    let cold = started(&[("unrun", restored::Warmth::Nothing)]);
+    let cold = started(&[("unrun", "Linux-cargo-unrun-", restored::Warmth::Nothing)]);
     let report = judging(LIMIT, &declared, &held, Some(&run), &cold);
     assert_eq!(
         report.refusals(),
@@ -886,7 +901,7 @@ fn a_job_that_was_warm_is_not_refused_for_starting_from_nothing() {
             &declared,
             &held,
             Some(&run),
-            &started(&[("unrun", warmth)]),
+            &started(&[("unrun", "Linux-cargo-unrun-", warmth)]),
         );
         assert_eq!(report.refusals(), Vec::new(), "{warmth:?}");
     }
@@ -907,7 +922,7 @@ fn the_generation_that_counts_is_the_one_that_predates_the_run() {
         &declared,
         &held,
         Some(&run),
-        &started(&[("unrun", restored::Warmth::Nothing)]),
+        &started(&[("unrun", "Linux-cargo-unrun-", restored::Warmth::Nothing)]),
     );
     match report.refusals().as_slice() {
         [Refusal::RestoredNothingWithAGenerationHeld { generation, .. }] => assert_eq!(
@@ -985,13 +1000,13 @@ fn a_flags_value_is_not_the_tree_to_judge() {
 fn report_with_both_instruments() -> Report {
     let declared = [declaration("unrun-tests", "Linux-cargo-unrun-", TARGET)];
     let caches = [held("Linux-cargo-unrun-abc", 7.83)];
-    let mut started = BTreeMap::new();
-    started.insert(
-        "unrun-tests".to_string(),
+    let started = started(&[(
+        "unrun-tests",
+        "Linux-cargo-unrun-",
         restored::Warmth::PrefixHit {
             bytes: 27_258_000_000,
         },
-    );
+    )]);
     judging(LIMIT, &declared, &caches, None, &started)
 }
 
@@ -1204,7 +1219,11 @@ fn a_record_in_hand_contradicts_a_reading_that_says_nothing_collects_it() {
     // self-consistent and entirely wrong, which is the class of defect this whole
     // repair is about. A record actually in hand cannot be argued with.
     let (declared, held) = silent_owner(OTHER_WORKFLOW);
-    let heard = started(&[("replay", restored::Warmth::PrefixHit { bytes: 246_000_000 })]);
+    let heard = started(&[(
+        "replay",
+        "Linux-cargo-replay-",
+        restored::Warmth::PrefixHit { bytes: 246_000_000 },
+    )]);
     let report = cache_budget::conclude(LIMIT, &declared, &held, None, &heard, &collecting());
     match report.refusals().as_slice() {
         [Refusal::Unreached(why)] => {

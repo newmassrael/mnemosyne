@@ -905,8 +905,8 @@ pub struct Census {
     /// of the reasons a census covers a single workflow: two files could each
     /// declare a `validate`, and their logs would be one another's.
     pub jobs: BTreeMap<String, JobLog>,
-    /// What each job STARTED FROM: the record `tools/restored` leaves either
-    /// side of the job's cache restore, keyed by the file it arrived in.
+    /// What each cache restore BROUGHT: the record `tools/restored` leaves
+    /// either side of one `actions/cache` step.
     ///
     /// THE STATE THE COUNTS WERE TAKEN IN, kept beside them rather than derived
     /// from them, because it cannot be derived from them: a job that compiled
@@ -914,6 +914,16 @@ pub struct Census {
     /// because its tree was stale are the same census and different runs. The
     /// error is kept rather than dropped so that a record which did not decode
     /// travels as a refusal and not as a job with no cache at all.
+    ///
+    /// KEYED BY THE FILE NAME AND NOT BY THE JOB, which is not the same choice
+    /// [`Census::jobs`] makes and is a consequence of R1117. A compilation log
+    /// IS a job's; a restore record is one CACHE's, so a job declaring two
+    /// leaves two files and a map keyed by the job would hold whichever was read
+    /// last — the cheap registry's price standing in for the build directory's.
+    /// The name is the only handle a record that did NOT decode has, which is
+    /// why it is the key rather than [`restored::Restore`]: a malformed record
+    /// has no readable job and no readable cache, and dropping it would report
+    /// the loudest defect available here as a job that simply said nothing.
     pub restored: BTreeMap<String, Result<restored::Restored, restored::Malformed>>,
 }
 
@@ -1084,16 +1094,24 @@ impl Census {
         paid
     }
 
-    /// The state each job started in — the control variable every count above
+    /// The state each RESTORE began in — the control variable every count above
     /// is taken under.
     ///
-    /// ONLY THE RECORDS THAT DECODED, because the alternative is a job appearing
-    /// here with a state invented for it; the ones that did not are refusals and
-    /// travel as those.
-    pub fn started(&self) -> BTreeMap<&str, restored::Warmth> {
+    /// ONLY THE RECORDS THAT DECODED, because the alternative is a restore
+    /// appearing here with a state invented for it; the ones that did not are
+    /// refusals and travel as those.
+    ///
+    /// KEYED BY THE RECORD'S OWN ACCOUNT OF ITSELF and not by the file it
+    /// arrived in: the file name is checked to be its job's and says nothing
+    /// about which cache, so joining on it would put two of one job's restores
+    /// under one key and lose one of them.
+    pub fn started(&self) -> BTreeMap<restored::Restore, restored::Warmth> {
         self.restored
-            .iter()
-            .filter_map(|(job, record)| Some((job.as_str(), record.as_ref().ok()?.warmth())))
+            .values()
+            .filter_map(|record| {
+                let record = record.as_ref().ok()?;
+                Some((record.restore(), record.warmth()))
+            })
             .collect()
     }
 
@@ -1259,16 +1277,18 @@ pub enum Refusal {
     /// another with the name not changed, which is the paste error this
     /// repository already has a rule about.
     LogIsNotNamedForItsJob { job: String, path: String },
-    /// A job with a cache left no record of what that cache brought.
+    /// One of a job's caches left no record of what it brought.
     ///
     /// THE STATE IS A CONTROL VARIABLE OF THE COUNTS, and a census missing it
     /// reads exactly like one taken in whatever state the reader assumed. Round
     /// 1099 assumed cold, and the assumption cost a cache that was saving ten
     /// minutes a run.
-    JobDidNotSayWhatItRestored { job: String },
-    /// A record arrived and could not be read.
-    RestoreRecordIsMalformed { job: String, why: String },
-    /// A record measured paths that are not the ones the job's cache holds.
+    JobDidNotSayWhatItRestored { job: String, cache: String },
+    /// A record arrived and could not be read. Named by its FILE, because a
+    /// record that did not decode has no readable job and no readable cache —
+    /// the two halves every other refusal here names it by.
+    RestoreRecordIsMalformed { file: String, why: String },
+    /// A record measured paths that are not the ones ITS cache holds.
     ///
     /// THE LIST IS WRITTEN TWICE — once as the cache's `path:` and once as the
     /// argument to the step that measures it — and this is what makes that safe.
@@ -1277,13 +1297,31 @@ pub enum Refusal {
     /// smaller difference.
     RestoreRecordMeasuredOtherPaths {
         job: String,
+        cache: String,
         measured: Vec<String>,
         declared: Vec<String>,
     },
     /// A record says the primary key matched exactly and that nothing arrived on
     /// disk. The two instruments contradict each other, and which of them is
     /// wrong decides whether this census is of a warm run or a cold one.
-    RestoredNothingAfterAnExactHit { job: String },
+    RestoredNothingAfterAnExactHit { job: String, cache: String },
+    /// Two records claim to be the price of one job's one cache.
+    ///
+    /// AN OVERWRITE IS THE ALTERNATIVE AND IT IS SILENT. The join is a map, so a
+    /// second record for one restore would simply replace the first and the
+    /// census would print one price with no sign that another had been offered —
+    /// and the two are routinely different numbers, since the way this arises is
+    /// two measuring pairs writing one file or two runs unpacked into one
+    /// directory.
+    OneRestoreIsRecordedTwice {
+        restore: String,
+        /// BOTH FILES, because either one alone sends the reader to a file that
+        /// is not obviously wrong. Which of the two a map happened to keep is
+        /// the order `read_dir` returned them in, so naming only that one is a
+        /// refusal whose subject is an accident.
+        files: Vec<String>,
+        measured: Vec<String>,
+    },
     /// One job's two instruments were built from different commits.
     InstrumentsOfOneJobDisagreeAboutTheirBuild {
         job: String,
@@ -1332,6 +1370,22 @@ pub enum Refusal {
         job: String,
         record: String,
         caches: usize,
+    },
+    /// A measuring pair brackets one cache and says it is pricing another.
+    ///
+    /// THE ONE THING NO RECORD CAN CONTRADICT. `restored before --cache <prefix>`
+    /// is what the record's `cache` line is written from, and the check on that
+    /// line asks only whether the prefix is one the JOB declares — which every
+    /// one of a job's own prefixes is. So a `before` argument copied from the
+    /// step above it produces a well-formed record naming a real cache of the
+    /// right job, and the interval it carries belongs to the other one. That is
+    /// the arithmetic R1099 got wrong, arrived at by a route the round that
+    /// repaired it left open.
+    AMeasuringPairNamesAnotherCache {
+        job: String,
+        record: String,
+        named: Vec<String>,
+        brackets: String,
     },
     /// A job measures a number of restores that is not the number of caches it
     /// declares.
@@ -1427,38 +1481,60 @@ impl std::fmt::Display for Refusal {
                  census reads the job's name off the file, so two jobs sharing a \
                  path become one blob wearing the shape of a census"
             ),
-            Refusal::JobDidNotSayWhatItRestored { job } => write!(
+            Refusal::JobDidNotSayWhatItRestored { job, cache } => write!(
                 f,
-                "job `{job}` declares a cache and left no record of what it \
-                 brought — this census counts a COLD build by construction, so \
-                 the cache state is a control variable of every number in it, \
+                "job `{job}` declares cache `{cache}` and left no record of what \
+                 it brought — this census counts a COLD build by construction, \
+                 so the cache state is a control variable of every number in it, \
                  and a census missing it reads as one taken in whatever state \
                  the reader assumed"
             ),
-            Refusal::RestoreRecordIsMalformed { job, why } => write!(
+            Refusal::RestoreRecordIsMalformed { file, why } => write!(
                 f,
-                "job `{job}` left a record of what it restored that does not \
+                "`{file}` is a record of what a cache restored that does not \
                  read: {why}"
             ),
             Refusal::RestoreRecordMeasuredOtherPaths {
                 job,
+                cache,
                 measured,
                 declared,
             } => write!(
                 f,
-                "job `{job}` measured {} across its cache restore and its cache \
-                 holds {} — the two lists are written in two places and this is \
-                 the only thing holding them together, so a path in one and not \
-                 the other is a restore measured smaller than it was",
+                "job `{job}` measured {} across the restore of `{cache}` and \
+                 that cache holds {} — the two lists are written in two places \
+                 and this is the only thing holding them together, so a path in \
+                 one and not the other is a restore measured smaller than it was",
                 measured.join(", "),
                 declared.join(", ")
             ),
-            Refusal::RestoredNothingAfterAnExactHit { job } => write!(
+            Refusal::RestoredNothingAfterAnExactHit { job, cache } => write!(
                 f,
-                "job `{job}` was told by `actions/cache` that its primary key \
-                 matched exactly, and not one byte arrived under the paths that \
-                 cache holds — one of the two instruments is wrong, and which \
-                 one decides whether this census is of a warm run or a cold one"
+                "job `{job}` was told by `actions/cache` that the primary key of \
+                 `{cache}` matched exactly, and not one byte arrived under the \
+                 paths that cache holds — one of the two instruments is wrong, \
+                 and which one decides whether this census is of a warm run or a \
+                 cold one"
+            ),
+            Refusal::OneRestoreIsRecordedTwice {
+                restore,
+                files,
+                measured,
+            } => write!(
+                f,
+                "{} both claim to be the price of {restore}, measuring {} — one \
+                 restore has one price, so the join would keep whichever was \
+                 read last and print it with no sign that another was offered",
+                files
+                    .iter()
+                    .map(|file| format!("`{file}`"))
+                    .collect::<Vec<_>>()
+                    .join(" and "),
+                measured
+                    .iter()
+                    .map(|paths| format!("[{paths}]"))
+                    .collect::<Vec<_>>()
+                    .join(" and ")
             ),
             Refusal::InstrumentsOfOneJobDisagreeAboutTheirBuild {
                 job,
@@ -1543,6 +1619,29 @@ impl std::fmt::Display for Refusal {
                  restore that does not happen, and two charges one interval to \
                  both, which is how a 32 GB build directory's price is read off \
                  a 756 MB registry's restore"
+            ),
+            Refusal::AMeasuringPairNamesAnotherCache {
+                job,
+                record,
+                named,
+                brackets,
+            } => write!(
+                f,
+                "job `{job}`'s pair writing `{record}` sits either side of \
+                 `{brackets}` and says it prices {} — the record's `cache` line \
+                 is written from that argument and is only ever checked against \
+                 the caches the JOB declares, every one of which this passes, so \
+                 nothing downstream can tell one of a job's restores from \
+                 another once the two are swapped",
+                if named.is_empty() {
+                    "no cache at all".to_string()
+                } else {
+                    named
+                        .iter()
+                        .map(|one| format!("`{one}`"))
+                        .collect::<Vec<_>>()
+                        .join(" and ")
+                }
             ),
             Refusal::AJobMeasuresOtherThanOneRestorePerCache { job, pairs, caches } => write!(
                 f,
@@ -1739,10 +1838,14 @@ pub struct Declared {
     /// held — and R1117 made a record a CACHE's, which is when the merge stopped
     /// being a simplification and became a loss.
     ///
-    /// The readers that still want the old answers ask for them
-    /// ([`Declared::cached_paths`], [`Declared::caches_at`],
-    /// [`Declared::prefixes`]), so the region law and the per-cache laws are
-    /// derived from one datum rather than kept beside each other.
+    /// The readers that still want an old answer ask for it
+    /// ([`Declared::cached_paths`], [`Declared::prefixes`]), so the region law
+    /// and the per-cache laws are derived from one datum rather than kept beside
+    /// each other. R1122 removed the third of those, `caches_at`: once the
+    /// wiring law asked WHICH cache a pair brackets rather than merely how many,
+    /// a list of positions with the prefixes taken off it had no caller left,
+    /// and a helper kept alive by its own test is the carry this repository
+    /// deletes rather than preserves.
     pub caches: BTreeMap<String, Vec<CacheOfAJob>>,
     /// Does this workflow collect anything a later job could download?
     ///
@@ -1813,16 +1916,6 @@ impl Declared {
             }
         }
         out
-    }
-
-    /// Where each of a job's cache steps sits.
-    pub fn caches_at(&self, job: &str) -> Vec<usize> {
-        self.caches
-            .get(job)
-            .into_iter()
-            .flatten()
-            .map(|cache| cache.index)
-            .collect()
     }
 
     /// The resolved key prefix of each cache a job declares.
@@ -2038,11 +2131,21 @@ pub fn judge_wiring(declared: &Declared) -> Vec<Refusal> {
         }
     }
     for job in declared.caches.keys() {
-        let caches_at = declared.caches_at(job);
-        let caches_at = &caches_at;
+        let held = declared.caches.get(job).map(Vec::as_slice).unwrap_or(&[]);
         // WHERE THE RECORD WILL BE WRITTEN — the same law the compilation log
         // has, on the other record.
+        //
+        // ASKED OF THE STEPS THAT MEASURE AND NOT OF EVERY STEP, which R1121's
+        // shape made wrong rather than merely wide. The variable used to sit in
+        // the job's `env:`, so every step of a cached job carried it and asking
+        // all of them cost nothing; a job with TWO caches writes TWO records, so
+        // the value cannot be the job's any more and the steps that do not
+        // measure have no record to name. A law still demanding it of them would
+        // refuse exactly the workflow this round exists to make possible.
         for step in declared.jobs.get(job).into_iter().flatten() {
+            if restored::sides_measured(&step.script).is_empty() {
+                continue;
+            }
             match step.env.get(restored::VARIABLE) {
                 Some(path) if !path.is_empty() && restored::names_its_job(path, job) => {}
                 Some(path) => refusals.push(Refusal::RestoreIsNotRecorded {
@@ -2068,17 +2171,26 @@ pub fn judge_wiring(declared: &Declared) -> Vec<Refusal> {
         // measurement belongs to — nothing else in the file does — so it is the
         // key here rather than a position anybody has to count.
         let mut pairs: BTreeMap<String, Vec<(usize, restored::Side)>> = BTreeMap::new();
+        // AND WHICH CACHE THE PAIR SAYS IT PRICES, taken off the same steps. The
+        // `--cache` argument is what the record's `cache` line is written from,
+        // so a pair that names the wrong one produces a record naming a cache
+        // its job really does declare — passing every check that reads the
+        // record, and charging one restore's interval to the other cache.
+        let mut named: BTreeMap<String, Vec<String>> = BTreeMap::new();
         for step in declared.jobs.get(job).into_iter().flatten() {
+            let record = step
+                .env
+                .get(restored::VARIABLE)
+                .cloned()
+                .unwrap_or_default();
             for side in restored::sides_measured(&step.script) {
                 pairs
-                    .entry(
-                        step.env
-                            .get(restored::VARIABLE)
-                            .cloned()
-                            .unwrap_or_default(),
-                    )
+                    .entry(record.clone())
                     .or_default()
                     .push((step.index, side));
+            }
+            for cache in restored::caches_named(&step.script) {
+                named.entry(record.clone()).or_default().push(cache);
             }
         }
         for (record, measured) in &pairs {
@@ -2108,26 +2220,40 @@ pub fn judge_wiring(declared: &Declared) -> Vec<Refusal> {
             // it returning per cache. A pair in the wrong ORDER brackets nothing
             // and is caught by the same count, which is why the two questions do
             // not need two refusals.
-            let between = caches_at
+            let between: Vec<&CacheOfAJob> = held
                 .iter()
-                .filter(|at| *before_at < **at && **at < *after_at)
-                .count();
-            if between != 1 {
+                .filter(|cache| *before_at < cache.index && cache.index < *after_at)
+                .collect();
+            let [bracketed] = between.as_slice() else {
                 refusals.push(Refusal::AMeasuringPairBracketsOtherThanOneCache {
                     job: job.clone(),
                     record: record.clone(),
-                    caches: between,
+                    caches: between.len(),
                 });
+                continue;
+            };
+            // AND IT NAMES THE ONE IT BRACKETS. Checked only once the pair is
+            // known to bracket exactly one cache, because "which cache is this
+            // the price of" has no answer at all until then — two names for one
+            // wiring mistake would send two readers to two different repairs.
+            match named.get(record).map(Vec::as_slice) {
+                Some([said]) if *said == bracketed.prefix => {}
+                other => refusals.push(Refusal::AMeasuringPairNamesAnotherCache {
+                    job: job.clone(),
+                    record: record.clone(),
+                    named: other.unwrap_or_default().to_vec(),
+                    brackets: bracketed.prefix.clone(),
+                }),
             }
         }
         // AND ONE PAIR PER CACHE. A job that declares two and measures one has a
         // restore nobody priced, and the record it does write reads as the whole
         // job's.
-        if pairs.len() != caches_at.len() {
+        if pairs.len() != held.len() {
             refusals.push(Refusal::AJobMeasuresOtherThanOneRestorePerCache {
                 job: job.clone(),
                 pairs: pairs.len(),
-                caches: caches_at.len(),
+                caches: held.len(),
             });
         }
     }
@@ -2155,56 +2281,78 @@ pub fn judge_wiring(declared: &Declared) -> Vec<Refusal> {
 /// them would refuse a workflow that is right.
 fn judge_restores(census: &Census, declared: &Declared, absent: &BTreeSet<String>) -> Vec<Refusal> {
     let mut refusals = judge_wiring(declared);
+    // WHAT DECODED, FILED UNDER WHAT IT SAYS IT IS. R1121 left this join on the
+    // JOB, which was the whole identity of a record while a job had one cache;
+    // the point of splitting a cache step is that it no longer is. A second
+    // record for one restore is a refusal rather than an overwrite, because the
+    // two would price one interval twice and whichever the walk reached last
+    // would silently become the answer.
+    let mut said: BTreeMap<restored::Restore, (&str, &restored::Restored)> = BTreeMap::new();
+    for (file, record) in &census.restored {
+        let Ok(record) = record else { continue };
+        if absent.contains(&record.job) {
+            continue;
+        }
+        // A RECORD IN THE WRONG FILE IS NOT A SECOND PRICE FOR THE RESTORE IT
+        // NAMES. Two jobs writing one path leaves one record carrying another
+        // job's name, and it would land here as a duplicate of that job's real
+        // one — a second name for the paste error, sending a reader to a repair
+        // that is not the one. The name is checked below and this waits for it.
+        if !restored::names_its_job(file, &record.job) {
+            continue;
+        }
+        if let Some((was, earlier)) = said.insert(record.restore(), (file, record)) {
+            refusals.push(Refusal::OneRestoreIsRecordedTwice {
+                restore: record.restore().to_string(),
+                files: vec![was.to_string(), file.clone()],
+                measured: vec![earlier.measured().join(", "), record.measured().join(", ")],
+            });
+        }
+    }
     for job in declared.caches.keys() {
         if absent.contains(job) || !declared.jobs.contains_key(job) {
             continue;
         }
-        let paths = declared.cached_paths(job);
-        let paths = &paths;
-        match census.restored.get(job) {
-            None => refusals.push(Refusal::JobDidNotSayWhatItRestored { job: job.clone() }),
-            Some(Err(why)) => refusals.push(Refusal::RestoreRecordIsMalformed {
+        // ONE VERDICT PER CACHE, AND THE PATHS ARE THAT CACHE'S. Until this
+        // round the comparison was against the REGION — every path any of the
+        // job's caches held — which is the same list only while the job has one
+        // cache. For a job with two it is wrong in both directions at once: each
+        // record measures its own cache's paths and is refused for it, and a
+        // record that measured the whole region would be accepted while pricing
+        // a restore that never touched half of it.
+        for cache in declared.caches.get(job).into_iter().flatten() {
+            let wanted = restored::Restore {
                 job: job.clone(),
-                why: why.to_string(),
-            }),
-            Some(Ok(record)) => {
-                // WHICH CACHE THIS IS THE PRICE OF, checked against what the
-                // workflow declares. R1117 gave the record the field; without
-                // this it would be one more identity spelled twice and compared
-                // never, which is exactly the defect R1116 found in
-                // `restore-keys` — a property nothing could contradict.
-                //
-                // ONLY WHEN THE RECORD IS THIS JOB'S. A record pasted into
-                // another job's file names the wrong cache as well as the wrong
-                // job, and that event already has a name below — two names for
-                // one defect send two readers to two different repairs, which is
-                // the discipline R1113 wrote down for the clock check.
-                let declared_prefixes = declared.prefixes(job);
-                if record.job == *job && !declared_prefixes.contains(&record.cache) {
-                    refusals.push(Refusal::RestoreRecordNamesACacheTheJobDoesNotDeclare {
-                        job: job.clone(),
-                        named: record.cache.clone(),
-                        declared: declared_prefixes,
-                    });
-                }
-                if record.measured() != paths.iter().map(String::as_str).collect::<Vec<_>>() {
-                    refusals.push(Refusal::RestoreRecordMeasuredOtherPaths {
-                        job: job.clone(),
-                        measured: record
-                            .measured()
-                            .iter()
-                            .map(|one| one.to_string())
-                            .collect(),
-                        declared: paths.clone(),
-                    });
-                }
-                // THE CONTRADICTION IS A REFUSAL AND NOT A THIRD READING. The
-                // other three states of `restored::Warmth` are states of the
-                // world; this one is the two instruments disagreeing, and a
-                // census cannot be quoted while it is unresolved.
-                if record.warmth() == restored::Warmth::HitThatBroughtNothing {
-                    refusals.push(Refusal::RestoredNothingAfterAnExactHit { job: job.clone() });
-                }
+                cache: cache.prefix.clone(),
+            };
+            let Some((_, record)) = said.get(&wanted) else {
+                refusals.push(Refusal::JobDidNotSayWhatItRestored {
+                    job: job.clone(),
+                    cache: cache.prefix.clone(),
+                });
+                continue;
+            };
+            if record.measured() != cache.paths.iter().map(String::as_str).collect::<Vec<_>>() {
+                refusals.push(Refusal::RestoreRecordMeasuredOtherPaths {
+                    job: job.clone(),
+                    cache: cache.prefix.clone(),
+                    measured: record
+                        .measured()
+                        .iter()
+                        .map(|one| one.to_string())
+                        .collect(),
+                    declared: cache.paths.clone(),
+                });
+            }
+            // THE CONTRADICTION IS A REFUSAL AND NOT A THIRD READING. The
+            // other three states of `restored::Warmth` are states of the
+            // world; this one is the two instruments disagreeing, and a
+            // census cannot be quoted while it is unresolved.
+            if record.warmth() == restored::Warmth::HitThatBroughtNothing {
+                refusals.push(Refusal::RestoredNothingAfterAnExactHit {
+                    job: job.clone(),
+                    cache: cache.prefix.clone(),
+                });
             }
         }
     }
@@ -2220,25 +2368,23 @@ fn judge_restores(census: &Census, declared: &Declared, absent: &BTreeSet<String
     // that is `ProgramRunAfterARestoreLivesUnderIt` above — the programs live
     // where no cache reaches, so the case cannot arise while that law holds.
     let mut recorders: Vec<(String, String)> = Vec::new();
-    for (file, record) in &census.restored {
-        if absent.contains(file) {
+    for record in census.restored.values().flatten() {
+        if absent.contains(&record.job) {
             continue;
         }
-        if let Ok(record) = record {
-            let (measured, recorded) = &record.built_from;
-            // `none` is the recorder deliberately absent — the instruments' own
-            // build sets `RUSTC_WRAPPER: ""`, and a step running under that has
-            // no recorder to disagree with.
-            if recorded != "none" && measured != recorded {
-                refusals.push(Refusal::InstrumentsOfOneJobDisagreeAboutTheirBuild {
-                    job: record.job.clone(),
-                    measured: measured.clone(),
-                    recorded: recorded.clone(),
-                });
-            }
-            if recorded != "none" {
-                recorders.push((record.job.clone(), recorded.clone()));
-            }
+        let (measured, recorded) = &record.built_from;
+        // `none` is the recorder deliberately absent — the instruments' own
+        // build sets `RUSTC_WRAPPER: ""`, and a step running under that has
+        // no recorder to disagree with.
+        if recorded != "none" && measured != recorded {
+            refusals.push(Refusal::InstrumentsOfOneJobDisagreeAboutTheirBuild {
+                job: record.job.clone(),
+                measured: measured.clone(),
+                recorded: recorded.clone(),
+            });
+        }
+        if recorded != "none" {
+            recorders.push((record.job.clone(), recorded.clone()));
         }
     }
     if recorders
@@ -2250,25 +2396,61 @@ fn judge_restores(census: &Census, declared: &Declared, absent: &BTreeSet<String
         refusals.push(Refusal::JobsOfOneRunWereMeasuredByDifferentBuilds { jobs });
     }
     for (file, record) in &census.restored {
-        if absent.contains(file) {
-            continue;
-        }
-        if !declared.caches.contains_key(file) {
-            refusals.push(Refusal::RestoreRecordFromAJobWithNoCache { job: file.clone() });
+        let record = match record {
+            Ok(record) => record,
+            // A RECORD THAT DID NOT DECODE HAS ONLY ITS FILE NAME, which is why
+            // it is refused here rather than where a cache goes looking for one:
+            // nothing in it can be joined to a declaration, and reading its
+            // absence from that join as "the job said nothing" would report the
+            // loudest defect available here under the quietest name.
+            Err(why) => {
+                refusals.push(Refusal::RestoreRecordIsMalformed {
+                    file: file.clone(),
+                    why: why.to_string(),
+                });
+                continue;
+            }
+        };
+        if absent.contains(&record.job) {
             continue;
         }
         // THE RECORD CARRIES THE JOB THE RUNNER NAMED, and the file carries the
         // job the workflow spelled by hand. Two jobs writing one path leaves
         // exactly this disagreement behind, and it is the one direction the
-        // check above cannot see: the surviving record is well-formed and
+        // checks below cannot see: the surviving record is well-formed and
         // measures real paths.
-        if let Ok(record) = record {
-            if &record.job != file {
-                refusals.push(Refusal::RestoreRecordNamesAnotherJob {
-                    file: file.clone(),
-                    said: record.job.clone(),
-                });
-            }
+        //
+        // ASKED FIRST, AND THE OTHERS ONLY IF IT HOLDS. A pasted record names
+        // the wrong job AND, through it, a cache that job does not declare —
+        // one defect, and two names for it send two readers to two repairs.
+        if !restored::names_its_job(file, &record.job) {
+            refusals.push(Refusal::RestoreRecordNamesAnotherJob {
+                file: file.clone(),
+                said: record.job.clone(),
+            });
+            continue;
+        }
+        let Some(prefixes) = declared
+            .caches
+            .contains_key(&record.job)
+            .then(|| declared.prefixes(&record.job))
+        else {
+            refusals.push(Refusal::RestoreRecordFromAJobWithNoCache {
+                job: record.job.clone(),
+            });
+            continue;
+        };
+        // WHICH CACHE THIS IS THE PRICE OF, checked against what the workflow
+        // declares. R1117 gave the record the field; without this it would be
+        // one more identity spelled twice and compared never, which is exactly
+        // the defect R1116 found in `restore-keys` — a property nothing could
+        // contradict.
+        if !prefixes.contains(&record.cache) {
+            refusals.push(Refusal::RestoreRecordNamesACacheTheJobDoesNotDeclare {
+                job: record.job.clone(),
+                named: record.cache.clone(),
+                declared: prefixes,
+            });
         }
     }
     refusals
@@ -2292,26 +2474,40 @@ pub fn load(directory: &Path, absent: &BTreeSet<String>) -> std::io::Result<Cens
     for entry in std::fs::read_dir(directory)? {
         let path = entry?.path();
         let extension = path.extension().and_then(|extension| extension.to_str());
-        let Some(job) = path.file_stem().and_then(|stem| stem.to_str()) else {
+        let Some(stem) = path.file_stem().and_then(|stem| stem.to_str()) else {
             continue;
         };
-        if absent.contains(job) {
+        let Some(name) = path.file_name().and_then(|name| name.to_str()) else {
             continue;
-        }
-        // TWO RECORDS PER JOB, IN ONE DIRECTORY, READ BY ONE LOADER: what the
-        // job compiled and what it started from. They are uploaded together
-        // because they are one measurement — the counts are of a cold build by
-        // construction, so the state is the units they are in.
+        };
+        // TWO KINDS OF RECORD, IN ONE DIRECTORY, READ BY ONE LOADER: what a job
+        // compiled and what each of its cache restores brought. They are
+        // uploaded together because they are one measurement — the counts are of
+        // a cold build by construction, so the state is the units they are in.
+        //
+        // AND THEY ARE NOT COUNTED THE SAME WAY. A log is a job's, so its stem
+        // IS the job; a restore record is one cache's since R1117, so a job may
+        // leave several and the stem is `<job>` or `<job>.<nickname>`. Which
+        // makes the SKIP different too: a caller naming an absent job means
+        // every record that job wrote, and `absent.contains(stem)` would let a
+        // nicknamed one through — a record from the job the gate is itself
+        // running in, read as a finding about a build still happening.
         match extension {
             Some("log") => {
+                if absent.contains(stem) {
+                    continue;
+                }
                 let text = std::fs::read_to_string(&path)?;
-                census.jobs.insert(job.to_string(), read_log(&text));
+                census.jobs.insert(stem.to_string(), read_log(&text));
             }
             Some("restored") => {
+                if absent.iter().any(|job| restored::names_its_job(name, job)) {
+                    continue;
+                }
                 let text = std::fs::read_to_string(&path)?;
                 census
                     .restored
-                    .insert(job.to_string(), restored::decode(&text));
+                    .insert(name.to_string(), restored::decode(&text));
             }
             _ => continue,
         }
@@ -2353,16 +2549,25 @@ impl std::fmt::Display for Side {
 /// units is not a measurement.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Incomparable {
-    /// The job began in a different state in the two censuses, so any change in
-    /// what it compiled is confounded by what it began with.
+    /// One of the job's restores brought a different state in the two censuses,
+    /// so any change in what it compiled is confounded by what it began with.
+    ///
+    /// NAMED PER RESTORE AND NOT PER JOB. A job with two caches has two starting
+    /// states, and they move independently — the run that split this
+    /// repository's build directory off its cargo home had one of them exact and
+    /// the other empty. A verdict that collapsed them would say "the job started
+    /// warm" about a job half of whose tree was not there.
     StartedInDifferentStates {
-        job: String,
+        restore: restored::Restore,
         earlier: restored::Warmth,
         later: restored::Warmth,
     },
-    /// One side said what it started from and the other did not. The same
+    /// One side said what a restore brought and the other did not. The same
     /// silence on both sides is not a difference; a silence on one is.
-    OnlyOneSideSaidWhatItStartedFrom { job: String, silent: Side },
+    OnlyOneSideSaidWhatItStartedFrom {
+        restore: restored::Restore,
+        silent: Side,
+    },
     /// The job left a compilation record in one census and not the other — a job
     /// added, removed or renamed between the two runs. Its numbers have nothing
     /// to be subtracted from.
@@ -2373,20 +2578,20 @@ impl std::fmt::Display for Incomparable {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Incomparable::StartedInDifferentStates {
-                job,
+                restore,
                 earlier,
                 later,
             } => write!(
                 f,
-                "job `{job}` began in different states — earlier: {}; later: {} \
+                "{restore} began in different states — earlier: {}; later: {} \
                  — and every count in a census is of a cold build, so the state \
                  is the unit those counts are in and the difference is not one",
                 earlier.why(),
                 later.why()
             ),
-            Incomparable::OnlyOneSideSaidWhatItStartedFrom { job, silent } => write!(
+            Incomparable::OnlyOneSideSaidWhatItStartedFrom { restore, silent } => write!(
                 f,
-                "job `{job}` said what it started from in one census and not in \
+                "{restore} said what it brought in one census and not in \
                  {silent} — the same silence on both sides is no difference, and \
                  a silence on one side is a state nobody can supply"
             ),
@@ -2424,14 +2629,15 @@ impl Totals {
 /// What one job's two censuses say, when they are a difference at all.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Delta {
-    /// What each side started from — the SAME state on both sides, which is the
-    /// only case there is a difference to read, and BOTH values because the
-    /// sizes differ and the predicate that let this pair through does not look
-    /// at them.
+    /// What each of the job's restores brought — the SAME state on both sides
+    /// for every one of them, which is the only case there is a difference to
+    /// read, and BOTH values because the sizes differ and the predicate that let
+    /// this pair through does not look at them.
     ///
-    /// `None` when neither side said: a job with no cache always begins with an
-    /// empty tree, so the same silence twice is not a difference.
-    pub started: Option<(restored::Warmth, restored::Warmth)>,
+    /// ONE ROW PER CACHE, keyed by its prefix. Empty when neither census said
+    /// anything: a job with no cache always begins with an empty tree, so the
+    /// same silence twice is not a difference.
+    pub started: BTreeMap<String, (restored::Warmth, restored::Warmth)>,
     /// Compilations, earlier then later.
     pub compilations: (usize, usize),
     /// What they cost, earlier then later.
@@ -2565,29 +2771,51 @@ pub fn compare(earlier: &Census, later: &Census) -> Comparison {
             });
             continue;
         };
-        let started = match (earlier_started.get(job), later_started.get(job)) {
-            (Some(before), Some(after)) if before.same_state(after) => Some((*before, *after)),
-            (Some(before), Some(after)) => {
-                incomparable.push(Incomparable::StartedInDifferentStates {
-                    job: job.to_string(),
-                    earlier: *before,
-                    later: *after,
-                });
-                continue;
+        // EVERY RESTORE EITHER CENSUS RECORDED FOR THIS JOB, and not the ones
+        // one of them happened to have: a cache split in two between the runs
+        // shows up as a restore only the later census knows about, which is a
+        // silence on one side and exactly the thing this refuses to subtract
+        // across.
+        let restores: BTreeSet<&restored::Restore> = earlier_started
+            .keys()
+            .chain(later_started.keys())
+            .filter(|restore| restore.job == job)
+            .collect();
+        let mut started = BTreeMap::new();
+        let mut confounded = false;
+        for restore in restores {
+            match (earlier_started.get(restore), later_started.get(restore)) {
+                (Some(before), Some(after)) if before.same_state(after) => {
+                    started.insert(restore.cache.clone(), (*before, *after));
+                }
+                (Some(before), Some(after)) => {
+                    incomparable.push(Incomparable::StartedInDifferentStates {
+                        restore: restore.clone(),
+                        earlier: *before,
+                        later: *after,
+                    });
+                    confounded = true;
+                }
+                (present, _) => {
+                    incomparable.push(Incomparable::OnlyOneSideSaidWhatItStartedFrom {
+                        restore: restore.clone(),
+                        silent: if present.is_some() {
+                            Side::Later
+                        } else {
+                            Side::Earlier
+                        },
+                    });
+                    confounded = true;
+                }
             }
-            (None, None) => None,
-            (present, _) => {
-                incomparable.push(Incomparable::OnlyOneSideSaidWhatItStartedFrom {
-                    job: job.to_string(),
-                    silent: if present.is_some() {
-                        Side::Later
-                    } else {
-                        Side::Earlier
-                    },
-                });
-                continue;
-            }
-        };
+        }
+        // ONE CONFOUNDED RESTORE CONFOUNDS THE JOB. Its compilations are one
+        // number over every tree it began with, so a cache whose state moved
+        // makes the whole of that number unsubtractable — there is no per-cache
+        // count to keep.
+        if confounded {
+            continue;
+        }
         jobs.insert(
             job.to_string(),
             Delta {
@@ -2646,12 +2874,12 @@ pub fn load_collected(directory: &Path) -> std::io::Result<Census> {
                 ));
             }
         }
-        for (job, record) in inner.restored {
-            if census.restored.insert(job.clone(), record).is_some() {
+        for (file, record) in inner.restored {
+            if census.restored.insert(file.clone(), record).is_some() {
                 return Err(std::io::Error::new(
                     std::io::ErrorKind::InvalidData,
                     format!(
-                        "job `{job}` left a restore record in two places under {}",
+                        "`{file}` is a restore record in two places under {}",
                         directory.display()
                     ),
                 ));
@@ -2820,18 +3048,23 @@ pub fn render_comparison(held: &Comparison, earlier: &str, later: &str) -> Strin
                 what.why(),
             ));
         }
-        match &delta.started {
-            Some((before, after)) => out.push_str(&format!(
-                "  {:<22} both began the same way — earlier: {}; later: {}\n",
-                "",
-                before.why(),
-                after.why()
-            )),
-            None => out.push_str(&format!(
+        if delta.started.is_empty() {
+            out.push_str(&format!(
                 "  {:<22} neither census said what it started from, which is the \
                  same silence rather than a difference\n",
                 ""
-            )),
+            ));
+        }
+        // ONE LINE PER CACHE, because a job may restore more than one and their
+        // states move independently — a single sentence about "the job" would be
+        // a sentence about whichever the reader guessed.
+        for (cache, (before, after)) in &delta.started {
+            out.push_str(&format!(
+                "  {:<22} `{cache}` began the same way — earlier: {}; later: {}\n",
+                "",
+                before.why(),
+                after.why()
+            ));
         }
     }
     match held.totals() {

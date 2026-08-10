@@ -908,7 +908,7 @@ fn a_replayed_job_records_that_it_started_from_nothing() {
     let census = run.census();
     let read = census
         .restored
-        .get("unrun-tests")
+        .get("unrun-tests.restored")
         .expect("the census loaded the record beside the log")
         .as_ref()
         .unwrap_or_else(|why| panic!("{why}\n{}", run.transcript()));
@@ -1022,9 +1022,12 @@ fn a_census_is_read_out_of_the_shape_gh_run_download_leaves() {
          nothing prints as a clean zero"
     );
     assert_eq!(
-        census.started().get("validate"),
+        census.started().get(&restored::Restore {
+            job: "validate".to_string(),
+            cache: "Linux-fixture-validate-".to_string(),
+        }),
         Some(&restored::Warmth::PrefixHit { bytes: 7_000 }),
-        "and the state each job started in comes with it"
+        "and the state each restore began in comes with it"
     );
 }
 
@@ -1253,4 +1256,86 @@ fn two_directories_holding_nothing_do_not_compare_as_two_runs_that_agreed() {
          on\n{printed}"
     );
     assert!(printed.contains("NEITHER CENSUS HOLDS A JOB"), "{printed}");
+}
+
+/// R1122 — TWO RECORDS FOR ONE JOB, OFF A REAL DIRECTORY.
+///
+/// The loader keys a compilation log by its stem, because a log IS a job's; a
+/// restore record is one CACHE's, so a job that declares two writes two files
+/// and they cannot both be `<job>.restored`. A loader still keying these by the
+/// stem-as-job would hold whichever `read_dir` returned last — one restore's
+/// price standing in for the other's, silently, which is the whole reason the
+/// record carries a `cache` line at all.
+#[test]
+fn a_jobs_two_restore_records_are_loaded_as_two() {
+    let scratch = TempDir::new().expect("a scratch directory");
+    let directory = scratch.path();
+    let write = |file: &str, cache: &str, path: &str, arrived: u64| {
+        let mut out = restored::encode_job("unrun-tests");
+        out.extend_from_slice(&restored::encode_cache(cache));
+        for instrument in restored::INSTRUMENTS {
+            out.extend_from_slice(&restored::encode_built_from(instrument, "0f0f0f"));
+        }
+        out.extend_from_slice(&restored::encode_at(restored::Side::Before, 1_000_000_000));
+        out.extend_from_slice(&restored::encode_side(
+            restored::Side::Before,
+            path,
+            &restored::Measurement::default(),
+        ));
+        out.extend_from_slice(&restored::encode_side(
+            restored::Side::After,
+            path,
+            &restored::Measurement {
+                entries: 1,
+                bytes: arrived,
+            },
+        ));
+        out.extend_from_slice(&restored::encode_at(restored::Side::After, 1_030_000_000));
+        out.extend_from_slice(&restored::encode_exact(true));
+        std::fs::write(directory.join(file), out).expect("the record");
+    };
+    write(
+        "unrun-tests.cargo-home.restored",
+        "Linux-cargo-unruntests-home-",
+        "~/.cargo/registry",
+        700_000_000,
+    );
+    write(
+        "unrun-tests.build-directory.restored",
+        "Linux-cargo-unrun-",
+        "target",
+        32_000_000_000,
+    );
+    record_a_compilation(&directory.join("unrun-tests.log"));
+
+    let census = load(directory, &BTreeSet::new()).expect("the census loads");
+    assert_eq!(census.restored.len(), 2, "{:?}", census.restored.keys());
+    assert_eq!(
+        census.started().len(),
+        2,
+        "and they reach the join as two restores rather than one: {:?}",
+        census.started()
+    );
+    assert_eq!(
+        census.started().get(&restored::Restore {
+            job: "unrun-tests".to_string(),
+            cache: "Linux-cargo-unrun-".to_string(),
+        }),
+        Some(&restored::Warmth::ExactHit {
+            bytes: 32_000_000_000
+        }),
+        "the build directory's 32 GB, and not the registry's 0.7"
+    );
+
+    // AND A JOB DECLARED ABSENT TAKES BOTH OF ITS RECORDS WITH IT. The skip is
+    // the gate's own job on a runner, whose build is still happening while it
+    // judges — and a nicknamed file would slip past a check that compared the
+    // stem to the job name.
+    let absent: BTreeSet<String> = ["unrun-tests".to_string()].into_iter().collect();
+    let without = load(directory, &absent).expect("the census loads");
+    assert!(
+        without.restored.is_empty() && without.jobs.is_empty(),
+        "{:?}",
+        without.restored.keys()
+    );
 }

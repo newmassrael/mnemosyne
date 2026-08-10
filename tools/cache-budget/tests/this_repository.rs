@@ -493,3 +493,63 @@ fn every_cache_owner_in_this_repository_falls_on_one_side_of_this_gates_horizon(
 /// this job's artifact: collecting eight other jobs' records into it would
 /// upload all of them again under this job's name.
 const RECORDS: &str = "collected";
+
+/// R1122 — WHOSE ARCHIVE EACH CACHE'S FALLBACK CAN REACH, over every cache this
+/// repository declares, pinned to the one pair that is real today.
+///
+/// `restore-keys` matches over the WHOLE repository's storage. Six of this
+/// file's keys sit under `Linux-cargo-`, and for five of them that is harmless
+/// and is what the mechanism is for: they hold exactly the two cargo-home trees
+/// `validate` holds, so falling back onto one of their generations gets
+/// `validate` the paths it asked for. The sixth is the build directory, and an
+/// archive unpacks AS IT WAS STORED — so `validate` missing its own key can land
+/// 8.90 GB of somebody else's `target`, which nothing measures and nothing asked
+/// for.
+///
+/// PINNED RATHER THAN REFUSED, and the difference is a held cache. The repair is
+/// to give `validate` a specific key like every other job has; that leaves the
+/// archive under `Linux-cargo-` declared by nothing, which this gate refuses as
+/// an orphan for the seven days it takes to age out — so the repair is a rename
+/// AND a deletion from the repository's storage, which is an outward action.
+/// Until that is taken, the honest thing is a count that turns red the moment a
+/// SECOND such pair appears: R1122's split of `unrun-tests` chose
+/// `Linux-cargo-unruntests-home-` over the obvious `Linux-cargo-unrun-home-`
+/// precisely because the obvious one would have been the second.
+#[test]
+fn one_declared_cache_reaches_anothers_archive_and_this_is_which() {
+    let root = repository_root();
+    let declared = ci_plan::workflow_cache_declarations(&root);
+    let reaching: Vec<(String, String)> = ci_plan::fallback_reaches(&declared)
+        .into_iter()
+        .map(|(cache, other)| (cache.prefix.clone(), other.prefix.clone()))
+        .collect();
+    assert_eq!(
+        reaching,
+        vec![("Linux-cargo-".to_string(), "Linux-cargo-unrun-".to_string())],
+        "every OTHER pair of declared caches either does not nest or holds a \
+         subset of what the outer one asked for — if this list grew, a cache \
+         key was added under another's prefix holding paths it does not declare"
+    );
+    // NON-VACUITY: the population is the whole repository's caches and the
+    // harmless nesting really is there, so a reader that had stopped comparing
+    // paths would report seven pairs rather than one.
+    assert!(
+        declared.len() >= 9,
+        "{} cache step(s) declared — this sweep is over all of them",
+        declared.len()
+    );
+    let nested = declared
+        .iter()
+        .flat_map(|cache| declared.iter().map(move |other| (cache, other)))
+        .filter(|(cache, other)| {
+            other.prefix != cache.prefix && other.prefix.starts_with(&cache.prefix)
+        })
+        .count();
+    assert!(
+        nested > reaching.len(),
+        "{nested} declared key(s) nest under another and only {} of those \
+         reaches paths the outer cache did not ask for — if the two counts were \
+         equal this test would pass on a reader that ignored `path:` entirely",
+        reaching.len()
+    );
+}

@@ -140,6 +140,20 @@ impl Row {
     /// head of the prefix. The one that was available to the job is whichever
     /// predates the run's start, which is the same comparison `Recreated` makes
     /// and the same reason it is made to the second.
+    /// Which restore one of this key's owners performs — the join key the
+    /// records are filed under.
+    ///
+    /// ASKED OF THE ROW rather than assembled by every caller, because the pair
+    /// is what a record is filed by and a caller holding a `Row` and an `Owner`
+    /// already has both halves. Six lookups used to take only the job, which was
+    /// the whole identity while a job had one cache.
+    pub fn restore_by(&self, owner: &Owner) -> restored::Restore {
+        restored::Restore {
+            job: owner.job.clone(),
+            cache: self.prefix.clone(),
+        }
+    }
+
     pub fn restorable_when(&self, started_at: &str) -> Option<&Held> {
         self.held
             .iter()
@@ -515,14 +529,20 @@ pub struct Report {
     pub divergent: Vec<Refusal>,
     /// The run this report is about, if it is about one.
     pub run: Option<Run>,
-    /// What each job's disk held after its restore, by job id.
+    /// What a job's disk held after one of its restores, by which restore it was.
     ///
     /// THE OTHER INSTRUMENT, JOINED HERE. This gate reads what STORAGE holds and
     /// `tools/restored` reads what a job's DISK received, and until R1101 nothing
     /// put the two together — a reader had to, and the one who did got it
     /// backwards. Empty where no record was read, which is a state this report
     /// says out loud rather than treating as "nothing was restored".
-    pub started: BTreeMap<String, restored::Warmth>,
+    ///
+    /// PER RESTORE AND NOT PER JOB, which is exactly the join this report is:
+    /// every lookup below already holds a [`Row`] (a key) and an [`Owner`] (a
+    /// job), so the pair was always available and the map was throwing half of
+    /// it away. A job with two caches under a job-keyed map reports one of them
+    /// twice and the other never.
+    pub started: BTreeMap<restored::Restore, restored::Warmth>,
     /// How many `actions/cache` steps the workflows declare. NOT `rows.len()`:
     /// several steps may share one key, and the gap between the two counts is
     /// the first thing a reader of this report checks.
@@ -576,11 +596,12 @@ impl Report {
         let mut out: Vec<Owner> = self
             .rows
             .iter()
-            .flat_map(|row| &row.owners)
-            .filter(|owner| {
-                self.started.contains_key(&owner.job) && !self.collecting.contains(&owner.source)
+            .flat_map(|row| row.owners.iter().map(move |owner| (row, owner)))
+            .filter(|(row, owner)| {
+                self.started.contains_key(&row.restore_by(owner))
+                    && !self.collecting.contains(&owner.source)
             })
-            .cloned()
+            .map(|(_, owner)| owner.clone())
             .collect();
         out.sort();
         out.dedup();
@@ -709,7 +730,8 @@ impl Report {
                 // invalidated: a dependency bump excuses a MISSED KEY, never an
                 // empty disk.
                 for owner in &row.owners {
-                    if self.started.get(&owner.job) != Some(&restored::Warmth::Nothing) {
+                    if self.started.get(&row.restore_by(owner)) != Some(&restored::Warmth::Nothing)
+                    {
                         continue;
                     }
                     let Some(generation) = row.restorable_when(&run.started_at) else {
@@ -736,7 +758,10 @@ impl Report {
                         .owners
                         .iter()
                         .filter_map(|owner| {
-                            Some((owner.job.clone(), *self.started.get(&owner.job)?))
+                            Some((
+                                owner.job.clone(),
+                                *self.started.get(&row.restore_by(owner))?,
+                            ))
                         })
                         .collect(),
                 });
@@ -779,7 +804,7 @@ pub fn conclude(
     declared: &[CacheDeclaration],
     held: &[Held],
     run: Option<&Run>,
-    started: &BTreeMap<String, restored::Warmth>,
+    started: &BTreeMap<restored::Restore, restored::Warmth>,
     collecting: &BTreeSet<String>,
 ) -> Report {
     let mut rows: Vec<Row> = Vec::new();
@@ -962,7 +987,7 @@ pub fn render(report: &Report) -> String {
         // wrong side of the horizon. `replay` was reported as the first for two
         // rounds while being the second.
         for owner in &row.owners {
-            match report.started.get(&owner.job) {
+            match report.started.get(&row.restore_by(owner)) {
                 Some(warmth) => {
                     out.push_str(&format!("            `{}` {}\n", owner.job, warmth.why()))
                 }
@@ -1004,7 +1029,7 @@ pub fn render(report: &Report) -> String {
             && row
                 .owners
                 .iter()
-                .any(|owner| report.started.contains_key(&owner.job))
+                .any(|owner| report.started.contains_key(&row.restore_by(owner)))
     }) {
         out.push_str(
             "  the GB against a key is the archive GitHub stores; the MB beside a \
@@ -1094,28 +1119,32 @@ pub fn read_arguments(arguments: &[String]) -> (std::path::PathBuf, Option<Strin
     )
 }
 
-/// Every job's measured start, read out of the records the jobs uploaded.
+/// Every measured start, read out of the records the jobs uploaded.
 ///
 /// A RECORD THAT DOES NOT DECODE IS DROPPED HERE AND REFUSED THERE. The census
 /// gate reads the same directory and turns an unreadable record into a refusal
-/// naming the job; this gate would be reporting the same defect a second time
+/// naming the file; this gate would be reporting the same defect a second time
 /// under a different name, and a second reader of one datum is where two answers
 /// come from. What it must not do is read the absence as "restored nothing",
 /// which is why the map is keyed only by what was actually said.
+///
+/// KEYED BY WHAT THE RECORD SAYS IT IS, and not by the file it arrived in. A
+/// record is one CACHE's since R1117, so a job declaring two writes two files
+/// and a map keyed by the job would hold whichever `read_dir` reached last — the
+/// registry's 5-second restore standing in for the build directory's, which is
+/// the substitution the whole split exists to prevent. The file name says only
+/// that it is its job's; which cache is written inside it.
 pub fn started_from(
     directory: &std::path::Path,
-) -> std::io::Result<BTreeMap<String, restored::Warmth>> {
+) -> std::io::Result<BTreeMap<restored::Restore, restored::Warmth>> {
     let mut out = BTreeMap::new();
     for entry in std::fs::read_dir(directory)? {
         let path = entry?.path();
         if path.extension().and_then(|end| end.to_str()) != Some("restored") {
             continue;
         }
-        let Some(job) = path.file_stem().and_then(|stem| stem.to_str()) else {
-            continue;
-        };
         if let Ok(record) = restored::decode(&std::fs::read_to_string(&path)?) {
-            out.insert(job.to_string(), record.warmth());
+            out.insert(record.restore(), record.warmth());
         }
     }
     Ok(out)

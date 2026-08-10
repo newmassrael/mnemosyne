@@ -160,7 +160,43 @@ pub struct Restored {
     pub at: (u64, u64),
 }
 
+/// WHICH RESTORE a record is of: one job's one cache.
+///
+/// THE JOIN KEY, AND IT IS A PAIR. Every gate in this repository filed a record
+/// under its JOB, which was the whole of its identity for as long as a job had
+/// one cache — and R1117 made a record a CACHE's precisely because a job may
+/// have more. A map still keyed by the job holds whichever record was read
+/// last: one restore's price silently standing in for another's, which is the
+/// arithmetic R1099 got wrong when it read a 32 GB build directory's cost off a
+/// 756 MB registry's restore and deleted a cache that was saving ten minutes.
+///
+/// BOTH HALVES COME OUT OF THE RECORD ITSELF ([`Restored::restore`]) rather than
+/// off the file name. The name owes exactly one thing — that it is this job's,
+/// which [`names_its_job`] checks — and which cache a record is of is said
+/// inside it, by the step that measured the restore.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub struct Restore {
+    /// The job that ran the restore.
+    pub job: String,
+    /// The resolved key prefix of the cache it restored.
+    pub cache: String,
+}
+
+impl std::fmt::Display for Restore {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "job `{}` cache `{}`", self.job, self.cache)
+    }
+}
+
 impl Restored {
+    /// Which restore this record is of.
+    pub fn restore(&self) -> Restore {
+        Restore {
+            job: self.job.clone(),
+            cache: self.cache.clone(),
+        }
+    }
+
     /// How long the restore took, in microseconds.
     ///
     /// THE INTERVAL BETWEEN TWO PROCESSES, so it includes everything the cache
@@ -500,20 +536,76 @@ pub const PROGRAM: &str = "restored";
 pub fn sides_measured(script: &str) -> Vec<Side> {
     let words: Vec<&str> = script.split_whitespace().collect();
     let mut sides = Vec::new();
-    for pair in words.windows(2) {
-        let [word, next] = pair else { continue };
-        let invoked = *word == PROGRAM
-            || word
-                .rsplit_once('/')
-                .is_some_and(|(_, name)| name == PROGRAM);
-        if !invoked {
+    for (at, word) in words.iter().enumerate() {
+        if !invokes(word) {
             continue;
         }
-        if let Some(side) = Side::BOTH.into_iter().find(|side| side.word() == *next) {
+        let Some(next) = words.get(at + 1).copied() else {
+            continue;
+        };
+        if let Some(side) = Side::BOTH.into_iter().find(|side| side.word() == next) {
             sides.push(side);
         }
     }
     sides
+}
+
+/// The flag `restored before` takes the cache's key prefix under.
+///
+/// ONE SPELLING, HERE, for [`PROGRAM`]'s reason: the entrance reads it and a
+/// gate reading the workflow has to recognise it, and two copies of the word are
+/// two things to keep in step with each other.
+pub const CACHE_FLAG: &str = "--cache";
+
+/// Which cache each `restored before` in one `run:` step says it prices.
+///
+/// THE THIRD SPELLING OF A CACHE'S IDENTITY, AND THE ONE NOTHING READ. The
+/// record's `cache` line is checked against the prefixes its job declares, so a
+/// record naming a cache from another job is refused — and a job that declares
+/// TWO passes that check whichever of its own two it names. What decides which
+/// is right is not the record at all but the step: the pair bracketing a cache
+/// step must name THAT cache. Until this is read, a `before` argument copied from
+/// the step above it charges one restore's interval to the other cache, both
+/// prefixes are its job's, and every gate here reports a clean file.
+///
+/// R1116 IS THE SAME SHAPE ONE FIELD OVER: `restore-keys` was declared, joined
+/// on by nobody, and therefore could not contradict the sentence a whole arc of
+/// measurements rested on.
+///
+/// Read in the exact shape the entrance refuses anything else in — `before`,
+/// then [`CACHE_FLAG`], then the value — so a step this returns a prefix for is
+/// one that will run, and quotes are stripped because a workflow writes the
+/// prefix as a shell literal.
+pub fn caches_named(script: &str) -> Vec<String> {
+    let words: Vec<&str> = script.split_whitespace().collect();
+    let mut named = Vec::new();
+    for (at, word) in words.iter().enumerate() {
+        if !invokes(word) {
+            continue;
+        }
+        if words.get(at + 1).copied() != Some(Side::Before.word()) {
+            continue;
+        }
+        if words.get(at + 2).copied() != Some(CACHE_FLAG) {
+            continue;
+        }
+        let Some(value) = words.get(at + 3).copied() else {
+            continue;
+        };
+        named.push(value.trim_matches(['"', '\'']).to_string());
+    }
+    named
+}
+
+/// Is this word an invocation of this program?
+///
+/// The name itself, or a path ending in it — see [`PROGRAM`] for why both are
+/// real and why a substring match would count the step that BUILDS it.
+fn invokes(word: &str) -> bool {
+    word == PROGRAM
+        || word
+            .rsplit_once('/')
+            .is_some_and(|(_, name)| name == PROGRAM)
 }
 
 fn line(fields: &[&str]) -> Vec<u8> {

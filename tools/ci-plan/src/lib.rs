@@ -431,6 +431,44 @@ pub fn survives_an_edit(declaration: &CacheDeclaration) -> Option<String> {
     None
 }
 
+/// Every pair of declared caches where the FIRST one's fallback would restore
+/// the SECOND one's archive, bringing paths the first does not ask for.
+///
+/// `restore-keys` IS A PREFIX MATCH OVER THE WHOLE REPOSITORY'S STORAGE, not
+/// over one job's, and nothing in a workflow says otherwise. A cache whose
+/// fallback prefix is a prefix of another cache's key falls back onto that
+/// cache's archives, and an archive unpacks AS IT WAS STORED — the `path:` list
+/// is what a cache SAVES, and has no say in what a restore of somebody else's
+/// archive puts on disk.
+///
+/// SUBSET AND NOT EQUALITY, because the harmless case is the common one. This
+/// repository's oldest key, `Linux-cargo-`, is a prefix of every other key in
+/// the file, and six of those hold exactly the two cargo-home trees it holds
+/// too: falling back onto one of those gets it the paths it asked for out of
+/// somebody else's generation, which is what `restore-keys` is FOR. The pair
+/// that matters is the one whose archive holds something the first cache never
+/// declared, because then the fallback silently lands a tree nothing measured
+/// and nothing asked for — and this repository's build directory is 8.90 GB of
+/// exactly that.
+pub fn fallback_reaches(
+    declared: &[CacheDeclaration],
+) -> Vec<(&CacheDeclaration, &CacheDeclaration)> {
+    let mut out = Vec::new();
+    for cache in declared {
+        for other in declared {
+            if other.prefix == cache.prefix || !other.prefix.starts_with(&cache.prefix) {
+                continue;
+            }
+            let held: BTreeSet<&str> = other.paths.iter().map(String::as_str).collect();
+            let asked: BTreeSet<&str> = cache.paths.iter().map(String::as_str).collect();
+            if !held.is_subset(&asked) {
+                out.push((cache, other));
+            }
+        }
+    }
+    out
+}
+
 /// One `actions/upload-artifact` step, as a workflow declares it.
 ///
 /// WHAT MAKES A RECORD READABLE. Every record this repository's gates join —

@@ -1554,12 +1554,31 @@ fn wired_with_cache(job: &str) -> RunStep {
 /// for that side. A fixture that merely called a step "the before one" would
 /// pass a law about where the measurements sit while measuring nothing.
 fn measuring(job: &str, side: restored::Side, index: usize, paths: &[&str]) -> RunStep {
+    measuring_cache(job, &format!("Linux-cargo-{job}-"), side, index, paths)
+}
+
+/// The same, naming a cache other than the job's only one — which is what a
+/// `--cache` argument copied from the step above it looks like.
+fn measuring_cache(
+    job: &str,
+    cache: &str,
+    side: restored::Side,
+    index: usize,
+    paths: &[&str],
+) -> RunStep {
     let mut step = wired_with_cache(job);
     step.index = index;
+    // THE `--cache` ARGUMENT IS PART OF THE SPELLING, and a fixture that left it
+    // out would be exercising a law about which cache a pair prices against a
+    // step that names none.
     step.script = format!(
-        "./tools/{program}/target/release/{program} {side}{paths}",
+        "./tools/{program}/target/release/{program} {side}{names}{paths}",
         program = restored::PROGRAM,
         side = side.word(),
+        names = match side {
+            restored::Side::Before => format!(" {} '{cache}'", restored::CACHE_FLAG),
+            restored::Side::After => String::new(),
+        },
         paths = paths
             .iter()
             .map(|path| format!(" '{path}'"))
@@ -1625,7 +1644,7 @@ fn cached_and_said(exact: bool, arrived: u64) -> (Declared, Census) {
     );
     let mut census = census_of(&["validate", "unrun-tests"]);
     census.restored.insert(
-        "validate".to_string(),
+        "validate.restored".to_string(),
         restored::decode(&restore_record(
             "validate",
             exact,
@@ -1633,7 +1652,7 @@ fn cached_and_said(exact: bool, arrived: u64) -> (Declared, Census) {
         )),
     );
     census.restored.insert(
-        "unrun-tests".to_string(),
+        "unrun-tests.restored".to_string(),
         restored::decode(&restore_record(
             "unrun-tests",
             exact,
@@ -1656,16 +1675,20 @@ fn the_three_states_reach_the_census_as_three_different_values() {
     let (_, warm) = cached_and_said(true, 1_000);
     let (_, stale) = cached_and_said(false, 1_000);
     let (_, cold) = cached_and_said(false, 0);
+    let the_cache = restored::Restore {
+        job: "unrun-tests".to_string(),
+        cache: "Linux-cargo-unrun-tests-".to_string(),
+    };
     assert_eq!(
-        warm.started().get("unrun-tests"),
+        warm.started().get(&the_cache),
         Some(&restored::Warmth::ExactHit { bytes: 2_000 })
     );
     assert_eq!(
-        stale.started().get("unrun-tests"),
+        stale.started().get(&the_cache),
         Some(&restored::Warmth::PrefixHit { bytes: 2_000 })
     );
     assert_eq!(
-        cold.started().get("unrun-tests"),
+        cold.started().get(&the_cache),
         Some(&restored::Warmth::Nothing)
     );
     // AND THE TWO THAT LOOK ALIKE TO EVERY OTHER INSTRUMENT DIFFER HERE. A
@@ -1679,11 +1702,12 @@ fn the_three_states_reach_the_census_as_three_different_values() {
 #[test]
 fn a_job_with_a_cache_that_did_not_say_what_it_restored_is_refused() {
     let (declared, mut census) = cached_and_said(true, 1_000);
-    census.restored.remove("unrun-tests");
+    census.restored.remove("unrun-tests.restored");
     assert_eq!(
         judge(&census, &declared, &nothing()),
         vec![Refusal::JobDidNotSayWhatItRestored {
-            job: "unrun-tests".to_string()
+            job: "unrun-tests".to_string(),
+            cache: "Linux-cargo-unrun-tests-".to_string(),
         }]
     );
 }
@@ -1698,7 +1722,7 @@ fn a_job_with_no_cache_owes_no_record_of_what_it_restored() {
     let declared = declared_of(&steps, &[cache("validate", &["~/.cargo/registry"])]);
     let mut census = census_of(&["validate", "twice-compiled"]);
     census.restored.insert(
-        "validate".to_string(),
+        "validate.restored".to_string(),
         restored::decode(&restore_record(
             "validate",
             true,
@@ -1715,7 +1739,7 @@ fn a_job_with_no_cache_owes_no_record_of_what_it_restored() {
 fn a_record_measuring_paths_the_cache_does_not_hold_is_refused() {
     let (declared, mut census) = cached_and_said(true, 1_000);
     census.restored.insert(
-        "unrun-tests".to_string(),
+        "unrun-tests.restored".to_string(),
         restored::decode(&restore_record(
             "unrun-tests",
             true,
@@ -1726,6 +1750,7 @@ fn a_record_measuring_paths_the_cache_does_not_hold_is_refused() {
         judge(&census, &declared, &nothing()),
         vec![Refusal::RestoreRecordMeasuredOtherPaths {
             job: "unrun-tests".to_string(),
+            cache: "Linux-cargo-unrun-tests-".to_string(),
             measured: vec!["~/.cargo/registry".to_string()],
             declared: vec!["~/.cargo/registry".to_string(), "target".to_string()],
         }],
@@ -1742,10 +1767,12 @@ fn an_exact_hit_that_brought_nothing_is_refused_rather_than_counted() {
         judge(&census, &declared, &nothing()),
         vec![
             Refusal::RestoredNothingAfterAnExactHit {
-                job: "unrun-tests".to_string()
+                job: "unrun-tests".to_string(),
+                cache: "Linux-cargo-unrun-tests-".to_string(),
             },
             Refusal::RestoredNothingAfterAnExactHit {
-                job: "validate".to_string()
+                job: "validate".to_string(),
+                cache: "Linux-cargo-validate-".to_string(),
             },
         ]
     );
@@ -1794,10 +1821,6 @@ fn a_job_declaring_two_caches_keeps_them_apart() {
         declared.cached_paths("unrun-tests"),
         vec!["~/.cargo/registry".to_string(), "target".to_string()],
         "first mention first, duplicates dropped"
-    );
-    assert_eq!(
-        declared.caches_at("unrun-tests"),
-        vec![first.index, second.index]
     );
     assert_eq!(
         declared.prefixes("unrun-tests"),
@@ -1980,14 +2003,25 @@ fn a_record_naming_a_cache_its_job_does_not_declare_is_refused() {
     wrong = wrong.replace("Linux-cargo-unrun-tests-", "Linux-cargo-somebody-elses-");
     census
         .restored
-        .insert("unrun-tests".to_string(), restored::decode(&wrong));
+        .insert("unrun-tests.restored".to_string(), restored::decode(&wrong));
     assert_eq!(
         judge(&census, &declared, &nothing()),
-        vec![Refusal::RestoreRecordNamesACacheTheJobDoesNotDeclare {
-            job: "unrun-tests".to_string(),
-            named: "Linux-cargo-somebody-elses-".to_string(),
-            declared: vec!["Linux-cargo-unrun-tests-".to_string()],
-        }],
+        vec![
+            // AND THE CACHE IT SHOULD HAVE PRICED IS LEFT WITH NOTHING. Not the
+            // same sentence twice: one says a record charges an interval to a
+            // cache nobody declares, the other says a declared cache has no
+            // price at all, and a reader handed only the first would have to
+            // work out for itself which restore went unmeasured.
+            Refusal::JobDidNotSayWhatItRestored {
+                job: "unrun-tests".to_string(),
+                cache: "Linux-cargo-unrun-tests-".to_string(),
+            },
+            Refusal::RestoreRecordNamesACacheTheJobDoesNotDeclare {
+                job: "unrun-tests".to_string(),
+                named: "Linux-cargo-somebody-elses-".to_string(),
+                declared: vec!["Linux-cargo-unrun-tests-".to_string()],
+            },
+        ],
         "an interval charged to a cache the job does not have would answer the \
          next reader's question about what a cache costs with somebody else's \
          number, which is worse than having no answer"
@@ -2000,7 +2034,7 @@ fn a_record_naming_a_cache_its_job_does_not_declare_is_refused() {
 fn a_record_whose_contents_name_another_job_is_refused() {
     let (declared, mut census) = cached_and_said(true, 1_000);
     census.restored.insert(
-        "unrun-tests".to_string(),
+        "unrun-tests.restored".to_string(),
         restored::decode(&restore_record(
             "validate",
             true,
@@ -2009,10 +2043,19 @@ fn a_record_whose_contents_name_another_job_is_refused() {
     );
     assert_eq!(
         judge(&census, &declared, &nothing()),
-        vec![Refusal::RestoreRecordNamesAnotherJob {
-            file: "unrun-tests".to_string(),
-            said: "validate".to_string(),
-        }]
+        vec![
+            Refusal::JobDidNotSayWhatItRestored {
+                job: "unrun-tests".to_string(),
+                cache: "Linux-cargo-unrun-tests-".to_string(),
+            },
+            Refusal::RestoreRecordNamesAnotherJob {
+                file: "unrun-tests.restored".to_string(),
+                said: "validate".to_string(),
+            },
+        ],
+        "and NOT as a second price for `validate`'s restore, which is what a \
+         pasted record looks like to a join that reads the contents before \
+         checking the name it arrived under"
     );
 }
 
@@ -2037,7 +2080,7 @@ fn a_job_writing_its_state_to_another_jobs_file_is_refused() {
     let mut census = census_of(&["validate", "unrun-tests"]);
     for job in ["validate", "unrun-tests"] {
         census.restored.insert(
-            job.to_string(),
+            format!("{job}.restored"),
             restored::decode(&restore_record(job, true, &[("~/.cargo/registry", 10)])),
         );
     }
@@ -2050,14 +2093,26 @@ fn a_job_writing_its_state_to_another_jobs_file_is_refused() {
     );
 }
 
+/// R1122 — THE POPULATION IS THE STEPS THAT MEASURE. The variable used to sit in
+/// a job's `env:`, so every step of a cached job carried it and asking all of
+/// them cost nothing. A job with TWO caches writes TWO records, so the value
+/// cannot be the job's any more, and a law still demanding it of the steps that
+/// do the WORK would refuse exactly the workflow this round was for.
 #[test]
-fn a_step_of_a_cached_job_that_does_not_say_where_to_write_it_is_refused() {
+fn a_measuring_step_that_does_not_say_where_to_write_it_is_refused() {
     let mut steps = cached_job("validate", &["~/.cargo/registry"]);
-    steps
-        .last_mut()
-        .expect("the job has a step that does the work")
-        .env
-        .remove(restored::VARIABLE);
+    let mut stripped = 0;
+    for step in &mut steps {
+        if !restored::sides_measured(&step.script).is_empty() {
+            step.env.remove(restored::VARIABLE);
+            stripped += 1;
+        }
+    }
+    assert_eq!(
+        stripped, 2,
+        "both sides of the pair, so what is left is one \
+         record path nobody named rather than a pair that disagrees with itself"
+    );
     steps.extend(cached_job("unrun-tests", &["~/.cargo/registry"]));
     let declared = declared_of(
         &steps,
@@ -2069,7 +2124,7 @@ fn a_step_of_a_cached_job_that_does_not_say_where_to_write_it_is_refused() {
     let mut census = census_of(&["validate", "unrun-tests"]);
     for job in ["validate", "unrun-tests"] {
         census.restored.insert(
-            job.to_string(),
+            format!("{job}.restored"),
             restored::decode(&restore_record(job, true, &[("~/.cargo/registry", 10)])),
         );
     }
@@ -2097,13 +2152,25 @@ fn a_record_that_does_not_decode_is_refused_rather_than_read_as_cold() {
         .join("\n");
     census
         .restored
-        .insert("unrun-tests".to_string(), restored::decode(&torn));
+        .insert("unrun-tests.restored".to_string(), restored::decode(&torn));
     let refusals = judge(&census, &declared, &nothing());
-    assert!(
-        matches!(
-            refusals.as_slice(),
-            [Refusal::RestoreRecordIsMalformed { job, .. }] if job == "unrun-tests"
-        ),
+    // TWO REFUSALS AND THEY ARE NOT THE SAME DEFECT SAID TWICE. The record is
+    // unreadable, which is named by its FILE because nothing inside it can be
+    // trusted; and the cache it was supposed to price is left with no record at
+    // all, which is named by the CACHE. A reader handed only the first would
+    // have to work out which restore is now unmeasured.
+    assert_eq!(
+        refusals,
+        vec![
+            Refusal::JobDidNotSayWhatItRestored {
+                job: "unrun-tests".to_string(),
+                cache: "Linux-cargo-unrun-tests-".to_string(),
+            },
+            Refusal::RestoreRecordIsMalformed {
+                file: "unrun-tests.restored".to_string(),
+                why: restored::Malformed::ExactIsNotSaidOnce { times: 0 }.to_string(),
+            },
+        ],
         "{refusals:?}"
     );
 }
@@ -2112,7 +2179,7 @@ fn a_record_that_does_not_decode_is_refused_rather_than_read_as_cold() {
 fn a_record_from_a_job_this_workflow_gives_no_cache_is_refused() {
     let (declared, mut census) = cached_and_said(true, 1_000);
     census.restored.insert(
-        "deleted".to_string(),
+        "deleted.restored".to_string(),
         restored::decode(&restore_record("deleted", true, &[("target", 1)])),
     );
     assert_eq!(
@@ -2280,7 +2347,13 @@ fn a_job_with_a_pair_for_each_of_its_two_caches_is_accepted() {
             (restored::Side::Before, index),
             (restored::Side::After, index + 2),
         ] {
-            let mut step = measuring("unrun-tests", side, at, &[]);
+            let mut step = measuring_cache(
+                "unrun-tests",
+                &format!("Linux-cargo-unrun-{which}-"),
+                side,
+                at,
+                &[],
+            );
             // ITS OWN RECORD, which is the only thing in the file that says
             // which pair a measurement belongs to.
             step.env.insert(
@@ -2304,6 +2377,251 @@ fn a_job_with_a_pair_for_each_of_its_two_caches_is_accepted() {
         "each pair encloses exactly one cache step and writes its own record, \
          which is what pricing two caches of one job requires"
     );
+
+    // AND THE ONE MISTAKE NO RECORD CAN REPORT: the pairs keep their own files
+    // and their own positions, and the `--cache` argument of the second is
+    // copied from the first. Both prefixes are this job's, so the record it
+    // writes decodes, names a cache the job really declares, and passes every
+    // check that reads a record — while carrying the other restore's interval.
+    let swapped: Vec<RunStep> = steps
+        .iter()
+        .cloned()
+        .map(|mut step| {
+            step.script = step
+                .script
+                .replace("Linux-cargo-unrun-tree-", "Linux-cargo-unrun-home-");
+            step
+        })
+        .collect();
+    assert_eq!(
+        twice_compiled::judge_wiring(&declared_of(&swapped, &caches)),
+        vec![Refusal::AMeasuringPairNamesAnotherCache {
+            job: "unrun-tests".to_string(),
+            record: "/w/rustc-log/unrun-tests.tree.restored".to_string(),
+            named: vec!["Linux-cargo-unrun-home-".to_string()],
+            brackets: "Linux-cargo-unrun-tree-".to_string(),
+        }],
+        "the argument is what the record's `cache` line is written from, and \
+         nothing downstream can tell one of a job's own prefixes from another"
+    );
+
+    // THE THIRD SHAPE: a pair that names NO cache at all. Its `before` step
+    // exits 1 the moment it runs, so this never reaches a record — which is
+    // exactly why it has to be caught in the file.
+    let silent: Vec<RunStep> = steps
+        .iter()
+        .cloned()
+        .map(|mut step| {
+            step.script = step.script.replace(
+                &format!("{} 'Linux-cargo-unrun-tree-'", restored::CACHE_FLAG),
+                "",
+            );
+            step
+        })
+        .collect();
+    assert_eq!(
+        twice_compiled::judge_wiring(&declared_of(&silent, &caches)),
+        vec![Refusal::AMeasuringPairNamesAnotherCache {
+            job: "unrun-tests".to_string(),
+            record: "/w/rustc-log/unrun-tests.tree.restored".to_string(),
+            named: Vec::new(),
+            brackets: "Linux-cargo-unrun-tree-".to_string(),
+        }]
+    );
+}
+
+/// R1122 — TWO RECORDS FOR ONE RESTORE IS AN OVERWRITE, AND AN OVERWRITE IS
+/// SILENT. The join is a map, so the second would simply replace the first and
+/// the census would print one price with no sign that another had been offered.
+#[test]
+fn two_records_for_one_restore_are_refused_rather_than_letting_one_win() {
+    let (declared, mut census) = cached_and_said(true, 1_000);
+    // The same job, the same cache, a second file — which is what a pair whose
+    // record path was copied from its neighbour leaves behind.
+    census.restored.insert(
+        "unrun-tests.again.restored".to_string(),
+        restored::decode(&restore_record(
+            "unrun-tests",
+            true,
+            &[("~/.cargo/registry", 7), ("target", 7)],
+        )),
+    );
+    let refusals = judge(&census, &declared, &nothing());
+    assert_eq!(
+        refusals,
+        vec![Refusal::OneRestoreIsRecordedTwice {
+            restore: "job `unrun-tests` cache `Linux-cargo-unrun-tests-`".to_string(),
+            // BOTH OF THEM. Which one a map keeps is the order the directory
+            // was walked in, so a refusal naming one would send the reader to
+            // whichever file the filesystem happened to hand over second.
+            files: vec![
+                "unrun-tests.again.restored".to_string(),
+                "unrun-tests.restored".to_string(),
+            ],
+            measured: vec![
+                "~/.cargo/registry, target".to_string(),
+                "~/.cargo/registry, target".to_string(),
+            ],
+        }],
+        "{refusals:?}"
+    );
+}
+
+/// R1122 — AND A JOB'S TWO RECORDS ARE READ AS TWO. A map keyed by the job holds
+/// whichever was read last, which is the registry's five seconds standing in for
+/// the build directory's hundred and thirty.
+#[test]
+fn a_job_that_wrote_one_record_per_cache_has_both_of_them_read() {
+    let mut steps = Vec::new();
+    let mut caches = Vec::new();
+    let mut census = census_of(&["unrun-tests", "twice-compiled"]);
+    for (which, index, paths) in [
+        ("home", 0usize, &["~/.cargo/registry"][..]),
+        ("tree", 3usize, &["target"][..]),
+    ] {
+        let prefix = format!("Linux-cargo-unrun-{which}-");
+        for (side, at) in [
+            (restored::Side::Before, index),
+            (restored::Side::After, index + 2),
+        ] {
+            let mut step = measuring_cache("unrun-tests", &prefix, side, at, paths);
+            step.env.insert(
+                restored::VARIABLE.to_string(),
+                format!("/w/rustc-log/unrun-tests.{which}.restored"),
+            );
+            steps.push(step);
+        }
+        let mut declared = cache("unrun-tests", paths);
+        declared.index = index + 1;
+        declared.prefix = prefix.clone();
+        caches.push(declared);
+        // EACH CACHE'S OWN PATHS AND ITS OWN SIZE, because the whole point of
+        // the split is that these two numbers are not one number.
+        let mut written = restore_record(
+            "unrun-tests",
+            true,
+            &paths
+                .iter()
+                .map(|path| (*path, if which == "tree" { 32_000 } else { 700 }))
+                .collect::<Vec<_>>(),
+        );
+        written = written.replace("Linux-cargo-unrun-tests-", &prefix);
+        census.restored.insert(
+            format!("unrun-tests.{which}.restored"),
+            restored::decode(&written),
+        );
+    }
+    steps.push(wired("twice-compiled"));
+    let declared = declared_of(&steps, &caches);
+    assert!(
+        judge(&census, &declared, &nothing()).is_empty(),
+        "{:?}",
+        judge(&census, &declared, &nothing())
+    );
+    // AND THE TWO STATES ARE BOTH THERE, with the sizes that tell them apart.
+    let started = census.started();
+    assert_eq!(started.len(), 2, "{started:?}");
+    assert_eq!(
+        started.get(&restored::Restore {
+            job: "unrun-tests".to_string(),
+            cache: "Linux-cargo-unrun-tree-".to_string(),
+        }),
+        Some(&restored::Warmth::ExactHit { bytes: 32_000 })
+    );
+    assert_eq!(
+        started.get(&restored::Restore {
+            job: "unrun-tests".to_string(),
+            cache: "Linux-cargo-unrun-home-".to_string(),
+        }),
+        Some(&restored::Warmth::ExactHit { bytes: 700 })
+    );
+}
+
+/// R1122 — THE PATHS ARE THE CACHE'S AND NOT THE JOB'S. A record measuring the
+/// REGION — every path any of the job's caches holds, which is what the
+/// comparison read until this round — prices a restore that never touched half
+/// of it, and would have been accepted.
+#[test]
+fn a_record_measuring_the_whole_region_rather_than_its_own_cache_is_refused() {
+    let mut steps = Vec::new();
+    let mut caches = Vec::new();
+    let mut census = census_of(&["unrun-tests", "twice-compiled"]);
+    for (which, index, paths) in [
+        ("home", 0usize, &["~/.cargo/registry"][..]),
+        ("tree", 3usize, &["target"][..]),
+    ] {
+        let prefix = format!("Linux-cargo-unrun-{which}-");
+        for (side, at) in [
+            (restored::Side::Before, index),
+            (restored::Side::After, index + 2),
+        ] {
+            let mut step = measuring_cache("unrun-tests", &prefix, side, at, paths);
+            step.env.insert(
+                restored::VARIABLE.to_string(),
+                format!("/w/rustc-log/unrun-tests.{which}.restored"),
+            );
+            steps.push(step);
+        }
+        let mut declared = cache("unrun-tests", paths);
+        declared.index = index + 1;
+        declared.prefix = prefix.clone();
+        caches.push(declared);
+        // BOTH RECORDS MEASURE BOTH PATHS — the region, which is what one pair
+        // around a job's whole cargo home plus build directory used to write.
+        let mut written = restore_record(
+            "unrun-tests",
+            true,
+            &[("~/.cargo/registry", 700), ("target", 32_000)],
+        );
+        written = written.replace("Linux-cargo-unrun-tests-", &prefix);
+        census.restored.insert(
+            format!("unrun-tests.{which}.restored"),
+            restored::decode(&written),
+        );
+    }
+    steps.push(wired("twice-compiled"));
+    assert_eq!(
+        judge(&census, &declared_of(&steps, &caches), &nothing()),
+        vec![
+            Refusal::RestoreRecordMeasuredOtherPaths {
+                job: "unrun-tests".to_string(),
+                cache: "Linux-cargo-unrun-home-".to_string(),
+                measured: vec!["~/.cargo/registry".to_string(), "target".to_string()],
+                declared: vec!["~/.cargo/registry".to_string()],
+            },
+            Refusal::RestoreRecordMeasuredOtherPaths {
+                job: "unrun-tests".to_string(),
+                cache: "Linux-cargo-unrun-tree-".to_string(),
+                measured: vec!["~/.cargo/registry".to_string(), "target".to_string()],
+                declared: vec!["target".to_string()],
+            },
+        ]
+    );
+}
+
+/// R1122 — AND THE STEPS THAT DO NOT MEASURE OWE NOTHING. The control for the
+/// law above, and it is the arm the split needs: a job's work step has no record
+/// to name, because a record is one cache's and the job has two.
+#[test]
+fn a_step_that_measures_nothing_owes_no_record_path() {
+    let mut steps = cached_job("validate", &["~/.cargo/registry"]);
+    let work = steps
+        .last_mut()
+        .expect("the job has a step that does the work");
+    assert!(
+        restored::sides_measured(&work.script).is_empty(),
+        "the premise: it is not one of the measuring steps"
+    );
+    work.env.remove(restored::VARIABLE);
+    steps.extend(cached_job("unrun-tests", &["~/.cargo/registry"]));
+    let declared = declared_of(
+        &steps,
+        &[
+            cache("validate", &["~/.cargo/registry"]),
+            cache("unrun-tests", &["~/.cargo/registry"]),
+        ],
+    );
+    assert_eq!(twice_compiled::judge_wiring(&declared), Vec::new());
 }
 
 /// R1121 — A JOB'S SECOND CACHE OWES ITS OWN PAIR. Until this round the record
@@ -2394,7 +2712,7 @@ fn census_started(jobs: &[(&str, usize, Option<restored::Warmth>)]) -> Census {
             restored::Warmth::HitThatBroughtNothing => (true, 0),
         };
         census.restored.insert(
-            (*job).to_string(),
+            format!("{job}.restored"),
             restored::decode(&restore_record(job, exact, &[("target", arrived)])),
         );
     }
@@ -2423,15 +2741,22 @@ fn two_censuses_whose_jobs_began_the_same_way_are_a_difference() {
     let validate = held.jobs.get("validate").expect("a comparable job");
     assert_eq!(validate.compilations, (4, 2));
     assert_eq!(validate.compilations_changed(), -2);
-    assert!(
-        validate.started.is_some(),
+    assert_eq!(
+        validate.started.get("Linux-cargo-validate-"),
+        Some(&(
+            restored::Warmth::PrefixHit { bytes: 7_000 },
+            restored::Warmth::PrefixHit { bytes: 7_144 }
+        )),
         "and it carries BOTH start states, because the predicate that let this \
          pair through looks at the variant and not the size"
     );
     // THE SAME SILENCE TWICE IS NOT A DIFFERENCE: a job with no cache always
     // begins with an empty tree, and a comparison that refused those would refuse
     // every pair this repository can take.
-    assert_eq!(held.jobs.get("gate").map(|delta| delta.started), Some(None));
+    assert_eq!(
+        held.jobs.get("gate").map(|delta| delta.started.len()),
+        Some(0)
+    );
     let (before, after) = held.totals().expect("every job is comparable");
     assert_eq!((before.paid, after.paid), (6, 4));
 }
@@ -2446,7 +2771,10 @@ fn a_job_that_began_differently_is_refused_rather_than_subtracted() {
     assert_eq!(
         held.incomparable,
         vec![twice_compiled::Incomparable::StartedInDifferentStates {
-            job: "validate".to_string(),
+            restore: restored::Restore {
+                job: "validate".to_string(),
+                cache: "Linux-cargo-validate-".to_string(),
+            },
             earlier: restored::Warmth::Nothing,
             later: restored::Warmth::PrefixHit { bytes: 7_000 },
         }]
@@ -2482,7 +2810,10 @@ fn a_job_that_said_nothing_on_one_side_only_is_refused() {
         held.incomparable,
         vec![
             twice_compiled::Incomparable::OnlyOneSideSaidWhatItStartedFrom {
-                job: "validate".to_string(),
+                restore: restored::Restore {
+                    job: "validate".to_string(),
+                    cache: "Linux-cargo-validate-".to_string(),
+                },
                 silent: twice_compiled::Side::Later,
             }
         ]

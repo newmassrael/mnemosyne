@@ -318,8 +318,8 @@
       "edits": [
         {
           "file": "tools/twice-compiled/src/lib.rs",
-          "from": "            None => refusals.push(Refusal::JobDidNotSayWhatItRestored { job: job.clone() }),",
-          "to": "            None => {}"
+          "from": "            let Some((_, record)) = said.get(&wanted) else {\n                refusals.push(Refusal::JobDidNotSayWhatItRestored {\n                    job: job.clone(),\n                    cache: cache.prefix.clone(),\n                });\n                continue;\n            };",
+          "to": "            let Some((_, record)) = said.get(&wanted) else {\n                continue;\n            };"
         }
       ],
       "expect_red": ["a_job_with_a_cache_that_did_not_say_what_it_restored_is_refused"]
@@ -330,8 +330,8 @@
       "edits": [
         {
           "file": "tools/twice-compiled/src/lib.rs",
-          "from": "                if record.measured() != paths.iter().map(String::as_str).collect::<Vec<_>>() {",
-          "to": "                if record.measured().is_empty() && !paths.is_empty() {"
+          "from": "            if record.measured() != cache.paths.iter().map(String::as_str).collect::<Vec<_>>() {",
+          "to": "            if record.measured().is_empty() && !cache.paths.is_empty() {"
         }
       ],
       "expect_red": ["a_record_measuring_paths_the_cache_does_not_hold_is_refused"]
@@ -342,8 +342,8 @@
       "edits": [
         {
           "file": "tools/twice-compiled/src/lib.rs",
-          "from": "                if record.warmth() == restored::Warmth::HitThatBroughtNothing {",
-          "to": "                if false {"
+          "from": "            if record.warmth() == restored::Warmth::HitThatBroughtNothing {",
+          "to": "            if false {"
         }
       ],
       "expect_red": ["an_exact_hit_that_brought_nothing_is_refused_rather_than_counted"]
@@ -354,8 +354,8 @@
       "edits": [
         {
           "file": "tools/twice-compiled/src/lib.rs",
-          "from": "            if &record.job != file {",
-          "to": "            if false {"
+          "from": "        if !restored::names_its_job(file, &record.job) {\n            refusals.push(Refusal::RestoreRecordNamesAnotherJob {\n                file: file.clone(),\n                said: record.job.clone(),\n            });\n            continue;\n        }",
+          "to": "        if false {\n            continue;\n        }"
         }
       ],
       "expect_red": ["a_record_whose_contents_name_another_job_is_refused"]
@@ -374,7 +374,7 @@
     },
     {
       "name": "every-job-owes-a-restore-record",
-      "why": "the population that owes a record is the jobs with a CACHE, and it is not the jobs that compile: this repository's two gate jobs compile plenty and cache nothing. A law over the wrong population refuses a workflow that is right, which is how a gate stops being read",
+      "why": "the population that owes a record is the jobs with a CACHE, and it is not the jobs that compile: this repository's two gate jobs compile plenty and cache nothing. A law over the wrong population refuses a workflow that is right, which is how a gate stops being read. R1122 NARROWED WHAT THIS CAN STILL REACH, and the narrowing is the finding: the verdict is now one per DECLARED CACHE, so a job handed an empty cache list gets zero verdicts and the record laws cannot refuse it at all — the defect became unrepresentable at that site. What is left reachable is the MIRROR, `RestoreIsMeasuredWithNoCache`, which skips any job the map holds and therefore stops firing for a job that measures a restore it does not have",
       "edits": [
         {
           "file": "tools/twice-compiled/src/lib.rs",
@@ -382,10 +382,7 @@
           "to": "        let mut cached: BTreeMap<String, Vec<CacheOfAJob>> = BTreeMap::new();\n        for job in jobs.keys() {\n            cached.entry(job.clone()).or_default();\n        }\n        for cache in caches {"
         }
       ],
-      "expect_red": [
-        "a_job_with_no_cache_owes_no_record_of_what_it_restored",
-        "a_job_with_no_cache_leaves_no_record_and_is_not_refused_for_it"
-      ]
+      "expect_red": ["a_job_with_no_cache_that_measures_a_restore_is_refused"]
     },
     {
       "name": "the-workflow-need-not-say-where-the-state-goes",
@@ -393,13 +390,13 @@
       "edits": [
         {
           "file": "tools/twice-compiled/src/lib.rs",
-          "from": "        for step in declared.jobs.get(job).into_iter().flatten() {\n            match step.env.get(restored::VARIABLE) {",
-          "to": "        for step in declared.jobs.get(job).into_iter().flatten().take(0) {\n            match step.env.get(restored::VARIABLE) {"
+          "from": "        for step in declared.jobs.get(job).into_iter().flatten() {\n            if restored::sides_measured(&step.script).is_empty() {\n                continue;\n            }\n            match step.env.get(restored::VARIABLE) {",
+          "to": "        for step in declared.jobs.get(job).into_iter().flatten().take(0) {\n            if restored::sides_measured(&step.script).is_empty() {\n                continue;\n            }\n            match step.env.get(restored::VARIABLE) {"
         }
       ],
       "expect_red": [
         "a_job_writing_its_state_to_another_jobs_file_is_refused",
-        "a_step_of_a_cached_job_that_does_not_say_where_to_write_it_is_refused"
+        "a_measuring_step_that_does_not_say_where_to_write_it_is_refused"
       ]
     },
     {
@@ -620,20 +617,20 @@
       "edits": [
         {
           "file": "tools/twice-compiled/src/lib.rs",
-          "from": "                if record.job == *job && !declared_prefixes.contains(&record.cache) {",
-          "to": "                if false && record.job == *job && !declared_prefixes.contains(&record.cache) {"
+          "from": "        if !prefixes.contains(&record.cache) {",
+          "to": "        if false && !prefixes.contains(&record.cache) {"
         }
       ],
       "expect_red": ["a_record_naming_a_cache_its_job_does_not_declare_is_refused"]
     },
     {
       "name": "a-pasted-record-is-named-twice-over",
-      "why": "a record written into another job's file names the wrong cache as well as the wrong job, and that event already has a name — two names for one defect send two readers to two different repairs, which is the ordering discipline R1113 wrote down for the clock check",
+      "why": "a record written into another job's file is a record of the restore that job's OWN record already prices, so a join that reads the contents before checking the name it arrived under reports it as a second price for that restore — one defect wearing two names, which sends two readers to two different repairs. R1113 wrote that ordering discipline down for the clock check and this is where it lands for the paste error",
       "edits": [
         {
           "file": "tools/twice-compiled/src/lib.rs",
-          "from": "                if record.job == *job && !declared_prefixes.contains(&record.cache) {",
-          "to": "                if !declared_prefixes.contains(&record.cache) {"
+          "from": "        if !restored::names_its_job(file, &record.job) {\n            continue;\n        }\n        if let Some((was, earlier)) = said.insert(record.restore(), (file, record)) {",
+          "to": "        if let Some((was, earlier)) = said.insert(record.restore(), (file, record)) {"
         }
       ],
       "expect_red": ["a_record_whose_contents_name_another_job_is_refused"]
@@ -692,8 +689,8 @@
       "edits": [
         {
           "file": "tools/twice-compiled/src/lib.rs",
-          "from": "            if recorded != \"none\" && measured != recorded {",
-          "to": "            if false && recorded != \"none\" && measured != recorded {"
+          "from": "        if recorded != \"none\" && measured != recorded {",
+          "to": "        if false && recorded != \"none\" && measured != recorded {"
         }
       ],
       "expect_red": ["one_jobs_two_instruments_must_agree_about_their_build"]
@@ -704,8 +701,8 @@
       "edits": [
         {
           "file": "tools/twice-compiled/src/lib.rs",
-          "from": "            if recorded != \"none\" {\n                recorders.push((record.job.clone(), recorded.clone()));\n            }",
-          "to": "            recorders.push((record.job.clone(), recorded.clone()));"
+          "from": "        if recorded != \"none\" {\n            recorders.push((record.job.clone(), recorded.clone()));\n        }",
+          "to": "        recorders.push((record.job.clone(), recorded.clone()));"
         }
       ],
       "expect_red": ["a_recorder_deliberately_absent_is_not_a_disagreement"]
@@ -716,8 +713,8 @@
       "edits": [
         {
           "file": "tools/twice-compiled/src/lib.rs",
-          "from": "            if between != 1 {",
-          "to": "            if false && between != 1 {"
+          "from": "            let [bracketed] = between.as_slice() else {\n                refusals.push(Refusal::AMeasuringPairBracketsOtherThanOneCache {\n                    job: job.clone(),\n                    record: record.clone(),\n                    caches: between.len(),\n                });\n                continue;\n            };",
+          "to": "            let Some(bracketed) = between.first() else {\n                continue;\n            };"
         }
       ],
       "expect_red": [
@@ -732,8 +729,8 @@
       "edits": [
         {
           "file": "tools/twice-compiled/src/lib.rs",
-          "from": "        if pairs.len() != caches_at.len() {",
-          "to": "        if false && pairs.len() != caches_at.len() {"
+          "from": "        if pairs.len() != held.len() {",
+          "to": "        if false && pairs.len() != held.len() {"
         }
       ],
       "expect_red": [
@@ -747,11 +744,83 @@
       "edits": [
         {
           "file": "tools/twice-compiled/src/lib.rs",
-          "from": "                    .entry(\n                        step.env\n                            .get(restored::VARIABLE)\n                            .cloned()\n                            .unwrap_or_default(),\n                    )",
-          "to": "                    .entry(job.clone())"
+          "from": "            let record = step\n                .env\n                .get(restored::VARIABLE)\n                .cloned()\n                .unwrap_or_default();",
+          "to": "            let record = job.clone();"
         }
       ],
       "expect_red": ["a_job_with_a_pair_for_each_of_its_two_caches_is_accepted"]
+    },
+    {
+      "name": "a-pair-need-not-name-the-cache-it-brackets",
+      "why": "R1122, and it is the one mistake NO record can report. `restored before --cache <prefix>` is what the record's `cache` line is written from, and the check on that line asks only whether the prefix is one the JOB declares — which every one of a job's own prefixes is. So a `--cache` copied from the step above it produces a well-formed record, naming a real cache of the right job, carrying the OTHER restore's interval: a 130-second build directory priced at a 5-second registry, which is the arithmetic R1099 got wrong arriving by a route R1117 left open",
+      "edits": [
+        {
+          "file": "tools/twice-compiled/src/lib.rs",
+          "from": "            match named.get(record).map(Vec::as_slice) {\n                Some([said]) if *said == bracketed.prefix => {}",
+          "to": "            match named.get(record).map(Vec::as_slice) {\n                Some([_]) => {}"
+        }
+      ],
+      "expect_red": ["a_job_with_a_pair_for_each_of_its_two_caches_is_accepted"]
+    },
+    {
+      "name": "a-pair-that-names-no-cache-at-all-is-accepted",
+      "why": "the other arm of the same law, and the one that decides whether it is a comparison or a presence check. A `before` with the flag missing exits 1 the moment it runs, so this never reaches a record — which is exactly why it has to be caught in the file rather than in the census",
+      "edits": [
+        {
+          "file": "tools/twice-compiled/src/lib.rs",
+          "from": "                other => refusals.push(Refusal::AMeasuringPairNamesAnotherCache {",
+          "to": "                None => {}\n                other => refusals.push(Refusal::AMeasuringPairNamesAnotherCache {"
+        }
+      ],
+      "expect_red": ["a_job_with_a_pair_for_each_of_its_two_caches_is_accepted"]
+    },
+    {
+      "name": "one-restore-may-be-recorded-twice",
+      "why": "R1122: the join is a map, so a second record for one restore silently replaces the first and the census prints one price with no sign another was offered. The two are routinely different numbers — the way this arises is two measuring pairs writing one file, or two runs unpacked into one directory",
+      "edits": [
+        {
+          "file": "tools/twice-compiled/src/lib.rs",
+          "from": "        if let Some((was, earlier)) = said.insert(record.restore(), (file, record)) {",
+          "to": "        if let Some((was, earlier)) = said.insert(record.restore(), (file, record)).filter(|_| false) {"
+        }
+      ],
+      "expect_red": ["two_records_for_one_restore_are_refused_rather_than_letting_one_win"]
+    },
+    {
+      "name": "the-measured-paths-are-the-jobs-region-rather-than-the-caches",
+      "why": "R1122: while a job had ONE cache the region — every path any of its caches held — and that cache's own `path:` were the same list. For a job with two they are wrong in both directions at once: each record measures its own cache's paths and is refused for it, and a record measuring the whole region prices a restore that never touched half of it and is accepted",
+      "edits": [
+        {
+          "file": "tools/twice-compiled/src/lib.rs",
+          "from": "            if record.measured() != cache.paths.iter().map(String::as_str).collect::<Vec<_>>() {",
+          "to": "            if record.measured() != declared.cached_paths(job).iter().map(String::as_str).collect::<Vec<_>>() {"
+        }
+      ],
+      "expect_red": ["a_record_measuring_the_whole_region_rather_than_its_own_cache_is_refused"]
+    },
+    {
+      "name": "a-jobs-two-records-are-keyed-by-the-job",
+      "why": "R1122: a compilation log IS a job's, so its stem is the job; a restore record is one CACHE's, so a job declaring two writes two files. A loader still keying these by the stem-as-job holds whichever `read_dir` returned last — the registry's five seconds standing in for the build directory's hundred and thirty, silently",
+      "edits": [
+        {
+          "file": "tools/twice-compiled/src/lib.rs",
+          "from": "                census\n                    .restored\n                    .insert(name.to_string(), restored::decode(&text));",
+          "to": "                census\n                    .restored\n                    .insert(stem.split('.').next().unwrap_or(stem).to_string(), restored::decode(&text));"
+        }
+      ],
+      "expect_red": ["a_jobs_two_restore_records_are_loaded_as_two"]
+    },
+    {
+      "name": "an-absent-jobs-nicknamed-record-still-loads",
+      "why": "the skip is the gate's own job on a runner, whose build is still happening while it judges. A caller naming an absent job means every record that job wrote, and comparing the STEM to the job name lets `<job>.<nickname>.restored` through — a record from a job the caller said could not be in this census",
+      "edits": [
+        {
+          "file": "tools/twice-compiled/src/lib.rs",
+          "from": "                if absent.iter().any(|job| restored::names_its_job(name, job)) {",
+          "to": "                if absent.contains(stem) {"
+        }
+      ],
+      "expect_red": ["a_jobs_two_restore_records_are_loaded_as_two"]
     }
   ]
 }

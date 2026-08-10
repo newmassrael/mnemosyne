@@ -513,20 +513,26 @@ fn started_in(census: &Census, declared: &Declared, absent: &BTreeSet<String>) {
         );
         return;
     }
+    // COUNTED PER RESTORE, WHICH IS NO LONGER PER JOB. A job that declares two
+    // caches can be warm in one and cold in the other, and a tally that put it
+    // in one bucket would be answering about whichever cache the reader guessed
+    // — the very substitution R1117 split the record to prevent.
     let mut exact = Vec::new();
     let mut prefix = Vec::new();
     let mut nothing = Vec::new();
     let mut contradictory = Vec::new();
-    for (job, warmth) in &started {
+    for (restore, warmth) in &started {
+        let named = restore.to_string();
         match warmth {
-            restored::Warmth::ExactHit { .. } => exact.push(*job),
-            restored::Warmth::PrefixHit { .. } => prefix.push(*job),
-            restored::Warmth::Nothing => nothing.push(*job),
-            restored::Warmth::HitThatBroughtNothing => contradictory.push(*job),
+            restored::Warmth::ExactHit { .. } => exact.push(named),
+            restored::Warmth::PrefixHit { .. } => prefix.push(named),
+            restored::Warmth::Nothing => nothing.push(named),
+            restored::Warmth::HitThatBroughtNothing => contradictory.push(named),
         }
     }
+    let cacheless: Vec<String> = cacheless.iter().map(|job| format!("`{job}`")).collect();
     println!(
-        "\n  taken with {} job(s) warm from an exact hit, {} warm from an \
+        "\n  taken with {} restore(s) warm from an exact hit, {} warm from an \
          earlier generation, {} from nothing{}",
         exact.len(),
         prefix.len(),
@@ -537,15 +543,15 @@ fn started_in(census: &Census, declared: &Declared, absent: &BTreeSet<String>) {
             format!(", {} contradicting itself", contradictory.len())
         }
     );
-    for (label, jobs) in [
+    for (label, named) in [
         ("exact hit", &exact),
         ("earlier generation", &prefix),
         ("nothing", &nothing),
         ("contradiction", &contradictory),
         ("no cache at all", &cacheless),
     ] {
-        if !jobs.is_empty() {
-            println!("    {label:<20} {}", jobs.join(", "));
+        if !named.is_empty() {
+            println!("    {label:<20} {}", named.join(", "));
         }
     }
     println!(

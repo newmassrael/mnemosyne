@@ -52,7 +52,7 @@ fn before(record: &PathBuf, arguments: &[String]) {
     let [flag, cache, paths @ ..] = arguments else {
         fail(USAGE)
     };
-    if flag != "--cache" || cache.is_empty() {
+    if flag != restored::CACHE_FLAG || cache.is_empty() {
         fail(USAGE);
     }
     if paths.is_empty() {
