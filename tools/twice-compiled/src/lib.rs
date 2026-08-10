@@ -1685,37 +1685,45 @@ pub const RECORDER_MANIFEST: &str = "tools/rustc-log/Cargo.toml";
 /// Both are read from the workflow rather than kept beside it, so a job added
 /// tomorrow is in the population the moment it exists — the property the four
 /// rounds before R1090 each broke by hand-maintaining a list.
+/// One `actions/cache` step of one job, as the workflow declares it.
+///
+/// THREE FIELDS THAT WERE THREE MAPS. Each answers a different question about
+/// the same step — what it holds, where it sits, and which key it is — and they
+/// are one value because a job's caches are a list of steps, not three lists
+/// that happen to be the same length.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CacheOfAJob {
+    /// Where in the job's `steps:` list it sits, counting every step, so it is
+    /// directly comparable with [`ci_plan::RunStep::index`].
+    pub index: usize,
+    /// The resolved key prefix — the identity every gate here joins on, and the
+    /// one a restore record names.
+    pub prefix: String,
+    /// The `path:` entries, in the order written.
+    pub paths: Vec<String>,
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct Declared {
     /// Every job with a `run:` step, and the steps.
     pub jobs: BTreeMap<String, Vec<ci_plan::RunStep>>,
-    /// The cached paths each job declares, in the order it declares them.
+    /// Every cache each job declares, in the order it declares them.
     ///
-    /// Merged when one job declares more than one cache: the restore record
-    /// brackets a REGION of the job, and what arrived in that region is what
-    /// arrived under every path any of those caches holds. A duplicate spelling
-    /// is dropped and the order of first mention kept, because that is the order
-    /// the measuring step is written in.
-    pub caches: BTreeMap<String, Vec<String>>,
-    /// WHERE in each job's `steps:` list its caches sit.
+    /// R1120 — ONE HOME, AFTER THREE. This was three maps keyed by job: merged
+    /// paths, indices, and prefixes. Three parallel lists of one thing can
+    /// disagree about how many of it there are, and for a job declaring two
+    /// caches they DID: two indices, two prefixes, and one merged path list with
+    /// no way back to which cache held which path. That merge was deliberate
+    /// while a record was a job's — the restore record bracketed a REGION and
+    /// what arrived in it was what arrived under every path any of those caches
+    /// held — and R1117 made a record a CACHE's, which is when the merge stopped
+    /// being a simplification and became a loss.
     ///
-    /// Kept beside the paths rather than folded into them because it answers a
-    /// different question, and one the merge above destroys: the paths of two
-    /// caches are one region, but that region has an outer edge on each side and
-    /// a measurement has to be outside both of them. Every index counts the
-    /// whole `steps:` list, so it is directly comparable with
-    /// [`ci_plan::RunStep::index`].
-    pub caches_at: BTreeMap<String, Vec<usize>>,
-    /// The resolved key prefix of each cache a job declares, in the order
-    /// declared — the identity every gate here joins on, and the one a restore
-    /// record now names.
-    ///
-    /// NOT MERGED, unlike `caches`. R1117 gave the record a `cache` field so
-    /// that a job declaring two caches can have the price of each; that field
-    /// would be one more thing declared and read by nothing — the defect R1116
-    /// found in `restore-keys` — unless something checks it against what the
-    /// workflow says. This is what it is checked against.
-    pub prefixes: BTreeMap<String, Vec<String>>,
+    /// The readers that still want the old answers ask for them
+    /// ([`Declared::cached_paths`], [`Declared::caches_at`],
+    /// [`Declared::prefixes`]), so the region law and the per-cache laws are
+    /// derived from one datum rather than kept beside each other.
+    pub caches: BTreeMap<String, Vec<CacheOfAJob>>,
     /// Does this workflow collect anything a later job could download?
     ///
     /// A BOOLEAN BECAUSE THE QUESTION IS ONE: a workflow that uploads no
@@ -1749,29 +1757,62 @@ impl Declared {
         for step in steps {
             jobs.entry(step.job.clone()).or_default().push(step.clone());
         }
-        let mut cached: BTreeMap<String, Vec<String>> = BTreeMap::new();
-        let mut at: BTreeMap<String, Vec<usize>> = BTreeMap::new();
-        let mut prefixes: BTreeMap<String, Vec<String>> = BTreeMap::new();
+        let mut cached: BTreeMap<String, Vec<CacheOfAJob>> = BTreeMap::new();
         for cache in caches {
-            let paths = cached.entry(cache.owner.clone()).or_default();
-            for path in &cache.paths {
-                if !paths.contains(path) {
-                    paths.push(path.clone());
-                }
-            }
-            at.entry(cache.owner.clone()).or_default().push(cache.index);
-            prefixes
+            cached
                 .entry(cache.owner.clone())
                 .or_default()
-                .push(cache.prefix.clone());
+                .push(CacheOfAJob {
+                    index: cache.index,
+                    prefix: cache.prefix.clone(),
+                    paths: cache.paths.clone(),
+                });
         }
         Declared {
             jobs,
             caches: cached,
-            caches_at: at,
-            prefixes,
             collects_records: ci_plan::collects_artifacts(uploads),
         }
+    }
+
+    /// Every path any of a job's caches holds, first mention first.
+    ///
+    /// THE REGION, and it is asked for rather than stored: while a restore record
+    /// is a job's, what arrived in the region between its two measurements is
+    /// what arrived under every one of these. R1117 made a record a cache's, so
+    /// this is the answer the REGION laws want and not the one the per-cache laws
+    /// want — which is exactly why it is a function of the list rather than a
+    /// second copy beside it.
+    pub fn cached_paths(&self, job: &str) -> Vec<String> {
+        let mut out: Vec<String> = Vec::new();
+        for cache in self.caches.get(job).into_iter().flatten() {
+            for path in &cache.paths {
+                if !out.contains(path) {
+                    out.push(path.clone());
+                }
+            }
+        }
+        out
+    }
+
+    /// Where each of a job's cache steps sits.
+    pub fn caches_at(&self, job: &str) -> Vec<usize> {
+        self.caches
+            .get(job)
+            .into_iter()
+            .flatten()
+            .map(|cache| cache.index)
+            .collect()
+    }
+
+    /// The resolved key prefix of each cache a job declares.
+    pub fn prefixes(&self, job: &str) -> Vec<String> {
+        self.caches
+            .get(job)
+            .into_iter()
+            .flatten()
+            .map(|cache| cache.prefix.clone())
+            .collect()
     }
 }
 
@@ -1954,7 +1995,7 @@ pub fn judge_wiring(declared: &Declared) -> Vec<Refusal> {
         // by removing it and watching nothing go red. It was also WRONG in the
         // one case it would have decided: a program under a restored
         // `~/.cargo/...` is overwritten exactly as one under `target/` is.
-        let held: Vec<&String> = declared.caches.get(job).into_iter().flatten().collect();
+        let held = declared.cached_paths(job);
         if held.is_empty() {
             continue;
         }
@@ -1965,18 +2006,20 @@ pub fn judge_wiring(declared: &Declared) -> Vec<Refusal> {
                     // under `target`, and a plain `starts_with` would say it is
                     // — a refusal naming a file no cache touches is how a gate
                     // teaches people to ignore it.
-                    if program == **path || program.starts_with(&format!("{path}/")) {
+                    if program == *path || program.starts_with(&format!("{path}/")) {
                         refusals.push(Refusal::ProgramRunAfterARestoreLivesUnderIt {
                             job: job.clone(),
                             program: program.clone(),
-                            held: (*path).clone(),
+                            held: path.clone(),
                         });
                     }
                 }
             }
         }
     }
-    for (job, caches_at) in &declared.caches_at {
+    for job in declared.caches.keys() {
+        let caches_at = declared.caches_at(job);
+        let caches_at = &caches_at;
         // WHERE THE RECORD WILL BE WRITTEN — the same law the compilation log
         // has, on the other record.
         for step in declared.jobs.get(job).into_iter().flatten() {
@@ -2043,7 +2086,7 @@ pub fn judge_wiring(declared: &Declared) -> Vec<Refusal> {
     // THE OTHER DIRECTION, which no record can report until one arrives: a job
     // measuring a restore that never happens.
     for (job, steps) in &declared.jobs {
-        if declared.caches_at.contains_key(job) {
+        if declared.caches.contains_key(job) {
             continue;
         }
         if steps
@@ -2064,10 +2107,12 @@ pub fn judge_wiring(declared: &Declared) -> Vec<Refusal> {
 /// them would refuse a workflow that is right.
 fn judge_restores(census: &Census, declared: &Declared, absent: &BTreeSet<String>) -> Vec<Refusal> {
     let mut refusals = judge_wiring(declared);
-    for (job, paths) in &declared.caches {
+    for job in declared.caches.keys() {
         if absent.contains(job) || !declared.jobs.contains_key(job) {
             continue;
         }
+        let paths = declared.cached_paths(job);
+        let paths = &paths;
         match census.restored.get(job) {
             None => refusals.push(Refusal::JobDidNotSayWhatItRestored { job: job.clone() }),
             Some(Err(why)) => refusals.push(Refusal::RestoreRecordIsMalformed {
@@ -2086,7 +2131,7 @@ fn judge_restores(census: &Census, declared: &Declared, absent: &BTreeSet<String
                 // job, and that event already has a name below — two names for
                 // one defect send two readers to two different repairs, which is
                 // the discipline R1113 wrote down for the clock check.
-                let declared_prefixes = declared.prefixes.get(job).cloned().unwrap_or_default();
+                let declared_prefixes = declared.prefixes(job);
                 if record.job == *job && !declared_prefixes.contains(&record.cache) {
                     refusals.push(Refusal::RestoreRecordNamesACacheTheJobDoesNotDeclare {
                         job: job.clone(),

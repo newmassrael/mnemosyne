@@ -83,7 +83,8 @@ fn everybody_compiled(declared: &Declared) -> Census {
     // for the judge to speak about. What is asserted below is that the workflow
     // asks each of these jobs to write the record — not that any run produced
     // one.
-    for (job, paths) in &declared.caches {
+    for job in declared.caches.keys() {
+        let paths = &declared.cached_paths(job);
         let mut written = restored::encode_job(job);
         // WHICH CACHE, taken from what this workflow declares rather than
         // spelled again here: a fixture inventing a prefix would be testing that
@@ -93,9 +94,8 @@ fn everybody_compiled(declared: &Declared) -> Census {
         }
         written.extend_from_slice(&restored::encode_cache(
             declared
-                .prefixes
-                .get(job)
-                .and_then(|declared| declared.first())
+                .prefixes(job)
+                .first()
                 .expect("a job with a cache declares a prefix"),
         ));
         written.extend_from_slice(&restored::encode_at(restored::Side::Before, 1_000_000_000));
@@ -283,19 +283,19 @@ fn every_cached_job_of_this_workflow_measures_the_restore_around_it() {
     // NON-VACUITY, FIRST HALF: the population is not empty. A law over no job
     // returns the same nothing as a law over a file that is right.
     assert!(
-        declared.caches_at.len() >= 5,
+        declared.caches.len() >= 5,
         "{WORKFLOW} declares caches in {:?} — a wiring law over fewer jobs than \
          this repository has cached jobs is one that stopped reading",
-        declared.caches_at.keys().collect::<Vec<_>>()
+        declared.caches.keys().collect::<Vec<_>>()
     );
     // NON-VACUITY, SECOND HALF, AND IT IS THE ONE THAT MATTERS: the law bites on
     // THIS population, not merely on a fixture. Every cached job in the live
     // file is walked, its first measurement moved past its own cache step, and
     // the refusal demanded — so a reader that had quietly stopped comparing
     // indices would turn this red rather than print an empty verdict.
-    for job in declared.caches_at.keys().cloned().collect::<Vec<_>>() {
+    for job in declared.caches.keys().cloned().collect::<Vec<_>>() {
         let mut moved = declared.clone();
-        let past = moved.caches_at[&job].iter().max().copied().unwrap_or(0) + 1;
+        let past = moved.caches_at(&job).iter().max().copied().unwrap_or(0) + 1;
         let steps = moved.jobs.get_mut(&job).expect("a cached job with steps");
         let before = steps
             .iter_mut()
@@ -325,10 +325,9 @@ fn every_cargo_home_tree_this_workflow_caches_is_one_the_split_can_name() {
     let declared = declared_jobs(&workflow_steps());
     let cached: BTreeSet<String> = declared
         .caches
-        .values()
-        .flatten()
-        .filter_map(|path| path.split("/.cargo/").nth(1))
-        .map(str::to_string)
+        .keys()
+        .flat_map(|job| declared.cached_paths(job))
+        .filter_map(|path| path.split("/.cargo/").nth(1).map(|under| under.to_string()))
         .collect();
     let named: BTreeSet<String> = ["git".to_string(), "registry".to_string()]
         .into_iter()
@@ -374,9 +373,13 @@ fn this_workflow_caches_one_build_directory_and_not_a_workspaces_own() {
     let declared = declared_jobs(&workflow_steps());
     let holders: Vec<&String> = declared
         .caches
-        .iter()
-        .filter(|(_, paths)| paths.iter().any(|path| path.ends_with("target")))
-        .map(|(job, _)| job)
+        .keys()
+        .filter(|job| {
+            declared
+                .cached_paths(job)
+                .iter()
+                .any(|path| path.ends_with("target"))
+        })
         .collect();
     assert_eq!(
         holders.len(),
@@ -385,7 +388,11 @@ fn this_workflow_caches_one_build_directory_and_not_a_workspaces_own() {
          affords one copy of it: {holders:?}",
         holders.len()
     );
-    for path in declared.caches.values().flatten() {
+    for path in declared
+        .caches
+        .keys()
+        .flat_map(|job| declared.cached_paths(job))
+    {
         if path.ends_with("target") {
             assert_eq!(
                 path, "target",
@@ -424,7 +431,7 @@ fn every_tracked_workflow_wires_its_restore_measurements_or_collects_nothing() {
                 .collect::<Vec<_>>()
                 .join("\n")
         );
-        cached += declared.caches_at.len();
+        cached += declared.caches.len();
         collecting += usize::from(declared.collects_records);
     }
     // NON-VACUITY: both sides of the derivation exist in this repository today.
@@ -451,7 +458,7 @@ fn a_workflow_that_collects_nothing_owes_no_restore_record_and_is_refused_for_wr
         "the premise: that workflow uploads nothing"
     );
     assert!(
-        !replay.caches_at.is_empty(),
+        !replay.caches.is_empty(),
         "and it does declare a cache, which is why the exemption is needed at all"
     );
     assert!(twice_compiled::judge_wiring(&replay).is_empty());
@@ -473,7 +480,7 @@ fn a_workflow_that_collects_nothing_owes_no_restore_record_and_is_refused_for_wr
     // can read.
     let mut measuring = replay.clone();
     let job = measuring
-        .caches_at
+        .caches
         .keys()
         .next()
         .expect("the cached job")

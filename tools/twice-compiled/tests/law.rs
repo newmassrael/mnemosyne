@@ -1751,6 +1751,63 @@ fn an_exact_hit_that_brought_nothing_is_refused_rather_than_counted() {
     );
 }
 
+/// R1120 — A JOB'S CACHES ARE A LIST OF STEPS, and until this round they were
+/// three maps keyed by job that could disagree about how many of them there are.
+/// For a job declaring two, they DID: two indices, two prefixes, and ONE merged
+/// path list with no way back to which cache held which path. The merge was right
+/// while a restore record was a job's; R1117 made a record a cache's, and that is
+/// when it became a loss.
+#[test]
+fn a_job_declaring_two_caches_keeps_them_apart() {
+    let mut first = cache("unrun-tests", &["~/.cargo/registry"]);
+    first.prefix = "Linux-cargo-unrun-home-".to_string();
+    let mut second = cache("unrun-tests", &["target"]);
+    second.index = first.index + 2;
+    second.prefix = "Linux-cargo-unrun-tree-".to_string();
+    let declared = twice_compiled::Declared::of(
+        &cached_job("unrun-tests", &["~/.cargo/registry", "target"]),
+        &[first.clone(), second.clone()],
+        &[collecting("unrun-tests")],
+    );
+
+    let held = &declared.caches["unrun-tests"];
+    assert_eq!(held.len(), 2, "{held:?}");
+    assert_eq!(
+        (held[0].prefix.as_str(), held[0].paths.as_slice()),
+        (
+            "Linux-cargo-unrun-home-",
+            &["~/.cargo/registry".to_string()][..]
+        ),
+        "WHICH CACHE HOLDS WHICH PATH, which the merge destroyed — and it is what \
+         attributing a restore's price to one of two caches needs"
+    );
+    assert_eq!(
+        (held[1].prefix.as_str(), held[1].paths.as_slice()),
+        ("Linux-cargo-unrun-tree-", &["target".to_string()][..]),
+    );
+
+    // AND THE OLD ANSWERS ARE STILL ASKABLE, derived from the one datum rather
+    // than kept beside it: the region laws want the merged paths and the
+    // per-cache laws want the list, and neither is now a second copy that can
+    // drift from the other.
+    assert_eq!(
+        declared.cached_paths("unrun-tests"),
+        vec!["~/.cargo/registry".to_string(), "target".to_string()],
+        "first mention first, duplicates dropped"
+    );
+    assert_eq!(
+        declared.caches_at("unrun-tests"),
+        vec![first.index, second.index]
+    );
+    assert_eq!(
+        declared.prefixes("unrun-tests"),
+        vec![
+            "Linux-cargo-unrun-home-".to_string(),
+            "Linux-cargo-unrun-tree-".to_string()
+        ]
+    );
+}
+
 /// R1119 — WHICH BUILD OF THE INSTRUMENTS MEASURED THIS RUN. R1118 found six
 /// jobs measured by the commit's recorder and one by whatever its cache held, and
 /// nothing could say so: the seconds moved by a factor of four when the fresh one
@@ -2098,7 +2155,7 @@ fn measurements_on_the_two_sides_of_the_restore_are_accepted() {
     // AND IT IS NOT THE EMPTY ANSWER. A law that reached no job at all also
     // returns nothing, and every refusal below would then be unreachable.
     assert_eq!(
-        declared.caches_at.len(),
+        declared.caches.len(),
         2,
         "two jobs declare a cache and both were judged"
     );

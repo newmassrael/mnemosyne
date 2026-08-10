@@ -419,11 +419,22 @@ fn the_after_step_asks_the_recorder_what_it_was_built_from() {
         whole.built_from.1, "cafe1234",
         "what the RECORDER says, read off its own stdout"
     );
+    // AND WHAT THIS PROGRAM SAYS IS ITS OWN CONSTANT, whatever that is. The
+    // first version of this asserted the literal `local`, which is what the
+    // constant holds when the suite is compiled off a runner — and ON one,
+    // where `GITHUB_SHA` is set, it holds the commit. That is an oracle reading
+    // its own input: it passed here and turned main red, which is the same
+    // defect class this repository has now met three times.
     assert_eq!(
-        whole.built_from.0, "local",
-        "and what THIS program says, from a constant baked in when it was \
-         compiled — the suite builds it with no `GITHUB_SHA`, so `local` is the \
-         honest answer rather than an invented commit"
+        whole.built_from.0,
+        restored::built_from(),
+        "the record carries the constant this binary was compiled with"
+    );
+    assert_ne!(
+        whole.built_from.0, whole.built_from.1,
+        "and the recorder's answer is the RECORDER's — a value this program \
+         derived for it would be the same string twice, which is the shape that \
+         cannot notice a substituted binary at all"
     );
 
     // A RECORDER THAT CANNOT BE RUN IS A REFUSAL, because every compilation of

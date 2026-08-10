@@ -234,10 +234,7 @@ fn report(census: &Census, declared: &Declared, absent: &BTreeSet<String>, root:
         // written outside every path the cache declares is work no hit of it
         // could ever have avoided — a different finding from a cache that
         // missed, and until this was read the two were one number.
-        match log.coverage(
-            root,
-            declared.caches.get(job).map_or(&[][..], Vec::as_slice),
-        ) {
+        match log.coverage(root, &declared.cached_paths(job)) {
             Some(found) => {
                 for (path, split) in &found.held {
                     println!(

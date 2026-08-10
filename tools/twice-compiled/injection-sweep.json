@@ -378,8 +378,8 @@
       "edits": [
         {
           "file": "tools/twice-compiled/src/lib.rs",
-          "from": "        for cache in caches {\n            let paths = cached.entry(cache.owner.clone()).or_default();",
-          "to": "        for job in jobs.keys() {\n            cached.entry(job.clone()).or_default();\n        }\n        for cache in caches {\n            let paths = cached.entry(cache.owner.clone()).or_default();"
+          "from": "        let mut cached: BTreeMap<String, Vec<CacheOfAJob>> = BTreeMap::new();\n        for cache in caches {",
+          "to": "        let mut cached: BTreeMap<String, Vec<CacheOfAJob>> = BTreeMap::new();\n        for job in jobs.keys() {\n            cached.entry(job.clone()).or_default();\n        }\n        for cache in caches {"
         }
       ],
       "expect_red": [
@@ -644,8 +644,8 @@
       "edits": [
         {
           "file": "tools/twice-compiled/src/lib.rs",
-          "from": "                    if program == **path || program.starts_with(&format!(\"{path}/\")) {",
-          "to": "                    if false && (program == **path || program.starts_with(&format!(\"{path}/\"))) {"
+          "from": "                    if program == *path || program.starts_with(&format!(\"{path}/\")) {",
+          "to": "                    if false && (program == *path || program.starts_with(&format!(\"{path}/\"))) {"
         }
       ],
       "expect_red": ["a_program_a_job_runs_after_a_restore_may_not_live_under_it"]
@@ -656,8 +656,8 @@
       "edits": [
         {
           "file": "tools/twice-compiled/src/lib.rs",
-          "from": "        let held: Vec<&String> = declared.caches.get(job).into_iter().flatten().collect();",
-          "to": "        let held: Vec<&String> = declared.caches.get(job).into_iter().flatten().filter(|path| !path.starts_with('~')).collect();"
+          "from": "        let held = declared.cached_paths(job);",
+          "to": "        let held: Vec<String> = declared.cached_paths(job).into_iter().filter(|path| !path.starts_with('~')).collect();"
         }
       ],
       "expect_red": ["a_program_a_job_runs_after_a_restore_may_not_live_under_it"]
