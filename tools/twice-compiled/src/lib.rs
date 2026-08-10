@@ -1321,8 +1321,24 @@ pub enum Refusal {
     /// file that is already wrong.
     RestoreSideIsNotMeasuredOnce {
         job: String,
+        /// The record the pair writes, which is what says WHICH pair this is —
+        /// a job may have one per cache since R1121.
+        record: String,
         side: restored::Side,
         times: usize,
+    },
+    /// A measuring pair does not sit either side of exactly one cache step.
+    AMeasuringPairBracketsOtherThanOneCache {
+        job: String,
+        record: String,
+        caches: usize,
+    },
+    /// A job measures a number of restores that is not the number of caches it
+    /// declares.
+    AJobMeasuresOtherThanOneRestorePerCache {
+        job: String,
+        pairs: usize,
+        caches: usize,
     },
     /// A job measures one side of its restore on the WRONG side of the cache
     /// step.
@@ -1339,12 +1355,6 @@ pub enum Refusal {
         job: String,
         program: String,
         held: String,
-    },
-    RestoreIsMeasuredOnTheWrongSide {
-        job: String,
-        side: restored::Side,
-        measured_at: usize,
-        cache_at: usize,
     },
     /// A step measures a cache restore in a job that declares no cache — the
     /// mirror of `RestoreRecordFromAJobWithNoCache`, read off the workflow, so
@@ -1510,12 +1520,35 @@ impl std::fmt::Display for Refusal {
                  job's name off the file, so two jobs sharing a path leave one \
                  of them with no state at all"
             ),
-            Refusal::RestoreSideIsNotMeasuredOnce { job, side, times } => write!(
+            Refusal::RestoreSideIsNotMeasuredOnce {
+                job,
+                record,
+                side,
+                times,
+            } => write!(
                 f,
-                "job `{job}` declares a cache and runs `restored {}` {times} \
-                 time(s) — what a job started from is the DIFFERENCE between two \
-                 measurements, so it takes one of each and no more",
+                "job `{job}` writes `{record}` and runs `restored {}` {times} \
+                 time(s) for it — what a cache brought is the DIFFERENCE between \
+                 two measurements, so each record takes one of each and no more",
                 side.word()
+            ),
+            Refusal::AMeasuringPairBracketsOtherThanOneCache {
+                job,
+                record,
+                caches,
+            } => write!(
+                f,
+                "job `{job}`'s pair writing `{record}` sits either side of \
+                 {caches} cache step(s) and owes exactly one — zero prices a \
+                 restore that does not happen, and two charges one interval to \
+                 both, which is how a 32 GB build directory's price is read off \
+                 a 756 MB registry's restore"
+            ),
+            Refusal::AJobMeasuresOtherThanOneRestorePerCache { job, pairs, caches } => write!(
+                f,
+                "job `{job}` declares {caches} cache(s) and measures {pairs} \
+                 restore(s) — a cache nobody measured is one whose price is \
+                 unknown while the census reads as complete"
             ),
             Refusal::ProgramRunAfterARestoreLivesUnderIt { job, program, held } => write!(
                 f,
@@ -1526,19 +1559,6 @@ impl std::fmt::Display for Refusal {
                  this killed `unrun-tests` in one step; every run before it, the \
                  same substitution was silent and the recorder measuring that \
                  job's whole census came out of the cache"
-            ),
-            Refusal::RestoreIsMeasuredOnTheWrongSide {
-                job,
-                side,
-                measured_at,
-                cache_at,
-            } => write!(
-                f,
-                "job `{job}` runs `restored {}` as step {measured_at} and its \
-                 cache is step {cache_at} — with both measurements on one side \
-                 of the restore the difference is zero, which is exactly what a \
-                 job that compiled from an empty tree reports",
-                side.word()
             ),
             Refusal::RestoreIsMeasuredWithNoCache { job } => write!(
                 f,
@@ -2038,49 +2058,77 @@ pub fn judge_wiring(declared: &Declared) -> Vec<Refusal> {
         // EVERY INVOCATION AND NOT EVERY STEP: one step whose script runs the
         // measurement twice writes the second reading over the first, and
         // counting steps would call that one measurement.
-        let measured: Vec<(usize, restored::Side)> = declared
-            .jobs
-            .get(job)
-            .into_iter()
-            .flatten()
-            .flat_map(|step| {
-                restored::sides_measured(&step.script)
-                    .into_iter()
-                    .map(|side| (step.index, side))
-            })
-            .collect();
-        for side in restored::Side::BOTH {
-            let ours: Vec<usize> = measured
-                .iter()
-                .filter(|(_, measured)| *measured == side)
-                .map(|(index, _)| *index)
-                .collect();
-            let [measured_at] = ours.as_slice() else {
-                refusals.push(Refusal::RestoreSideIsNotMeasuredOnce {
-                    job: job.clone(),
-                    side,
-                    times: ours.len(),
-                });
-                continue;
-            };
-            // OUTSIDE EVERY CACHE THE JOB DECLARES, not merely outside one of
-            // them: the record brackets a REGION, and a measurement that has
-            // slipped between two cache steps reports the second one's arrival
-            // as nothing.
-            for cache_at in caches_at {
-                let wrong = match side {
-                    restored::Side::Before => measured_at >= cache_at,
-                    restored::Side::After => measured_at <= cache_at,
-                };
-                if wrong {
-                    refusals.push(Refusal::RestoreIsMeasuredOnTheWrongSide {
+        //
+        // R1121 — GROUPED BY THE RECORD THEY WRITE, which is what turns this
+        // from a law about a REGION into a law about each cache. Until R1117 a
+        // record was a job's, so the pair had to sit outside every cache the job
+        // declared and what arrived between them was the sum; now a record is
+        // one cache's, and the two measurements that write one file are the two
+        // that price one restore. The record path is what says which pair a
+        // measurement belongs to — nothing else in the file does — so it is the
+        // key here rather than a position anybody has to count.
+        let mut pairs: BTreeMap<String, Vec<(usize, restored::Side)>> = BTreeMap::new();
+        for step in declared.jobs.get(job).into_iter().flatten() {
+            for side in restored::sides_measured(&step.script) {
+                pairs
+                    .entry(
+                        step.env
+                            .get(restored::VARIABLE)
+                            .cloned()
+                            .unwrap_or_default(),
+                    )
+                    .or_default()
+                    .push((step.index, side));
+            }
+        }
+        for (record, measured) in &pairs {
+            let mut sides = Vec::new();
+            for side in restored::Side::BOTH {
+                let ours: Vec<usize> = measured
+                    .iter()
+                    .filter(|(_, measured)| *measured == side)
+                    .map(|(index, _)| *index)
+                    .collect();
+                match ours.as_slice() {
+                    [only] => sides.push(*only),
+                    _ => refusals.push(Refusal::RestoreSideIsNotMeasuredOnce {
                         job: job.clone(),
+                        record: record.clone(),
                         side,
-                        measured_at: *measured_at,
-                        cache_at: *cache_at,
-                    });
+                        times: ours.len(),
+                    }),
                 }
             }
+            let [before_at, after_at] = sides.as_slice() else {
+                continue;
+            };
+            // EXACTLY ONE CACHE BETWEEN THEM. Zero is a pair pricing a restore
+            // that does not happen; two is one interval charged to both, which
+            // is the arithmetic R1099 got wrong for a job and this is what stops
+            // it returning per cache. A pair in the wrong ORDER brackets nothing
+            // and is caught by the same count, which is why the two questions do
+            // not need two refusals.
+            let between = caches_at
+                .iter()
+                .filter(|at| *before_at < **at && **at < *after_at)
+                .count();
+            if between != 1 {
+                refusals.push(Refusal::AMeasuringPairBracketsOtherThanOneCache {
+                    job: job.clone(),
+                    record: record.clone(),
+                    caches: between,
+                });
+            }
+        }
+        // AND ONE PAIR PER CACHE. A job that declares two and measures one has a
+        // restore nobody priced, and the record it does write reads as the whole
+        // job's.
+        if pairs.len() != caches_at.len() {
+            refusals.push(Refusal::AJobMeasuresOtherThanOneRestorePerCache {
+                job: job.clone(),
+                pairs: pairs.len(),
+                caches: caches_at.len(),
+            });
         }
     }
     // THE OTHER DIRECTION, which no record can report until one arrives: a job

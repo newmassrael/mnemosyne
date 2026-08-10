@@ -393,8 +393,8 @@
       "edits": [
         {
           "file": "tools/twice-compiled/src/lib.rs",
-          "from": "        for step in declared.jobs.get(job).into_iter().flatten() {",
-          "to": "        for step in declared.jobs.get(job).into_iter().flatten().take(0) {"
+          "from": "        for step in declared.jobs.get(job).into_iter().flatten() {\n            match step.env.get(restored::VARIABLE) {",
+          "to": "        for step in declared.jobs.get(job).into_iter().flatten().take(0) {\n            match step.env.get(restored::VARIABLE) {"
         }
       ],
       "expect_red": [
@@ -709,6 +709,49 @@
         }
       ],
       "expect_red": ["a_recorder_deliberately_absent_is_not_a_disagreement"]
+    },
+    {
+      "name": "a-measuring-pair-may-bracket-any-number-of-caches",
+      "why": "R1121: zero prices a restore that does not happen — both readings on one side and the difference is the empty tree R1099 misread — and two charges one interval to both, which is how a 32 GB build directory's price is read off a 756 MB registry's restore. The count is the one question and it replaces asking each side separately",
+      "edits": [
+        {
+          "file": "tools/twice-compiled/src/lib.rs",
+          "from": "            if between != 1 {",
+          "to": "            if false && between != 1 {"
+        }
+      ],
+      "expect_red": [
+        "a_measurement_taken_after_the_restore_it_precedes_is_refused",
+        "a_measurement_taken_before_the_restore_it_follows_is_refused",
+        "the_wiring_refusals_reach_the_gates_own_verdict"
+      ]
+    },
+    {
+      "name": "a-job-may-measure-fewer-restores-than-it-caches",
+      "why": "a cache with no measuring pair is a restore whose price nobody wrote down, while the census reads as complete — and it is the shape a job acquires the moment a second cache is added without a second pair, which is exactly what the split of `unrun-tests` is about to do",
+      "edits": [
+        {
+          "file": "tools/twice-compiled/src/lib.rs",
+          "from": "        if pairs.len() != caches_at.len() {",
+          "to": "        if false && pairs.len() != caches_at.len() {"
+        }
+      ],
+      "expect_red": [
+        "a_second_cache_with_no_measuring_pair_of_its_own_is_refused",
+        "a_cached_job_that_measures_neither_side_is_refused"
+      ]
+    },
+    {
+      "name": "the-pairs-are-grouped-by-the-job-rather-than-the-record",
+      "why": "the record path is the only thing in the file that says which pair a measurement belongs to. Grouping by job puts a job's two pairs into one bucket, which reads as one pair measured twice — a refusal about the wrong thing, and the right one never fires",
+      "edits": [
+        {
+          "file": "tools/twice-compiled/src/lib.rs",
+          "from": "                    .entry(\n                        step.env\n                            .get(restored::VARIABLE)\n                            .cloned()\n                            .unwrap_or_default(),\n                    )",
+          "to": "                    .entry(job.clone())"
+        }
+      ],
+      "expect_red": ["a_job_with_a_pair_for_each_of_its_two_caches_is_accepted"]
     }
   ]
 }

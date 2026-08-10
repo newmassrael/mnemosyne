@@ -2176,14 +2176,15 @@ fn a_measurement_taken_after_the_restore_it_precedes_is_refused() {
     );
     assert_eq!(
         twice_compiled::judge_wiring(&declared),
-        vec![Refusal::RestoreIsMeasuredOnTheWrongSide {
+        vec![Refusal::AMeasuringPairBracketsOtherThanOneCache {
             job: "validate".to_string(),
-            side: restored::Side::Before,
-            measured_at: CACHE_AT + 10,
-            cache_at: CACHE_AT,
+            record: "/w/rustc-log/validate.restored".to_string(),
+            caches: 0,
         }],
         "with both readings after the restore the difference is zero, which is \
-         exactly what a job that compiled from an empty tree reports"
+         exactly what a job that compiled from an empty tree reports — and \
+         R1121 names it by the count of caches the pair encloses, which is the \
+         same question asked once instead of once per side"
     );
 }
 
@@ -2196,11 +2197,10 @@ fn a_measurement_taken_before_the_restore_it_follows_is_refused() {
     let declared = declared_of(&steps, &[cache("validate", &["~/.cargo/registry"])]);
     assert_eq!(
         twice_compiled::judge_wiring(&declared),
-        vec![Refusal::RestoreIsMeasuredOnTheWrongSide {
+        vec![Refusal::AMeasuringPairBracketsOtherThanOneCache {
             job: "validate".to_string(),
-            side: restored::Side::After,
-            measured_at: BEFORE_AT,
-            cache_at: CACHE_AT,
+            record: "/w/rustc-log/validate.restored".to_string(),
+            caches: 0,
         }]
     );
 }
@@ -2214,20 +2214,16 @@ fn a_cached_job_that_measures_neither_side_is_refused() {
         &[wired_with_cache("validate")],
         &[cache("validate", &["~/.cargo/registry"])],
     );
+    // R1121 — ONE NAME FOR IT, and it is the count. Before this round the same
+    // job produced two refusals, one per missing side; a job that measures no
+    // restore at all is one defect and the pair-count says so exactly.
     assert_eq!(
         twice_compiled::judge_wiring(&declared),
-        vec![
-            Refusal::RestoreSideIsNotMeasuredOnce {
-                job: "validate".to_string(),
-                side: restored::Side::Before,
-                times: 0,
-            },
-            Refusal::RestoreSideIsNotMeasuredOnce {
-                job: "validate".to_string(),
-                side: restored::Side::After,
-                times: 0,
-            },
-        ]
+        vec![Refusal::AJobMeasuresOtherThanOneRestorePerCache {
+            job: "validate".to_string(),
+            pairs: 0,
+            caches: 1,
+        }]
     );
 }
 
@@ -2244,6 +2240,7 @@ fn a_side_measured_twice_is_refused() {
         twice_compiled::judge_wiring(&declared),
         vec![Refusal::RestoreSideIsNotMeasuredOnce {
             job: "validate".to_string(),
+            record: "/w/rustc-log/validate.restored".to_string(),
             side: restored::Side::Before,
             times: 2,
         }]
@@ -2265,24 +2262,70 @@ fn a_job_with_no_cache_that_measures_a_restore_is_refused() {
     );
 }
 
-/// A RECORD BRACKETS A REGION, and a job with two caches has an outer edge on
-/// each side of it. A measurement that has slipped between them reports the
-/// second cache's arrival as nothing — which is why the law is against EVERY
-/// cache the job declares and not against one of them.
+/// R1121 — AND THE POSITIVE SIDE, which is the shape the workflow is about to
+/// take: two caches, each with its own pair writing its own record, is CORRECT
+/// and must be accepted. Without this the law reads as "one cache per job" and
+/// the split it exists to allow would be refused by it.
+///
+/// IT IS ALSO WHAT MAKES THE GROUPING LOAD-BEARING. An injection that grouped
+/// the pairs by JOB instead of by RECORD left every refusal above unchanged —
+/// one job, one bucket, same counts — and only a job that is RIGHT tells the two
+/// readings apart. The sweep found that oracle missing by coming back empty.
 #[test]
-fn a_measurement_between_two_caches_of_one_job_is_refused() {
+fn a_job_with_a_pair_for_each_of_its_two_caches_is_accepted() {
+    let mut steps = Vec::new();
+    let mut caches = Vec::new();
+    for (which, index) in [("home", 0usize), ("tree", 3usize)] {
+        for (side, at) in [
+            (restored::Side::Before, index),
+            (restored::Side::After, index + 2),
+        ] {
+            let mut step = measuring("unrun-tests", side, at, &[]);
+            // ITS OWN RECORD, which is the only thing in the file that says
+            // which pair a measurement belongs to.
+            step.env.insert(
+                restored::VARIABLE.to_string(),
+                format!("/w/rustc-log/unrun-tests.{which}.restored"),
+            );
+            steps.push(step);
+        }
+        let mut declared = cache("unrun-tests", &["target"]);
+        declared.index = index + 1;
+        declared.prefix = format!("Linux-cargo-unrun-{which}-");
+        caches.push(declared);
+    }
+    let mut work = wired_with_cache("unrun-tests");
+    work.index = 6;
+    steps.push(work);
+
+    assert_eq!(
+        twice_compiled::judge_wiring(&declared_of(&steps, &caches)),
+        Vec::new(),
+        "each pair encloses exactly one cache step and writes its own record, \
+         which is what pricing two caches of one job requires"
+    );
+}
+
+/// R1121 — A JOB'S SECOND CACHE OWES ITS OWN PAIR. Until this round the record
+/// bracketed a REGION and a job with two caches had one pair around both; what
+/// arrived was the sum, and the price of one could not be told from the price of
+/// the other. Now each cache is measured by the pair that writes ITS record, so
+/// a second cache with no pair is a restore nobody priced.
+#[test]
+fn a_second_cache_with_no_measuring_pair_of_its_own_is_refused() {
     let steps = cached_job("validate", &["~/.cargo/registry", "target"]);
     let mut second = cache("validate", &["target"]);
     second.index = AFTER_AT + 1;
     let declared = declared_of(&steps, &[cache("validate", &["~/.cargo/registry"]), second]);
     assert_eq!(
         twice_compiled::judge_wiring(&declared),
-        vec![Refusal::RestoreIsMeasuredOnTheWrongSide {
+        vec![Refusal::AJobMeasuresOtherThanOneRestorePerCache {
             job: "validate".to_string(),
-            side: restored::Side::After,
-            measured_at: AFTER_AT,
-            cache_at: AFTER_AT + 1,
-        }]
+            pairs: 1,
+            caches: 2,
+        }],
+        "the one pair prices the first cache correctly; the second is a restore \
+         whose cost nobody wrote down, while the census reads as complete"
     );
 }
 
@@ -2315,11 +2358,10 @@ fn the_wiring_refusals_reach_the_gates_own_verdict() {
     steps[0].index = CACHE_AT + 10;
     let refusals = judge(&census, &broken, &nothing());
     assert!(
-        refusals.contains(&Refusal::RestoreIsMeasuredOnTheWrongSide {
+        refusals.contains(&Refusal::AMeasuringPairBracketsOtherThanOneCache {
             job: "validate".to_string(),
-            side: restored::Side::Before,
-            measured_at: CACHE_AT + 10,
-            cache_at: CACHE_AT,
+            record: "/w/rustc-log/validate.restored".to_string(),
+            caches: 0,
         }),
         "{refusals:?}"
     );

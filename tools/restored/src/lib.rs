@@ -704,8 +704,27 @@ fn number(field: &str, line: &str) -> Result<u64, Malformed> {
 /// The same law `tools/twice-compiled` puts on the compilation log, for the same
 /// reason: the job's name is read off the file, so two jobs writing one path
 /// become one record wearing the shape of two.
+///
+/// R1121 — AND A JOB MAY WRITE MORE THAN ONE. A record is a CACHE's since R1117,
+/// so a job declaring two caches writes two files and they cannot both be
+/// `<job>.restored`. What identifies them apart is a nickname between the job and
+/// the extension; what identifies which CACHE each is of is not the file name at
+/// all but the `cache` line inside it, which `tools/twice-compiled` checks
+/// against the prefix the workflow declares. So the file name owes exactly one
+/// thing — that it is this job's and no other's — and that is all this asks.
 pub fn names_its_job(path: &str, job: &str) -> bool {
-    path.rsplit('/').next() == Some(&format!("{job}.restored"))
+    let Some(name) = path.rsplit('/').next() else {
+        return false;
+    };
+    let Some(rest) = name.strip_suffix(".restored") else {
+        return false;
+    };
+    // `<job>` or `<job>.<nickname>` — and NOT `<job><anything>`, which would let
+    // `unrun-tests-extra.restored` pass as `unrun-tests`'.
+    rest == job
+        || rest
+            .strip_prefix(job)
+            .is_some_and(|tail| tail.starts_with('.'))
 }
 
 /// The path a workflow spells, with `~` expanded from the environment's `HOME`.
