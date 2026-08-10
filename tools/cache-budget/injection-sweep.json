@@ -605,6 +605,20 @@
       "expect_red": ["pages_that_disagree_about_the_count_are_refused"]
     },
     {
+      "name": "a-key-with-nothing-under-it-is-a-wasted-cache",
+      "why": "R1135, AND IT TURNED main RED. This refusal says a cache was AVAILABLE and wasted; with no generation predating the run there was nothing to restore, so a cold build was unavoidable and the sentence is false. It fired on `Linux-cargo-side-`, whose key a lockfile bump moved TWO PUSHES earlier — the run that would have saved the new archive failed, `actions/cache` does not save from a failed job, and the range this gate diffs for an excuse is THIS push, which cannot hold a change made before it",
+      "edits": [
+        {
+          "file": "tools/cache-budget/src/lib.rs",
+          "from": "                if row.restorable_when(&run.started_at).is_none() {",
+          "to": "                if false {"
+        }
+      ],
+      "expect_red": [
+        "a_key_that_missed_with_no_archive_under_it_is_not_refused_as_a_wasted_cache"
+      ]
+    },
+    {
       "name": "the-run-window-is-never-read",
       "why": "R1131 — the wiring R1129's carry named: every entrance case cleared `GITHUB_RUN_ID`, because that is what makes a fixture deterministic, and it is ALSO what skips this gate's whole second half — when the run began, which keys its commits invalidated, and which workflow it belongs to. A binary that stopped reading the window entirely would have passed the suite as it stood",
       "edits": [

@@ -407,6 +407,14 @@ pub enum Refusal {
     /// and deleted a cache that was saving ten minutes; the sentence this refusal
     /// printed would have agreed with it. What each owner actually started from
     /// is measured now, and travels here so the message can stop guessing.
+    ///
+    /// AND A GENERATION HAD TO BE THERE TO RESTORE — the same condition
+    /// [`Refusal::RestoredNothingWithAGenerationHeld`] states outright, missing
+    /// here until R1135 turned main red with it. The harm this names is a cache
+    /// that was AVAILABLE AND WASTED; where nothing was available, a cold build
+    /// was unavoidable and this refusal has nothing to offer, because the range
+    /// it diffs for an excuse is the current push and the key may have been
+    /// invalidated in an earlier one.
     Recreated {
         prefix: String,
         owners: Vec<Owner>,
@@ -999,6 +1007,27 @@ impl Report {
                     continue;
                 }
                 if run.inputs_changed.contains(&row.prefix) {
+                    continue;
+                }
+                // AND SOMETHING HAD TO BE THERE TO RESTORE, which is the
+                // condition the sibling refusal above states outright and this
+                // one was missing. R1135 measured what that cost on run
+                // 31394095606: `Linux-cargo-side-` had its key moved by a
+                // lockfile bump TWO PUSHES back, the run that would have saved
+                // the new archive FAILED — `actions/cache` does not save from a
+                // failed job — and no older generation survived. So this run
+                // compiled from an empty tree, and the refusal told main it was
+                // an unexplained rebuild while the true explanation was that
+                // there was nothing to hit.
+                //
+                // THE HARM THIS NAMES IS A CACHE THAT WAS AVAILABLE AND WASTED.
+                // With no restorable generation, a cold build was unavoidable
+                // whatever the workflow says, and a refusal that fires anyway is
+                // one nobody can act on: the range it diffs is THIS push, so a
+                // key legitimately invalidated in an earlier one has no excuse
+                // to offer. The cold state is still printed by the report — what
+                // changes is only whether it stops a run.
+                if row.restorable_when(&run.started_at).is_none() {
                     continue;
                 }
                 out.push(Refusal::Recreated {

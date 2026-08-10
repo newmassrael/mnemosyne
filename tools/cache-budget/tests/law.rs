@@ -258,12 +258,25 @@ fn a_cache_this_run_built_from_nothing_is_a_job_that_was_never_warm() {
     //
     // `actions/cache` saves ONLY when it did not find an exact hit, so a cache
     // created inside this run is that job saying it restored nothing.
+    // AND AN ARCHIVE IT COULD HAVE HIT, WHICH R1135 HAD TO PUT IN. This refusal
+    // says a cache was available and wasted; with nothing under the prefix
+    // predating the run, a cold build was unavoidable and the sentence is not
+    // true — which is how it turned main red on a key whose inputs had moved TWO
+    // PUSHES earlier, in a run that failed before it could save. The fixture
+    // modelled that state while meaning this one.
     let declared = [declaration("unrun", "Linux-cargo-unrun-", TARGET)];
-    let rebuilt = [held_on(
-        "Linux-cargo-unrun-abc",
-        3.0,
-        "2026-08-09T02:30:00.000000000Z",
-    )];
+    let rebuilt = [
+        held_on(
+            "Linux-cargo-unrun-abc",
+            3.0,
+            "2026-08-09T02:30:00.000000000Z",
+        ),
+        held_on(
+            "Linux-cargo-unrun-was",
+            3.0,
+            "2026-08-09T01:00:00.000000000Z",
+        ),
+    ];
     let run = run_after("2026-08-09T02:00:00.000000000Z", &[]);
 
     let budget_only = conclude(LIMIT, &declared, &rebuilt, None);
@@ -297,11 +310,18 @@ fn a_cache_built_because_this_commit_moved_what_the_key_hashes_is_not_refused() 
     // `**/Cargo.lock`, git says whether anything matching that moved in this
     // commit, and this function is only told the answer.
     let declared = [declaration("unrun", "Linux-cargo-unrun-", TARGET)];
-    let rebuilt = [held_on(
-        "Linux-cargo-unrun-abc",
-        3.0,
-        "2026-08-09T02:30:00.000000000Z",
-    )];
+    let rebuilt = [
+        held_on(
+            "Linux-cargo-unrun-abc",
+            3.0,
+            "2026-08-09T02:30:00.000000000Z",
+        ),
+        held_on(
+            "Linux-cargo-unrun-was",
+            3.0,
+            "2026-08-09T01:00:00.000000000Z",
+        ),
+    ];
     let bumped = run_after("2026-08-09T02:00:00.000000000Z", &["Linux-cargo-unrun-"]);
     assert_eq!(
         conclude(LIMIT, &declared, &rebuilt, Some(&bumped)).refusals(),
@@ -322,9 +342,19 @@ fn a_cache_built_because_this_commit_moved_what_the_key_hashes_is_not_refused() 
             "2026-08-09T02:30:00.000000000Z",
         ),
         held_on(
+            "Linux-cargo-unrun-was",
+            3.0,
+            "2026-08-09T01:00:00.000000000Z",
+        ),
+        held_on(
             "Linux-cargo-side-abc",
             0.06,
             "2026-08-09T02:30:00.000000000Z",
+        ),
+        held_on(
+            "Linux-cargo-side-was",
+            0.06,
+            "2026-08-09T01:00:00.000000000Z",
         ),
     ];
     match conclude(LIMIT, &two, &both_rebuilt, Some(&bumped))
@@ -353,11 +383,19 @@ fn the_two_endpoints_spell_a_timestamp_differently_and_are_still_compared_correc
         range: PUSH_RANGE,
     };
 
-    let after = [held_on(
-        "Linux-cargo-unrun-abc",
-        3.0,
-        "2026-08-09T02:00:01.229538000Z",
-    )];
+    let after = [
+        held_on(
+            "Linux-cargo-unrun-abc",
+            3.0,
+            "2026-08-09T02:00:01.229538000Z",
+        ),
+        // The generation this refusal is about wasting — R1135.
+        held_on(
+            "Linux-cargo-unrun-was",
+            3.0,
+            "2026-08-09T01:00:00.000000000Z",
+        ),
+    ];
     assert!(
         matches!(
             conclude(LIMIT, &declared, &after, Some(&run))
@@ -867,6 +905,23 @@ fn one_key(created_at: &str) -> (Vec<CacheDeclaration>, Vec<Held>) {
     )
 }
 
+/// The same key with an ARCHIVE UNDER IT FROM BEFORE THE RUN.
+///
+/// R1135, AND THE FIXTURES THAT NEEDED IT WERE SAYING TWO THINGS AT ONCE: a
+/// measured `PrefixHit` of 7.4 GB is a job restoring an archive, and the storage
+/// these cases described held none. `Recreated` names a cache that was AVAILABLE
+/// and wasted, so the available one has to be in the fixture; the state without
+/// it is a different answer and has its own case now.
+fn one_key_over_a_generation(created_at: &str) -> (Vec<CacheDeclaration>, Vec<Held>) {
+    (
+        vec![declaration("unrun", "Linux-cargo-unrun-", TARGET)],
+        vec![
+            held_on("Linux-cargo-unrun-abc", 3.0, created_at),
+            held_on("Linux-cargo-unrun-was", 3.0, BEFORE_THE_RUN),
+        ],
+    )
+}
+
 const BEFORE_THE_RUN: &str = "2026-08-08T10:00:00.000000000Z";
 const RUN_STARTED: &str = "2026-08-08T12:00:00Z";
 const DURING_THE_RUN: &str = "2026-08-08T12:30:00.000000000Z";
@@ -886,7 +941,10 @@ fn the_run(invalidated: &[&str]) -> Run {
 /// build, and this refusal used to say it was.
 #[test]
 fn a_missed_key_whose_owner_was_warm_stops_claiming_it_paid_for_a_cold_build() {
-    let (declared, held) = one_key(DURING_THE_RUN);
+    // A PREFIX HIT IS AN ARCHIVE BEING RESTORED, so the storage this case
+    // describes has to hold one — R1135. Without it the fixture measured a job
+    // restoring 7.4 GB from a repository that held nothing.
+    let (declared, held) = one_key_over_a_generation(DURING_THE_RUN);
     let run = the_run(&[]);
     let warm = started(&[(
         "unrun",
@@ -930,7 +988,7 @@ fn a_missed_key_whose_owner_was_warm_stops_claiming_it_paid_for_a_cold_build() {
 /// And with nothing measured it says so, rather than falling back to the claim.
 #[test]
 fn a_missed_key_with_no_record_says_what_it_did_not_measure() {
-    let (declared, held) = one_key(DURING_THE_RUN);
+    let (declared, held) = one_key_over_a_generation(DURING_THE_RUN);
     let run = the_run(&[]);
     let report = judging(LIMIT, &declared, &held, Some(&run), &BTreeMap::new());
     let said = report.refusals()[0].to_string();
@@ -958,6 +1016,51 @@ fn a_job_that_restored_nothing_with_a_generation_held_is_refused() {
         }
         other => panic!("{other:?}"),
     }
+}
+
+/// A KEY THAT MISSED WITH NOTHING UNDER IT TO HIT IS NOT A WASTED CACHE.
+///
+/// THIS IS THE RED R1135 PAID OFF, and it is the one case where this gate's
+/// excuse cannot reach the explanation. `Linux-cargo-side-` had its key moved by
+/// a lockfile bump TWO PUSHES back; the run that would have saved the new
+/// archive FAILED, and `actions/cache` does not save from a failed job; no older
+/// generation survived. So the next run compiled from an empty tree and was told
+/// its rebuild was unexplained — while the range this gate diffs for an excuse is
+/// THIS push, which cannot hold a change made before it.
+///
+/// WHAT IS NOT LOST BY DROPPING THE REFUSAL: the report still prints the cold
+/// state per owner, and the one actionable cause of a whole prefix being missing
+/// — eviction — is refused by the budget law itself, which is where a repository
+/// asking for more than 10 GB is caught. Unexcused on purpose: the point is that
+/// the verdict no longer depends on an excuse this gate cannot see.
+#[test]
+fn a_key_that_missed_with_no_archive_under_it_is_not_refused_as_a_wasted_cache() {
+    let (declared, held) = one_key(DURING_THE_RUN);
+    let run = the_run(&[]);
+    let cold = started(&[("unrun", "Linux-cargo-unrun-", restored::Warmth::Nothing)]);
+    let report = judging(LIMIT, &declared, &held, Some(&run), &cold);
+    assert_eq!(
+        report.refusals(),
+        Vec::new(),
+        "with no generation predating the run there was nothing to restore, so \
+         neither refusal has a claim to make"
+    );
+    // AND THE READING IS STILL PRINTED, which is what keeps this from being a
+    // hole: dropping a refusal must not drop the evidence.
+    let said = cache_budget::render(&report);
+    assert!(
+        said.contains(&restored::Warmth::Nothing.why()),
+        "the report still says the job compiled from an empty tree:\n{said}"
+    );
+
+    // THE CONTROL, in the same case: put the archive back under the prefix and
+    // the refusal returns. One `held_on` is the whole difference.
+    let (declared, over_a_generation) = one_key_over_a_generation(DURING_THE_RUN);
+    let refused = judging(LIMIT, &declared, &over_a_generation, Some(&run), &cold);
+    assert!(
+        !refused.refusals().is_empty(),
+        "an archive that WAS there and was not restored is a finding"
+    );
 }
 
 /// THE CONTROL, and it is the state a NEW key is in on its first run: nothing
