@@ -11,12 +11,20 @@
     "oracle is a Rust suite. Every injection below removes one distinction those",
     "scripts draw and names the case that must go red for it.",
     "",
-    "ALL FOUR ARE ABOUT THE SAME DECISION, the one R1078 paid for and R1127 to",
-    "R1129 found unread in three gates: exit 1 says THESE SITES BREAK THE LAW",
-    "and exit 2 says I COULD NOT READ ENOUGH OF THIS TREE TO HAVE AN OPINION.",
-    "The gates answer both. Until R1132 nothing checked that their callers told",
-    "the two apart, and one of the four collapses is a tree the gate never read",
-    "being COMMITTED.",
+    "THE FIRST FOUR ARE ABOUT THE SAME DECISION, the one R1078 paid for and",
+    "R1127 to R1129 found unread in three gates: exit 1 says THESE SITES BREAK",
+    "THE LAW and exit 2 says I COULD NOT READ ENOUGH OF THIS TREE TO HAVE AN",
+    "OPINION. The gates answer both. Until R1132 nothing checked that their",
+    "callers told the two apart, and one of the four collapses is a tree the gate",
+    "never read being COMMITTED.",
+    "",
+    "THE LAST FOUR ARE R1136's HALF OF THE CI REPORT. The hook used to READ",
+    "GitHub's answer itself, with three `gh -q` expressions no test here could",
+    "execute — measured silent twice, at 14 passed / 0 failed each time, while a",
+    "real `gh` would have reported a RED commit as clean. The reading is now",
+    "`tools/ci-state`, with its own sweep; what is left to this hook is CARRIAGE,",
+    "and carriage fails in ways of its own: asking about the wrong commit,",
+    "swallowing the answer, or passing over a reporter that could not answer.",
     "",
     "Scoped to the hook suite: nothing here touches a gate's own laws, which",
     "have their own sweeps under tools/."
@@ -87,6 +95,62 @@
         }
       ],
       "expect_red": ["the_side_workspace_gate_answers_two_when_it_was_not_started_in_a_tree"]
+    },
+    {
+      "name": "the-hook-reports-on-whatever-commit-is-checked-out",
+      "why": "R1136. The reporter is asked about a commit and answers about THAT commit; hand it the working tree's HEAD instead of the published `origin/main` and every sentence it prints is true about the wrong subject — including, on the push that is fixing a red CI, a clean report about the commit being pushed. R1122 paid for this shape one gate over: format perfect, subject wrong",
+      "edits": [
+        {
+          "file": ".githooks/pre-push",
+          "from": "--bin ci-state -- \"$base\" >&2; then",
+          "to": "--bin ci-state -- \"$(git rev-parse HEAD)\" >&2; then"
+        }
+      ],
+      "expect_red": [
+        "pre_push_carries_the_ci_reporters_words_and_names_it_when_it_cannot_run"
+      ]
+    },
+    {
+      "name": "the-hook-swallows-what-the-reporter-said",
+      "why": "the R890 blindness rebuilt one layer up. Four consecutive red runs went unnoticed for eleven hours because nothing here could SEE a red CI; a hook that runs the reporter and drops its output is that same silence, and it is worse, because the gate now looks like it is being run",
+      "edits": [
+        {
+          "file": ".githooks/pre-push",
+          "from": "--bin ci-state -- \"$base\" >&2; then",
+          "to": "--bin ci-state -- \"$base\" >/dev/null 2>&1; then"
+        }
+      ],
+      "expect_red": [
+        "pre_push_carries_the_ci_reporters_words_and_names_it_when_it_cannot_run"
+      ]
+    },
+    {
+      "name": "the-hook-passes-over-a-reporter-that-could-not-report",
+      "why": "the reporter exits 2 only when it could not produce a report AT ALL, and this hook is its one production reader. Ignoring that code makes a push where nothing was checked look exactly like a push where CI was checked and found fine — the collapse the first four injections here are about, arriving through a different door",
+      "edits": [
+        {
+          "file": ".githooks/pre-push",
+          "from": "--bin ci-state -- \"$base\" >&2; then",
+          "to": "--bin ci-state -- \"$base\" >&2; false; then"
+        }
+      ],
+      "expect_red": [
+        "pre_push_carries_the_ci_reporters_words_and_names_it_when_it_cannot_run"
+      ]
+    },
+    {
+      "name": "the-reporter-may-rewrite-the-lockfile-it-was-run-with",
+      "why": "R1115 measured that a cargo command allowed to resolve freely REWRITES a lockfile it disagrees with. A hook that drops `--locked` here edits a tracked file of this repository as a side effect of reporting on CI, and the edit lands in whatever the next commit stages",
+      "edits": [
+        {
+          "file": ".githooks/pre-push",
+          "from": "/tools/ci-state/Cargo.toml\" --locked --bin ci-state",
+          "to": "/tools/ci-state/Cargo.toml\" --bin ci-state"
+        }
+      ],
+      "expect_red": [
+        "pre_push_carries_the_ci_reporters_words_and_names_it_when_it_cannot_run"
+      ]
     }
   ]
 }

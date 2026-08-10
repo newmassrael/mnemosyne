@@ -1,0 +1,180 @@
+{
+  "_": [
+    "THE SWEEP THAT SAYS R1136's REPORTER IS NOT VACUOUS — run it from the",
+    "repository root:",
+    "    cargo run -q --manifest-path tools/injection-harness/Cargo.toml -- \\",
+    "        tools/ci-state/injection-sweep.json",
+    "",
+    "WHAT THIS PROGRAM REPLACED WAS MEASURED SILENT, twice, before a line of it",
+    "was written. The reading lived in `.githooks/pre-push` as three `gh -q`",
+    "expressions, and the suite that holds that hook up stubs `gh` with lines it",
+    "has already filtered. Renaming `.conclusion` to `.verdict` there left the",
+    "hook suite at 14 passed / 0 failed while a real `gh` prints every conclusion",
+    "as `-`, so a RED commit reports clean; renaming `annotations_count` to",
+    "`annotation_count` left it at 14 passed / 0 failed while every commit reports",
+    "no annotations at all. Both are silent in the direction that reads as good",
+    "news. That is the class this crate exists to make loud, and every injection",
+    "below removes one distinction it draws and names the test that must go red.",
+    "",
+    "Scoped to this crate's own suite: nothing here touches the tree it reports",
+    "on, so running the repository's whole suite would be minutes of proving",
+    "nothing. The hook's half — that it CALLS this reporter and carries its words",
+    "— has its own injections in `.githooks/injection-sweep.json`."
+  ],
+  "repo": "../..",
+  "test_command": [
+    "cargo",
+    "test",
+    "--manifest-path",
+    "tools/ci-state/Cargo.toml",
+    "--no-fail-fast"
+  ],
+  "logs": "../../target/injection-logs",
+  "min_free_mb": 8000,
+  "injections": [
+    {
+      "name": "an-answer-that-stopped-early-is-believed",
+      "why": "the one failure of this read that is SILENT while the rest are loud, and the same one R1130 found in the neighbouring gate: a row missing a field does not parse and a body that never arrived is empty, but a read that stops short is a well-formed answer describing a commit with fewer jobs — and a job that is not in the answer is a job whose failure this reporter never mentions. `total_count` is the only thing GitHub sends that can catch it",
+      "edits": [
+        {
+          "file": "tools/ci-state/src/lib.rs",
+          "from": "    if checks.len() as u64 != counted {",
+          "to": "    if checks.len() as u64 > counted {"
+        }
+      ],
+      "expect_red": [
+        "an_answer_that_stops_early_is_a_read_that_failed_and_not_a_shorter_commit"
+      ]
+    },
+    {
+      "name": "a-well-formed-answer-about-another-commit-is-printed-as-this-ones",
+      "why": "R1122's shape one gate over: format perfect, count consistent, every field present — and the subject wrong. Nothing else in this file could tell, and the sentence it produces reports somebody else's commit as the one being pushed onto",
+      "edits": [
+        {
+          "file": "tools/ci-state/src/lib.rs",
+          "from": "    if let Some(other) = checks.iter().find(|check| check.head_sha != sha) {",
+          "to": "    if let Some(other) = checks.iter().find(|check| check.head_sha.is_empty()) {"
+        }
+      ],
+      "expect_red": ["an_answer_about_another_commit_is_refused_and_says_which"]
+    },
+    {
+      "name": "a-conclusion-github-stops-sending-reads-as-a-check-still-running",
+      "why": "THE DRIFT A TYPE NEARLY FAILED TO CATCH. serde treats a derived `Option` field as OPTIONAL, so without this attribute a body that stopped carrying `conclusion` deserializes to nine `None`s without complaint — and this reporter prints a red commit as one whose checks have not finished. It is the `// \"-\"` collapse rebuilt inside the type that replaced it",
+      "edits": [
+        {
+          "file": "tools/ci-state/src/lib.rs",
+          "from": "    #[serde(deserialize_with = \"present_but_nullable\")]\n    pub conclusion: Option<String>,",
+          "to": "    pub conclusion: Option<String>,"
+        }
+      ],
+      "expect_red": [
+        "a_conclusion_this_reporter_cannot_find_is_a_refusal_rather_than_a_pending_check"
+      ]
+    },
+    {
+      "name": "a-skipped-job-is-called-a-failure",
+      "why": "the direction that gets a reporter IGNORED rather than believed. This repository's workflow skips a job whose inputs did not change on every green push, and the recording this crate holds carries one — a reporter shouting RED at every push is one nobody reads by the end of the week",
+      "edits": [
+        {
+          "file": "tools/ci-state/src/lib.rs",
+          "from": "pub const FAILING: [&str; 4] = [\"failure\", \"cancelled\", \"timed_out\", \"startup_failure\"];",
+          "to": "pub const FAILING: [&str; 5] = [\"failure\", \"cancelled\", \"timed_out\", \"startup_failure\", \"skipped\"];"
+        }
+      ],
+      "expect_red": ["the_skipped_check_in_the_recording_is_not_read_as_a_failure"]
+    },
+    {
+      "name": "a-check-that-has-not-concluded-is-called-a-failure",
+      "why": "the third answer collapsing into the first. A commit whose jobs are still running is neither red nor clear, and reading `None` as a failure would report every push made while CI is in flight as a push onto a broken commit",
+      "edits": [
+        {
+          "file": "tools/ci-state/src/lib.rs",
+          "from": "        .is_some_and(|conclusion| FAILING.contains(&conclusion))",
+          "to": "        .is_none_or(|conclusion| FAILING.contains(&conclusion))"
+        }
+      ],
+      "expect_red": ["a_commit_still_running_is_neither_red_nor_clear"]
+    },
+    {
+      "name": "the-conclusion-this-reporter-treats-as-routine-is-misspelled",
+      "why": "a realistic drift rather than an invented one: one wrong letter in the word GitHub uses for a green job, and every row of every commit prints. A block that prints nine lines on every green push is one a reader learns to skip, which is the same blindness the whole feature exists to end, arrived at from the other side",
+      "edits": [
+        {
+          "file": "tools/ci-state/src/lib.rs",
+          "from": "        if check.conclusion.as_deref() != Some(\"success\") {",
+          "to": "        if check.conclusion.as_deref() != Some(\"succeeded\") {"
+        }
+      ],
+      "expect_red": [
+        "the_census_names_every_row_and_the_lines_name_every_row_that_is_not_success"
+      ]
+    },
+    {
+      "name": "a-gh-that-failed-is-reported-as-a-gh-nobody-installed",
+      "why": "two different facts about the world, and the sentence sends a reader somewhere: one says install a tool, the other says look at the network or the credential. The hook this replaces printed both, and collapsing them here would send somebody to install something they already have",
+      "edits": [
+        {
+          "file": "tools/ci-state/src/main.rs",
+          "from": "            std::io::ErrorKind::NotFound => \"`gh` is not installed on this machine\".to_string(),",
+          "to": "            std::io::ErrorKind::NotFound => format!(\"`gh` could not be run at all: {why}\"),"
+        }
+      ],
+      "expect_red": [
+        "a_gh_that_is_not_installed_is_reported_and_the_reporter_still_exits_zero"
+      ]
+    },
+    {
+      "name": "a-reporter-asked-about-no-commit-answers-that-everything-is-fine",
+      "why": "the exit code, run as a PROCESS. R1127 to R1129 measured three gates in this repository documenting a code nothing ran; `.githooks/pre-push` prints a different sentence for `2`, and a `0` here would make a push where nothing was reported look exactly like one where CI was checked and found fine",
+      "edits": [
+        {
+          "file": "tools/ci-state/src/main.rs",
+          "from": "             argument(s), there is no commit to report on\",\n            arguments.len()\n        );\n        std::process::exit(2);",
+          "to": "             argument(s), there is no commit to report on\",\n            arguments.len()\n        );\n        std::process::exit(0);"
+        }
+      ],
+      "expect_red": [
+        "a_reporter_given_no_commit_exits_two_rather_than_reporting_on_nothing"
+      ]
+    },
+    {
+      "name": "the-same-annotation-from-nine-jobs-is-printed-nine-times",
+      "why": "GitHub emits one annotation per job, so one deprecation notice arrives nine times. Printing all of them buries the second distinct finding under the first, and this is the half that must not be paid for by dropping the count of what came",
+      "edits": [
+        {
+          "file": "tools/ci-state/src/lib.rs",
+          "from": "    let distinct: BTreeSet<String> = read.iter().map(one_line).collect();",
+          "to": "    let distinct: Vec<String> = read.iter().map(one_line).collect();"
+        }
+      ],
+      "expect_red": ["annotations_are_deduplicated_and_both_numbers_are_printed"]
+    },
+    {
+      "name": "a-cap-that-does-not-say-what-it-dropped",
+      "why": "raising the cap past any real commit removes the shortfall line without removing a single printed finding, so the output looks strictly better while a run with hundreds of annotations becomes an unbounded wall at push time. A cap that does not say what it dropped reads as `that was all of them`",
+      "edits": [
+        {
+          "file": "tools/ci-state/src/lib.rs",
+          "from": "const SHOWN: usize = 10;",
+          "to": "const SHOWN: usize = 100;"
+        }
+      ],
+      "expect_red": ["more_annotations_than_are_shown_are_counted_rather_than_dropped"]
+    },
+    {
+      "name": "a-message-is-cut-by-bytes-instead-of-characters",
+      "why": "a compiler diagnostic quoting source is exactly where a non-ASCII character arrives, and a byte slice through one PANICS. A reporter that dies on somebody else's error text is worse than one that prints nothing — and it dies at push time, on the machine of whoever is pushing",
+      "edits": [
+        {
+          "file": "tools/ci-state/src/lib.rs",
+          "from": "    let head: String = annotation\n        .message\n        .lines()\n        .next()\n        .unwrap_or_default()\n        .chars()\n        .take(160)\n        .collect();",
+          "to": "    let first = annotation.message.lines().next().unwrap_or_default();\n    let head: String = first[..first.len().min(160)].to_string();"
+        }
+      ],
+      "expect_red": [
+        "a_long_message_is_cut_by_characters_and_survives_a_non_ascii_one"
+      ]
+    }
+  ]
+}

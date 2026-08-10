@@ -1,0 +1,408 @@
+//! What CI said about one commit — READ out of GitHub's answer, never projected
+//! out of it by `gh -q`.
+//!
+//! WHY THIS PROGRAM EXISTS. `.githooks/pre-push` reports the CI state of the
+//! commit a push builds on, because nothing in this repository could see a red
+//! CI and four consecutive red runs went unnoticed for eleven hours (R890), and
+//! because a green conclusion is not the whole of what a run says (R893). It did
+//! that with three `gh -q '<expression>'` calls, and those expressions were the
+//! one part of the hook nothing could test: `crates/mnemosyne-cli/tests/
+//! git_hooks_smoke.rs` drives the real hook with a STUB `gh` that returns
+//! already-filtered lines, and its own header said what that costs — "a wrong
+//! `--json` field or jq expression in the hook would still pass here".
+//!
+//! IT WAS MEASURED BEFORE IT WAS MOVED, twice, each time by breaking one
+//! expression and running the suite that is supposed to hold the hook up:
+//!
+//!   - `.conclusion` renamed to `.verdict` in the run filter: 14 passed, 0
+//!     failed. With a real `gh` every conclusion then prints as `-`, the string
+//!     the hook substitutes for a run that has not concluded, so the red-detection
+//!     that follows can never match and a RED commit reports clean.
+//!   - `annotations_count` renamed to `annotation_count` in the check-run filter:
+//!     14 passed, 0 failed. With a real `gh` no annotated check is ever selected,
+//!     so every commit reports "no CI annotations" — which is exactly the
+//!     blindness R893 added the call to end.
+//!
+//! Both are silent in the direction that reads as good news, which is the
+//! property R1130 named when it moved `cache-budget` off the same kind of
+//! expression: a read that comes back short is a well-formed answer describing a
+//! healthier repository than the one that exists.
+//!
+//! ONE ENDPOINT, AND IT IS THE PER-COMMIT ONE. The hook asked `gh run list
+//! --limit 20` and filtered it for the commit's sha, which is a WINDOW: a commit
+//! that has fallen off the end of the twenty most recent runs is indistinguishable
+//! from a commit nothing ever ran on, and the hook printed the second sentence for
+//! both. `repos/{owner}/{repo}/commits/<sha>/check-runs` is asked ABOUT the commit,
+//! carries GitHub's own `total_count` beside its rows so a short read is loud
+//! rather than silent, and names the JOB rather than the workflow — which is the
+//! grain the last two red runs in this repository actually differed at.
+
+use std::collections::BTreeSet;
+
+/// What GitHub calls a conclusion that means the commit did not pass.
+///
+/// EXACTLY THE SET R890 CHOSE, kept whole rather than narrowed while the reading
+/// around it changed: `failure`, `cancelled`, `timed_out` and `startup_failure`
+/// are what the hook's own `grep -E` matched. `skipped` and `neutral` are NOT
+/// here and that is deliberate — this repository's workflow skips a job whose
+/// inputs did not change on every green push, and a reporter that called that red
+/// would be ignored within a day.
+pub const FAILING: [&str; 4] = ["failure", "cancelled", "timed_out", "startup_failure"];
+
+/// One check run on a commit, as GitHub answers for it.
+///
+/// NAMED FIELDS AND NOT A PROJECTION, which is what `Deserialize` here buys: a
+/// field GitHub renames stops this program rather than emptying it, and
+/// `tests/github.rs` holds that rename against a RECORDED REAL body so the day it
+/// happens is a red test. Every other field on the row — `app`, `check_suite`,
+/// `details_url`, `html_url`, `started_at`, `completed_at`, `pull_requests` — is
+/// ignored on purpose: a reader that refused unknown fields would go red the day
+/// GitHub adds one, which is a gate failing for somebody else's work.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Deserialize)]
+pub struct Check {
+    pub id: u64,
+    pub name: String,
+    /// The commit this row is ABOUT, which is not the same fact as the commit it
+    /// was asked for. A well-formed answer to the wrong question is the failure
+    /// R1122 paid for in the neighbouring gate — perfectly shaped, and carrying
+    /// the wrong subject — so the two are compared rather than assumed equal.
+    pub head_sha: String,
+    /// `queued`, `in_progress` or `completed`, verbatim.
+    pub status: String,
+    /// `None` while the check has not concluded.
+    ///
+    /// A THIRD ANSWER, and the projection this replaces had only two: it wrote
+    /// `(.conclusion // "-")`, so a check still running and a check whose
+    /// conclusion GitHub stopped sending both arrived as the same dash, and
+    /// neither matched the red-detection that followed.
+    ///
+    /// PRESENT-BUT-NULLABLE, WHICH IS NOT WHAT `Option` MEANS TO SERDE. A derived
+    /// `Option` field is OPTIONAL: a body that stopped carrying `conclusion`
+    /// deserializes to `None` without complaint, and this program would then read
+    /// every check on a red commit as one that has not finished — the same
+    /// collapse the `// "-"` projection made, rebuilt in a type. `deserialize_with`
+    /// is what takes the implicit default away, so a missing key is a named
+    /// refusal and only an explicit `null` is a check still running.
+    #[serde(deserialize_with = "present_but_nullable")]
+    pub conclusion: Option<String>,
+    pub output: Output,
+}
+
+/// Read a field that GitHub always sends and may send as `null`.
+///
+/// The whole of it is [`Check::conclusion`]'s doc comment: naming a
+/// `deserialize_with` is how a derived `Option` field stops being optional.
+fn present_but_nullable<'de, D>(reader: D) -> Result<Option<String>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    serde::Deserialize::deserialize(reader)
+}
+
+/// The part of a check run's output this program reads.
+///
+/// `annotations_count` IS THE DECLARED NUMBER and it is read from here rather
+/// than from the annotations themselves, because the annotations endpoint answers
+/// one page and GitHub's own interface stops at fifty: the count is the only
+/// thing that says whether what came back was all of it.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Deserialize)]
+pub struct Output {
+    pub annotations_count: u64,
+}
+
+/// One page of GitHub's answer about a commit's check runs.
+///
+/// `total_count` IS THE ONLY THING IN THE ANSWER THAT SAYS WHETHER THE ROWS ARE
+/// ALL OF THEM. Every other failure of this read is loud — a row missing a name
+/// does not parse, a body that never arrived is empty — but a read that stops
+/// early is a valid answer describing a commit with fewer checks, and FEWER is
+/// the direction in which a red job goes unmentioned.
+#[derive(serde::Deserialize)]
+struct CheckPage {
+    total_count: u64,
+    check_runs: Vec<Check>,
+}
+
+/// One annotation on one check run.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Deserialize)]
+pub struct Annotation {
+    pub annotation_level: String,
+    pub message: String,
+}
+
+/// What this program asks GitHub about a commit, as the words `gh` is handed.
+///
+/// IN THE LIBRARY SO THE QUESTION HAS A READER (R1096). `--paginate` is
+/// load-bearing and invisible: the endpoint answers thirty rows a page, this
+/// repository's workflow already declares nine jobs, and a `gh` without it would
+/// answer with a body that is valid, well-shaped and short the day a tenth
+/// workflow lands. `{owner}` and `{repo}` are `gh`'s own placeholders, resolved
+/// from the checkout, so this program never names the repository it reports on.
+pub fn checks_query(sha: &str) -> Vec<String> {
+    vec![
+        "api".to_string(),
+        "--paginate".to_string(),
+        format!("repos/{{owner}}/{{repo}}/commits/{sha}/check-runs"),
+    ]
+}
+
+/// What this program asks GitHub about one check run's annotations.
+///
+/// ONE PAGE, DELIBERATELY, and the declared count travels beside it from
+/// [`Output::annotations_count`]: a run that emitted hundreds of identical
+/// annotations is not worth paging through at push time, and the shortfall is
+/// PRINTED rather than hidden. `--paginate` here would trade a bounded read for
+/// an unbounded one to answer a question nobody asked.
+pub fn annotations_query(check_id: u64) -> Vec<String> {
+    vec![
+        "api".to_string(),
+        format!("repos/{{owner}}/{{repo}}/check-runs/{check_id}/annotations"),
+    ]
+}
+
+/// The answer a `gh` that failed quietly gives, and a commit with no checks never
+/// does.
+///
+/// SAID ONCE so the difference between the two silences is a line a reader can
+/// find and an injection can take away.
+const NOTHING_PRINTED: &str = "`gh` printed nothing at all, which is not the answer a commit \
+     with no checks gives — that one arrives as a page saying so";
+
+/// Why a page of the answer could not be read, in the reader's words and this
+/// program's.
+///
+/// BOTH, AND THE READER'S VERBATIM: `missing field \`annotations_count\`` is what
+/// says WHICH field GitHub stopped sending, and a message that summarised it would
+/// leave the one fact a repair needs on the floor.
+fn unreadable_page(page: usize, why: &serde_json::Error) -> String {
+    format!(
+        "page {page} of `gh`'s answer about this commit is not a shape this reporter can read \
+         ({why}) — it needs GitHub's own `total_count` and `check_runs`, and in each row an \
+         `id`, a `name`, a `head_sha`, a `status`, a `conclusion` and an `output` carrying \
+         `annotations_count`. An answer missing one of those is a read that failed, not a \
+         commit nothing ran on"
+    )
+}
+
+/// Every check run GitHub holds for one commit, read off its own answer.
+///
+/// `gh --paginate` prints one JSON object PER PAGE, concatenated, so the answer is
+/// a stream rather than a document — the same shape `cache-budget` measured
+/// against a recorded four-page body.
+///
+/// EMPTY IS TWO ANSWERS AND THEY ARE TOLD APART HERE. A commit nothing ran on says
+/// so in a page; a read that failed prints nothing at all. The projection this
+/// replaces gave both of them the same empty stdout, and the hook printed "no CI
+/// runs recorded" over each.
+pub fn checks_in(sha: &str, body: &str) -> Result<Vec<Check>, String> {
+    let mut checks = Vec::new();
+    let mut counted: Option<u64> = None;
+    for (index, page) in serde_json::Deserializer::from_str(body)
+        .into_iter::<CheckPage>()
+        .enumerate()
+    {
+        let page = page.map_err(|why| unreadable_page(index + 1, &why))?;
+        match counted {
+            None => counted = Some(page.total_count),
+            Some(first) if first != page.total_count => {
+                return Err(format!(
+                    "GitHub said this commit carries {first} check(s) on the first page of its \
+                     answer and {} on page {} — the checks moved underneath this read, and rows \
+                     taken from pages that disagree are a report nobody can defend",
+                    page.total_count,
+                    index + 1
+                ));
+            }
+            Some(_) => {}
+        }
+        checks.extend(page.check_runs);
+    }
+    let counted = counted.ok_or_else(|| NOTHING_PRINTED.to_string())?;
+    if checks.len() as u64 != counted {
+        return Err(format!(
+            "GitHub said this commit carries {counted} check(s) and {} arrived — a partial read \
+             drops jobs, and a dropped job is one whose failure this reporter would not mention",
+            checks.len()
+        ));
+    }
+    // THE ANSWER MUST BE ABOUT THE COMMIT IT WAS ASKED FOR. Nothing else here
+    // could tell: a body describing another commit parses perfectly, carries a
+    // consistent count, and reports that commit's health as this one's.
+    if let Some(other) = checks.iter().find(|check| check.head_sha != sha) {
+        return Err(format!(
+            "this reporter asked about {sha} and GitHub answered about {} (check `{}`) — a \
+             well-formed answer to another question reports somebody else's commit as this one's",
+            other.head_sha, other.name
+        ));
+    }
+    Ok(checks)
+}
+
+/// Every annotation on one check run, read off GitHub's own answer.
+///
+/// A BARE ARRAY, not a counted page: this endpoint sends no `total_count`, which
+/// is exactly why [`Output::annotations_count`] is carried here from the other
+/// answer instead of being recomputed from these rows.
+pub fn annotations_in(check_id: u64, body: &str) -> Result<Vec<Annotation>, String> {
+    if body.trim().is_empty() {
+        return Err(format!(
+            "`gh` printed nothing at all about check {check_id}, which is not the answer a check \
+             with no annotations gives — that one arrives as an empty list"
+        ));
+    }
+    serde_json::from_str(body).map_err(|why| {
+        format!(
+            "GitHub's answer about check {check_id}'s annotations is not a shape this reporter \
+             can read ({why}) — it needs an `annotation_level` and a `message` on every row, and \
+             an answer without them is a read that failed, not a check with nothing to say"
+        )
+    })
+}
+
+/// What one annotation reads as on one line.
+///
+/// THE FIRST LINE AND AT MOST 160 CHARACTERS, because an annotation carries a
+/// whole compiler diagnostic and this is printed at push time. Counted in
+/// CHARACTERS and not bytes: a message that happens to hold a non-ASCII character
+/// would panic a byte slice, and a reporter that dies on somebody's error text is
+/// worse than one that prints nothing.
+pub fn one_line(annotation: &Annotation) -> String {
+    let head: String = annotation
+        .message
+        .lines()
+        .next()
+        .unwrap_or_default()
+        .chars()
+        .take(160)
+        .collect();
+    format!("{} {}", annotation.annotation_level, head)
+}
+
+/// What a commit's checks add up to.
+///
+/// THREE ANSWERS AND NOT TWO. A commit whose checks have not finished is neither
+/// red nor clear, and the projection this replaces could not say so: it wrote a
+/// dash for a missing conclusion and then asked whether any line ENDED in one of
+/// four words, so "still running" and "green" were one answer.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Verdict {
+    /// Nothing has run on this commit. From the per-commit endpoint this is a
+    /// fact, where the run-list window it replaces could only ever mean "not in
+    /// the last twenty runs".
+    Nothing,
+    /// At least one check concluded in a way [`FAILING`] names.
+    Red,
+    /// Nothing failed, and at least one check has not concluded.
+    Pending,
+    /// Every check concluded, and none of them failed.
+    Clear,
+}
+
+/// What this commit's checks add up to.
+pub fn verdict(checks: &[Check]) -> Verdict {
+    if checks.is_empty() {
+        return Verdict::Nothing;
+    }
+    if checks.iter().any(is_failing) {
+        return Verdict::Red;
+    }
+    if checks.iter().any(|check| check.conclusion.is_none()) {
+        return Verdict::Pending;
+    }
+    Verdict::Clear
+}
+
+/// Whether one check concluded in a way that means the commit did not pass.
+pub fn is_failing(check: &Check) -> bool {
+    check
+        .conclusion
+        .as_deref()
+        .is_some_and(|conclusion| FAILING.contains(&conclusion))
+}
+
+/// How a check reads in the census and in a row — its conclusion, or the fact
+/// that it has none.
+fn outcome(check: &Check) -> &str {
+    check.conclusion.as_deref().unwrap_or("still running")
+}
+
+/// The first eight characters of a sha, as everything here prints it.
+fn short(sha: &str) -> String {
+    sha.chars().take(8).collect()
+}
+
+/// What this reporter says about a commit's checks, line by line.
+///
+/// A CENSUS AND THEN THE ROWS THAT ARE NOT `success`. Printing all nine rows on
+/// every green push trains a reader to skip the block, and printing only the
+/// failures says nothing about how much was looked at — so the counts name every
+/// row and the lines name every row that is not routine. Nothing is dropped
+/// silently, which is the rule the hook's annotation cap already followed.
+pub fn report(sha: &str, checks: &[Check]) -> Vec<String> {
+    let short = short(sha);
+    if checks.is_empty() {
+        return vec![format!(
+            "no CI checks on {short} — nothing has run on the commit this push builds on"
+        )];
+    }
+    let mut census: std::collections::BTreeMap<&str, usize> = std::collections::BTreeMap::new();
+    for check in checks {
+        *census.entry(outcome(check)).or_default() += 1;
+    }
+    let tally: Vec<String> = census
+        .iter()
+        .map(|(what, count)| format!("{count} {what}"))
+        .collect();
+    let mut lines = vec![format!(
+        "CI on {short} — {} check(s): {}",
+        checks.len(),
+        tally.join(", ")
+    )];
+    for check in checks {
+        if check.conclusion.as_deref() != Some("success") {
+            lines.push(format!("  {} — {}", outcome(check), check.name));
+        }
+    }
+    if verdict(checks) == Verdict::Red {
+        lines.push(
+            "^^ the commit you are building on is RED. Not blocking (fixing it is \
+             itself a push), but do not push past it blind."
+                .to_string(),
+        );
+    }
+    lines
+}
+
+/// What this reporter says about a commit's annotations, line by line.
+///
+/// BOTH NUMBERS, ALWAYS. The same annotation is emitted once per job, so the
+/// distinct set is what a reader wants — and a cap that does not say what it
+/// dropped reads as "that was all of them". `declared` is GitHub's own count from
+/// the check rows; `read` is what actually came back.
+pub fn annotation_report(sha: &str, declared: u64, read: &[Annotation]) -> Vec<String> {
+    let short = short(sha);
+    if declared == 0 {
+        return vec![format!("no CI annotations on {short}")];
+    }
+    let distinct: BTreeSet<String> = read.iter().map(one_line).collect();
+    if distinct.is_empty() {
+        return vec![format!(
+            "NOTE {short} reports {declared} annotation(s), none readable"
+        )];
+    }
+    let mut lines = vec![format!(
+        "CI annotations on {short} — {} distinct of {declared} reported:",
+        distinct.len()
+    )];
+    lines.extend(distinct.iter().take(SHOWN).map(|note| format!("  {note}")));
+    if distinct.len() > SHOWN {
+        lines.push(format!(
+            "   (+{} distinct not shown)",
+            distinct.len() - SHOWN
+        ));
+    }
+    lines
+}
+
+/// How many distinct annotations are printed before the rest are counted instead.
+const SHOWN: usize = 10;

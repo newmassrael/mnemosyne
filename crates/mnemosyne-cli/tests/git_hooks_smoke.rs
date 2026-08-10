@@ -18,9 +18,15 @@
 //!     fixture's `scripts/mn` is a stub, so these cases prove the hook CALLS
 //!     the verb and honours its exit code, nothing about the verb itself
 //!     (those have their own tests).
-//!   - `gh`'s own filtering. The stub returns already-filtered lines, exactly
-//!     as `gh -q` would, so a wrong `--json` field or jq expression in the hook
-//!     would still pass here.
+//!   - what GitHub answers about a commit, and what that answer means. Until
+//!     R1136 the hook read it with three `gh -q` expressions and the stub here
+//!     returned already-filtered lines, so a wrong `--json` field or jq
+//!     expression still passed — measured twice, each time at 14 passed / 0
+//!     failed while a real `gh` would have reported a red commit as clean. That
+//!     reading is now `tools/ci-state`, gated in its own suite against RECORDED
+//!     real bodies with the reporter run as a process. What is left here is the
+//!     seam this file owns: that the hook calls it with the commit it means and
+//!     passes its words through.
 //!   - the real workspace's fmt/clippy state, which CI and the hook itself
 //!     cover on the real tree.
 
@@ -62,49 +68,43 @@ esac
 exit "${MN_STUB_EXIT:-0}"
 "#;
 
-/// Answers the three `gh` calls `pre-push` makes, keyed by `GH_STUB_MODE`, and
-/// CHECKS THE ARGUMENTS of each. Round 900: returning canned lines without
-/// looking at the request meant a hook that asked for the wrong `--json` field
-/// or the wrong endpoint still got its answer — Round 899 wrote that down as a
-/// carry. The stub cannot evaluate jq, so what it pins is the request contract:
-/// the subcommand, the field list, the headSha filter, and the endpoint shape.
+/// Stands in for the three `cargo` commands `pre-push` issues, and CHECKS THE
+/// ARGUMENTS of the one this file is about.
+///
+/// R1136 MOVED THE SEAM. The hook used to call `gh` three times and flatten the
+/// answers with `-q`; a stub could not evaluate those expressions, so the request
+/// contract was all this file could pin and two renamed fields passed it. The
+/// reading is now a program (`tools/ci-state`) with its own suite over recorded
+/// bodies, and what THIS file owns is the call: the hook must ask that reporter,
+/// with a lockfile it may not rewrite, about the commit it says it means — and
+/// must pass whatever comes back through to the person pushing.
+///
+/// `fmt` and `clippy` have their own cases above and are answered blindly here.
 /// Violations land in a file the test asserts is empty.
-const GH_STUB: &str = r#"#!/usr/bin/env bash
-mode="${GH_STUB_MODE:-unreachable}"
-violate() { echo "$1" >> "$PWD/gh-contract-violations.log"; }
-if [[ "${1:-}" == "run" ]]; then
-    [[ "${2:-}" == "list" ]] || violate "gh run subcommand is '${2:-}', not 'list'"
-    [[ "$*" == *"--json headSha,name,status,conclusion"* ]] \
-        || violate "gh run list asked for the wrong --json fields: $*"
-    [[ "$*" == *'headSha=='* ]] \
-        || violate "gh run list does not filter on headSha: $*"
-fi
-if [[ "${1:-}" == "api" ]]; then
-    if [[ "${2:-}" == "repos/{owner}/{repo}/commits/"*"/check-runs" ]]; then
-        :
-    elif [[ "${2:-}" == "repos/{owner}/{repo}/check-runs/"*"/annotations" ]]; then
-        :
-    else
-        violate "gh api hit an unexpected endpoint: ${2:-}"
-    fi
-fi
-if [[ "${1:-}" == "run" ]]; then
-    case "$mode" in
-        empty) exit 0 ;;
-        red) echo "mnemosyne-validate completed failure"; exit 0 ;;
-        annotated) echo "mnemosyne-validate completed success"; exit 0 ;;
-        *) exit 1 ;;
-    esac
-fi
-if [[ "${1:-}" == "api" && "$mode" == "annotated" ]]; then
-    if [[ "${2:-}" == *"/annotations" ]]; then
-        echo "warning Node.js 20 actions are deprecated"
-        exit 0
-    fi
-    echo "42 3"
+const CARGO_STUB: &str = r#"#!/usr/bin/env bash
+violate() { echo "$1" >> "$PWD/reporter-contract-violations.log"; }
+if [[ "${1:-}" != "run" ]]; then
     exit 0
 fi
-exit 1
+[[ "$*" == *"/tools/ci-state/Cargo.toml"* ]] \
+    || violate "pre-push ran some other program than the CI reporter: $*"
+[[ "$*" == *"--bin ci-state"* ]] \
+    || violate "pre-push did not name the reporter binary: $*"
+[[ "$*" == *"--locked"* ]] \
+    || violate "the reporter resolves freely and may rewrite a lockfile: $*"
+[[ "$*" == *"$REPORTER_SHA"* ]] \
+    || violate "pre-push asked about some commit other than origin/main: $*"
+case "${REPORTER_MODE:-reports}" in
+    reports)
+        echo "ci-state: CI on ${REPORTER_SHA:0:8} — 9 check(s): 1 failure, 8 success"
+        echo "ci-state:   failure — every cache declared is one CI keeps"
+        echo "ci-state: ^^ the commit you are building on is RED. Not blocking"
+        echo "ci-state: CI annotations on ${REPORTER_SHA:0:8} — 1 distinct of 3 reported:"
+        echo "ci-state:   warning Node.js 20 actions are deprecated"
+        exit 0
+        ;;
+    *) exit 2 ;;
+esac
 "#;
 
 fn repo_root() -> PathBuf {
@@ -266,9 +266,10 @@ impl Fixture {
         fs::read_to_string(self.path().join("mn-calls.log")).unwrap_or_default()
     }
 
-    /// Every request `pre-push` made to `gh` that broke the pinned contract.
-    fn gh_contract_violations(&self) -> String {
-        fs::read_to_string(self.path().join("gh-contract-violations.log")).unwrap_or_default()
+    /// Every way `pre-push` called the CI reporter that broke the pinned
+    /// contract.
+    fn reporter_contract_violations(&self) -> String {
+        fs::read_to_string(self.path().join("reporter-contract-violations.log")).unwrap_or_default()
     }
 
     fn commit_msg(&self, message: &str) -> Output {
@@ -860,7 +861,7 @@ fn pre_push_skips_delete_only_pushes_and_gates_on_the_workspace() {
 }
 
 #[test]
-fn pre_push_reports_every_ci_state_it_can_and_cannot_read() {
+fn pre_push_carries_the_ci_reporters_words_and_names_it_when_it_cannot_run() {
     let f = Fixture::new();
     f.git(&["commit", "--no-verify", "-q", "-m", "test(fixture): seed"]);
     let sha = head_sha(&f);
@@ -877,12 +878,36 @@ fn pre_push_reports_every_ci_state_it_can_and_cannot_read() {
 
     f.git(&["update-ref", "refs/remotes/origin/main", &sha]);
 
-    // `gh` missing entirely. Needs a hermetic PATH, since this machine keeps
-    // gh in the same directory as git; the stub cargo stands in for the two
-    // lint gates, which have their own cases above.
+    // AND THEN HEAD MOVES PAST IT, which is what makes "which commit" a question
+    // this fixture can answer at all. The hook reports on the commit the push
+    // BUILDS ON, and while `origin/main` and `HEAD` are the same commit a hook
+    // asking about either one looks identical from here — so the law would pass
+    // for a hook that reports on the work being pushed instead of the work it
+    // lands on, which is a clean report about a commit nothing has run yet.
+    f.write("src/second.rs", CLEAN_LIB);
+    f.write(
+        "src/lib.rs",
+        "pub mod second;\npub fn one() -> u8 {\n    1\n}\n",
+    );
+    f.stage_all();
+    f.git(&[
+        "commit",
+        "--no-verify",
+        "-q",
+        "-m",
+        "test(fixture): move HEAD on",
+    ]);
+    let head = head_sha(&f);
+    assert_ne!(head, sha, "the fixture must be able to tell the two apart");
+    let stdin = push_line(&head);
+
+    // A HERMETIC PATH, so the only `cargo` the hook can reach is the stub. This
+    // machine keeps the real one beside `git`, and a hook that found it would
+    // compile this repository's reporter into the fixture's target directory —
+    // a several-minute case that measures cargo rather than the hook.
     let shim = f.path().join("shim");
     fs::create_dir_all(&shim).expect("mkdir shim");
-    for tool in ["bash", "git", "grep", "sed", "head", "sort"] {
+    for tool in ["bash", "git"] {
         let real = Command::new("sh")
             .args(["-c", &format!("command -v {tool}")])
             .output()
@@ -895,74 +920,64 @@ fn pre_push_reports_every_ci_state_it_can_and_cannot_read() {
         );
         std::os::unix::fs::symlink(real, shim.join(tool)).expect("symlink");
     }
-    write_exec(&shim.join("cargo"), "#!/usr/bin/env bash\nexit 0\n");
+    write_exec(&shim.join("cargo"), CARGO_STUB);
+    let hermetic = shim.to_str().expect("shim path is utf-8").to_string();
+
+    // WHAT THE REPORTER SAYS REACHES THE PERSON PUSHING, verbatim. The hook's job
+    // at this seam is carriage: it neither summarises the report nor decides what
+    // in it is worth repeating, and a hook that swallowed the RED line would be
+    // the R890 blindness rebuilt one layer up.
     let out = f.run_hook(
         "pre-push",
         &["origin", "git@example:x"],
         &stdin,
-        &[("PATH", shim.to_str().expect("shim path is utf-8"))],
-    );
-    assert!(out.status.success(), "{}", stderr_of(&out));
-    assert!(
-        stderr_of(&out).contains("gh not installed"),
-        "an absent gh must be reported, not passed over:\n{}",
-        stderr_of(&out)
-    );
-
-    // The three answers a present gh can give.
-    let gh_dir = f.path().join("ghbin");
-    write_exec(&gh_dir.join("gh"), GH_STUB);
-    let path_with_gh = format!(
-        "{}:{}",
-        gh_dir.to_str().expect("gh dir is utf-8"),
-        std::env::var("PATH").unwrap_or_default()
-    );
-
-    for (mode, wanted) in [
-        ("unreachable", "gh could not reach GitHub"),
-        ("empty", "no CI runs recorded"),
-        ("red", "is RED"),
-        ("annotated", "1 distinct of 3 reported"),
-    ] {
-        let out = f.run_hook(
-            "pre-push",
-            &["origin", "git@example:x"],
-            &stdin,
-            &[("PATH", &path_with_gh), ("GH_STUB_MODE", mode)],
-        );
-        assert!(
-            out.status.success(),
-            "the CI report must never block the push (mode {mode}):\n{}",
-            stderr_of(&out)
-        );
-        assert!(
-            stderr_of(&out).contains(wanted),
-            "mode {mode} must report `{wanted}`:\n{}",
-            stderr_of(&out)
-        );
-    }
-
-    // Every request the hook made was the one it is supposed to make. This is
-    // what keeps the canned answers from covering for a hook that asked the
-    // wrong question — a wrong `--json` field, a wrong subcommand, a wrong
-    // endpoint. The stub cannot judge the jq expression, only the request.
-    assert!(
-        f.gh_contract_violations().is_empty(),
-        "pre-push broke the gh request contract:\n{}",
-        f.gh_contract_violations()
-    );
-
-    // A green conclusion does not silence the annotation half (Round 893): the
-    // `annotated` arm above returns `success`, and the annotation still prints.
-    let out = f.run_hook(
-        "pre-push",
-        &["origin", "git@example:x"],
-        &stdin,
-        &[("PATH", &path_with_gh), ("GH_STUB_MODE", "annotated")],
+        &[("PATH", &hermetic), ("REPORTER_SHA", &sha)],
     );
     let err = stderr_of(&out);
     assert!(
-        err.contains("completed success") && err.contains("Node.js 20"),
-        "a green run must still surface what it said:\n{err}"
+        out.status.success(),
+        "the CI report must never block the push:\n{err}"
+    );
+    assert!(err.contains("is RED"), "the verdict is carried:\n{err}");
+    assert!(
+        err.contains("every cache declared is one CI keeps"),
+        "and so is the row behind it:\n{err}"
+    );
+    assert!(
+        err.contains("1 distinct of 3 reported") && err.contains("Node.js 20"),
+        "and the annotation half, which a green conclusion does not silence \
+         (R893):\n{err}"
+    );
+
+    // A REPORTER THAT COULD NOT REPORT IS SAID OUT LOUD. Exit 2 is the one
+    // non-zero code it has, and a hook that passed over it would leave the push
+    // looking exactly like one where CI was checked and found fine.
+    let out = f.run_hook(
+        "pre-push",
+        &["origin", "git@example:x"],
+        &stdin,
+        &[
+            ("PATH", &hermetic),
+            ("REPORTER_SHA", &sha),
+            ("REPORTER_MODE", "cannot"),
+        ],
+    );
+    let err = stderr_of(&out);
+    assert!(
+        out.status.success(),
+        "not being able to look is still not a block:\n{err}"
+    );
+    assert!(
+        err.contains("the CI reporter could not run") && err.contains(&sha[..8]),
+        "a reporter that failed must be named, with the commit:\n{err}"
+    );
+
+    // Every call the hook made was the one it says it makes: the right program,
+    // a lockfile it may not rewrite, and THE COMMIT IT MEANT. A report about
+    // another commit parses, prints and is wrong — R1122's shape exactly.
+    assert!(
+        f.reporter_contract_violations().is_empty(),
+        "pre-push broke the reporter contract:\n{}",
+        f.reporter_contract_violations()
     );
 }

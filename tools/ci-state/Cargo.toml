@@ -1,0 +1,41 @@
+[workspace]
+
+[package]
+name = "ci-state"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.88"
+publish = false
+license = "MIT OR Apache-2.0"
+description = "Mnemosyne — what CI said about one commit, read rather than projected"
+keywords = ["ci", "hook", "gate"]
+categories = ["development-tools"]
+
+# ITS OWN WORKSPACE, like every other program under `tools/`: the root gates never
+# compile it, and `scripts/check-side-workspaces.sh` discovers it by walking for
+# manifests that carry their own `[workspace]`, so there is no list to update.
+#
+# NO PATH DEPENDENCY ON `ci-plan`, and that is a distinction rather than an
+# omission: `ci-plan` reads what the workflows DECLARE, off files in this
+# checkout. This program reads what GitHub ANSWERED about a commit. The two share
+# no input, and a dependency between them would only make one of them rebuild.
+
+[dependencies]
+# R1136 — GitHub's answer is READ here rather than projected by `gh -q`. The three
+# `--jq` expressions this replaces lived in `.githooks/pre-push`, where the hook's
+# own suite stubs `gh` and therefore cannot evaluate them; the file said so in its
+# own header. Measured before it was moved: renaming `.conclusion` to `.verdict`
+# in the hook's filter left the suite at 14 passed / 0 failed, and with a real
+# `gh` that prints every conclusion as `-`, so a red commit reports clean.
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# THE ENTRANCE TESTS RUN THIS BINARY AS A PROCESS with a stubbed `gh` on `PATH`,
+# and each needs a directory where writing an executable is harmless and cleanup
+# is automatic. The sibling gates' entrance suites use the same crate for the
+# same reason.
+[dev-dependencies]
+tempfile = "3"
+
+[lints.clippy]
+all = "deny"
