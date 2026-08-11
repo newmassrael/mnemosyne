@@ -4500,11 +4500,20 @@ impl SetEqualityValidator {
                 if symbol_expectation(section_id, &site.file, &symbols_by_section_file).is_none() {
                     continue;
                 }
-                if lang_for_file(Path::new(&site.file)).is_none() {
+                let Some(lang) = lang_for_file(Path::new(&site.file)) else {
                     continue;
-                }
+                };
                 cov.checked_citations += 1;
                 checked_files.insert(site.file.as_str());
+                // Round 1144 — of that demand, the part NO configured resolver
+                // can answer. Counted here rather than derived from
+                // `unresolved_languages` below, which counts FILES and would
+                // answer a different question: a file may be unreachable and
+                // carry no symbol-level claim, which costs nothing.
+                if !self.symbol_resolvers.contains_key(lang) {
+                    cov.unchecked_citations += 1;
+                    cov.unchecked_languages.insert(lang.to_string());
+                }
             }
         }
         cov.checked_files = checked_files.len();
@@ -4571,6 +4580,18 @@ pub struct SymbolAxisCoverage {
     /// call count was `checked_citations`, and each call re-read and re-parsed
     /// the whole file.
     pub checked_files: usize,
+    /// Of `checked_citations`, the ones no configured resolver can answer —
+    /// symbol-level claims this run would leave unjudged (Round 1144).
+    ///
+    /// A run in this state is refused rather than reported, for the reason
+    /// Round 855 refuses an unbuildable resolver entry: `severity_binding =
+    /// reject` reads as symbol-level enforcement while the run performs none.
+    /// It is also the state a consumer reaches by pricing the axis the way SCE
+    /// did — deleting the resolver blocks and re-running — which left every
+    /// symbol binding in their store unchecked and every run green.
+    pub unchecked_citations: usize,
+    /// The languages those claims are written in: what to configure.
+    pub unchecked_languages: BTreeSet<String>,
 }
 
 impl SymbolAxisCoverage {

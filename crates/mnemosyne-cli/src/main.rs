@@ -6941,6 +6941,41 @@ fn cmd_validate_code_refs(args: &[String]) -> Result<()> {
             .join(" ")
     };
     let mut reject_msgs: Vec<String> = Vec::new();
+    // Round 1144 — a symbol-level claim with nothing to check it stops the run.
+    //
+    // The verdict map says whether THIS RUN judged the axis, and it is a fact
+    // about the configuration alone, so it does not flicker as the store is
+    // edited. This is the other question: the store and the config TOGETHER. A
+    // section recording a symbol for a language no
+    // `[plugins.symbol_resolver.<lang>]` entry covers is a claim nobody checks,
+    // and Round 855 settled that shape one step out — a resolver entry that
+    // cannot be BUILT is a config error rather than a warning, because
+    // `severity_binding = reject` reads as symbol-level enforcement while the
+    // run performs none. This is the same sentence with the halves swapped.
+    //
+    // HERE and not beside the census, so the REPORT still prints: a consumer's
+    // gate parses this command's JSON, and refusing before the document exists
+    // would answer a diagnosis with a parse error. Every other refusal this
+    // command makes is downstream of the report for the same reason.
+    //
+    // Not severity-gated: no severity turns the symbol axis off, so there is no
+    // knob that could mean "I accept unchecked symbol claims". Not in decay
+    // mode either — `--filter-id` judges one axis by design, and a cascade
+    // caller cannot be asked to configure a resolver a scan would never use.
+    if filter_id.is_none() && symbol_axis.unchecked_citations > 0 {
+        let keys: Vec<String> = symbol_axis
+            .unchecked_languages
+            .iter()
+            .map(|lang| format!("[plugins.symbol_resolver.{lang}]"))
+            .collect();
+        reject_msgs.push(format!(
+            "{} citation(s) carry a symbol-level binding no configured resolver covers, so \
+             severity_binding reads as symbol-level enforcement while this run performs \
+             none — add {}",
+            symbol_axis.unchecked_citations,
+            keys.join(" and "),
+        ));
+    }
     if hallucination_count > 0 && severity_missing.is_reject() {
         reject_msgs.push(format!(
             "{} hallucination-class citation(s) — {} (severity_missing=reject)",

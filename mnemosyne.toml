@@ -156,6 +156,18 @@ comment_only = true
 # workspace meant being outside every gate, including the one that would have said
 # it was broken. See Round 784.
 
+# Round 1144 — why NO [plugins.symbol_resolver.<lang>] entry is configured here.
+#
+# Measured, not assumed: `propose-implementations` reports 7 (section, file)
+# pairs and 7 unresolved cites — every `§<id>` citation in this tree sits in a
+# MODULE-level doc comment, because a section here describes a module rather
+# than a function. No citation is inside an item, so the symbol axis has an
+# empty population and a resolver would never be called. Configuring one would
+# be the Round 860 shape: config that looks like it works.
+#
+# The state this leaves — a symbol claim recorded with nothing to check it — is
+# no longer a silence: Round 1144 refuses a run in it, so the day a section here
+# records a symbol, the gate says which entry to add rather than passing.
 # ============================================================================
 # Round 305 — publishable_override_ledger
 # 9 entries whose publishable_* half was redacted via mnemosyne-cli redact-term

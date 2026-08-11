@@ -20,8 +20,14 @@
 //! axis cheap — `severity` has no `off` for it — and until this round it was
 //! also the way to make it green.
 //!
-//! Four laws, and the last two are where a later round would over-apply the
-//! first:
+//! Two answers, deliberately different shapes. Laws 1 to 4 make the state
+//! AUDIBLE: the verdict is a fact about the run's configuration, so it does not
+//! flicker as the store is edited. Law 5 makes it REFUSABLE: a section that
+//! records a symbol for a language nothing covers is a claim nobody checks, and
+//! that is a fact about the store and the config together.
+//!
+//! Five laws, and the last two are where a later round would over-apply the
+//! first two:
 //!
 //! 1. NO RESOLVER, NO COUNT. A run whose resolver map is empty does not
 //!    publish a number for this axis; it names the axis and says why. The
@@ -38,19 +44,29 @@
 //!    the one test that configured a working backend asserted only exit 0, so
 //!    a wire handing `rust` the C++ resolver passed it.
 //!
-//! 3. PARTIAL REACH IS STILL JUDGED. A tree holding a language no configured
-//!    resolver covers does NOT lose its count for the languages that are
-//!    covered. The count is over the population the axis reached, and how far
-//!    that reached is the census's answer, not this one's — the same division
-//!    a path-scoped run makes between its counts and its `path_scope` block.
-//!    Without this law the first one grows into "not fully covered = not
-//!    judged", and a consumer with one language wired loses the axis.
+//! 3. AN UNREACHED LANGUAGE THAT CLAIMS NOTHING COSTS NOTHING. A tree holding
+//!    a language no configured resolver covers does NOT lose its count for the
+//!    languages that are covered, and is not refused for a claim it never
+//!    made. The count is over the population the axis reached, and how far that
+//!    reached is the census's answer, not this one's — the same division a
+//!    path-scoped run makes between its counts and its `path_scope` block.
+//!    Without this law, law 1 grows into "not fully covered = not judged" and
+//!    law 5 grows into "an unreached file is a defect", and either one takes
+//!    the axis away from a consumer with a second language in the tree.
 //!
 //! 4. THE REFUSAL CARRIES THE SAME ANSWER. `symbol_mismatch` is itemised in the
 //!    binding-class rejection message, which is the one line a gate's operator
 //!    cannot avoid reading, and Round 1141 shipped a defect of exactly this
 //!    shape one axis over: the message was built from raw violation counts
 //!    rather than from the verdict map and priced an unjudged axis at zero.
+//!
+//! 5. A CLAIM WITH NOTHING TO CHECK IT STOPS THE RUN. Round 855 settled this
+//!    shape one step out — a resolver entry that cannot be BUILT is a config
+//!    error rather than a warning, because `severity_binding = reject` reads as
+//!    symbol-level enforcement while the run performs none. A symbol recorded
+//!    for a language no entry covers is the same sentence with the halves
+//!    swapped. The refusal is downstream of the report, so a gate parsing this
+//!    command's JSON gets a diagnosis rather than a parse error.
 
 use std::collections::BTreeMap;
 use std::fs;
@@ -78,8 +94,10 @@ const RUST_RESOLVER: &str = "[plugins.symbol_resolver.rust]\n\
 /// file that cites it, so neither the file-level axis nor the spec-side one has
 /// anything to say.
 ///
-/// `cpp_case` adds `src/bar.cpp`, whose citation demands the axis exactly as
-/// the Rust one does and which no test here ever configures a resolver for.
+/// `cpp_case` adds `src/bar.cpp`, bound at FILE level with no symbol recorded,
+/// for a language no test here configures a resolver for: an unreachable file
+/// that makes no symbol-level claim, which is the state law 3 separates from
+/// the one law 5 refuses.
 fn write_workspace(ws: &Path, resolver: &str, cpp_case: bool) {
     fs::create_dir_all(ws.join("docs/.atomic")).unwrap();
     fs::create_dir_all(ws.join("src")).unwrap();
@@ -112,14 +130,14 @@ fn write_workspace(ws: &Path, resolver: &str, cpp_case: bool) {
     if cpp_case {
         fs::write(
             ws.join("src/bar.cpp"),
-            "void gamma() {\n    // §sec2 — demands the axis, and no resolver covers cpp\n}\n",
+            "void gamma() {\n    // §sec2 — bound at file level, so nothing is asked of cpp\n}\n",
         )
         .unwrap();
         sections["sec2"] = serde_json::json!({
             "title": "Two",
             "parent_doc": "docs/GENERATED.md",
             "bindings": [
-                {"file": "src/bar.cpp", "symbol": "delta", "kind": "implements"}
+                {"file": "src/bar.cpp", "kind": "implements"}
             ]
         });
     }
@@ -204,21 +222,24 @@ fn an_axis_with_no_resolver_is_named_rather_than_called_clean() {
         not_judged(&json)
     );
 
-    // The hazard, stated: this run is GREEN. Removing the resolver block is how
-    // a consumer prices the axis, and it must not also be how they pass it.
+    // Nothing was emitted on this axis — which is why, until this round, the
+    // count was the ONLY thing that could have said so, and it said `0`. What
+    // stops this run is law 5, not a violation here.
     assert!(
-        out.status.success(),
-        "nothing else in this fixture is wrong; stderr: {}",
-        String::from_utf8_lossy(&out.stderr)
+        json["violations"]
+            .as_array()
+            .expect("violations")
+            .iter()
+            .all(|v| v["kind"] != "symbol_mismatch"),
+        "an axis nobody judged cannot emit: {json}"
     );
+    // And the document survived the refusal: it is printed BEFORE the run
+    // fails, so a consumer's gate reads a diagnosis rather than a parse error.
     assert!(
-        String::from_utf8_lossy(&out.stdout).contains("§sec1")
-            || json["violations"]
-                .as_array()
-                .expect("violations")
-                .is_empty(),
-        "and it emits no symbol violation, which is why the count was the only \
-         thing saying otherwise"
+        !out.status.success(),
+        "law 5 refuses a tree in this state; this assertion is here so that \
+         reading the report and failing the run stay one behaviour: {}",
+        String::from_utf8_lossy(&out.stderr)
     );
 }
 
@@ -316,29 +337,124 @@ fn the_refusal_names_the_axis_it_did_not_judge_rather_than_pricing_it_at_zero() 
     );
 }
 
-/// LAW 3 — a language nothing covers does not unjudge the languages something
-/// does.
+/// LAW 5 — a symbol-level claim with nothing to check it stops the run.
+///
+/// Laws 1 to 4 make the state AUDIBLE. This one makes it refusable, and the two
+/// are deliberately different shapes. The verdict is a fact about the run's
+/// configuration, so it does not flicker with the store's contents; the refusal
+/// is a fact about the store and the config TOGETHER, and incoherence between
+/// them is exactly what a gate is for. Round 855 settled the principle one step
+/// out: a resolver entry that cannot be built is a config error rather than a
+/// warning, because `severity_binding = reject` reads as symbol-level
+/// enforcement while the run performs none. A section that records a symbol for
+/// a language nothing covers is the same sentence with the halves swapped.
+///
+/// It is also the state a consumer reaches by following their own cost
+/// measurement: SCE priced this axis by deleting their resolver blocks, which
+/// left every symbol binding in their store unchecked and every run green.
 #[test]
-fn a_language_with_no_resolver_does_not_unjudge_the_ones_that_have_one() {
+fn a_symbol_claim_no_configured_resolver_covers_refuses_the_run() {
     let tmp = TempDir::new().unwrap();
-    write_workspace(tmp.path(), RUST_RESOLVER, true);
-    let (_, json) = validate(tmp.path());
+    write_workspace(tmp.path(), "", false);
+    let (out, _) = validate(tmp.path());
 
+    assert!(
+        !out.status.success(),
+        "the store records a symbol for src/foo.rs and nothing can check it — \
+         that must stop the run, not pass it: {}",
+        String::from_utf8_lossy(&out.stdout)
+    );
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        stderr.contains("1 citation(s)") && stderr.contains("plugins.symbol_resolver.rust"),
+        "the refusal must say HOW MANY claims are unchecked and NAME the config \
+         key that would check them: {stderr}"
+    );
+
+    // The control for the refusal is the same tree with the entry added: it is
+    // about the missing resolver, not about the fixture.
+    let with = TempDir::new().unwrap();
+    write_workspace(with.path(), RUST_RESOLVER, false);
+    let (ok, _) = validate(with.path());
+    assert!(
+        !String::from_utf8_lossy(&ok.stderr).contains("plugins.symbol_resolver.rust"),
+        "a configured resolver must not be asked for again: {}",
+        String::from_utf8_lossy(&ok.stderr)
+    );
+
+    // And a tree that records no symbol at all is NOT refused — the demand is
+    // what makes the absence a defect. This is the state of the repository
+    // hosting this gate, whose citations are all module-level.
+    let none = TempDir::new().unwrap();
+    write_workspace(none.path(), "", false);
+    fs::write(
+        none.path().join("docs/.atomic/workspace.atomic.json"),
+        serde_json::to_string_pretty(&serde_json::json!({
+            "schema_version": 11,
+            "sections": {"sec1": {"title": "One", "parent_doc": "docs/GENERATED.md",
+                "bindings": [{"file": "src/foo.rs", "kind": "implements"}]}},
+            "changelog_entries": {"Round 1": {"decision_summary": "the one entry"}}
+        }))
+        .unwrap(),
+    )
+    .unwrap();
+    let (bare, json) = validate(none.path());
     assert_eq!(
         json["symbol_axis"]["checked_citations"].as_u64(),
-        Some(2),
-        "both citations demand the axis — the census prices demand, not reach"
+        Some(0),
+        "file-level binding only, so nothing demands a resolver: {json}"
+    );
+    assert!(
+        bare.status.success(),
+        "a tree that makes no symbol-level claim must not be told to configure \
+         a resolver for it: {}",
+        String::from_utf8_lossy(&bare.stderr)
+    );
+}
+
+/// LAW 3 — an unreachable language that CLAIMS NOTHING costs nothing.
+///
+/// This is the boundary law 5 must not swallow. A file whose language no
+/// resolver covers is reported by the census and always has been (Round 855's
+/// advisory), and if no section records a symbol for it there is no claim to
+/// leave unchecked: the run proceeds and the axis keeps its count for the
+/// language that IS wired. Widen law 5 from "an unchecked claim" to "an
+/// unreached file" and every adopter with a second language is refused for
+/// prose they never wrote.
+#[test]
+fn an_unreached_language_that_claims_no_symbol_neither_refuses_nor_unjudges() {
+    let tmp = TempDir::new().unwrap();
+    write_workspace(tmp.path(), RUST_RESOLVER, true);
+    let (out, json) = validate(tmp.path());
+
+    assert_eq!(
+        json["symbol_axis"]["unchecked_citations"].as_u64(),
+        Some(0),
+        "the cpp file is bound at file level, so it claims nothing the missing \
+         cpp resolver would have checked: {}",
+        json["symbol_axis"]
+    );
+    assert_eq!(
+        json["symbol_axis"]["checked_citations"].as_u64(),
+        Some(1),
+        "one claim, and it is the Rust one: {}",
+        json["symbol_axis"]
     );
     assert_eq!(
         json["symbol_mismatch_count"],
         serde_json::json!(1),
-        "and the count is over what the axis REACHED: a number, not null, \
-         because one language is wired: {json}"
+        "the count is over what the axis reached: a number, not null: {json}"
     );
     assert!(
         !not_judged(&json).contains_key("symbol_mismatch"),
         "partial reach is not the same fact as no reach: {:?}",
         not_judged(&json)
+    );
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        !stderr.contains("symbol_resolver.cpp"),
+        "and no cpp resolver is demanded — the run fails on the Rust drift it \
+         DID find, not on a language nobody made a claim in: {stderr}"
     );
 
     // How far it reached is the census's answer, in the same document.
