@@ -31,8 +31,8 @@
 //!
 //! 1. NO RESOLVER, NO COUNT. A run whose resolver map is empty does not
 //!    publish a number for this axis; it names the axis and says why. The
-//!    fixture makes the demand real — the census counts one citation this axis
-//!    is supposed to judge — so the `null` is a statement about something,
+//!    fixture makes the demand real — the census counts the two citations this
+//!    axis is supposed to judge — so the `null` is a statement about something,
 //!    not decoration on an empty tree.
 //!
 //! 2. THE CONTROL IS THE SAME TREE WITH THE BLOCK PUT BACK. The same bytes,
@@ -42,7 +42,9 @@
 //!    crate, which already resolves symbols against a hand-built map — nothing
 //!    put `[plugins.symbol_resolver.rust]` through the binary to a judgement:
 //!    the one test that configured a working backend asserted only exit 0, so
-//!    a wire handing `rust` the C++ resolver passed it.
+//!    a wire handing `rust` the C++ resolver passed it. Round 1146 had to
+//!    rebuild the fixture before this law could say that, and the injection
+//!    now reddens it: see `write_workspace`.
 //!
 //! 3. AN UNREACHED LANGUAGE THAT CLAIMS NOTHING COSTS NOTHING. A tree holding
 //!    a language no configured resolver covers does NOT lose its count for the
@@ -84,15 +86,28 @@ const RUST_RESOLVER: &str = "[plugins.symbol_resolver.rust]\n\
                              transport = \"in-process\"\n\
                              backend = \"tree-sitter-rust\"\n";
 
-/// A tree whose ONE Rust citation is a symbol-level defect and whose every
-/// other axis is clean, so whatever the report says about `symbol_mismatch` is
-/// the whole of the news.
+/// A tree that can tell WHICH resolver answered, which the first version of it
+/// could not.
 ///
-/// `§sec1` records the symbol `beta` for `src/foo.rs`; the citation sits inside
-/// `fn alpha`. A resolver that is asked answers `alpha`, which is not in the
-/// recorded set. Nothing else in the tree is wrong: the section is bound to a
-/// file that cites it, so neither the file-level axis nor the spec-side one has
-/// anything to say.
+/// TWO SITES, AND BOTH ARE LOAD-BEARING. `src/drift.rs` cites `§sec1`, which
+/// records `beta`, from inside a method the Rust grammar calls `alpha` — a
+/// mismatch. `src/matched.rs` cites `§sec2`, which records `gamma`, from inside
+/// a method the Rust grammar calls `gamma` — clean. The whole run must therefore
+/// report EXACTLY ONE symbol violation, at the first file.
+///
+/// WHY ONE SITE WAS NOT ENOUGH. Round 1145 injected the C++ resolver into the
+/// `rust` key and NOTHING went red across 1870 tests. With only a mismatch site,
+/// every possible answer is indistinguishable: `alpha`, `Holder`, or nothing at
+/// all each leave the recorded `beta` unmatched, so the count is 1 either way
+/// and the assertion holds while the wrong plugin runs. A resolver that answers
+/// NOTHING now drops the count to 0, and one that answers DIFFERENT NAMES raises
+/// it to 2 by reddening the clean site. Both are one number away from correct
+/// and both fail.
+///
+/// The methods sit inside `impl` blocks for the same reason: `fn alpha() { … }`
+/// at top level is also a valid C++ function definition — return type `fn`, name
+/// `alpha` — so the two grammars agreed on the answer, which is how a fixture
+/// stops being a control (Round 1096: the spelling is what makes it one).
 ///
 /// `cpp_case` adds `src/bar.cpp`, bound at FILE level with no symbol recorded,
 /// for a language no test here configures a resolver for: an unreachable file
@@ -111,10 +126,20 @@ fn write_workspace(ws: &Path, resolver: &str, cpp_case: bool) {
     )
     .unwrap();
 
-    // Line 2 is inside the body, so the enclosing symbol is `alpha`.
+    // Line 4 of each file is inside the method body, so the enclosing symbol is
+    // the method's name and not the type's.
     fs::write(
-        ws.join("src/foo.rs"),
-        "fn alpha() {\n    // §sec1 — the one citation this axis judges\n    let _ = 1;\n}\n",
+        ws.join("src/drift.rs"),
+        "struct Holder;\n\nimpl Holder {\n    fn alpha(&self) {\n        \
+         // §sec1 — recorded as `beta`, so this citation has drifted\n        \
+         let _ = 1;\n    }\n}\n",
+    )
+    .unwrap();
+    fs::write(
+        ws.join("src/matched.rs"),
+        "struct Keeper;\n\nimpl Keeper {\n    fn gamma(&self) {\n        \
+         // §sec2 — recorded as `gamma`, so this citation is clean\n        \
+         let _ = 2;\n    }\n}\n",
     )
     .unwrap();
 
@@ -123,18 +148,25 @@ fn write_workspace(ws: &Path, resolver: &str, cpp_case: bool) {
             "title": "One",
             "parent_doc": "docs/GENERATED.md",
             "bindings": [
-                {"file": "src/foo.rs", "symbol": "beta", "kind": "implements"}
+                {"file": "src/drift.rs", "symbol": "beta", "kind": "implements"}
+            ]
+        },
+        "sec2": {
+            "title": "Two",
+            "parent_doc": "docs/GENERATED.md",
+            "bindings": [
+                {"file": "src/matched.rs", "symbol": "gamma", "kind": "implements"}
             ]
         }
     });
     if cpp_case {
         fs::write(
             ws.join("src/bar.cpp"),
-            "void gamma() {\n    // §sec2 — bound at file level, so nothing is asked of cpp\n}\n",
+            "void delta() {\n    // §sec3 — bound at file level, so nothing is asked of cpp\n}\n",
         )
         .unwrap();
-        sections["sec2"] = serde_json::json!({
-            "title": "Two",
+        sections["sec3"] = serde_json::json!({
+            "title": "Three",
             "parent_doc": "docs/GENERATED.md",
             "bindings": [
                 {"file": "src/bar.cpp", "kind": "implements"}
@@ -196,15 +228,15 @@ fn an_axis_with_no_resolver_is_named_rather_than_called_clean() {
     write_workspace(tmp.path(), "", false);
     let (out, json) = validate(tmp.path());
 
-    // NON-VACUITY, from the run's own census: this tree holds exactly one
-    // citation the symbol axis is supposed to judge. The `null` below is about
-    // that citation, not about an empty tree.
+    // NON-VACUITY, from the run's own census: this tree holds two citations the
+    // symbol axis is supposed to judge, in two files. The `null` below is about
+    // those citations, not about an empty tree.
     assert_eq!(
         (
             json["symbol_axis"]["checked_citations"].as_u64(),
             json["symbol_axis"]["checked_files"].as_u64()
         ),
-        (Some(1), Some(1)),
+        (Some(2), Some(2)),
         "the fixture must demand the axis for the absence to mean anything: {}",
         json["symbol_axis"]
     );
@@ -262,6 +294,9 @@ fn the_same_tree_with_a_resolver_judges_and_names_the_drift() {
         not_judged(&json)
     );
 
+    // EXACTLY ONE, AND AT THE DRIFT SITE. Both halves say which resolver ran:
+    // an answer of nothing leaves this at zero, and a different vocabulary of
+    // names reddens the matched site too and leaves it at two.
     let violations = json["violations"].as_array().expect("violations array");
     let symbol: Vec<&serde_json::Value> = violations
         .iter()
@@ -274,9 +309,15 @@ fn the_same_tree_with_a_resolver_judges_and_names_the_drift() {
             symbol[0]["line"].as_u64(),
             symbol[0]["entry_id"].as_str()
         ),
-        (Some("src/foo.rs"), Some(2), Some("§sec1")),
+        (Some("src/drift.rs"), Some(5), Some("§sec1")),
         "the judgement names the citation, not just the file: {}",
         symbol[0]
+    );
+    assert!(
+        violations.iter().all(|v| v["file"] != "src/matched.rs"),
+        "the site whose recorded symbol is what the Rust grammar answers must be \
+         CLEAN — that is the half of this fixture a wrong resolver cannot fake: \
+         {violations:?}"
     );
 
     // The whole path through the binary: config → plugin registry → the real
@@ -305,7 +346,7 @@ fn the_refusal_names_the_axis_it_did_not_judge_rather_than_pricing_it_at_zero() 
     let tmp = TempDir::new().unwrap();
     write_workspace(tmp.path(), "", false);
     // A citation-side defect on a different binding-class axis: `§sec1` binds
-    // `src/foo.rs`, and this file is not it.
+    // `src/drift.rs`, and this file is not it.
     fs::write(
         tmp.path().join("src/unbound.rs"),
         "fn epsilon() {\n    // §sec1 — cited from a file the section does not bind\n}\n",
@@ -360,13 +401,13 @@ fn a_symbol_claim_no_configured_resolver_covers_refuses_the_run() {
 
     assert!(
         !out.status.success(),
-        "the store records a symbol for src/foo.rs and nothing can check it — \
+        "the store records symbols for two files and nothing can check them — \
          that must stop the run, not pass it: {}",
         String::from_utf8_lossy(&out.stdout)
     );
     let stderr = String::from_utf8_lossy(&out.stderr);
     assert!(
-        stderr.contains("1 citation(s)") && stderr.contains("plugins.symbol_resolver.rust"),
+        stderr.contains("2 citation(s)") && stderr.contains("plugins.symbol_resolver.rust"),
         "the refusal must say HOW MANY claims are unchecked and NAME the config \
          key that would check them: {stderr}"
     );
@@ -391,8 +432,12 @@ fn a_symbol_claim_no_configured_resolver_covers_refuses_the_run() {
         none.path().join("docs/.atomic/workspace.atomic.json"),
         serde_json::to_string_pretty(&serde_json::json!({
             "schema_version": 11,
-            "sections": {"sec1": {"title": "One", "parent_doc": "docs/GENERATED.md",
-                "bindings": [{"file": "src/foo.rs", "kind": "implements"}]}},
+            "sections": {
+                "sec1": {"title": "One", "parent_doc": "docs/GENERATED.md",
+                    "bindings": [{"file": "src/drift.rs", "kind": "implements"}]},
+                "sec2": {"title": "Two", "parent_doc": "docs/GENERATED.md",
+                    "bindings": [{"file": "src/matched.rs", "kind": "implements"}]}
+            },
             "changelog_entries": {"Round 1": {"decision_summary": "the one entry"}}
         }))
         .unwrap(),
@@ -436,8 +481,8 @@ fn an_unreached_language_that_claims_no_symbol_neither_refuses_nor_unjudges() {
     );
     assert_eq!(
         json["symbol_axis"]["checked_citations"].as_u64(),
-        Some(1),
-        "one claim, and it is the Rust one: {}",
+        Some(2),
+        "two claims, and both are the Rust ones: {}",
         json["symbol_axis"]
     );
     assert_eq!(
