@@ -560,6 +560,19 @@ pub enum NotJudged {
     NoDecayFilter,
     /// The axis is opt-in and its severity is unset in config and flags.
     AxisDisabled,
+    /// The symbol axis has no instrument: no `[plugins.symbol_resolver.<lang>]`
+    /// entry at all, so the demand this run collected was put to nobody.
+    ///
+    /// A CONFIG FACT, deliberately, like the four above — not a fact about the
+    /// data. The alternative considered was "there was demand and none of it
+    /// was answered", which is more precise and makes the verdict depend on
+    /// whether some section happens to record a symbol: the axis would then
+    /// appear and disappear from a consumer's `not_judged` list as the store is
+    /// edited, and the answer to "is this run judging symbols" would not be
+    /// derivable from the run's own configuration. Partial reach keeps the
+    /// count (see [`SetEqualityValidator::symbol_axis_coverage`], which is
+    /// where how-far belongs).
+    NoResolver,
 }
 
 impl NotJudged {
@@ -571,6 +584,7 @@ impl NotJudged {
             Self::DecayFilter => "decay_filter",
             Self::NoDecayFilter => "no_decay_filter",
             Self::AxisDisabled => "axis_disabled",
+            Self::NoResolver => "no_resolver",
         }
     }
 
@@ -585,6 +599,10 @@ impl NotJudged {
             Self::DecayFilter => "--filter-id narrows the run to the decay axis of one entry",
             Self::NoDecayFilter => "decay is scanned only for an entry id a caller names",
             Self::AxisDisabled => "opt-in axis; its severity is unset",
+            Self::NoResolver => {
+                "no [plugins.symbol_resolver.<lang>] entry is configured, so every citation \
+                 this axis would judge was put to nobody"
+            }
         }
     }
 }
@@ -3798,6 +3816,9 @@ impl SetEqualityValidator {
                         Some(NotJudged::NoDecayFilter)
                     } else if scoped && axis.side() == AuditSide::Spec {
                         Some(NotJudged::PathScope)
+                    } else if axis == AuditAxis::SymbolMismatch && self.symbol_resolvers.is_empty()
+                    {
+                        Some(NotJudged::NoResolver)
                     } else if self.axis_severity_unset(axis) {
                         Some(NotJudged::AxisDisabled)
                     } else {
@@ -3820,9 +3841,13 @@ impl SetEqualityValidator {
             AuditAxis::BlanketVerifies => self.config.severity_blanket.is_none(),
             AuditAxis::ProseFactAssertion => self.config.severity_prose_fact_assertion.is_none(),
             // Always judged when the mode allows it. `symbol_mismatch` is here
-            // rather than with the opt-ins deliberately: it is judged wherever a
-            // resolver reaches, and how far that is gets reported as coverage by
+            // rather than with the opt-ins because there is no severity that
+            // turns it off — how far it reaches is reported as coverage by
             // `symbol_axis_coverage` (Round 855) instead of as one on/off bit.
+            // Whether it reaches AT ALL is a separate question, answered one
+            // branch up in `axis_verdicts` by `NotJudged::NoResolver`: an empty
+            // resolver map is the one state in which this axis judges nothing,
+            // and it used to publish that as `0`.
             AuditAxis::Missing
             | AuditAxis::Decay
             | AuditAxis::SectionMissing
