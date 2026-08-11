@@ -56,10 +56,20 @@
     "reach gives 9, 5, 4, 2, 5, 3 and 1 — the `2-9 tests each` and the `ONE` the",
     "Round 1138 prose reported, reproduced without re-running the narrow sweep.",
     "A widening that could not reproduce the narrower answer would have been two",
-    "runs of different things rather than one question asked twice."
+    "runs of different things rather than one question asked twice.",
+    "",
+    "AND THE SET BELOW IS DECLARED EXHAUSTIVE (Round 1140), so each `expect_red`",
+    "names the WHOLE red set rather than a floor under it. That is what holds the",
+    "sentences above to a later run: a test deleted, a guard added, or this sweep",
+    "run at a narrower scope again all come back as reds this manifest does not",
+    "name, where a floor is silent in both directions and the prose beside it goes",
+    "on claiming the old number. It is the only manifest in this repository that",
+    "may make the claim, because it is the only one whose whole red set anybody",
+    "has measured."
   ],
   "repo": "../../..",
   "test_command": ["cargo", "test", "--workspace", "--no-fail-fast"],
+  "red_set": "exhaustive",
   "logs": "../../../target/injection-logs",
   "min_free_mb": 8000,
   "injections": [
@@ -74,6 +84,14 @@
         }
       ],
       "expect_red": [
+        "a_coordinate_read_answers_at_the_lineage_of_the_road_it_is_given",
+        "continuity::tests::frame_view_stored_to_ends_and_other_frames_excluded",
+        "counted_without_naming::the_frame_view_names_the_facts_it_calls_not_holding",
+        "counted_without_naming::the_reads_that_count_what_they_do_not_name",
+        "every_argument_that_decides_an_answer_is_named_in_the_answer",
+        "play_break_class_census::the_walk_says_what_stands_between_an_authoring_slip_and_the_runtime",
+        "read_agreement_population::the_population_of_subjects_more_than_one_shipped_read_answers_about",
+        "succession_swaps_the_held_belief_at_its_canon_point",
         "the_frame_view_names_at_each_point_what_the_playable_world_counts_there",
         "the_scene_count_cannot_say_whose_view_holds_what"
       ]
@@ -89,6 +107,12 @@
         }
       ],
       "expect_red": [
+        "a_coordinate_read_answers_at_the_lineage_of_the_road_it_is_given",
+        "continuity::tests::frame_view_at_the_ancestor_does_not_see_the_fork_that_left_it",
+        "counted_without_naming::the_reads_that_count_what_they_do_not_name",
+        "play_break_class_census::the_walk_says_what_stands_between_an_authoring_slip_and_the_runtime",
+        "read_agreement_population::the_population_of_subjects_more_than_one_shipped_read_answers_about",
+        "tests::report_frame_view_branch_reaches_the_answer",
         "the_frame_view_names_at_each_point_what_the_playable_world_counts_there"
       ]
     },
@@ -103,7 +127,13 @@
         }
       ],
       "expect_red": [
-        "the_frame_view_names_at_each_point_what_the_playable_world_counts_there"
+        "continuity::tests::fork_grandchild_inherits_ancestor_branch_order",
+        "continuity::tests::frame_view_incomparable_is_unknown_not_absent",
+        "entity_axis_end_to_end",
+        "play_break_class_census::the_walk_says_what_stands_between_an_authoring_slip_and_the_runtime",
+        "tests::report_frame_view_order_path_reaches_the_answer",
+        "the_frame_view_names_at_each_point_what_the_playable_world_counts_there",
+        "undeclared_coordinates_surface_as_unknown"
       ]
     },
     {
@@ -117,6 +147,8 @@
         }
       ],
       "expect_red": [
+        "continuity::tests::confluence_fragment_is_one_shared_discriminator",
+        "frame_view_names_a_confluence_branch_as_a_fragment",
         "the_frame_view_names_at_each_point_what_the_playable_world_counts_there"
       ]
     },
@@ -131,8 +163,14 @@
         }
       ],
       "expect_red": [
+        "continuity::tests::playable_world_lets_an_authored_surface_override_the_derived_seat",
+        "continuity::tests::playable_world_resolves_surface_locators_per_world",
+        "continuity::tests::playable_world_surfaces_unplaced_ordinal",
+        "counted_without_naming::the_locator_ordinal_is_where_the_answer_puts_that_scene",
+        "counted_without_naming::the_quest_locator_ordinal_is_where_the_manuscript_puts_that_scene",
+        "read_agreement_population::the_population_of_subjects_more_than_one_shipped_read_answers_about",
         "the_frame_view_names_at_each_point_what_the_playable_world_counts_there",
-        "the_locator_ordinal_is_where_the_answer_puts_that_scene"
+        "the_frontier_counts_per_scene_what_the_playable_world_walks_per_road"
       ]
     },
     {
@@ -146,6 +184,10 @@
         }
       ],
       "expect_red": [
+        "continuity::tests::manuscript_diamond_linearizes_and_surfaces_undeclared_adjacency",
+        "continuity::tests::playable_world_carries_manuscript_honesty_surfaces",
+        "counted_without_naming::the_reads_that_count_what_they_do_not_name",
+        "play_break_class_census::the_walk_says_what_stands_between_an_authoring_slip_and_the_runtime",
         "the_frame_view_names_at_each_point_what_the_playable_world_counts_there"
       ]
     },

@@ -58,7 +58,7 @@ static INTERRUPTED: AtomicI32 = AtomicI32::new(0);
 // THE MANIFEST TYPES AND THE ANCHOR LAW ARE THE LIBRARY'S, because a second
 // reader of every sweep this repository tracks needs them and a decision in
 // `main.rs` has no reader (R1096). See `lib.rs`.
-use injection_harness::{replace_once, Edit, Manifest};
+use injection_harness::{replace_once, Edit, Manifest, RedSet};
 
 /// What one run of the suite said.
 #[derive(Debug, Clone, Default, Serialize)]
@@ -99,12 +99,16 @@ struct Run {
 /// `the_walk_judges_nothing` and quietly credit an injection with a red it did
 /// not cause.
 fn reached(fired: &BTreeSet<String>, expected: &str) -> bool {
-    fired.iter().any(|red| {
-        red == expected
-            || red
-                .strip_suffix(expected)
-                .is_some_and(|prefix| prefix.ends_with("::"))
-    })
+    fired.iter().any(|red| answers_to(red, expected))
+}
+
+/// The same rule for ONE red name, which is what the other direction needs: a
+/// red that answers to no expectation at all is one the manifest never described.
+fn answers_to(red: &str, expected: &str) -> bool {
+    red == expected
+        || red
+            .strip_suffix(expected)
+            .is_some_and(|prefix| prefix.ends_with("::"))
 }
 
 /// The two halves of a run's verdict — the status the suite exited with, and the
@@ -186,6 +190,11 @@ struct InjectionResult {
     fired: BTreeSet<String>,
     /// Expected red that did not go red.
     missed: BTreeSet<String>,
+    /// The other direction: red that answers to no expectation. Always recorded,
+    /// judged only where the manifest claims its `expect_red` is the whole set —
+    /// because for every other sweep this is the count of guards nobody has
+    /// written down yet, which is a finding rather than a failure.
+    unexpected: BTreeSet<String>,
     /// Targets the control reached and this run did not, and the reverse.
     targets_missing: BTreeSet<String>,
     targets_extra: BTreeSet<String>,
@@ -439,13 +448,24 @@ fn run() -> Result<(), String> {
             .filter(|name| !reached(&fired, name))
             .cloned()
             .collect();
+        let unexpected: BTreeSet<String> = fired
+            .iter()
+            .filter(|red| {
+                !injection
+                    .expect_red
+                    .iter()
+                    .any(|expected| answers_to(red, expected))
+            })
+            .cloned()
+            .collect();
         let drift = run.targets as i64 - control.targets as i64;
         let missing: BTreeSet<String> = control.reached.difference(&run.reached).cloned().collect();
         let extra: BTreeSet<String> = run.reached.difference(&control.reached).cloned().collect();
         eprintln!(
-            "[{}] {} red ({} targets, {} missing, {} extra)",
+            "[{}] {} red, {} unnamed ({} targets, {} missing, {} extra)",
             injection.name,
             fired.len(),
+            unexpected.len(),
             run.targets,
             missing.len(),
             extra.len(),
@@ -456,6 +476,7 @@ fn run() -> Result<(), String> {
             run,
             fired,
             missed,
+            unexpected,
             targets_missing: missing,
             targets_extra: extra,
             target_drift: drift,
@@ -505,6 +526,21 @@ fn run() -> Result<(), String> {
                 result.name, result.missed
             ));
         }
+        // AND THE OTHER DIRECTION, FOR A MANIFEST THAT CLAIMS ITS SET IS WHOLE.
+        // `missed` catches a sweep run somewhere narrower than it was measured;
+        // this catches one run wider, and a guard that appeared since. Under the
+        // default claim the same number is a finding to write down rather than a
+        // failure, so it is reported either way and judged only here.
+        if manifest.red_set == RedSet::Exhaustive && !result.unexpected.is_empty() {
+            broken.push(format!(
+                "{}: {} red this manifest does not name {:?} — it declares its \
+                 red sets exhaustive, so this is either a guard nobody had \
+                 written down or a set that has decayed since it was measured",
+                result.name,
+                result.unexpected.len(),
+                result.unexpected
+            ));
+        }
     }
     if !broken.is_empty() {
         return Err(broken.join("\n  "));
@@ -519,6 +555,7 @@ fn clone_result(result: &InjectionResult) -> InjectionResult {
         run: result.run.clone(),
         fired: result.fired.clone(),
         missed: result.missed.clone(),
+        unexpected: result.unexpected.clone(),
         targets_missing: result.targets_missing.clone(),
         targets_extra: result.targets_extra.clone(),
         target_drift: result.target_drift,

@@ -162,6 +162,44 @@
       "expect_red": ["every_report_names_the_suite_whose_counts_it_carries"]
     },
     {
+      "name": "a-red-nobody-described-is-counted-and-never-judged",
+      "why": "R1139 widened one sweep's scope from a crate to the workspace and 29 reds became 41 — the twelve new ones invisible for as long as nothing asked. `missed` catches a manifest run NARROWER than it was measured; this is the other direction, and without it a manifest that declares its red sets whole makes a claim nothing enforces",
+      "edits": [
+        {
+          "file": "src/main.rs",
+          "from": "        if manifest.red_set == RedSet::Exhaustive && !result.unexpected.is_empty() {",
+          "to": "        if false && !result.unexpected.is_empty() {"
+        }
+      ],
+      "expect_red": [
+        "a_red_nobody_described_is_judged_only_where_the_manifest_claims_every_one"
+      ]
+    },
+    {
+      "name": "an-exhaustive-set-of-nothing-is-a-claim-worth-suites",
+      "why": "under the weaker claim an empty `expect_red` is honest — an exploratory sweep says what went red and judges nothing — but under the stronger one it asserts that breaking the read changes NOTHING, the single outcome a sweep exists to detect. Refused at read time for the same reason the dry-run pre-flight exists: the whole-workspace sweep this claim was built for is 85 minutes of suites",
+      "edits": [
+        {
+          "file": "src/lib.rs",
+          "from": "    if manifest.red_set == RedSet::Exhaustive {",
+          "to": "    if false {"
+        }
+      ],
+      "expect_red": ["an_exhaustive_manifest_that_names_no_red_is_refused_before_the_run"]
+    },
+    {
+      "name": "a-key-nobody-reads-is-taken-as-a-key-nobody-wrote",
+      "why": "every optional field is one a manifest may simply not carry, so a MISSPELLED key reads as absent and the sweep runs under the default while its author reads their own spelling — `red-set: exhaustive` would leave the weaker claim in force with the file saying the stronger one. R1136 paid for this exact shape in another gate, where a derived serde default rebuilt the collapse the type had replaced",
+      "edits": [
+        {
+          "file": "src/lib.rs",
+          "from": "#[derive(Debug, Deserialize)]\n#[serde(deny_unknown_fields)]\npub struct Manifest {",
+          "to": "#[derive(Debug, Deserialize)]\npub struct Manifest {"
+        }
+      ],
+      "expect_red": ["a_key_this_reader_does_not_know_is_refused_rather_than_ignored"]
+    },
+    {
       "name": "the-population-of-sweeps-is-whatever-a-glob-finds",
       "why": "a law over zero files passes, and it passes in the shape of a clean run. The harness's own sweep is not called `injection-sweep.json`, so the obvious glob leaves out the one aimed at the tool every other sweep is run by — and R1134 measured the second half of the same mistake: a glob on `tools/` left out the sweep R1132 put in `.githooks/`, which is aimed at SHELL and is the likeliest anchor in this repository to come loose",
       "edits": [

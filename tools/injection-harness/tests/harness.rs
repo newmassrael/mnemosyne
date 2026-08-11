@@ -118,13 +118,39 @@ fn run_a_freshly_written_program(program: &Path, argument: &Path) -> std::proces
 }
 
 fn manifest(root: &Path, injections: serde_json::Value) -> PathBuf {
-    manifest_with(root, injections, serde_json::Value::Null)
+    manifest_body(
+        root,
+        injections,
+        serde_json::Value::Null,
+        serde_json::Value::Null,
+    )
 }
 
 fn manifest_with(
     root: &Path,
     injections: serde_json::Value,
     min_free_mb: serde_json::Value,
+) -> PathBuf {
+    manifest_body(root, injections, min_free_mb, serde_json::Value::Null)
+}
+
+/// A manifest claiming its `expect_red` lists name the WHOLE red set.
+fn manifest_claiming_every_red(root: &Path, injections: serde_json::Value) -> PathBuf {
+    manifest_body(
+        root,
+        injections,
+        serde_json::Value::Null,
+        serde_json::json!("exhaustive"),
+    )
+}
+
+/// The one place a fixture manifest is written, so the optional fields cannot
+/// come to differ between the builders above.
+fn manifest_body(
+    root: &Path,
+    injections: serde_json::Value,
+    min_free_mb: serde_json::Value,
+    red_set: serde_json::Value,
 ) -> PathBuf {
     let path = root.join("manifest.json");
     let mut body = serde_json::json!({
@@ -135,6 +161,9 @@ fn manifest_with(
     });
     if !min_free_mb.is_null() {
         body["min_free_mb"] = min_free_mb;
+    }
+    if !red_set.is_null() {
+        body["red_set"] = red_set;
     }
     fs::write(&path, serde_json::to_string(&body).expect("json")).expect("write manifest");
     path
@@ -456,6 +485,167 @@ fn every_report_names_the_suite_whose_counts_it_carries() {
             report["injections"]
         );
     }
+}
+
+/// A red the manifest does not name fails the sweep exactly where the manifest
+/// claims to name them all, and is counted everywhere else.
+///
+/// THE TWO CLAIMS ANSWER DIFFERENT QUESTIONS AND A SWEEP MAKES ONLY ONE OF THEM.
+/// `missed` catches a run narrower than the one a manifest was written against.
+/// This is the other direction — a run wider than that one, or a guard somebody
+/// added since — and under the default claim it is a finding to write down
+/// rather than a failure, because no sweep in this repository but one has ever
+/// had its whole red set measured. Round 1139 measured that one: widening its
+/// scope from a single crate to the workspace turned 29 reds into 41, and the
+/// twelve new ones were invisible for as long as nothing asked.
+///
+/// BOTH ARMS, BECAUSE A CHECK THAT ONLY EVER REFUSES CANNOT BE TOLD FROM ONE
+/// THAT ALWAYS REFUSES. The same suite and the same expectation run under the
+/// two claims: one fails and names the red, the other passes and counts it.
+#[test]
+fn a_red_nobody_described_is_judged_only_where_the_manifest_claims_every_one() {
+    let root = tempdir();
+    // A suite whose broken state names TWO tests, against a manifest that names
+    // one of them. That difference is the whole subject here.
+    let two_red = "failures:\\n    the_law\\n    the_other_law\\n\\ntest result: \
+                   FAILED. 0 passed; 2 failed; 0 ignored\\n";
+    split_verdict_suite(
+        root.path(),
+        (ALL_GREEN, 0),
+        (two_red, 1),
+        "the wire is HEALTHY here\n",
+    );
+    let injections = serde_json::json!([{
+        "name": "I1",
+        "why": "one read, two guards, and the manifest knows about one",
+        "edits": [{"file": "src.txt", "from": "HEALTHY", "to": "BROKEN"}],
+        "expect_red": ["the_law"],
+    }]);
+
+    let claimed = harness(&manifest_claiming_every_red(
+        root.path(),
+        injections.clone(),
+    ));
+    let said = String::from_utf8_lossy(&claimed.stderr);
+    assert!(
+        !claimed.status.success(),
+        "a manifest that claims every red and meets one it did not describe has \
+         a decayed set, not a clean sweep: {said}"
+    );
+    assert!(
+        said.contains("the_other_law") && said.contains("does not name"),
+        "and it names WHICH red nobody described: {said}"
+    );
+
+    let counted = harness(&manifest(root.path(), injections));
+    let reported = String::from_utf8_lossy(&counted.stderr);
+    assert!(
+        counted.status.success(),
+        "the default claim is that `expect_red` is a floor, so the same run is a \
+         clean sweep: {reported}"
+    );
+    assert!(
+        reported.contains("2 red, 1 unnamed"),
+        "and the number is reported either way, because under the weaker claim \
+         it is what a next round would go and measure: {reported}"
+    );
+}
+
+/// A key this reader does not know is refused rather than ignored.
+///
+/// EVERY OPTIONAL FIELD IS A KEY A MANIFEST MAY SIMPLY NOT CARRY, so a
+/// misspelled one reads as absent: the manifest runs under the default while its
+/// author reads their own spelling and believes the opposite. That is silent in
+/// the direction that looks like a pass — `red-set: exhaustive` would leave the
+/// sweep making the weaker claim while the file says it makes the stronger one.
+#[test]
+fn a_key_this_reader_does_not_know_is_refused_rather_than_ignored() {
+    let root = tempdir();
+    tree(root.path(), "the wire is HEALTHY here\n");
+    let path = root.path().join("manifest.json");
+    fs::write(
+        &path,
+        serde_json::to_string(&serde_json::json!({
+            "repo": root.path(),
+            "test_command": [root.path().join("suite.sh")],
+            "logs": root.path().join("logs"),
+            "red-set": "exhaustive",
+            "injections": [],
+        }))
+        .expect("json"),
+    )
+    .expect("write manifest");
+
+    let out = harness(&path);
+    let said = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        !out.status.success(),
+        "a manifest carrying a key nobody reads is not a manifest: {said}"
+    );
+    assert!(
+        said.contains("is not a manifest") && said.contains("red-set"),
+        "and the refusal names the key, so the misspelling is the finding: {said}"
+    );
+    assert!(
+        !root.path().join("logs").join("control.log").exists(),
+        "refused before any suite ran"
+    );
+}
+
+/// An exhaustive claim over an empty expectation is refused before the suites.
+///
+/// UNDER THE WEAKER CLAIM AN EMPTY `expect_red` IS HONEST — "say what went red
+/// and judge nothing" is what an exploratory sweep does. Under this one it says
+/// the injection reddens NOTHING, which is the single outcome a sweep exists to
+/// detect rather than to declare, and the contradiction should not cost the
+/// suites: the whole-workspace sweep this claim was built for is 85 minutes.
+#[test]
+fn an_exhaustive_manifest_that_names_no_red_is_refused_before_the_run() {
+    let root = tempdir();
+    tree(root.path(), "the wire is HEALTHY here\n");
+    let path = manifest_claiming_every_red(
+        root.path(),
+        serde_json::json!([{
+            "name": "I1",
+            "why": "an injection nobody expects anything of",
+            "edits": [{"file": "src.txt", "from": "HEALTHY", "to": "BROKEN"}],
+        }]),
+    );
+
+    let out = harness(&path);
+    let said = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        !out.status.success(),
+        "an exhaustive set of nothing asserts that breaking the read changes \
+         nothing: {said}"
+    );
+    assert!(
+        said.contains("exhaustive") && said.contains("I1"),
+        "and the refusal names which injection: {said}"
+    );
+    assert!(
+        !root.path().join("logs").join("control.log").exists(),
+        "refused before any suite ran, which is the whole reason it is here and \
+         not in the judging at the end"
+    );
+
+    // THE CONTROL: the same manifest under the default claim is a legitimate
+    // exploratory sweep, and refusing it would be refusing for a reason outside
+    // this law.
+    let allowed = harness(&manifest(
+        root.path(),
+        serde_json::json!([{
+            "name": "I1",
+            "why": "an injection nobody expects anything of",
+            "edits": [{"file": "src.txt", "from": "HEALTHY", "to": "BROKEN"}],
+        }]),
+    ));
+    assert!(
+        allowed.status.success(),
+        "an empty expectation under the weaker claim says what went red and \
+         judges nothing: {}",
+        String::from_utf8_lossy(&allowed.stderr)
+    );
 }
 
 #[test]

@@ -24,14 +24,43 @@ use serde::{Deserialize, Serialize};
 
 /// One textual replacement in one file. `from` must occur EXACTLY once.
 #[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct Edit {
     pub file: String,
     pub from: String,
     pub to: String,
 }
 
+/// What a manifest CLAIMS the `expect_red` lists below it to be.
+///
+/// THE CLAIM IS DATA BECAUSE IT DECIDES WHAT A RUN MEANS. A sweep answers two
+/// questions with one set of runs — does breaking this read redden the contract
+/// at all, and is the contract the ONLY thing that notices — and the second is
+/// worth nothing unless the run could have seen everything that might. Round
+/// 1138 answered it off a run scoped to one crate while its edits landed in
+/// another, so the suite of the crate it broke never ran; Round 1139 widened the
+/// scope and found twelve reds that scope could not have shown, six of the seven
+/// injections being caught by the edited crate's own tests.
+///
+/// Declaring the set exhaustive is what makes that self-detecting from then on:
+/// run the same manifest narrower and the missing reds are named, run it wider
+/// and the new ones are, where a subset claim is silent in both directions.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum RedSet {
+    /// `expect_red` names tests that MUST go red and says nothing about the
+    /// rest. The default, and the only honest reading for a sweep whose whole
+    /// red set nobody has measured.
+    #[default]
+    AtLeast,
+    /// `expect_red` names the WHOLE red set, so a red the manifest does not name
+    /// fails the sweep instead of being counted beside it.
+    Exhaustive,
+}
+
 /// One injection: what it breaks, and what the sweep expects to go red.
 #[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct Injection {
     pub name: String,
     /// What this injection is FOR, in the author's words — carried into the
@@ -47,8 +76,21 @@ pub struct Injection {
     pub expect_red: Vec<String>,
 }
 
+/// AN UNKNOWN KEY IS A REFUSAL RATHER THAN A DEFAULT, which is why `_` is a
+/// field and why `deny_unknown_fields` is on all three of these types. Every
+/// optional field here is one a manifest may simply not carry, so a MISSPELLED
+/// key would otherwise read as absent and the manifest would run under the
+/// default while its author read their own spelling and believed it. Round 1136
+/// paid for exactly that shape in another gate: a derived `Option` that serde
+/// fills silently rebuilt the collapse the type had replaced.
 #[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Manifest {
+    /// The manifest's own header — what this sweep is and how to run it, in the
+    /// author's words. Read by people, and declared here so that a key nobody
+    /// meant cannot hide beside it.
+    #[serde(rename = "_", default)]
+    pub prose: Vec<String>,
     /// The tree to edit and run in.
     pub repo: PathBuf,
     /// The suite, argv-style. Kept in the manifest rather than assumed, because
@@ -67,6 +109,10 @@ pub struct Manifest {
     /// not.
     #[serde(default)]
     pub min_free_mb: Option<u64>,
+    /// What the `expect_red` lists claim to be. Absent means the weaker claim,
+    /// which is what every sweep meant before the field existed.
+    #[serde(default)]
+    pub red_set: RedSet,
     pub injections: Vec<Injection>,
 }
 
@@ -94,6 +140,31 @@ pub fn read_manifest(path: &Path) -> Result<Manifest, String> {
     let beside = path.parent().unwrap_or(Path::new("."));
     manifest.repo = absolute(&beside.join(&manifest.repo))?;
     manifest.logs = absolute(&beside.join(&manifest.logs))?;
+    // AND AN EXHAUSTIVE CLAIM OVER AN EMPTY LIST IS A CONTRADICTION, refused
+    // here rather than after the suites. Under the weaker claim an empty
+    // `expect_red` is honest — "say what went red and judge nothing" is what an
+    // exploratory sweep does — but under this one it says the injection reddens
+    // NOTHING, which is the single outcome a sweep exists to DETECT rather than
+    // to declare. Refusing at read time is the same trade the dry-run pre-flight
+    // makes: this repository's whole-workspace sweep is 85 minutes of suites,
+    // and a claim that cannot be true should not cost them.
+    if manifest.red_set == RedSet::Exhaustive {
+        let silent: Vec<&str> = manifest
+            .injections
+            .iter()
+            .filter(|injection| injection.expect_red.is_empty())
+            .map(|injection| injection.name.as_str())
+            .collect();
+        if !silent.is_empty() {
+            return Err(format!(
+                "{} claims its red sets are exhaustive, and {} injection(s) name \
+                 no red at all: {silent:?}. Under that claim an empty list is the \
+                 assertion that breaking the read changes nothing",
+                path.display(),
+                silent.len()
+            ));
+        }
+    }
     Ok(manifest)
 }
 
