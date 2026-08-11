@@ -1060,6 +1060,140 @@ pub fn road_lines(ws: &Path) -> BTreeMap<String, RoadLine> {
     out
 }
 
+/// What ONE ROAD'S OWN EVENTS say holds at each of its scenes.
+///
+/// Built by [`holding_replay`]; see it for the semantics.
+pub struct HoldingReplay {
+    /// Per scene, in walk order: the section, and the facts this road's own
+    /// events say hold there.
+    pub at: Vec<(String, BTreeSet<String>)>,
+    /// The facts this road says it cannot place, subtracted from every scene:
+    /// the ones whose OWN interval has an unplaced end — `canon_from` (which
+    /// gets no `begins` event either) and `canon_to` (which leaves the upper
+    /// bound undecidable).
+    pub unplaceable: BTreeSet<String>,
+    /// Facts listed unplaced only for a SUCCESSOR's coordinate, which is not a
+    /// reason this fact stops holding: `holds_at` cuts a fact at a successor it
+    /// can ORDER, and a successor whose seat is off this road's order is one it
+    /// cannot. Recorded rather than subtracted — the two are indistinguishable
+    /// until a store has one, and no authored corpus does.
+    pub unplaceable_by_successor: BTreeSet<String>,
+    /// How many scenes the subtraction actually removed something from — a
+    /// scene where an unplaced coordinate is in flight.
+    pub touched_by_unplaceable: usize,
+    /// Facts the road calls `undecidable` that some scene nevertheless BEGINS.
+    /// The measurement that says the subtraction needs no second half; any
+    /// member is a finding.
+    pub undecidable_begun: BTreeSet<String>,
+}
+
+/// Replay one road's manuscript events into the set of facts holding at each of
+/// its scenes (Round 1138).
+///
+/// The manuscript ships a per-scene `holding_count` — a NUMBER — beside the
+/// events that produce it: each scene's `begins`, and each scene's `ends`
+/// carrying the kind that says WHEN the fact stopped. Round 1056 measured that
+/// the number is a function of those events, over 823 scenes and both shipped
+/// wires, which is why the record-scoped narrowing that flagged it is a false
+/// positive.
+///
+/// It lives here rather than in that walk because a SECOND reader needs the same
+/// semantics: `frame_view_playable_agreement` (Round 1138) asserts that
+/// `report-frame-view` NAMES this set, which is the statement the count cannot
+/// make — a count cannot say WHICH facts it counted (the R1053 shape). One
+/// resolver, so the two claims cannot come to disagree about what the events say.
+///
+/// THE TWO END KINDS STOP AT DIFFERENT TIMES and the replay has to know it,
+/// which is a thing the answer says in each event's `kind`. A fact still holds
+/// AT the scene its `canon_to` names (`expired` — `holds_at` asks
+/// `p <= canon_to`), and it has already stopped at the scene where a successor
+/// begins (`superseded` — that one asks `successor.canon_from <= p`). Replaying
+/// both as "gone here" undercounts 26 of 823 scenes; that is how Round 1056
+/// found the distinction rather than assuming it.
+///
+/// A fact the road cannot place is not holding at any of its scenes and the
+/// count leaves it out, so the replay does too — but only for the coordinates of
+/// its OWN interval. `unplaced_facts` names three fields and they are not one
+/// reason: `canon_from` off the order means no `begins` event at all,
+/// `canon_to` off it leaves `holds_at` unable to decide the upper bound, and
+/// `successor_canon_from` off it means the successor CANNOT cut this fact, so the
+/// fact goes on holding. Subtracting all three is what this replay did until
+/// Round 1138; the third is recorded instead, and
+/// [`HoldingReplay::unplaceable_by_successor`] is what makes the difference
+/// visible rather than a silent divergence from `holds_at` waiting for a store to
+/// have one.
+///
+/// `undecidable` needs no subtraction, and
+/// [`HoldingReplay::undecidable_begun`] is what SAYS so rather than assuming it —
+/// a fact whose world visibility is unknown gets no event at all, so it can never
+/// enter the replay. Until Round 1138 the exclusion set was built by reading
+/// `row["fact_id"]` over BOTH lists, and `undecidable` is a list of bare strings:
+/// that half resolved to `Null` on every row and subtracted nothing, for as long
+/// as nothing needed it to. An accessor that cannot fire reads as a subtraction
+/// that happens, so the claim is measured here instead.
+pub fn holding_replay(road: &serde_json::Value) -> HoldingReplay {
+    let mut unplaceable: BTreeSet<String> = BTreeSet::new();
+    let mut by_successor: BTreeSet<String> = BTreeSet::new();
+    for row in road["unplaced_facts"].as_array().into_iter().flatten() {
+        let Some(id) = row["fact_id"].as_str() else {
+            continue;
+        };
+        match row["field"].as_str() {
+            Some("successor_canon_from") => by_successor.insert(id.to_string()),
+            _ => unplaceable.insert(id.to_string()),
+        };
+    }
+    let by_successor: BTreeSet<String> = by_successor.difference(&unplaceable).cloned().collect();
+    let undecidable: BTreeSet<&str> = road["undecidable"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(serde_json::Value::as_str)
+        .collect();
+    let mut out = HoldingReplay {
+        at: Vec::new(),
+        unplaceable,
+        unplaceable_by_successor: by_successor,
+        touched_by_unplaceable: 0,
+        undecidable_begun: BTreeSet::new(),
+    };
+    let mut live: BTreeSet<String> = BTreeSet::new();
+    for scene in road["scenes"].as_array().into_iter().flatten() {
+        for event in scene["begins"].as_array().into_iter().flatten() {
+            let Some(id) = event["fact_id"].as_str() else {
+                continue;
+            };
+            if undecidable.contains(id) {
+                out.undecidable_begun.insert(id.to_string());
+            }
+            live.insert(id.to_string());
+        }
+        // Superseded: already gone AT this scene.
+        for event in scene["ends"].as_array().into_iter().flatten() {
+            if event["kind"].as_str() == Some("superseded") {
+                if let Some(id) = event["fact_id"].as_str() {
+                    live.remove(id);
+                }
+            }
+        }
+        let held: BTreeSet<String> = live.difference(&out.unplaceable).cloned().collect();
+        if held.len() != live.len() {
+            out.touched_by_unplaceable += 1;
+        }
+        out.at.push((
+            scene["section"].as_str().unwrap_or_default().to_string(),
+            held,
+        ));
+        // Expired: this scene was its last, so it is gone from the NEXT one.
+        for event in scene["ends"].as_array().into_iter().flatten() {
+            if let Some(id) = event["fact_id"].as_str() {
+                live.remove(id);
+            }
+        }
+    }
+    out
+}
+
 /// The argv every probe of a verb starts from: each REQUIRED flag at a value
 /// this corpus declares. `None` when a required flag names something the corpus
 /// does not supply, which is a measurement about the corpus rather than a skip —

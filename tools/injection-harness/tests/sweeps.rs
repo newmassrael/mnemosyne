@@ -85,16 +85,23 @@ fn every_tracked_sweep_still_applies_to_the_tree_it_names() {
     // file. A directory rule answered this by where a file sits and was wrong in
     // both directions at once (see `tracked_json`); the file itself is the only
     // thing that knows.
-    // AND A MANIFEST IS NOT THE SAME THING AS A SWEEP SOMEBODY RUNS. Two of them
-    // are INPUTS TO TESTS: `crates/mnemosyne-cli/tests/` holds a pair whose
-    // trees the test itself materialises, so their anchors name files that exist
-    // only while that test runs.
+    // AND A MANIFEST IS NOT THE SAME THING AS A SWEEP SOMEBODY RUNS. Some are
+    // INPUTS TO TESTS, whose trees the test itself materialises, so their
+    // anchors name files that exist only while that test runs.
     //
     // THE CLASSIFIER IS WHERE THE FILE LIVES, AND IT HAD TO BE. The obvious one
     // — does the tree it names hold the files it edits — is the very question
     // this law asks, so using it as a filter would reclassify every ROTTED sweep
     // as somebody's fixture and pass. `tests/` is cargo's own word for a
-    // directory of test inputs, and no sweep this repository runs is in one.
+    // directory of test inputs.
+    //
+    // THE COST OF THAT RULE WAS PAID ONCE AND IS WORTH KEEPING WRITTEN DOWN
+    // (Round 1138). It is only sound while nothing runnable is kept in a
+    // `tests/` directory, and Round 1088 put a real contract sweep in one —
+    // where it was skipped here for its whole life, and where its `repo` of `.`
+    // resolved to the tests directory rather than the root, so it could not have
+    // run either. Both manifests now live in `crates/mnemosyne-cli/sweeps/`, and
+    // the rule below is what would catch the next one that walks back.
     let a_test_input = |path: &str| path.split('/').any(|part| part == "tests");
     let mut manifests = Vec::new();
     let mut inputs = Vec::new();
@@ -111,15 +118,26 @@ fn every_tracked_sweep_still_applies_to_the_tree_it_names() {
     // input out of this law; the NAME is what stops a sweep walking the other
     // way — `injection-sweep.json` is what this repository calls the ones it
     // runs, and one moved under `tests/` would be skipped above without a word.
-    let disguised: Vec<&String> = inputs
+    // A TEST'S OWN INPUTS SIT IN `fixtures/`, which is the other half of the
+    // location rule and the half Round 1088 walked past: a manifest directly
+    // under `tests/` is not an input to anything, it is a sweep somebody means to
+    // run, and the rule above would skip it in silence — which it did, for the
+    // whole life of the file. Naming BOTH shapes here, because the one that got
+    // through was not the one the first rule watched for.
+    let mut disguised: Vec<&String> = inputs
         .iter()
-        .filter(|path| path.ends_with("/injection-sweep.json"))
+        .filter(|path| {
+            path.ends_with("/injection-sweep.json")
+                || !path.split('/').any(|part| part == "fixtures")
+        })
         .collect();
+    disguised.sort();
     assert!(
         disguised.is_empty(),
-        "{} sweep(s) carry the name this repository gives the ones it RUNS while \
-         sitting where its test inputs live, so nothing checks their anchors and \
-         nothing runs them: {disguised:?}",
+        "{} manifest(s) read as a sweep this repository RUNS while sitting where \
+         its test inputs live — under `tests/` and not in a `fixtures/` \
+         directory — so nothing checks their anchors and nothing runs them: \
+         {disguised:?}",
         disguised.len()
     );
 

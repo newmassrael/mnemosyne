@@ -309,7 +309,7 @@ const BACKLOG: [&str; 87] = [
     "200 DECLARED report-authoring-frontier <-> report-playable-world",
     "179 DECLARED report-playable-world <-> report-playthrough-manuscript",
     "158 DECLARED report-authoring-frontier <-> report-playthrough-manuscript",
-    "135 report-frame-view <-> report-playable-world",
+    "135 DECLARED report-frame-view <-> report-playable-world",
     "135 report-frame-view <-> report-playthrough-manuscript",
     "114 report-authoring-frontier <-> report-frame-view",
     "98 DECLARED report-authoring-frontier <-> report-payoff-coverage",
@@ -780,14 +780,18 @@ fn the_population_of_subjects_more_than_one_shipped_read_answers_about() {
          findings",
     );
     check(
-        next.as_deref() == Some("135 report-frame-view <-> report-playable-world"),
+        next.as_deref() == Some("135 report-frame-view <-> report-playthrough-manuscript"),
         "NEXT: the highest-ranked pair no contract judges. It moves when a \
          round declares one, which is what makes it a pin rather than a note — \
          and until Round 1087 it was taken from a session's memory, where it \
          named the top row for six sessions after Round 1052 declared it. Round \
-         1088 is the first round to READ this line off a green run rather than \
+         1088 was the first round to READ this line off a green run rather than \
          out of a memory file, declare the pair it named, and watch the pin move \
-         here on its own",
+         here on its own; Round 1138 is the second, and it moved the pin to the \
+         row beside the one it declared — the same frame view against the \
+         manuscript the playable world embeds, which that contract's own \
+         measurements say is a different reach: the manuscript answers for the \
+         18 corpora that declare no telling, and carries no seats",
     );
 
     assert_eq!(

@@ -1,0 +1,149 @@
+{
+  "_": [
+    "THE SWEEP THAT SAYS ROUND 1138's CONTRACT IS NOT VACUOUS — run it from the",
+    "repository root:",
+    "    cargo run -q --manifest-path tools/injection-harness/Cargo.toml -- \\",
+    "        crates/mnemosyne-cli/sweeps/frame-view-playable-agreement.sweep.json",
+    "",
+    "WHY THE CONTRACT SWEEPS LIVE HERE AND NOT BESIDE THE CONTRACTS (Round 1138).",
+    "Round 1088 tracked the first one at `crates/mnemosyne-cli/tests/`, and that",
+    "location cost it both halves of being a proof. `read_manifest` resolves `repo`",
+    "against the MANIFEST'S OWN directory, so a `repo` of `.` there named the tests",
+    "directory and every edit resolved under it — the sweep could not have run at",
+    "all. And `tools/injection-harness/tests/sweeps.rs`, the law that exists to",
+    "catch an anchor that has come loose, classifies any tracked manifest under a",
+    "`tests/` component as a TEST INPUT and skips it, so nothing said so. A",
+    "directory cargo owns is not a place to keep something runnable; `sweeps/` is",
+    "a sweep home the law already recognises, and both manifests moved here.",
+    "",
+    "`frame_view_playable_agreement.rs` states eight laws and shipped GREEN — which",
+    "says the laws hold, and says nothing at all about whether they could break.",
+    "Each injection below breaks ONE READ, never a test, and names the test that",
+    "must go red for it.",
+    "",
+    "SCOPE IS THE CLI CRATE, not the workspace, and the difference from the Round",
+    "1088 manifest beside it is deliberate. These edits land in the two reads this",
+    "pair is about; every other reader of them that could notice lives in this",
+    "crate's suite, which holds every declared contract, both surface walks and the",
+    "smokes. What that buys is the second measurement: whether a law here is one",
+    "nothing else guards.",
+    "",
+    "WHAT THE FIRST RUN SAID (Round 1138, control 325 passed / 0 failed / 74",
+    "targets, no target drift on any run): ALL SEVEN FIRED, MISSED 0. And the",
+    "second measurement came back smaller than this prose first claimed — it said",
+    "two injections would redden this contract alone, and ONE does:",
+    "`an-unplaced-end-is-labelled-an-unplaced-start`, the placement field relabel.",
+    "Nothing else in the crate distinguishes the three reasons a coordinate cannot",
+    "be placed, because nothing else joins the placement surface to a verdict about",
+    "the fact. The other six are caught by 2-9 tests each, which is what a shared",
+    "read looks like: `the-walk-never-admits-it-could-not-compare` takes down two",
+    "surface walks beside this contract, so LAW ORDER is not this file's alone even",
+    "though the qualification it states is."
+  ],
+  "repo": "../../..",
+  "test_command": ["cargo", "test", "-p", "mnemosyne-cli", "--no-fail-fast"],
+  "logs": "../../../target/injection-logs",
+  "min_free_mb": 8000,
+  "injections": [
+    {
+      "name": "a-frame-view-draws-from-every-frame",
+      "why": "the whole claim of this read is that a view never mixes frames (R433); without the filter every frame answers about every fact, so LAW ONE FRAME sees one fact named under two frames and LAW HOLDING sees the union count several times over",
+      "edits": [
+        {
+          "file": "crates/mnemosyne-validate/src/continuity.rs",
+          "from": "        if &fact.frame != frame {\n            continue;\n        }",
+          "to": "        if false {\n            continue;\n        }"
+        }
+      ],
+      "expect_red": [
+        "the_frame_view_names_at_each_point_what_the_playable_world_counts_there",
+        "the_scene_count_cannot_say_whose_view_holds_what"
+      ]
+    },
+    {
+      "name": "a-frame-view-draws-from-every-road",
+      "why": "world membership (R438) is what makes a view a view of ONE world-line; with the Out arm removed a sibling road's facts enter this road's population, and LAW POPULATION is the join that says the frames' populations together are exactly what this road accounts for",
+      "edits": [
+        {
+          "file": "crates/mnemosyne-validate/src/continuity.rs",
+          "from": "        if vis == Vis::Out {\n            continue;\n        }",
+          "to": "        if false {\n            continue;\n        }"
+        }
+      ],
+      "expect_red": [
+        "the_frame_view_names_at_each_point_what_the_playable_world_counts_there"
+      ]
+    },
+    {
+      "name": "an-undecidable-verdict-is-reported-as-a-definite-one",
+      "why": "B-1 honesty is the reason this read has three classes and not two: a coordinate the declaration cannot compare to the query point is `unknown`, never `not_holding`. Collapsed, the view answers a definite NO about facts nothing decided — the failure that reads as a clean answer, and LAW UNDECIDABLE is what the other read's placement surfaces catch it with",
+      "edits": [
+        {
+          "file": "crates/mnemosyne-validate/src/continuity.rs",
+          "from": "        if from_unknown || (to_unknown && !succ_cut) {",
+          "to": "        if false {"
+        }
+      ],
+      "expect_red": [
+        "the_frame_view_names_at_each_point_what_the_playable_world_counts_there"
+      ]
+    },
+    {
+      "name": "no-view-admits-it-is-a-confluence-fragment",
+      "why": "one `is_confluence` feeds three surfaces — the fork tree's `converges`, the manuscript's marker and this one — so a reader holding a fragment can tell it from a playthrough. Pinned false here, the frame view calls a prefix-less fragment a road, and LAW FRAGMENT is the only place the third surface is held against the other two",
+      "edits": [
+        {
+          "file": "crates/mnemosyne-validate/src/continuity.rs",
+          "from": "        confluence_fragment: mnemosyne_core::is_confluence(&store.branches, branch),",
+          "to": "        confluence_fragment: false,"
+        }
+      ],
+      "expect_red": [
+        "the_frame_view_names_at_each_point_what_the_playable_world_counts_there"
+      ]
+    },
+    {
+      "name": "every-seat-is-the-first-scene-of-the-road",
+      "why": "LAW SEAT is the half no manuscript ask can reach: the runtime meets a fact where the locator seats it, and the frame view says whether it is true there. Pinned to the head of the walk, every seat lands before the truth it points at while the view goes on holding the fact — R949's class, inverted",
+      "edits": [
+        {
+          "file": "crates/mnemosyne-validate/src/continuity.rs",
+          "from": "                    scene_ordinal: ordinal.get(seat).copied(),",
+          "to": "                    scene_ordinal: Some(0),"
+        }
+      ],
+      "expect_red": [
+        "the_frame_view_names_at_each_point_what_the_playable_world_counts_there",
+        "the_locator_ordinal_is_where_the_answer_puts_that_scene"
+      ]
+    },
+    {
+      "name": "the-walk-never-admits-it-could-not-compare",
+      "why": "the linearization is ONE reading of a partial order and `undeclared_adjacencies` is where the read says so. Emptied, a replay of the events and the two reads differ with nothing in either answer to explain it — which is exactly LAW ORDER, and the reason Round 1056's `the count is a function of the events` needed a qualification the authored corpora could not show",
+      "edits": [
+        {
+          "file": "crates/mnemosyne-validate/src/continuity.rs",
+          "from": "                .filter(|w| !order.comparable(&world, &w[0], &w[1]))",
+          "to": "                .filter(|_| false)"
+        }
+      ],
+      "expect_red": [
+        "the_frame_view_names_at_each_point_what_the_playable_world_counts_there"
+      ]
+    },
+    {
+      "name": "an-unplaced-end-is-labelled-an-unplaced-start",
+      "why": "`unplaced_facts` names three FIELDS and they are three different reasons a coordinate cannot be placed — a start the walk never reaches, an end it never reaches, a successor's seat it never reaches — and the frame view's verdict differs for each. Relabelled, the placement surface still lists the same facts and says the wrong thing about every one of them",
+      "edits": [
+        {
+          "file": "crates/mnemosyne-validate/src/continuity.rs",
+          "from": "                        field: \"canon_to\".to_string(),",
+          "to": "                        field: \"canon_from\".to_string(),"
+        }
+      ],
+      "expect_red": [
+        "the_frame_view_names_at_each_point_what_the_playable_world_counts_there"
+      ]
+    }
+  ]
+}

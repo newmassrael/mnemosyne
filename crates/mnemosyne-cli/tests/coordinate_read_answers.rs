@@ -12,11 +12,18 @@
 //! CORRECTLY at the road it is given "is a different contract, and no test in
 //! this tree makes it".
 //!
-//! This is that contract. `report-frame-view` is not in the read-agreement
-//! backlog either — the panel that derives that backlog can only ask reads it
-//! can supply arguments for, and this one needs a frame AND a canon coordinate,
-//! so it is one of the four the panel reports as unaskable. The single read
-//! most obviously ABOUT the road axis is judged by nothing at all.
+//! This is that contract. When it was written `report-frame-view` was not in the
+//! read-agreement backlog either — the panel that derives that backlog could only
+//! ask reads it can supply arguments for, and this one needs a frame AND a canon
+//! coordinate, so it was one of the four the panel reported as unaskable. The
+//! single read most obviously ABOUT the road axis was judged by nothing at all.
+//! Round 1051 gave the panel the corpus's own vocabulary for both arguments and
+//! the read entered the population, ranking first among the pairs no contract
+//! judged; Round 1138 declared `report-frame-view <-> report-playable-world` off
+//! that ranking. What that contract judges is the CANON-TIME verdict — which of a
+//! frame's facts hold at a point, against the walk and the seats a runtime is
+//! handed. What this one judges is MEMBERSHIP: which roads a view may draw from
+//! at all. Neither reaches the other's question.
 //!
 //! WHAT A COORDINATE CAN HONESTLY BE HELD TO. A world-line's view is its own
 //! history plus everything it inherited: "facts on ancestor branches up to each

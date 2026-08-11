@@ -1568,6 +1568,13 @@ fn manuscripts(store: &common::AuthoredStore) -> Vec<(String, serde_json::Value)
 /// the wire in Round 466 and had never been run: "the delta story and the holds
 /// semantics cross-check each other — a delta reconstruction that disagrees with
 /// the count has hit an unplaced coordinate, never a second semantics".
+///
+/// The replay itself moved to [`common::holding_replay`] in Round 1138, when a
+/// second reader needed the same semantics: the frame-view/playable-world
+/// contract asserts that `report-frame-view` NAMES the set this replays, which
+/// is the claim the count cannot make. One resolver, so the two cannot come to
+/// disagree about what the events say — and the numbers this test prints are
+/// what said the move changed nothing.
 #[test]
 fn the_manuscript_count_is_derivable_from_the_events_it_names() {
     let (stores, unloadable) = common::authored_stores();
@@ -1575,6 +1582,8 @@ fn the_manuscript_count_is_derivable_from_the_events_it_names() {
     let mut scenes = 0usize;
     let mut mismatches: Vec<String> = Vec::new();
     let mut touched_by_unplaced = 0usize;
+    let mut undecidable_begun: BTreeSet<String> = BTreeSet::new();
+    let mut by_successor: BTreeSet<String> = BTreeSet::new();
     let mut wires: BTreeSet<String> = BTreeSet::new();
     for store in &stores {
         // BOTH SHIPPED WIRES THAT CARRY A MANUSCRIPT (Round 1057). Round 1056
@@ -1587,64 +1596,25 @@ fn the_manuscript_count_is_derivable_from_the_events_it_names() {
             wires.insert(wire.clone());
             for (world, road) in worlds.as_object().into_iter().flatten() {
                 roads += 1;
-                // The facts this road says it CANNOT place — the escape hatch the
-                // wire's own claim names. A fact whose end coordinate is outside the
-                // order has no `ends` event to replay.
-                let unplaced: BTreeSet<&str> = ["unplaced_facts", "undecidable"]
-                    .iter()
-                    .flat_map(|field| road[*field].as_array().into_iter().flatten())
-                    .filter_map(|row| row["fact_id"].as_str())
-                    .collect();
-                let mut holding: BTreeSet<&str> = BTreeSet::new();
-                for scene in road["scenes"].as_array().into_iter().flatten() {
+                // THE ONE REPLAY (Round 1138, `common::holding_replay`): the two
+                // end kinds stop at different times, and the facts this road says
+                // it CANNOT place are subtracted — the escape hatch the wire's own
+                // claim names.
+                let replay = common::holding_replay(road);
+                touched_by_unplaced += replay.touched_by_unplaceable;
+                undecidable_begun.extend(replay.undecidable_begun.iter().cloned());
+                by_successor.extend(replay.unplaceable_by_successor.iter().cloned());
+                let counts = road["scenes"].as_array().into_iter().flatten();
+                for (scene, (section, replayed)) in counts.zip(&replay.at) {
                     scenes += 1;
-                    for event in scene["begins"].as_array().into_iter().flatten() {
-                        if let Some(id) = event["fact_id"].as_str() {
-                            holding.insert(id);
-                        }
-                    }
-                    // THE TWO END KINDS STOP AT DIFFERENT TIMES, and the replay has
-                    // to know it — which is a thing the answer says, in each event's
-                    // `kind`. A fact still holds AT the scene its `canon_to` names
-                    // (the interval is closed: `holds_at` asks `p <= canon_to`), and
-                    // it has already stopped at the scene where a SUCCESSOR begins
-                    // (that one asks `successor.canon_from <= p`). Replaying both as
-                    // "gone here" undercounts 26 of 823 scenes, which is how this
-                    // test found the distinction rather than assuming it.
-                    for event in scene["ends"].as_array().into_iter().flatten() {
-                        let (Some(id), Some(kind)) =
-                            (event["fact_id"].as_str(), event["kind"].as_str())
-                        else {
-                            continue;
-                        };
-                        if kind == "superseded" {
-                            holding.remove(id);
-                        }
-                    }
-                    let replayed: BTreeSet<&str> = holding
-                        .iter()
-                        .copied()
-                        .filter(|id| !unplaced.contains(id))
-                        .collect();
-                    if holding.len() != replayed.len() {
-                        touched_by_unplaced += 1;
-                    }
                     let counted = scene["holding_count"].as_u64().unwrap_or_default() as usize;
                     if replayed.len() != counted {
                         mismatches.push(format!(
-                            "{wire} {} {world} {}: replayed {} of the events it names, counted \
-                         {counted}",
+                            "{wire} {} {world} {section}: replayed {} of the events it names, \
+                             counted {counted}",
                             store.name,
-                            scene["section"].as_str().unwrap_or("?"),
                             replayed.len(),
                         ));
-                    }
-                    // Now the closed end: a fact whose `canon_to` is THIS scene held
-                    // here and is gone from the next one.
-                    for event in scene["ends"].as_array().into_iter().flatten() {
-                        if let Some(id) = event["fact_id"].as_str() {
-                            holding.remove(id);
-                        }
                     }
                 }
             }
@@ -1655,11 +1625,14 @@ fn the_manuscript_count_is_derivable_from_the_events_it_names() {
     println!(
         "{} authored stores ({} unloadable), {} wire(s) {:?}, {roads} roads, {scenes} scenes \
          replayed; {touched_by_unplaced} scene(s) where an unplaced coordinate is in flight; \
-         {} mismatch(es)",
+         {} undecidable fact(s) some scene also begins, {} unplaced only for a \
+         successor's seat; {} mismatch(es)",
         stores.len(),
         unloadable.len(),
         wires.len(),
         wires,
+        undecidable_begun.len(),
+        by_successor.len(),
         mismatches.len(),
     );
     for line in &mismatches {
@@ -1669,6 +1642,32 @@ fn the_manuscript_count_is_derivable_from_the_events_it_names() {
         scenes > 100,
         "the replay reached {scenes} scenes, which is a walk that stopped \
          working rather than a repository that emptied"
+    );
+    // WHY THE SUBTRACTION HAS ONE HALF (Round 1138). Until this round the
+    // exclusion set was read as `row["fact_id"]` over BOTH `unplaced_facts` and
+    // `undecidable`, and the second is a list of bare strings — that half
+    // resolved to `Null` on every row and subtracted nothing. It never had to:
+    // a fact whose world visibility is unknown gets no event at all, so it
+    // cannot enter the replay. This is that claim as a number rather than as an
+    // accessor which could not fire.
+    assert_eq!(
+        undecidable_begun,
+        BTreeSet::new(),
+        "a road that calls a fact undecidable does not also BEGIN it, which is \
+         why the replay subtracts `unplaced_facts` alone"
+    );
+    // AND WHY THE SUBTRACTION SKIPS ONE OF ITS THREE FIELDS. A fact listed
+    // unplaced for a SUCCESSOR's seat goes on holding — `holds_at` cuts a fact
+    // at a successor it can order, and one seated off this road's order it
+    // cannot — so subtracting it would put this replay at odds with the count.
+    // No authored corpus has one, which is why the two readings were
+    // indistinguishable until Round 1138 separated them; this is the number
+    // that says the separation moved nothing here.
+    assert_eq!(
+        by_successor,
+        BTreeSet::new(),
+        "no authored corpus lists a fact unplaced only for a successor's seat, \
+         so the field split changed nothing about what this replay subtracts"
     );
     assert_eq!(
         mismatches,
