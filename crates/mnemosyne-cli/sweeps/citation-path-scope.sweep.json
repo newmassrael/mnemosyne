@@ -13,28 +13,50 @@
     "nothing about whether they could break. Each injection below breaks ONE READ",
     "and names the tests that must go red for it.",
     "",
+    "FOUR ROUNDS ARE IN HERE NOW, not one. Rounds 1142, 1143 and 1144 wrote nine",
+    "more laws on the same surface and every one of them also shipped green: the",
+    "symbol axis says whether it had an instrument (`symbol_axis_reach.rs`), the",
+    "argument spellings a hook produces are the file they name",
+    "(`path_scope_arguments.rs`), and a symbol claim no resolver covers stops the",
+    "run. Those rounds found two REAL defects by writing a failing test first — a",
+    "no-resolver run publishing `symbol_mismatch_count: 0`, and the same run",
+    "exiting 0 — and the rest of their laws have no evidence at all beyond being",
+    "green on first write. That is what this file is for.",
+    "",
     "SCOPE IS THE WHOLE WORKSPACE. The edits land in `mnemosyne-validate` and in",
     "`mnemosyne-cli`, and Round 1139 measured what a narrower run costs: under",
     "`-p mnemosyne-cli` the EDITED CRATE'S OWN SUITE never runs, so a law its unit",
     "tests already guard and a law nothing guards come back as the same red set.",
     "`--workspace` is the widest reading of the population that can go red.",
     "",
-    "THE RED SETS HERE ARE PREDICTIONS AND ARE NOT YET MEASURED, so the manifest",
-    "claims `at-least` (the default) rather than Round 1140's `exhaustive`. The",
-    "sweep's CONTROL has run on this tree — 1858 passed, 0 failed, 159 targets —",
-    "and no injection has. Each `expect_red` below is what the author expects to",
-    "go red and says nothing about the rest, which is the only honest reading",
-    "for a red set nobody has counted. Promoting this file to `exhaustive` takes",
-    "one full run of it and replacing every list with what that run reported;",
-    "the interesting claims — 'breaking the null-vs-zero rule reddens five",
-    "suites, breaking the scope filter reddens a different four' — are prose",
-    "until then.",
+    "THE RED SETS BELOW ARE MEASURED (Round 1145), not predicted. One full run of",
+    "this file on this tree: CONTROL 1870 passed, 0 failed, 161 targets, and every",
+    "`expect_red` replaced with what that run reported. Fifteen of the sixteen",
+    "injections fired with `missed` empty — the laws of Rounds 1141 through 1144",
+    "are not vacuous, and that is a fact about a run rather than about an author's",
+    "expectation. Cost: 3h30m of suites.",
     "",
-    "THE ONE PREDICTION WORTH READING AHEAD OF THE RUN: the axis-verdict map is",
-    "read by the scan (as its skip conditions) and by the report (as its",
-    "`not_judged` list), and injection `the-report-stops-naming-the-axes-it-",
-    "skipped` cuts only the second reader. If the two had drifted into separate",
-    "derivations, that injection would redden nothing at all."
+    "IT IS STILL `at-least`, AND THE REASON IS THE SIXTEENTH INJECTION.",
+    "`the-wire-hands-rust-the-other-languages-resolver` reddened NOTHING: handing",
+    "the `rust` key the C++ resolver leaves all 1870 tests green. Under",
+    "`exhaustive` an empty `expect_red` is refused at read time (Round 1140), and",
+    "it should be — an injection that reddens nothing is the one outcome a sweep",
+    "exists to detect rather than to declare. So its aim stays written down, the",
+    "harness keeps failing this sweep while it goes unreached, and promotion waits",
+    "on the repair rather than on a list edit.",
+    "",
+    "WHY THAT ONE MISSED, since it is the finding: the fixture's `fn alpha() { … }`",
+    "is ALSO a valid C++ function definition — return type `fn`, name `alpha` — so",
+    "both resolvers answer `alpha` and the test cannot tell which one ran. The",
+    "spelling of a fixture is what makes it a control (Round 1096), and Round",
+    "1142's claim that the config-to-plugin wire now has a reader was measured",
+    "false here.",
+    "",
+    "THE PREDICTION THAT HELD: the axis-verdict map is read by the scan (as its",
+    "skip conditions) and by the report (as its `not_judged` list), and",
+    "`the-report-stops-naming-the-axes-it-skipped` cuts only the second reader. It",
+    "reddened seven suites. Had the two drifted into separate derivations it would",
+    "have reddened nothing — which is exactly what the sixteenth one did."
   ],
   "repo": "../../..",
   "test_command": ["cargo", "test", "--workspace", "--no-fail-fast"],
@@ -52,9 +74,12 @@
         }
       ],
       "expect_red": [
-        "a_scoped_run_says_about_its_files_exactly_what_the_whole_run_says",
+        "a_decay_filter_and_a_file_list_narrow_different_things",
+        "a_file_list_is_variadic_repeatable_and_stops_at_the_next_flag",
         "a_requested_path_the_gate_never_reads_is_named_rather_than_called_clean",
         "a_scoped_run_rejects_on_its_own_files_and_passes_when_they_are_clean",
+        "a_scoped_run_says_about_its_files_exactly_what_the_whole_run_says",
+        "an_absolute_path_and_a_dot_slash_prefix_name_the_same_file_as_the_plain_one",
         "code_refs::tests::a_scope_tells_judged_from_unread_from_absent"
       ]
     },
@@ -69,10 +94,10 @@
         }
       ],
       "expect_red": [
-        "a_scoped_run_says_about_its_files_exactly_what_the_whole_run_says",
-        "a_scoped_run_names_every_axis_it_does_not_judge",
         "a_requested_path_the_gate_never_reads_is_named_rather_than_called_clean",
-        "a_scoped_run_rejects_on_its_own_files_and_passes_when_they_are_clean"
+        "a_scoped_run_names_every_axis_it_does_not_judge",
+        "a_scoped_run_rejects_on_its_own_files_and_passes_when_they_are_clean",
+        "a_scoped_run_says_about_its_files_exactly_what_the_whole_run_says"
       ]
     },
     {
@@ -87,10 +112,12 @@
       ],
       "expect_red": [
         "a_scoped_run_names_every_axis_it_does_not_judge",
-        "the_text_report_names_the_scope_and_the_axes_it_did_not_judge",
+        "a_scoped_run_says_about_its_files_exactly_what_the_whole_run_says",
+        "an_axis_with_no_resolver_is_named_rather_than_called_clean",
+        "case_vii_filter_id_surfaces_decay_and_skips_others",
         "detector_off_by_default_and_unconfirmed_surfaced",
-        "verify_axis_is_opt_in_and_gates_then_exempts",
-        "case_vii_filter_id_surfaces_decay_and_skips_others"
+        "the_text_report_names_the_scope_and_the_axes_it_did_not_judge",
+        "verify_axis_is_opt_in_and_gates_then_exempts"
       ]
     },
     {
@@ -104,12 +131,15 @@
         }
       ],
       "expect_red": [
+        "a_decay_filter_and_a_file_list_narrow_different_things",
         "a_scoped_run_names_every_axis_it_does_not_judge",
         "a_scoped_run_rejects_on_its_own_files_and_passes_when_they_are_clean",
-        "the_text_report_names_the_scope_and_the_axes_it_did_not_judge",
+        "an_axis_with_no_resolver_is_named_rather_than_called_clean",
+        "case_vii_filter_id_surfaces_decay_and_skips_others",
         "detector_off_by_default_and_unconfirmed_surfaced",
-        "verify_axis_is_opt_in_and_gates_then_exempts",
-        "case_vii_filter_id_surfaces_decay_and_skips_others"
+        "the_refusal_names_the_axis_it_did_not_judge_rather_than_pricing_it_at_zero",
+        "the_text_report_names_the_scope_and_the_axes_it_did_not_judge",
+        "verify_axis_is_opt_in_and_gates_then_exempts"
       ]
     },
     {
@@ -171,6 +201,7 @@
       ],
       "expect_red": [
         "a_file_with_three_citations_is_put_to_the_resolver_once",
+        "set_membership_multiple_symbols_one_file",
         "the_census_prices_the_axis_and_the_scan_pays_exactly_that"
       ]
     },
@@ -184,7 +215,104 @@
           "to": "                if false {\n                    continue;\n                }"
         }
       ],
-      "expect_red": ["the_census_prices_the_axis_and_the_scan_pays_exactly_that"]
+      "expect_red": [
+        "a_requested_path_the_gate_never_reads_is_named_rather_than_called_clean",
+        "a_scoped_run_rejects_on_its_own_files_and_passes_when_they_are_clean",
+        "a_symbol_claim_no_configured_resolver_covers_refuses_the_run",
+        "an_unreached_language_that_claims_no_symbol_neither_refuses_nor_unjudges",
+        "the_census_prices_the_axis_and_the_scan_pays_exactly_that"
+      ]
+    },
+    {
+      "name": "the-axis-with-no-instrument-goes-back-to-publishing-a-zero",
+      "why": "Round 1142's whole subject: with the resolver map empty the scan collects symbol demand and puts it to nobody, and before that round the report published `0` for it — the answer a judged and clean axis gives, in the mode the consumer reaches by deleting their resolver blocks to price the axis",
+      "edits": [
+        {
+          "file": "crates/mnemosyne-validate/src/code_refs.rs",
+          "from": "                    } else if axis == AuditAxis::SymbolMismatch && self.symbol_resolvers.is_empty()",
+          "to": "                    } else if false && axis == AuditAxis::SymbolMismatch && self.symbol_resolvers.is_empty()"
+        }
+      ],
+      "expect_red": [
+        "an_axis_with_no_resolver_is_named_rather_than_called_clean",
+        "the_refusal_names_the_axis_it_did_not_judge_rather_than_pricing_it_at_zero"
+      ]
+    },
+    {
+      "name": "the-wire-hands-rust-the-other-languages-resolver",
+      "why": "the config-to-plugin wire had no reader until Round 1142 — the one test that configured a buildable backend asserted only exit 0, so a registry keyed to the wrong resolver resolved nothing and passed; this is that miskeying",
+      "edits": [
+        {
+          "file": "crates/mnemosyne-cli/src/main.rs",
+          "from": "                        Box::new(mnemosyne_plugin_tree_sitter_rust::TreesitterRustResolver),",
+          "to": "                        Box::new(mnemosyne_plugin_tree_sitter_cpp::TreesitterCppResolver),"
+        }
+      ],
+      "expect_red": [
+        "the_same_tree_with_a_resolver_judges_and_names_the_drift",
+        "an_unreached_language_that_claims_no_symbol_neither_refuses_nor_unjudges"
+      ]
+    },
+    {
+      "name": "a-symbol-claim-nobody-can-check-is-let-through",
+      "why": "Round 1144 — a section recording a symbol for a language no resolver covers is a claim nobody checks, and letting it through is what made deleting a resolver block a way to pass rather than a way to measure",
+      "edits": [
+        {
+          "file": "crates/mnemosyne-cli/src/main.rs",
+          "from": "    if filter_id.is_none() && symbol_axis.unchecked_citations > 0 {",
+          "to": "    if false && filter_id.is_none() && symbol_axis.unchecked_citations > 0 {"
+        }
+      ],
+      "expect_red": [
+        "a_symbol_claim_no_configured_resolver_covers_refuses_the_run",
+        "an_axis_with_no_resolver_is_named_rather_than_called_clean"
+      ]
+    },
+    {
+      "name": "the-refusal-counts-unreached-files-instead-of-unchecked-claims",
+      "why": "the boundary law 3 guards: `unresolved_languages` counts FILES and `unchecked_citations` counts CLAIMS, and widening the refusal from the second to the first refuses every adopter holding a second language for prose they never wrote",
+      "edits": [
+        {
+          "file": "crates/mnemosyne-validate/src/code_refs.rs",
+          "from": "                if !self.symbol_resolvers.contains_key(lang) {\n                    cov.unchecked_citations += 1;",
+          "to": "                if true {\n                    cov.unchecked_citations += 1;"
+        }
+      ],
+      "expect_red": [
+        "an_unreached_language_that_claims_no_symbol_neither_refuses_nor_unjudges",
+        "a_symbol_claim_no_configured_resolver_covers_refuses_the_run"
+      ]
+    },
+    {
+      "name": "a-dot-slash-prefix-stops-naming-the-file",
+      "why": "a hook that walks with `find` hands `./src/a.rs`; a scope that keeps the prefix matches no file, judges nothing, and exits 0 reporting a clean tree — the failure this mode exists to prevent, arriving through the argument instead of the axis",
+      "edits": [
+        {
+          "file": "crates/mnemosyne-validate/src/code_refs.rs",
+          "from": "                p.strip_prefix(\"./\").unwrap_or(p).to_path_buf()",
+          "to": "                p.to_path_buf()"
+        }
+      ],
+      "expect_red": [
+        "a_scope_that_narrows_nothing_is_refused_in_every_spelling",
+        "an_absolute_path_and_a_dot_slash_prefix_name_the_same_file_as_the_plain_one",
+        "code_refs::tests::a_path_scope_normalizes_what_a_caller_hands_it_and_refuses_the_rest"
+      ]
+    },
+    {
+      "name": "a-directory-selects-only-a-file-named-exactly",
+      "why": "the reply promises a directory is everything under it; without the prefix match a directory selects nothing at all, which is again a scope that runs, judges no file and reports clean",
+      "edits": [
+        {
+          "file": "crates/mnemosyne-validate/src/code_refs.rs",
+          "from": "            .any(|req| rel == req || rel.starts_with(req))",
+          "to": "            .any(|req| rel == req)"
+        }
+      ],
+      "expect_red": [
+        "a_directory_is_every_file_under_it",
+        "code_refs::tests::a_path_scope_normalizes_what_a_caller_hands_it_and_refuses_the_rest"
+      ]
     },
     {
       "name": "the-scan-emits-what-the-verdict-map-says-it-skipped",
