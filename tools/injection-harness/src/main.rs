@@ -146,8 +146,35 @@ fn verdict_disagreement(run: &Run) -> Option<String> {
 
 #[derive(Debug, Serialize)]
 struct Report {
+    /// The suite every count below is a fact about, and the first field so a
+    /// reader meets it before the numbers.
+    ///
+    /// A RED SET IS A FACT ABOUT A POPULATION, AND THIS REPORT USED TO OMIT
+    /// WHICH. Round 1138 read `fired` off a sweep of its own contract, found one
+    /// injection that reddened that contract ALONE, and wrote it down as what
+    /// nothing else in the repository guards. The run had been scoped with
+    /// `-p mnemosyne-cli`, so the edited crate's own suite never ran and could
+    /// not have appeared in any `fired` set — and nothing in this report said
+    /// so, because the report carried counts and names and no population at all.
+    /// A measurement whose condition is invisible is read as unconditional,
+    /// which is the very failure that round's contract exists to state.
+    test_command: Vec<String>,
     control: Run,
     injections: Vec<InjectionResult>,
+}
+
+/// The one place a report is built, for both the modes that print one.
+///
+/// TWO CONSTRUCTION SITES WOULD BE TWO WRITE PATHS TO THE SAME FIELD, free to
+/// disagree about whether it is filled — and the control-only mode is exactly
+/// where a population is easiest to forget, because there are no injections to
+/// attribute to it yet.
+fn report(manifest: &Manifest, control: &Run, injections: Vec<InjectionResult>) -> Report {
+    Report {
+        test_command: manifest.test_command.clone(),
+        control: control.clone(),
+        injections,
+    }
 }
 
 #[derive(Debug, Serialize)]
@@ -375,7 +402,12 @@ fn run() -> Result<(), String> {
         ));
     }
     if control_only {
-        println!("{}", serde_json::to_string_pretty(&control).map_err(err)?);
+        // THE SAME SHAPE AS A FULL SWEEP'S, with the injections it has none of.
+        // A control printed as a bare `Run` was a second output shape carrying
+        // counts under no population, and a reader would have had to know which
+        // flag produced the file in front of them to know what it measured.
+        let report = report(&manifest, &control, Vec::new());
+        println!("{}", serde_json::to_string_pretty(&report).map_err(err)?);
         return Ok(());
     }
 
@@ -434,10 +466,11 @@ fn run() -> Result<(), String> {
     // of a distribution that is the finding.
     println!(
         "{}",
-        serde_json::to_string_pretty(&Report {
-            control: control.clone(),
-            injections: results.iter().map(clone_result).collect()
-        })
+        serde_json::to_string_pretty(&report(
+            &manifest,
+            &control,
+            results.iter().map(clone_result).collect()
+        ))
         .map_err(err)?
     );
 

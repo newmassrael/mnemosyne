@@ -138,6 +138,30 @@
       "expect_red": ["a_sweep_whose_anchor_has_come_loose_is_named_rather_than_skipped"]
     },
     {
+      "name": "a-report-carries-counts-under-no-suite-at-all",
+      "why": "R1138 read a red set of exactly one off this report and wrote it down as what nothing else in the repository guards — while the run had been scoped `-p mnemosyne-cli` and the edits landed in `mnemosyne-validate`, whose own suite therefore never ran and could not have appeared in any red set. The number was right about the run and wrong about the repository, and the report said nothing either way. A measurement whose condition is invisible is read as unconditional",
+      "edits": [
+        {
+          "file": "src/main.rs",
+          "from": "        test_command: manifest.test_command.clone(),",
+          "to": "        test_command: Vec::new(),"
+        }
+      ],
+      "expect_red": ["every_report_names_the_suite_whose_counts_it_carries"]
+    },
+    {
+      "name": "the-control-only-mode-prints-a-shape-of-its-own",
+      "why": "the other half of the same law, and it needs its own injection because the field assertion above cannot reach it: a control printed as a bare run object carries counts under no population AND under no shape a reader can recognise, so knowing what the file in front of them measured requires knowing which flag produced it",
+      "edits": [
+        {
+          "file": "src/main.rs",
+          "from": "        println!(\"{}\", serde_json::to_string_pretty(&report).map_err(err)?);",
+          "to": "        println!(\"{}\", serde_json::to_string_pretty(&control).map_err(err)?);"
+        }
+      ],
+      "expect_red": ["every_report_names_the_suite_whose_counts_it_carries"]
+    },
+    {
       "name": "the-population-of-sweeps-is-whatever-a-glob-finds",
       "why": "a law over zero files passes, and it passes in the shape of a clean run. The harness's own sweep is not called `injection-sweep.json`, so the obvious glob leaves out the one aimed at the tool every other sweep is run by — and R1134 measured the second half of the same mistake: a glob on `tools/` left out the sweep R1132 put in `.githooks/`, which is aimed at SHELL and is the likeliest anchor in this repository to come loose",
       "edits": [

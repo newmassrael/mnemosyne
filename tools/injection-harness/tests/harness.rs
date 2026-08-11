@@ -385,6 +385,79 @@ fn the_control_can_be_asked_for_on_its_own() {
     assert!(report.contains("\"passed\": 2"), "{report}");
 }
 
+/// Every report names the suite its counts are facts about, in both the modes
+/// that print one.
+///
+/// THE DEFECT THIS IS ABOUT WAS NOT IN THE HARNESS BUT IN WHAT A PERSON DID
+/// WITH ITS OUTPUT. Round 1138 read a `fired` set of exactly one off a sweep of
+/// its own contract and wrote down what nothing else in the repository guards.
+/// The run had been scoped `-p mnemosyne-cli` while the edits landed in
+/// `mnemosyne-validate`, so the edited crate's own suite never ran and could not
+/// have appeared in any red set. The number was right about the run and wrong
+/// about the repository, and the report it was read off carried no population to
+/// contradict it.
+///
+/// THE ORACLE IS THE VALUE AND NOT THE PRESENCE OF A KEY. This fixture's command
+/// is a path under a temp directory unique to this run, so a field filled with a
+/// plausible constant — `["cargo", "test"]` — fails here, where "the field is
+/// non-empty" would pass. And the shape is asserted alongside it, because the
+/// control-only mode used to print a bare run object with no `injections` at
+/// all: a reader would have had to know which flag produced the file in front of
+/// them to know what it measured.
+#[test]
+fn every_report_names_the_suite_whose_counts_it_carries() {
+    let root = tempdir();
+    let suite = tree(root.path(), "the wire is HEALTHY here\n");
+    let path = manifest(
+        root.path(),
+        serde_json::json!([{
+            "name": "I1",
+            "why": "the law is not vacuous",
+            "edits": [{"file": "src.txt", "from": "HEALTHY", "to": "BROKEN"}],
+            "expect_red": ["the_law"],
+        }]),
+    );
+
+    let full = harness(&path);
+    assert!(
+        full.status.success(),
+        "{}",
+        String::from_utf8_lossy(&full.stderr)
+    );
+    let control_only = Command::new(binary())
+        .arg(&path)
+        .arg("--control-only")
+        .output()
+        .expect("harness runs");
+    assert!(
+        control_only.status.success(),
+        "{}",
+        String::from_utf8_lossy(&control_only.stderr)
+    );
+
+    let expected = serde_json::json!([suite]);
+    for (mode, out, injections) in [
+        ("a full sweep", &full, 1),
+        ("--control-only", &control_only, 0),
+    ] {
+        let report: serde_json::Value =
+            serde_json::from_slice(&out.stdout).expect("the report is JSON");
+        assert_eq!(
+            report["test_command"], expected,
+            "{mode} printed its counts under {} rather than under the suite that \
+             produced them",
+            report["test_command"]
+        );
+        assert_eq!(
+            report["injections"].as_array().map(Vec::len),
+            Some(injections),
+            "{mode} should print the one report shape, holding the injections it \
+             has: {}",
+            report["injections"]
+        );
+    }
+}
+
 #[test]
 fn a_machine_with_no_room_is_refused_before_the_build() {
     let root = tempdir();
