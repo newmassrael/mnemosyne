@@ -152,6 +152,31 @@ opentelemetry-proto = { version = "0.26", features = ["gen-tonic", "trace"] }
 tokio-rustls = "0.26"
 rustls-pemfile = "2"
 
+# Round 1147 — debug info is carried by the crates a person debugs, and by
+# nobody else.
+#
+# WHAT WAS MEASURED. `target/debug` held 21 GB after a clean rebuild, and the
+# shape of it was not this workspace: nineteen `grpc_*` test binaries at 230.4
+# MB each, because every integration test in `mnemosyne-server` is its own crate
+# and its own link, and each one embeds the full DWARF of RocksDB and the tonic
+# stack. Nobody steps into those. The workspace crates are the ones a panic
+# points at, and `line-tables-only` is what a backtrace needs — file and line,
+# without the type and variable graph.
+#
+# `split-debuginfo = "unpacked"` is the other half: on Linux it leaves DWARF in
+# the `.o` files rather than copying it into every binary that links them, which
+# is precisely the duplication nineteen links of one dependency graph produce.
+#
+# This is a DEV/TEST profile decision only. `[profile.release]` below is
+# unchanged, and `debug-assertions` is untouched — this changes what a debugger
+# and a backtrace can see, not what the code does.
+[profile.dev]
+debug = "line-tables-only"
+split-debuginfo = "unpacked"
+
+[profile.dev.package."*"]
+debug = 0
+
 [profile.release]
 opt-level = 3
 lto = "thin"
