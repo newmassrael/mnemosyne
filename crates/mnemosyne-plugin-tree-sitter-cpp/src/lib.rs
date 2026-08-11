@@ -1,11 +1,15 @@
 //! Tree-sitter C++ `SymbolResolver` backend for the Mnemosyne plugin
 //! substrate.
 //!
-//! Answers `(file, line) -> Option<symbol_name>` by parsing the file with
-//! `tree-sitter-cpp` and walking the tree for the smallest declarative
-//! node whose extent covers the requested line. Best-effort — macro-
-//! expanded code, generated files, and code behind preprocessor gates may
+//! Answers `(source, lines) -> {line: symbol_name}` by parsing the caller's
+//! text ONCE with `tree-sitter-cpp` and walking the tree for the smallest
+//! declarative node whose extent covers each requested line. Best-effort —
+//! macro-expanded code, generated files, and code behind preprocessor gates may
 //! resolve under their textual name rather than the post-expansion form.
+//!
+//! Nothing here reads the filesystem: the bytes come from the caller, which is
+//! what keeps the symbol answer about the same file revision the citation was
+//! extracted from.
 //!
 //! Unlike the Rust backend, C++ declarators nest (a function name lives
 //! under `function_definition > declarator > [pointer_declarator >] *
@@ -19,8 +23,9 @@
 //! Registered into a `PluginRegistry` via [`register`] from the binary's
 //! startup path (mnemosyne-cli).
 
-use std::fs;
+use std::collections::BTreeMap;
 use std::path::Path;
+use std::sync::OnceLock;
 
 use mnemosyne_core::{PluginRegistry, ResolverError, SymbolResolver, VersionSurface};
 use tree_sitter::{Node, Parser, Point, Query, QueryCursor, StreamingIterator};
@@ -39,24 +44,40 @@ impl SymbolResolver for TreesitterCppResolver {
         }
     }
 
-    fn resolve_symbol_at(&self, file: &Path, line: u32) -> Result<Option<String>, ResolverError> {
-        let source = fs::read_to_string(file)
-            .map_err(|e| ResolverError::Internal(format!("read `{}`: {}", file.display(), e)))?;
+    fn resolve_symbols_at(
+        &self,
+        _file: &Path,
+        source: &str,
+        lines: &[u32],
+    ) -> Result<BTreeMap<u32, String>, ResolverError> {
+        let mut out = BTreeMap::new();
+        if lines.is_empty() {
+            return Ok(out);
+        }
+        // ONE parse and ONE query traversal for the whole file, over the bytes
+        // the caller read the citations from — see
+        // `SymbolResolver::resolve_symbols_at` for why the source is a
+        // parameter rather than a path this reads for itself.
         let mut parser = Parser::new();
         parser
             .set_language(&tree_sitter_cpp::LANGUAGE.into())
             .map_err(|e| ResolverError::Internal(format!("set_language: {}", e)))?;
         let tree = parser
-            .parse(&source, None)
+            .parse(source, None)
             .ok_or_else(|| ResolverError::Internal("parse returned None".into()))?;
         let root = tree.root_node();
 
         // tree-sitter rows are 0-indexed; callers pass 1-indexed line numbers
-        // per the project convention (editor / grep alignment).
-        if line == 0 {
-            return Ok(None);
+        // per the project convention (editor / grep alignment). Line 0 has no
+        // row and is dropped rather than shifted onto line 1.
+        let rows: Vec<(u32, usize)> = lines
+            .iter()
+            .filter(|l| **l > 0)
+            .map(|l| (*l, (*l - 1) as usize))
+            .collect();
+        if rows.is_empty() {
+            return Ok(out);
         }
-        let row = (line - 1) as usize;
 
         // Documented-symbol semantics first: a `§<id>` citation in source is a
         // doc comment, conventionally placed *above* the declaration it
@@ -67,18 +88,81 @@ impl SymbolResolver for TreesitterCppResolver {
         // precedes a declaration, bind to that declaration. A file-header /
         // taxonomy comment not adjacent to a declaration falls through to the
         // enclosing scope (correctly coarse).
-        if let Some(name) = documented_symbol(root, &source, row) {
-            return Ok(Some(name));
+        let mut pending: Vec<(u32, usize)> = Vec::new();
+        for (line, row) in rows {
+            match documented_symbol(root, source, row) {
+                Some(name) => {
+                    out.insert(line, name);
+                }
+                None => pending.push((line, row)),
+            }
+        }
+        if pending.is_empty() {
+            return Ok(out);
         }
 
-        let lang: tree_sitter::Language = tree_sitter_cpp::LANGUAGE.into();
-        // Captures the declaration node itself, not the name node: C++ names
-        // sit several declarator levels deep, so extraction happens in
-        // `symbol_name`. `field_declaration` covers in-class member decls
-        // (variables and method prototypes); function-body locals are
-        // `declaration` nodes, deliberately excluded so a citation inside a
-        // body resolves to the enclosing function, not a local variable.
-        let query_src = r#"
+        let query = query()?;
+        let mut cursor = QueryCursor::new();
+        let mut matches = cursor.matches(query, root, source.as_bytes());
+        // row -> (span of the smallest covering declaration, its name)
+        let mut best: BTreeMap<usize, (usize, String)> = BTreeMap::new();
+
+        while let Some(m) = matches.next() {
+            for cap in m.captures {
+                let node: Node = cap.node;
+                let start = node.start_position().row;
+                let end = node.end_position().row;
+                let covered: Vec<usize> = pending
+                    .iter()
+                    .map(|(_, row)| *row)
+                    .filter(|row| *row >= start && *row <= end)
+                    .collect();
+                if covered.is_empty() {
+                    continue;
+                }
+                let Some(name) = symbol_name(node, source.as_bytes()) else {
+                    continue;
+                };
+                let span = end.saturating_sub(start);
+                for row in covered {
+                    match best.get(&row) {
+                        Some((cur_span, _)) if span >= *cur_span => {}
+                        _ => {
+                            best.insert(row, (span, name.clone()));
+                        }
+                    }
+                }
+            }
+        }
+        for (line, row) in pending {
+            if let Some((_, name)) = best.get(&row) {
+                out.insert(line, name.clone());
+            }
+        }
+        Ok(out)
+    }
+}
+
+/// The declaration query, compiled ONCE for the process.
+///
+/// Captures the declaration node itself, not the name node: C++ names sit
+/// several declarator levels deep, so extraction happens in [`symbol_name`].
+/// `field_declaration` covers in-class member decls (variables and method
+/// prototypes); function-body locals are `declaration` nodes, deliberately
+/// excluded so a citation inside a body resolves to the enclosing function
+/// rather than to a local variable.
+///
+/// It used to be compiled inside `resolve_symbol_at`, so a query compile
+/// happened per citation alongside the per-citation parse — the half of the
+/// cost the consumer's report did not name.
+fn query() -> Result<&'static Query, ResolverError> {
+    static QUERY: OnceLock<Result<Query, String>> = OnceLock::new();
+    QUERY
+        .get_or_init(|| {
+            let lang: tree_sitter::Language = tree_sitter_cpp::LANGUAGE.into();
+            Query::new(
+                &lang,
+                r#"
         (function_definition) @item
         (field_declaration) @item
         (class_specifier) @item
@@ -86,34 +170,12 @@ impl SymbolResolver for TreesitterCppResolver {
         (union_specifier) @item
         (enum_specifier) @item
         (namespace_definition) @item
-        "#;
-        let query = Query::new(&lang, query_src)
-            .map_err(|e| ResolverError::Internal(format!("query compile: {}", e)))?;
-
-        let mut cursor = QueryCursor::new();
-        let mut matches = cursor.matches(&query, root, source.as_bytes());
-        let mut best: Option<(usize, String)> = None;
-
-        while let Some(m) = matches.next() {
-            for cap in m.captures {
-                let node: Node = cap.node;
-                let start = node.start_position().row;
-                let end = node.end_position().row;
-                if row < start || row > end {
-                    continue;
-                }
-                let Some(name) = symbol_name(node, source.as_bytes()) else {
-                    continue;
-                };
-                let span = end.saturating_sub(start);
-                best = match best {
-                    Some((cur_span, _)) if span >= cur_span => best,
-                    _ => Some((span, name)),
-                };
-            }
-        }
-        Ok(best.map(|(_, n)| n))
-    }
+        "#,
+            )
+            .map_err(|e| format!("query compile: {e}"))
+        })
+        .as_ref()
+        .map_err(|e| ResolverError::Internal(e.clone()))
 }
 
 /// Name nodes that terminate a declarator descent. `qualified_identifier`
@@ -244,14 +306,16 @@ pub fn register(registry: &mut PluginRegistry) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::io::Write;
-    use tempfile::NamedTempFile;
 
+    /// Resolve one line — through a path that DOES NOT EXIST, which is the
+    /// oracle for "the answer came from the caller's bytes". Every test below
+    /// therefore also asserts the resolver never reads the filesystem.
     fn resolve(source: &str, line: u32) -> Option<String> {
-        let mut tmp = NamedTempFile::new().unwrap();
-        tmp.write_all(source.as_bytes()).unwrap();
         let resolver = TreesitterCppResolver;
-        resolver.resolve_symbol_at(tmp.path(), line).unwrap()
+        resolver
+            .resolve_symbols_at(Path::new("/no/such/file.hpp"), source, &[line])
+            .unwrap()
+            .remove(&line)
     }
 
     #[test]
@@ -361,5 +425,57 @@ mod tests {
         let mut reg = PluginRegistry::new();
         register(&mut reg);
         assert!(reg.symbol_resolver(BACKEND_KEY).is_some());
+    }
+
+    /// Many lines, one call — and every per-line answer is the one that line
+    /// gets on its own. C++ has TWO resolution paths (the documented-symbol
+    /// rule for a comment above a declaration, and the smallest-covering
+    /// declaration for everything else), so the batch must not let one line's
+    /// path decide another's.
+    #[test]
+    fn one_call_answers_every_line_exactly_as_a_single_line_call_would() {
+        let src = "namespace ns {\n\
+                   // documents the class below\n\
+                   class Widget {\n\
+                     // documents the member below\n\
+                     void draw();\n\
+                   };\n\
+                   }\n";
+        let lines = [1u32, 2, 3, 4, 5, 6];
+        let batched = TreesitterCppResolver
+            .resolve_symbols_at(Path::new("/no/such/file.hpp"), src, &lines)
+            .unwrap();
+        let one_at_a_time: BTreeMap<u32, String> = lines
+            .iter()
+            .filter_map(|l| resolve(src, *l).map(|s| (*l, s)))
+            .collect();
+        assert_eq!(
+            batched, one_at_a_time,
+            "batching must not change a single answer"
+        );
+        assert_eq!(
+            batched.get(&2).map(String::as_str),
+            Some("Widget"),
+            "a doc comment still binds to what it documents inside a batch"
+        );
+        assert_eq!(
+            batched.get(&4).map(String::as_str),
+            Some("draw"),
+            "and the member's doc comment still binds to the member"
+        );
+    }
+
+    /// Line 0 has no row. It is dropped rather than shifted onto line 1.
+    #[test]
+    fn line_zero_is_dropped_and_does_not_become_line_one() {
+        let out = TreesitterCppResolver
+            .resolve_symbols_at(
+                Path::new("/no/such/file.hpp"),
+                "int alpha() { return 0; }\n",
+                &[0, 1],
+            )
+            .unwrap();
+        assert_eq!(out.get(&1).map(String::as_str), Some("alpha"));
+        assert!(!out.contains_key(&0), "no answer for a line that cannot be");
     }
 }

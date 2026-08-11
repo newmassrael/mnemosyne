@@ -50,6 +50,7 @@ fn build_validator(filter_id: Option<String>) -> SetEqualityValidator {
         orphan_ledger: vec![],
         symbol_resolvers: BTreeMap::new(),
         filter_id,
+        path_scope: None,
     }
 }
 

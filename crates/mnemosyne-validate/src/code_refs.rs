@@ -410,28 +410,402 @@ pub fn classify_coverage(snapshot: &mnemosyne_core::AtomicSnapshot) -> CoverageR
     report
 }
 
+/// One axis of the citation audit — the unit at which a run either JUDGES or
+/// does not.
+///
+/// # Why the audit needs the axis as a value
+///
+/// Every axis reports a clean result as an absence: nothing printed, count
+/// zero. So does an axis the run never reached. Three modes were already
+/// printing a measured-looking `0` for an axis they structurally skip:
+/// `--filter-id` suppresses every axis but `decay`, `decay` itself is only
+/// judged WHEN an id is named, and the four opt-in axes emit nothing while
+/// their severity is unset. A consumer reading `impl_missing=0` cannot tell
+/// those apart from a judged-and-clean tree, and the reading they will take is
+/// the reassuring one.
+///
+/// So a run publishes a verdict per axis ([`SetEqualityValidator::axis_verdicts`]),
+/// every skip inside [`SetEqualityValidator::scan`] is taken by ASKING that map
+/// rather than by re-deriving the condition beside the code it guards, and the
+/// report prints a count only where a count was measured. The kind tag lives
+/// here, so the name a violation carries and the name a verdict carries are one
+/// string ([`CodeRefViolation::kind_tag`] delegates to [`AuditAxis::kind_tag`]).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum AuditAxis {
+    Missing,
+    Decay,
+    SectionMissing,
+    CitationUnbound,
+    SymbolMismatch,
+    InventoryMissing,
+    InventoryDeprecated,
+    ProseFactAssertion,
+    BindingUnbacked,
+    ImplementationMissing,
+    VerificationMissing,
+    MisclassifiedCoverage,
+    BlanketVerifies,
+}
+
+/// Which half of the bidirectional audit an axis lives on — the split the SCE
+/// lift request turns on, stated once here instead of in each caller's head.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AuditSide {
+    /// Decidable from ONE FILE plus the store. A path-scoped run judges these.
+    Citation,
+    /// Asks the reverse question — does the store's claim have a witness
+    /// anywhere — and so needs the whole tree. A path-scoped run does not
+    /// judge these and says so.
+    Spec,
+}
+
+impl AuditAxis {
+    /// Where [`Self::all`] starts walking.
+    const FIRST: Self = Self::Missing;
+
+    /// Stable tag: the string this axis's violations carry in `--json`, and the
+    /// stem of its `<tag>_count` report field.
+    #[must_use]
+    pub const fn kind_tag(self) -> &'static str {
+        match self {
+            Self::Missing => "missing",
+            Self::Decay => "decay",
+            Self::SectionMissing => "section_missing",
+            Self::CitationUnbound => "citation_unbound",
+            Self::SymbolMismatch => "symbol_mismatch",
+            Self::InventoryMissing => "inventory_missing",
+            Self::InventoryDeprecated => "inventory_deprecated",
+            Self::ProseFactAssertion => "prose_fact_assertion",
+            Self::BindingUnbacked => "binding_unbacked",
+            Self::ImplementationMissing => "impl_missing",
+            Self::VerificationMissing => "verification_missing",
+            Self::MisclassifiedCoverage => "misclassified_coverage",
+            Self::BlanketVerifies => "blanket_verifies",
+        }
+    }
+
+    /// Which half of the audit this axis belongs to.
+    #[must_use]
+    pub const fn side(self) -> AuditSide {
+        match self {
+            Self::Missing
+            | Self::Decay
+            | Self::SectionMissing
+            | Self::CitationUnbound
+            | Self::SymbolMismatch
+            | Self::InventoryMissing
+            | Self::InventoryDeprecated
+            | Self::ProseFactAssertion => AuditSide::Citation,
+            Self::BindingUnbacked
+            | Self::ImplementationMissing
+            | Self::VerificationMissing
+            | Self::MisclassifiedCoverage
+            | Self::BlanketVerifies => AuditSide::Spec,
+        }
+    }
+
+    /// The next axis in enumeration order, or `None` at the end.
+    ///
+    /// Exhaustive, so a new variant does not compile until it is given a place
+    /// in the order — which is what makes [`Self::all`] a derivation instead of
+    /// a hand list of the kind Round 777 removed. The residue this leaves,
+    /// stated rather than hidden: a new arm returning `None` that nothing else
+    /// points at would be unreachable from `FIRST`, and only the surrounding
+    /// tests would notice.
+    const fn next(self) -> Option<Self> {
+        match self {
+            Self::Missing => Some(Self::Decay),
+            Self::Decay => Some(Self::SectionMissing),
+            Self::SectionMissing => Some(Self::CitationUnbound),
+            Self::CitationUnbound => Some(Self::SymbolMismatch),
+            Self::SymbolMismatch => Some(Self::InventoryMissing),
+            Self::InventoryMissing => Some(Self::InventoryDeprecated),
+            Self::InventoryDeprecated => Some(Self::ProseFactAssertion),
+            Self::ProseFactAssertion => Some(Self::BindingUnbacked),
+            Self::BindingUnbacked => Some(Self::ImplementationMissing),
+            Self::ImplementationMissing => Some(Self::VerificationMissing),
+            Self::VerificationMissing => Some(Self::MisclassifiedCoverage),
+            Self::MisclassifiedCoverage => Some(Self::BlanketVerifies),
+            Self::BlanketVerifies => None,
+        }
+    }
+
+    /// Every axis, in enumeration order.
+    #[must_use]
+    pub fn all() -> Vec<Self> {
+        std::iter::successors(Some(Self::FIRST), |a| a.next()).collect()
+    }
+}
+
+impl serde::Serialize for AuditAxis {
+    /// As the kind tag — an axis and the violations it emits must be one name
+    /// on the wire, or a consumer joining `not_judged` to a violation list has
+    /// to hold a translation table this code does not publish.
+    fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+        s.serialize_str(self.kind_tag())
+    }
+}
+
+/// Why a run did not judge an axis. Present in the report beside the axis name,
+/// because "not judged" without a reason is only half an answer — the consumer's
+/// next question is whether it is their config, their flags, or the mode.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum NotJudged {
+    /// The run was narrowed to a file list (`--paths`) and this axis asks a
+    /// question about the whole tree.
+    PathScope,
+    /// `--filter-id` narrows the run to the decay axis of one entry id.
+    DecayFilter,
+    /// Decay is judged only when a caller names the id to scan for.
+    NoDecayFilter,
+    /// The axis is opt-in and its severity is unset in config and flags.
+    AxisDisabled,
+}
+
+impl NotJudged {
+    /// Machine-readable reason tag.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::PathScope => "path_scope",
+            Self::DecayFilter => "decay_filter",
+            Self::NoDecayFilter => "no_decay_filter",
+            Self::AxisDisabled => "axis_disabled",
+        }
+    }
+
+    /// The same reason as a sentence, for the human report.
+    #[must_use]
+    pub const fn detail(self) -> &'static str {
+        match self {
+            Self::PathScope => {
+                "asks whether the store's claim has a witness anywhere, which needs the \
+                 whole tree; this run was given a file list"
+            }
+            Self::DecayFilter => "--filter-id narrows the run to the decay axis of one entry",
+            Self::NoDecayFilter => "decay is scanned only for an entry id a caller names",
+            Self::AxisDisabled => "opt-in axis; its severity is unset",
+        }
+    }
+}
+
+impl serde::Serialize for NotJudged {
+    fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+        s.serialize_str(self.as_str())
+    }
+}
+
+/// What one run judged, by axis. `None` = judged; `Some(reason)` = not.
+///
+/// Built once per run from the mode and the config, then read by both the scan
+/// (as its skip conditions) and the report (as its `not_judged` list). One
+/// decision, two readers — the alternative is the report re-deriving the scan's
+/// conditions, which is the two-write-paths shape this project treats as no
+/// invariant at all.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AxisVerdicts(BTreeMap<AuditAxis, Option<NotJudged>>);
+
+impl AxisVerdicts {
+    /// Whether this run judges `axis`.
+    #[must_use]
+    pub fn judges(&self, axis: AuditAxis) -> bool {
+        self.0.get(&axis).copied().flatten().is_none()
+    }
+
+    /// Whether this run judges any of `axes`.
+    #[must_use]
+    pub fn judges_any(&self, axes: &[AuditAxis]) -> bool {
+        axes.iter().any(|a| self.judges(*a))
+    }
+
+    /// The axes this run did not judge, each with its reason, in axis order.
+    #[must_use]
+    pub fn not_judged(&self) -> Vec<(AuditAxis, NotJudged)> {
+        self.0
+            .iter()
+            .filter_map(|(axis, reason)| reason.map(|r| (*axis, r)))
+            .collect()
+    }
+
+    /// Every axis and its verdict, in axis order.
+    pub fn iter(&self) -> impl Iterator<Item = (AuditAxis, Option<NotJudged>)> + '_ {
+        self.0.iter().map(|(a, r)| (*a, *r))
+    }
+}
+
+/// The file list a run was narrowed to — SCE lift-request 4-B.
+///
+/// # The law this type exists to keep
+///
+/// A scoped run's answer about the named files is EXACTLY the whole run's
+/// answer about those files. That is why the scope filters the read set rather
+/// than replacing it: a path outside the configured `paths` is not part of the
+/// unscoped answer, so judging it would make the scoped run a different gate
+/// with the same name. Such a path is reported by
+/// [`PathScopeCoverage::out_of_read_set`] instead — the consumer hands this
+/// flag every file a commit touched, and "this gate never reads that one" is an
+/// answer they need and cannot get from silence.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PathScope {
+    /// Workspace-relative, sorted, deduplicated.
+    requested: Vec<PathBuf>,
+}
+
+/// What a [`PathScope`] selected, and what it did not — reported every scoped
+/// run, at every value, for the Round 819 reason: an empty answer is the shape
+/// of "clean" and the shape of "nothing was read".
+#[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize)]
+pub struct PathScopeCoverage {
+    /// Every path the caller named, normalized workspace-relative.
+    pub requested: Vec<String>,
+    /// Read-set files the scope selected — what this run actually judged.
+    pub matched_files: Vec<String>,
+    /// Requested paths that exist on disk but that the configured `paths` do
+    /// not cover. Judged by nobody, in either mode.
+    pub out_of_read_set: Vec<String>,
+    /// Requested paths that are not on disk at all — a typo, or a file the
+    /// commit deleted.
+    pub not_found: Vec<String>,
+    /// How many files the same run would have read unscoped. The narrowing as
+    /// a number rather than as an adjective.
+    pub read_set_total: usize,
+}
+
+fn display_path(p: &Path) -> String {
+    p.display().to_string().replace('\\', "/")
+}
+
+impl PathScope {
+    /// Normalize a caller's path list against `root`.
+    ///
+    /// # Errors
+    ///
+    /// [`std::io::ErrorKind::InvalidInput`] when the list is empty (an empty
+    /// scope reads as "everything" to one reader and "nothing" to the next,
+    /// and both are silent), when an entry is the empty string, or when an
+    /// absolute entry names a path outside the workspace.
+    pub fn new(root: &Path, requested: &[String]) -> std::io::Result<Self> {
+        let invalid = |msg: String| std::io::Error::new(std::io::ErrorKind::InvalidInput, msg);
+        if requested.is_empty() {
+            return Err(invalid(
+                "--paths needs at least one path — an empty scope reports the same clean \
+                 as a clean tree"
+                    .to_string(),
+            ));
+        }
+        let mut out = Vec::with_capacity(requested.len());
+        for raw in requested {
+            let trimmed = raw.trim();
+            if trimmed.is_empty() {
+                return Err(invalid("--paths was given an empty path".to_string()));
+            }
+            let p = Path::new(trimmed);
+            let rel = if p.is_absolute() {
+                p.strip_prefix(root)
+                    .map_err(|_| {
+                        invalid(format!(
+                            "--paths `{trimmed}` is outside the workspace {}",
+                            root.display()
+                        ))
+                    })?
+                    .to_path_buf()
+            } else {
+                p.strip_prefix("./").unwrap_or(p).to_path_buf()
+            };
+            if rel.as_os_str().is_empty() {
+                return Err(invalid(format!(
+                    "--paths `{trimmed}` names the workspace root, which is not a narrowing"
+                )));
+            }
+            out.push(rel);
+        }
+        out.sort();
+        out.dedup();
+        Ok(Self { requested: out })
+    }
+
+    /// Whether a workspace-relative file is in scope — named exactly, or lying
+    /// under a named directory.
+    #[must_use]
+    pub fn selects(&self, rel: &Path) -> bool {
+        self.requested
+            .iter()
+            .any(|req| rel == req || rel.starts_with(req))
+    }
+
+    /// The read set narrowed to this scope.
+    #[must_use]
+    pub fn select(&self, root: &Path, files: Vec<PathBuf>) -> Vec<PathBuf> {
+        files
+            .into_iter()
+            .filter(|abs| self.selects(abs.strip_prefix(root).unwrap_or(abs)))
+            .collect()
+    }
+
+    /// Classify every requested path against the UNSCOPED read set.
+    #[must_use]
+    pub fn coverage(&self, root: &Path, read_set: &[PathBuf]) -> PathScopeCoverage {
+        let rels: Vec<PathBuf> = read_set
+            .iter()
+            .map(|abs| abs.strip_prefix(root).unwrap_or(abs).to_path_buf())
+            .collect();
+        let mut cov = PathScopeCoverage {
+            requested: self.requested.iter().map(|p| display_path(p)).collect(),
+            read_set_total: read_set.len(),
+            ..PathScopeCoverage::default()
+        };
+        for req in &self.requested {
+            let hit = rels.iter().any(|rel| rel == req || rel.starts_with(req));
+            if hit {
+                continue;
+            }
+            if root.join(req).exists() {
+                cov.out_of_read_set.push(display_path(req));
+            } else {
+                cov.not_found.push(display_path(req));
+            }
+        }
+        cov.matched_files = rels
+            .iter()
+            .filter(|rel| self.selects(rel))
+            .map(|rel| display_path(rel))
+            .collect();
+        cov.matched_files.sort();
+        cov
+    }
+}
+
 impl CodeRefViolation {
-    /// Stable kind tag for JSON output / CLI rendering. Citation
-    /// violations carry their `ViolationKind` tag; the spec-side
-    /// variants each have their own top-level kind.
-    pub fn kind_tag(&self) -> &'static str {
+    /// The audit axis this violation belongs to.
+    ///
+    /// Exhaustive over both enums, so a new violation shape cannot be added
+    /// without deciding which axis it is — and therefore whether a path-scoped
+    /// run can judge it.
+    #[must_use]
+    pub fn axis(&self) -> AuditAxis {
         match self {
             CodeRefViolation::Citation { kind, .. } => match kind {
-                ViolationKind::Missing => "missing",
-                ViolationKind::Decay => "decay",
-                ViolationKind::SectionMissing => "section_missing",
-                ViolationKind::CitationUnbound => "citation_unbound",
-                ViolationKind::InventoryMissing => "inventory_missing",
-                ViolationKind::InventoryDeprecated => "inventory_deprecated",
-                ViolationKind::SymbolMismatch => "symbol_mismatch",
-                ViolationKind::ProseFactAssertion => "prose_fact_assertion",
+                ViolationKind::Missing => AuditAxis::Missing,
+                ViolationKind::Decay => AuditAxis::Decay,
+                ViolationKind::SectionMissing => AuditAxis::SectionMissing,
+                ViolationKind::CitationUnbound => AuditAxis::CitationUnbound,
+                ViolationKind::InventoryMissing => AuditAxis::InventoryMissing,
+                ViolationKind::InventoryDeprecated => AuditAxis::InventoryDeprecated,
+                ViolationKind::SymbolMismatch => AuditAxis::SymbolMismatch,
+                ViolationKind::ProseFactAssertion => AuditAxis::ProseFactAssertion,
             },
-            CodeRefViolation::BindingUnbacked { .. } => "binding_unbacked",
-            CodeRefViolation::ImplementationMissing { .. } => "impl_missing",
-            CodeRefViolation::VerificationMissing { .. } => "verification_missing",
-            CodeRefViolation::MisclassifiedCoverage { .. } => "misclassified_coverage",
-            CodeRefViolation::BlanketVerifies { .. } => "blanket_verifies",
+            CodeRefViolation::BindingUnbacked { .. } => AuditAxis::BindingUnbacked,
+            CodeRefViolation::ImplementationMissing { .. } => AuditAxis::ImplementationMissing,
+            CodeRefViolation::VerificationMissing { .. } => AuditAxis::VerificationMissing,
+            CodeRefViolation::MisclassifiedCoverage { .. } => AuditAxis::MisclassifiedCoverage,
+            CodeRefViolation::BlanketVerifies { .. } => AuditAxis::BlanketVerifies,
         }
+    }
+
+    /// Stable kind tag for JSON output / CLI rendering — the axis's tag, so a
+    /// violation and the verdict about its axis can never be two names.
+    pub fn kind_tag(&self) -> &'static str {
+        self.axis().kind_tag()
     }
 
     /// Defect class — drives `--severity-missing` vs
@@ -727,7 +1101,7 @@ pub enum ViolationKind {
     /// Round 306 — RFC-002 FR-3 symbol-level enforcement.
     ///
     /// At a `§<id>` citation site (`file`:`line` carrying the cite), the
-    /// `SymbolResolver` plugin's `resolve_symbol_at(file, line)` returns a
+    /// `SymbolResolver` plugin's `resolve_symbols_at` answer for that line is a
     /// name that is NOT a member of the set of `Implementation.symbol`
     /// values the cited section records for the citing file. A section may
     /// be implemented by several symbols in one file, so the registered
@@ -1199,16 +1573,16 @@ fn id_shaped_tokens(content: &str) -> Vec<(usize, String)> {
 /// space (a prefix needs two ids), and the axis is advisory, so a shape match in
 /// data costs a printed line and never a red gate.
 ///
-/// # Errors
-///
-/// Whatever the underlying directory walk fails with.
+/// Takes the run's READ SET rather than the configured paths, so a run narrowed
+/// by [`PathScope`] reports this axis over the files it read.
+#[must_use]
 pub fn scan_id_citations(
     root: &Path,
-    paths: &[String],
+    read_set: &[PathBuf],
     comment_only: bool,
     facts: &BTreeSet<String>,
     entities: &BTreeSet<String>,
-) -> std::io::Result<IdCiteReport> {
+) -> IdCiteReport {
     let mut report = IdCiteReport {
         facts_total: facts.len(),
         entities_total: entities.len(),
@@ -1216,20 +1590,20 @@ pub fn scan_id_citations(
         ..IdCiteReport::default()
     };
     if report.namespaces.is_empty() {
-        return Ok(report);
+        return report;
     }
     let mut facts_seen: BTreeSet<&str> = BTreeSet::new();
     let mut entities_seen: BTreeSet<&str> = BTreeSet::new();
-    for abs in walk_paths(root, paths)? {
+    for abs in read_set {
         // Every file the gate reads, in any language (Round 856). Unreadable
         // files are skipped exactly where the gate skips them, so `files_scanned`
         // counts what was examined rather than what was walked.
-        let Ok(raw) = std::fs::read_to_string(&abs) else {
+        let Ok(raw) = std::fs::read_to_string(abs) else {
             continue;
         };
         report.files_scanned += 1;
         let content = if comment_only {
-            strip_to_comments(&raw, comment_syntax_for(&abs))
+            strip_to_comments(&raw, comment_syntax_for(abs))
         } else {
             raw
         };
@@ -1263,7 +1637,7 @@ pub fn scan_id_citations(
     }
     report.facts_cited = facts_seen.len();
     report.entities_cited = entities_seen.len();
-    Ok(report)
+    report
 }
 
 /// Never carries author-written citations: a VCS/tool directory, a build
@@ -2368,25 +2742,24 @@ pub struct CommentModeCoverage {
     pub unreadable_extensions: BTreeMap<String, usize>,
 }
 
-/// Compute [`CommentModeCoverage`] for `root` under the configured `paths`.
+/// Compute [`CommentModeCoverage`] over the files a run reads.
+///
+/// Takes the READ SET rather than the configured paths, so a run narrowed by
+/// [`PathScope`] reports the mode of what it actually read. A coverage report
+/// that re-walks the configuration would describe a tree the judgement never
+/// touched — the Round 777 defect with the roles swapped.
 ///
 /// Reads each unknown-extension file, because "the gate reads this whole" and
 /// "the gate cannot read this at all" are the two answers a reader needs and
 /// only the bytes can tell them apart (Round 860). Files whose extension HAS a
 /// comment syntax are not read — they are already accounted for and their
 /// content changes nothing here.
-///
-/// # Errors
-///
-/// Whatever the underlying directory walk fails with.
-pub fn comment_mode_coverage(
-    root: &Path,
-    paths: &[String],
-) -> std::io::Result<CommentModeCoverage> {
+#[must_use]
+pub fn comment_mode_coverage(read_set: &[PathBuf]) -> CommentModeCoverage {
     let mut out = CommentModeCoverage::default();
-    for abs in walk_paths(root, paths)? {
+    for abs in read_set {
         out.scanned += 1;
-        if comment_syntax_for(&abs) != CommentSyntax::Unknown {
+        if comment_syntax_for(abs) != CommentSyntax::Unknown {
             continue;
         }
         let ext = abs
@@ -2394,7 +2767,7 @@ pub fn comment_mode_coverage(
             .map_or_else(|| "<none>".to_string(), |e| e.to_string_lossy().to_string());
         // The SAME question the gate asks of the same file, asked the same way:
         // `read_to_string` succeeds or the file is invisible to every axis.
-        if std::fs::read_to_string(&abs).is_ok() {
+        if std::fs::read_to_string(abs).is_ok() {
             out.whole_text += 1;
             *out.whole_text_extensions.entry(ext).or_insert(0) += 1;
         } else {
@@ -2402,7 +2775,7 @@ pub fn comment_mode_coverage(
             *out.unreadable_extensions.entry(ext).or_insert(0) += 1;
         }
     }
-    Ok(out)
+    out
 }
 
 /// What the tree's own version control says about the files the gate reads
@@ -3275,6 +3648,57 @@ fn lang_for_file(path: &Path) -> Option<&'static str> {
         .map(|(_, lang)| *lang)
 }
 
+/// The symbols a citation must resolve into, or `None` when this citation is
+/// not one the symbol axis puts to a resolver.
+///
+/// ONE DEFINITION OF "A RESOLVER CALL". [`SetEqualityValidator::scan`] judges
+/// with it and [`SetEqualityValidator::symbol_axis_coverage`] counts with it, so
+/// the cost the census publishes is the cost the gate will pay. A census free to
+/// disagree with the gate about what a resolver call is would be pricing some
+/// other tool, and the consumer whose payoff estimate needs that ratio has no
+/// way to tell.
+///
+/// `index` is `section_id -> file -> {symbols}`, built from the citation-edge
+/// bindings that record a `symbol`. A section legitimately has more than one
+/// symbol in a file, so membership — not equality — is the test at the call
+/// site.
+fn symbol_expectation<'a>(
+    section_id: &str,
+    rel: &str,
+    index: &'a BTreeMap<&str, BTreeMap<&str, BTreeSet<&str>>>,
+) -> Option<&'a BTreeSet<&'a str>> {
+    index.get(section_id).and_then(|m| m.get(rel))
+}
+
+/// RFC-002 FR-3 symbol-level enforcement index — `section_id -> file ->
+/// {symbols}` over every citation-edge binding that records a `symbol`.
+///
+/// Built here rather than at each reader, for the reason [`symbol_expectation`]
+/// exists: the scan and the census must not be able to disagree about which
+/// citations the symbol axis judges. A `verifies` binding is excluded because it
+/// points at an externally mapped test artifact rather than at a `§<id>`-citing
+/// file, so it neither defends a citation nor enters the set-equality.
+fn symbols_by_section_file(
+    snapshot: &mnemosyne_core::AtomicSnapshot,
+) -> BTreeMap<&str, BTreeMap<&str, BTreeSet<&str>>> {
+    snapshot
+        .sections
+        .iter()
+        .map(|(sid, sec)| {
+            let mut m: BTreeMap<&str, BTreeSet<&str>> = BTreeMap::new();
+            for b in &sec.bindings {
+                if !is_citation_edge(b.kind) {
+                    continue;
+                }
+                if let Some(s) = b.symbol.as_deref() {
+                    m.entry(b.file.as_str()).or_default().insert(s);
+                }
+            }
+            (sid.as_str(), m)
+        })
+        .collect()
+}
+
 /// First-class Validator plugin embodying the set-equality citation
 /// audit. Routes through `PluginRegistry` so the validator-class trait
 /// surface is reached from production code (`cmd_validate_code_refs`
@@ -3294,15 +3718,123 @@ fn lang_for_file(path: &Path) -> Option<&'static str> {
 /// - `filter_id` — decay-cascade caller's per-instance toggle. `None`
 ///   for normal runs; `Some(<entry_id>)` for cascade-mode callers
 ///   narrowing to one entry's decay scan.
+/// - `path_scope` — file-list narrowing (`validate-code-refs --paths`).
+///   `None` for whole-tree runs. Narrows the READ SET, never the
+///   judgement applied to a file, so the scoped answer stays equal to
+///   the whole run's answer about those files; the spec-side axes it
+///   cannot judge are named in [`Self::axis_verdicts`] rather than
+///   reported as zero.
 pub struct SetEqualityValidator {
     pub config: SetEqualityValidatorConfig,
     pub entry_id_prefix: String,
     pub orphan_ledger: Vec<OrphanLedgerEntry>,
     pub symbol_resolvers: BTreeMap<String, Box<dyn mnemosyne_core::SymbolResolver>>,
     pub filter_id: Option<String>,
+    pub path_scope: Option<PathScope>,
 }
 
 impl SetEqualityValidator {
+    /// The files this run reads: the configured walk, narrowed by
+    /// [`Self::path_scope`] when one is set.
+    ///
+    /// Every read inside this type goes through here, so the scan, the symbol
+    /// census and the citation index cannot disagree about what the run
+    /// covered — a coverage report free to describe a wider tree than the
+    /// judgement did is the Round 777 defect with the roles swapped.
+    ///
+    /// # Errors
+    ///
+    /// Whatever [`walk_paths`] fails with.
+    pub fn read_set(&self, workspace_root: &Path) -> std::io::Result<Vec<PathBuf>> {
+        let files = walk_paths(workspace_root, &self.config.paths)?;
+        Ok(match &self.path_scope {
+            None => files,
+            Some(scope) => scope.select(workspace_root, files),
+        })
+    }
+
+    /// What [`Self::path_scope`] selected and what it did not reach — `None`
+    /// for an unscoped run, so a report cannot print an empty scope block that
+    /// reads like a narrowing nobody asked for.
+    ///
+    /// Measured against the UNSCOPED walk: the question "does this gate read
+    /// that file at all" is exactly the difference between the two sets, and it
+    /// is the question a commit hook handing over a changed-file list needs
+    /// answered.
+    ///
+    /// # Errors
+    ///
+    /// Whatever [`walk_paths`] fails with.
+    pub fn scope_coverage(
+        &self,
+        workspace_root: &Path,
+    ) -> std::io::Result<Option<PathScopeCoverage>> {
+        match &self.path_scope {
+            None => Ok(None),
+            Some(scope) => {
+                let full = walk_paths(workspace_root, &self.config.paths)?;
+                Ok(Some(scope.coverage(workspace_root, &full)))
+            }
+        }
+    }
+
+    /// Which axes THIS run judges, and why not for the rest.
+    ///
+    /// The single decision point: [`Self::scan`] takes every one of its skips
+    /// by asking this, and the report prints its `not_judged` list from the
+    /// same map. A count may therefore be published only for an axis this map
+    /// calls judged — `0` means measured-and-clean, everywhere, in every mode.
+    #[must_use]
+    pub fn axis_verdicts(&self) -> AxisVerdicts {
+        let decay_mode = self.filter_id.is_some();
+        let scoped = self.path_scope.is_some();
+        AxisVerdicts(
+            AuditAxis::all()
+                .into_iter()
+                .map(|axis| {
+                    let reason = if decay_mode && axis != AuditAxis::Decay {
+                        Some(NotJudged::DecayFilter)
+                    } else if !decay_mode && axis == AuditAxis::Decay {
+                        Some(NotJudged::NoDecayFilter)
+                    } else if scoped && axis.side() == AuditSide::Spec {
+                        Some(NotJudged::PathScope)
+                    } else if self.axis_severity_unset(axis) {
+                        Some(NotJudged::AxisDisabled)
+                    } else {
+                        None
+                    };
+                    (axis, reason)
+                })
+                .collect(),
+        )
+    }
+
+    /// Whether `axis` is one of the opt-in axes and its severity is unset.
+    ///
+    /// Exhaustive, so an axis added later must state whether it is opt-in
+    /// rather than inheriting "always on" by omission.
+    fn axis_severity_unset(&self, axis: AuditAxis) -> bool {
+        match axis {
+            AuditAxis::VerificationMissing => self.config.severity_verification.is_none(),
+            AuditAxis::MisclassifiedCoverage => self.config.severity_classification.is_none(),
+            AuditAxis::BlanketVerifies => self.config.severity_blanket.is_none(),
+            AuditAxis::ProseFactAssertion => self.config.severity_prose_fact_assertion.is_none(),
+            // Always judged when the mode allows it. `symbol_mismatch` is here
+            // rather than with the opt-ins deliberately: it is judged wherever a
+            // resolver reaches, and how far that is gets reported as coverage by
+            // `symbol_axis_coverage` (Round 855) instead of as one on/off bit.
+            AuditAxis::Missing
+            | AuditAxis::Decay
+            | AuditAxis::SectionMissing
+            | AuditAxis::CitationUnbound
+            | AuditAxis::SymbolMismatch
+            | AuditAxis::InventoryMissing
+            | AuditAxis::InventoryDeprecated
+            | AuditAxis::BindingUnbacked
+            | AuditAxis::ImplementationMissing => false,
+        }
+    }
+
     /// Rich scan returning `CodeRefViolation`. The plugin trait method
     /// `validate(ctx)` calls into this and maps each variant to a
     /// `ValidationFinding` for cross-plugin dispatch; direct callers
@@ -3324,6 +3856,10 @@ impl SetEqualityValidator {
         let workspace_root = attribution.root();
         let prefix = self.entry_id_prefix.as_str();
         let filter_id = self.filter_id.as_deref();
+        // Every skip below asks this map rather than re-deriving its condition,
+        // so the report's `not_judged` list and the code that did the skipping
+        // are the same decision read twice.
+        let verdicts = self.axis_verdicts();
         let comment_only = self.config.comment_only;
         let inventory_prefixes = self.config.inventory_prefixes.as_slice();
         let inventory_path_prefixes = self.config.inventory_path_prefixes.as_slice();
@@ -3335,7 +3871,6 @@ impl SetEqualityValidator {
         } else {
             Some(&self.symbol_resolvers)
         };
-        let paths = self.config.paths.as_slice();
         let orphan_ledger = self.orphan_ledger.as_slice();
 
         // valid_entry_ids must match the shape produced by `extract_citations`,
@@ -3375,22 +3910,7 @@ impl SetEqualityValidator {
         // resolved enclosing symbol is a MEMBER of the registered set. Drives
         // SymbolMismatch where the file IS bound (R260) but no registered
         // symbol covers the cited line.
-        let impl_symbols_by_section_file: BTreeMap<&str, BTreeMap<&str, BTreeSet<&str>>> = snapshot
-            .sections
-            .iter()
-            .map(|(sid, sec)| {
-                let mut m: BTreeMap<&str, BTreeSet<&str>> = BTreeMap::new();
-                for b in &sec.bindings {
-                    if !is_citation_edge(b.kind) {
-                        continue;
-                    }
-                    if let Some(s) = b.symbol.as_deref() {
-                        m.entry(b.file.as_str()).or_default().insert(s);
-                    }
-                }
-                (sid.as_str(), m)
-            })
-            .collect();
+        let impl_symbols_by_section_file = symbols_by_section_file(snapshot);
 
         // Orphan ledger lookup: (file, id) pairs explicitly registered as
         // known-stale code citations on the `§`-axis vs the inventory axis.
@@ -3407,7 +3927,7 @@ impl SetEqualityValidator {
             .map(|e| (e.from.as_str(), e.to.as_str()))
             .collect();
 
-        let files = walk_paths(workspace_root, paths)?;
+        let files = self.read_set(workspace_root)?;
         let mut violations: Vec<CodeRefViolation> = Vec::new();
 
         // file_path → BTreeSet<section_id> citations actually observed.
@@ -3419,16 +3939,25 @@ impl SetEqualityValidator {
                 Ok(c) => c,
                 Err(_) => continue,
             };
-            let content = if comment_only {
-                strip_to_comments(&raw, comment_syntax_for(&abs))
+            // `raw` outlives `content` because the symbol axis needs it: a
+            // resolver must parse the PROGRAM, and `comment_only` strips the
+            // text down to comments, which no parser can read. Borrowed rather
+            // than cloned in the un-stripped case — this loop runs over every
+            // file in the read set.
+            let content: std::borrow::Cow<'_, str> = if comment_only {
+                std::borrow::Cow::Owned(strip_to_comments(&raw, comment_syntax_for(&abs)))
             } else {
-                raw
+                std::borrow::Cow::Borrowed(&raw)
             };
             let rel = abs
                 .strip_prefix(workspace_root)
                 .map(|p| p.to_path_buf())
                 .unwrap_or(abs.clone());
             let rel_str = rel.to_string_lossy().to_string();
+            // The citations of THIS file that reach the symbol axis, collected
+            // so the resolver is asked once for the file rather than once per
+            // citation (SCE 4-A).
+            let mut symbol_demand: Vec<(usize, String, &BTreeSet<&str>)> = Vec::new();
 
             // ---- Round NNN axis ----
             for (line, entry_id) in
@@ -3436,9 +3965,9 @@ impl SetEqualityValidator {
             {
                 let matches_filter = filter_id.map(|f| entry_id == f).unwrap_or(false);
                 let is_missing = !valid_entry_ids.contains(&entry_id);
-                let kind = if matches_filter {
+                let kind = if matches_filter && verdicts.judges(AuditAxis::Decay) {
                     ViolationKind::Decay
-                } else if filter_id.is_none() && is_missing {
+                } else if is_missing && verdicts.judges(AuditAxis::Missing) {
                     ViolationKind::Missing
                 } else {
                     continue;
@@ -3454,9 +3983,17 @@ impl SetEqualityValidator {
             }
 
             // ---- §<id> axis ----
-            // Decay-filter mode narrows the surface to Round NNN only — Path B
-            // cross-check stays silent (cascade caller's question is targeted).
-            if filter_id.is_some() {
+            // This block does two jobs: it judges the three section axes, and it
+            // records `cited_by` for the spec-side half below. So it is skipped
+            // only when NEITHER is wanted — decay-filter mode, where the cascade
+            // caller's question is Round NNN alone. A path-scoped run still walks
+            // it: the section axes are decidable from one file plus the store.
+            if !verdicts.judges_any(&[
+                AuditAxis::SectionMissing,
+                AuditAxis::CitationUnbound,
+                AuditAxis::SymbolMismatch,
+            ]) && !verdicts.judges(AuditAxis::BindingUnbacked)
+            {
                 continue;
             }
             // The prefix registries, the namespace scope and the file's numbering
@@ -3477,14 +4014,16 @@ impl SetEqualityValidator {
                     continue;
                 }
                 if !section_id_set.contains(&section_id) {
-                    violations.push(CodeRefViolation::Citation {
-                        citation: Citation {
-                            file: rel.clone(),
-                            line,
-                            entry_id: format!("§{}", section_id),
-                        },
-                        kind: ViolationKind::SectionMissing,
-                    });
+                    if verdicts.judges(AuditAxis::SectionMissing) {
+                        violations.push(CodeRefViolation::Citation {
+                            citation: Citation {
+                                file: rel.clone(),
+                                line,
+                                entry_id: format!("§{}", section_id),
+                            },
+                            kind: ViolationKind::SectionMissing,
+                        });
+                    }
                     continue;
                 }
                 // Section exists — check spec-side membership of (file in
@@ -3495,41 +4034,66 @@ impl SetEqualityValidator {
                     .map(|files| files.contains(rel_str.as_str()))
                     .unwrap_or(false);
                 if !bound {
-                    violations.push(CodeRefViolation::Citation {
-                        citation: Citation {
-                            file: rel.clone(),
-                            line,
-                            entry_id: format!("§{}", section_id),
-                        },
-                        kind: ViolationKind::CitationUnbound,
-                    });
-                } else if let Some(resolvers) = symbol_resolvers_opt {
+                    if verdicts.judges(AuditAxis::CitationUnbound) {
+                        violations.push(CodeRefViolation::Citation {
+                            citation: Citation {
+                                file: rel.clone(),
+                                line,
+                                entry_id: format!("§{}", section_id),
+                            },
+                            kind: ViolationKind::CitationUnbound,
+                        });
+                    }
+                } else if let Some(expected_syms) =
+                    symbol_expectation(&section_id, &rel_str, &impl_symbols_by_section_file)
+                {
                     // RFC-002 FR-3 symbol-level enforcement. File-level binding
-                    // passed; if the cited section records any `symbol` for this
-                    // file, the resolver for the file's language is consulted and
-                    // the resolved enclosing symbol must be a member of that set.
-                    // A non-member surfaces as SymbolMismatch (Binding-class).
-                    // Resolver returning None/Err is silent.
-                    if let Some(expected_syms) = impl_symbols_by_section_file
-                        .get(section_id.as_str())
-                        .and_then(|m| m.get(rel_str.as_str()))
-                    {
-                        if let Some(lang) = lang_for_file(&rel) {
-                            if let Some(resolver) = resolvers.get(lang) {
-                                let abs_for_resolve = workspace_root.join(&rel);
-                                if let Ok(Some(resolved)) =
-                                    resolver.resolve_symbol_at(&abs_for_resolve, line as u32)
+                    // passed and the cited section records symbols for this
+                    // file, so this citation is one the symbol axis judges. The
+                    // resolver is NOT called here — the demand is collected and
+                    // put to it once for the whole file below (SCE 4-A).
+                    symbol_demand.push((line, section_id.clone(), expected_syms));
+                }
+            }
+
+            // ---- Symbol axis: ONE resolver call for this file (SCE 4-A) ----
+            //
+            // The resolver used to be called per citation, and each call read
+            // and parsed the whole file and recompiled its query: a consumer
+            // measured 108.9 seconds of gate time with 99.4% of it here. The
+            // demand is now batched per file, and the SOURCE goes with it —
+            // `raw`, the bytes this loop read, not a second read of the path.
+            // (`raw` and not `content`: under `comment_only` the content is
+            // stripped to comments, which is not a program any parser can read.
+            // Stripping preserves line numbering, so the lines still agree.)
+            if !symbol_demand.is_empty() && verdicts.judges(AuditAxis::SymbolMismatch) {
+                if let Some(resolvers) = symbol_resolvers_opt {
+                    if let Some(resolver) = lang_for_file(&rel).and_then(|l| resolvers.get(l)) {
+                        let lines: Vec<u32> = symbol_demand
+                            .iter()
+                            .map(|(line, _, _)| *line as u32)
+                            .collect();
+                        let abs_for_resolve = workspace_root.join(&rel);
+                        // A resolver error is silent, as it was per citation:
+                        // an unparseable file is not a citation defect.
+                        if let Ok(resolved) =
+                            resolver.resolve_symbols_at(&abs_for_resolve, &raw, &lines)
+                        {
+                            for (line, section_id, expected_syms) in &symbol_demand {
+                                let Some(found) = resolved.get(&(*line as u32)) else {
+                                    continue;
+                                };
+                                if !expected_syms.contains(found.as_str())
+                                    && verdicts.judges(AuditAxis::SymbolMismatch)
                                 {
-                                    if !expected_syms.contains(resolved.as_str()) {
-                                        violations.push(CodeRefViolation::Citation {
-                                            citation: Citation {
-                                                file: rel.clone(),
-                                                line,
-                                                entry_id: format!("§{}", section_id),
-                                            },
-                                            kind: ViolationKind::SymbolMismatch,
-                                        });
-                                    }
+                                    violations.push(CodeRefViolation::Citation {
+                                        citation: Citation {
+                                            file: rel.clone(),
+                                            line: *line,
+                                            entry_id: format!("§{}", section_id),
+                                        },
+                                        kind: ViolationKind::SymbolMismatch,
+                                    });
                                 }
                             }
                         }
@@ -3546,7 +4110,7 @@ impl SetEqualityValidator {
             // set. Reached only in filter_id.is_none() mode (the section-axis
             // guard above already `continue`s the decay-filter pass). See
             // claudedocs/structured-fact-ssot-design.md.
-            if self.config.severity_prose_fact_assertion.is_some() {
+            if verdicts.judges(AuditAxis::ProseFactAssertion) {
                 for (line, section_id, _verb) in extract_prose_fact_assertions(&content) {
                     violations.push(CodeRefViolation::Citation {
                         citation: Citation {
@@ -3574,12 +4138,17 @@ impl SetEqualityValidator {
             inventory_cites.dedup();
             for (line, inventory_id) in inventory_cites {
                 let kind = match snapshot.inventory.get(&inventory_id).copied() {
-                    None => Some(ViolationKind::InventoryMissing),
-                    Some(mnemosyne_core::InventoryStatus::Deprecated) => {
+                    None if verdicts.judges(AuditAxis::InventoryMissing) => {
+                        Some(ViolationKind::InventoryMissing)
+                    }
+                    Some(mnemosyne_core::InventoryStatus::Deprecated)
+                        if verdicts.judges(AuditAxis::InventoryDeprecated) =>
+                    {
                         Some(ViolationKind::InventoryDeprecated)
                     }
-                    // Active / Reserved — cite-permitted.
-                    Some(_) => None,
+                    // Active / Reserved — cite-permitted; and an axis this run
+                    // does not judge emits nothing rather than a quiet pass.
+                    _ => None,
                 };
                 if let Some(k) = kind {
                     if inventory_ledger_index.contains(&(rel_str.as_str(), inventory_id.as_str())) {
@@ -3598,8 +4167,11 @@ impl SetEqualityValidator {
         }
 
         // ---- Step 3: spec-side bidirectional half ----
-        // Skip under decay-filter mode.
-        if filter_id.is_none() {
+        // Skipped under decay-filter mode, and under a path scope: `cited_by`
+        // holds only the scoped files, so every binding naming a file outside
+        // the scope would look unwitnessed. That is the whole reason the axis
+        // is reported as not judged rather than judged clean.
+        if verdicts.judges(AuditAxis::BindingUnbacked) {
             for (section_id, section) in &snapshot.sections {
                 // A citation-edge binding (implements OR references) asserts a
                 // code↔spec edge and so must be witnessed by a citation. A
@@ -3642,7 +4214,7 @@ impl SetEqualityValidator {
         // for any future variant. decision_status is preserved as the raw
         // `Option` on the emitted variant (None → Active is a consumer-side
         // convention, Round 265).
-        if filter_id.is_none() {
+        if verdicts.judges(AuditAxis::ImplementationMissing) {
             for (section_id, section) in &snapshot.sections {
                 if classify_section_coverage(section) == CoverageClass::NormativeGap {
                     violations.push(CodeRefViolation::ImplementationMissing {
@@ -3662,7 +4234,7 @@ impl SetEqualityValidator {
         // gap. `ByConstruction` (no per-unit oracle) and `Informative` sections
         // are exempt — the classification is SCE-supplied; the gate only
         // enforces it.
-        if filter_id.is_none() && self.config.severity_verification.is_some() {
+        if verdicts.judges(AuditAxis::VerificationMissing) {
             for (section_id, section) in &snapshot.sections {
                 if is_verification_gap(section) {
                     violations.push(CodeRefViolation::VerificationMissing {
@@ -3679,7 +4251,7 @@ impl SetEqualityValidator {
         // implements/verifies binding — else it is mislabeled (should be
         // Normative) or the binding is wrong. The 3-state enum adds the label;
         // this gate enforces label↔binding consistency.
-        if filter_id.is_none() && self.config.severity_classification.is_some() {
+        if verdicts.judges(AuditAxis::MisclassifiedCoverage) {
             for (section_id, section) in &snapshot.sections {
                 if is_coverage_misclassified(section) {
                     violations.push(CodeRefViolation::MisclassifiedCoverage {
@@ -3692,7 +4264,7 @@ impl SetEqualityValidator {
 
         // ---- Step 7: blanket-binding detector (R425, opt-in — SCE P1) ----
         // OFF unless `severity_blanket` is set.
-        if filter_id.is_none() && self.config.severity_blanket.is_some() {
+        if verdicts.judges(AuditAxis::BlanketVerifies) {
             violations.extend(scan_blanket_verifies(snapshot));
         }
 
@@ -3725,16 +4297,18 @@ impl SetEqualityValidator {
         // (section_id, file) -> (resolved symbols, unresolved cite count)
         let mut acc: BTreeMap<(String, String), (BTreeSet<String>, usize)> = BTreeMap::new();
 
-        let files = walk_paths(workspace_root, &self.config.paths)?;
+        let files = self.read_set(workspace_root)?;
         for abs in files {
             let raw = match std::fs::read_to_string(&abs) {
                 Ok(c) => c,
                 Err(_) => continue,
             };
-            let content = if comment_only {
-                strip_to_comments(&raw, comment_syntax_for(&abs))
+            // Same reason as the scan's: the resolver parses the PROGRAM, so
+            // `raw` has to outlive the comment-stripped view.
+            let content: std::borrow::Cow<'_, str> = if comment_only {
+                std::borrow::Cow::Owned(strip_to_comments(&raw, comment_syntax_for(&abs)))
             } else {
-                raw
+                std::borrow::Cow::Borrowed(&raw)
             };
             let rel = abs
                 .strip_prefix(workspace_root)
@@ -3742,27 +4316,34 @@ impl SetEqualityValidator {
                 .unwrap_or(abs.clone());
             let rel_str = rel.to_string_lossy().to_string();
 
-            for (line, section_id) in attribution.citations_in(&abs, &content).cited {
-                if !known_section.contains(section_id.as_str()) {
-                    continue;
-                }
-                let entry = acc
-                    .entry((section_id.clone(), rel_str.clone()))
-                    .or_default();
-                let mut resolved_here = false;
-                if let Some(lang) = lang_for_file(&rel) {
-                    if let Some(resolver) = self.symbol_resolvers.get(lang) {
-                        let abs_for_resolve = workspace_root.join(&rel);
-                        if let Ok(Some(sym)) =
-                            resolver.resolve_symbol_at(&abs_for_resolve, line as u32)
-                        {
-                            entry.0.insert(sym);
-                            resolved_here = true;
-                        }
+            // Every known-section citation in this file, then ONE resolver call
+            // for all their lines (SCE 4-A) — a proposal over a file with forty
+            // citations used to parse it forty times.
+            let cited: Vec<(usize, String)> = attribution
+                .citations_in(&abs, &content)
+                .cited
+                .into_iter()
+                .filter(|(_, section_id)| known_section.contains(section_id.as_str()))
+                .collect();
+            if cited.is_empty() {
+                continue;
+            }
+            let resolved: BTreeMap<u32, String> = lang_for_file(&rel)
+                .and_then(|lang| self.symbol_resolvers.get(lang))
+                .and_then(|resolver| {
+                    let lines: Vec<u32> = cited.iter().map(|(line, _)| *line as u32).collect();
+                    resolver
+                        .resolve_symbols_at(&workspace_root.join(&rel), &raw, &lines)
+                        .ok()
+                })
+                .unwrap_or_default();
+            for (line, section_id) in cited {
+                let entry = acc.entry((section_id, rel_str.clone())).or_default();
+                match resolved.get(&(line as u32)) {
+                    Some(sym) => {
+                        entry.0.insert(sym.clone());
                     }
-                }
-                if !resolved_here {
-                    entry.1 += 1;
+                    None => entry.1 += 1,
                 }
             }
         }
@@ -3804,7 +4385,7 @@ impl SetEqualityValidator {
         let known_section = &snapshot.section_ids_with_implied_parents;
 
         let mut index: BTreeMap<String, Vec<CitationSite>> = BTreeMap::new();
-        let files = walk_paths(workspace_root, &self.config.paths)?;
+        let files = self.read_set(workspace_root)?;
         for abs in files {
             let raw = match std::fs::read_to_string(&abs) {
                 Ok(c) => c,
@@ -3873,14 +4454,36 @@ impl SetEqualityValidator {
         // gate applies, by calling it rather than by repeating it: a coverage
         // report free to disagree with the gate about what a citation is would
         // be reporting some other tool's coverage.
-        let citing: BTreeSet<String> = self
-            .citation_index(attribution, snapshot)?
+        let index = self.citation_index(attribution, snapshot)?;
+        let citing: BTreeSet<String> = index
             .values()
             .flatten()
             .map(|site| site.file.clone())
             .collect();
         let mut cov = SymbolAxisCoverage::default();
-        for abs in walk_paths(workspace_root, &self.config.paths)? {
+
+        // The axis's PRICE, from the same predicate the scan judges by
+        // ([`symbol_expectation`]) over the same citation index the coverage
+        // above is derived from. Counted here rather than reported by the scan
+        // because a consumer needs it BEFORE paying it, and — the case that
+        // decided the shape — a tree with no resolver configured never enters
+        // the scan's symbol branch at all and so could never report from there.
+        let symbols_by_section_file = symbols_by_section_file(snapshot);
+        let mut checked_files: BTreeSet<&str> = BTreeSet::new();
+        for (section_id, sites) in &index {
+            for site in sites {
+                if symbol_expectation(section_id, &site.file, &symbols_by_section_file).is_none() {
+                    continue;
+                }
+                if lang_for_file(Path::new(&site.file)).is_none() {
+                    continue;
+                }
+                cov.checked_citations += 1;
+                checked_files.insert(site.file.as_str());
+            }
+        }
+        cov.checked_files = checked_files.len();
+        for abs in self.read_set(workspace_root)? {
             let rel = abs.strip_prefix(workspace_root).unwrap_or(&abs);
             let cites = citing.contains(&rel.to_string_lossy().to_string());
             let bucket = match lang_for_file(rel) {
@@ -3928,6 +4531,21 @@ pub struct SymbolAxisCoverage {
     pub unresolved_languages: BTreeMap<String, AxisFileCount>,
     /// Language → count, for languages a configured resolver covers.
     pub covered: BTreeMap<String, AxisFileCount>,
+    /// Citations a judging run puts to a resolver: the cite's section exists,
+    /// the file is bound to it, and the section records symbols for that file
+    /// ([`symbol_expectation`], the same predicate the scan judges by).
+    ///
+    /// This is the axis's PRICE, published whether or not a resolver is
+    /// configured — a consumer estimating what one-parse-per-file buys needs
+    /// `checked_citations / checked_files`, and the tree that hosts this gate
+    /// configures no resolver at all, so it could never have measured the ratio
+    /// by timing itself (SCE 4-A).
+    pub checked_citations: usize,
+    /// Distinct files among those citations — the number of resolver CALLS a
+    /// run makes now that the demand is batched per file. Before Round 1141 the
+    /// call count was `checked_citations`, and each call re-read and re-parsed
+    /// the whole file.
+    pub checked_files: usize,
 }
 
 impl SymbolAxisCoverage {
@@ -4536,6 +5154,7 @@ mod tests {
             orphan_ledger: orphan_ledger.to_vec(),
             symbol_resolvers: BTreeMap::new(),
             filter_id: filter_id.map(String::from),
+            path_scope: None,
         };
         let snapshot = store.snapshot();
         validator.scan(
@@ -5004,6 +5623,7 @@ mod tests {
             orphan_ledger: vec![],
             symbol_resolvers: resolvers,
             filter_id: None,
+            path_scope: None,
         };
         let cov = validator
             .symbol_axis_coverage(
@@ -5110,6 +5730,7 @@ mod tests {
             orphan_ledger: vec![],
             symbol_resolvers: BTreeMap::new(),
             filter_id: None,
+            path_scope: None,
         };
         let snapshot = store.snapshot();
         let index = validator
@@ -5382,6 +6003,7 @@ mod tests {
             orphan_ledger: vec![],
             symbol_resolvers: BTreeMap::new(),
             filter_id: None,
+            path_scope: None,
         };
         validator
             .scan(
@@ -6111,7 +6733,7 @@ mod tests {
         // had cited in it. Invalid UTF-8 by construction (a lone 0xFF byte).
         std::fs::write(root.join("src/Runtime.class"), [0xFFu8, 0xFE, 0x00, 0x01]).unwrap();
 
-        let cov = comment_mode_coverage(root, &["src".to_string()]).unwrap();
+        let cov = comment_mode_coverage(&walk_paths(root, &["src".to_string()]).unwrap());
         assert_eq!(cov.scanned, 5);
         assert_eq!(
             cov.whole_text, 2,
@@ -7826,7 +8448,8 @@ mod tests {
         )
         .unwrap();
         let paths = vec!["src".to_string()];
-        let r = scan_id_citations(root, &paths, true, &facts, &entities).unwrap();
+        let read_set = walk_paths(root, &paths).unwrap();
+        let r = scan_id_citations(root, &read_set, true, &facts, &entities);
         assert_eq!(
             r.namespaces,
             [("ent-".to_string(), 2), ("f-".to_string(), 2)]
@@ -7855,7 +8478,7 @@ mod tests {
         );
         // With comment_only off the code line joins the scan, and the token
         // welded to an identifier is still not a citation.
-        let whole = scan_id_citations(root, &paths, false, &facts, &entities).unwrap();
+        let whole = scan_id_citations(root, &read_set, false, &facts, &entities);
         assert_eq!(
             whole
                 .unknown
@@ -7868,8 +8491,13 @@ mod tests {
         // The boundary, asserted where it can fail: scanning the ROOT reaches the
         // build tree by path, and only `walk_paths`' skip rule keeps the baked
         // id out. Configuring `src` alone would have proved nothing here.
-        let whole_root =
-            scan_id_citations(root, &[String::new()], true, &facts, &entities).unwrap();
+        let whole_root = scan_id_citations(
+            root,
+            &walk_paths(root, &[String::new()]).unwrap(),
+            true,
+            &facts,
+            &entities,
+        );
         assert_eq!(
             whole_root.files_scanned, 2,
             "a build tree is not authorship, and the two authored files are"
@@ -7885,8 +8513,7 @@ mod tests {
         );
         // A store with no id namespaces reports the axis as inapplicable rather
         // than returning a clean run — this workspace is that store.
-        let bare =
-            scan_id_citations(root, &paths, true, &BTreeSet::new(), &BTreeSet::new()).unwrap();
+        let bare = scan_id_citations(root, &read_set, true, &BTreeSet::new(), &BTreeSet::new());
         assert!(bare.namespaces.is_empty() && bare.unknown.is_empty());
         assert_eq!(bare.files_scanned, 0, "no namespace means no walk at all");
     }
@@ -9084,6 +9711,7 @@ mod tests {
             orphan_ledger: vec![],
             symbol_resolvers: BTreeMap::new(),
             filter_id: None,
+            path_scope: None,
         };
         let attr = CitationAttribution::new(root, &read_cfg, NumberingOriginAxis::derive(root));
 
@@ -9156,6 +9784,221 @@ mod tests {
             vec!["61".to_string()],
             "the generated tree really did swallow §61 and must still reject; \
              their §39 was never this store's coverage to lose: {swallowed:?}"
+        );
+    }
+
+    /// The axis table is the ONE name space: every violation shape names an
+    /// axis, the enumeration reaches it, and the tag a violation carries is the
+    /// tag its axis carries.
+    ///
+    /// Both directions. A tag the enumeration cannot produce would be a
+    /// violation no `not_judged` list could ever name; an axis no violation
+    /// produces would be a name in the report with nothing behind it.
+    #[test]
+    fn every_violation_shape_and_every_axis_are_one_name_space() {
+        let shapes = vec![
+            CodeRefViolation::Citation {
+                citation: Citation {
+                    file: PathBuf::from("a.rs"),
+                    line: 1,
+                    entry_id: "Round 1".into(),
+                },
+                kind: ViolationKind::Missing,
+            },
+            CodeRefViolation::Citation {
+                citation: Citation {
+                    file: PathBuf::from("a.rs"),
+                    line: 1,
+                    entry_id: "Round 1".into(),
+                },
+                kind: ViolationKind::Decay,
+            },
+            CodeRefViolation::Citation {
+                citation: Citation {
+                    file: PathBuf::from("a.rs"),
+                    line: 1,
+                    entry_id: "§1".into(),
+                },
+                kind: ViolationKind::SectionMissing,
+            },
+            CodeRefViolation::Citation {
+                citation: Citation {
+                    file: PathBuf::from("a.rs"),
+                    line: 1,
+                    entry_id: "§1".into(),
+                },
+                kind: ViolationKind::CitationUnbound,
+            },
+            CodeRefViolation::Citation {
+                citation: Citation {
+                    file: PathBuf::from("a.rs"),
+                    line: 1,
+                    entry_id: "§1".into(),
+                },
+                kind: ViolationKind::SymbolMismatch,
+            },
+            CodeRefViolation::Citation {
+                citation: Citation {
+                    file: PathBuf::from("a.rs"),
+                    line: 1,
+                    entry_id: "INV_1".into(),
+                },
+                kind: ViolationKind::InventoryMissing,
+            },
+            CodeRefViolation::Citation {
+                citation: Citation {
+                    file: PathBuf::from("a.rs"),
+                    line: 1,
+                    entry_id: "INV_1".into(),
+                },
+                kind: ViolationKind::InventoryDeprecated,
+            },
+            CodeRefViolation::Citation {
+                citation: Citation {
+                    file: PathBuf::from("a.rs"),
+                    line: 1,
+                    entry_id: "§1".into(),
+                },
+                kind: ViolationKind::ProseFactAssertion,
+            },
+            CodeRefViolation::BindingUnbacked {
+                section_id: "1".into(),
+                file: PathBuf::from("a.rs"),
+                symbol: None,
+            },
+            CodeRefViolation::ImplementationMissing {
+                section_id: "1".into(),
+                decision_status: None,
+            },
+            CodeRefViolation::VerificationMissing {
+                section_id: "1".into(),
+                decision_status: None,
+            },
+            CodeRefViolation::MisclassifiedCoverage {
+                section_id: "1".into(),
+                decision_status: None,
+            },
+            CodeRefViolation::BlanketVerifies {
+                file: PathBuf::from("t.rs"),
+                symbol: None,
+                section_ids: vec!["1".into()],
+            },
+        ];
+        let reachable: BTreeSet<&str> = AuditAxis::all().iter().map(|a| a.kind_tag()).collect();
+        let from_shapes: BTreeSet<&str> = shapes.iter().map(CodeRefViolation::kind_tag).collect();
+        assert_eq!(
+            from_shapes, reachable,
+            "the enumeration and the violation shapes must name the same axes"
+        );
+        assert_eq!(
+            AuditAxis::all().len(),
+            reachable.len(),
+            "the enumeration must not visit an axis twice"
+        );
+        for v in &shapes {
+            assert_eq!(
+                v.kind_tag(),
+                v.axis().kind_tag(),
+                "a violation's tag is its axis's tag"
+            );
+        }
+        // The split the SCE lift request turns on, pinned so a later variant
+        // cannot quietly join the half a path-scoped run judges.
+        let spec: BTreeSet<&str> = AuditAxis::all()
+            .iter()
+            .filter(|a| a.side() == AuditSide::Spec)
+            .map(|a| a.kind_tag())
+            .collect();
+        assert_eq!(
+            spec,
+            [
+                "binding_unbacked",
+                "impl_missing",
+                "verification_missing",
+                "misclassified_coverage",
+                "blanket_verifies"
+            ]
+            .into_iter()
+            .collect::<BTreeSet<_>>()
+        );
+    }
+
+    /// A scope names files or directories, in whatever spelling a caller's hook
+    /// hands over, and refuses the spellings that would silently mean
+    /// "everything".
+    #[test]
+    fn a_path_scope_normalizes_what_a_caller_hands_it_and_refuses_the_rest() {
+        let root = Path::new("/w");
+        let scope = PathScope::new(
+            root,
+            &[
+                "./src/a.rs".to_string(),
+                "/w/src/b.rs".to_string(),
+                "docs".to_string(),
+            ],
+        )
+        .expect("three legal spellings");
+        assert!(scope.selects(Path::new("src/a.rs")), "leading ./ stripped");
+        assert!(
+            scope.selects(Path::new("src/b.rs")),
+            "an absolute path under the root is relativized"
+        );
+        assert!(
+            scope.selects(Path::new("docs/deep/c.rs")),
+            "a directory selects what is under it"
+        );
+        assert!(
+            !scope.selects(Path::new("src/c.rs")),
+            "and nothing else — a scope that widened would be a second gate"
+        );
+        // `src/ab.rs` starts with the STRING `src/a` and is not under it; the
+        // check is over path components, not bytes.
+        assert!(!scope.selects(Path::new("src/ab.rs")));
+
+        for bad in [vec![], vec![String::new()], vec![".".to_string()]] {
+            assert!(
+                PathScope::new(root, &bad).is_err(),
+                "an empty or root-wide scope must be refused, got {bad:?} accepted"
+            );
+        }
+        assert!(
+            PathScope::new(root, &["/elsewhere/x.rs".to_string()]).is_err(),
+            "a path outside the workspace has no answer here"
+        );
+    }
+
+    /// The three answers a requested path can get, told apart. A hook hands over
+    /// every file a commit touched; "judged", "this gate never reads it" and
+    /// "not on disk" are three different pieces of news and only the first one
+    /// is about the file's contents.
+    #[test]
+    fn a_scope_tells_judged_from_unread_from_absent() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let root = tmp.path();
+        std::fs::create_dir_all(root.join("src")).unwrap();
+        std::fs::write(root.join("src/a.rs"), "// Round 1\n").unwrap();
+        std::fs::write(root.join("src/b.rs"), "// Round 1\n").unwrap();
+        std::fs::write(root.join("README.md"), "prose\n").unwrap();
+
+        let read_set = walk_paths(root, &["src".to_string()]).unwrap();
+        let scope = PathScope::new(
+            root,
+            &[
+                "src/a.rs".to_string(),
+                "README.md".to_string(),
+                "src/gone.rs".to_string(),
+            ],
+        )
+        .unwrap();
+        let cov = scope.coverage(root, &read_set);
+        assert_eq!(cov.matched_files, vec!["src/a.rs".to_string()]);
+        assert_eq!(cov.out_of_read_set, vec!["README.md".to_string()]);
+        assert_eq!(cov.not_found, vec!["src/gone.rs".to_string()]);
+        assert_eq!(cov.read_set_total, 2, "what the unscoped run would read");
+        assert_eq!(
+            scope.select(root, read_set).len(),
+            1,
+            "and the run reads exactly the matched file"
         );
     }
 }

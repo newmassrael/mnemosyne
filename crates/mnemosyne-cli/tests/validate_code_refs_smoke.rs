@@ -203,7 +203,26 @@ fn case_vii_filter_id_surfaces_decay_and_skips_others() {
         serde_json::from_str(&String::from_utf8_lossy(&out.stdout)).expect("valid JSON");
     assert_eq!(parsed["filter_id"], "Round 1");
     assert_eq!(parsed["decay_count"], 2);
-    assert_eq!(parsed["missing_count"], 0);
+    // `Round 999` really is missing, and this mode did not look — so the run
+    // publishes no `missing` count and NAMES the axis. The assertion here used
+    // to be `missing_count == 0`, which is the same number a run that looked
+    // and found nothing prints: the mode's whole suppression was invisible.
+    assert_eq!(
+        parsed["missing_count"],
+        serde_json::Value::Null,
+        "decay mode judges the decay axis alone: {parsed}"
+    );
+    let named: Vec<&str> = parsed["not_judged"]
+        .as_array()
+        .expect("not_judged array")
+        .iter()
+        .filter(|e| e["reason"] == "decay_filter")
+        .map(|e| e["axis"].as_str().expect("axis name"))
+        .collect();
+    assert!(
+        named.contains(&"missing") && named.contains(&"citation_unbound") && named.len() >= 10,
+        "every axis but decay is named as suppressed by the filter: {named:?}"
+    );
     let violations = parsed["violations"].as_array().expect("violations array");
     assert_eq!(violations.len(), 2);
     for v in violations {
@@ -440,8 +459,12 @@ fn case_xiii_coverage_inherits_binding_and_rejects_as_coverage_class() {
         String::from_utf8_lossy(&out.stdout)
     );
     let stderr = String::from_utf8_lossy(&out.stderr);
+    // The axis is named by its kind tag, the same string the JSON and the
+    // `not_judged` list use — the rejection message used to spell a variant
+    // name of its own, and a class whose members are not all judged can now say
+    // so here instead of printing a zero for one of them.
     assert!(
-        stderr.contains("coverage-class") && stderr.contains("ImplementationMissing"),
+        stderr.contains("coverage-class") && stderr.contains("impl_missing=1"),
         "must reject as coverage-class, not binding; got: {}",
         stderr
     );

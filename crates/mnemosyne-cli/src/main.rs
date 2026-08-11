@@ -28,7 +28,7 @@ use mnemosyne_query::{
 use mnemosyne_style::{
     check_style_atomic, default_ruleset_with_config, StyleSeverity, StyleViolation,
 };
-use mnemosyne_validate::code_refs::SetEqualityValidator;
+use mnemosyne_validate::code_refs::{AuditAxis, SetEqualityValidator};
 
 /// workspace config (mnemosyne.toml) cached on first lookup.
 /// `discover_config` walks upward from CWD looking for `mnemosyne.toml`
@@ -1433,7 +1433,9 @@ static COMMANDS: &[Command] = &[
             "                        [--severity-verification reject|warn|info]",
             "                        [--severity-classification reject|warn|info]",
             "                        [--severity-blanket reject|warn|info]",
-            "                        [--filter-id <entry_id>] [--json]",
+            "                        [--filter-id <entry_id>] [--paths <file>...] [--json]",
+            "   --paths: judge only these files (citation-side axes). The spec-side axes need the",
+            "            whole tree, so they are reported as not judged rather than as zero.",
             "   Round 256: scan [plugins.set_equality_validator].paths for <entry_id_prefix><digits> citations,",
             "   reject those whose entry_id is missing from atomic store changelog_entries",
             "   Round 260: §<id> citations cross-checked against AtomicSection.bindings",
@@ -5919,6 +5921,7 @@ fn cmd_report_spec_map(args: &[String]) -> Result<()> {
                 orphan_ledger: loaded.config.orphan_ledger.clone(),
                 symbol_resolvers: build_symbol_resolver_map(&loaded.config)?,
                 filter_id: None,
+                path_scope: None,
             };
             let attribution = mnemosyne_validate::code_refs::CitationAttribution::new(
                 &root,
@@ -6119,6 +6122,7 @@ fn cmd_propose_implementations(args: &[String]) -> Result<()> {
         orphan_ledger: loaded.config.orphan_ledger.clone(),
         symbol_resolvers,
         filter_id: None,
+        path_scope: None,
     };
     let snapshot = mnemosyne_core::AtomicStoreView::snapshot(&store);
     let attribution = mnemosyne_validate::code_refs::CitationAttribution::new(
@@ -6181,10 +6185,26 @@ fn cmd_validate_code_refs(args: &[String]) -> Result<()> {
     // to citations of one entry_id, e.g. an entry that just transitioned
     // Active → Superseded).
     let mut filter_id: Option<String> = None;
-    let mut iter = args.iter();
+    // SCE lift-request 4-B — narrow the run to a file list. Variadic: every
+    // following argument that is not a flag is a path, and the flag may repeat.
+    // `Some(vec![])` is unreachable by construction (the empty case is refused
+    // where the scope is built), so a scope is either absent or non-empty.
+    let mut scope_paths: Vec<String> = Vec::new();
+    let mut scope_requested = false;
+    let mut iter = args.iter().peekable();
     while let Some(a) = iter.next() {
         match a.as_str() {
             "--json" => json = true,
+            "--paths" => {
+                scope_requested = true;
+                while let Some(next) = iter.peek() {
+                    if next.starts_with("--") {
+                        break;
+                    }
+                    scope_paths.push((*next).clone());
+                    iter.next();
+                }
+            }
             "--severity-missing" => {
                 severity_missing_override = Some(
                     iter.next()
@@ -6246,6 +6266,18 @@ fn cmd_validate_code_refs(args: &[String]) -> Result<()> {
     }
 
     let loaded = workspace_config()?;
+    // Before anything else is decided: an unusable scope (empty, or a path
+    // outside the workspace) is a malformed invocation, and a malformed
+    // invocation must not be able to come back as this run's "skipped" line or
+    // as a clean report.
+    let path_scope = if scope_requested {
+        Some(mnemosyne_validate::code_refs::PathScope::new(
+            &loaded.workspace_root,
+            &scope_paths,
+        )?)
+    } else {
+        None
+    };
     let cfg = match loaded
         .config
         .plugins
@@ -6370,35 +6402,45 @@ fn cmd_validate_code_refs(args: &[String]) -> Result<()> {
         orphan_ledger: loaded.config.orphan_ledger.clone(),
         symbol_resolvers,
         filter_id: filter_id.clone(),
+        path_scope: path_scope.clone(),
     };
-    let store_view: &dyn mnemosyne_core::AtomicStoreView = &store;
-    let ctx = mnemosyne_core::ValidationContext {
-        workspace_root: &root,
-        atomic_sidecar: &atomic_path,
-        store: store_view,
-    };
-    let violations =
-        <SetEqualityValidator as mnemosyne_core::Validator>::validate(&validator, &ctx)
-            .map_err(|e| anyhow!("SetEqualityValidator dispatch failed: {}", e))?;
 
-    // Round 867 — the attribution for the advisory axes below. The plugin trait
-    // hands `validate` a root and not this, so the derivation above ran inside it:
-    // two reads of one immutable question, stated rather than hidden, because the
-    // alternative is leaking a citation-gate concern into `ValidationContext`.
+    // Round 867 — the attribution: the numbering origin derived ONCE for this
+    // run and handed to the scan and to the advisory axes alike. The plugin
+    // trait hands `validate` a root and not this, so a dispatched run derives
+    // its own; this call site holds the concrete validator and can do better
+    // than deriving the same immutable answer twice. The erased dispatch path
+    // stays covered end-to-end by `validator_trait_dispatch.rs`.
     let attribution = mnemosyne_validate::code_refs::CitationAttribution::new(
         &root,
         cfg,
         mnemosyne_validate::code_refs::NumberingOriginAxis::derive(&root),
     );
+    let snapshot = mnemosyne_core::AtomicStoreView::snapshot(&store);
+    let violations = validator
+        .scan(&attribution, &snapshot)
+        .with_context(|| "SetEqualityValidator scan failed".to_string())?;
+    // What this run judged, by axis — the same map the scan took every one of
+    // its skips from. Read here so the report can print a count where one was
+    // measured and a NAME where one was not.
+    let verdicts = validator.axis_verdicts();
 
     // Round 855 — what the symbol axis could NOT reach, computed with the
     // resolver map this run actually built. Advisory and printed every run:
     // `severity_binding = reject` reads as symbol-level enforcement, and for
     // an unreachable file it is file-level, silently.
-    let symbol_axis = validator.symbol_axis_coverage(
-        &attribution,
-        &mnemosyne_core::AtomicStoreView::snapshot(&store),
-    )?;
+    let symbol_axis = validator.symbol_axis_coverage(&attribution, &snapshot)?;
+
+    // What this run read, once, for every axis that reports coverage below —
+    // narrowed by `--paths` where one was given, because a coverage report that
+    // described a wider tree than the judgement covered would be the Round 777
+    // defect with the roles swapped.
+    let read_files = validator.read_set(&root)?;
+    // What the scope selected and what it did not reach — `None` for an
+    // unscoped run. Measured against the UNSCOPED walk, so `out_of_read_set`
+    // can distinguish "this gate never reads that file" from "that file is
+    // clean": the two silences a consumer's commit hook must not confuse.
+    let path_scope_coverage = validator.scope_coverage(&root)?;
 
     // Round 864 — what the tree's own VCS calls build output inside the read
     // set. Advisory and printed every run, in all three states: the hand list
@@ -6407,9 +6449,7 @@ fn cmd_validate_code_refs(args: &[String]) -> Result<()> {
     // check. Asked of the tree rather than of a list, which is what keeps the
     // answer the same for a developer and for CI.
     let read_set: std::collections::BTreeSet<std::path::PathBuf> =
-        mnemosyne_validate::code_refs::walk_paths(&root, &cfg.paths)?
-            .into_iter()
-            .collect();
+        read_files.iter().cloned().collect();
     let vcs_axis = mnemosyne_validate::code_refs::vcs_ignored_among(&root, &read_set);
 
     // Round 867 — which of those files speak another document's numbering, and
@@ -6419,23 +6459,51 @@ fn cmd_validate_code_refs(args: &[String]) -> Result<()> {
     let numbering_origin =
         mnemosyne_validate::code_refs::numbering_origin_coverage(&attribution, &read_set);
 
-    // Per-class counting from typed enum — `CodeRefViolation::kind_tag`
-    // is the stable string key shared with `validate-code-refs --json`
-    // output. Pattern match is exhaustive at the type level.
-    let mut counts = std::collections::BTreeMap::<&str, usize>::new();
+    // Per-axis counting from the typed enum — one bucket per `AuditAxis`, which
+    // is also the key space of `validate-code-refs --json`'s `<tag>_count`
+    // fields and of the `not_judged` list. Both projections below iterate this
+    // one map, so a count and a verdict cannot disagree about an axis.
+    let mut counts = std::collections::BTreeMap::<AuditAxis, usize>::new();
     for v in &violations {
-        *counts.entry(v.kind_tag()).or_insert(0) += 1;
+        *counts.entry(v.axis()).or_insert(0) += 1;
     }
-    let get = |k: &str| counts.get(k).copied().unwrap_or(0);
-    let missing_count = get("missing");
-    let section_missing_count = get("section_missing");
-    let citation_unbound_count = get("citation_unbound");
-    let binding_unbacked_count = get("binding_unbacked");
-    let decay_count = get("decay");
-    let impl_missing_count = get("impl_missing");
-    let verification_missing_count = get("verification_missing");
-    let misclassified_coverage_count = get("misclassified_coverage");
-    let blanket_verifies_count = get("blanket_verifies");
+    // A count exists only where a measurement happened. An axis this run did not
+    // judge reports its NAME and its reason, never `0` — zero is the answer a
+    // clean tree gives, and a mode that borrows it has told the consumer their
+    // tree is clean.
+    let measured: std::collections::BTreeMap<AuditAxis, Option<usize>> = verdicts
+        .iter()
+        .map(|(axis, reason)| {
+            (
+                axis,
+                match reason {
+                    None => Some(counts.get(&axis).copied().unwrap_or(0)),
+                    Some(_) => None,
+                },
+            )
+        })
+        .collect();
+    // The map claims a skip; the violations are what actually happened. If an
+    // axis reported "not judged" emitted anything, one of the two is lying and
+    // the run must say so rather than publish a report that reads consistent.
+    for (axis, count) in &counts {
+        if measured.get(axis).copied().flatten().is_none() {
+            bail!(
+                "internal: axis `{}` was reported as not judged but emitted {} violation(s)",
+                axis.kind_tag(),
+                count
+            );
+        }
+    }
+    let get = |axis: AuditAxis| counts.get(&axis).copied().unwrap_or(0);
+    let missing_count = get(AuditAxis::Missing);
+    let section_missing_count = get(AuditAxis::SectionMissing);
+    let citation_unbound_count = get(AuditAxis::CitationUnbound);
+    let binding_unbacked_count = get(AuditAxis::BindingUnbacked);
+    let impl_missing_count = get(AuditAxis::ImplementationMissing);
+    let verification_missing_count = get(AuditAxis::VerificationMissing);
+    let misclassified_coverage_count = get(AuditAxis::MisclassifiedCoverage);
+    let blanket_verifies_count = get(AuditAxis::BlanketVerifies);
     // R425 / SCE P4 — standing informational count: verifies bindings whose
     // claims are not yet Confirmed (proposed / refuted / stale). Independent of
     // any severity knob — an existence-green gate that hides a semantic gap
@@ -6451,10 +6519,10 @@ fn cmd_validate_code_refs(args: &[String]) -> Result<()> {
         )
         .len()
     };
-    let inventory_missing_count = get("inventory_missing");
-    let inventory_deprecated_count = get("inventory_deprecated");
-    let symbol_mismatch_count = get("symbol_mismatch");
-    let prose_fact_assertion_count = get("prose_fact_assertion");
+    let inventory_missing_count = get(AuditAxis::InventoryMissing);
+    let inventory_deprecated_count = get(AuditAxis::InventoryDeprecated);
+    let symbol_mismatch_count = get(AuditAxis::SymbolMismatch);
+    let prose_fact_assertion_count = get(AuditAxis::ProseFactAssertion);
     let inventory_count = inventory_missing_count + inventory_deprecated_count;
     let hallucination_count = missing_count + section_missing_count;
     // Round 385 — coverage split. The binding bucket is the per-edge axis:
@@ -6472,14 +6540,34 @@ fn cmd_validate_code_refs(args: &[String]) -> Result<()> {
     // told to scan" when the only question that ever mattered is "what did you
     // scan". The drift this replaced went four crates deep behind a report that
     // looked complete because it echoed its own input.
-    let scanned_paths: Vec<String> = mnemosyne_validate::code_refs::expand_paths(&root, &cfg.paths)
-        .iter()
-        .map(|p| {
-            p.strip_prefix(&root)
-                .unwrap_or(p)
-                .display()
-                .to_string()
-                .replace('\\', "/")
+    //
+    // Under `--paths` the answer to that same question is the matched FILES,
+    // not the configured roots: printing the roots would say this run read
+    // `crates/*/src/` when it read three files.
+    let scanned_paths: Vec<String> = match &path_scope_coverage {
+        Some(cov) => cov.matched_files.clone(),
+        None => mnemosyne_validate::code_refs::expand_paths(&root, &cfg.paths)
+            .iter()
+            .map(|p| {
+                p.strip_prefix(&root)
+                    .unwrap_or(p)
+                    .display()
+                    .to_string()
+                    .replace('\\', "/")
+            })
+            .collect(),
+    };
+    // The axes this run did not judge, each with a machine reason and a
+    // sentence, from the same map the scan skipped by.
+    let not_judged: Vec<serde_json::Value> = verdicts
+        .not_judged()
+        .into_iter()
+        .map(|(axis, reason)| {
+            serde_json::json!({
+                "axis": axis,
+                "reason": reason,
+                "detail": reason.detail(),
+            })
         })
         .collect();
 
@@ -6491,12 +6579,26 @@ fn cmd_validate_code_refs(args: &[String]) -> Result<()> {
         // shape so external consumers see one predictable layout.
         let view: Vec<serde_json::Value> = violations.iter().map(|v| v.to_cli_json()).collect();
         let valid_entry_count = store.changelog_entries.len();
-        println!(
-            "{}",
-            serde_json::json!({
+        // The `<tag>_count` fields, generated from the one verdict map rather
+        // than listed by hand: thirteen hand-written lines is thirteen chances
+        // for a new axis to be counted and never published, and the null-vs-zero
+        // distinction has to hold for all of them or for none.
+        let mut doc = serde_json::Map::new();
+        for (axis, count) in &measured {
+            doc.insert(
+                format!("{}_count", axis.kind_tag()),
+                match count {
+                    Some(n) => serde_json::json!(n),
+                    None => serde_json::Value::Null,
+                },
+            );
+        }
+        let mut rest = serde_json::json!({
             "primitive": "validate-code-refs",
             "configured_paths": cfg.paths,
             "scanned_paths": scanned_paths,
+            "path_scope": path_scope_coverage,
+            "not_judged": not_judged,
             "valid_entry_count": valid_entry_count,
             "valid_section_count": store.sections.len(),
             "valid_inventory_count": store.inventory_entries.len(),
@@ -6505,20 +6607,7 @@ fn cmd_validate_code_refs(args: &[String]) -> Result<()> {
             "external_section_prefixes": cfg.external_section_prefixes,
             "external_section_prefixes_bare": cfg.external_section_prefixes_bare,
             "external_changelog_prefixes": cfg.external_changelog_prefixes,
-            "missing_count": missing_count,
-            "section_missing_count": section_missing_count,
-            "citation_unbound_count": citation_unbound_count,
-            "symbol_mismatch_count": symbol_mismatch_count,
-            "binding_unbacked_count": binding_unbacked_count,
-            "impl_missing_count": impl_missing_count,
-            "verification_missing_count": verification_missing_count,
-            "misclassified_coverage_count": misclassified_coverage_count,
-            "blanket_verifies_count": blanket_verifies_count,
-            "prose_fact_assertion_count": prose_fact_assertion_count,
             "unconfirmed_verifies": unconfirmed_verifies_count,
-            "decay_count": decay_count,
-            "inventory_missing_count": inventory_missing_count,
-            "inventory_deprecated_count": inventory_deprecated_count,
             "severity_missing": severity_missing,
             "severity_binding": severity_binding,
             "severity_coverage": severity_coverage,
@@ -6531,8 +6620,9 @@ fn cmd_validate_code_refs(args: &[String]) -> Result<()> {
             "vcs_axis": vcs_axis,
             "numbering_origin": numbering_origin,
             "violations": view,
-            })
-        );
+        });
+        rest.as_object_mut().expect("json! object").append(&mut doc);
+        println!("{rest}");
     } else {
         println!("=== mnemosyne-cli validate-code-refs ===");
         println!(
@@ -6545,13 +6635,39 @@ fn cmd_validate_code_refs(args: &[String]) -> Result<()> {
             cfg.paths,
             scanned_paths
         );
+        // SCE 4-B — the narrowing, at every value. A scoped run that printed
+        // only its (short) violation list would look like a clean whole-tree
+        // run to anyone reading the terminal.
+        if let Some(cov) = &path_scope_coverage {
+            println!(
+                "path scope (SCE 4-B): {} of {} read-set file(s) judged, from {} requested \
+                 path(s) {:?}",
+                cov.matched_files.len(),
+                cov.read_set_total,
+                cov.requested.len(),
+                cov.requested,
+            );
+            if !cov.out_of_read_set.is_empty() {
+                println!(
+                    "  NOT READ by this gate — no configured path covers them, so they are \
+                     unjudged rather than clean: {:?}",
+                    cov.out_of_read_set
+                );
+            }
+            if !cov.not_found.is_empty() {
+                println!(
+                    "  NOT ON DISK — a typo, or a path the commit deleted: {:?}",
+                    cov.not_found
+                );
+            }
+        }
         // Round 856 — what `comment_only` meant per file. `true` reads comments
         // only where a comment syntax is known and the WHOLE text everywhere
         // else, so the knob's meaning depends on the extension. That is why a
         // consumer's prose citations in `.scxml` are read at all, and why a
         // citation-shaped token in a data file counts under a reject severity.
         if cfg.comment_only {
-            let modes = mnemosyne_validate::code_refs::comment_mode_coverage(&root, &cfg.paths)?;
+            let modes = mnemosyne_validate::code_refs::comment_mode_coverage(&read_files);
             println!(
                 "comment_only=true: {} of {} scanned file(s) have no known comment syntax \
                  and are read whole {:?} (Round 856)",
@@ -6647,7 +6763,7 @@ fn cmd_validate_code_refs(args: &[String]) -> Result<()> {
         // store whose every citation lands produce the same silence otherwise.
         let ids = mnemosyne_validate::code_refs::scan_id_citations(
             &root,
-            &cfg.paths,
+            &read_files,
             cfg.comment_only,
             &store
                 .narrative_facts
@@ -6655,7 +6771,7 @@ fn cmd_validate_code_refs(args: &[String]) -> Result<()> {
                 .map(ToString::to_string)
                 .collect(),
             &store.entities.keys().map(ToString::to_string).collect(),
-        )?;
+        );
         if ids.namespaces.is_empty() {
             println!(
                 "fact/entity citations: axis not applicable — the store holds {} fact(s) and \
@@ -6710,6 +6826,15 @@ fn cmd_validate_code_refs(args: &[String]) -> Result<()> {
             fmt_axis(&symbol_axis.unmapped_extensions),
             symbol_axis.unreachable_citing_files(),
         );
+        // SCE 4-A — what the axis COSTS, published whether or not a resolver is
+        // configured. The consumer who reported 108.9 seconds here needs
+        // citations-per-file to price one-parse-per-file, and a tree with no
+        // resolver (this one) never enters the branch that would time it.
+        println!(
+            "  cost: {} citation(s) over {} file(s) reach a resolver — {} call(s), one parse each \
+             (before Round 1141 it was one parse per citation)",
+            symbol_axis.checked_citations, symbol_axis.checked_files, symbol_axis.checked_files,
+        );
         if !cfg.inventory_path_prefixes.is_empty() {
             println!(
                 "inventory_path_prefixes={:?} (Round 302 section-path axis)",
@@ -6737,34 +6862,46 @@ fn cmd_validate_code_refs(args: &[String]) -> Result<()> {
         if let Some(ref fid) = filter_id {
             println!("filter_id={:?} (Round 258 decay scan mode)", fid);
         }
-        // `symbol_mismatch` is itemized here as of Round 855. It was counted
-        // into `total` and named in the reject message, but absent from this
-        // line — so the one axis whose coverage depends on a resolver being
-        // configured was also the one a reader could not see the count of.
+        // The judged axes and their counts, generated from the verdict map so
+        // an axis nobody judged CANNOT appear here as a zero. `symbol_mismatch`
+        // was itemized as of Round 855 for the neighbouring reason: it was
+        // counted into `total` and named in the reject message but absent from
+        // this line, so the one axis whose reach depends on a resolver was the
+        // one whose count a reader could not see.
+        let judged_line: String = measured
+            .iter()
+            .filter_map(|(axis, count)| count.map(|n| format!("{}={n}", axis.kind_tag())))
+            .collect::<Vec<_>>()
+            .join(" ");
         println!(
-            "violations: total={} missing={} section_missing={} \
- citation_unbound={} symbol_mismatch={} binding_unbacked={} impl_missing={} \
- verification_missing={} \
- misclassified_coverage={} blanket_verifies={} prose_fact_assertion={} decay={} \
- inv_missing={} inv_deprecated={} unconfirmed_verifies={} \
- (severity_missing={} severity_binding={} severity_coverage={} severity_verification={} \
- severity_classification={} severity_blanket={} severity_prose_fact_assertion={} \
- severity_inventory={})",
+            "violations: total={} {} unconfirmed_verifies={}",
             violations.len(),
-            missing_count,
-            section_missing_count,
-            citation_unbound_count,
-            symbol_mismatch_count,
-            binding_unbacked_count,
-            impl_missing_count,
-            verification_missing_count,
-            misclassified_coverage_count,
-            blanket_verifies_count,
-            prose_fact_assertion_count,
-            decay_count,
-            inventory_missing_count,
-            inventory_deprecated_count,
+            judged_line,
             unconfirmed_verifies_count,
+        );
+        // The axes this run did NOT judge, named with the reason, for the Round
+        // 819 reason one level up: an axis that measured nothing and an axis
+        // that measured zero print the same silence, and only one of them is
+        // news the consumer can act on.
+        if not_judged.is_empty() {
+            println!("not judged: none — every axis was measured this run");
+        } else {
+            println!(
+                "not judged ({} axes) — no count is published for these:",
+                not_judged.len()
+            );
+            for (axis, reason) in verdicts.not_judged() {
+                println!(
+                    "  {} — {} ({})",
+                    axis.kind_tag(),
+                    reason.detail(),
+                    reason.as_str()
+                );
+            }
+        }
+        println!(
+            "severities: missing={} binding={} coverage={} verification={} \
+             classification={} blanket={} prose_fact_assertion={} inventory={}",
             severity_missing.as_str(),
             severity_binding.as_str(),
             severity_coverage.as_str(),
@@ -6787,61 +6924,81 @@ fn cmd_validate_code_refs(args: &[String]) -> Result<()> {
 
     // Reject gates by defect class — each class gated by its
     // own severity flag. Decay never rejects (informational).
+    //
+    // The per-axis detail comes from the SAME verdict map the report prints
+    // from, so a class whose members were not all judged says so here too. The
+    // messages used to spell every member as a number, which meant a scoped run
+    // rejecting on a real `citation_unbound` also announced `BindingUnbacked=0`
+    // — the borrowed zero this round exists to remove, in the one place a
+    // consumer is guaranteed to read.
+    let axis_detail = |axes: &[AuditAxis]| -> String {
+        axes.iter()
+            .map(|a| match measured.get(a).copied().flatten() {
+                Some(n) => format!("{}={n}", a.kind_tag()),
+                None => format!("{}=not judged", a.kind_tag()),
+            })
+            .collect::<Vec<_>>()
+            .join(" ")
+    };
     let mut reject_msgs: Vec<String> = Vec::new();
     if hallucination_count > 0 && severity_missing.is_reject() {
         reject_msgs.push(format!(
-            "{} hallucination-class citation(s) — Missing={} SectionMissing={} \
- (severity_missing=reject)",
-            hallucination_count, missing_count, section_missing_count,
+            "{} hallucination-class citation(s) — {} (severity_missing=reject)",
+            hallucination_count,
+            axis_detail(&[AuditAxis::Missing, AuditAxis::SectionMissing]),
         ));
     }
     if binding_count > 0 && severity_binding.is_reject() {
         reject_msgs.push(format!(
-            "{} binding-class violation(s) — CitationUnbound={} BindingUnbacked={} \
- SymbolMismatch={} (severity_binding=reject)",
-            binding_count, citation_unbound_count, binding_unbacked_count, symbol_mismatch_count,
+            "{} binding-class violation(s) — {} (severity_binding=reject)",
+            binding_count,
+            axis_detail(&[
+                AuditAxis::CitationUnbound,
+                AuditAxis::BindingUnbacked,
+                AuditAxis::SymbolMismatch,
+            ]),
         ));
     }
     if coverage_count > 0 && severity_coverage.is_reject() {
         reject_msgs.push(format!(
-            "{} coverage-class violation(s) — ImplementationMissing={} \
- (severity_coverage=reject)",
-            coverage_count, impl_missing_count,
+            "{} coverage-class violation(s) — {} (severity_coverage=reject)",
+            coverage_count,
+            axis_detail(&[AuditAxis::ImplementationMissing]),
         ));
     }
     if verification_missing_count > 0 && severity_verification == Some(Severity::Reject) {
         reject_msgs.push(format!(
-            "{} verification-class violation(s) — VerificationMissing={} \
- (severity_verification=reject)",
-            verification_missing_count, verification_missing_count,
+            "{} verification-class violation(s) — {} (severity_verification=reject)",
+            verification_missing_count,
+            axis_detail(&[AuditAxis::VerificationMissing]),
         ));
     }
     if misclassified_coverage_count > 0 && severity_classification == Some(Severity::Reject) {
         reject_msgs.push(format!(
-            "{} classification-class violation(s) — MisclassifiedCoverage={} \
- (severity_classification=reject)",
-            misclassified_coverage_count, misclassified_coverage_count,
+            "{} classification-class violation(s) — {} (severity_classification=reject)",
+            misclassified_coverage_count,
+            axis_detail(&[AuditAxis::MisclassifiedCoverage]),
         ));
     }
     if blanket_verifies_count > 0 && severity_blanket == Some(Severity::Reject) {
         reject_msgs.push(format!(
-            "{} blanket-class violation(s) — BlanketVerifies={} \
- (severity_blanket=reject)",
-            blanket_verifies_count, blanket_verifies_count,
+            "{} blanket-class violation(s) — {} (severity_blanket=reject)",
+            blanket_verifies_count,
+            axis_detail(&[AuditAxis::BlanketVerifies]),
         ));
     }
     if prose_fact_assertion_count > 0 && severity_prose_fact_assertion == Some(Severity::Reject) {
         reject_msgs.push(format!(
-            "{} prose-fact-assertion violation(s) — ProseFactAssertion={} \
- (severity_prose_fact_assertion=reject)",
-            prose_fact_assertion_count, prose_fact_assertion_count,
+            "{} prose-fact-assertion violation(s) — {} (severity_prose_fact_assertion=reject)",
+            prose_fact_assertion_count,
+            axis_detail(&[AuditAxis::ProseFactAssertion]),
         ));
     }
     if inventory_count > 0 && severity_inventory.is_reject() {
         reject_msgs.push(format!(
-            "{} inventory-axis violation(s) — InventoryMissing={} InventoryDeprecated={} \
- (severity_inventory=reject)",
-            inventory_count, inventory_missing_count, inventory_deprecated_count,
+            "{} inventory-axis violation(s) — {} (severity_inventory=reject)",
+            inventory_count,
+            axis_detail(&[AuditAxis::InventoryMissing, AuditAxis::InventoryDeprecated,]),
         ));
     }
     if !reject_msgs.is_empty() {

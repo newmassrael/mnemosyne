@@ -3309,9 +3309,22 @@ pub fn import_sections(
             }
             Some(true) => no_op += 1,
             Some(false) => {
+                // The refusal NAMES THE WAY FORWARD, and there are two of them.
+                // A consumer read this message, took "supersede + re-create" as
+                // the only answer, and concluded there was no way at all to
+                // reflect a changed source heading — so their generated ledger
+                // and their source document drifted (`Realization Status
+                // (2026-04-13)` in the store, `Realization Status` in the doc)
+                // with every validator green, because the store was consistent
+                // with itself. The field setters were already there; nothing at
+                // the point of refusal said so, and a surface a consumer cannot
+                // find is a surface they do not have.
                 return Err(AtomicMutateError::Validation(format!(
                     "import_sections: manifest entry {idx} section_id `{section_id_t}` already \
- exists with DIVERGENT content — refusing silent overwrite (supersede + re-create to revise)"
+ exists with DIVERGENT content — refusing silent overwrite. To REVISE THE DECISION: \
+ set-section-decision-status (supersede) + re-create. To SYNC A CHANGED SOURCE (the heading \
+ text moved, the decision did not): set-section-title / set-section-parent-doc / \
+ set-section-parent-section"
                 )));
             }
         }
@@ -16597,7 +16610,26 @@ mod tests {
         )
         .unwrap_err();
         assert!(matches!(err, AtomicMutateError::Validation(_)));
-        assert!(format!("{err}").contains("DIVERGENT"), "{err}");
+        let text = format!("{err}");
+        assert!(text.contains("DIVERGENT"), "{text}");
+        // The refusal must NAME BOTH ways forward. This fixture is the exact
+        // shape a consumer hit — a section whose TITLE changed in the source
+        // document — and the message named only "supersede + re-create", which
+        // is the answer for a changed DECISION. They concluded no sync path
+        // existed, and their store and their document drifted apart with every
+        // validator green. The setters were already there; the refusal is where
+        // a caller is standing when they need to know.
+        for way in [
+            "set-section-title",
+            "set-section-parent-doc",
+            "set-section-parent-section",
+            "set-section-decision-status",
+        ] {
+            assert!(
+                text.contains(way),
+                "the refusal must name `{way}` as a way forward: {text}"
+            );
+        }
     }
 
     #[test]

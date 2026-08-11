@@ -125,6 +125,7 @@ fn build_validator(
         orphan_ledger: vec![],
         symbol_resolvers,
         filter_id: None,
+        path_scope: None,
     }
 }
 

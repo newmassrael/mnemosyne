@@ -178,7 +178,7 @@ severity_inventory = "warn"
     let v = run_cli(tmp.path(), &["validate-code-refs"]);
     let stdout = String::from_utf8_lossy(&v.stdout);
     assert!(
-        stdout.contains("inv_missing=0"),
+        stdout.contains("inventory_missing=0"),
         "validate-code-refs must see FOO_07 in the redirected sidecar; got: {}",
         stdout
     );

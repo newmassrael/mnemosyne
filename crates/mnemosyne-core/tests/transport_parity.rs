@@ -19,7 +19,7 @@ fn mcp_transport_surfaces_not_implemented_until_r307() {
     let r = McpResolver {
         command: vec!["python".into(), "-m".into(), "resolver".into()],
     };
-    match r.resolve_symbol_at(Path::new("/dev/null"), 1) {
+    match r.resolve_symbols_at(Path::new("/dev/null"), "", &[1]) {
         Err(ResolverError::NotImplemented) => {}
         other => panic!("expected NotImplemented, got {:?}", other),
     }
@@ -31,7 +31,7 @@ fn cli_transport_surfaces_not_implemented_until_r307() {
         command: vec!["gopls".into()],
         output_parser: Some("gopls_v0_15".into()),
     };
-    match r.resolve_symbol_at(Path::new("/dev/null"), 1) {
+    match r.resolve_symbols_at(Path::new("/dev/null"), "", &[1]) {
         Err(ResolverError::NotImplemented) => {}
         other => panic!("expected NotImplemented, got {:?}", other),
     }

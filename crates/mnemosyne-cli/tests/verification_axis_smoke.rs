@@ -84,9 +84,22 @@ fn verify_axis_is_opt_in_and_gates_then_exempts() {
         "default run must not reject (verify axis off): {}",
         String::from_utf8_lossy(&out.stderr)
     );
+    // An axis that is off did not measure anything, so it publishes no count —
+    // `0` is what a judged-and-clean axis returns and the two must not share a
+    // reading. The naming below is what replaces the number.
     assert_eq!(
-        json["verification_missing_count"], 0,
-        "axis off must emit zero VerificationMissing"
+        json["verification_missing_count"],
+        serde_json::Value::Null,
+        "axis off must publish no count at all: {json}"
+    );
+    assert!(
+        json["not_judged"]
+            .as_array()
+            .expect("not_judged array")
+            .iter()
+            .any(|e| e["axis"] == "verification_missing" && e["reason"] == "axis_disabled"),
+        "the off axis is named with its reason: {}",
+        json["not_judged"]
     );
     assert!(
         json["severity_verification"].is_null(),

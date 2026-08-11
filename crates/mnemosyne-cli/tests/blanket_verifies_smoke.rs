@@ -70,7 +70,23 @@ fn detector_off_by_default_and_unconfirmed_surfaced() {
         "default run passes; stderr: {}",
         String::from_utf8_lossy(&out.stderr)
     );
-    assert_eq!(json["blanket_verifies_count"], 0, "opt-in: off by default");
+    // Opt-in and OFF: the axis is not judged, so it publishes no count at all.
+    // It used to publish `0`, which is the answer a judged-and-clean axis gives
+    // — the one reading a consumer must not take from an axis nobody ran.
+    assert_eq!(
+        json["blanket_verifies_count"],
+        serde_json::Value::Null,
+        "an axis that did not run reports no count"
+    );
+    assert!(
+        json["not_judged"]
+            .as_array()
+            .expect("not_judged array")
+            .iter()
+            .any(|e| e["axis"] == "blanket_verifies" && e["reason"] == "axis_disabled"),
+        "and it is NAMED, with the reason: {}",
+        json["not_judged"]
+    );
     assert_eq!(json["severity_blanket"], serde_json::Value::Null);
     // P4 — the bound-but-unconfirmed gap is visible WITHOUT any opt-in.
     assert_eq!(

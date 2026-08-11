@@ -1,0 +1,208 @@
+{
+  "_": [
+    "THE SWEEP THAT SAYS THE PATH-SCOPE LAWS ARE NOT VACUOUS — run it from the",
+    "repository root:",
+    "    cargo run -q --manifest-path tools/injection-harness/Cargo.toml -- \\",
+    "        crates/mnemosyne-cli/sweeps/citation-path-scope.sweep.json",
+    "",
+    "WHAT IT IS ABOUT. `validate-code-refs --paths <file>...` is SCE lift-request",
+    "4-B: a run narrowed to the files a commit touched, judging the axes that one",
+    "file plus the store can decide, and SAYING SO about the ones it cannot. Six",
+    "tests in `validate_code_refs_path_scope.rs` and three in `code_refs.rs` state",
+    "those laws, and they shipped green — which says the laws hold and says",
+    "nothing about whether they could break. Each injection below breaks ONE READ",
+    "and names the tests that must go red for it.",
+    "",
+    "SCOPE IS THE WHOLE WORKSPACE. The edits land in `mnemosyne-validate` and in",
+    "`mnemosyne-cli`, and Round 1139 measured what a narrower run costs: under",
+    "`-p mnemosyne-cli` the EDITED CRATE'S OWN SUITE never runs, so a law its unit",
+    "tests already guard and a law nothing guards come back as the same red set.",
+    "`--workspace` is the widest reading of the population that can go red.",
+    "",
+    "THE RED SETS HERE ARE PREDICTIONS AND ARE NOT YET MEASURED, so the manifest",
+    "claims `at-least` (the default) rather than Round 1140's `exhaustive`. The",
+    "sweep's CONTROL has run on this tree — 1858 passed, 0 failed, 159 targets —",
+    "and no injection has. Each `expect_red` below is what the author expects to",
+    "go red and says nothing about the rest, which is the only honest reading",
+    "for a red set nobody has counted. Promoting this file to `exhaustive` takes",
+    "one full run of it and replacing every list with what that run reported;",
+    "the interesting claims — 'breaking the null-vs-zero rule reddens five",
+    "suites, breaking the scope filter reddens a different four' — are prose",
+    "until then.",
+    "",
+    "THE ONE PREDICTION WORTH READING AHEAD OF THE RUN: the axis-verdict map is",
+    "read by the scan (as its skip conditions) and by the report (as its",
+    "`not_judged` list), and injection `the-report-stops-naming-the-axes-it-",
+    "skipped` cuts only the second reader. If the two had drifted into separate",
+    "derivations, that injection would redden nothing at all."
+  ],
+  "repo": "../../..",
+  "test_command": ["cargo", "test", "--workspace", "--no-fail-fast"],
+  "logs": "../../../target/injection-logs",
+  "min_free_mb": 8000,
+  "injections": [
+    {
+      "name": "the-scope-stops-narrowing-the-read-set",
+      "why": "the scope exists to make the run read fewer files; with the filter gone a scoped run answers about the whole tree while still calling itself scoped, which is the equality law's exact negation",
+      "edits": [
+        {
+          "file": "crates/mnemosyne-validate/src/code_refs.rs",
+          "from": "            .filter(|abs| self.selects(abs.strip_prefix(root).unwrap_or(abs)))",
+          "to": "            .filter(|abs| self.selects(abs.strip_prefix(root).unwrap_or(abs)) | true)"
+        }
+      ],
+      "expect_red": [
+        "a_scoped_run_says_about_its_files_exactly_what_the_whole_run_says",
+        "a_requested_path_the_gate_never_reads_is_named_rather_than_called_clean",
+        "a_scoped_run_rejects_on_its_own_files_and_passes_when_they_are_clean",
+        "code_refs::tests::a_scope_tells_judged_from_unread_from_absent"
+      ]
+    },
+    {
+      "name": "a-scoped-run-judges-the-spec-side-anyway",
+      "why": "the spec-side axes ask whether a store claim has a witness ANYWHERE; judged against a partial read set every binding outside the scope looks unwitnessed, so this is the false-reject a consumer's hook would eat",
+      "edits": [
+        {
+          "file": "crates/mnemosyne-validate/src/code_refs.rs",
+          "from": "                    } else if scoped && axis.side() == AuditSide::Spec {",
+          "to": "                    } else if false && scoped && axis.side() == AuditSide::Spec {"
+        }
+      ],
+      "expect_red": [
+        "a_scoped_run_says_about_its_files_exactly_what_the_whole_run_says",
+        "a_scoped_run_names_every_axis_it_does_not_judge",
+        "a_requested_path_the_gate_never_reads_is_named_rather_than_called_clean",
+        "a_scoped_run_rejects_on_its_own_files_and_passes_when_they_are_clean"
+      ]
+    },
+    {
+      "name": "the-report-stops-naming-the-axes-it-skipped",
+      "why": "an axis nobody judged and an axis that found nothing print the same silence; the naming is the whole difference, and three suites beyond the scope tests read it",
+      "edits": [
+        {
+          "file": "crates/mnemosyne-validate/src/code_refs.rs",
+          "from": "            .filter_map(|(axis, reason)| reason.map(|r| (*axis, r)))",
+          "to": "            .filter_map(|(axis, reason)| reason.map(|r| (*axis, r)))\n            .take(0)"
+        }
+      ],
+      "expect_red": [
+        "a_scoped_run_names_every_axis_it_does_not_judge",
+        "the_text_report_names_the_scope_and_the_axes_it_did_not_judge",
+        "detector_off_by_default_and_unconfirmed_surfaced",
+        "verify_axis_is_opt_in_and_gates_then_exempts",
+        "case_vii_filter_id_surfaces_decay_and_skips_others"
+      ]
+    },
+    {
+      "name": "an-axis-nobody-measured-publishes-a-zero",
+      "why": "this is the defect in its original form — three modes printed `0` for an axis they structurally skip, and `0` is the answer a judged-and-clean axis gives; the rejection message is downstream of the same map, so it goes back to printing the zero too",
+      "edits": [
+        {
+          "file": "crates/mnemosyne-cli/src/main.rs",
+          "from": "                    Some(_) => None,",
+          "to": "                    Some(_) => Some(0),"
+        }
+      ],
+      "expect_red": [
+        "a_scoped_run_names_every_axis_it_does_not_judge",
+        "a_scoped_run_rejects_on_its_own_files_and_passes_when_they_are_clean",
+        "the_text_report_names_the_scope_and_the_axes_it_did_not_judge",
+        "detector_off_by_default_and_unconfirmed_surfaced",
+        "verify_axis_is_opt_in_and_gates_then_exempts",
+        "case_vii_filter_id_surfaces_decay_and_skips_others"
+      ]
+    },
+    {
+      "name": "a-file-this-gate-never-reads-is-filed-as-absent",
+      "why": "'no configured path covers it' and 'it is not on disk' are two different pieces of news for a hook handing over a changed-file list, and only one of them is the consumer's typo",
+      "edits": [
+        {
+          "file": "crates/mnemosyne-validate/src/code_refs.rs",
+          "from": "                cov.out_of_read_set.push(display_path(req));",
+          "to": "                cov.not_found.push(display_path(req));"
+        }
+      ],
+      "expect_red": [
+        "a_requested_path_the_gate_never_reads_is_named_rather_than_called_clean",
+        "code_refs::tests::a_scope_tells_judged_from_unread_from_absent"
+      ]
+    },
+    {
+      "name": "the-narrowing-vanishes-from-the-human-report",
+      "why": "the consumer reads a terminal; a scoped run whose short violation list is the only evidence of narrowing looks exactly like a clean whole-tree run",
+      "edits": [
+        {
+          "file": "crates/mnemosyne-cli/src/main.rs",
+          "from": "        if let Some(cov) = &path_scope_coverage {",
+          "to": "        if let Some(cov) = path_scope_coverage.clone().filter(|_| false).as_ref() {"
+        }
+      ],
+      "expect_red": ["the_text_report_names_the_scope_and_the_axes_it_did_not_judge"]
+    },
+    {
+      "name": "the-resolver-goes-back-to-the-disk",
+      "why": "the point of passing the source is that the symbol answer comes from the bytes the citation was extracted from; a plugin that reads the path again has its own copy, and two reads of one file can disagree",
+      "edits": [
+        {
+          "file": "crates/mnemosyne-plugin-tree-sitter-rust/src/lib.rs",
+          "from": "        let tree = parser\n            .parse(source, None)",
+          "to": "        let source = &std::fs::read_to_string(_file).unwrap_or_default();\n        let tree = parser\n            .parse(source, None)"
+        }
+      ],
+      "expect_red": [
+        "tests::fn_name_at_definition_line",
+        "tests::fn_name_inside_body",
+        "tests::struct_name",
+        "tests::nested_fn_inside_impl_takes_inner",
+        "tests::line_outside_any_item_returns_none",
+        "tests::one_call_answers_every_line_exactly_as_a_single_line_call_would",
+        "tests::line_zero_is_dropped_and_does_not_become_line_one"
+      ]
+    },
+    {
+      "name": "the-file-is-put-to-the-resolver-one-citation-at-a-time",
+      "why": "this is the 108.9-second defect itself: the demand is batched per file, and a call that carries only the first line is the shape the batching replaced",
+      "edits": [
+        {
+          "file": "crates/mnemosyne-validate/src/code_refs.rs",
+          "from": "                        let lines: Vec<u32> = symbol_demand",
+          "to": "                        let lines: Vec<u32> = symbol_demand[..1]"
+        }
+      ],
+      "expect_red": [
+        "a_file_with_three_citations_is_put_to_the_resolver_once",
+        "the_census_prices_the_axis_and_the_scan_pays_exactly_that"
+      ]
+    },
+    {
+      "name": "the-census-prices-every-bound-citation-instead-of-the-checked-ones",
+      "why": "a census that counts `cited and bound` rather than `records a symbol` overstates the axis's cost, and the consumer's payoff estimate is a division by exactly this number",
+      "edits": [
+        {
+          "file": "crates/mnemosyne-validate/src/code_refs.rs",
+          "from": "                if symbol_expectation(section_id, &site.file, &symbols_by_section_file).is_none() {\n                    continue;\n                }",
+          "to": "                if false {\n                    continue;\n                }"
+        }
+      ],
+      "expect_red": ["the_census_prices_the_axis_and_the_scan_pays_exactly_that"]
+    },
+    {
+      "name": "the-scan-emits-what-the-verdict-map-says-it-skipped",
+      "why": "the run self-checks that a not-judged axis emitted nothing, and a self-check with no reader is the shape this project keeps finding; here the map still says `not judged` while step 3 runs, so the check must stop the run rather than let a consistent-looking report out",
+      "edits": [
+        {
+          "file": "crates/mnemosyne-validate/src/code_refs.rs",
+          "from": "        if verdicts.judges(AuditAxis::BindingUnbacked) {",
+          "to": "        if true {"
+        }
+      ],
+      "expect_red": [
+        "a_scoped_run_says_about_its_files_exactly_what_the_whole_run_says",
+        "a_scoped_run_names_every_axis_it_does_not_judge",
+        "a_requested_path_the_gate_never_reads_is_named_rather_than_called_clean",
+        "a_scoped_run_rejects_on_its_own_files_and_passes_when_they_are_clean",
+        "the_text_report_names_the_scope_and_the_axes_it_did_not_judge"
+      ]
+    }
+  ]
+}

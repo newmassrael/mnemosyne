@@ -64,7 +64,37 @@ pub use ids::{
 pub trait SymbolResolver: Send + Sync {
     fn version_surface(&self) -> VersionSurface;
 
-    fn resolve_symbol_at(&self, file: &Path, line: u32) -> Result<Option<String>, ResolverError>;
+    /// The enclosing symbol at each of `lines`, resolved from `source` in ONE
+    /// parse. Absent from the map = no symbol encloses that line.
+    ///
+    /// # Why the shape is (source, lines) and not (file, line)
+    ///
+    /// PER FILE, NOT PER CITATION. The previous shape took one line, so a file
+    /// with N citations was read and parsed N times, and a consumer measured
+    /// 108.9 seconds of gate time with 99.4% of it here. A line LIST lets the
+    /// implementation parse once and answer all of them; the caller already
+    /// groups its citations by file, because that is how it reads them.
+    ///
+    /// AND THE SOURCE COMES FROM THE CALLER, which is a correctness property
+    /// rather than a saving. The call site extracted these citations from the
+    /// file's text and holds it; a resolver that reads the path again gets its
+    /// own copy, and two reads of one file can disagree — an editor saving
+    /// mid-run is the ordinary case. Then the symbol answer is about a file the
+    /// citation was never in, and nothing anywhere would say so.
+    ///
+    /// `file` remains for diagnostics and for implementations that key on the
+    /// extension; it is NOT a licence to read it. An implementation that reads
+    /// the path instead of `source` reintroduces both defects.
+    ///
+    /// # Errors
+    ///
+    /// [`ResolverError`] when the backend cannot parse or is not implemented.
+    fn resolve_symbols_at(
+        &self,
+        file: &Path,
+        source: &str,
+        lines: &[u32],
+    ) -> Result<BTreeMap<u32, String>, ResolverError>;
 }
 
 /// Validator plugin contract — typed-finding form.
@@ -676,7 +706,12 @@ impl SymbolResolver for McpResolver {
         }
     }
 
-    fn resolve_symbol_at(&self, _file: &Path, _line: u32) -> Result<Option<String>, ResolverError> {
+    fn resolve_symbols_at(
+        &self,
+        _file: &Path,
+        _source: &str,
+        _lines: &[u32],
+    ) -> Result<BTreeMap<u32, String>, ResolverError> {
         Err(ResolverError::NotImplemented)
     }
 }
@@ -701,7 +736,12 @@ impl SymbolResolver for CliResolver {
         }
     }
 
-    fn resolve_symbol_at(&self, _file: &Path, _line: u32) -> Result<Option<String>, ResolverError> {
+    fn resolve_symbols_at(
+        &self,
+        _file: &Path,
+        _source: &str,
+        _lines: &[u32],
+    ) -> Result<BTreeMap<u32, String>, ResolverError> {
         Err(ResolverError::NotImplemented)
     }
 }
@@ -765,12 +805,13 @@ mod tests {
                 schema_max: 4,
             }
         }
-        fn resolve_symbol_at(
+        fn resolve_symbols_at(
             &self,
             _file: &Path,
-            _line: u32,
-        ) -> Result<Option<String>, ResolverError> {
-            Ok(None)
+            _source: &str,
+            _lines: &[u32],
+        ) -> Result<BTreeMap<u32, String>, ResolverError> {
+            Ok(BTreeMap::new())
         }
     }
 
@@ -779,8 +820,10 @@ mod tests {
         let mut reg = PluginRegistry::new();
         reg.register_symbol_resolver("rust", Box::new(AlwaysNoneResolver));
         let r = reg.symbol_resolver("rust").expect("registered");
-        let out = r.resolve_symbol_at(Path::new("/dev/null"), 1).expect("ok");
-        assert!(out.is_none());
+        let out = r
+            .resolve_symbols_at(Path::new("/dev/null"), "", &[1])
+            .expect("ok");
+        assert!(out.is_empty());
         assert!(reg.symbol_resolver("unregistered").is_none());
     }
 
