@@ -18,13 +18,39 @@ path = "src/lib.rs"
 name = "all"
 path = "tests/all.rs"
 
-# Its own process, and the reason is measured: this test captures spans, and
-# `tracing`'s callsite interest cache is process-global. Sharing a process with
-# the others made it fail 2 of 30 runs under CPU contention, against 0 of 30
-# alone. A test whose subject is a process-global gets a process.
+# EACH OF THESE OWNS A PROCESS, and the reason is the same one four times: a
+# process has exactly one global tracing dispatcher.
+#
+# `handler_span_hierarchy_smoke` captures spans, and `tracing`'s callsite
+# interest cache is process-global even though `with_default` is thread-local.
+# Sharing a binary made it fail 2 of 30 runs under CPU contention, 0 of 30
+# alone, 0 of 100 after it got its process back (Round 1148).
+#
+# The three `grpc_otlp_*` tests call `init_otlp_tracing_subscriber*`, which ends
+# in `.try_init()` — the process-wide install. Consolidated, the first one wins
+# and the other two fail with "a global default trace dispatcher has already
+# been set". Round 1148 shipped that: they are `#![cfg(feature = "otlp")]`, so a
+# `cargo test --workspace` without `--all-features` compiles them to NOTHING and
+# reported 1872 green over a defect CI caught on the next push (Round 1150).
 [[test]]
 name = "handler_span_hierarchy_smoke"
 path = "tests/handler_span_hierarchy_smoke.rs"
+
+[[test]]
+name = "grpc_otlp_smoke"
+path = "tests/grpc_otlp_smoke.rs"
+
+[[test]]
+name = "grpc_otlp_collector_e2e"
+path = "tests/grpc_otlp_collector_e2e.rs"
+
+[[test]]
+name = "grpc_otlp_config_smoke"
+path = "tests/grpc_otlp_config_smoke.rs"
+
+[[test]]
+name = "grpc_otlp_sampling_zero_smoke"
+path = "tests/grpc_otlp_sampling_zero_smoke.rs"
 
 # Round 97 — opt-in TLS toggle. Default builds remain TLS-free (Round 91/96 carry
 # stable: no rustls/aws-lc-rs in the default closure, no extra build-time cost).

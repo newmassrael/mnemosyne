@@ -27,6 +27,7 @@
 //! A named list of constructs, each with a reason, is a claim a reader can
 //! check; a clever heuristic is not.
 
+use std::collections::BTreeSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -104,6 +105,74 @@ fn included_files(target: &Path) -> Vec<PathBuf> {
         .collect()
 }
 
+/// Markers that mean "this function installs the process-wide dispatcher".
+/// `.init()` and `.try_init()` are `tracing_subscriber`'s spelling of it.
+const GLOBAL_INSTALL_MARKERS: &[&str] = &["set_global_default", ".try_init()", ".init()"];
+
+/// The functions in a consolidated target's OWN crate whose bodies install a
+/// process-global, named so a test file that merely CALLS one is caught.
+///
+/// This is the repair for the hole Round 1150 fell through: the denylist reads
+/// the test file, and `grpc_otlp_smoke.rs` says only
+/// `init_otlp_tracing_subscriber(...)` while the `.try_init()` sits one hop away
+/// in `src/grpc.rs`. Derived from the source rather than listed here, so the
+/// next wrapper is covered the day it is written — the same reason the target
+/// walk above is a walk and not a list.
+///
+/// Textual and one hop deep, which is what a test can do without a compiler.
+/// A wrapper that calls a wrapper is not followed; that is a known limit rather
+/// than a claim of completeness.
+fn global_installing_fns(target: &Path) -> Vec<String> {
+    let Some(src) = target
+        .parent()
+        .and_then(Path::parent)
+        .map(|c| c.join("src"))
+    else {
+        return Vec::new();
+    };
+    let mut names = Vec::new();
+    let mut stack = vec![src];
+    while let Some(dir) = stack.pop() {
+        let Ok(entries) = fs::read_dir(&dir) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                stack.push(path);
+                continue;
+            }
+            if path.extension().is_none_or(|e| e != "rs") {
+                continue;
+            }
+            let Ok(body) = fs::read_to_string(&path) else {
+                continue;
+            };
+            // Walk the file once, remembering the most recent `pub fn` name; when
+            // an install marker appears, that function is the installer.
+            let mut current: Option<String> = None;
+            for line in body.lines() {
+                let trimmed = line.trim_start();
+                if let Some(rest) = trimmed.strip_prefix("pub fn ") {
+                    current = rest
+                        .split(|c: char| !(c.is_alphanumeric() || c == '_'))
+                        .next()
+                        .filter(|n| !n.is_empty())
+                        .map(str::to_string);
+                }
+                if GLOBAL_INSTALL_MARKERS.iter().any(|m| trimmed.contains(m)) {
+                    if let Some(name) = current.take() {
+                        names.push(name);
+                    }
+                }
+            }
+        }
+    }
+    names.sort();
+    names.dedup();
+    names
+}
+
 #[test]
 fn a_test_that_owns_a_process_global_does_not_share_a_binary() {
     let root = workspace_root();
@@ -128,10 +197,27 @@ fn a_test_that_owns_a_process_global_does_not_share_a_binary() {
              nothing is either a typo or a leftover",
             target.display()
         );
+        // The crate's OWN wrappers, derived rather than listed. A test file that
+        // says `init_otlp_tracing_subscriber(...)` contains none of the markers
+        // below, and the install happens one hop away in `src/`. Round 1150
+        // shipped exactly that and CI caught it.
+        let wrappers = global_installing_fns(target);
         for file in included {
             let body = fs::read_to_string(&file)
                 .unwrap_or_else(|e| panic!("{} is declared but unreadable: {e}", file.display()));
             scanned += 1;
+            for wrapper in &wrappers {
+                if body.contains(wrapper.as_str()) {
+                    violations.push(format!(
+                        "{} calls `{}`, which installs a process-global dispatcher in this \
+                         crate's own src. Give it its own [[test]] target instead of \
+                         including it in {}",
+                        file.strip_prefix(&root).unwrap_or(&file).display(),
+                        wrapper,
+                        target.strip_prefix(&root).unwrap_or(target).display()
+                    ));
+                }
+            }
             for (marker, why) in PROCESS_GLOBALS {
                 if body.contains(marker) {
                     violations.push(format!(
@@ -154,14 +240,59 @@ fn a_test_that_owns_a_process_global_does_not_share_a_binary() {
         violations.join("\n  ")
     );
 
-    // The other half of non-vacuity: the scan reached real files. A `#[path]`
-    // list that parsed to nothing would satisfy the assertion above in silence.
-    assert!(
-        scanned >= 20,
-        "only {scanned} included file(s) were scanned across {} target(s); the \
-         `#[path]` parse is probably not matching the file's actual spelling",
-        targets.len()
-    );
+    // NON-VACUITY, AND A LAW OF ITS OWN: every `tests/*.rs` in the crate is
+    // either included here or declared as its own `[[test]]`. Under
+    // `autotests = false` a file that is neither is a test NOBODY RUNS, and it
+    // reads exactly like a passing one.
+    //
+    // This replaces a hardcoded `scanned >= 20`, which was wrong the moment four
+    // files legitimately moved out — the hand-written number this repository
+    // keeps catching elsewhere, written by this gate's own author. Derived, it
+    // also catches the `#[path]` parse silently matching nothing, which is what
+    // that constant was reaching for.
+    for target in &targets {
+        let dir = target.parent().expect("a file has a parent");
+        let crate_dir = dir.parent().expect("tests/ sits in the crate");
+        let manifest = fs::read_to_string(crate_dir.join("Cargo.toml"))
+            .unwrap_or_else(|e| panic!("{}: {e}", crate_dir.display()));
+        let included: BTreeSet<String> = included_files(target)
+            .iter()
+            .filter_map(|p| p.file_name().map(|n| n.to_string_lossy().into_owned()))
+            .collect();
+        let mut orphans = Vec::new();
+        for entry in fs::read_dir(dir).expect("tests/ is readable").flatten() {
+            let path = entry.path();
+            if path.extension().is_none_or(|e| e != "rs") {
+                continue;
+            }
+            let name = path
+                .file_name()
+                .expect("a file has a name")
+                .to_string_lossy()
+                .into_owned();
+            if name == "all.rs" || included.contains(&name) {
+                continue;
+            }
+            if !manifest.contains(&format!("tests/{name}")) {
+                orphans.push(name);
+            }
+        }
+        orphans.sort();
+        assert!(
+            orphans.is_empty(),
+            "{} has `autotests = false`, so {} test file(s) are run by NOBODY — they are \
+             neither included in {} nor declared as their own [[test]]: {orphans:?}",
+            crate_dir.display(),
+            orphans.len(),
+            target.display()
+        );
+        assert!(
+            !included.is_empty(),
+            "{} included nothing — the `#[path]` parse matched no file",
+            target.display()
+        );
+    }
+    let _ = scanned;
 }
 
 /// The concrete case the law was written from, pinned by name.

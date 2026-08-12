@@ -8,22 +8,35 @@
 //! and there were still twenty-two of them, which is 0.66 GB of one dependency
 //! graph written down twenty-two times.
 //!
-//! WHAT IT COSTS TO DO IT THIS WAY, AND WHAT IT ALREADY COST. The tests now
-//! share a process, so anything process-global becomes shared state. The check
-//! before the move looked for `set_current_dir`, `env::set_var` and
-//! `env::remove_var` and found none — and MISSED ONE: `tracing`'s callsite
-//! interest cache is process-global even though `with_default` is
-//! thread-local, so a test capturing spans can miss a callsite while another
-//! thread installs a dispatcher. `handler_span_hierarchy_smoke` failed exactly
-//! that way, and it is measured rather than argued: under CPU contention it
-//! failed 2 of 30 runs inside this binary and 0 of 30 with its own process.
-//! It is therefore NOT in the list below — it keeps its own `[[test]]` target,
-//! which is what a test whose subject is the global dispatcher requires.
+//! WHAT IT COSTS TO DO IT THIS WAY, AND WHAT IT COST TWICE. The tests share a
+//! process, so anything process-global becomes shared state, and this file has
+//! now been wrong about that in two different ways.
 //!
-//! So the rule for adding a file here: if it touches something the PROCESS
-//! owns — the working directory, the environment, the tracing dispatcher, a
-//! signal handler, a global allocator — it needs its own target. Everything
-//! else shares this one.
+//! FIRST: the check before the move looked for `set_current_dir`,
+//! `env::set_var` and `env::remove_var` and found none — and missed that
+//! `tracing`'s callsite interest cache is process-global even though
+//! `with_default` is thread-local. `handler_span_hierarchy_smoke` failed 2 of
+//! 30 runs under CPU contention inside this binary, 0 of 30 with its own
+//! process, 0 of 100 after it got one back.
+//!
+//! SECOND, and it reached CI: the four `grpc_otlp_*` tests call
+//! `init_otlp_tracing_subscriber*`, which ends in `.try_init()` — the
+//! PROCESS-WIDE install. Only one of four can win it; the rest die with "a
+//! global default trace dispatcher has already been set". Two things hid it.
+//! The gate scanning for process-globals reads the TEST file, and these files
+//! call a helper whose body does the install. And every one of them is
+//! `#![cfg(feature = "otlp")]`, so `cargo test --workspace` WITHOUT
+//! `--all-features` compiles them to nothing — the 1872-green this round
+//! reported never built them. CI runs `--all-features` and said so.
+//!
+//! So two rules for adding a file here, and the second is the one that was
+//! learned the hard way:
+//!
+//! 1. If it touches what the PROCESS owns — working directory, environment,
+//!    tracing dispatcher, signal handlers, global allocator — it needs its own
+//!    target. Directly OR through a helper.
+//! 2. Verify with the FEATURES CI USES. A feature-gated test that does not
+//!    compile cannot fail, and a suite that never built it reports green.
 //!
 //! WHAT DID NOT CHANGE. Test NAMES gain their module as a prefix
 //! (`grpc_smoke::the_thing`), which is what `cargo test <name>` already matched
@@ -72,17 +85,9 @@ mod grpc_metadata_auth_smoke;
 #[path = "grpc_mtls_smoke.rs"]
 mod grpc_mtls_smoke;
 
-#[path = "grpc_otlp_collector_e2e.rs"]
-mod grpc_otlp_collector_e2e;
-
-#[path = "grpc_otlp_config_smoke.rs"]
-mod grpc_otlp_config_smoke;
-
-#[path = "grpc_otlp_sampling_zero_smoke.rs"]
-mod grpc_otlp_sampling_zero_smoke;
-
-#[path = "grpc_otlp_smoke.rs"]
-mod grpc_otlp_smoke;
+// The four `grpc_otlp_*` tests are deliberately absent — see the header. Each
+// calls `init_otlp_tracing_subscriber*`, which ends in `.try_init()`: the
+// process-wide install. Only one of four can win it.
 
 #[path = "grpc_reflection_smoke.rs"]
 mod grpc_reflection_smoke;
