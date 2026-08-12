@@ -16,7 +16,8 @@ exclude = ["/target"]
 needs = ["cargo"]
 
 # `librocksdb-sys` 의 bindgen 이 clang 내장 헤더를 요구한다. `libclang.so` 만으로는
-# 부족하고, 없으면 `'stdbool.h' file not found` 로 죽는다 (2026-08-12 pc2 실측).
+# 부족하고, 없으면 `'stdbool.h' file not found` 로 죽는다 (2026-08-12, Ubuntu
+# 24.04 빌드 머신에서 실측).
 packages = ["libclang-common-18-dev"]
 
 min_free_gb = 20
@@ -31,5 +32,6 @@ build = "cargo test --workspace --no-run"
 verify = "cargo test --workspace --no-fail-fast"
 
 # 주입 스윕 — 계약이 공허하지 않은지 증명한다. 컨트롤 1회 + 주입 16회이고 매번
-# 전체 스위트를 돌리므로 오래 걸린다. pc2 실측으로 테스트 실행만 런당 389초.
+# 전체 스위트를 돌리므로 오래 걸린다. 32코어 / 125 GB 머신에서 테스트 실행만
+# 런당 389초 실측.
 sweep = "cargo run -q --manifest-path tools/injection-harness/Cargo.toml -- crates/mnemosyne-cli/sweeps/citation-path-scope.sweep.json"
