@@ -269,6 +269,7 @@ dependencies = [
 name = "ci-plan"
 version = "0.1.0"
 dependencies = [
+ "toml",
  "yaml-rust2",
 ]
 

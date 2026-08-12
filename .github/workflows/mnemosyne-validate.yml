@@ -839,6 +839,32 @@ jobs:
           --cache 'Linux-cargo-unrun-'
           'target'
 
+      # R1160 — AND THIS ONE DECLARES NO `restore-keys`, ALONE IN THIS FILE. Run
+      # 31599893855 refused the repository at 10.75 GB of declared caches against
+      # GitHub's 10.00 GB, with this key alone at 9.95 GB of it, and the
+      # mechanism is the fallback that used to sit here.
+      #
+      # A FALLBACK IS INHERITANCE. `actions/cache` writes an archive only when
+      # the PRIMARY key missed — that run printed `Cache hit occurred on the
+      # primary key …, not saving cache` for both of this job's caches — so the
+      # only run that writes is the run whose key moved, and by then the fallback
+      # has already unpacked the previous generation onto the disk about to be
+      # saved. What gets written is the union, every time, forever: 7.83 GB at
+      # R1091 and 9.95 GB here, with `path:` never once changing.
+      #
+      # MEASURED, NOT REASONED: this cache put 37,427 MB on the runner, and a
+      # clean build of everything this job compiles is 3.86 GB (`cargo test
+      # --workspace --all-features --no-run` plus `tools/unrun-tests`, same
+      # `CARGO_INCREMENTAL` and `CARGO_PROFILE_DEV_DEBUG`, into an empty tree).
+      # NINE TENTHS OF THE BUDGET'S LARGEST ITEM IS IN NO BUILD AT ALL.
+      #
+      # WHAT IT COSTS, AND IT IS A REAL COST: every edit to this file or to a
+      # lockfile is now a cold run FOR THIS CACHE, which is exactly the licence
+      # `survives_an_edit` protects for the six that keep their fallback. Their
+      # union is bounded — a cargo home holds one entry per crate version some
+      # lockfile named — and this one's is not, so the two halves get different
+      # laws. `no_cache_here_inherits_a_tree_nothing_bounds` in
+      # `tools/ci-plan/tests/reading.rs` is what keeps this true.
       - name: Cache cargo (unrun tests, build directory)
         id: cache-tree
         uses: actions/cache@v6
@@ -846,8 +872,6 @@ jobs:
           path: |
             target
           key: ${{ runner.os }}-cargo-unrun-${{ hashFiles('**/Cargo.lock', '.github/workflows/mnemosyne-validate.yml') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-unrun-
 
       - name: What the build directory restored
         env:

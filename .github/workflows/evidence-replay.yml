@@ -99,9 +99,21 @@ jobs:
           # that declares it, so a key that ignores that file goes on serving an
           # archive of whatever it used to hold.
           key: ${{ runner.os }}-cargo-replay-${{ hashFiles('**/Cargo.lock', '.github/workflows/evidence-replay.yml') }}
+          # R1160 — AND NOT `${{ runner.os }}-cargo-`, WHICH USED TO BE HERE. That
+          # is a prefix of `Linux-cargo-unrun-`, the one key in this repository
+          # holding a build directory, and an archive unpacks AS IT WAS STORED:
+          # this job asks for two cargo-home trees and could have 37,427 MB of
+          # somebody else's `target` land on it, which nothing here measures,
+          # prices or asked for. R1123 closed exactly this for `validate` by
+          # renaming the shared key — and this file kept the old spelling in a
+          # FALLBACK, where the gate could not see it, because
+          # `ci_plan::fallback_reaches` joined on the key's DERIVED prefix
+          # (`Linux-cargo-replay-`, which nests under nothing) instead of on the
+          # fallbacks actually written. Making that reader honest is what found
+          # this; `Linux-cargo-` has named no live key since R1123, so the line
+          # was pure harm by then.
           restore-keys: |
             ${{ runner.os }}-cargo-replay-
-            ${{ runner.os }}-cargo-
 
       # The cheap half first: if a declaration is malformed there is no point
       # compiling 23 workspaces to find out.

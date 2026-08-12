@@ -481,11 +481,23 @@
       "edits": [
         {
           "file": "tools/ci-plan/src/lib.rs",
-          "from": "            if other.prefix == cache.prefix || !other.prefix.starts_with(&cache.prefix) {",
-          "to": "            if other.prefix == cache.prefix || other.prefix != cache.prefix {"
+          "from": "    written.iter().any(|w| key.starts_with(w.as_str()))",
+          "to": "    written.iter().any(|w| key == w.as_str())"
         }
       ],
       "expect_red": ["a_nesting_whose_inner_cache_holds_more_is_refused"]
+    },
+    {
+      "name": "the-derived-prefix-stands-in-for-the-written-fallback",
+      "why": "R1160: the reading this repository HAD, and the one that could not see its own half-applied repair. Every cache used to write `restore-keys: <its own prefix>`, so joining on the DERIVED prefix agreed with joining on the written list and was the cheaper of two right answers. Then the build-directory cache stopped writing any fallback at all — where the derived reading invents a reach GitHub is never asked to make, refusing the only repair for the 10.75 GB red — and `evidence-replay.yml` turned out to write TWO, one of them `Linux-cargo-`, renamed away from the other workflow at R1123 and still a prefix of the build directory's key. The derived reading answered that as `Linux-cargo-replay- nests under nothing`: right about the wrong list",
+      "edits": [
+        {
+          "file": "tools/ci-plan/src/lib.rs",
+          "from": "    let written = &cache.restore_keys;\n    written.iter().any(|w| key.starts_with(w.as_str()))",
+          "to": "    key.starts_with(&cache.prefix)"
+        }
+      ],
+      "expect_red": ["a_cache_declaring_no_fallback_reaches_nothing_however_its_prefix_nests"]
     },
     {
       "name": "a-fallback-that-reaches-another-cache-is-not-refused",
@@ -505,8 +517,8 @@
       "edits": [
         {
           "file": "tools/ci-plan/src/lib.rs",
-          "from": "            if other.prefix == cache.prefix || !other.prefix.starts_with(&cache.prefix) {",
-          "to": "            if other.prefix == cache.prefix || !(other.prefix.starts_with(&cache.prefix) || cache.prefix.starts_with(&other.prefix)) {"
+          "from": "            if other.prefix == cache.prefix || !falls_back_onto(cache, &other.prefix) {",
+          "to": "            if other.prefix == cache.prefix || !(falls_back_onto(cache, &other.prefix) || falls_back_onto(other, &cache.prefix)) {"
         }
       ],
       "expect_red": ["the_inner_cache_of_a_nesting_reaches_nothing_of_the_outer_ones"]

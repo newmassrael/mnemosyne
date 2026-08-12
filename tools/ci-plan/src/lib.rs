@@ -390,6 +390,15 @@ pub fn cache_steps(doc: &Yaml, source: &str) -> Vec<CacheDeclaration> {
 /// generation whatever the primary key hashes, so an edit costs an exact miss
 /// and nothing else. This is the property every cross-run comparison in the
 /// caching arc rests on, and R1116 is where it stopped being a sentence.
+///
+/// NOT EVERY CACHE MAY BUY IT, and since R1160 that is the other half of a
+/// partition rather than an exception. What keeps a run warm across an edit is
+/// INHERITING the previous generation, and
+/// [`inheritance_without_a_bound`] is where that inheritance has no bound —
+/// so the caches holding the build directory answer to that law and the rest
+/// answer to this one. The two are applied together in
+/// `tools/ci-plan/tests/reading.rs`, each asserting the other's half is not
+/// empty.
 pub fn survives_an_edit(declaration: &CacheDeclaration) -> Option<String> {
     if declaration.restore_keys.is_empty() {
         return Some(format!(
@@ -450,13 +459,41 @@ pub fn survives_an_edit(declaration: &CacheDeclaration) -> Option<String> {
 /// declared, because then the fallback silently lands a tree nothing measured
 /// and nothing asked for — and this repository's build directory is 8.90 GB of
 /// exactly that.
+///
+/// R1160 — WHAT IS WRITTEN, NOT WHAT IS DERIVED, and the difference stopped
+/// being academic in the same round this sentence was added. Until then every
+/// cache here declared `restore-keys: <its own prefix>`, so reading the DERIVED
+/// prefix and reading the WRITTEN fallback gave the same answer and the cheaper
+/// one was taken. The build-directory cache now declares NO fallback at all, and
+/// a reader still joining on its prefix would report a reach that GitHub is never
+/// asked to make — a refusal for a reason outside the law, which is the shape
+/// R1110 wrote down. So the loop asks each declaration what it actually falls
+/// back to, and a declaration that falls back to nothing reaches nothing.
+/// Whether the fallbacks a declaration actually WRITES reach a key.
+///
+/// R1160 — ONE HOME FOR THE JOIN, and reading the written list rather than the
+/// derived prefix. Until this round every cache here wrote
+/// `restore-keys: <its own prefix>`, so the two readings agreed and the cheaper
+/// one was taken; the build-directory cache now writes NONE, and
+/// `evidence-replay.yml` writes TWO — one of them `Linux-cargo-`, renamed away
+/// from the other workflow at R1123 and still a prefix of the build directory's
+/// key. The derived reading answered `Linux-cargo-replay- nests under nothing`
+/// and was right about the wrong list. Both this function's callers — the pair
+/// walk below and the control beside it in
+/// `tools/cache-budget/tests/this_repository.rs` — ask here, because two
+/// spellings of one join are two answers free to disagree.
+pub fn falls_back_onto(cache: &CacheDeclaration, key: &str) -> bool {
+    let written = &cache.restore_keys;
+    written.iter().any(|w| key.starts_with(w.as_str()))
+}
+
 pub fn fallback_reaches(
     declared: &[CacheDeclaration],
 ) -> Vec<(&CacheDeclaration, &CacheDeclaration)> {
     let mut out = Vec::new();
     for cache in declared {
         for other in declared {
-            if other.prefix == cache.prefix || !other.prefix.starts_with(&cache.prefix) {
+            if other.prefix == cache.prefix || !falls_back_onto(cache, &other.prefix) {
                 continue;
             }
             let held: BTreeSet<&str> = other.paths.iter().map(String::as_str).collect();
@@ -467,6 +504,92 @@ pub fn fallback_reaches(
         }
     }
     out
+}
+
+/// The directory cargo builds into, as this repository configures it.
+///
+/// READ RATHER THAN SPELLED, because it is the join
+/// [`inheritance_without_a_bound`] makes: a declared cache path is either the
+/// build directory or it is not, and the two kinds have different bounds.
+/// `.cargo/config.toml` is where this repository says it (`build.target-dir`)
+/// and cargo's own default is `target`, so an absent file or an absent key is
+/// ANSWERED rather than guessed at. A file that will not parse is refused, for
+/// the reason `runner_os` refuses a label it does not know: a wrong answer here
+/// reads the build-directory cache as an ordinary cargo-home one, which is the
+/// quiet direction.
+pub fn build_directory(root: &Path) -> String {
+    const CARGO_DEFAULT: &str = "target";
+    let path = root.join(".cargo").join("config.toml");
+    let Ok(raw) = std::fs::read_to_string(&path) else {
+        return CARGO_DEFAULT.to_string();
+    };
+    let parsed: toml::Value = toml::from_str(&raw)
+        .unwrap_or_else(|why| panic!("{} does not parse as TOML: {why}", path.display()));
+    match parsed
+        .get("build")
+        .and_then(|build| build.get("target-dir"))
+    {
+        Some(dir) => dir
+            .as_str()
+            .unwrap_or_else(|| {
+                panic!(
+                    "{}: `build.target-dir` is {dir:?} and not a string",
+                    path.display()
+                )
+            })
+            .to_string(),
+        None => CARGO_DEFAULT.to_string(),
+    }
+}
+
+/// Why a cache declaration's fallback costs more every generation, with no bound
+/// in this repository's contents.
+///
+/// `None` means the fallback is bounded, which is what `restore-keys` is FOR.
+///
+/// A FALLBACK IS INHERITANCE, and this repository's own log is where that stops
+/// being a reading of somebody else's documentation. `actions/cache` writes an
+/// archive only when the PRIMARY key missed — run 31599893855 printed `Cache hit
+/// occurred on the primary key …, not saving cache` for both of `unrun-tests`'
+/// caches — so the only run that writes is the run whose key moved, and by then
+/// `restore-keys` has already put the PREVIOUS generation's tree on the disk
+/// being saved. What gets written is the union of the two.
+///
+/// FOR A CARGO HOME THAT UNION IS BOUNDED. `~/.cargo/registry` holds one entry
+/// per crate version some lockfile has named, and the six caches here holding
+/// exactly those trees weigh 0.05–0.14 GB apiece.
+///
+/// FOR THE BUILD DIRECTORY IT IS NOT. Every generation leaves a full set of
+/// artifacts under fresh hashes and nothing removes one, so the archive is every
+/// tree this repository has ever built. Measured on run 31599893855: that cache
+/// put 37,427 MB on disk, while a clean build of everything the job compiles
+/// (`cargo test --workspace --all-features --no-run` plus `tools/unrun-tests`,
+/// under the same `CARGO_INCREMENTAL=0` and
+/// `CARGO_PROFILE_DEV_DEBUG=line-tables-only`, into an empty tree) is 3.86 GB.
+/// NINE TENTHS OF WHAT THAT CACHE CARRIES IS IN NO BUILD AT ALL, and it is what
+/// took this repository's declared caches to 10.75 GB against GitHub's 10 GB —
+/// 7.83 GB at R1091, 9.95 GB here, with the declared paths never once changing.
+pub fn inheritance_without_a_bound(
+    declaration: &CacheDeclaration,
+    build_directory: &str,
+) -> Option<String> {
+    if declaration.restore_keys.is_empty() {
+        return None;
+    }
+    if !declaration
+        .paths
+        .iter()
+        .any(|path| path.trim() == build_directory)
+    {
+        return None;
+    }
+    Some(format!(
+        "`{}` holds the build directory `{build_directory}` and falls back to \
+         {:?}, so the run whose primary key moves saves the union of its own \
+         tree and every generation before it — a sum nothing in this \
+         repository's contents bounds",
+        declaration.prefix, declaration.restore_keys
+    ))
 }
 
 /// One `actions/upload-artifact` step, as a workflow declares it.

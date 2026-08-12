@@ -249,14 +249,25 @@ fn this_repository_declares_the_caches_its_jobs_are_slow_without() {
 /// repository has none of them — which is exactly why they are written here and
 /// not left to the tree to demonstrate.
 fn one_cache(key: &str, restore_keys: &str) -> CacheDeclaration {
+    one_cache_holding("target", key, restore_keys)
+}
+
+/// The same, with the `path:` list said out loud — because since R1160 the
+/// declaration's paths decide which law it answers to, and a fixture that always
+/// holds `target` can only ever exercise one side of that.
+fn one_cache_holding(paths: &str, key: &str, restore_keys: &str) -> CacheDeclaration {
     let with_restore = if restore_keys.is_empty() {
         String::new()
     } else {
         format!("          restore-keys: |\n            {restore_keys}\n")
     };
+    let held: String = paths
+        .lines()
+        .map(|path| format!("            {}\n", path.trim()))
+        .collect();
     let yaml = format!(
         "jobs:\n  j:\n    runs-on: ubuntu-latest\n    steps:\n      - uses: actions/cache@v6\n\
-         \x20       with:\n          path: |\n            target\n          key: {key}\n{with_restore}"
+         \x20       with:\n          path: |\n{held}          key: {key}\n{with_restore}"
     );
     let declared = cache_steps(&parse_workflow(&yaml, "fixture"), "fixture");
     assert_eq!(declared.len(), 1, "{declared:?}");
@@ -319,9 +330,22 @@ fn every_cache_here_survives_an_edit_to_the_workflow_it_is_written_in() {
     // as a carry (that an edit costs a cold run) while editing the file whose
     // own comment records run 31337461298 measuring otherwise: five of seven
     // jobs reported `no exact hit` and 221, 246, 281, 756 and 32063 MB arrived.
+    //
+    // R1160 SCOPED IT TO THE CACHES THAT CAN AFFORD IT, and the scope is the
+    // finding rather than an exemption. Surviving an edit means inheriting the
+    // previous generation, and for the BUILD DIRECTORY that inheritance is the
+    // defect this repository went red on: see
+    // `no_cache_here_inherits_a_tree_nothing_bounds` below. The two laws are one
+    // partition of the same population, so each asserts the other's half is not
+    // empty — a scope that quietly grew to cover everything would leave both
+    // passing over nothing.
     let root = repository_root();
     let declared = ci_plan::workflow_cache_declarations(&root);
-    let broken: Vec<String> = declared
+    let build_directory = ci_plan::build_directory(&root);
+    let (holds_a_tree, bounded): (Vec<_>, Vec<_>) = declared
+        .iter()
+        .partition(|d| d.paths.iter().any(|path| path.trim() == build_directory));
+    let broken: Vec<String> = bounded
         .iter()
         .filter_map(|d| ci_plan::survives_an_edit(d).map(|why| format!("{} — {why}", d.owner)))
         .collect();
@@ -333,10 +357,139 @@ fn every_cache_here_survives_an_edit_to_the_workflow_it_is_written_in() {
         broken.join("\n  ")
     );
     assert!(
-        declared.len() >= 2 && declared.iter().all(|d| !d.restore_keys.is_empty()),
+        bounded.len() >= 2 && bounded.iter().all(|d| !d.restore_keys.is_empty()),
         "and the reach is asserted, because a walk that found no declaration \
-         passes the loop above without looking at anything: {declared:?}"
+         passes the loop above without looking at anything: {bounded:?}"
     );
+    assert!(
+        !holds_a_tree.is_empty(),
+        "this law is now HALF a partition, and the other half is empty — either \
+         `{build_directory}` stopped being cached, in which case delete the \
+         partition and go back to one law, or `build_directory` is reading the \
+         wrong name and the tree cache is being judged by the wrong one of the \
+         two: {declared:?}"
+    );
+}
+
+#[test]
+fn no_cache_here_inherits_a_tree_nothing_bounds() {
+    // WHAT WENT RED, AND THE ARITHMETIC BEHIND IT. Run 31599893855 refused this
+    // repository at 10.75 GB of declared caches against GitHub's 10.00 GB, with
+    // `Linux-cargo-unrun-` alone at 9.95 GB of it. That key holds `target` AND
+    // declared a fallback, and the two together are an accumulator: the archive
+    // is only ever written on the run whose primary key moved, and on exactly
+    // that run the fallback has already unpacked the previous generation onto
+    // the disk about to be saved.
+    //
+    // MEASURED RATHER THAN REASONED. That cache put 37,427 MB on the runner,
+    // while a clean build of everything the job compiles is 3.86 GB. Nine tenths
+    // of the budget's largest item is in no build at all.
+    let root = repository_root();
+    let declared = ci_plan::workflow_cache_declarations(&root);
+    let build_directory = ci_plan::build_directory(&root);
+    let unbounded: Vec<String> = declared
+        .iter()
+        .filter_map(|d| {
+            ci_plan::inheritance_without_a_bound(d, &build_directory)
+                .map(|why| format!("{} — {why}", d.owner))
+        })
+        .collect();
+    assert!(
+        unbounded.is_empty(),
+        "a cache holding the build directory may not fall back onto an earlier \
+         generation of it: what it saves is the union, and the union has no \
+         bound in this repository's contents:\n  {}",
+        unbounded.join("\n  ")
+    );
+    assert!(
+        declared
+            .iter()
+            .any(|d| d.paths.iter().any(|path| path.trim() == build_directory)),
+        "and the subject is asserted: with no cache holding `{build_directory}` \
+         the loop above passes without looking at anything, which is the shape \
+         this repository keeps finding in other people's gates: {declared:?}"
+    );
+}
+
+#[test]
+fn a_fallback_onto_a_build_directory_is_named_and_one_onto_a_cargo_home_is_not() {
+    // BOTH ARMS, because the law is a partition and a predicate that answered
+    // `Some` for everything would satisfy the tree-wide test above by refusing
+    // the whole repository.
+    let inherits_a_tree = one_cache_holding(
+        "target",
+        "${{ runner.os }}-cargo-unrun-${{ hashFiles('**/Cargo.lock') }}",
+        "${{ runner.os }}-cargo-unrun-",
+    );
+    assert!(
+        ci_plan::inheritance_without_a_bound(&inherits_a_tree, "target")
+            .is_some_and(|why| why.contains("union") && why.contains("Linux-cargo-unrun-")),
+        "the shape run 31599893855 refused, and the message has to name the key: \
+         {inherits_a_tree:?}"
+    );
+
+    let owns_its_tree = one_cache_holding(
+        "target",
+        "${{ runner.os }}-cargo-unrun-${{ hashFiles('**/Cargo.lock') }}",
+        "",
+    );
+    assert_eq!(
+        ci_plan::inheritance_without_a_bound(&owns_its_tree, "target"),
+        None,
+        "with nothing to fall back to, the archive is one clean build's tree and \
+         nothing older: {owns_its_tree:?}"
+    );
+
+    let cargo_home = one_cache_holding(
+        "~/.cargo/registry\n~/.cargo/git",
+        "${{ runner.os }}-cargo-validate-${{ hashFiles('**/Cargo.lock') }}",
+        "${{ runner.os }}-cargo-validate-",
+    );
+    assert_eq!(
+        ci_plan::inheritance_without_a_bound(&cargo_home, "target"),
+        None,
+        "THE HALF THAT MUST KEEP INHERITING: a cargo home holds one entry per \
+         crate version a lockfile has named, so its union is bounded and the \
+         fallback is what keeps a run after an edit warm: {cargo_home:?}"
+    );
+
+    // AND THE NAME IS READ, not spelled here twice: a repository building into
+    // `build/` would have its tree cache judged as a cargo home by a predicate
+    // that hard-coded `target`.
+    let elsewhere = one_cache_holding(
+        "build",
+        "${{ runner.os }}-cargo-unrun-${{ hashFiles('**/Cargo.lock') }}",
+        "${{ runner.os }}-cargo-unrun-",
+    );
+    assert!(
+        ci_plan::inheritance_without_a_bound(&elsewhere, "build").is_some(),
+        "the build directory is whatever `build.target-dir` says it is"
+    );
+    assert_eq!(
+        ci_plan::inheritance_without_a_bound(&elsewhere, "target"),
+        None,
+        "and a path that is not this repository's build directory is not judged \
+         as one"
+    );
+}
+
+#[test]
+fn the_build_directory_is_read_from_the_file_that_sets_it() {
+    // NON-VACUITY IS THE POINT OF THIS TEST. `build_directory` falls back to
+    // cargo's own default, which is `target` — the same answer this repository's
+    // config gives. So a reader that silently failed to open the file would
+    // return the right string for the wrong reason, and every law joining on it
+    // would keep passing while reading nothing.
+    let root = repository_root();
+    let raw = std::fs::read_to_string(root.join(".cargo/config.toml"))
+        .expect("this repository tracks .cargo/config.toml");
+    assert!(
+        raw.contains("target-dir"),
+        "the file exists but no longer SETS the directory, so the assertion \
+         below would be testing cargo's default rather than this repository's \
+         answer — say it out loud there or delete this law"
+    );
+    assert_eq!(ci_plan::build_directory(&root), "target");
 }
 
 fn repository_root() -> std::path::PathBuf {

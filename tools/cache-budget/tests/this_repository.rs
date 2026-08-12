@@ -540,17 +540,26 @@ fn no_declared_cache_reaches_anothers_archive() {
     // and "nobody looked": that branch is now exercised only in `law.rs`, over a
     // built population, by
     // `a_nesting_whose_inner_cache_holds_a_subset_is_not_a_finding`.
+    //
+    // R1160 — AND THE COUNT IS OVER WHAT IS WRITTEN, NOT WHAT IS DERIVED, which
+    // is the same correction the reader itself took this round. Counted on
+    // DERIVED prefixes this was 0 and stayed 0 through the defect: nothing nests
+    // under `Linux-cargo-replay-`. Counted on the fallbacks GitHub is actually
+    // handed it was ONE — `evidence-replay.yml` still listed `Linux-cargo-`,
+    // renamed away from `mnemosyne-validate.yml` at R1123, and that is a prefix
+    // of the build directory's key. A control that cannot move while the thing it
+    // controls is broken is not a control.
     let nested = declared
         .iter()
         .flat_map(|cache| declared.iter().map(move |other| (cache, other)))
         .filter(|(cache, other)| {
-            other.prefix != cache.prefix && other.prefix.starts_with(&cache.prefix)
+            other.prefix != cache.prefix && ci_plan::falls_back_onto(cache, &other.prefix)
         })
         .count();
     assert_eq!(
         nested, 0,
-        "no key in this repository nests under another any more, so a reader \
-         that ignored `path:` entirely would agree with the verdict above and \
-         this file could not tell them apart"
+        "no fallback in this repository reaches another key at all any more, so \
+         a reader that ignored `path:` entirely would agree with the verdict \
+         above and this file could not tell them apart"
     );
 }

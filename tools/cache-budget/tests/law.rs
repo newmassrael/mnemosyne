@@ -82,6 +82,16 @@ fn declaration(owner: &str, prefix: &str, paths: &[&str]) -> CacheDeclaration {
     }
 }
 
+/// The same declaration with the fallback taken away — the shape R1160 put into
+/// this repository's workflow, where the build-directory cache stopped
+/// inheriting a generation it could not bound.
+fn declaration_without_a_fallback(owner: &str, prefix: &str, paths: &[&str]) -> CacheDeclaration {
+    CacheDeclaration {
+        restore_keys: Vec::new(),
+        ..declaration(owner, prefix, paths)
+    }
+}
+
 fn held(key: &str, gb: f64) -> Held {
     held_on(key, gb, "2026-08-08T17:13:25.229538000Z")
 }
@@ -1528,5 +1538,38 @@ fn the_inner_cache_of_a_nesting_reaches_nothing_of_the_outer_ones() {
         vec!["Linux-cargo-"],
         "only the OUTER key reaches, and a reader comparing the pair without \
          direction would report this twice"
+    );
+}
+
+/// R1160 — AND A CACHE THAT FALLS BACK TO NOTHING REACHES NOTHING, which is the
+/// arm this repository created for itself in the same round.
+///
+/// The fixture is `a_nesting_whose_inner_cache_holds_more_is_refused` with ONE
+/// thing changed: the outer cache declares no `restore-keys`. Its prefix still
+/// nests, the inner archive still holds a `target` it never asked for, and every
+/// premise of that refusal still reads true — except the one that matters, which
+/// is that GitHub is never asked to fall back. A reader joining on the DERIVED
+/// prefix rather than the WRITTEN fallback passes the sibling above and refuses
+/// this, and what it refuses is the repair for the 10.75 GB red.
+#[test]
+fn a_cache_declaring_no_fallback_reaches_nothing_however_its_prefix_nests() {
+    let declared = [
+        declaration_without_a_fallback("validate", "Linux-cargo-", REGISTRY),
+        declaration(
+            "unrun",
+            "Linux-cargo-unrun-",
+            &["~/.cargo/registry", "target"],
+        ),
+    ];
+    let held = [
+        held("Linux-cargo-abc", 0.15),
+        held("Linux-cargo-unrun-abc", 8.9),
+    ];
+    assert_eq!(
+        conclude(LIMIT, &declared, &held, None).refusals(),
+        Vec::new(),
+        "nothing GitHub is asked for can land a tree, so there is no finding \
+         here — and the ONLY difference from the refused fixture is the absent \
+         `restore-keys`"
     );
 }
