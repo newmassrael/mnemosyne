@@ -23,6 +23,7 @@ mnemosyne-style = { path = "../mnemosyne-style" }
 mnemosyne-query = { path = "../mnemosyne-query" }
 mnemosyne-plugin-tree-sitter-rust = { path = "../mnemosyne-plugin-tree-sitter-rust" }
 mnemosyne-plugin-tree-sitter-cpp = { path = "../mnemosyne-plugin-tree-sitter-cpp" }
+mnemosyne-plugin-tree-sitter-go = { path = "../mnemosyne-plugin-tree-sitter-go" }
 
 anyhow.workspace = true
 serde = { workspace = true }

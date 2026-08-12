@@ -57,6 +57,11 @@ pub static IN_PROCESS_BACKENDS: &[InProcessBackend] = &[
         make: || Box::new(mnemosyne_plugin_tree_sitter_cpp::resolver()),
     },
     InProcessBackend {
+        key: mnemosyne_plugin_tree_sitter_go::BACKEND_KEY,
+        language: mnemosyne_plugin_tree_sitter_go::SYMBOL_AXIS_LANGUAGE,
+        make: || Box::new(mnemosyne_plugin_tree_sitter_go::resolver()),
+    },
+    InProcessBackend {
         key: mnemosyne_plugin_tree_sitter_rust::BACKEND_KEY,
         language: mnemosyne_plugin_tree_sitter_rust::SYMBOL_AXIS_LANGUAGE,
         make: || Box::new(mnemosyne_plugin_tree_sitter_rust::resolver()),

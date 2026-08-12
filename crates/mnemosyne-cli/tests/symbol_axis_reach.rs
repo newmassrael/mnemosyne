@@ -153,11 +153,25 @@ const CPP: LangFixture = LangFixture {
     matched_symbol: "gamma",
 };
 
+/// The Go fixture. The citation is the first line of each method body, so the
+/// doc-comment rule — which Go's spec switches ON — does not fire (the next
+/// sibling is a statement, not a declaration) and the answer comes from the
+/// smallest covering declaration, as in the other two.
+const GO: LangFixture = LangFixture {
+    language: "go",
+    ext: "go",
+    drift: "package p\n\ntype Holder struct{}\n\nfunc (h Holder) alpha() {\n\t\
+            // §sec1 — recorded as `beta`, so this citation has drifted\n\tx := 1\n\t_ = x\n}\n",
+    matched: "package p\n\ntype Keeper struct{}\n\nfunc (k Keeper) gamma() {\n\t\
+              // §sec2 — recorded as `gamma`, so this citation is clean\n\ty := 2\n\t_ = y\n}\n",
+    matched_symbol: "gamma",
+};
+
 /// Every fixture this test file holds, looked up by language. The POPULATION is
 /// the binary's own answer (law 7), never this list: a backend this build ships
 /// and this table has no fixture for FAILS rather than being skipped, so the
 /// round that adds a language cannot add it without a control.
-const FIXTURES: &[&LangFixture] = &[&RUST, &CPP];
+const FIXTURES: &[&LangFixture] = &[&RUST, &CPP, &GO];
 
 /// Laws 1 to 5 run on the Rust fixture.
 ///
@@ -857,9 +871,10 @@ fn the_languages_this_build_cannot_resolve_are_named_and_counted() {
         .collect();
     assert_eq!(
         without,
-        vec!["go", "python"],
+        vec!["python"],
         "the symbol axis stops at exactly these languages; shipping a resolver \
-         deletes one from this list in the same change: {json}"
+         deletes one from this list in the same change — `go` left it in Round \
+         1153: {json}"
     );
 
     // The report's own arithmetic, recomputed from the other two fields it
