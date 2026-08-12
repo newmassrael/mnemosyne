@@ -22,7 +22,7 @@ use std::path::PathBuf;
 use mnemosyne_atomic::{add_section, add_section_binding, AtomicStore, BindingKind};
 use mnemosyne_config::SetEqualityValidatorConfig;
 use mnemosyne_core::{AtomicStoreView, SymbolResolver};
-use mnemosyne_plugin_tree_sitter_rust::TreesitterRustResolver;
+use mnemosyne_plugin_tree_sitter_rust::resolver as rust_resolver;
 use mnemosyne_validate::code_refs::{
     CitationAttribution, CodeRefViolation, NumberingOriginAxis, SetEqualityValidator, ViolationKind,
 };
@@ -46,7 +46,7 @@ fn no_foreign_subtree<'a>(
 
 fn rust_resolver_map() -> BTreeMap<String, Box<dyn SymbolResolver>> {
     let mut m: BTreeMap<String, Box<dyn SymbolResolver>> = BTreeMap::new();
-    m.insert("rust".into(), Box::new(TreesitterRustResolver));
+    m.insert("rust".into(), Box::new(rust_resolver()));
     m
 }
 

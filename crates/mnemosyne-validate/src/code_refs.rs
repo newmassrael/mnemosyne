@@ -5654,7 +5654,7 @@ mod tests {
             BTreeMap::new();
         resolvers.insert(
             "cpp".to_string(),
-            Box::new(mnemosyne_plugin_tree_sitter_cpp::TreesitterCppResolver),
+            Box::new(mnemosyne_plugin_tree_sitter_cpp::resolver()),
         );
         let validator = SetEqualityValidator {
             config: SetEqualityValidatorConfig {

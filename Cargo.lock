@@ -1183,10 +1183,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "mnemosyne-plugin-tree-sitter-core"
+version = "0.1.0"
+dependencies = [
+ "mnemosyne-core",
+ "tree-sitter",
+ "tree-sitter-rust",
+]
+
+[[package]]
 name = "mnemosyne-plugin-tree-sitter-cpp"
 version = "0.1.0"
 dependencies = [
  "mnemosyne-core",
+ "mnemosyne-plugin-tree-sitter-core",
  "tempfile",
  "tree-sitter",
  "tree-sitter-cpp",
@@ -1197,6 +1207,7 @@ name = "mnemosyne-plugin-tree-sitter-rust"
 version = "0.1.0"
 dependencies = [
  "mnemosyne-core",
+ "mnemosyne-plugin-tree-sitter-core",
  "tempfile",
  "tree-sitter",
  "tree-sitter-rust",

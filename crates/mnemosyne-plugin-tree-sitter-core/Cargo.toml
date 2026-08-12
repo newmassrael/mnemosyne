@@ -1,0 +1,28 @@
+[package]
+name = "mnemosyne-plugin-tree-sitter-core"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+license.workspace = true
+description = "Mnemosyne — the grammar-independent half of a tree-sitter SymbolResolver backend"
+
+[lib]
+name = "mnemosyne_plugin_tree_sitter_core"
+path = "src/lib.rs"
+
+[dependencies]
+mnemosyne-core = { path = "../mnemosyne-core" }
+tree-sitter = "0.26"
+
+# TESTS ONLY, AND ONE GRAMMAR IS ENOUGH. This crate is the walk without a
+# language, so its own laws still need SOME grammar to build a spec against —
+# the engine-level questions (does an empty `documented_kinds` really disable
+# pass 1, is the query compiled once per process, does the kind filter refuse)
+# are about the engine and not about Rust, and a second grammar here would test
+# the engine no further.
+[dev-dependencies]
+tree-sitter-rust = "0.24"
+
+[lints]
+workspace = true

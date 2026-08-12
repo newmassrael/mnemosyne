@@ -1,41 +1,34 @@
 //! Tree-sitter C++ `SymbolResolver` backend for the Mnemosyne plugin
 //! substrate.
 //!
-//! Answers `(source, lines) -> {line: symbol_name}` by parsing the caller's
-//! text ONCE with `tree-sitter-cpp` and walking the tree for the smallest
-//! declarative node whose extent covers each requested line. Best-effort —
-//! macro-expanded code, generated files, and code behind preprocessor gates may
-//! resolve under their textual name rather than the post-expansion form.
+//! The walk lives once, in `mnemosyne-plugin-tree-sitter-core`; this crate is
+//! the four things that are C++'s — the grammar, the query naming its
+//! declaration nodes, how a name comes out of one, and the fact that C++ DOES
+//! take the doc-comment rule (see [`SPEC`]).
 //!
-//! Nothing here reads the filesystem: the bytes come from the caller, which is
-//! what keeps the symbol answer about the same file revision the citation was
-//! extracted from.
+//! C++ declarators nest (a function name lives under `function_definition >
+//! declarator > [pointer_declarator >] * function_declarator > declarator`), so
+//! the query captures the DECLARATION node and [`cpp_name_of`] descends for the
+//! name. Out-of-line definitions resolve to the source-text qualified form
+//! (`Foo::bar`); inline members resolve to the bare member name (`bar`) — each
+//! matches what the citation author records as the `Implementation.symbol` at
+//! that location.
 //!
-//! Unlike the Rust backend, C++ declarators nest (a function name lives
-//! under `function_definition > declarator > [pointer_declarator >] *
-//! function_declarator > declarator`), so the query captures the
-//! *declaration node* directly and a declarator descent extracts the
-//! name. Out-of-line definitions resolve to the source-text qualified
-//! form (`Foo::bar`); inline members resolve to the bare member name
-//! (`bar`) — each matches what the citation author records as the
-//! `Implementation.symbol` at that location.
-//!
-//! Registered into a `PluginRegistry` via [`register`] from the binary's
-//! startup path (mnemosyne-cli).
+//! Registered into the CLI's backend table (`mnemosyne_cli::backends`), which
+//! the config wire and `describe-symbol-axis-reach` both read.
 
-use std::collections::BTreeMap;
-use std::path::Path;
 use std::sync::OnceLock;
 
-use mnemosyne_core::{PluginRegistry, ResolverError, SymbolResolver, VersionSurface};
-use tree_sitter::{Node, Parser, Point, Query, QueryCursor, StreamingIterator};
+use mnemosyne_core::PluginRegistry;
+use mnemosyne_plugin_tree_sitter_core::{field_text, LanguageSpec, TreesitterResolver};
+use tree_sitter::{Node, Query};
 
 pub const BACKEND_KEY: &str = "tree-sitter-cpp";
 
 /// The symbol-axis language this backend resolves — the
-/// `[plugins.symbol_resolver.<lang>]` key it belongs under. `.c` and the
-/// header extensions map to this same language, which is why the id is `cpp`
-/// and not one extension's name.
+/// `[plugins.symbol_resolver.<lang>]` key it belongs under. `.c` and the header
+/// extensions map to this same language, which is why the id is `cpp` and not
+/// one extension's name.
 ///
 /// Declared here rather than at the wiring site because it is a property of
 /// what this crate parses: `tree-sitter-cpp` answers in C++'s vocabulary and in
@@ -43,137 +36,35 @@ pub const BACKEND_KEY: &str = "tree-sitter-cpp";
 /// against names a grammar that never saw the language invented.
 pub const SYMBOL_AXIS_LANGUAGE: &str = "cpp";
 
-pub struct TreesitterCppResolver;
+static QUERY: OnceLock<Result<Query, String>> = OnceLock::new();
 
-impl SymbolResolver for TreesitterCppResolver {
-    fn version_surface(&self) -> VersionSurface {
-        VersionSurface {
-            plugin_name: "mnemosyne-plugin-tree-sitter-cpp".into(),
-            plugin_version: env!("CARGO_PKG_VERSION").into(),
-            schema_min: 4,
-            schema_max: 4,
-        }
-    }
+/// Declaration node kinds a doc comment may document. The enclosing query set
+/// MINUS `namespace_definition` — a comment is never "documenting" the
+/// namespace it sits in — and `declaration` is absent from both, so a comment
+/// above a function-body local binds to the enclosing function rather than to
+/// the local.
+const DOCUMENTED_KINDS: &[&str] = &[
+    "function_definition",
+    "field_declaration",
+    "class_specifier",
+    "struct_specifier",
+    "union_specifier",
+    "enum_specifier",
+];
 
-    fn resolve_symbols_at(
-        &self,
-        _file: &Path,
-        source: &str,
-        lines: &[u32],
-    ) -> Result<BTreeMap<u32, String>, ResolverError> {
-        let mut out = BTreeMap::new();
-        if lines.is_empty() {
-            return Ok(out);
-        }
-        // ONE parse and ONE query traversal for the whole file, over the bytes
-        // the caller read the citations from — see
-        // `SymbolResolver::resolve_symbols_at` for why the source is a
-        // parameter rather than a path this reads for itself.
-        let mut parser = Parser::new();
-        parser
-            .set_language(&tree_sitter_cpp::LANGUAGE.into())
-            .map_err(|e| ResolverError::Internal(format!("set_language: {}", e)))?;
-        let tree = parser
-            .parse(source, None)
-            .ok_or_else(|| ResolverError::Internal("parse returned None".into()))?;
-        let root = tree.root_node();
-
-        // tree-sitter rows are 0-indexed; callers pass 1-indexed line numbers
-        // per the project convention (editor / grep alignment). Line 0 has no
-        // row and is dropped rather than shifted onto line 1.
-        let rows: Vec<(u32, usize)> = lines
-            .iter()
-            .filter(|l| **l > 0)
-            .map(|l| (*l, (*l - 1) as usize))
-            .collect();
-        if rows.is_empty() {
-            return Ok(out);
-        }
-
-        // Documented-symbol semantics first: a `§<id>` citation in source is a
-        // doc comment, conventionally placed *above* the declaration it
-        // documents. In C++ that comment is lexically a preceding sibling of
-        // the declaration, so the smallest *enclosing* node is the outer scope
-        // (namespace / class), not the documented symbol. If the cited line is
-        // a comment that — with no intervening blank line — immediately
-        // precedes a declaration, bind to that declaration. A file-header /
-        // taxonomy comment not adjacent to a declaration falls through to the
-        // enclosing scope (correctly coarse).
-        let mut pending: Vec<(u32, usize)> = Vec::new();
-        for (line, row) in rows {
-            match documented_symbol(root, source, row) {
-                Some(name) => {
-                    out.insert(line, name);
-                }
-                None => pending.push((line, row)),
-            }
-        }
-        if pending.is_empty() {
-            return Ok(out);
-        }
-
-        let query = query()?;
-        let mut cursor = QueryCursor::new();
-        let mut matches = cursor.matches(query, root, source.as_bytes());
-        // row -> (span of the smallest covering declaration, its name)
-        let mut best: BTreeMap<usize, (usize, String)> = BTreeMap::new();
-
-        while let Some(m) = matches.next() {
-            for cap in m.captures {
-                let node: Node = cap.node;
-                let start = node.start_position().row;
-                let end = node.end_position().row;
-                let covered: Vec<usize> = pending
-                    .iter()
-                    .map(|(_, row)| *row)
-                    .filter(|row| *row >= start && *row <= end)
-                    .collect();
-                if covered.is_empty() {
-                    continue;
-                }
-                let Some(name) = symbol_name(node, source.as_bytes()) else {
-                    continue;
-                };
-                let span = end.saturating_sub(start);
-                for row in covered {
-                    match best.get(&row) {
-                        Some((cur_span, _)) if span >= *cur_span => {}
-                        _ => {
-                            best.insert(row, (span, name.clone()));
-                        }
-                    }
-                }
-            }
-        }
-        for (line, row) in pending {
-            if let Some((_, name)) = best.get(&row) {
-                out.insert(line, name.clone());
-            }
-        }
-        Ok(out)
-    }
-}
-
-/// The declaration query, compiled ONCE for the process.
+/// C++'s four differences.
 ///
-/// Captures the declaration node itself, not the name node: C++ names sit
-/// several declarator levels deep, so extraction happens in [`symbol_name`].
-/// `field_declaration` covers in-class member decls (variables and method
-/// prototypes); function-body locals are `declaration` nodes, deliberately
-/// excluded so a citation inside a body resolves to the enclosing function
-/// rather than to a local variable.
-///
-/// It used to be compiled inside `resolve_symbol_at`, so a query compile
-/// happened per citation alongside the per-citation parse — the half of the
-/// cost the consumer's report did not name.
-fn query() -> Result<&'static Query, ResolverError> {
-    static QUERY: OnceLock<Result<Query, String>> = OnceLock::new();
-    QUERY
-        .get_or_init(|| {
-            let lang: tree_sitter::Language = tree_sitter_cpp::LANGUAGE.into();
-            Query::new(
-                &lang,
-                r#"
+/// `field_declaration` covers in-class member declarations (variables and
+/// method prototypes); function-body locals are `declaration` nodes,
+/// deliberately excluded so a citation inside a body resolves to the enclosing
+/// function rather than to a local variable.
+pub static SPEC: LanguageSpec = LanguageSpec {
+    backend_key: BACKEND_KEY,
+    plugin_name: "mnemosyne-plugin-tree-sitter-cpp",
+    plugin_version: env!("CARGO_PKG_VERSION"),
+    symbol_axis_language: SYMBOL_AXIS_LANGUAGE,
+    language: || tree_sitter_cpp::LANGUAGE.into(),
+    query_source: r"
         (function_definition) @item
         (field_declaration) @item
         (class_specifier) @item
@@ -181,17 +72,16 @@ fn query() -> Result<&'static Query, ResolverError> {
         (union_specifier) @item
         (enum_specifier) @item
         (namespace_definition) @item
-        "#,
-            )
-            .map_err(|e| format!("query compile: {e}"))
-        })
-        .as_ref()
-        .map_err(|e| ResolverError::Internal(e.clone()))
-}
+    ",
+    name_of: cpp_name_of,
+    documented_kinds: DOCUMENTED_KINDS,
+    comment_kind: "comment",
+    query_cache: &QUERY,
+};
 
 /// Name nodes that terminate a declarator descent. `qualified_identifier`
-/// returns its full source text (e.g. `Foo::bar`) so out-of-line
-/// definitions resolve to the qualified form an author records.
+/// returns its full source text (e.g. `Foo::bar`) so out-of-line definitions
+/// resolve to the qualified form an author records.
 const NAME_KINDS: &[&str] = &[
     "identifier",
     "field_identifier",
@@ -202,71 +92,17 @@ const NAME_KINDS: &[&str] = &[
     "type_identifier",
 ];
 
-/// Declaration node kinds a doc comment may document. Mirrors the enclosing
-/// query set minus `namespace_definition` — a comment is never "documenting"
-/// the namespace it sits in, and `declaration` is excluded so a comment above
-/// a function-body local binds to the enclosing function, not the local.
-const DECL_KINDS: &[&str] = &[
-    "function_definition",
-    "field_declaration",
-    "class_specifier",
-    "struct_specifier",
-    "union_specifier",
-    "enum_specifier",
-];
-
-/// If `row` (0-indexed) falls on a comment that — through a contiguous run of
-/// comment lines with no intervening blank line — immediately precedes a
-/// declaration in [`DECL_KINDS`], return that declaration's symbol name. This
-/// is the doc-comment convention: `// doc` above `class Foo {}` documents
-/// `Foo`, even though `Foo` is not the comment's enclosing scope. A blank line
-/// (or a non-declaration sibling) breaks the association and yields `None`,
-/// so file-header comments fall through to enclosing-scope resolution.
-fn documented_symbol(root: Node, source: &str, row: usize) -> Option<String> {
-    let line = source.split('\n').nth(row)?;
-    // Byte column of the first non-whitespace char; comments are ASCII-led
-    // (`//` or `/*`), so byte == char offset here.
-    let col = line.len() - line.trim_start().len();
-    let pt = Point::new(row, col);
-    let node = root.descendant_for_point_range(pt, pt)?;
-    if node.kind() != "comment" {
-        return None;
-    }
-    let mut last = node;
-    let mut sib = node.next_named_sibling();
-    while let Some(s) = sib {
-        // Adjacency: the next sibling must begin on the line immediately after
-        // the previous comment ends — a blank line breaks the doc association.
-        if s.start_position().row != last.end_position().row + 1 {
-            return None;
-        }
-        if s.kind() == "comment" {
-            last = s;
-            sib = s.next_named_sibling();
-            continue;
-        }
-        if DECL_KINDS.contains(&s.kind()) {
-            return symbol_name(s, source.as_bytes());
-        }
-        return None;
-    }
-    None
-}
-
-/// Extract the declared symbol name from a captured declaration node.
-/// Type-like and namespace nodes read the `name` field directly; function
-/// and field declarations descend their declarator. Returns `None` for
-/// anonymous declarations (anonymous struct/union/namespace).
-fn symbol_name(node: Node, src: &[u8]) -> Option<String> {
+/// The declared name of a C++ declaration node. Type-like and namespace nodes
+/// read the `name` field directly; function and field declarations descend
+/// their declarator. `None` for anonymous declarations (anonymous struct /
+/// union / namespace).
+fn cpp_name_of(node: Node, src: &[u8]) -> Option<String> {
     match node.kind() {
         "class_specifier"
         | "struct_specifier"
         | "union_specifier"
         | "enum_specifier"
-        | "namespace_definition" => node
-            .child_by_field_name("name")
-            .and_then(|n| n.utf8_text(src).ok())
-            .map(str::to_string),
+        | "namespace_definition" => field_text(node, "name", &[], src),
         "function_definition" | "field_declaration" => {
             declarator_name(node.child_by_field_name("declarator")?, src)
         }
@@ -306,24 +142,29 @@ fn declarator_name(start: Node, src: &[u8]) -> Option<String> {
     None
 }
 
-/// Register this backend into the given `PluginRegistry`. The binary's
-/// startup path (mnemosyne-cli) calls this once after instantiating the
-/// registry; the substrate stays decoupled from any specific transport or
-/// language.
+/// This backend, ready to register.
+#[must_use]
+pub fn resolver() -> TreesitterResolver {
+    TreesitterResolver::new(&SPEC)
+}
+
+/// Register this backend into the given `PluginRegistry`.
 pub fn register(registry: &mut PluginRegistry) {
-    registry.register_symbol_resolver(BACKEND_KEY, Box::new(TreesitterCppResolver));
+    registry.register_symbol_resolver(BACKEND_KEY, Box::new(resolver()));
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use mnemosyne_core::SymbolResolver;
+    use std::collections::BTreeMap;
+    use std::path::Path;
 
     /// Resolve one line — through a path that DOES NOT EXIST, which is the
     /// oracle for "the answer came from the caller's bytes". Every test below
     /// therefore also asserts the resolver never reads the filesystem.
     fn resolve(source: &str, line: u32) -> Option<String> {
-        let resolver = TreesitterCppResolver;
-        resolver
+        resolver()
             .resolve_symbols_at(Path::new("/no/such/file.hpp"), source, &[line])
             .unwrap()
             .remove(&line)
@@ -453,7 +294,7 @@ mod tests {
                    };\n\
                    }\n";
         let lines = [1u32, 2, 3, 4, 5, 6];
-        let batched = TreesitterCppResolver
+        let batched = resolver()
             .resolve_symbols_at(Path::new("/no/such/file.hpp"), src, &lines)
             .unwrap();
         let one_at_a_time: BTreeMap<u32, String> = lines
@@ -479,7 +320,7 @@ mod tests {
     /// Line 0 has no row. It is dropped rather than shifted onto line 1.
     #[test]
     fn line_zero_is_dropped_and_does_not_become_line_one() {
-        let out = TreesitterCppResolver
+        let out = resolver()
             .resolve_symbols_at(
                 Path::new("/no/such/file.hpp"),
                 "int alpha() { return 0; }\n",
@@ -488,5 +329,15 @@ mod tests {
             .unwrap();
         assert_eq!(out.get(&1).map(String::as_str), Some("alpha"));
         assert!(!out.contains_key(&0), "no answer for a line that cannot be");
+    }
+
+    /// The spec files this backend under the language it answers in, and the
+    /// resolver reports the crate it came from.
+    #[test]
+    fn the_spec_names_this_crate_and_its_language() {
+        let surface = resolver().version_surface();
+        assert_eq!(surface.plugin_name, "mnemosyne-plugin-tree-sitter-cpp");
+        assert_eq!(SPEC.symbol_axis_language, "cpp");
+        assert_eq!(SPEC.backend_key, BACKEND_KEY);
     }
 }

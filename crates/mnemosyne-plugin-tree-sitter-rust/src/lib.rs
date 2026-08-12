@@ -1,25 +1,19 @@
 //! Tree-sitter Rust `SymbolResolver` backend for the Mnemosyne plugin
 //! substrate.
 //!
-//! Answers `(source, lines) -> {line: symbol_name}` by parsing the caller's
-//! text ONCE with `tree-sitter-rust` and walking the tree for the smallest
-//! declarative node whose extent covers each requested line. Best-effort —
-//! macro-expanded code, generated files, and items inside `cfg_attr` gates may
-//! resolve under their textual name rather than the post-expansion form.
+//! The walk lives once, in `mnemosyne-plugin-tree-sitter-core`; this crate is
+//! the four things that are Rust's — the grammar, the query naming its
+//! declaration nodes, how a name comes out of one, and the fact that Rust takes
+//! NO doc-comment rule (see [`SPEC`]).
 //!
-//! Nothing here reads the filesystem: the bytes come from the caller, which is
-//! what keeps the symbol answer about the same file revision the citation was
-//! extracted from.
-//!
-//! Registered into a `PluginRegistry` via [`register`] from the binary's
-//! startup path (mnemosyne-cli / mnemosyne-mcp).
+//! Registered into the CLI's backend table (`mnemosyne_cli::backends`), which
+//! the config wire and `describe-symbol-axis-reach` both read.
 
-use std::collections::BTreeMap;
-use std::path::Path;
 use std::sync::OnceLock;
 
-use mnemosyne_core::{PluginRegistry, ResolverError, SymbolResolver, VersionSurface};
-use tree_sitter::{Node, Parser, Query, QueryCursor, StreamingIterator};
+use mnemosyne_core::PluginRegistry;
+use mnemosyne_plugin_tree_sitter_core::{field_text, LanguageSpec, TreesitterResolver};
+use tree_sitter::{Node, Query};
 
 pub const BACKEND_KEY: &str = "tree-sitter-rust";
 
@@ -32,176 +26,85 @@ pub const BACKEND_KEY: &str = "tree-sitter-rust";
 /// enforcement against names a grammar that never saw the language invented.
 pub const SYMBOL_AXIS_LANGUAGE: &str = "rust";
 
-pub struct TreesitterRustResolver;
+static QUERY: OnceLock<Result<Query, String>> = OnceLock::new();
 
-impl SymbolResolver for TreesitterRustResolver {
-    fn version_surface(&self) -> VersionSurface {
-        VersionSurface {
-            plugin_name: "mnemosyne-plugin-tree-sitter-rust".into(),
-            plugin_version: env!("CARGO_PKG_VERSION").into(),
-            schema_min: 4,
-            schema_max: 4,
-        }
-    }
-
-    fn resolve_symbols_at(
-        &self,
-        _file: &Path,
-        source: &str,
-        lines: &[u32],
-    ) -> Result<BTreeMap<u32, String>, ResolverError> {
-        let mut out = BTreeMap::new();
-        if lines.is_empty() {
-            return Ok(out);
-        }
-        // ONE parse and ONE query traversal for the whole file. The caller
-        // hands over the bytes it read the citations from, so nothing here
-        // touches the disk — see `SymbolResolver::resolve_symbols_at` for why
-        // that is a correctness property and not only a saving.
-        let mut parser = Parser::new();
-        parser
-            .set_language(&tree_sitter_rust::LANGUAGE.into())
-            .map_err(|e| ResolverError::Internal(format!("set_language: {}", e)))?;
-        let tree = parser
-            .parse(source, None)
-            .ok_or_else(|| ResolverError::Internal("parse returned None".into()))?;
-        let root = tree.root_node();
-
-        // tree-sitter rows are 0-indexed; callers pass 1-indexed line numbers
-        // per the project convention (editor / grep alignment). Line 0 has no
-        // row and is dropped rather than shifted onto line 1.
-        let rows: Vec<(u32, usize)> = lines
-            .iter()
-            .filter(|l| **l > 0)
-            .map(|l| (*l, (*l - 1) as usize))
-            .collect();
-        if rows.is_empty() {
-            return Ok(out);
-        }
-
-        let query = query()?;
-        let mut cursor = QueryCursor::new();
-        let mut matches = cursor.matches(query, root, source.as_bytes());
-        // row -> (span of the smallest covering declaration, its name)
-        let mut best: BTreeMap<usize, (usize, String)> = BTreeMap::new();
-
-        while let Some(m) = matches.next() {
-            for cap in m.captures {
-                let item_node: Node = item_node_for_capture(cap.node);
-                let start = item_node.start_position().row;
-                let end = item_node.end_position().row;
-                let covered: Vec<usize> = rows
-                    .iter()
-                    .map(|(_, row)| *row)
-                    .filter(|row| *row >= start && *row <= end)
-                    .collect();
-                if covered.is_empty() {
-                    continue;
-                }
-                let span = end.saturating_sub(start);
-                let name = cap
-                    .node
-                    .utf8_text(source.as_bytes())
-                    .map_err(|e| ResolverError::Internal(format!("utf8: {}", e)))?
-                    .to_string();
-                for row in covered {
-                    match best.get(&row) {
-                        Some((cur_span, _)) if span >= *cur_span => {}
-                        _ => {
-                            best.insert(row, (span, name.clone()));
-                        }
-                    }
-                }
-            }
-        }
-        for (line, row) in rows {
-            if let Some((_, name)) = best.get(&row) {
-                out.insert(line, name.clone());
-            }
-        }
-        Ok(out)
-    }
-}
-
-/// The declaration query, compiled ONCE for the process.
+/// Rust's four differences.
 ///
-/// It used to be compiled inside `resolve_symbol_at`, so a tree-sitter query
-/// compile happened per citation alongside the per-citation parse — the half of
-/// the cost the consumer's report did not name. The source is a constant, so
-/// there is nothing per-call about it.
-fn query() -> Result<&'static Query, ResolverError> {
-    static QUERY: OnceLock<Result<Query, String>> = OnceLock::new();
-    QUERY
-        .get_or_init(|| {
-            let lang: tree_sitter::Language = tree_sitter_rust::LANGUAGE.into();
-            Query::new(
-                &lang,
-                r#"
-        (function_item name: (identifier) @sym)
-        (struct_item name: (type_identifier) @sym)
-        (enum_item name: (type_identifier) @sym)
-        (trait_item name: (type_identifier) @sym)
-        (impl_item type: (type_identifier) @sym)
-        (mod_item name: (identifier) @sym)
-        (const_item name: (identifier) @sym)
-        (static_item name: (identifier) @sym)
-        (type_item name: (type_identifier) @sym)
-        (union_item name: (type_identifier) @sym)
-        (macro_definition name: (identifier) @sym)
-        "#,
-            )
-            .map_err(|e| format!("query compile: {e}"))
-        })
-        .as_ref()
-        .map_err(|e| ResolverError::Internal(e.clone()))
-}
+/// `documented_kinds` IS EMPTY, AND THAT IS A DECISION WITH A CONSEQUENCE. A
+/// `§` citation written in a `///` line above an item resolves to the enclosing
+/// item — or to nothing, at the top level — rather than to the item below it,
+/// which is the opposite of what the C++ backend does with the same shape. The
+/// two behaviours predate this crate and the port preserves both byte for byte;
+/// which one is right is a question with an answer and neither is written down
+/// as a law yet.
+pub static SPEC: LanguageSpec = LanguageSpec {
+    backend_key: BACKEND_KEY,
+    plugin_name: "mnemosyne-plugin-tree-sitter-rust",
+    plugin_version: env!("CARGO_PKG_VERSION"),
+    symbol_axis_language: SYMBOL_AXIS_LANGUAGE,
+    language: || tree_sitter_rust::LANGUAGE.into(),
+    query_source: r"
+        (function_item) @item
+        (struct_item) @item
+        (enum_item) @item
+        (trait_item) @item
+        (impl_item) @item
+        (mod_item) @item
+        (const_item) @item
+        (static_item) @item
+        (type_item) @item
+        (union_item) @item
+        (macro_definition) @item
+    ",
+    name_of: rust_name_of,
+    documented_kinds: &[],
+    comment_kind: "line_comment",
+    query_cache: &QUERY,
+};
 
-/// Walks up from the captured name node to the enclosing item node so the
-/// extent reflects the declaration span (used to pick the *smallest*
-/// covering declaration when items nest — e.g., a `fn` inside an `impl`).
-fn item_node_for_capture(name_node: Node) -> Node {
-    let mut cur = name_node;
-    while let Some(parent) = cur.parent() {
-        let kind = parent.kind();
-        if matches!(
-            kind,
-            "function_item"
-                | "struct_item"
-                | "enum_item"
-                | "trait_item"
-                | "impl_item"
-                | "mod_item"
-                | "const_item"
-                | "static_item"
-                | "type_item"
-                | "union_item"
-                | "macro_definition"
-        ) {
-            return parent;
+/// The declared name of a Rust declaration node.
+///
+/// The KIND FILTER on each field is what keeps a form this language has no
+/// spelling for out of the answer. `impl Foo<T>` has a `generic_type` where
+/// `impl Foo` has a `type_identifier`, and no author records an
+/// `Implementation.symbol` of `Foo<T>`, so the generic form resolves to the
+/// enclosing scope instead of to text nobody would write in the store.
+fn rust_name_of(node: Node, src: &[u8]) -> Option<String> {
+    match node.kind() {
+        "impl_item" => field_text(node, "type", &["type_identifier"], src),
+        "function_item" | "mod_item" | "const_item" | "static_item" | "macro_definition" => {
+            field_text(node, "name", &["identifier"], src)
         }
-        cur = parent;
+        "struct_item" | "enum_item" | "trait_item" | "type_item" | "union_item" => {
+            field_text(node, "name", &["type_identifier"], src)
+        }
+        _ => None,
     }
-    name_node
 }
 
-/// Register this backend into the given `PluginRegistry`. The binary's
-/// startup path (mnemosyne-cli / mnemosyne-mcp) calls this once after
-/// instantiating the registry; the substrate stays decoupled from any
-/// specific transport or language.
+/// This backend, ready to register.
+#[must_use]
+pub fn resolver() -> TreesitterResolver {
+    TreesitterResolver::new(&SPEC)
+}
+
+/// Register this backend into the given `PluginRegistry`.
 pub fn register(registry: &mut PluginRegistry) {
-    registry.register_symbol_resolver(BACKEND_KEY, Box::new(TreesitterRustResolver));
+    registry.register_symbol_resolver(BACKEND_KEY, Box::new(resolver()));
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use mnemosyne_core::SymbolResolver;
+    use std::collections::BTreeMap;
+    use std::path::Path;
 
     /// Resolve one line — through a path that DOES NOT EXIST, which is the
     /// oracle for "the answer came from the caller's bytes". Every test below
     /// therefore also asserts the resolver never reads the filesystem.
     fn resolve(source: &str, line: u32) -> Option<String> {
-        let resolver = TreesitterRustResolver;
-        resolver
+        resolver()
             .resolve_symbols_at(Path::new("/no/such/file.rs"), source, &[line])
             .unwrap()
             .remove(&line)
@@ -241,6 +144,27 @@ mod tests {
         assert_eq!(resolve(src, 3).as_deref(), Some("theta"));
     }
 
+    /// A doc comment above an item binds to the ENCLOSING item, not to the item
+    /// below — Rust's spec takes no `documented_kinds`. Pinned because the C++
+    /// backend does the opposite with the same shape, and the port that put
+    /// both on one engine is exactly when the two could have been quietly
+    /// unified.
+    #[test]
+    fn a_doc_comment_above_an_item_does_not_bind_to_that_item() {
+        let src = "/// documents alpha\nfn alpha() {}\n";
+        assert_eq!(resolve(src, 1), None);
+        assert_eq!(resolve(src, 2).as_deref(), Some("alpha"));
+    }
+
+    /// A generic `impl` has no name this language records, so the line falls
+    /// through to whatever encloses it rather than resolving to `Foo<T>`.
+    #[test]
+    fn a_generic_impl_is_not_named_after_its_type_expression() {
+        let src = "impl Foo<T> {\n    fn m(&self) {}\n}\n";
+        assert_eq!(resolve(src, 1), None);
+        assert_eq!(resolve(src, 2).as_deref(), Some("m"));
+    }
+
     #[test]
     fn register_round_trip() {
         let mut reg = PluginRegistry::new();
@@ -259,7 +183,7 @@ mod tests {
                    impl Delta {\n    fn epsilon(&self) {}\n}\n\
                    struct Gamma;\n";
         let lines = [1u32, 2, 3, 4, 6];
-        let batched = TreesitterRustResolver
+        let batched = resolver()
             .resolve_symbols_at(Path::new("/no/such/file.rs"), src, &lines)
             .unwrap();
         let one_at_a_time: BTreeMap<u32, String> = lines
@@ -290,10 +214,20 @@ mod tests {
     /// is what the single-line form did by returning `None` for it.
     #[test]
     fn line_zero_is_dropped_and_does_not_become_line_one() {
-        let out = TreesitterRustResolver
+        let out = resolver()
             .resolve_symbols_at(Path::new("/no/such/file.rs"), "fn alpha() {}\n", &[0, 1])
             .unwrap();
         assert_eq!(out.get(&1).map(String::as_str), Some("alpha"));
         assert!(!out.contains_key(&0), "no answer for a line that cannot be");
+    }
+
+    /// The spec files this backend under the language it answers in, and the
+    /// resolver reports the crate it came from.
+    #[test]
+    fn the_spec_names_this_crate_and_its_language() {
+        let surface = resolver().version_surface();
+        assert_eq!(surface.plugin_name, "mnemosyne-plugin-tree-sitter-rust");
+        assert_eq!(SPEC.symbol_axis_language, "rust");
+        assert_eq!(SPEC.backend_key, BACKEND_KEY);
     }
 }

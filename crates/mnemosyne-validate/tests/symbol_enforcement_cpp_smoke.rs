@@ -18,7 +18,7 @@ use std::path::PathBuf;
 use mnemosyne_atomic::{add_section, add_section_binding, AtomicStore, BindingKind};
 use mnemosyne_config::SetEqualityValidatorConfig;
 use mnemosyne_core::{AtomicStoreView, SymbolResolver};
-use mnemosyne_plugin_tree_sitter_cpp::TreesitterCppResolver;
+use mnemosyne_plugin_tree_sitter_cpp::resolver as cpp_resolver;
 use mnemosyne_validate::code_refs::{
     CitationAttribution, CodeRefViolation, NumberingOriginAxis, SetEqualityValidator, ViolationKind,
 };
@@ -42,7 +42,7 @@ fn no_foreign_subtree<'a>(
 
 fn cpp_resolver_map() -> BTreeMap<String, Box<dyn SymbolResolver>> {
     let mut m: BTreeMap<String, Box<dyn SymbolResolver>> = BTreeMap::new();
-    m.insert("cpp".into(), Box::new(TreesitterCppResolver));
+    m.insert("cpp".into(), Box::new(cpp_resolver()));
     m
 }
 
