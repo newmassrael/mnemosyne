@@ -71,6 +71,10 @@ mnemosyne-validate = { path = "../mnemosyne-validate" }
 mnemosyne-plugin-tree-sitter-go = { path = "../mnemosyne-plugin-tree-sitter-go" }
 mnemosyne-plugin-tree-sitter-python = { path = "../mnemosyne-plugin-tree-sitter-python" }
 mnemosyne-plugin-tree-sitter-kotlin = { path = "../mnemosyne-plugin-tree-sitter-kotlin" }
+# Round 1161 — the corpus contract asks each backend's compiled query how many
+# declaration patterns it DECLARES and which of them a source reached, so it
+# needs the crate those two live on rather than a count typed beside the shapes.
+mnemosyne-plugin-tree-sitter-core = { path = "../mnemosyne-plugin-tree-sitter-core" }
 mnemosyne-core = { path = "../mnemosyne-core" }
 
 [lints]

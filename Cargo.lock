@@ -1065,6 +1065,7 @@ dependencies = [
  "mnemosyne-config",
  "mnemosyne-core",
  "mnemosyne-ops",
+ "mnemosyne-plugin-tree-sitter-core",
  "mnemosyne-plugin-tree-sitter-cpp",
  "mnemosyne-plugin-tree-sitter-go",
  "mnemosyne-plugin-tree-sitter-kotlin",

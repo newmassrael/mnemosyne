@@ -22,12 +22,12 @@
 //! what keeps the symbol answer about the same file revision the citation was
 //! extracted from — a correctness property, not only a saving (Round 1141).
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 use std::sync::OnceLock;
 
 use mnemosyne_core::{ResolverError, SymbolResolver, VersionSurface};
-use tree_sitter::{Node, Parser, Point, Query, QueryCursor, StreamingIterator};
+use tree_sitter::{Node, Parser, Point, Query, QueryCursor, StreamingIterator, Tree};
 
 /// The four things that differ between one tree-sitter backend and the next.
 pub struct LanguageSpec {
@@ -96,6 +96,75 @@ impl LanguageSpec {
             .as_ref()
             .map_err(|e| ResolverError::Internal(e.clone()))
     }
+
+    /// This grammar's parse of a source it was handed.
+    ///
+    /// ONE PLACE, AND THE SWEEPS GATE IS WHY IT IS ONE. Round 1161 added a
+    /// second caller and copied these four lines to do it, which took the
+    /// `the-resolver-goes-back-to-the-disk` injection from landing once to
+    /// landing twice — the gate refused, and the repair is the duplication
+    /// rather than the anchor. A parse is also exactly the thing that must not
+    /// have two implementations here: the whole point of the source being passed
+    /// in is that the answer comes from the bytes the citation was taken from,
+    /// and a second parse is a second chance to read something else.
+    ///
+    /// # Errors
+    ///
+    /// A grammar the parser rejects, or a parse that returns nothing.
+    pub fn parse(&self, source: &str) -> Result<Tree, ResolverError> {
+        let mut parser = Parser::new();
+        parser
+            .set_language(&(self.language)())
+            .map_err(|e| ResolverError::Internal(format!("set_language: {e}")))?;
+        parser
+            .parse(source, None)
+            .ok_or_else(|| ResolverError::Internal("parse returned None".into()))
+    }
+
+    /// How many declaration patterns this backend's query declares.
+    ///
+    /// THE DENOMINATOR OF WHAT A CORPUS COVERS, and it comes from the compiled
+    /// query rather than from anybody's list. Round 1161 needed a population for
+    /// "which shapes does this backend CLAIM to answer", and the query source is
+    /// where that claim is already written — counting it here is asking the
+    /// program, where a constant beside it would be a second answer free to
+    /// drift.
+    ///
+    /// # Errors
+    ///
+    /// See [`LanguageSpec::query`].
+    pub fn pattern_count(&self) -> Result<usize, ResolverError> {
+        Ok(self.query()?.pattern_count())
+    }
+
+    /// Which of this backend's query patterns a source actually exercises.
+    ///
+    /// THE NUMERATOR, TAKEN THE SAME WAY. `tree_sitter` hands every match its
+    /// `pattern_index`, so "did the corpus reach this shape" is a fact the
+    /// matcher already knows and nothing here has to infer from node kinds or
+    /// from reading the query text.
+    ///
+    /// WHY IT IS NOT ENOUGH TO COUNT ANSWERS. A resolver returns NAMES, and two
+    /// patterns can produce the same name while a third produces none at all
+    /// ([`LanguageSpec::name_of`] returns `None` for shapes a backend declines
+    /// to name). A corpus that never reaches a pattern and a corpus that reaches
+    /// one it cannot name are different states, and the answer map cannot tell
+    /// them apart — this can.
+    ///
+    /// # Errors
+    ///
+    /// See [`LanguageSpec::query`]; also a grammar the parser rejects.
+    pub fn patterns_exercised(&self, source: &str) -> Result<BTreeSet<usize>, ResolverError> {
+        let tree = self.parse(source)?;
+        let query = self.query()?;
+        let mut cursor = QueryCursor::new();
+        let mut matches = cursor.matches(query, tree.root_node(), source.as_bytes());
+        let mut seen = BTreeSet::new();
+        while let Some(m) = matches.next() {
+            seen.insert(m.pattern_index);
+        }
+        Ok(seen)
+    }
 }
 
 /// A `SymbolResolver` built from one [`LanguageSpec`].
@@ -163,13 +232,7 @@ impl SymbolResolver for TreesitterResolver {
         if lines.is_empty() {
             return Ok(out);
         }
-        let mut parser = Parser::new();
-        parser
-            .set_language(&(self.spec.language)())
-            .map_err(|e| ResolverError::Internal(format!("set_language: {e}")))?;
-        let tree = parser
-            .parse(source, None)
-            .ok_or_else(|| ResolverError::Internal("parse returned None".into()))?;
+        let tree = self.spec.parse(source)?;
         let root = tree.root_node();
 
         let rows: Vec<(u32, usize)> = lines

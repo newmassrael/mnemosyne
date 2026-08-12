@@ -175,8 +175,8 @@
       "edits": [
         {
           "file": "crates/mnemosyne-plugin-tree-sitter-core/src/lib.rs",
-          "from": "        let tree = parser\n            .parse(source, None)",
-          "to": "        let source = &std::fs::read_to_string(_file).unwrap_or_default();\n        let tree = parser\n            .parse(source, None)"
+          "from": "        let tree = self.spec.parse(source)?;",
+          "to": "        let source = &std::fs::read_to_string(_file).unwrap_or_default();\n        let tree = self.spec.parse(source)?;"
         }
       ],
       "expect_red": [
