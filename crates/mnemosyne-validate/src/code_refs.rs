@@ -3638,6 +3638,18 @@ const SYMBOL_AXIS_EXTENSIONS: &[(&str, &str)] = &[
     ("rs", "rust"),
 ];
 
+/// The extension table itself, `(extension, language)` in extension order.
+///
+/// Published because the consumer's question is often about a FILE rather than
+/// a language: SCE's spec ledger enrols a Kotlin runtime, and the sentence they
+/// needed was "`.kt` is not on the table", which no derived language set can
+/// say. Reading it out of this repository's source is what they did instead,
+/// and prose about the inside of another tree decays without a reader.
+#[must_use]
+pub fn symbol_axis_extensions() -> &'static [(&'static str, &'static str)] {
+    SYMBOL_AXIS_EXTENSIONS
+}
+
 /// Every language ID the extension table can produce — the legal key set for
 /// `[plugins.symbol_resolver.<lang>]`. Derived, so a resolver keyed to a
 /// language no file can ever map to is refusable rather than dead config.

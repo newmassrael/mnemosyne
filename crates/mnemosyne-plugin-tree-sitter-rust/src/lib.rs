@@ -23,6 +23,15 @@ use tree_sitter::{Node, Parser, Query, QueryCursor, StreamingIterator};
 
 pub const BACKEND_KEY: &str = "tree-sitter-rust";
 
+/// The symbol-axis language this backend resolves — the
+/// `[plugins.symbol_resolver.<lang>]` key it belongs under.
+///
+/// Declared here rather than at the wiring site because it is a property of
+/// what this crate parses: `tree-sitter-rust` answers in Rust's vocabulary and
+/// in no other, so pairing it with a different language key produces
+/// enforcement against names a grammar that never saw the language invented.
+pub const SYMBOL_AXIS_LANGUAGE: &str = "rust";
+
 pub struct TreesitterRustResolver;
 
 impl SymbolResolver for TreesitterRustResolver {

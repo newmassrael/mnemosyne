@@ -32,6 +32,17 @@ use tree_sitter::{Node, Parser, Point, Query, QueryCursor, StreamingIterator};
 
 pub const BACKEND_KEY: &str = "tree-sitter-cpp";
 
+/// The symbol-axis language this backend resolves — the
+/// `[plugins.symbol_resolver.<lang>]` key it belongs under. `.c` and the
+/// header extensions map to this same language, which is why the id is `cpp`
+/// and not one extension's name.
+///
+/// Declared here rather than at the wiring site because it is a property of
+/// what this crate parses: `tree-sitter-cpp` answers in C++'s vocabulary and in
+/// no other, so pairing it with a different language key produces enforcement
+/// against names a grammar that never saw the language invented.
+pub const SYMBOL_AXIS_LANGUAGE: &str = "cpp";
+
 pub struct TreesitterCppResolver;
 
 impl SymbolResolver for TreesitterCppResolver {

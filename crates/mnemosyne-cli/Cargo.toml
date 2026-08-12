@@ -58,6 +58,10 @@ mnemosyne-atomic = { path = "../mnemosyne-atomic" }
 # The backlog walk asks each contract in `tests/` which pair of reads it judges,
 # by reading the `const DECLARES` out of its source. See the workspace entry.
 syn = { workspace = true }
+# The symbol-axis reach contract checks that the report prints the EXTENSION
+# TABLE's own range rather than a language list retyped into the command, so it
+# needs the library the command reads it from.
+mnemosyne-validate = { path = "../mnemosyne-validate" }
 
 [lints]
 workspace = true

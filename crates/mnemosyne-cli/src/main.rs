@@ -85,10 +85,21 @@ fn cli_schema() -> Result<&'static SchemaSection> {
 /// reported one axis over. Refusing cannot break a working config: an entry
 /// this rejects was doing nothing by construction.
 ///
+/// Round 1151 — the THIRD shape, and the only one of the three under which
+/// enforcement actually happens: a backend registered under a language it does
+/// not resolve. `[plugins.symbol_resolver.rust] backend = "tree-sitter-cpp"`
+/// parsed, registered and ran, and every citation in the tree was checked
+/// against whatever the C++ grammar made of Rust source — a published count
+/// rather than the `null` the two shapes above now produce. The pairing is not
+/// this site's to accept: each backend declares the one language it answers in
+/// (`SYMBOL_AXIS_LANGUAGE`), and the branch chain that used to live here became
+/// [`mnemosyne_cli::backends::IN_PROCESS_BACKENDS`] so both this check and
+/// `describe-symbol-axis-reach` read one table.
+///
 /// # Errors
 ///
-/// A `lang` key no file extension can map to, or an in-process `backend` name
-/// this build has no plugin for.
+/// A `lang` key no file extension can map to, an in-process `backend` name this
+/// build has no plugin for, or a backend that resolves some other language.
 fn build_symbol_resolver_map(
     cfg: &WorkspaceConfig,
 ) -> anyhow::Result<std::collections::BTreeMap<String, Box<dyn mnemosyne_core::SymbolResolver>>> {
@@ -109,23 +120,27 @@ fn build_symbol_resolver_map(
         }
         match resolver_cfg {
             SymbolResolverConfig::InProcess { backend } => {
-                if backend == mnemosyne_plugin_tree_sitter_rust::BACKEND_KEY {
-                    out.insert(
-                        lang.clone(),
-                        Box::new(mnemosyne_plugin_tree_sitter_rust::TreesitterRustResolver),
-                    );
-                } else if backend == mnemosyne_plugin_tree_sitter_cpp::BACKEND_KEY {
-                    out.insert(
-                        lang.clone(),
-                        Box::new(mnemosyne_plugin_tree_sitter_cpp::TreesitterCppResolver),
-                    );
-                } else {
+                let Some(entry) = mnemosyne_cli::backends::find(backend) else {
                     anyhow::bail!(
                         "[plugins.symbol_resolver.{lang}] names in-process backend `{backend}`, \
                          which this build has no plugin for — the symbol axis would silently \
-                         fall back to file-level binding for {lang}"
+                         fall back to file-level binding for {lang}. This build ships {:?} \
+                         (`mnemosyne-cli describe-symbol-axis-reach` prints them with the \
+                         languages they resolve)",
+                        mnemosyne_cli::backends::keys()
+                    );
+                };
+                if entry.language != lang.as_str() {
+                    anyhow::bail!(
+                        "[plugins.symbol_resolver.{lang}] names in-process backend \
+                         `{backend}`, which resolves `{}` and not `{lang}` — it would answer \
+                         in {}'s vocabulary for every {lang} file, and the axis would publish \
+                         that as a judged count rather than say it had no instrument",
+                        entry.language,
+                        entry.language
                     );
                 }
+                out.insert(lang.clone(), entry.make());
             }
             SymbolResolverConfig::Mcp { command } => {
                 // Placeholder McpResolver — registered into the type surface so
@@ -1445,6 +1460,20 @@ static COMMANDS: &[Command] = &[
             "   --filter-id (Round 258): restrict to citations of one id; surfaces them as decay (cascade caller use)",
         ],
         run: |c| cmd_validate_code_refs(c.rest()).map_err(CliError::from),
+    },
+    Command {
+        name: "describe-symbol-axis-reach",
+        aliases: &[],
+        group: Some(&GROUP_CODE_CITATION),
+        blank_before: false,
+        usage: &["describe-symbol-axis-reach [--json]"],
+        notes: &[
+            "   Round 1151 — HOW FAR THIS BUILD CAN REACH: the in-process symbol-resolver backends",
+            "   compiled in, the language each resolves, the extension table that routes files to",
+            "   them, and the languages a file can map to with no backend to resolve it.",
+            "   A property of the binary, so it needs no workspace and answers the same anywhere.",
+        ],
+        run: |c| cmd_describe_symbol_axis_reach(c.rest()).map_err(CliError::from),
     },
     Command {
         name: "propose-implementations",
@@ -4377,6 +4406,138 @@ fn cmd_report_quest_graph(args: &[String]) -> Result<()> {
 /// agent reads to self-serve instead of reading source. STATIC and
 /// store-independent (the contract is fixed; store CONTENTS are `query` /
 /// `list-*`). `--json` emits the full machine form.
+/// Round 1151 — what this build can judge at symbol level, and where it stops.
+///
+/// A CAPABILITY REPORT, NOT A JUDGEMENT. Which plugins are compiled in, and
+/// which extensions route files to them, are properties of the binary: no
+/// workspace is loaded, nothing can fail, and the answer is the same in every
+/// checkout the binary is run from. That matters because the consumer asking is
+/// standing in THEIR tree deciding whether to enrol it, and because the CI job
+/// that would keep the answer honest runs there too.
+///
+/// `describe-`, NOT `report-`, AND THE PREFIX IS LOAD-BEARING. The corpus walks
+/// in `tests/surface/` derive their population from every advertised
+/// `report-*` / `validate-*` verb and ask each one over 28 authored stores,
+/// under 312 corruptions, to see whether its answer moves. All four of those
+/// laws are VACUOUS for a verb that reads no store — an answer that cannot move
+/// proves nothing about a corruption it never saw — so a capability report
+/// filed under `report-` adds 27 identical invocations and a bumped constant to
+/// four derived populations without adding one bit of signal. `describe-schema`
+/// is the sibling this belongs beside: the other verb that is a pure function
+/// of the binary.
+///
+/// It exists because the answer was previously only obtainable by reading this
+/// repository's source. SCE read it, and their spec-ledger test carries three
+/// sentences about the inside of this crate — that `.go` and `.py` map to
+/// languages with no plugin, and that `.kt` is not on the extension table at
+/// all. A restatement like that has no reader on the side that can invalidate
+/// it: when a resolver lands here, nothing they run notices, so a gap list
+/// outlives its gap. Every field below is derived — the extension table from
+/// `mnemosyne-validate`, the backends from
+/// [`mnemosyne_cli::backends::IN_PROCESS_BACKENDS`], and the shortfall from the
+/// difference — so there is no third answer to fall behind the other two.
+fn cmd_describe_symbol_axis_reach(args: &[String]) -> Result<()> {
+    let mut json = false;
+    for arg in args {
+        match arg.as_str() {
+            "--json" => json = true,
+            other => {
+                return Err(anyhow!(
+                    "describe-symbol-axis-reach: unexpected arg `{other}`"
+                ))
+            }
+        }
+    }
+
+    let backends = mnemosyne_cli::backends::IN_PROCESS_BACKENDS;
+    let served = mnemosyne_cli::backends::languages();
+    let languages = mnemosyne_validate::code_refs::symbol_axis_languages();
+    let extensions = mnemosyne_validate::code_refs::symbol_axis_extensions();
+    let without: Vec<&str> = languages
+        .iter()
+        .copied()
+        .filter(|l| !served.contains(l))
+        .collect();
+
+    if json {
+        let doc = serde_json::json!({
+            "in_process_backends": backends
+                .iter()
+                .map(|b| {
+                    let surface = b.make().version_surface();
+                    serde_json::json!({
+                        "backend": b.key,
+                        "language": b.language,
+                        "plugin": surface.plugin_name,
+                        "plugin_version": surface.plugin_version,
+                        "schema_min": surface.schema_min,
+                        "schema_max": surface.schema_max,
+                    })
+                })
+                .collect::<Vec<_>>(),
+            "symbol_axis_languages": languages.iter().collect::<Vec<_>>(),
+            "languages_without_backend": without,
+            "extensions": extensions
+                .iter()
+                .map(|(ext, lang)| serde_json::json!({"extension": ext, "language": lang}))
+                .collect::<Vec<_>>(),
+        });
+        println!("{}", serde_json::to_string_pretty(&doc)?);
+        return Ok(());
+    }
+
+    println!("=== symbol-axis reach (a property of this build) ===");
+    println!("\n-- in-process backends --");
+    for b in backends {
+        let surface = b.make().version_surface();
+        println!(
+            "  {} resolves `{}` ({} v{}, schema {}..={})",
+            b.key,
+            b.language,
+            surface.plugin_name,
+            surface.plugin_version,
+            surface.schema_min,
+            surface.schema_max
+        );
+    }
+    println!("\n-- extension table (file -> language) --");
+    for (ext, lang) in extensions {
+        let mark = if served.contains(lang) {
+            ""
+        } else {
+            "  [no backend]"
+        };
+        println!("  .{ext} -> {lang}{mark}");
+    }
+    println!("\n-- where the axis stops --");
+    if without.is_empty() {
+        println!("  nowhere: every language a file can map to has a resolver");
+    } else {
+        for lang in &without {
+            let exts: Vec<&str> = extensions
+                .iter()
+                .filter(|(_, l)| l == lang)
+                .map(|(e, _)| *e)
+                .collect();
+            println!(
+                "  {lang}: files ({}) map here and no backend resolves them — their \
+                 citations take file-level binding",
+                exts.iter()
+                    .map(|e| format!(".{e}"))
+                    .collect::<Vec<_>>()
+                    .join(" ")
+            );
+        }
+    }
+    println!(
+        "\n{} backend(s), {} language(s) on the table, {} without a resolver",
+        backends.len(),
+        languages.len(),
+        without.len()
+    );
+    Ok(())
+}
+
 fn cmd_describe_schema(args: &[String]) -> Result<()> {
     let mut json = false;
     for arg in args {

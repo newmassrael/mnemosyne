@@ -7,6 +7,7 @@
 //! I/O concerns here; it does not re-export ops.
 
 pub mod atomic_cli;
+pub mod backends;
 
 /// The CLI's top-level error, threaded from every command up to `main`.
 ///

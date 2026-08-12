@@ -86,14 +86,15 @@ const RUST_RESOLVER: &str = "[plugins.symbol_resolver.rust]\n\
                              transport = \"in-process\"\n\
                              backend = \"tree-sitter-rust\"\n";
 
-/// A tree that can tell WHICH resolver answered, which the first version of it
-/// could not.
+/// A tree in ONE language that can tell WHICH resolver answered, which the
+/// first version of it could not.
 ///
-/// TWO SITES, AND BOTH ARE LOAD-BEARING. `src/drift.rs` cites `§sec1`, which
-/// records `beta`, from inside a method the Rust grammar calls `alpha` — a
-/// mismatch. `src/matched.rs` cites `§sec2`, which records `gamma`, from inside
-/// a method the Rust grammar calls `gamma` — clean. The whole run must therefore
-/// report EXACTLY ONE symbol violation, at the first file.
+/// TWO SITES, AND BOTH ARE LOAD-BEARING. `src/drift.<ext>` cites `§sec1`, which
+/// records `beta`, from inside a method this language's grammar calls something
+/// else — a mismatch. `src/matched.<ext>` cites `§sec2`, which records
+/// [`LangFixture::matched_symbol`], from inside a method the grammar calls
+/// exactly that — clean. The whole run must therefore report EXACTLY ONE symbol
+/// violation, at the first file.
 ///
 /// WHY ONE SITE WAS NOT ENOUGH. Round 1145 injected the C++ resolver into the
 /// `rust` key and NOTHING went red across 1870 tests. With only a mismatch site,
@@ -102,18 +103,75 @@ const RUST_RESOLVER: &str = "[plugins.symbol_resolver.rust]\n\
 /// and the assertion holds while the wrong plugin runs. A resolver that answers
 /// NOTHING now drops the count to 0, and one that answers DIFFERENT NAMES raises
 /// it to 2 by reddening the clean site. Both are one number away from correct
-/// and both fail.
+/// and both fail. The violation carries no found symbol — file, line and
+/// `§id` only — so the two sites are the only thing that can pin the vocabulary.
 ///
-/// The methods sit inside `impl` blocks for the same reason: `fn alpha() { … }`
-/// at top level is also a valid C++ function definition — return type `fn`, name
-/// `alpha` — so the two grammars agreed on the answer, which is how a fixture
-/// stops being a control (Round 1096: the spelling is what makes it one).
+/// Each fixture is written so that NO OTHER shipped grammar parses it into the
+/// same answer: `fn alpha() { … }` at top level is also a valid C++ function
+/// definition — return type `fn`, name `alpha` — so the Rust sites sit inside
+/// `impl` blocks. That is how a fixture stops being a control (Round 1096: the
+/// spelling is what makes it one).
+struct LangFixture {
+    /// The symbol-axis language id — the `[plugins.symbol_resolver.<lang>]` key
+    /// this fixture configures.
+    language: &'static str,
+    /// An extension the symbol-axis extension table maps to `language`.
+    ext: &'static str,
+    /// Source whose enclosing symbol at the citation line is NOT `beta`.
+    drift: &'static str,
+    /// Source whose enclosing symbol at the citation line IS `matched_symbol`.
+    matched: &'static str,
+    /// The name this language's grammar must answer at the clean site, spelled
+    /// in that language's own vocabulary.
+    matched_symbol: &'static str,
+}
+
+/// The Rust fixture — the one laws 1 to 5 run on.
+const RUST: LangFixture = LangFixture {
+    language: "rust",
+    ext: "rs",
+    drift: "struct Holder;\n\nimpl Holder {\n    fn alpha(&self) {\n        \
+            // §sec1 — recorded as `beta`, so this citation has drifted\n        \
+            let _ = 1;\n    }\n}\n",
+    matched: "struct Keeper;\n\nimpl Keeper {\n    fn gamma(&self) {\n        \
+              // §sec2 — recorded as `gamma`, so this citation is clean\n        \
+              let _ = 2;\n    }\n}\n",
+    matched_symbol: "gamma",
+};
+
+/// The C++ fixture. The citation sits on the LAST line of each method body, so
+/// the doc-comment rule (a comment immediately above a declaration binds to
+/// that declaration) does not fire and the smallest covering declaration — the
+/// method — is the answer, exactly as in the Rust fixture.
+const CPP: LangFixture = LangFixture {
+    language: "cpp",
+    ext: "cpp",
+    drift: "struct Holder {\n    void alpha() {\n        int x = 1;\n        (void)x;\n        \
+            // §sec1 — recorded as `beta`, so this citation has drifted\n    }\n};\n",
+    matched: "struct Keeper {\n    void gamma() {\n        int y = 2;\n        (void)y;\n        \
+              // §sec2 — recorded as `gamma`, so this citation is clean\n    }\n};\n",
+    matched_symbol: "gamma",
+};
+
+/// Every fixture this test file holds, looked up by language. The POPULATION is
+/// the binary's own answer (law 7), never this list: a backend this build ships
+/// and this table has no fixture for FAILS rather than being skipped, so the
+/// round that adds a language cannot add it without a control.
+const FIXTURES: &[&LangFixture] = &[&RUST, &CPP];
+
+/// Laws 1 to 5 run on the Rust fixture.
 ///
 /// `cpp_case` adds `src/bar.cpp`, bound at FILE level with no symbol recorded,
 /// for a language no test here configures a resolver for: an unreachable file
 /// that makes no symbol-level claim, which is the state law 3 separates from
 /// the one law 5 refuses.
 fn write_workspace(ws: &Path, resolver: &str, cpp_case: bool) {
+    write_language_workspace(ws, resolver, &RUST, cpp_case);
+}
+
+/// Write the two-site tree of `fx` into `ws`, with `resolver` as the only
+/// `[plugins]` content.
+fn write_language_workspace(ws: &Path, resolver: &str, fx: &LangFixture, cpp_case: bool) {
     fs::create_dir_all(ws.join("docs/.atomic")).unwrap();
     fs::create_dir_all(ws.join("src")).unwrap();
     fs::write(
@@ -126,36 +184,24 @@ fn write_workspace(ws: &Path, resolver: &str, cpp_case: bool) {
     )
     .unwrap();
 
-    // Line 4 of each file is inside the method body, so the enclosing symbol is
-    // the method's name and not the type's.
-    fs::write(
-        ws.join("src/drift.rs"),
-        "struct Holder;\n\nimpl Holder {\n    fn alpha(&self) {\n        \
-         // §sec1 — recorded as `beta`, so this citation has drifted\n        \
-         let _ = 1;\n    }\n}\n",
-    )
-    .unwrap();
-    fs::write(
-        ws.join("src/matched.rs"),
-        "struct Keeper;\n\nimpl Keeper {\n    fn gamma(&self) {\n        \
-         // §sec2 — recorded as `gamma`, so this citation is clean\n        \
-         let _ = 2;\n    }\n}\n",
-    )
-    .unwrap();
+    let drift_file = format!("src/drift.{}", fx.ext);
+    let matched_file = format!("src/matched.{}", fx.ext);
+    fs::write(ws.join(&drift_file), fx.drift).unwrap();
+    fs::write(ws.join(&matched_file), fx.matched).unwrap();
 
     let mut sections = serde_json::json!({
         "sec1": {
             "title": "One",
             "parent_doc": "docs/GENERATED.md",
             "bindings": [
-                {"file": "src/drift.rs", "symbol": "beta", "kind": "implements"}
+                {"file": drift_file, "symbol": "beta", "kind": "implements"}
             ]
         },
         "sec2": {
             "title": "Two",
             "parent_doc": "docs/GENERATED.md",
             "bindings": [
-                {"file": "src/matched.rs", "symbol": "gamma", "kind": "implements"}
+                {"file": matched_file, "symbol": fx.matched_symbol, "kind": "implements"}
             ]
         }
     });
@@ -509,5 +555,330 @@ fn an_unreached_language_that_claims_no_symbol_neither_refuses_nor_unjudges() {
         "the language nothing covers is named with the count that matters — \
          files carrying a citation this ledger gates: {}",
         json["symbol_axis"]
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Laws 6 to 9 — HOW FAR THIS BUILD CAN REACH AT ALL.
+//
+// Laws 1 to 5 are about one run's configuration. These four are one question
+// further out, and it is the question the consumer had to answer by reading our
+// source: WHICH LANGUAGES CAN THIS BINARY JUDGE? SCE's spec ledger enrols five
+// backend runtimes; two of them take symbol-level binding and three take
+// file-level, and their own test names the reason for each in prose it had to
+// copy out of this repository — "Mnemosyne maps .go to the `go` language but
+// ships no resolver plugin for it", "`.kt` is absent from Mnemosyne's
+// symbol-axis extension table entirely". Prose in their tree about the inside
+// of ours is a restatement that decays silently the moment we ship a resolver:
+// nothing they run can tell them the gap closed, so the gap outlives itself.
+//
+// The answer is a fact about the BUILD, not about a tree, so it is available
+// without a workspace and it is the same everywhere the binary runs.
+// ---------------------------------------------------------------------------
+
+/// `describe-symbol-axis-reach --json` in `dir`, parsed.
+fn reach(dir: &Path) -> (Output, serde_json::Value) {
+    let out = Command::new(cli())
+        .args(["describe-symbol-axis-reach", "--json"])
+        .current_dir(dir)
+        .output()
+        .expect("cli exec");
+    let json = serde_json::from_slice(&out.stdout).unwrap_or_else(|_| {
+        panic!(
+            "stdout is not json: {}\nstderr: {}",
+            String::from_utf8_lossy(&out.stdout),
+            String::from_utf8_lossy(&out.stderr)
+        )
+    });
+    (out, json)
+}
+
+/// The backends the report names, as `(backend key, language)`.
+fn reported_backends(json: &serde_json::Value) -> Vec<(String, String)> {
+    json["in_process_backends"]
+        .as_array()
+        .expect("in_process_backends array")
+        .iter()
+        .map(|b| {
+            (
+                b["backend"].as_str().expect("backend key").to_string(),
+                b["language"].as_str().expect("language").to_string(),
+            )
+        })
+        .collect()
+}
+
+/// LAW 6 — THE BUILD NAMES THE BACKENDS IT SHIPS, ANYWHERE.
+///
+/// Which plugins are compiled in is a property of the binary, so the answer
+/// cannot depend on standing in a workspace: a consumer deciding whether to
+/// enrol a tree has no workspace of ours to stand in, and the CI job that would
+/// check the answer runs in their checkout.
+#[test]
+fn the_build_names_the_backends_it_ships_without_a_workspace() {
+    let empty = TempDir::new().unwrap();
+    let (out, json) = reach(empty.path());
+    assert!(
+        out.status.success(),
+        "naming what this build contains is not a judgement and cannot fail: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+
+    let backends = reported_backends(&json);
+    assert!(
+        backends.len() >= 2,
+        "a build that names no backend would satisfy every law below vacuously: \
+         {json}"
+    );
+    // Every backend names a language the extension table can actually produce.
+    // A backend keyed to a language no file maps to is unreachable config, the
+    // shape Round 855 made a hard error one step out.
+    let languages: Vec<&str> = json["symbol_axis_languages"]
+        .as_array()
+        .expect("symbol_axis_languages array")
+        .iter()
+        .map(|l| l.as_str().expect("language"))
+        .collect();
+    for (backend, language) in &backends {
+        assert!(
+            languages.contains(&language.as_str()),
+            "backend `{backend}` claims language `{language}`, which no file \
+             extension maps to: {json}"
+        );
+    }
+    // The language set is the library's, not a list retyped into the command.
+    let from_lib: Vec<&str> = mnemosyne_validate::code_refs::symbol_axis_languages()
+        .into_iter()
+        .collect();
+    assert_eq!(
+        languages, from_lib,
+        "the report must print the extension table's own answer: {json}"
+    );
+
+    // Every extension is printed with the language it maps to, because the
+    // consumer's third question is not about a language at all — it is whether
+    // a FILE of theirs is on the table (`.kt` was not).
+    let exts: BTreeMap<String, String> = json["extensions"]
+        .as_array()
+        .expect("extensions array")
+        .iter()
+        .map(|e| {
+            (
+                e["extension"].as_str().expect("extension").to_string(),
+                e["language"].as_str().expect("language").to_string(),
+            )
+        })
+        .collect();
+    assert_eq!(
+        exts.get("rs").map(String::as_str),
+        Some("rust"),
+        "extensions: {exts:?}"
+    );
+    for language in &languages {
+        assert!(
+            exts.values().any(|l| l == language),
+            "language `{language}` is in the table's range but no extension \
+             reaches it: {exts:?}"
+        );
+    }
+}
+
+/// LAW 7 — EVERY BACKEND THIS BUILD NAMES RESOLVES ITS OWN LANGUAGE.
+///
+/// The population is the binary's answer from law 6, so this cannot be a list
+/// of the languages someone remembered to test. A backend with no fixture here
+/// FAILS rather than being skipped: the round that adds a language cannot add
+/// it without a control that says which grammar answered.
+///
+/// Each fixture goes the whole way through the binary — config parse, plugin
+/// registry, the real tree-sitter resolver, a judgement, the exit code a hook
+/// reads — and the two-site shape is what makes the answer attributable: a
+/// resolver that answers nothing leaves the count at 0 and one that answers a
+/// different vocabulary raises it to 2.
+#[test]
+fn every_backend_this_build_ships_resolves_its_own_language() {
+    let (_, report) = reach(TempDir::new().unwrap().path());
+    let backends = reported_backends(&report);
+    assert!(!backends.is_empty(), "nothing to check: {report}");
+
+    for (backend, language) in &backends {
+        let fx = FIXTURES
+            .iter()
+            .find(|f| f.language == language)
+            .unwrap_or_else(|| {
+                panic!(
+                    "this build ships backend `{backend}` for language \
+                     `{language}` and this test has no fixture for it — add the \
+                     two-site control, do not widen the population"
+                )
+            });
+
+        let tmp = TempDir::new().unwrap();
+        let resolver = format!(
+            "[plugins.symbol_resolver.{language}]\ntransport = \"in-process\"\n\
+             backend = \"{backend}\"\n"
+        );
+        write_language_workspace(tmp.path(), &resolver, fx, false);
+        let (out, json) = validate(tmp.path());
+
+        assert_eq!(
+            json["symbol_mismatch_count"],
+            serde_json::json!(1),
+            "`{backend}` on its own language must judge both sites and find \
+             exactly the one drift — 0 means it answered nothing, 2 means it \
+             answered a vocabulary that is not {language}'s: {json}"
+        );
+        let violations = json["violations"].as_array().expect("violations array");
+        let symbol: Vec<&serde_json::Value> = violations
+            .iter()
+            .filter(|v| v["kind"] == "symbol_mismatch")
+            .collect();
+        assert_eq!(
+            symbol
+                .first()
+                .map(|v| (v["file"].as_str(), v["entry_id"].as_str())),
+            Some((
+                Some(format!("src/drift.{}", fx.ext).as_str()),
+                Some("§sec1")
+            )),
+            "the one judgement must name the drifted citation: {violations:?}"
+        );
+        assert!(
+            !not_judged(&json).contains_key("symbol_mismatch"),
+            "a configured backend leaves nothing unjudged: {:?}",
+            not_judged(&json)
+        );
+        assert!(
+            !out.status.success(),
+            "`severity_binding` defaults to reject, so the drift must fail the \
+             run for {language} as it does for every other: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+    }
+}
+
+/// LAW 8 — A BACKEND FOR ANOTHER LANGUAGE IS REFUSED, NOT WIRED.
+///
+/// `[plugins.symbol_resolver.rust] backend = "tree-sitter-cpp"` parsed,
+/// registered and ran, and what came back was whatever the C++ grammar made of
+/// Rust source. Round 855 already settled the two neighbouring shapes — a
+/// language key nothing maps to, and a backend name this build has no plugin
+/// for — as config errors rather than warnings, for the reason that
+/// `severity_binding = reject` reads as symbol-level enforcement while the run
+/// performs none. A backend wired to the WRONG language is worse than either:
+/// enforcement does happen, against answers from a grammar that never saw this
+/// language, and the count it publishes is a number rather than a `null`.
+///
+/// The oracle is the exit code on a tree with nothing else to fail on, so this
+/// cannot pass by agreeing with some other refusal's wording.
+#[test]
+fn a_backend_for_another_language_is_refused_rather_than_wired() {
+    let write = |ws: &Path, backend: &str| {
+        fs::create_dir_all(ws.join("docs/.atomic")).unwrap();
+        fs::create_dir_all(ws.join("src")).unwrap();
+        fs::write(
+            ws.join("mnemosyne.toml"),
+            format!(
+                "[workspace]\n[schema]\nentry_id_prefix = \"Round \"\n\
+                 [plugins.set_equality_validator]\npaths = [\"src/\"]\ncomment_only = true\n\
+                 [plugins.symbol_resolver.rust]\ntransport = \"in-process\"\n\
+                 backend = \"{backend}\"\n"
+            ),
+        )
+        .unwrap();
+        fs::write(
+            ws.join("docs/.atomic/workspace.atomic.json"),
+            serde_json::to_string_pretty(&serde_json::json!({
+                "schema_version": 11,
+                "sections": {},
+                "changelog_entries": {"Round 1": {"decision_summary": "the one entry"}}
+            }))
+            .unwrap(),
+        )
+        .unwrap();
+        fs::write(ws.join("docs/GENERATED.md"), "# Stub\n").unwrap();
+    };
+
+    // CONTROL FIRST: the same empty tree with the right backend passes, so the
+    // failure below is about the pairing and not about the fixture.
+    let ok = TempDir::new().unwrap();
+    write(ok.path(), "tree-sitter-rust");
+    let out = Command::new(cli())
+        .args(["validate-code-refs"])
+        .current_dir(ok.path())
+        .output()
+        .expect("cli exec");
+    assert!(
+        out.status.success(),
+        "the control must pass or the assertion below says nothing: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+
+    let bad = TempDir::new().unwrap();
+    write(bad.path(), "tree-sitter-cpp");
+    let out = Command::new(cli())
+        .args(["validate-code-refs"])
+        .current_dir(bad.path())
+        .output()
+        .expect("cli exec");
+    assert!(
+        !out.status.success(),
+        "a C++ resolver registered under `rust` must stop the run: {}",
+        String::from_utf8_lossy(&out.stdout)
+    );
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        stderr.contains("tree-sitter-cpp") && stderr.contains("cpp") && stderr.contains("rust"),
+        "the refusal must name the backend, the language it resolves, and the \
+         language it was asked to resolve: {stderr}"
+    );
+}
+
+/// LAW 9 — THE LANGUAGES THIS BUILD CANNOT RESOLVE ARE NAMED AND COUNTED.
+///
+/// A language the extension table maps files to, with no backend to resolve
+/// them, is where the axis stops. Until now that boundary existed only as an
+/// absence — the config for it could not be written, and the only way to learn
+/// which languages were affected was to read this repository's Cargo files.
+/// SCE did exactly that and wrote the answer into their tree as prose.
+///
+/// The list below is a CLAIM ABOUT THIS BUILD that shrinks, and the equality is
+/// deliberate: a round that ships a resolver must delete its language from here
+/// in the same change, which is what stops a gap list from outliving its gap.
+#[test]
+fn the_languages_this_build_cannot_resolve_are_named_and_counted() {
+    let (_, json) = reach(TempDir::new().unwrap().path());
+
+    let without: Vec<&str> = json["languages_without_backend"]
+        .as_array()
+        .expect("languages_without_backend array")
+        .iter()
+        .map(|l| l.as_str().expect("language"))
+        .collect();
+    assert_eq!(
+        without,
+        vec!["go", "python"],
+        "the symbol axis stops at exactly these languages; shipping a resolver \
+         deletes one from this list in the same change: {json}"
+    );
+
+    // The report's own arithmetic, recomputed from the other two fields it
+    // prints: what is missing is the extension table's range minus the
+    // languages the shipped backends cover.
+    let served: Vec<String> = reported_backends(&json)
+        .into_iter()
+        .map(|(_, language)| language)
+        .collect();
+    let recomputed: Vec<&str> = json["symbol_axis_languages"]
+        .as_array()
+        .expect("symbol_axis_languages array")
+        .iter()
+        .map(|l| l.as_str().expect("language"))
+        .filter(|l| !served.iter().any(|s| s == l))
+        .collect();
+    assert_eq!(
+        without, recomputed,
+        "the published gap must be the difference between the two published \
+         sets, not a third answer: {json}"
     );
 }
