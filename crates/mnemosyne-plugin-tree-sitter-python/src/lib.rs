@@ -17,7 +17,9 @@
 use std::sync::OnceLock;
 
 use mnemosyne_core::PluginRegistry;
-use mnemosyne_plugin_tree_sitter_core::{field_text, LanguageSpec, TreesitterResolver};
+use mnemosyne_plugin_tree_sitter_core::{
+    field_text, DocCommentRule, LanguageSpec, TreesitterResolver,
+};
 use tree_sitter::{Node, Query};
 
 pub const BACKEND_KEY: &str = "tree-sitter-python";
@@ -28,27 +30,39 @@ pub const SYMBOL_AXIS_LANGUAGE: &str = "python";
 
 static QUERY: OnceLock<Result<Query, String>> = OnceLock::new();
 
-/// Declaration kinds a comment immediately above may be documenting.
+/// Python's answer to the doc-comment criterion (`DocCommentRule`).
 ///
-/// PYTHON TAKES THE RULE, AND THE DOCSTRING IS NOT THE REASON TO SKIP IT. A
-/// docstring lives INSIDE the definition, so it is not what this rule is about
-/// at all — and it is not where a citation can live either: the gate reads
-/// COMMENTS, and a docstring is a string expression. The consumer met that
-/// exactly, in a commit titled "Read a Python docstring where the citation gate
-/// reads a comment". What a `§` citation in a Python file actually is, then, is
-/// a `#` line, and the place authors put one is directly above the `def` or
-/// `class` it is about — the same adjacency Go and C++ take.
+/// 1. ONE SPELLING. This grammar calls a `#` line a `comment`, and Python has
+///    no other comment form.
 ///
-/// `decorated_definition` IS HERE BECAUSE THE COMMENT'S SIBLING IS THE
-/// DECORATOR'S WRAPPER, not the `def` inside it. Listing only the two inner
-/// kinds would leave every decorated function — a large share of real Python —
-/// resolving to its enclosing scope, which is the shape Round 1153 shipped and
-/// caught one language earlier.
-const DOCUMENTED_KINDS: &[&str] = &[
-    "function_definition",
-    "class_definition",
-    "decorated_definition",
-];
+/// 2. NO INWARD MARKER, AND THE DOCSTRING IS NOT ONE. A module docstring is the
+///    nearest thing Python has to "documents the scope I am in", and it is not
+///    a comment at all — it is a string expression, and the citation gate reads
+///    COMMENTS. So there is no spelling in this language that a marker would
+///    have to separate.
+///
+/// 3. THE DOCSTRING IS ALSO NOT A REASON TO SKIP THE RULE. It lives INSIDE the
+///    definition, so it is not what the rule is about, and it is not where a
+///    citation can live either. The consumer met that exactly, in a commit
+///    titled "Read a Python docstring where the citation gate reads a comment".
+///    What a `§` citation in a Python file actually is, then, is a `#` line, and
+///    the place authors put one is directly above the `def` or `class` it is
+///    about — the same adjacency Go and C++ take.
+///
+///    `decorated_definition` IS HERE BECAUSE THE COMMENT'S SIBLING IS THE
+///    DECORATOR'S WRAPPER, not the `def` inside it. Listing only the two inner
+///    kinds would leave every decorated function — a large share of real Python
+///    — resolving to its enclosing scope, which is the shape Round 1153 shipped
+///    and caught one language earlier.
+const DOC_COMMENTS: DocCommentRule = DocCommentRule {
+    comment_kinds: &["comment"],
+    inward_markers: &[],
+    documented_kinds: &[
+        "function_definition",
+        "class_definition",
+        "decorated_definition",
+    ],
+};
 
 /// Python's four differences.
 ///
@@ -70,8 +84,7 @@ pub static SPEC: LanguageSpec = LanguageSpec {
         (decorated_definition) @item
     ",
     name_of: python_name_of,
-    documented_kinds: DOCUMENTED_KINDS,
-    comment_kinds: &["comment"],
+    doc_comments: DOC_COMMENTS,
     query_cache: &QUERY,
 };
 

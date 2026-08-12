@@ -3,8 +3,8 @@
 //!
 //! The walk lives once, in `mnemosyne-plugin-tree-sitter-core`; this crate is
 //! the four things that are Rust's — the grammar, the query naming its
-//! declaration nodes, how a name comes out of one, and the fact that Rust takes
-//! NO doc-comment rule (see [`SPEC`]).
+//! declaration nodes, how a name comes out of one, and where a citation written
+//! in a comment binds (see [`DOC_COMMENTS`]).
 //!
 //! Registered into the CLI's backend table (`mnemosyne_cli::backends`), which
 //! the config wire and `describe-symbol-axis-reach` both read.
@@ -12,7 +12,9 @@
 use std::sync::OnceLock;
 
 use mnemosyne_core::PluginRegistry;
-use mnemosyne_plugin_tree_sitter_core::{field_text, LanguageSpec, TreesitterResolver};
+use mnemosyne_plugin_tree_sitter_core::{
+    field_text, DocCommentRule, LanguageSpec, TreesitterResolver,
+};
 use tree_sitter::{Node, Query};
 
 pub const BACKEND_KEY: &str = "tree-sitter-rust";
@@ -28,15 +30,47 @@ pub const SYMBOL_AXIS_LANGUAGE: &str = "rust";
 
 static QUERY: OnceLock<Result<Query, String>> = OnceLock::new();
 
-/// Rust's four differences.
+/// Rust's answer to the doc-comment criterion (`DocCommentRule`).
 ///
-/// `documented_kinds` IS EMPTY, AND THAT IS A DECISION WITH A CONSEQUENCE. A
-/// `§` citation written in a `///` line above an item resolves to the enclosing
-/// item — or to nothing, at the top level — rather than to the item below it,
-/// which is the opposite of what the C++ backend does with the same shape. The
-/// two behaviours predate this crate and the port preserves both byte for byte;
-/// which one is right is a question with an answer and neither is written down
-/// as a law yet.
+/// THIS FIELD WAS EMPTY UNTIL ROUND 1162, and empty was the one value that
+/// meant "no rule at all". A `§` citation in a `///` line above an item bound
+/// to the ENCLOSING item — or to nothing, at the top level — which is the
+/// opposite of what the C++ backend did with the same shape, and the crate's
+/// own doc said which one is right is a question with an answer and left it.
+///
+/// THE ANSWER IS THE MARKER. The reason to hesitate was real: Rust spells
+/// "documents the module I am in" as `//!` and "documents the item below" as
+/// `///`, and BOTH are a `line_comment` — so a rule keyed on the comment's kind
+/// would have bound a module-level citation to whatever declaration happened to
+/// follow it. The grammar does not leave it there: it records
+/// `inner_doc_comment_marker` under the first and `outer_doc_comment_marker`
+/// under the second. Naming the inward marker is what lets the rule serve this
+/// language, and `/*! */` needs it for exactly the same reason `//!` does.
+///
+/// EVERY QUERY KIND IS DOCUMENTABLE HERE. There is no container among them a
+/// comment merely sits inside — `mod_item` is documented from OUTSIDE by `///`
+/// and from INSIDE by `//!`, and the marker is what separates those two — and
+/// Rust's function-body locals are `let_declaration`, which the query does not
+/// capture, so a citation inside a body still binds to the function.
+pub const DOC_COMMENTS: DocCommentRule = DocCommentRule {
+    comment_kinds: &["line_comment", "block_comment"],
+    inward_markers: &["inner_doc_comment_marker"],
+    documented_kinds: &[
+        "function_item",
+        "struct_item",
+        "enum_item",
+        "trait_item",
+        "impl_item",
+        "mod_item",
+        "const_item",
+        "static_item",
+        "type_item",
+        "union_item",
+        "macro_definition",
+    ],
+};
+
+/// Rust's four differences.
 pub static SPEC: LanguageSpec = LanguageSpec {
     backend_key: BACKEND_KEY,
     plugin_name: "mnemosyne-plugin-tree-sitter-rust",
@@ -57,8 +91,7 @@ pub static SPEC: LanguageSpec = LanguageSpec {
         (macro_definition) @item
     ",
     name_of: rust_name_of,
-    documented_kinds: &[],
-    comment_kinds: &["line_comment", "block_comment"],
+    doc_comments: DOC_COMMENTS,
     query_cache: &QUERY,
 };
 
@@ -136,6 +169,8 @@ mod tests {
         assert_eq!(resolve(src, 2).as_deref(), Some("epsilon"));
     }
 
+    /// A comment separated from what follows by a blank line documents nothing
+    /// — a file header does not become the name of the first item under it.
     #[test]
     fn line_outside_any_item_returns_none() {
         let src = "// just a comment\n\nfn theta() {}\n";
@@ -144,16 +179,42 @@ mod tests {
         assert_eq!(resolve(src, 3).as_deref(), Some("theta"));
     }
 
-    /// A doc comment above an item binds to the ENCLOSING item, not to the item
-    /// below — Rust's spec takes no `documented_kinds`. Pinned because the C++
-    /// backend does the opposite with the same shape, and the port that put
-    /// both on one engine is exactly when the two could have been quietly
-    /// unified.
+    /// AN OUTER DOC COMMENT BINDS TO THE ITEM IT DOCUMENTS. Until Round 1162
+    /// this backend answered `None` here — the citation bound to the enclosing
+    /// item, or to nothing at the top level — which is the opposite of what the
+    /// C++ backend did with the same shape.
     #[test]
-    fn a_doc_comment_above_an_item_does_not_bind_to_that_item() {
+    fn an_outer_doc_comment_binds_to_the_item_below_it() {
         let src = "/// documents alpha\nfn alpha() {}\n";
-        assert_eq!(resolve(src, 1), None);
+        assert_eq!(resolve(src, 1).as_deref(), Some("alpha"));
         assert_eq!(resolve(src, 2).as_deref(), Some("alpha"));
+    }
+
+    /// AN INNER DOC COMMENT DOES NOT, because it is about the module it is in.
+    /// Both spellings are a `line_comment`, so nothing but the grammar's marker
+    /// separates this case from the one above — and the module IS what falls
+    /// through to pass 2 here: nothing at the top of a file, and the `mod` when
+    /// the comment is inside one.
+    #[test]
+    fn an_inner_doc_comment_binds_to_the_module_and_not_to_the_item_below() {
+        let src = "//! documents this module\npub struct Alpha;\n";
+        assert_eq!(resolve(src, 1), None);
+        assert_eq!(resolve(src, 2).as_deref(), Some("Alpha"));
+
+        let nested = "mod inner {\n    //! documents inner\n    pub struct Beta;\n}\n";
+        assert_eq!(resolve(nested, 2).as_deref(), Some("inner"));
+        assert_eq!(resolve(nested, 3).as_deref(), Some("Beta"));
+    }
+
+    /// The block spellings are the same two cases: `/** */` documents what
+    /// follows and `/*! */` documents the module, and the grammar marks them
+    /// the same way it marks the line forms.
+    #[test]
+    fn the_block_doc_spellings_split_the_same_way() {
+        let outer = "/** documents gamma */\nfn gamma() {}\n";
+        assert_eq!(resolve(outer, 1).as_deref(), Some("gamma"));
+        let inner = "/*! documents this module */\nfn gamma() {}\n";
+        assert_eq!(resolve(inner, 1), None);
     }
 
     /// A generic `impl` has no name this language records, so the line falls
@@ -179,10 +240,13 @@ mod tests {
     #[test]
     fn one_call_answers_every_line_exactly_as_a_single_line_call_would() {
         let src = "fn alpha() {}\n\
-                   // a comment between items\n\
+                   /// documents Delta\n\
                    impl Delta {\n    fn epsilon(&self) {}\n}\n\
+                   \n\
+                   // a header, detached\n\
+                   \n\
                    struct Gamma;\n";
-        let lines = [1u32, 2, 3, 4, 6];
+        let lines = [1u32, 2, 3, 4, 7, 9];
         let batched = resolver()
             .resolve_symbols_at(Path::new("/no/such/file.rs"), src, &lines)
             .unwrap();
@@ -204,9 +268,15 @@ mod tests {
             Some("Delta"),
             "and the outer one still wins on its own line"
         );
+        assert_eq!(
+            batched.get(&2).map(String::as_str),
+            Some("Delta"),
+            "the doc-comment pass runs inside a batch too"
+        );
         assert!(
-            !batched.contains_key(&2),
-            "a line inside no item is absent, not guessed: {batched:?}"
+            !batched.contains_key(&7),
+            "a comment a blank line away from everything is absent, not \
+             guessed: {batched:?}"
         );
     }
 

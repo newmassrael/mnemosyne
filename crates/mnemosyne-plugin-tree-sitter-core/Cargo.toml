@@ -15,12 +15,13 @@ path = "src/lib.rs"
 mnemosyne-core = { path = "../mnemosyne-core" }
 tree-sitter = "0.26"
 
-# TESTS ONLY, AND ONE GRAMMAR IS ENOUGH. This crate is the walk without a
-# language, so its own laws still need SOME grammar to build a spec against —
-# the engine-level questions (does an empty `documented_kinds` really disable
-# pass 1, is the query compiled once per process, does the kind filter refuse)
-# are about the engine and not about Rust, and a second grammar here would test
-# the engine no further.
+# TESTS ONLY, AND ONE GRAMMAR IS ENOUGH — this one, for a reason it did not
+# have before Round 1162. This crate is the walk without a language, so its own
+# laws need SOME grammar to build a spec against, and the engine-level questions
+# (is the query compiled once per process, does the kind filter refuse, does a
+# trailing comment stay off the next declaration) are about the engine rather
+# than about Rust. One of them is not: an INWARD-marked comment documents the
+# scope it is in, and Rust's is the only grammar here that spells that at all.
 [dev-dependencies]
 tree-sitter-rust = "0.24"
 

@@ -19,7 +19,9 @@
 use std::sync::OnceLock;
 
 use mnemosyne_core::PluginRegistry;
-use mnemosyne_plugin_tree_sitter_core::{field_text, LanguageSpec, TreesitterResolver};
+use mnemosyne_plugin_tree_sitter_core::{
+    field_text, DocCommentRule, LanguageSpec, TreesitterResolver,
+};
 use tree_sitter::{Node, Query};
 
 pub const BACKEND_KEY: &str = "tree-sitter-kotlin";
@@ -32,22 +34,35 @@ pub const SYMBOL_AXIS_LANGUAGE: &str = "kotlin";
 
 static QUERY: OnceLock<Result<Query, String>> = OnceLock::new();
 
-/// Declaration kinds a comment immediately above may be documenting.
+/// Kotlin's answer to the doc-comment criterion (`DocCommentRule`).
 ///
-/// KOTLIN TAKES THE RULE. KDoc sits directly above the declaration it
-/// documents, exactly as Go's and C++'s conventions do, and a `//` line in the
-/// same position is the other half of the same habit — both are in
-/// `comment_kinds`, which is why that field is a LIST.
+/// 1. TWO SPELLINGS, AND KOTLIN IS THE LANGUAGE THAT MADE THIS FIELD A LIST.
+///    Every other grammar here calls both forms `comment`, so one string
+///    carried the whole answer and nothing said otherwise; this one calls `//`
+///    a `line_comment` and KDoc a `block_comment`, and a citation may sit in
+///    either.
 ///
-/// `property_declaration` is here, and it is the interesting one: see
-/// [`kotlin_name_of`] for why listing it does not put a function-body local in
-/// front of an enclosing function.
-const DOCUMENTED_KINDS: &[&str] = &[
-    "class_declaration",
-    "function_declaration",
-    "object_declaration",
-    "property_declaration",
-];
+/// 2. NO INWARD MARKER, AND NONE IS NEEDED. Kotlin has no spelling for
+///    "documents the scope I am in" — KDoc is written above its subject, and
+///    the language has no counterpart to Rust's `//!`.
+///
+/// 3. KDOC SITS DIRECTLY ABOVE THE DECLARATION IT DOCUMENTS, exactly as Go's
+///    and C++'s conventions do, and a `//` line in the same position is the
+///    other half of the same habit.
+///
+///    `property_declaration` is here, and it is the interesting one: see
+///    [`kotlin_name_of`] for why listing it does not put a function-body local
+///    in front of an enclosing function.
+const DOC_COMMENTS: DocCommentRule = DocCommentRule {
+    comment_kinds: &["line_comment", "block_comment"],
+    inward_markers: &[],
+    documented_kinds: &[
+        "class_declaration",
+        "function_declaration",
+        "object_declaration",
+        "property_declaration",
+    ],
+};
 
 /// Kotlin's four differences.
 pub static SPEC: LanguageSpec = LanguageSpec {
@@ -63,11 +78,7 @@ pub static SPEC: LanguageSpec = LanguageSpec {
         (property_declaration) @item
     ",
     name_of: kotlin_name_of,
-    // `//` AND KDoc. Kotlin is the language that made this field a list: every
-    // other grammar here calls both spellings `comment`, so one string carried
-    // the whole answer and nothing said otherwise.
-    comment_kinds: &["line_comment", "block_comment"],
-    documented_kinds: DOCUMENTED_KINDS,
+    doc_comments: DOC_COMMENTS,
     query_cache: &QUERY,
 };
 

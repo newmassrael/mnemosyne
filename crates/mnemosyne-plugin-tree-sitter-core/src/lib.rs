@@ -4,8 +4,8 @@
 //! caller's bytes ONCE, find the declarations, and for each requested line take
 //! the SMALLEST declaration whose extent covers it. What differs between
 //! languages is four things, and only four — the grammar, the query that names
-//! its declaration nodes, how a name is extracted from one of them, and whether
-//! a comment sitting immediately above a declaration counts as documenting it.
+//! its declaration nodes, how a name is extracted from one of them, and where a
+//! comment sitting immediately above a declaration binds.
 //!
 //! Those four are a [`LanguageSpec`]. Everything else lives here once.
 //!
@@ -16,7 +16,7 @@
 //! the identical walk, so three more copies would have been the fourth, fifth
 //! and sixth transcription of one algorithm — and a defect found in one copy
 //! would then have to be found five more times. The specs that replace them are
-//! declarations: a query, a `name_of`, and a doc-comment kind list.
+//! declarations: a query, a `name_of`, and a [`DocCommentRule`].
 //!
 //! NOTHING HERE READS THE FILESYSTEM. The bytes come from the caller, which is
 //! what keeps the symbol answer about the same file revision the citation was
@@ -28,6 +28,72 @@ use std::sync::OnceLock;
 
 use mnemosyne_core::{ResolverError, SymbolResolver, VersionSurface};
 use tree_sitter::{Node, Parser, Point, Query, QueryCursor, StreamingIterator, Tree};
+
+/// WHERE A CITATION WRITTEN IN A COMMENT BINDS — the doc-comment half of a
+/// [`LanguageSpec`], and the criterion a new backend answers.
+///
+/// A `§` citation in source is conventionally written in a comment placed
+/// immediately above the declaration it is about. Lexically that comment is a
+/// PRECEDING SIBLING, so the smallest node enclosing it is the outer scope — a
+/// class, a module, or nothing at all at the top level. Without a rule for it,
+/// an author who recorded the declaration's own name as its
+/// `Implementation.symbol` gets a `symbol_mismatch` against a name nobody
+/// wrote.
+///
+/// THE RULE IS NOT OPTIONAL, AND UNTIL ROUND 1162 IT WAS. What this struct
+/// replaces was a bare kind list whose EMPTY value switched the pass off, so a
+/// backend declined the rule by writing `&[]` and nothing asked why. Four of
+/// the five shipped backends switched it on and the fifth off — each
+/// defensibly, none comparably, and the fifth's own doc said "which one is
+/// right is a question with an answer" and left it there. The three questions
+/// below are that answer, and each is answered with DATA that a corpus law
+/// witnesses: a backend that claims a kind it cannot bind is red.
+///
+/// 1. WHAT DOES THIS GRAMMAR CALL A COMMENT? — `comment_kinds`, ALL of the
+///    spellings, because a citation may sit in any of them. A single spelling
+///    was this wire's own limit once: C++, Go and Python each call every
+///    comment `comment`, so one string carried the whole answer and nothing
+///    said otherwise, while Kotlin calls `//` a `line_comment` and KDoc a
+///    `block_comment` and the field could not have held both.
+///
+/// 2. WHICH OF THOSE SPELLINGS DOCUMENT THE SCOPE THEY ARE INSIDE? —
+///    `inward_markers`. A language may spell "documents my container" the same
+///    way it spells "documents what follows": Rust's `//!` and `///` are BOTH
+///    `line_comment`, as are `/*! */` and `/** */` as `block_comment`. Binding
+///    a `//!` citation to the item under it would be wrong — that citation is
+///    about the module — so a language with such a spelling must be able to
+///    say which node marks it. Rust's grammar does mark it
+///    (`inner_doc_comment_marker`), and naming that is what lets the rule serve
+///    the language instead of being switched off for it.
+///
+/// 3. WHICH DECLARATIONS MAY A COMMENT ABOVE BE DOCUMENTING? —
+///    `documented_kinds`. Containers a comment merely sits inside are excluded,
+///    and so are function-body locals, so a citation inside a body binds to the
+///    function. Every kind listed must be one [`LanguageSpec::name_of`] can
+///    name — a kind it cannot is a claim with no answer behind it.
+///
+/// THE QUESTION WITH NO FIELD, which is the one an empty list was hiding: is
+/// there a spelling that means something ELSE in the SAME POSITION and that the
+/// grammar does not mark? If there is, the answer is to extend this wire, not
+/// to switch the rule off silently — an off switch and an unserved language
+/// look identical from outside, which is how Rust's stayed for five rounds.
+/// C++'s Doxygen `///<` is the near case: it documents the PRECEDING member and
+/// the grammar makes it a plain `comment`. It is not in the same position — the
+/// rule starts from the first non-whitespace character of the cited row, and on
+/// a trailing comment's row that character is code, so the pass declines and
+/// the citation binds to the declaration it trails. Measured over the C++
+/// corpus this repository is put to: 78 trailing-doc comments, 0 of them
+/// starting their own line.
+pub struct DocCommentRule {
+    /// Question 1 — every node kind this grammar calls a comment.
+    pub comment_kinds: &'static [&'static str],
+    /// Question 2 — child node kinds marking a comment as documenting the
+    /// scope it is INSIDE. Empty asserts the language has no such spelling.
+    pub inward_markers: &'static [&'static str],
+    /// Question 3 — declaration kinds a comment immediately above may be
+    /// documenting.
+    pub documented_kinds: &'static [&'static str],
+}
 
 /// The four things that differ between one tree-sitter backend and the next.
 pub struct LanguageSpec {
@@ -52,26 +118,8 @@ pub struct LanguageSpec {
     /// this backend does not name (an anonymous struct; a form whose name node
     /// is not the kind the language's authors record).
     pub name_of: fn(Node, &[u8]) -> Option<String>,
-    /// Declaration kinds a comment immediately above may be documenting.
-    ///
-    /// EMPTY DISABLES THE RULE, which is a per-language decision and not an
-    /// oversight: it changes where a `§` citation written in a doc comment
-    /// binds, and the two languages that shipped before this crate disagreed
-    /// about it. See [`TreesitterResolver::resolve_symbols_at`].
-    pub documented_kinds: &'static [&'static str],
-    /// What this grammar calls a comment node — ALL of the spellings, because
-    /// a language may have more than one and a citation may sit in any of them.
-    /// Unused when `documented_kinds` is empty.
-    ///
-    /// A SINGLE SPELLING WAS THE WIRE'S OWN LIMIT, not a simplification. C++,
-    /// Go and Python each call every comment `comment`, so one string carried
-    /// the whole answer and nothing said otherwise; Kotlin calls `//` a
-    /// `line_comment` and KDoc a `block_comment`, and the field could not have
-    /// held both. A contract cannot close a hole its wire does not carry
-    /// information about: with one string, a KDoc citation would have fallen
-    /// through to the enclosing scope and looked exactly like a language that
-    /// chose not to have the rule.
-    pub comment_kinds: &'static [&'static str],
+    /// Where a citation written in a comment binds — see [`DocCommentRule`].
+    pub doc_comments: DocCommentRule,
     /// Where this backend's compiled query lives for the life of the PROCESS.
     ///
     /// Owned by the language crate rather than by the resolver instance so the
@@ -198,7 +246,7 @@ impl SymbolResolver for TreesitterResolver {
     /// `(source, lines) -> {line: symbol_name}`, one parse and one query
     /// traversal for the whole file.
     ///
-    /// TWO PASSES, IN THIS ORDER, and only when the spec asks for the first.
+    /// TWO PASSES, IN THIS ORDER.
     ///
     /// 1. DOCUMENTED-SYMBOL. A `§<id>` citation in source is conventionally a
     ///    doc comment placed ABOVE the declaration it documents. Lexically that
@@ -207,10 +255,12 @@ impl SymbolResolver for TreesitterResolver {
     ///    documented. When the cited line is a comment that — through a
     ///    contiguous run of comment lines with no blank line between — is
     ///    immediately followed by a declaration in
-    ///    [`LanguageSpec::documented_kinds`], the answer is that declaration.
+    ///    [`DocCommentRule::documented_kinds`], the answer is that declaration.
     ///    A blank line or a non-declaration sibling breaks the association, so
     ///    a file-header comment falls through to pass 2 and resolves coarsely,
-    ///    which is correct.
+    ///    which is correct. So does a comment the language marks as documenting
+    ///    the scope it is inside ([`DocCommentRule::inward_markers`]) — Rust's
+    ///    `//!` is about the module, and the module is what pass 2 answers.
     ///
     /// 2. SMALLEST COVERING DECLARATION. For every line pass 1 did not answer,
     ///    the declaration with the smallest extent covering it.
@@ -245,20 +295,16 @@ impl SymbolResolver for TreesitterResolver {
         }
 
         let mut pending: Vec<(u32, usize)> = Vec::new();
-        if self.spec.documented_kinds.is_empty() {
-            pending = rows;
-        } else {
-            for (line, row) in rows {
-                match self.documented_symbol(root, source, row) {
-                    Some(name) => {
-                        out.insert(line, name);
-                    }
-                    None => pending.push((line, row)),
+        for (line, row) in rows {
+            match self.documented_symbol(root, source, row) {
+                Some(name) => {
+                    out.insert(line, name);
                 }
+                None => pending.push((line, row)),
             }
-            if pending.is_empty() {
-                return Ok(out);
-            }
+        }
+        if pending.is_empty() {
+            return Ok(out);
         }
 
         let query = self.spec.query()?;
@@ -306,9 +352,13 @@ impl SymbolResolver for TreesitterResolver {
 impl TreesitterResolver {
     /// Pass 1 — see [`SymbolResolver::resolve_symbols_at`].
     fn documented_symbol(&self, root: Node, source: &str, row: usize) -> Option<String> {
+        let rule = &self.spec.doc_comments;
         let line = source.split('\n').nth(row)?;
         // Byte column of the first non-whitespace character. Comment openers
         // are ASCII in every grammar this serves, so byte == char offset here.
+        // IT IS ALSO WHAT KEEPS A TRAILING COMMENT OUT OF THIS PASS: on
+        // `int x; ///< the x` that character is code, so the climb below finds
+        // no comment and the citation binds to the declaration it trails.
         let col = line.len() - line.trim_start().len();
         let pt = Point::new(row, col);
         // CLIMB TO THE COMMENT, do not demand to land on it. The descendant at
@@ -320,18 +370,23 @@ impl TreesitterResolver {
         // structure. That is invisible from a language crate — it looks like a
         // spec that chose not to have the rule — and every backend added after
         // this one would have inherited it.
-        let node = comment_ancestor(
-            root.descendant_for_point_range(pt, pt)?,
-            self.spec.comment_kinds,
-        )?;
+        let node = comment_ancestor(root.descendant_for_point_range(pt, pt)?, rule.comment_kinds)?;
+        // A COMMENT ABOUT ITS CONTAINER IS NOT ABOUT WHAT FOLLOWS IT. Rust
+        // spells both with one node kind and marks which is which, so the
+        // question is asked of the CITED comment rather than of the run: a
+        // `//!` line declines here and falls through to pass 2, which answers
+        // the enclosing module — the thing that comment is documenting.
+        if documents_inward(node, rule.inward_markers) {
+            return None;
+        }
         // The contiguous run of comment lines this one belongs to. Consecutive
         // comments ARE siblings in every grammar here, so the tree is the right
         // instrument for this half.
         let mut last = node;
         let mut sib = node.next_named_sibling();
         while let Some(s) = sib {
-            if !self.spec.comment_kinds.contains(&s.kind())
-                || s.start_position().row != last.end_position().row + 1
+            if !rule.comment_kinds.contains(&s.kind())
+                || s.start_position().row != last_text_row(last) + 1
             {
                 break;
             }
@@ -347,7 +402,7 @@ impl TreesitterResolver {
         // "not a declaration" and bound the whole method to the class. The row
         // after the run is where the documented thing must BEGIN, whatever the
         // shape of the tree above it.
-        let next_row = last.end_position().row + 1;
+        let next_row = last_text_row(last) + 1;
         let next_line = source.split('\n').nth(next_row)?;
         // A blank line breaks the association, so a file header does not become
         // the name of whatever follows it.
@@ -374,7 +429,7 @@ impl TreesitterResolver {
             if cur.start_position().row != next_row {
                 break;
             }
-            if self.spec.documented_kinds.contains(&cur.kind()) {
+            if rule.documented_kinds.contains(&cur.kind()) {
                 found = Some(cur);
             }
             match cur.parent() {
@@ -384,6 +439,38 @@ impl TreesitterResolver {
         }
         (self.spec.name_of)(found?, source.as_bytes())
     }
+}
+
+/// The last row this node has text on.
+///
+/// NOT `end_position().row`, AND ONE GRAMMAR IS ENOUGH TO SHOW WHY. A node
+/// whose extent ends at column 0 has swallowed the newline that ends the row
+/// before, so its `end_position().row` is a row it holds nothing on.
+/// tree-sitter-rust does this for DOC comments (`///`, `//!`) and not for
+/// ordinary ones, and the difference is invisible until a language turns the
+/// doc-comment pass on: with the raw end row, the pass looked one row past the
+/// declaration for exactly the comments the rule exists to serve, and answered
+/// nothing. A rule that silently never fires is indistinguishable from a
+/// language that declined it — which is the state Round 1162 found Rust in.
+fn last_text_row(node: Node) -> usize {
+    let end = node.end_position();
+    if end.column == 0 {
+        end.row.saturating_sub(1)
+    } else {
+        end.row
+    }
+}
+
+/// Whether the language marks this comment as documenting the scope it is
+/// INSIDE — see [`DocCommentRule::inward_markers`].
+///
+/// The marker is a CHILD of the comment, not the comment's own kind, because
+/// the grammar that has this distinction records the two spellings under one
+/// kind and separates them by what they open with.
+fn documents_inward(comment: Node, markers: &[&str]) -> bool {
+    (0..u32::try_from(comment.named_child_count()).unwrap_or(u32::MAX))
+        .filter_map(|i| comment.named_child(i))
+        .any(|child| markers.contains(&child.kind()))
 }
 
 /// `node` itself, or its nearest ancestor, whose kind is one of
@@ -432,34 +519,43 @@ mod tests {
 
     const QUERY_SRC: &str = "(function_item) @item (struct_item) @item";
 
-    static SILENT_CACHE: OnceLock<Result<Query, String>> = OnceLock::new();
-    /// A spec with NO doc-comment rule.
-    static SILENT: LanguageSpec = LanguageSpec {
-        backend_key: "test-silent",
-        plugin_name: "test-silent",
+    const DOCUMENTED_KINDS: &[&str] = &["function_item", "struct_item"];
+
+    static UNMARKED_CACHE: OnceLock<Result<Query, String>> = OnceLock::new();
+    /// A spec that names NO inward marker — the answer four of the five shipped
+    /// languages give, and the wrong answer for a grammar that has one.
+    static UNMARKED: LanguageSpec = LanguageSpec {
+        backend_key: "test-unmarked",
+        plugin_name: "test-unmarked",
         plugin_version: "0.0.0",
-        symbol_axis_language: "silent",
+        symbol_axis_language: "unmarked",
         language: || tree_sitter_rust::LANGUAGE.into(),
         query_source: QUERY_SRC,
         name_of,
-        documented_kinds: &[],
-        comment_kinds: &["line_comment"],
-        query_cache: &SILENT_CACHE,
+        doc_comments: DocCommentRule {
+            comment_kinds: &["line_comment"],
+            inward_markers: &[],
+            documented_kinds: DOCUMENTED_KINDS,
+        },
+        query_cache: &UNMARKED_CACHE,
     };
 
-    static DOCUMENTING_CACHE: OnceLock<Result<Query, String>> = OnceLock::new();
-    /// The same four things, with the doc-comment rule switched ON.
-    static DOCUMENTING: LanguageSpec = LanguageSpec {
-        backend_key: "test-documenting",
-        plugin_name: "test-documenting",
+    static MARKED_CACHE: OnceLock<Result<Query, String>> = OnceLock::new();
+    /// The same four things, with the grammar's inward marker named.
+    static MARKED: LanguageSpec = LanguageSpec {
+        backend_key: "test-marked",
+        plugin_name: "test-marked",
         plugin_version: "0.0.0",
-        symbol_axis_language: "documenting",
+        symbol_axis_language: "marked",
         language: || tree_sitter_rust::LANGUAGE.into(),
         query_source: QUERY_SRC,
         name_of,
-        documented_kinds: &["function_item", "struct_item"],
-        comment_kinds: &["line_comment"],
-        query_cache: &DOCUMENTING_CACHE,
+        doc_comments: DocCommentRule {
+            comment_kinds: &["line_comment"],
+            inward_markers: &["inner_doc_comment_marker"],
+            documented_kinds: DOCUMENTED_KINDS,
+        },
+        query_cache: &MARKED_CACHE,
     };
 
     fn at(spec: &'static LanguageSpec, source: &str, line: u32) -> Option<String> {
@@ -469,45 +565,62 @@ mod tests {
             .remove(&line)
     }
 
-    /// THE SWITCH IS REAL, AND IT IS THE ONLY DIFFERENCE. Two specs over one
+    /// THE MARKER IS THE ONLY DIFFERENCE, AND IT DECIDES. Two specs over one
     /// grammar, one query and one `name_of`, differing in nothing but
-    /// `documented_kinds` — and the same source line resolves two different
-    /// ways. That asymmetry is not hypothetical: it is exactly how the shipped
-    /// Rust and C++ backends differ, so an engine that quietly applied pass 1
-    /// to everything would have changed one of them without any language test
-    /// noticing.
+    /// `inward_markers` — and a `//!` line resolves two different ways while an
+    /// ordinary comment resolves the same way for both. Without the marker the
+    /// wire cannot tell "documents my module" from "documents the item below",
+    /// which is the state Rust's backend was in when it answered by switching
+    /// the whole pass off.
     #[test]
-    fn an_empty_documented_kinds_disables_the_doc_comment_pass() {
-        let src = "// documents alpha\nfn alpha() {}\n";
-        assert_eq!(at(&SILENT, src, 1), None);
-        assert_eq!(at(&DOCUMENTING, src, 1).as_deref(), Some("alpha"));
-        // …and pass 2 answers identically for both, so the difference above is
-        // the rule and not the walk.
-        assert_eq!(at(&SILENT, src, 2).as_deref(), Some("alpha"));
-        assert_eq!(at(&DOCUMENTING, src, 2).as_deref(), Some("alpha"));
+    fn an_inward_marker_is_what_keeps_a_module_comment_off_the_item_below() {
+        let src = "//! documents the module\nfn alpha() {}\n";
+        assert_eq!(at(&UNMARKED, src, 1).as_deref(), Some("alpha"));
+        assert_eq!(at(&MARKED, src, 1), None);
+        // An OUTER doc comment is not marked inward, so both specs bind it to
+        // the item below: the difference above is the marker and not the pass.
+        let outer = "/// documents alpha\nfn alpha() {}\n";
+        assert_eq!(at(&UNMARKED, outer, 1).as_deref(), Some("alpha"));
+        assert_eq!(at(&MARKED, outer, 1).as_deref(), Some("alpha"));
+        // …and pass 2 answers identically for both in either source, so nothing
+        // else moved.
+        assert_eq!(at(&UNMARKED, src, 2).as_deref(), Some("alpha"));
+        assert_eq!(at(&MARKED, src, 2).as_deref(), Some("alpha"));
     }
 
-    /// A blank line breaks the association even with the rule on, so a file
-    /// header does not become the name of whatever follows it.
+    /// A blank line breaks the association, so a file header does not become
+    /// the name of whatever follows it.
     #[test]
     fn a_blank_line_breaks_the_doc_association() {
         let src = "// a file header\n\nfn alpha() {}\n";
-        assert_eq!(at(&DOCUMENTING, src, 1), None);
+        assert_eq!(at(&MARKED, src, 1), None);
+    }
+
+    /// A TRAILING COMMENT IS NOT IN THE POSITION THE RULE IS ABOUT. The pass
+    /// starts from the first non-whitespace character of the cited row, and on
+    /// a trailing comment's row that character is code — so the citation binds
+    /// to the declaration it trails rather than to the next one. This is what
+    /// lets a language keep the rule while spelling "documents the PRECEDING
+    /// member" with the same comment kind, which is C++'s Doxygen `///<`.
+    #[test]
+    fn a_trailing_comment_binds_to_the_declaration_it_trails() {
+        let src = "fn alpha() {} // about alpha\nfn beta() {}\n";
+        assert_eq!(at(&MARKED, src, 1).as_deref(), Some("alpha"));
     }
 
     /// The smallest covering declaration wins when declarations nest.
     #[test]
     fn the_smallest_covering_declaration_wins() {
         let src = "struct Outer {\n    f: u32,\n}\nfn inner() {\n    let _ = 1;\n}\n";
-        assert_eq!(at(&SILENT, src, 2).as_deref(), Some("Outer"));
-        assert_eq!(at(&SILENT, src, 5).as_deref(), Some("inner"));
+        assert_eq!(at(&MARKED, src, 2).as_deref(), Some("Outer"));
+        assert_eq!(at(&MARKED, src, 5).as_deref(), Some("inner"));
     }
 
     /// Line 0 has no row: dropped, never shifted onto line 1. An empty request
     /// answers empty without parsing at all.
     #[test]
     fn line_zero_is_dropped_and_no_lines_is_no_work() {
-        let r = TreesitterResolver::new(&SILENT);
+        let r = TreesitterResolver::new(&UNMARKED);
         let out = r
             .resolve_symbols_at(Path::new("/no/such/file"), "fn alpha() {}\n", &[0, 1])
             .unwrap();
@@ -525,8 +638,8 @@ mod tests {
     /// rebuilt per call would return equal queries at different addresses.
     #[test]
     fn the_query_is_compiled_once_for_the_process() {
-        let first = SILENT.query().expect("compiles");
-        let second = SILENT.query().expect("compiles");
+        let first = UNMARKED.query().expect("compiles");
+        let second = UNMARKED.query().expect("compiles");
         assert!(std::ptr::eq(first, second));
     }
 

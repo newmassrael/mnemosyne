@@ -20,7 +20,9 @@
 use std::sync::OnceLock;
 
 use mnemosyne_core::PluginRegistry;
-use mnemosyne_plugin_tree_sitter_core::{field_text, LanguageSpec, TreesitterResolver};
+use mnemosyne_plugin_tree_sitter_core::{
+    field_text, DocCommentRule, LanguageSpec, TreesitterResolver,
+};
 use tree_sitter::{Node, Query};
 
 pub const BACKEND_KEY: &str = "tree-sitter-cpp";
@@ -38,26 +40,40 @@ pub const SYMBOL_AXIS_LANGUAGE: &str = "cpp";
 
 static QUERY: OnceLock<Result<Query, String>> = OnceLock::new();
 
-/// Declaration node kinds a doc comment may document. The enclosing query set
-/// MINUS `namespace_definition` — a comment is never "documenting" the
-/// namespace it sits in — and `declaration` is absent from both, so a comment
-/// above a function-body local binds to the enclosing function rather than to
-/// the local.
-const DOCUMENTED_KINDS: &[&str] = &[
-    "function_definition",
-    "field_declaration",
-    "class_specifier",
-    "struct_specifier",
-    "union_specifier",
-    "enum_specifier",
-];
+/// C++'s answer to the doc-comment criterion (`DocCommentRule`).
+///
+/// 1. ONE SPELLING. This grammar calls every comment `comment` — `//`, `/* */`
+///    and every Doxygen form alike — and it is a leaf, so one string carries
+///    the whole answer.
+///
+/// 2. NO INWARD MARKER, AND NONE IS NEEDED. C++ has no spelling for "documents
+///    the scope I am in". The near case is Doxygen's `///<`, which documents
+///    the PRECEDING member and which this grammar does not distinguish — but it
+///    is not in the position the rule is about: it trails its declaration, and
+///    the pass starts from the first non-whitespace character of the cited row,
+///    which on that row is code. Measured over the 1471-file C++ corpus this
+///    repository is put to: 78 trailing-doc comments, 0 of them starting their
+///    own line.
+///
+/// 3. THE QUERY SET MINUS `namespace_definition` — a comment is never
+///    "documenting" the namespace it sits in — and `declaration` is absent from
+///    both, so a comment above a function-body local binds to the enclosing
+///    function rather than to the local. `field_declaration` covers in-class
+///    member declarations, variables and method prototypes both.
+const DOC_COMMENTS: DocCommentRule = DocCommentRule {
+    comment_kinds: &["comment"],
+    inward_markers: &[],
+    documented_kinds: &[
+        "function_definition",
+        "field_declaration",
+        "class_specifier",
+        "struct_specifier",
+        "union_specifier",
+        "enum_specifier",
+    ],
+};
 
 /// C++'s four differences.
-///
-/// `field_declaration` covers in-class member declarations (variables and
-/// method prototypes); function-body locals are `declaration` nodes,
-/// deliberately excluded so a citation inside a body resolves to the enclosing
-/// function rather than to a local variable.
 pub static SPEC: LanguageSpec = LanguageSpec {
     backend_key: BACKEND_KEY,
     plugin_name: "mnemosyne-plugin-tree-sitter-cpp",
@@ -74,8 +90,7 @@ pub static SPEC: LanguageSpec = LanguageSpec {
         (namespace_definition) @item
     ",
     name_of: cpp_name_of,
-    documented_kinds: DOCUMENTED_KINDS,
-    comment_kinds: &["comment"],
+    doc_comments: DOC_COMMENTS,
     query_cache: &QUERY,
 };
 

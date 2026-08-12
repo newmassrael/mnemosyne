@@ -17,7 +17,9 @@
 use std::sync::OnceLock;
 
 use mnemosyne_core::PluginRegistry;
-use mnemosyne_plugin_tree_sitter_core::{field_text, LanguageSpec, TreesitterResolver};
+use mnemosyne_plugin_tree_sitter_core::{
+    field_text, DocCommentRule, LanguageSpec, TreesitterResolver,
+};
 use tree_sitter::{Node, Query};
 
 pub const BACKEND_KEY: &str = "tree-sitter-go";
@@ -28,29 +30,41 @@ pub const SYMBOL_AXIS_LANGUAGE: &str = "go";
 
 static QUERY: OnceLock<Result<Query, String>> = OnceLock::new();
 
-/// Declaration kinds a comment immediately above may be documenting.
+/// Go's answer to the doc-comment criterion (`DocCommentRule`).
 ///
-/// GO TAKES THE RULE, and its own convention is the reason: a doc comment sits
-/// directly above the declaration it documents, with no blank line, and `go
-/// doc` reads exactly that adjacency.
+/// 1. ONE SPELLING. This grammar calls `//` and `/* */` alike `comment`.
 ///
-/// BOTH SPELLINGS OF A TYPE / CONST / VAR ARE HERE, and the pair is what a
-/// batch test caught. `type Widget struct{}` at top level gives the comment a
-/// `type_declaration` sibling, while `type ( … )` gives each member its own
-/// `type_spec` and the comment inside the group sits beside THAT. Listing only
-/// the spec kinds left the ordinary, ungrouped form — by far the common one —
-/// resolving to nothing, which is what a rule that silently never fires looks
-/// like from outside.
-const DOCUMENTED_KINDS: &[&str] = &[
-    "function_declaration",
-    "method_declaration",
-    "type_declaration",
-    "const_declaration",
-    "var_declaration",
-    "type_spec",
-    "const_spec",
-    "var_spec",
-];
+/// 2. NO INWARD MARKER, AND NONE IS NEEDED. Go has no spelling for "documents
+///    the scope I am in". Its package doc comes closest — `// Package p …`
+///    above `package p` — and it needs no marker either: `package_clause` is
+///    not a documented kind, so that comment falls through to pass 2 and binds
+///    at file level, which is where a statement about the package belongs.
+///
+/// 3. GO'S CONVENTION IS THE ADJACENCY ITSELF: a doc comment sits directly
+///    above the declaration it documents, with no blank line, and `go doc`
+///    reads exactly that.
+///
+///    BOTH SPELLINGS OF A TYPE / CONST / VAR ARE HERE, and the pair is what a
+///    batch test caught. `type Widget struct{}` at top level gives the comment a
+///    `type_declaration` sibling, while `type ( … )` gives each member its own
+///    `type_spec` and the comment inside the group sits beside THAT. Listing
+///    only the spec kinds left the ordinary, ungrouped form — by far the common
+///    one — resolving to nothing, which is what a rule that silently never
+///    fires looks like from outside.
+const DOC_COMMENTS: DocCommentRule = DocCommentRule {
+    comment_kinds: &["comment"],
+    inward_markers: &[],
+    documented_kinds: &[
+        "function_declaration",
+        "method_declaration",
+        "type_declaration",
+        "const_declaration",
+        "var_declaration",
+        "type_spec",
+        "const_spec",
+        "var_spec",
+    ],
+};
 
 /// Go's four differences.
 ///
@@ -75,8 +89,7 @@ pub static SPEC: LanguageSpec = LanguageSpec {
         (var_spec) @item
     ",
     name_of: go_name_of,
-    documented_kinds: DOCUMENTED_KINDS,
-    comment_kinds: &["comment"],
+    doc_comments: DOC_COMMENTS,
     query_cache: &QUERY,
 };
 

@@ -215,6 +215,438 @@ const SUBJECTS: &[Subject] = &[
     },
 ];
 
+/// One entry of a backend's `documented_kinds`, and the source that witnesses
+/// it.
+///
+/// The witness source is `before + doc + decl + after`, and every line of `doc`
+/// must resolve to `binds_to`. The CONTROL is derived from the same parts with
+/// one blank line inserted between `doc` and `decl`, where those lines must
+/// resolve to `detached` instead — the enclosing declaration, or nothing. That
+/// pair is what separates "pass 1 bound the comment to the declaration below"
+/// from "pass 2 happened to cover the comment row anyway".
+struct DocWitness {
+    /// The `documented_kinds` entry this witnesses.
+    kind: &'static str,
+    /// Context above the comment — an enclosing class, a group opener.
+    before: &'static str,
+    /// The comment run holding the citation. Whole lines, one or more.
+    doc: &'static str,
+    /// The declaration the comment sits above.
+    decl: &'static str,
+    /// Whatever closes `before`.
+    after: &'static str,
+    /// The name every line of `doc` resolves to.
+    binds_to: &'static str,
+    /// What those same lines answer once a blank line separates them from the
+    /// declaration: the enclosing declaration's name, or `None` for a comment
+    /// no declaration covers.
+    detached: Option<&'static str>,
+}
+
+/// One entry of a backend's `inward_markers`, and the pair of sources that
+/// witnesses it.
+///
+/// The two sources differ in ONE thing: how the comment on `line` is spelled.
+/// Both spellings are the same node kind, so nothing but the marker can
+/// separate them — and they must resolve differently, or the marker is
+/// decorative.
+struct InwardWitness {
+    /// The `inward_markers` entry this witnesses.
+    marker: &'static str,
+    /// A source whose comment on `line` carries that marker.
+    inward: &'static str,
+    /// The same source with the comment spelled the outward way.
+    outward: &'static str,
+    /// The 1-based line the two sources differ on.
+    line: u32,
+    /// What the inward spelling resolves to — the scope the comment is inside,
+    /// or nothing at all at the top of a file.
+    inward_binds_to: Option<&'static str>,
+    /// What the outward spelling resolves to: the declaration below it.
+    outward_binds_to: &'static str,
+}
+
+/// A backend put to the doc-comment criterion.
+struct DocSubject {
+    language: &'static str,
+    spec: &'static LanguageSpec,
+    resolver: fn() -> Box<dyn SymbolResolver>,
+    /// Prepended to every witness source. Go needs a package clause to parse.
+    prelude: &'static str,
+    witnesses: &'static [DocWitness],
+    inward: &'static [InwardWitness],
+}
+
+const CPP_WITNESSES: &[DocWitness] = &[
+    DocWitness {
+        kind: "function_definition",
+        before: "",
+        doc: "/// documents f\n",
+        decl: "int f() { return 0; }\n",
+        after: "",
+        binds_to: "f",
+        detached: None,
+    },
+    DocWitness {
+        // NESTED, so the control answers a NAME rather than nothing: without
+        // pass 1 this comment resolves to the class it sits in, which is a
+        // different string and not merely an absent one.
+        kind: "field_declaration",
+        before: "class Holder {\n",
+        doc: "  /// documents m\n",
+        decl: "  int m;\n",
+        after: "};\n",
+        binds_to: "m",
+        detached: Some("Holder"),
+    },
+    DocWitness {
+        kind: "class_specifier",
+        before: "",
+        doc: "/// documents K\n",
+        decl: "class K {};\n",
+        after: "",
+        binds_to: "K",
+        detached: None,
+    },
+    DocWitness {
+        kind: "struct_specifier",
+        before: "",
+        doc: "/// documents S\n",
+        decl: "struct S {};\n",
+        after: "",
+        binds_to: "S",
+        detached: None,
+    },
+    DocWitness {
+        kind: "union_specifier",
+        before: "",
+        doc: "/// documents U\n",
+        decl: "union U { int a; };\n",
+        after: "",
+        binds_to: "U",
+        detached: None,
+    },
+    DocWitness {
+        kind: "enum_specifier",
+        before: "",
+        doc: "/// documents E\n",
+        decl: "enum E { A };\n",
+        after: "",
+        binds_to: "E",
+        detached: None,
+    },
+];
+
+const GO_WITNESSES: &[DocWitness] = &[
+    DocWitness {
+        // A MULTI-LINE RUN, which is the shape the sibling walk exists for: the
+        // citation may be on any line of it and all of them document the same
+        // declaration.
+        kind: "function_declaration",
+        before: "",
+        doc: "// documents F\n// and keeps documenting it\n",
+        decl: "func F() {}\n",
+        after: "",
+        binds_to: "F",
+        detached: None,
+    },
+    DocWitness {
+        kind: "method_declaration",
+        before: "type Holder struct{}\n\n",
+        doc: "// documents M\n",
+        decl: "func (h Holder) M() {}\n",
+        after: "",
+        binds_to: "M",
+        detached: None,
+    },
+    DocWitness {
+        kind: "type_declaration",
+        before: "",
+        doc: "// documents T\n",
+        decl: "type T int\n",
+        after: "",
+        binds_to: "T",
+        detached: None,
+    },
+    DocWitness {
+        kind: "const_declaration",
+        before: "",
+        doc: "// documents C\n",
+        decl: "const C = 1\n",
+        after: "",
+        binds_to: "C",
+        detached: None,
+    },
+    DocWitness {
+        kind: "var_declaration",
+        before: "",
+        doc: "// documents V\n",
+        decl: "var V int\n",
+        after: "",
+        binds_to: "V",
+        detached: None,
+    },
+    DocWitness {
+        kind: "type_spec",
+        before: "type (\n",
+        doc: "\t// documents Grouped\n",
+        decl: "\tGrouped int\n",
+        after: ")\n",
+        binds_to: "Grouped",
+        detached: None,
+    },
+    DocWitness {
+        kind: "const_spec",
+        before: "const (\n",
+        doc: "\t// documents CG\n",
+        decl: "\tCG = 2\n",
+        after: ")\n",
+        binds_to: "CG",
+        detached: None,
+    },
+    DocWitness {
+        kind: "var_spec",
+        before: "var (\n",
+        doc: "\t// documents VG\n",
+        decl: "\tVG int\n",
+        after: ")\n",
+        binds_to: "VG",
+        detached: None,
+    },
+];
+
+const PYTHON_WITNESSES: &[DocWitness] = &[
+    DocWitness {
+        kind: "function_definition",
+        before: "",
+        doc: "# documents f\n",
+        decl: "def f():\n    return 0\n",
+        after: "",
+        binds_to: "f",
+        detached: None,
+    },
+    DocWitness {
+        kind: "class_definition",
+        before: "",
+        doc: "# documents C\n",
+        decl: "class C:\n    pass\n",
+        after: "",
+        binds_to: "C",
+        detached: None,
+    },
+    DocWitness {
+        kind: "decorated_definition",
+        before: "class Outer:\n",
+        doc: "    # documents d\n",
+        decl: "    @wrapper\n    def d(self):\n        pass\n",
+        after: "",
+        binds_to: "d",
+        detached: Some("Outer"),
+    },
+];
+
+const KOTLIN_WITNESSES: &[DocWitness] = &[
+    DocWitness {
+        // KDOC, which is a `block_comment` here while `//` is a `line_comment`
+        // — the pair is why `comment_kinds` is a list.
+        kind: "class_declaration",
+        before: "",
+        doc: "/** documents K */\n",
+        decl: "class K\n",
+        after: "",
+        binds_to: "K",
+        detached: None,
+    },
+    DocWitness {
+        kind: "function_declaration",
+        before: "class Holder {\n",
+        doc: "    // documents f\n",
+        decl: "    fun f(): Int {\n        return 1\n    }\n",
+        after: "}\n",
+        binds_to: "f",
+        detached: Some("Holder"),
+    },
+    DocWitness {
+        kind: "object_declaration",
+        before: "",
+        doc: "// documents O\n",
+        decl: "object O\n",
+        after: "",
+        binds_to: "O",
+        detached: None,
+    },
+    DocWitness {
+        kind: "property_declaration",
+        before: "",
+        doc: "// documents p\n",
+        decl: "val p: Int = 1\n",
+        after: "",
+        binds_to: "p",
+        detached: None,
+    },
+];
+
+const RUST_WITNESSES: &[DocWitness] = &[
+    DocWitness {
+        kind: "function_item",
+        before: "impl Holder {\n",
+        doc: "    /// documents beta\n",
+        decl: "    fn beta(&self) {}\n",
+        after: "}\n",
+        binds_to: "beta",
+        detached: Some("Holder"),
+    },
+    DocWitness {
+        kind: "struct_item",
+        before: "",
+        doc: "/// documents S\n",
+        decl: "pub struct S;\n",
+        after: "",
+        binds_to: "S",
+        detached: None,
+    },
+    DocWitness {
+        kind: "enum_item",
+        before: "",
+        doc: "/// documents E\n",
+        decl: "enum E { A }\n",
+        after: "",
+        binds_to: "E",
+        detached: None,
+    },
+    DocWitness {
+        kind: "trait_item",
+        before: "",
+        doc: "/// documents T\n",
+        decl: "trait T {}\n",
+        after: "",
+        binds_to: "T",
+        detached: None,
+    },
+    DocWitness {
+        kind: "impl_item",
+        before: "",
+        doc: "/// documents the impl\n",
+        decl: "impl S {}\n",
+        after: "",
+        binds_to: "S",
+        detached: None,
+    },
+    DocWitness {
+        kind: "mod_item",
+        before: "",
+        doc: "/// documents m\n",
+        decl: "mod m {}\n",
+        after: "",
+        binds_to: "m",
+        detached: None,
+    },
+    DocWitness {
+        kind: "const_item",
+        before: "",
+        doc: "/// documents C\n",
+        decl: "const C: u32 = 1;\n",
+        after: "",
+        binds_to: "C",
+        detached: None,
+    },
+    DocWitness {
+        kind: "static_item",
+        before: "",
+        doc: "/// documents ST\n",
+        decl: "static ST: u32 = 1;\n",
+        after: "",
+        binds_to: "ST",
+        detached: None,
+    },
+    DocWitness {
+        kind: "type_item",
+        before: "",
+        doc: "/// documents TA\n",
+        decl: "type TA = u32;\n",
+        after: "",
+        binds_to: "TA",
+        detached: None,
+    },
+    DocWitness {
+        kind: "union_item",
+        before: "",
+        doc: "/// documents U\n",
+        decl: "union U { a: u32 }\n",
+        after: "",
+        binds_to: "U",
+        detached: None,
+    },
+    DocWitness {
+        kind: "macro_definition",
+        before: "",
+        doc: "/// documents mac\n",
+        decl: "macro_rules! mac { () => {} }\n",
+        after: "",
+        binds_to: "mac",
+        detached: None,
+    },
+];
+
+/// The one language here with a spelling for "documents the scope I am in".
+const RUST_INWARD: &[InwardWitness] = &[InwardWitness {
+    marker: "inner_doc_comment_marker",
+    inward: "mod holder {\n    //! documents holder\n    pub struct Inner;\n}\n",
+    outward: "mod holder {\n    /// documents Inner\n    pub struct Inner;\n}\n",
+    line: 2,
+    inward_binds_to: Some("holder"),
+    outward_binds_to: "Inner",
+}];
+
+/// EVERY BACKEND THIS BUILD SHIPS, and the population law below says so against
+/// `mnemosyne_cli::backends`. The corpus subjects above are the three that
+/// arrived without a predecessor; the doc-comment claim needs all five, because
+/// a PORT's oracle cannot find a defect the predecessor also had — Rust's
+/// backend agreed with its predecessor line for line while both bound a `///`
+/// citation to the wrong item.
+const DOC_SUBJECTS: &[DocSubject] = &[
+    DocSubject {
+        language: "cpp",
+        spec: &mnemosyne_plugin_tree_sitter_cpp::SPEC,
+        resolver: || Box::new(mnemosyne_plugin_tree_sitter_cpp::resolver()),
+        prelude: "",
+        witnesses: CPP_WITNESSES,
+        inward: &[],
+    },
+    DocSubject {
+        language: "go",
+        spec: &mnemosyne_plugin_tree_sitter_go::SPEC,
+        resolver: || Box::new(mnemosyne_plugin_tree_sitter_go::resolver()),
+        prelude: "package corpus\n\n",
+        witnesses: GO_WITNESSES,
+        inward: &[],
+    },
+    DocSubject {
+        language: "kotlin",
+        spec: &mnemosyne_plugin_tree_sitter_kotlin::SPEC,
+        resolver: || Box::new(mnemosyne_plugin_tree_sitter_kotlin::resolver()),
+        prelude: "",
+        witnesses: KOTLIN_WITNESSES,
+        inward: &[],
+    },
+    DocSubject {
+        language: "python",
+        spec: &mnemosyne_plugin_tree_sitter_python::SPEC,
+        resolver: || Box::new(mnemosyne_plugin_tree_sitter_python::resolver()),
+        prelude: "",
+        witnesses: PYTHON_WITNESSES,
+        inward: &[],
+    },
+    DocSubject {
+        language: "rust",
+        spec: &mnemosyne_plugin_tree_sitter_rust::SPEC,
+        resolver: || Box::new(mnemosyne_plugin_tree_sitter_rust::resolver()),
+        prelude: "",
+        witnesses: RUST_WITNESSES,
+        inward: RUST_INWARD,
+    },
+];
+
 /// One built file: its source and the name expected at each 1-based line.
 struct Built {
     label: String,
@@ -402,6 +834,187 @@ fn the_built_corpus_answers_exactly_what_was_planted_in_it() {
                 "{} / {}: the resolver's answers are not the planted ones\n\
                  --- source ---\n{}",
                 subject.language, built.label, built.source
+            );
+        }
+    }
+}
+
+/// A witness source and the 1-based lines its comment run occupies.
+///
+/// `detached` inserts the blank line that breaks the association, which is the
+/// only difference between the law's source and its control.
+fn witness_source(subject: &DocSubject, w: &DocWitness, detached: bool) -> (String, Vec<u32>) {
+    let head = format!("{}{}", subject.prelude, w.before);
+    let first = head.lines().count() as u32 + 1;
+    let count = w.doc.lines().count() as u32;
+    let gap = if detached { "\n" } else { "" };
+    let source = format!("{head}{}{gap}{}{}", w.doc, w.decl, w.after);
+    (source, (first..first + count).collect())
+}
+
+fn answers(subject: &DocSubject, source: &str, lines: &[u32]) -> BTreeMap<u32, String> {
+    (subject.resolver)()
+        .resolve_symbols_at(Path::new("/no/such/file"), source, lines)
+        .expect("the resolver answers")
+}
+
+#[test]
+fn every_backend_this_build_ships_answers_the_doc_comment_criterion() {
+    // THE POPULATION IS THE BACKEND TABLE, not this file's idea of one. A row
+    // added there without a subject here reddens this, which is the same
+    // derivation Law 0 makes from the compiled query.
+    let named: BTreeSet<&str> = DOC_SUBJECTS.iter().map(|s| s.spec.backend_key).collect();
+    let shipped: BTreeSet<&str> = mnemosyne_cli::backends::keys().into_iter().collect();
+    assert_eq!(
+        named, shipped,
+        "every shipped backend answers the doc-comment criterion, and the \
+         answer is witnessed here"
+    );
+
+    // AND THE CORPUS SUBJECTS ARE A NAMED SUBSET OF THEM. Laws 0 to 3 run over
+    // the three backends that arrived without a predecessor; the two ports have
+    // no built shapes yet. Stating the difference is what keeps a narrowed
+    // scope from reading as the whole answer.
+    let corpus: BTreeSet<&str> = SUBJECTS.iter().map(|s| s.spec.backend_key).collect();
+    let without_shapes: Vec<&str> = named.difference(&corpus).copied().collect();
+    assert_eq!(
+        without_shapes,
+        vec!["tree-sitter-cpp", "tree-sitter-rust"],
+        "laws 0 to 3 cover every backend but the two ports; when a port gets \
+         built shapes, move it into SUBJECTS and shorten this list"
+    );
+
+    for subject in DOC_SUBJECTS {
+        // THE RULE IS NOT OPTIONAL. An empty list was how a backend used to
+        // decline it without answering why, and that state no longer exists.
+        let declared: BTreeSet<&str> = subject
+            .spec
+            .doc_comments
+            .documented_kinds
+            .iter()
+            .copied()
+            .collect();
+        assert!(
+            !declared.is_empty(),
+            "{}: this backend documents no declaration kind at all, which is \
+             the one answer the criterion does not take",
+            subject.language
+        );
+        let witnessed: BTreeSet<&str> = subject.witnesses.iter().map(|w| w.kind).collect();
+        assert_eq!(
+            witnessed, declared,
+            "{}: the kinds this backend CLAIMS and the kinds a witness below \
+             actually binds are not the same set",
+            subject.language
+        );
+
+        let markers: BTreeSet<&str> = subject
+            .spec
+            .doc_comments
+            .inward_markers
+            .iter()
+            .copied()
+            .collect();
+        let marker_witnesses: BTreeSet<&str> = subject.inward.iter().map(|w| w.marker).collect();
+        assert_eq!(
+            marker_witnesses, markers,
+            "{}: the inward markers this backend claims and the ones witnessed \
+             below are not the same set",
+            subject.language
+        );
+    }
+}
+
+#[test]
+fn every_kind_a_backend_documents_is_one_a_comment_above_it_binds_to() {
+    // THE OTHER HALF OF THE SPEC, PUT TO THE SAME TEST AS THE QUERY. Law 0
+    // derives its population from the compiled query and requires the corpus to
+    // reach every pattern. `documented_kinds` is a claim of exactly the same
+    // shape — these declarations are the ones a comment above may be
+    // documenting — and until this law nothing asked it anything: a kind that
+    // could never bind, or a whole rule that never fired, read from outside
+    // exactly like a language that chose not to have one.
+    for subject in DOC_SUBJECTS {
+        for w in subject.witnesses {
+            let (source, lines) = witness_source(subject, w, false);
+            let bound = answers(subject, &source, &lines);
+            for line in &lines {
+                assert_eq!(
+                    bound.get(line).map(String::as_str),
+                    Some(w.binds_to),
+                    "{} / {}: line {line} of the comment above this declaration \
+                     does not bind to it\n--- source ---\n{source}",
+                    subject.language,
+                    w.kind
+                );
+            }
+
+            // THE CONTROL, AND IT IS THE HALF THAT SAYS PASS 1 DID THE WORK.
+            // One blank line breaks the association, and the same lines must
+            // fall through to whatever covers them — the enclosing declaration,
+            // or nothing. Without this, a witness would also pass for a comment
+            // that pass 2 happened to cover with the same name.
+            let (control, control_lines) = witness_source(subject, w, true);
+            let fell_through = answers(subject, &control, &control_lines);
+            for line in &control_lines {
+                assert_eq!(
+                    fell_through.get(line).map(String::as_str),
+                    w.detached,
+                    "{} / {}: with a blank line between, line {line} must fall \
+                     through to {:?}\n--- source ---\n{control}",
+                    subject.language,
+                    w.kind,
+                    w.detached
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn a_comment_marked_inward_documents_its_scope_and_not_what_follows() {
+    // THE MARKER IS THE WHOLE DIFFERENCE. Both sources below spell the same
+    // node kind in the same position, one row above the same declaration, and
+    // they must answer differently — the inward one names the scope the comment
+    // is inside, the outward one names the declaration below it. A marker that
+    // is decorative fails here, and so does a spec that names a node kind its
+    // grammar does not produce: the inward source would bind forward like any
+    // other comment.
+    for subject in DOC_SUBJECTS {
+        for w in subject.inward {
+            let lines = [w.line];
+            assert_eq!(
+                answers(subject, w.inward, &lines)
+                    .get(&w.line)
+                    .map(String::as_str),
+                w.inward_binds_to,
+                "{} / {}: an inward-marked comment must document its scope\n\
+                 --- source ---\n{}",
+                subject.language,
+                w.marker,
+                w.inward
+            );
+            assert_eq!(
+                answers(subject, w.outward, &lines)
+                    .get(&w.line)
+                    .map(String::as_str),
+                Some(w.outward_binds_to),
+                "{} / {}: the same comment spelled outward must document what \
+                 follows it — otherwise the two sources agree and the marker \
+                 decides nothing\n--- source ---\n{}",
+                subject.language,
+                w.marker,
+                w.outward
+            );
+            // The marker must be a node this grammar actually produces here,
+            // so a failure above names a wrong spelling rather than a wrong
+            // engine.
+            let tree = subject.spec.parse(w.inward).expect("the corpus parses");
+            assert!(
+                tree.root_node().to_sexp().contains(w.marker),
+                "{} / {}: the parse of the inward source holds no such node",
+                subject.language,
+                w.marker
             );
         }
     }
