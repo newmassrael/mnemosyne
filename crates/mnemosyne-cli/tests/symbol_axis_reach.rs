@@ -167,11 +167,27 @@ const GO: LangFixture = LangFixture {
     matched_symbol: "gamma",
 };
 
+/// The Python fixture. The citation is a `#` line inside each method body,
+/// followed by a statement rather than a definition, so the comment rule —
+/// which Python's spec switches ON — does not fire and the answer comes from
+/// the smallest covering definition, as in the other three.
+const PYTHON: LangFixture = LangFixture {
+    language: "python",
+    ext: "py",
+    drift: "class Holder:\n    def alpha(self):\n        \
+            # §sec1 — recorded as `beta`, so this citation has drifted\n        x = 1\n        \
+            return x\n",
+    matched: "class Keeper:\n    def gamma(self):\n        \
+              # §sec2 — recorded as `gamma`, so this citation is clean\n        y = 2\n        \
+              return y\n",
+    matched_symbol: "gamma",
+};
+
 /// Every fixture this test file holds, looked up by language. The POPULATION is
 /// the binary's own answer (law 7), never this list: a backend this build ships
 /// and this table has no fixture for FAILS rather than being skipped, so the
 /// round that adds a language cannot add it without a control.
-const FIXTURES: &[&LangFixture] = &[&RUST, &CPP, &GO];
+const FIXTURES: &[&LangFixture] = &[&RUST, &CPP, &GO, &PYTHON];
 
 /// Laws 1 to 5 run on the Rust fixture.
 ///
@@ -869,12 +885,29 @@ fn the_languages_this_build_cannot_resolve_are_named_and_counted() {
         .iter()
         .map(|l| l.as_str().expect("language"))
         .collect();
-    assert_eq!(
-        without,
-        vec!["python"],
-        "the symbol axis stops at exactly these languages; shipping a resolver \
-         deletes one from this list in the same change — `go` left it in Round \
-         1153: {json}"
+    // THE LIST IS EMPTY NOW, AND THE ASSERTION CHANGES SHAPE WITH IT. While it
+    // had members this was a shrinking claim about the build; empty, it is the
+    // invariant those rounds were walking towards — every language a file can
+    // map to has a resolver. An extension row added without a backend fails
+    // HERE, at the moment it is added, instead of at the moment a consumer
+    // notices their citations went to file-level binding.
+    assert!(
+        without.is_empty(),
+        "every language a file can map to must have a resolver; these have \
+         none: {without:?} — either ship the backend in the same change as the \
+         extension row, or the axis silently stops there: {json}"
+    );
+    // NON-VACUITY: an empty difference is also what an empty POPULATION looks
+    // like. The languages are real and every one of them is served.
+    let languages: Vec<&str> = json["symbol_axis_languages"]
+        .as_array()
+        .expect("symbol_axis_languages array")
+        .iter()
+        .map(|l| l.as_str().expect("language"))
+        .collect();
+    assert!(
+        languages.len() >= 4,
+        "the table's range collapsed rather than the gap closing: {json}"
     );
 
     // The report's own arithmetic, recomputed from the other two fields it

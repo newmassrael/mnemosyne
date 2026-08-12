@@ -1,0 +1,21 @@
+[package]
+name = "mnemosyne-plugin-tree-sitter-python"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+license.workspace = true
+description = "Mnemosyne — tree-sitter Python SymbolResolver backend"
+
+[lib]
+name = "mnemosyne_plugin_tree_sitter_python"
+path = "src/lib.rs"
+
+[dependencies]
+mnemosyne-core = { path = "../mnemosyne-core" }
+mnemosyne-plugin-tree-sitter-core = { path = "../mnemosyne-plugin-tree-sitter-core" }
+tree-sitter = "0.26"
+tree-sitter-python = "0.25"
+
+[lints]
+workspace = true
