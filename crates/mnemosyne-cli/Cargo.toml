@@ -65,6 +65,13 @@ syn = { workspace = true }
 # TABLE's own range rather than a language list retyped into the command, so it
 # needs the library the command reads it from.
 mnemosyne-validate = { path = "../mnemosyne-validate" }
+# The three backends whose specs have no predecessor to be diffed against, so
+# their contract puts them to a REAL corpus instead. Already normal dependencies
+# of this crate; named here so an integration test can reach them.
+mnemosyne-plugin-tree-sitter-go = { path = "../mnemosyne-plugin-tree-sitter-go" }
+mnemosyne-plugin-tree-sitter-python = { path = "../mnemosyne-plugin-tree-sitter-python" }
+mnemosyne-plugin-tree-sitter-kotlin = { path = "../mnemosyne-plugin-tree-sitter-kotlin" }
+mnemosyne-core = { path = "../mnemosyne-core" }
 
 [lints]
 workspace = true
