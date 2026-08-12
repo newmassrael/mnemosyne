@@ -171,10 +171,10 @@
     },
     {
       "name": "the-resolver-goes-back-to-the-disk",
-      "why": "the point of passing the source is that the symbol answer comes from the bytes the citation was extracted from; a plugin that reads the path again has its own copy, and two reads of one file can disagree",
+      "why": "the point of passing the source is that the symbol answer comes from the bytes the citation was extracted from; a plugin that reads the path again has its own copy, and two reads of one file can disagree. Round 1152 moved the walk out of the per-language crates into mnemosyne-plugin-tree-sitter-core, so this injection now lands ONCE and reaches all five backends rather than only Rust's — and the anchor it used to name stopped existing, which is exactly the decay the sweeps gate catches (Round 1156). Its expect_red is a LOWER BOUND, as every entry here is until the set is promoted: the listed Rust tests still go red because they resolve through a path that does not exist, and so now do the other four backends' and the engine's own",
       "edits": [
         {
-          "file": "crates/mnemosyne-plugin-tree-sitter-rust/src/lib.rs",
+          "file": "crates/mnemosyne-plugin-tree-sitter-core/src/lib.rs",
           "from": "        let tree = parser\n            .parse(source, None)",
           "to": "        let source = &std::fs::read_to_string(_file).unwrap_or_default();\n        let tree = parser\n            .parse(source, None)"
         }
@@ -240,12 +240,12 @@
     },
     {
       "name": "the-wire-hands-rust-the-other-languages-resolver",
-      "why": "the config-to-plugin wire had no reader until Round 1142 — the one test that configured a buildable backend asserted only exit 0, so a registry keyed to the wrong resolver resolved nothing and passed; this is that miskeying",
+      "why": "the config-to-plugin wire had no reader until Round 1142 — the one test that configured a buildable backend asserted only exit 0, so a registry keyed to the wrong resolver resolved nothing and passed; this is that miskeying. Round 1151 moved the wire out of an if/else chain in main.rs into the backend TABLE, so the miskeying now lands in the table's `rust` row and the anchor it used to name stopped existing (found by the sweeps gate, Round 1156). The move also gave the pairing a second reader — `backends::tests::each_row_builds_the_plugin_it_names` asks each row's constructor which plugin it built — but whether that test fires under this injection is UNMEASURED, so it is not listed below: an expect_red entry is a claim, and a claim about a run nobody has done belongs in prose",
       "edits": [
         {
-          "file": "crates/mnemosyne-cli/src/main.rs",
-          "from": "                        Box::new(mnemosyne_plugin_tree_sitter_rust::TreesitterRustResolver),",
-          "to": "                        Box::new(mnemosyne_plugin_tree_sitter_cpp::TreesitterCppResolver),"
+          "file": "crates/mnemosyne-cli/src/backends.rs",
+          "from": "        make: || Box::new(mnemosyne_plugin_tree_sitter_rust::resolver()),",
+          "to": "        make: || Box::new(mnemosyne_plugin_tree_sitter_cpp::resolver()),"
         }
       ],
       "expect_red": [

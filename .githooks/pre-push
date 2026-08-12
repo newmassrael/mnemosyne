@@ -32,7 +32,16 @@
 #      - Unconditional (push validates publishable state, so the clippy
 #        budget is paid once per push regardless of which files changed).
 #
-#   4. CI state of `origin/main` (R890, R893) — REPORT ONLY, never blocks.
+#   4. `scripts/check-side-workspaces.sh` — every SEPARATE in-repo workspace,
+#      WHOLE (fmt, clippy, citations, waits and its SUITE). R1156.
+#      - `--workspace` above means the ROOT one. Until this round the side
+#        workspaces' suites ran only on CI, and pre-commit reached them only
+#        when a `.rs` inside one was STAGED, lint-half only. Editing ROOT
+#        source can rot a side workspace's test — `sweeps.rs` anchors are
+#        exact text naming root files — and that is how R1151/R1152 put a red
+#        on `origin/main` behind five green root runs.
+#
+#   5. CI state of `origin/main` (R890, R893) — REPORT ONLY, never blocks.
 #      - Nothing here could see a red CI; four consecutive red runs went
 #        unnoticed for eleven hours. See the block at the bottom for why
 #        this reports rather than gates, and what it cannot see.
@@ -100,7 +109,46 @@ if ! cargo clippy --workspace --locked --all-targets -- -D warnings; then
     exit 1
 fi
 
-# 4. Report what CI said about the commit this push builds on (R890).
+# 4. The SEPARATE in-repo workspaces, WHOLE — fmt, clippy, citations, waits AND
+#    their suites (Round 1156).
+#
+# The gates above say `--workspace`, and that word means the ROOT workspace. The
+# others carry their own `[workspace]` precisely so the root gates never compile
+# them, and until this round the only thing that ran their SUITES was CI. The
+# pre-commit hook reaches them, but only when a `.rs` file INSIDE one is staged,
+# and only for the lint half.
+#
+# THAT LEFT THE CROSS-WORKSPACE DIRECTION UNGUARDED, which is the one that broke.
+# `tools/injection-harness/tests/sweeps.rs` asks whether every tracked injection
+# still APPLIES — an anchor is exact text naming a file in the ROOT workspace —
+# so editing root source can rot a side workspace's test while nothing that runs
+# before a push touches it. Rounds 1151 and 1152 rewrote two of those files, five
+# root-workspace runs stayed green, the pre-commit side gate never fired because
+# no side `.rs` was staged, and the red arrived on `origin/main`.
+#
+# ONE DEFINITION, `scripts/check-side-workspaces.sh`, asked here for the WHOLE
+# gate rather than `--lint-only`: this is the last point before the answer
+# becomes shared, and the half that was missing is the suites. Resolved from THIS
+# HOOK's checkout, for the reason the CI reporter below is — the hook may run
+# over another tree, and a gate that vanishes when its script is not under the
+# caller's cwd is a gate that stops existing without saying so.
+# `${BASH_SOURCE[0]%/*}` rather than `dirname`: a BUILTIN, because this hook is
+# also run on a deliberately hermetic PATH holding only `bash`, `git` and a cargo
+# stub — and `dirname` is not on it. The case that found this is the CI
+# reporter's, which proves the hook still works when almost nothing is reachable.
+side_gate="$(cd "${BASH_SOURCE[0]%/*}/.." && pwd)/scripts/check-side-workspaces.sh"
+if [[ ! -x "$side_gate" ]]; then
+    echo "pre-push: push rejected — the separate-workspace gate is missing at $side_gate" >&2
+    exit 1
+fi
+echo "pre-push: scripts/check-side-workspaces.sh (every separate workspace, whole) ..." >&2
+if ! "$side_gate"; then
+    echo "pre-push: a separate in-repo workspace does not pass its own gate" >&2
+    echo "  run: scripts/check-side-workspaces.sh" >&2
+    exit 1
+fi
+
+# 5. Report what CI said about the commit this push builds on (R890).
 #
 # Nothing in this repo could see a red CI. `mnemosyne-validate` failed on four
 # consecutive pushes over eleven hours (R872, R874, R877, R883) and was found by

@@ -86,6 +86,13 @@ violate() { echo "$1" >> "$PWD/reporter-contract-violations.log"; }
 if [[ "${1:-}" != "run" ]]; then
     exit 0
 fi
+# The separate-workspace gate (R1156) runs two of this repository's own gate
+# programs through `cargo run` as well, and they are not this stub's subject —
+# each has its own suite. Named by PATH so the exemption cannot be claimed by
+# anything else the hook might call.
+case "$*" in
+    *"/tools/item-citations/Cargo.toml"*|*"/tools/blind-waits/Cargo.toml"*) exit 0 ;;
+esac
 [[ "$*" == *"/tools/ci-state/Cargo.toml"* ]] \
     || violate "pre-push ran some other program than the CI reporter: $*"
 [[ "$*" == *"--bin ci-state"* ]] \
@@ -168,6 +175,19 @@ impl Fixture {
         f.write(".gitignore", "mn-calls.log\n/target\n");
         write_exec(&f.path().join("scripts/mn"), MN_STUB);
         f.generate_lockfile("Cargo.toml");
+        // A REPOSITORY HAS MORE THAN ONE WORKSPACE, and since R1156 `pre-push`
+        // gates on the separate ones — whole. The gate refuses a tree it reached
+        // NO separate workspace in, by its own non-vacuity rule, so a fixture
+        // without one is a tree the hooks correctly refuse: the same correction
+        // the missing lockfile above needed, for the same reason. Clean and
+        // trivial, so it is a baseline every case can build on rather than a
+        // subject; the cases that are ABOUT a separate workspace overwrite it.
+        f.write(
+            "tools/sub/Cargo.toml",
+            "[package]\nname = \"sub\"\nversion = \"0.0.0\"\nedition = \"2021\"\n\n[workspace]\n",
+        );
+        f.write("tools/sub/src/lib.rs", "pub fn two() -> u8 {\n    2\n}\n");
+        f.generate_lockfile("tools/sub/Cargo.toml");
         f.stage_all();
         f
     }
@@ -282,6 +302,19 @@ impl Fixture {
             &[],
         )
     }
+}
+
+/// Both streams, for a claim about something the hook's CHILD narrated. The
+/// hooks write their own lines to stderr, and the gates they call write theirs
+/// wherever they write them — a case that reads only stderr can miss a step that
+/// ran, which is how the R1156 case first went red over a suite that had in fact
+/// executed.
+fn both_of(out: &Output) -> String {
+    format!(
+        "{}{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    )
 }
 
 fn stderr_of(out: &Output) -> String {
@@ -860,6 +893,93 @@ fn pre_push_skips_delete_only_pushes_and_gates_on_the_workspace() {
     );
 }
 
+/// PRE-PUSH RUNS THE SEPARATE WORKSPACES, AND WHOLE (R1156).
+///
+/// `--workspace` in the three gates above means the ROOT workspace. The others
+/// carry their own `[workspace]` so the root gates never compile them, and until
+/// this round the only thing that ran their SUITES was CI: pre-commit reaches
+/// them only when a `.rs` INSIDE one is staged, and only for the lint half.
+///
+/// WHAT THAT COST, measured rather than argued. `tools/injection-harness`'s
+/// `sweeps.rs` asks whether every tracked injection still APPLIES, and an anchor
+/// is exact text naming a file in the ROOT workspace. Rounds 1151 and 1152
+/// rewrote two such files; five root-workspace runs stayed green, no side `.rs`
+/// was ever staged so the pre-commit gate never fired, and the red arrived on
+/// `origin/main`. This case is the reader that branch was missing.
+#[test]
+fn pre_push_gates_on_every_separate_workspace_and_names_the_one_that_fails() {
+    // The baseline fixture's separate workspace, made unformatted.
+    let dirty = Fixture::new();
+    dirty.write("tools/sub/src/lib.rs", "pub fn two()->u8{2}\n");
+    dirty.stage_all();
+    dirty.git(&["commit", "--no-verify", "-q", "-m", "test(fixture): seed"]);
+    let sha = head_sha(&dirty);
+
+    let out = dirty.run_hook(
+        "pre-push",
+        &["origin", "git@example:x"],
+        &push_line(&sha),
+        &[],
+    );
+    assert!(
+        !out.status.success(),
+        "a separate workspace that fails its own gate must block the push:\n{}",
+        stderr_of(&out)
+    );
+    let err = stderr_of(&out);
+    assert!(
+        err.contains("tools/sub is unformatted"),
+        "the block must name the separate workspace:\n{err}"
+    );
+    assert!(
+        err.contains("separate in-repo workspace does not pass its own gate"),
+        "and it must be this hook's own refusal, not a message from some other \
+         gate the push happened to trip:\n{err}"
+    );
+
+    // THE MIRROR, and it is what stops the assertion above from holding for a
+    // hook wired to reject every push that has a side workspace at all: the
+    // baseline tree, whose separate workspace is clean, passes AND the gate is
+    // seen to have run its SUITE on it.
+    let clean = Fixture::new();
+    clean.git(&["commit", "--no-verify", "-q", "-m", "test(fixture): seed"]);
+    let sha = head_sha(&clean);
+
+    let out = clean.run_hook(
+        "pre-push",
+        &["origin", "git@example:x"],
+        &push_line(&sha),
+        &[],
+    );
+    assert!(
+        out.status.success(),
+        "a clean separate workspace must not block the push:\n{}",
+        both_of(&out)
+    );
+    let both = both_of(&out);
+    assert!(
+        both.contains("check-side-workspaces.sh"),
+        "the hook must say it ran the ONE gate CI runs, not a copy of its \
+         commands:\n{both}"
+    );
+    // AND THE SUITE HALF RAN, which is the half that was missing: `--lint-only`
+    // stops after fmt and clippy, and this hook asking for that would rebuild the
+    // hole one notch smaller. Read off the GATE'S OWN command line rather than
+    // off cargo's wording, and from STDOUT as well as stderr — the gate narrates
+    // on stdout, which is why the first version of this case failed while the
+    // suite had in fact run.
+    assert!(
+        both.contains("COMMAND tools/sub suite"),
+        "the whole gate includes the separate workspace's SUITE, and that is the \
+         half CI alone was carrying:\n{both}"
+    );
+    assert!(
+        !both.contains("--lint-only"),
+        "the mirror of the assertion above — the lint-only form must be gone \
+         from this call, not merely joined by the suite:\n{both}"
+    );
+}
+
 #[test]
 fn pre_push_carries_the_ci_reporters_words_and_names_it_when_it_cannot_run() {
     let f = Fixture::new();
@@ -901,10 +1021,18 @@ fn pre_push_carries_the_ci_reporters_words_and_names_it_when_it_cannot_run() {
     assert_ne!(head, sha, "the fixture must be able to tell the two apart");
     let stdin = push_line(&head);
 
-    // A HERMETIC PATH, so the only `cargo` the hook can reach is the stub. This
-    // machine keeps the real one beside `git`, and a hook that found it would
-    // compile this repository's reporter into the fixture's target directory —
-    // a several-minute case that measures cargo rather than the hook.
+    // A PATH WHOSE ONLY `cargo` IS THE STUB — that is the whole of what this
+    // shim is for. This machine keeps the real one beside `git`, and a hook that
+    // found it would compile this repository's reporter into the fixture's
+    // target directory: a several-minute case that measures cargo rather than
+    // the hook.
+    //
+    // PREPENDED, not substituted (R1156). It used to REPLACE `PATH` with a
+    // directory holding two symlinks, which starved every ordinary tool as a
+    // side effect of hiding one — and the moment `pre-push` grew a gate that
+    // shells out, the case failed on `dirname`, then on `find` and `sort`
+    // inside the gate's script. Those failures said nothing about the seam this
+    // case owns. The stub still wins because it comes first, which is the claim.
     let shim = f.path().join("shim");
     fs::create_dir_all(&shim).expect("mkdir shim");
     for tool in ["bash", "git"] {
@@ -921,7 +1049,11 @@ fn pre_push_carries_the_ci_reporters_words_and_names_it_when_it_cannot_run() {
         std::os::unix::fs::symlink(real, shim.join(tool)).expect("symlink");
     }
     write_exec(&shim.join("cargo"), CARGO_STUB);
-    let hermetic = shim.to_str().expect("shim path is utf-8").to_string();
+    let hermetic = format!(
+        "{}:{}",
+        shim.to_str().expect("shim path is utf-8"),
+        std::env::var("PATH").unwrap_or_default()
+    );
 
     // WHAT THE REPORTER SAYS REACHES THE PERSON PUSHING, verbatim. The hook's job
     // at this seam is carriage: it neither summarises the report nor decides what
