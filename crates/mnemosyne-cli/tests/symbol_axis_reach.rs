@@ -183,11 +183,27 @@ const PYTHON: LangFixture = LangFixture {
     matched_symbol: "gamma",
 };
 
+/// The Kotlin fixture. As in the others the citation is a `//` line inside the
+/// method body followed by a statement, so the comment rule — which Kotlin's
+/// spec switches ON over BOTH comment spellings — does not fire and the answer
+/// comes from the smallest covering declaration.
+const KOTLIN: LangFixture = LangFixture {
+    language: "kotlin",
+    ext: "kt",
+    drift: "package p\n\nclass Holder {\n    fun alpha(): Int {\n        \
+            // §sec1 — recorded as `beta`, so this citation has drifted\n        val x = 1\n        \
+            return x\n    }\n}\n",
+    matched: "package p\n\nclass Keeper {\n    fun gamma(): Int {\n        \
+              // §sec2 — recorded as `gamma`, so this citation is clean\n        val y = 2\n        \
+              return y\n    }\n}\n",
+    matched_symbol: "gamma",
+};
+
 /// Every fixture this test file holds, looked up by language. The POPULATION is
 /// the binary's own answer (law 7), never this list: a backend this build ships
 /// and this table has no fixture for FAILS rather than being skipped, so the
 /// round that adds a language cannot add it without a control.
-const FIXTURES: &[&LangFixture] = &[&RUST, &CPP, &GO, &PYTHON];
+const FIXTURES: &[&LangFixture] = &[&RUST, &CPP, &GO, &PYTHON, &KOTLIN];
 
 /// Laws 1 to 5 run on the Rust fixture.
 ///
@@ -906,7 +922,7 @@ fn the_languages_this_build_cannot_resolve_are_named_and_counted() {
         .map(|l| l.as_str().expect("language"))
         .collect();
     assert!(
-        languages.len() >= 4,
+        languages.len() >= 5,
         "the table's range collapsed rather than the gap closing: {json}"
     );
 

@@ -1066,6 +1066,7 @@ dependencies = [
  "mnemosyne-ops",
  "mnemosyne-plugin-tree-sitter-cpp",
  "mnemosyne-plugin-tree-sitter-go",
+ "mnemosyne-plugin-tree-sitter-kotlin",
  "mnemosyne-plugin-tree-sitter-python",
  "mnemosyne-plugin-tree-sitter-rust",
  "mnemosyne-query",
@@ -1212,6 +1213,16 @@ dependencies = [
  "mnemosyne-plugin-tree-sitter-core",
  "tree-sitter",
  "tree-sitter-go",
+]
+
+[[package]]
+name = "mnemosyne-plugin-tree-sitter-kotlin"
+version = "0.1.0"
+dependencies = [
+ "mnemosyne-core",
+ "mnemosyne-plugin-tree-sitter-core",
+ "tree-sitter",
+ "tree-sitter-kotlin-ng",
 ]
 
 [[package]]
@@ -2611,6 +2622,16 @@ name = "tree-sitter-go"
 version = "0.25.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c8560a4d2f835cc0d4d2c2e03cbd0dde2f6114b43bc491164238d333e28b16ea"
+dependencies = [
+ "cc",
+ "tree-sitter-language",
+]
+
+[[package]]
+name = "tree-sitter-kotlin-ng"
+version = "1.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e800ebbda938acfbf224f4d2c34947a31994b1295ee6e819b65226c7b51b4450"
 dependencies = [
  "cc",
  "tree-sitter-language",

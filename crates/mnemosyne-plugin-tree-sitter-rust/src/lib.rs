@@ -58,7 +58,7 @@ pub static SPEC: LanguageSpec = LanguageSpec {
     ",
     name_of: rust_name_of,
     documented_kinds: &[],
-    comment_kind: "line_comment",
+    comment_kinds: &["line_comment", "block_comment"],
     query_cache: &QUERY,
 };
 

@@ -59,9 +59,19 @@ pub struct LanguageSpec {
     /// binds, and the two languages that shipped before this crate disagreed
     /// about it. See [`TreesitterResolver::resolve_symbols_at`].
     pub documented_kinds: &'static [&'static str],
-    /// What this grammar calls a comment node. Unused when
-    /// `documented_kinds` is empty.
-    pub comment_kind: &'static str,
+    /// What this grammar calls a comment node — ALL of the spellings, because
+    /// a language may have more than one and a citation may sit in any of them.
+    /// Unused when `documented_kinds` is empty.
+    ///
+    /// A SINGLE SPELLING WAS THE WIRE'S OWN LIMIT, not a simplification. C++,
+    /// Go and Python each call every comment `comment`, so one string carried
+    /// the whole answer and nothing said otherwise; Kotlin calls `//` a
+    /// `line_comment` and KDoc a `block_comment`, and the field could not have
+    /// held both. A contract cannot close a hole its wire does not carry
+    /// information about: with one string, a KDoc citation would have fallen
+    /// through to the enclosing scope and looked exactly like a language that
+    /// chose not to have the rule.
+    pub comment_kinds: &'static [&'static str],
     /// Where this backend's compiled query lives for the life of the PROCESS.
     ///
     /// Owned by the language crate rather than by the resolver instance so the
@@ -249,7 +259,7 @@ impl TreesitterResolver {
         // this one would have inherited it.
         let node = comment_ancestor(
             root.descendant_for_point_range(pt, pt)?,
-            self.spec.comment_kind,
+            self.spec.comment_kinds,
         )?;
         // The contiguous run of comment lines this one belongs to. Consecutive
         // comments ARE siblings in every grammar here, so the tree is the right
@@ -257,7 +267,7 @@ impl TreesitterResolver {
         let mut last = node;
         let mut sib = node.next_named_sibling();
         while let Some(s) = sib {
-            if s.kind() != self.spec.comment_kind
+            if !self.spec.comment_kinds.contains(&s.kind())
                 || s.start_position().row != last.end_position().row + 1
             {
                 break;
@@ -313,14 +323,15 @@ impl TreesitterResolver {
     }
 }
 
-/// `node` itself, or its nearest ancestor, whose kind is `comment_kind`.
+/// `node` itself, or its nearest ancestor, whose kind is one of
+/// `comment_kinds`.
 ///
 /// `None` when the point is not inside a comment at all — the climb accepts
 /// only an exact kind match, so it cannot mistake an enclosing item for one.
-fn comment_ancestor<'tree>(node: Node<'tree>, comment_kind: &str) -> Option<Node<'tree>> {
+fn comment_ancestor<'tree>(node: Node<'tree>, comment_kinds: &[&str]) -> Option<Node<'tree>> {
     let mut cur = node;
     loop {
-        if cur.kind() == comment_kind {
+        if comment_kinds.contains(&cur.kind()) {
             return Some(cur);
         }
         cur = cur.parent()?;
@@ -369,7 +380,7 @@ mod tests {
         query_source: QUERY_SRC,
         name_of,
         documented_kinds: &[],
-        comment_kind: "line_comment",
+        comment_kinds: &["line_comment"],
         query_cache: &SILENT_CACHE,
     };
 
@@ -384,7 +395,7 @@ mod tests {
         query_source: QUERY_SRC,
         name_of,
         documented_kinds: &["function_item", "struct_item"],
-        comment_kind: "line_comment",
+        comment_kinds: &["line_comment"],
         query_cache: &DOCUMENTING_CACHE,
     };
 

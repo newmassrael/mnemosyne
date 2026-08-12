@@ -3624,6 +3624,20 @@ fn scan_round_number(s: &str) -> Option<String> {
 /// `severity_binding = reject` read as symbol-level throughout. The omission
 /// was visible in this file: [`comment_syntax_for`] one screen away has always
 /// known `.c`.
+///
+/// `.kt` / `.kts` were absent until Round 1155, and they were the SAME omission
+/// with a longer reach: `comment_syntax_for` has always known both, so a Kotlin
+/// file's citations were scanned and spell-checked while this table said the
+/// extension mapped to no language at all — the census's "extension maps to no
+/// language" bucket, which reads as a file the symbol axis was never meant to
+/// judge rather than as a language nobody had wired. The consumer whose spec
+/// ledger enrols a Kotlin runtime wrote that sentence out by hand.
+///
+/// A ROW HERE IS A PROMISE THIS BUILD CAN KEEP. Since Round 1154 the reach
+/// contract requires `languages_without_backend` to be EMPTY, so adding a row
+/// for a language with no resolver fails at the moment the row is added rather
+/// than at the moment a consumer notices their citations took file-level
+/// binding.
 const SYMBOL_AXIS_EXTENSIONS: &[(&str, &str)] = &[
     ("c", "cpp"),
     ("cc", "cpp"),
@@ -3634,6 +3648,8 @@ const SYMBOL_AXIS_EXTENSIONS: &[(&str, &str)] = &[
     ("hh", "cpp"),
     ("hpp", "cpp"),
     ("hxx", "cpp"),
+    ("kt", "kotlin"),
+    ("kts", "kotlin"),
     ("py", "python"),
     ("rs", "rust"),
 ];
@@ -5729,20 +5745,40 @@ mod tests {
     /// Round 855 — the legal `[plugins.symbol_resolver.<lang>]` keys are derived
     /// from the extension table, so a config naming `c` — the obvious
     /// workaround for a `.c` tree — is refusable instead of dead.
+    ///
+    /// Round 1155 — THE ABSENCE HALF IS DERIVED NOW, NOT SPELLED. This asserted
+    /// `!langs.contains("kotlin")` as its example of a name no extension maps
+    /// to, and the round that added `.kt` made that sentence false. Naming a
+    /// different language in its place would replant the same clock; the claim
+    /// that does not decay is the EQUALITY — the key set is exactly the table's
+    /// range — plus the rule the `c` case is an instance of: an extension whose
+    /// spelling differs from its language is never itself a key.
     #[test]
     fn the_symbol_axis_language_set_comes_from_the_extension_table() {
         let langs = symbol_axis_languages();
-        assert!(langs.contains("cpp") && langs.contains("rust"));
-        assert!(
-            !langs.contains("c"),
-            "`c` is an EXTENSION, not a language key — `.c` maps to `cpp`, and a \
-             resolver keyed `c` would never be consulted: {langs:?}"
+        let range: BTreeSet<&str> = symbol_axis_extensions()
+            .iter()
+            .map(|(_, lang)| *lang)
+            .collect();
+        assert_eq!(
+            langs, range,
+            "the key set must be the extension table's range and nothing else"
         );
         assert!(
-            !langs.contains("kotlin"),
-            "no extension maps to kotlin, so a resolver keyed kotlin is dead \
-             config: {langs:?}"
+            langs.contains("cpp") && langs.contains("rust"),
+            "non-vacuity: the range is a real set, not an empty one: {langs:?}"
         );
+        for (ext, lang) in symbol_axis_extensions() {
+            if ext == lang {
+                continue;
+            }
+            assert!(
+                !langs.contains(ext),
+                "`{ext}` is an EXTENSION, not a language key — it maps to \
+                 `{lang}`, and a resolver keyed `{ext}` would never be \
+                 consulted: {langs:?}"
+            );
+        }
     }
 
     #[test]

@@ -25,6 +25,7 @@ mnemosyne-plugin-tree-sitter-rust = { path = "../mnemosyne-plugin-tree-sitter-ru
 mnemosyne-plugin-tree-sitter-cpp = { path = "../mnemosyne-plugin-tree-sitter-cpp" }
 mnemosyne-plugin-tree-sitter-go = { path = "../mnemosyne-plugin-tree-sitter-go" }
 mnemosyne-plugin-tree-sitter-python = { path = "../mnemosyne-plugin-tree-sitter-python" }
+mnemosyne-plugin-tree-sitter-kotlin = { path = "../mnemosyne-plugin-tree-sitter-kotlin" }
 
 anyhow.workspace = true
 serde = { workspace = true }

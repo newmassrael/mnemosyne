@@ -76,7 +76,7 @@ pub static SPEC: LanguageSpec = LanguageSpec {
     ",
     name_of: go_name_of,
     documented_kinds: DOCUMENTED_KINDS,
-    comment_kind: "comment",
+    comment_kinds: &["comment"],
     query_cache: &QUERY,
 };
 
