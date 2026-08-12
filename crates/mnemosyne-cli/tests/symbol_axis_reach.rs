@@ -412,6 +412,39 @@ fn the_same_tree_with_a_resolver_judges_and_names_the_drift() {
          {violations:?}"
     );
 
+    // THE JUDGEMENT SAYS WHAT THE CODE ACTUALLY SAYS (Round 1158). Until this
+    // round the violation carried file, line and `§id` and DROPPED the symbol the
+    // resolver answered, so a consumer learned a citation had drifted but not to
+    // what — and Round 1154, which added thirty new bindings in C++ by repairing
+    // the doc-comment rule, made that specific: someone meeting a new mismatch
+    // could not tell from the report whether their code had moved or this
+    // resolver had started answering. Both names are here now.
+    assert_eq!(
+        (&symbol[0]["found"], &symbol[0]["expected"]),
+        (
+            &serde_json::json!("alpha"),
+            // A SET, because a section legitimately records more than one symbol
+            // in one file: printing whichever member the comparison rejected
+            // would look definite and be arbitrary.
+            &serde_json::json!(["beta"])
+        ),
+        "the judgement must name the symbol the resolver READ and the ones the \
+         store RECORDS — the drift is the pair, and one half of it is not a \
+         diagnosis: {}",
+        symbol[0]
+    );
+    // AND THE OTHER AXES DO NOT CLAIM TO HAVE READ ANYTHING. `found` is `Some`
+    // exactly where an axis resolved a symbol; an Option whose population is not
+    // pinned is the smell this shape would otherwise be.
+    for v in violations {
+        let has_found = v.get("found").is_some();
+        assert_eq!(
+            has_found,
+            v["kind"] == "symbol_mismatch",
+            "only the axis that read a symbol may report one: {v}"
+        );
+    }
+
     // The whole path through the binary: config → plugin registry → the real
     // tree-sitter resolver → a judgement → the exit code a hook reads.
     assert!(

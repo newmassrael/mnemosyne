@@ -88,6 +88,21 @@ pub struct Citation {
     pub entry_id: String,
 }
 
+/// WHAT AN AXIS READ AT A CITATION, AND WHAT THE STORE SAYS IT SHOULD BE.
+///
+/// Both halves or neither: a drift is a PAIR, and one half of it is not a
+/// diagnosis. `expected` is the set the store records for this (section, file) —
+/// a section legitimately names more than one symbol in a file, so the
+/// comparison is membership and the report prints the whole set rather than
+/// picking one to look definite.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+pub struct ReadSymbol {
+    /// The symbol the resolver answered for this line.
+    pub found: String,
+    /// The symbols the store records for this citation, in store order.
+    pub expected: Vec<String>,
+}
+
 /// One verification failure surfaced to the caller.
 ///
 /// Three variants — code-side citations (`Citation`), file-grained
@@ -100,9 +115,31 @@ pub struct Citation {
 pub enum CodeRefViolation {
     /// Citation-side violation — there is a concrete cite at file:line,
     /// and the cite is wrong in some way (`kind` distinguishes how).
+    ///
+    /// `read` IS WHAT THE AXIS FOUND IN THE CODE, when the axis that judged this
+    /// site read anything there at all. Round 1158 — until then the symbol axis
+    /// resolved a name, compared it with the one the store records, emitted a
+    /// violation and DROPPED the name it had read: a consumer learned that a
+    /// citation had drifted but not to WHAT, and had to open the file to find
+    /// out. Round 1154 made that specific rather than merely inconvenient, by
+    /// repairing the doc-comment rule and so binding thirty citations in the
+    /// consumer's tree that had previously resolved to an enclosing scope —
+    /// someone meeting one of those as a fresh mismatch could not tell from the
+    /// report whether their code had moved or this resolver had started
+    /// answering.
+    ///
+    /// AN OPTION WHOSE POPULATION IS PINNED, which is what keeps it from being
+    /// the smell a one-kind field otherwise is: `Some` exactly for
+    /// [`ViolationKind::SymbolMismatch`] and `None` for every other kind, held
+    /// by `only_the_symbol_axis_reports_what_it_read` here and by the
+    /// end-to-end law in `symbol_axis_reach.rs`. The kind's own payload would be
+    /// the tidier home, but `ViolationKind` is a `Copy` tag read as a key by the
+    /// severity map, the axis map and `kind_tag`; giving it a `String` moves
+    /// that cost onto every one of those readers to spare this one field.
     Citation {
         citation: Citation,
         kind: ViolationKind,
+        read: Option<ReadSymbol>,
     },
     /// Spec-side violation — the atomic store records a binding (of ANY
     /// kind) in `§section_id.bindings` naming (file, symbol?), but the file
@@ -870,13 +907,29 @@ impl CodeRefViolation {
         let kind_tag = self.kind_tag();
         obj.insert("kind".into(), Value::String(kind_tag.into()));
         match self {
-            CodeRefViolation::Citation { citation, .. } => {
+            CodeRefViolation::Citation { citation, read, .. } => {
                 obj.insert(
                     "file".into(),
                     Value::String(citation.file.to_string_lossy().into_owned()),
                 );
                 obj.insert("line".into(), Value::Number(citation.line.into()));
                 obj.insert("entry_id".into(), Value::String(citation.entry_id.clone()));
+                // ABSENT rather than null when the axis read nothing, so the
+                // presence of the key is itself the answer to "did anything read
+                // the code here" — the same distinction the axis counts draw
+                // between `0` and `null` (Round 1141).
+                if let Some(r) = read {
+                    obj.insert("found".into(), Value::String(r.found.clone()));
+                    obj.insert(
+                        "expected".into(),
+                        Value::Array(
+                            r.expected
+                                .iter()
+                                .map(|s| Value::String(s.clone()))
+                                .collect(),
+                        ),
+                    );
+                }
             }
             CodeRefViolation::BindingUnbacked {
                 section_id,
@@ -962,6 +1015,33 @@ impl std::fmt::Display for CodeRefViolation {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let kind_tag = self.kind_tag();
         match self {
+            // THE HUMAN LINE CARRIES THE PAIR TOO (Round 1158). The R1045 lesson
+            // is that a claim proved only against `--json` leaves the line a
+            // person reads free to say less; the whole point of this payload is
+            // that a reader does not have to open the file, and the reader of
+            // this line is the one who would.
+            CodeRefViolation::Citation {
+                citation,
+                read: Some(r),
+                ..
+            } => write!(
+                f,
+                "[{}] {}:{} {} — code says `{}`, store records {}",
+                kind_tag,
+                citation.file.to_string_lossy(),
+                citation.line,
+                citation.entry_id,
+                r.found,
+                if r.expected.is_empty() {
+                    "nothing".to_string()
+                } else {
+                    r.expected
+                        .iter()
+                        .map(|s| format!("`{s}`"))
+                        .collect::<Vec<_>>()
+                        .join(" or ")
+                }
+            ),
             CodeRefViolation::Citation { citation, .. } => write!(
                 f,
                 "[{}] {}:{} {}",
@@ -4032,6 +4112,9 @@ impl SetEqualityValidator {
                         entry_id,
                     },
                     kind,
+                    // This axis compares an id against the store; it reads no
+                    // symbol, so it claims to have read none.
+                    read: None,
                 });
             }
 
@@ -4075,6 +4158,7 @@ impl SetEqualityValidator {
                                 entry_id: format!("§{}", section_id),
                             },
                             kind: ViolationKind::SectionMissing,
+                            read: None,
                         });
                     }
                     continue;
@@ -4095,6 +4179,7 @@ impl SetEqualityValidator {
                                 entry_id: format!("§{}", section_id),
                             },
                             kind: ViolationKind::CitationUnbound,
+                            read: None,
                         });
                     }
                 } else if let Some(expected_syms) =
@@ -4146,6 +4231,23 @@ impl SetEqualityValidator {
                                             entry_id: format!("§{}", section_id),
                                         },
                                         kind: ViolationKind::SymbolMismatch,
+                                        // THE ONE SITE THAT READ SOMETHING, so
+                                        // the one that carries it. Both names,
+                                        // because a drift is a pair — and
+                                        // `expected` is the whole recorded set,
+                                        // sorted, rather than whichever member
+                                        // the comparison happened to reject.
+                                        read: Some(ReadSymbol {
+                                            found: found.clone(),
+                                            expected: {
+                                                let mut e: Vec<String> = expected_syms
+                                                    .iter()
+                                                    .map(|s| (*s).to_string())
+                                                    .collect();
+                                                e.sort_unstable();
+                                                e
+                                            },
+                                        }),
                                     });
                                 }
                             }
@@ -4172,6 +4274,7 @@ impl SetEqualityValidator {
                             entry_id: format!("§{}", section_id),
                         },
                         kind: ViolationKind::ProseFactAssertion,
+                        read: None,
                     });
                 }
             }
@@ -4214,6 +4317,7 @@ impl SetEqualityValidator {
                             entry_id: inventory_id,
                         },
                         kind: k,
+                        read: None,
                     });
                 }
             }
@@ -5742,6 +5846,104 @@ mod tests {
         );
     }
 
+    /// ONLY THE AXIS THAT READ A SYMBOL REPORTS ONE (Round 1158).
+    ///
+    /// `read` is an `Option` on a variant eight kinds share, which is the smell
+    /// a one-kind field usually is — unless its population is pinned. This is
+    /// that pin, over the SCAN's own output rather than over hand-built values:
+    /// a tree carrying one drifted citation and one unbound one, and the payload
+    /// present on exactly the first.
+    #[test]
+    fn only_the_symbol_axis_reports_what_it_read() {
+        use mnemosyne_core::AtomicStoreView;
+        let tmp = TempDir::new().unwrap();
+        let src = tmp.path().join("src");
+        std::fs::create_dir_all(&src).unwrap();
+        // `drift.rs` is bound and records `beta`; the grammar answers `alpha`.
+        std::fs::write(
+            src.join("drift.rs"),
+            "struct H;\n\nimpl H {\n    fn alpha(&self) {\n        // §39 cite\n    }\n}\n",
+        )
+        .unwrap();
+        // `unbound.rs` cites a section that does not bind it — a different axis,
+        // and one that reads no symbol.
+        std::fs::write(src.join("unbound.rs"), "// §39 cite from nowhere\n").unwrap();
+
+        let store_path = tmp.path().join(".atomic/workspace.atomic.json");
+        let store = build_store_with_impl(&store_path, "39", "src/drift.rs", Some("beta"));
+
+        let mut resolvers: BTreeMap<String, Box<dyn mnemosyne_core::SymbolResolver>> =
+            BTreeMap::new();
+        resolvers.insert(
+            "rust".to_string(),
+            Box::new(mnemosyne_plugin_tree_sitter_rust::resolver()),
+        );
+        let validator = SetEqualityValidator {
+            config: SetEqualityValidatorConfig {
+                scan_exclusions: Vec::new(),
+                paths: vec!["src/".to_string()],
+                severity_missing: mnemosyne_config::Severity::Reject,
+                severity_binding: mnemosyne_config::Severity::Reject,
+                severity_coverage: None,
+                severity_verification: None,
+                severity_confirmation: None,
+                severity_classification: None,
+                severity_blanket: None,
+                severity_prose_fact_assertion: None,
+                severity_inventory: mnemosyne_config::Severity::Reject,
+                comment_only: true,
+                inventory_prefixes: vec![],
+                external_section_prefixes: vec![],
+                external_section_prefixes_bare: vec![],
+                external_changelog_prefixes: vec![],
+                inventory_path_prefixes: vec![],
+                section_namespace: None,
+            },
+            entry_id_prefix: "Round ".to_string(),
+            orphan_ledger: vec![],
+            symbol_resolvers: resolvers,
+            filter_id: None,
+            path_scope: None,
+        };
+        let snapshot = store.snapshot();
+        let violations = validator
+            .scan(
+                &no_foreign_subtree(tmp.path(), &validator.config),
+                &snapshot,
+            )
+            .expect("the scan runs");
+
+        let mut with_payload = 0usize;
+        let mut symbol_axis = 0usize;
+        for v in &violations {
+            if let CodeRefViolation::Citation { kind, read, .. } = v {
+                if *kind == ViolationKind::SymbolMismatch {
+                    symbol_axis += 1;
+                    let r = read.as_ref().expect("the symbol axis reports what it read");
+                    assert_eq!(r.found, "alpha");
+                    assert_eq!(r.expected, vec!["beta".to_string()]);
+                }
+                if read.is_some() {
+                    with_payload += 1;
+                }
+            }
+        }
+        assert_eq!(
+            symbol_axis, 1,
+            "the fixture must produce exactly one symbol drift, or the equality \
+             below is about an empty set: {violations:?}"
+        );
+        assert!(
+            violations.len() > symbol_axis,
+            "and at least one violation from ANOTHER axis, or `None` is never \
+             exercised: {violations:?}"
+        );
+        assert_eq!(
+            with_payload, symbol_axis,
+            "no other axis may claim to have read a symbol: {violations:?}"
+        );
+    }
+
     /// Round 855 — the legal `[plugins.symbol_resolver.<lang>]` keys are derived
     /// from the extension table, so a config naming `c` — the obvious
     /// workaround for a `.c` tree — is refusable instead of dead.
@@ -6474,7 +6676,7 @@ mod tests {
         .unwrap();
         assert_eq!(v.len(), 1);
         match &v[0] {
-            CodeRefViolation::Citation { citation, kind } => {
+            CodeRefViolation::Citation { citation, kind, .. } => {
                 assert_eq!(*kind, ViolationKind::SectionMissing);
                 assert_eq!(citation.entry_id, "§999");
             }
@@ -6511,7 +6713,7 @@ mod tests {
         .unwrap();
         assert_eq!(v.len(), 1, "got: {:?}", v);
         match &v[0] {
-            CodeRefViolation::Citation { citation, kind } => {
+            CodeRefViolation::Citation { citation, kind, .. } => {
                 assert_eq!(*kind, ViolationKind::CitationUnbound);
                 assert_eq!(citation.entry_id, "§39");
                 assert_eq!(citation.file.to_string_lossy(), "src/foo.rs");
@@ -6667,7 +6869,7 @@ mod tests {
         .unwrap();
         assert_eq!(v.len(), 1);
         match &v[0] {
-            CodeRefViolation::Citation { citation, kind } => {
+            CodeRefViolation::Citation { citation, kind, .. } => {
                 assert_eq!(*kind, ViolationKind::Decay);
                 assert_eq!(citation.entry_id, "Round 1");
             }
@@ -7826,7 +8028,7 @@ mod tests {
         .unwrap();
         assert_eq!(v.len(), 1, "got: {:?}", v);
         match &v[0] {
-            CodeRefViolation::Citation { kind, citation } => {
+            CodeRefViolation::Citation { kind, citation, .. } => {
                 assert!(matches!(kind, ViolationKind::InventoryMissing));
                 assert_eq!(citation.entry_id, "W3C SCXML 3.13");
             }
@@ -7933,7 +8135,7 @@ mod tests {
         .unwrap();
         assert_eq!(v.len(), 1, "got: {:?}", v);
         match &v[0] {
-            CodeRefViolation::Citation { kind, citation } => {
+            CodeRefViolation::Citation { kind, citation, .. } => {
                 assert!(matches!(kind, ViolationKind::InventoryMissing));
                 assert_eq!(citation.entry_id, "ARP_07");
             }
@@ -8846,7 +9048,7 @@ mod tests {
         // Only the internal `\u{00a7}99` should surface.
         assert_eq!(v.len(), 1, "got: {:?}", v);
         match &v[0] {
-            CodeRefViolation::Citation { kind, citation } => {
+            CodeRefViolation::Citation { kind, citation, .. } => {
                 assert!(matches!(kind, ViolationKind::SectionMissing));
                 assert!(citation.entry_id.contains("99"));
             }
@@ -9247,7 +9449,7 @@ mod tests {
             v
         );
         match &v[0] {
-            CodeRefViolation::Citation { citation, kind } => {
+            CodeRefViolation::Citation { citation, kind, .. } => {
                 assert_eq!(*kind, ViolationKind::Missing);
                 assert_eq!(citation.entry_id, "Round 999");
             }
@@ -9332,7 +9534,7 @@ mod tests {
         .unwrap();
         assert_eq!(v.len(), 1, "in-namespace unknown id must fire: {:?}", v);
         match &v[0] {
-            CodeRefViolation::Citation { kind, citation } => {
+            CodeRefViolation::Citation { kind, citation, .. } => {
                 assert_eq!(*kind, ViolationKind::SectionMissing);
                 assert!(citation.entry_id.contains("scxml-9.99"));
             }
@@ -9898,6 +10100,7 @@ mod tests {
                     entry_id: "Round 1".into(),
                 },
                 kind: ViolationKind::Missing,
+                read: None,
             },
             CodeRefViolation::Citation {
                 citation: Citation {
@@ -9906,6 +10109,7 @@ mod tests {
                     entry_id: "Round 1".into(),
                 },
                 kind: ViolationKind::Decay,
+                read: None,
             },
             CodeRefViolation::Citation {
                 citation: Citation {
@@ -9914,6 +10118,7 @@ mod tests {
                     entry_id: "§1".into(),
                 },
                 kind: ViolationKind::SectionMissing,
+                read: None,
             },
             CodeRefViolation::Citation {
                 citation: Citation {
@@ -9922,6 +10127,7 @@ mod tests {
                     entry_id: "§1".into(),
                 },
                 kind: ViolationKind::CitationUnbound,
+                read: None,
             },
             CodeRefViolation::Citation {
                 citation: Citation {
@@ -9930,6 +10136,12 @@ mod tests {
                     entry_id: "§1".into(),
                 },
                 kind: ViolationKind::SymbolMismatch,
+                // The one shape that reads code, so the one this name space
+                // exercises with a payload.
+                read: Some(ReadSymbol {
+                    found: "alpha".into(),
+                    expected: vec!["beta".into()],
+                }),
             },
             CodeRefViolation::Citation {
                 citation: Citation {
@@ -9938,6 +10150,7 @@ mod tests {
                     entry_id: "INV_1".into(),
                 },
                 kind: ViolationKind::InventoryMissing,
+                read: None,
             },
             CodeRefViolation::Citation {
                 citation: Citation {
@@ -9946,6 +10159,7 @@ mod tests {
                     entry_id: "INV_1".into(),
                 },
                 kind: ViolationKind::InventoryDeprecated,
+                read: None,
             },
             CodeRefViolation::Citation {
                 citation: Citation {
@@ -9954,6 +10168,7 @@ mod tests {
                     entry_id: "§1".into(),
                 },
                 kind: ViolationKind::ProseFactAssertion,
+                read: None,
             },
             CodeRefViolation::BindingUnbacked {
                 section_id: "1".into(),
