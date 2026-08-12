@@ -5,9 +5,26 @@ edition.workspace = true
 rust-version.workspace = true
 publish.workspace = true
 license.workspace = true
+# Round 1148 — the integration tests are ONE target, declared below. Without
+# this, cargo would also discover each `tests/*.rs` and build it a second time
+# as its own executable, which is the twenty-two links this change removes. See
+# `tests/all.rs` for what that cost and what sharing a process requires.
+autotests = false
 
 [lib]
 path = "src/lib.rs"
+
+[[test]]
+name = "all"
+path = "tests/all.rs"
+
+# Its own process, and the reason is measured: this test captures spans, and
+# `tracing`'s callsite interest cache is process-global. Sharing a process with
+# the others made it fail 2 of 30 runs under CPU contention, against 0 of 30
+# alone. A test whose subject is a process-global gets a process.
+[[test]]
+name = "handler_span_hierarchy_smoke"
+path = "tests/handler_span_hierarchy_smoke.rs"
 
 # Round 97 — opt-in TLS toggle. Default builds remain TLS-free (Round 91/96 carry
 # stable: no rustls/aws-lc-rs in the default closure, no extra build-time cost).

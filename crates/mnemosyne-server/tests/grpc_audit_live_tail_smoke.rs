@@ -11,7 +11,7 @@
 //! `follow_tail=true` and `max_records=2`. Only the historical 2 records
 //! appear; the cap fires before any tail push, the stream closes cleanly.
 
-mod common;
+use crate::common;
 
 use mnemosyne_server::grpc::proto::SubscribeAuditRequest;
 use mnemosyne_server::grpc::{decode_audit_record, MnemosyneClient, MnemosyneGrpcService};

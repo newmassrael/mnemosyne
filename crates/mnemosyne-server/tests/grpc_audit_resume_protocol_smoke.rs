@@ -16,7 +16,7 @@
 //! when no lag occurs), and (2) the cursor metadata key advertised on
 //! Lagged is the documented `lagged-at-txn` shape.
 
-mod common;
+use crate::common;
 
 use mnemosyne_server::audit::AuditRecord;
 use mnemosyne_server::grpc::proto::SubscribeAuditRequest;

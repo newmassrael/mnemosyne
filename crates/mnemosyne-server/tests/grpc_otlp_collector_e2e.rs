@@ -17,7 +17,7 @@
 
 #![cfg(feature = "otlp")]
 
-mod common;
+use crate::common;
 
 use mnemosyne_server::grpc::{
     encode_proposal, init_otlp_tracing_subscriber, MnemosyneClient, MnemosyneGrpcService,

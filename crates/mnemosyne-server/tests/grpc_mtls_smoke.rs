@@ -15,7 +15,7 @@
 
 #![cfg(feature = "tls")]
 
-mod common;
+use crate::common;
 
 use mnemosyne_server::grpc::{
     build_rustls_server_config, encode_proposal, install_default_crypto_provider,

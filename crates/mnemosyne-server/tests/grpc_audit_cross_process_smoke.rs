@@ -25,7 +25,7 @@
 //! (`publish_external`) — wiring through the gRPC layer adds runtime
 //! complexity without strengthening the assertion.
 
-mod common;
+use crate::common;
 
 use mnemosyne_server::audit::{AuditRecord, InMemoryAuditBroker, AUDIT_BROADCAST_CAPACITY};
 use mnemosyne_server::handler::ProposalHandler;
