@@ -1,0 +1,35 @@
+# 이 저장소를 빌드 머신에서 어떻게 검증하는가.
+#
+# `remote-build` 스킬이 읽는다. 머신 이름은 여기 없다 — 요구사항만 적고, 어느
+# 머신이 그걸 만족하는지는 스킬이 실행 시점에 물어서 고른다. pc3 가 생겨도 이
+# 파일은 그대로다.
+
+# 추적 파일 + .git 만 보낸다. 이 저장소의 `claudedocs/` 는 gitignore 이고 아직
+# 전달되지 않은 외부 소비자 회신 문서를 담고 있어서, 다른 머신으로 조용히 넘어갈
+# 이유가 없다.
+send = "tracked"
+
+# `target` 은 `~/.buildcache/mnemosyne` 를 가리키는 심볼릭 링크다. 보내면 원격에
+# 깨진 링크로 간다.
+exclude = ["/target"]
+
+needs = ["cargo"]
+
+# `librocksdb-sys` 의 bindgen 이 clang 내장 헤더를 요구한다. `libclang.so` 만으로는
+# 부족하고, 없으면 `'stdbool.h' file not found` 로 죽는다 (2026-08-12 pc2 실측).
+packages = ["libclang-common-18-dev"]
+
+min_free_gb = 20
+
+# 병렬도는 여기 적지 않는다 — 스킬이 코어 수와 동시 실행 수로 계산한다. 이건
+# 힌트다: `authoring_surface` 한 테스트가 23.9 GiB 까지 간 적이 있다 (Round 1076,
+# 그 실행은 스왑을 채우고 22분 만에 죽었다).
+peak_gb_per_task = 24
+
+[commands]
+build = "cargo test --workspace --no-run"
+verify = "cargo test --workspace --no-fail-fast"
+
+# 주입 스윕 — 계약이 공허하지 않은지 증명한다. 컨트롤 1회 + 주입 16회이고 매번
+# 전체 스위트를 돌리므로 오래 걸린다. pc2 실측으로 테스트 실행만 런당 389초.
+sweep = "cargo run -q --manifest-path tools/injection-harness/Cargo.toml -- crates/mnemosyne-cli/sweeps/citation-path-scope.sweep.json"

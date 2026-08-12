@@ -14,6 +14,13 @@ Cargo.lock.bak
 !.claude/skills/
 .claude/skills/*
 !.claude/skills/mnemosyne-init/
+# Round 1149: how a build machine verifies THIS repository — the commands, the
+# executables they need, the apt package `librocksdb-sys` bindgen dies without.
+# Those are facts about the repository, not about anyone's laptop, so they are
+# tracked for the same reason the init skill is: untracked, the next clone has
+# to rediscover them by watching a build fail. It names no machine — which host
+# satisfies the requirements is asked at run time.
+!.claude/remote-build.toml
 # Claude working scratch (RFC drafts, maintainer replies) — local only
 /claudedocs/*
 # Exception: the population census is a GENERATED report whose whole value is
