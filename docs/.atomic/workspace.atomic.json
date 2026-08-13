@@ -10724,6 +10724,88 @@
         "THE VERB DESCRIBES THE CONTRACT, NOT THE CONFIG. Which axes a given run actually judges is a fact about a workspace and already answered by `not_judged`; keeping the two apart is what lets this one need no workspace at all."
       ]
     },
+    "Round 1169": {
+      "decision_summary": "R1169 (DEBT) — THE REPLY THAT WAS BLOCKED ON NOTHING. Y3 has been carried since\nRound 1158 with a stated blocker: routing is the owner's, and the reply's home\n`claudedocs/` is gitignored, so writing it would produce an untracked file. THE\nSECOND HALF WAS FALSE. `git check-ignore claudedocs/` exits 1 and 880 files\nunder it are tracked, including twenty-five `send-*` documents that are exactly\nthis genre — the last one `send-sce-reply-r870-…`. Ten rounds listed this item\nand none of them asked the program. That is the fourth time a carry named a\nblocker that turned out to be a premise of mine rather than a fact of the world.\n\nSTAR WHAT ROUTING ACTUALLY BLOCKS IS SENDING, and sending is a consent gate.\nWriting and committing is not, and the difference is what kept this undone.\n\nSTAR THE REPLY IS SHORTER THAN THE EIGHT ITEMS IT CARRIES, because Round 1168\nturned three of them into a command. What it tells them to run is\n`describe-citation-axes` and `describe-symbol-axis-reach`; what it states in\nprose is the half no verb can carry — that Round 1154's repair binds thirty of\nTHEIR citations, and that Rust's binding moved twice.\n\nSTAR EVERY NUMBER IN IT WAS PRODUCED BY RUNNING SOMETHING, and two claims did\nnot survive that. The draft said this repository's symbol-axis population is\nempty \"by measurement\"; today's own dogfood says `symbol_mismatch_count: null`,\nwhich is NOT JUDGED — no resolver is configured — and the empty-population claim\nis Round 1144's, a different measurement. Both are now stated separately with\ntheir provenance. The draft also said we had previously told them our CI does\nnot run the three corpus laws; searching the sent corpus found that sentence in\nexactly one file, THE DRAFT ITSELF. We never sent it. It is now written as what\nit is: a notice that stopped being true before it was sent.\n\nSTAR THE THREE HUMAN LINES IT QUOTES ARE THE THREE A LAW PINS. Round 1167's\nend-to-end law asserts those exact strings against the binary's output, so the\npart of this reply a consumer will act on — the line shapes their parser sees —\nis not a transcription.",
+      "changes_bullets": [
+        "`claudedocs/send-sce-reply-r1169-the-wire-now-says-what-it-carries.md` — the reply, tracked, in the `send-*` genre this repository already has twenty-five of. Six sections: the two commands that replace prose, the three additive wire keys and the clause each adds to the human line, the published axis contract, the two binding-semantics changes with their provenance, what our CI does and does not run, and four asks.",
+        "No code. The round is the document plus the two claims that running things corrected."
+      ],
+      "verification_bullets": [
+        "THE BLOCKER WAS TESTED, NOT READ: `git check-ignore -v claudedocs/` exits 1 and `git ls-files claudedocs/` returns 880 tracked paths. The carry said the opposite for ten rounds.",
+        "EVERY CITED ROUND WAS PUT TO THE RESOLVER, not matched against a listing: 1144, 1154, 1158, 1161, 1162, 1163, 1164, 1167 and 1168 each exit 0 through `query --changelog-entry`.",
+        "EVERY PUBLISHED VALUE CAME OUT OF A COMMAND RUN NOW — the axis table from `describe-citation-axes --json`, the five backends' pattern and kind counts from `describe-symbol-axis-reach`, this repository's own verdict from `validate-code-refs --json`.",
+        "TWO CLAIMS DIED ON CONTACT WITH THAT RULE. The symbol-axis sentence conflated `null` (not judged, measured today) with an empty population (Round 1144); both now appear with their own provenance. The \"we told you our CI does not run these laws\" sentence was searched for across the sent corpus and found only in the draft — we never sent it.",
+        "THE QUOTED HUMAN LINES ARE THE LAW'S OWN STRINGS: the three needles in `every_axis_that_reads_something_publishes_it_through_the_binary` are the three lines the reply prints.",
+        "`mnemosyne-cli validate-workspace` exit 0 with the document in the tree."
+      ],
+      "carry_forward_bullets": [
+        "SENDING IT IS THE GATE, and it is the owner's. The document is written and committed; what remains is delivery to a repository this session does not touch.",
+        "A SENT REPLY TELLS A CONSUMER TO RUN A VERB, AND NOTHING GUARDS THAT NAME. Rename `describe-citation-axes` tomorrow and twenty-six sent documents quietly point at nothing. The obvious law — every `mnemosyne-cli <verb>` named in `claudedocs/send-*.md` exists — is the WRONG law: a sent record is frozen, so its repair would be editing correspondence after the fact. The right subject is \"was it true WHEN SENT\", which git can answer through each document's introducing commit, and that is a real design rather than an afternoon. NOT DEFERRED FOR EFFORT — deferred because no instance of this decay has been observed across twenty-six documents, and building the archaeology first would be substrate ahead of a defect. It is the owner's call whether the corpus is worth a gate.",
+        "WHAT NO VERB CAN CARRY IS STILL PROSE, and this reply is the proof: the sentence a consumer needs is \"thirty of YOUR citations gained a binding\", a claim about their tree that only a measurement over their checkout can make. The verbs replaced the parts that were about us."
+      ],
+      "population_census": [
+        {
+          "axis": "transition rules by `undirected`",
+          "left_label": "undirected",
+          "left": 10,
+          "right_label": "directed",
+          "right": 27
+        },
+        {
+          "axis": "map corpora by leg-kind declaration",
+          "left_label": "omitted",
+          "left": 6,
+          "right_label": "declared",
+          "right": 24
+        },
+        {
+          "axis": "cost-carrying corpora by direction-dependent pricing",
+          "left_label": "prices a way by direction",
+          "left": 4,
+          "right_label": "prices no way by direction",
+          "right": 6
+        },
+        {
+          "axis": "run trees by authoring mode",
+          "left_label": "hand script",
+          "left": 10,
+          "right_label": "file-only",
+          "right": 239
+        },
+        {
+          "axis": "map corpora by declared boundary crossing",
+          "left_label": "declares an exit",
+          "left": 6,
+          "right_label": "declares none",
+          "right": 24
+        },
+        {
+          "axis": "authored submissions by map and telling",
+          "left_label": "carries both",
+          "left": 10,
+          "right_label": "carries one",
+          "right": 24
+        }
+      ],
+      "publishable_decision_summary": "R1169 (DEBT) — THE REPLY THAT WAS BLOCKED ON NOTHING. Y3 has been carried since\nRound 1158 with a stated blocker: routing is the owner's, and the reply's home\n`claudedocs/` is gitignored, so writing it would produce an untracked file. THE\nSECOND HALF WAS FALSE. `git check-ignore claudedocs/` exits 1 and 880 files\nunder it are tracked, including twenty-five `send-*` documents that are exactly\nthis genre — the last one `send-sce-reply-r870-…`. Ten rounds listed this item\nand none of them asked the program. That is the fourth time a carry named a\nblocker that turned out to be a premise of mine rather than a fact of the world.\n\nSTAR WHAT ROUTING ACTUALLY BLOCKS IS SENDING, and sending is a consent gate.\nWriting and committing is not, and the difference is what kept this undone.\n\nSTAR THE REPLY IS SHORTER THAN THE EIGHT ITEMS IT CARRIES, because Round 1168\nturned three of them into a command. What it tells them to run is\n`describe-citation-axes` and `describe-symbol-axis-reach`; what it states in\nprose is the half no verb can carry — that Round 1154's repair binds thirty of\nTHEIR citations, and that Rust's binding moved twice.\n\nSTAR EVERY NUMBER IN IT WAS PRODUCED BY RUNNING SOMETHING, and two claims did\nnot survive that. The draft said this repository's symbol-axis population is\nempty \"by measurement\"; today's own dogfood says `symbol_mismatch_count: null`,\nwhich is NOT JUDGED — no resolver is configured — and the empty-population claim\nis Round 1144's, a different measurement. Both are now stated separately with\ntheir provenance. The draft also said we had previously told them our CI does\nnot run the three corpus laws; searching the sent corpus found that sentence in\nexactly one file, THE DRAFT ITSELF. We never sent it. It is now written as what\nit is: a notice that stopped being true before it was sent.\n\nSTAR THE THREE HUMAN LINES IT QUOTES ARE THE THREE A LAW PINS. Round 1167's\nend-to-end law asserts those exact strings against the binary's output, so the\npart of this reply a consumer will act on — the line shapes their parser sees —\nis not a transcription.",
+      "publishable_changes_bullets": [
+        "`claudedocs/send-sce-reply-r1169-the-wire-now-says-what-it-carries.md` — the reply, tracked, in the `send-*` genre this repository already has twenty-five of. Six sections: the two commands that replace prose, the three additive wire keys and the clause each adds to the human line, the published axis contract, the two binding-semantics changes with their provenance, what our CI does and does not run, and four asks.",
+        "No code. The round is the document plus the two claims that running things corrected."
+      ],
+      "publishable_verification_bullets": [
+        "THE BLOCKER WAS TESTED, NOT READ: `git check-ignore -v claudedocs/` exits 1 and `git ls-files claudedocs/` returns 880 tracked paths. The carry said the opposite for ten rounds.",
+        "EVERY CITED ROUND WAS PUT TO THE RESOLVER, not matched against a listing: 1144, 1154, 1158, 1161, 1162, 1163, 1164, 1167 and 1168 each exit 0 through `query --changelog-entry`.",
+        "EVERY PUBLISHED VALUE CAME OUT OF A COMMAND RUN NOW — the axis table from `describe-citation-axes --json`, the five backends' pattern and kind counts from `describe-symbol-axis-reach`, this repository's own verdict from `validate-code-refs --json`.",
+        "TWO CLAIMS DIED ON CONTACT WITH THAT RULE. The symbol-axis sentence conflated `null` (not judged, measured today) with an empty population (Round 1144); both now appear with their own provenance. The \"we told you our CI does not run these laws\" sentence was searched for across the sent corpus and found only in the draft — we never sent it.",
+        "THE QUOTED HUMAN LINES ARE THE LAW'S OWN STRINGS: the three needles in `every_axis_that_reads_something_publishes_it_through_the_binary` are the three lines the reply prints.",
+        "`mnemosyne-cli validate-workspace` exit 0 with the document in the tree."
+      ],
+      "publishable_carry_forward_bullets": [
+        "SENDING IT IS THE GATE, and it is the owner's. The document is written and committed; what remains is delivery to a repository this session does not touch.",
+        "A SENT REPLY TELLS A CONSUMER TO RUN A VERB, AND NOTHING GUARDS THAT NAME. Rename `describe-citation-axes` tomorrow and twenty-six sent documents quietly point at nothing. The obvious law — every `mnemosyne-cli <verb>` named in `claudedocs/send-*.md` exists — is the WRONG law: a sent record is frozen, so its repair would be editing correspondence after the fact. The right subject is \"was it true WHEN SENT\", which git can answer through each document's introducing commit, and that is a real design rather than an afternoon. NOT DEFERRED FOR EFFORT — deferred because no instance of this decay has been observed across twenty-six documents, and building the archaeology first would be substrate ahead of a defect. It is the owner's call whether the corpus is worth a gate.",
+        "WHAT NO VERB CAN CARRY IS STILL PROSE, and this reply is the proof: the sentence a consumer needs is \"thirty of YOUR citations gained a binding\", a claim about their tree that only a measurement over their checkout can make. The verbs replaced the parts that were about us."
+      ]
+    },
     "Round 252": {
       "decision_summary": "Parser CommonMark conformance — recognize indented fenced code blocks (§98) and require whitespace after ATX hash sequence (§62)",
       "changes_bullets": [
