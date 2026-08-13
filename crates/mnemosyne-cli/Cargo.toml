@@ -8,10 +8,33 @@ license.workspace = true
 description = "Mnemosyne — markdown spec/doc management infrastructure for LLM-using codebases (CLI for the reference application + generic library)"
 keywords = ["markdown", "spec", "documentation", "llm", "validator"]
 categories = ["command-line-utilities", "development-tools"]
+# Round 1172 — the integration tests are ONE binary (`tests/all.rs`) plus the
+# exceptions declared below, so cargo must not also pick each file up on its
+# own. Without this every file would be built twice. The law that decides which
+# file may share the binary, and which exception is earned, is
+# `tests/consolidated_test_isolation.rs`.
+autotests = false
 
 [[bin]]
 name = "mnemosyne-cli"
 path = "src/main.rs"
+
+[[test]]
+name = "all"
+path = "tests/all.rs"
+
+# NAMED BY A CI COMMAND, which is a target that exists to be built alone.
+# `evidence-replay.yml` runs each of these with `--test <name>` — the first also
+# with `-- --ignored`, the long replay a scheduled job pays for on purpose.
+# Folded into `all` they would make that job build every other test file in this
+# crate to run one, which is the cost this consolidation exists to remove.
+[[test]]
+name = "evidence_replay_smoke"
+path = "tests/evidence_replay_smoke.rs"
+
+[[test]]
+name = "pinned_revision_rechecks_evidence_smoke"
+path = "tests/pinned_revision_rechecks_evidence_smoke.rs"
 
 [dependencies]
 mnemosyne-ops = { path = "../mnemosyne-ops" }
@@ -57,6 +80,11 @@ yaml-rust2 = { workspace = true }
 # `tools/unrun-tests` rather than copied into each — R1083 is what a second
 # derivation of it costs.
 ci-plan = { path = "../../tools/ci-plan" }
+# The consolidation laws ask a manifest which test targets it DECLARES. That is
+# a TOML question, and the answer this crate needs — is this file a declared
+# target, or only a string that appears in the file — is exactly what a text
+# search cannot tell apart.
+toml = { workspace = true }
 # The ledger tests ask whether an entry id carries a round pin. That question
 # already has one answer in production (`project::parse_round_number`, the
 # resolver the changelog projection keys on), so the tests borrow it rather

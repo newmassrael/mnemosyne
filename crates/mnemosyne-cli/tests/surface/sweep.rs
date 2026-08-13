@@ -50,11 +50,20 @@ use common::{Corruption, Read, SIDECAR};
 
 /// The test target entitled to build the population.
 ///
-/// Cargo compiles each `tests/*.rs` into its own binary and sets
-/// `CARGO_CRATE_NAME` to that target's name, so the crate this module is being
-/// compiled INTO is a compile-time fact — which is what makes the ownership
-/// check a build error rather than a convention.
-pub const OWNER: &str = "authoring_surface";
+/// Cargo sets `CARGO_CRATE_NAME` to the name of the target a file is compiled
+/// into, so the target this module is being built for is a compile-time fact —
+/// which is what makes the ownership check a build error rather than a
+/// convention.
+///
+/// Round 1172 moved the name. The owner used to be `authoring_surface`, when
+/// that file was one of this crate's seventy-six separate test binaries; it is
+/// now a module of the single consolidated target, and `all` is the binary that
+/// builds it. What the gate is FOR did not move: the memo is a `OnceLock` per
+/// PROCESS, so a second target that compiles this module pays the whole sweep
+/// again. Consolidation makes the property easier to hold rather than
+/// unnecessary — there is one process now, and this is what keeps a second one
+/// from quietly appearing.
+pub const OWNER: &str = "all";
 
 /// Whether `crate_name` is the target this module belongs to.
 ///
@@ -77,14 +86,14 @@ pub const fn owned_by(crate_name: &str) -> bool {
 
 const _: () = assert!(
     owned_by(env!("CARGO_CRATE_NAME")),
-    "the corruption sweep belongs to the `authoring_surface` test target. \
-     Including it from another test file does not share the sweep — separate \
-     integration-test files are separate BINARIES and the memo is a OnceLock \
-     per PROCESS, so the second one builds all 312 stores and asks every \
+    "the corruption sweep belongs to the consolidated `all` test target. \
+     Building it from a second target does not share the sweep — separate \
+     test targets are separate BINARIES and the memo is a OnceLock per \
+     PROCESS, so the second one builds all 312 stores and asks every \
      advertised read about each of them again, for the whole of the sweep's \
      cost a second time (212s when Round 1071 measured it). Put the new law \
-     in tests/surface/ and `mod` it from tests/authoring_surface.rs, where it \
-     reads the sweep this binary already paid for."
+     in tests/surface/ and `mod` it from tests/authoring_surface.rs, which is \
+     a module of `all` and reads the sweep that binary already paid for."
 );
 
 /// The gate's refusing arm, which the compile-time assertion above can never
@@ -104,12 +113,16 @@ fn the_sweep_names_the_target_that_may_build_it() {
     for foreign in [
         "authorable_population",
         "coordinate_read_answers",
+        // The name this module used to answer to, which is now a MODULE of the
+        // owner rather than a target. A gate still admitting it would admit the
+        // exact second binary Round 1172 folded away.
+        "authoring_surface",
         "",
         // A prefix and a suffix of the owner's name: a check that compared
         // only the start would let the first through, and one that compared
         // only the length would let neither be told apart from the owner.
-        "authoring_surfac",
-        "authoring_surface_two",
+        "al",
+        "all_two",
     ] {
         assert!(
             !owned_by(foreign),

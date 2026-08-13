@@ -92,12 +92,19 @@ yaml-rust2 = { version = "0.11", default-features = false }
 # text match reports a pair as judged because a comment mentioned it — the same
 # reasoning that put yaml-rust2 above rather than a substring check. `full` for
 # item syntax, `extra-traits` for the Debug an error message prints.
+# `visit` for the borrowing walk (Round 1172): the consolidation laws ask which
+# of a crate's own helpers reach a process-wide install and which test files
+# reach one of THOSE, and the answer has to come off the syntax rather than off
+# the text — a denylist matched against a whole file reports the gate that
+# NAMES the constructs it hunts, and `tools/blind-waits` already pays for the
+# same walk one directory over.
 syn = { version = "3", default-features = false, features = [
   "parsing",
   "printing",
   "full",
   "extra-traits",
   "proc-macro",
+  "visit",
 ] }
 
 # Round 292 — regex backend for `query_term` read primitive

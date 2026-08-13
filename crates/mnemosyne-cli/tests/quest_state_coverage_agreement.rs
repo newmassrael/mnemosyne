@@ -45,7 +45,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use mnemosyne_atomic::AtomicStore;
 
-mod common;
+use crate::common;
 use common::{authored_stores, declared_tellings, run, SIDECAR};
 
 /// The pair of shipped reads this contract judges, named ONCE and run from

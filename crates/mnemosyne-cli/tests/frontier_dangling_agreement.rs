@@ -33,7 +33,7 @@
 
 use std::collections::BTreeSet;
 
-mod common;
+use crate::common;
 use common::{authored_stores, run};
 
 /// The pair of shipped reads this contract judges, named ONCE and run from

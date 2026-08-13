@@ -32,7 +32,7 @@
 
 use std::path::Path;
 
-mod common;
+use crate::common;
 use common::{audit_dir, dnd_quest_manifests, run, workspace_try, Manifests};
 
 /// Every world this corpus can be asked about — the spine plus its registered

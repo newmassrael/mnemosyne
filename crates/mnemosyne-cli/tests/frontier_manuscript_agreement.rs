@@ -99,7 +99,7 @@ use std::path::Path;
 
 use mnemosyne_atomic::AtomicStore;
 
-mod common;
+use crate::common;
 use common::{authored_stores, constructed_corpus, declared_tellings, run, SIDECAR};
 
 /// The pair of shipped reads this contract judges, named ONCE and run from

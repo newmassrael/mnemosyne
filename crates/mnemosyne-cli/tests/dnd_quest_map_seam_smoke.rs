@@ -25,7 +25,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-mod common;
+use crate::common;
 use common::{dnd_quest_workspace as rebuilt_workspace, json_report, run_ok};
 
 /// The four surfaces the blind author placed on the map: scene, then object.

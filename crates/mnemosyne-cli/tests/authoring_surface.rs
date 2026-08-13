@@ -32,9 +32,13 @@
 //! it from a second binary shares nothing — the memoization is per process, so
 //! the second one rebuilds all 312 stores and re-asks every advertised read,
 //! silently, for the whole cost this round was built to pay once. It now lives
-//! in [`sweep`], which refuses to compile into any target but this one.
-
-mod common;
+//! in [`sweep`], which refuses to compile into any target but the one this
+//! file is a module of (Round 1172 folded this crate's test files into a single
+//! binary; the sweep's owner moved with them, and the property it guards — one
+//! build of the population per process — is what did not move).
+//!
+//! The shared harness is `crate::common`, declared once by `tests/all.rs`; the
+//! laws below reach it by that path rather than each declaring it.
 
 #[path = "surface/sweep.rs"]
 mod sweep;

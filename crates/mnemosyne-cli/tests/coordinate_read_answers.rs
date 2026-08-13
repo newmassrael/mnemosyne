@@ -79,7 +79,7 @@ use std::path::Path;
 use mnemosyne_atomic::AtomicStore;
 use serde_json::Value;
 
-mod common;
+use crate::common;
 use common::{
     advertised_reads, answer_is_keyed_by_road, authored_stores, baseline_argv,
     corpus_workspace_try, flags_of, record_of, road_filters, road_lines, run, substance,

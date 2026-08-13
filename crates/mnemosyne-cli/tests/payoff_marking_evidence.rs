@@ -30,7 +30,7 @@ use mnemosyne_atomic::AtomicStore;
 use mnemosyne_core::PayoffExpectation;
 use std::collections::BTreeMap;
 
-mod common;
+use crate::common;
 use common::{
     authored_corpora, corpus_workspace_try, dnd_quest_facts, dnd_quest_workspace_try, read_json,
     repo_root,

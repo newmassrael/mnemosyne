@@ -70,8 +70,8 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use mnemosyne_atomic::AtomicStore;
 
+use super::sweep;
 use crate::common;
-use crate::sweep;
 use common::{authored_corpora, corpus_workspace_try, read_json, repo_root, run, SIDECAR};
 use sweep::Answer;
 

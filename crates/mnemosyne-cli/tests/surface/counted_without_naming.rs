@@ -104,8 +104,8 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use mnemosyne_atomic::AtomicStore;
 
+use super::sweep;
 use crate::common;
-use crate::sweep;
 use common::{registered_ids, wrote_about, Wrote, SIDECAR};
 use sweep::Answer;
 

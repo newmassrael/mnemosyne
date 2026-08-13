@@ -716,6 +716,42 @@ fn issued(line: &str) -> CargoCommand {
     }
 }
 
+#[test]
+fn a_repeatable_flag_is_read_at_every_place_it_is_written() {
+    let command = issued("cargo test -p mnemosyne-cli --test alpha --test=beta --locked");
+    assert_eq!(
+        command.value(&["--test"]),
+        Some("alpha"),
+        "the single-value reader still answers with the first, which is the \
+         right reading for a flag cargo allows only once"
+    );
+    assert_eq!(
+        command.values(&["--test"]),
+        vec!["alpha", "beta"],
+        "a command naming two targets and a reader seeing one is a half-answer \
+         that reads like a whole one — and both spellings are one flag"
+    );
+    assert_eq!(
+        command.values(&["-p", "--package"]),
+        vec!["mnemosyne-cli"],
+        "a flag written once is one value, not a special case"
+    );
+    assert!(
+        issued("cargo test --test --locked")
+            .values(&["--test"])
+            .is_empty(),
+        "`--test` with a flag after it names no target; recording `--locked` as \
+         a target name would report a missing target for a reason that is not \
+         the caller's"
+    );
+    assert!(
+        issued("cargo test --workspace")
+            .values(&["--test"])
+            .is_empty(),
+        "a command that names no target must not have one invented for it"
+    );
+}
+
 const TWO_MANIFESTS: [&str; 2] = ["Cargo.toml", "bench/Cargo.toml"];
 
 fn tracked_pair() -> Vec<String> {

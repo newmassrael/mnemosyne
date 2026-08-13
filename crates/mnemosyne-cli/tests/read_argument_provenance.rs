@@ -54,7 +54,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use mnemosyne_atomic::AtomicStore;
 
-mod common;
+use crate::common;
 use common::{
     advertised_reads, authored_stores, baseline_argv, flags_of, record_of, run, substance,
     usage_lines, values_for, SIDECAR,

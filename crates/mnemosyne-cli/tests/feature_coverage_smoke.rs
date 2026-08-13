@@ -34,8 +34,8 @@
 //! closed the same shape one level up, and each found something on its first
 //! run because a list that restates the tree drifts from it in silence.
 
+use crate::common;
 use ci_plan as ci;
-mod common;
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::process::Command;

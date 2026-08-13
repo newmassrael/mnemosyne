@@ -16,7 +16,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-mod common;
+use crate::common;
 use common::{
     audit_dir, corruptions, dnd_quest_manifests, read_sidecar, workspace_try, Manifests, LEGS,
     SIDECAR,

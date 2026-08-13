@@ -72,8 +72,8 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
+use super::sweep;
 use crate::common;
-use crate::sweep;
 use common::{permutations, registered_ids, wrote_about, Wrote};
 use sweep::Answer;
 

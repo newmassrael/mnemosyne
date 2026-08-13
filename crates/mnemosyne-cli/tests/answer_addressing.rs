@@ -37,7 +37,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-mod common;
+use crate::common;
 use common::{permutations, wrote_about, Wrote};
 
 /// THE DEFINITION'S OWN TEST — what a record IS, asked of answers this test

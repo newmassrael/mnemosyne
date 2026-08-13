@@ -92,7 +92,7 @@ use mnemosyne_validate::continuity::{
     QUEST_PRED_COMPLETED_BY, QUEST_PRED_PURSUES, QUEST_PRED_REQUIRES,
 };
 
-mod common;
+use crate::common;
 use common::{authored_stores, constructed_corpus, declared_tellings, run, SIDECAR};
 
 /// The pair of shipped reads this contract judges, named ONCE and run from

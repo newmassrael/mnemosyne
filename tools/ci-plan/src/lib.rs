@@ -844,6 +844,39 @@ impl CargoCommand {
         }
     }
 
+    /// EVERY value of `--flag value` / `--flag=value` on cargo's side, for a
+    /// flag cargo lets a command REPEAT.
+    ///
+    /// [`CargoCommand::value`] answers with the first, which is the right
+    /// reading for a flag that can only be given once (`--manifest-path`) and
+    /// the wrong one for `--test` / `--bin` / `--features`, where a command
+    /// naming three targets and a reader seeing one is a half-answer that reads
+    /// like a whole one.
+    ///
+    /// A flag whose next word is another flag names nothing here rather than
+    /// naming that flag: `cargo test --test --locked` is a command cargo would
+    /// refuse, and a gate that recorded `--locked` as a target name would go on
+    /// to report a target that does not exist for a reason that is not the
+    /// caller's.
+    pub fn values(&self, names: &[&str]) -> Vec<&str> {
+        let mut found = Vec::new();
+        for (index, word) in self.cargo_args.iter().enumerate() {
+            if names.contains(&word.as_str()) {
+                match self.cargo_args.get(index + 1) {
+                    Some(next) if !next.starts_with('-') => found.push(next.as_str()),
+                    _ => {}
+                }
+                continue;
+            }
+            if let Some((head, tail)) = word.split_once('=') {
+                if names.contains(&head) {
+                    found.push(tail);
+                }
+            }
+        }
+        found
+    }
+
     /// How the command reads back, for a gate's own output.
     pub fn rendered(&self) -> String {
         let mut out = self.cargo_args.join(" ");

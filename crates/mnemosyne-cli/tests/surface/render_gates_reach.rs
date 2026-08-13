@@ -26,8 +26,8 @@
 
 use std::collections::BTreeSet;
 
+use super::sweep;
 use crate::common;
-use crate::sweep;
 use sweep::Answer;
 
 /// Every panel question put to one verb.

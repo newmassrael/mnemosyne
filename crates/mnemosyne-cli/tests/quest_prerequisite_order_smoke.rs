@@ -22,7 +22,7 @@
 use std::collections::BTreeSet;
 use std::path::Path;
 
-mod common;
+use crate::common;
 use common::{dnd_quest_facts, dnd_quest_workspace, dnd_quest_workspace_from, json_report, run};
 
 /// The blind author's single `requires` edge and the fact that carries it.

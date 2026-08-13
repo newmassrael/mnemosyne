@@ -24,7 +24,7 @@
 //! the two reads BOTH have an opinion about, so it stays true of a corpus that
 //! grows a second `requires` edge rather than of these four rows.
 
-mod common;
+use crate::common;
 use common::{dnd_quest_facts, dnd_quest_workspace_from, json_report};
 
 use std::collections::{BTreeMap, BTreeSet};
