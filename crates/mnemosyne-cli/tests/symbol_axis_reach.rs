@@ -762,6 +762,71 @@ fn the_build_names_the_backends_it_ships_without_a_workspace() {
     }
 }
 
+/// LAW 6b — THE REPORT PUBLISHES WHERE A CITATION IN A COMMENT BINDS.
+///
+/// The consumer's question that this answers is the one Round 1162 changed the
+/// answer to: a `§` citation written in a Rust `///` comment used to bind to the
+/// enclosing item and now binds to the item below it. Nothing they run could
+/// have told them either way — the answer lived in a `documented_kinds` list in
+/// a crate of ours, which is the same shape as the prose gap list this whole
+/// verb exists to replace.
+///
+/// THE ORACLE IS THE SPEC ITSELF, through the binary. Comparing the report
+/// against a list retyped here would check that two lists in this repository
+/// agree; comparing it against `IN_PROCESS_BACKENDS`'s own spec checks that what
+/// the report prints is what the resolver will do.
+#[test]
+fn the_report_publishes_the_doc_comment_rule_each_backend_answers_with() {
+    let (_, report) = reach(TempDir::new().unwrap().path());
+    let rows = report["in_process_backends"]
+        .as_array()
+        .expect("in_process_backends array");
+    assert!(!rows.is_empty(), "nothing to check: {report}");
+
+    let mut with_markers = 0usize;
+    for row in rows {
+        let key = row["backend"].as_str().expect("backend key");
+        let backend = mnemosyne_cli::backends::find(key)
+            .unwrap_or_else(|| panic!("the report names `{key}`, which no row holds"));
+        let rule = &backend.spec.doc_comments;
+
+        let published = |field: &str| -> Vec<String> {
+            row["doc_comments"][field]
+                .as_array()
+                .unwrap_or_else(|| panic!("{key}: doc_comments.{field} is not an array: {row}"))
+                .iter()
+                .map(|v| v.as_str().expect("string").to_string())
+                .collect()
+        };
+        assert_eq!(published("comment_kinds"), rule.comment_kinds);
+        assert_eq!(published("inward_markers"), rule.inward_markers);
+        assert_eq!(published("documented_kinds"), rule.documented_kinds);
+        assert_eq!(
+            row["declaration_patterns"].as_u64().map(|n| n as usize),
+            backend.spec.pattern_count().ok(),
+            "{key}: the report's pattern count is not the compiled query's"
+        );
+
+        // THE RULE IS NOT OPTIONAL, and the report is where a consumer would
+        // read it as optional if a backend published an empty list.
+        assert!(
+            !rule.documented_kinds.is_empty(),
+            "{key}: publishes no documented kind, so a consumer reads this \
+             language as one where a doc comment binds nowhere"
+        );
+        with_markers += usize::from(!rule.inward_markers.is_empty());
+    }
+
+    // ONE BACKEND MUST DIFFER, or the field is decoration: a report where every
+    // language answers the same thing tells a consumer nothing they needed a
+    // report for.
+    assert_eq!(
+        with_markers, 1,
+        "exactly one shipped backend has an inward spelling (Rust's `//!`); \
+         if that changed, this law is what should say so: {report}"
+    );
+}
+
 /// LAW 7 — EVERY BACKEND THIS BUILD NAMES RESOLVES ITS OWN LANGUAGE.
 ///
 /// The population is the binary's answer from law 6, so this cannot be a list

@@ -111,6 +111,10 @@ struct Subject {
     witnesses: &'static [DocWitness],
     /// One witness per entry of the spec's `inward_markers`.
     inward: &'static [InwardWitness],
+    /// Node kinds this grammar NAMES after a comment that the spec deliberately
+    /// treats as neither a comment node nor an inward marker, each with the
+    /// reason — see `every_comment_kind_this_grammar_has_is_accounted_for`.
+    unrelated_comment_kinds: &'static [(&'static str, &'static str)],
 }
 
 const CPP_SHAPES: &[Shape] = &[
@@ -346,6 +350,7 @@ const SUBJECTS: &[Subject] = &[
         real_tree: RealTree::NamedByEnv { min_files: 500 },
         witnesses: CPP_WITNESSES,
         inward: &[],
+        unrelated_comment_kinds: &[],
     },
     Subject {
         language: "go",
@@ -357,6 +362,7 @@ const SUBJECTS: &[Subject] = &[
         real_tree: RealTree::NamedByEnv { min_files: 100 },
         witnesses: GO_WITNESSES,
         inward: &[],
+        unrelated_comment_kinds: &[],
     },
     Subject {
         language: "kotlin",
@@ -368,6 +374,7 @@ const SUBJECTS: &[Subject] = &[
         real_tree: RealTree::NamedByEnv { min_files: 300 },
         witnesses: KOTLIN_WITNESSES,
         inward: &[],
+        unrelated_comment_kinds: &[],
     },
     Subject {
         language: "python",
@@ -379,6 +386,7 @@ const SUBJECTS: &[Subject] = &[
         real_tree: RealTree::NamedByEnv { min_files: 100 },
         witnesses: PYTHON_WITNESSES,
         inward: &[],
+        unrelated_comment_kinds: &[],
     },
     Subject {
         language: "rust",
@@ -394,6 +402,18 @@ const SUBJECTS: &[Subject] = &[
         real_tree: RealTree::ThisRepository,
         witnesses: RUST_WITNESSES,
         inward: RUST_INWARD,
+        unrelated_comment_kinds: &[
+            (
+                "doc_comment",
+                "the TEXT inside a doc comment, not a comment node — the thing \
+                 a citation is written in is its parent",
+            ),
+            (
+                "outer_doc_comment_marker",
+                "the `///` and `/**` openers, which mark the case the rule \
+                 already serves: documenting what follows",
+            ),
+        ],
     },
 ];
 
@@ -1094,6 +1114,68 @@ fn every_kind_a_backend_documents_is_one_a_comment_above_it_binds_to() {
                     w.detached
                 );
             }
+        }
+    }
+}
+
+#[test]
+fn every_comment_kind_this_grammar_has_is_accounted_for() {
+    // THE ONE QUESTION ROUND 1162 SAID NO PROGRAM COULD ASK, asked. That round
+    // wrote down a limit: a spec naming an inward marker is witnessed by a law,
+    // and a spec naming NONE is claiming its language has no such spelling —
+    // which nothing could check, because "there is no such spelling" had no
+    // query behind it. It does: a grammar publishes its node-kind table, and
+    // every kind it NAMES after a comment is a spelling somebody chose to give
+    // a comment-ish name to. Each must be one this spec treats as a comment
+    // node, one it treats as an inward marker, or one it names here with the
+    // reason it is neither.
+    //
+    // THE LIMIT THAT REMAINS, stated rather than covered: this reads the kind's
+    // NAME. A grammar that called its inner-doc form something with no
+    // "comment" in it would not appear, and no assertion here would notice. It
+    // is the failure that actually happened, though — `inner_doc_comment_marker`
+    // sat in Rust's table for five rounds while the spec said the language could
+    // not be served — and this is the law that would have named it.
+    for subject in SUBJECTS {
+        let language = (subject.spec.language)();
+        let named: BTreeSet<&str> = (0..language.node_kind_count())
+            .filter_map(|i| {
+                let id = u16::try_from(i).ok()?;
+                language
+                    .node_kind_is_named(id)
+                    .then(|| language.node_kind_for_id(id))
+                    .flatten()
+            })
+            .filter(|kind| kind.contains("comment"))
+            .collect();
+        assert!(
+            !named.is_empty(),
+            "{}: this grammar names no node after a comment at all, so either \
+             the spec's comment kinds are fiction or this law is reading the \
+             wrong table",
+            subject.language
+        );
+
+        let rule = &subject.spec.doc_comments;
+        let mut accounted: BTreeSet<&str> = rule.comment_kinds.iter().copied().collect();
+        accounted.extend(rule.inward_markers.iter().copied());
+        let set_aside = subject.unrelated_comment_kinds;
+        accounted.extend(set_aside.iter().map(|(kind, _)| *kind));
+        assert_eq!(
+            accounted, named,
+            "{}: the comment-ish node kinds this grammar has and the ones this \
+             spec accounts for are not the same set — an unaccounted kind is a \
+             spelling nobody decided about, and a kind accounted for that the \
+             grammar does not have is a spelling that moved",
+            subject.language
+        );
+
+        for (kind, why) in subject.unrelated_comment_kinds {
+            assert!(
+                !why.trim().is_empty(),
+                "{}: `{kind}` is set aside with no reason given",
+                subject.language
+            );
         }
     }
 }

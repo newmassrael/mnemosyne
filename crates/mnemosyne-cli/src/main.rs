@@ -4465,6 +4465,7 @@ fn cmd_describe_symbol_axis_reach(args: &[String]) -> Result<()> {
                 .iter()
                 .map(|b| {
                     let surface = b.make().version_surface();
+                    let rule = &b.spec.doc_comments;
                     serde_json::json!({
                         "backend": b.key,
                         "language": b.language,
@@ -4472,6 +4473,21 @@ fn cmd_describe_symbol_axis_reach(args: &[String]) -> Result<()> {
                         "plugin_version": surface.plugin_version,
                         "schema_min": surface.schema_min,
                         "schema_max": surface.schema_max,
+                        // WHAT THIS BACKEND ANSWERS WITH, so a consumer can ask
+                        // instead of reading this repository's source. Round
+                        // 1162 changed where a Rust `///` citation binds, and
+                        // the only way to know that was to read the crate.
+                        // NULL IF THE QUERY DOES NOT COMPILE, which is a build
+                        // defect surfacing at first use — and a `0` there would
+                        // read as "this backend declares no shape", the one
+                        // reading Round 1141 spent a round separating from
+                        // "not measured".
+                        "declaration_patterns": b.spec.pattern_count().ok(),
+                        "doc_comments": {
+                            "comment_kinds": rule.comment_kinds,
+                            "inward_markers": rule.inward_markers,
+                            "documented_kinds": rule.documented_kinds,
+                        },
                     })
                 })
                 .collect::<Vec<_>>(),
@@ -4498,6 +4514,27 @@ fn cmd_describe_symbol_axis_reach(args: &[String]) -> Result<()> {
             surface.plugin_version,
             surface.schema_min,
             surface.schema_max
+        );
+        let rule = &b.spec.doc_comments;
+        // WHERE A CITATION IN A COMMENT BINDS, which differs per language and
+        // was previously only readable in this repository's source.
+        println!(
+            "      {} declaration pattern(s); a `{}` directly above any of {} \
+             declaration kind(s) documents it{}",
+            b.spec
+                .pattern_count()
+                .map_or_else(|_| "?".to_string(), |n| n.to_string()),
+            rule.comment_kinds.join("` / `"),
+            rule.documented_kinds.len(),
+            if rule.inward_markers.is_empty() {
+                String::new()
+            } else {
+                format!(
+                    " — unless it carries `{}`, which documents the enclosing \
+                     scope instead",
+                    rule.inward_markers.join("` / `")
+                )
+            }
         );
     }
     println!("\n-- extension table (file -> language) --");

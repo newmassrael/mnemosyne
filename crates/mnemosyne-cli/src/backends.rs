@@ -22,6 +22,7 @@
 //! resolve, which parsed and ran until this round.
 
 use mnemosyne_core::SymbolResolver;
+use mnemosyne_plugin_tree_sitter_core::LanguageSpec;
 
 /// One in-process `SymbolResolver` backend compiled into this build.
 pub struct InProcessBackend {
@@ -31,6 +32,15 @@ pub struct InProcessBackend {
     /// The symbol-axis language it resolves — the only `<lang>` key it may be
     /// registered under.
     pub language: &'static str,
+    /// What this backend answers WITH — the grammar's declaration query and the
+    /// doc-comment rule.
+    ///
+    /// EVERY BACKEND THIS BUILD SHIPS IS A TREE-SITTER BACKEND, so this is a
+    /// field and not an `Option`: a nullable one would let a row arrive with no
+    /// answer and publish that absence as a fact, which is the reading Round
+    /// 1141 spent a round separating from "measured and empty". A backend of
+    /// some other shape is a change to this type, made when there is one.
+    pub spec: &'static LanguageSpec,
     make: fn() -> Box<dyn SymbolResolver>,
 }
 
@@ -54,26 +64,31 @@ pub static IN_PROCESS_BACKENDS: &[InProcessBackend] = &[
     InProcessBackend {
         key: mnemosyne_plugin_tree_sitter_cpp::BACKEND_KEY,
         language: mnemosyne_plugin_tree_sitter_cpp::SYMBOL_AXIS_LANGUAGE,
+        spec: &mnemosyne_plugin_tree_sitter_cpp::SPEC,
         make: || Box::new(mnemosyne_plugin_tree_sitter_cpp::resolver()),
     },
     InProcessBackend {
         key: mnemosyne_plugin_tree_sitter_go::BACKEND_KEY,
         language: mnemosyne_plugin_tree_sitter_go::SYMBOL_AXIS_LANGUAGE,
+        spec: &mnemosyne_plugin_tree_sitter_go::SPEC,
         make: || Box::new(mnemosyne_plugin_tree_sitter_go::resolver()),
     },
     InProcessBackend {
         key: mnemosyne_plugin_tree_sitter_kotlin::BACKEND_KEY,
         language: mnemosyne_plugin_tree_sitter_kotlin::SYMBOL_AXIS_LANGUAGE,
+        spec: &mnemosyne_plugin_tree_sitter_kotlin::SPEC,
         make: || Box::new(mnemosyne_plugin_tree_sitter_kotlin::resolver()),
     },
     InProcessBackend {
         key: mnemosyne_plugin_tree_sitter_python::BACKEND_KEY,
         language: mnemosyne_plugin_tree_sitter_python::SYMBOL_AXIS_LANGUAGE,
+        spec: &mnemosyne_plugin_tree_sitter_python::SPEC,
         make: || Box::new(mnemosyne_plugin_tree_sitter_python::resolver()),
     },
     InProcessBackend {
         key: mnemosyne_plugin_tree_sitter_rust::BACKEND_KEY,
         language: mnemosyne_plugin_tree_sitter_rust::SYMBOL_AXIS_LANGUAGE,
+        spec: &mnemosyne_plugin_tree_sitter_rust::SPEC,
         make: || Box::new(mnemosyne_plugin_tree_sitter_rust::resolver()),
     },
 ];

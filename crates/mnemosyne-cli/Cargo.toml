@@ -21,6 +21,10 @@ mnemosyne-config = { path = "../mnemosyne-config" }
 mnemosyne-atomic = { path = "../mnemosyne-atomic" }
 mnemosyne-style = { path = "../mnemosyne-style" }
 mnemosyne-query = { path = "../mnemosyne-query" }
+# Round 1164 — the backend table carries each backend's `LanguageSpec`, so the
+# reach report can publish what a backend answers WITH (its declaration-pattern
+# count and its doc-comment rule) instead of a consumer reading our source.
+mnemosyne-plugin-tree-sitter-core = { path = "../mnemosyne-plugin-tree-sitter-core" }
 mnemosyne-plugin-tree-sitter-rust = { path = "../mnemosyne-plugin-tree-sitter-rust" }
 mnemosyne-plugin-tree-sitter-cpp = { path = "../mnemosyne-plugin-tree-sitter-cpp" }
 mnemosyne-plugin-tree-sitter-go = { path = "../mnemosyne-plugin-tree-sitter-go" }
