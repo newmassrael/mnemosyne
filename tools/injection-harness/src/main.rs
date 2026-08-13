@@ -58,7 +58,7 @@ static INTERRUPTED: AtomicI32 = AtomicI32::new(0);
 // THE MANIFEST TYPES AND THE ANCHOR LAW ARE THE LIBRARY'S, because a second
 // reader of every sweep this repository tracks needs them and a decision in
 // `main.rs` has no reader (R1096). See `lib.rs`.
-use injection_harness::{replace_once, Edit, Manifest, RedSet};
+use injection_harness::{replace_once, Edit, Injection, Manifest, RedSet, Scope};
 
 /// What one run of the suite said.
 #[derive(Debug, Clone, Default, Serialize)]
@@ -163,6 +163,13 @@ struct Report {
     /// A measurement whose condition is invisible is read as unconditional,
     /// which is the very failure that round's contract exists to state.
     test_command: Vec<String>,
+    /// WHICH OF THE MANIFEST'S INJECTIONS THIS RUN MEASURED — the same lesson as
+    /// the field above, one axis over. R1179 gave this tool a `--only`, so a
+    /// report can now be about four injections of fifty-two; without this field
+    /// that report is shaped exactly like the sweep of the whole file, and a
+    /// reader would have to know which command produced the document in front of
+    /// them to know what it did not measure.
+    scope: Scope,
     control: Run,
     injections: Vec<InjectionResult>,
 }
@@ -173,9 +180,15 @@ struct Report {
 /// disagree about whether it is filled — and the control-only mode is exactly
 /// where a population is easiest to forget, because there are no injections to
 /// attribute to it yet.
-fn report(manifest: &Manifest, control: &Run, injections: Vec<InjectionResult>) -> Report {
+fn report(
+    manifest: &Manifest,
+    scope: &Scope,
+    control: &Run,
+    injections: Vec<InjectionResult>,
+) -> Report {
     Report {
         test_command: manifest.test_command.clone(),
+        scope: scope.clone(),
         control: control.clone(),
         injections,
     }
@@ -261,8 +274,22 @@ fn run() -> Result<(), String> {
     let mut args = std::env::args().skip(1);
     let manifest_path = args
         .next()
-        .ok_or("usage: injection-harness <manifest.json> [--control-only]")?;
-    let control_only = args.any(|flag| flag == "--control-only");
+        .ok_or("usage: injection-harness <manifest.json> [--control-only] [--only <name>]...")?;
+    // A FLAG'S VALUE IS NOT A POSITIONAL ARGUMENT: `--only` consumes the word
+    // after it, so a misspelled flag cannot be read as a manifest and a missing
+    // value cannot silently swallow `--control-only`.
+    let mut control_only = false;
+    let mut only: Vec<String> = Vec::new();
+    while let Some(word) = args.next() {
+        match word.as_str() {
+            "--control-only" => control_only = true,
+            "--only" => only.push(
+                args.next()
+                    .ok_or("--only names an injection: `--only <name>`")?,
+            ),
+            other => return Err(format!("unknown argument {other:?}")),
+        }
+    }
 
     // EVERY PATH IS ABSOLUTE BY THE TIME IT ARRIVES, resolved once, in the
     // library, against the MANIFEST'S OWN DIRECTORY. A manifest names its tree
@@ -300,7 +327,12 @@ fn run() -> Result<(), String> {
     // Folding it into the snapshot pass is what keeps the two from disagreeing —
     // the bytes checked here are the bytes `apply` will edit, by construction
     // rather than by argument.
-    let snapshot = injection_harness::snapshot_and_dry_run(&manifest.repo, &manifest.injections)?;
+    // WHICH OF THEM THIS SWEEP IS, decided before the snapshot: a scoped run
+    // takes a copy of the files IT will edit and dry-runs the anchors IT will
+    // apply, so what it protects is what it does.
+    let (chosen, scope) = injection_harness::select(&manifest.injections, &only)?;
+    let chosen: Vec<Injection> = chosen.into_iter().cloned().collect();
+    let snapshot = injection_harness::snapshot_and_dry_run(&manifest.repo, &chosen)?;
 
     // WHAT A PREVIOUS SWEEP LEFT BEHIND, before this one writes its own. A sweep
     // that ended under its own control removes these; finding them means one
@@ -415,13 +447,13 @@ fn run() -> Result<(), String> {
         // A control printed as a bare `Run` was a second output shape carrying
         // counts under no population, and a reader would have had to know which
         // flag produced the file in front of them to know what it measured.
-        let report = report(&manifest, &control, Vec::new());
+        let report = report(&manifest, &scope, &control, Vec::new());
         println!("{}", serde_json::to_string_pretty(&report).map_err(err)?);
         return Ok(());
     }
 
     let mut results = Vec::new();
-    for injection in &manifest.injections {
+    for injection in &chosen {
         if let Some(signal) = interrupted() {
             return Err(stopped(signal));
         }
@@ -489,6 +521,7 @@ fn run() -> Result<(), String> {
         "{}",
         serde_json::to_string_pretty(&report(
             &manifest,
+            &scope,
             &control,
             results.iter().map(clone_result).collect()
         ))

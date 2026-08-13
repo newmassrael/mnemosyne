@@ -176,6 +176,118 @@ fn harness(manifest: &Path) -> std::process::Output {
         .expect("harness runs")
 }
 
+/// The same, naming which injections to run.
+fn harness_only(manifest: &Path, only: &[&str]) -> std::process::Output {
+    let mut command = Command::new(binary());
+    command.arg(manifest);
+    for name in only {
+        command.arg("--only").arg(name);
+    }
+    command.output().expect("harness runs")
+}
+
+/// Two injections, of which the second is the one a case below asks for.
+fn two_injections() -> serde_json::Value {
+    serde_json::json!([
+        {
+            "name": "I1",
+            "why": "the first, which a scoped run must not touch",
+            "edits": [{"file": "src.txt", "from": "HEALTHY", "to": "BROKEN"}],
+            "expect_red": ["the_law"],
+        },
+        {
+            "name": "I2",
+            "why": "the second, and the one asked for by name",
+            // A DIFFERENT ANCHOR ON THE SAME WORD THE SUITE WATCHES. The fake
+            // suite goes red exactly when `HEALTHY` is gone, so an injection
+            // that edits anything else is one the harness refuses as misaimed —
+            // which is what the first draft of this fixture was, and what it was
+            // told.
+            "edits": [{"file": "src.txt", "from": "HEALTHY here", "to": "BROKEN here"}],
+            "expect_red": ["the_law"],
+        }
+    ])
+}
+
+/// One injection can be run by name, and the others are not run at all.
+///
+/// R1179 — THE PRICE OF PROVING ONE INJECTION USED TO BE THE WHOLE MANIFEST. With
+/// no way to name one, asking "does the injection I just wrote reach the test I
+/// aimed it at" cost fifty-two runs and twenty minutes, and R1178 paid that once
+/// and still shipped a misaimed injection. A verification that expensive gets
+/// written down as an intention instead of run.
+#[test]
+fn one_injection_can_be_asked_for_by_name() {
+    let root = tempdir();
+    tree(root.path(), "the wire is HEALTHY here\n");
+    let path = manifest(root.path(), two_injections());
+    let out = harness_only(&path, &["I2"]);
+    let report = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        out.status.success(),
+        "the scoped sweep should pass: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert!(
+        report.contains("\"I2\""),
+        "the named injection ran: {report}"
+    );
+    assert!(
+        !report.contains("\"I1\""),
+        "AND THE OTHER DID NOT — a filter that ran everything and reported one \
+         would agree with the assertion above: {report}"
+    );
+    // AND THE REPORT SAYS WHAT IT DID NOT MEASURE, which is the same lesson the
+    // report's first field records: a red set is a fact about a population, and
+    // one injection of two must not print the shape of a sweep of both.
+    assert!(
+        report.contains("\"of\": 2"),
+        "the report names the scope it ran under: {report}"
+    );
+}
+
+/// A sweep of everything says so, rather than saying nothing.
+///
+/// THE CONTROL FOR THE FIELD ABOVE. A `scope` that only appeared under `--only`
+/// would leave every unscoped report ambiguous in exactly the way the scoped one
+/// was, and a reader could not tell an old report from a full one.
+#[test]
+fn a_sweep_of_every_injection_says_which_population_that_was() {
+    let root = tempdir();
+    tree(root.path(), "the wire is HEALTHY here\n");
+    let path = manifest(root.path(), two_injections());
+    let out = harness(&path);
+    let report = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert!(
+        report.contains("EveryInjection") && report.contains("\"count\": 2"),
+        "an unscoped run names its population too: {report}"
+    );
+}
+
+/// A name that matches no injection is a refusal, not an empty sweep.
+///
+/// THE "0 MEANS SUSPECT THE INJECTION" RULE, APPLIED TO THE ASKING. A misspelled
+/// name that ran nothing would print a clean report and exit 0 — a green verdict
+/// about a measurement that never happened, in the one place nobody re-reads.
+#[test]
+fn a_name_that_matches_no_injection_is_refused_rather_than_run_as_nothing() {
+    let root = tempdir();
+    tree(root.path(), "the wire is HEALTHY here\n");
+    let path = manifest(root.path(), two_injections());
+    let out = harness_only(&path, &["I3"]);
+    assert!(!out.status.success(), "a misspelling is not a clean sweep");
+    let why = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        why.contains("I3") && why.contains("I1") && why.contains("I2"),
+        "and it says what was asked for and what the manifest carries: {why}"
+    );
+}
+
 #[test]
 fn an_injection_that_fires_is_reported_and_the_tree_comes_back() {
     let root = tempdir();

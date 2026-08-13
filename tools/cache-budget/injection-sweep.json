@@ -226,8 +226,23 @@
       ],
       "expect_red": [
         "the_recorded_answer_names_the_run_that_last_left_an_archive",
-        "a_cache_rebuilt_after_its_lockfile_moved_outside_this_push_is_not_a_defect",
-        "every_declared_key_is_judged_over_its_own_workflow_history"
+        "a_cache_rebuilt_after_its_lockfile_moved_outside_this_push_is_not_a_defect"
+      ]
+    },
+    {
+      "name": "the-interval-comes-from-the-workflow-that-declares-the-key",
+      "why": "R1179 — the sibling above breaks the READER (`last_run_in` finds no run); this breaks the DECISION that uses it, which is a separate mechanism with separate readers. R1178 aimed one injection at both and it missed: `every_declared_key_is_judged_over_its_own_workflow_history` hands `windows_asked` its own resolver, so no edit to the reader can reach it. With the interval taken from the push even where a run is available, every key is judged over the commits one push carried — the reading that turned main red on run 31695396997",
+      "edits": [
+        {
+          "file": "tools/cache-budget/src/lib.rs",
+          "from": "            WindowSource::Ran(prior) => Window::SinceThatWorkflowLastRan {\n                workflow: declaration.source.clone(),\n                sha: prior.sha.clone(),\n                at: prior.started_at.clone(),\n            },",
+          "to": "            WindowSource::Ran(prior) => Window::ThisPush {\n                start: push.clone(),\n                why: prior.sha.clone(),\n            },"
+        }
+      ],
+      "expect_red": [
+        "every_declared_key_is_judged_over_its_own_workflow_history",
+        "a_key_is_asked_about_the_interval_its_own_workflow_could_have_seen",
+        "a_cache_rebuilt_after_its_lockfile_moved_outside_this_push_is_not_a_defect"
       ]
     },
     {

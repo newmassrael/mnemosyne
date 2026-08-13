@@ -76,6 +76,82 @@ pub struct Injection {
     pub expect_red: Vec<String>,
 }
 
+/// Which of a manifest's injections a sweep is to run.
+///
+/// R1179 — PROVING ONE INJECTION USED TO COST THE WHOLE MANIFEST. There was no
+/// way to name one, so the price of asking "does the injection I just wrote
+/// actually reach the test I aimed it at" was every injection in the file: 52 of
+/// them, twenty minutes, on a manifest whose author had just added four. R1178
+/// paid that price once and still shipped a MISAIMED one — its
+/// `every_declared_key_is_judged_over_its_own_workflow_history` injects its own
+/// resolver, so the reader that injection broke is not one that test ever calls.
+/// A verification that expensive is a verification that gets written down as an
+/// intention.
+///
+/// AND THE SCOPE TRAVELS INTO THE REPORT, for the reason that report's own first
+/// field records: a red set is a fact about a population, and a run that measured
+/// four injections of fifty-two must not print the shape of one that measured all
+/// of them.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub enum Scope {
+    /// Every injection the manifest carries.
+    EveryInjection { count: usize },
+    /// Only these, named on the command line, out of that many in the manifest.
+    Only { names: Vec<String>, of: usize },
+}
+
+/// The injections a sweep is to run, given what was named on the command line.
+///
+/// ORDER IS THE MANIFEST'S, NOT THE ARGUMENTS'. A sweep edits one tree in
+/// sequence and its report is read beside the file; two runs naming the same
+/// injections in different orders would be two orderings of one measurement.
+///
+/// A NAME THAT MATCHES NOTHING IS A REFUSAL. The alternative is a sweep that runs
+/// zero injections, prints a clean report and exits 0 — which is the "0 means
+/// suspect the injection" rule failing in the one place nobody would look, the
+/// spelling of the thing being asked for.
+pub fn select<'a>(
+    injections: &'a [Injection],
+    only: &[String],
+) -> Result<(Vec<&'a Injection>, Scope), String> {
+    if only.is_empty() {
+        return Ok((
+            injections.iter().collect(),
+            Scope::EveryInjection {
+                count: injections.len(),
+            },
+        ));
+    }
+    let mut unknown: Vec<&str> = Vec::new();
+    for name in only {
+        if !injections.iter().any(|it| &it.name == name) {
+            unknown.push(name.as_str());
+        }
+    }
+    if !unknown.is_empty() {
+        return Err(format!(
+            "no injection in this manifest is named {unknown:?} — it carries {} \
+             ({}), and a sweep that ran none of them would print a clean report \
+             about nothing",
+            injections.len(),
+            injections
+                .iter()
+                .map(|it| it.name.as_str())
+                .collect::<Vec<_>>()
+                .join(", ")
+        ));
+    }
+    let chosen: Vec<&Injection> = injections
+        .iter()
+        .filter(|it| only.iter().any(|name| name == &it.name))
+        .collect();
+    let scope = Scope::Only {
+        names: chosen.iter().map(|it| it.name.clone()).collect(),
+        of: injections.len(),
+    };
+    Ok((chosen, scope))
+}
+
 /// AN UNKNOWN KEY IS A REFUSAL RATHER THAN A DEFAULT, which is why `_` is a
 /// field and why `deny_unknown_fields` is on all three of these types. Every
 /// optional field here is one a manifest may simply not carry, so a MISSPELLED
