@@ -1138,8 +1138,16 @@ jobs:
   # hit, so a cache whose `created_at` falls inside this run is a job that
   # rebuilt from nothing — green, unannotated, and half an hour long, which is the
   # cost the budget exists to buy off and the one a held-or-not check cannot see.
-  # Excused when the key's own `hashFiles` globs moved in this commit, which is
-  # why this checkout needs a parent commit to diff against.
+  # Excused when the key's own `hashFiles` globs moved over the interval that key
+  # was last asked over, which is why this checkout needs history to diff against.
+  #
+  # R1178 — AND THAT INTERVAL IS PER KEY, NOT PER PUSH. A cache key is asked for
+  # only when the workflow DECLARING it runs, and `evidence-replay.yml` is
+  # path-filtered: between two of its runs the lockfiles its key hashes moved
+  # twice, its next run legitimately missed, and this gate — asking only about the
+  # commits that push carried — called it a defect and turned main red on run
+  # 31695396997. The gate now asks GitHub when each declaring workflow last ran
+  # successfully at another commit, which is what `actions: read` below is for.
   cache-budget:
     name: every cache declared is one CI keeps
     needs:
@@ -1162,6 +1170,11 @@ jobs:
       # went red. Empty on a `pull_request`, where the checkout is a merge commit
       # whose first parent is the base branch, so the gate's `HEAD~1..HEAD`
       # fallback is exactly the change the pull request proposes.
+      #
+      # R1178 — AND IT IS THE FALLBACK NOW, not the interval. A key is judged over
+      # the history of the workflow that declares it; this is what the gate
+      # narrows to when that history cannot be reached, and it prints which of the
+      # two any answer came from.
       MNEMOSYNE_RANGE_FROM: ${{ github.event.before }}
     permissions:
       contents: read
@@ -1171,9 +1184,11 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          # THE WHOLE HISTORY, because the range this gate asks over is a push,
-          # and a push carries an unbounded number of commits: every fixed depth
-          # is a guess that fails silently the day somebody pushes one commit
+          # THE WHOLE HISTORY, because the interval this gate asks over reaches
+          # back to the last run of each workflow that declares a key — a
+          # path-filtered one may not have run in days — and because a push
+          # carries an unbounded number of commits besides: every fixed depth is
+          # a guess that fails silently the day somebody pushes one commit
           # more. The gate asks git whether anything matching a key's own
           # `hashFiles` globs moved, because a cache rebuilt after a dependency
           # bump is the one cold run nobody should be refused for; a commit the

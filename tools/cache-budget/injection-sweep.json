@@ -208,11 +208,51 @@
       "edits": [
         {
           "file": "tools/cache-budget/src/lib.rs",
-          "from": "                if run.inputs_changed.contains(&row.prefix) {",
+          "from": "                if run.moved(&row.prefix) {",
           "to": "                if false {"
         }
       ],
       "expect_red": ["a_cache_built_because_this_commit_moved_what_the_key_hashes_is_not_refused"]
+    },
+    {
+      "name": "a-key-is-judged-over-the-interval-its-own-workflow-could-have-seen",
+      "why": "R1178 — a cache key is asked for only when the workflow DECLARING it runs, so the interval a miss can be explained over is that workflow's own. With no run of it findable the gate narrows to the commits one push carried, which is the reading that called a legitimate rebuild a defect and turned main red on run 31695396997: `evidence-replay.yml` is path-filtered, and the lockfiles its key hashes moved twice in commits it never ran on",
+      "edits": [
+        {
+          "file": "tools/cache-budget/src/lib.rs",
+          "from": "    Ok(newest)",
+          "to": "    Ok(None)"
+        }
+      ],
+      "expect_red": [
+        "the_recorded_answer_names_the_run_that_last_left_an_archive",
+        "a_cache_rebuilt_after_its_lockfile_moved_outside_this_push_is_not_a_defect",
+        "every_declared_key_is_judged_over_its_own_workflow_history"
+      ]
+    },
+    {
+      "name": "a-failed-run-saved-nothing-so-it-bounds-no-interval",
+      "why": "R1178 — `actions/cache` does not save from a failed job, so a red run left no archive behind. Starting a key's interval at one would begin it AFTER a change no archive ever absorbed, and the next miss would be refused for a dependency bump that really did happen",
+      "edits": [
+        {
+          "file": "tools/cache-budget/src/lib.rs",
+          "from": "        if row.conclusion.as_deref() != Some(\"success\") {",
+          "to": "        if false {"
+        }
+      ],
+      "expect_red": ["a_failed_run_saved_nothing_and_does_not_bound_the_interval"]
+    },
+    {
+      "name": "the-run-being-judged-cannot-bound-its-own-interval",
+      "why": "R1178 — the run whose miss is being judged is a run of HEAD, and an interval of HEAD..HEAD answers 'nothing moved' for every key in the repository. That is the narrow-range failure R1095 already paid for once, arriving by a different door: measured, two workflows triggered by one push report the same start second, so the tie rule alone does not keep it out",
+      "edits": [
+        {
+          "file": "tools/cache-budget/src/lib.rs",
+          "from": "        if to_the_second(started_at) >= to_the_second(started_before) || sha == not_at {",
+          "to": "        if to_the_second(started_at) >= to_the_second(started_before) {"
+        }
+      ],
+      "expect_red": ["a_run_of_the_commit_being_judged_cannot_bound_its_own_interval"]
     },
     {
       "name": "nothing-held-is-ever-undeclared",
@@ -690,8 +730,8 @@
       "edits": [
         {
           "file": "tools/cache-budget/src/main.rs",
-          "from": "        if !out.status.success() {",
-          "to": "        if false {"
+          "from": "    if !out.status.success() {\n        // A REFUSAL, NOT A GUESS.",
+          "to": "    if false {\n        // A REFUSAL, NOT A GUESS."
         }
       ],
       "expect_red": [

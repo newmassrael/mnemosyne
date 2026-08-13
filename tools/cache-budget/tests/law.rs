@@ -4,7 +4,10 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use cache_budget::{range_start, Held, Owner, RangeStart, Refusal, Report, Run, Unheard};
+use cache_budget::{
+    range_start, windows_asked, Asked, Held, Owner, PriorRun, RangeStart, Refusal, Report, Run,
+    Unheard, Window, WindowSource,
+};
 use ci_plan::CacheDeclaration;
 
 /// `conclude` over a run where NOTHING measured what it started from.
@@ -49,8 +52,14 @@ fn run_after(created: &str, invalidated: &[&str]) -> Run {
     Run {
         workflow: WORKFLOW.to_string(),
         started_at: created.to_string(),
-        inputs_changed: invalidated.iter().map(|key| key.to_string()).collect(),
-        range: PUSH_RANGE,
+        asked: invalidated
+            .iter()
+            .map(|key| Asked {
+                prefix: key.to_string(),
+                over: push_window(),
+                moved: true,
+            })
+            .collect(),
     }
 }
 
@@ -58,6 +67,14 @@ fn run_after(created: &str, invalidated: &[&str]) -> Run {
 /// about the budget arithmetic below — it is carried so that a verdict always
 /// says which question it answered.
 const PUSH_RANGE: RangeStart = RangeStart::ParentOfHead("a fixture, judged over no repository");
+
+/// That range as an interval a key was asked over.
+fn push_window() -> Window {
+    Window::ThisPush {
+        start: PUSH_RANGE,
+        why: "a fixture, with no workflow history to ask about".to_string(),
+    }
+}
 
 const GB: u64 = 1_000_000_000;
 const LIMIT: u64 = 10 * GB;
@@ -376,6 +393,220 @@ fn a_cache_built_because_this_commit_moved_what_the_key_hashes_is_not_refused() 
     }
 }
 
+/// The commit a workflow last ran at, and when — the shape of the interval the
+/// repair below is about.
+const LAST_RUN: &str = "153d8dd18e2d4b6a2f4e9c0e5b2f7a1c9d3e8f04";
+const LAST_RAN_AT: &str = "2026-08-12T14:44:58Z";
+
+/// The cache key of a workflow that does not run on every push.
+const FILTERED: &str = "Linux-cargo-replay-";
+
+/// Anything matching the key's globs moved over the workflow's own interval, and
+/// over no commit this push carried.
+///
+/// NON-CAPTURING, so both arms of the case below are handed the SAME answer about
+/// git and differ only in the interval they ask it about — which is the whole of
+/// what the repair changed.
+fn moved_only_since_that_workflow_ran(rev: &str, _globs: &[String]) -> Result<bool, String> {
+    Ok(rev == LAST_RUN)
+}
+
+/// A key is asked about the interval ITS OWN workflow could have seen.
+///
+/// THIS IS RUN 31695396997, AND IT IS THE WHOLE OF WHY THIS GATE HAS INTERVALS
+/// PER KEY. `evidence-replay.yml` is path-filtered: it runs when the evidence or
+/// its own file moves and not otherwise, so between two of its runs the lockfiles
+/// its cache key hashes can move any number of times with no run of that workflow
+/// to absorb them. Two commits did exactly that. Its next run missed the primary
+/// key, fell back to the generation from four days earlier, and saved a new
+/// archive — and the gate, asking only about the commits THAT push carried, found
+/// nothing and reported a legitimate miss as a defect. Main went red for a
+/// repository that was behaving correctly.
+///
+/// BOTH ARMS ARE HERE ON PURPOSE. The second one is the behaviour that turned main
+/// red, kept as the control: the only difference between them is which interval
+/// the key was asked about, so a repair that stopped asking would show up as this
+/// case passing for the wrong reason.
+#[test]
+fn a_key_is_asked_about_the_interval_its_own_workflow_could_have_seen() {
+    let declared = [declaration("replay", FILTERED, REGISTRY)];
+    let started_at = "2026-08-13T11:24:58Z";
+    let storage = [
+        // Saved by this run: the miss being judged.
+        held_on(
+            &format!("{FILTERED}0d2da6e7"),
+            0.07,
+            "2026-08-13T11:39:17.704586000Z",
+        ),
+        // And the generation `restore-keys` served, from the workflow's last run.
+        held_on(
+            &format!("{FILTERED}3b99125d"),
+            0.07,
+            "2026-08-12T14:55:59.077190000Z",
+        ),
+    ];
+
+    let over_its_own_history = windows_asked(
+        &declared,
+        &PUSH_RANGE,
+        |_| {
+            Ok(WindowSource::Ran(PriorRun {
+                sha: LAST_RUN.to_string(),
+                started_at: LAST_RAN_AT.to_string(),
+            }))
+        },
+        moved_only_since_that_workflow_ran,
+    )
+    .expect("both sides answered");
+    let judged = Run {
+        workflow: WORKFLOW.to_string(),
+        started_at: started_at.to_string(),
+        asked: over_its_own_history,
+    };
+    assert_eq!(
+        conclude(LIMIT, &declared, &storage, Some(&judged)).refusals(),
+        Vec::new(),
+        "the lockfiles moved since that workflow last ran, so the miss is the \
+         honest price of a dependency change and not a finding"
+    );
+
+    let over_the_push_alone = windows_asked(
+        &declared,
+        &PUSH_RANGE,
+        |_| {
+            Ok(WindowSource::Unavailable(
+                "this fixture's control".to_string(),
+            ))
+        },
+        moved_only_since_that_workflow_ran,
+    )
+    .expect("both sides answered");
+    let judged = Run {
+        workflow: WORKFLOW.to_string(),
+        started_at: started_at.to_string(),
+        asked: over_the_push_alone,
+    };
+    assert!(
+        matches!(
+            conclude(LIMIT, &declared, &storage, Some(&judged))
+                .refusals()
+                .as_slice(),
+            [Refusal::Recreated { prefix, .. }] if prefix == FILTERED
+        ),
+        "and asked about the push alone — where nothing matching those globs moved \
+         — the same repository is refused, which is what a red main looked like"
+    );
+}
+
+/// Two keys written in one workflow ask about its history once.
+///
+/// THE ANSWER COSTS A NETWORK ROUND TRIP. An interval belongs to the workflow that
+/// declares a key, so every key in one file shares it; asking per key would spend
+/// eight calls to be told the same thing eight times.
+#[test]
+fn two_keys_in_one_workflow_ask_about_its_history_once() {
+    let declared = [
+        declaration("one", "Linux-one-", REGISTRY),
+        declaration("two", "Linux-two-", REGISTRY),
+    ];
+    let mut asked_about: Vec<String> = Vec::new();
+    let out = windows_asked(
+        &declared,
+        &PUSH_RANGE,
+        |workflow| {
+            asked_about.push(workflow.to_string());
+            Ok(WindowSource::Ran(PriorRun {
+                sha: LAST_RUN.to_string(),
+                started_at: LAST_RAN_AT.to_string(),
+            }))
+        },
+        |_, _| Ok(false),
+    )
+    .expect("both sides answered");
+    assert_eq!(asked_about, vec![WORKFLOW.to_string()]);
+    assert_eq!(
+        out.iter().map(|it| it.prefix.as_str()).collect::<Vec<_>>(),
+        vec!["Linux-one-", "Linux-two-"],
+        "and both keys still carry the interval that answer bought"
+    );
+}
+
+/// A key that hashes nothing is asked nothing.
+///
+/// There is no glob to put to git, and the refusal that names such a key says so
+/// in its own words rather than reporting an interval nobody asked about.
+#[test]
+fn a_key_that_hashes_nothing_is_asked_nothing() {
+    let declared = [CacheDeclaration {
+        hashed: Vec::new(),
+        ..declaration("plain", "Linux-plain-", REGISTRY)
+    }];
+    let out = windows_asked(
+        &declared,
+        &PUSH_RANGE,
+        |_| panic!("a key hashing nothing has no interval worth a network call"),
+        |_, _| panic!("and nothing to ask git about"),
+    )
+    .expect("both sides answered");
+    assert_eq!(out, Vec::new());
+}
+
+/// The report says which interval each key answered over.
+///
+/// TWO INTERVALS ANSWER TWO QUESTIONS, and a reader holding a count cannot tell
+/// which one it came from. This is the line that makes a green verdict readable:
+/// a key excused over its own workflow's history and a key excused over a push are
+/// different states, and one of them says the gate could not find the history it
+/// wanted.
+#[test]
+fn the_report_says_which_interval_each_key_answered_over() {
+    let declared = [
+        declaration("one", "Linux-one-", REGISTRY),
+        CacheDeclaration {
+            source: ".github/workflows/other.yml".to_string(),
+            ..declaration("two", "Linux-two-", REGISTRY)
+        },
+    ];
+    let asked = vec![
+        Asked {
+            prefix: "Linux-one-".to_string(),
+            over: Window::SinceThatWorkflowLastRan {
+                workflow: WORKFLOW.to_string(),
+                sha: LAST_RUN.to_string(),
+                at: LAST_RAN_AT.to_string(),
+            },
+            moved: true,
+        },
+        Asked {
+            prefix: "Linux-two-".to_string(),
+            over: push_window(),
+            moved: false,
+        },
+    ];
+    let run = Run {
+        workflow: WORKFLOW.to_string(),
+        started_at: "2026-08-13T11:24:58Z".to_string(),
+        asked,
+    };
+    let printed = cache_budget::render(&conclude(LIMIT, &declared, &[], Some(&run)));
+    assert!(
+        printed.contains("1 of 2 key(s) had their hashed inputs moved"),
+        "the count, and what it is out of:\n{printed}"
+    );
+    assert!(
+        printed.contains("153d8dd..HEAD, since .github/workflows/w.yml last ran successfully"),
+        "the interval a key was excused over, named with the workflow whose it is:\n{printed}"
+    );
+    assert!(
+        printed.contains("Linux-one- MOVED"),
+        "and which key the answer was about:\n{printed}"
+    );
+    assert!(
+        printed.contains("a fixture, with no workflow history to ask about"),
+        "and for the other, that the interval was narrowed and why:\n{printed}"
+    );
+}
+
 #[test]
 fn the_two_endpoints_spell_a_timestamp_differently_and_are_still_compared_correctly() {
     // MEASURED, NOT ASSUMED, and it is the reason these are not compared as plain
@@ -389,8 +620,7 @@ fn the_two_endpoints_spell_a_timestamp_differently_and_are_still_compared_correc
     let run = Run {
         workflow: WORKFLOW.to_string(),
         started_at: "2026-08-09T02:00:00Z".to_string(),
-        inputs_changed: BTreeSet::new(),
-        range: PUSH_RANGE,
+        asked: Vec::new(),
     };
 
     let after = [
@@ -439,8 +669,7 @@ fn the_two_endpoints_spell_a_timestamp_differently_and_are_still_compared_correc
     let fractional_start = Run {
         workflow: WORKFLOW.to_string(),
         started_at: "2026-08-09T02:00:00.100000000Z".to_string(),
-        inputs_changed: BTreeSet::new(),
-        range: PUSH_RANGE,
+        asked: Vec::new(),
     };
     let same_second = [held_on(
         "Linux-cargo-unrun-abc",
@@ -942,8 +1171,14 @@ fn the_run(invalidated: &[&str]) -> Run {
     Run {
         workflow: WORKFLOW.to_string(),
         started_at: RUN_STARTED.to_string(),
-        inputs_changed: invalidated.iter().map(|key| key.to_string()).collect(),
-        range: PUSH_RANGE,
+        asked: invalidated
+            .iter()
+            .map(|key| Asked {
+                prefix: key.to_string(),
+                over: push_window(),
+                moved: true,
+            })
+            .collect(),
     }
 }
 

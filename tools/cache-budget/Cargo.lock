@@ -23,6 +23,7 @@ dependencies = [
  "serde",
  "serde_json",
  "tempfile",
+ "yaml-rust2",
 ]
 
 [[package]]
@@ -37,6 +38,15 @@ version = "0.1.0"
 dependencies = [
  "toml",
  "yaml-rust2",
+]
+
+[[package]]
+name = "encoding_rs"
+version = "0.8.35"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "75030f3c4f45dafd7586dd6780965a8c7e8e285a5ecb86713e63a79c5b2766f3"
+dependencies = [
+ "cfg-if",
 ]
 
 [[package]]
@@ -332,6 +342,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "631a50d867fafb7093e709d75aaee9e0e0d5deb934021fcea25ac2fe09edc51e"
 dependencies = [
  "arraydeque",
+ "encoding_rs",
  "hashlink",
 ]
 

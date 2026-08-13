@@ -5,9 +5,11 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
 use cache_budget::{
-    conclude, render, Held, RangeStart, Refusal, Run, Unheard, DEFAULT_LIMIT_BYTES,
+    conclude, render, windows_asked, Held, PriorRun, RangeStart, Refusal, Run, Unheard, Window,
+    WindowSource, DEFAULT_LIMIT_BYTES,
 };
 use ci_plan::CacheDeclaration;
+use yaml_rust2::Yaml;
 
 /// The job that runs this gate.
 const GATE: &str = "cache-budget";
@@ -269,8 +271,7 @@ fn the_build_directory_cache_declares_no_fallback_and_is_not_refused_for_being_c
     let run = Run {
         workflow: WORKFLOW.to_string(),
         started_at: "2026-08-12T22:20:00Z".to_string(),
-        inputs_changed: BTreeSet::new(),
-        range: RangeStart::Push("HEAD".to_string()),
+        asked: Vec::new(),
     };
     let mut started = BTreeMap::new();
     started.insert(
@@ -488,8 +489,7 @@ fn every_cache_owner_in_this_repository_falls_on_one_side_of_this_gates_horizon(
         Some(&Run {
             workflow: WORKFLOW.to_string(),
             started_at: "2026-08-09T00:00:00Z".to_string(),
-            inputs_changed: BTreeSet::new(),
-            range: RangeStart::ParentOfHead("a fixture, judged over no push"),
+            asked: Vec::new(),
         }),
         &BTreeMap::new(),
         &ci_plan::workflows_collecting_artifacts(&root),
@@ -643,4 +643,135 @@ fn no_declared_cache_reaches_anothers_archive() {
          a reader that ignored `path:` entirely would agree with the verdict \
          above and this file could not tell them apart"
     );
+}
+
+/// The trigger block, under either spelling a YAML parser can give it.
+///
+/// YAML 1.1 READS A BARE `on` AS THE BOOLEAN `true`. The sibling gate over the
+/// replay workflow handles both for the same reason, and a reader that knew only
+/// one of them would answer "this workflow declares no triggers" for a file full
+/// of them — which, for the premise below, is the silent wrong answer: it would
+/// report that no workflow here is path-filtered and let the law it justifies look
+/// unnecessary.
+fn triggers(doc: &Yaml) -> Option<&Yaml> {
+    if !matches!(doc["on"], Yaml::BadValue) {
+        return Some(&doc["on"]);
+    }
+    doc.as_hash().and_then(|it| it.get(&Yaml::Boolean(true)))
+}
+
+/// This repository declares a cache in a workflow that DOES NOT RUN ON EVERY PUSH.
+///
+/// THE PREMISE OF THE WHOLE PER-KEY INTERVAL, asserted against the files rather
+/// than remembered. `evidence-replay.yml` is path-filtered: it runs when the
+/// evidence, its own file, or the two test targets move, and on no other push. So
+/// between two of its runs the lockfiles its cache key hashes can move any number
+/// of times with no run of that workflow to absorb them — which is exactly what
+/// happened over `153d8dd..4c07d64`, and why judging its key over "the commits
+/// this push carried" reported a legitimate miss as a defect.
+///
+/// IF THIS EVER GOES RED, IT IS NOT A BREAK. It says the repository stopped
+/// holding the shape the per-key interval repairs — worth knowing before deciding
+/// what that interval's network call is still buying.
+#[test]
+fn a_cache_is_declared_in_a_workflow_that_does_not_run_on_every_push() {
+    let root = repository_root();
+    let declared = ci_plan::workflow_cache_declarations(&root);
+    assert!(!declared.is_empty(), "nothing declared, nothing asserted");
+    let filtered: BTreeSet<&str> = declared
+        .iter()
+        .map(|cache| cache.source.as_str())
+        .filter(|source| {
+            let doc = ci_plan::load_workflow(&root, source);
+            let block = triggers(&doc)
+                .unwrap_or_else(|| panic!("{source}: declares no triggers, so it can never run"));
+            block["push"]["paths"].as_vec().is_some()
+        })
+        .collect();
+    assert!(
+        !filtered.is_empty(),
+        "every workflow declaring a cache here runs on every push, so a key's \
+         interval and a push's range would be the same question — and the defect \
+         run 31695396997 reported would no longer be reachable: {:?}",
+        declared
+            .iter()
+            .map(|cache| cache.source.as_str())
+            .collect::<BTreeSet<_>>()
+    );
+}
+
+/// Every key this repository declares is judged over ITS OWN workflow's history.
+///
+/// THE WIRING, OVER THE REAL DECLARATIONS. `windows_asked` is pure and both of its
+/// answers are injected, so this drives it with the nine keys the files actually
+/// declare and a recording resolver: what it proves is that the interval each key
+/// carries names the workflow that key is written in, and that the gate asks about
+/// a workflow ONCE however many keys it declares.
+///
+/// A gate that went back to one interval for the whole run would pass every case
+/// in `law.rs` that builds its own declarations, and fail here.
+#[test]
+fn every_declared_key_is_judged_over_its_own_workflow_history() {
+    let root = repository_root();
+    let declared = ci_plan::workflow_cache_declarations(&root);
+    let sources: BTreeSet<&str> = declared
+        .iter()
+        .filter(|cache| !cache.hashed.is_empty())
+        .map(|cache| cache.source.as_str())
+        .collect();
+    assert!(
+        sources.len() > 1,
+        "one workflow declares every key here, so this file could not tell a \
+         per-key interval from a per-run one: {sources:?}"
+    );
+
+    let mut asked_about: Vec<String> = Vec::new();
+    let asked = windows_asked(
+        &declared,
+        &RangeStart::ParentOfHead("not a push — this suite is not a runner"),
+        |workflow| {
+            asked_about.push(workflow.to_string());
+            Ok(WindowSource::Ran(PriorRun {
+                sha: format!("{workflow}'s last run"),
+                started_at: "2026-08-12T14:44:58Z".to_string(),
+            }))
+        },
+        // WHAT GIT WOULD SAY IS NOT WHAT THIS CASE IS ABOUT. The interval each key
+        // carries is, and answering `false` keeps the assertions below about the
+        // question rather than about this checkout's history.
+        |_, _| Ok(false),
+    )
+    .expect("both sides answered");
+
+    assert_eq!(
+        asked_about
+            .iter()
+            .map(String::as_str)
+            .collect::<BTreeSet<_>>(),
+        sources,
+        "each workflow declaring a key is asked about, and only those"
+    );
+    assert_eq!(
+        asked_about.len(),
+        sources.len(),
+        "and asked ONCE — nine keys in two files is two questions, not nine: \
+         {asked_about:?}"
+    );
+    for cache in declared.iter().filter(|cache| !cache.hashed.is_empty()) {
+        let carried = asked
+            .iter()
+            .find(|it| it.prefix == cache.prefix)
+            .unwrap_or_else(|| panic!("{} was asked about nothing", cache.prefix));
+        match &carried.over {
+            Window::SinceThatWorkflowLastRan { workflow, .. } => assert_eq!(
+                workflow, &cache.source,
+                "`{}` is judged over the history of the workflow that declares it",
+                cache.prefix
+            ),
+            other => panic!(
+                "`{}` fell back to the push range with an answer available: {other:?}",
+                cache.prefix
+            ),
+        }
+    }
 }

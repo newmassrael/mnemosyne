@@ -80,18 +80,73 @@ fn page(held: &[(&str, u64)]) -> String {
 /// counts is well-formed and describes a smaller repository, and smaller is the
 /// direction that passes a budget.
 fn page_claiming(counted: u64, held: &[(&str, u64)]) -> String {
+    page_created(
+        counted,
+        &held
+            .iter()
+            .map(|(key, bytes)| (*key, *bytes, CREATED))
+            .collect::<Vec<_>>(),
+    )
+}
+
+/// The same, with each archive's own creation stamp.
+///
+/// WHEN AN ARCHIVE WAS CREATED IS WHAT SAYS WHETHER A JOB REBUILT: one stamped
+/// inside the run is a key that missed and was saved again, and one stamped before
+/// it is the generation that was there to be restored. Both are needed to pose the
+/// refusal that turned this repository's `main` red.
+fn page_created(counted: u64, held: &[(&str, u64, &str)]) -> String {
     let rows: Vec<String> = held
         .iter()
-        .map(|(key, bytes)| {
+        .map(|(key, bytes, created)| {
             format!(
                 "{{\"id\":1,\"ref\":\"refs/heads/main\",\"key\":\"{key}\",\
-                 \"last_accessed_at\":\"{CREATED}\",\"created_at\":\"{CREATED}\",\
+                 \"last_accessed_at\":\"{created}\",\"created_at\":\"{created}\",\
                  \"size_in_bytes\":{bytes}}}"
             )
         })
         .collect();
     format!(
         "{{\"total_count\":{counted},\"actions_caches\":[{}]}}",
+        rows.join(",")
+    )
+}
+
+/// What the workflow-runs endpoint answers about the fixture's own workflow.
+///
+/// THE INTERVAL A KEY IS JUDGED OVER COMES FROM HERE. A key is asked for when the
+/// workflow declaring it runs, so the last such run is what bounds the interval a
+/// missed key can be explained over — and the commit that run was of has to be a
+/// commit of the fixture's OWN history, which is why this is resolved after the
+/// history exists rather than written as a constant.
+enum Runs {
+    /// A page carrying no run at all — a workflow nothing has run yet, and the
+    /// state in which this gate narrows to the push range and says so.
+    NoneYet,
+    /// The workflow last ran successfully at `HEAD~n` of the fixture's history.
+    LastRanAtHeadMinus(usize),
+}
+
+/// When the fixture's last run of its own workflow started — before the run being
+/// judged, which is what makes it an earlier observation.
+const LAST_RAN_AT: &str = "2026-08-09T00:00:00Z";
+
+/// GitHub's answer about a workflow's runs, in the shape `tests/github.rs`
+/// records from the real endpoint.
+fn runs_page(runs: &[(&str, &str, &str)]) -> String {
+    let rows: Vec<String> = runs
+        .iter()
+        .map(|(sha, conclusion, started)| {
+            format!(
+                "{{\"id\":7,\"head_branch\":\"main\",\"head_sha\":\"{sha}\",\
+                 \"status\":\"completed\",\"conclusion\":\"{conclusion}\",\
+                 \"run_started_at\":\"{started}\"}}"
+            )
+        })
+        .collect();
+    format!(
+        "{{\"total_count\":{},\"workflow_runs\":[{}]}}",
+        runs.len(),
         rows.join(",")
     )
 }
@@ -118,6 +173,8 @@ struct Fixture {
     caches: String,
     /// What the runs endpoint answers — asked for only inside a run.
     run: String,
+    /// What the workflow-runs endpoint answers — asked for only inside a run.
+    runs: Runs,
     /// How many commits the checkout holds.
     ///
     /// `HEAD~1` is what this gate diffs from when the runner names no push
@@ -125,6 +182,15 @@ struct Fixture {
     /// state (`fetch-depth: 1`) that the gate refuses rather than reads as
     /// "nothing changed".
     commits: usize,
+    /// Which commits touch the `Cargo.lock` the fixture's cache key hashes,
+    /// counted from the first.
+    ///
+    /// WHERE IN THE HISTORY A DEPENDENCY MOVED is the whole of what separates a
+    /// legitimate cache miss from a defect, and which interval you ask over
+    /// decides whether you can see it. The default is a history where nothing the
+    /// key hashes ever moves, so every case that is not about this says nothing
+    /// about it.
+    lockfile_moves_at: &'static [usize],
 }
 
 impl Default for Fixture {
@@ -133,7 +199,9 @@ impl Default for Fixture {
             declares: true,
             caches: page(&[]),
             run: RUN_ANSWER.to_string(),
+            runs: Runs::NoneYet,
             commits: 2,
+            lockfile_moves_at: &[],
         }
     }
 }
@@ -162,44 +230,27 @@ impl Fixture {
         std::fs::write(root.join(".github/workflows/ci.yml"), workflow)
             .expect("write the workflow");
 
-        // WHAT IT WAS ASKED, then what it answers — APPENDED, one block per call,
-        // because the binary asks twice inside a run and a record that overwrote
-        // itself would show only whichever came last.
-        //
-        // AND IT DISPATCHES ON THE ENDPOINT. The two answers have nothing in common
-        // but their transport; a stub handing the cache page to a question about a
-        // run would agree with a gate that asked for the wrong thing.
-        let run = self.run.as_str();
-        let stub = root.join("stub/gh");
-        std::fs::write(
-            &stub,
-            format!(
-                "#!/usr/bin/env bash\n\
-             {{ printf '%s\\n' \"$@\"; echo; }} >> \"$(dirname \"$0\")/{ASKED}\"\n\
-             case \"$*\" in\n\
-             \x20 *\"/actions/runs/\"*)\n\
-             \x20   cat <<'RUN_ANSWER'\n{run}\nRUN_ANSWER\n\
-             \x20   ;;\n\
-             \x20 *)\n\
-             \x20   cat <<'CACHE_ANSWER'\n{answer}\nCACHE_ANSWER\n\
-             \x20   ;;\n\
-             esac\n"
-            ),
-        )
-        .expect("write the gh stub");
-        make_runnable(&stub);
-
         git(root, &["init", "--quiet"]);
         git(root, &["add", "-A"]);
-        // A HISTORY, BECAUSE THE RUN WINDOW DIFFS ONE. Which keys this push
+        // A HISTORY, BECAUSE THE RUN WINDOW DIFFS ONE. Which keys this run
         // legitimately invalidated is git's answer to the globs the keys name, and
-        // the range it is asked over is `HEAD~1..HEAD` unless the runner said
-        // otherwise. The identity is passed rather than inherited: a runner has none
-        // configured, and a fixture that borrowed this machine's would be green here
-        // and red there.
+        // the interval it is asked over is `HEAD~1..HEAD` unless the runner said
+        // otherwise or the declaring workflow's own last run is known. The identity
+        // is passed rather than inherited: a runner has none configured, and a
+        // fixture that borrowed this machine's would be green here and red there.
         for step in 0..self.commits {
             std::fs::write(root.join(format!("commit-{step}.txt")), "a change\n")
                 .expect("something to commit");
+            // AND A DEPENDENCY THAT MOVES WHERE THIS FIXTURE SAYS IT DOES. The key
+            // hashes `**/Cargo.lock`, so this is the one file whose movement the
+            // gate can excuse a rebuilt cache for.
+            if self.lockfile_moves_at.contains(&step) {
+                std::fs::write(
+                    root.join("Cargo.lock"),
+                    format!("# a lockfile as it stood at commit {step}\n"),
+                )
+                .expect("write the lockfile");
+            }
             git(root, &["add", "-A"]);
             git(
                 root,
@@ -215,6 +266,50 @@ impl Fixture {
                 ],
             );
         }
+
+        // WHAT IT WAS ASKED, then what it answers — APPENDED, one block per call,
+        // because the binary asks three times inside a run and a record that
+        // overwrote itself would show only whichever came last.
+        //
+        // AND IT DISPATCHES ON THE ENDPOINT. The three answers have nothing in
+        // common but their transport; a stub handing the cache page to a question
+        // about a run would agree with a gate that asked for the wrong thing.
+        //
+        // WRITTEN AFTER THE HISTORY, because one of the answers names a commit OF
+        // that history: which run last observed a key is only meaningful as a
+        // commit this checkout can be diffed from, and a sha invented here would
+        // model a checkout too shallow to hold it — a different case, which has its
+        // own test.
+        let run = self.run.as_str();
+        let runs = match self.runs {
+            Runs::NoneYet => runs_page(&[]),
+            Runs::LastRanAtHeadMinus(back) => runs_page(&[(
+                &git_says(root, &["rev-parse", &format!("HEAD~{back}")]),
+                "success",
+                LAST_RAN_AT,
+            )]),
+        };
+        let stub = root.join("stub/gh");
+        std::fs::write(
+            &stub,
+            format!(
+                "#!/usr/bin/env bash\n\
+             {{ printf '%s\\n' \"$@\"; echo; }} >> \"$(dirname \"$0\")/{ASKED}\"\n\
+             case \"$*\" in\n\
+             \x20 *\"/actions/workflows/\"*)\n\
+             \x20   cat <<'RUNS_ANSWER'\n{runs}\nRUNS_ANSWER\n\
+             \x20   ;;\n\
+             \x20 *\"/actions/runs/\"*)\n\
+             \x20   cat <<'RUN_ANSWER'\n{run}\nRUN_ANSWER\n\
+             \x20   ;;\n\
+             \x20 *)\n\
+             \x20   cat <<'CACHE_ANSWER'\n{answer}\nCACHE_ANSWER\n\
+             \x20   ;;\n\
+             esac\n"
+            ),
+        )
+        .expect("write the gh stub");
+        make_runnable(&stub);
         at
     }
 }
@@ -226,6 +321,22 @@ fn make_runnable(path: &Path) {
         .permissions();
     mode.set_mode(0o755);
     std::fs::set_permissions(path, mode).expect("make the stub runnable");
+}
+
+/// The same, with git's answer handed back — for the commits a fixture's history
+/// only has once it exists.
+fn git_says(at: &Path, arguments: &[&str]) -> String {
+    let out = Command::new("git")
+        .args(arguments)
+        .current_dir(at)
+        .output()
+        .expect("git runs");
+    assert!(
+        out.status.success(),
+        "git {arguments:?} failed: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    String::from_utf8_lossy(&out.stdout).trim().to_string()
 }
 
 fn git(at: &Path, arguments: &[&str]) {
@@ -303,8 +414,9 @@ const CLEAN: &str = "every cache this repository declares is one it keeps";
 /// Every call the stub took, in order, each as the words it was handed.
 ///
 /// ONE BLOCK PER CALL, split on the blank line the stub writes between them: the
-/// binary asks once outside a run and twice inside one, and which question got
-/// which answer is the thing these cases are here to pin.
+/// binary asks once outside a run and three times inside one — the cache storage,
+/// the run it is in, and the runs of each workflow declaring a key — and which
+/// question got which answer is the thing these cases are here to pin.
 fn asked(at: &Path) -> Vec<Vec<String>> {
     std::fs::read_to_string(at.join("stub").join(ASKED))
         .expect("the gate asked `gh` something")
@@ -578,12 +690,130 @@ fn inside_a_run_the_gate_reads_the_window_and_names_the_run_it_read() {
     // `runs` are different resources, and a start time belonging to some other
     // run excuses every cache built after it.
     let calls = asked(at.path());
-    assert_eq!(calls.len(), 2, "inside a run it asks twice: {calls:?}");
+    assert_eq!(
+        calls.len(),
+        3,
+        "inside a run it asks three times: {calls:?}"
+    );
     assert_eq!(calls[1], cache_budget::run_query(RUN_ID));
     assert!(
         calls[1].iter().any(|word| word.contains(RUN_ID)),
         "and the run id is in the question: {:?}",
         calls[1]
+    );
+    // AND THE THIRD QUESTION IS ABOUT THE WORKFLOW THAT DECLARES THE KEY, which is
+    // what bounds the interval that key can be judged over. A gate that stopped
+    // asking it would judge every key over the commits one push carried — the
+    // reading that turned this repository's `main` red on run 31695396997.
+    assert_eq!(
+        calls[2],
+        cache_budget::workflow_runs_query(".github/workflows/ci.yml", None),
+        "the words handed to `gh` are the library's, verbatim"
+    );
+    assert!(
+        calls[2]
+            .iter()
+            .any(|word| word.contains("workflows/ci.yml/runs")),
+        "and it names the workflow whose history is wanted: {:?}",
+        calls[2]
+    );
+}
+
+/// The archive stamped inside the run being judged, and the generation that was
+/// there to be restored.
+///
+/// BOTH ARE NEEDED TO POSE THE REFUSAL. A key saved during the run is one whose
+/// primary key missed; without an older generation the miss was unavoidable, and
+/// the gate says so by not refusing at all.
+fn a_key_rebuilt_during_the_run() -> String {
+    page_created(
+        2,
+        &[
+            (
+                &format!("{PREFIX}now"),
+                SMALL,
+                "2026-08-10T10:14:11.221132000Z",
+            ),
+            (&format!("{PREFIX}was"), SMALL, CREATED),
+        ],
+    )
+}
+
+/// A cache rebuilt after its lockfile moved is not a defect — and the interval
+/// that shows it is the declaring workflow's own.
+///
+/// THIS IS RUN 31695396997, WITH REAL GIT AND THE WHOLE BINARY. The history here
+/// is the shape that reddened `main`: the lockfile the key hashes moved at a
+/// commit that the LAST PUSH did not carry, and the workflow declaring that key —
+/// path-filtered, so it does not run on every push — had not run since before it.
+/// Asked over its own history the miss is explained; asked over the push alone it
+/// is a finding about a repository doing nothing wrong.
+///
+/// THE CONTROL IS THE SECOND HALF OF THIS CASE, and it is the behaviour that
+/// shipped: the same tree, the same storage, the same git, differing only in
+/// whether the declaring workflow's last run could be found.
+#[test]
+fn a_cache_rebuilt_after_its_lockfile_moved_outside_this_push_is_not_a_defect() {
+    let at = Fixture {
+        caches: a_key_rebuilt_during_the_run(),
+        // Three commits: the lockfile moves in the middle one, so `HEAD~1..HEAD` —
+        // the interval a push with no range variable is judged over — contains no
+        // movement of it at all.
+        commits: 3,
+        lockfile_moves_at: &[1],
+        runs: Runs::LastRanAtHeadMinus(2),
+        ..Fixture::default()
+    }
+    .build();
+    let out = gate_in_run(at.path());
+    assert_eq!(
+        code(&out),
+        0,
+        "the lockfile moved since that workflow last ran, so the rebuild is the \
+         price of a dependency change\nstdout:\n{}\nstderr:\n{}",
+        stdout(&out),
+        stderr(&out)
+    );
+    assert!(
+        stdout(&out).contains("1 of 1 key(s) had their hashed inputs moved"),
+        "and the report says so\n{}",
+        stdout(&out)
+    );
+    assert!(
+        stdout(&out).contains("since .github/workflows/ci.yml last ran successfully"),
+        "naming the interval it answered over, and whose history that is\n{}",
+        stdout(&out)
+    );
+
+    // THE CONTROL. With no run of that workflow to be found, the gate narrows to
+    // the push — and the same repository is refused for a rebuild it had every
+    // right to. Everything else about the two fixtures is identical.
+    let at = Fixture {
+        caches: a_key_rebuilt_during_the_run(),
+        commits: 3,
+        lockfile_moves_at: &[1],
+        runs: Runs::NoneYet,
+        ..Fixture::default()
+    }
+    .build();
+    let out = gate_in_run(at.path());
+    assert_eq!(
+        code(&out),
+        1,
+        "over the push alone nothing the key hashes moved\nstdout:\n{}\nstderr:\n{}",
+        stdout(&out),
+        stderr(&out)
+    );
+    assert!(
+        stderr(&out).contains("SAVED BY THIS RUN"),
+        "which is the refusal that turned main red\n{}",
+        stderr(&out)
+    );
+    assert!(
+        stdout(&out).contains("no successful run of `.github/workflows/ci.yml`"),
+        "and the report says the interval was narrowed and why, rather than \
+         printing a number from a question nobody can see\n{}",
+        stdout(&out)
     );
 }
 

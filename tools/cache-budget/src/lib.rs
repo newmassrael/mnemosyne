@@ -192,6 +192,162 @@ pub fn run_started_in(run_id: &str, body: &str) -> Result<String, String> {
     Ok(started_at.to_string())
 }
 
+/// How deep into a workflow's run history this gate looks for the interval a key
+/// was last asked over.
+///
+/// FIVE, AND THE SHALLOWNESS IS THE POINT. What is wanted is the NEWEST run that
+/// predates this one at another commit; the rows above it are the ones that have
+/// to be skipped — a sibling run of the same push, a re-run, a red streak — and
+/// five is deep enough for those without paging through a repository's whole
+/// history to answer a question about its last day. When none of the five
+/// qualifies the gate says so and narrows to the push range, which is the same
+/// shape [`RangeStart`] already takes for a checkout it cannot see into.
+const NEWEST_RUNS: usize = 5;
+
+/// What this gate asks GitHub about the runs of ONE workflow.
+///
+/// THE WORKFLOW IS PART OF THE QUESTION, and it is the whole of what makes the
+/// answer the right one: a key is asked for only when the workflow DECLARING it
+/// runs, so the interval over which a change to its inputs could have gone
+/// unobserved is that workflow's own, and no other's. Addressed by file name
+/// because that is the identity the endpoint takes, derived here from the path
+/// `ci-plan` reads so that no caller spells it a second time.
+///
+/// BRANCH-SCOPED WHEN THERE IS A BRANCH TO NAME, because GitHub's cache storage
+/// is: an archive saved on one ref is not offered to another, so runs of another
+/// branch are not observations of this key. On a `pull_request` the runner names
+/// no branch this endpoint accepts — `GITHUB_REF_NAME` is `123/merge` — which is
+/// why the caller passes the BASE branch there and why this takes an `Option`
+/// rather than assuming one exists.
+pub fn workflow_runs_query(workflow: &str, branch: Option<&str>) -> Vec<String> {
+    let file = workflow.rsplit('/').next().unwrap_or(workflow);
+    let mut path =
+        format!("repos/{{owner}}/{{repo}}/actions/workflows/{file}/runs?per_page={NEWEST_RUNS}");
+    if let Some(branch) = branch.map(str::trim).filter(|branch| !branch.is_empty()) {
+        path.push_str("&branch=");
+        path.push_str(branch);
+    }
+    vec!["api".to_string(), path]
+}
+
+/// One page of GitHub's answer about a workflow's runs.
+///
+/// `total_count` IS NOT READ HERE, and that is a difference from [`Page`] rather
+/// than an oversight: this question asks for the NEWEST page on purpose, so the
+/// rows are a deliberate sample and the count is the workflow's whole history —
+/// five hundred of them. Checking one against the other would refuse every
+/// repository that has run its CI more than five times.
+#[derive(serde::Deserialize)]
+struct RunsPage {
+    workflow_runs: Vec<RunRow>,
+}
+
+/// One run in that page — the four fields this gate reads of the sixty GitHub
+/// sends.
+///
+/// `conclusion` IS AN `Option` BECAUSE GITHUB SENDS `null` FOR A RUN STILL IN
+/// FLIGHT, and that is exactly the row this gate must not accept: a run that has
+/// not finished has not saved a cache, so it cannot bound the interval since one
+/// was last asked for. Reading it as a `String` would refuse the whole answer for
+/// containing an in-progress run, which is what the answer contains whenever CI
+/// is busy.
+#[derive(serde::Deserialize)]
+struct RunRow {
+    head_sha: String,
+    run_started_at: String,
+    conclusion: Option<String>,
+}
+
+/// A run that came before this one — the last moment one of its workflow's keys
+/// was asked for.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PriorRun {
+    /// The commit it ran at, in full.
+    pub sha: String,
+    /// When it started, in the runs endpoint's own spelling.
+    pub started_at: String,
+}
+
+/// The newest run of one workflow that could have left the archive this run
+/// failed to hit — read off GitHub's own answer.
+///
+/// THREE CONDITIONS, AND EVERY ONE OF THEM IS A CASE THIS REPOSITORY REALLY
+/// PRODUCED:
+///
+///   - `conclusion == "success"`. `actions/cache` does not save from a failed
+///     job, so a red run left nothing behind and naming it would start the
+///     interval after a change that no archive ever absorbed. The recording in
+///     `tests/actions-workflow-runs.json` has such a run as its NEWEST row.
+///   - started strictly before this run. Two workflows triggered by one push
+///     start in the same second — measured: `mnemosyne-validate` and
+///     `evidence-replay` both report `2026-08-13T11:24:58Z` for the push that
+///     made this reader necessary.
+///   - at a commit other than the one being judged. That last one is
+///     load-bearing rather than defensive: the run of THIS commit is the run
+///     whose miss is being judged, and an interval of `HEAD..HEAD` answers
+///     "nothing moved" for every key in the repository — the narrow-range
+///     failure R1095 already paid for once.
+///
+/// NEWEST BY THE STAMP AND NOT BY POSITION. GitHub does send them newest first,
+/// but that is an ordering this gate would be trusting silently; the stamps are
+/// one fixed-width UTC spelling from a single endpoint, so the maximum of them is
+/// an answer this program can defend.
+///
+/// `Ok(None)` IS A READING AND NOT A FAILURE: a workflow whose newest page holds
+/// no qualifying run is one this gate cannot bound an interval with, and the
+/// caller narrows to the push range and prints why. An unreadable answer is the
+/// other thing entirely, and it is an `Err`.
+pub fn last_run_in(
+    workflow: &str,
+    body: &str,
+    started_before: &str,
+    not_at: &str,
+) -> Result<Option<PriorRun>, String> {
+    if body.trim().is_empty() {
+        return Err(format!(
+            "`gh` printed nothing at all about the runs of `{workflow}`, which is not the \
+             answer a workflow that has never run gives — that one arrives as a page \
+             carrying no rows"
+        ));
+    }
+    let page: RunsPage = serde_json::from_str(body).map_err(|why| {
+        format!(
+            "GitHub's answer about the runs of `{workflow}` is not a shape this gate can read \
+             ({why}) — it needs `workflow_runs`, and in each row a `head_sha`, a \
+             `run_started_at` and a `conclusion`. An answer missing one of those is a read \
+             that failed, not a workflow nothing has ever run"
+        )
+    })?;
+    let mut newest: Option<PriorRun> = None;
+    for row in page.workflow_runs {
+        if row.conclusion.as_deref() != Some("success") {
+            continue;
+        }
+        let started_at = row.run_started_at.trim();
+        let sha = row.head_sha.trim();
+        if sha.is_empty() || started_at.is_empty() {
+            return Err(format!(
+                "a run of `{workflow}` arrived with no commit or no start time, so which \
+                 interval it bounds is unknown rather than empty — an interval starting at \
+                 nothing excuses every cache in the repository"
+            ));
+        }
+        if to_the_second(started_at) >= to_the_second(started_before) || sha == not_at {
+            continue;
+        }
+        if newest
+            .as_ref()
+            .is_none_or(|held| to_the_second(&held.started_at) < to_the_second(started_at))
+        {
+            newest = Some(PriorRun {
+                sha: sha.to_string(),
+                started_at: started_at.to_string(),
+            });
+        }
+    }
+    Ok(newest)
+}
+
 /// Why a page of the answer could not be read, in the reader's words and this
 /// gate's.
 ///
@@ -628,15 +784,182 @@ pub struct Run {
     /// one direction for a reason that has nothing to do with time. Both come
     /// from GitHub's clock; only their precision differs.
     pub started_at: String,
-    /// The key prefixes whose hashed inputs moved in the range this run covers,
-    /// so that a cache this run had to build is excused rather than refused.
-    /// Computed by asking git with the globs the key itself names, because a
-    /// second implementation of GitHub's glob matching is a second answer.
-    pub inputs_changed: BTreeSet<String>,
-    /// Where that question was asked FROM, and why — printed with the verdict,
-    /// because two different ranges answer two different questions and a reader
-    /// cannot tell which one a number came from.
-    pub range: RangeStart,
+    /// One entry per key: the interval its hashed inputs were asked about, and
+    /// what the answer was — so that a cache this run had to build is excused
+    /// rather than refused. Computed by asking git with the globs the key itself
+    /// names, because a second implementation of GitHub's glob matching is a
+    /// second answer.
+    ///
+    /// THE QUESTION AND THE ANSWER IN ONE DATUM, which is the shape R1178 paid
+    /// for. This was two fields — a set of prefixes that had moved, and ONE range
+    /// they were all asked over — and the second of those was a single answer to
+    /// a question that is per key: a key is asked for only when the workflow
+    /// DECLARING it runs, and this repository has a path-filtered workflow that
+    /// does not run on every push. Its cache key's lockfile moved in two commits
+    /// that workflow never saw, so the miss was legitimate and the gate, asking
+    /// only about the commits THIS push carried, reported it as a defect and
+    /// turned main red on run 31695396997. A range shared by every key cannot
+    /// hold that difference, and a reader cannot tell which question a number
+    /// answered unless the two travel together.
+    pub asked: Vec<Asked>,
+}
+
+impl Run {
+    /// Did this key's hashed inputs move over the interval it was asked about?
+    ///
+    /// A KEY NOBODY ASKED ABOUT DID NOT MOVE, which is the same reading the set
+    /// this replaced gave: a key hashing nothing has nothing that could have
+    /// invalidated it, and the report says as much in its own words.
+    pub fn moved(&self, prefix: &str) -> bool {
+        self.asked
+            .iter()
+            .any(|asked| asked.prefix == prefix && asked.moved)
+    }
+}
+
+/// One key's question: the interval its hashed inputs were asked about, and the
+/// answer git gave.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Asked {
+    /// The key prefix — `Linux-cargo-replay-`.
+    pub prefix: String,
+    /// The interval, and where it came from.
+    pub over: Window,
+    /// Whether anything matching the key's own globs moved over it.
+    pub moved: bool,
+}
+
+/// The interval a key's "did its hashed inputs move" question is asked over.
+///
+/// NOT THE PUSH, IN THE CASE THAT MATTERS. A push range is the right interval
+/// only for a key whose workflow runs on every push; for one declared in a
+/// path-filtered workflow the key is asked for on some pushes and not others, and
+/// between two of its runs the lockfiles it hashes can move any number of times
+/// with nothing to absorb the change. The interval that means something is
+/// therefore the workflow's OWN: since it last ran, which is the last moment
+/// anything asked for that key at all.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Window {
+    /// Since the workflow declaring the key last ran successfully at another
+    /// commit — the last moment the key was asked for.
+    SinceThatWorkflowLastRan {
+        /// The workflow file, as `ci-plan` spells it.
+        workflow: String,
+        /// The commit that run was of.
+        sha: String,
+        /// When it started, in the runs endpoint's spelling.
+        at: String,
+    },
+    /// The push range, with the reason the declaring workflow's own last run
+    /// could not bound the interval.
+    ///
+    /// A FALLBACK THAT SAYS SO. It is the honest interval for a workflow this
+    /// gate cannot see a previous run of — a new one, a checkout too shallow to
+    /// hold the commit, a `pull_request` whose base gave no answer — and it is
+    /// narrower than the truth, so the reason travels with it rather than being
+    /// left as a silently different question.
+    ThisPush {
+        /// Where the push started, and why, from [`range_start`].
+        start: RangeStart,
+        /// Why the workflow's own last run was not used.
+        why: String,
+    },
+}
+
+impl Window {
+    /// The revision to diff from.
+    pub fn rev(&self) -> &str {
+        match self {
+            Window::SinceThatWorkflowLastRan { sha, .. } => sha,
+            Window::ThisPush { start, .. } => start.rev(),
+        }
+    }
+
+    /// One line naming the interval and where it came from.
+    pub fn why(&self) -> String {
+        match self {
+            Window::SinceThatWorkflowLastRan { workflow, sha, at } => format!(
+                "over {}..HEAD, since {workflow} last ran successfully at another commit ({at})",
+                &sha[..7.min(sha.len())]
+            ),
+            Window::ThisPush { start, why } => format!("{} — {why}", start.why()),
+        }
+    }
+}
+
+/// Whether a workflow's own last run could be found, or why not.
+///
+/// TWO ANSWERS AND NOT AN `Option`, because the second one is a sentence the
+/// report prints: "the interval was narrowed" and "the interval was narrowed
+/// BECAUSE" are what tell a reader whether a green verdict was earned over the
+/// interval that means something or over the one that was left.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum WindowSource {
+    /// The run that bounds the interval.
+    Ran(PriorRun),
+    /// Why no run of that workflow could bound it.
+    Unavailable(String),
+}
+
+/// Ask, for every key that hashes anything, whether its inputs moved over the
+/// interval that key was last asked over.
+///
+/// PURE, AND BOTH SIDES ARE CLOSURES: which run bounds a workflow's interval is
+/// GitHub's answer and whether a glob moved is git's, so neither is this
+/// function's to invent — and with both injected, the DECISION they feed can be
+/// driven by a suite with no network and no repository. That is the half R1178
+/// found unreadable: this reasoning lived in `main.rs`, where nothing could ask
+/// it anything, and it was wrong in a way that only a red `main` reported.
+///
+/// ONE QUESTION PER WORKFLOW, not per key. Two keys declared in one file share an
+/// interval, and asking twice would spend a network round trip to be told the
+/// same thing — the answers are held as they arrive.
+///
+/// FIRST DECLARATION OF A PREFIX WINS, which is the same choice [`Row`] makes for
+/// `hashed`: one key is one cache, and a second declaration of it naming
+/// different globs is a divergence refused by name elsewhere rather than a second
+/// interval judged here.
+pub fn windows_asked(
+    declared: &[CacheDeclaration],
+    push: &RangeStart,
+    mut last_run_of: impl FnMut(&str) -> Result<WindowSource, String>,
+    mut moved_since: impl FnMut(&str, &[String]) -> Result<bool, String>,
+) -> Result<Vec<Asked>, String> {
+    let mut out: Vec<Asked> = Vec::new();
+    let mut seen: BTreeSet<&str> = BTreeSet::new();
+    let mut source_of: BTreeMap<&str, WindowSource> = BTreeMap::new();
+    for declaration in declared {
+        if declaration.hashed.is_empty() || !seen.insert(declaration.prefix.as_str()) {
+            continue;
+        }
+        let source = match source_of.get(declaration.source.as_str()) {
+            Some(source) => source,
+            None => {
+                let source = last_run_of(&declaration.source)?;
+                source_of
+                    .entry(declaration.source.as_str())
+                    .or_insert(source)
+            }
+        };
+        let over = match source {
+            WindowSource::Ran(prior) => Window::SinceThatWorkflowLastRan {
+                workflow: declaration.source.clone(),
+                sha: prior.sha.clone(),
+                at: prior.started_at.clone(),
+            },
+            WindowSource::Unavailable(why) => Window::ThisPush {
+                start: push.clone(),
+                why: why.clone(),
+            },
+        };
+        let moved = moved_since(over.rev(), &declaration.hashed)?;
+        out.push(Asked {
+            prefix: declaration.prefix.clone(),
+            over,
+            moved,
+        });
+    }
+    Ok(out)
 }
 
 /// The commit the "did the hashed inputs move" question is asked from.
@@ -1042,7 +1365,7 @@ impl Report {
                 if to_the_second(&held.created_at) <= to_the_second(&run.started_at) {
                     continue;
                 }
-                if run.inputs_changed.contains(&row.prefix) {
+                if run.moved(&row.prefix) {
                     continue;
                 }
                 // AND SOMETHING HAD TO BE THERE TO RESTORE, which is the
@@ -1404,26 +1727,33 @@ pub fn render(report: &Report) -> String {
         // this run is of decides whose records could have been collected here,
         // and a reader seeing "cannot be heard from here" needs to know what
         // "here" is without going to the runner for it.
-        Some(run) => out.push_str(&format!(
-            "run of {} started {}, so a cache created after that is a job that \
-             rebuilt; {} key(s) had their hashed inputs moved {}{}\n",
-            run.workflow,
-            run.started_at,
-            run.inputs_changed.len(),
-            run.range.why(),
-            if run.inputs_changed.is_empty() {
-                String::new()
-            } else {
-                format!(
-                    " ({})",
-                    run.inputs_changed
-                        .iter()
-                        .cloned()
-                        .collect::<Vec<_>>()
-                        .join(", ")
-                )
+        Some(run) => {
+            out.push_str(&format!(
+                "run of {} started {}, so a cache created after that is a job that \
+                 rebuilt; {} of {} key(s) had their hashed inputs moved\n",
+                run.workflow,
+                run.started_at,
+                run.asked.iter().filter(|asked| asked.moved).count(),
+                run.asked.len(),
+            ));
+            // AND OVER WHICH INTERVAL EACH ANSWERED, grouped by the interval
+            // rather than listed per key. The intervals are per WORKFLOW, so a
+            // repository declaring nine keys in two files prints two lines — and
+            // a reader can tell a key excused over its own workflow's history
+            // from one excused over a push, which is the distinction that was
+            // invisible while every key shared one range.
+            let mut over: BTreeMap<String, Vec<String>> = BTreeMap::new();
+            for asked in &run.asked {
+                over.entry(asked.over.why()).or_default().push(format!(
+                    "{}{}",
+                    asked.prefix,
+                    if asked.moved { " MOVED" } else { "" }
+                ));
             }
-        )),
+            for (interval, keys) in over {
+                out.push_str(&format!("      asked {interval}: {}\n", keys.join(", ")));
+            }
+        }
         None => out.push_str(
             "NOT INSIDE A RUN (`GITHUB_RUN_ID` unset), so whether these caches were \
              restored or rebuilt was NOT evaluated — only the budget was\n",

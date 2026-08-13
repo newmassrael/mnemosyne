@@ -21,7 +21,7 @@
 //! smaller is the direction that passes a budget. `total_count` is the only
 //! thing in the answer that can catch it, and the projection threw it away.
 
-use cache_budget::{caches_in, run_started_in};
+use cache_budget::{caches_in, last_run_in, run_started_in, workflow_runs_query};
 
 /// This repository's cache storage, as GitHub answered on 2026-08-10.
 const ONE_PAGE: &str = include_str!("actions-caches.one-page.json");
@@ -262,6 +262,272 @@ fn a_run_answer_that_never_arrives_is_a_refusal() {
         why.contains(RUN_ID) && why.contains("read that failed"),
         "and it says which run it could not read about: {why}"
     );
+}
+
+/// The third endpoint: the newest runs of one workflow of this repository, as
+/// GitHub answered on 2026-08-13.
+///
+/// AN ABRIDGED RECORDING, AND THE ABRIDGEMENT IS NAMED. It is the answer to
+/// `gh api "repos/{owner}/{repo}/actions/workflows/mnemosyne-validate.yml/runs\
+/// ?branch=main&per_page=2"` with each row's `actor`, `triggering_actor`,
+/// `repository` and `head_repository` objects dropped — four copies of one user
+/// and one repository per row, 24 KB of the 25, none of it named by this reader.
+/// Every value that remains is verbatim, which is what a recording is FOR here:
+/// this endpoint stamps a run to the SECOND while the cache endpoint stamps an
+/// archive to the fraction, and the whole restore verdict is a comparison between
+/// the two.
+///
+/// AND ITS NEWEST ROW IS A REAL FAILURE — run 31695396997, the run this reader
+/// exists because of. `actions/cache` does not save from a failed job, so that row
+/// must not bound an interval; a recording in which every run had succeeded would
+/// pass a reader that never looked at `conclusion`.
+const RUNS: &str = include_str!("actions-workflow-runs.json");
+
+/// The workflow that recording is of, and the two runs in it.
+const WORKFLOW: &str = ".github/workflows/mnemosyne-validate.yml";
+const HEAD: &str = "4c07d64056ce169d4f1cb879f4fd0eb724aff782";
+const PRIOR: &str = "75b9bd4c8a80e175c188f5f3563355f03f2c613c";
+const PRIOR_STARTED: &str = "2026-08-13T08:46:43Z";
+
+/// When the run being judged began — and it is the SAME STAMP the newest recorded
+/// row carries, because they are the same run.
+const THIS_RUN_STARTED: &str = "2026-08-13T11:24:58Z";
+
+/// A commit no run in the recording was of.
+const ELSEWHERE: &str = "0000000000000000000000000000000000000000";
+
+/// Late enough that both recorded runs are earlier than it.
+const LATER: &str = "2026-08-13T12:00:00Z";
+
+/// The same recording with its newest run reported as having SUCCEEDED.
+///
+/// THE CONTROL EVERY CASE BELOW NEEDS. With that row failed, three separate rules
+/// exclude it and a test asserting the answer cannot say which one did the work;
+/// flipping it makes each rule the only difference between two answers. `replacen`
+/// rather than `replace`, because the recording's other run really did succeed and
+/// rewriting both would model nothing.
+fn newest_run_succeeded() -> String {
+    let flipped = RUNS.replacen(
+        "\"conclusion\": \"failure\"",
+        "\"conclusion\": \"success\"",
+        1,
+    );
+    assert_ne!(
+        flipped, RUNS,
+        "the recording's newest row says `failure`, and every case below is built on it"
+    );
+    flipped
+}
+
+/// The recorded answer names the run that last left an archive.
+///
+/// THE QUESTION THIS ENDPOINT IS ASKED, and the answer that repairs run
+/// 31695396997: the interval a cache key can be judged over runs from the last
+/// time the workflow declaring it ran, not from the commits one push carried.
+#[test]
+fn the_recorded_answer_names_the_run_that_last_left_an_archive() {
+    let prior = last_run_in(WORKFLOW, RUNS, THIS_RUN_STARTED, HEAD)
+        .expect("a real answer is one this gate can read")
+        .expect("and it holds a run this gate can bound an interval with");
+    assert_eq!(prior.sha, PRIOR);
+    assert_eq!(prior.started_at, PRIOR_STARTED);
+}
+
+/// A failed run saved nothing, so it does not bound the interval.
+///
+/// NON-VACUOUS BY CONSTRUCTION: the only difference between the two answers below
+/// is the `conclusion` of one row, so the second one is what proves the field is
+/// read at all. Without it, a reader ignoring `conclusion` agrees with the case
+/// above — every other rule excludes that row too.
+#[test]
+fn a_failed_run_saved_nothing_and_does_not_bound_the_interval() {
+    let refused = last_run_in(WORKFLOW, RUNS, LATER, ELSEWHERE)
+        .expect("a real answer is readable")
+        .expect("the older run is still there to be named");
+    assert_eq!(
+        refused.sha, PRIOR,
+        "the newest run failed, so the one before it is what left an archive"
+    );
+    let accepted = last_run_in(WORKFLOW, &newest_run_succeeded(), LATER, ELSEWHERE)
+        .expect("the same answer with that row green is readable")
+        .expect("and it names a run");
+    assert_eq!(
+        accepted.sha, HEAD,
+        "and with that one row green it is the newest — which is what makes the \
+         `conclusion` read load-bearing rather than decoration"
+    );
+}
+
+/// A run of the commit being judged cannot bound its own interval.
+///
+/// THE RULE THAT MAKES THE REPAIR WORK. The run whose miss is being judged is a
+/// run of `HEAD`, and an interval of `HEAD..HEAD` answers "nothing moved" for
+/// every key in the repository — which is the narrow-range failure R1095 paid for
+/// once already, arriving by a different door.
+#[test]
+fn a_run_of_the_commit_being_judged_cannot_bound_its_own_interval() {
+    let green = newest_run_succeeded();
+    let excluded = last_run_in(WORKFLOW, &green, LATER, HEAD)
+        .expect("readable")
+        .expect("a run remains");
+    assert_eq!(excluded.sha, PRIOR, "the run of HEAD is passed over");
+    let included = last_run_in(WORKFLOW, &green, LATER, ELSEWHERE)
+        .expect("readable")
+        .expect("a run remains");
+    assert_eq!(
+        included.sha, HEAD,
+        "and it is passed over for being HEAD's rather than for anything else"
+    );
+}
+
+/// Two workflows triggered by one push start in the same second, and neither is
+/// earlier than the other.
+///
+/// MEASURED, NOT SUPPOSED: `mnemosyne-validate` and `evidence-replay` both report
+/// `2026-08-13T11:24:58Z` for the push that made this reader necessary. So "before
+/// this run" has to be strict — a sibling run of the same push has observed
+/// nothing this run has not, and treating it as the interval's start would answer
+/// every question with `HEAD..HEAD`.
+#[test]
+fn a_run_that_started_in_the_same_second_is_not_an_earlier_run() {
+    let green = newest_run_succeeded();
+    let tied = last_run_in(WORKFLOW, &green, THIS_RUN_STARTED, ELSEWHERE)
+        .expect("readable")
+        .expect("a run remains");
+    assert_eq!(tied.sha, PRIOR, "the tie is not earlier");
+    let after = last_run_in(WORKFLOW, &green, "2026-08-13T11:24:59Z", ELSEWHERE)
+        .expect("readable")
+        .expect("a run remains");
+    assert_eq!(
+        after.sha, HEAD,
+        "and one second later it is earlier — which is what makes the comparison \
+         strict rather than accidentally right"
+    );
+}
+
+/// A page carrying no run this gate can use is a READING, and not a refusal.
+///
+/// A workflow that has never run, or whose newest page is all failures, is a
+/// repository this gate cannot bound an interval for — and the caller narrows to
+/// the push range and prints why. Refusing here would turn a first-ever run of a
+/// new workflow into a red `main`.
+#[test]
+fn a_page_with_no_usable_run_is_a_reading_rather_than_a_refusal() {
+    let empty = "{\"total_count\":515,\"workflow_runs\":[]}";
+    let answer = last_run_in(WORKFLOW, empty, LATER, ELSEWHERE)
+        .expect("a page carrying no rows is an answer");
+    assert_eq!(answer, None);
+}
+
+/// A commit GitHub stops sending is a refusal, and not a run at no commit.
+#[test]
+fn a_head_sha_this_gate_cannot_find_is_a_refusal_rather_than_a_run_at_no_commit() {
+    let renamed = RUNS.replace("\"head_sha\"", "\"sha\"");
+    let why = last_run_in(WORKFLOW, &renamed, LATER, ELSEWHERE)
+        .expect_err("a row with no commit is not a run at no commit");
+    assert!(
+        why.contains("missing field `head_sha`"),
+        "and it names the field GitHub stopped sending: {why}"
+    );
+}
+
+/// An empty commit or an empty stamp is a refusal that says what it needs.
+///
+/// AN INTERVAL STARTING AT NOTHING EXCUSES EVERYTHING. `git diff "" HEAD` is not
+/// a question with an answer, and reading a blank as "the beginning of history"
+/// would excuse every cache in the repository.
+#[test]
+fn a_run_with_an_empty_commit_is_refused_by_name() {
+    let blank = RUNS.replace(PRIOR, "");
+    let why =
+        last_run_in(WORKFLOW, &blank, LATER, ELSEWHERE).expect_err("an empty sha is not a commit");
+    assert!(
+        why.contains(WORKFLOW),
+        "and it says whose runs it could not read: {why}"
+    );
+}
+
+/// Nothing printed about a workflow is not a workflow that never ran.
+#[test]
+fn nothing_printed_about_a_workflow_is_not_a_workflow_that_never_ran() {
+    let why = last_run_in(WORKFLOW, "", LATER, ELSEWHERE).expect_err("silence is not an answer");
+    assert!(
+        why.contains(WORKFLOW) && why.contains("printed nothing"),
+        "and it says which of the two silences it is: {why}"
+    );
+}
+
+/// Every recorded run stamp carries the one spelling the ordering assumes.
+///
+/// The newest qualifying run is chosen by COMPARING these stamps, so one row
+/// spelled differently from another would order them by how they were printed.
+#[test]
+fn every_recorded_run_stamp_carries_the_one_spelling_the_ordering_assumes() {
+    let stamps: Vec<&str> = RUNS
+        .match_indices("\"run_started_at\": \"")
+        .map(|(at, needle)| {
+            let rest = &RUNS[at + needle.len()..];
+            &rest[..rest.find('"').expect("a closing quote")]
+        })
+        .collect();
+    assert_eq!(
+        stamps.len(),
+        2,
+        "the recording carries two runs: {stamps:?}"
+    );
+    let widths: std::collections::BTreeSet<usize> = stamps.iter().map(|it| it.len()).collect();
+    assert_eq!(
+        widths.len(),
+        1,
+        "one width, or the ordering is by print: {widths:?}"
+    );
+    assert!(
+        stamps
+            .iter()
+            .all(|it| it.ends_with('Z') && !it.contains('.')),
+        "UTC and to the second — the spelling a cache's `created_at` does NOT use: {stamps:?}"
+    );
+}
+
+/// The question names the workflow by the identity the endpoint takes.
+///
+/// A PATH IS A 404 AND A 404 IS A REFUSAL. `ci-plan` spells a workflow as the file
+/// it read — `.github/workflows/mnemosyne-validate.yml` — and this endpoint
+/// addresses one by NAME. Deriving that here is what keeps every caller from
+/// spelling it a second time.
+#[test]
+fn the_question_names_the_workflow_by_the_identity_the_endpoint_takes() {
+    let words = workflow_runs_query(WORKFLOW, Some("main"));
+    let asked = words.join(" ");
+    assert!(
+        asked.contains("workflows/mnemosyne-validate.yml/runs"),
+        "the file name, not the path it was read from: {asked}"
+    );
+    assert!(
+        !asked.contains(".github/workflows/mnemosyne-validate.yml/runs"),
+        "and not the path, which this endpoint answers 404 to: {asked}"
+    );
+    assert!(
+        asked.contains("branch=main"),
+        "scoped to the ref whose storage holds the archives: {asked}"
+    );
+    assert!(
+        asked.contains("per_page="),
+        "and it asks for the newest page rather than paginating a run history: {asked}"
+    );
+}
+
+/// With no branch to name, the question carries no branch.
+///
+/// A `pull_request` names no branch this endpoint accepts, and `branch=` with
+/// nothing after it is a filter matching nothing — which would arrive as a
+/// workflow that has never run.
+#[test]
+fn with_no_branch_to_name_the_question_carries_no_branch() {
+    for absent in [None, Some(""), Some("  ")] {
+        let asked = workflow_runs_query(WORKFLOW, absent).join(" ");
+        assert!(!asked.contains("branch="), "{absent:?} -> {asked}");
+    }
 }
 
 /// The bytes of the first page of a concatenated answer, sliced where the stream

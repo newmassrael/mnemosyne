@@ -1,6 +1,6 @@
 //! Ask both sides, print what was reached, and only then judge any of it.
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 use std::path::Path;
 use std::process::Command;
 
@@ -102,66 +102,83 @@ fn main() {
     std::process::exit(if unreached { 2 } else { 1 });
 }
 
-/// When this run started, and which keys this commit legitimately invalidated.
+/// When this run started, and which keys this run legitimately invalidated.
 ///
-/// BOTH SIDES ASKED OF A MACHINE. The start time is GitHub's own, from the same
+/// EVERY SIDE ASKED OF A MACHINE. The start time is GitHub's own, from the same
 /// clock that stamps a cache's `created_at`, so the two are comparable without
-/// this program owning a notion of time. Which keys were invalidated is git's
-/// answer to the globs the keys themselves name — `:(glob)` pathspec magic rather
-/// than a second implementation of glob matching, which would be a second answer
-/// free to disagree with the one GitHub used to build the key.
+/// this program owning a notion of time. Which run bounds a key's interval is
+/// GitHub's answer about the workflow that DECLARES it. Whether anything moved
+/// over that interval is git's answer to the globs the keys themselves name —
+/// `:(glob)` pathspec magic rather than a second implementation of glob matching,
+/// which would be a second answer free to disagree with the one GitHub used to
+/// build the key.
+///
+/// WHAT IS LEFT HERE IS THE ASKING. The decision the answers feed lives in
+/// `cache_budget::windows_asked`, where a suite can drive it: R1178 found this
+/// reasoning wrong — it asked every key about the commits one push carried, which
+/// is not an interval a path-filtered workflow's key can be judged over — and
+/// nothing but a red `main` could report that, because nothing here had a reader.
 fn run_window(root: &Path, run_id: &str, declared: &[CacheDeclaration]) -> Result<Run, String> {
     let answer = gh(root, &cache_budget::run_query(run_id))?;
     let started_at = cache_budget::run_started_in(run_id, &answer)?;
 
     // THE RANGE THIS RUN COVERS, not the commit it ends at. A push carries as
     // many commits as it carries, and the one that moved a cache key's hashed
-    // inputs is routinely not the tip.
-    let range = cache_budget::range_start(
+    // inputs is routinely not the tip. It is the FALLBACK now rather than the
+    // interval: a key is asked for when its own workflow runs, and that is what
+    // decides the interval a miss can be explained over.
+    let push = cache_budget::range_start(
         std::env::var(cache_budget::RANGE_VARIABLE).ok().as_deref(),
         |sha| commit_is_here(root, sha),
     );
 
-    let mut inputs_changed = BTreeSet::new();
-    for declaration in declared {
-        if declaration.hashed.is_empty() || inputs_changed.contains(&declaration.prefix) {
-            continue;
-        }
-        let mut arguments = vec![
-            "diff".to_string(),
-            "--name-only".to_string(),
-            range.rev().to_string(),
-            "HEAD".to_string(),
-            "--".to_string(),
-        ];
-        arguments.extend(
-            declaration
-                .hashed
-                .iter()
-                .map(|glob| format!(":(glob){glob}")),
-        );
-        let out = Command::new("git")
-            .args(&arguments)
-            .current_dir(root)
-            .output()
-            .map_err(|e| format!("`git diff` could not be run at all: {e}"))?;
-        if !out.status.success() {
-            // A REFUSAL, NOT A GUESS. The usual cause is a checkout with no
-            // parent commit, and answering "nothing changed" there would refuse
-            // every key this run legitimately rebuilt.
-            return Err(format!(
-                "`git diff {} HEAD` failed ({}), so which keys this run \
-                 invalidated is unknown rather than empty — a checkout of depth 1 \
-                 has no parent to compare against: {}",
-                range.rev(),
-                out.status,
-                String::from_utf8_lossy(&out.stderr).trim()
-            ));
-        }
-        if !String::from_utf8_lossy(&out.stdout).trim().is_empty() {
-            inputs_changed.insert(declaration.prefix.clone());
-        }
-    }
+    // THE COMMIT BEING JUDGED, so that a run of it cannot bound its own interval.
+    // Asked of git rather than taken from `GITHUB_SHA`: what this gate diffs is
+    // this checkout's `HEAD`, and a runner variable naming a different commit
+    // would exclude a run that is not the one whose archive is being judged.
+    let head = head_sha(root)?;
+
+    // WHICH BRANCH'S RUNS ARE OBSERVATIONS OF THIS KEY. GitHub scopes cache
+    // storage by ref, so runs of another branch never saved an archive this run
+    // could have hit. On a `pull_request` the runner's `GITHUB_REF_NAME` is
+    // `123/merge`, which this endpoint does not accept as a branch — the BASE
+    // branch is the one whose runs left the archives a pull request restores, and
+    // it is set on exactly those events.
+    let branch = std::env::var("GITHUB_BASE_REF")
+        .ok()
+        .filter(|base| !base.trim().is_empty())
+        .or_else(|| std::env::var("GITHUB_REF_NAME").ok());
+
+    let asked = cache_budget::windows_asked(
+        declared,
+        &push,
+        |workflow| {
+            let answer = gh(
+                root,
+                &cache_budget::workflow_runs_query(workflow, branch.as_deref()),
+            )?;
+            match cache_budget::last_run_in(workflow, &answer, &started_at, &head)? {
+                // NAMED BUT NOT HELD, which is the shallow-clone case and the
+                // same one `range_start` narrows for: diffing from a commit this
+                // checkout does not have makes git fail, and a gate that refused
+                // there would refuse a repository that is fine.
+                Some(prior) if !commit_is_here(root, &prior.sha) => {
+                    Ok(cache_budget::WindowSource::Unavailable(format!(
+                        "`{workflow}` last ran at {} and this checkout does not hold that \
+                         commit, so the interval since then cannot be diffed",
+                        &prior.sha[..7.min(prior.sha.len())]
+                    )))
+                }
+                Some(prior) => Ok(cache_budget::WindowSource::Ran(prior)),
+                None => Ok(cache_budget::WindowSource::Unavailable(format!(
+                    "no successful run of `{workflow}` at another commit is in the newest \
+                     page of its runs"
+                ))),
+            }
+        },
+        |rev, globs| moved_since(root, rev, globs),
+    )?;
+
     // WHICH WORKFLOW THIS RUN IS OF, asked of the runner and checked against the
     // workflows this gate read. It is what decides whose restore records could
     // have been collected here, so a name nothing recognises is a refusal: the
@@ -175,9 +192,60 @@ fn run_window(root: &Path, run_id: &str, declared: &[CacheDeclaration]) -> Resul
     Ok(Run {
         workflow,
         started_at,
-        inputs_changed,
-        range,
+        asked,
     })
+}
+
+/// The commit this checkout is at.
+fn head_sha(root: &Path) -> Result<String, String> {
+    let out = Command::new("git")
+        .args(["rev-parse", "HEAD"])
+        .current_dir(root)
+        .output()
+        .map_err(|e| format!("`git rev-parse HEAD` could not be run at all: {e}"))?;
+    if !out.status.success() {
+        return Err(format!(
+            "`git rev-parse HEAD` failed ({}), so which commit is being judged is unknown — \
+             and a run of that commit is the one run that cannot bound its own interval: {}",
+            out.status,
+            String::from_utf8_lossy(&out.stderr).trim()
+        ));
+    }
+    Ok(String::from_utf8_lossy(&out.stdout).trim().to_string())
+}
+
+/// Did anything matching these globs move between that revision and `HEAD`?
+///
+/// GIT'S OWN GLOB MATCHING, through `:(glob)` pathspec magic. GitHub built the
+/// key with `hashFiles`, and a second implementation of that matching here would
+/// be a second answer, free to disagree with the one the key was made of.
+fn moved_since(root: &Path, rev: &str, globs: &[String]) -> Result<bool, String> {
+    let mut arguments = vec![
+        "diff".to_string(),
+        "--name-only".to_string(),
+        rev.to_string(),
+        "HEAD".to_string(),
+        "--".to_string(),
+    ];
+    arguments.extend(globs.iter().map(|glob| format!(":(glob){glob}")));
+    let out = Command::new("git")
+        .args(&arguments)
+        .current_dir(root)
+        .output()
+        .map_err(|e| format!("`git diff` could not be run at all: {e}"))?;
+    if !out.status.success() {
+        // A REFUSAL, NOT A GUESS. The usual cause is a checkout too shallow to
+        // hold the other end of the interval, and answering "nothing changed"
+        // there would refuse every key this run legitimately rebuilt.
+        return Err(format!(
+            "`git diff {rev} HEAD` failed ({}), so which keys this run invalidated is \
+             unknown rather than empty — a checkout of depth 1 has no parent to compare \
+             against: {}",
+            out.status,
+            String::from_utf8_lossy(&out.stderr).trim()
+        ));
+    }
+    Ok(!String::from_utf8_lossy(&out.stdout).trim().is_empty())
 }
 
 /// Is this commit in this checkout at all?
