@@ -232,6 +232,87 @@ fn every_tracked_sweep_still_applies_to_the_tree_it_names() {
     );
 }
 
+/// A SWEEP THAT SAYS `--workspace` MUST RUN THE WHOLE OF IT (Round 1171).
+///
+/// A sweep's verdict is "which tests went red", so the suite its command
+/// reaches is the population every one of its findings is about. Three sweeps
+/// here run `cargo test --workspace` with no features, and this repository's
+/// features are not decoration: MEASURED on this tree, the same workspace is
+/// 1956 tests without them and 1965 with — nine tests in the server's
+/// `#![cfg(feature)]` targets, which compile to an EMPTY test binary rather
+/// than to an error when the feature is off.
+///
+/// CI IS NOT WRONG TO SPLIT, AND A SWEEP CANNOT. The workflow runs
+/// `cargo test --workspace --locked` in one job and
+/// `cargo test -p mnemosyne-server --all-features --locked` in another, so
+/// between them every test is run. A sweep has ONE command: whatever those nine
+/// tests alone would have caught, it scores as an injection that reddened
+/// nothing — the "vacuous law" verdict, which is the one answer a device built
+/// to detect vacuity must never invent.
+///
+/// AND THE CONTROL COUNT IS READ AS THE REPOSITORY'S. Round 1145 recorded
+/// "CONTROL 1870 passed, 161 targets" in a manifest header; a reader comparing
+/// it against a session's own `--all-features` number sees a discrepancy that
+/// is not a defect and can spend an hour on it. That happened, in the session
+/// that wrote this law.
+///
+/// SCOPED TO `--workspace` DELIBERATELY. A sweep aimed at one target claims
+/// nothing about the repository's suite, so requiring features of it would be
+/// this law over-applying — the direction Round 1144 asks a new refusal to
+/// name.
+#[test]
+fn a_sweep_that_runs_the_whole_workspace_runs_its_features_too() {
+    let root = repository_root();
+    let here = root.canonicalize().expect("the repository root resolves");
+    let mut whole_workspace = Vec::new();
+    let mut without_features = Vec::new();
+    for path in tracked_json(&root) {
+        let Ok(manifest) = injection_harness::read_manifest(&root.join(&path)) else {
+            continue;
+        };
+        let argv = &manifest.test_command;
+        if !argv.iter().any(|a| a == "--workspace") {
+            continue;
+        }
+        // WHOSE WORKSPACE — asked of the manifest's own `repo`, already resolved
+        // against its directory, and not of where the file sits. A test's INPUT
+        // manifest names the tree that test materialises, so `--workspace` in it
+        // is a claim about a fixture and none of this law's business; the
+        // sibling law above answers the same question by directory, and this one
+        // cannot, because a fixture that says `--workspace` about ITS tree is
+        // correct while the same words about this one are the defect.
+        if manifest.repo.canonicalize().ok().as_deref() != Some(here.as_path()) {
+            continue;
+        }
+        whole_workspace.push(path.clone());
+        let enables = argv
+            .iter()
+            .any(|a| a == "--all-features" || a == "--features" || a.starts_with("--features="));
+        if !enables {
+            without_features.push(format!("{path}: {}", argv.join(" ")));
+        }
+    }
+
+    // NON-VACUITY, AND IT IS THE SAME SHAPE THE LAW IS ABOUT: a walk that
+    // matched no manifest would pass this in the silence of a clean repository.
+    assert!(
+        whole_workspace.len() >= 3,
+        "only {} sweep(s) claim the whole workspace, which is fewer than this \
+         repository has — a law over the wrong population is the empty answer \
+         that reads as a clean one: {whole_workspace:?}",
+        whole_workspace.len()
+    );
+    assert!(
+        without_features.is_empty(),
+        "{} sweep(s) run `cargo test --workspace` with no features, so their \
+         control and every red set they report are about a suite nine tests \
+         short of this repository's — and an injection that only those nine \
+         would catch is scored as a law that cannot break:\n  {}",
+        without_features.len(),
+        without_features.join("\n  ")
+    );
+}
+
 #[test]
 fn a_sweep_whose_anchor_has_come_loose_is_named_rather_than_skipped() {
     // THE CONTROL FOR THE LAW ABOVE, and the reason it is not merely a walk. Two

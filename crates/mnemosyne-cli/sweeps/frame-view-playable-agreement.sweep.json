@@ -68,7 +68,7 @@
     "has measured."
   ],
   "repo": "../../..",
-  "test_command": ["cargo", "test", "--workspace", "--no-fail-fast"],
+  "test_command": ["cargo", "test", "--workspace", "--all-features", "--no-fail-fast"],
   "red_set": "exhaustive",
   "logs": "../../../target/injection-logs",
   "min_free_mb": 8000,

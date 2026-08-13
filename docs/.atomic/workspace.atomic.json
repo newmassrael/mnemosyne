@@ -10886,6 +10886,88 @@
         "I OVERRULED A CORRECT MEMORY NOTE WITH A BAD MEASUREMENT. The note said `claudedocs/` is gitignored; it was right, and it had been right for ten rounds. The failure mode is worth naming precisely because it inverts the usual one: the danger is not only a stale note, it is a fresh measurement that answers a question next to the one asked."
       ]
     },
+    "Round 1171": {
+      "decision_summary": "R1171 (DEBT) — A SWEEP THAT SAYS `--workspace` WAS NOT RUNNING THE WHOLE OF\nONE. Y4 is a 3h30m run of `citation-path-scope.sweep.json`, and before spending\nit the command was read: `cargo test --workspace --no-fail-fast`, no features.\nMEASURED on this tree, that command is 1956 tests where the same workspace with\nits features is 1965. Nine tests, four targets, and the reason they vanish\nrather than fail is that a `#![cfg(feature)]` file with its feature off compiles\nto an EMPTY test binary — the shape Round 1150 paid for and the reason its\nlesson is \"count `running 0 tests`\".\n\nSTAR THE FIRST DIAGNOSIS WAS WRONG AND THE MEASUREMENT SAID SO. This round was\nproposed as \"the sweep disagrees with CI, which uses `--all-features`\". CI does\nnot: the workflow runs `cargo test --workspace --locked` in one job and\n`cargo test -p mnemosyne-server --all-features --locked` in another. CI is not\nwrong to split — between the two jobs every test runs. THE POINT IS THAT A SWEEP\nCANNOT SPLIT. It has one command, so whatever those nine tests alone would have\ncaught is scored as an injection that reddened nothing, which is the \"vacuous\nlaw\" verdict — the one answer a device built to detect vacuity must never\ninvent.\n\nSTAR THE POPULATION IS DERIVED FROM THE MANIFESTS, NOT NAMED. The law walks\nevery tracked `.json` that reads as a manifest and keeps the ones whose own\n`repo` resolves to THIS repository root. That classifier matters and was found\nby running the law: a first version judged by the argv alone and named a test's\nINPUT fixture, whose `--workspace` is a true claim about the tree that test\nmaterialises. It also named `tools/injection-harness/example.json` — and that\none is CORRECTLY named, because an example teaches the command somebody copies.\n\nSTAR SCOPED TO `--workspace` ON PURPOSE. A sweep aimed at one target claims\nnothing about the repository's suite, so requiring features of it would be this\nlaw over-applying — the direction Round 1144 asks every new refusal to state.\n\nSTAR AND THE STALE CONTROL WENT WITH IT. The manifest header recorded \"CONTROL\n1870 passed, 161 targets\" from Round 1145, measured under the old command. This\nsession read that against its own `--all-features` 1965/155 and spent an hour on\na discrepancy that was two suites rather than a defect. The header now says\nwhich command that number belongs to and that it is stale by exactly the\ndifference. Round 1139's rule — a measurement carries its own population —\napplies to a control line in a manifest.",
+      "changes_bullets": [
+        "`tools/injection-harness/tests/sweeps.rs` — a third law: a sweep whose own `repo` is this repository and whose command says `--workspace` must enable its features. Population derived from the manifests themselves, with a floor that reddens when the classifier matches nothing.",
+        "`crates/mnemosyne-cli/sweeps/{citation-path-scope,frame-view-playable-agreement,frontier-manuscript-agreement}.sweep.json` and `tools/injection-harness/example.json` — `--all-features` on all four commands.",
+        "`citation-path-scope.sweep.json` header — the Round 1145 control is now stamped with the command it was measured under and marked stale by exactly the nine tests."
+      ],
+      "verification_bullets": [
+        "THE GAP IS MEASURED, NOT ARGUED: `cargo test --workspace --locked` on this tree is 1956 passed; `--all-features` is 1965, both over 155 result lines reconciled against 155 `running` lines. The compiled TARGET sets are identical (127 and 127) — the difference is tests inside targets that exist either way, which is why nothing failed and nothing said so.",
+        "RED FIRST, AND THE RED CORRECTED THE LAW'S POPULATION. The first version named five manifests; two were wrong — a test's input fixture under `tests/fixtures/` and, at first reading, the harness's example. Resolving each manifest's own `repo` dropped the fixture and kept the example, which is the right answer for both.",
+        "TWO INJECTIONS, EACH AIMED AT A DIFFERENT HALF. Dropping `--all-features` from one manifest reddens the law naming exactly that file. Making the classifier match nothing reddens the non-vacuity floor with `only 0 sweep(s)` — the half that would otherwise pass in the silence of a clean repository.",
+        "`cargo test --workspace --all-features --locked --no-fail-fast`: 1965 passed, 0 failed, 155 targets. `cargo clippy --workspace --locked --all-targets --all-features -- -D warnings` exit 0. `cargo fmt --all --check` exit 0 in both workspaces.",
+        "Side workspaces 14 checked, 0 skipped — which is where the harness's own suite runs. `mnemosyne-cli validate-workspace` exit 0."
+      ],
+      "carry_forward_bullets": [
+        "THE CONTROL IS NOW UNMEASURED RATHER THAN WRONG, and only a full run replaces it. That run is Y4 and it is the owner's 3h30m to spend; nothing here shortens it. What changed is that the number it produces will be about the suite this repository otherwise measures.",
+        "`--locked` IS STILL ABSENT FROM THE SWEEP COMMANDS while CI carries it. Not folded in here because the injections edit `.rs` files and never a manifest, so there is no resolve for a missing `--locked` to rewrite — the hazard Round 1115 named needs a dependency to move. It is one word if a sweep ever edits a `Cargo.toml`.",
+        "WHETHER THE NINE COULD HAVE CHANGED A VERDICT IS UNKNOWN AND CHEAPER TO PREVENT THAN TO ANSWER. They are the server's OTLP and TLS tests; the sixteen injections in the sweep edit `mnemosyne-validate` and `mnemosyne-cli`, so today the answer is almost certainly no. The law is about the day it is not, and that day gives no warning."
+      ],
+      "population_census": [
+        {
+          "axis": "transition rules by `undirected`",
+          "left_label": "undirected",
+          "left": 10,
+          "right_label": "directed",
+          "right": 27
+        },
+        {
+          "axis": "map corpora by leg-kind declaration",
+          "left_label": "omitted",
+          "left": 6,
+          "right_label": "declared",
+          "right": 24
+        },
+        {
+          "axis": "cost-carrying corpora by direction-dependent pricing",
+          "left_label": "prices a way by direction",
+          "left": 4,
+          "right_label": "prices no way by direction",
+          "right": 6
+        },
+        {
+          "axis": "run trees by authoring mode",
+          "left_label": "hand script",
+          "left": 10,
+          "right_label": "file-only",
+          "right": 239
+        },
+        {
+          "axis": "map corpora by declared boundary crossing",
+          "left_label": "declares an exit",
+          "left": 6,
+          "right_label": "declares none",
+          "right": 24
+        },
+        {
+          "axis": "authored submissions by map and telling",
+          "left_label": "carries both",
+          "left": 10,
+          "right_label": "carries one",
+          "right": 24
+        }
+      ],
+      "publishable_decision_summary": "R1171 (DEBT) — A SWEEP THAT SAYS `--workspace` WAS NOT RUNNING THE WHOLE OF\nONE. Y4 is a 3h30m run of `citation-path-scope.sweep.json`, and before spending\nit the command was read: `cargo test --workspace --no-fail-fast`, no features.\nMEASURED on this tree, that command is 1956 tests where the same workspace with\nits features is 1965. Nine tests, four targets, and the reason they vanish\nrather than fail is that a `#![cfg(feature)]` file with its feature off compiles\nto an EMPTY test binary — the shape Round 1150 paid for and the reason its\nlesson is \"count `running 0 tests`\".\n\nSTAR THE FIRST DIAGNOSIS WAS WRONG AND THE MEASUREMENT SAID SO. This round was\nproposed as \"the sweep disagrees with CI, which uses `--all-features`\". CI does\nnot: the workflow runs `cargo test --workspace --locked` in one job and\n`cargo test -p mnemosyne-server --all-features --locked` in another. CI is not\nwrong to split — between the two jobs every test runs. THE POINT IS THAT A SWEEP\nCANNOT SPLIT. It has one command, so whatever those nine tests alone would have\ncaught is scored as an injection that reddened nothing, which is the \"vacuous\nlaw\" verdict — the one answer a device built to detect vacuity must never\ninvent.\n\nSTAR THE POPULATION IS DERIVED FROM THE MANIFESTS, NOT NAMED. The law walks\nevery tracked `.json` that reads as a manifest and keeps the ones whose own\n`repo` resolves to THIS repository root. That classifier matters and was found\nby running the law: a first version judged by the argv alone and named a test's\nINPUT fixture, whose `--workspace` is a true claim about the tree that test\nmaterialises. It also named `tools/injection-harness/example.json` — and that\none is CORRECTLY named, because an example teaches the command somebody copies.\n\nSTAR SCOPED TO `--workspace` ON PURPOSE. A sweep aimed at one target claims\nnothing about the repository's suite, so requiring features of it would be this\nlaw over-applying — the direction Round 1144 asks every new refusal to state.\n\nSTAR AND THE STALE CONTROL WENT WITH IT. The manifest header recorded \"CONTROL\n1870 passed, 161 targets\" from Round 1145, measured under the old command. This\nsession read that against its own `--all-features` 1965/155 and spent an hour on\na discrepancy that was two suites rather than a defect. The header now says\nwhich command that number belongs to and that it is stale by exactly the\ndifference. Round 1139's rule — a measurement carries its own population —\napplies to a control line in a manifest.",
+      "publishable_changes_bullets": [
+        "`tools/injection-harness/tests/sweeps.rs` — a third law: a sweep whose own `repo` is this repository and whose command says `--workspace` must enable its features. Population derived from the manifests themselves, with a floor that reddens when the classifier matches nothing.",
+        "`crates/mnemosyne-cli/sweeps/{citation-path-scope,frame-view-playable-agreement,frontier-manuscript-agreement}.sweep.json` and `tools/injection-harness/example.json` — `--all-features` on all four commands.",
+        "`citation-path-scope.sweep.json` header — the Round 1145 control is now stamped with the command it was measured under and marked stale by exactly the nine tests."
+      ],
+      "publishable_verification_bullets": [
+        "THE GAP IS MEASURED, NOT ARGUED: `cargo test --workspace --locked` on this tree is 1956 passed; `--all-features` is 1965, both over 155 result lines reconciled against 155 `running` lines. The compiled TARGET sets are identical (127 and 127) — the difference is tests inside targets that exist either way, which is why nothing failed and nothing said so.",
+        "RED FIRST, AND THE RED CORRECTED THE LAW'S POPULATION. The first version named five manifests; two were wrong — a test's input fixture under `tests/fixtures/` and, at first reading, the harness's example. Resolving each manifest's own `repo` dropped the fixture and kept the example, which is the right answer for both.",
+        "TWO INJECTIONS, EACH AIMED AT A DIFFERENT HALF. Dropping `--all-features` from one manifest reddens the law naming exactly that file. Making the classifier match nothing reddens the non-vacuity floor with `only 0 sweep(s)` — the half that would otherwise pass in the silence of a clean repository.",
+        "`cargo test --workspace --all-features --locked --no-fail-fast`: 1965 passed, 0 failed, 155 targets. `cargo clippy --workspace --locked --all-targets --all-features -- -D warnings` exit 0. `cargo fmt --all --check` exit 0 in both workspaces.",
+        "Side workspaces 14 checked, 0 skipped — which is where the harness's own suite runs. `mnemosyne-cli validate-workspace` exit 0."
+      ],
+      "publishable_carry_forward_bullets": [
+        "THE CONTROL IS NOW UNMEASURED RATHER THAN WRONG, and only a full run replaces it. That run is Y4 and it is the owner's 3h30m to spend; nothing here shortens it. What changed is that the number it produces will be about the suite this repository otherwise measures.",
+        "`--locked` IS STILL ABSENT FROM THE SWEEP COMMANDS while CI carries it. Not folded in here because the injections edit `.rs` files and never a manifest, so there is no resolve for a missing `--locked` to rewrite — the hazard Round 1115 named needs a dependency to move. It is one word if a sweep ever edits a `Cargo.toml`.",
+        "WHETHER THE NINE COULD HAVE CHANGED A VERDICT IS UNKNOWN AND CHEAPER TO PREVENT THAN TO ANSWER. They are the server's OTLP and TLS tests; the sixteen injections in the sweep edit `mnemosyne-validate` and `mnemosyne-cli`, so today the answer is almost certainly no. The law is about the day it is not, and that day gives no warning."
+      ]
+    },
     "Round 252": {
       "decision_summary": "Parser CommonMark conformance — recognize indented fenced code blocks (§98) and require whitespace after ATX hash sequence (§62)",
       "changes_bullets": [
