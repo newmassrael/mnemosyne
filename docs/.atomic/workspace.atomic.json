@@ -11276,6 +11276,148 @@
         "question this round measured the first half of and did not answer."
       ]
     },
+    "Round 1175": {
+      "decision_summary": "R1175 (DEBT — a test suite that cannot be run twice at once, proved by running\nit twice at once). Round 1174's verification ran `check-side-workspaces.sh`\ntwice with an overlap, and `tools/experiment-harness`'s\n`seal::tests::a_changed_input_is_an_error_not_a_reseal` panicked on a\n`NotFound` writing a file into a directory it had just created. Run alone,\nthe same suite is green. That difference is the finding.\n\nTHE FIXTURE PATH IS A CONSTANT, SO TWO RUNS ARE ONE RUN. Both `tmp()` and\n`kit()` compose their path from `std::env::temp_dir()` and a name fixed in the\nsource — `eh-seal-test-match`, `eh-stamp-changed` — and every test ends by\nREMOVING that path. Two processes running the suite therefore share one set of\ndirectories, and the second's `create_dir_all` is followed by the first's\n`remove_dir_all` before the write lands. Nothing about it is probabilistic in\nthe way \"flake\" suggests: the tests are correct in isolation and wrong the\nmoment anything else is running them, which on a build machine three\nrepositories share is the normal case rather than the unlucky one.\n\nTHE PROCESS ID IS THE MISSING COORDINATE. A fixture directory is per-RUN state\nand was named as though it were per-TEST state; adding `std::process::id()`\nmakes the name say which run owns it. It is not a retry, not a lock, and not a\nserial-test attribute — those all treat the collision as scheduling. The paths\nsimply did not name enough to be unique, and now they do.\n\nWHY IT MATTERS BEYOND THIS CRATE. The evidence this repository trusts is\nproduced by runs on a shared machine, and the failure mode here is one where a\ngreen suite and a red suite differ by WHO ELSE WAS RUNNING. Round 1148's\n2-in-30 tracing failure and Round 1172's process-global installer denylist are\nthe same family: state a test binary does not own, named as though it did. This\none was found the honest way — by an overlap that actually happened, with the\nreal message read rather than the word \"flake\" written.",
+      "changes_bullets": [
+        "Six fixture paths across the side workspaces name the PROCESS: `tmp()` and",
+        "`kit()` in `tools/experiment-harness/src/seal.rs`, the scratch directory in",
+        "its `declare.rs` test, `scratch()` in `tools/unrun-tests/tests/gate.rs`, and",
+        "both of `tools/unrun-tests/tests/entrance.rs`.",
+        "The doc comment on each says WHY the pid is in the name — a fixture directory",
+        "the test also REMOVES is per-RUN state, and a constant path claims it is",
+        "per-TEST state — and names the four sibling crates that already did this, so",
+        "the next reader sees a convention rather than a one-off."
+      ],
+      "verification_bullets": [
+        "The defect was REPRODUCED before it was named: two overlapping",
+        "`check-side-workspaces.sh` runs on the build machine, and the panic read",
+        "`Os { code: 2, kind: NotFound }` at the `fs::write` one line after",
+        "`create_dir_all`. Run alone the same suite was green, which is the difference",
+        "that identified the cause.",
+        "The fix is measured the only way that means anything here: the suite run TWICE",
+        "CONCURRENTLY, both arms 40 passed / 0 and 4 passed / 0. The overlap is",
+        "evidenced rather than assumed — the two runs started one second apart and each",
+        "took 28 seconds, so they were in flight together for essentially their whole",
+        "duration.",
+        "Six sites were repaired, found by reading every `temp_dir()` use across the",
+        "side workspaces: two helpers in `experiment-harness/src/seal.rs`, one test in",
+        "its `declare.rs`, and three in `unrun-tests`. Four sibling crates",
+        "(`injection-harness`, `rustc-log`, `twice-compiled`, and this crate's own",
+        "`cli_smoke`) already named the process, so this is a convention that existed",
+        "and had holes, not one invented here."
+      ],
+      "impact_refs": [
+        "atomic-store-mutate-api"
+      ],
+      "carry_forward_bullets": [
+        "THE PID MAKES CONCURRENT RUNS SAFE AND SAYS NOTHING ABOUT A CRASHED ONE. A",
+        "run killed between `create_dir_all` and its own cleanup leaves its directory",
+        "behind, and nothing sweeps it; the paths are under the system temp dir, so the",
+        "system does. Naming this rather than adding a reaper: a reaper would have to",
+        "decide whether a live run owns a directory, which is the same ownership",
+        "question the pid just answered, asked again from outside.",
+        "NOTHING STOPS THE SEVENTH ONE. Six sites were found and fixed by reading every",
+        "`temp_dir()` use in the side workspaces, and four other crates were already",
+        "doing it right — so the convention exists and only discipline holds it. The",
+        "law that would enforce it is the R1172 shape: read the SYNTAX (a fixture path",
+        "composed under `temp_dir()` whose format string names no per-run value) rather",
+        "than the text, because a `grep` for `process::id` cannot tell a path that is",
+        "unique from one that merely mentions it. That law is buildable and is not",
+        "built here; it is registered as undone work, not as a limit."
+      ],
+      "population_census": [
+        {
+          "axis": "transition rules by `undirected`",
+          "left_label": "undirected",
+          "left": 10,
+          "right_label": "directed",
+          "right": 27
+        },
+        {
+          "axis": "map corpora by leg-kind declaration",
+          "left_label": "omitted",
+          "left": 6,
+          "right_label": "declared",
+          "right": 24
+        },
+        {
+          "axis": "cost-carrying corpora by direction-dependent pricing",
+          "left_label": "prices a way by direction",
+          "left": 4,
+          "right_label": "prices no way by direction",
+          "right": 6
+        },
+        {
+          "axis": "run trees by authoring mode",
+          "left_label": "hand script",
+          "left": 10,
+          "right_label": "file-only",
+          "right": 239
+        },
+        {
+          "axis": "map corpora by declared boundary crossing",
+          "left_label": "declares an exit",
+          "left": 6,
+          "right_label": "declares none",
+          "right": 24
+        },
+        {
+          "axis": "authored submissions by map and telling",
+          "left_label": "carries both",
+          "left": 10,
+          "right_label": "carries one",
+          "right": 24
+        }
+      ],
+      "publishable_decision_summary": "R1175 (DEBT — a test suite that cannot be run twice at once, proved by running\nit twice at once). Round 1174's verification ran `check-side-workspaces.sh`\ntwice with an overlap, and `tools/experiment-harness`'s\n`seal::tests::a_changed_input_is_an_error_not_a_reseal` panicked on a\n`NotFound` writing a file into a directory it had just created. Run alone,\nthe same suite is green. That difference is the finding.\n\nTHE FIXTURE PATH IS A CONSTANT, SO TWO RUNS ARE ONE RUN. Both `tmp()` and\n`kit()` compose their path from `std::env::temp_dir()` and a name fixed in the\nsource — `eh-seal-test-match`, `eh-stamp-changed` — and every test ends by\nREMOVING that path. Two processes running the suite therefore share one set of\ndirectories, and the second's `create_dir_all` is followed by the first's\n`remove_dir_all` before the write lands. Nothing about it is probabilistic in\nthe way \"flake\" suggests: the tests are correct in isolation and wrong the\nmoment anything else is running them, which on a build machine three\nrepositories share is the normal case rather than the unlucky one.\n\nTHE PROCESS ID IS THE MISSING COORDINATE. A fixture directory is per-RUN state\nand was named as though it were per-TEST state; adding `std::process::id()`\nmakes the name say which run owns it. It is not a retry, not a lock, and not a\nserial-test attribute — those all treat the collision as scheduling. The paths\nsimply did not name enough to be unique, and now they do.\n\nWHY IT MATTERS BEYOND THIS CRATE. The evidence this repository trusts is\nproduced by runs on a shared machine, and the failure mode here is one where a\ngreen suite and a red suite differ by WHO ELSE WAS RUNNING. Round 1148's\n2-in-30 tracing failure and Round 1172's process-global installer denylist are\nthe same family: state a test binary does not own, named as though it did. This\none was found the honest way — by an overlap that actually happened, with the\nreal message read rather than the word \"flake\" written.",
+      "publishable_changes_bullets": [
+        "Six fixture paths across the side workspaces name the PROCESS: `tmp()` and",
+        "`kit()` in `tools/experiment-harness/src/seal.rs`, the scratch directory in",
+        "its `declare.rs` test, `scratch()` in `tools/unrun-tests/tests/gate.rs`, and",
+        "both of `tools/unrun-tests/tests/entrance.rs`.",
+        "The doc comment on each says WHY the pid is in the name — a fixture directory",
+        "the test also REMOVES is per-RUN state, and a constant path claims it is",
+        "per-TEST state — and names the four sibling crates that already did this, so",
+        "the next reader sees a convention rather than a one-off."
+      ],
+      "publishable_verification_bullets": [
+        "The defect was REPRODUCED before it was named: two overlapping",
+        "`check-side-workspaces.sh` runs on the build machine, and the panic read",
+        "`Os { code: 2, kind: NotFound }` at the `fs::write` one line after",
+        "`create_dir_all`. Run alone the same suite was green, which is the difference",
+        "that identified the cause.",
+        "The fix is measured the only way that means anything here: the suite run TWICE",
+        "CONCURRENTLY, both arms 40 passed / 0 and 4 passed / 0. The overlap is",
+        "evidenced rather than assumed — the two runs started one second apart and each",
+        "took 28 seconds, so they were in flight together for essentially their whole",
+        "duration.",
+        "Six sites were repaired, found by reading every `temp_dir()` use across the",
+        "side workspaces: two helpers in `experiment-harness/src/seal.rs`, one test in",
+        "its `declare.rs`, and three in `unrun-tests`. Four sibling crates",
+        "(`injection-harness`, `rustc-log`, `twice-compiled`, and this crate's own",
+        "`cli_smoke`) already named the process, so this is a convention that existed",
+        "and had holes, not one invented here."
+      ],
+      "publishable_impact_refs": [
+        "atomic-store-mutate-api"
+      ],
+      "publishable_carry_forward_bullets": [
+        "THE PID MAKES CONCURRENT RUNS SAFE AND SAYS NOTHING ABOUT A CRASHED ONE. A",
+        "run killed between `create_dir_all` and its own cleanup leaves its directory",
+        "behind, and nothing sweeps it; the paths are under the system temp dir, so the",
+        "system does. Naming this rather than adding a reaper: a reaper would have to",
+        "decide whether a live run owns a directory, which is the same ownership",
+        "question the pid just answered, asked again from outside.",
+        "NOTHING STOPS THE SEVENTH ONE. Six sites were found and fixed by reading every",
+        "`temp_dir()` use in the side workspaces, and four other crates were already",
+        "doing it right — so the convention exists and only discipline holds it. The",
+        "law that would enforce it is the R1172 shape: read the SYNTAX (a fixture path",
+        "composed under `temp_dir()` whose format string names no per-run value) rather",
+        "than the text, because a `grep` for `process::id` cannot tell a path that is",
+        "unique from one that merely mentions it. That law is buildable and is not",
+        "built here; it is registered as undone work, not as a limit."
+      ]
+    },
     "Round 252": {
       "decision_summary": "Parser CommonMark conformance — recognize indented fenced code blocks (§98) and require whitespace after ATX hash sequence (§62)",
       "changes_bullets": [

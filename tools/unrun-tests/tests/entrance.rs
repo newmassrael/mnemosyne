@@ -41,7 +41,10 @@ const RUN_TEST: &str = "tests::run_by_ci";
 /// So the fixture stages what it writes, and a file this forgot to add would
 /// make the gate say the tree has no workflows at all.
 fn tree(name: &str, ci: &str) -> std::path::PathBuf {
-    let at = std::env::temp_dir().join(format!("unrun-tests-entrance-{name}"));
+    let at = std::env::temp_dir().join(format!(
+        "unrun-tests-entrance-{name}-{}",
+        std::process::id()
+    ));
     let _ = std::fs::remove_dir_all(&at);
     std::fs::create_dir_all(at.join("src")).expect("fixture src");
     std::fs::create_dir_all(at.join("scripts")).expect("fixture scripts");
@@ -236,7 +239,7 @@ fn a_tree_whose_ci_runs_no_tests_is_unjudged_rather_than_clean() {
 /// conclude the code means "CI issues no test command".
 #[test]
 fn a_directory_that_is_not_a_cargo_tree_is_unjudged_too() {
-    let at = std::env::temp_dir().join("unrun-tests-entrance-bare");
+    let at = std::env::temp_dir().join(format!("unrun-tests-entrance-bare-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&at);
     std::fs::create_dir_all(&at).expect("bare directory");
     let out = gate(&at);

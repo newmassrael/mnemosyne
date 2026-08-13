@@ -127,9 +127,19 @@ mod tests {
     use crate::util::sha256_hex;
     use std::fs;
 
+    /// A scratch file for one test, named with the PROCESS so two runs of this
+    /// suite do not share it (Round 1175).
+    ///
+    /// A fixture path is per-RUN state, and a constant under `temp_dir()`
+    /// claims it is per-TEST state. Every test here ends by REMOVING its path,
+    /// so two concurrent runs delete each other's fixtures — which is what
+    /// happened on the build machine three repositories share: the same suite
+    /// is green alone and red beside itself. `injection-harness`, `rustc-log`,
+    /// `twice-compiled` and this crate's own `cli_smoke` already name the
+    /// process; these two helpers were the ones that did not.
     fn tmp(name: &str, contents: &str) -> String {
         let mut path = std::env::temp_dir();
-        path.push(format!("eh-seal-test-{name}"));
+        path.push(format!("eh-seal-test-{name}-{}", std::process::id()));
         let path = path.to_string_lossy().to_string();
         fs::write(&path, contents).unwrap();
         path
@@ -160,10 +170,11 @@ mod tests {
         fs::remove_file(&path).ok();
     }
 
-    /// A kit directory holding one input and a record that declares it.
+    /// A kit directory holding one input and a record that declares it, named
+    /// with the PROCESS for the reason [`tmp`] gives (Round 1175).
     fn kit(name: &str, body: &str, record: &str) -> (String, String) {
         let mut dir = std::env::temp_dir();
-        dir.push(format!("eh-stamp-{name}"));
+        dir.push(format!("eh-stamp-{name}-{}", std::process::id()));
         fs::create_dir_all(&dir).unwrap();
         let input = dir.join("facts.json");
         fs::write(&input, body).unwrap();

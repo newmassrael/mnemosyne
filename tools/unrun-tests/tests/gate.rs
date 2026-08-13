@@ -85,8 +85,13 @@ fn names(tests: &std::collections::BTreeSet<TestId>) -> Vec<&str> {
     out
 }
 
+/// A fixture tree for one test, named with the PROCESS so two runs of this
+/// suite do not share it (Round 1175). The helper REMOVES the path before
+/// building it, so a constant name lets a second run delete a first run's
+/// fixture mid-test — measured on the build machine, where a suite green alone
+/// went red beside itself.
 fn scratch(name: &str) -> PathBuf {
-    let at = std::env::temp_dir().join(format!("unrun-tests-{name}"));
+    let at = std::env::temp_dir().join(format!("unrun-tests-{name}-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&at);
     at
 }

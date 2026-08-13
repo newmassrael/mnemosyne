@@ -376,7 +376,10 @@ mod tests {
     /// undeclared while the typo sat there looking like a record.
     #[test]
     fn reassigning_an_undeclared_path_is_an_error_and_writes_nothing() {
-        let dir = std::env::temp_dir().join("mn-set-role-undeclared");
+        // Named with the process, for the reason `seal::tests::tmp` gives
+        // (Round 1175): a fixture path this test also REMOVES is per-run state.
+        let dir =
+            std::env::temp_dir().join(format!("mn-set-role-undeclared-{}", std::process::id()));
         std::fs::create_dir_all(&dir).expect("mkdir");
         let record = dir.join("replay.json");
         let before = r#"{"inputs":[{"path":"run/contract.txt","role":"run-artifact"}]}"#;
