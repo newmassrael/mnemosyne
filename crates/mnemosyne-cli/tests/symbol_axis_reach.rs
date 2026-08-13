@@ -160,10 +160,14 @@ const CPP: LangFixture = LangFixture {
 const GO: LangFixture = LangFixture {
     language: "go",
     ext: "go",
-    drift: "package p\n\ntype Holder struct{}\n\nfunc (h Holder) alpha() {\n\t\
-            // §sec1 — recorded as `beta`, so this citation has drifted\n\tx := 1\n\t_ = x\n}\n",
-    matched: "package p\n\ntype Keeper struct{}\n\nfunc (k Keeper) gamma() {\n\t\
-              // §sec2 — recorded as `gamma`, so this citation is clean\n\ty := 2\n\t_ = y\n}\n",
+    // A GROUPED `var`, WHICH IS A SHAPE C++ CANNOT NAME. The method form this
+    // fixture used until Round 1165 read identically under the C++ grammar —
+    // `func (h Holder) alpha() {` is a function definition there too, named
+    // `alpha` — so the wire that pairs `go` with a backend had no reader.
+    drift: "package p\n\nvar (\n\t\
+            // §sec1 — recorded as `beta`, so this citation has drifted\n\talpha int\n)\n",
+    matched: "package p\n\nvar (\n\t\
+              // §sec2 — recorded as `gamma`, so this citation is clean\n\tgamma int\n)\n",
     matched_symbol: "gamma",
 };
 
@@ -190,12 +194,14 @@ const PYTHON: LangFixture = LangFixture {
 const KOTLIN: LangFixture = LangFixture {
     language: "kotlin",
     ext: "kt",
-    drift: "package p\n\nclass Holder {\n    fun alpha(): Int {\n        \
-            // §sec1 — recorded as `beta`, so this citation has drifted\n        val x = 1\n        \
-            return x\n    }\n}\n",
-    matched: "package p\n\nclass Keeper {\n    fun gamma(): Int {\n        \
-              // §sec2 — recorded as `gamma`, so this citation is clean\n        val y = 2\n        \
-              return y\n    }\n}\n",
+    // AN `object` HOLDING A PROPERTY, for the same reason Go's changed: the
+    // method form read identically under BOTH the C++ and the Python grammars,
+    // so two different wrong pairings judged this fixture the same way its own
+    // backend does.
+    drift: "package p\n\nobject Holder {\n    \
+            // §sec1 — recorded as `beta`, so this citation has drifted\n    val alpha: Int = 1\n}\n",
+    matched: "package p\n\nobject Keeper {\n    \
+              // §sec2 — recorded as `gamma`, so this citation is clean\n    val gamma: Int = 2\n}\n",
     matched_symbol: "gamma",
 };
 
@@ -760,6 +766,83 @@ fn the_build_names_the_backends_it_ships_without_a_workspace() {
              reaches it: {exts:?}"
         );
     }
+}
+
+/// LAW 0 — EVERY FIXTURE BELOW CAN SAY WHICH GRAMMAR ANSWERED.
+///
+/// THIS IS THE PROPERTY A 3.5-HOUR SWEEP WAS WAITING ON. Round 1145 ran
+/// `crates/mnemosyne-cli/sweeps/citation-path-scope.sweep.json` in full and
+/// fifteen of its sixteen injections fired; the sixteenth,
+/// `the-wire-hands-rust-the-other-languages-resolver`, reddened NOTHING. Handing
+/// the `rust` key the C++ resolver left every test green, because the Rust
+/// fixture's `fn gamma(&self) { … }` is also a valid C++ function definition —
+/// return type `fn`, name `gamma` — so both grammars answered `gamma` and no
+/// assertion could tell them apart. The sweep has failed on that ever since,
+/// which is correct and is not progress.
+///
+/// A SWEEP IS NOT THE RIGHT INSTRUMENT FOR IT EITHER. That injection asks a
+/// question about the FIXTURE, and answering it cost a full workspace suite per
+/// run. Here it is a fact about two resolvers reading the same bytes: run every
+/// other shipped backend over each fixture's source and require the reading to
+/// differ. A fixture that reads identically under two grammars is not a control,
+/// whatever the run around it reports.
+#[test]
+fn every_fixture_reads_differently_under_a_grammar_that_is_not_its_own() {
+    // EVERY PAIR, NOT THE FIRST ONE. A law that stops at the first collision
+    // reports one fixture to repair and hides the rest, and the repair is a
+    // respelling per fixture rather than one change.
+    let mut indistinguishable: Vec<String> = Vec::new();
+    for fx in FIXTURES {
+        let own = mnemosyne_cli::backends::IN_PROCESS_BACKENDS
+            .iter()
+            .find(|b| b.language == fx.language)
+            .unwrap_or_else(|| panic!("no backend resolves `{}`", fx.language));
+        for source in [fx.drift, fx.matched] {
+            // THE CITED LINE AND NOT THE WHOLE FILE, because the judgement reads
+            // one line. Comparing whole answer maps passes as soon as the two
+            // grammars disagree ANYWHERE — which they do, on lines nothing is
+            // recorded against — and that is a weaker claim wearing this law's
+            // name.
+            let cited = source
+                .lines()
+                .position(|line| line.contains("§sec"))
+                .map(|index| index as u32 + 1)
+                .unwrap_or_else(|| panic!("the {} fixture holds no citation", fx.language));
+            let read = |backend: &mnemosyne_cli::backends::InProcessBackend| {
+                backend
+                    .make()
+                    .resolve_symbols_at(Path::new("/no/such/file"), source, &[cited])
+                    .expect("the resolver answers")
+                    .remove(&cited)
+            };
+            let mine = read(own);
+            assert!(
+                mine.is_some(),
+                "the {} fixture's own grammar answers nothing at line {cited}, \
+                 so this law compares two absences\n--- source ---\n{source}",
+                fx.language
+            );
+            for other in mnemosyne_cli::backends::IN_PROCESS_BACKENDS {
+                if other.language == fx.language {
+                    continue;
+                }
+                let theirs = read(other);
+                if theirs == mine {
+                    indistinguishable.push(format!(
+                        "{} fixture line {cited}: both {} and {} answer {mine:?}",
+                        fx.language, fx.language, other.language
+                    ));
+                }
+            }
+        }
+    }
+    assert!(
+        indistinguishable.is_empty(),
+        "{} fixture/grammar pair(s) read identically at the cited line, so the \
+         wire that pairs a language with a backend has no reader there:\n  {}",
+        indistinguishable.len(),
+        indistinguishable.join("\n  ")
+    );
 }
 
 /// LAW 6b — THE REPORT PUBLISHES WHERE A CITATION IN A COMMENT BINDS.
