@@ -230,6 +230,9 @@ mod report_confirmation_smoke;
 #[path = "scale_floor_corpus_carriage.rs"]
 mod scale_floor_corpus_carriage;
 
+#[path = "scale_floor_scoreboard.rs"]
+mod scale_floor_scoreboard;
+
 #[path = "report_coverage_smoke.rs"]
 mod report_coverage_smoke;
 
