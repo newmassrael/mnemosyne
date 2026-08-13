@@ -766,6 +766,90 @@ fn the_side_workspace_gate_answers_two_when_it_was_not_started_in_a_tree() {
 }
 
 #[test]
+fn the_side_workspace_gate_tells_an_environment_it_could_not_read_from_one_it_judged() {
+    // THE THIRD GATE'S TWO ANSWERS, and the reason they need a reader here more
+    // than in either sibling: BOTH ARMS EXIT 1. The lister rejects a workspace
+    // whose environment gate found a defect and a workspace whose environment
+    // gate could not be read with the SAME CODE, so the only thing carrying the
+    // difference is the sentence — and a sentence nothing reads is a sentence
+    // that drifts. R1182 added this arm beside the two it was modelled on and
+    // left it unread; this is the reader its blind-wait sibling got in R1132.
+    //
+    // ONE TREE, ONE FILE DIFFERENT. The halves share a fixture, so the only
+    // thing that can explain two different answers is the one file that changed
+    // between them — and they share a target directory, which is what keeps the
+    // second build of the gate under check off the clock.
+    let gate = repo_root().join("scripts/check-side-workspaces.sh");
+    let f = Fixture::new();
+    // The workspace has to get PAST fmt, clippy, the citation gate and the
+    // blind-wait gate to reach the arm under test at all: the sibling case's
+    // unparsable orphan answers 2 one gate earlier and never arrives here.
+    f.write(
+        "tools/sub/tests/entrance.rs",
+        "#[test]\nfn spawns() {\n    \
+         let _ = std::process::Command::new(env!(\"CARGO_BIN_EXE_sub\")).output();\n}\n",
+    );
+    let lister = || {
+        Command::new(&gate)
+            .args(["--lint-only", "tools/sub"])
+            .current_dir(f.path())
+            .env("CARGO_TARGET_DIR", f.path().join("target"))
+            .output()
+            .expect("the gate runs")
+    };
+
+    // A NAME THE WALK CANNOT TURN INTO A VARIABLE — the gate's exit 2, "I could
+    // not read enough of this tree to have an opinion".
+    f.write(
+        "tools/sub/src/main.rs",
+        "fn main() {\n    \
+         let which = std::env::args().nth(1).unwrap_or_default();\n    \
+         let _ = std::env::var(which);\n}\n",
+    );
+    let out = lister();
+    let err = stderr_of(&out);
+    assert_eq!(
+        out.status.code(),
+        Some(1),
+        "a workspace the environment gate could not read must not pass:\n{err}"
+    );
+    assert!(
+        err.contains("the named-environment gate could not read tools/sub (exit 2)"),
+        "the refusal must name the workspace and the code:\n{err}"
+    );
+    // THE MIRROR: the sentence the other exit prints, which is the one this
+    // branch exists to not be. It names a test that leaves a variable to the
+    // machine, and there is no such test here — only a name nobody could read.
+    assert!(
+        !err.contains("spawns a program whose environment its test"),
+        "a workspace it could not read carries no finding about environments:\n{err}"
+    );
+
+    // THE SAME TREE with that one file replaced by a program whose variable is
+    // perfectly readable and which the spawning test never says — the gate's
+    // exit 1, a judged workspace with a defect in it.
+    f.write(
+        "tools/sub/src/main.rs",
+        "fn main() {\n    let _ = std::env::var(\"GITHUB_REF_NAME\");\n}\n",
+    );
+    let out = lister();
+    let err = stderr_of(&out);
+    assert_eq!(
+        out.status.code(),
+        Some(1),
+        "a workspace that broke the law is a rejection too:\n{err}"
+    );
+    assert!(
+        err.contains("tools/sub spawns a program whose environment its test leaves to the machine"),
+        "the finding must name the workspace it is about:\n{err}"
+    );
+    assert!(
+        !err.contains("the named-environment gate could not read"),
+        "a workspace it judged was not one it failed to read:\n{err}"
+    );
+}
+
+#[test]
 fn pre_commit_rejects_a_version_postfix_identifier() {
     let f = Fixture::new();
     // The banned identifier is ASSEMBLED, never written: Gate 6 scans added

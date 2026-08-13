@@ -21,6 +21,7 @@
 //! snapshot-and-pre-flight pass — so this and the tool cannot come to different
 //! answers about what applies.
 
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
@@ -76,6 +77,15 @@ fn directory_of(path: &str) -> &str {
     path.rsplit_once('/').map_or("", |(head, _)| head)
 }
 
+/// Whether a manifest is an INPUT TO A TEST rather than a sweep somebody runs.
+///
+/// Declared once for every law in this file, because two laws disagreeing about
+/// which files they are about is the same defect as a law over no files at all.
+/// The rule, and what it cost to arrive at, is written where it is first used.
+fn a_test_input(path: &str) -> bool {
+    path.split('/').any(|part| part == "tests")
+}
+
 #[test]
 fn every_tracked_sweep_still_applies_to_the_tree_it_names() {
     let root = repository_root();
@@ -102,7 +112,6 @@ fn every_tracked_sweep_still_applies_to_the_tree_it_names() {
     // resolved to the tests directory rather than the root, so it could not have
     // run either. Both manifests now live in `crates/mnemosyne-cli/sweeps/`, and
     // the rule below is what would catch the next one that walks back.
-    let a_test_input = |path: &str| path.split('/').any(|part| part == "tests");
     let mut manifests = Vec::new();
     let mut inputs = Vec::new();
     let mut others = Vec::new();
@@ -311,6 +320,356 @@ fn a_sweep_that_runs_the_whole_workspace_runs_its_features_too() {
         without_features.len(),
         without_features.join("\n  ")
     );
+}
+
+/// Which cargo — named rather than inherited, this repository's own law about
+/// what a spawned program is allowed to read from the machine (R1182).
+fn cargo() -> String {
+    std::env::var("CARGO").unwrap_or_else(|_| "cargo".to_string())
+}
+
+/// Every flag `cargo test` accepts that NAMES a single target, and the kind of
+/// target the name has to be.
+///
+/// THIS IS CARGO'S SET AND NOT THIS REPOSITORY'S, which is what makes it a
+/// closed one rather than a list that goes stale: the four below are all the
+/// ways a `cargo test` invocation can name one target. The plural forms
+/// (`--tests`, `--benches`, `--all-targets`, `--lib`, `--doc`) select a CLASS
+/// and name nothing, so there is nothing in them that can stop resolving.
+const NAMES_A_TARGET: [(&str, &str); 4] = [
+    ("--test", "test"),
+    ("--bench", "bench"),
+    ("--bin", "bin"),
+    ("--example", "example"),
+];
+
+/// What a tree holds, as CARGO answers it: every package, and the kind and name
+/// of every target each one declares.
+///
+/// `--no-deps`, which is a census and not a resolution: it wants no registry, no
+/// network and no lockfile, and the separate in-repo workspaces this walks have
+/// their own of each.
+fn targets_of(tree: &Path) -> BTreeMap<String, BTreeSet<(String, String)>> {
+    let out = Command::new(cargo())
+        .args(["metadata", "--format-version", "1", "--no-deps"])
+        .arg("--manifest-path")
+        .arg(tree)
+        .output()
+        .expect("cargo metadata runs");
+    assert!(
+        out.status.success(),
+        "cargo metadata failed for {}: {}",
+        tree.display(),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let metadata: serde_json::Value =
+        serde_json::from_slice(&out.stdout).expect("cargo metadata answers JSON");
+    let mut declared = BTreeMap::new();
+    for package in metadata["packages"]
+        .as_array()
+        .expect("cargo metadata lists packages")
+    {
+        let name = package["name"]
+            .as_str()
+            .expect("a package cargo lists has a name")
+            .to_string();
+        let mut targets = BTreeSet::new();
+        for target in package["targets"]
+            .as_array()
+            .expect("a package cargo lists has targets")
+        {
+            let named = target["name"]
+                .as_str()
+                .expect("a target cargo lists has a name")
+                .to_string();
+            // A TARGET CARRIES ITS KINDS AS A LIST and this reads all of them:
+            // the same name can be selectable two ways, and a reader that took
+            // only the first would answer about whichever cargo printed first.
+            for kind in target["kind"]
+                .as_array()
+                .expect("a target cargo lists has a kind")
+            {
+                if let Some(kind) = kind.as_str() {
+                    targets.insert((kind.to_string(), named.clone()));
+                }
+            }
+        }
+        declared.insert(name, targets);
+    }
+    declared
+}
+
+/// The names a `cargo test` command hands cargo to select WHAT IT RUNS, and the
+/// manifest it hands it to select WHERE.
+///
+/// Parsed by walking the argv the manifest actually carries, rather than by
+/// matching a shape: a flag and its value are two words, and a reader that
+/// searched for the value alone would accept `--test` naming the next flag.
+#[derive(Debug, Default)]
+struct Selectors {
+    packages: Vec<String>,
+    /// `(kind, name)`, in the same spelling `cargo metadata` answers with.
+    targets: Vec<(String, String)>,
+    /// Whether the command selects every member, whatever else it names.
+    whole_workspace: bool,
+    /// Whether it removes members from that selection — a shape this law
+    /// refuses rather than models.
+    excludes: bool,
+    manifest_path: Option<PathBuf>,
+}
+
+fn selectors_of(argv: &[String]) -> Selectors {
+    let mut found = Selectors::default();
+    let mut words = argv.iter();
+    while let Some(word) = words.next() {
+        if let Some((_, kind)) = NAMES_A_TARGET.iter().find(|(flag, _)| flag == word) {
+            found
+                .targets
+                .extend(words.next().map(|name| (kind.to_string(), name.clone())));
+            continue;
+        }
+        match word.as_str() {
+            "-p" | "--package" => found.packages.extend(words.next().cloned()),
+            // `--workspace` OVERRIDES a `-p`, so a command carrying both selects
+            // every member and a reader that honoured the narrower one would
+            // call a target unreachable that cargo reaches.
+            "--workspace" | "--all" => found.whole_workspace = true,
+            // AND THE ONE SHAPE THIS CANNOT MODEL IS NAMED RATHER THAN GUESSED
+            // AT. `--exclude` removes members from the selection, so a target
+            // this law finds in an excluded package is one cargo would not —
+            // a wrong answer in the direction that reads as clean. No sweep
+            // here carries it; the day one does, this says so instead.
+            "--exclude" => found.excludes = true,
+            "--manifest-path" => found.manifest_path = words.next().map(PathBuf::from),
+            _ => {}
+        }
+    }
+    found
+}
+
+/// What a command names and the tree does not hold.
+///
+/// THE DECISION IS FACTORED OUT SO ITS CONTROL DRIVES THE SAME CODE. A control
+/// that re-implemented this rule would prove that a second spelling can fail,
+/// which is the one thing nobody needs to know — the same reason the anchor law
+/// above calls the harness's own `snapshot_and_dry_run` rather than a copy.
+fn unresolved(
+    selectors: &Selectors,
+    declared: &BTreeMap<String, BTreeSet<(String, String)>>,
+) -> Vec<String> {
+    if selectors.excludes {
+        return vec![
+            "its command carries `--exclude`, which this law cannot model — a target found \
+             in an excluded package would be reported reachable when cargo would not reach \
+             it, and that wrong answer is the one that reads as clean"
+                .to_string(),
+        ];
+    }
+    let mut missing = Vec::new();
+    for package in &selectors.packages {
+        if !declared.contains_key(package) {
+            missing.push(format!(
+                "`-p {package}` names a package this tree does not build"
+            ));
+        }
+    }
+    // A NAME IS LOOKED FOR WHERE THE COMMAND WOULD LOOK: inside the packages it
+    // selected, or across the whole tree when it selected none — or when
+    // `--workspace` overrode what it selected.
+    let mut reachable: BTreeSet<&(String, String)> = BTreeSet::new();
+    for (package, targets) in declared {
+        let selected = selectors.whole_workspace
+            || selectors.packages.is_empty()
+            || selectors.packages.contains(package);
+        if selected {
+            reachable.extend(targets);
+        }
+    }
+    for wanted in &selectors.targets {
+        if !reachable.contains(wanted) {
+            let (kind, name) = wanted;
+            missing.push(format!(
+                "`--{kind} {name}` names a target no package it selects declares — cargo \
+                 answers `no {kind} target named {name}` and refuses the whole invocation \
+                 over it, so every injection in that sweep scores as nothing"
+            ));
+        }
+    }
+    missing
+}
+
+/// EVERY NAME A SWEEP'S COMMAND HANDS CARGO STILL RESOLVES.
+///
+/// The law at the top of this file asks whether a sweep's ANCHORS still apply to
+/// the tree it edits. This one asks the other half — whether the SUITE it would
+/// run is still there — and the two decay separately: a sweep whose every anchor
+/// holds perfectly proves nothing if the command that would score it cannot
+/// start.
+///
+/// WHAT IT COST, measured and not argued. Round 1171 folded seventy-six of
+/// `mnemosyne-cli`'s test files into one `all` target for a link cost that had
+/// grown into a ten-minute pre-commit gate. Two sweeps select a `--test` target
+/// out of that pile by name, `.githooks/injection-sweep.json` among them — the
+/// one that proves the HOOKS' own gates are not vacuous. From that commit its
+/// command was `error: no test target named git_hooks_smoke`, and its eight
+/// injections could not run at all.
+///
+/// THE HARNESS ALREADY REFUSES, and that is not enough. Run by hand it says "the
+/// control reached no test target at all" and stops, which is exactly right and
+/// reaches nobody: a sweep runs when somebody decides to run one, and the point
+/// of tracking these files is that nobody has to decide. The refusal is a reader
+/// of last resort; this is a reader on every commit.
+///
+/// ASKED OF CARGO, PER SWEEP, IN THE TREE THAT SWEEP DECLARES. A list of this
+/// repository's test targets written beside this law would be the same
+/// hand-kept list that went stale to begin with, one level up.
+#[test]
+fn every_sweep_names_a_suite_this_tree_can_still_run() {
+    let root = repository_root();
+    let mut selecting = 0;
+    let mut judged = Vec::new();
+    let mut broken = Vec::new();
+    for path in tracked_json(&root) {
+        // The same population and the same classifier as the anchor law: a
+        // manifest a test materialises names a tree that exists only while that
+        // test runs, so its command is a claim about a fixture.
+        let Ok(manifest) = injection_harness::read_manifest(&root.join(&path)) else {
+            continue;
+        };
+        if a_test_input(&path) {
+            continue;
+        }
+        judged.push(path.clone());
+        let selectors = selectors_of(&manifest.test_command);
+        // WHERE THE COMMAND WOULD RUN is the sweep's own `repo`, already
+        // resolved against the manifest's directory by `read_manifest`; a
+        // `--manifest-path` in the command is relative to that, because that is
+        // the directory the harness starts the command in.
+        let tree = match &selectors.manifest_path {
+            Some(named) => manifest.repo.join(named),
+            None => manifest.repo.join("Cargo.toml"),
+        };
+        if !tree.is_file() {
+            broken.push(format!(
+                "{path}: its command runs in {}, where there is no manifest",
+                tree.display()
+            ));
+            continue;
+        }
+        selecting += usize::from(!selectors.targets.is_empty());
+        let declared = if selectors.excludes {
+            // Nothing is asked of the tree in this case; the refusal below is
+            // about the command, and reading the tree would only make the
+            // wrong answer available.
+            BTreeMap::new()
+        } else {
+            targets_of(&tree)
+        };
+        for missing in unresolved(&selectors, &declared) {
+            broken.push(format!("{path}: {missing}"));
+        }
+    }
+
+    // NON-VACUITY, IN BOTH DIRECTIONS. A walk that read no sweep passes this law
+    // in silence, and so does one that read every sweep and found none selecting
+    // a target by name — which is the only shape this law can catch.
+    assert!(
+        judged.len() >= 12,
+        "this law judged {} sweep(s), which is fewer than this repository tracks: {judged:?}",
+        judged.len()
+    );
+    assert!(
+        selecting >= 3,
+        "only {selecting} sweep(s) name a target, and a target named by nobody is a name \
+         that cannot go stale — a law over the wrong population is the empty answer that \
+         reads as a clean one"
+    );
+    assert!(
+        broken.is_empty(),
+        "{} sweep(s) name a suite this tree no longer builds. The anchors of such a \
+         sweep can all still apply, and it still proves nothing, because the command \
+         that would score it never starts:\n  {}",
+        broken.len(),
+        broken.join("\n  ")
+    );
+}
+
+/// THE CONTROL FOR THE LAW ABOVE, and the reason it is not merely a walk over
+/// green files. The law's own first run is what proves it can fail — it named
+/// four stale selectors across three sweeps on a tree everything else called
+/// clean — but that evidence is spent the moment they are repaired, and what is
+/// left afterwards passes whether the rule works or not.
+///
+/// Each case below is one way a command can name something the tree does not
+/// hold, driven through the same `unresolved` the law uses.
+#[test]
+fn a_command_naming_what_a_tree_does_not_build_is_named_rather_than_passed() {
+    let declared = BTreeMap::from([
+        (
+            "server".to_string(),
+            BTreeSet::from([
+                ("test".to_string(), "all".to_string()),
+                ("lib".to_string(), "server".to_string()),
+            ]),
+        ),
+        (
+            "cli".to_string(),
+            BTreeSet::from([("bin".to_string(), "cli".to_string())]),
+        ),
+    ]);
+    let judge = |argv: &[&str]| {
+        let argv: Vec<String> = argv.iter().map(|word| word.to_string()).collect();
+        unresolved(&selectors_of(&argv), &declared)
+    };
+
+    // THE SHAPE THAT ROTTED: a target folded into another one, named by a
+    // command that has no way to know.
+    let gone = judge(&["cargo", "test", "-p", "server", "--test", "grpc_mtls_smoke"]);
+    assert_eq!(gone.len(), 1, "{gone:?}");
+    assert!(gone[0].contains("--test grpc_mtls_smoke"), "{gone:?}");
+
+    // AND THE CONTROL FOR THAT CONTROL: the same command, the name that is
+    // there. Without this the case above only says the rule rejects something.
+    assert!(
+        judge(&["cargo", "test", "-p", "server", "--test", "all"]).is_empty(),
+        "a target the tree declares must resolve"
+    );
+
+    // A NAME IS THE PACKAGE'S, NOT THE TREE'S. `all` exists — in the other
+    // package, which this command does not select.
+    let elsewhere = judge(&["cargo", "test", "-p", "cli", "--test", "all"]);
+    assert_eq!(elsewhere.len(), 1, "{elsewhere:?}");
+
+    // UNLESS `--workspace` OVERRODE THE SELECTION, which is cargo's rule and
+    // not this reader's opinion.
+    assert!(
+        judge(&["cargo", "test", "--workspace", "-p", "cli", "--test", "all"]).is_empty(),
+        "`--workspace` selects every member whatever else the command names"
+    );
+
+    // EVERY FLAG THAT NAMES ONE, not only the one this repository happens to
+    // use: a `--bin` or a `--bench` passed over in silence is the same rot with
+    // nothing watching it.
+    for (flag, name) in [("--bin", "cli"), ("--bench", "cli")] {
+        let judged = judge(&["cargo", "test", flag, name]);
+        let expected = usize::from(flag == "--bench");
+        assert_eq!(
+            judged.len(),
+            expected,
+            "`{flag} {name}` against a tree whose only `{name}` is a bin: {judged:?}"
+        );
+    }
+
+    // A PACKAGE THAT IS NOT THERE, which is the other half of a selection.
+    let no_package = judge(&["cargo", "test", "-p", "renamed"]);
+    assert_eq!(no_package.len(), 1, "{no_package:?}");
+
+    // AND THE SHAPE THIS LAW REFUSES RATHER THAN MODELS. `--exclude` narrows a
+    // selection, so answering at all would risk the wrong answer in the
+    // direction that reads as clean.
+    let excluded = judge(&["cargo", "test", "--workspace", "--exclude", "cli"]);
+    assert_eq!(excluded.len(), 1, "{excluded:?}");
+    assert!(excluded[0].contains("--exclude"), "{excluded:?}");
 }
 
 #[test]

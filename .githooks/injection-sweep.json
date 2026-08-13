@@ -26,8 +26,22 @@
     "and carriage fails in ways of its own: asking about the wrong commit,",
     "swallowing the answer, or passing over a reporter that could not answer.",
     "",
+    "THE LAST TWO ARE R1182's ARM, and they are here because the round that added",
+    "it did not add them. `check-side-workspaces.sh` grew a THIRD gate under the",
+    "same three-code contract, printing the same pair of sentences for exit 1 and",
+    "exit 2 — and both arms exit 1, so the sentence is the only thing that tells",
+    "them apart. Nothing read either one.",
+    "",
     "Scoped to the hook suite: nothing here touches a gate's own laws, which",
-    "have their own sweeps under tools/."
+    "have their own sweeps under tools/.",
+    "",
+    "THE SUITE IS A MODULE OF `all` AND NOT A TARGET. R1171 folded seventy-six of",
+    "the cli crate's test files into one binary, this one among them, and a",
+    "`--test git_hooks_smoke` after that commit is `error: no test target named`",
+    "— which takes the eight injections below with it, since the harness refuses a",
+    "sweep whose control reached nothing. Measured on the tree that found it: the",
+    "control ran 0 targets. The trailing filter reproduces exactly the population",
+    "this command had before the fold."
   ],
   "repo": "..",
   "test_command": [
@@ -36,8 +50,9 @@
     "-p",
     "mnemosyne-cli",
     "--test",
-    "git_hooks_smoke",
-    "--no-fail-fast"
+    "all",
+    "--no-fail-fast",
+    "git_hooks_smoke::"
   ],
   "logs": "../target/injection-logs",
   "min_free_mb": 8000,
@@ -150,6 +165,34 @@
       ],
       "expect_red": [
         "pre_push_carries_the_ci_reporters_words_and_names_it_when_it_cannot_run"
+      ]
+    },
+    {
+      "name": "the-lister-reports-an-unreadable-environment-as-one-left-to-the-machine",
+      "why": "the R1132 collapse arriving through the door R1182 opened. The environment gate answers 2 for a tree it could not read, and folding that into the finding arm tells somebody a test of theirs leaves a variable to the machine when the gate never got far enough to find one — sending them into a workspace to look for a defect nobody has claimed exists",
+      "edits": [
+        {
+          "file": "scripts/check-side-workspaces.sh",
+          "from": "  case \"${named_verdict:-0}\" in\n    0) ;;\n    1)",
+          "to": "  case \"${named_verdict:-0}\" in\n    0) ;;\n    1|2)"
+        }
+      ],
+      "expect_red": [
+        "the_side_workspace_gate_tells_an_environment_it_could_not_read_from_one_it_judged"
+      ]
+    },
+    {
+      "name": "the-lister-passes-a-workspace-the-environment-gate-could-not-read",
+      "why": "the other direction and the dangerous one, the shape R1078 shipped: a gate with no verdict is not a gate with nothing to say. Keeping the sentence and dropping the rejection commits a workspace part of which was never read, and it is the exit code alone that catches it — the words on the screen are still perfectly true",
+      "edits": [
+        {
+          "file": "scripts/check-side-workspaces.sh",
+          "from": "        \"(exit ${named_verdict}); its own message is above\" >&2\n      exit 1",
+          "to": "        \"(exit ${named_verdict}); its own message is above\" >&2\n      :"
+        }
+      ],
+      "expect_red": [
+        "the_side_workspace_gate_tells_an_environment_it_could_not_read_from_one_it_judged"
       ]
     }
   ]

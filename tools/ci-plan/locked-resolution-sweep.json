@@ -15,7 +15,13 @@
     "",
     "THE FIRST FOUR ARE THE DEFECT ITSELF. On the tree this law arrived in, THIRTY",
     "cargo commands resolved without `--locked`, so each of these puts one of them",
-    "back and asks whether anybody notices."
+    "back and asks whether anybody notices.",
+    "",
+    "THE SUITE IS ADDRESSED AS A MODULE OF `all` AND NOT AS A TARGET. R1171 folded",
+    "seventy-six of the cli crate's test files into one binary, this file among",
+    "them; a `--test locked_resolution_smoke` after that commit is a name cargo",
+    "refuses outright, which takes the WHOLE sweep with it. The trailing filter",
+    "reproduces exactly the population this command had before the fold."
   ],
   "repo": "../..",
   "test_command": [
@@ -25,8 +31,9 @@
     "mnemosyne-cli",
     "--locked",
     "--test",
-    "locked_resolution_smoke",
-    "--no-fail-fast"
+    "all",
+    "--no-fail-fast",
+    "locked_resolution_smoke::"
   ],
   "logs": "../../target/injection-logs",
   "min_free_mb": 8000,

@@ -19,13 +19,27 @@
     "four of these five targets compile to nothing: R1081 measured six of this",
     "crate's integration test targets running `0 tests` under the workspace suite",
     "CI has been running, which is how a 50ms `sleep` called a 'tiny grace' lived",
-    "in `grpc_mtls_smoke.rs` without anything ever executing it."
+    "in `grpc_mtls_smoke.rs` without anything ever executing it.",
+    "",
+    "TWO OF THOSE FIVE TARGETS ARE NOW MODULES OF `all`. R1148 folded twenty-two",
+    "of the server's test files into one binary for the link cost, and",
+    "`grpc_mtls_smoke` and `grpc_audit_live_tail_smoke` went with them — so this",
+    "command named two targets cargo no longer builds, and cargo refuses the WHOLE",
+    "invocation over a name it cannot find. `--test all` is what reaches them now.",
+    "",
+    "AND THE PACKAGE IS NAMED, WHICH `--workspace` NO LONGER COULD BE. Target",
+    "selection applies to every package selected, so `--workspace --test all` also",
+    "picks up the cli crate's `all` — MEASURED at 331s of the 535s that command",
+    "then takes, for a suite none of the expectations below is in. Every red this",
+    "sweep names is `mnemosyne-server`'s: two in its lib, one in each of two of",
+    "its test binaries. Naming the package is what the command already meant."
   ],
   "repo": "../..",
   "test_command": [
     "cargo",
     "test",
-    "--workspace",
+    "-p",
+    "mnemosyne-server",
     "--features",
     "mnemosyne-server/otlp,mnemosyne-server/tls",
     "--no-fail-fast",
@@ -37,9 +51,7 @@
     "--test",
     "grpc_otlp_collector_e2e",
     "--test",
-    "grpc_mtls_smoke",
-    "--test",
-    "grpc_audit_live_tail_smoke"
+    "all"
   ],
   "logs": "../../target/injection-logs",
   "min_free_mb": 8000,
@@ -70,7 +82,7 @@
     },
     {
       "name": "the-audit-append-stops-publishing-to-subscribers",
-      "why": "R1081 replaced a 200ms timed `recv` with a wait-free `try_recv`, which asserts the STRONGER property that the record is already in the subscriber's buffer when the append returns; removing the publish must make that fail at once, and the live-tail target going red with it is the same claim seen from the gRPC side. THE NAMES ARE MODULE-QUALIFIED because that is how the harness reads a unit test out of libtest's output — the first run of this file aimed at the bare name, was told `did not reach it`, and the answer was to correct the address rather than to relax the expectation",
+      "why": "R1081 replaced a 200ms timed `recv` with a wait-free `try_recv`, which asserts the STRONGER property that the record is already in the subscriber's buffer when the append returns; removing the publish must make that fail at once, and the live-tail target going red with it is the same claim seen from the gRPC side. THE NAMES ARE MODULE-QUALIFIED because that is how the harness reads a unit test out of libtest's output — the first run of this file aimed at the bare name, was told `did not reach it`, and the answer was to correct the address rather than to relax the expectation. THE FOURTH NAME ARRIVED AS AN `unexpected` the first time this command could reach it: `grpc_audit_resume_protocol_smoke` was a target nothing here selected until the fold put it inside `all`, and a subscriber that is never published to cannot resume a follow-tail either. It is a consequence of this injection and is named rather than left unnamed",
       "edits": [
         {
           "file": "crates/mnemosyne-server/src/audit.rs",
@@ -81,7 +93,8 @@
       "expect_red": [
         "audit::tests::subscribe_receives_newly_committed_records",
         "audit::tests::slow_subscriber_with_full_broadcast_returns_lagged",
-        "subscribe_audit_trail_pushes_post_subscription_records"
+        "subscribe_audit_trail_pushes_post_subscription_records",
+        "resume_on_lag_field_round_trips_with_follow_tail_no_regression"
       ]
     }
   ]
