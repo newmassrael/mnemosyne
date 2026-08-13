@@ -52,6 +52,13 @@ tempfile = "3"
 # through the SAME parser, because a premise asserted by matching strings in a YAML
 # file is a second reader that can disagree with the first.
 yaml-rust2 = "0.11"
+# R1181 — THE FIXTURE'S ENVIRONMENT LIST IS CHECKED AGAINST THE BINARY'S SYNTAX.
+# A hand-written set of "the variables this program reads" goes stale silently:
+# R1178 added two reads, a developer's shell sets neither, and the suite stayed
+# green until a runner set both and `main` went red. Asked through the grammar
+# rather than by matching text, for the R1172 reason — a name in a comment is not
+# a read, and a read spelled across a line break still is one.
+syn = { version = "3", features = ["full", "visit"] }
 
 [lints.clippy]
 all = "deny"

@@ -23,11 +23,23 @@
 //! answer is the whole storage or its first page, and a stub that ignores its
 //! arguments agrees with a gate that stopped asking for it.
 //!
-//! AND THE RUNNER'S OWN VARIABLES ARE REMOVED RATHER THAN ASSUMED ABSENT. This
+//! AND THE RUNNER'S OWN VARIABLES ARE NAMED RATHER THAN ASSUMED ABSENT. This
 //! suite runs on a runner too, where `GITHUB_RUN_ID` is set and would send the
 //! gate down a second reading it has no stub for — green here and red there,
 //! which is the shape R1119 paid for.
+//!
+//! THAT RULE WAS RIGHT AND ITS LIST WENT STALE, which is what R1181 pays for.
+//! R1178 taught the gate to bound a key's interval by the workflow that declares
+//! it, and bounding it needs the BRANCH — so `main.rs` began reading
+//! `GITHUB_BASE_REF` and `GITHUB_REF_NAME`, two variables this fixture had never
+//! heard of. A developer's shell sets neither, so the suite stayed green here
+//! and turned `main` red on run 31703011291, asking GitHub a branch-scoped
+//! question the assertion did not expect. The list is now [`environment`], one
+//! value both the spawn and `the_fixture_names_every_variable_the_gate_reads`
+//! read, and that law fails when the next variable arrives instead of a run
+//! four commits later.
 
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 use std::process::{Command, Output};
 
@@ -44,6 +56,14 @@ const PREFIX: &str = "Linux-fixture-build-";
 
 /// Where the stub writes the words it was called with, one per line.
 const ASKED: &str = "asked";
+
+/// The branch the fixture's run is of.
+///
+/// A RUN IS ALWAYS OF A BRANCH, which is why leaving this to the environment was
+/// never a neutral choice: it made the fixture describe a runner that does not
+/// exist, and the gate's branch-scoped question then went to a stub that had
+/// been set up for the unscoped one.
+const BRANCH: &str = "main";
 
 /// The spelling GitHub stamps a cache with, from the recorded answer in
 /// `tests/actions-caches.one-page.json`.
@@ -368,6 +388,36 @@ fn gate_in_run(at: &Path) -> Output {
     run_gate(at, Some(RUN_ID))
 }
 
+/// EVERY environment variable the gate reads, and what this fixture says about
+/// it — one value, so the spawn and the law that checks it cannot disagree.
+///
+/// `None` means REMOVED, which is a declaration too: a variable this suite does
+/// not name is one the machine underneath gets to answer, and that machine is a
+/// runner as often as it is a developer's shell.
+fn environment(run: Option<&str>) -> Vec<(String, Option<String>)> {
+    vec![
+        // The range a caller may pin. Never inherited: a runner sets it.
+        (cache_budget::RANGE_VARIABLE.to_string(), None),
+        // Which run this is, and of which workflow — the pair that decides
+        // whether the gate reads the run window at all.
+        ("GITHUB_RUN_ID".to_string(), run.map(str::to_string)),
+        (
+            ci_plan::WORKFLOW_VARIABLE.to_string(),
+            run.map(|_| WORKFLOW_REF.to_string()),
+        ),
+        // WHICH BRANCH, which is what bounds the interval a key is judged over
+        // (R1178). A push run sets `GITHUB_REF_NAME` and leaves
+        // `GITHUB_BASE_REF` empty; a pull-request run sets both, and the gate
+        // prefers the base. This fixture is the push case, stated rather than
+        // inherited — the inherited version is what turned `main` red.
+        (
+            "GITHUB_REF_NAME".to_string(),
+            run.map(|_| BRANCH.to_string()),
+        ),
+        ("GITHUB_BASE_REF".to_string(), None),
+    ]
+}
+
 fn run_gate(at: &Path, run: Option<&str>) -> Output {
     let path = format!(
         "{}:{}",
@@ -375,23 +425,171 @@ fn run_gate(at: &Path, run: Option<&str>) -> Output {
         std::env::var("PATH").unwrap_or_default()
     );
     let mut command = Command::new(env!("CARGO_BIN_EXE_cache-budget"));
-    command
-        .arg(at)
-        .current_dir(at)
-        .env("PATH", path)
-        // NAMED RATHER THAN INHERITED, in both directions: this suite runs on a
-        // runner too, where every one of these is already set to that run's
-        // values and would send the gate somewhere the stub does not answer for.
-        .env_remove(cache_budget::RANGE_VARIABLE);
-    match run {
-        Some(id) => command
-            .env("GITHUB_RUN_ID", id)
-            .env(ci_plan::WORKFLOW_VARIABLE, WORKFLOW_REF),
-        None => command
-            .env_remove("GITHUB_RUN_ID")
-            .env_remove(ci_plan::WORKFLOW_VARIABLE),
-    };
+    command.arg(at).current_dir(at).env("PATH", path);
+    for (name, value) in environment(run) {
+        match value {
+            Some(value) => command.env(name, value),
+            None => command.env_remove(name),
+        };
+    }
     command.output().expect("the gate runs")
+}
+
+/// The fixture names every variable the gate reads — asked of `main.rs`'s
+/// SYNTAX, not of anybody's memory of it.
+///
+/// This is the law the stale list needed. `environment` above is a hand-written
+/// set, and a hand-written set of "what the program reads" is exactly the thing
+/// that goes quietly out of date: R1178 added two reads and nothing said so,
+/// because on a developer's machine an unnamed variable is absent anyway and the
+/// suite agrees with the fixture by luck. Here the question is put to the source
+/// the binary is compiled from, so the next read arrives with a failing test
+/// attached rather than with a red `main`.
+#[test]
+fn the_fixture_names_every_variable_the_gate_reads() {
+    let named: BTreeSet<String> = [None, Some(RUN_ID)]
+        .into_iter()
+        .flat_map(environment)
+        .map(|(name, _)| name)
+        .collect();
+    let read = variables_read(Path::new(env!("CARGO_MANIFEST_DIR")).join("src"));
+    println!("  the gate reads {read:?}; the fixture names {named:?}");
+    assert!(
+        read.len() > 1,
+        "a gate that reads one environment variable or none is a source this walk failed to \
+         parse, not a program with no environment: {read:?}"
+    );
+    let unnamed: Vec<&String> = read.difference(&named).collect();
+    assert!(
+        unnamed.is_empty(),
+        "the gate reads {unnamed:?}, which this fixture neither sets nor removes — so the machine \
+         underneath answers, and a runner answers differently from a shell"
+    );
+}
+
+/// The names of environment variables this gate reads that are spelled by a
+/// constant BELONGING TO ANOTHER CRATE, which this walk cannot follow.
+///
+/// The value is taken from the constant itself rather than retyped, so a rename
+/// upstream is a compile error here and not a silently smaller set. The KEY is
+/// how the call site spells it; a read through a constant this table does not
+/// hold fails the walk loudly rather than passing as nothing.
+const IMPORTED_NAMES: [(&str, &str); 1] = [("WORKFLOW_VARIABLE", ci_plan::WORKFLOW_VARIABLE)];
+
+/// Every environment variable a `std::env::var`-shaped call reads, over every
+/// Rust file in a directory tree.
+///
+/// Read through `syn` rather than by matching text, the R1172 discipline: a
+/// program's own grammar is the only reader that cannot be fooled by a name
+/// inside a comment or a doc example.
+///
+/// A READ IS NOT ALWAYS A LITERAL, and that is the half a first draft of this
+/// walk missed: two of the five variables in play are spelled by constants, and
+/// a walk that collected string literals alone reported three reads and called
+/// the list complete. Constants declared in these same files are resolved from
+/// them; one that comes from another crate resolves through [`IMPORTED_NAMES`];
+/// anything else stops the walk, because "I could not read this one" and "there
+/// is nothing here" must not arrive as the same answer.
+fn variables_read(root: std::path::PathBuf) -> BTreeSet<String> {
+    #[derive(Default)]
+    struct Reads {
+        /// The argument of each `var` call, as written.
+        arguments: Vec<syn::Expr>,
+        /// `const NAME: _ = "literal"` declared in these files.
+        constants: BTreeMap<String, String>,
+    }
+    impl<'ast> syn::visit::Visit<'ast> for Reads {
+        fn visit_expr_call(&mut self, call: &'ast syn::ExprCall) {
+            if let syn::Expr::Path(path) = &*call.func {
+                let called = path
+                    .path
+                    .segments
+                    .last()
+                    .map(|segment| segment.ident.to_string())
+                    .unwrap_or_default();
+                if called == "var" || called == "var_os" {
+                    self.arguments.extend(call.args.iter().cloned());
+                }
+            }
+            syn::visit::visit_expr_call(self, call);
+        }
+
+        fn visit_item_const(&mut self, item: &'ast syn::ItemConst) {
+            if let syn::Expr::Lit(syn::ExprLit {
+                lit: syn::Lit::Str(text),
+                ..
+            }) = &*item.expr
+            {
+                self.constants.insert(item.ident.to_string(), text.value());
+            }
+            syn::visit::visit_item_const(self, item);
+        }
+    }
+
+    let mut sources: Vec<std::path::PathBuf> = std::fs::read_dir(&root)
+        .unwrap_or_else(|e| panic!("the gate's sources are at {}: {e}", root.display()))
+        .map(|entry| entry.expect("a directory entry").path())
+        .filter(|path| path.extension().is_some_and(|ext| ext == "rs"))
+        .collect();
+    sources.sort();
+    assert!(
+        !sources.is_empty(),
+        "no Rust source under {} — this walk found nothing to read",
+        root.display()
+    );
+
+    let mut reads = Reads::default();
+    for source in &sources {
+        let text = std::fs::read_to_string(source).expect("a source file reads");
+        let parsed = syn::parse_file(&text)
+            .unwrap_or_else(|e| panic!("{} does not parse: {e}", source.display()));
+        syn::visit::Visit::visit_file(&mut reads, &parsed);
+    }
+
+    let imported: BTreeMap<&str, &str> = IMPORTED_NAMES.into_iter().collect();
+    reads
+        .arguments
+        .iter()
+        .map(|argument| match argument {
+            syn::Expr::Lit(syn::ExprLit {
+                lit: syn::Lit::Str(text),
+                ..
+            }) => text.value(),
+            syn::Expr::Path(path) => {
+                let last = path
+                    .path
+                    .segments
+                    .last()
+                    .map(|segment| segment.ident.to_string())
+                    .unwrap_or_default();
+                reads
+                    .constants
+                    .get(&last)
+                    .cloned()
+                    .or_else(|| imported.get(last.as_str()).map(|value| value.to_string()))
+                    .unwrap_or_else(|| {
+                        panic!(
+                            "the gate reads an environment variable named by `{last}`, and this \
+                             walk can resolve neither a constant in its own sources nor an entry \
+                             in IMPORTED_NAMES — resolve it there rather than letting an \
+                             unreadable name count as no read"
+                        )
+                    })
+            }
+            other => panic!(
+                "the gate names an environment variable with an expression this walk cannot \
+                 resolve ({}); a name computed at runtime cannot be held against a fixture list",
+                quote_of(other)
+            ),
+        })
+        .collect()
+}
+
+/// A syn expression as source text, for a message that has to name what it
+/// could not read.
+fn quote_of(expr: &syn::Expr) -> String {
+    use syn::spanned::Spanned;
+    format!("{:?}", expr.span())
 }
 
 fn code(out: &Output) -> i32 {
@@ -707,7 +905,7 @@ fn inside_a_run_the_gate_reads_the_window_and_names_the_run_it_read() {
     // reading that turned this repository's `main` red on run 31695396997.
     assert_eq!(
         calls[2],
-        cache_budget::workflow_runs_query(".github/workflows/ci.yml", None),
+        cache_budget::workflow_runs_query(".github/workflows/ci.yml", Some(BRANCH)),
         "the words handed to `gh` are the library's, verbatim"
     );
     assert!(

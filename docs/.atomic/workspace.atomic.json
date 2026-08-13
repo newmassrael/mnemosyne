@@ -11924,6 +11924,54 @@
         "report-authoring-frontier is NOT on the graded axes and is therefore left unpinned: it answers 24 and 29 total gaps and 12 and 17 zero-fact scenes on these arms, with no grader behind those numbers"
       ]
     },
+    "Round 1181": {
+      "decision_summary": "R1181 (DEBT — main was red, and the gate that turned it red was behaving correctly on a machine nobody tested it on). Run 31703011291 on 7ced933 failed one job, `separate in-repo workspaces`, on one assertion in the cache-budget entrance suite: the words the gate handed to `gh` carried `&branch=main` and the test expected them without it. The suite that R1178 and R1179 both ran was green each time, because the difference is not in the tree at all. R1178 taught the gate to bound a cache key's interval by the workflow that declares it, and bounding it needs a branch, so `main.rs` began reading GITHUB_BASE_REF and GITHUB_REF_NAME. The entrance fixture spawns the binary with a named environment precisely so a runner's own variables cannot change the answer — its module doc says so, in those words, and names GITHUB_RUN_ID as the case it was paying for. The rule was right and the LIST went stale: two new reads arrived and the fixture never heard of them, so on a developer's shell (both unset) the gate asked the unscoped question the assertion expected, and on a runner (both set) it asked the scoped one. Reproduced exactly by setting GITHUB_REF_NAME=main and running the same test, which is how a fixture that describes an impossible runner gets found: a real run is always of a branch, so the fixture had been simulating a machine that does not exist. The repair is in two parts and the second is the one worth the round. The environment is now one value, `environment(run)`, that the spawn applies and a new law reads; and that law asks `main.rs`'s own SYNTAX, through syn, for every name a std::env::var call reads, then asserts the fixture names all of them. A first draft of that walk collected string literals only and reported three of the five reads as the complete set, which would have made the law agree with a stale list for the same reason the stale list was wrong; constants declared in those sources are now resolved from them, a constant imported from another crate resolves through a table that holds the constant itself rather than a retyped copy, and a name this walk cannot resolve stops it loudly rather than counting as no read. The non-emptiness check is the defect itself: dropping GITHUB_REF_NAME back out of the list fails the new law, naming that variable, at the fixture rather than four commits later on a runner.",
+      "changes_bullets": [
+        "tools/cache-budget/tests/entrance.rs: the fixture's environment is one value `environment(run)` the spawn applies, covering all five variables the gate reads",
+        "the run fixture now declares its branch (GITHUB_REF_NAME=main, GITHUB_BASE_REF removed = the push case) instead of inheriting whatever the machine has, and the assertion expects the branch-scoped query CI actually produces",
+        "new law `the_fixture_names_every_variable_the_gate_reads`: syn reads every std::env::var name out of the gate's own sources and asserts the fixture names each one",
+        "names spelled by a constant are resolved, not skipped: local consts from the parsed sources, an imported one through IMPORTED_NAMES which holds ci_plan::WORKFLOW_VARIABLE itself, and an unresolvable name panics rather than counting as nothing",
+        "syn 3 added as a cache-budget dev-dependency, the same reader tools/blind-waits and tools/uncompiled-sources already use"
+      ],
+      "verification_bullets": [
+        "the red REPRODUCED before it was fixed: GITHUB_REF_NAME=main cargo test --test entrance fails with the run's exact assertion, left carrying `&branch=main` and right not",
+        "and is gone after: the whole entrance suite passes with GITHUB_REF_NAME, GITHUB_RUN_ID and GITHUB_WORKFLOW_REF set in the ambient environment, which is the condition CI runs under",
+        "the new law is non-vacuous by injection: dropping GITHUB_REF_NAME from `environment` fails it with `the gate reads [\"GITHUB_REF_NAME\"], which this fixture neither sets nor removes`, and the injection was reverted and re-run",
+        "the walk resolves five names where a literal-only draft resolved three, and prints both sets: read and named are now the same five",
+        "cache-budget workspace: 98 tests pass (entrance 11, github 24, law 52, this_repository 11), clippy --tests --all-features -D warnings 0, fmt 0"
+      ],
+      "impact_refs": [
+        "atomic-store-mutate-api"
+      ],
+      "carry_forward_bullets": [
+        "the walk reads the gate's own `src/` only, so a variable read inside ci-plan or restored on this gate's behalf is outside what it can see; both are separate crates with their own suites, and no fixture here can name what it cannot reach",
+        "the PR path stays unobserved (the ledger's N8): this fixture declares the push case, GITHUB_BASE_REF removed, because this repository pushes to main and opens no pull request",
+        "the same stale-list shape is possible in every sibling gate's fixture under tools/, and only this one now has a program checking it"
+      ],
+      "publishable_decision_summary": "R1181 (DEBT — main was red, and the gate that turned it red was behaving correctly on a machine nobody tested it on). Run 31703011291 on 7ced933 failed one job, `separate in-repo workspaces`, on one assertion in the cache-budget entrance suite: the words the gate handed to `gh` carried `&branch=main` and the test expected them without it. The suite that R1178 and R1179 both ran was green each time, because the difference is not in the tree at all. R1178 taught the gate to bound a cache key's interval by the workflow that declares it, and bounding it needs a branch, so `main.rs` began reading GITHUB_BASE_REF and GITHUB_REF_NAME. The entrance fixture spawns the binary with a named environment precisely so a runner's own variables cannot change the answer — its module doc says so, in those words, and names GITHUB_RUN_ID as the case it was paying for. The rule was right and the LIST went stale: two new reads arrived and the fixture never heard of them, so on a developer's shell (both unset) the gate asked the unscoped question the assertion expected, and on a runner (both set) it asked the scoped one. Reproduced exactly by setting GITHUB_REF_NAME=main and running the same test, which is how a fixture that describes an impossible runner gets found: a real run is always of a branch, so the fixture had been simulating a machine that does not exist. The repair is in two parts and the second is the one worth the round. The environment is now one value, `environment(run)`, that the spawn applies and a new law reads; and that law asks `main.rs`'s own SYNTAX, through syn, for every name a std::env::var call reads, then asserts the fixture names all of them. A first draft of that walk collected string literals only and reported three of the five reads as the complete set, which would have made the law agree with a stale list for the same reason the stale list was wrong; constants declared in those sources are now resolved from them, a constant imported from another crate resolves through a table that holds the constant itself rather than a retyped copy, and a name this walk cannot resolve stops it loudly rather than counting as no read. The non-emptiness check is the defect itself: dropping GITHUB_REF_NAME back out of the list fails the new law, naming that variable, at the fixture rather than four commits later on a runner.",
+      "publishable_changes_bullets": [
+        "tools/cache-budget/tests/entrance.rs: the fixture's environment is one value `environment(run)` the spawn applies, covering all five variables the gate reads",
+        "the run fixture now declares its branch (GITHUB_REF_NAME=main, GITHUB_BASE_REF removed = the push case) instead of inheriting whatever the machine has, and the assertion expects the branch-scoped query CI actually produces",
+        "new law `the_fixture_names_every_variable_the_gate_reads`: syn reads every std::env::var name out of the gate's own sources and asserts the fixture names each one",
+        "names spelled by a constant are resolved, not skipped: local consts from the parsed sources, an imported one through IMPORTED_NAMES which holds ci_plan::WORKFLOW_VARIABLE itself, and an unresolvable name panics rather than counting as nothing",
+        "syn 3 added as a cache-budget dev-dependency, the same reader tools/blind-waits and tools/uncompiled-sources already use"
+      ],
+      "publishable_verification_bullets": [
+        "the red REPRODUCED before it was fixed: GITHUB_REF_NAME=main cargo test --test entrance fails with the run's exact assertion, left carrying `&branch=main` and right not",
+        "and is gone after: the whole entrance suite passes with GITHUB_REF_NAME, GITHUB_RUN_ID and GITHUB_WORKFLOW_REF set in the ambient environment, which is the condition CI runs under",
+        "the new law is non-vacuous by injection: dropping GITHUB_REF_NAME from `environment` fails it with `the gate reads [\"GITHUB_REF_NAME\"], which this fixture neither sets nor removes`, and the injection was reverted and re-run",
+        "the walk resolves five names where a literal-only draft resolved three, and prints both sets: read and named are now the same five",
+        "cache-budget workspace: 98 tests pass (entrance 11, github 24, law 52, this_repository 11), clippy --tests --all-features -D warnings 0, fmt 0"
+      ],
+      "publishable_impact_refs": [
+        "atomic-store-mutate-api"
+      ],
+      "publishable_carry_forward_bullets": [
+        "the walk reads the gate's own `src/` only, so a variable read inside ci-plan or restored on this gate's behalf is outside what it can see; both are separate crates with their own suites, and no fixture here can name what it cannot reach",
+        "the PR path stays unobserved (the ledger's N8): this fixture declares the push case, GITHUB_BASE_REF removed, because this repository pushes to main and opens no pull request",
+        "the same stale-list shape is possible in every sibling gate's fixture under tools/, and only this one now has a program checking it"
+      ]
+    },
     "Round 252": {
       "decision_summary": "Parser CommonMark conformance — recognize indented fenced code blocks (§98) and require whitespace after ATX hash sequence (§62)",
       "changes_bullets": [
