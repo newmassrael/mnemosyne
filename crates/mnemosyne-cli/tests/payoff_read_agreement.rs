@@ -104,10 +104,7 @@ fn the_two_payoff_reads_partition_the_same_paid_setups() {
 
     let (stores, unloadable) = authored_stores();
     let asked = stores.len() + unloadable.len();
-    let mut silent: Vec<String> = unloadable
-        .iter()
-        .map(|name| format!("{name} (does not load)"))
-        .collect();
+    let mut silent: Vec<String> = unloadable.iter().map(ToString::to_string).collect();
     for store in &stores {
         let name = &store.name;
         let ws = &store.ws;
@@ -243,7 +240,7 @@ fn the_two_payoff_reads_partition_the_same_paid_setups() {
     // the shape of defect Round 1036 found by injecting into exactly that path.
     assert_eq!(
         (asked, answered, worlds_compared, setups_compared),
-        (44, 28, 41, 136),
+        (44, 41, 95, 362),
         "the corpora that answer both payoff reads, and how much they compare"
     );
 

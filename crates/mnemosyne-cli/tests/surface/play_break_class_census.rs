@@ -748,9 +748,14 @@ fn the_walk_says_what_stands_between_an_authoring_slip_and_the_runtime() {
     // them. Questions built from the dnd-quest store's own frames or entities
     // are skipped here — only a telling can be translated to another corpus —
     // and that skip is what this total counts.
+    // Round 1174: 28 -> 41 refuters and 16 -> 3 dark. Thirteen corpora were
+    // dark to schema drift alone (R708's removed object shape, R732's kind
+    // registry, R752's trigger sets), and the corpus recipe now carries them
+    // across; the three that remain are first submissions their own experiment
+    // recorded as rejected.
     assert_eq!(
         (refuters.len(), unloadable.len(), answers_total),
-        (28, 16, 672),
+        (41, 3, 1102),
         "the refuter population: authored corpora that load, those that no \
          longer do, and the (corpus, read) answers that actually reached the \
          index"
@@ -786,7 +791,12 @@ fn the_walk_says_what_stands_between_an_authoring_slip_and_the_runtime() {
             "CANDIDATE report-authoring-frontier: `unordered_scenes` is always empty",
             "CANDIDATE report-authoring-frontier: `unplaced_scenes` is always empty",
             "REFUTED report-coverage: `normative_gap` is always empty",
-            "CANDIDATE report-frame-view: `unknown` is always empty",
+            // Round 1174 — refuted the day the dark corpora were lit. A rule
+            // nothing could refute while a third of the population would not
+            // load is a rule the corpus had not been asked about, and three of
+            // them (this one, `frame-view: holding`, `manuscript: begins`)
+            // fell in the same run.
+            "REFUTED report-frame-view: `unknown` is always empty",
             "CANDIDATE report-payoff-coverage: `payoff_before_setup` is always empty",
             "CANDIDATE report-payoff-coverage: `payoffs_to_unmarked` is always empty",
             "CANDIDATE report-payoff-coverage: `uncredited_edges` is always empty",
@@ -820,7 +830,7 @@ fn the_walk_says_what_stands_between_an_authoring_slip_and_the_runtime() {
             // proposal, and this is what it costs to widen a wire — the census
             // says so in the same run rather than in a later round's review.
             "REFUTED report-authoring-frontier: `structural` is never empty",
-            "CANDIDATE report-frame-view: `holding` is never empty",
+            "REFUTED report-frame-view: `holding` is never empty",
             "REFUTED report-payoff-coverage: `dangling` is never empty",
             // R1056 — the substantiation read began carrying the setups nobody
             // paid, and this census picked the new field up on its own and
@@ -829,7 +839,7 @@ fn the_walk_says_what_stands_between_an_authoring_slip_and_the_runtime() {
             // says it supports no gate on either. Nobody added it here.
             "REFUTED report-payoff-substantiation: `dangling` is never empty",
             "CANDIDATE report-playable-world: `begins` is never empty",
-            "CANDIDATE report-playthrough-manuscript: `begins` is never empty",
+            "REFUTED report-playthrough-manuscript: `begins` is never empty",
             "CANDIDATE report-quest-graph: `actors` is never empty",
             "REFUTED report-quest-graph: `completions` is never empty",
             "REFUTED report-quest-graph: `giving_facts` is never empty",

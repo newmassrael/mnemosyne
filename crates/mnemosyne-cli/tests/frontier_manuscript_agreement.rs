@@ -658,8 +658,8 @@ fn the_frontier_counts_per_scene_what_the_manuscript_walks_per_road() {
     let (stores, unloadable) = authored_stores();
     let asked = stores.len() + unloadable.len();
     let mut authored = Evidence::default();
-    for name in &unloadable {
-        authored.note("the store does not load", name.clone());
+    for corpus in &unloadable {
+        authored.note("the store does not load", corpus.named_reason());
     }
     // The number this whole file rests on, MEASURED here rather than cited from
     // the two contracts that skip these stores: a corpus that declares no
@@ -705,14 +705,14 @@ fn the_frontier_counts_per_scene_what_the_manuscript_walks_per_road() {
             authored.count("the store does not load"),
             authored.answered,
             declare_no_telling,
-        ) == (44, 16, 28, 18),
-        "POPULATION (stores): of the corpora asked, only the 16 the R857 rot \
-         reaches never arrive — every other store answers, INCLUDING the 18 that \
-         declare no telling and therefore reach neither of the two contracts that \
-         relate these reads through `report-playable-world`. That last number is \
-         why this pair needs a contract of its own, so it is MEASURED here and \
-         not quoted: 28 stores against the 13 (store, telling) pairs those two \
-         contracts see",
+        ) == (44, 3, 41, 30),
+        "POPULATION (stores): of the corpora asked, only the 3 whose author's \
+         submission the write path rejected never arrive — every other store \
+         answers, INCLUDING the 30 that declare no telling and therefore reach \
+         neither of the two contracts that relate these reads through \
+         `report-playable-world`. That last number is why this pair needs a \
+         contract of its own, so it is MEASURED here and not quoted: 41 stores \
+         against the 14 (store, telling) pairs those two contracts see",
     );
     check(
         (
@@ -721,12 +721,13 @@ fn the_frontier_counts_per_scene_what_the_manuscript_walks_per_road() {
             authored.confluence_marks,
             authored.scenes_walked,
             authored.section_rows,
-        ) == (41, 0, 0, 823, 989),
+        ) == (96, 1, 1, 2190, 3552),
         "AUTHORED EVIDENCE: the roads compared, the roads the unfiltered dump \
          omitted, the confluence fragments among them, the scenes walked, and \
-         the section-rows the partition law compared. The 823 is the whole \
-         authored scene surface — the same number the reading prune's own \
-         provenance field is documented against one crate down",
+         the section-rows the partition law compared. Round 1174 lit the corpus \
+         that declares a CONFLUENCE, so the two middle numbers left zero for the \
+         first time and an author's store now carries the fragment arm the \
+         constructed store used to carry alone",
     );
     check(
         (
@@ -734,16 +735,16 @@ fn the_frontier_counts_per_scene_what_the_manuscript_walks_per_road() {
             authored.empty_scene_checks,
             authored.unordered_facts,
             authored.undecidable_everywhere,
-        ) == (0, 0, 0, 0),
+        ) == (0, 14, 0, 0),
         "AUTHORED SILENCE, ASSERTED: no corpus holds a section outside its \
-         order, a scene with nothing in it, or a fact no order can place — so \
-         four of the seven laws are carried entirely by the constructed store, \
-         and this line is what makes that visible rather than averaged away. The \
-         same silence is why the reading-copy test below needs a constructed \
-         store at all",
+         order or a fact no order can place, so those laws are still carried \
+         entirely by the constructed store — but fourteen EMPTY SCENES arrived \
+         with Round 1174's lit corpora, and that arm is no longer the \
+         constructed store's alone. This line is what makes the difference \
+         visible rather than averaged away",
     );
     check(
-        authored.facts_named == 2468,
+        authored.facts_named == 3514,
         "AUTHORED CENSUS: the facts the manuscript names at a scene the frontier \
          counts. With the residual at zero above, the per-scene containment and \
          this total ARE per-scene equality",
@@ -984,12 +985,12 @@ fn the_reading_copy_drops_the_scenes_the_frontier_calls_empty() {
     };
 
     check(
-        (authored_stores_asked, authored_dropped) == (28, 0),
-        "AUTHORED SILENCE, ASSERTED: every scene of every authored corpus begins \
-         at least one fact, so the prune drops nothing and this population can \
-         judge nothing. Measured rather than trusted — the day a corpus does hold \
-         an empty scene, this number moves and the law below starts being carried \
-         by an author's store as well",
+        (authored_stores_asked, authored_dropped) == (41, 15),
+        "AUTHORED EVIDENCE: the day a corpus does hold an empty scene this \
+         number moves and the law below starts being carried by an author's \
+         store as well — Round 1174 was that day. Fifteen scenes the frontier \
+         calls empty are dropped from an author's reading copy, where this arm \
+         read 0 for as long as a third of the corpora were dark",
     );
     check(
         (empty_walked, dropped_empty.len()) == (3, 3),

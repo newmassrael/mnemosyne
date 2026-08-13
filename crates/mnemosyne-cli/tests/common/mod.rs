@@ -121,19 +121,70 @@ pub struct AuthoredStore {
     /// author could equally have taken, which is what makes a perturbation
     /// evidence about the store rather than about a hand-edited sidecar.
     pub facts: serde_json::Value,
+    /// What the recipe had to change to build this store at all, or `None` for
+    /// a manifest today's write path takes as its author wrote it.
+    pub upgrade: Option<CorpusUpgrade>,
 }
 
-/// Every authored store this repository can actually ASK, and the names of the
-/// ones it cannot: the tracked corpora, PLUS the migrated dnd-quest record.
+/// A tracked corpus this tree can no longer ask, and WHY it refuses.
+///
+/// The reason is carried rather than dropped (Round 1174). Every walk over the
+/// population already prints the name of each corpus it had to skip, so the
+/// count has never been silent — but the recipe HELD the refusal message and
+/// kept only the name, which is the R1167 shape exactly: the evidence was in
+/// hand at the moment of judging and a boolean was stored instead. Without it
+/// a corpus that stops loading for a NEW reason is indistinguishable from the
+/// ones that have been dark since the schema moved past them, and the walk
+/// that would notice reads `(does not load)` for both.
+pub struct UnloadableCorpus {
+    /// The corpus directory, repo-relative — the same name the walks print.
+    pub name: String,
+    /// The refusal, verbatim from the import that rejected it: which import
+    /// step (`import-sections` / `import-facts`) and the primitive's own
+    /// message. This is the tree's only account of why the evidence shrank.
+    pub reason: String,
+}
+
+impl UnloadableCorpus {
+    /// The corpus and its refusal, for a walk that has ALREADY said "does not
+    /// load" — the bucketed walks key their skip list on that phrase, so
+    /// repeating it in the value would print it twice on one line.
+    pub fn named_reason(&self) -> String {
+        format!("{} ({})", self.name, self.reason)
+    }
+}
+
+impl std::fmt::Display for UnloadableCorpus {
+    /// The one line a FLAT skip list prints, written HERE so the call sites
+    /// cannot drift into as many phrasings as there are walks.
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{} (does not load: {})", self.name, self.reason)
+    }
+}
+
+/// Every authored store this repository can actually ASK, and the ones it
+/// cannot WITH THEIR REASONS: the tracked corpora, PLUS the migrated dnd-quest
+/// record.
 ///
 /// The migrated record has to be named separately and that is not a detail. It
 /// is the richest store this tree holds — four roads, quests, dangling setups
-/// on every road — and its own TRACKED manifest is the pre-migration file that
-/// stopped loading (the rot R857 found), so a sweep of tracked corpora alone
-/// EXCLUDES it. Round 1036 lost three refutations to exactly that omission and
-/// had to add it back by hand; this is that lesson as a shared resolver rather
-/// than as a line each walk remembers to write.
-pub fn authored_stores() -> (Vec<AuthoredStore>, Vec<String>) {
+/// on every road — and a sweep of tracked corpora alone EXCLUDES it. Round 1036
+/// lost three refutations to exactly that omission and had to add it back by
+/// hand; this is that lesson as a shared resolver rather than as a line each
+/// walk remembers to write.
+///
+/// WHY IT IS STILL HERE AFTER ROUND 1174, measured rather than assumed. The
+/// reason this record used to give was that its own tracked manifest was the
+/// pre-migration file that stopped loading (the rot R857 found), and that
+/// reason is now FALSE: `upgrade_corpus_manifest` carries that manifest, and
+/// the upgraded tracked file is byte-equal to this fixture in every array —
+/// branches, entities, entity kinds, facts, frames, predicates. The whole
+/// difference is one `disclosure_plans` entry the fixture adds and the tracked
+/// corpus never had, which is the TELLING that makes this the only authored
+/// store with quests, locators and a disclosure column at once. So it is not a
+/// legacy copy of a corpus that loads; it is a corpus plus an authored telling,
+/// and deleting it would delete the telling.
+pub fn authored_stores() -> (Vec<AuthoredStore>, Vec<UnloadableCorpus>) {
     let mut loadable = Vec::new();
     let mut unloadable = Vec::new();
     for dir in authored_corpora() {
@@ -143,14 +194,24 @@ pub fn authored_stores() -> (Vec<AuthoredStore>, Vec<String>) {
             .display()
             .to_string();
         let facts = read_json(&dir.join("facts.json"));
+        // Whether the recipe had to upgrade this manifest belongs in the name:
+        // every walk prints the corpus it is quoting, and a record built by
+        // the Round 1174 upgrade answers about its predicates' vocabulary with
+        // its author's USAGE rather than the author's declaration.
+        let upgrade = upgrade_corpus_manifest(&mut facts.clone());
+        let name = match &upgrade {
+            Some(_) => format!("{name} (upgraded at load)"),
+            None => name,
+        };
         match corpus_workspace_try(&dir, &facts) {
             Ok(ws) => loadable.push(AuthoredStore {
                 name,
                 ws,
                 dir,
                 facts,
+                upgrade,
             }),
-            Err(_) => unloadable.push(name),
+            Err(reason) => unloadable.push(UnloadableCorpus { name, reason }),
         }
     }
     loadable.push(AuthoredStore {
@@ -158,6 +219,7 @@ pub fn authored_stores() -> (Vec<AuthoredStore>, Vec<String>) {
         ws: dnd_quest_workspace_from(&dnd_quest_facts()),
         dir: audit_dir(),
         facts: dnd_quest_facts(),
+        upgrade: None,
     });
     (loadable, unloadable)
 }
@@ -240,12 +302,311 @@ pub fn dnd_quest_workspace_try(facts: &serde_json::Value) -> Result<TempDir, Str
 /// `sections.json` + `order.json` beside a fact manifest, and nothing about the
 /// recipe is specific to which author wrote it.
 pub fn corpus_workspace_try(dir: &Path, facts: &serde_json::Value) -> Result<TempDir, String> {
+    let mut facts = facts.clone();
+    upgrade_corpus_manifest(&mut facts);
     let manifests = Manifests {
         sections: read_json(&dir.join("sections.json")),
         order: read_json(&dir.join("order.json")),
-        facts: facts.clone(),
+        facts,
     };
     workspace_try(&manifests, Some(dir))
+}
+
+// ==========================================================================
+// THE CORPUS UPGRADE (Round 1174).
+//
+// Sixteen of the forty-four tracked corpora did not load, and until this round
+// no walk held the reason. Twelve of them refuse for ONE cause: Round 708
+// removed the free-text `value` / `scalar` object shape, and every corpus
+// authored before it carries one. The evidence base shrank by a third as the
+// schema advanced, silently in the sense that mattered — the counts were
+// printed and pinned, so the SIZE was loud, but nothing said whether a dark
+// corpus held an authoring defect or merely predated a wire change.
+//
+// The upgrade is here, in the corpus recipe, rather than as twelve rewritten
+// manifests on disk. Which is deliberate, and it is the only shape that keeps
+// both halves true:
+//
+//   - THE PRODUCT DOES NOT SOFTEN. `import-facts` still rejects the removed
+//     shape exactly as Round 708 decided; nothing about the write path moves.
+//     A corpus is upgraded on the way IN to a throwaway workspace, the same
+//     way one migrates a database before replaying it.
+//   - THE RECORD DOES NOT MOVE. An experiment's manifest is what its author
+//     shipped, and a report that cites it cites the file in git. Rewriting
+//     twelve of them would edit evidence to fit a schema they predate.
+//
+// It is scoped to `corpus_workspace_try` — the tracked corpora — and NOT to
+// `workspace_try`, because the manifests a walk writes itself include ones
+// deliberately malformed to prove a refusal. An upgrade that repaired those
+// would turn a negative case green while the walk still called it evidence.
+// ==========================================================================
+
+/// What the upgrade did to one corpus — carried, not summarised, because a
+/// projection of someone else's record has to be able to say what it changed
+/// and what it could not carry across.
+///
+/// Two schema breaks are crossed, and both are the same KIND of break: a shape
+/// that was free-text when the corpus was authored is a DECLARED, closed
+/// vocabulary today. Each is upgraded by closing over what the corpus itself
+/// used, which is the only vocabulary the record contains.
+#[derive(Clone, PartialEq, Eq, Debug, Default)]
+pub struct CorpusUpgrade {
+    /// R708 — how many typed objects moved from the removed `value` shape to
+    /// `token`.
+    pub values: usize,
+    /// R708 — the predicates re-declared `token`, with the vocabulary DERIVED
+    /// from this corpus's own usage.
+    pub redeclared: Vec<String>,
+    /// R708 — the predicates the upgrade had to DROP: declared `scalar` and
+    /// used by no fact, so the corpus says nothing about what vocabulary to
+    /// close over, and an empty closed set is itself rejected ("an empty
+    /// closed set would re-open the free-text hole"). Dropping an inert
+    /// declaration is the smaller loss than darkening the whole corpus, and
+    /// naming it here is what keeps it from being a quiet one.
+    pub dropped: Vec<String>,
+    /// R732 — the entity kinds these entities name and no `entity_kinds` array
+    /// declares, declared from usage. A kind carries no parents here: the
+    /// author wrote a flat vocabulary and a hierarchy would be invented.
+    pub entity_kinds: Vec<String>,
+    /// R752 — how many disclosure `first_at` triggers moved from the old
+    /// `[branch, coord]` PAIR list to the trigger set `{branch, coords}`. The
+    /// pairs regroup by branch in the order they were written; a branch named
+    /// once becomes a one-coordinate set, which is what the pair meant.
+    pub first_at: usize,
+}
+
+impl CorpusUpgrade {
+    /// Whether the manifest was already current — nothing to carry across.
+    fn is_noop(&self) -> bool {
+        *self == Self::default()
+    }
+}
+
+impl std::fmt::Display for CorpusUpgrade {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{} value object(s) -> token, re-declared {:?}",
+            self.values, self.redeclared
+        )?;
+        if !self.dropped.is_empty() {
+            write!(f, ", DROPPED unused {:?}", self.dropped)?;
+        }
+        if !self.entity_kinds.is_empty() {
+            write!(f, ", declared kinds {:?}", self.entity_kinds)?;
+        }
+        if self.first_at > 0 {
+            write!(
+                f,
+                ", {} first_at pair list(s) -> trigger sets",
+                self.first_at
+            )?;
+        }
+        Ok(())
+    }
+}
+
+/// Carry a fact manifest across the two vocabulary breaks it may predate —
+/// R708's removal of the free-text `value` / `scalar` object shape, and R732's
+/// entity-kind registry — returning what it changed, or `None` for a manifest
+/// today's write path takes as its author wrote it.
+///
+/// Both vocabularies are DERIVED, and that is the only inference here: the
+/// shapes these corpora used declared no vocabulary at all, so the tightest
+/// sound closure is the set of values the corpus actually wrote. A store built
+/// through it therefore answers "which values may this predicate take" with
+/// its author's USAGE rather than its author's intent, and a walk that asks
+/// about REJECTION of an unlisted token must not use one of these records as
+/// its witness.
+///
+/// Everything it cannot map fails loud rather than passing the manifest
+/// through half-upgraded: a store that loads because a check was skipped is
+/// worse evidence than one that does not load.
+pub fn upgrade_corpus_manifest(facts: &mut serde_json::Value) -> Option<CorpusUpgrade> {
+    // The values each predicate's own facts use — the derived vocabulary.
+    let mut vocabulary: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
+    let fact_rows = facts
+        .get("facts")
+        .and_then(|f| f.as_array())
+        .cloned()
+        .unwrap_or_default();
+    for row in &fact_rows {
+        let Some(typed) = row.get("typed") else {
+            continue;
+        };
+        if typed["object"]["kind"] != "value" {
+            continue;
+        }
+        let id = row["fact_id"].as_str().unwrap_or("<unnamed>");
+        let predicate = typed["predicate"].as_str().unwrap_or_else(|| {
+            panic!("fact `{id}` carries a typed leg with no predicate, which no upgrade can guess")
+        });
+        let value = typed["object"]["value"].as_str().unwrap_or_else(|| {
+            panic!(
+                "fact `{id}` carries a `value` object that is not a string ({}), and a token \
+                 vocabulary is a set of strings",
+                typed["object"]["value"]
+            )
+        });
+        vocabulary
+            .entry(predicate.to_string())
+            .or_default()
+            .insert(value.to_string());
+    }
+
+    // The predicates that declared the removed kind. A manifest may hold one
+    // with no uses at all, and then there is nothing to derive a vocabulary
+    // from — that one is dropped and named, never closed over the empty set.
+    let mut scalars: BTreeSet<String> = BTreeSet::new();
+    let mut dropped: Vec<String> = Vec::new();
+    if let Some(predicates) = facts.get_mut("predicates").and_then(|p| p.as_array_mut()) {
+        for predicate in predicates.iter_mut() {
+            if predicate["object_kind"] != "scalar" {
+                continue;
+            }
+            let id = predicate["predicate_id"]
+                .as_str()
+                .expect("a predicate declaration names its id")
+                .to_string();
+            let Some(tokens) = vocabulary.get(&id) else {
+                dropped.push(id);
+                continue;
+            };
+            predicate["object_kind"] = serde_json::json!("token");
+            predicate["object_tokens"] =
+                serde_json::json!(tokens.iter().cloned().collect::<Vec<String>>());
+            scalars.insert(id);
+        }
+        predicates.retain(|predicate| {
+            predicate["predicate_id"]
+                .as_str()
+                .is_none_or(|id| !dropped.iter().any(|gone| gone == id))
+        });
+    }
+
+    // R732 — the kinds this corpus's entities name, minus the ones it already
+    // declares. `add_entity_kind`'s vocabulary is the consumer's, so the only
+    // declaration faithful to a corpus that predates the registry is the set
+    // its own entities used.
+    let declared: BTreeSet<String> = facts
+        .get("entity_kinds")
+        .and_then(|k| k.as_array())
+        .map(|kinds| {
+            kinds
+                .iter()
+                .filter_map(|kind| kind["kind_id"].as_str().map(str::to_string))
+                .collect()
+        })
+        .unwrap_or_default();
+    let mut undeclared_kinds: BTreeSet<String> = BTreeSet::new();
+    for entity in facts
+        .get("entities")
+        .and_then(|e| e.as_array())
+        .map(Vec::as_slice)
+        .unwrap_or_default()
+    {
+        if let Some(kind) = entity["kind"].as_str() {
+            if !declared.contains(kind) {
+                undeclared_kinds.insert(kind.to_string());
+            }
+        }
+    }
+    let entity_kinds: Vec<String> = undeclared_kinds.into_iter().collect();
+    if !entity_kinds.is_empty() {
+        let rows: Vec<serde_json::Value> = entity_kinds
+            .iter()
+            .map(|kind| serde_json::json!({ "kind_id": kind }))
+            .collect();
+        match facts.get_mut("entity_kinds").and_then(|k| k.as_array_mut()) {
+            Some(existing) => existing.extend(rows),
+            None => facts["entity_kinds"] = serde_json::json!(rows),
+        }
+    }
+
+    // A `value` object whose predicate never declared `scalar` is a manifest
+    // that disagrees with itself. Upgrading it would invent a declaration the
+    // author did not write.
+    let undeclared: Vec<&String> = vocabulary
+        .keys()
+        .filter(|p| !scalars.contains(*p))
+        .collect();
+    assert!(
+        undeclared.is_empty(),
+        "these predicates carry `value` objects without declaring `scalar`: {undeclared:?}"
+    );
+
+    let mut upgraded = 0usize;
+    if let Some(rows) = facts.get_mut("facts").and_then(|f| f.as_array_mut()) {
+        for row in rows.iter_mut() {
+            let Some(object) = row.get_mut("typed").and_then(|t| t.get_mut("object")) else {
+                continue;
+            };
+            if object["kind"] != "value" {
+                continue;
+            }
+            let token = object["value"].clone();
+            *object = serde_json::json!({ "kind": "token", "token": token });
+            upgraded += 1;
+        }
+    }
+
+    // R752 — a disclosure override's `first_at` was a list of [branch, coord]
+    // PAIRS and is now a list of per-branch trigger SETS. Regrouping is the
+    // whole of it: the pair said "this branch reaches it here", and the set
+    // says the same thing about a branch named once.
+    let mut first_at = 0usize;
+    for plan in facts
+        .get_mut("disclosure_plans")
+        .and_then(|p| p.as_array_mut())
+        .map(Vec::as_mut_slice)
+        .unwrap_or_default()
+    {
+        for over in plan
+            .get_mut("overrides")
+            .and_then(|o| o.as_array_mut())
+            .map(Vec::as_mut_slice)
+            .unwrap_or_default()
+        {
+            let Some(triggers) = over.get("first_at").and_then(|t| t.as_array()) else {
+                continue;
+            };
+            // Already a trigger set: the object form carries `branch`.
+            if triggers.iter().all(|t| t.get("branch").is_some()) {
+                continue;
+            }
+            let mut coords: BTreeMap<String, Vec<serde_json::Value>> = BTreeMap::new();
+            for trigger in triggers {
+                let pair = trigger.as_array().unwrap_or_else(|| {
+                    panic!("a pre-R752 `first_at` trigger is a [branch, coord] pair, got {trigger}")
+                });
+                let [branch, coord] = pair.as_slice() else {
+                    panic!("a pre-R752 `first_at` pair holds exactly a branch and a coord");
+                };
+                let branch = branch
+                    .as_str()
+                    .unwrap_or_else(|| panic!("a `first_at` pair names its branch, got {branch}"));
+                coords
+                    .entry(branch.to_string())
+                    .or_default()
+                    .push(coord.clone());
+            }
+            over["first_at"] = serde_json::json!(coords
+                .into_iter()
+                .map(|(branch, coords)| serde_json::json!({ "branch": branch, "coords": coords }))
+                .collect::<Vec<_>>());
+            first_at += 1;
+        }
+    }
+
+    dropped.sort();
+    let upgrade = CorpusUpgrade {
+        values: upgraded,
+        redeclared: scalars.into_iter().collect(),
+        dropped,
+        entity_kinds,
+        first_at,
+    };
+    (!upgrade.is_noop()).then_some(upgrade)
 }
 
 /// THE recipe, over manifest VALUES: fresh seed, the three manifests written

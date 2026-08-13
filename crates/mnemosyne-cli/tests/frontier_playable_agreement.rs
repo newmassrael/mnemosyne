@@ -959,8 +959,8 @@ fn the_frontier_counts_per_scene_what_the_playable_world_walks_per_road() {
     let (stores, unloadable) = authored_stores();
     let asked = stores.len() + unloadable.len();
     let mut authored = Evidence::default();
-    for name in &unloadable {
-        authored.note("the store does not load", name.clone());
+    for corpus in &unloadable {
+        authored.note("the store does not load", corpus.named_reason());
     }
     for store in &stores {
         let ws = store.ws.path();
@@ -1008,12 +1008,12 @@ fn the_frontier_counts_per_scene_what_the_playable_world_walks_per_road() {
             asked,
             authored.count("the store does not load"),
             authored.count("declares no telling, so the playable world cannot be asked"),
-        ) == (44, 16, 18),
+        ) == (44, 3, 30),
         "POPULATION (stores): of the corpora asked, these never reach the \
-         comparison at all — 16 to the R857 rot, 18 declaring no telling for a \
-         pair whose playable half is per-telling. The one corpus that declares \
-         a confluence is inside that 18, which is why the constructed store \
-         exists",
+         comparison at all — 3 whose author's submission the write path \
+         rejected, 30 declaring no telling for a pair whose playable half is \
+         per-telling. The corpora that declare a confluence are inside that 30, \
+         which is why the constructed store still exists",
     );
     check(
         (
@@ -1022,7 +1022,7 @@ fn the_frontier_counts_per_scene_what_the_playable_world_walks_per_road() {
             authored.filtered_roads,
             authored.scenes_walked,
             authored.section_rows,
-        ) == (13, 18, 0, 400, 512),
+        ) == (14, 21, 0, 444, 572),
         "AUTHORED EVIDENCE: the (store, telling) pairs that answered both reads, \
          the roads compared, the roads the dump could not answer for, the scenes \
          walked, and the section-rows the partition law compared",
@@ -1041,20 +1041,20 @@ fn the_frontier_counts_per_scene_what_the_playable_world_walks_per_road() {
          and this line is what makes that visible rather than averaged away",
     );
     check(
-        (authored.facts_named, authored.undecidable_everywhere) == (1092, 0),
+        (authored.facts_named, authored.undecidable_everywhere) == (1151, 0),
         "AUTHORED CENSUS: the facts the playable world names at a scene the \
          frontier counts, and the residual it can place on no road — with the \
          residual at zero the per-scene `≤` and the equal total ARE per-scene \
          equality",
     );
     check(
-        (authored.quest_typed_events, authored.structural_untyped) == (30, 3),
+        (authored.quest_typed_events, authored.structural_untyped) == (52, 7),
         "AUTHORED STRUCTURAL: the begins-events the playable world hands a \
          runtime with a quest typed leg — every one of them subtracted by the \
          census at the scene it begins — and the structural facts no road shows \
-         one for, which are the quest GIVING setups. Only the migrated dnd-quest \
-         record declares quests at all, so both numbers ride on one corpus and \
-         this line is where that shows",
+         one for, which are the quest GIVING setups. Round 1174 lit the \
+         dnd-quest corpus's own tracked manifest, so these no longer ride on the \
+         single hand-migrated record",
     );
     check(
         (
@@ -1063,14 +1063,14 @@ fn the_frontier_counts_per_scene_what_the_playable_world_walks_per_road() {
         ) == (0, 0),
         "CONSTRUCTED STRUCTURAL, ASSERTED ZERO: the store the tree builds \
          declares no quest, so it carries this law's evidence not at all — \
-         stated rather than averaged in with the authored 30",
+         stated rather than averaged in with the authored 52",
     );
     check(
         (
             authored.locators,
             authored.overridden_seats,
             authored.never_planned_checks,
-        ) == (1422, 8, 20),
+        ) == (1554, 8, 20),
         "AUTHORED DISCLOSURE: the locators judged, how many sit away from their \
          fact's own scene (the only ones that CAN be early), and the \
          never-planned facts checked against them",

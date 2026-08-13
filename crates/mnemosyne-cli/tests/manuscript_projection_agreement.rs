@@ -59,8 +59,8 @@ fn the_playable_world_embeds_the_manuscript_it_was_asked_for() {
 
     let mut silent: BTreeMap<&'static str, Vec<String>> = BTreeMap::new();
     let mut note = |why: &'static str, what: String| silent.entry(why).or_default().push(what);
-    for name in &unloadable {
-        note("the store does not load", name.clone());
+    for corpus in &unloadable {
+        note("the store does not load", corpus.named_reason());
     }
 
     let mut answered = 0usize;
@@ -283,19 +283,19 @@ fn the_playable_world_embeds_the_manuscript_it_was_asked_for() {
             asked,
             count("the store does not load"),
             count("declares no telling, so the playable world cannot be asked"),
-        ) == (44, 16, 18),
+        ) == (44, 3, 30),
         "POPULATION (stores): of the corpora asked, these never reach the \
-         comparison at all — 16 to the R857 rot, 18 declaring no telling for a \
-         pair of per-telling reads",
+         comparison at all — 3 whose author's submission the write path \
+         rejected, 30 declaring no telling for a pair of per-telling reads",
     );
     check(
-        (answered, roads, scenes, filtered_roads) == (13, 18, 400, 18),
+        (answered, roads, scenes, filtered_roads) == (14, 21, 444, 21),
         "EVIDENCE: the (store, telling) pairs that answered both reads, how \
          much of each store the two put in front of each other, and how many of \
          those roads were asked a SECOND time with the filter a runtime uses",
     );
     check(
-        disclosed_events == 1483,
+        disclosed_events == 1624,
         "NON-VACUITY: the begins-events whose disclosure column the telling \
          decides — the column whose absence on one side made the first sweep of \
          this pair read as eighteen disagreements that were not there",

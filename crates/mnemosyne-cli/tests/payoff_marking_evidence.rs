@@ -253,7 +253,7 @@ fn every_authored_corpus_answers_whether_a_payoff_names_an_unmarked_setup() {
 
     assert_eq!(
         (rows.len(), loaded, unparsed, checked),
-        (44, 28, 0, 28),
+        (44, 41, 0, 41),
         "the population: corpora asked, those a store can be built from, those \
          whose manifest this reader cannot read, and those where both readers \
          answered and were compared"

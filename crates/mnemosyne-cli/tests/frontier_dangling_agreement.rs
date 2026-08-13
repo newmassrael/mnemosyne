@@ -66,10 +66,7 @@ fn the_frontier_carries_exactly_the_roads_coverage_says_still_dangle() {
 
     let (stores, unloadable) = authored_stores();
     let asked = stores.len() + unloadable.len();
-    let mut silent: Vec<String> = unloadable
-        .iter()
-        .map(|name| format!("{name} (does not load)"))
-        .collect();
+    let mut silent: Vec<String> = unloadable.iter().map(ToString::to_string).collect();
     for store in &stores {
         let name = &store.name;
         let ws = &store.ws;
@@ -161,7 +158,7 @@ fn the_frontier_carries_exactly_the_roads_coverage_says_still_dangle() {
             roads_all_paid,
             setups_compared
         ),
-        (44, 28, 6, 35, 12),
+        (44, 41, 31, 64, 81),
         "the corpora that answer both reads, and how much they compare"
     );
 

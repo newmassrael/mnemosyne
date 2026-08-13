@@ -217,8 +217,8 @@ fn a_quest_is_open_exactly_where_its_own_giving_still_dangles() {
     // WHY a store answered nothing, by name.
     let mut silent: BTreeMap<&str, Vec<String>> = BTreeMap::new();
     let mut note = |why: &'static str, what: String| silent.entry(why).or_default().push(what);
-    for name in &unloadable {
-        note("the store does not load", name.clone());
+    for corpus in &unloadable {
+        note("the store does not load", corpus.named_reason());
     }
     for store in &stores {
         let name = &store.name;
@@ -324,20 +324,21 @@ fn a_quest_is_open_exactly_where_its_own_giving_still_dangles() {
             asked,
             count("the store does not load"),
             count("declares no telling, so the quest graph cannot be asked"),
-        ) == (44, 16, 18),
+        ) == (44, 3, 30),
         "POPULATION (stores): of the corpora asked, these never reach the \
-         comparison at all — 16 to the R857 rot, 18 declaring no telling for a \
+         comparison at all — 3 whose author's submission the write path \
+         rejected, 30 declaring no telling for a \
          per-telling read",
     );
     check(
-        (*answered, count("answered both, declares no quest"), *cells) == (13, 12, 16),
+        (*answered, count("answered both, declares no quest"), *cells) == (14, 12, 28),
         "EVIDENCE (store-telling pairs): the pairs that answered both reads, \
          those declaring no quest, and the quest-road cells the rest put in \
          front of each other — ONE pair carries every cell below, so this \
          contract is as narrow as the corpus that declares quests",
     );
     check(
-        (*open, *unknown, *done) == (5, 1, 10),
+        (*open, *unknown, *done) == (10, 1, 17),
         "CENSUS: every verdict class is exercised, so no arm below holds \
          vacuously",
     );
@@ -460,7 +461,7 @@ fn the_prose_line_says_what_the_road_still_owes() {
     // that prints nothing at all.
     assert_eq!(
         (cells, owing),
-        (16, 5),
+        (28, 10),
         "the quest-road lines this corpus prints, and how many carry an \
          outstanding giving for the prose to name"
     );

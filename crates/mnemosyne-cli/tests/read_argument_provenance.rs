@@ -288,12 +288,12 @@ fn every_argument_that_decides_an_answer_is_named_in_the_answer() {
     // THE POPULATION, asserted rather than printed. A derivation that quietly
     // stops probing passes by asking nothing (the R1036 hole).
     check(
-        (asked, unloadable.len()) == (44, 16),
+        (asked, unloadable.len()) == (44, 3),
         "POPULATION (stores): every corpus an author shipped is asked, and the \
-         ones the R857 rot closed are counted rather than dropped",
+         ones that no longer load are counted rather than dropped",
     );
     check(
-        (verdicts.len(), probes, outside.len()) == (23, 485, 72),
+        (verdicts.len(), probes, outside.len()) == (23, 697, 72),
         "POPULATION (cells): the (verb, flag) cells the shipped usage lines and \
          the corpora's own vocabularies put in front of this walk, and the ones \
          no probe of this shape can decide",
@@ -303,20 +303,23 @@ fn every_argument_that_decides_an_answer_is_named_in_the_answer() {
     // an oracle rather than a rule invented here — the surface already tracks
     // its arguments in most cells, and the failures are the minority.
     check(
-        (census(Verdict::Named), census(Verdict::Inert)) == (13, 10),
+        (census(Verdict::Named), census(Verdict::Inert)) == (14, 9),
         "CENSUS: the arguments whose record the answer carries, and the ones no \
          authored corpus can make change an answer's substance at all. EIGHT of \
-         the thirteen were already named before Round 1048 — that majority is \
-         why the rule below is the repository's own and not one invented here; \
-         the four that round repaired are `report-playable-world --world`, \
+         them were already named before Round 1048 — that majority is why the \
+         rule below is the repository's own and not one invented here; the four \
+         that round repaired are `report-playable-world --world`, \
          `report-quest-graph --world`, and both of \
          `report-playthrough-manuscript`'s. THE THIRTEENTH ARRIVED BY BEING \
          FIXED: `report-timeline-gaps --world` read Inert here until Round 1049 \
          found that it scoped the PROSE loop alone, so the `--json` wire this \
-         walk reads answered every road no matter what it was asked. An \
-         argument that decides nothing and an argument that is ignored are the \
-         same row in this census, which is why the sibling walk asks the other \
-         question — whether the filter SELECTS",
+         walk reads answered every road no matter what it was asked. THE \
+         FOURTEENTH ARRIVED BY EVIDENCE: Round 1174 lit thirteen corpora that \
+         had gone dark to schema drift, and one argument that read Inert only \
+         because no loadable corpus could move it started moving. An argument \
+         that decides nothing and an argument that is ignored are the same row \
+         in this census, which is why the sibling walk asks the other question \
+         — whether the filter SELECTS",
     );
 
     check(
@@ -477,7 +480,7 @@ fn the_prose_header_says_what_the_projection_was_asked() {
     // prints nothing at all.
     assert_eq!(
         (checked, verbs.len()),
-        (40, 4),
+        (44, 4),
         "the road-filtering headers this corpus set puts in front of the walk"
     );
     assert_eq!(

@@ -98,6 +98,9 @@ mod consolidated_test_isolation;
 #[path = "coordinate_read_answers.rs"]
 mod coordinate_read_answers;
 
+#[path = "dark_corpus_accounting.rs"]
+mod dark_corpus_accounting;
+
 #[path = "discharge_succession_agreement.rs"]
 mod discharge_succession_agreement;
 

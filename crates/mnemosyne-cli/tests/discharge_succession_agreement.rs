@@ -209,7 +209,7 @@ fn every_same_frame_discharge_is_a_step_the_edge_report_can_see() {
     // looking at. `same_frame` is pinned for the same reason in reverse.
     assert_eq!(
         (asked, answered, discharges, same_frame, cross_frame),
-        (44, 28, 26, 23, 3),
+        (44, 41, 102, 87, 15),
         "the discharging steps this tree can ask about, split by frame"
     );
 

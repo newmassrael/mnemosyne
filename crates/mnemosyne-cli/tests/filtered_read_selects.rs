@@ -64,6 +64,18 @@ struct Selection<'a> {
     roads: &'a BTreeSet<String>,
     /// The road this probe asked for.
     road: &'a str,
+    /// The registered roads that are CONFLUENCE fragments, which the default
+    /// dump deliberately does not sweep (Round 533: a confluence's shared
+    /// suffix already renders inside each parent's manuscript, so it is not
+    /// also a standalone world). Named here because a filtered read that
+    /// answers one is not inventing a road — there is no unfiltered answer
+    /// about it to hold the filtered one to.
+    confluences: &'a BTreeSet<String>,
+    /// How many structures this probe reached that the unfiltered read does
+    /// not carry BECAUSE the asked road is such a fragment. Counted rather
+    /// than passed over: an exclusion nobody counts is indistinguishable from
+    /// a contract that holds.
+    by_name: usize,
     /// Road-keyed structures reached, by path, and what the filter did to them.
     /// Only recorded where the unfiltered structure held MORE than one road:
     /// on a one-road corpus "narrowed" and "whole" are the same answer, and
@@ -120,6 +132,17 @@ impl Selection<'_> {
             };
             let seen: BTreeSet<&String> = before.iter().collect();
             let invented: Vec<&String> = after.iter().filter(|r| !seen.contains(r)).collect();
+            // THE ONE ROAD A FILTER MAY ANSWER FOR AND THE DUMP MAY NOT (R533).
+            // A confluence fragment is answerable only BY NAME, so a filtered
+            // read holding exactly the asked fragment has no unfiltered
+            // counterpart — not a contract violation, and not a comparison
+            // either. Until Round 1174 no corpus this tree could load declared
+            // a confluence, so the contract read as universal because nothing
+            // had ever tested the one case it does not cover.
+            if invented.as_slice() == [self.road] && self.confluences.contains(self.road) {
+                self.by_name += 1;
+                return;
+            }
             if !invented.is_empty() {
                 self.moved.push(format!(
                     "{path}: the filtered read answers roads the unfiltered one did not: \
@@ -236,6 +259,11 @@ fn a_road_filter_answers_what_the_unfiltered_read_already_said() {
     // registry holds, and which of them answered anyway.
     let mut loud = 0usize;
     let mut silent_typo: Vec<String> = Vec::new();
+    // The R533 exclusion, counted across every probe: structures a filtered
+    // read answers for a CONFLUENCE fragment, which the unfiltered dump does
+    // not sweep. Non-zero is what makes the carve-out evidence rather than a
+    // hole the walk was told to look past.
+    let mut by_name = 0usize;
 
     for store in &stores {
         let ws = store.ws.path();
@@ -245,6 +273,12 @@ fn a_road_filter_answers_what_the_unfiltered_read_already_said() {
         };
         let roads = values_for("--world", &atomic, ws);
         let road_set: BTreeSet<String> = roads.iter().cloned().collect();
+        let confluences: BTreeSet<String> = atomic
+            .branches
+            .iter()
+            .filter(|(_, branch)| branch.is_confluence())
+            .map(|(id, _)| id.to_string())
+            .collect();
         let usage_of = usage_lines(ws);
         for verb in advertised_reads(ws) {
             let Some(usage) = usage_of.get(&verb) else {
@@ -334,6 +368,8 @@ fn a_road_filter_answers_what_the_unfiltered_read_already_said() {
                     let mut walk = Selection {
                         roads: &road_set,
                         road,
+                        confluences: &confluences,
+                        by_name: 0,
                         shapes: BTreeMap::new(),
                         moved: Vec::new(),
                     };
@@ -351,6 +387,7 @@ fn a_road_filter_answers_what_the_unfiltered_read_already_said() {
                             .or_default()
                             .insert(shape);
                     }
+                    by_name += walk.by_name;
                     for row in walk.moved {
                         moved.push(format!("{name} `{verb} {} {road}` {row}", filter.name));
                     }
@@ -393,6 +430,7 @@ fn a_road_filter_answers_what_the_unfiltered_read_already_said() {
     for row in &silent_typo {
         println!("    SILENT {row} answered instead of refusing");
     }
+    println!("  {by_name} structure(s) answered for a confluence fragment the dump does not sweep");
 
     let mut broken: Vec<String> = Vec::new();
     let mut check = |ok: bool, claim: &str| {
@@ -402,12 +440,12 @@ fn a_road_filter_answers_what_the_unfiltered_read_already_said() {
     };
 
     check(
-        (asked, unloadable.len()) == (44, 16),
+        (asked, unloadable.len()) == (44, 3),
         "POPULATION (stores): every corpus an author shipped is asked, and the \
-         ones the R857 rot closed are counted rather than dropped",
+         ones that no longer load are counted rather than dropped",
     );
     check(
-        (cells.len(), coordinate.len(), probes) == (5, 1, 112),
+        (cells.len(), coordinate.len(), probes) == (5, 1, 228),
         "POPULATION (cells): the reads the shipped usage lines say take a road \
          filter, the ones whose answer is a COORDINATE rather than a selection, \
          and the (read, road, corpus) probes the corpora could answer",
@@ -453,7 +491,16 @@ fn a_road_filter_answers_what_the_unfiltered_read_already_said() {
          what the unfiltered read already said about them",
     );
     check(
-        (loud, silent_typo.len()) == (76, 0),
+        by_name > 0,
+        "CONFLUENCE (R533): the one road a filter may answer for and the dump \
+         may not — a confluence fragment renders only when named, because its \
+         shared suffix is already inside each parent's manuscript. Counted, so \
+         the carve-out is evidence from a corpus that declares a confluence \
+         rather than a hole this walk was told to look past. Round 1174 lit the \
+         only corpus that has one",
+    );
+    check(
+        (loud, silent_typo.len()) == (104, 0),
         "FAIL-LOUD: every road filter was asked for a road no registry holds, \
          and refused — a typo'd road must not read as an answer with nothing in \
          it (the R466 rule, which `report-timeline-gaps` did not follow until \

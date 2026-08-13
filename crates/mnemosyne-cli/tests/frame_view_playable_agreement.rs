@@ -1100,8 +1100,8 @@ fn the_frame_view_names_at_each_point_what_the_playable_world_counts_there() {
     let asked = stores.len() + unloadable.len();
     let mut authored = Evidence::default();
     let mut authored_views = 0usize;
-    for name in &unloadable {
-        authored.note("the store does not load", name.clone());
+    for corpus in &unloadable {
+        authored.note("the store does not load", corpus.named_reason());
     }
     for store in &stores {
         let ws = store.ws.path();
@@ -1175,12 +1175,12 @@ fn the_frame_view_names_at_each_point_what_the_playable_world_counts_there() {
             authored.count("the store does not load"),
             authored.count("declares no telling, so the playable world cannot be asked"),
             authored.count("registers no frame"),
-        ) == (44, 16, 18, 0),
+        ) == (44, 3, 30, 0),
         "POPULATION (stores): of the corpora asked, these never reach the \
-         comparison — 16 to the R857 rot, 18 declaring no telling for a pair \
-         whose playable half is per-telling, and none of the rest without a \
-         frame. The one corpus that declares a confluence is inside that 18, \
-         which is why the constructed store exists",
+         comparison — 3 whose author's submission the write path rejected, 30 \
+         declaring no telling for a pair whose playable half is per-telling, and \
+         none of the rest without a frame. The corpora that declare a confluence \
+         are inside that 30, which is why the constructed store still exists",
     );
     check(
         (
@@ -1189,7 +1189,7 @@ fn the_frame_view_names_at_each_point_what_the_playable_world_counts_there() {
             authored.filtered_roads,
             authored.fragments,
             authored.scenes,
-        ) == (13, 18, 0, 0, 400),
+        ) == (14, 21, 0, 0, 444),
         "AUTHORED REACH: the (store, telling) pairs that answered, the roads \
          compared, the roads the dump could not answer for, the confluence \
          fragments, and the scenes whose holding SET was compared",
@@ -1200,7 +1200,7 @@ fn the_frame_view_names_at_each_point_what_the_playable_world_counts_there() {
             authored_views,
             authored.populations,
             authored.named,
-        ) == (2486, 2303, 96, 18734),
+        ) == (2750, 2567, 114, 20061),
         "AUTHORED EVIDENCE: the frame views read, how many of those reached the \
          binary (the rest are the second telling of a store, which cannot move \
          a read that has no `--telling`), the (frame, road) populations compared \
@@ -1213,10 +1213,10 @@ fn the_frame_view_names_at_each_point_what_the_playable_world_counts_there() {
             authored.expired_at,
             authored.superseded_at,
             authored.begun_and_superseded,
-        ) == (18734, 18, 360, 0),
+        ) == (20061, 18, 369, 0),
         "AUTHORED END KINDS: the authored corpora DO close intervals and DO \
          supersede beliefs, so both end-kind laws carry authored evidence — 18 \
-         scenes where a fact holds through its last coordinate and 360 where a \
+         scenes where a fact holds through its last coordinate and 369 where a \
          successor has already taken over. None of them does both at one scene, \
          which is the arm the constructed store carries. Every fact named \
          holding was checked against the scene the road begins it at",
@@ -1244,7 +1244,7 @@ fn the_frame_view_names_at_each_point_what_the_playable_world_counts_there() {
             authored.seats_at_or_after_truth,
             authored.seats_before_truth,
             authored.seats_off_road,
-        ) == (1422, 1422, 0, 0),
+        ) == (1554, 1554, 0, 0),
         "AUTHORED SEATS: every locator an author's telling seats seats it at or \
          after the scene the fact becomes true. The two other arms are zero, so \
          R949's class and the off-road seat are the constructed store's alone",
