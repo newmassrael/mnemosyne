@@ -1,0 +1,1318 @@
+{
+ "facts": [
+  {
+   "fact_id": "a01-setup-telegram",
+   "frame": "ground-truth",
+   "branch": "trunk",
+   "claim": "Cendre carries the last telegram the wire brought up before the line was cut, addressed to Roeder and marked private, and has not opened it.",
+   "canon_from": "sc-01",
+   "evidence": [
+    "sc-01"
+   ],
+   "quote": "the last telegram the wire had brought up before it died — handed to her at the office window the evening before the storm, addressed to Dr. Roeder, marked *private*.",
+   "entities": [
+    "last-telegram",
+    "irene-cendre",
+    "augustin-roeder"
+   ],
+   "payoff_expectation": "expected"
+  },
+  {
+   "fact_id": "a02-setup-diary",
+   "frame": "ground-truth",
+   "branch": "trunk",
+   "claim": "Roeder's black diary with a brass lock is found shut beside the body, its key not on the desk nor on him.",
+   "canon_from": "sc-02",
+   "evidence": [
+    "sc-02"
+   ],
+   "quote": "a black diary, shut, with a brass lock",
+   "entities": [
+    "roeder-diary"
+   ],
+   "payoff_expectation": "expected"
+  },
+  {
+   "fact_id": "a02-setup-master-key",
+   "frame": "ground-truth",
+   "branch": "trunk",
+   "claim": "The master key to the consulting room lives in the matron's locked cabinet and is brought up only when Berthe runs for it.",
+   "canon_from": "sc-02",
+   "evidence": [
+    "sc-02"
+   ],
+   "quote": "the second, the master, lived in the matron's office in a locked cabinet",
+   "entities": [
+    "master-key",
+    "ottilie-brandt"
+   ],
+   "payoff_expectation": "expected"
+  },
+  {
+   "fact_id": "a03-setup-burned-chart",
+   "frame": "ground-truth",
+   "branch": "trunk",
+   "claim": "Sister Ottilie burns the oldest chart (the Cordier boy's) in the consulting-room stove in the minutes she is left alone with the body.",
+   "canon_from": "sc-03",
+   "evidence": [
+    "sc-03"
+   ],
+   "quote": "The chart went in folded, and she held it down with the poker while it caught, while the name browned and curled",
+   "entities": [
+    "ottilie-brandt",
+    "cordier-chart"
+   ],
+   "payoff_expectation": "expected"
+  },
+  {
+   "fact_id": "a04-setup-vial",
+   "frame": "ground-truth",
+   "branch": "trunk",
+   "claim": "A small brown vial of Tinct. Digitalin, two doses short, lies at Roeder's hand and is taken into Cendre's keeping.",
+   "canon_from": "sc-04",
+   "evidence": [
+    "sc-04"
+   ],
+   "quote": "Tinct. Digitalin. — the heart's own medicine ... Two fingers of the stuff were gone from the bottle.",
+   "entities": [
+    "digitalin-vial",
+    "irene-cendre"
+   ],
+   "payoff_expectation": "expected"
+  },
+  {
+   "fact_id": "a05-setup-forged-papers",
+   "frame": "ground-truth",
+   "branch": "trunk",
+   "claim": "The patient in room fourteen holds a false name; the admission papers under 'Madame Hélène Variel' are forged.",
+   "canon_from": "sc-05",
+   "evidence": [
+    "sc-05"
+   ],
+   "quote": "the false name on the admission papers, the rehearsed cough, the small fortune spent to buy a bed",
+   "entities": [
+    "helene-cordier",
+    "forged-admission-papers"
+   ],
+   "payoff_expectation": "expected"
+  },
+  {
+   "fact_id": "a07-setup-morphine",
+   "frame": "ground-truth",
+   "branch": "trunk",
+   "claim": "The morphine does not balance: the cupboard is short more than the ledger records as given; custody of ledger and key is the matron's.",
+   "canon_from": "sc-07",
+   "evidence": [
+    "sc-07"
+   ],
+   "quote": "The book says we have given less than the cupboard has lost.",
+   "entities": [
+    "morphine-ledger",
+    "ottilie-brandt"
+   ],
+   "payoff_expectation": "expected"
+  },
+  {
+   "fact_id": "a08-setup-resignation",
+   "frame": "ground-truth",
+   "branch": "trunk",
+   "claim": "Roeder's unsent resignation letter breaks off at 'for reasons of health and of conscience, the latter being —'.",
+   "canon_from": "sc-08",
+   "evidence": [
+    "sc-08"
+   ],
+   "quote": "I beg to tender my resignation from the post of senior physician at the Sanatorium Belvoir, for reasons of health and of conscience, the latter being —",
+   "entities": [
+    "resignation-letter",
+    "augustin-roeder"
+   ],
+   "payoff_expectation": "expected"
+  },
+  {
+   "fact_id": "a12-setup-funicular-log",
+   "frame": "ground-truth",
+   "branch": "trunk",
+   "claim": "Bochat's funicular maintenance log has blank nights scattered down the years, one of them not three weeks before the storm.",
+   "canon_from": "sc-12",
+   "evidence": [
+    "sc-12"
+   ],
+   "quote": "gaps in it. Nights left blank. ... One such blank was recent, a night not three weeks before the storm.",
+   "entities": [
+    "funicular-log",
+    "bochat"
+   ],
+   "payoff_expectation": "expected"
+  },
+  {
+   "fact_id": "a13-setup-seve-change",
+   "frame": "ground-truth",
+   "branch": "trunk",
+   "claim": "Marguerite Sève's chart breaks its pattern into an unaccountable improvement under Roeder's private cipher, which ends the night he died.",
+   "canon_from": "sc-13",
+   "evidence": [
+    "sc-13"
+   ],
+   "quote": "a girl mending by the numbers where no mending had been looked for ... The cipher ended the night Roeder died.",
+   "entities": [
+    "seve-chart",
+    "marguerite-seve"
+   ],
+   "payoff_expectation": "expected"
+  },
+  {
+   "fact_id": "a16-setup-name-match",
+   "frame": "ground-truth",
+   "branch": "trunk",
+   "claim": "In the admission register's née column stands a name that also stands in Belvoir's book of the dead — the name Cendre runs her eye past.",
+   "canon_from": "sc-16",
+   "evidence": [
+    "sc-16"
+   ],
+   "quote": "the single name in that column that should have stopped her hand meant, as yet, nothing to her",
+   "entities": [
+    "admission-register",
+    "book-of-the-dead"
+   ],
+   "payoff_expectation": "expected"
+  },
+  {
+   "fact_id": "a17-setup-boots",
+   "frame": "ground-truth",
+   "branch": "trunk",
+   "claim": "A pair of room fourteen's boots is found soaked through behind the south-wing stove on the morning Roeder is found; their owner denies having gone out.",
+   "canon_from": "sc-17",
+   "evidence": [
+    "sc-17"
+   ],
+   "quote": "a pair of women's boots set to dry behind the stove in the service passage ... soaked through",
+   "entities": [
+    "wet-boots",
+    "helene-cordier"
+   ],
+   "payoff_expectation": "expected"
+  },
+  {
+   "fact_id": "a01-roeder-found",
+   "frame": "ground-truth",
+   "branch": "trunk",
+   "claim": "Dr. Augustin Roeder is found dead behind his locked consulting-room door, fallen at his desk, dead some hours.",
+   "canon_from": "sc-02",
+   "evidence": [
+    "sc-02"
+   ],
+   "quote": "He had been dead some hours.",
+   "entities": [
+    "augustin-roeder"
+   ]
+  },
+  {
+   "fact_id": "a01-island",
+   "frame": "ground-truth",
+   "branch": "trunk",
+   "claim": "An avalanche has cut the funicular and the telegraph wire; Belvoir is sealed in for three weeks until the thaw.",
+   "canon_from": "sc-01",
+   "evidence": [
+    "sc-01"
+   ],
+   "quote": "The avalanche had taken both in the night",
+   "entities": [
+    "sanatorium-belvoir",
+    "funicular"
+   ]
+  },
+  {
+   "fact_id": "a06-only-physician",
+   "frame": "ground-truth",
+   "branch": "trunk",
+   "claim": "With Roeder dead, Cendre is the only physician above the snowline for three weeks.",
+   "canon_from": "sc-06",
+   "evidence": [
+    "sc-06"
+   ],
+   "quote": "the only physician left above the snowline was the young woman",
+   "entities": [
+    "irene-cendre"
+   ]
+  },
+  {
+   "fact_id": "a09-grave",
+   "frame": "ground-truth",
+   "branch": "trunk",
+   "claim": "Hélène's brother Jonas Cordier (1886-1905) lies in Belvoir's burial ground; she came under a bought name to make Roeder answer for his death.",
+   "canon_from": "sc-09",
+   "evidence": [
+    "sc-09"
+   ],
+   "quote": "JONAS CORDIER · 1886–1905 ... She had come to make Roeder answer for it.",
+   "entities": [
+    "helene-cordier",
+    "jonas-cordier",
+    "burial-ground"
+   ]
+  },
+  {
+   "fact_id": "a08-earlier-telegram",
+   "frame": "ground-truth",
+   "branch": "trunk",
+   "claim": "An earlier kept telegram in Roeder's drawer names the Cordier family and the matter of 1905, from Veilloz, avocat, Lyon.",
+   "canon_from": "sc-08",
+   "evidence": [
+    "sc-08"
+   ],
+   "quote": "THE FAMILY OF J. CORDIER HAS INSTRUCTED ME IN THE MATTER OF 1905 ... VEILLOZ AVOCAT LYON.",
+   "entities": [
+    "earlier-telegram",
+    "veilloz-avocat"
+   ]
+  },
+  {
+   "fact_id": "a07-ledger-matron",
+   "frame": "ground-truth",
+   "branch": "trunk",
+   "claim": "The morphine ledger and cupboard keys are in the matron's custody.",
+   "canon_from": "sc-07",
+   "evidence": [
+    "sc-07"
+   ],
+   "quote": "The matron keeps the key to the cupboard and the key to the book both",
+   "entities": [
+    "morphine-ledger",
+    "ottilie-brandt"
+   ]
+  },
+  {
+   "fact_id": "a20-ledger-cendre",
+   "frame": "ground-truth",
+   "branch": "trunk",
+   "claim": "Cendre takes the morphine ledger into her own hands, carrying it to the threshold.",
+   "canon_from": "sc-20",
+   "evidence": [
+    "sc-20"
+   ],
+   "quote": "Cendre stood at the foot of the main stair with the morphine ledger under her arm",
+   "entities": [
+    "morphine-ledger",
+    "irene-cendre"
+   ]
+  },
+  {
+   "fact_id": "a26-ledger-back",
+   "frame": "ground-truth",
+   "branch": "quiet",
+   "claim": "On the quiet road Cendre returns the ledger to the stores, squared as she found it.",
+   "canon_from": "sc-26",
+   "evidence": [
+    "sc-26"
+   ],
+   "quote": "carried the morphine ledger down and laid it where it lived among the stores, squared as she had found it",
+   "entities": [
+    "morphine-ledger",
+    "ottilie-brandt"
+   ]
+  },
+  {
+   "fact_id": "a02-key-cabinet",
+   "frame": "ground-truth",
+   "branch": "trunk",
+   "claim": "The master key sits in the matron's locked cabinet.",
+   "canon_from": "sc-02",
+   "evidence": [
+    "sc-02"
+   ],
+   "quote": "the master, lived in the matron's office in a locked cabinet",
+   "entities": [
+    "master-key",
+    "ottilie-brandt"
+   ]
+  },
+  {
+   "fact_id": "a02-key-cendre",
+   "frame": "ground-truth",
+   "branch": "trunk",
+   "claim": "Berthe brings the master key and surrenders it into Cendre's hand.",
+   "canon_from": "sc-02",
+   "evidence": [
+    "sc-02"
+   ],
+   "quote": "surrendered into Cendre's hand rather than the matron's",
+   "entities": [
+    "master-key",
+    "irene-cendre"
+   ]
+  },
+  {
+   "fact_id": "a02-vial-roeder",
+   "frame": "ground-truth",
+   "branch": "trunk",
+   "claim": "The digitalin vial lies fallen by Roeder's right hand.",
+   "canon_from": "sc-02",
+   "evidence": [
+    "sc-02"
+   ],
+   "quote": "a small brown medicine vial fallen on its side by his right hand",
+   "entities": [
+    "digitalin-vial",
+    "augustin-roeder"
+   ]
+  },
+  {
+   "fact_id": "a04-vial-cendre",
+   "frame": "ground-truth",
+   "branch": "trunk",
+   "claim": "Cendre pockets the digitalin vial into her sole keeping.",
+   "canon_from": "sc-04",
+   "evidence": [
+    "sc-04"
+   ],
+   "quote": "from this moment the vial was in her keeping and no one else's",
+   "entities": [
+    "digitalin-vial",
+    "irene-cendre"
+   ]
+  },
+  {
+   "fact_id": "a02-diary-roeder",
+   "frame": "ground-truth",
+   "branch": "trunk",
+   "claim": "The locked diary lies on Roeder's desk by the body.",
+   "canon_from": "sc-02",
+   "evidence": [
+    "sc-02"
+   ],
+   "quote": "a black diary, shut, with a brass lock",
+   "entities": [
+    "roeder-diary",
+    "augustin-roeder"
+   ]
+  },
+  {
+   "fact_id": "a04-diary-cendre",
+   "frame": "ground-truth",
+   "branch": "trunk",
+   "claim": "Cendre takes the locked diary into her keeping; it will not open.",
+   "canon_from": "sc-04",
+   "evidence": [
+    "sc-04"
+   ],
+   "quote": "The black diary would not open ... She set it aside.",
+   "entities": [
+    "roeder-diary",
+    "irene-cendre"
+   ]
+  },
+  {
+   "fact_id": "a08-resig-roeder",
+   "frame": "ground-truth",
+   "branch": "trunk",
+   "claim": "The unsent resignation lies beneath Roeder's blotter.",
+   "canon_from": "sc-08",
+   "evidence": [
+    "sc-08"
+   ],
+   "quote": "beneath the blotter ... a single sheet in his own hand, unsent",
+   "entities": [
+    "resignation-letter",
+    "augustin-roeder"
+   ]
+  },
+  {
+   "fact_id": "a08-resig-cendre",
+   "frame": "ground-truth",
+   "branch": "trunk",
+   "claim": "Cendre takes the resignation into the drawer of unfinished things.",
+   "canon_from": "sc-08",
+   "evidence": [
+    "sc-08"
+   ],
+   "quote": "set it with the resignation letter, in the drawer she now thought of as the drawer of unfinished things",
+   "entities": [
+    "resignation-letter",
+    "irene-cendre"
+   ]
+  },
+  {
+   "fact_id": "a03-chart-roeder",
+   "frame": "ground-truth",
+   "branch": "trunk",
+   "claim": "The oldest charts are kept in Roeder's cabinet, which he let no one else touch.",
+   "canon_from": "sc-03",
+   "evidence": [
+    "sc-03"
+   ],
+   "quote": "the old charts were kept that he allowed no one else to touch",
+   "entities": [
+    "cordier-chart",
+    "augustin-roeder"
+   ]
+  },
+  {
+   "fact_id": "a03-chart-ottilie",
+   "frame": "ground-truth",
+   "branch": "trunk",
+   "claim": "Ottilie takes the Cordier chart from the cabinet and burns it in the stove.",
+   "canon_from": "sc-03",
+   "evidence": [
+    "sc-03"
+   ],
+   "quote": "She did not need to read it. ... The chart went in folded",
+   "entities": [
+    "cordier-chart",
+    "ottilie-brandt"
+   ]
+  },
+  {
+   "fact_id": "a02-roeder-dead",
+   "frame": "ground-truth",
+   "branch": "trunk",
+   "claim": "Roeder is dead.",
+   "canon_from": "sc-02",
+   "evidence": [
+    "sc-02"
+   ],
+   "quote": "He had been dead some hours.",
+   "entities": [
+    "augustin-roeder"
+   ]
+  },
+  {
+   "fact_id": "a06-seve-alive",
+   "frame": "ground-truth",
+   "branch": "trunk",
+   "claim": "Marguerite Sève is alive, a patient taking the cure.",
+   "canon_from": "sc-06",
+   "evidence": [
+    "sc-06"
+   ],
+   "quote": "a girl of perhaps eighteen with a translucent face",
+   "entities": [
+    "marguerite-seve"
+   ]
+  },
+  {
+   "fact_id": "a06-brandt-alive",
+   "frame": "ground-truth",
+   "branch": "trunk",
+   "claim": "Sister Ottilie Brandt is alive and at her post.",
+   "canon_from": "sc-06",
+   "evidence": [
+    "sc-06"
+   ],
+   "quote": "the matron Ottilie Brandt, iron and silent",
+   "entities": [
+    "ottilie-brandt"
+   ]
+  },
+  {
+   "fact_id": "a10-theory",
+   "frame": "cendre",
+   "branch": "trunk",
+   "claim": "Cendre writes her facts in a column and a tentative theory she underlines as theory; the morphine is the loose thread she will pull.",
+   "canon_from": "sc-10",
+   "evidence": [
+    "sc-10"
+   ],
+   "quote": "the morphine ledger was the loose thread nearest her hand. In the morning ... she would pull it.",
+   "entities": [
+    "irene-cendre"
+   ]
+  },
+  {
+   "fact_id": "a15-lungs",
+   "frame": "cendre",
+   "branch": "trunk",
+   "claim": "On examination Madame Variel's lungs are too sound for the two-year case her file claims.",
+   "canon_from": "sc-15",
+   "evidence": [
+    "sc-15"
+   ],
+   "quote": "the breath went down full on both sides, easy, very nearly clean ... This was not one of the worst of them.",
+   "entities": [
+    "helene-cordier"
+   ]
+  },
+  {
+   "fact_id": "a18-watch",
+   "frame": "ground-truth",
+   "branch": "trunk",
+   "claim": "Ottilie resolves to go on protecting the house and its secrets from the clever young physician.",
+   "canon_from": "sc-18",
+   "evidence": [
+    "sc-18"
+   ],
+   "quote": "resolved, very simply, to go on protecting it — from the thaw, from the families, from the law",
+   "entities": [
+    "ottilie-brandt"
+   ]
+  },
+  {
+   "fact_id": "a14-helene-marks-seve",
+   "frame": "helene",
+   "branch": "trunk",
+   "claim": "Hélène recognises Roeder's protocol running again on the Sève girl, as it ran on her brother.",
+   "canon_from": "sc-14",
+   "evidence": [
+    "sc-14"
+   ],
+   "quote": "It was his protocol, running again under this same roof, on this same kind of girl",
+   "entities": [
+    "helene-cordier",
+    "marguerite-seve"
+   ]
+  },
+  {
+   "fact_id": "a20-fork",
+   "frame": "ground-truth",
+   "branch": "trunk",
+   "claim": "At the threshold Cendre must choose: confront the matron with the ledger, or interview the patients quietly.",
+   "canon_from": "sc-20",
+   "evidence": [
+    "sc-20"
+   ],
+   "quote": "She stood at the threshold between them ... and chose.",
+   "entities": [
+    "irene-cendre"
+   ]
+  },
+  {
+   "fact_id": "a22-pay-morphine",
+   "frame": "ground-truth",
+   "branch": "confront",
+   "claim": "Ottilie confesses she took morphine the book never recorded, for years, to hasten the long deaths.",
+   "canon_from": "sc-22",
+   "evidence": [
+    "sc-22"
+   ],
+   "quote": "she had taken morphine the book never saw. For years.",
+   "entities": [
+    "ottilie-brandt",
+    "morphine-ledger"
+   ],
+   "pays_off": [
+    "a07-setup-morphine"
+   ]
+  },
+  {
+   "fact_id": "a23-pay-masterkey",
+   "frame": "ground-truth",
+   "branch": "confront",
+   "claim": "Cendre lays out that the master key never left the cabinet until Berthe ran for it, so no one came to Roeder in the night.",
+   "canon_from": "sc-23",
+   "evidence": [
+    "sc-23"
+   ],
+   "quote": "The master key never left your cabinet until Berthe ran for it and put it in my hand — not yours.",
+   "entities": [
+    "master-key"
+   ],
+   "pays_off": [
+    "a02-setup-master-key"
+   ]
+  },
+  {
+   "fact_id": "a24-pay-burned",
+   "frame": "ground-truth",
+   "branch": "confront",
+   "claim": "Ottilie names the burned chart: the boy Cordier, 1905, dead of Roeder's serum under a false certificate she helped write.",
+   "canon_from": "sc-24",
+   "evidence": [
+    "sc-24"
+   ],
+   "quote": "A chart. One. The oldest in his cabinet. ... Cordier.",
+   "entities": [
+    "ottilie-brandt",
+    "cordier-chart",
+    "jonas-cordier"
+   ],
+   "pays_off": [
+    "a03-setup-burned-chart"
+   ]
+  },
+  {
+   "fact_id": "a25-truth-suicide",
+   "frame": "ground-truth",
+   "branch": "confront",
+   "claim": "On the confront road the truth settles as suicide: Roeder, hunted by the Lyon matter, took digitalin by his own hand.",
+   "canon_from": "sc-25",
+   "evidence": [
+    "sc-25"
+   ],
+   "quote": "Roeder — by his own hand, digitalin, the door locked from within, the vial short by the measure he chose.",
+   "entities": [
+    "augustin-roeder"
+   ]
+  },
+  {
+   "fact_id": "a51-pay-diary",
+   "frame": "ground-truth",
+   "branch": "confront",
+   "claim": "Cendre forces the diary's brass lock open to read Roeder's own record.",
+   "canon_from": "sc-51",
+   "evidence": [
+    "sc-51"
+   ],
+   "quote": "set the point under the clasp ... and worked it until the small lock gave",
+   "entities": [
+    "roeder-diary",
+    "irene-cendre"
+   ],
+   "pays_off": [
+    "a02-setup-diary"
+   ]
+  },
+  {
+   "fact_id": "a52-pay-resignation",
+   "frame": "ground-truth",
+   "branch": "confront",
+   "claim": "The diary confirms the dread behind the broken resignation: the matter of 1905 climbing toward rope or ruin.",
+   "canon_from": "sc-52",
+   "evidence": [
+    "sc-52"
+   ],
+   "quote": "The matter of 1905 climbs toward me and I have no answer that is not the rope or the ruin of the house.",
+   "entities": [
+    "resignation-letter",
+    "augustin-roeder"
+   ],
+   "pays_off": [
+    "a08-setup-resignation"
+   ]
+  },
+  {
+   "fact_id": "a53-pay-seve",
+   "frame": "ground-truth",
+   "branch": "confront",
+   "claim": "Ottilie tells and the chart confirms the Sève serum ceased with Roeder; the cipher stops, the fever breaks, the child will live.",
+   "canon_from": "sc-53",
+   "evidence": [
+    "sc-53"
+   ],
+   "quote": "the cipher ceasing, the plain entries climbing, the fever broken clean ... The child will live.",
+   "entities": [
+    "marguerite-seve",
+    "seve-chart"
+   ],
+   "pays_off": [
+    "a13-setup-seve-change"
+   ]
+  },
+  {
+   "fact_id": "a54-pay-telegram",
+   "frame": "ground-truth",
+   "branch": "confront",
+   "claim": "Cendre opens the carried telegram: the family instructs proceedings, Mlle Cordier has left Lyon for Belvoir.",
+   "canon_from": "sc-54",
+   "evidence": [
+    "sc-54"
+   ],
+   "quote": "MATTER OF 1905 WILL NOT REST ... MLLE CORDIER HAS LEFT LYON FOR BELVOIR ... VEILLOZ.",
+   "entities": [
+    "last-telegram"
+   ],
+   "pays_off": [
+    "a01-setup-telegram"
+   ]
+  },
+  {
+   "fact_id": "a55-pay-funicular",
+   "frame": "ground-truth",
+   "branch": "confront",
+   "claim": "Brandt's account ties off the funicular log: the car ran for the doctor's business, bought silence in 1905 and this winter.",
+   "canon_from": "sc-55",
+   "evidence": [
+    "sc-55"
+   ],
+   "quote": "Bochat's oilcloth log, the blank nights clustered through the autumn of 1905 ... The bought quiet ran the full length of the cog-rail",
+   "entities": [
+    "funicular-log",
+    "bochat"
+   ],
+   "pays_off": [
+    "a12-setup-funicular-log"
+   ]
+  },
+  {
+   "fact_id": "a56-pay-vial",
+   "frame": "ground-truth",
+   "branch": "confront",
+   "claim": "Cendre certifies death by digitalin self-administered, the vial short by the two doses Roeder measured.",
+   "canon_from": "sc-56",
+   "evidence": [
+    "sc-56"
+   ],
+   "quote": "died of digitalin, self-administered — the vial short by the two doses his own hand had measured",
+   "entities": [
+    "digitalin-vial",
+    "augustin-roeder"
+   ],
+   "pays_off": [
+    "a04-setup-vial"
+   ]
+  },
+  {
+   "fact_id": "a56-gap",
+   "frame": "ground-truth",
+   "branch": "confront",
+   "claim": "On the confront road Cendre never connects the too-sound lungs and forged file, the née-column Cordier, or the wet boots: the Hélène thread is the one gap in her account.",
+   "canon_from": "sc-56",
+   "evidence": [
+    "sc-56"
+   ],
+   "quote": "the one gap in her complete account. She never weighed the too-sound lungs against the file ... nor the wet boots dried behind the south-wing stove; she never set her eye a second time on the née column where the clerk had written Cordier",
+   "entities": [
+    "helene-cordier"
+   ]
+  },
+  {
+   "fact_id": "a27-pernet",
+   "frame": "ground-truth",
+   "branch": "quiet",
+   "claim": "Old Pernet remembers the season of poor young charity cases under Roeder's particular care who did badly, the brightest of them Cordier.",
+   "canon_from": "sc-27",
+   "evidence": [
+    "sc-27"
+   ],
+   "quote": "There was a boy — Cordier, the young one, Jonas — bright as a new sou, mended for a fortnight and then went out like a snuffed candle.",
+   "entities": [
+    "monsieur-pernet",
+    "jonas-cordier"
+   ]
+  },
+  {
+   "fact_id": "a28-pay-name-match",
+   "frame": "ground-truth",
+   "branch": "quiet",
+   "claim": "Cendre returns to the register's née column and finds 'Cordier' set beside Madame Variel, matching the boy in the ground.",
+   "canon_from": "sc-28",
+   "evidence": [
+    "sc-28"
+   ],
+   "quote": "in the column of her people, set down in that careful too-fresh hand ... a single name: Cordier.",
+   "entities": [
+    "admission-register",
+    "helene-cordier"
+   ],
+   "pays_off": [
+    "a16-setup-name-match"
+   ]
+  },
+  {
+   "fact_id": "a33-pay-funicular-q",
+   "frame": "ground-truth",
+   "branch": "quiet",
+   "claim": "Bochat confesses someone paid him to run the car after dark and write nothing, in 1905 and once again this winter.",
+   "canon_from": "sc-33",
+   "evidence": [
+    "sc-33"
+   ],
+   "quote": "somebody had come up after dark and gone down before the light, the once, muffled to the eyes, and had paid him in advance to run the car and write nothing of it.",
+   "entities": [
+    "bochat",
+    "funicular-log"
+   ],
+   "pays_off": [
+    "a12-setup-funicular-log"
+   ]
+  },
+  {
+   "fact_id": "a34-pay-diary-q",
+   "frame": "ground-truth",
+   "branch": "quiet",
+   "claim": "Cendre breaks the diary's clasp and reads the serum, Cordier 1905, and the dread of Lyon.",
+   "canon_from": "sc-34",
+   "evidence": [
+    "sc-34"
+   ],
+   "quote": "took the blade of her scissors to the clasp and ... broke it.",
+   "entities": [
+    "roeder-diary",
+    "irene-cendre"
+   ],
+   "pays_off": [
+    "a02-setup-diary"
+   ]
+  },
+  {
+   "fact_id": "a34-resig-quiet",
+   "frame": "ground-truth",
+   "branch": "quiet",
+   "claim": "The diary's last sentence: one road left to choose before the snow goes.",
+   "canon_from": "sc-34",
+   "evidence": [
+    "sc-34"
+   ],
+   "quote": "There is one road left that is mine to choose, and I will choose it before the snow goes.",
+   "entities": [
+    "roeder-diary",
+    "augustin-roeder"
+   ]
+  },
+  {
+   "fact_id": "a35-seve-uncertain",
+   "frame": "cendre",
+   "branch": "quiet",
+   "claim": "Reading the diary's renewed serum beside the Sève chart, Cendre cannot tell if the girl mends or only enjoys the serum's last bright fortnight.",
+   "canon_from": "sc-35",
+   "evidence": [
+    "sc-35"
+   ],
+   "quote": "whether the child was mending because the poison had stopped with the poisoner, or only enjoying ... the last bright hour the serum allowed",
+   "entities": [
+    "marguerite-seve",
+    "seve-chart"
+   ]
+  },
+  {
+   "fact_id": "a36-masterkey-quiet",
+   "frame": "cendre",
+   "branch": "quiet",
+   "claim": "Cendre reasons the locked room again: two keys accounted for, no third; the door proves no one came, not that no one had already come.",
+   "canon_from": "sc-36",
+   "evidence": [
+    "sc-36"
+   ],
+   "quote": "the locked door proves no one came in the night. It does not prove no one had already come.",
+   "entities": [
+    "master-key",
+    "augustin-roeder"
+   ]
+  },
+  {
+   "fact_id": "a39-seve-worse",
+   "frame": "ground-truth",
+   "branch": "quiet",
+   "claim": "On the eve the Sève girl is worse, her bright bloom guttering.",
+   "canon_from": "sc-39",
+   "evidence": [
+    "sc-39"
+   ],
+   "quote": "That night the Sève girl was worse.",
+   "entities": [
+    "marguerite-seve"
+   ]
+  },
+  {
+   "fact_id": "a40-fork2",
+   "frame": "ground-truth",
+   "branch": "quiet",
+   "claim": "At room fourteen's door the case forks: the patient confesses, or a second death escalates it.",
+   "canon_from": "sc-40",
+   "evidence": [
+    "sc-40"
+   ],
+   "quote": "On one side of that raised hand a woman waited to set down a name ... On the other, three doors away, a girl fought for a breath",
+   "entities": [
+    "irene-cendre",
+    "helene-cordier",
+    "marguerite-seve"
+   ]
+  },
+  {
+   "fact_id": "a41-pay-papers",
+   "frame": "ground-truth",
+   "branch": "quiet-confess",
+   "claim": "Hélène confesses: her name is Cordier; the Variel papers were forged in Lyon over a dead woman's particulars.",
+   "canon_from": "sc-41",
+   "evidence": [
+    "sc-41"
+   ],
+   "quote": "The papers you found too fresh were written for money in Lyon, over a dead woman's particulars. My name is Hélène Cordier.",
+   "entities": [
+    "helene-cordier",
+    "forged-admission-papers"
+   ],
+   "pays_off": [
+    "a05-setup-forged-papers"
+   ]
+  },
+  {
+   "fact_id": "a42-pay-boots",
+   "frame": "ground-truth",
+   "branch": "quiet-confess",
+   "claim": "Hélène explains the wet boots: that night she went up the slope to her brother's grave, not to the doctor's door.",
+   "canon_from": "sc-42",
+   "evidence": [
+    "sc-42"
+   ],
+   "quote": "up the slope behind the chapel, through the snow, to the ground where they had put Jonas ... My boots were through to the skin.",
+   "entities": [
+    "wet-boots",
+    "helene-cordier",
+    "burial-ground"
+   ],
+   "pays_off": [
+    "a17-setup-boots"
+   ]
+  },
+  {
+   "fact_id": "a43-pay-masterkey",
+   "frame": "ground-truth",
+   "branch": "quiet-confess",
+   "claim": "The locked room clears Hélène: no third key, his own on the blotter, the master key cold in the cabinet until dawn.",
+   "canon_from": "sc-43",
+   "evidence": [
+    "sc-43"
+   ],
+   "quote": "no third key, his own on the blotter within, the master key cold in the matron's cabinet until Berthe ran for it at dawn.",
+   "entities": [
+    "master-key"
+   ],
+   "pays_off": [
+    "a02-setup-master-key"
+   ]
+  },
+  {
+   "fact_id": "a43-pay-vial",
+   "frame": "ground-truth",
+   "branch": "quiet-confess",
+   "claim": "Cendre concludes Roeder chose digitalin himself, the vial short by the dose his own knowing hand measured.",
+   "canon_from": "sc-43",
+   "evidence": [
+    "sc-43"
+   ],
+   "quote": "The vial two doses short, by a hand that knew the dose to a grain.",
+   "entities": [
+    "digitalin-vial",
+    "augustin-roeder"
+   ],
+   "pays_off": [
+    "a04-setup-vial"
+   ]
+  },
+  {
+   "fact_id": "a43-pay-resignation",
+   "frame": "ground-truth",
+   "branch": "quiet-confess",
+   "claim": "The unsent resignation broken at conscience reads as the suicide motive.",
+   "canon_from": "sc-43",
+   "evidence": [
+    "sc-43"
+   ],
+   "quote": "The unsent resignation broken off at the word conscience.",
+   "entities": [
+    "resignation-letter"
+   ],
+   "pays_off": [
+    "a08-setup-resignation"
+   ]
+  },
+  {
+   "fact_id": "a43-pay-telegram",
+   "frame": "ground-truth",
+   "branch": "quiet-confess",
+   "claim": "Cendre opens the carried telegram: the family instructs proceedings, Mlle Cordier has left Lyon for Belvoir.",
+   "canon_from": "sc-43",
+   "evidence": [
+    "sc-43"
+   ],
+   "quote": "MATTER OF 1905 WILL NOT REST ... MLLE CORDIER HAS LEFT LYON FOR BELVOIR ... VEILLOZ.",
+   "entities": [
+    "last-telegram"
+   ],
+   "pays_off": [
+    "a01-setup-telegram"
+   ]
+  },
+  {
+   "fact_id": "a43-truth-suicide",
+   "frame": "ground-truth",
+   "branch": "quiet-confess",
+   "claim": "The case turns to suicide: Roeder chose digitalin himself; the avenger climbed a mountain to kill a man already self-sentenced.",
+   "canon_from": "sc-43",
+   "evidence": [
+    "sc-43"
+   ],
+   "quote": "he had chosen it himself. Digitalin, the door locked from within, the heart stopped by his own arithmetic.",
+   "entities": [
+    "augustin-roeder"
+   ]
+  },
+  {
+   "fact_id": "a44-pay-burned",
+   "frame": "ground-truth",
+   "branch": "quiet-confess",
+   "claim": "Ottilie admits the oldest chart is ash, burned in the stove while Cendre was gone for the certificate book.",
+   "canon_from": "sc-44",
+   "evidence": [
+    "sc-44"
+   ],
+   "quote": "It is ash. I put it in the fire while you were gone for the certificate book.",
+   "entities": [
+    "ottilie-brandt",
+    "cordier-chart"
+   ],
+   "pays_off": [
+    "a03-setup-burned-chart"
+   ]
+  },
+  {
+   "fact_id": "a44-pay-seve",
+   "frame": "ground-truth",
+   "branch": "quiet-confess",
+   "claim": "The Sève girl is better: a true recovery, the poison stopped with the poisoner.",
+   "canon_from": "sc-44",
+   "evidence": [
+    "sc-44"
+   ],
+   "quote": "the Sève girl was better ... The bloom had been a true recovery after all.",
+   "entities": [
+    "marguerite-seve"
+   ],
+   "pays_off": [
+    "a13-setup-seve-change"
+   ]
+  },
+  {
+   "fact_id": "a57-pay-morphine",
+   "frame": "ground-truth",
+   "branch": "quiet-confess",
+   "claim": "Sister Brandt will answer for her concealment and her morphine and her old complicity — none of it murder.",
+   "canon_from": "sc-57",
+   "evidence": [
+    "sc-57"
+   ],
+   "quote": "Sister Brandt would answer for her concealment and her morphine and her old complicity",
+   "entities": [
+    "ottilie-brandt",
+    "morphine-ledger"
+   ],
+   "pays_off": [
+    "a07-setup-morphine"
+   ]
+  },
+  {
+   "fact_id": "a58-ending-b",
+   "frame": "ground-truth",
+   "branch": "quiet-confess",
+   "claim": "Ending B: Cendre certifies the suicide and the protocol but shields Hélène Cordier, writing no name where mercy fits.",
+   "canon_from": "sc-58",
+   "evidence": [
+    "sc-58"
+   ],
+   "quote": "named in none ... she carried her brother's true name out of the house",
+   "entities": [
+    "helene-cordier",
+    "irene-cendre"
+   ]
+  },
+  {
+   "fact_id": "a47-pay-seve",
+   "frame": "ground-truth",
+   "branch": "quiet-escalate",
+   "claim": "The Sève girl collapses and dies; the serum had been spending her, not mending her.",
+   "canon_from": "sc-47",
+   "evidence": [
+    "sc-47"
+   ],
+   "quote": "The serum had not been mending the girl. It had been spending her",
+   "entities": [
+    "marguerite-seve",
+    "seve-chart"
+   ],
+   "pays_off": [
+    "a13-setup-seve-change"
+   ]
+  },
+  {
+   "fact_id": "a47-seve-dead",
+   "frame": "ground-truth",
+   "branch": "quiet-escalate",
+   "claim": "Marguerite Sève dies of the serum begun again in the new year.",
+   "canon_from": "sc-47",
+   "evidence": [
+    "sc-47"
+   ],
+   "quote": "the breath that had fought so hard simply stopped fighting",
+   "entities": [
+    "marguerite-seve"
+   ]
+  },
+  {
+   "fact_id": "a49-pay-papers",
+   "frame": "ground-truth",
+   "branch": "quiet-escalate",
+   "claim": "Cendre re-reasons the too-sound lungs and too-fresh papers and names the Cordier sister under the bought identity.",
+   "canon_from": "sc-49",
+   "evidence": [
+    "sc-49"
+   ],
+   "quote": "She knew already that the lungs were too sound and the papers too fresh; she had the name ... in the née column",
+   "entities": [
+    "helene-cordier",
+    "forged-admission-papers"
+   ],
+   "pays_off": [
+    "a05-setup-forged-papers"
+   ]
+  },
+  {
+   "fact_id": "a49-pay-boots",
+   "frame": "ground-truth",
+   "branch": "quiet-escalate",
+   "claim": "Cendre walks the wet boots to the burial ground: the sister went to the grave that night, not the door.",
+   "canon_from": "sc-49",
+   "evidence": [
+    "sc-49"
+   ],
+   "quote": "the long climb through the snow to the burial ground behind the chapel. The sister had gone to the grave that night, not the door.",
+   "entities": [
+    "wet-boots",
+    "helene-cordier",
+    "burial-ground"
+   ],
+   "pays_off": [
+    "a17-setup-boots"
+   ]
+  },
+  {
+   "fact_id": "a49-pay-telegram",
+   "frame": "ground-truth",
+   "branch": "quiet-escalate",
+   "claim": "Cendre opens the carried telegram (family instructs proceedings; Mlle Cordier left Lyon).",
+   "canon_from": "sc-49",
+   "evidence": [
+    "sc-49"
+   ],
+   "quote": "MATTER OF 1905 WILL NOT REST ... MLLE CORDIER HAS LEFT LYON FOR BELVOIR ... VEILLOZ.",
+   "entities": [
+    "last-telegram"
+   ],
+   "pays_off": [
+    "a01-setup-telegram"
+   ]
+  },
+  {
+   "fact_id": "a49-pay-masterkey",
+   "frame": "ground-truth",
+   "branch": "quiet-escalate",
+   "claim": "No third key; the room cleared everyone who needed a key. Digitalin needed no hand at the door.",
+   "canon_from": "sc-49",
+   "evidence": [
+    "sc-49"
+   ],
+   "quote": "There was no third key; there never had been.",
+   "entities": [
+    "master-key"
+   ],
+   "pays_off": [
+    "a02-setup-master-key"
+   ]
+  },
+  {
+   "fact_id": "a50-pay-vial",
+   "frame": "ground-truth",
+   "branch": "quiet-escalate",
+   "claim": "Digitalin in the evening draught — the dose Ottilie knew — given before Roeder locked his own door.",
+   "canon_from": "sc-50",
+   "evidence": [
+    "sc-50"
+   ],
+   "quote": "Digitalin in the evening draught, the dose you knew as well as he did",
+   "entities": [
+    "digitalin-vial",
+    "ottilie-brandt"
+   ],
+   "pays_off": [
+    "a04-setup-vial"
+   ]
+  },
+  {
+   "fact_id": "a50-pay-burned",
+   "frame": "ground-truth",
+   "branch": "quiet-escalate",
+   "claim": "The oldest chart went into the stove to spare the matron the rope, not to spare the families grief.",
+   "canon_from": "sc-50",
+   "evidence": [
+    "sc-50"
+   ],
+   "quote": "the oldest chart in his cabinet went into the stove the next morning not to spare the families their grief — but to spare you the rope.",
+   "entities": [
+    "cordier-chart",
+    "ottilie-brandt"
+   ],
+   "pays_off": [
+    "a03-setup-burned-chart"
+   ]
+  },
+  {
+   "fact_id": "a50-pay-resignation",
+   "frame": "ground-truth",
+   "branch": "quiet-escalate",
+   "claim": "The letter he could not finish, for conscience, shows Roeder meant to confess — the matron's motive to silence him.",
+   "canon_from": "sc-50",
+   "evidence": [
+    "sc-50"
+   ],
+   "quote": "in the letter he could not finish — for conscience.",
+   "entities": [
+    "resignation-letter"
+   ],
+   "pays_off": [
+    "a08-setup-resignation"
+   ]
+  },
+  {
+   "fact_id": "a50-pay-morphine",
+   "frame": "ground-truth",
+   "branch": "quiet-escalate",
+   "claim": "Ottilie pours the medicines and has poured them thirty years; the morphine and long concealment are hers.",
+   "canon_from": "sc-50",
+   "evidence": [
+    "sc-50"
+   ],
+   "quote": "You pour the medicines in this house. You have poured them thirty years.",
+   "entities": [
+    "ottilie-brandt",
+    "morphine-ledger"
+   ],
+   "pays_off": [
+    "a07-setup-morphine"
+   ]
+  },
+  {
+   "fact_id": "a50-truth-murder",
+   "frame": "ground-truth",
+   "branch": "quiet-escalate",
+   "claim": "On the escalate road the truth is murder: Ottilie stirred digitalin into Roeder's evening draught to stop his confession.",
+   "canon_from": "sc-50",
+   "evidence": [
+    "sc-50"
+   ],
+   "quote": "The locked room was never his alibi, Sister. It was yours.",
+   "entities": [
+    "ottilie-brandt",
+    "augustin-roeder"
+   ]
+  },
+  {
+   "fact_id": "a59-brandt-dead",
+   "frame": "ground-truth",
+   "branch": "quiet-escalate",
+   "claim": "Sister Brandt poisons herself with the same digitalin sooner than ride down to a courtroom.",
+   "canon_from": "sc-59",
+   "evidence": [
+    "sc-59"
+   ],
+   "quote": "she had poured herself the draught she knew best, the same digitalin to a grain, and lain down ... and not woken",
+   "entities": [
+    "ottilie-brandt"
+   ]
+  },
+  {
+   "fact_id": "a60-ending-c",
+   "frame": "ground-truth",
+   "branch": "quiet-escalate",
+   "claim": "Ending C: three deaths go down — Roeder murdered, Brandt by her own hand, and Margot Sève, the cost of the quiet road.",
+   "canon_from": "sc-60",
+   "evidence": [
+    "sc-60"
+   ],
+   "quote": "it carried three deaths down the mountain in its book",
+   "entities": [
+    "augustin-roeder",
+    "ottilie-brandt",
+    "marguerite-seve"
+   ]
+  }
+ ]
+}

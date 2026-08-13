@@ -72,7 +72,9 @@ use mnemosyne_atomic::AtomicStore;
 
 use super::sweep;
 use crate::common;
-use common::{authored_corpora, corpus_workspace_try, read_json, repo_root, run, SIDECAR};
+use common::{
+    authored_corpora, corpus_fact_manifest, corpus_workspace_try, repo_root, run, SIDECAR,
+};
 use sweep::Answer;
 
 /// Where a read RECLASSIFIED something: the JSON paths whose list holds a
@@ -336,7 +338,7 @@ fn the_walk_says_what_stands_between_an_authoring_slip_and_the_runtime() {
             .unwrap_or(&dir)
             .display()
             .to_string();
-        let facts = read_json(&dir.join("facts.json"));
+        let facts = corpus_fact_manifest(&dir);
         let Ok(ws) = corpus_workspace_try(&dir, &facts) else {
             unloadable.push(name);
             continue;
@@ -755,7 +757,7 @@ fn the_walk_says_what_stands_between_an_authoring_slip_and_the_runtime() {
     // recorded as rejected.
     assert_eq!(
         (refuters.len(), unloadable.len(), answers_total),
-        (41, 3, 1102),
+        (43, 3, 1149),
         "the refuter population: authored corpora that load, those that no \
          longer do, and the (corpus, read) answers that actually reached the \
          index"

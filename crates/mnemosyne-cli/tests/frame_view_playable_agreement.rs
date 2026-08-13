@@ -1175,7 +1175,7 @@ fn the_frame_view_names_at_each_point_what_the_playable_world_counts_there() {
             authored.count("the store does not load"),
             authored.count("declares no telling, so the playable world cannot be asked"),
             authored.count("registers no frame"),
-        ) == (44, 3, 30, 0),
+        ) == (46, 3, 32, 0),
         "POPULATION (stores): of the corpora asked, these never reach the \
          comparison — 3 whose author's submission the write path rejected, 30 \
          declaring no telling for a pair whose playable half is per-telling, and \

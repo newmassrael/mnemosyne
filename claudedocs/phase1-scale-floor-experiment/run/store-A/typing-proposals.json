@@ -1,0 +1,239 @@
+{
+ "schema": "typing-proposals/v1",
+ "proposals": [
+  {
+   "fact": "a07-ledger-matron",
+   "claim_sha256": "52e06abd2baeeec75af7f18c58e31dd5910613913474dfef4d3f5cf23ad5d2a9",
+   "rationale": "morphine-ledger held_by",
+   "typed": {
+    "subject": "morphine-ledger",
+    "predicate": "held_by",
+    "object": {
+     "kind": "entity",
+     "id": "ottilie-brandt"
+    }
+   }
+  },
+  {
+   "fact": "a20-ledger-cendre",
+   "claim_sha256": "861c8d6321319a6511bcd0a748b98029b2c6cda06fb96c20a83658f8f69e7275",
+   "rationale": "morphine-ledger held_by",
+   "typed": {
+    "subject": "morphine-ledger",
+    "predicate": "held_by",
+    "object": {
+     "kind": "entity",
+     "id": "irene-cendre"
+    }
+   }
+  },
+  {
+   "fact": "a26-ledger-back",
+   "claim_sha256": "9b3973ab1d369eab75913a71344df4c83362231734d2fad72b10fc18bd57d78c",
+   "rationale": "morphine-ledger held_by",
+   "typed": {
+    "subject": "morphine-ledger",
+    "predicate": "held_by",
+    "object": {
+     "kind": "entity",
+     "id": "ottilie-brandt"
+    }
+   }
+  },
+  {
+   "fact": "a02-key-cabinet",
+   "claim_sha256": "576efa0fb842159f9a6e353419b6db90155249cb8cf0c2094b2a2ac1ae2f85a0",
+   "rationale": "master-key held_by",
+   "typed": {
+    "subject": "master-key",
+    "predicate": "held_by",
+    "object": {
+     "kind": "entity",
+     "id": "ottilie-brandt"
+    }
+   }
+  },
+  {
+   "fact": "a02-key-cendre",
+   "claim_sha256": "2919af0ae4082d62576a2a0a6406cca8a137e80bdb95f478b1580a6a6ddd8c76",
+   "rationale": "master-key held_by",
+   "typed": {
+    "subject": "master-key",
+    "predicate": "held_by",
+    "object": {
+     "kind": "entity",
+     "id": "irene-cendre"
+    }
+   }
+  },
+  {
+   "fact": "a02-vial-roeder",
+   "claim_sha256": "e50c8f9e7a6e77e708f6a6be04977efd34242ce7f8c461dff13987365607937d",
+   "rationale": "digitalin-vial held_by",
+   "typed": {
+    "subject": "digitalin-vial",
+    "predicate": "held_by",
+    "object": {
+     "kind": "entity",
+     "id": "augustin-roeder"
+    }
+   }
+  },
+  {
+   "fact": "a04-vial-cendre",
+   "claim_sha256": "1178a5d1976f2862f7aded5586d99f0605560c1f2346db1141dc880a2a9b0bf5",
+   "rationale": "digitalin-vial held_by",
+   "typed": {
+    "subject": "digitalin-vial",
+    "predicate": "held_by",
+    "object": {
+     "kind": "entity",
+     "id": "irene-cendre"
+    }
+   }
+  },
+  {
+   "fact": "a02-diary-roeder",
+   "claim_sha256": "0420fbae6eefd590633f73866c5bb0638370c423cb79a4149c28be6d2588dfe0",
+   "rationale": "roeder-diary held_by",
+   "typed": {
+    "subject": "roeder-diary",
+    "predicate": "held_by",
+    "object": {
+     "kind": "entity",
+     "id": "augustin-roeder"
+    }
+   }
+  },
+  {
+   "fact": "a04-diary-cendre",
+   "claim_sha256": "6213647893527019412e0250dac57ec906e88bfc1684e715fa3f901a07ca0a00",
+   "rationale": "roeder-diary held_by",
+   "typed": {
+    "subject": "roeder-diary",
+    "predicate": "held_by",
+    "object": {
+     "kind": "entity",
+     "id": "irene-cendre"
+    }
+   }
+  },
+  {
+   "fact": "a08-resig-roeder",
+   "claim_sha256": "ebe27d270e1b194d9539d1767300a42b90dae4ed1552b5337526b2eafd722078",
+   "rationale": "resignation-letter held_by",
+   "typed": {
+    "subject": "resignation-letter",
+    "predicate": "held_by",
+    "object": {
+     "kind": "entity",
+     "id": "augustin-roeder"
+    }
+   }
+  },
+  {
+   "fact": "a08-resig-cendre",
+   "claim_sha256": "9b004f3954cc0637e69103952fe1111d843248b6b1cfe29af42ec91071f0da0f",
+   "rationale": "resignation-letter held_by",
+   "typed": {
+    "subject": "resignation-letter",
+    "predicate": "held_by",
+    "object": {
+     "kind": "entity",
+     "id": "irene-cendre"
+    }
+   }
+  },
+  {
+   "fact": "a03-chart-roeder",
+   "claim_sha256": "c3dd3d1fcd66455fbf2b123dcfe2a965d0da9bec008eed6d8665802e13a04699",
+   "rationale": "cordier-chart held_by",
+   "typed": {
+    "subject": "cordier-chart",
+    "predicate": "held_by",
+    "object": {
+     "kind": "entity",
+     "id": "augustin-roeder"
+    }
+   }
+  },
+  {
+   "fact": "a03-chart-ottilie",
+   "claim_sha256": "3bac0a97e9e1bdc1373fd061ea8202d56a09aab68ec0b242a2873d765b3b05fa",
+   "rationale": "cordier-chart held_by",
+   "typed": {
+    "subject": "cordier-chart",
+    "predicate": "held_by",
+    "object": {
+     "kind": "entity",
+     "id": "ottilie-brandt"
+    }
+   }
+  },
+  {
+   "fact": "a02-roeder-dead",
+   "claim_sha256": "f14e4db2315942ab3a39b15e5db45586a652840135d2a6cf4b7efe6ee4faf1e9",
+   "rationale": "augustin-roeder life_state",
+   "typed": {
+    "subject": "augustin-roeder",
+    "predicate": "life_state",
+    "object": {
+     "kind": "value",
+     "value": "dead"
+    }
+   }
+  },
+  {
+   "fact": "a06-seve-alive",
+   "claim_sha256": "365cd2f9c8dcdf0036c54f5b5a75e0444439f31f044ae7751c7cab47a71c5b82",
+   "rationale": "marguerite-seve life_state",
+   "typed": {
+    "subject": "marguerite-seve",
+    "predicate": "life_state",
+    "object": {
+     "kind": "value",
+     "value": "alive"
+    }
+   }
+  },
+  {
+   "fact": "a47-seve-dead",
+   "claim_sha256": "27bd1c31af748e151208c56718554c256454b96b5f86cb3b3532d40a3f182c34",
+   "rationale": "marguerite-seve life_state",
+   "typed": {
+    "subject": "marguerite-seve",
+    "predicate": "life_state",
+    "object": {
+     "kind": "value",
+     "value": "dead"
+    }
+   }
+  },
+  {
+   "fact": "a06-brandt-alive",
+   "claim_sha256": "f075108ff17575f06899f530e249bb1e235b3dabef427bbb891144408a991af2",
+   "rationale": "ottilie-brandt life_state",
+   "typed": {
+    "subject": "ottilie-brandt",
+    "predicate": "life_state",
+    "object": {
+     "kind": "value",
+     "value": "alive"
+    }
+   }
+  },
+  {
+   "fact": "a59-brandt-dead",
+   "claim_sha256": "c29ccbda33c5c41df6741fd90881b741f2dccb91d74ebcc24c3a60c55678690a",
+   "rationale": "ottilie-brandt life_state",
+   "typed": {
+    "subject": "ottilie-brandt",
+    "predicate": "life_state",
+    "object": {
+     "kind": "value",
+     "value": "dead"
+    }
+   }
+  }
+ ]
+}

@@ -45,6 +45,12 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+// The corpus recipe, shared with the consolidated target rather than copied
+// (Round 1176). The sweep below asks whether a corpus today's raw substrate
+// refuses is one the CARRIAGE still opens, and that question has to be asked
+// through the same recipe the population laws use or the two answers drift.
+mod common;
+
 /// What a declared input IS. A closed vocabulary, because the reason a tracked
 /// input is NOT replayed has to be stated somewhere, and this is the one home
 /// for it.
@@ -4974,11 +4980,31 @@ fn the_recorded_corpora_are_swept_for_every_rule_they_can_trip() {
     for r in &fired {
         println!("  trips: {r}");
     }
+    // A THIRD READER EXISTS NOW, AND IT IS THE ONE THE POPULATION LAWS USE
+    // (Round 1176). Round 1174 put a CARRIAGE in the corpus recipe: a manifest
+    // that predates a schema break is migrated on the way into a throwaway
+    // workspace, so the product never softens and the tracked file never moves.
+    // Eleven of the corpora this sweep calls REFUSED are opened that way on
+    // every run of the population laws, which makes "today's raw substrate
+    // refuses it" true and "nothing can open it" false. Asked here through the
+    // same recipe rather than re-derived, because two readers of one corpus is
+    // how they come to disagree about what it holds.
+    let carried: BTreeSet<String> = common::authored_corpora()
+        .iter()
+        .filter(|dir| common::corpus_workspace_try(dir, &common::corpus_fact_manifest(dir)).is_ok())
+        .filter_map(|dir| {
+            dir.strip_prefix(repo_root())
+                .ok()
+                .map(|rel| rel.display().to_string())
+        })
+        .collect();
+
     // A CORPUS TODAY'S BINARY REFUSES IS NOT NECESSARILY UNREADABLE (Round
     // 1013). The kits pin the revision that produced each replay, so a refused
     // corpus whose facts manifest is a declared replay INPUT is still readable
     // by the substrate that made it — which is the design, not a defect. One
-    // that is refused AND pinned by nothing is evidence nothing can open.
+    // that is refused AND pinned by nothing AND carried by nothing is evidence
+    // nothing can open.
     let pinned: BTreeSet<String> = declarations()
         .replays
         .iter()
@@ -4990,10 +5016,13 @@ fn the_recorded_corpora_are_swept_for_every_rule_they_can_trip() {
     let mut orphaned = Vec::new();
     for u in &unbuildable {
         let dir = u.split(':').next().unwrap_or(u).trim();
-        let covered = pinned.iter().any(|p| p.starts_with(&format!("{dir}/")));
+        let carriage = carried.contains(dir);
+        let covered = carriage || pinned.iter().any(|p| p.starts_with(&format!("{dir}/")));
         println!(
             "  refused ({}): {u}",
-            if covered {
+            if carriage {
+                "the corpus carriage opens it today"
+            } else if covered {
                 "pinned replay can read it"
             } else {
                 "PINNED BY NOTHING"
@@ -5009,37 +5038,39 @@ fn the_recorded_corpora_are_swept_for_every_rule_they_can_trip() {
             orphaned.push(dir.to_string());
         }
     }
+    let dir_of = |u: &String| u.split(':').next().unwrap_or(u).trim().to_string();
     println!(
-        "  of {} refused, {} are readable by a pinned revision, {} are first \
-         submissions the gate rejected, and {} are readable by nothing",
+        "  of {} refused, {} are opened by the corpus carriage today, {} are \
+         readable by a pinned revision, {} are first submissions the gate \
+         rejected, and {} are readable by nothing",
         unbuildable.len(),
         unbuildable
             .iter()
+            .filter(|u| carried.contains(&dir_of(u)))
+            .count(),
+        unbuildable
+            .iter()
             .filter(|u| {
-                let d = u.split(':').next().unwrap_or(u).trim();
+                let d = dir_of(u);
                 pinned.iter().any(|p| p.starts_with(&format!("{d}/")))
             })
             .count(),
         unbuildable
             .iter()
-            .filter(|u| {
-                u.split(':')
-                    .next()
-                    .unwrap_or(u)
-                    .trim()
-                    .ends_with("-first-submission")
-            })
+            .filter(|u| dir_of(u).ends_with("-first-submission"))
             .count(),
         orphaned.len()
     );
     // THE PROPERTY WORTH GATING, now that the population is the right one:
-    // every ACCEPTED submission the record holds is readable by today's binary
-    // or by the revision that produced it. The day one is readable by neither,
-    // the evidence has decayed and this fails naming it.
+    // every ACCEPTED submission the record holds is readable by today's binary,
+    // by the carriage this tree runs on every corpus law, or by the revision
+    // that produced it. The day one is readable by none of the three, the
+    // evidence has decayed and this fails naming it.
     assert!(
         orphaned.is_empty(),
         "{} accepted submission(s) in the record are readable by neither \
-         today's substrate nor any pinned replay revision: {orphaned:?}",
+         today's substrate, nor the corpus carriage, nor any pinned replay \
+         revision: {orphaned:?}",
         orphaned.len()
     );
     for n in &not_a_corpus {
@@ -5153,7 +5184,19 @@ fn rebuild_corpus(dir: &str) -> Result<TempDir, String> {
     if !src.join("facts.json").is_file() {
         return Err("no facts manifest".into());
     }
-    std::fs::copy(src.join("facts.json"), ws.join("facts.json")).map_err(|e| e.to_string())?;
+    // THE AUTHOR'S FACT MANIFEST, WHICH IS NOT ALWAYS ONE FILE (Round 1176).
+    // The scale-floor harness split its registries and a later pass's facts
+    // into siblings, and reading `facts.json` alone made this sweep report
+    // "frame `ground-truth` not present in the frames registry" — an artifact
+    // of reading a third of the record, dressed as a refusal by the substrate.
+    // The union is the same resolver the population laws use, and it carries no
+    // schema upgrade with it: what this sweep asks is whether TODAY's binary
+    // takes the author's manifest as written, and that question stays intact.
+    std::fs::write(
+        ws.join("facts.json"),
+        common::corpus_fact_manifest(&src).to_string(),
+    )
+    .map_err(|e| e.to_string())?;
     run(&["import-facts", "--manifest", "facts.json"])?;
     Ok(tmp)
 }

@@ -324,7 +324,7 @@ fn a_quest_is_open_exactly_where_its_own_giving_still_dangles() {
             asked,
             count("the store does not load"),
             count("declares no telling, so the quest graph cannot be asked"),
-        ) == (44, 3, 30),
+        ) == (46, 3, 32),
         "POPULATION (stores): of the corpora asked, these never reach the \
          comparison at all — 3 whose author's submission the write path \
          rejected, 30 declaring no telling for a \

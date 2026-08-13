@@ -1,0 +1,1482 @@
+{
+ "facts": [
+  {
+   "fact_id": "b01-setup-telegram",
+   "frame": "ground-truth",
+   "branch": "trunk",
+   "claim": "The evening's last telegram, an Aigle apothecary's promise of morphia and quinine on the first clear funicular, comes up just before the line is cut.",
+   "canon_from": "sc-01",
+   "evidence": [
+    "sc-01"
+   ],
+   "quote": "a supply order acknowledged from Aigle, the apothecary promising morphia and quinine on the first clear funicular",
+   "entities": [
+    "last-telegram"
+   ],
+   "payoff_expectation": "expected"
+  },
+  {
+   "fact_id": "b02-setup-diary",
+   "frame": "ground-truth",
+   "branch": "trunk",
+   "claim": "Roeder carries a small black diary with a brass lock, the kind kept when a man does not trust his own desk.",
+   "canon_from": "sc-02",
+   "evidence": [
+    "sc-02"
+   ],
+   "quote": "a small black book with a brass lock, of the kind a man keeps when he does not trust his own desk",
+   "entities": [
+    "roeder-diary"
+   ],
+   "payoff_expectation": "expected"
+  },
+  {
+   "fact_id": "b02-setup-master-key",
+   "frame": "ground-truth",
+   "branch": "trunk",
+   "claim": "The house master key hangs on the warden's board in Gaspard's office; Roeder keeps the only working private key on his own ring.",
+   "canon_from": "sc-02",
+   "evidence": [
+    "sc-02"
+   ],
+   "quote": "the house master key, he reminded her, hung where it always hung, on the warden's board in Gaspard's office",
+   "entities": [
+    "master-key",
+    "gaspard-steward"
+   ],
+   "payoff_expectation": "expected"
+  },
+  {
+   "fact_id": "b04-setup-vial",
+   "frame": "ground-truth",
+   "branch": "trunk",
+   "claim": "A small brown medicine bottle, its label turned away and a third gone, stands by Roeder's open hand.",
+   "canon_from": "sc-04",
+   "evidence": [
+    "sc-04"
+   ],
+   "quote": "stood a small brown medicine bottle, its label turned away, perhaps a third gone",
+   "entities": [
+    "brown-bottle"
+   ],
+   "payoff_expectation": "expected"
+  },
+  {
+   "fact_id": "b05-setup-burned-chart",
+   "frame": "ground-truth",
+   "branch": "trunk",
+   "claim": "Alone with the body, Nurse Brandt draws a buff chart by its old number and feeds it into the consulting-room stove.",
+   "canon_from": "sc-05",
+   "evidence": [
+    "sc-05"
+   ],
+   "quote": "she drew one out by its number, which she knew without reading ... and she ... fed the folder in",
+   "entities": [
+    "nurse-brandt",
+    "burned-chart"
+   ],
+   "payoff_expectation": "expected"
+  },
+  {
+   "fact_id": "b06-setup-forged-papers",
+   "frame": "ground-truth",
+   "branch": "trunk",
+   "claim": "The patient 'Madame Hélène Surel' holds forged admission papers: a referral from a Lausanne physician who does not exist, a name that is not hers.",
+   "canon_from": "sc-06",
+   "evidence": [
+    "sc-06"
+   ],
+   "quote": "a letter of referral from a Lausanne physician who did not exist, a name that was not her name",
+   "entities": [
+    "helene-surel",
+    "forged-admission-papers"
+   ],
+   "payoff_expectation": "expected"
+  },
+  {
+   "fact_id": "b08-setup-resignation",
+   "frame": "ground-truth",
+   "branch": "trunk",
+   "claim": "Roeder's unsent resignation to the Berne board breaks off: 'health' struck out, 'and of conscience' written over it and struck through, no third word.",
+   "canon_from": "sc-08",
+   "evidence": [
+    "sc-08"
+   ],
+   "quote": "over it, in the same upright hand pressed harder, he had written *and of conscience,* and struck that through as well, and not found a third word",
+   "entities": [
+    "resignation-letter",
+    "augustin-roeder"
+   ],
+   "payoff_expectation": "expected"
+  },
+  {
+   "fact_id": "b09-setup-funicular-log",
+   "frame": "ground-truth",
+   "branch": "trunk",
+   "claim": "The funicular maintenance log has a gap: the daily inspection signed every dawn, then nothing at all across the day before the storm.",
+   "canon_from": "sc-09",
+   "evidence": [
+    "sc-09"
+   ],
+   "quote": "across the very day before the storm, nothing at all. No entry, no signature, no line drawn to mark the omission.",
+   "entities": [
+    "maintenance-log",
+    "gaspard-steward"
+   ],
+   "payoff_expectation": "expected"
+  },
+  {
+   "fact_id": "b09-setup-boots",
+   "frame": "ground-truth",
+   "branch": "trunk",
+   "claim": "A single pair of Lindqvist's boots is found soaked through outside the sick-wing door, though Lindqvist swears he has not gone out of doors.",
+   "canon_from": "sc-09",
+   "evidence": [
+    "sc-09"
+   ],
+   "quote": "stood a single pair of gentleman's boots, soaked through and rimmed white with melted snow-salt",
+   "entities": [
+    "snow-wet-boots",
+    "edvard-lindqvist"
+   ],
+   "payoff_expectation": "expected"
+  },
+  {
+   "fact_id": "b10-setup-morphine",
+   "frame": "ground-truth",
+   "branch": "trunk",
+   "claim": "The morphine ledger does not balance: grains entered out under Roeder's hand do not match the doses the patients' charts record receiving.",
+   "canon_from": "sc-10",
+   "evidence": [
+    "sc-10"
+   ],
+   "quote": "The grains entered out did not match the grains entered back.",
+   "entities": [
+    "morphine-ledger"
+   ],
+   "payoff_expectation": "expected"
+  },
+  {
+   "fact_id": "b10-setup-name-match",
+   "frame": "ground-truth",
+   "branch": "trunk",
+   "claim": "A surname in the living admission register answers exactly a surname cut into the sanatorium's burial record six years before.",
+   "canon_from": "sc-10",
+   "evidence": [
+    "sc-10"
+   ],
+   "quote": "A name on the register of the living that answered, exactly, a name in the book of the dead.",
+   "entities": [
+    "patient-register",
+    "burial-register"
+   ],
+   "payoff_expectation": "expected"
+  },
+  {
+   "fact_id": "b10-setup-seve-change",
+   "frame": "ground-truth",
+   "branch": "trunk",
+   "claim": "Lindqvist's chart shows a dying engineer abruptly written well a fortnight since, in Roeder's hand.",
+   "canon_from": "sc-10",
+   "evidence": [
+    "sc-10"
+   ],
+   "quote": "until a fortnight since, when in Roeder's hand the curve simply turned, and a dying engineer was abruptly written well",
+   "entities": [
+    "lindqvist-chart",
+    "edvard-lindqvist"
+   ],
+   "payoff_expectation": "expected"
+  },
+  {
+   "fact_id": "b01-line-cut",
+   "frame": "ground-truth",
+   "branch": "trunk",
+   "claim": "An avalanche cuts the funicular and the telegraph line; Belvoir is shut for three weeks.",
+   "canon_from": "sc-01",
+   "evidence": [
+    "sc-01"
+   ],
+   "quote": "a great weight of snow let go of the mountain ... the line was cut",
+   "entities": [
+    "sanatorium-belvoir",
+    "funicular"
+   ]
+  },
+  {
+   "fact_id": "b02-roeder-alive",
+   "frame": "ground-truth",
+   "branch": "trunk",
+   "claim": "Cendre meets Roeder alive on the gallery landing at ten, locking his consulting-room door.",
+   "canon_from": "sc-02",
+   "evidence": [
+    "sc-02"
+   ],
+   "quote": "Cendre met him once more alive, on the gallery landing at ten",
+   "entities": [
+    "augustin-roeder"
+   ]
+  },
+  {
+   "fact_id": "b03-locked-room",
+   "frame": "ground-truth",
+   "branch": "trunk",
+   "claim": "Roeder's door is bolted with his private key inside the lock; Gaspard brings the master key, cold from the board, to open it.",
+   "canon_from": "sc-03",
+   "evidence": [
+    "sc-03"
+   ],
+   "quote": "The private key was in the lock on the inside ... the heavy old key ... was cold from the board",
+   "entities": [
+    "consulting-room",
+    "master-key",
+    "roeder-own-key"
+   ]
+  },
+  {
+   "fact_id": "b04-roeder-dead",
+   "frame": "ground-truth",
+   "branch": "trunk",
+   "claim": "Roeder is found dead at his desk, dead for hours, a brown bottle at his open hand.",
+   "canon_from": "sc-04",
+   "evidence": [
+    "sc-04"
+   ],
+   "quote": "No pulse, none for hours; the jaw and the hands already set",
+   "entities": [
+    "augustin-roeder"
+   ]
+  },
+  {
+   "fact_id": "b07-only-physician",
+   "frame": "ground-truth",
+   "branch": "trunk",
+   "claim": "With the line dead and the pass shut, Cendre is the only physician on the mountain for three weeks.",
+   "canon_from": "sc-07",
+   "evidence": [
+    "sc-07"
+   ],
+   "quote": "on the mountain exactly one person licensed to sign for a life or against it",
+   "entities": [
+    "dr-cendre"
+   ]
+  },
+  {
+   "fact_id": "b06-helene-avenger",
+   "frame": "ground-truth",
+   "branch": "trunk",
+   "claim": "Under the borrowed name 'Surel', the patient is the sister of a man Roeder wrote into a ledger and crossed out; she came to make him answer.",
+   "canon_from": "sc-06",
+   "evidence": [
+    "sc-06"
+   ],
+   "quote": "the sister of a man who had come to Belvoir to be cured and had gone instead into the sanatorium's own ground",
+   "entities": [
+    "helene-surel",
+    "surel-brother"
+   ]
+  },
+  {
+   "fact_id": "b11-assay",
+   "frame": "ground-truth",
+   "branch": "trunk",
+   "claim": "Cendre assays the brown bottle: strong morphia, a mouthful enough to stop a strong heart within the hour; a third gone.",
+   "canon_from": "sc-11",
+   "evidence": [
+    "sc-11"
+   ],
+   "quote": "morphia in solution, and not the timid solution one spoons to a wakeful patient",
+   "entities": [
+    "brown-bottle"
+   ]
+  },
+  {
+   "fact_id": "b12-sealed",
+   "frame": "ground-truth",
+   "branch": "trunk",
+   "claim": "The room was shut from inside: iced sash, unmarked sill, bolt drawn, master key untouched; the poison had only to arrive before the bolt.",
+   "canon_from": "sc-12",
+   "evidence": [
+    "sc-12"
+   ],
+   "quote": "The poison did not need a murderer in the room. It only needed to have arrived before the bolt.",
+   "entities": [
+    "consulting-room"
+   ]
+  },
+  {
+   "fact_id": "b16-lured",
+   "frame": "ground-truth",
+   "branch": "trunk",
+   "claim": "Gaspard remembers being called to the cable-house by a written word in a hand like Roeder's, for a fault that was not there, emptying his post the day before the storm.",
+   "canon_from": "sc-16",
+   "evidence": [
+    "sc-16"
+   ],
+   "quote": "a hand that could pass for his had emptied the one office from which the mountain's one road was watched",
+   "entities": [
+    "gaspard-steward",
+    "maintenance-log"
+   ]
+  },
+  {
+   "fact_id": "b17-boots-packed",
+   "frame": "ground-truth",
+   "branch": "trunk",
+   "claim": "The wet boots are packed at the toe with folded paper: someone with a smaller foot crossed the snow as Lindqvist.",
+   "canon_from": "sc-17",
+   "evidence": [
+    "sc-17"
+   ],
+   "quote": "Someone had gone out *as* Lindqvist",
+   "entities": [
+    "snow-wet-boots"
+   ]
+  },
+  {
+   "fact_id": "b18-shape",
+   "frame": "cendre",
+   "branch": "trunk",
+   "claim": "Cendre reads the shape: misconduct off the register, paid in morphia and at least one grave, and a death that closed the books on it.",
+   "canon_from": "sc-18",
+   "evidence": [
+    "sc-18"
+   ],
+   "quote": "Roeder's own misconduct, and a death that closed the books on it.",
+   "entities": [
+    "augustin-roeder"
+   ]
+  },
+  {
+   "fact_id": "b19-two-ways",
+   "frame": "cendre",
+   "branch": "trunk",
+   "claim": "The ledger reads two ways: Roeder spent the morphia on his own off-book cases, or the hand that measured the doses drew more than the wards received.",
+   "canon_from": "sc-19",
+   "evidence": [
+    "sc-19"
+   ],
+   "quote": "The discrepancy looked two ways at once and would not choose.",
+   "entities": [
+    "morphine-ledger",
+    "nurse-brandt"
+   ]
+  },
+  {
+   "fact_id": "b20-fork",
+   "frame": "ground-truth",
+   "branch": "trunk",
+   "claim": "Cendre must choose: confront Brandt with the ledger, or interview the patients quietly.",
+   "canon_from": "sc-20",
+   "evidence": [
+    "sc-20"
+   ],
+   "quote": "Two roads lay open from the ledger, and she could walk only one of them first",
+   "entities": [
+    "dr-cendre"
+   ]
+  },
+  {
+   "fact_id": "b07-ledger-roeder",
+   "frame": "ground-truth",
+   "branch": "trunk",
+   "claim": "The green morphine ledger has lived behind Roeder's locked door, under his authority.",
+   "canon_from": "sc-07",
+   "evidence": [
+    "sc-07"
+   ],
+   "quote": "the long green morphine ledger that had lived behind his door",
+   "entities": [
+    "morphine-ledger",
+    "augustin-roeder"
+   ]
+  },
+  {
+   "fact_id": "b07-ledger-cendre",
+   "frame": "ground-truth",
+   "branch": "trunk",
+   "claim": "Custody of the morphine ledger passes from Roeder's authority into Cendre's keeping; she signs the foot of the page.",
+   "canon_from": "sc-07",
+   "evidence": [
+    "sc-07"
+   ],
+   "quote": "Custody passed now from Roeder's authority into Cendre's keeping",
+   "entities": [
+    "morphine-ledger",
+    "dr-cendre"
+   ]
+  },
+  {
+   "fact_id": "b04-bottle-roeder",
+   "frame": "ground-truth",
+   "branch": "trunk",
+   "claim": "The brown bottle stands on the blotter by Roeder's dead hand.",
+   "canon_from": "sc-04",
+   "evidence": [
+    "sc-04"
+   ],
+   "quote": "near the open hand, stood a small brown medicine bottle",
+   "entities": [
+    "brown-bottle",
+    "augustin-roeder"
+   ]
+  },
+  {
+   "fact_id": "b11-bottle-cendre",
+   "frame": "ground-truth",
+   "branch": "trunk",
+   "claim": "Cendre winds the brown bottle in lint and carries it to her own locked drawer.",
+   "canon_from": "sc-11",
+   "evidence": [
+    "sc-11"
+   ],
+   "quote": "wound it in lint, and carried it down to the locked drawer of her own room",
+   "entities": [
+    "brown-bottle",
+    "dr-cendre"
+   ]
+  },
+  {
+   "fact_id": "b02-diary-roeder",
+   "frame": "ground-truth",
+   "branch": "trunk",
+   "claim": "Roeder tucks the brass-locked diary into the breast of his coat.",
+   "canon_from": "sc-02",
+   "evidence": [
+    "sc-02"
+   ],
+   "quote": "The diary's brass lock caught the candlelight when he tucked it into his coat.",
+   "entities": [
+    "roeder-diary",
+    "augustin-roeder"
+   ]
+  },
+  {
+   "fact_id": "b08-diary-cendre",
+   "frame": "ground-truth",
+   "branch": "trunk",
+   "claim": "Cendre takes the brass-locked diary from the dead man's coat and sets it aside, to her drawer, unforced.",
+   "canon_from": "sc-08",
+   "evidence": [
+    "sc-08"
+   ],
+   "quote": "she could not open it, and would not force it, and set it aside on the desk",
+   "entities": [
+    "roeder-diary",
+    "dr-cendre"
+   ]
+  },
+  {
+   "fact_id": "b08-resig-roeder",
+   "frame": "ground-truth",
+   "branch": "trunk",
+   "claim": "The unsent resignation lies under Roeder's blotter.",
+   "canon_from": "sc-08",
+   "evidence": [
+    "sc-08"
+   ],
+   "quote": "The unsent letter she found under the blotter",
+   "entities": [
+    "resignation-letter",
+    "augustin-roeder"
+   ]
+  },
+  {
+   "fact_id": "b18-resig-cendre",
+   "frame": "ground-truth",
+   "branch": "trunk",
+   "claim": "Cendre takes the unsent resignation up the stair into her own keeping.",
+   "canon_from": "sc-18",
+   "evidence": [
+    "sc-18"
+   ],
+   "quote": "Two she took up the stair: the brass-locked diary ... and the unsent letter",
+   "entities": [
+    "resignation-letter",
+    "dr-cendre"
+   ]
+  },
+  {
+   "fact_id": "b06-papers-helene",
+   "frame": "ground-truth",
+   "branch": "trunk",
+   "claim": "The forged admission papers lie in Hélène's writing-case.",
+   "canon_from": "sc-06",
+   "evidence": [
+    "sc-06"
+   ],
+   "quote": "In the writing-case on her knees lay the admission papers that had brought her up the mountain",
+   "entities": [
+    "forged-admission-papers",
+    "helene-surel"
+   ]
+  },
+  {
+   "fact_id": "b09-boots-gaspard",
+   "frame": "ground-truth",
+   "branch": "trunk",
+   "claim": "Gaspard finds the boots outside the sick-wing door and sets them by his office stove to dry.",
+   "canon_from": "sc-09",
+   "evidence": [
+    "sc-09"
+   ],
+   "quote": "the steward had found them outside the sick-wing door at first light and brought them in to dry",
+   "entities": [
+    "snow-wet-boots",
+    "gaspard-steward"
+   ]
+  },
+  {
+   "fact_id": "b17-boots-cendre",
+   "frame": "ground-truth",
+   "branch": "trunk",
+   "claim": "Cendre carries the boots up to the light and sets them in her own room with the rest of the evidence.",
+   "canon_from": "sc-17",
+   "evidence": [
+    "sc-17"
+   ],
+   "quote": "She set the boots in her own room with the rest of it",
+   "entities": [
+    "snow-wet-boots",
+    "dr-cendre"
+   ]
+  },
+  {
+   "fact_id": "b02-roeder-ls-alive",
+   "frame": "ground-truth",
+   "branch": "trunk",
+   "claim": "Roeder is alive the night of the storm.",
+   "canon_from": "sc-02",
+   "evidence": [
+    "sc-02"
+   ],
+   "quote": "It was the last she saw of him on his feet",
+   "entities": [
+    "augustin-roeder"
+   ]
+  },
+  {
+   "fact_id": "b04-roeder-ls-dead",
+   "frame": "ground-truth",
+   "branch": "trunk",
+   "claim": "Roeder is dead.",
+   "canon_from": "sc-04",
+   "evidence": [
+    "sc-04"
+   ],
+   "quote": "No pulse, none for hours",
+   "entities": [
+    "augustin-roeder"
+   ]
+  },
+  {
+   "fact_id": "b07-lindqvist-alive",
+   "frame": "ground-truth",
+   "branch": "trunk",
+   "claim": "Herr Edvard Lindqvist is alive, a wintering consumptive patient.",
+   "canon_from": "sc-07",
+   "evidence": [
+    "sc-07"
+   ],
+   "quote": "Herr Edvard Lindqvist, a Stockholm engineer six months consumptive",
+   "entities": [
+    "edvard-lindqvist"
+   ]
+  },
+  {
+   "fact_id": "b21-pay-morphine",
+   "frame": "ground-truth",
+   "branch": "confront",
+   "claim": "Confronted with the ledger, Brandt says the grains went where Roeder sent them: cases of his own, off the wards' books, that she carried too.",
+   "canon_from": "sc-21",
+   "evidence": [
+    "sc-21"
+   ],
+   "quote": "If they did not reach the wards, Doctor, it was because he kept cases of his own — off the books you have been reading",
+   "entities": [
+    "nurse-brandt",
+    "morphine-ledger"
+   ],
+   "pays_off": [
+    "b10-setup-morphine"
+   ]
+  },
+  {
+   "fact_id": "b22-pay-burned",
+   "frame": "ground-truth",
+   "branch": "confront",
+   "claim": "Brandt confesses she burned a chart in his stove the morning he was found, a thing that would have shamed him and the house.",
+   "canon_from": "sc-22",
+   "evidence": [
+    "sc-22"
+   ],
+   "quote": "I burned a chart ... In his stove, the morning we found him.",
+   "entities": [
+    "nurse-brandt",
+    "burned-chart"
+   ],
+   "pays_off": [
+    "b05-setup-burned-chart"
+   ]
+  },
+  {
+   "fact_id": "b23-cellar",
+   "frame": "ground-truth",
+   "branch": "confront",
+   "claim": "The cellar archive holds no discharge of the missing folder: the earlier 'archived' account was a lie; it was burned.",
+   "canon_from": "sc-23",
+   "evidence": [
+    "sc-23"
+   ],
+   "quote": "The folder Brandt had once sent her imagination down here to find had never come down here at all.",
+   "entities": [
+    "cellar-archive",
+    "burned-chart"
+   ]
+  },
+  {
+   "fact_id": "b51-pay-diary",
+   "frame": "ground-truth",
+   "branch": "confront",
+   "claim": "Cendre sets a thin blade to the diary's little lock and breaks it, opening Roeder's own record.",
+   "canon_from": "sc-51",
+   "evidence": [
+    "sc-51"
+   ],
+   "quote": "set a thin blade to the little lock, and broke it",
+   "entities": [
+    "roeder-diary",
+    "dr-cendre"
+   ],
+   "pays_off": [
+    "b02-setup-diary"
+   ]
+  },
+  {
+   "fact_id": "b52-pay-morphine-diary",
+   "frame": "ground-truth",
+   "branch": "confront",
+   "claim": "The diary confirms the morphia, drawn under his name, went into the arms of a chosen few behind his door.",
+   "canon_from": "sc-52",
+   "evidence": [
+    "sc-52"
+   ],
+   "quote": "into the arms of a chosen few, behind his own door, after the wards were dark",
+   "entities": [
+    "morphine-ledger",
+    "augustin-roeder"
+   ],
+   "pays_off": [
+    "b10-setup-morphine"
+   ]
+  },
+  {
+   "fact_id": "b53-pay-name-match",
+   "frame": "ground-truth",
+   "branch": "confront",
+   "claim": "Cendre sets the two Surels side by side: the buried one was Roeder's subject; the living one is kin, come for it.",
+   "canon_from": "sc-53",
+   "evidence": [
+    "sc-53"
+   ],
+   "quote": "She was kin to the crossed name. She had come for it.",
+   "entities": [
+    "patient-register",
+    "burial-register",
+    "helene-surel"
+   ],
+   "pays_off": [
+    "b10-setup-name-match"
+   ]
+  },
+  {
+   "fact_id": "b53-pay-papers",
+   "frame": "ground-truth",
+   "branch": "confront",
+   "claim": "The papers of the woman in the lower room are forged, by someone with a reckoning to keep.",
+   "canon_from": "sc-53",
+   "evidence": [
+    "sc-53"
+   ],
+   "quote": "The papers in the writing-case of the woman in the lower room were forged, and forged by someone who had a reckoning to keep.",
+   "entities": [
+    "forged-admission-papers",
+    "helene-surel"
+   ],
+   "pays_off": [
+    "b06-setup-forged-papers"
+   ]
+  },
+  {
+   "fact_id": "b53-pay-boots",
+   "frame": "ground-truth",
+   "branch": "confront",
+   "claim": "The snow-wet boots too small for the engineer were a woman moving about the outside of the house she meant to enter.",
+   "canon_from": "sc-53",
+   "evidence": [
+    "sc-53"
+   ],
+   "quote": "the snow-wet boots too small for the bed-bound engineer ... A woman moving about the outside of a house",
+   "entities": [
+    "snow-wet-boots",
+    "helene-surel"
+   ],
+   "pays_off": [
+    "b09-setup-boots"
+   ]
+  },
+  {
+   "fact_id": "b53-pay-funicular",
+   "frame": "ground-truth",
+   "branch": "confront",
+   "claim": "The steward was drawn from his post by a note in a hand like Roeder's, the cable left unwatched.",
+   "canon_from": "sc-53",
+   "evidence": [
+    "sc-53"
+   ],
+   "quote": "the steward drawn from his post by a note in a hand *like* Roeder's, the cable left unwatched",
+   "entities": [
+    "maintenance-log",
+    "helene-surel"
+   ],
+   "pays_off": [
+    "b09-setup-funicular-log"
+   ]
+  },
+  {
+   "fact_id": "b54-pay-resignation",
+   "frame": "ground-truth",
+   "branch": "confront",
+   "claim": "The diary shows the unfinished resignation, halting on conscience, had its long rehearsal there, draft after draft.",
+   "canon_from": "sc-54",
+   "evidence": [
+    "sc-54"
+   ],
+   "quote": "the unfinished resignation under his blotter, halting on the word *conscience,* had its long rehearsal here, draft after draft",
+   "entities": [
+    "resignation-letter",
+    "augustin-roeder"
+   ],
+   "pays_off": [
+    "b08-setup-resignation"
+   ]
+  },
+  {
+   "fact_id": "b54-pay-telegram",
+   "frame": "ground-truth",
+   "branch": "confront",
+   "claim": "The last telegram had promised resupply only on the first clear funicular; then the line died and no more morphia was coming until the thaw.",
+   "canon_from": "sc-54",
+   "evidence": [
+    "sc-54"
+   ],
+   "quote": "the last telegram up from Aigle had promised the resupply only on the first clear funicular, and then the line had died",
+   "entities": [
+    "last-telegram"
+   ],
+   "pays_off": [
+    "b01-setup-telegram"
+   ]
+  },
+  {
+   "fact_id": "b54-pay-masterkey",
+   "frame": "ground-truth",
+   "branch": "confront",
+   "claim": "The master key never left its board because Roeder never meant it to; no hand reached him, for he bolted the door against every hand.",
+   "canon_from": "sc-54",
+   "evidence": [
+    "sc-54"
+   ],
+   "quote": "The master key never left its board because he never meant it to.",
+   "entities": [
+    "master-key"
+   ],
+   "pays_off": [
+    "b02-setup-master-key"
+   ]
+  },
+  {
+   "fact_id": "b54-pay-vial",
+   "frame": "ground-truth",
+   "branch": "confront",
+   "claim": "Roeder measured himself a strong draught into the unlabelled brown bottle and drank it, bolting the door upon the world.",
+   "canon_from": "sc-54",
+   "evidence": [
+    "sc-54"
+   ],
+   "quote": "He had measured himself a strong draught into the unlabelled brown bottle",
+   "entities": [
+    "brown-bottle",
+    "augustin-roeder"
+   ],
+   "pays_off": [
+    "b04-setup-vial"
+   ]
+  },
+  {
+   "fact_id": "b54-pay-lindqvist",
+   "frame": "ground-truth",
+   "branch": "confront",
+   "claim": "Lindqvist still breathes; his improving chart was the last of Roeder's false vigours, the method's one surviving subject.",
+   "canon_from": "sc-54",
+   "evidence": [
+    "sc-54"
+   ],
+   "quote": "Lindqvist still breathed, the improving chart over his bed the last of Roeder's false vigours",
+   "entities": [
+    "edvard-lindqvist",
+    "lindqvist-chart"
+   ],
+   "pays_off": [
+    "b10-setup-seve-change"
+   ]
+  },
+  {
+   "fact_id": "b55-truth-suicide",
+   "frame": "ground-truth",
+   "branch": "confront",
+   "claim": "Ending A: Cendre certifies death by his own hand, of a mind broken by the knowledge of his own conduct.",
+   "canon_from": "sc-55",
+   "evidence": [
+    "sc-55"
+   ],
+   "quote": "Death by his own hand ... while of a mind broken by the knowledge of his own conduct",
+   "entities": [
+    "augustin-roeder"
+   ]
+  },
+  {
+   "fact_id": "b27-lindqvist-morphia",
+   "frame": "ground-truth",
+   "branch": "quiet",
+   "claim": "Lindqvist's 'new strength' was the morphia's warm hour behind the private door, dressed in his chart as a cure.",
+   "canon_from": "sc-27",
+   "evidence": [
+    "sc-27"
+   ],
+   "quote": "She read his 'strength' for what it was — the poppy's warm hour, dressed in a chart as a cure",
+   "entities": [
+    "edvard-lindqvist",
+    "roeder-method"
+   ]
+  },
+  {
+   "fact_id": "b28-favoured",
+   "frame": "ground-truth",
+   "branch": "quiet",
+   "claim": "An old patient recalls that Roeder's favoured evening cases, across the winters, had a way of not lasting.",
+   "canon_from": "sc-28",
+   "evidence": [
+    "sc-28"
+   ],
+   "quote": "the favoured ones had a way of not lasting",
+   "entities": [
+    "roeder-method"
+   ]
+  },
+  {
+   "fact_id": "b29-surel-coincidence",
+   "frame": "cendre",
+   "branch": "quiet",
+   "claim": "Asked gently of the repeated name, Madame Surel gives a candid-shaped nothing: a wide family, a kinsman gone for the cure.",
+   "canon_from": "sc-29",
+   "evidence": [
+    "sc-29"
+   ],
+   "quote": "a kinsman, she allowed — distant; the family was wide and scattered",
+   "entities": [
+    "helene-surel"
+   ]
+  },
+  {
+   "fact_id": "b34-name-noted",
+   "frame": "cendre",
+   "branch": "quiet",
+   "claim": "Cendre lays register and burial book together and writes the Surel match into her notebook as a sorrow and not a suspicion.",
+   "canon_from": "sc-34",
+   "evidence": [
+    "sc-34"
+   ],
+   "quote": "She wrote the match into her notebook as a sorrow and not a suspicion",
+   "entities": [
+    "patient-register",
+    "burial-register"
+   ]
+  },
+  {
+   "fact_id": "b36-lindqvist-sinking",
+   "frame": "ground-truth",
+   "branch": "quiet",
+   "claim": "With the evening needle stopped at Roeder's death, Lindqvist's borrowed strength drains and the true wasting coast is bared.",
+   "canon_from": "sc-36",
+   "evidence": [
+    "sc-36"
+   ],
+   "quote": "the borrowed strength drained back the way a tide goes",
+   "entities": [
+    "edvard-lindqvist"
+   ]
+  },
+  {
+   "fact_id": "b37-diary-unforced",
+   "frame": "cendre",
+   "branch": "quiet",
+   "claim": "On the quiet road Cendre cannot bring herself to force the diary; the little brass key is on no ring she can find.",
+   "canon_from": "sc-37",
+   "evidence": [
+    "sc-37"
+   ],
+   "quote": "The little brass key was on neither ring she could find",
+   "entities": [
+    "roeder-diary"
+   ]
+  },
+  {
+   "fact_id": "b40-fork2",
+   "frame": "ground-truth",
+   "branch": "quiet",
+   "claim": "The case forks: Hélène will either confess her name and purpose, or keep silence while a second death escalates the case.",
+   "canon_from": "sc-40",
+   "evidence": [
+    "sc-40"
+   ],
+   "quote": "a confession, or a silence with another death growing in it",
+   "entities": [
+    "helene-surel",
+    "edvard-lindqvist"
+   ]
+  },
+  {
+   "fact_id": "b41-pay-papers",
+   "frame": "ground-truth",
+   "branch": "confess",
+   "claim": "Hélène confesses: her papers are forged, Surel is her own name, and the man in the ground was hers; she came to stand where he died.",
+   "canon_from": "sc-41",
+   "evidence": [
+    "sc-41"
+   ],
+   "quote": "My papers are forged ... The man you found in your ground was mine, Doctor.",
+   "entities": [
+    "helene-surel",
+    "forged-admission-papers"
+   ],
+   "pays_off": [
+    "b06-setup-forged-papers"
+   ]
+  },
+  {
+   "fact_id": "b42-pay-name-match",
+   "frame": "ground-truth",
+   "branch": "confess",
+   "claim": "Hélène names the buried Surel as her brother, spent behind the consulting-room door; she pushes the forged papers across.",
+   "canon_from": "sc-42",
+   "evidence": [
+    "sc-42"
+   ],
+   "quote": "He was one of the ones taken behind the consulting-room door for the needle and the borrowed hour",
+   "entities": [
+    "helene-surel",
+    "surel-brother",
+    "burial-register"
+   ],
+   "pays_off": [
+    "b10-setup-name-match"
+   ]
+  },
+  {
+   "fact_id": "b43-pay-masterkey",
+   "frame": "ground-truth",
+   "branch": "confess",
+   "claim": "Hélène swears she never passed the bolt; with the one hand that wished him dead outside the door, the sealed room shows its suicide face.",
+   "canon_from": "sc-43",
+   "evidence": [
+    "sc-43"
+   ],
+   "quote": "His door was bolted ... I never passed it. I set no glass by his hand.",
+   "entities": [
+    "master-key",
+    "helene-surel"
+   ],
+   "pays_off": [
+    "b02-setup-master-key"
+   ]
+  },
+  {
+   "fact_id": "b56-pay-diary",
+   "frame": "ground-truth",
+   "branch": "confess",
+   "claim": "Cendre forces the diary at last: a thin blade and a steady hand, and the little mechanism gives.",
+   "canon_from": "sc-56",
+   "evidence": [
+    "sc-56"
+   ],
+   "quote": "A thin blade and a steady hand, and the little mechanism gave with a dry click",
+   "entities": [
+    "roeder-diary",
+    "dr-cendre"
+   ],
+   "pays_off": [
+    "b02-setup-diary"
+   ]
+  },
+  {
+   "fact_id": "b57-pay-morphine",
+   "frame": "ground-truth",
+   "branch": "confess",
+   "claim": "The diary shows the morphia drawn off the ledger for the evening needle and the borrowed hour.",
+   "canon_from": "sc-57",
+   "evidence": [
+    "sc-57"
+   ],
+   "quote": "The morphia drawn off the ledger for the evening needle",
+   "entities": [
+    "morphine-ledger",
+    "augustin-roeder"
+   ],
+   "pays_off": [
+    "b10-setup-morphine"
+   ]
+  },
+  {
+   "fact_id": "b57-pay-resignation",
+   "frame": "ground-truth",
+   "branch": "confess",
+   "claim": "The diary's last pages show the resignation drafted and redrafted, always failing on the same word.",
+   "canon_from": "sc-57",
+   "evidence": [
+    "sc-57"
+   ],
+   "quote": "the resignation drafted and redrafted and never finished, always failing on the same word",
+   "entities": [
+    "resignation-letter"
+   ],
+   "pays_off": [
+    "b08-setup-resignation"
+   ]
+  },
+  {
+   "fact_id": "b57-pay-vial",
+   "frame": "ground-truth",
+   "branch": "confess",
+   "claim": "The diary's final entry: he had measured the strong draught into the brown bottle, meaning to drink it and bolt his door.",
+   "canon_from": "sc-57",
+   "evidence": [
+    "sc-57"
+   ],
+   "quote": "He had measured the strong draught into the brown bottle.",
+   "entities": [
+    "brown-bottle",
+    "augustin-roeder"
+   ],
+   "pays_off": [
+    "b04-setup-vial"
+   ]
+  },
+  {
+   "fact_id": "b57-pay-masterkey2",
+   "frame": "ground-truth",
+   "branch": "confess",
+   "claim": "The sealed room, the cold key and the residue all say no one had killed Augustin Roeder but Augustin Roeder.",
+   "canon_from": "sc-57",
+   "evidence": [
+    "sc-57"
+   ],
+   "quote": "no one had killed Augustin Roeder but Augustin Roeder",
+   "entities": [
+    "master-key",
+    "augustin-roeder"
+   ],
+   "pays_off": [
+    "b02-setup-master-key"
+   ]
+  },
+  {
+   "fact_id": "b57-truth-suicide",
+   "frame": "ground-truth",
+   "branch": "confess",
+   "claim": "On the confess road the death is suicide by his own conscience-dose behind the bolt.",
+   "canon_from": "sc-57",
+   "evidence": [
+    "sc-57"
+   ],
+   "quote": "The man inside had drawn that bolt against the whole world and then against himself.",
+   "entities": [
+    "augustin-roeder"
+   ]
+  },
+  {
+   "fact_id": "b58-pay-boots",
+   "frame": "ground-truth",
+   "branch": "confess",
+   "claim": "Hélène confesses she took the engineer's boots, packed the toes with paper, and went out in them learning the ground.",
+   "canon_from": "sc-58",
+   "evidence": [
+    "sc-58"
+   ],
+   "quote": "She had taken the engineer's boots from the sick-wing ... packing the toes with paper",
+   "entities": [
+    "snow-wet-boots",
+    "helene-surel"
+   ],
+   "pays_off": [
+    "b09-setup-boots"
+   ]
+  },
+  {
+   "fact_id": "b58-pay-funicular",
+   "frame": "ground-truth",
+   "branch": "confess",
+   "claim": "Hélène confesses the note that drew Gaspard to the cable-house for a fault that was not there.",
+   "canon_from": "sc-58",
+   "evidence": [
+    "sc-58"
+   ],
+   "quote": "the note that drew Gaspard to the cable-house for a fault that was not there",
+   "entities": [
+    "maintenance-log",
+    "helene-surel"
+   ],
+   "pays_off": [
+    "b09-setup-funicular-log"
+   ]
+  },
+  {
+   "fact_id": "b58-pay-telegram",
+   "frame": "ground-truth",
+   "branch": "confess",
+   "claim": "Hélène watched the last telegram come up and lie unanswered on the salver before the line went dead.",
+   "canon_from": "sc-58",
+   "evidence": [
+    "sc-58"
+   ],
+   "quote": "she had watched the last telegram come up and lie unanswered on the salver",
+   "entities": [
+    "last-telegram",
+    "helene-surel"
+   ],
+   "pays_off": [
+    "b01-setup-telegram"
+   ]
+  },
+  {
+   "fact_id": "b59-pay-lindqvist",
+   "frame": "ground-truth",
+   "branch": "confess",
+   "claim": "Lindqvist's improving chart was the method's last fiction; with the needle stopped he is failing, but alive, and Cendre will chart him honestly.",
+   "canon_from": "sc-59",
+   "evidence": [
+    "sc-59"
+   ],
+   "quote": "Lindqvist's improving chart had been the method's last fiction ... But he was alive",
+   "entities": [
+    "edvard-lindqvist",
+    "lindqvist-chart"
+   ],
+   "pays_off": [
+    "b10-setup-seve-change"
+   ]
+  },
+  {
+   "fact_id": "b59-burned-dangles",
+   "frame": "cendre",
+   "branch": "confess",
+   "claim": "On the confess road the burning of the chart stays outside Cendre's knowing: she never goes to Brandt, and the hand that took the folder is never learned.",
+   "canon_from": "sc-59",
+   "evidence": [
+    "sc-59"
+   ],
+   "quote": "the burning itself stayed outside her knowing ... the one secret of the house that even this gentlest solving never reaches",
+   "entities": [
+    "burned-chart"
+   ]
+  },
+  {
+   "fact_id": "b60-ending-b",
+   "frame": "ground-truth",
+   "branch": "confess",
+   "claim": "Ending B: Cendre certifies death by his own hand, of a conscience he could not carry, and keeps Hélène's forged papers as a survivor's testimony.",
+   "canon_from": "sc-60",
+   "evidence": [
+    "sc-60"
+   ],
+   "quote": "death by his own hand, of a conscience he could not carry",
+   "entities": [
+    "augustin-roeder",
+    "helene-surel"
+   ]
+  },
+  {
+   "fact_id": "b47-boots-again",
+   "frame": "cendre",
+   "branch": "escalate",
+   "claim": "Shut out of the woman, Cendre sets the boots beside the mute witnesses: a smaller foot, an unwatched cable, an unanswered telegram — a person about the outside of the shut house.",
+   "canon_from": "sc-47",
+   "evidence": [
+    "sc-47"
+   ],
+   "quote": "someone who had moved about the outside of this shut house near the hour it shut",
+   "entities": [
+    "snow-wet-boots",
+    "maintenance-log",
+    "last-telegram"
+   ]
+  },
+  {
+   "fact_id": "b48-lindqvist-dead",
+   "frame": "ground-truth",
+   "branch": "escalate",
+   "claim": "Lindqvist is found dead in the small hours, gone too suddenly for the slow ebb of withdrawal: a breath pinched out.",
+   "canon_from": "sc-48",
+   "evidence": [
+    "sc-48"
+   ],
+   "quote": "Lindqvist was dead ... a breath had been pinched out rather than let run down",
+   "entities": [
+    "edvard-lindqvist"
+   ]
+  },
+  {
+   "fact_id": "b48-pay-lindqvist",
+   "frame": "ground-truth",
+   "branch": "escalate",
+   "claim": "The chart still says 'improving' in Roeder's hand: held up on a fiction and let fall, then hurried out of the world by a hand.",
+   "canon_from": "sc-48",
+   "evidence": [
+    "sc-48"
+   ],
+   "quote": "held up on a fiction and let fall when the fiction's author died",
+   "entities": [
+    "lindqvist-chart",
+    "edvard-lindqvist"
+   ],
+   "pays_off": [
+    "b10-setup-seve-change"
+   ]
+  },
+  {
+   "fact_id": "b49-second-hand",
+   "frame": "cendre",
+   "branch": "escalate",
+   "claim": "Lindqvist died in an open sickroom; a hand that could reach the second bed gives the first its missing visitor — a dose set ready before the bolt.",
+   "canon_from": "sc-49",
+   "evidence": [
+    "sc-49"
+   ],
+   "quote": "let them lend each other a murderer",
+   "entities": [
+    "edvard-lindqvist",
+    "augustin-roeder"
+   ]
+  },
+  {
+   "fact_id": "b61-pay-vial",
+   "frame": "ground-truth",
+   "branch": "escalate",
+   "claim": "The murder was laid, not committed: the dose set ready hours before in the brown bottle Roeder would lift to his own mouth.",
+   "canon_from": "sc-61",
+   "evidence": [
+    "sc-61"
+   ],
+   "quote": "the dose that stopped the doctor had only to be set ready, hours before, in the brown bottle",
+   "entities": [
+    "brown-bottle"
+   ],
+   "pays_off": [
+    "b04-setup-vial"
+   ]
+  },
+  {
+   "fact_id": "b61-pay-masterkey",
+   "frame": "ground-truth",
+   "branch": "escalate",
+   "claim": "The cold untouched master key, iced sash and inner bolt told her only that the killer did not need to enter.",
+   "canon_from": "sc-61",
+   "evidence": [
+    "sc-61"
+   ],
+   "quote": "They had only told her the killer did not need to enter.",
+   "entities": [
+    "master-key"
+   ],
+   "pays_off": [
+    "b02-setup-master-key"
+   ]
+  },
+  {
+   "fact_id": "b61-truth-murder",
+   "frame": "ground-truth",
+   "branch": "escalate",
+   "claim": "On the escalate road the death is murder: a dose composed by someone who knew Roeder's habits, set where habit would do the rest.",
+   "canon_from": "sc-61",
+   "evidence": [
+    "sc-61"
+   ],
+   "quote": "A dose composed by someone who knew his habits, set where habit would do the rest.",
+   "entities": [
+    "augustin-roeder",
+    "helene-surel"
+   ]
+  },
+  {
+   "fact_id": "b62-pay-boots",
+   "frame": "ground-truth",
+   "branch": "escalate",
+   "claim": "The snow-wet boots, worn through the drift by a foot too small for the man whose name they bore, are the murderer walking the snow in another's boots.",
+   "canon_from": "sc-62",
+   "evidence": [
+    "sc-62"
+   ],
+   "quote": "The snow-wet boots, worn through the drift by a foot too small for the man whose name they bore",
+   "entities": [
+    "snow-wet-boots",
+    "helene-surel"
+   ],
+   "pays_off": [
+    "b09-setup-boots"
+   ]
+  },
+  {
+   "fact_id": "b62-pay-funicular",
+   "frame": "ground-truth",
+   "branch": "escalate",
+   "claim": "The funicular log gone blank: the steward drawn off his post by a note in a hand got up to look like Roeder's, emptying the cable-house.",
+   "canon_from": "sc-62",
+   "evidence": [
+    "sc-62"
+   ],
+   "quote": "the steward drawn off his post by a note in a hand got up to look like Roeder's",
+   "entities": [
+    "maintenance-log",
+    "helene-surel"
+   ],
+   "pays_off": [
+    "b09-setup-funicular-log"
+   ]
+  },
+  {
+   "fact_id": "b62-pay-telegram",
+   "frame": "ground-truth",
+   "branch": "escalate",
+   "claim": "The last telegram come and gone unanswered, then the line dead and the house shut, are the movements of a single careful person.",
+   "canon_from": "sc-62",
+   "evidence": [
+    "sc-62"
+   ],
+   "quote": "The last telegram come and gone unanswered, and then the line dead and the house shut",
+   "entities": [
+    "last-telegram",
+    "helene-surel"
+   ],
+   "pays_off": [
+    "b01-setup-telegram"
+   ]
+  },
+  {
+   "fact_id": "b63-pay-morphine",
+   "frame": "ground-truth",
+   "branch": "escalate",
+   "claim": "The ledger's missing grains fed years of the evening needle and spared a strong last dose or two for a clever hand.",
+   "canon_from": "sc-63",
+   "evidence": [
+    "sc-63"
+   ],
+   "quote": "morphia enough ... to feed years of the evening needle and to spare a strong last dose or two",
+   "entities": [
+    "morphine-ledger"
+   ],
+   "pays_off": [
+    "b10-setup-morphine"
+   ]
+  },
+  {
+   "fact_id": "b63-burned-dangles",
+   "frame": "cendre",
+   "branch": "escalate",
+   "claim": "On the escalate road Cendre sets the missing folder down to misfiling and never guesses it had gone to the stove; the burned chart's owner stays the reader's, not hers.",
+   "canon_from": "sc-63",
+   "evidence": [
+    "sc-63"
+   ],
+   "quote": "the buff folder she had set down to misfiling and never guessed had gone to the stove",
+   "entities": [
+    "burned-chart"
+   ]
+  },
+  {
+   "fact_id": "b63-namematch-dangles",
+   "frame": "cendre",
+   "branch": "escalate",
+   "claim": "On the escalate road the buried Surel's kinship to the living patient stays the reader's and not hers; she takes the shared name for sad coincidence.",
+   "canon_from": "sc-63",
+   "evidence": [
+    "sc-63"
+   ],
+   "quote": "the buried Surel's kin ... stayed the reader's and not hers",
+   "entities": [
+    "patient-register",
+    "burial-register"
+   ]
+  },
+  {
+   "fact_id": "b64-pay-resignation",
+   "frame": "ground-truth",
+   "branch": "escalate",
+   "claim": "The halted resignation reweighs as motive: a physician about to confess the method was one someone had reason to silence; his conscience served the hand that killed him.",
+   "canon_from": "sc-64",
+   "evidence": [
+    "sc-64"
+   ],
+   "quote": "Even his conscience, in the end, had served the hand that killed him.",
+   "entities": [
+    "resignation-letter"
+   ],
+   "pays_off": [
+    "b08-setup-resignation"
+   ]
+  },
+  {
+   "fact_id": "b64-diary-dangles",
+   "frame": "cendre",
+   "branch": "escalate",
+   "claim": "On the escalate road Cendre never opens the diary; the seal holds and the case keeps its hole.",
+   "canon_from": "sc-64",
+   "evidence": [
+    "sc-64"
+   ],
+   "quote": "on the escalate road she never opened it ... the case kept its hole",
+   "entities": [
+    "roeder-diary"
+   ]
+  },
+  {
+   "fact_id": "b65-ending-c",
+   "frame": "ground-truth",
+   "branch": "escalate",
+   "claim": "Ending C: Cendre certifies both deaths as 'death by a hand unknown'; the murderer, Hélène, rides down unnamed and unproven.",
+   "canon_from": "sc-65",
+   "evidence": [
+    "sc-65"
+   ],
+   "quote": "She wrote, for Roeder and for Lindqvist both, *death by a hand unknown*",
+   "entities": [
+    "augustin-roeder",
+    "edvard-lindqvist",
+    "helene-surel"
+   ]
+  },
+  {
+   "fact_id": "b48-lindqvist-ls-dead",
+   "frame": "ground-truth",
+   "branch": "escalate",
+   "claim": "Edvard Lindqvist is dead.",
+   "canon_from": "sc-48",
+   "evidence": [
+    "sc-48"
+   ],
+   "quote": "Lindqvist was dead.",
+   "entities": [
+    "edvard-lindqvist"
+   ]
+  }
+ ]
+}

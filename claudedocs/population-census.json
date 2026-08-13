@@ -6,7 +6,7 @@
       "left_label": "undirected",
       "left": 10,
       "right_label": "directed",
-      "right": 27
+      "right": 29
     },
     {
       "axis": "map corpora by leg-kind declaration",
@@ -27,7 +27,7 @@
       "left_label": "hand script",
       "left": 10,
       "right_label": "file-only",
-      "right": 239
+      "right": 254
     },
     {
       "axis": "map corpora by declared boundary crossing",

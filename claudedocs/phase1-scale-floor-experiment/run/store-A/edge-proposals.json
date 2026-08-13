@@ -1,0 +1,70 @@
+{
+ "schema": "edge-proposals/v1",
+ "comment": "story-A succession: narrated custody transfers + life transitions; fill-blanks only",
+ "succession": [
+  {
+   "predecessor": "a07-ledger-matron",
+   "successor": "a20-ledger-cendre",
+   "predecessor_claim_sha256": "52e06abd2baeeec75af7f18c58e31dd5910613913474dfef4d3f5cf23ad5d2a9",
+   "successor_claim_sha256": "861c8d6321319a6511bcd0a748b98029b2c6cda06fb96c20a83658f8f69e7275",
+   "rationale": "narrated transfer/transition a07-ledger-matron -> a20-ledger-cendre"
+  },
+  {
+   "predecessor": "a20-ledger-cendre",
+   "successor": "a26-ledger-back",
+   "predecessor_claim_sha256": "861c8d6321319a6511bcd0a748b98029b2c6cda06fb96c20a83658f8f69e7275",
+   "successor_claim_sha256": "9b3973ab1d369eab75913a71344df4c83362231734d2fad72b10fc18bd57d78c",
+   "rationale": "narrated transfer/transition a20-ledger-cendre -> a26-ledger-back"
+  },
+  {
+   "predecessor": "a02-key-cabinet",
+   "successor": "a02-key-cendre",
+   "predecessor_claim_sha256": "576efa0fb842159f9a6e353419b6db90155249cb8cf0c2094b2a2ac1ae2f85a0",
+   "successor_claim_sha256": "2919af0ae4082d62576a2a0a6406cca8a137e80bdb95f478b1580a6a6ddd8c76",
+   "rationale": "narrated transfer/transition a02-key-cabinet -> a02-key-cendre"
+  },
+  {
+   "predecessor": "a02-vial-roeder",
+   "successor": "a04-vial-cendre",
+   "predecessor_claim_sha256": "e50c8f9e7a6e77e708f6a6be04977efd34242ce7f8c461dff13987365607937d",
+   "successor_claim_sha256": "1178a5d1976f2862f7aded5586d99f0605560c1f2346db1141dc880a2a9b0bf5",
+   "rationale": "narrated transfer/transition a02-vial-roeder -> a04-vial-cendre"
+  },
+  {
+   "predecessor": "a02-diary-roeder",
+   "successor": "a04-diary-cendre",
+   "predecessor_claim_sha256": "0420fbae6eefd590633f73866c5bb0638370c423cb79a4149c28be6d2588dfe0",
+   "successor_claim_sha256": "6213647893527019412e0250dac57ec906e88bfc1684e715fa3f901a07ca0a00",
+   "rationale": "narrated transfer/transition a02-diary-roeder -> a04-diary-cendre"
+  },
+  {
+   "predecessor": "a08-resig-roeder",
+   "successor": "a08-resig-cendre",
+   "predecessor_claim_sha256": "ebe27d270e1b194d9539d1767300a42b90dae4ed1552b5337526b2eafd722078",
+   "successor_claim_sha256": "9b004f3954cc0637e69103952fe1111d843248b6b1cfe29af42ec91071f0da0f",
+   "rationale": "narrated transfer/transition a08-resig-roeder -> a08-resig-cendre"
+  },
+  {
+   "predecessor": "a03-chart-roeder",
+   "successor": "a03-chart-ottilie",
+   "predecessor_claim_sha256": "c3dd3d1fcd66455fbf2b123dcfe2a965d0da9bec008eed6d8665802e13a04699",
+   "successor_claim_sha256": "3bac0a97e9e1bdc1373fd061ea8202d56a09aab68ec0b242a2873d765b3b05fa",
+   "rationale": "narrated transfer/transition a03-chart-roeder -> a03-chart-ottilie"
+  },
+  {
+   "predecessor": "a06-seve-alive",
+   "successor": "a47-seve-dead",
+   "predecessor_claim_sha256": "365cd2f9c8dcdf0036c54f5b5a75e0444439f31f044ae7751c7cab47a71c5b82",
+   "successor_claim_sha256": "27bd1c31af748e151208c56718554c256454b96b5f86cb3b3532d40a3f182c34",
+   "rationale": "narrated transfer/transition a06-seve-alive -> a47-seve-dead"
+  },
+  {
+   "predecessor": "a06-brandt-alive",
+   "successor": "a59-brandt-dead",
+   "predecessor_claim_sha256": "f075108ff17575f06899f530e249bb1e235b3dabef427bbb891144408a991af2",
+   "successor_claim_sha256": "c29ccbda33c5c41df6741fd90881b741f2dccb91d74ebcc24c3a60c55678690a",
+   "rationale": "narrated transfer/transition a06-brandt-alive -> a59-brandt-dead"
+  }
+ ],
+ "conflicts": []
+}

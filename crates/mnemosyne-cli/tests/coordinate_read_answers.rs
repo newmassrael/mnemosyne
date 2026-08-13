@@ -82,8 +82,8 @@ use serde_json::Value;
 use crate::common;
 use common::{
     advertised_reads, answer_is_keyed_by_road, authored_stores, baseline_argv,
-    corpus_workspace_try, flags_of, record_of, road_filters, road_lines, run, substance,
-    usage_lines, values_for, Flag, SIDECAR,
+    corpus_proposal_manifests, corpus_workspace_try, flags_of, record_of, road_filters, road_lines,
+    run, substance, usage_lines, values_for, Flag, SIDECAR,
 };
 
 /// Ask a read and hand back its JSON, or `None` when it refuses.
@@ -236,17 +236,26 @@ fn subjects(value: &Value, facts: &BTreeMap<String, String>, out: &mut BTreeSet<
     }
 }
 
-/// One fact per branch that the manifest can lose: the first id on that branch
-/// that nothing else in the manifest refers to.
+/// One fact per branch that the corpus can lose: the first id on that branch
+/// that nothing else the recipe imports refers to.
 ///
 /// Derived from the manifest, because that is what a deletion edits. A fact
 /// another fact pays off, or a disclosure plan discloses, cannot simply go —
 /// the import would refuse it, and a refused edit is not a move an author could
 /// have made (the R1033 rule). Branches with no such fact are returned by their
 /// absence and counted by the caller.
+///
+/// `reviewed` is the corpus's proposal manifests, which name facts too and which
+/// the recipe applies as a second pass. Reading the fact manifest alone made the
+/// rule above HALF-TRUE, and it held only because every corpus kept its
+/// references in one file: Round 1176 carried in the first two that do not, and
+/// the walk picked a fact both proposal files target, watched
+/// `import-typing-proposals` reject the rebuild, and lost that branch's
+/// perturbation to a refusal it then counted as evidence.
 fn deletable_per_branch(
     facts_json: &Value,
     branch_of: &BTreeMap<String, String>,
+    reviewed: &[Value],
 ) -> BTreeMap<String, String> {
     let entries = facts_json["facts"].as_array().cloned().unwrap_or_default();
     let ids: BTreeSet<String> = entries
@@ -277,6 +286,12 @@ fn deletable_per_branch(
                 mentions(value, None);
             }
         }
+    }
+    // The reviewed pass, scanned the same way: a typed leg names the fact it
+    // types, a succession edge names both of its ends, and the import re-checks
+    // each against the store it is applied to.
+    for manifest in reviewed {
+        mentions(manifest, None);
     }
 
     let mut out: BTreeMap<String, String> = BTreeMap::new();
@@ -652,7 +667,11 @@ fn a_coordinate_read_answers_at_the_lineage_of_the_road_it_is_given() {
                 // move. A road that cannot see the branch must answer byte for
                 // byte what it answered before; a probe that NAMED the deleted
                 // fact must not.
-                let free = deletable_per_branch(&store.facts, &branch_of);
+                let free = deletable_per_branch(
+                    &store.facts,
+                    &branch_of,
+                    &corpus_proposal_manifests(&store.dir),
+                );
                 let carrying: BTreeSet<&String> = branch_of.values().collect();
                 for branch in carrying {
                     let Some(fact) = free.get(branch) else {
@@ -792,7 +811,7 @@ fn a_coordinate_read_answers_at_the_lineage_of_the_road_it_is_given() {
     };
 
     check(
-        (asked, unloadable.len()) == (44, 3),
+        (asked, unloadable.len()) == (46, 3),
         "POPULATION (stores): every corpus an author shipped is asked, and the \
          ones that no longer load are counted rather than dropped",
     );
@@ -802,11 +821,11 @@ fn a_coordinate_read_answers_at_the_lineage_of_the_road_it_is_given() {
             probes,
             unprobed.values().sum::<usize>(),
             selectors.values().sum::<usize>(),
-        ) == (1, 1992, 61, 104),
+        ) == (1, 2097, 65, 108),
         "POPULATION (cells): the reads whose road flag moves the coordinate the \
          whole answer is evaluated at, the (read, road, argument) probes the \
          corpora could answer, and the road-taking cells this contract does not \
-         judge — 61 whose read cannot be asked of that corpus at all, 104 \
+         judge — 65 whose read cannot be asked of that corpus at all, 108 \
          SELECTORS the sibling walk owns",
     );
     check(
@@ -817,31 +836,39 @@ fn a_coordinate_read_answers_at_the_lineage_of_the_road_it_is_given() {
          into its ancestor's view (the R438 promise)",
     );
     check(
-        (inherited.len(), inheriting_probes) == (46, 862),
+        (inherited.len(), inheriting_probes) == (55, 912),
         "INHERITANCE: forked roads actually DRAW on their ancestors, so the \
          lineage claim is measured rather than vacuously true of reads that \
          name nothing. Round 1054 raised the probe count: the frame view's \
          residual arm began naming the facts it had only counted, so four more \
-         probes name a fact authored on an ancestor road",
+         probes name a fact authored on an ancestor road. Round 1176's two \
+         scale-floor stores name ten (road, ancestor) pairs between them, and \
+         nine of those are new here — `confront <- main` the corpora already had",
     );
     check(
         (
             deletions,
             refused_deletions.len(),
             branches_without_a_free_fact.len(),
-        ) == (94, 0, 2),
+        ) == (104, 0, 2),
         "DEPENDENCE (perturbations): one authorable deletion per branch that \
          carries a fact, with the branches whose every fact is referenced \
-         counted by name rather than skipped",
+         counted by name rather than skipped. The middle number is REFUSALS, and \
+         it is zero because a refused rebuild is not a perturbation: Round 1176 \
+         saw it read 1 when the free-fact search still read `facts.json` alone \
+         and offered a fact the corpus's own typing proposal targets",
     );
     check(
-        (must_not_move, must_move, either) == (2570, 329, 2003),
+        (must_not_move, must_move, either) == (2710, 383, 2084),
         "DEPENDENCE (population): every deletion is classified by what the fork \
          tree and the baseline answer already said — the road cannot see that \
          branch, the probe named that fact, or neither decides. Round 1054 moved \
          thirteen probes out of `may` and into `must`: the frame view's residual \
          arm names its facts now, so a probe that had merely COUNTED a deleted \
-         fact is one this contract can hold to moving",
+         fact is one this contract can hold to moving. Round 1176 raised all \
+         three: ten more deletions to compare every probe against, 54 of the new \
+         classifications landing in `must` — the arm that can actually catch an \
+         answer computed off the lineage it reports",
     );
     check(
         dependence.is_empty(),
@@ -851,31 +878,34 @@ fn a_coordinate_read_answers_at_the_lineage_of_the_road_it_is_given() {
          when it lists the right facts",
     );
     check(
-        (points_asked.len(), off_line_points.values().sum::<usize>()) == (171, 20),
+        (points_asked.len(), off_line_points.values().sum::<usize>()) == (193, 24),
         "POINTS: every road is asked at its END and at every DIVERGENCE it \
          plays through, so a read that was right about a road's whole history \
          and wrong about the prefix it shares with its parent is still judged. \
-         The 20 skipped are a SIBLING's divergence, which is not on this road's \
+         The 24 skipped are a SIBLING's divergence, which is not on this road's \
          line at all — that arm read 0 until Round 1174 lit the corpora whose \
-         roads fork more than once",
+         roads fork more than once, and Round 1176's two stores each brought two \
+         more of them",
     );
     check(
-        (on_road, off_road.len(), bound_excludes) == (11322, 0, 144),
+        (on_road, off_road.len(), bound_excludes) == (12561, 0, 144),
         "BOUND: every fact a coordinate read names starts at a scene the road \
          it was asked about actually plays — the departure cut, which the fork \
          tree cannot state (it gives the topology, not where a road stops \
-         following its parent). The corpora put 136 (road, fact) pairs on the \
+         following its parent). The corpora put 144 (road, fact) pairs on the \
          far side of that cut (136 before Round 1174), so this is a rule they \
-         exercise. A non-zero \
+         exercise — and Round 1176's two stores added none, because every fact \
+         they author on a parent road is authored BEFORE its forks leave it. A \
+         non-zero \
          off-road count is not automatically a defect: a start the declared \
          order cannot COMPARE to the bound is honestly `unknown` rather than \
          absent (B-1), and this row would then have to split by the read's \
-         undecidable arm. Today no corpus produces one — 11322 namings across \
-         the whole lit corpus, and the off-road count has stayed 0 through both \
-         of the rounds that doubled it",
+         undecidable arm. Today no corpus produces one — 12561 namings across \
+         the whole lit corpus, and the off-road count has stayed 0 through all \
+         three of the rounds that grew it",
     );
     check(
-        (compared.len(), still.len()) == (54, 0),
+        (compared.len(), still.len()) == (62, 0),
         "MOVES: every registered road answers something other than the default \
          road does at SOME canon coordinate they share — the flag is \
          load-bearing. A read that ignored it would satisfy every other claim \
@@ -884,7 +914,7 @@ fn a_coordinate_read_answers_at_the_lineage_of_the_road_it_is_given() {
          claim about the road and not about each point",
     );
     check(
-        (loud, silent_typo.len()) == (41, 0),
+        (loud, silent_typo.len()) == (43, 0),
         "FAIL-LOUD: a coordinate read asked for a road no registry holds \
          refuses — the R466 rule, which the sibling selector walk cannot ask on \
          a coordinate cell",

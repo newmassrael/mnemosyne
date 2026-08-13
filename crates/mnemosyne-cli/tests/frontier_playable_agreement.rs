@@ -1008,7 +1008,7 @@ fn the_frontier_counts_per_scene_what_the_playable_world_walks_per_road() {
             asked,
             authored.count("the store does not load"),
             authored.count("declares no telling, so the playable world cannot be asked"),
-        ) == (44, 3, 30),
+        ) == (46, 3, 32),
         "POPULATION (stores): of the corpora asked, these never reach the \
          comparison at all — 3 whose author's submission the write path \
          rejected, 30 declaring no telling for a pair whose playable half is \

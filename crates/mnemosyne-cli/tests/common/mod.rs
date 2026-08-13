@@ -193,12 +193,12 @@ pub fn authored_stores() -> (Vec<AuthoredStore>, Vec<UnloadableCorpus>) {
             .unwrap_or(&dir)
             .display()
             .to_string();
-        let facts = read_json(&dir.join("facts.json"));
+        let facts = corpus_fact_manifest(&dir);
         // Whether the recipe had to upgrade this manifest belongs in the name:
         // every walk prints the corpus it is quoting, and a record built by
         // the Round 1174 upgrade answers about its predicates' vocabulary with
         // its author's USAGE rather than the author's declaration.
-        let upgrade = upgrade_corpus_manifest(&mut facts.clone());
+        let upgrade = upgrade_corpus_manifest(&mut facts.clone(), &corpus_typed_legs(&dir));
         let name = match &upgrade {
             Some(_) => format!("{name} (upgraded at load)"),
             None => name,
@@ -303,13 +303,60 @@ pub fn dnd_quest_workspace_try(facts: &serde_json::Value) -> Result<TempDir, Str
 /// recipe is specific to which author wrote it.
 pub fn corpus_workspace_try(dir: &Path, facts: &serde_json::Value) -> Result<TempDir, String> {
     let mut facts = facts.clone();
-    upgrade_corpus_manifest(&mut facts);
+    upgrade_corpus_manifest(&mut facts, &corpus_typed_legs(dir));
     let manifests = Manifests {
         sections: read_json(&dir.join("sections.json")),
         order: read_json(&dir.join("order.json")),
         facts,
     };
     workspace_try(&manifests, Some(dir))
+}
+
+/// THE fact manifest a corpus directory supplies — its `facts.json` UNIONED
+/// with the sibling manifests the author split it across (Round 1176).
+///
+/// Four walks used to open `facts.json` themselves, which was correct only as
+/// long as every author put everything in that one file. The blind
+/// re-extraction harness (the R473 scale-floor experiment) does not: it writes
+/// the registries to `registries.json` and the facts a later pass added to
+/// `supplement.json`, because its own build step wrote them separately. Today's
+/// `import-facts` takes ONE manifest, so the pieces are unioned HERE — one
+/// resolver — rather than at each walk, which is how four callers would come to
+/// disagree about what a corpus contains.
+///
+/// The union is by ARRAY KEY and it is order-preserving: a sibling's `facts`
+/// extend the base's `facts`, its `entities` extend the base's `entities`, and
+/// a key the base does not have is taken whole. A sibling key whose base value
+/// is not an array is a manifest that disagrees with itself, and fails loud
+/// rather than silently dropping one side.
+pub fn corpus_fact_manifest(dir: &Path) -> serde_json::Value {
+    let mut manifest = read_json(&dir.join("facts.json"));
+    for sibling in ["registries.json", "supplement.json"] {
+        let path = dir.join(sibling);
+        if !path.exists() {
+            continue;
+        }
+        for (key, value) in read_json(&path)
+            .as_object()
+            .unwrap_or_else(|| panic!("{} is a manifest object, not {}", path.display(), sibling))
+        {
+            let Some(rows) = value.as_array() else {
+                panic!(
+                    "{}: `{key}` is not an array, and the union of two manifests is by array key",
+                    path.display()
+                );
+            };
+            match manifest.get_mut(key) {
+                None => manifest[key] = value.clone(),
+                Some(serde_json::Value::Array(base)) => base.extend(rows.iter().cloned()),
+                Some(other) => panic!(
+                    "{}: `{key}` is an array here and {other} in facts.json",
+                    path.display()
+                ),
+            }
+        }
+    }
+    manifest
 }
 
 // ==========================================================================
@@ -373,6 +420,14 @@ pub struct CorpusUpgrade {
     /// pairs regroup by branch in the order they were written; a branch named
     /// once becomes a one-coordinate set, which is what the pair meant.
     pub first_at: usize,
+    /// R614 — the name this author gave the ROOT world-line, when it was not
+    /// `main`. The canon order's base edge set IS main's road (a `branches.main`
+    /// declaration is rejected for exactly that reason), so a corpus that calls
+    /// its root anything else has a root with no road: every fact on it is
+    /// off-branch, and every fork declares a parent whose road is empty. The
+    /// rename is the ONE carriage available, since there is no way to say "the
+    /// base edges belong to `trunk`" — and it is a label, not content.
+    pub root_world: Option<String>,
 }
 
 impl CorpusUpgrade {
@@ -402,6 +457,9 @@ impl std::fmt::Display for CorpusUpgrade {
                 self.first_at
             )?;
         }
+        if let Some(root) = &self.root_world {
+            write!(f, ", root world-line `{root}` -> `main`")?;
+        }
         Ok(())
     }
 }
@@ -422,14 +480,28 @@ impl std::fmt::Display for CorpusUpgrade {
 /// Everything it cannot map fails loud rather than passing the manifest
 /// through half-upgraded: a store that loads because a check was skipped is
 /// worse evidence than one that does not load.
-pub fn upgrade_corpus_manifest(facts: &mut serde_json::Value) -> Option<CorpusUpgrade> {
+pub fn upgrade_corpus_manifest(
+    facts: &mut serde_json::Value,
+    also_used: &[serde_json::Value],
+) -> Option<CorpusUpgrade> {
     // The values each predicate's own facts use — the derived vocabulary.
+    //
+    // `also_used` is the corpus's typed usage that does NOT live in the fact
+    // manifest: the reviewed `typing-proposals.json` an author applies in a
+    // second pass. Without it the derivation reads a corpus whose typed legs
+    // all arrived that way as using NOTHING, drops every declared predicate as
+    // inert, and then the proposal import fails on the predicate it just
+    // dropped — which is how the scale-floor stores looked dark for a reason
+    // that was never theirs (Round 1176).
     let mut vocabulary: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
-    let fact_rows = facts
+    let fact_rows: Vec<serde_json::Value> = facts
         .get("facts")
         .and_then(|f| f.as_array())
         .cloned()
-        .unwrap_or_default();
+        .unwrap_or_default()
+        .into_iter()
+        .chain(also_used.iter().cloned())
+        .collect();
     for row in &fact_rows {
         let Some(typed) = row.get("typed") else {
             continue;
@@ -538,15 +610,7 @@ pub fn upgrade_corpus_manifest(facts: &mut serde_json::Value) -> Option<CorpusUp
     let mut upgraded = 0usize;
     if let Some(rows) = facts.get_mut("facts").and_then(|f| f.as_array_mut()) {
         for row in rows.iter_mut() {
-            let Some(object) = row.get_mut("typed").and_then(|t| t.get_mut("object")) else {
-                continue;
-            };
-            if object["kind"] != "value" {
-                continue;
-            }
-            let token = object["value"].clone();
-            *object = serde_json::json!({ "kind": "token", "token": token });
-            upgraded += 1;
+            upgraded += upgrade_typed_object(row);
         }
     }
 
@@ -598,6 +662,47 @@ pub fn upgrade_corpus_manifest(facts: &mut serde_json::Value) -> Option<CorpusUp
         }
     }
 
+    // R614 — the root world-line, renamed to the one name a road can have.
+    //
+    // The condition is narrow ON PURPOSE, and the narrowing is measured: the
+    // broad reading ("any root not called `main`") renamed a corpus that loads
+    // fine today and broke it, because a root NOBODY FORKS FROM is just a world
+    // with its own facts and no road question to answer. What cannot stand is a
+    // root that OTHER branches name as their parent: the canon order's base
+    // edges are `main`'s road and there is no way to say they are `trunk`'s, so
+    // every fork off it inherits an empty road and its first edge is rejected
+    // as unreachable. Renaming is the only carriage; the declaration itself is
+    // dropped because `main` is known by construction and registering it is a
+    // write-path reject.
+    let branch_rows = facts
+        .get("branches")
+        .and_then(|b| b.as_array())
+        .cloned()
+        .unwrap_or_default();
+    let parents: BTreeSet<&str> = branch_rows
+        .iter()
+        .filter_map(|row| row["forks_from"].as_str())
+        .collect();
+    let mut root_world = None;
+    for row in &branch_rows {
+        let Some(id) = row["branch_id"].as_str() else {
+            continue;
+        };
+        if id == mnemosyne_core::MAIN_BRANCH
+            || row.get("forks_from").is_some()
+            || row.get("confluence_of").is_some()
+            || !parents.contains(id)
+        {
+            continue;
+        }
+        rename_branch(facts, id, mnemosyne_core::MAIN_BRANCH);
+        if let Some(rows) = facts.get_mut("branches").and_then(|b| b.as_array_mut()) {
+            rows.retain(|row| row["branch_id"].as_str() != Some(mnemosyne_core::MAIN_BRANCH));
+        }
+        root_world = Some(id.to_string());
+        break;
+    }
+
     dropped.sort();
     let upgrade = CorpusUpgrade {
         values: upgraded,
@@ -605,34 +710,351 @@ pub fn upgrade_corpus_manifest(facts: &mut serde_json::Value) -> Option<CorpusUp
         dropped,
         entity_kinds,
         first_at,
+        root_world,
     };
     (!upgrade.is_noop()).then_some(upgrade)
+}
+
+/// Rewrite every mention of one world-line's name in a fact manifest — its own
+/// declaration, the forks that name it as parent, and the facts that sit on it.
+fn rename_branch(facts: &mut serde_json::Value, from: &str, to: &str) {
+    for (array, keys) in [
+        ("branches", &["branch_id", "forks_from"][..]),
+        ("facts", &["branch"][..]),
+        ("disclosure_plans", &["branch"][..]),
+    ] {
+        for row in facts
+            .get_mut(array)
+            .and_then(|rows| rows.as_array_mut())
+            .map(Vec::as_mut_slice)
+            .unwrap_or_default()
+        {
+            for key in keys {
+                if row.get(*key).and_then(|v| v.as_str()) == Some(from) {
+                    row[*key] = serde_json::json!(to);
+                }
+            }
+        }
+    }
+}
+
+// ==========================================================================
+// THE RULES CARRIAGE (Round 1176).
+//
+// Round 697 moved a transition rule's edge list OUT of the rules file and INTO
+// the store: `allowed: [[from, to]]` became `adjacency: <predicate>`, whose
+// FACTS are the edges. A corpus authored before that carries the pair list, and
+// today's parser rejects the file outright ("unknown field `allowed`") — which
+// darkens not just the rule but every read that opens the rules file.
+//
+// Carried here, on the way in, for the R1174 reasons unchanged: the product
+// does not soften (the parser still rejects the removed field) and the record
+// does not move (the tracked file stays the pair list its author shipped).
+//
+// WHAT IT COSTS, said plainly because it is the one place this carriage INVENTS
+// rather than derives. An edge is a fact, and a fact's typed subject must be a
+// registered entity that the fact also lists (both measured against the write
+// path, Round 1176). So carrying `alive -> dead` declares an adjacency
+// predicate, registers the FROM token as an entity under a kind named for the
+// predicate, and writes one fact per authored pair. Every one of those rows is
+// reported in [`TransitionCarriage`] rather than blending into the corpus: a
+// walk that counts this store's entities is counting one the recipe added.
+// ==========================================================================
+
+/// What the recipe had to add to carry a corpus's pre-R697 transition rules —
+/// carried, not summarised, for the same reason [`CorpusUpgrade`] is.
+#[derive(Clone, PartialEq, Eq, Debug, Default)]
+pub struct TransitionCarriage {
+    /// The rules carried, by the author's own id.
+    pub rules: Vec<String>,
+    /// The adjacency predicate each carried rule now names — declared here,
+    /// named for the state predicate it joins.
+    pub adjacency: Vec<String>,
+    /// The `(from, to)` steps the author's `allowed` list held, now one store
+    /// fact each.
+    pub steps: Vec<(String, String)>,
+    /// The state tokens registered as entities because a typed subject must be
+    /// one. The whole of what this carriage invents.
+    pub state_entities: Vec<String>,
+}
+
+/// One transition rule on its way across R697: the author's rule id, the state
+/// predicate it keys on, and the `(from, to)` steps its `allowed` list held.
+type CarriedRule = (String, String, Vec<(String, String)>);
+
+/// A corpus's narrative rules as the recipe will WRITE them, with the fact
+/// manifest grown to hold whatever moved out of the rules file — or `None` when
+/// the corpus declares no rules.
+pub fn corpus_rules(dir: &Path, facts: &mut serde_json::Value) -> Option<serde_json::Value> {
+    let path = dir.join("narrative-rules.json");
+    if !path.exists() {
+        return None;
+    }
+    let mut rules = read_json(&path);
+    upgrade_corpus_rules(&mut rules, facts);
+    Some(rules)
+}
+
+/// Carry every pre-R697 `allowed` pair list into the store-native map, or
+/// `None` for a rules file today's parser takes as its author wrote it.
+///
+/// The map is SEATED where the record opens: each edge fact takes the frame,
+/// world-line, seat and evidence of the corpus's own first fact, so the
+/// carriage declares no frame, branch or scene the corpus did not.
+pub fn upgrade_corpus_rules(
+    rules: &mut serde_json::Value,
+    facts: &mut serde_json::Value,
+) -> Option<TransitionCarriage> {
+    let mut carried: Vec<CarriedRule> = Vec::new();
+    for rule in rules
+        .get_mut("rules")
+        .and_then(|r| r.as_array_mut())
+        .map(Vec::as_mut_slice)
+        .unwrap_or_default()
+    {
+        if rule["class"] != "transition" {
+            continue;
+        }
+        let Some(allowed) = rule.get("allowed").and_then(|a| a.as_array()).cloned() else {
+            continue;
+        };
+        let id = rule["id"]
+            .as_str()
+            .expect("a rule names its id")
+            .to_string();
+        let predicate = rule["predicate"]
+            .as_str()
+            .unwrap_or_else(|| panic!("transition rule `{id}` names the predicate it keys on"))
+            .to_string();
+        let steps: Vec<(String, String)> = allowed
+            .iter()
+            .map(|step| {
+                let pair = step.as_array().unwrap_or_else(|| {
+                    panic!("a pre-R697 `allowed` step is a [from, to] pair, got {step}")
+                });
+                let [from, to] = pair.as_slice() else {
+                    panic!("a pre-R697 `allowed` step holds exactly a from and a to, got {step}");
+                };
+                let token = |leg: &serde_json::Value| {
+                    leg.as_str()
+                        .unwrap_or_else(|| panic!("a step's legs are tokens, got {leg}"))
+                        .to_string()
+                };
+                (token(from), token(to))
+            })
+            .collect();
+        let adjacency = format!("{predicate}_adjacent");
+        let declaration = rule.as_object_mut().expect("a rule is an object");
+        declaration.remove("allowed");
+        declaration.insert("adjacency".to_string(), serde_json::json!(adjacency));
+        carried.push((id, predicate, steps));
+    }
+    if carried.is_empty() {
+        return None;
+    }
+
+    let seat = facts
+        .get("facts")
+        .and_then(|f| f.as_array())
+        .and_then(|rows| rows.first())
+        .cloned()
+        .expect("a corpus declaring rules holds a fact to seat its map beside");
+    let declared_entities: BTreeSet<String> = facts
+        .get("entities")
+        .and_then(|e| e.as_array())
+        .map(|rows| {
+            rows.iter()
+                .filter_map(|row| row["entity_id"].as_str().map(str::to_string))
+                .collect()
+        })
+        .unwrap_or_default();
+
+    let mut carriage = TransitionCarriage::default();
+    for (id, predicate, steps) in carried {
+        let adjacency = format!("{predicate}_adjacent");
+        let kind = format!("{predicate}-state");
+        let tokens: BTreeSet<String> = steps
+            .iter()
+            .flat_map(|(from, to)| [from.clone(), to.clone()])
+            .collect();
+        push_manifest_row(
+            facts,
+            "predicates",
+            serde_json::json!({
+                "predicate_id": adjacency,
+                "object_kind": "token",
+                "object_tokens": tokens.iter().cloned().collect::<Vec<String>>(),
+                "description": format!("which `{predicate}` states adjoin (carried from the rule's `allowed` list)"),
+            }),
+        );
+        let mut kind_declared = false;
+        for (from, _) in &steps {
+            if declared_entities.contains(from) || carriage.state_entities.contains(from) {
+                continue;
+            }
+            if !kind_declared {
+                push_manifest_row(
+                    facts,
+                    "entity_kinds",
+                    serde_json::json!({ "kind_id": kind }),
+                );
+                kind_declared = true;
+            }
+            push_manifest_row(
+                facts,
+                "entities",
+                serde_json::json!({
+                    "entity_id": from,
+                    "kind": kind,
+                    "description": format!("the `{from}` state of `{predicate}`, a node of the `{id}` map"),
+                }),
+            );
+            carriage.state_entities.push(from.clone());
+        }
+        for (from, to) in &steps {
+            let mut edge = seat.clone();
+            let row = edge.as_object_mut().expect("a fact is an object");
+            row.insert(
+                "fact_id".to_string(),
+                serde_json::json!(format!("{adjacency}-{from}-to-{to}")),
+            );
+            row.insert(
+                "claim".to_string(),
+                serde_json::json!(format!(
+                    "`{from}` adjoins `{to}` under `{predicate}` (rule `{id}`)."
+                )),
+            );
+            row.insert("entities".to_string(), serde_json::json!([from]));
+            row.insert(
+                "typed".to_string(),
+                serde_json::json!({
+                    "subject": from,
+                    "predicate": adjacency,
+                    "object": { "kind": "token", "token": to },
+                }),
+            );
+            row.remove("quote");
+            row.remove("pays_off");
+            row.remove("payoff_expectation");
+            row.remove("supersedes_in_frame");
+            push_manifest_row(facts, "facts", edge);
+        }
+        carriage.rules.push(id);
+        carriage.adjacency.push(adjacency);
+        carriage.steps.extend(steps);
+    }
+    Some(carriage)
+}
+
+/// Carry ONE row's typed object across R708's removal of the free-text `value`
+/// shape, answering how many it moved (0 or 1).
+///
+/// THE one rewrite, because two carry it: a fact row in the manifest and a
+/// proposal row in `typing-proposals.json`, which is the same wire in the same
+/// corpus. Written twice, the pair would drift the moment either grew a case.
+fn upgrade_typed_object(row: &mut serde_json::Value) -> usize {
+    let Some(object) = row.get_mut("typed").and_then(|t| t.get_mut("object")) else {
+        return 0;
+    };
+    if object["kind"] != "value" {
+        return 0;
+    }
+    let token = object["value"].clone();
+    *object = serde_json::json!({ "kind": "token", "token": token });
+    1
+}
+
+/// THE reviewed second pass: the proposal manifest a corpus may ship beside its
+/// facts, and the verb that applies it, in the order an author runs them.
+///
+/// Declared once because three readers need the same list — the recipe that
+/// imports them, [`corpus_typed_legs`] which reads the typed legs one of them
+/// declares, and [`corpus_proposal_manifests`] which reads both entire.
+pub const REVIEWED_PROPOSALS: [(&str, &str); 2] = [
+    ("typing-proposals.json", "import-typing-proposals"),
+    ("edge-proposals.json", "import-edge-proposals"),
+];
+
+/// The reviewed proposal manifests a corpus ships, WHOLE — for a walk that has
+/// to know which facts they name at all (Round 1176).
+///
+/// [`corpus_typed_legs`] reads one of them for the typed legs it declares; this
+/// answers the other question. A fact a proposal targets is one the recipe's
+/// second pass depends on: delete it and the import rejects the file, so the
+/// whole rebuild refuses and the deletion is not an edit an author could have
+/// made (the R1033 rule). Read from the corpus directory rather than from the
+/// fact manifest because that is where these references live — which is what
+/// made that rule half-true until this round: it held for every corpus that
+/// keeps its references in one file, and that was all of them until the
+/// scale-floor stores arrived.
+pub fn corpus_proposal_manifests(dir: &Path) -> Vec<serde_json::Value> {
+    REVIEWED_PROPOSALS
+        .iter()
+        .map(|(file, _)| dir.join(file))
+        .filter(|path| path.exists())
+        .map(|path| read_json(&path))
+        .collect()
+}
+
+/// The typed legs a corpus states OUTSIDE its fact manifest — the reviewed
+/// `typing-proposals.json`, as rows shaped like fact rows so one derivation
+/// reads both.
+pub fn corpus_typed_legs(dir: &Path) -> Vec<serde_json::Value> {
+    let path = dir.join(REVIEWED_PROPOSALS[0].0);
+    if !path.exists() {
+        return Vec::new();
+    }
+    read_json(&path)
+        .get("proposals")
+        .and_then(|p| p.as_array())
+        .map(|rows| {
+            rows.iter()
+                .map(|row| serde_json::json!({ "fact_id": row["fact"], "typed": row["typed"] }))
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// Append one row to a manifest array, creating the array when the author's
+/// manifest never had that registry at all.
+fn push_manifest_row(facts: &mut serde_json::Value, key: &str, row: serde_json::Value) {
+    match facts.get_mut(key).and_then(|v| v.as_array_mut()) {
+        Some(rows) => rows.push(row),
+        None => facts[key] = serde_json::json!([row]),
+    }
 }
 
 /// THE recipe, over manifest VALUES: fresh seed, the three manifests written
 /// out, then the imports an author would run.
 ///
-/// `rules_from` is the corpus directory whose `narrative-rules.json` sits
-/// beside them, if it has one — not every corpus declares rules, and a config
-/// naming a file that is not there is a load failure rather than a corpus
-/// without rules.
-pub fn workspace_try(manifests: &Manifests, rules_from: Option<&Path>) -> Result<TempDir, String> {
+/// `corpus_dir` is the directory the manifests came from, when they came from
+/// one. Three of its files are read from there rather than passed by value:
+/// `narrative-rules.json` (not every corpus declares rules, and a config naming
+/// a file that is not there is a load failure rather than a corpus without
+/// rules), and the two REVIEWED proposal files an author applies after the bulk
+/// import — `typing-proposals.json` and `edge-proposals.json`. A corpus whose
+/// typed legs and succession edges arrived that way (the R473 blind
+/// re-extraction harness does exactly this) is otherwise built UNTYPED here,
+/// which is the whole of what its rules are about.
+pub fn workspace_try(manifests: &Manifests, corpus_dir: Option<&Path>) -> Result<TempDir, String> {
     let tmp = TempDir::new().expect("tempdir");
     let ws = tmp.path();
     fs::create_dir_all(ws.join("docs/.atomic")).expect("mkdir");
 
-    let rules_src = rules_from
-        .map(|dir| dir.join("narrative-rules.json"))
-        .filter(|src| src.exists());
-    let rules = rules_src.is_some();
-    if let Some(src) = &rules_src {
-        fs::copy(src, ws.join("narrative-rules.json"))
-            .map_err(|e| format!("copy {}: {e}", src.display()))?;
+    let mut facts = manifests.facts.clone();
+    let carried_rules = corpus_dir.and_then(|dir| corpus_rules(dir, &mut facts));
+    let rules = carried_rules.is_some();
+    if let Some(rules) = &carried_rules {
+        fs::write(
+            ws.join("narrative-rules.json"),
+            serde_json::to_string(rules).expect("rules serialize"),
+        )
+        .map_err(|e| format!("write narrative-rules.json: {e}"))?;
     }
     for (name, value) in [
         ("sections.json", &manifests.sections),
         ("order.json", &manifests.order),
-        ("facts.json", &manifests.facts),
+        ("facts.json", &facts),
     ] {
         fs::write(
             ws.join(name),
@@ -670,14 +1092,93 @@ pub fn workspace_try(manifests: &Manifests, rules_from: Option<&Path>) -> Result
     ] {
         let out = run(ws, &import);
         if !out.status.success() {
-            return Err(format!(
-                "{}: {}",
-                import[0],
-                String::from_utf8_lossy(&out.stderr).trim()
-            ));
+            return Err(format!("{}: {}", import[0], import_refusal(&out)));
+        }
+    }
+    // The reviewed second pass, in the order an author runs it: a succession
+    // edge is proposed BETWEEN two facts whose typed legs must already be
+    // there. Both re-check the claim sha they were proposed against, so a
+    // proposal that survives here is proof the carried manifest still holds
+    // the claims its author reviewed — the carriage's own verifier.
+    for (file, verb) in REVIEWED_PROPOSALS {
+        let Some(src) = corpus_dir.map(|dir| dir.join(file)).filter(|p| p.exists()) else {
+            continue;
+        };
+        // The proposals carry typed objects too, so they cross the same R708
+        // break as the manifest — through the same rewrite.
+        let mut proposals = read_json(&src);
+        for row in proposals
+            .get_mut("proposals")
+            .and_then(|p| p.as_array_mut())
+            .map(Vec::as_mut_slice)
+            .unwrap_or_default()
+        {
+            upgrade_typed_object(row);
+        }
+        fs::write(
+            ws.join(file),
+            serde_json::to_string(&proposals).expect("proposals serialize"),
+        )
+        .map_err(|e| format!("write {file}: {e}"))?;
+        // `--json` so a rejection is DATA rather than a paragraph: these two
+        // verbs answer a refusal as a verdict list, and only the rejected rows
+        // are the reason (see [`import_refusal`]).
+        let out = run(ws, &[verb, "--proposals", file, "--json"]);
+        if !out.status.success() {
+            return Err(format!("{verb}: {}", import_refusal(&out)));
         }
     }
     Ok(tmp)
+}
+
+/// WHY an import refused, from whichever stream the verb speaks on.
+///
+/// The bulk imports fail with one message on stderr. The two REVIEWED proposal
+/// imports do not fail in that sense at all: a rejected proposal is a VERDICT
+/// printed beside the accepted ones, and the process exits 1 with stderr EMPTY
+/// (R459/R463 — "exit 1 whenever any proposal rejects, because scripts must see
+/// it"). A recipe that formats stderr alone therefore hands its caller
+/// `import-typing-proposals: ` and nothing else, which is the Round 1174 shape
+/// one level down: the refusal was in hand at the moment of judging and a blank
+/// was stored. Round 1176 met it for real — a perturbation deleted a fact two
+/// proposal manifests name, and the walk printed a refusal with no reason.
+///
+/// Asked in `--json` the verdict list is data, so the REJECTED rows are named
+/// and the accepted ones are not repeated. The verdict vocabulary this reads is
+/// the one both reports declare: `accepted`, or the reject reason verbatim.
+fn import_refusal(out: &std::process::Output) -> String {
+    let stderr = String::from_utf8_lossy(&out.stderr).trim().to_string();
+    if !stderr.is_empty() {
+        return stderr;
+    }
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    if let Ok(report) = serde_json::from_str::<serde_json::Value>(stdout.trim()) {
+        let rejected: Vec<String> = report["verdicts"]
+            .as_array()
+            .map(Vec::as_slice)
+            .unwrap_or_default()
+            .iter()
+            .filter(|v| v["verdict"].as_str() != Some("accepted"))
+            .map(|v| {
+                format!(
+                    "{} {}",
+                    v["fact"].as_str().unwrap_or("(no fact named)"),
+                    v["verdict"].as_str().unwrap_or("(no verdict named)")
+                )
+            })
+            .collect();
+        if !rejected.is_empty() {
+            return rejected.join("; ");
+        }
+    }
+    let stdout = stdout.trim();
+    if stdout.is_empty() {
+        // A verb that refuses on neither stream would otherwise read as a
+        // corpus that loads, so say that much rather than nothing.
+        format!("refused with both streams silent ({})", out.status)
+    } else {
+        stdout.to_string()
+    }
 }
 
 /// The authored store exactly as the blind author left it.

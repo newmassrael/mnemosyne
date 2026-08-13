@@ -1,0 +1,239 @@
+{
+ "schema": "typing-proposals/v1",
+ "proposals": [
+  {
+   "fact": "b07-ledger-roeder",
+   "claim_sha256": "a1415f41225d20b72bdd2df72690be72ab6418d27184ba9a8682e1278ab742d1",
+   "rationale": "morphine-ledger held_by",
+   "typed": {
+    "subject": "morphine-ledger",
+    "predicate": "held_by",
+    "object": {
+     "kind": "entity",
+     "id": "augustin-roeder"
+    }
+   }
+  },
+  {
+   "fact": "b07-ledger-cendre",
+   "claim_sha256": "199ed3fd36e06f83364c9025a425c06b1053c2d6019ff1c65262dc45ae66339d",
+   "rationale": "morphine-ledger held_by",
+   "typed": {
+    "subject": "morphine-ledger",
+    "predicate": "held_by",
+    "object": {
+     "kind": "entity",
+     "id": "dr-cendre"
+    }
+   }
+  },
+  {
+   "fact": "b04-bottle-roeder",
+   "claim_sha256": "ea89c651cb9c23648198e102032bac6c508ee2f688a8af8175e6d800173a161f",
+   "rationale": "brown-bottle held_by",
+   "typed": {
+    "subject": "brown-bottle",
+    "predicate": "held_by",
+    "object": {
+     "kind": "entity",
+     "id": "augustin-roeder"
+    }
+   }
+  },
+  {
+   "fact": "b11-bottle-cendre",
+   "claim_sha256": "dd273e26e507774163153c0be7badaa37002f5310036637699da9e55dfa2e41a",
+   "rationale": "brown-bottle held_by",
+   "typed": {
+    "subject": "brown-bottle",
+    "predicate": "held_by",
+    "object": {
+     "kind": "entity",
+     "id": "dr-cendre"
+    }
+   }
+  },
+  {
+   "fact": "b02-diary-roeder",
+   "claim_sha256": "2843562d3dccaab44faa2b71e3ed958236acea4d8c0d8828c40907bea6ac3c1a",
+   "rationale": "roeder-diary held_by",
+   "typed": {
+    "subject": "roeder-diary",
+    "predicate": "held_by",
+    "object": {
+     "kind": "entity",
+     "id": "augustin-roeder"
+    }
+   }
+  },
+  {
+   "fact": "b08-diary-cendre",
+   "claim_sha256": "836f5c600382d9a4c8b80b69a21e4627a82009453ddcf74852be48d386ed5e24",
+   "rationale": "roeder-diary held_by",
+   "typed": {
+    "subject": "roeder-diary",
+    "predicate": "held_by",
+    "object": {
+     "kind": "entity",
+     "id": "dr-cendre"
+    }
+   }
+  },
+  {
+   "fact": "b08-resig-roeder",
+   "claim_sha256": "dd8c69c0bd7edd95707a668e276655d9800ef8466c1ba184cab62cb84a82f56b",
+   "rationale": "resignation-letter held_by",
+   "typed": {
+    "subject": "resignation-letter",
+    "predicate": "held_by",
+    "object": {
+     "kind": "entity",
+     "id": "augustin-roeder"
+    }
+   }
+  },
+  {
+   "fact": "b18-resig-cendre",
+   "claim_sha256": "4000aa89bfc447134b633f55298913404bdae40f6fd1bbea856ccf8e257e37be",
+   "rationale": "resignation-letter held_by",
+   "typed": {
+    "subject": "resignation-letter",
+    "predicate": "held_by",
+    "object": {
+     "kind": "entity",
+     "id": "dr-cendre"
+    }
+   }
+  },
+  {
+   "fact": "b06-papers-helene",
+   "claim_sha256": "2ef9023b022e9a00fc26bc46aa39fbb4a85eb5423e34659187336f03bfa3fed0",
+   "rationale": "forged-admission-papers held_by",
+   "typed": {
+    "subject": "forged-admission-papers",
+    "predicate": "held_by",
+    "object": {
+     "kind": "entity",
+     "id": "helene-surel"
+    }
+   }
+  },
+  {
+   "fact": "b42-papers-cendre",
+   "claim_sha256": "f59e509efcc92e9e7fbf2ccd7c32173394f65a564e9c0bba0bc9821c8fa972bf",
+   "rationale": "forged-admission-papers held_by",
+   "typed": {
+    "subject": "forged-admission-papers",
+    "predicate": "held_by",
+    "object": {
+     "kind": "entity",
+     "id": "dr-cendre"
+    }
+   }
+  },
+  {
+   "fact": "b09-boots-gaspard",
+   "claim_sha256": "2fac0d606f8dcab1b5590f2b42c3afdcf86b148adab79abb45d3605c84a7db91",
+   "rationale": "snow-wet-boots held_by",
+   "typed": {
+    "subject": "snow-wet-boots",
+    "predicate": "held_by",
+    "object": {
+     "kind": "entity",
+     "id": "gaspard-steward"
+    }
+   }
+  },
+  {
+   "fact": "b17-boots-cendre",
+   "claim_sha256": "ac399b803fe3e54af1dcbd4ff7e99f2929ec184522ca53a80833cc9680dcd930",
+   "rationale": "snow-wet-boots held_by",
+   "typed": {
+    "subject": "snow-wet-boots",
+    "predicate": "held_by",
+    "object": {
+     "kind": "entity",
+     "id": "dr-cendre"
+    }
+   }
+  },
+  {
+   "fact": "b05-chart-shelf",
+   "claim_sha256": "fd9e0139e961be9930972b6d534da94ffe9e6ef33b1faab621481357c9c07ece",
+   "rationale": "burned-chart held_by",
+   "typed": {
+    "subject": "burned-chart",
+    "predicate": "held_by",
+    "object": {
+     "kind": "entity",
+     "id": "augustin-roeder"
+    }
+   }
+  },
+  {
+   "fact": "b05-chart-brandt",
+   "claim_sha256": "eadcf96ad42767d62108d14a2c0421d82a45d05b2476ff0d2fb24c30c2a061e2",
+   "rationale": "burned-chart held_by",
+   "typed": {
+    "subject": "burned-chart",
+    "predicate": "held_by",
+    "object": {
+     "kind": "entity",
+     "id": "nurse-brandt"
+    }
+   }
+  },
+  {
+   "fact": "b02-roeder-ls-alive",
+   "claim_sha256": "efe1144abbf2602b1232fa21c5ec850a3cf6738eccb5d588d4fdcb0794313a77",
+   "rationale": "augustin-roeder life_state",
+   "typed": {
+    "subject": "augustin-roeder",
+    "predicate": "life_state",
+    "object": {
+     "kind": "value",
+     "value": "alive"
+    }
+   }
+  },
+  {
+   "fact": "b04-roeder-ls-dead",
+   "claim_sha256": "f14e4db2315942ab3a39b15e5db45586a652840135d2a6cf4b7efe6ee4faf1e9",
+   "rationale": "augustin-roeder life_state",
+   "typed": {
+    "subject": "augustin-roeder",
+    "predicate": "life_state",
+    "object": {
+     "kind": "value",
+     "value": "dead"
+    }
+   }
+  },
+  {
+   "fact": "b07-lindqvist-alive",
+   "claim_sha256": "b7af015647e12e1982303ad5403aa650f9c1fcbacac8752ecead66a40cd10b09",
+   "rationale": "edvard-lindqvist life_state",
+   "typed": {
+    "subject": "edvard-lindqvist",
+    "predicate": "life_state",
+    "object": {
+     "kind": "value",
+     "value": "alive"
+    }
+   }
+  },
+  {
+   "fact": "b48-lindqvist-ls-dead",
+   "claim_sha256": "f5d9b20ab03ca6ddbaa5d0df5fe29d83126b12fe1220e5229d0b1d1f76c033a8",
+   "rationale": "edvard-lindqvist life_state",
+   "typed": {
+    "subject": "edvard-lindqvist",
+    "predicate": "life_state",
+    "object": {
+     "kind": "value",
+     "value": "dead"
+    }
+   }
+  }
+ ]
+}

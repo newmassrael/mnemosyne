@@ -288,12 +288,12 @@ fn every_argument_that_decides_an_answer_is_named_in_the_answer() {
     // THE POPULATION, asserted rather than printed. A derivation that quietly
     // stops probing passes by asking nothing (the R1036 hole).
     check(
-        (asked, unloadable.len()) == (44, 3),
+        (asked, unloadable.len()) == (46, 3),
         "POPULATION (stores): every corpus an author shipped is asked, and the \
          ones that no longer load are counted rather than dropped",
     );
     check(
-        (verdicts.len(), probes, outside.len()) == (23, 697, 72),
+        (verdicts.len(), probes, outside.len()) == (23, 727, 72),
         "POPULATION (cells): the (verb, flag) cells the shipped usage lines and \
          the corpora's own vocabularies put in front of this walk, and the ones \
          no probe of this shape can decide",

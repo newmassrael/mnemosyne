@@ -227,6 +227,9 @@ mod read_argument_provenance;
 #[path = "report_confirmation_smoke.rs"]
 mod report_confirmation_smoke;
 
+#[path = "scale_floor_corpus_carriage.rs"]
+mod scale_floor_corpus_carriage;
+
 #[path = "report_coverage_smoke.rs"]
 mod report_coverage_smoke;
 

@@ -1,0 +1,70 @@
+{
+ "schema": "edge-proposals/v1",
+ "comment": "story-B succession: narrated custody transfers + life transitions; fill-blanks only",
+ "succession": [
+  {
+   "predecessor": "b07-ledger-roeder",
+   "successor": "b07-ledger-cendre",
+   "predecessor_claim_sha256": "a1415f41225d20b72bdd2df72690be72ab6418d27184ba9a8682e1278ab742d1",
+   "successor_claim_sha256": "199ed3fd36e06f83364c9025a425c06b1053c2d6019ff1c65262dc45ae66339d",
+   "rationale": "narrated transfer/transition b07-ledger-roeder -> b07-ledger-cendre"
+  },
+  {
+   "predecessor": "b04-bottle-roeder",
+   "successor": "b11-bottle-cendre",
+   "predecessor_claim_sha256": "ea89c651cb9c23648198e102032bac6c508ee2f688a8af8175e6d800173a161f",
+   "successor_claim_sha256": "dd273e26e507774163153c0be7badaa37002f5310036637699da9e55dfa2e41a",
+   "rationale": "narrated transfer/transition b04-bottle-roeder -> b11-bottle-cendre"
+  },
+  {
+   "predecessor": "b02-diary-roeder",
+   "successor": "b08-diary-cendre",
+   "predecessor_claim_sha256": "2843562d3dccaab44faa2b71e3ed958236acea4d8c0d8828c40907bea6ac3c1a",
+   "successor_claim_sha256": "836f5c600382d9a4c8b80b69a21e4627a82009453ddcf74852be48d386ed5e24",
+   "rationale": "narrated transfer/transition b02-diary-roeder -> b08-diary-cendre"
+  },
+  {
+   "predecessor": "b08-resig-roeder",
+   "successor": "b18-resig-cendre",
+   "predecessor_claim_sha256": "dd8c69c0bd7edd95707a668e276655d9800ef8466c1ba184cab62cb84a82f56b",
+   "successor_claim_sha256": "4000aa89bfc447134b633f55298913404bdae40f6fd1bbea856ccf8e257e37be",
+   "rationale": "narrated transfer/transition b08-resig-roeder -> b18-resig-cendre"
+  },
+  {
+   "predecessor": "b06-papers-helene",
+   "successor": "b42-papers-cendre",
+   "predecessor_claim_sha256": "2ef9023b022e9a00fc26bc46aa39fbb4a85eb5423e34659187336f03bfa3fed0",
+   "successor_claim_sha256": "f59e509efcc92e9e7fbf2ccd7c32173394f65a564e9c0bba0bc9821c8fa972bf",
+   "rationale": "narrated transfer/transition b06-papers-helene -> b42-papers-cendre"
+  },
+  {
+   "predecessor": "b09-boots-gaspard",
+   "successor": "b17-boots-cendre",
+   "predecessor_claim_sha256": "2fac0d606f8dcab1b5590f2b42c3afdcf86b148adab79abb45d3605c84a7db91",
+   "successor_claim_sha256": "ac399b803fe3e54af1dcbd4ff7e99f2929ec184522ca53a80833cc9680dcd930",
+   "rationale": "narrated transfer/transition b09-boots-gaspard -> b17-boots-cendre"
+  },
+  {
+   "predecessor": "b05-chart-shelf",
+   "successor": "b05-chart-brandt",
+   "predecessor_claim_sha256": "fd9e0139e961be9930972b6d534da94ffe9e6ef33b1faab621481357c9c07ece",
+   "successor_claim_sha256": "eadcf96ad42767d62108d14a2c0421d82a45d05b2476ff0d2fb24c30c2a061e2",
+   "rationale": "narrated transfer/transition b05-chart-shelf -> b05-chart-brandt"
+  },
+  {
+   "predecessor": "b02-roeder-ls-alive",
+   "successor": "b04-roeder-ls-dead",
+   "predecessor_claim_sha256": "efe1144abbf2602b1232fa21c5ec850a3cf6738eccb5d588d4fdcb0794313a77",
+   "successor_claim_sha256": "f14e4db2315942ab3a39b15e5db45586a652840135d2a6cf4b7efe6ee4faf1e9",
+   "rationale": "narrated transfer/transition b02-roeder-ls-alive -> b04-roeder-ls-dead"
+  },
+  {
+   "predecessor": "b07-lindqvist-alive",
+   "successor": "b48-lindqvist-ls-dead",
+   "predecessor_claim_sha256": "b7af015647e12e1982303ad5403aa650f9c1fcbacac8752ecead66a40cd10b09",
+   "successor_claim_sha256": "f5d9b20ab03ca6ddbaa5d0df5fe29d83126b12fe1220e5229d0b1d1f76c033a8",
+   "rationale": "narrated transfer/transition b07-lindqvist-alive -> b48-lindqvist-ls-dead"
+  }
+ ],
+ "conflicts": []
+}

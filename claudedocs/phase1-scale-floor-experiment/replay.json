@@ -1,0 +1,83 @@
+{
+  "schema": "kit-replay/v4",
+  "no_replay": "The two stores are the S13 blind re-extraction's own output, and an out-of-tree harness built them: the extractor ran its own build script against the June 2026 CLI in a separate tree, so no revision of THIS repository ever ran that import and there is no revision worth pinning to rebuild it at. They are opened today by the in-tree corpus carriage (Round 1174 for the removed value/scalar shape and the split manifest, Round 1176 for the pre-R697 transition rule), which every corpus law exercises on each run. What this record can do is hold the bytes, which is why every artifact below is declared and sealed.",
+  "note": "Written in Round 1176, the round that carried the stores into the tracked population. Until then this kit had a report and a run log but no record at all, so none of its artifacts was pinned by anything — and the stores themselves sat outside the repository, where no law could ask them.",
+  "inputs": [
+    {
+      "path": "run/store-A/edge-proposals.json",
+      "role": "run-artifact",
+      "sha256": "f23bf0154b0638af355cb69e110f4bc0ce59deead6f4851c5ae32202cfb37ba4"
+    },
+    {
+      "path": "run/store-A/facts.json",
+      "role": "run-artifact",
+      "sha256": "39cb79ba236b584b5f6b93f482df85c1fecdc6d22896ff6c39f01c25505e3972"
+    },
+    {
+      "path": "run/store-A/narrative-rules.json",
+      "role": "run-artifact",
+      "sha256": "da2812eb6d7ae7addd958b2f0f7682bc0d92b0c06f6b568459aab3eece20bc0d"
+    },
+    {
+      "path": "run/store-A/order.json",
+      "role": "run-artifact",
+      "sha256": "8e183fac964a60710834410e4e62054f283941b253c75b33195c0b6b04b26962"
+    },
+    {
+      "path": "run/store-A/registries.json",
+      "role": "run-artifact",
+      "sha256": "e5d98d4447c63367a5f370787d73d2c3e585fb7ee8fe05b4f9706d948abe97fb"
+    },
+    {
+      "path": "run/store-A/sections.json",
+      "role": "run-artifact",
+      "sha256": "e7c4b39a5321fe15b82a3558e4a727b72f3607a923ac27657215cd86be4052f8"
+    },
+    {
+      "path": "run/store-A/typing-proposals.json",
+      "role": "run-artifact",
+      "sha256": "12d8f749ca6d7f2e45899509d69f8d50239cc2581dfa24a4cd0220b10e2069f7"
+    },
+    {
+      "path": "run/store-B/edge-proposals.json",
+      "role": "run-artifact",
+      "sha256": "cc73588ec52faceea885014133213e081b60cd7b8b2cc840aa5c9889c61376df"
+    },
+    {
+      "path": "run/store-B/facts.json",
+      "role": "run-artifact",
+      "sha256": "ce776230d1736f9dd87bb87ad0de969ecbf02b8ae6a7f4d3d87557b5b5b25b49"
+    },
+    {
+      "path": "run/store-B/narrative-rules.json",
+      "role": "run-artifact",
+      "sha256": "a52588b74b903bea8c96d0e5f650bbd0ec481fc328df8aa6dce32720227490c8"
+    },
+    {
+      "path": "run/store-B/order.json",
+      "role": "run-artifact",
+      "sha256": "3e36acad35f5cab2212fcbfb80f1b89c50940d5508fb56af370ad3f8b51c22d6"
+    },
+    {
+      "path": "run/store-B/registries.json",
+      "role": "run-artifact",
+      "sha256": "40e6e7e126c15da9ec3ae93223c07098bd892ee0a4cfad4c0bcce9d074bde177"
+    },
+    {
+      "path": "run/store-B/sections.json",
+      "role": "run-artifact",
+      "sha256": "a73b1610f6b80a91b9462d88aa1257b1e29e4f988e24bd3e35461cff59377ab4"
+    },
+    {
+      "path": "run/store-B/supplement.json",
+      "role": "run-artifact",
+      "sha256": "487fbcd36f8ed00b16d9ae92820108ef0ca0d0e4a9a006cdb157ec1b9fe8559c"
+    },
+    {
+      "path": "run/store-B/typing-proposals.json",
+      "role": "run-artifact",
+      "sha256": "aa4a5bfee3841b291fe199ff48a30ebdb6d51670c8bc18a500e13b270e9b9abd"
+    }
+  ],
+  "replays": []
+}

@@ -1,0 +1,23 @@
+{
+ "schema": "narrative-rules/v1",
+ "comment": "Fixed recipe. alive-arc TRANSITION on life_state (subjects who die on any limb: augustin-roeder, marguerite-seve, ottilie-brandt = 3). exclusive-custody EXCLUSIVE on held_by, per=subject (two-party objects: morphine-ledger, master-key, digitalin-vial, roeder-diary, resignation-letter, cordier-chart = 6). No location-exclusive rule: text asserts no simultaneous presence of a principal. Recipe rule count = 3 + 6 + 0 = 9, realized as 2 engine rules (engine instantiates per subject).",
+ "rules": [
+  {
+   "id": "alive-arc",
+   "class": "transition",
+   "predicate": "life_state",
+   "allowed": [
+    [
+     "alive",
+     "dead"
+    ]
+   ]
+  },
+  {
+   "id": "exclusive-custody",
+   "class": "exclusive",
+   "predicate": "held_by",
+   "per": "subject"
+  }
+ ]
+}

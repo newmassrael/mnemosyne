@@ -240,7 +240,7 @@ fn the_two_payoff_reads_partition_the_same_paid_setups() {
     // the shape of defect Round 1036 found by injecting into exactly that path.
     assert_eq!(
         (asked, answered, worlds_compared, setups_compared),
-        (44, 41, 95, 362),
+        (46, 43, 105, 429),
         "the corpora that answer both payoff reads, and how much they compare"
     );
 

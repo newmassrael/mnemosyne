@@ -35,7 +35,10 @@
 use std::collections::BTreeMap;
 
 use crate::common;
-use common::{authored_corpora, authored_stores, read_json, repo_root, upgrade_corpus_manifest};
+use common::{
+    authored_corpora, authored_stores, corpus_fact_manifest, corpus_typed_legs, repo_root,
+    upgrade_corpus_manifest,
+};
 
 /// The suffix an experiment gives the submission its own gate turned back.
 const FIRST_SUBMISSION: &str = "-first-submission";
@@ -82,8 +85,8 @@ fn a_corpus_is_dark_only_because_its_author_s_submission_was_refused() {
 
     assert_eq!(
         (stores.len(), unloadable.len()),
-        (41, 3),
-        "the corpora this tree can ask and the ones it cannot — 40 tracked \
+        (43, 3),
+        "the corpora this tree can ask and the ones it cannot — 42 tracked \
          plus the migrated dnd-quest record against the 3 first submissions"
     );
     assert_eq!(
@@ -102,8 +105,8 @@ fn the_upgrade_says_what_it_changed_in_every_corpus_it_touched() {
             .unwrap_or(&dir)
             .display()
             .to_string();
-        let mut facts = read_json(&dir.join("facts.json"));
-        if let Some(upgrade) = upgrade_corpus_manifest(&mut facts) {
+        let mut facts = corpus_fact_manifest(&dir);
+        if let Some(upgrade) = upgrade_corpus_manifest(&mut facts, &corpus_typed_legs(&dir)) {
             ledger.insert(name, upgrade.to_string());
         }
     }
@@ -160,6 +163,18 @@ fn the_upgrade_says_what_it_changed_in_every_corpus_it_touched() {
             "claudedocs/phase1-npc-dialogue-experiment/v1/run/author :: 6 value object(s) -> \
              token, re-declared [\"cause\", \"lit\", \"whereabouts\"], declared kinds [\"item\", \
              \"person\", \"place\"]",
+            // The blind re-extraction store (R473 scale floor): its typed legs
+            // all arrived through `typing-proposals.json`, so `life_state` is
+            // re-declared from a vocabulary NO fact in the manifest uses — the
+            // Round 1176 usage widening. Zero `value` objects here because the
+            // manifest holds none; the proposals do, and they are carried on
+            // their own way in.
+            "claudedocs/phase1-scale-floor-experiment/run/store-A :: 0 value object(s) -> token, \
+             re-declared [\"life_state\"], declared kinds [\"character\", \"object\", \"place\"], \
+             root world-line `trunk` -> `main`",
+            "claudedocs/phase1-scale-floor-experiment/run/store-B :: 0 value object(s) -> token, \
+             re-declared [\"life_state\"], declared kinds [\"character\", \"object\", \"place\"], \
+             root world-line `trunk` -> `main`",
             "claudedocs/phase1-time-travel-experiment/v1/run/author :: 10 value object(s) -> \
              token, re-declared [\"condition\"], declared kinds [\"person\", \"place\", \"prop\", \
              \"state-object\"]",

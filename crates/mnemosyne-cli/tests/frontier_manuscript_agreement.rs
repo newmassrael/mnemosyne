@@ -705,14 +705,17 @@ fn the_frontier_counts_per_scene_what_the_manuscript_walks_per_road() {
             authored.count("the store does not load"),
             authored.answered,
             declare_no_telling,
-        ) == (44, 3, 41, 30),
+        ) == (46, 3, 43, 32),
         "POPULATION (stores): of the corpora asked, only the 3 whose author's \
          submission the write path rejected never arrive — every other store \
-         answers, INCLUDING the 30 that declare no telling and therefore reach \
+         answers, INCLUDING the 32 that declare no telling and therefore reach \
          neither of the two contracts that relate these reads through \
          `report-playable-world`. That last number is why this pair needs a \
-         contract of its own, so it is MEASURED here and not quoted: 41 stores \
-         against the 14 (store, telling) pairs those two contracts see",
+         contract of its own, so it is MEASURED here and not quoted: 43 stores \
+         against the 14 (store, telling) pairs those two contracts see. Round \
+         1176 carried in the two scale-floor stores, and NEITHER names a telling \
+         — the blind re-extraction harness wrote facts and roads, so both landed \
+         in the arm this pair is the only contract for",
     );
     check(
         (
@@ -721,13 +724,16 @@ fn the_frontier_counts_per_scene_what_the_manuscript_walks_per_road() {
             authored.confluence_marks,
             authored.scenes_walked,
             authored.section_rows,
-        ) == (96, 1, 1, 2190, 3552),
+        ) == (106, 1, 1, 2535, 4177),
         "AUTHORED EVIDENCE: the roads compared, the roads the unfiltered dump \
          omitted, the confluence fragments among them, the scenes walked, and \
          the section-rows the partition law compared. Round 1174 lit the corpus \
          that declares a CONFLUENCE, so the two middle numbers left zero for the \
          first time and an author's store now carries the fragment arm the \
-         constructed store used to carry alone",
+         constructed store used to carry alone. Round 1176 raised the first, \
+         fourth and fifth, and the arithmetic is the attribution: the two \
+         scale-floor stores walk five roads each (+10), 170 and 175 scenes \
+         (+345), and their partitions are 5x60 and 5x65 rows (+625)",
     );
     check(
         (
@@ -735,16 +741,22 @@ fn the_frontier_counts_per_scene_what_the_manuscript_walks_per_road() {
             authored.empty_scene_checks,
             authored.unordered_facts,
             authored.undecidable_everywhere,
-        ) == (0, 14, 0, 0),
+        ) == (0, 91, 0, 0),
         "AUTHORED SILENCE, ASSERTED: no corpus holds a section outside its \
          order or a fact no order can place, so those laws are still carried \
          entirely by the constructed store — but fourteen EMPTY SCENES arrived \
          with Round 1174's lit corpora, and that arm is no longer the \
-         constructed store's alone. This line is what makes the difference \
+         constructed store's alone. Round 1176 turned fourteen into 91, and the \
+         two scale-floor stores are the whole of the difference: 12 of store-A's \
+         60 scenes and 17 of store-B's 65 carry no fact at all, each counted once \
+         per road that walks it. Those stores ARE a blind re-extraction, so a \
+         scene nothing was extracted from is the R473 experiment's own subject — \
+         the arm with the most evidence behind it in this walk is one no corpus \
+         could reach two rounds ago. This line is what makes the difference \
          visible rather than averaged away",
     );
     check(
-        authored.facts_named == 3514,
+        authored.facts_named == 3694,
         "AUTHORED CENSUS: the facts the manuscript names at a scene the frontier \
          counts. With the residual at zero above, the per-scene containment and \
          this total ARE per-scene equality",
@@ -985,12 +997,14 @@ fn the_reading_copy_drops_the_scenes_the_frontier_calls_empty() {
     };
 
     check(
-        (authored_stores_asked, authored_dropped) == (41, 15),
+        (authored_stores_asked, authored_dropped) == (43, 92),
         "AUTHORED EVIDENCE: the day a corpus does hold an empty scene this \
          number moves and the law below starts being carried by an author's \
-         store as well — Round 1174 was that day. Fifteen scenes the frontier \
-         calls empty are dropped from an author's reading copy, where this arm \
-         read 0 for as long as a third of the corpora were dark",
+         store as well — Round 1174 was that day, at fifteen drops, where this \
+         arm read 0 for as long as a third of the corpora were dark. Round 1176 \
+         made it 92 by carrying in two blind re-extractions, where a scene an \
+         extraction pass took nothing from is a scene with no fact: 29 of their \
+         125 scenes are that, and every road that walks one drops it",
     );
     check(
         (empty_walked, dropped_empty.len()) == (3, 3),

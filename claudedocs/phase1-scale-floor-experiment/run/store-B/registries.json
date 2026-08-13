@@ -1,0 +1,215 @@
+{
+ "frames": [
+  {
+   "frame_id": "ground-truth",
+   "description": "What the narration asserts happened, on every world-line where the carrying scene lies."
+  },
+  {
+   "frame_id": "cendre",
+   "description": "Dr. Cendre's working theory as the text states it."
+  },
+  {
+   "frame_id": "brandt",
+   "description": "Nurse Brandt's knowledge/belief as the text states it."
+  },
+  {
+   "frame_id": "helene",
+   "description": "Hélène Surel's knowledge/belief as the text states it."
+  }
+ ],
+ "branches": [
+  {
+   "branch_id": "trunk",
+   "description": "Shared trunk, sc-01..sc-20."
+  },
+  {
+   "branch_id": "confront",
+   "forks_from": "trunk",
+   "forks_at": "sc-20",
+   "description": "Fork-1 A (CONFRONT): sc-21..25 then sc-51..55; ENDING A (suicide)."
+  },
+  {
+   "branch_id": "quiet",
+   "forks_from": "trunk",
+   "forks_at": "sc-20",
+   "description": "Fork-1 B (QUIET): sc-26..40; shared sub-trunk."
+  },
+  {
+   "branch_id": "confess",
+   "forks_from": "quiet",
+   "forks_at": "sc-40",
+   "description": "Fork-2 A (CONFESS): sc-41..45 then sc-56..60; ENDING B (suicide)."
+  },
+  {
+   "branch_id": "escalate",
+   "forks_from": "quiet",
+   "forks_at": "sc-40",
+   "description": "Fork-2 B (ESCALATE): sc-46..50 then sc-61..65; ENDING C (murder by Hélène)."
+  }
+ ],
+ "entities": [
+  {
+   "entity_id": "dr-cendre",
+   "kind": "character",
+   "description": "Acting/only physician after Roeder's death; investigator."
+  },
+  {
+   "entity_id": "augustin-roeder",
+   "kind": "character",
+   "description": "Dead head physician; ran the secret 'method'; found in locked room."
+  },
+  {
+   "entity_id": "nurse-brandt",
+   "kind": "character",
+   "description": "Head nurse; keeps the doses; burned a chart; survives all limbs."
+  },
+  {
+   "entity_id": "helene-surel",
+   "kind": "character",
+   "description": "False-name patient ('Madame Surel'); sister of the buried Surel; murderer on the escalate line."
+  },
+  {
+   "entity_id": "surel-brother",
+   "kind": "character",
+   "description": "Hélène's brother; a spent method-subject; six years in the house ground."
+  },
+  {
+   "entity_id": "edvard-lindqvist",
+   "kind": "character",
+   "description": "Stockholm engineer; the second patient; false 'improving' chart; dies on escalate."
+  },
+  {
+   "entity_id": "gaspard-steward",
+   "kind": "character",
+   "description": "The steward; keeps the keys, the warden's board, the maintenance log."
+  },
+  {
+   "entity_id": "morphine-ledger",
+   "kind": "object",
+   "description": "The green morphine ledger; grains signed out under Roeder's hand."
+  },
+  {
+   "entity_id": "master-key",
+   "kind": "object",
+   "description": "House master key on the warden's board in Gaspard's office."
+  },
+  {
+   "entity_id": "roeder-own-key",
+   "kind": "object",
+   "description": "Roeder's private key, found inside the bolted room."
+  },
+  {
+   "entity_id": "brown-bottle",
+   "kind": "object",
+   "description": "The unlabelled brown bottle of strong morphia, a third gone."
+  },
+  {
+   "entity_id": "roeder-diary",
+   "kind": "object",
+   "description": "Roeder's brass-locked diary."
+  },
+  {
+   "entity_id": "resignation-letter",
+   "kind": "object",
+   "description": "Roeder's unsent resignation to the Berne board, halting on 'conscience'."
+  },
+  {
+   "entity_id": "last-telegram",
+   "kind": "object",
+   "description": "The last telegram (Aigle resupply) before the line went dead."
+  },
+  {
+   "entity_id": "forged-admission-papers",
+   "kind": "object",
+   "description": "Hélène's forged admission papers (false Lausanne referral)."
+  },
+  {
+   "entity_id": "maintenance-log",
+   "kind": "object",
+   "description": "The funicular maintenance log, chained to Gaspard's desk, with a blank day."
+  },
+  {
+   "entity_id": "lindqvist-chart",
+   "kind": "object",
+   "description": "Lindqvist's chart, abruptly written 'improving'."
+  },
+  {
+   "entity_id": "burned-chart",
+   "kind": "object",
+   "description": "The old kept-alive case folder, burned in the stove."
+  },
+  {
+   "entity_id": "snow-wet-boots",
+   "kind": "object",
+   "description": "Lindqvist's boots, snow-wet and packed at the toe."
+  },
+  {
+   "entity_id": "patient-register",
+   "kind": "object",
+   "description": "The admission/patient register."
+  },
+  {
+   "entity_id": "burial-register",
+   "kind": "object",
+   "description": "The leather-bound book of the dead."
+  },
+  {
+   "entity_id": "roeder-method",
+   "kind": "object",
+   "description": "Roeder's secret evening 'method': morphia injections to the favoured cases."
+  },
+  {
+   "entity_id": "sanatorium-belvoir",
+   "kind": "place",
+   "description": "The snowed-in sanatorium, former Hôtel Belvoir."
+  },
+  {
+   "entity_id": "consulting-room",
+   "kind": "place",
+   "description": "Roeder's bolted consulting room (east wing)."
+  },
+  {
+   "entity_id": "dispensary",
+   "kind": "place",
+   "description": "Brandt's dispensary of labelled drawers."
+  },
+  {
+   "entity_id": "stewards-office",
+   "kind": "place",
+   "description": "Gaspard's office with the warden's board."
+  },
+  {
+   "entity_id": "cellar-archive",
+   "kind": "place",
+   "description": "The cellar archive of discharged charts."
+  },
+  {
+   "entity_id": "helenes-room",
+   "kind": "place",
+   "description": "Hélène's well-kept lower-floor room."
+  },
+  {
+   "entity_id": "burial-ground",
+   "kind": "place",
+   "description": "Belvoir's own consecrated ground."
+  },
+  {
+   "entity_id": "funicular",
+   "kind": "place",
+   "description": "The funicular/cable down to Aigle."
+  }
+ ],
+ "predicates": [
+  {
+   "predicate_id": "held_by",
+   "object_kind": "entity",
+   "description": "Physical custody of a trackable object: one holder at a time within a frame and world-line."
+  },
+  {
+   "predicate_id": "life_state",
+   "object_kind": "scalar",
+   "description": "alive | dead; transitions only alive -> dead."
+  }
+ ],
+ "facts": []
+}

@@ -440,12 +440,12 @@ fn a_road_filter_answers_what_the_unfiltered_read_already_said() {
     };
 
     check(
-        (asked, unloadable.len()) == (44, 3),
+        (asked, unloadable.len()) == (46, 3),
         "POPULATION (stores): every corpus an author shipped is asked, and the \
          ones that no longer load are counted rather than dropped",
     );
     check(
-        (cells.len(), coordinate.len(), probes) == (5, 1, 228),
+        (cells.len(), coordinate.len(), probes) == (5, 1, 248),
         "POPULATION (cells): the reads the shipped usage lines say take a road \
          filter, the ones whose answer is a COORDINATE rather than a selection, \
          and the (read, road, corpus) probes the corpora could answer",
@@ -500,7 +500,7 @@ fn a_road_filter_answers_what_the_unfiltered_read_already_said() {
          only corpus that has one",
     );
     check(
-        (loud, silent_typo.len()) == (104, 0),
+        (loud, silent_typo.len()) == (108, 0),
         "FAIL-LOUD: every road filter was asked for a road no registry holds, \
          and refused — a typo'd road must not read as an answer with nothing in \
          it (the R466 rule, which `report-timeline-gaps` did not follow until \

@@ -158,7 +158,7 @@ fn the_frontier_carries_exactly_the_roads_coverage_says_still_dangle() {
             roads_all_paid,
             setups_compared
         ),
-        (44, 41, 31, 64, 81),
+        (46, 43, 38, 67, 134),
         "the corpora that answer both reads, and how much they compare"
     );
 

@@ -1,0 +1,23 @@
+{
+ "schema": "narrative-rules/v1",
+ "comment": "Fixed recipe (identical to story-A). alive-arc TRANSITION on life_state (subjects who die on any limb: augustin-roeder, edvard-lindqvist = 2; nurse-brandt dies on no limb). exclusive-custody EXCLUSIVE on held_by, per=subject (two-party objects with a narrated transfer: morphine-ledger, brown-bottle, roeder-diary, resignation-letter, forged-admission-papers, snow-wet-boots, burned-chart = 7; master-key excluded - single custodian Gaspard). No location-exclusive rule. Recipe rule count = 2 + 7 + 0 = 9, realized as 2 engine rules (per-subject).",
+ "rules": [
+  {
+   "id": "alive-arc",
+   "class": "transition",
+   "predicate": "life_state",
+   "allowed": [
+    [
+     "alive",
+     "dead"
+    ]
+   ]
+  },
+  {
+   "id": "exclusive-custody",
+   "class": "exclusive",
+   "predicate": "held_by",
+   "per": "subject"
+  }
+ ]
+}

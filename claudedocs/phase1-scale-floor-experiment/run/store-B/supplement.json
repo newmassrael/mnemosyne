@@ -1,0 +1,14 @@
+{"facts":[
+ {"fact_id":"b05-chart-shelf","frame":"ground-truth","branch":"trunk","entities":["burned-chart","augustin-roeder"],
+  "claim":"The buff folders of the living are kept on the shelf at Roeder's elbow, the old case among them.",
+  "canon_from":"sc-05","evidence":["sc-05"],
+  "quote":"the buff folders of the living, kept at his elbow so he might reach them without rising"},
+ {"fact_id":"b05-chart-brandt","frame":"ground-truth","branch":"trunk","entities":["burned-chart","nurse-brandt"],
+  "claim":"Brandt draws the old-numbered folder from the shelf and feeds it into the consulting-room stove.",
+  "canon_from":"sc-05","evidence":["sc-05"],
+  "quote":"she drew one out by its number, which she knew without reading ... and she ... fed the folder in"},
+ {"fact_id":"b42-papers-cendre","frame":"ground-truth","branch":"confess","entities":["forged-admission-papers","dr-cendre"],
+  "claim":"Hélène draws the forged papers from the writing-case and pushes them across to Cendre, who keeps them.",
+  "canon_from":"sc-42","evidence":["sc-42","sc-60"],
+  "quote":"drew the papers, and laid them on the table between them, and pushed them across"}
+]}

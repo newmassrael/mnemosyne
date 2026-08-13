@@ -32,8 +32,8 @@ use std::collections::BTreeMap;
 
 use crate::common;
 use common::{
-    authored_corpora, corpus_workspace_try, dnd_quest_facts, dnd_quest_workspace_try, read_json,
-    repo_root,
+    authored_corpora, corpus_fact_manifest, corpus_rules, corpus_typed_legs, corpus_workspace_try,
+    dnd_quest_facts, dnd_quest_workspace_try, repo_root, upgrade_corpus_manifest,
 };
 
 /// The sidecar the import writes, relative to the workspace root.
@@ -164,10 +164,20 @@ fn every_authored_corpus_answers_whether_a_payoff_names_an_unmarked_setup() {
             .unwrap_or(&dir)
             .display()
             .to_string();
-        let manifest = read_json(&dir.join("facts.json"));
+        let manifest = corpus_fact_manifest(&dir);
+        // Read the manifest THE RECIPE IMPORTS, not the file on disk. The two
+        // differ for a corpus whose rules predate R697: carrying the pair list
+        // into the store-native map writes one adjacency FACT per authored
+        // step, so the store holds a row the file does not (Round 1176). Every
+        // such row is reported by the carriage, and running the carriage here
+        // is what makes this cross-check assert that the report is EXACT —
+        // a recipe that grew the store by a row it did not declare fails here.
+        let mut as_imported = manifest.clone();
+        upgrade_corpus_manifest(&mut as_imported, &corpus_typed_legs(&dir));
+        corpus_rules(&dir, &mut as_imported);
         rows.push(Row {
             name,
-            manifest: declared_in_manifest(&manifest),
+            manifest: declared_in_manifest(&as_imported),
             store: corpus_workspace_try(&dir, &manifest)
                 .ok()
                 .and_then(|ws| AtomicStore::load(&ws.path().join(SIDECAR)).ok())
@@ -253,18 +263,22 @@ fn every_authored_corpus_answers_whether_a_payoff_names_an_unmarked_setup() {
 
     assert_eq!(
         (rows.len(), loaded, unparsed, checked),
-        (44, 41, 0, 41),
+        (46, 43, 0, 43),
         "the population: corpora asked, those a store can be built from, those \
          whose manifest this reader cannot read, and those where both readers \
          answered and were compared"
     );
 
-    // THE EVIDENCE, not just the verdict. A rule resting on 41 worlds could
+    // THE EVIDENCE, not just the verdict. A rule resting on 43 worlds could
     // still be resting on four edges; how many edges and how many separate
-    // authors produced them is the whole of what is known.
+    // authors produced them is the whole of what is known. Round 1176's two
+    // blind re-extractions carried 63 of these edges in between them, and
+    // store-B's 33 is the most any single corpus here declares (the previous
+    // most was 32) — a blind extractor marked setups more heavily than the
+    // authoring runs did.
     assert_eq!(
         (facts, edges, bearing, unresolved),
-        (3800, 296, 44, 0),
+        (3980, 359, 46, 0),
         "facts declared, pays_off edges, corpora declaring at least one, and \
          edges whose target their own manifest never declares"
     );

@@ -283,7 +283,7 @@ fn the_playable_world_embeds_the_manuscript_it_was_asked_for() {
             asked,
             count("the store does not load"),
             count("declares no telling, so the playable world cannot be asked"),
-        ) == (44, 3, 30),
+        ) == (46, 3, 32),
         "POPULATION (stores): of the corpora asked, these never reach the \
          comparison at all — 3 whose author's submission the write path \
          rejected, 30 declaring no telling for a pair of per-telling reads",
