@@ -228,6 +228,35 @@ if printf '%s\n' "$staged" | grep -qE '\.rs$'; then
         } >&2
         exit 1
     fi
+
+    # Gate 5d — every environment a spawned program reads is one its test names
+    # (R1182). Same three-code contract as the gate above, and here for the same
+    # reason: R1181 turned `main` red with a fixture whose environment list had
+    # gone stale, green on every developer's machine and red on the runner.
+    echo "[mnemosyne pre-commit] .rs staged — a test names what it spawns" >&2
+    if [[ ! -f "$gates/tools/named-environment/Cargo.toml" ]]; then
+        echo "[mnemosyne pre-commit] commit rejected — the named-environment gate" \
+             "is missing at $gates/tools/named-environment/Cargo.toml" >&2
+        exit 1
+    fi
+    environment_verdict=0
+    cargo run -q --locked --manifest-path "$gates/tools/named-environment/Cargo.toml" \
+        --bin named-environment -- --workspace "$(pwd)/Cargo.toml" || environment_verdict=$?
+    if [[ $environment_verdict -eq 1 ]]; then
+        {
+            echo "[mnemosyne pre-commit] commit rejected — a test leaves a variable" \
+                 "its spawned program reads to the machine"
+            echo "  run: cargo run -q --manifest-path tools/named-environment/Cargo.toml \\"
+            echo "         --bin named-environment -- --workspace Cargo.toml"
+        } >&2
+        exit 1
+    elif [[ $environment_verdict -ne 0 ]]; then
+        {
+            echo "[mnemosyne pre-commit] commit rejected — the named-environment gate" \
+                 "could not read this tree (exit $environment_verdict); its own message is above"
+        } >&2
+        exit 1
+    fi
 fi
 
 # Gate 5b — separate in-repo workspaces (own `[workspace]`; Gates 4/5 above,

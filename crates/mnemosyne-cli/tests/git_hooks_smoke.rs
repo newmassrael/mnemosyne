@@ -86,12 +86,18 @@ violate() { echo "$1" >> "$PWD/reporter-contract-violations.log"; }
 if [[ "${1:-}" != "run" ]]; then
     exit 0
 fi
-# The separate-workspace gate (R1156) runs two of this repository's own gate
+# The separate-workspace gate (R1156) runs three of this repository's own gate
 # programs through `cargo run` as well, and they are not this stub's subject —
 # each has its own suite. Named by PATH so the exemption cannot be claimed by
 # anything else the hook might call.
+#
+# THIS LIST IS HAND-KEPT AND HAS ALREADY GONE STALE ONCE (R1182): the gate added
+# in that round was not on it, so the stub read it as "some other program" and
+# the case failed for a reason that has nothing to do with the seam it owns.
+# A gate added to the hook belongs here in the same change.
 case "$*" in
     *"/tools/item-citations/Cargo.toml"*|*"/tools/blind-waits/Cargo.toml"*) exit 0 ;;
+    *"/tools/named-environment/Cargo.toml"*) exit 0 ;;
 esac
 [[ "$*" == *"/tools/ci-state/Cargo.toml"* ]] \
     || violate "pre-push ran some other program than the CI reporter: $*"

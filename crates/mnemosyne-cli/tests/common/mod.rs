@@ -37,11 +37,32 @@ pub fn audit_dir() -> PathBuf {
 }
 
 pub fn run(workspace: &Path, args: &[&str]) -> std::process::Output {
-    Command::new(cli_binary())
-        .args(args)
-        .current_dir(workspace)
-        .output()
-        .expect("cli exec")
+    let mut command = Command::new(cli_binary());
+    command.args(args).current_dir(workspace);
+    without_a_pinned_build(&mut command, workspace);
+    command.output().expect("cli exec")
+}
+
+/// The environment a spawned `mnemosyne-cli` runs in, NAMED rather than
+/// inherited (Round 1182).
+///
+/// THE BINARY THIS SPAWNS MAY NOT BE THE BINARY THIS SUITE BUILT. Given a
+/// workspace whose config declares `[tool] pin`, the CLI looks for that
+/// revision's install under `$MN_ROOT` — or, absent that, under `$HOME/.local/mn`
+/// — and EXECS it. On a developer's machine with such an install the suite would
+/// silently grade a different revision, and nothing in the output would say so.
+/// `tool_pin_smoke` has always known this and points `MN_ROOT` at a temporary
+/// directory for exactly this reason; every other spawn inherited whatever the
+/// machine had.
+///
+/// So all four variables that decide it are named here: the two roots at this
+/// test's own workspace, where no install exists, and the two knobs removed.
+pub fn without_a_pinned_build<'a>(command: &'a mut Command, at: &Path) -> &'a mut Command {
+    command
+        .env("MN_ROOT", at)
+        .env("HOME", at)
+        .env_remove("MNEMOSYNE_PIN_EXEC")
+        .env_remove("MNEMOSYNE_PIN_SKIP")
 }
 
 pub fn run_ok(workspace: &Path, args: &[&str]) -> String {

@@ -169,6 +169,27 @@ include!(concat!(env!("OUT_DIR"), "/stack_artifacts.rs"));
 /// exists to prevent.
 const PROBE: &str = env!("CARGO_BIN_EXE_projection_stack_probe");
 
+/// The probe, with the environment that decides WHICH binary runs NAMED rather
+/// than inherited (Round 1182).
+///
+/// The probe links the CLI's config crate, which — given a workspace declaring
+/// `[tool] pin` — looks for that revision's install under `$MN_ROOT`, or absent
+/// that `$HOME/.local/mn`, and execs it. Both roots are pointed at a directory
+/// holding no install and the two knobs that decide the switch are removed, so
+/// the binary that answers is the one this target built.
+fn probe() -> std::process::Command {
+    let mut command = Command::new(PROBE);
+    command
+        // The crate directory, which holds no `bin/` for any pin and is known
+        // at compile time in every context that reads this file — including
+        // rustdoc, where `CARGO_TARGET_TMPDIR` is not set at all.
+        .env("MN_ROOT", env!("CARGO_MANIFEST_DIR"))
+        .env("HOME", env!("CARGO_MANIFEST_DIR"))
+        .env_remove("MNEMOSYNE_PIN_EXEC")
+        .env_remove("MNEMOSYNE_PIN_SKIP");
+    command
+}
+
 /// Bisection bounds. `CEILING` is generous — well past any figure a bounded
 /// artifact could want — and a fixture that does not build within it is reported
 /// as unbuildable rather than pinned to a wrong number.
@@ -183,7 +204,7 @@ const DEFAULT_THREAD_STACK: usize = 2 * 1024 * 1024;
 /// Every fixture the probe was compiled with, asked of the probe rather than
 /// assumed (Round 1046).
 fn fixtures_the_probe_carries() -> BTreeSet<String> {
-    let run = Command::new(PROBE)
+    let run = probe()
         .arg("--list")
         .output()
         .expect("ask the probe what it carries");
@@ -205,7 +226,7 @@ fn fixtures_the_probe_carries() -> BTreeSet<String> {
 /// If the OS refused a thread that small: that is not a failed build, and
 /// scoring it as one would fabricate a measurement out of a platform floor.
 fn builds_within(fixture: &str, stack: usize) -> bool {
-    let run = Command::new(PROBE)
+    let run = probe()
         .args([fixture, &stack.to_string()])
         .output()
         .expect("run the probe");

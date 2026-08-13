@@ -234,6 +234,29 @@ fn repo_root() -> PathBuf {
         .to_path_buf()
 }
 
+/// The CLI this suite built, with the environment that decides WHICH binary
+/// runs NAMED rather than inherited (Round 1182).
+///
+/// Given a workspace whose config declares `[tool] pin`, the CLI looks for that
+/// revision's install under `$MN_ROOT` — or, absent that, under
+/// `$HOME/.local/mn` — and EXECS it. On a machine holding such an install this
+/// suite would grade a different revision than the one it compiled, and nothing
+/// in the output would say so. Both roots are pointed at a directory with no
+/// install in it and the two knobs that decide the switch are removed, so the
+/// binary that answers here is the binary this target built.
+fn cli() -> Command {
+    let mut command = Command::new(env!("CARGO_BIN_EXE_mnemosyne-cli"));
+    command
+        // The crate directory, which holds no `bin/` for any pin and is known
+        // at compile time in every context that reads this file — including
+        // rustdoc, where `CARGO_TARGET_TMPDIR` is not set at all.
+        .env("MN_ROOT", env!("CARGO_MANIFEST_DIR"))
+        .env("HOME", env!("CARGO_MANIFEST_DIR"))
+        .env_remove("MNEMOSYNE_PIN_EXEC")
+        .env_remove("MNEMOSYNE_PIN_SKIP");
+    command
+}
+
 fn git(args: &[&str]) -> String {
     let out = Command::new("git")
         .args(args)
@@ -250,7 +273,7 @@ fn git(args: &[&str]) -> String {
 
 /// The rendered authoring contract, from the binary the runbooks invoke.
 fn describe_schema() -> String {
-    let out = Command::new(env!("CARGO_BIN_EXE_mnemosyne-cli"))
+    let out = cli()
         .arg("describe-schema")
         .output()
         .expect("run mnemosyne-cli describe-schema");
@@ -1516,7 +1539,7 @@ fn a_kit_with_no_replay_states_why_and_declares_no_pin() {
 /// that nothing loaded.
 #[test]
 fn every_step_verb_is_one_the_cli_has() {
-    let help = Command::new(env!("CARGO_BIN_EXE_mnemosyne-cli"))
+    let help = cli()
         .arg("--help")
         .current_dir(repo_root())
         .output()
@@ -4678,7 +4701,7 @@ fn no_authored_manifest_can_register_a_meter_which_is_why_that_axis_is_refused()
         .to_string(),
     )
     .expect("sections");
-    let sections = Command::new(env!("CARGO_BIN_EXE_mnemosyne-cli"))
+    let sections = cli()
         .args(["import-sections", "--manifest", "sections.json"])
         .current_dir(ws)
         .output()
@@ -4720,7 +4743,7 @@ fn no_authored_manifest_can_register_a_meter_which_is_why_that_axis_is_refused()
     )
     .expect("manifest");
 
-    let import = Command::new(env!("CARGO_BIN_EXE_mnemosyne-cli"))
+    let import = cli()
         .args(["import-facts", "--manifest", "facts.json"])
         .current_dir(ws)
         .output()
@@ -4769,7 +4792,7 @@ fn no_authored_manifest_can_register_a_meter_which_is_why_that_axis_is_refused()
 
     // The zero belongs to the AUTHORING path, not to the store: the operator's
     // door fills the very registry the assertion above read as empty.
-    let added = Command::new(env!("CARGO_BIN_EXE_mnemosyne-cli"))
+    let added = cli()
         .args(["add-parameter", "--parameter", "affection"])
         .current_dir(ws)
         .output()
@@ -4803,10 +4826,7 @@ fn no_authored_manifest_can_register_a_meter_which_is_why_that_axis_is_refused()
 /// what matters is what a user is shown.
 #[test]
 fn the_cli_help_says_what_a_typed_path_is_relative_to() {
-    let out = Command::new(env!("CARGO_BIN_EXE_mnemosyne-cli"))
-        .arg("--help")
-        .output()
-        .expect("cli exec");
+    let out = cli().arg("--help").output().expect("cli exec");
     let help = String::from_utf8_lossy(&out.stdout);
     for needle in [
         "current directory", // where a typed path resolves
@@ -4954,7 +4974,7 @@ fn the_recorded_corpora_are_swept_for_every_rule_they_can_trip() {
             }
         };
         swept += 1;
-        let out = Command::new(env!("CARGO_BIN_EXE_mnemosyne-cli"))
+        let out = cli()
             .args(["validate-continuity", "--json"])
             .current_dir(tmp.path())
             .output()
@@ -5149,7 +5169,7 @@ fn rebuild_corpus(dir: &str) -> Result<TempDir, String> {
     .map_err(|e| e.to_string())?;
 
     let run = |args: &[&str]| -> Result<(), String> {
-        let out = Command::new(env!("CARGO_BIN_EXE_mnemosyne-cli"))
+        let out = cli()
             .args(args)
             .current_dir(ws)
             .output()

@@ -315,6 +315,35 @@ for ws in "${workspaces[@]}"; do
       ;;
   esac
   unset waits_verdict
+
+  # And every environment a spawned program reads is one its test names (R1182),
+  # under the same three-code contract. This is the gate the `main` R1181 found
+  # red would have caught at the fixture: a side workspace's own suite is where
+  # the stale list lived.
+  named="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/tools/named-environment/Cargo.toml"
+  if [[ ! -f "$named" ]]; then
+    echo "[side-workspaces] the named-environment gate is missing at $named" >&2
+    exit 1
+  fi
+  declare_and_run named cargo run -q --manifest-path "$named" --locked \
+    --bin named-environment -- --workspace "$root/$ws/Cargo.toml" || named_verdict=$?
+  case "${named_verdict:-0}" in
+    0) ;;
+    1)
+      echo "[side-workspaces] $ws spawns a program whose environment its test" \
+        "leaves to the machine —" \
+        "fix: cargo run -q --manifest-path tools/named-environment/Cargo.toml" \
+        "--bin named-environment -- --workspace $ws/Cargo.toml" >&2
+      exit 1
+      ;;
+    *)
+      echo "[side-workspaces] the named-environment gate could not read $ws" \
+        "(exit ${named_verdict}); its own message is above" >&2
+      exit 1
+      ;;
+  esac
+  unset named_verdict
+
   if ! $lint_only; then
     declare_and_run suite "${suite[@]}"
   fi

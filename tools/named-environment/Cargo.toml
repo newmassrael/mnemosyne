@@ -1,0 +1,81 @@
+# named-environment — the gate for what a spawned program reads from the machine
+# rather than from its test.
+#
+# Round 1181 turned this repository's main branch red without a single line of
+# the tree being wrong. `cache-budget`'s entrance fixture spawns the gate binary
+# with a NAMED environment, and its module doc says why in those words: this
+# suite runs on a runner too, where the runner's own variables are already set,
+# and a fixture that assumes them absent is green on a developer's machine and
+# red on CI. The rule was right. The LIST went stale — R1178 taught the binary to
+# read `GITHUB_BASE_REF` and `GITHUB_REF_NAME`, the fixture never heard of
+# either, and on a shell where both are unset the fixture agreed with the program
+# BY LUCK for four commits.
+#
+# THE LAW IS ONE SENTENCE: every environment variable a spawned program reads is
+# one the test that spawns it names.
+#
+#   - Named means SET or REMOVED (or cleared wholesale). Both are declarations.
+#     A variable a test neither sets nor removes is one the machine underneath
+#     answers, and the machine is a runner as often as it is a shell.
+#   - It is asked of the PROGRAM's syntax, not of anyone's memory of it, because
+#     a hand-written list of "what this reads" is exactly the artefact that goes
+#     quietly out of date. That is not a hypothesis: it is what R1181 paid for.
+#
+# It is checked with a real parser (`syn`) for the reason `blind-waits` gives at
+# length, and with one addition that round measured the need for: A READ IS NOT
+# ALWAYS A LITERAL. Two of the five variables in play at `cache-budget` are
+# spelled by constants, and the first draft of that walk collected string
+# literals alone, reported three of five, and called the list complete — the same
+# disease it was written to cure. Constants are resolved from the sources cargo
+# says are local; a name that resolves to nothing STOPS the gate rather than
+# counting as no read.
+#
+# A SEPARATE in-repo workspace (the same pattern as `bench/`, `studio/` and the
+# other `tools/*`): its own `[workspace]` so the root workspace's build gates
+# never compile it. It depends on nothing in the core crates — it runs cargo and
+# parses Rust.
+[workspace]
+
+[package]
+name = "named-environment"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.94"
+license = "MIT OR Apache-2.0"
+publish = false
+description = "Fail-loud gate: every environment variable a spawned program reads is one its test names"
+
+[[bin]]
+name = "named-environment"
+path = "src/main.rs"
+
+[lib]
+name = "named_environment"
+path = "src/lib.rs"
+
+[dependencies]
+# The workspace census, the target list and the dependency graph are cargo's
+# JSON. Scraping any of them with text patterns is a second parser that drifts
+# from the first.
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# THE PARSER, and the reason this gate is not a grep. `full` for statement and
+# expression syntax, `visit` for the borrowing walk, `extra-traits` for the
+# Debug the tests read.
+syn = { version = "3", features = ["full", "visit", "extra-traits"] }
+# `span-locations` is what turns a matched expression into a line a person can
+# open. It is a proc-macro2 feature rather than a syn one, and without it every
+# finding reports line 1.
+proc-macro2 = { version = "1", features = ["span-locations"] }
+
+[dev-dependencies]
+# The end-to-end tests build throwaway cargo workspaces OUTSIDE this repository
+# and run the real gate over them. Outside, because a fixture carrying its own
+# `[workspace]` inside the tree would be discovered by
+# `scripts/check-side-workspaces.sh`, which would then try to lint a workspace
+# whose whole purpose is to be rejected.
+tempfile = "3"
+
+[lints.clippy]
+all = "deny"

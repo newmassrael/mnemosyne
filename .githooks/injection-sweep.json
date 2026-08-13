@@ -76,8 +76,8 @@
       "edits": [
         {
           "file": "scripts/check-side-workspaces.sh",
-          "from": "    0) ;;\n    1)",
-          "to": "    0) ;;\n    1|2)"
+          "from": "  case \"${waits_verdict:-0}\" in\n    0) ;;\n    1)",
+          "to": "  case \"${waits_verdict:-0}\" in\n    0) ;;\n    1|2)"
         }
       ],
       "expect_red": [

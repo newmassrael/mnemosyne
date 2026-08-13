@@ -58,6 +58,11 @@ fn gate(workspace: &Path) -> Run {
             &workspace.join("Cargo.toml").display().to_string(),
         ])
         .env("CARGO_TARGET_DIR", workspace.join("target"))
+        // NAMED RATHER THAN INHERITED (R1182): the gate asks cargo for the
+        // workspace census, and which cargo it asks is `$CARGO` — set when a
+        // suite runs under cargo and absent when the test binary is run
+        // directly, where it would silently fall back to whatever is on PATH.
+        .env("CARGO", env!("CARGO"))
         .output()
         .expect("the gate binary runs");
     Run {

@@ -102,6 +102,17 @@ fn import(binary: &Path, ws: &Path, verb: &str, manifest: &Path) -> std::process
     Command::new(binary)
         .args([verb, "--manifest", manifest.to_str().expect("utf-8 path")])
         .current_dir(ws)
+        // NAMED RATHER THAN INHERITED (Round 1182). This test's whole claim is
+        // that ONE revision reads the bytes and another refuses them, so which
+        // binary runs is the thing under test — and a workspace declaring
+        // `[tool] pin` sends the CLI looking for an installed revision under
+        // `$MN_ROOT`, or `$HOME/.local/mn`, and execs it. Both roots point at
+        // this test's own workspace, where no install exists, and the two knobs
+        // that decide the switch are removed.
+        .env("MN_ROOT", ws)
+        .env("HOME", ws)
+        .env_remove("MNEMOSYNE_PIN_EXEC")
+        .env_remove("MNEMOSYNE_PIN_SKIP")
         .output()
         .expect("cli exec")
 }
