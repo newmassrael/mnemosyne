@@ -1028,6 +1028,73 @@ fn a_job_that_restored_nothing_with_a_generation_held_is_refused() {
     }
 }
 
+/// AND A CACHE WITH NO FALLBACK BEGINS EMPTY BY DESIGN, so the same shape is
+/// not a finding there.
+///
+/// THIS IS THE RED ON `main` THAT RUN 31646189780 CARRIED. Round 1160 took
+/// `restore-keys` off the build-directory cache — a fallback onto a build tree
+/// has no bound, and that one archive was restoring 37 GB — and split the law
+/// that REQUIRES a fallback into two halves by `build.target-dir`. This
+/// judgement was not split with it: it reads an archive predating the run as
+/// "one `restore-keys` had to fall back to", which is true only of a cache that
+/// declares one. For the cache Round 1160 changed, a missed primary key and an
+/// empty tree are the SAME EVENT, and the gate reported the repository's
+/// intended behaviour as either a lost archive or a broken measurement.
+#[test]
+fn a_job_that_restored_nothing_is_not_refused_when_its_cache_declares_no_fallback() {
+    let declared = vec![declaration_without_a_fallback(
+        "unrun",
+        "Linux-cargo-unrun-",
+        TARGET,
+    )];
+    let held = vec![held_on("Linux-cargo-unrun-abc", 3.0, BEFORE_THE_RUN)];
+    let run = the_run(&[]);
+    let cold = started(&[("unrun", "Linux-cargo-unrun-", restored::Warmth::Nothing)]);
+    let report = judging(LIMIT, &declared, &held, Some(&run), &cold);
+    assert_eq!(
+        report.refusals(),
+        &[],
+        "a cache with no `restore-keys` cannot serve an older generation, so an \
+         empty tree after a missed key is what this repository asked for"
+    );
+}
+
+/// AND THE OTHER SENTENCE BUILT ON THE SAME PREMISE SAYS IT TOO.
+///
+/// `Recreated` explains an unmeasured miss with "a missed key is not a cold
+/// job, because `restore-keys` can serve an earlier generation". For a cache
+/// that declares no fallback that is false in both halves: a missed key IS a
+/// cold job there, and there is no earlier generation to serve it. Half a
+/// repair is the debt that hides best — the eye rests on the part that now
+/// works — so the second reader is asserted here rather than left to be found.
+#[test]
+fn an_unmeasured_miss_on_a_cache_with_no_fallback_says_the_miss_was_the_cold() {
+    // TWO GENERATIONS, because `Recreated` only fires when something WAS there
+    // — R1135's guard. What this case changes is not whether it fires but what
+    // it says about why the job might have been warm.
+    let declared = vec![declaration_without_a_fallback(
+        "unrun",
+        "Linux-cargo-unrun-",
+        TARGET,
+    )];
+    let held = vec![
+        held_on("Linux-cargo-unrun-abc", 3.0, DURING_THE_RUN),
+        held_on("Linux-cargo-unrun-was", 3.0, BEFORE_THE_RUN),
+    ];
+    let run = the_run(&[]);
+    let report = judging(LIMIT, &declared, &held, Some(&run), &BTreeMap::new());
+    let said = report.refusals()[0].to_string();
+    assert!(
+        !said.contains("`restore-keys` can serve an earlier generation"),
+        "this cache has no `restore-keys`, so that is not why it might be warm: \
+         {said}"
+    );
+    assert!(
+        said.contains("no `restore-keys`"),
+        "and the reason it is certainly cold is the thing to say: {said}"
+    );
+}
+
 /// A KEY THAT MISSED WITH NOTHING UNDER IT TO HIT IS NOT A WASTED CACHE.
 ///
 /// THIS IS THE RED R1135 PAID OFF, and it is the one case where this gate's

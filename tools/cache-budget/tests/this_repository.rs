@@ -221,6 +221,87 @@ fn this_repository_now_asks_for_strictly_less_than_that() {
     );
 }
 
+/// THE CACHE ROUND 1160 TOOK THE FALLBACK OFF IS NOT REFUSED FOR STARTING EMPTY.
+///
+/// THIS IS THE RED `main` ACTUALLY CARRIED, against the real declaration rather
+/// than a fixture. Run 31646189780 refused with "job `unrun-tests` began with an
+/// EMPTY tree … while `Linux-cargo-unrun-af361…` (2.29 GB) was already in
+/// storage for `restore-keys` to fall back to" — and Round 1160 had removed that
+/// cache's `restore-keys` on purpose, because a fallback onto a build tree has
+/// no bound and that archive was restoring 37 GB. So the premise of the refusal
+/// was a line this repository had deleted, and the gate was telling `main` that
+/// its own repair was a defect.
+///
+/// The fixture case beside this one in `law.rs` states the rule; this states
+/// that the rule reaches THIS repository's file. If a later round gives that
+/// cache a fallback back, this goes red and says which half moved.
+#[test]
+fn the_build_directory_cache_declares_no_fallback_and_is_not_refused_for_being_cold() {
+    let declared = ci_plan::workflow_cache_declarations(&repository_root());
+    let tree_keys: Vec<&CacheDeclaration> = declared
+        .iter()
+        .filter(|cache| cache.paths.iter().any(|path| path == ROOT_TARGET))
+        .collect();
+    assert!(
+        !tree_keys.is_empty(),
+        "no key holds a whole build tree, so this law is about nothing"
+    );
+    for cache in &tree_keys {
+        assert!(
+            cache.restore_keys.is_empty(),
+            "`{}` holds a build tree AND declares `restore-keys` {:?} — an \
+             archive unpacks as it was stored, so that fallback inherits a tree \
+             with no bound (Round 1160 measured 37,427 MB restored against a \
+             3.86 GB clean build)",
+            cache.prefix,
+            cache.restore_keys
+        );
+    }
+
+    // The state the run was in: that job's disk received nothing, and an older
+    // archive under the same prefix predates the run.
+    let cache = tree_keys[0];
+    let held = vec![Held {
+        key: format!("{}af361c756f7f6c58", cache.prefix),
+        size_in_bytes: gibibytes(2.29),
+        created_at: "2026-08-12T15:00:51.255576000Z".to_string(),
+    }];
+    let run = Run {
+        workflow: WORKFLOW.to_string(),
+        started_at: "2026-08-12T22:20:00Z".to_string(),
+        inputs_changed: BTreeSet::new(),
+        range: RangeStart::Push("HEAD".to_string()),
+    };
+    let mut started = BTreeMap::new();
+    started.insert(
+        restored::Restore {
+            job: cache.owner.clone(),
+            cache: cache.prefix.clone(),
+        },
+        restored::Warmth::Nothing,
+    );
+    let report = conclude(
+        DEFAULT_LIMIT_BYTES,
+        &declared,
+        &held,
+        Some(&run),
+        &started,
+        &ci_plan::workflows_collecting_artifacts(&repository_root()),
+    );
+    let said: Vec<String> = report
+        .refusals()
+        .iter()
+        .map(std::string::ToString::to_string)
+        .collect();
+    assert!(
+        !said
+            .iter()
+            .any(|line| line.contains("began with an EMPTY tree")),
+        "the cache with no fallback cannot serve an older generation, so an \
+         empty tree after a missed key is what this repository asked for: {said:?}"
+    );
+}
+
 #[test]
 fn the_gate_waits_for_every_job_in_its_own_workflow_that_saves_a_cache() {
     // WHAT THIS GATE JUDGES IS THE STATE A RUN LEAVES BEHIND. `actions/cache`

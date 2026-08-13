@@ -298,6 +298,19 @@ pub struct Row {
     /// What an absent cache is reckoned to cost, and where the number came from.
     /// `None` when nothing comparable has ever been seen.
     pub estimate: Option<Estimate>,
+    /// Whether this key declares `restore-keys` — whether an archive under it
+    /// from an earlier run can reach a job whose primary key missed.
+    ///
+    /// READ FROM THE DECLARATION, and it is the half Round 1160 did not carry.
+    /// That round took the fallback off the build-directory cache, because a
+    /// fallback onto a build tree has no bound and that archive was restoring 37
+    /// GB, and it split the law REQUIRING a fallback into two halves by
+    /// `build.target-dir`. The judgement below was not split with it: it read an
+    /// archive predating a run as one `restore-keys` had to serve, which is true
+    /// only where a fallback is written. For a cache without one, a missed key
+    /// and an empty tree are the SAME EVENT — and reporting that as a lost
+    /// archive is a gate telling a repository its own decision is a defect.
+    pub falls_back: bool,
 }
 
 impl Row {
@@ -417,6 +430,10 @@ pub enum Refusal {
     /// invalidated in an earlier one.
     Recreated {
         prefix: String,
+        /// Whether this key declares `restore-keys`, which decides what an
+        /// UNMEASURED miss can be said about: with a fallback the job may still
+        /// have been warm, and without one the miss is itself the cold build.
+        falls_back: bool,
         owners: Vec<Owner>,
         hashed: Vec<String>,
         /// What each owner's disk said, where a record for it was read.
@@ -499,6 +516,7 @@ impl std::fmt::Display for Refusal {
             ),
             Refusal::Recreated {
                 prefix,
+                falls_back,
                 owners,
                 hashed,
                 started,
@@ -516,7 +534,16 @@ impl std::fmt::Display for Refusal {
                         hashed.join(", ")
                     )
                 },
-                if started.is_empty() {
+                if started.is_empty() && !falls_back {
+                    // NO FALLBACK MAKES THE MISS THE ANSWER. The sentence below
+                    // is about a cache that can be served by an earlier
+                    // generation; where none is declared, the primary key is the
+                    // only thing GitHub tries, so a miss IS the cold and there is
+                    // nothing left unmeasured about it.
+                    "this key declares no `restore-keys`, so the primary key is \
+                     the only thing GitHub tries and this miss IS the cold build"
+                        .to_string()
+                } else if started.is_empty() {
                     "NOT MEASURED on this run — a missed key is not a cold job, \
                      because `restore-keys` can serve an earlier generation, and \
                      no restore record was read here to say which happened"
@@ -988,19 +1015,28 @@ impl Report {
                 // alone. Checked whether or not the key was legitimately
                 // invalidated: a dependency bump excuses a MISSED KEY, never an
                 // empty disk.
-                for owner in &row.owners {
-                    if self.started.get(&row.restore_by(owner)) != Some(&restored::Warmth::Nothing)
-                    {
-                        continue;
+                // A CACHE WITH NO `restore-keys` HAS NOTHING TO FALL BACK ON, so
+                // a missed primary key and an empty tree are one event rather
+                // than two, and there is no finding in it. Round 1160 made that
+                // state deliberate for the build-directory cache and this
+                // judgement kept reading an older archive as reachable, which
+                // put `main` red on run 31646189780 for doing what it was asked.
+                if row.falls_back {
+                    for owner in &row.owners {
+                        if self.started.get(&row.restore_by(owner))
+                            != Some(&restored::Warmth::Nothing)
+                        {
+                            continue;
+                        }
+                        let Some(generation) = row.restorable_when(&run.started_at) else {
+                            continue;
+                        };
+                        out.push(Refusal::RestoredNothingWithAGenerationHeld {
+                            job: owner.job.clone(),
+                            prefix: row.prefix.clone(),
+                            generation: generation.clone(),
+                        });
                     }
-                    let Some(generation) = row.restorable_when(&run.started_at) else {
-                        continue;
-                    };
-                    out.push(Refusal::RestoredNothingWithAGenerationHeld {
-                        job: owner.job.clone(),
-                        prefix: row.prefix.clone(),
-                        generation: generation.clone(),
-                    });
                 }
                 let Some(held) = &row.held else { continue };
                 if to_the_second(&held.created_at) <= to_the_second(&run.started_at) {
@@ -1032,6 +1068,7 @@ impl Report {
                 }
                 out.push(Refusal::Recreated {
                     prefix: row.prefix.clone(),
+                    falls_back: row.falls_back,
                     owners: row.owners.clone(),
                     hashed: row.hashed.clone(),
                     started: row
@@ -1124,6 +1161,13 @@ pub fn conclude(
                     // claims for it.
                     row.paths.extend(paths);
                 }
+                // ONE OWNER WRITING A FALLBACK IS ENOUGH FOR THE ARCHIVE TO BE
+                // REACHABLE: `restore-keys` is a property of the RESTORE, so a
+                // key some job falls back on is one an archive can serve. Two
+                // owners disagreeing about it is a separate finding — the
+                // divergence above is what says so — and this stays the loud
+                // direction, which is the one that keeps judging.
+                row.falls_back |= !declaration.restore_keys.is_empty();
                 row.owners.push(owner);
             }
             None => {
@@ -1136,6 +1180,7 @@ pub fn conclude(
                     held: None,
                     superseded: Vec::new(),
                     estimate: None,
+                    falls_back: !declaration.restore_keys.is_empty(),
                 });
             }
         }
