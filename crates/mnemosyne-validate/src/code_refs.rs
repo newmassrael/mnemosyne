@@ -103,6 +103,107 @@ pub struct ReadSymbol {
     pub expected: Vec<String>,
 }
 
+/// WHAT THE AXIS THAT JUDGED A CITATION READ THERE, for the axes that read
+/// anything at all.
+///
+/// ONE ENUM AND NOT A FIELD PER AXIS (Round 1167). Round 1158 gave the symbol
+/// axis a `read: Option<ReadSymbol>` and pinned its population to one kind;
+/// two more axes have a payload they were dropping, and three parallel
+/// `Option`s would be eight states of which five are nonsense — a shape whose
+/// invariant has to be restated once per field. A single `Option<Self>` has
+/// exactly four, and [`AuditAxis::evidence`] says which one each kind must be.
+///
+/// WHAT QUALIFIES. Every variant here is a value the axis ALREADY COMPUTED and
+/// then threw away: the resolver's answer, the binding set the unbound test
+/// consults, the verb the prose rule matched. Nothing is inferred for the
+/// report's sake — an axis that reads only an identifier and asks the store
+/// whether it exists carries nothing, and says so by name in the table rather
+/// than by an absence a reader has to interpret.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+pub enum CitationEvidence {
+    /// [`ViolationKind::SymbolMismatch`] — the name the resolver answered and
+    /// the set the store records (Round 1158).
+    SymbolDrift(ReadSymbol),
+    /// [`ViolationKind::CitationUnbound`] — the files the cited section DOES
+    /// bind, sorted. The citing file is not among them; that is the violation.
+    ///
+    /// EMPTY IS AN ANSWER, not a missing one: a section with no binding at all
+    /// and a section bound to somebody else are different repairs — register
+    /// this file, or ask why the section claims no code — and a consumer that
+    /// cannot tell them apart opens the store to find out. This is the `0` vs
+    /// `null` distinction of Round 1141 one level down.
+    SectionBindings { files: Vec<String> },
+    /// [`ViolationKind::ProseFactAssertion`] — the verb that made the comment
+    /// an assertion rather than a pointer, as spelled in
+    /// [`PROSE_FACT_ASSERTION_VERBS`]. The rule is a list this repository owns,
+    /// so a consumer reading a flagged line otherwise has to guess which of its
+    /// words tripped it, in whichever of the list's two languages.
+    AssertionVerb { verb: String },
+}
+
+/// WHICH EVIDENCE, named without the value — the type [`AuditAxis::evidence`]
+/// declares in and [`CitationEvidence::shape`] answers in, so "this axis
+/// carries that payload" is a checkable equality rather than a sentence in a
+/// doc comment.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EvidenceShape {
+    /// The axis compared an identifier against the store and read nothing at
+    /// the citation site. Declared, not defaulted.
+    Nothing,
+    /// [`CitationEvidence::SymbolDrift`].
+    SymbolDrift,
+    /// [`CitationEvidence::SectionBindings`].
+    SectionBindings,
+    /// [`CitationEvidence::AssertionVerb`].
+    AssertionVerb,
+}
+
+impl EvidenceShape {
+    /// THE `--json` KEYS A VIOLATION OF THIS SHAPE CARRIES.
+    ///
+    /// Published so a law can ASK what the wire is called instead of restating
+    /// it — the end-to-end law in `symbol_axis_reach.rs` walks the binary's own
+    /// output and needs the expected key set for each kind, and a second copy of
+    /// these names in a test is a copy free to drift from the serializer the day
+    /// a key is renamed. This declaration is itself checked against
+    /// [`CodeRefViolation::to_cli_json`] by
+    /// `the_wire_names_are_the_ones_the_serializer_writes`, so the chain is
+    /// serializer → these names → the law, with no link stated twice.
+    #[must_use]
+    pub const fn wire_keys(self) -> &'static [&'static str] {
+        match self {
+            Self::Nothing => &[],
+            Self::SymbolDrift => &["found", "expected"],
+            Self::SectionBindings => &["bound_files"],
+            Self::AssertionVerb => &["assertion_verb"],
+        }
+    }
+}
+
+impl CitationEvidence {
+    /// Which shape this value is. Exhaustive, so a new variant does not compile
+    /// until [`AuditAxis::evidence`] has an axis that declares it.
+    #[must_use]
+    pub const fn shape(&self) -> EvidenceShape {
+        match self {
+            Self::SymbolDrift(_) => EvidenceShape::SymbolDrift,
+            Self::SectionBindings { .. } => EvidenceShape::SectionBindings,
+            Self::AssertionVerb { .. } => EvidenceShape::AssertionVerb,
+        }
+    }
+
+    /// The shape of an optional evidence — `None` is [`EvidenceShape::Nothing`],
+    /// which is the whole reason the enum has that variant: "read nothing" is
+    /// one of the four answers, not the absence of an answer.
+    #[must_use]
+    pub const fn shape_of(evidence: Option<&Self>) -> EvidenceShape {
+        match evidence {
+            Some(e) => e.shape(),
+            None => EvidenceShape::Nothing,
+        }
+    }
+}
+
 /// One verification failure surfaced to the caller.
 ///
 /// Three variants — code-side citations (`Citation`), file-grained
@@ -116,8 +217,8 @@ pub enum CodeRefViolation {
     /// Citation-side violation — there is a concrete cite at file:line,
     /// and the cite is wrong in some way (`kind` distinguishes how).
     ///
-    /// `read` IS WHAT THE AXIS FOUND IN THE CODE, when the axis that judged this
-    /// site read anything there at all. Round 1158 — until then the symbol axis
+    /// `evidence` IS WHAT THE AXIS READ AT THIS SITE, when the axis that judged
+    /// it read anything there at all. Round 1158 — until then the symbol axis
     /// resolved a name, compared it with the one the store records, emitted a
     /// violation and DROPPED the name it had read: a consumer learned that a
     /// citation had drifted but not to WHAT, and had to open the file to find
@@ -126,20 +227,22 @@ pub enum CodeRefViolation {
     /// consumer's tree that had previously resolved to an enclosing scope —
     /// someone meeting one of those as a fresh mismatch could not tell from the
     /// report whether their code had moved or this resolver had started
-    /// answering.
+    /// answering. Round 1167 found the same drop on two more axes and made the
+    /// field an enum rather than three parallel `Option`s.
     ///
     /// AN OPTION WHOSE POPULATION IS PINNED, which is what keeps it from being
-    /// the smell a one-kind field otherwise is: `Some` exactly for
-    /// [`ViolationKind::SymbolMismatch`] and `None` for every other kind, held
-    /// by `only_the_symbol_axis_reports_what_it_read` here and by the
-    /// end-to-end law in `symbol_axis_reach.rs`. The kind's own payload would be
-    /// the tidier home, but `ViolationKind` is a `Copy` tag read as a key by the
-    /// severity map, the axis map and `kind_tag`; giving it a `String` moves
-    /// that cost onto every one of those readers to spare this one field.
+    /// the smell a shared field otherwise is: its shape is exactly the one
+    /// [`AuditAxis::evidence`] declares for the kind, checked over a real scan
+    /// by `every_citation_axis_publishes_what_it_read` here and on the wire by
+    /// the end-to-end law in `symbol_axis_reach.rs`. The kind's own payload
+    /// would be the tidier home, but [`ViolationKind`] is a `Copy` tag read as a
+    /// key by the severity map, the axis map and `kind_tag`; giving it a
+    /// `String` moves that cost onto every one of those readers to spare this
+    /// one field.
     Citation {
         citation: Citation,
         kind: ViolationKind,
-        read: Option<ReadSymbol>,
+        evidence: Option<CitationEvidence>,
     },
     /// Spec-side violation — the atomic store records a binding (of ANY
     /// kind) in `§section_id.bindings` naming (file, symbol?), but the file
@@ -541,6 +644,45 @@ impl AuditAxis {
         }
     }
 
+    /// WHAT A VIOLATION OF THIS AXIS MUST CARRY (Round 1167).
+    ///
+    /// The declaration, and the emit sites are checked against it —
+    /// `every_citation_axis_publishes_what_it_read` compares the shape of what
+    /// the scan produced with the shape named here, so an axis that starts
+    /// dropping its payload, or starts inventing one, reddens. Exhaustive over
+    /// the whole axis space, which is what makes the population of
+    /// evidence-bearing axes DERIVABLE (`all().filter(…)`) instead of a list a
+    /// test would have to restate — a new axis does not compile until it says
+    /// which of the four it is.
+    ///
+    /// SPEC-SIDE AXES ANSWER [`EvidenceShape::Nothing`] because this is the
+    /// citation variant's field: their evidence is the named fields of their
+    /// own [`CodeRefViolation`] variant (a file, a symbol, a section list), not
+    /// something read at a citation site. [`AuditSide`] is the predicate that
+    /// separates them where that matters.
+    #[must_use]
+    pub const fn evidence(self) -> EvidenceShape {
+        match self {
+            Self::SymbolMismatch => EvidenceShape::SymbolDrift,
+            Self::CitationUnbound => EvidenceShape::SectionBindings,
+            Self::ProseFactAssertion => EvidenceShape::AssertionVerb,
+            // Compares a cited identifier against the store's key set and reads
+            // nothing at the site — the id in `citation.entry_id` IS the whole
+            // of what it looked at.
+            Self::Missing
+            | Self::Decay
+            | Self::SectionMissing
+            | Self::InventoryMissing
+            | Self::InventoryDeprecated => EvidenceShape::Nothing,
+            // Spec-side: not a citation variant at all.
+            Self::BindingUnbacked
+            | Self::ImplementationMissing
+            | Self::VerificationMissing
+            | Self::MisclassifiedCoverage
+            | Self::BlanketVerifies => EvidenceShape::Nothing,
+        }
+    }
+
     /// The next axis in enumeration order, or `None` at the end.
     ///
     /// Exhaustive, so a new variant does not compile until it is given a place
@@ -907,7 +1049,9 @@ impl CodeRefViolation {
         let kind_tag = self.kind_tag();
         obj.insert("kind".into(), Value::String(kind_tag.into()));
         match self {
-            CodeRefViolation::Citation { citation, read, .. } => {
+            CodeRefViolation::Citation {
+                citation, evidence, ..
+            } => {
                 obj.insert(
                     "file".into(),
                     Value::String(citation.file.to_string_lossy().into_owned()),
@@ -917,18 +1061,33 @@ impl CodeRefViolation {
                 // ABSENT rather than null when the axis read nothing, so the
                 // presence of the key is itself the answer to "did anything read
                 // the code here" — the same distinction the axis counts draw
-                // between `0` and `null` (Round 1141).
-                if let Some(r) = read {
-                    obj.insert("found".into(), Value::String(r.found.clone()));
-                    obj.insert(
-                        "expected".into(),
-                        Value::Array(
-                            r.expected
-                                .iter()
-                                .map(|s| Value::String(s.clone()))
-                                .collect(),
-                        ),
-                    );
+                // between `0` and `null` (Round 1141). One key per payload and
+                // no envelope: a consumer already switching on `kind` would gain
+                // nothing from a second tag, and `found` / `expected` are the
+                // names Round 1158 shipped.
+                match evidence {
+                    Some(CitationEvidence::SymbolDrift(r)) => {
+                        obj.insert("found".into(), Value::String(r.found.clone()));
+                        obj.insert(
+                            "expected".into(),
+                            Value::Array(
+                                r.expected
+                                    .iter()
+                                    .map(|s| Value::String(s.clone()))
+                                    .collect(),
+                            ),
+                        );
+                    }
+                    Some(CitationEvidence::SectionBindings { files }) => {
+                        obj.insert(
+                            "bound_files".into(),
+                            Value::Array(files.iter().map(|s| Value::String(s.clone())).collect()),
+                        );
+                    }
+                    Some(CitationEvidence::AssertionVerb { verb }) => {
+                        obj.insert("assertion_verb".into(), Value::String(verb.clone()));
+                    }
+                    None => {}
                 }
             }
             CodeRefViolation::BindingUnbacked {
@@ -1015,33 +1174,59 @@ impl std::fmt::Display for CodeRefViolation {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let kind_tag = self.kind_tag();
         match self {
-            // THE HUMAN LINE CARRIES THE PAIR TOO (Round 1158). The R1045 lesson
-            // is that a claim proved only against `--json` leaves the line a
-            // person reads free to say less; the whole point of this payload is
-            // that a reader does not have to open the file, and the reader of
-            // this line is the one who would.
+            // THE HUMAN LINE CARRIES THE EVIDENCE TOO (Round 1158, extended to
+            // every axis that has any in Round 1167). The R1045 lesson is that a
+            // claim proved only against `--json` leaves the line a person reads
+            // free to say less; the whole point of this payload is that a reader
+            // does not have to go looking, and the reader of this line is the
+            // one who would.
             CodeRefViolation::Citation {
                 citation,
-                read: Some(r),
+                evidence: Some(e),
                 ..
-            } => write!(
-                f,
-                "[{}] {}:{} {} — code says `{}`, store records {}",
-                kind_tag,
-                citation.file.to_string_lossy(),
-                citation.line,
-                citation.entry_id,
-                r.found,
-                if r.expected.is_empty() {
-                    "nothing".to_string()
-                } else {
-                    r.expected
-                        .iter()
-                        .map(|s| format!("`{s}`"))
-                        .collect::<Vec<_>>()
-                        .join(" or ")
-                }
-            ),
+            } => {
+                let clause = match e {
+                    CitationEvidence::SymbolDrift(r) => format!(
+                        "code says `{}`, store records {}",
+                        r.found,
+                        if r.expected.is_empty() {
+                            "nothing".to_string()
+                        } else {
+                            r.expected
+                                .iter()
+                                .map(|s| format!("`{s}`"))
+                                .collect::<Vec<_>>()
+                                .join(" or ")
+                        }
+                    ),
+                    CitationEvidence::SectionBindings { files } => {
+                        if files.is_empty() {
+                            "the section binds no file".to_string()
+                        } else {
+                            format!(
+                                "the section binds {}",
+                                files
+                                    .iter()
+                                    .map(|s| format!("`{s}`"))
+                                    .collect::<Vec<_>>()
+                                    .join(", ")
+                            )
+                        }
+                    }
+                    CitationEvidence::AssertionVerb { verb } => {
+                        format!("the prose asserts `{verb}`")
+                    }
+                };
+                write!(
+                    f,
+                    "[{}] {}:{} {} — {}",
+                    kind_tag,
+                    citation.file.to_string_lossy(),
+                    citation.line,
+                    citation.entry_id,
+                    clause
+                )
+            }
             CodeRefViolation::Citation { citation, .. } => write!(
                 f,
                 "[{}] {}:{} {}",
@@ -4112,9 +4297,10 @@ impl SetEqualityValidator {
                         entry_id,
                     },
                     kind,
-                    // This axis compares an id against the store; it reads no
-                    // symbol, so it claims to have read none.
-                    read: None,
+                    // This axis compares an id against the store's key set and
+                    // reads nothing at the site, which is what
+                    // `AuditAxis::evidence` declares for both its kinds.
+                    evidence: None,
                 });
             }
 
@@ -4158,7 +4344,9 @@ impl SetEqualityValidator {
                                 entry_id: format!("§{}", section_id),
                             },
                             kind: ViolationKind::SectionMissing,
-                            read: None,
+                            // The id is not in the store's section set, so
+                            // there is no section whose bindings could be read.
+                            evidence: None,
                         });
                     }
                     continue;
@@ -4166,8 +4354,8 @@ impl SetEqualityValidator {
                 // Section exists — check spec-side membership of (file in
                 // §<id>.bindings files). Matching is by `file` string only;
                 // symbol is opaque metadata not in the bidirectional set-equality.
-                let bound = impl_files_by_section
-                    .get(section_id.as_str())
+                let binds = impl_files_by_section.get(section_id.as_str());
+                let bound = binds
                     .map(|files| files.contains(rel_str.as_str()))
                     .unwrap_or(false);
                 if !bound {
@@ -4179,7 +4367,19 @@ impl SetEqualityValidator {
                                 entry_id: format!("§{}", section_id),
                             },
                             kind: ViolationKind::CitationUnbound,
-                            read: None,
+                            // WHAT THE SECTION DOES BIND (Round 1167). This
+                            // lookup is the test itself — the boolean above is
+                            // the only thing it used to keep, and a consumer was
+                            // left to query the store for the set that decided
+                            // their violation. A section binding nobody yields
+                            // an EMPTY list rather than no evidence: "you are
+                            // not in the list" and "there is no list" are
+                            // different repairs.
+                            evidence: Some(CitationEvidence::SectionBindings {
+                                files: binds
+                                    .map(|files| files.iter().map(|f| (*f).to_string()).collect())
+                                    .unwrap_or_default(),
+                            }),
                         });
                     }
                 } else if let Some(expected_syms) =
@@ -4231,13 +4431,13 @@ impl SetEqualityValidator {
                                             entry_id: format!("§{}", section_id),
                                         },
                                         kind: ViolationKind::SymbolMismatch,
-                                        // THE ONE SITE THAT READ SOMETHING, so
+                                        // THE ONE SITE THAT RESOLVED A NAME, so
                                         // the one that carries it. Both names,
                                         // because a drift is a pair — and
                                         // `expected` is the whole recorded set,
                                         // sorted, rather than whichever member
                                         // the comparison happened to reject.
-                                        read: Some(ReadSymbol {
+                                        evidence: Some(CitationEvidence::SymbolDrift(ReadSymbol {
                                             found: found.clone(),
                                             expected: {
                                                 let mut e: Vec<String> = expected_syms
@@ -4247,7 +4447,7 @@ impl SetEqualityValidator {
                                                 e.sort_unstable();
                                                 e
                                             },
-                                        }),
+                                        })),
                                     });
                                 }
                             }
@@ -4266,7 +4466,7 @@ impl SetEqualityValidator {
             // guard above already `continue`s the decay-filter pass). See
             // claudedocs/structured-fact-ssot-design.md.
             if verdicts.judges(AuditAxis::ProseFactAssertion) {
-                for (line, section_id, _verb) in extract_prose_fact_assertions(&content) {
+                for (line, section_id, verb) in extract_prose_fact_assertions(&content) {
                     violations.push(CodeRefViolation::Citation {
                         citation: Citation {
                             file: rel.clone(),
@@ -4274,7 +4474,13 @@ impl SetEqualityValidator {
                             entry_id: format!("§{}", section_id),
                         },
                         kind: ViolationKind::ProseFactAssertion,
-                        read: None,
+                        // THE VERB THAT MADE IT AN ASSERTION (Round 1167). The
+                        // extractor has always returned it and this site has
+                        // always bound it to `_verb`: the rule is a list of
+                        // eight spellings in two languages that lives in this
+                        // crate, so a reader of the flagged line was left
+                        // guessing which of its words the gate objected to.
+                        evidence: Some(CitationEvidence::AssertionVerb { verb }),
                     });
                 }
             }
@@ -4317,7 +4523,9 @@ impl SetEqualityValidator {
                             entry_id: inventory_id,
                         },
                         kind: k,
-                        read: None,
+                        // Both inventory kinds are decided by the entry's
+                        // status in the store; nothing is read at the site.
+                        evidence: None,
                     });
                 }
             }
@@ -5846,28 +6054,42 @@ mod tests {
         );
     }
 
-    /// ONLY THE AXIS THAT READ A SYMBOL REPORTS ONE (Round 1158).
+    /// EVERY AXIS PUBLISHES WHAT IT READ (Round 1167).
     ///
-    /// `read` is an `Option` on a variant eight kinds share, which is the smell
-    /// a one-kind field usually is — unless its population is pinned. This is
-    /// that pin, over the SCAN's own output rather than over hand-built values:
-    /// a tree carrying one drifted citation and one unbound one, and the payload
-    /// present on exactly the first.
+    /// Round 1158 gave the symbol axis its payload and left a carry: the other
+    /// seven axes carry nothing, and two of them read something they then throw
+    /// away. `citation_unbound` looks up the files the section DOES bind and
+    /// keeps only the boolean; `prose_fact_assertion` matches a verb and binds
+    /// it to `_verb`. A consumer meeting either has to open the store or
+    /// re-derive our verb list — the same file-opening Round 1158 spared on the
+    /// symbol axis.
+    ///
+    /// Over the SCAN's own output, and on BOTH surfaces: the machine wire and
+    /// the line a person reads (the R1045 lesson — a claim proved only against
+    /// `--json` leaves the human line free to say less, and the reader of that
+    /// line is exactly the one who would otherwise go looking).
     #[test]
-    fn only_the_symbol_axis_reports_what_it_read() {
+    fn every_citation_axis_publishes_what_it_read() {
         use mnemosyne_core::AtomicStoreView;
         let tmp = TempDir::new().unwrap();
         let src = tmp.path().join("src");
         std::fs::create_dir_all(&src).unwrap();
-        // `drift.rs` is bound and records `beta`; the grammar answers `alpha`.
+        // Bound, and the grammar answers a name the store does not record.
         std::fs::write(
             src.join("drift.rs"),
             "struct H;\n\nimpl H {\n    fn alpha(&self) {\n        // §39 cite\n    }\n}\n",
         )
         .unwrap();
-        // `unbound.rs` cites a section that does not bind it — a different axis,
-        // and one that reads no symbol.
+        // Cites a section that binds a DIFFERENT file.
         std::fs::write(src.join("unbound.rs"), "// §39 cite from nowhere\n").unwrap();
+        // Restates in prose a fact the store homes.
+        std::fs::write(
+            src.join("prose.rs"),
+            "// supersede §39, which the store already records\n",
+        )
+        .unwrap();
+        // Cites an id the store does not hold — an axis that reads nothing.
+        std::fs::write(src.join("hallucinated.rs"), "// §404 cite of nothing\n").unwrap();
 
         let store_path = tmp.path().join(".atomic/workspace.atomic.json");
         let store = build_store_with_impl(&store_path, "39", "src/drift.rs", Some("beta"));
@@ -5889,7 +6111,7 @@ mod tests {
                 severity_confirmation: None,
                 severity_classification: None,
                 severity_blanket: None,
-                severity_prose_fact_assertion: None,
+                severity_prose_fact_assertion: Some(mnemosyne_config::Severity::Reject),
                 severity_inventory: mnemosyne_config::Severity::Reject,
                 comment_only: true,
                 inventory_prefixes: vec![],
@@ -5913,34 +6135,125 @@ mod tests {
             )
             .expect("the scan runs");
 
-        let mut with_payload = 0usize;
-        let mut symbol_axis = 0usize;
+        let wire = |tag: &str| -> Vec<serde_json::Value> {
+            violations
+                .iter()
+                .filter(|v| v.kind_tag() == tag)
+                .map(|v| v.to_cli_json())
+                .collect()
+        };
+        let lines = |tag: &str| -> Vec<String> {
+            violations
+                .iter()
+                .filter(|v| v.kind_tag() == tag)
+                .map(|v| v.to_string())
+                .collect()
+        };
+
+        // ---- citation_unbound: the files the section DOES bind ----
+        let unbound = wire("citation_unbound");
+        assert!(
+            !unbound.is_empty(),
+            "the fixture must reach the unbound axis, or the claims below are \
+             about an empty set: {violations:?}"
+        );
+        for v in &unbound {
+            assert_eq!(
+                v.get("bound_files"),
+                Some(&serde_json::json!(["src/drift.rs"])),
+                "an unbound citation must name what the section binds instead: {v}"
+            );
+        }
+        for line in lines("citation_unbound") {
+            assert!(
+                line.contains("src/drift.rs"),
+                "the human line must name it too: {line}"
+            );
+        }
+
+        // ---- prose_fact_assertion: the verb that tripped the rule ----
+        let prose = wire("prose_fact_assertion");
+        assert_eq!(
+            prose.len(),
+            1,
+            "the fixture must reach the prose axis exactly once: {violations:?}"
+        );
+        assert_eq!(
+            prose[0].get("assertion_verb"),
+            Some(&serde_json::json!("supersede")),
+            "a prose-fact violation must name the verb it matched: {}",
+            prose[0]
+        );
+        for line in lines("prose_fact_assertion") {
+            assert!(
+                line.contains("supersede"),
+                "the human line must name the verb too: {line}"
+            );
+        }
+
+        // ---- symbol_mismatch: Round 1158's pair, unchanged ----
+        let drift = wire("symbol_mismatch");
+        assert_eq!(drift.len(), 1, "one drift: {violations:?}");
+        assert_eq!(drift[0].get("found"), Some(&serde_json::json!("alpha")));
+        assert_eq!(drift[0].get("expected"), Some(&serde_json::json!(["beta"])));
+
+        // ---- section_missing: an axis that reads nothing says nothing ----
+        let missing = wire("section_missing");
+        assert_eq!(
+            missing.len(),
+            1,
+            "the fixture must reach an axis that reads NOTHING, or absence is \
+             never exercised: {violations:?}"
+        );
+        for key in ["found", "expected", "bound_files", "assertion_verb"] {
+            assert_eq!(
+                missing[0].get(key),
+                None,
+                "an axis that read nothing must claim nothing (`{key}`): {}",
+                missing[0]
+            );
+        }
+
+        // ---- and the shape of every one of them is the DECLARED shape ----
+        // This is the pin Round 1158 put on a one-kind `Option`, generalised:
+        // the payload is not "whatever the emit site felt like attaching" but
+        // exactly what `AuditAxis::evidence` says that axis carries, so an axis
+        // that starts dropping its evidence — or inventing some — reddens here.
         for v in &violations {
-            if let CodeRefViolation::Citation { kind, read, .. } = v {
-                if *kind == ViolationKind::SymbolMismatch {
-                    symbol_axis += 1;
-                    let r = read.as_ref().expect("the symbol axis reports what it read");
-                    assert_eq!(r.found, "alpha");
-                    assert_eq!(r.expected, vec!["beta".to_string()]);
-                }
-                if read.is_some() {
-                    with_payload += 1;
-                }
+            if let CodeRefViolation::Citation { evidence, .. } = v {
+                assert_eq!(
+                    CitationEvidence::shape_of(evidence.as_ref()),
+                    v.axis().evidence(),
+                    "a violation must carry the evidence its axis declares: {v:?}"
+                );
             }
         }
-        assert_eq!(
-            symbol_axis, 1,
-            "the fixture must produce exactly one symbol drift, or the equality \
-             below is about an empty set: {violations:?}"
+
+        // NON-VACUITY, DERIVED FROM THE TABLE RATHER THAN SPELLED. Every
+        // citation-side axis that declares evidence must be one this fixture
+        // actually produced: a fourth payload added tomorrow is a red test here
+        // until the tree above reaches it, which is the difference between a law
+        // about three axes and a law about the axes that have evidence. The
+        // `Nothing` half is required too — without it the equality above holds
+        // trivially on a run where nothing declared anything.
+        let reached: BTreeSet<AuditAxis> = violations.iter().map(|v| v.axis()).collect();
+        let declaring: BTreeSet<AuditAxis> = AuditAxis::all()
+            .into_iter()
+            .filter(|a| a.side() == AuditSide::Citation)
+            .filter(|a| a.evidence() != EvidenceShape::Nothing)
+            .collect();
+        assert!(
+            declaring.is_subset(&reached),
+            "every axis that declares evidence must be exercised here — missing \
+             {:?} from {reached:?}",
+            declaring.difference(&reached).collect::<Vec<_>>()
         );
         assert!(
-            violations.len() > symbol_axis,
-            "and at least one violation from ANOTHER axis, or `None` is never \
-             exercised: {violations:?}"
-        );
-        assert_eq!(
-            with_payload, symbol_axis,
-            "no other axis may claim to have read a symbol: {violations:?}"
+            reached
+                .iter()
+                .any(|a| a.side() == AuditSide::Citation && a.evidence() == EvidenceShape::Nothing),
+            "and an axis that declares none, or `None` is never exercised: \
+             {reached:?}"
         );
     }
 
@@ -10083,16 +10396,17 @@ mod tests {
         );
     }
 
-    /// The axis table is the ONE name space: every violation shape names an
-    /// axis, the enumeration reaches it, and the tag a violation carries is the
-    /// tag its axis carries.
+    /// ONE VALUE OF EVERY VIOLATION SHAPE THERE IS.
     ///
-    /// Both directions. A tag the enumeration cannot produce would be a
-    /// violation no `not_judged` list could ever name; an axis no violation
-    /// produces would be a name in the report with nothing behind it.
-    #[test]
-    fn every_violation_shape_and_every_axis_are_one_name_space() {
-        let shapes = vec![
+    /// The only population that reaches all thirteen axes — a scan fixture
+    /// produces the handful its tree can provoke — so the laws that must hold
+    /// for EVERY axis (the name space, the evidence table, the wire names) are
+    /// the laws that read this list. Hand-built, and each value carries the
+    /// evidence its axis declares; that consistency is not assumed, it is the
+    /// first thing `every_violation_shape_and_every_axis_are_one_name_space`
+    /// checks.
+    fn every_violation_shape() -> Vec<CodeRefViolation> {
+        vec![
             CodeRefViolation::Citation {
                 citation: Citation {
                     file: PathBuf::from("a.rs"),
@@ -10100,7 +10414,7 @@ mod tests {
                     entry_id: "Round 1".into(),
                 },
                 kind: ViolationKind::Missing,
-                read: None,
+                evidence: None,
             },
             CodeRefViolation::Citation {
                 citation: Citation {
@@ -10109,7 +10423,7 @@ mod tests {
                     entry_id: "Round 1".into(),
                 },
                 kind: ViolationKind::Decay,
-                read: None,
+                evidence: None,
             },
             CodeRefViolation::Citation {
                 citation: Citation {
@@ -10118,7 +10432,7 @@ mod tests {
                     entry_id: "§1".into(),
                 },
                 kind: ViolationKind::SectionMissing,
-                read: None,
+                evidence: None,
             },
             CodeRefViolation::Citation {
                 citation: Citation {
@@ -10127,7 +10441,9 @@ mod tests {
                     entry_id: "§1".into(),
                 },
                 kind: ViolationKind::CitationUnbound,
-                read: None,
+                evidence: Some(CitationEvidence::SectionBindings {
+                    files: vec!["b.rs".into()],
+                }),
             },
             CodeRefViolation::Citation {
                 citation: Citation {
@@ -10136,12 +10452,10 @@ mod tests {
                     entry_id: "§1".into(),
                 },
                 kind: ViolationKind::SymbolMismatch,
-                // The one shape that reads code, so the one this name space
-                // exercises with a payload.
-                read: Some(ReadSymbol {
+                evidence: Some(CitationEvidence::SymbolDrift(ReadSymbol {
                     found: "alpha".into(),
                     expected: vec!["beta".into()],
-                }),
+                })),
             },
             CodeRefViolation::Citation {
                 citation: Citation {
@@ -10150,7 +10464,7 @@ mod tests {
                     entry_id: "INV_1".into(),
                 },
                 kind: ViolationKind::InventoryMissing,
-                read: None,
+                evidence: None,
             },
             CodeRefViolation::Citation {
                 citation: Citation {
@@ -10159,7 +10473,7 @@ mod tests {
                     entry_id: "INV_1".into(),
                 },
                 kind: ViolationKind::InventoryDeprecated,
-                read: None,
+                evidence: None,
             },
             CodeRefViolation::Citation {
                 citation: Citation {
@@ -10168,7 +10482,9 @@ mod tests {
                     entry_id: "§1".into(),
                 },
                 kind: ViolationKind::ProseFactAssertion,
-                read: None,
+                evidence: Some(CitationEvidence::AssertionVerb {
+                    verb: "supersede".into(),
+                }),
             },
             CodeRefViolation::BindingUnbacked {
                 section_id: "1".into(),
@@ -10192,7 +10508,19 @@ mod tests {
                 symbol: None,
                 section_ids: vec!["1".into()],
             },
-        ];
+        ]
+    }
+
+    /// The axis table is the ONE name space: every violation shape names an
+    /// axis, the enumeration reaches it, and the tag a violation carries is the
+    /// tag its axis carries.
+    ///
+    /// Both directions. A tag the enumeration cannot produce would be a
+    /// violation no `not_judged` list could ever name; an axis no violation
+    /// produces would be a name in the report with nothing behind it.
+    #[test]
+    fn every_violation_shape_and_every_axis_are_one_name_space() {
+        let shapes = every_violation_shape();
         let reachable: BTreeSet<&str> = AuditAxis::all().iter().map(|a| a.kind_tag()).collect();
         let from_shapes: BTreeSet<&str> = shapes.iter().map(CodeRefViolation::kind_tag).collect();
         assert_eq!(
@@ -10210,6 +10538,18 @@ mod tests {
                 v.axis().kind_tag(),
                 "a violation's tag is its axis's tag"
             );
+            // Round 1167 — the axis table declares the EVIDENCE as well as the
+            // tag, and this list is the only population that reaches all
+            // thirteen axes: the scan law next door exercises the four its
+            // fixture can produce, and the arms no fixture reaches are asserted
+            // here rather than left to the day one of them does.
+            if let CodeRefViolation::Citation { evidence, .. } = v {
+                assert_eq!(
+                    CitationEvidence::shape_of(evidence.as_ref()),
+                    v.axis().evidence(),
+                    "a violation carries the evidence its axis declares: {v:?}"
+                );
+            }
         }
         // The split the SCE lift request turns on, pinned so a later variant
         // cannot quietly join the half a path-scoped run judges.
@@ -10229,6 +10569,51 @@ mod tests {
             ]
             .into_iter()
             .collect::<BTreeSet<_>>()
+        );
+    }
+
+    /// THE PUBLISHED WIRE NAMES ARE THE ONES THE SERIALIZER WRITES (Round 1167).
+    ///
+    /// [`EvidenceShape::wire_keys`] exists so the end-to-end law can ask what a
+    /// payload is called on the wire instead of spelling it a second time. That
+    /// only helps if the declaration cannot drift from
+    /// [`CodeRefViolation::to_cli_json`], which is what this checks: over every
+    /// violation shape there is, the keys the serializer adds BEYOND the four
+    /// every citation carries are exactly the ones its axis's shape names.
+    #[test]
+    fn the_wire_names_are_the_ones_the_serializer_writes() {
+        const COMMON: [&str; 4] = ["kind", "file", "line", "entry_id"];
+        let mut checked = 0usize;
+        for v in every_violation_shape() {
+            let CodeRefViolation::Citation { .. } = v else {
+                continue;
+            };
+            let json = v.to_cli_json();
+            let obj = json.as_object().expect("an object");
+            let extra: BTreeSet<&str> = obj
+                .keys()
+                .map(String::as_str)
+                .filter(|k| !COMMON.contains(k))
+                .collect();
+            let declared: BTreeSet<&str> =
+                v.axis().evidence().wire_keys().iter().copied().collect();
+            assert_eq!(
+                extra,
+                declared,
+                "the serializer and the declaration must name the same keys for \
+                 `{}`: {json}",
+                v.kind_tag()
+            );
+            checked += 1;
+        }
+        assert_eq!(
+            checked,
+            AuditAxis::all()
+                .iter()
+                .filter(|a| a.side() == AuditSide::Citation)
+                .count(),
+            "every citation-side axis must be checked, or a renamed key on the \
+             axis this skipped goes unnoticed"
         );
     }
 

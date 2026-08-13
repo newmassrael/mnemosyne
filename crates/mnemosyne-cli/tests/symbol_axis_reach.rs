@@ -70,7 +70,7 @@
 //!    swapped. The refusal is downstream of the report, so a gate parsing this
 //!    command's JSON gets a diagnosis rather than a parse error.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::Path;
 use std::process::{Command, Output};
@@ -439,15 +439,31 @@ fn the_same_tree_with_a_resolver_judges_and_names_the_drift() {
          diagnosis: {}",
         symbol[0]
     );
-    // AND THE OTHER AXES DO NOT CLAIM TO HAVE READ ANYTHING. `found` is `Some`
-    // exactly where an axis resolved a symbol; an Option whose population is not
-    // pinned is the smell this shape would otherwise be.
+    // AND EVERY AXIS CARRIES EXACTLY WHAT IT DECLARES (Round 1167, generalising
+    // Round 1158's `found`-iff-symbol_mismatch). The expected key set is ASKED
+    // OF THE LIBRARY — `AuditAxis::evidence().wire_keys()` — rather than spelled
+    // here, so this law is about what the binary printed against the same
+    // declaration the serializer is checked against, and a payload added to a
+    // fourth axis is covered here the day it is declared rather than the day
+    // someone remembers to widen this loop.
     for v in violations {
-        let has_found = v.get("found").is_some();
+        let tag = v["kind"].as_str().expect("every violation names its kind");
+        let axis = mnemosyne_validate::code_refs::AuditAxis::all()
+            .into_iter()
+            .find(|a| a.kind_tag() == tag)
+            .unwrap_or_else(|| panic!("the binary printed a kind no axis owns: {tag}"));
+        let declared: BTreeSet<&str> = axis.evidence().wire_keys().iter().copied().collect();
+        // The universe of evidence keys, derived the same way: whatever ANY
+        // axis declares is what a violation might wrongly be carrying.
+        let carried: BTreeSet<&str> = mnemosyne_validate::code_refs::AuditAxis::all()
+            .into_iter()
+            .flat_map(|a| a.evidence().wire_keys())
+            .copied()
+            .filter(|k| v.get(*k).is_some())
+            .collect();
         assert_eq!(
-            has_found,
-            v["kind"] == "symbol_mismatch",
-            "only the axis that read a symbol may report one: {v}"
+            carried, declared,
+            "an axis carries the evidence it declares and no other: {v}"
         );
     }
 
@@ -461,6 +477,158 @@ fn the_same_tree_with_a_resolver_judges_and_names_the_drift() {
     assert!(
         stderr.contains("symbol_mismatch=1"),
         "the refusal must price the axis it rejected on: {stderr}"
+    );
+}
+
+/// LAW 2b — EVERY AXIS THAT READS SOMETHING PUBLISHES IT, THROUGH THE BINARY
+/// (Round 1167).
+///
+/// Law 2's walk holds over whatever violations its tree produces, and that tree
+/// produces one kind. The generalised claim — a citation carries exactly the
+/// evidence its axis declares — is only as wide as the population it is asked
+/// about, so this is the tree that provokes all three: a drifted symbol, a
+/// citation of a section that binds somebody else, and a comment that restates
+/// a fact instead of pointing at it.
+///
+/// AND BOTH SURFACES, because a consumer reads one of them: `--json` for the
+/// wire and the plain run for the line a person sees. The R1045 defect was a
+/// payload that held on the machine wire while the human line said less.
+#[test]
+fn every_axis_that_reads_something_publishes_it_through_the_binary() {
+    let tmp = TempDir::new().unwrap();
+    let ws = tmp.path();
+    write_workspace(ws, RUST_RESOLVER, false);
+    // The prose axis is opt-in, and this is the one config line that turns it
+    // on. Appended rather than rebuilt so the tree stays law 2's tree.
+    let toml = fs::read_to_string(ws.join("mnemosyne.toml")).unwrap();
+    fs::write(
+        ws.join("mnemosyne.toml"),
+        toml.replace(
+            "comment_only = true",
+            "comment_only = true\nseverity_prose_fact_assertion = \"reject\"",
+        ),
+    )
+    .unwrap();
+    // Cites a section that binds `src/drift.rs` and not this file.
+    fs::write(ws.join("src/stray.rs"), "// §sec1 cited from nowhere\n").unwrap();
+    // Restates in prose a fact the store homes.
+    fs::write(
+        ws.join("src/restated.rs"),
+        "// supersede §sec1, which the store already records\n",
+    )
+    .unwrap();
+
+    let (out, json) = validate(ws);
+    let violations = json["violations"].as_array().expect("violations array");
+
+    let of_kind = |k: &str| -> Vec<&serde_json::Value> {
+        violations.iter().filter(|v| v["kind"] == k).collect()
+    };
+
+    // ---- citation_unbound names what the section DOES bind ----
+    let unbound = of_kind("citation_unbound");
+    assert_eq!(
+        unbound.len(),
+        2,
+        "both new files cite a section that binds neither: {violations:?}"
+    );
+    for v in &unbound {
+        assert_eq!(
+            v["bound_files"],
+            serde_json::json!(["src/drift.rs"]),
+            "the report must name the binding set that decided this violation, \
+             or the consumer opens the store to find it: {v}"
+        );
+    }
+
+    // ---- prose_fact_assertion names the verb it matched ----
+    let prose = of_kind("prose_fact_assertion");
+    assert_eq!(prose.len(), 1, "one restatement: {violations:?}");
+    assert_eq!(
+        prose[0]["assertion_verb"],
+        serde_json::json!("supersede"),
+        "the rule is a list of spellings this repository owns; a reader of the \
+         flagged line cannot otherwise say which word tripped it: {}",
+        prose[0]
+    );
+
+    // ---- symbol_mismatch still carries Round 1158's pair ----
+    let drift = of_kind("symbol_mismatch");
+    assert_eq!(drift.len(), 1, "one drift: {violations:?}");
+    assert_eq!(
+        (&drift[0]["found"], &drift[0]["expected"]),
+        (&serde_json::json!("alpha"), &serde_json::json!(["beta"])),
+        "{}",
+        drift[0]
+    );
+
+    // ---- and the equality holds over the whole population, derived ----
+    let declaring: BTreeSet<&str> = mnemosyne_validate::code_refs::AuditAxis::all()
+        .into_iter()
+        .filter(|a| a.side() == mnemosyne_validate::code_refs::AuditSide::Citation)
+        .filter(|a| !a.evidence().wire_keys().is_empty())
+        .map(mnemosyne_validate::code_refs::AuditAxis::kind_tag)
+        .collect();
+    let reached: BTreeSet<&str> = violations
+        .iter()
+        .filter_map(|v| v["kind"].as_str())
+        .collect();
+    assert!(
+        declaring.is_subset(&reached),
+        "this tree must provoke every axis that declares evidence, or the law is \
+         narrower than it reads — missing {:?} from {reached:?}",
+        declaring.difference(&reached).collect::<Vec<_>>()
+    );
+    // AND THE EQUALITY ITSELF, over THIS population. Law 2 runs the same walk
+    // over a tree that produces one kind, so it can only ever speak for the
+    // symbol axis: renaming another axis's wire key left law 2 green while the
+    // declaration and the serializer disagreed, which is how this loop came to
+    // be here as well as there. Keys are asked of the library, never spelled.
+    for v in violations {
+        let tag = v["kind"].as_str().expect("every violation names its kind");
+        let axis = mnemosyne_validate::code_refs::AuditAxis::all()
+            .into_iter()
+            .find(|a| a.kind_tag() == tag)
+            .unwrap_or_else(|| panic!("the binary printed a kind no axis owns: {tag}"));
+        let declared: BTreeSet<&str> = axis.evidence().wire_keys().iter().copied().collect();
+        let carried: BTreeSet<&str> = mnemosyne_validate::code_refs::AuditAxis::all()
+            .into_iter()
+            .flat_map(|a| a.evidence().wire_keys())
+            .copied()
+            .filter(|k| v.get(*k).is_some())
+            .collect();
+        assert_eq!(
+            carried, declared,
+            "an axis carries the evidence it declares and no other: {v}"
+        );
+    }
+
+    // ---- THE HUMAN LINE, not only the wire ----
+    let plain = Command::new(cli())
+        .arg("validate-code-refs")
+        .current_dir(ws)
+        .output()
+        .expect("cli exec");
+    let text = format!(
+        "{}{}",
+        String::from_utf8_lossy(&plain.stdout),
+        String::from_utf8_lossy(&plain.stderr)
+    );
+    for needle in [
+        "the section binds `src/drift.rs`",
+        "the prose asserts `supersede`",
+        "code says `alpha`, store records `beta`",
+    ] {
+        assert!(
+            text.contains(needle),
+            "the line a person reads must carry it too — missing {needle:?} in:\n{text}"
+        );
+    }
+
+    assert!(
+        !out.status.success(),
+        "an unbound citation and a drift are both reject-class: {}",
+        String::from_utf8_lossy(&out.stderr)
     );
 }
 

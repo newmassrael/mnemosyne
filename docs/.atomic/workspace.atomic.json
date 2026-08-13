@@ -10558,6 +10558,92 @@
         "row, so the next variant that wants the question can ask it."
       ]
     },
+    "Round 1167": {
+      "decision_summary": "R1167 (DEBT) — Round 1158 shipped the symbol axis's payload and wrote its own\nresidue down: THE OTHER SEVEN CITATION AXES READ NO CODE, SO THEY CARRY NOTHING.\nThat sentence was half wrong, and the wrong half is the round. Two of the seven\nread something and threw it away. `citation_unbound` looks up the files the\ncited section DOES bind — that lookup IS the test — and kept only the boolean.\n`prose_fact_assertion` matches one of eight spellings in two languages and bound\nit to `_verb`. Both left a consumer doing exactly what Round 1158 spared them on\nthe symbol axis: opening the store, or re-deriving a list that lives in a crate\nof ours.\n\nSTAR ONE FIELD, NOT THREE. `read: Option<ReadSymbol>` becomes `evidence:\nOption<CitationEvidence>`. Three parallel `Option`s would be eight states of\nwhich five are nonsense and one restated invariant per field; the enum has four\nstates and `AuditAxis::evidence` — exhaustive over all thirteen axes — says\nwhich one each kind must be. The kind's own payload is still the tidier home and\nstill refused for Round 1158's reason: `ViolationKind` is a `Copy` tag read as a\nkey by the severity map, the axis map and `kind_tag`.\n\nSTAR WHAT QUALIFIES AS EVIDENCE IS NOT A JUDGEMENT CALL. Every variant is a\nvalue the axis ALREADY COMPUTED and dropped. The other five compare an\nidentifier against a key set and read nothing at the site, and now say so BY\nNAME in the table rather than by an absence a reader has to interpret. Nothing\nwas invented to fill a column.\n\nSTAR AN EMPTY BINDING SET IS AN ANSWER. A section that binds nobody yields\n`bound_files: []`, not absent evidence: \"you are not in the list\" and \"there is\nno list\" are different repairs, and that is the `0` vs `null` distinction of\nRound 1141 one level down.\n\nSTAR THE PUBLISHED WIRE NAMES ARE ASKED, NOT SPELLED. `EvidenceShape::wire_keys`\npublishes the `--json` key set per shape, a lib law holds it against what\n`to_cli_json` actually writes, and the end-to-end law derives its expectation\nfrom it. Serializer to declaration to law, with no link stated twice.",
+      "changes_bullets": [
+        "`crates/mnemosyne-validate/src/code_refs.rs` — `CitationEvidence` (symbol drift, section bindings, assertion verb), `EvidenceShape` + `wire_keys`, and `AuditAxis::evidence` as the declaration every emit site is checked against.",
+        "Same file — `CodeRefViolation::Citation.read` becomes `evidence`; the unbound and prose emit sites publish what they had been dropping; `to_cli_json` gains `bound_files` and `assertion_verb`; `Display` gains a clause per shape.",
+        "Same file — the hand-built all-thirteen-axis fixture becomes `every_violation_shape()`, so the laws that must hold for EVERY axis read one list rather than each carrying its own.",
+        "`crates/mnemosyne-cli/tests/symbol_axis_reach.rs` — law 2b: a tree that provokes all three evidence axes through the binary, checked on the wire AND on the line a person reads."
+      ],
+      "verification_bullets": [
+        "RED FIRST, and for the right reason: the wire law was written before any production line and failed on the absent `bound_files` at `src/prose.rs:1`.",
+        "STAR SEVEN INJECTIONS, EVERY ONE CONFIRMED FIRING. Dropping the unbound evidence, dropping the verb, and rendering the unbound clause without the files each redden both the lib law and the end-to-end law — the third with the wire untouched, so it is the human line alone that catches it. Declaring the wrong shape for an axis reddens four laws. Renaming a published wire key reddens the serializer-agreement law.",
+        "STAR AN INJECTION FOUND A REAL GAP IN A LAW OF THIS ROUND. The wire-key rename left the end-to-end walk GREEN, because that walk lived in law 2, whose tree produces one kind — a derived equality asked about a population of one axis. The loop now runs in law 2b as well, over the tree that provokes all three, and the same injection reddens it.",
+        "STAR NON-VACUITY IS DERIVED FROM THE TABLE, NOT SPELLED. Both laws require every citation-side axis DECLARING evidence to be one the fixture reached, so a fourth payload is a red test until a tree provokes it. Proved by declaring a payload on an axis no fixture reaches: both laws fail and name it.",
+        "`cargo test --workspace --all-features --locked --no-fail-fast`: 155 targets, 1964 passed, 0 failed. The two suites this round edits moved 454 to 455 and 11 to 12; the 155 `test result` lines were reconciled against 155 `running` lines.",
+        "`cargo clippy --workspace --locked --all-targets --all-features -- -D warnings` exit 0. `cargo fmt --all --check` exit 0.",
+        "`mnemosyne-cli validate-workspace` exit 0; side workspaces 14 checked, 0 skipped."
+      ],
+      "carry_forward_bullets": [
+        "THE SCE REPLY OWES A THIRD WIRE CHANGE. `citation_unbound` gains `bound_files` and `prose_fact_assertion` gains `assertion_verb`, both additive and both adding a clause to the human line, which a consumer parsing that line by position rather than by prefix should hear about. It joins Round 1158's `found` / `expected` and Round 1162's Rust binding change in the reply whose only blocker is routing.",
+        "THE FIVE REMAINING AXES READ NOTHING, AND THAT IS NOW A DECLARATION RATHER THAN AN OBSERVATION. What none of them can offer is what the author MEANT: a missing `Round NNN` is repaired by the id they intended, and no program here holds it. A nearest-match would be a guess wearing a report's authority."
+      ],
+      "population_census": [
+        {
+          "axis": "transition rules by `undirected`",
+          "left_label": "undirected",
+          "left": 10,
+          "right_label": "directed",
+          "right": 27
+        },
+        {
+          "axis": "map corpora by leg-kind declaration",
+          "left_label": "omitted",
+          "left": 6,
+          "right_label": "declared",
+          "right": 24
+        },
+        {
+          "axis": "cost-carrying corpora by direction-dependent pricing",
+          "left_label": "prices a way by direction",
+          "left": 4,
+          "right_label": "prices no way by direction",
+          "right": 6
+        },
+        {
+          "axis": "run trees by authoring mode",
+          "left_label": "hand script",
+          "left": 10,
+          "right_label": "file-only",
+          "right": 239
+        },
+        {
+          "axis": "map corpora by declared boundary crossing",
+          "left_label": "declares an exit",
+          "left": 6,
+          "right_label": "declares none",
+          "right": 24
+        },
+        {
+          "axis": "authored submissions by map and telling",
+          "left_label": "carries both",
+          "left": 10,
+          "right_label": "carries one",
+          "right": 24
+        }
+      ],
+      "publishable_decision_summary": "R1167 (DEBT) — Round 1158 shipped the symbol axis's payload and wrote its own\nresidue down: THE OTHER SEVEN CITATION AXES READ NO CODE, SO THEY CARRY NOTHING.\nThat sentence was half wrong, and the wrong half is the round. Two of the seven\nread something and threw it away. `citation_unbound` looks up the files the\ncited section DOES bind — that lookup IS the test — and kept only the boolean.\n`prose_fact_assertion` matches one of eight spellings in two languages and bound\nit to `_verb`. Both left a consumer doing exactly what Round 1158 spared them on\nthe symbol axis: opening the store, or re-deriving a list that lives in a crate\nof ours.\n\nSTAR ONE FIELD, NOT THREE. `read: Option<ReadSymbol>` becomes `evidence:\nOption<CitationEvidence>`. Three parallel `Option`s would be eight states of\nwhich five are nonsense and one restated invariant per field; the enum has four\nstates and `AuditAxis::evidence` — exhaustive over all thirteen axes — says\nwhich one each kind must be. The kind's own payload is still the tidier home and\nstill refused for Round 1158's reason: `ViolationKind` is a `Copy` tag read as a\nkey by the severity map, the axis map and `kind_tag`.\n\nSTAR WHAT QUALIFIES AS EVIDENCE IS NOT A JUDGEMENT CALL. Every variant is a\nvalue the axis ALREADY COMPUTED and dropped. The other five compare an\nidentifier against a key set and read nothing at the site, and now say so BY\nNAME in the table rather than by an absence a reader has to interpret. Nothing\nwas invented to fill a column.\n\nSTAR AN EMPTY BINDING SET IS AN ANSWER. A section that binds nobody yields\n`bound_files: []`, not absent evidence: \"you are not in the list\" and \"there is\nno list\" are different repairs, and that is the `0` vs `null` distinction of\nRound 1141 one level down.\n\nSTAR THE PUBLISHED WIRE NAMES ARE ASKED, NOT SPELLED. `EvidenceShape::wire_keys`\npublishes the `--json` key set per shape, a lib law holds it against what\n`to_cli_json` actually writes, and the end-to-end law derives its expectation\nfrom it. Serializer to declaration to law, with no link stated twice.",
+      "publishable_changes_bullets": [
+        "`crates/mnemosyne-validate/src/code_refs.rs` — `CitationEvidence` (symbol drift, section bindings, assertion verb), `EvidenceShape` + `wire_keys`, and `AuditAxis::evidence` as the declaration every emit site is checked against.",
+        "Same file — `CodeRefViolation::Citation.read` becomes `evidence`; the unbound and prose emit sites publish what they had been dropping; `to_cli_json` gains `bound_files` and `assertion_verb`; `Display` gains a clause per shape.",
+        "Same file — the hand-built all-thirteen-axis fixture becomes `every_violation_shape()`, so the laws that must hold for EVERY axis read one list rather than each carrying its own.",
+        "`crates/mnemosyne-cli/tests/symbol_axis_reach.rs` — law 2b: a tree that provokes all three evidence axes through the binary, checked on the wire AND on the line a person reads."
+      ],
+      "publishable_verification_bullets": [
+        "RED FIRST, and for the right reason: the wire law was written before any production line and failed on the absent `bound_files` at `src/prose.rs:1`.",
+        "STAR SEVEN INJECTIONS, EVERY ONE CONFIRMED FIRING. Dropping the unbound evidence, dropping the verb, and rendering the unbound clause without the files each redden both the lib law and the end-to-end law — the third with the wire untouched, so it is the human line alone that catches it. Declaring the wrong shape for an axis reddens four laws. Renaming a published wire key reddens the serializer-agreement law.",
+        "STAR AN INJECTION FOUND A REAL GAP IN A LAW OF THIS ROUND. The wire-key rename left the end-to-end walk GREEN, because that walk lived in law 2, whose tree produces one kind — a derived equality asked about a population of one axis. The loop now runs in law 2b as well, over the tree that provokes all three, and the same injection reddens it.",
+        "STAR NON-VACUITY IS DERIVED FROM THE TABLE, NOT SPELLED. Both laws require every citation-side axis DECLARING evidence to be one the fixture reached, so a fourth payload is a red test until a tree provokes it. Proved by declaring a payload on an axis no fixture reaches: both laws fail and name it.",
+        "`cargo test --workspace --all-features --locked --no-fail-fast`: 155 targets, 1964 passed, 0 failed. The two suites this round edits moved 454 to 455 and 11 to 12; the 155 `test result` lines were reconciled against 155 `running` lines.",
+        "`cargo clippy --workspace --locked --all-targets --all-features -- -D warnings` exit 0. `cargo fmt --all --check` exit 0.",
+        "`mnemosyne-cli validate-workspace` exit 0; side workspaces 14 checked, 0 skipped."
+      ],
+      "publishable_carry_forward_bullets": [
+        "THE SCE REPLY OWES A THIRD WIRE CHANGE. `citation_unbound` gains `bound_files` and `prose_fact_assertion` gains `assertion_verb`, both additive and both adding a clause to the human line, which a consumer parsing that line by position rather than by prefix should hear about. It joins Round 1158's `found` / `expected` and Round 1162's Rust binding change in the reply whose only blocker is routing.",
+        "THE FIVE REMAINING AXES READ NOTHING, AND THAT IS NOW A DECLARATION RATHER THAN AN OBSERVATION. What none of them can offer is what the author MEANT: a missing `Round NNN` is repaired by the id they intended, and no program here holds it. A nearest-match would be a guess wearing a report's authority."
+      ]
+    },
     "Round 252": {
       "decision_summary": "Parser CommonMark conformance — recognize indented fenced code blocks (§98) and require whitespace after ATX hash sequence (§62)",
       "changes_bullets": [
