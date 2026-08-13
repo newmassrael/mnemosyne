@@ -294,9 +294,18 @@ impl SymbolResolver for TreesitterResolver {
             return Ok(out);
         }
 
+        // THE SOURCE'S LINES, SPLIT ONCE FOR THE WHOLE CALL. Pass 1 needs the
+        // text of two rows and used to reach them with `split('\n').nth(row)`,
+        // which walks the file from the start — once per requested line, so a
+        // whole-file request was quadratic in the file's length. Nothing saw it
+        // while the one language whose citations are all module-level was also
+        // the one language with the pass switched off; putting this repository
+        // itself under the real-tree pass is what priced it.
+        let text: Vec<&str> = source.split('\n').collect();
+
         let mut pending: Vec<(u32, usize)> = Vec::new();
         for (line, row) in rows {
-            match self.documented_symbol(root, source, row) {
+            match self.documented_symbol(root, source, &text, row) {
                 Some(name) => {
                     out.insert(line, name);
                 }
@@ -312,29 +321,34 @@ impl SymbolResolver for TreesitterResolver {
         let mut matches = cursor.matches(query, root, source.as_bytes());
         // row -> (extent of the smallest covering declaration, its name)
         let mut best: BTreeMap<usize, (usize, String)> = BTreeMap::new();
+        // THE PENDING ROWS, SORTED, SO A CAPTURE FINDS THE ONES IT COVERS BY
+        // BINARY SEARCH. Scanning every pending row per capture is quadratic in
+        // a whole-file request, which is the request the real-tree pass makes of
+        // every file it reads and the one a `--filter-id`-less run makes of a
+        // large source. The set is what matters here, not the caller's order.
+        let mut sorted: Vec<usize> = pending.iter().map(|(_, row)| *row).collect();
+        sorted.sort_unstable();
+        sorted.dedup();
 
         while let Some(m) = matches.next() {
             for cap in m.captures {
                 let node: Node = cap.node;
                 let start = node.start_position().row;
                 let end = node.end_position().row;
-                let covered: Vec<usize> = pending
-                    .iter()
-                    .map(|(_, row)| *row)
-                    .filter(|row| *row >= start && *row <= end)
-                    .collect();
-                if covered.is_empty() {
+                let lo = sorted.partition_point(|row| *row < start);
+                let hi = sorted.partition_point(|row| *row <= end);
+                if lo == hi {
                     continue;
                 }
                 let Some(name) = (self.spec.name_of)(node, source.as_bytes()) else {
                     continue;
                 };
                 let span = end.saturating_sub(start);
-                for row in covered {
-                    match best.get(&row) {
+                for row in &sorted[lo..hi] {
+                    match best.get(row) {
                         Some((cur_span, _)) if span >= *cur_span => {}
                         _ => {
-                            best.insert(row, (span, name.clone()));
+                            best.insert(*row, (span, name.clone()));
                         }
                     }
                 }
@@ -351,9 +365,15 @@ impl SymbolResolver for TreesitterResolver {
 
 impl TreesitterResolver {
     /// Pass 1 — see [`SymbolResolver::resolve_symbols_at`].
-    fn documented_symbol(&self, root: Node, source: &str, row: usize) -> Option<String> {
+    fn documented_symbol(
+        &self,
+        root: Node,
+        source: &str,
+        text: &[&str],
+        row: usize,
+    ) -> Option<String> {
         let rule = &self.spec.doc_comments;
-        let line = source.split('\n').nth(row)?;
+        let line = *text.get(row)?;
         // Byte column of the first non-whitespace character. Comment openers
         // are ASCII in every grammar this serves, so byte == char offset here.
         // IT IS ALSO WHAT KEEPS A TRAILING COMMENT OUT OF THIS PASS: on
@@ -403,7 +423,7 @@ impl TreesitterResolver {
         // after the run is where the documented thing must BEGIN, whatever the
         // shape of the tree above it.
         let next_row = last_text_row(last) + 1;
-        let next_line = source.split('\n').nth(next_row)?;
+        let next_line = *text.get(next_row)?;
         // A blank line breaks the association, so a file header does not become
         // the name of whatever follows it.
         if next_line.trim().is_empty() {

@@ -57,6 +57,8 @@ pub const DOC_COMMENTS: DocCommentRule = DocCommentRule {
     inward_markers: &["inner_doc_comment_marker"],
     documented_kinds: &[
         "function_item",
+        "function_signature_item",
+        "associated_type",
         "struct_item",
         "enum_item",
         "trait_item",
@@ -79,6 +81,8 @@ pub static SPEC: LanguageSpec = LanguageSpec {
     language: || tree_sitter_rust::LANGUAGE.into(),
     query_source: r"
         (function_item) @item
+        (function_signature_item) @item
+        (associated_type) @item
         (struct_item) @item
         (enum_item) @item
         (trait_item) @item
@@ -105,12 +109,19 @@ pub static SPEC: LanguageSpec = LanguageSpec {
 fn rust_name_of(node: Node, src: &[u8]) -> Option<String> {
     match node.kind() {
         "impl_item" => field_text(node, "type", &["type_identifier"], src),
-        "function_item" | "mod_item" | "const_item" | "static_item" | "macro_definition" => {
-            field_text(node, "name", &["identifier"], src)
-        }
-        "struct_item" | "enum_item" | "trait_item" | "type_item" | "union_item" => {
-            field_text(node, "name", &["type_identifier"], src)
-        }
+        // `function_signature_item` IS A TRAIT'S REQUIRED METHOD, and it took a
+        // built corpus to notice it was missing: a `fn m(&self);` with no body
+        // is not a `function_item`, so a citation on one bound to the TRAIT.
+        // The port that carried this backend could not have found it — its
+        // predecessor captured the same eleven kinds.
+        "function_item"
+        | "function_signature_item"
+        | "mod_item"
+        | "const_item"
+        | "static_item"
+        | "macro_definition" => field_text(node, "name", &["identifier"], src),
+        "struct_item" | "enum_item" | "trait_item" | "type_item" | "union_item"
+        | "associated_type" => field_text(node, "name", &["type_identifier"], src),
         _ => None,
     }
 }

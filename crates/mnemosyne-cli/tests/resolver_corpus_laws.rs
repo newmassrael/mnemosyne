@@ -73,6 +73,29 @@ struct Shape {
     answers: &'static [Option<&'static str>],
 }
 
+/// Where a subject's REAL-TREE pass gets its files.
+///
+/// Round 1163 split this, because "a real tree" had come to mean one machine's
+/// consumer checkout and nothing else — so the two backends that were PORTS met
+/// no real source anywhere once their port harnesses were deleted, and Rust's
+/// new doc-comment binding shipped with only built witnesses behind it.
+enum RealTree {
+    /// The consumer checkout named by `MNEMOSYNE_RESOLVER_CORPUS`, when this
+    /// machine has one. Opt-in, and it MUST measure when it is asked to.
+    NamedByEnv {
+        /// The fewest files that tree must hold for the pass to be about
+        /// something. A floor and not an oracle: nothing here knows what a
+        /// consumer's tree contains, only that a derivation returning almost
+        /// nothing is broken.
+        min_files: usize,
+    },
+    /// THIS REPOSITORY, which is itself a real corpus of several hundred tracked
+    /// Rust files — so this pass needs no variable, and runs on every machine
+    /// and in CI. Its floor is an EQUALITY rather than a number: every tracked
+    /// file of the subject's extensions must be one the pass read.
+    ThisRepository,
+}
+
 struct Subject {
     language: &'static str,
     spec: &'static LanguageSpec,
@@ -80,13 +103,131 @@ struct Subject {
     /// Prepended to every built file. Go needs a package clause to parse as one.
     prelude: &'static str,
     shapes: &'static [Shape],
-    /// Extensions this backend's language maps to, as `git ls-files` globs —
-    /// used only by the discovery pass over a real tree.
+    /// Extensions this backend's language maps to, as `git ls-files` globs.
     globs: &'static [&'static str],
-    /// The fewest FILES a real tree must hold for the discovery pass to be about
-    /// something. Unused by the built corpus, which derives its own floor.
-    min_files: usize,
+    /// Where this subject's real-tree pass reads from.
+    real_tree: RealTree,
+    /// One witness per entry of the spec's `documented_kinds`.
+    witnesses: &'static [DocWitness],
+    /// One witness per entry of the spec's `inward_markers`.
+    inward: &'static [InwardWitness],
 }
+
+const CPP_SHAPES: &[Shape] = &[
+    Shape {
+        label: "function_definition",
+        body: "int fn{N}() {\n    return 0;\n}\n",
+        answers: &[Some("fn{N}"), Some("fn{N}"), Some("fn{N}")],
+    },
+    Shape {
+        // `class_specifier` holding a `field_declaration` twice over: a member
+        // variable and a method prototype are the same node kind here, and the
+        // brace lines belong to the class.
+        label: "class_specifier with field_declaration members",
+        body: "class Cls{N} {\n    int field{N};\n    int meth{N}();\n};\n",
+        answers: &[
+            Some("Cls{N}"),
+            Some("field{N}"),
+            Some("meth{N}"),
+            Some("Cls{N}"),
+        ],
+    },
+    Shape {
+        label: "struct_specifier",
+        body: "struct Str{N} {\n    int s{N};\n};\n",
+        answers: &[Some("Str{N}"), Some("s{N}"), Some("Str{N}")],
+    },
+    Shape {
+        label: "union_specifier",
+        body: "union Uni{N} {\n    int u{N};\n};\n",
+        answers: &[Some("Uni{N}"), Some("u{N}"), Some("Uni{N}")],
+    },
+    Shape {
+        label: "enum_specifier",
+        body: "enum Enu{N} {\n    A{N}\n};\n",
+        answers: &[Some("Enu{N}"), Some("Enu{N}"), Some("Enu{N}")],
+    },
+    Shape {
+        // `namespace_definition` is captured by the query and is NOT a
+        // documented kind — the two questions differ, and the corpus is where
+        // that difference is visible.
+        label: "namespace_definition holding an out-of-line definition",
+        body: "namespace ns{N} {\nint free{N}() {\n    return 1;\n}\n}\n",
+        answers: &[
+            Some("ns{N}"),
+            Some("free{N}"),
+            Some("free{N}"),
+            Some("free{N}"),
+            Some("ns{N}"),
+        ],
+    },
+];
+
+const RUST_SHAPES: &[Shape] = &[
+    Shape {
+        label: "function_item",
+        body: "fn fn{N}() -> u32 {\n    0\n}\n",
+        answers: &[Some("fn{N}"), Some("fn{N}"), Some("fn{N}")],
+    },
+    Shape {
+        label: "struct_item",
+        body: "pub struct Str{N} {\n    field{N}: u32,\n}\n",
+        answers: &[Some("Str{N}"), Some("Str{N}"), Some("Str{N}")],
+    },
+    Shape {
+        label: "enum_item",
+        body: "enum Enu{N} {\n    A{N},\n}\n",
+        answers: &[Some("Enu{N}"), Some("Enu{N}"), Some("Enu{N}")],
+    },
+    Shape {
+        // THE SHAPE THE BUILT CORPUS FOUND. A trait's required method has no
+        // body and so is a `function_signature_item`, which this backend's
+        // query did not capture until Round 1163 — a citation on that line
+        // bound to the TRAIT, and every hand-written case used a method WITH a
+        // body and passed.
+        label: "trait_item with a required method and an associated type",
+        body: "trait Tra{N} {\n    type Assoc{N};\n    fn req{N}(&self);\n}\n",
+        answers: &[
+            Some("Tra{N}"),
+            Some("Assoc{N}"),
+            Some("req{N}"),
+            Some("Tra{N}"),
+        ],
+    },
+    Shape {
+        // The smallest covering declaration is the inner `fn`, and the impl's
+        // own line is the impl — the nesting law, in the corpus rather than in
+        // a single hand-written case.
+        label: "impl_item holding a function_item",
+        body: "impl Str{N} {\n    fn meth{N}(&self) {}\n}\n",
+        answers: &[Some("Str{N}"), Some("meth{N}"), Some("Str{N}")],
+    },
+    Shape {
+        label: "mod_item holding a const_item",
+        body: "mod mod{N} {\n    const C{N}: u32 = 1;\n}\n",
+        answers: &[Some("mod{N}"), Some("C{N}"), Some("mod{N}")],
+    },
+    Shape {
+        label: "static_item",
+        body: "static ST{N}: u32 = 2;\n",
+        answers: &[Some("ST{N}")],
+    },
+    Shape {
+        label: "type_item",
+        body: "type Ali{N} = u32;\n",
+        answers: &[Some("Ali{N}")],
+    },
+    Shape {
+        label: "union_item",
+        body: "union Uni{N} {\n    u{N}: u32,\n}\n",
+        answers: &[Some("Uni{N}"), Some("Uni{N}"), Some("Uni{N}")],
+    },
+    Shape {
+        label: "macro_definition",
+        body: "macro_rules! mac{N} {\n    () => {};\n}\n",
+        answers: &[Some("mac{N}"), Some("mac{N}"), Some("mac{N}")],
+    },
+];
 
 const GO_SHAPES: &[Shape] = &[
     Shape {
@@ -185,7 +326,27 @@ const KOTLIN_SHAPES: &[Shape] = &[
     },
 ];
 
+/// EVERY BACKEND THIS BUILD SHIPS, and the population law says so against
+/// `mnemosyne_cli::backends` rather than against this file's idea of one.
+///
+/// Round 1161 covered the three that arrived without a predecessor and left the
+/// two PORTS out, on the reasoning that a port already had an oracle: agreement
+/// with the implementation it replaced. Round 1162 found what that reasoning
+/// cannot see — a defect the predecessor ALSO had. Rust's port agreed line for
+/// line over 313 files and 221787 lines while both bound a `///` citation to
+/// the wrong item. So the ports are here now, on the same laws as the rest.
 const SUBJECTS: &[Subject] = &[
+    Subject {
+        language: "cpp",
+        spec: &mnemosyne_plugin_tree_sitter_cpp::SPEC,
+        resolver: || Box::new(mnemosyne_plugin_tree_sitter_cpp::resolver()),
+        prelude: "",
+        shapes: CPP_SHAPES,
+        globs: &["*.cpp", "*.cc", "*.h", "*.hpp"],
+        real_tree: RealTree::NamedByEnv { min_files: 500 },
+        witnesses: CPP_WITNESSES,
+        inward: &[],
+    },
     Subject {
         language: "go",
         spec: &mnemosyne_plugin_tree_sitter_go::SPEC,
@@ -193,16 +354,9 @@ const SUBJECTS: &[Subject] = &[
         prelude: "package corpus\n\n",
         shapes: GO_SHAPES,
         globs: &["*.go"],
-        min_files: 100,
-    },
-    Subject {
-        language: "python",
-        spec: &mnemosyne_plugin_tree_sitter_python::SPEC,
-        resolver: || Box::new(mnemosyne_plugin_tree_sitter_python::resolver()),
-        prelude: "",
-        shapes: PYTHON_SHAPES,
-        globs: &["*.py"],
-        min_files: 100,
+        real_tree: RealTree::NamedByEnv { min_files: 100 },
+        witnesses: GO_WITNESSES,
+        inward: &[],
     },
     Subject {
         language: "kotlin",
@@ -211,7 +365,35 @@ const SUBJECTS: &[Subject] = &[
         prelude: "",
         shapes: KOTLIN_SHAPES,
         globs: &["*.kt", "*.kts"],
-        min_files: 300,
+        real_tree: RealTree::NamedByEnv { min_files: 300 },
+        witnesses: KOTLIN_WITNESSES,
+        inward: &[],
+    },
+    Subject {
+        language: "python",
+        spec: &mnemosyne_plugin_tree_sitter_python::SPEC,
+        resolver: || Box::new(mnemosyne_plugin_tree_sitter_python::resolver()),
+        prelude: "",
+        shapes: PYTHON_SHAPES,
+        globs: &["*.py"],
+        real_tree: RealTree::NamedByEnv { min_files: 100 },
+        witnesses: PYTHON_WITNESSES,
+        inward: &[],
+    },
+    Subject {
+        language: "rust",
+        spec: &mnemosyne_plugin_tree_sitter_rust::SPEC,
+        resolver: || Box::new(mnemosyne_plugin_tree_sitter_rust::resolver()),
+        prelude: "",
+        shapes: RUST_SHAPES,
+        globs: &["*.rs"],
+        // THE ONE SUBJECT WHOSE REAL TREE TRAVELS WITH THE LAWS. Rust's new
+        // doc-comment binding would otherwise meet no real source anywhere: the
+        // enrolled consumer corpus is C++, and this repository's own citations
+        // are all module-level, so its symbol axis has an empty population.
+        real_tree: RealTree::ThisRepository,
+        witnesses: RUST_WITNESSES,
+        inward: RUST_INWARD,
     },
 ];
 
@@ -264,17 +446,6 @@ struct InwardWitness {
     inward_binds_to: Option<&'static str>,
     /// What the outward spelling resolves to: the declaration below it.
     outward_binds_to: &'static str,
-}
-
-/// A backend put to the doc-comment criterion.
-struct DocSubject {
-    language: &'static str,
-    spec: &'static LanguageSpec,
-    resolver: fn() -> Box<dyn SymbolResolver>,
-    /// Prepended to every witness source. Go needs a package clause to parse.
-    prelude: &'static str,
-    witnesses: &'static [DocWitness],
-    inward: &'static [InwardWitness],
 }
 
 const CPP_WITNESSES: &[DocWitness] = &[
@@ -524,6 +695,24 @@ const RUST_WITNESSES: &[DocWitness] = &[
         detached: None,
     },
     DocWitness {
+        kind: "function_signature_item",
+        before: "trait Holder2 {\n",
+        doc: "    /// documents req\n",
+        decl: "    fn req(&self);\n",
+        after: "}\n",
+        binds_to: "req",
+        detached: Some("Holder2"),
+    },
+    DocWitness {
+        kind: "associated_type",
+        before: "trait Holder3 {\n",
+        doc: "    /// documents Assoc\n",
+        decl: "    type Assoc;\n",
+        after: "}\n",
+        binds_to: "Assoc",
+        detached: Some("Holder3"),
+    },
+    DocWitness {
         kind: "impl_item",
         before: "",
         doc: "/// documents the impl\n",
@@ -597,55 +786,6 @@ const RUST_INWARD: &[InwardWitness] = &[InwardWitness {
     inward_binds_to: Some("holder"),
     outward_binds_to: "Inner",
 }];
-
-/// EVERY BACKEND THIS BUILD SHIPS, and the population law below says so against
-/// `mnemosyne_cli::backends`. The corpus subjects above are the three that
-/// arrived without a predecessor; the doc-comment claim needs all five, because
-/// a PORT's oracle cannot find a defect the predecessor also had — Rust's
-/// backend agreed with its predecessor line for line while both bound a `///`
-/// citation to the wrong item.
-const DOC_SUBJECTS: &[DocSubject] = &[
-    DocSubject {
-        language: "cpp",
-        spec: &mnemosyne_plugin_tree_sitter_cpp::SPEC,
-        resolver: || Box::new(mnemosyne_plugin_tree_sitter_cpp::resolver()),
-        prelude: "",
-        witnesses: CPP_WITNESSES,
-        inward: &[],
-    },
-    DocSubject {
-        language: "go",
-        spec: &mnemosyne_plugin_tree_sitter_go::SPEC,
-        resolver: || Box::new(mnemosyne_plugin_tree_sitter_go::resolver()),
-        prelude: "package corpus\n\n",
-        witnesses: GO_WITNESSES,
-        inward: &[],
-    },
-    DocSubject {
-        language: "kotlin",
-        spec: &mnemosyne_plugin_tree_sitter_kotlin::SPEC,
-        resolver: || Box::new(mnemosyne_plugin_tree_sitter_kotlin::resolver()),
-        prelude: "",
-        witnesses: KOTLIN_WITNESSES,
-        inward: &[],
-    },
-    DocSubject {
-        language: "python",
-        spec: &mnemosyne_plugin_tree_sitter_python::SPEC,
-        resolver: || Box::new(mnemosyne_plugin_tree_sitter_python::resolver()),
-        prelude: "",
-        witnesses: PYTHON_WITNESSES,
-        inward: &[],
-    },
-    DocSubject {
-        language: "rust",
-        spec: &mnemosyne_plugin_tree_sitter_rust::SPEC,
-        resolver: || Box::new(mnemosyne_plugin_tree_sitter_rust::resolver()),
-        prelude: "",
-        witnesses: RUST_WITNESSES,
-        inward: RUST_INWARD,
-    },
-];
 
 /// One built file: its source and the name expected at each 1-based line.
 struct Built {
@@ -843,7 +983,7 @@ fn the_built_corpus_answers_exactly_what_was_planted_in_it() {
 ///
 /// `detached` inserts the blank line that breaks the association, which is the
 /// only difference between the law's source and its control.
-fn witness_source(subject: &DocSubject, w: &DocWitness, detached: bool) -> (String, Vec<u32>) {
+fn witness_source(subject: &Subject, w: &DocWitness, detached: bool) -> (String, Vec<u32>) {
     let head = format!("{}{}", subject.prelude, w.before);
     let first = head.lines().count() as u32 + 1;
     let count = w.doc.lines().count() as u32;
@@ -852,7 +992,7 @@ fn witness_source(subject: &DocSubject, w: &DocWitness, detached: bool) -> (Stri
     (source, (first..first + count).collect())
 }
 
-fn answers(subject: &DocSubject, source: &str, lines: &[u32]) -> BTreeMap<u32, String> {
+fn answers(subject: &Subject, source: &str, lines: &[u32]) -> BTreeMap<u32, String> {
     (subject.resolver)()
         .resolve_symbols_at(Path::new("/no/such/file"), source, lines)
         .expect("the resolver answers")
@@ -863,28 +1003,15 @@ fn every_backend_this_build_ships_answers_the_doc_comment_criterion() {
     // THE POPULATION IS THE BACKEND TABLE, not this file's idea of one. A row
     // added there without a subject here reddens this, which is the same
     // derivation Law 0 makes from the compiled query.
-    let named: BTreeSet<&str> = DOC_SUBJECTS.iter().map(|s| s.spec.backend_key).collect();
+    let named: BTreeSet<&str> = SUBJECTS.iter().map(|s| s.spec.backend_key).collect();
     let shipped: BTreeSet<&str> = mnemosyne_cli::backends::keys().into_iter().collect();
     assert_eq!(
         named, shipped,
-        "every shipped backend answers the doc-comment criterion, and the \
-         answer is witnessed here"
+        "every shipped backend meets EVERY law in this file — there is no \
+         longer a subset that meets only some of them"
     );
 
-    // AND THE CORPUS SUBJECTS ARE A NAMED SUBSET OF THEM. Laws 0 to 3 run over
-    // the three backends that arrived without a predecessor; the two ports have
-    // no built shapes yet. Stating the difference is what keeps a narrowed
-    // scope from reading as the whole answer.
-    let corpus: BTreeSet<&str> = SUBJECTS.iter().map(|s| s.spec.backend_key).collect();
-    let without_shapes: Vec<&str> = named.difference(&corpus).copied().collect();
-    assert_eq!(
-        without_shapes,
-        vec!["tree-sitter-cpp", "tree-sitter-rust"],
-        "laws 0 to 3 cover every backend but the two ports; when a port gets \
-         built shapes, move it into SUBJECTS and shorten this list"
-    );
-
-    for subject in DOC_SUBJECTS {
+    for subject in SUBJECTS {
         // THE RULE IS NOT OPTIONAL. An empty list was how a backend used to
         // decline it without answering why, and that state no longer exists.
         let declared: BTreeSet<&str> = subject
@@ -934,7 +1061,7 @@ fn every_kind_a_backend_documents_is_one_a_comment_above_it_binds_to() {
     // documenting — and until this law nothing asked it anything: a kind that
     // could never bind, or a whole rule that never fired, read from outside
     // exactly like a language that chose not to have one.
-    for subject in DOC_SUBJECTS {
+    for subject in SUBJECTS {
         for w in subject.witnesses {
             let (source, lines) = witness_source(subject, w, false);
             let bound = answers(subject, &source, &lines);
@@ -980,7 +1107,7 @@ fn a_comment_marked_inward_documents_its_scope_and_not_what_follows() {
     // is decorative fails here, and so does a spec that names a node kind its
     // grammar does not produce: the inward source would bind forward like any
     // other comment.
-    for subject in DOC_SUBJECTS {
+    for subject in SUBJECTS {
         for w in subject.inward {
             let lines = [w.line];
             assert_eq!(
@@ -1044,6 +1171,18 @@ fn discovery_corpus() -> Option<PathBuf> {
     Some(root)
 }
 
+/// This repository's root, from the test binary's own manifest.
+///
+/// NOT `git rev-parse`, which answers about the CURRENT DIRECTORY and would
+/// make this pass read whatever tree the caller happened to stand in.
+fn this_repository() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .and_then(Path::parent)
+        .expect("crates/<name> sits two levels under the workspace root")
+        .to_path_buf()
+}
+
 fn tracked(root: &Path, globs: &[&str]) -> Vec<String> {
     let mut cmd = Command::new("git");
     cmd.arg("-C").arg(root).arg("ls-files");
@@ -1059,21 +1198,50 @@ fn tracked(root: &Path, globs: &[&str]) -> Vec<String> {
 }
 
 #[test]
-fn a_real_tree_meets_the_same_laws_when_this_machine_has_one() {
-    let Some(root) = discovery_corpus() else {
-        return;
-    };
+fn a_real_tree_meets_the_same_laws() {
+    let named = discovery_corpus();
+    let here = this_repository();
+    let mut measured: Vec<&str> = Vec::new();
     for subject in SUBJECTS {
+        // WHICH TREE, AND WHETHER THERE IS ONE, IS PART OF THE SUBJECT rather
+        // than of this loop — so a subject whose tree is absent is a subject
+        // that says so by name, not a silent iteration.
+        let root = match subject.real_tree {
+            RealTree::ThisRepository => here.clone(),
+            RealTree::NamedByEnv { .. } => match &named {
+                Some(root) => root.clone(),
+                None => continue,
+            },
+        };
         let files = tracked(&root, subject.globs);
-        assert!(
-            files.len() >= subject.min_files,
-            "{}: {} file(s) in the corpus, below the floor of {} — the corpus \
-             derivation broke, not the resolver",
-            subject.language,
-            files.len(),
-            subject.min_files
-        );
+        match subject.real_tree {
+            RealTree::NamedByEnv { min_files } => assert!(
+                files.len() >= min_files,
+                "{}: {} file(s) in the corpus, below the floor of {min_files} — \
+                 the corpus derivation broke, not the resolver",
+                subject.language,
+                files.len(),
+            ),
+            // AN EQUALITY, NOT A NUMBER. Round 1150 was bitten by a hand-set
+            // floor that outlived the population it was written for; this tree
+            // knows exactly how many files it tracks, so the law is that the
+            // pass read all of them.
+            RealTree::ThisRepository => assert!(
+                !files.is_empty(),
+                "{}: this repository tracks no file matching {:?}, so the pass \
+                 that is supposed to always run is about nothing",
+                subject.language,
+                subject.globs
+            ),
+        }
+        measured.push(subject.language);
         let resolver = (subject.resolver)();
+        // WHAT THE ALWAYS-ON PASS COSTS, PRINTED. It reads every tracked file
+        // three times — whole, odds, evens — and each is a parse, so this is
+        // the one law in this file that a reader might want to price. Round
+        // 1163 took it from 129s to 77s by removing two quadratics it exposed;
+        // hiding the remainder would make the next regression invisible.
+        let started = std::time::Instant::now();
 
         let mut read = 0usize;
         let mut lines_total = 0usize;
@@ -1124,12 +1292,29 @@ fn a_real_tree_meets_the_same_laws_when_this_machine_has_one() {
         }
 
         println!(
-            "{}: {read} file(s), {lines_total} line(s), {answered} answered, \
-             {} batch disagreement(s), {} answer(s) absent from their source",
+            "{} @ {}: {read} file(s), {lines_total} line(s), {answered} answered, \
+             {} batch disagreement(s), {} answer(s) absent from their source, \
+             {:.1}s",
             subject.language,
+            root.display(),
             batch_disagreements.len(),
-            not_in_source.len()
+            not_in_source.len(),
+            started.elapsed().as_secs_f64()
         );
+
+        // EVERY TRACKED FILE WAS READ, for the tree that travels with the laws.
+        // `read` skips a file that is empty or not UTF-8, and this repository
+        // has neither — so a drop here is the pass quietly shrinking rather
+        // than the tree honestly changing.
+        if matches!(subject.real_tree, RealTree::ThisRepository) {
+            assert_eq!(
+                read,
+                files.len(),
+                "{}: {read} of {} tracked file(s) were read",
+                subject.language,
+                files.len()
+            );
+        }
 
         // A FLOOR AND NOT AN ORACLE, and only here: nothing knows what a real
         // tree's right answers are, which is exactly why the built corpus exists.
@@ -1163,6 +1348,28 @@ fn a_real_tree_meets_the_same_laws_when_this_machine_has_one() {
                 .map(String::as_str)
                 .collect::<Vec<_>>()
                 .join("\n  ")
+        );
+    }
+
+    // AND THE PASS SAYS WHICH SUBJECTS IT REACHED. With no variable set this is
+    // exactly the subjects whose tree travels with the laws — a list, so that
+    // "nothing was measured" cannot be printed by an empty loop and read as
+    // "everything was clean".
+    println!("real-tree pass measured: {measured:?}");
+    let always: Vec<&str> = SUBJECTS
+        .iter()
+        .filter(|s| matches!(s.real_tree, RealTree::ThisRepository))
+        .map(|s| s.language)
+        .collect();
+    assert!(
+        !always.is_empty(),
+        "no subject reads a tree that travels with the laws, so this pass is \
+         opt-in again and the two ports meet real source nowhere"
+    );
+    for language in &always {
+        assert!(
+            measured.contains(language),
+            "{language} names this repository as its corpus and was not measured"
         );
     }
 }
