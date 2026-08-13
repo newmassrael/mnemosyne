@@ -380,6 +380,17 @@ fn mentions_of(path: &Path) -> Mentions {
 ///
 /// The chain follows PRIVATE hops as well as public ones — a wrapper whose
 /// middle link is private is the same defect one step further out of sight.
+///
+/// IT STOPS AT THE OWNING CRATE, and Round 1173 measured why rather than
+/// arguing it. Pointed at every tracked package's `src/` instead, the fixed
+/// point makes `main` an installer — some binary's `main` reaches the
+/// dispatcher install, and from there every function that calls it is one — so
+/// a test file that names the identifier `main` is refused from the shared
+/// binary for a reason that has nothing to do with what it does. That is one
+/// false positive in this tree, on the most common identifier there is. A test
+/// file can only be matched on an installer's NAME; `syn` gives syntax, not
+/// resolution, and which `main` a name refers to is a question only a compiler
+/// answers.
 fn global_installing_fns(target: &Path) -> Vec<String> {
     let Some(src) = target
         .parent()
