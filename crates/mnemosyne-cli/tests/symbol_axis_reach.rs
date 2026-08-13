@@ -69,6 +69,15 @@
 //!    for a language no entry covers is the same sentence with the halves
 //!    swapped. The refusal is downstream of the report, so a gate parsing this
 //!    command's JSON gets a diagnosis rather than a parse error.
+//!
+//! AND WHAT EVERY CITATION AXIS PUBLISHES (Rounds 1167, 1168). The five laws
+//! above are about one axis; the two below are about all eight, and they live
+//! here because this is where a violation is walked as it left the binary. Law
+//! 2b: an axis carries exactly the evidence it declares, on the wire and on the
+//! line a person reads. Law 6: `describe-citation-axes` publishes that contract
+//! — and the report is checked as the ORACLE FOR A REAL SCAN, not merely
+//! against the library it is built from, so a consumer who parses by what the
+//! report told them parses what the gate actually emits.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
@@ -1294,4 +1303,197 @@ fn the_languages_this_build_cannot_resolve_are_named_and_counted() {
         "the published gap must be the difference between the two published \
          sets, not a third answer: {json}"
     );
+}
+
+/// `describe-citation-axes --json` in `dir`, parsed.
+fn citation_axes(dir: &Path) -> (Output, serde_json::Value) {
+    let out = Command::new(cli())
+        .args(["describe-citation-axes", "--json"])
+        .current_dir(dir)
+        .output()
+        .expect("cli exec");
+    let json = serde_json::from_slice(&out.stdout).unwrap_or_else(|_| {
+        panic!(
+            "stdout is not json: {}\nstderr: {}",
+            String::from_utf8_lossy(&out.stdout),
+            String::from_utf8_lossy(&out.stderr)
+        )
+    });
+    (out, json)
+}
+
+/// LAW 6 — THE CONTRACT IS PUBLISHED, AND IT DESCRIBES THE GATE'S REAL OUTPUT
+/// (Round 1168).
+///
+/// Rounds 1158 and 1167 each put evidence on the violation wire and each ended
+/// by writing down that a consumer ought to be told, in a reply. This is the
+/// same replacement Round 1164 made for the doc-comment rule: the answer stops
+/// being a list inside a crate of ours and becomes something the consumer's own
+/// copy of the binary will say.
+///
+/// AND THE ORACLE IS A REAL SCAN, not the library the report is built from.
+/// Checking the report against `AuditAxis::evidence` alone would prove that two
+/// readings of one table agree — true, and no use to somebody writing a parser.
+/// What they need is that the keys the report names are the keys the gate
+/// EMITS, so this walks the violations of a tree that provokes all three
+/// evidence axes and holds each one against the published contract.
+#[test]
+fn the_published_axis_contract_is_the_one_a_real_scan_obeys() {
+    let tmp = TempDir::new().unwrap();
+    let (out, report) = citation_axes(tmp.path());
+    assert!(
+        out.status.success(),
+        "a property of the build needs no workspace: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+
+    // ---- the published axis space is the library's, both halves ----
+    let published: Vec<&serde_json::Value> = report["citation_axes"]
+        .as_array()
+        .expect("citation_axes array")
+        .iter()
+        .collect();
+    let published_names: BTreeSet<&str> = published
+        .iter()
+        .map(|r| r["axis"].as_str().expect("axis name"))
+        .collect();
+    let library_names: BTreeSet<&str> = mnemosyne_validate::code_refs::AuditAxis::all()
+        .into_iter()
+        .filter(|a| a.side() == mnemosyne_validate::code_refs::AuditSide::Citation)
+        .map(mnemosyne_validate::code_refs::AuditAxis::kind_tag)
+        .collect();
+    assert_eq!(
+        published_names, library_names,
+        "the report must name every citation-side axis and no other: {report}"
+    );
+    let published_spec: BTreeSet<&str> = report["spec_side_axes"]
+        .as_array()
+        .expect("spec_side_axes array")
+        .iter()
+        .map(|v| v.as_str().expect("axis name"))
+        .collect();
+    assert!(
+        !published_spec.is_empty() && published_spec.is_disjoint(&published_names),
+        "the spec-side half must be named, and named apart — a spec violation \
+         carries its own fields, not this contract: {report}"
+    );
+
+    // ---- and the keys it names are the keys the LIBRARY declares ----
+    let keys_of = |axis: &str| -> BTreeSet<String> {
+        published
+            .iter()
+            .find(|r| r["axis"] == axis)
+            .unwrap_or_else(|| panic!("the report does not name `{axis}`: {report}"))
+            ["evidence_keys"]
+            .as_array()
+            .expect("evidence_keys array")
+            .iter()
+            .map(|v| v.as_str().expect("key").to_string())
+            .collect()
+    };
+    for a in mnemosyne_validate::code_refs::AuditAxis::all()
+        .into_iter()
+        .filter(|a| a.side() == mnemosyne_validate::code_refs::AuditSide::Citation)
+    {
+        let declared: BTreeSet<String> = a
+            .evidence()
+            .wire_keys()
+            .iter()
+            .map(|k| (*k).to_string())
+            .collect();
+        assert_eq!(
+            keys_of(a.kind_tag()),
+            declared,
+            "`{}`: the report and the declaration must name the same keys",
+            a.kind_tag()
+        );
+        let shape = published
+            .iter()
+            .find(|r| r["axis"] == a.kind_tag())
+            .expect("named above")["evidence"]
+            .as_str()
+            .expect("evidence name");
+        assert_eq!(
+            shape,
+            a.evidence().as_str(),
+            "`{}`: an axis that reads nothing must SAY `nothing` rather than \
+             leave the field out",
+            a.kind_tag()
+        );
+    }
+
+    // ---- THE ORACLE: a real scan, judged against what the report published ----
+    let ws = TempDir::new().unwrap();
+    write_workspace(ws.path(), RUST_RESOLVER, false);
+    let toml = fs::read_to_string(ws.path().join("mnemosyne.toml")).unwrap();
+    fs::write(
+        ws.path().join("mnemosyne.toml"),
+        toml.replace(
+            "comment_only = true",
+            "comment_only = true\nseverity_prose_fact_assertion = \"reject\"",
+        ),
+    )
+    .unwrap();
+    fs::write(
+        ws.path().join("src/stray.rs"),
+        "// §sec1 cited from nowhere\n",
+    )
+    .unwrap();
+    fs::write(
+        ws.path().join("src/restated.rs"),
+        "// supersede §sec1, which the store already records\n",
+    )
+    .unwrap();
+    let (_, scan) = validate(ws.path());
+    let violations = scan["violations"].as_array().expect("violations array");
+
+    let universe: BTreeSet<String> = published
+        .iter()
+        .flat_map(|r| r["evidence_keys"].as_array().expect("array"))
+        .map(|v| v.as_str().expect("key").to_string())
+        .collect();
+    let mut reached: BTreeSet<&str> = BTreeSet::new();
+    for v in violations {
+        let tag = v["kind"].as_str().expect("kind");
+        reached.insert(tag);
+        let carried: BTreeSet<String> = universe
+            .iter()
+            .filter(|k| v.get(k.as_str()).is_some())
+            .cloned()
+            .collect();
+        assert_eq!(
+            carried,
+            keys_of(tag),
+            "the gate emitted a violation the published contract does not \
+             describe: {v}"
+        );
+    }
+    // NON-VACUOUS, DERIVED FROM THE REPORT ITSELF: every axis the report says
+    // carries evidence must be one this tree actually provoked, or the walk
+    // above is a walk over axes that carry nothing.
+    let declaring: BTreeSet<&str> = published
+        .iter()
+        .filter(|r| !r["evidence_keys"].as_array().expect("array").is_empty())
+        .map(|r| r["axis"].as_str().expect("axis"))
+        .collect();
+    assert!(
+        declaring.is_subset(&reached),
+        "this tree must provoke every axis the report says carries evidence — \
+         missing {:?} from {reached:?}",
+        declaring.difference(&reached).collect::<Vec<_>>()
+    );
+
+    // ---- the text form says it too (R1045) ----
+    let plain = Command::new(cli())
+        .arg("describe-citation-axes")
+        .current_dir(tmp.path())
+        .output()
+        .expect("cli exec");
+    let text = String::from_utf8_lossy(&plain.stdout);
+    for needle in ["citation_unbound", "bound_files", "assertion_verb", "found"] {
+        assert!(
+            text.contains(needle),
+            "the readable form must carry {needle:?} too:\n{text}"
+        );
+    }
 }

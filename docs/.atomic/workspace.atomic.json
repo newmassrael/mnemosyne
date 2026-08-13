@@ -10644,6 +10644,86 @@
         "THE FIVE REMAINING AXES READ NOTHING, AND THAT IS NOW A DECLARATION RATHER THAN AN OBSERVATION. What none of them can offer is what the author MEANT: a missing `Round NNN` is repaired by the id they intended, and no program here holds it. A nearest-match would be a guess wearing a report's authority."
       ]
     },
+    "Round 1168": {
+      "decision_summary": "R1168 (BUILD) — Round 1167 finished by writing down, for the third time in ten\nrounds, that a consumer OUGHT TO BE TOLD about a violation-wire change. Round\n1158 said it about `found` / `expected`, Round 1167 about `bound_files` and\n`assertion_verb`, and each entry routed the telling into a reply nobody has\nsent. That is the exact shape Round 1164 already replaced once: THE ANSWER LIVES\nIN A LIST INSIDE A CRATE OF OURS, so the consumer's route to it is our source or\nour sentence about our source, and a sentence about a table decays the round\nafter it is written.\n\nSTAR SO THE TABLE ANSWERS FOR ITSELF. `describe-citation-axes` publishes, per\ncitation-side axis, the evidence it carries and the `--json` keys that evidence\narrives under — a property of the BINARY, like its sibling, so a consumer asks\ntheir own copy rather than reading a version of this repository they may not\nhave. The spec-side five are NAMED but given no evidence column: their\nviolations carry their own fields, and a `nothing` beside them would read as\n\"carries no payload\" about violations that do.\n\nSTAR AN AXIS THAT READS NOTHING SAYS SO. `nothing` is printed as a name, not as\nan omitted field, because \"this axis declares it reads nothing\" and \"nobody said\"\nare the two readings Round 1141 spent a round separating one level up.\n\nSTAR AND THE ORACLE IS A REAL SCAN, WHICH IS THE HALF THAT MAKES THIS MORE THAN\nA SECOND READING OF ONE TABLE. Checking the report against `AuditAxis::evidence`\nproves that two views of the same declaration agree — true, and no use to\nsomebody writing a parser. The law walks the violations of a tree that provokes\nall three evidence axes and holds each one against WHAT THE REPORT PUBLISHED, so\na consumer who parses by what the report told them parses what the gate emits.",
+      "changes_bullets": [
+        "`crates/mnemosyne-validate/src/code_refs.rs` — `EvidenceShape::as_str`, the shape's name on the wire, total so the empty shape is a name rather than an absence.",
+        "`crates/mnemosyne-cli/src/main.rs` — `describe-citation-axes [--json]`, in the code-citation group beside `describe-symbol-axis-reach`; JSON and readable forms, both derived from `AuditAxis::all()` and neither restating an axis list.",
+        "`crates/mnemosyne-cli/tests/symbol_axis_reach.rs` — law 6, and a module header that says what this file now owns beyond the symbol axis."
+      ],
+      "verification_bullets": [
+        "STAR THREE INJECTIONS, EACH AIMED AT A DIFFERENT HALF OF THE LAW. A report that omits one axis's key reddens the report-versus-declaration half. A declaration the serializer does not satisfy reddens the derived non-vacuity, naming the five axes the tree does not provoke. A contract naming a key the gate never writes reddens the scan-oracle half with the offending violation printed — that third one is the assertion the first two do not reach, and it is why it was aimed at separately.",
+        "THE REPORT WAS READ, not only asserted: 8 citation axes, 3 carrying evidence, 5 spec-side, with `citation_unbound: section_bindings — bound_files in --json`.",
+        "`cargo test --workspace --all-features --locked --no-fail-fast`: 155 targets, 1965 passed, 0 failed (1964 before; law 6 is the difference). 155 `test result` lines reconciled against 155 `running` lines.",
+        "`cargo clippy --workspace --locked --all-targets --all-features -- -D warnings` exit 0. `cargo fmt --all --check` exit 0.",
+        "`mnemosyne-cli validate-workspace` exit 0; side workspaces 14 checked, 0 skipped."
+      ],
+      "carry_forward_bullets": [
+        "THE SCE REPLY IS NOW SMALLER RATHER THAN LONGER. Three of its eight items were wire changes stated in prose; what they become is one sentence naming a command their own build answers. What no verb can carry is the JUDGEMENT — that Round 1162 changed where a Rust `///` citation binds, and that thirty of their citations gained a binding — because that is a claim about THEIR tree, and the routing of it is still not ours.",
+        "THE VERB DESCRIBES THE CONTRACT, NOT THE CONFIG. Which axes a given run actually judges is a fact about a workspace and already answered by `not_judged`; keeping the two apart is what lets this one need no workspace at all."
+      ],
+      "population_census": [
+        {
+          "axis": "transition rules by `undirected`",
+          "left_label": "undirected",
+          "left": 10,
+          "right_label": "directed",
+          "right": 27
+        },
+        {
+          "axis": "map corpora by leg-kind declaration",
+          "left_label": "omitted",
+          "left": 6,
+          "right_label": "declared",
+          "right": 24
+        },
+        {
+          "axis": "cost-carrying corpora by direction-dependent pricing",
+          "left_label": "prices a way by direction",
+          "left": 4,
+          "right_label": "prices no way by direction",
+          "right": 6
+        },
+        {
+          "axis": "run trees by authoring mode",
+          "left_label": "hand script",
+          "left": 10,
+          "right_label": "file-only",
+          "right": 239
+        },
+        {
+          "axis": "map corpora by declared boundary crossing",
+          "left_label": "declares an exit",
+          "left": 6,
+          "right_label": "declares none",
+          "right": 24
+        },
+        {
+          "axis": "authored submissions by map and telling",
+          "left_label": "carries both",
+          "left": 10,
+          "right_label": "carries one",
+          "right": 24
+        }
+      ],
+      "publishable_decision_summary": "R1168 (BUILD) — Round 1167 finished by writing down, for the third time in ten\nrounds, that a consumer OUGHT TO BE TOLD about a violation-wire change. Round\n1158 said it about `found` / `expected`, Round 1167 about `bound_files` and\n`assertion_verb`, and each entry routed the telling into a reply nobody has\nsent. That is the exact shape Round 1164 already replaced once: THE ANSWER LIVES\nIN A LIST INSIDE A CRATE OF OURS, so the consumer's route to it is our source or\nour sentence about our source, and a sentence about a table decays the round\nafter it is written.\n\nSTAR SO THE TABLE ANSWERS FOR ITSELF. `describe-citation-axes` publishes, per\ncitation-side axis, the evidence it carries and the `--json` keys that evidence\narrives under — a property of the BINARY, like its sibling, so a consumer asks\ntheir own copy rather than reading a version of this repository they may not\nhave. The spec-side five are NAMED but given no evidence column: their\nviolations carry their own fields, and a `nothing` beside them would read as\n\"carries no payload\" about violations that do.\n\nSTAR AN AXIS THAT READS NOTHING SAYS SO. `nothing` is printed as a name, not as\nan omitted field, because \"this axis declares it reads nothing\" and \"nobody said\"\nare the two readings Round 1141 spent a round separating one level up.\n\nSTAR AND THE ORACLE IS A REAL SCAN, WHICH IS THE HALF THAT MAKES THIS MORE THAN\nA SECOND READING OF ONE TABLE. Checking the report against `AuditAxis::evidence`\nproves that two views of the same declaration agree — true, and no use to\nsomebody writing a parser. The law walks the violations of a tree that provokes\nall three evidence axes and holds each one against WHAT THE REPORT PUBLISHED, so\na consumer who parses by what the report told them parses what the gate emits.",
+      "publishable_changes_bullets": [
+        "`crates/mnemosyne-validate/src/code_refs.rs` — `EvidenceShape::as_str`, the shape's name on the wire, total so the empty shape is a name rather than an absence.",
+        "`crates/mnemosyne-cli/src/main.rs` — `describe-citation-axes [--json]`, in the code-citation group beside `describe-symbol-axis-reach`; JSON and readable forms, both derived from `AuditAxis::all()` and neither restating an axis list.",
+        "`crates/mnemosyne-cli/tests/symbol_axis_reach.rs` — law 6, and a module header that says what this file now owns beyond the symbol axis."
+      ],
+      "publishable_verification_bullets": [
+        "STAR THREE INJECTIONS, EACH AIMED AT A DIFFERENT HALF OF THE LAW. A report that omits one axis's key reddens the report-versus-declaration half. A declaration the serializer does not satisfy reddens the derived non-vacuity, naming the five axes the tree does not provoke. A contract naming a key the gate never writes reddens the scan-oracle half with the offending violation printed — that third one is the assertion the first two do not reach, and it is why it was aimed at separately.",
+        "THE REPORT WAS READ, not only asserted: 8 citation axes, 3 carrying evidence, 5 spec-side, with `citation_unbound: section_bindings — bound_files in --json`.",
+        "`cargo test --workspace --all-features --locked --no-fail-fast`: 155 targets, 1965 passed, 0 failed (1964 before; law 6 is the difference). 155 `test result` lines reconciled against 155 `running` lines.",
+        "`cargo clippy --workspace --locked --all-targets --all-features -- -D warnings` exit 0. `cargo fmt --all --check` exit 0.",
+        "`mnemosyne-cli validate-workspace` exit 0; side workspaces 14 checked, 0 skipped."
+      ],
+      "publishable_carry_forward_bullets": [
+        "THE SCE REPLY IS NOW SMALLER RATHER THAN LONGER. Three of its eight items were wire changes stated in prose; what they become is one sentence naming a command their own build answers. What no verb can carry is the JUDGEMENT — that Round 1162 changed where a Rust `///` citation binds, and that thirty of their citations gained a binding — because that is a claim about THEIR tree, and the routing of it is still not ours.",
+        "THE VERB DESCRIBES THE CONTRACT, NOT THE CONFIG. Which axes a given run actually judges is a fact about a workspace and already answered by `not_judged`; keeping the two apart is what lets this one need no workspace at all."
+      ]
+    },
     "Round 252": {
       "decision_summary": "Parser CommonMark conformance — recognize indented fenced code blocks (§98) and require whitespace after ATX hash sequence (§62)",
       "changes_bullets": [

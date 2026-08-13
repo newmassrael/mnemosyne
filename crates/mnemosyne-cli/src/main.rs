@@ -1476,6 +1476,19 @@ static COMMANDS: &[Command] = &[
         run: |c| cmd_describe_symbol_axis_reach(c.rest()).map_err(CliError::from),
     },
     Command {
+        name: "describe-citation-axes",
+        aliases: &[],
+        group: Some(&GROUP_CODE_CITATION),
+        blank_before: false,
+        usage: &["describe-citation-axes [--json]"],
+        notes: &[
+            "   Round 1168 — WHAT A VIOLATION CARRIES: every citation-side audit axis, the evidence",
+            "   it publishes about what it read at the site, and the `--json` keys that evidence",
+            "   arrives under. A property of the binary, so it needs no workspace.",
+        ],
+        run: |c| cmd_describe_citation_axes(c.rest()).map_err(CliError::from),
+    },
+    Command {
         name: "propose-implementations",
         aliases: &[],
         group: Some(&GROUP_CODE_CITATION),
@@ -4571,6 +4584,101 @@ fn cmd_describe_symbol_axis_reach(args: &[String]) -> Result<()> {
         backends.len(),
         languages.len(),
         without.len()
+    );
+    Ok(())
+}
+
+/// WHAT A VIOLATION CARRIES, ASKED OF THE BINARY (Round 1168).
+///
+/// Round 1158 and Round 1167 put evidence on three citation axes, and each time
+/// the round ended by writing down that the consumer should be TOLD — a wire
+/// change delivered as prose in a reply. That is the shape Round 1164 replaced
+/// once already: when the answer lives in a list inside a crate of ours, the
+/// consumer's only route to it is our source or our sentence about our source,
+/// and a sentence decays the round after it is written.
+///
+/// A PROPERTY OF THE BINARY, like its sibling, so a consumer integrating the
+/// gate can ask their own copy which keys their parser must expect rather than
+/// reading a version of this repository they may not have.
+fn cmd_describe_citation_axes(args: &[String]) -> Result<()> {
+    use mnemosyne_validate::code_refs::{AuditAxis, AuditSide};
+
+    let mut json = false;
+    for arg in args {
+        match arg.as_str() {
+            "--json" => json = true,
+            other => return Err(anyhow!("describe-citation-axes: unexpected arg `{other}`")),
+        }
+    }
+
+    let axes = AuditAxis::all();
+    let citation: Vec<&AuditAxis> = axes
+        .iter()
+        .filter(|a| a.side() == AuditSide::Citation)
+        .collect();
+    let spec: Vec<&AuditAxis> = axes
+        .iter()
+        .filter(|a| a.side() == AuditSide::Spec)
+        .collect();
+
+    if json {
+        let doc = serde_json::json!({
+            "citation_axes": citation
+                .iter()
+                .map(|a| serde_json::json!({
+                    "axis": a.kind_tag(),
+                    // A NAME AND NOT AN ABSENCE for the axes that read nothing:
+                    // "this axis declares it reads nothing" and "nobody said"
+                    // are the two readings Round 1141 exists to keep apart.
+                    "evidence": a.evidence().as_str(),
+                    "evidence_keys": a.evidence().wire_keys(),
+                }))
+                .collect::<Vec<_>>(),
+            // NAMED, NOT DESCRIBED. A spec-side violation carries its own fields
+            // (a section, a file, a symbol) and not this contract, so listing
+            // them here with an evidence column would publish a `nothing` that
+            // reads as "carries no payload" about violations that do.
+            "spec_side_axes": spec.iter().map(|a| a.kind_tag()).collect::<Vec<_>>(),
+        });
+        println!("{}", serde_json::to_string_pretty(&doc)?);
+        return Ok(());
+    }
+
+    println!("=== citation-axis evidence (a property of this build) ===");
+    println!("\n-- what each axis publishes about what it read --");
+    for a in &citation {
+        let keys = a.evidence().wire_keys();
+        if keys.is_empty() {
+            println!(
+                "  {}: reads nothing at the site — the cited id is the whole of \
+                 what it looked at",
+                a.kind_tag()
+            );
+        } else {
+            println!(
+                "  {}: {} — `{}` in --json",
+                a.kind_tag(),
+                a.evidence().as_str(),
+                keys.join("`, `")
+            );
+        }
+    }
+    println!("\n-- spec-side axes (a different shape, not this contract) --");
+    println!(
+        "  {}",
+        spec.iter()
+            .map(|a| a.kind_tag())
+            .collect::<Vec<_>>()
+            .join(", ")
+    );
+    println!(
+        "\n{} citation axis(es), {} of them carrying evidence, {} spec-side",
+        citation.len(),
+        citation
+            .iter()
+            .filter(|a| !a.evidence().wire_keys().is_empty())
+            .count(),
+        spec.len()
     );
     Ok(())
 }

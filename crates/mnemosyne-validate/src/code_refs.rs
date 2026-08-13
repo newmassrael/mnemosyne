@@ -178,6 +178,23 @@ impl EvidenceShape {
             Self::AssertionVerb => &["assertion_verb"],
         }
     }
+
+    /// The shape's name on the wire (Round 1168), for the report that publishes
+    /// this contract to a consumer who would otherwise read this file.
+    ///
+    /// TOTAL, AND `nothing` IS A NAME. Rendering the empty shape as an absence
+    /// would say "this axis has no declaration" where the truth is "this axis
+    /// declares that it reads nothing" — the distinction the enum exists to
+    /// keep, and the one Round 1141 spent a round separating one level up.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Nothing => "nothing",
+            Self::SymbolDrift => "symbol_drift",
+            Self::SectionBindings => "section_bindings",
+            Self::AssertionVerb => "assertion_verb",
+        }
+    }
 }
 
 impl CitationEvidence {
