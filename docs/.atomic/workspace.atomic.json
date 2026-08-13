@@ -10806,6 +10806,86 @@
         "WHAT NO VERB CAN CARRY IS STILL PROSE, and this reply is the proof: the sentence a consumer needs is \"thirty of YOUR citations gained a binding\", a claim about their tree that only a measurement over their checkout can make. The verbs replaced the parts that were about us."
       ]
     },
+    "Round 1170": {
+      "decision_summary": "R1170 (DEBT) — R1169 IS WRONG AND THIS IS THE CORRECTION. It opened by\nannouncing that Y3's ten-round blocker was a premise rather than a fact: that\n`claudedocs/` is not gitignored, that 880 files under it are tracked, and that\ntwenty-five `send-*` replies are the tracked precedent. The conclusion was\nright for the wrong reason and two of the three facts are false.\n\nSTAR I ASKED THE PROGRAM A NEIGHBOURING QUESTION AND READ ITS ANSWER AS MINE.\n`git check-ignore -v claudedocs/` exits 1, and I read that as \"nothing under\nhere is ignored\". The rule is `/claudedocs/*`, which matches CHILDREN: a\ndirectory that is not itself ignored can have every file inside it ignored, and\nthose are different questions with different answers. Asked about the file, the\nsame command exits 0 and prints `.gitignore:25:/claudedocs/*`.\n\nSTAR AND I READ A FILESYSTEM LISTING AS A TRACKED SET. The list of `send-*`\nreplies I cited as precedent came from `ls -1 claudedocs/*.md`, not from\n`git ls-files`. Asked properly: of 34 `send-*` documents on disk, ZERO are\ntracked. Of the 880 tracked paths, 879 are experiment evidence under `phase1-*`\nand one is `population-census.json` — precisely the two exceptions `.gitignore`\ndeclares in its own comments, three lines below the rule I misread.\n\nSTAR THE FILE ITSELF SAID SO IN WORDS. Line 24 reads \"Claude working scratch\n(RFC drafts, maintainer replies) — local only\". The ledger's premise was not a\nstale belief of mine; it was this repository's stated policy, and the memory\nnote that carried it was correct while I overruled it.\n\nSTAR WHAT SURVIVES, AND IT IS THE PART THAT MATTERED. Writing the reply was\nnever blocked — it is written, and it sits in the place this repository intends\nmaintainer replies to sit. Only routing is the gate, exactly as the ledger said\nfor ten rounds. So Y3's work is discharged; what was false was my account of\nWHY it had been possible all along, and R1169's commit carries that account.\n\nSTAR THE ENTRY IS NOT BEING REWRITTEN. It is local and unpushed and deleting it\nwould cost nothing today, which is the argument against: the frozen ledger is\nworth more than a tidy record, and an error that a later entry corrects is the\nmechanism this store has for exactly this. R1169 stands with its claim, and this\nentry is the one a reader of it must find.",
+      "changes_bullets": [
+        "No code and no document moved. The reply written in R1169 stays where it is — untracked under `claudedocs/`, which is what this repository's `.gitignore` says a maintainer reply is.",
+        "The correction is this entry. R1169's body is untouched, per the frozen-ledger rule."
+      ],
+      "verification_bullets": [
+        "THE QUESTION ASKED THE RIGHT WAY: `git check-ignore -v <the file>` exits 0 and names `.gitignore:25:/claudedocs/*`. Asked about the directory it exits 1. Both were run; the second is the one R1169 quoted.",
+        "THE TRACKED SET, FROM `git ls-files` AND NOT FROM `ls`: 880 paths under `claudedocs/`, of which 879 match `claudedocs/phase1-` and one is `population-census.json`. `git ls-files \"claudedocs/send-*\"` returns 0 rows against 34 such files on disk.",
+        "THE PRECEDENT I NAMED WAS TESTED AND REFUTED: `git ls-files --error-unmatch claudedocs/send-sce-reply-r870-…` exits 1. The sibling R1169 cited as proof of the genre being tracked is itself local-only.",
+        "THE COMMIT R1169 PRODUCED WAS READ RATHER THAN ASSUMED: `git show --stat` on it shows ONE file, `docs/.atomic/workspace.atomic.json`. The document it claims to have landed is not in it, and `git status` was clean afterwards — which is what a silently-ignored `git add -A` looks like.",
+        "`mnemosyne-cli validate-workspace` exit 0."
+      ],
+      "carry_forward_bullets": [
+        "`git add -A` FOLLOWED BY A COMMIT IS NOT A REPORT THAT THE FILES LANDED. An ignored path is skipped in silence, the commit succeeds, and `git status` comes back clean because there is nothing it will admit to seeing. The only thing that said so was `git show --stat`, read afterwards and for another reason. Whether a round should end by reading what its own commit contains is a real question this session does not settle: it is one more command per round against a failure that has now happened once.",
+        "THE REPLY IS STILL UNDELIVERED, and untracked, and that is the design rather than an accident — routing it is the owner's gate. What Y3 now owes is one action by a person, not one by a session.",
+        "I OVERRULED A CORRECT MEMORY NOTE WITH A BAD MEASUREMENT. The note said `claudedocs/` is gitignored; it was right, and it had been right for ten rounds. The failure mode is worth naming precisely because it inverts the usual one: the danger is not only a stale note, it is a fresh measurement that answers a question next to the one asked."
+      ],
+      "population_census": [
+        {
+          "axis": "transition rules by `undirected`",
+          "left_label": "undirected",
+          "left": 10,
+          "right_label": "directed",
+          "right": 27
+        },
+        {
+          "axis": "map corpora by leg-kind declaration",
+          "left_label": "omitted",
+          "left": 6,
+          "right_label": "declared",
+          "right": 24
+        },
+        {
+          "axis": "cost-carrying corpora by direction-dependent pricing",
+          "left_label": "prices a way by direction",
+          "left": 4,
+          "right_label": "prices no way by direction",
+          "right": 6
+        },
+        {
+          "axis": "run trees by authoring mode",
+          "left_label": "hand script",
+          "left": 10,
+          "right_label": "file-only",
+          "right": 239
+        },
+        {
+          "axis": "map corpora by declared boundary crossing",
+          "left_label": "declares an exit",
+          "left": 6,
+          "right_label": "declares none",
+          "right": 24
+        },
+        {
+          "axis": "authored submissions by map and telling",
+          "left_label": "carries both",
+          "left": 10,
+          "right_label": "carries one",
+          "right": 24
+        }
+      ],
+      "publishable_decision_summary": "R1170 (DEBT) — R1169 IS WRONG AND THIS IS THE CORRECTION. It opened by\nannouncing that Y3's ten-round blocker was a premise rather than a fact: that\n`claudedocs/` is not gitignored, that 880 files under it are tracked, and that\ntwenty-five `send-*` replies are the tracked precedent. The conclusion was\nright for the wrong reason and two of the three facts are false.\n\nSTAR I ASKED THE PROGRAM A NEIGHBOURING QUESTION AND READ ITS ANSWER AS MINE.\n`git check-ignore -v claudedocs/` exits 1, and I read that as \"nothing under\nhere is ignored\". The rule is `/claudedocs/*`, which matches CHILDREN: a\ndirectory that is not itself ignored can have every file inside it ignored, and\nthose are different questions with different answers. Asked about the file, the\nsame command exits 0 and prints `.gitignore:25:/claudedocs/*`.\n\nSTAR AND I READ A FILESYSTEM LISTING AS A TRACKED SET. The list of `send-*`\nreplies I cited as precedent came from `ls -1 claudedocs/*.md`, not from\n`git ls-files`. Asked properly: of 34 `send-*` documents on disk, ZERO are\ntracked. Of the 880 tracked paths, 879 are experiment evidence under `phase1-*`\nand one is `population-census.json` — precisely the two exceptions `.gitignore`\ndeclares in its own comments, three lines below the rule I misread.\n\nSTAR THE FILE ITSELF SAID SO IN WORDS. Line 24 reads \"Claude working scratch\n(RFC drafts, maintainer replies) — local only\". The ledger's premise was not a\nstale belief of mine; it was this repository's stated policy, and the memory\nnote that carried it was correct while I overruled it.\n\nSTAR WHAT SURVIVES, AND IT IS THE PART THAT MATTERED. Writing the reply was\nnever blocked — it is written, and it sits in the place this repository intends\nmaintainer replies to sit. Only routing is the gate, exactly as the ledger said\nfor ten rounds. So Y3's work is discharged; what was false was my account of\nWHY it had been possible all along, and R1169's commit carries that account.\n\nSTAR THE ENTRY IS NOT BEING REWRITTEN. It is local and unpushed and deleting it\nwould cost nothing today, which is the argument against: the frozen ledger is\nworth more than a tidy record, and an error that a later entry corrects is the\nmechanism this store has for exactly this. R1169 stands with its claim, and this\nentry is the one a reader of it must find.",
+      "publishable_changes_bullets": [
+        "No code and no document moved. The reply written in R1169 stays where it is — untracked under `claudedocs/`, which is what this repository's `.gitignore` says a maintainer reply is.",
+        "The correction is this entry. R1169's body is untouched, per the frozen-ledger rule."
+      ],
+      "publishable_verification_bullets": [
+        "THE QUESTION ASKED THE RIGHT WAY: `git check-ignore -v <the file>` exits 0 and names `.gitignore:25:/claudedocs/*`. Asked about the directory it exits 1. Both were run; the second is the one R1169 quoted.",
+        "THE TRACKED SET, FROM `git ls-files` AND NOT FROM `ls`: 880 paths under `claudedocs/`, of which 879 match `claudedocs/phase1-` and one is `population-census.json`. `git ls-files \"claudedocs/send-*\"` returns 0 rows against 34 such files on disk.",
+        "THE PRECEDENT I NAMED WAS TESTED AND REFUTED: `git ls-files --error-unmatch claudedocs/send-sce-reply-r870-…` exits 1. The sibling R1169 cited as proof of the genre being tracked is itself local-only.",
+        "THE COMMIT R1169 PRODUCED WAS READ RATHER THAN ASSUMED: `git show --stat` on it shows ONE file, `docs/.atomic/workspace.atomic.json`. The document it claims to have landed is not in it, and `git status` was clean afterwards — which is what a silently-ignored `git add -A` looks like.",
+        "`mnemosyne-cli validate-workspace` exit 0."
+      ],
+      "publishable_carry_forward_bullets": [
+        "`git add -A` FOLLOWED BY A COMMIT IS NOT A REPORT THAT THE FILES LANDED. An ignored path is skipped in silence, the commit succeeds, and `git status` comes back clean because there is nothing it will admit to seeing. The only thing that said so was `git show --stat`, read afterwards and for another reason. Whether a round should end by reading what its own commit contains is a real question this session does not settle: it is one more command per round against a failure that has now happened once.",
+        "THE REPLY IS STILL UNDELIVERED, and untracked, and that is the design rather than an accident — routing it is the owner's gate. What Y3 now owes is one action by a person, not one by a session.",
+        "I OVERRULED A CORRECT MEMORY NOTE WITH A BAD MEASUREMENT. The note said `claudedocs/` is gitignored; it was right, and it had been right for ten rounds. The failure mode is worth naming precisely because it inverts the usual one: the danger is not only a stale note, it is a fresh measurement that answers a question next to the one asked."
+      ]
+    },
     "Round 252": {
       "decision_summary": "Parser CommonMark conformance — recognize indented fenced code blocks (§98) and require whitespace after ATX hash sequence (§62)",
       "changes_bullets": [
