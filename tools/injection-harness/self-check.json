@@ -26,6 +26,42 @@
   "min_free_mb": 4000,
   "injections": [
     {
+      "name": "a-record-is-read-as-absent-when-it-will-not-parse",
+      "why": "R1198 — a firing record that has been corrupted and a sweep nobody has ever run must not be the same answer. Reading a broken record as `no record` demotes a PROVEN sweep into the counted-and-excused bucket, which is the direction that reads as compliance",
+      "edits": [
+        {
+          "file": "src/lib.rs",
+          "from": "    serde_json::from_str(&raw)\n        .map(Some)\n        .map_err(|e| format!(\"{} is not a firing record: {e}\", path.display()))",
+          "to": "    Ok(serde_json::from_str(&raw).ok())"
+        }
+      ],
+      "expect_red": ["a_record_that_will_not_parse_is_not_an_absent_one"]
+    },
+    {
+      "name": "an-edited-injection-keeps-the-evidence-of-the-old-one",
+      "why": "R1198 — the row is kept beside the definition it was proven against precisely so that editing the injection invalidates it. A comparison that looks only at the name carries yesterday's proof forward under today's edits, which is the whole failure the record exists to prevent",
+      "edits": [
+        {
+          "file": "src/lib.rs",
+          "from": "    row.edits == injection.edits && row.expect_red == injection.expect_red",
+          "to": "    let _ = (row, injection);\n    true"
+        }
+      ],
+      "expect_red": ["an_edited_injection_is_not_covered_by_the_old_evidence"]
+    },
+    {
+      "name": "a-record-belongs-to-a-directory-rather-than-a-sweep",
+      "why": "R1198's own first draft, which `tools/ci-plan/` refuted the day it was written: that directory holds TWO manifests, so one record per directory made the second sweep's every injection read as unproven and the first sweep's evidence read as answering to nothing",
+      "edits": [
+        {
+          "file": "src/lib.rs",
+          "from": "        .join(format!(\"{stem}{FIRINGS_SUFFIX}\"))",
+          "to": "        .join(format!(\"injection{FIRINGS_SUFFIX}\"))"
+        }
+      ],
+      "expect_red": ["a_record_belongs_to_one_sweep_and_not_to_a_directory"]
+    },
+    {
       "name": "the-supervisor-stops-dying-with-the-harness",
       "why": "PR_SET_PDEATHSIG is the only notification a SIGKILLed parent can arrange in advance; without it nothing under a killed sweep is told to stop",
       "edits": [

@@ -285,6 +285,14 @@ struct InjectionResult {
     targets: TargetGap,
     /// The count difference, kept for a suite whose output names no targets.
     target_drift: i64,
+    /// The injection AS RUN, carried so the firing record is written from what
+    /// this process actually applied rather than from a second read of the
+    /// manifest — two readings of one file are two answers free to disagree, and
+    /// the tree can move between them.
+    #[serde(skip)]
+    edits: Vec<Edit>,
+    #[serde(skip)]
+    expect_red: Vec<String>,
 }
 
 fn main() {
@@ -644,6 +652,8 @@ fn run() -> Result<(), String> {
             unexpected,
             targets,
             target_drift: drift,
+            edits: injection.edits.clone(),
+            expect_red: injection.expect_red.clone(),
         });
     }
 
@@ -713,7 +723,71 @@ fn run() -> Result<(), String> {
     if !broken.is_empty() {
         return Err(broken.join("\n  "));
     }
+
+    // R1198 — AND WHAT FIRED IS WRITTEN DOWN, because a run that proved
+    // something and left no trace is a proof somebody has to make again to know
+    // it was ever made. This is the ONLY writer of that record: a row a person
+    // could type is a row that says nothing, so the gate over these files is
+    // worth exactly as much as this being the only way one appears.
+    //
+    // AFTER THE JUDGEMENT AND NOT BESIDE IT. Everything above decides whether
+    // this run is comparable to its control at all — a suite that did not
+    // finish, a target set that drifted, an injection that missed what it named
+    // — and evidence written from a run that failed any of those would record
+    // firings nobody measured.
+    //
+    // MERGED, NOT REPLACED, and that is what makes `--only` the cheap way to
+    // prove one new injection: a scoped run must not erase the rows a wider one
+    // established. What it does overwrite is the row for an injection it just
+    // ran, which is how a re-measurement lands.
+    let whole = matches!(scope, Scope::EveryInjection { .. });
+    if let Err(why) = record_firings(&manifest_path, &results, whole) {
+        return Err(format!("the run held and its record did not: {why}"));
+    }
     Ok(())
+}
+
+/// Merge this run's firings into the sweep's record, creating it if needed.
+///
+/// `whole` is whether this run covered every injection the manifest holds, and
+/// it is the only writer of the record's completeness claim — a claim a person
+/// could type would make the gate that reads it a formality.
+fn record_firings(
+    manifest_path: &str,
+    results: &[InjectionResult],
+    whole: bool,
+) -> Result<(), String> {
+    let path = injection_harness::firings_path(Path::new(manifest_path));
+    let mut record = injection_harness::read_firings(&path)?.unwrap_or_default();
+    record.prose = vec![
+        "Machine-written by tools/injection-harness. Do not edit by hand: a row \
+         somebody typed is evidence of nothing, and the law over this file is \
+         worth exactly what its being unforgeable is worth."
+            .to_string(),
+        "Each row is one injection that WAS RUN and DID redden what it names, \
+         kept beside the definition it was proven against — edit the injection \
+         and the gate says the evidence is about a different one."
+            .to_string(),
+    ];
+    // A WHOLE RUN CLAIMS COMPLETENESS AND A SCOPED ONE NEVER WITHDRAWS IT. The
+    // rows an earlier whole run established are still evidence; what a `--only`
+    // run does is replace one of them. The claim going stale — a manifest that
+    // gained an injection since — is the gate's to notice, and it can only
+    // notice it while the claim is still written down.
+    record.complete = record.complete || whole;
+    for result in results {
+        record.fired.insert(
+            result.name.clone(),
+            injection_harness::Firing {
+                edits: result.edits.clone(),
+                expect_red: result.expect_red.clone(),
+                tests: result.fired.iter().cloned().collect(),
+            },
+        );
+    }
+    let mut serialized = serde_json::to_string_pretty(&record).map_err(err)?;
+    serialized.push('\n');
+    fs::write(&path, serialized).map_err(|e| format!("{} unwritable: {e}", path.display()))
 }
 
 fn err<E: std::fmt::Display>(e: E) -> String {
@@ -923,6 +997,21 @@ fn summarize(text: &str) -> Run {
         // same prefix would otherwise swallow.
         if let Some(rest) = line.strip_prefix("test ") {
             if let Some((name, _outcome)) = rest.rsplit_once(" ... ") {
+                // A `#[should_panic]` TEST IS PRINTED WITH ITS ANNOTATION AND IS
+                // NOT NAMED THAT (R1198). libtest writes `test <name> - should
+                // panic ... ok`, and a reader taking everything before ` ... `
+                // records a name no `expect_red` can ever match — so an
+                // injection aimed at such a test scores `missed` forever, and
+                // since R1183 the pre-flight refuses the WHOLE manifest for it.
+                // Measured: `tools/ci-plan/injection-sweep.json` could not be
+                // run whole from the day one of its targets gained the
+                // annotation, and every `--only` run went on passing because
+                // that check is scoped to what a run selects.
+                //
+                // THE LITERAL SUFFIX AND NOT ` - `, because a doc-test's own
+                // name holds that separator (`src/lib.rs - item (line 41)`) and
+                // cutting at it would rename every doc-test in the tree.
+                let name = name.strip_suffix(" - should panic").unwrap_or(name);
                 run.ran.insert(name.to_string());
                 continue;
             }
@@ -985,6 +1074,38 @@ test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out
             run.ran,
             BTreeSet::from(["alpha".to_string(), "beta".to_string(), "gamma".to_string()]),
             "every executed name is read, and no line that merely starts with `test `"
+        );
+    }
+
+    /// R1198 — THE ANNOTATION IS NOT PART OF THE NAME, and reading it as one
+    /// made a whole manifest unrunnable for as long as one of its targets
+    /// carried it.
+    #[test]
+    fn a_should_panic_test_is_named_by_its_own_name() {
+        let run = summarize(
+            "\
+running 3 tests
+test refuses_a_runner_it_cannot_name - should panic ... ok
+test src/lib.rs - documented (line 41) ... ok
+test src/lib.rs - panicking (line 7) - should panic ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out
+",
+        );
+        assert!(
+            run.ran.contains("refuses_a_runner_it_cannot_name"),
+            "an `expect_red` names the test, not the annotation libtest prints \
+             beside it: {:?}",
+            run.ran
+        );
+        // AND THE SEPARATOR IS NOT CUT WHERE A DOC-TEST'S OWN NAME HOLDS ONE.
+        assert!(
+            run.ran.contains("src/lib.rs - documented (line 41)")
+                && run.ran.contains("src/lib.rs - panicking (line 7)"),
+            "a doc-test is named `<file> - <item> (line N)`, so cutting at ` - ` \
+             rather than at the literal suffix would rename every one of them: \
+             {:?}",
+            run.ran
         );
     }
 

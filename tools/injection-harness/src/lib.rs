@@ -23,7 +23,10 @@ use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
 
 /// One textual replacement in one file. `from` must occur EXACTLY once.
-#[derive(Debug, Clone, Deserialize, Serialize)]
+///
+/// Comparable since R1198, because a firing record keeps the edits it was proven
+/// against and the gate holds them against the manifest's.
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct Edit {
     pub file: String,
@@ -74,6 +77,105 @@ pub struct Injection {
     /// what it was aimed at (the "0 means suspect the injection" rule).
     #[serde(default)]
     pub expect_red: Vec<String>,
+}
+
+/// What one injection was PROVEN to do, the last time somebody ran it.
+///
+/// R1198 — AN INJECTION THAT HAS NEVER BEEN RUN IS NOT A PROOF, and until this
+/// existed nothing could tell one from an injection that has. The three laws
+/// over sweeps ask whether the anchor still applies, whether the suite still
+/// exists and whether the named tests still exist — all questions about TEXT,
+/// all answerable without running anything, and all of them true of an injection
+/// that would redden nothing at all. Writing one is cheap and running it costs a
+/// suite, so the gap is exactly where a sweep quietly stops being evidence.
+///
+/// THE DEFINITION IS KEPT BESIDE THE RESULT rather than hashed, because the two
+/// spellings are compared and a reader of a failure has to see WHAT was proven.
+/// That is the shape R1116 established for a cache key spelled twice: the
+/// duplication is not the defect, an unread duplicate is.
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct Firing {
+    /// The injection AS IT WAS WHEN IT FIRED. A later edit to the edits or to
+    /// what they are expected to redden makes this row about a different
+    /// injection, and the gate says so rather than carrying the old evidence
+    /// forward under the new name.
+    pub edits: Vec<Edit>,
+    #[serde(default)]
+    pub expect_red: Vec<String>,
+    /// Every test that went red under it and not under the control.
+    pub tests: Vec<String>,
+}
+
+/// Every injection of one sweep that has been shown to fire.
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct Firings {
+    /// Written for a person who opens the file, so that "machine-written" is
+    /// said in the file rather than only in the code that writes it.
+    #[serde(rename = "_", default)]
+    pub prose: Vec<String>,
+    /// Whether a run that covered the WHOLE manifest wrote this.
+    ///
+    /// THE CLAIM AND THE EVIDENCE ARE KEPT APART SO THAT THE GATE CAN COMPARE
+    /// THEM, which is where this law's teeth are: a record that says it is whole
+    /// and does not cover some injection is a manifest that gained one since it
+    /// was proven, and that is exactly the case R1179's `--only` made cheap to
+    /// create. A record built up out of `--only` runs never claims it, so
+    /// proving one new injection stays a one-injection job instead of putting
+    /// the other sixteen under an obligation — which is what the first draft of
+    /// this did, and the reason the field exists.
+    #[serde(default)]
+    pub complete: bool,
+    /// By injection name.
+    pub fired: BTreeMap<String, Firing>,
+}
+
+/// What this repository suffixes a sweep's firing record with.
+pub const FIRINGS_SUFFIX: &str = ".firings.json";
+
+/// The record that belongs to one manifest, whether or not it exists yet.
+///
+/// NAMED FROM THE MANIFEST AND NOT FROM ITS DIRECTORY, which is a repair this
+/// round made against its own first draft: `tools/ci-plan/` holds TWO sweeps,
+/// and one record per directory made the second one's every injection read as
+/// unproven while the first one's evidence read as answering to nothing. It is
+/// the same correction R1117 made for a restore record that was a job's when a
+/// job may declare two caches — a record belongs to the thing it is about.
+#[must_use]
+pub fn firings_path(manifest: &Path) -> PathBuf {
+    let stem = manifest
+        .file_name()
+        .and_then(|name| name.to_str())
+        .and_then(|name| name.strip_suffix(".json"))
+        .unwrap_or("sweep");
+    manifest
+        .parent()
+        .unwrap_or(Path::new("."))
+        .join(format!("{stem}{FIRINGS_SUFFIX}"))
+}
+
+/// Read one, `Ok(None)` when a sweep has never had one written.
+///
+/// A file that exists and does not read as a record is an ERROR rather than an
+/// absence, for the reason every reader here refuses rather than defaults: a
+/// record nobody can parse and a sweep nobody has run look the same to a gate
+/// that treats both as "no evidence", and only one of them is honest.
+pub fn read_firings(path: &Path) -> Result<Option<Firings>, String> {
+    let raw = match fs::read_to_string(path) {
+        Ok(raw) => raw,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(e) => return Err(format!("{} unreadable: {e}", path.display())),
+    };
+    serde_json::from_str(&raw)
+        .map(Some)
+        .map_err(|e| format!("{} is not a firing record: {e}", path.display()))
+}
+
+/// Does this row record the injection as it is written today?
+#[must_use]
+pub fn records_the_same_injection(row: &Firing, injection: &Injection) -> bool {
+    row.edits == injection.edits && row.expect_red == injection.expect_red
 }
 
 /// Which of a manifest's injections a sweep is to run.
@@ -362,6 +464,89 @@ pub fn answers_to(red: &str, expected: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn injection(from: &str, expect_red: &[&str]) -> Injection {
+        Injection {
+            name: "an-injection".to_string(),
+            why: String::new(),
+            edits: vec![Edit {
+                file: "src/lib.rs".to_string(),
+                from: from.to_string(),
+                to: "broken".to_string(),
+            }],
+            expect_red: expect_red.iter().map(|n| (*n).to_string()).collect(),
+        }
+    }
+
+    /// R1198 — the record is about a DEFINITION, so editing the injection must
+    /// strand the evidence rather than carry it forward.
+    #[test]
+    fn an_edited_injection_is_not_covered_by_the_old_evidence() {
+        let proven = injection("the original text", &["a_law"]);
+        let row = Firing {
+            edits: proven.edits.clone(),
+            expect_red: proven.expect_red.clone(),
+            tests: vec!["a_law".to_string()],
+        };
+        assert!(
+            records_the_same_injection(&row, &proven),
+            "the row proves the injection it was measured against"
+        );
+        assert!(
+            !records_the_same_injection(&row, &injection("some other text", &["a_law"])),
+            "an injection whose EDITS have changed breaks something else now, and \
+             yesterday's firing is evidence about what it used to break"
+        );
+        assert!(
+            !records_the_same_injection(&row, &injection("the original text", &["a_law", "more"])),
+            "and one that now CLAIMS MORE has evidence for the smaller claim only"
+        );
+    }
+
+    /// R1198 — a corrupted record and a sweep nobody has run are different
+    /// answers, and only one of them is honest.
+    #[test]
+    fn a_record_that_will_not_parse_is_not_an_absent_one() {
+        assert!(
+            read_firings(Path::new("no-such-record.firings.json"))
+                .expect("an absent record is not an error")
+                .is_none(),
+            "a sweep nobody has run yet simply has no record"
+        );
+        // A REAL FILE THAT IS NOT ONE, and the crate's own manifest is the
+        // nearest thing this test can be sure exists and is sure is not a
+        // firing record.
+        let why = read_firings(Path::new("Cargo.toml"))
+            .expect_err("a file that exists and is not a record is not an absence");
+        assert!(
+            why.contains("not a firing record"),
+            "and it says which of the two it is: {why}"
+        );
+    }
+
+    /// R1198 — the refutation this repository's own tree supplied on the day the
+    /// record was designed.
+    #[test]
+    fn a_record_belongs_to_one_sweep_and_not_to_a_directory() {
+        let one = firings_path(Path::new("tools/ci-plan/injection-sweep.json"));
+        let other = firings_path(Path::new("tools/ci-plan/locked-resolution-sweep.json"));
+        assert_eq!(
+            one.parent(),
+            other.parent(),
+            "both sweeps live in the same directory, which is the case that \
+             matters"
+        );
+        assert_ne!(
+            one, other,
+            "and their records are different files — one per directory made the \
+             second sweep's every injection read as unproven while the first \
+             sweep's evidence read as answering to nothing"
+        );
+        assert!(
+            one.to_string_lossy().ends_with(FIRINGS_SUFFIX),
+            "the record is named from the manifest it is about: {one:?}"
+        );
+    }
 
     #[test]
     fn a_test_answers_to_its_own_name_and_not_to_a_name_it_merely_contains() {

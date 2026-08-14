@@ -172,6 +172,18 @@ fn every_tracked_sweep_still_applies_to_the_tree_it_names() {
         .collect();
     let mut hiding = Vec::new();
     for (path, why) in &others {
+        // A FIRING RECORD IS A LEGITIMATE NEIGHBOUR (R1198), and it is the one
+        // file that lives in a sweep home on purpose without reading as a sweep.
+        // Recognised BY READING IT rather than by its name: a record with a JSON
+        // typo is exactly the shape this rule exists to catch, and letting the
+        // filename alone excuse it would put the new file in the blind spot the
+        // rule was built for.
+        if path.ends_with(injection_harness::FIRINGS_SUFFIX)
+            && injection_harness::read_firings(&root.join(path))
+                .is_ok_and(|record| record.is_some())
+        {
+            continue;
+        }
         // IN A HOME: a sweep with a JSON typo and some other configuration are
         // the same shape to a reader that skipped what it could not parse, and
         // both would take a sweep out of this population without saying so.
@@ -1042,6 +1054,151 @@ fn a_command_naming_what_a_tree_does_not_build_is_named_rather_than_passed() {
     let excluded = judge(&["cargo", "test", "--workspace", "--exclude", "cli"]);
     assert_eq!(excluded.len(), 1, "{excluded:?}");
     assert!(excluded[0].contains("--exclude"), "{excluded:?}");
+}
+
+/// R1198 — AN INJECTION THAT HAS NEVER BEEN SHOWN TO FIRE IS NOT A PROOF.
+///
+/// Every law above this one asks about TEXT: does the anchor still apply, does
+/// the suite still exist, do the named tests still exist. All three are true of
+/// an injection that would redden nothing at all, because writing one is cheap
+/// and running one costs a suite — which is exactly where a sweep stops being
+/// evidence without anything saying so.
+///
+/// WHAT THIS CAN AND CANNOT DEMAND. Producing the evidence for every injection
+/// this repository tracks means running all fourteen sweeps, which is hours of
+/// suites and a cost the owner has deferred; so an unrecorded sweep is COUNTED
+/// and NAMED here rather than failed. What is enforced is the part that decays:
+/// once a sweep has a record, the record must stay whole. Adding an injection to
+/// a recorded sweep, or editing one that was proven, turns this red — and
+/// `--only <name>` makes clearing it the cost of one injection rather than of
+/// the manifest.
+#[test]
+fn every_injection_a_record_covers_is_one_that_has_fired() {
+    let root = repository_root();
+    let mut findings: Vec<String> = Vec::new();
+    let mut unproven: Vec<(String, usize)> = Vec::new();
+    let mut proven = 0usize;
+    let mut partial = 0usize;
+    let mut recorded_sweeps = 0usize;
+    let mut whole_sweeps = 0usize;
+
+    for path in tracked_json(&root) {
+        if a_test_input(&path) {
+            continue;
+        }
+        let Ok(manifest) = injection_harness::read_manifest(&root.join(&path)) else {
+            continue;
+        };
+        let record_path = injection_harness::firings_path(&root.join(&path));
+        let record = match injection_harness::read_firings(&record_path) {
+            Ok(Some(record)) => record,
+            // A RECORD THAT WILL NOT PARSE IS NOT AN ABSENT ONE. Reading it as
+            // "never run" would let a corrupted file quietly demote a proven
+            // sweep to the counted-and-excused bucket.
+            Err(why) => {
+                findings.push(why);
+                continue;
+            }
+            Ok(None) => {
+                unproven.push((path.clone(), manifest.injections.len()));
+                continue;
+            }
+        };
+        recorded_sweeps += 1;
+        if record.complete {
+            whole_sweeps += 1;
+        }
+
+        for injection in &manifest.injections {
+            match record.fired.get(&injection.name) {
+                // A RECORD BUILT OUT OF `--only` RUNS DEMANDS NOTHING OF THE
+                // INJECTIONS BESIDE IT. The teeth are for the record that CLAIMS
+                // to be whole: that claim can only have come from a run over the
+                // whole manifest, so an injection it does not cover is one added
+                // since — which is precisely the case this law exists for.
+                None if !record.complete => {
+                    partial += 1;
+                }
+                None => findings.push(format!(
+                    "{path}: this sweep has been proven WHOLE and `{}` is not in \
+                     that evidence — it was added since, so the record's claim \
+                     and its rows disagree. Prove it with `--only {}`",
+                    injection.name, injection.name
+                )),
+                Some(row) if !injection_harness::records_the_same_injection(row, injection) => {
+                    findings.push(format!(
+                        "{path}: `{}` was proven against a different definition — \
+                         the edits or the reds it names have changed since, so \
+                         the evidence is about another injection",
+                        injection.name
+                    ));
+                }
+                Some(row) => {
+                    let missing: Vec<&String> = injection
+                        .expect_red
+                        .iter()
+                        .filter(|expected| {
+                            !row.tests.iter().any(|red| {
+                                injection_harness::answers_to(red.as_str(), expected.as_str())
+                            })
+                        })
+                        .collect();
+                    if missing.is_empty() {
+                        proven += 1;
+                    } else {
+                        findings.push(format!(
+                            "{path}: `{}` is recorded as having run and its record \
+                             does not hold {missing:?} — a row that names fewer \
+                             reds than the injection claims is evidence for a \
+                             smaller claim",
+                            injection.name
+                        ));
+                    }
+                }
+            }
+        }
+
+        // AND THE OTHER DIRECTION: a row for an injection the manifest no longer
+        // has is evidence nobody can check, and it is how a rename comes to look
+        // like a proof.
+        for name in record.fired.keys() {
+            if !manifest.injections.iter().any(|i| &i.name == name) {
+                findings.push(format!(
+                    "{}: records `{name}` firing and the manifest has no such \
+                     injection — a renamed or deleted one leaves evidence that \
+                     answers to nothing",
+                    record_path.display()
+                ));
+            }
+        }
+    }
+
+    // THE COUNT IS PRINTED WHETHER OR NOT ANYTHING IS WRONG, because "no
+    // findings" here is also what a repository with no records at all looks
+    // like, and this law would then be a walk over nothing.
+    let outstanding: usize = unproven.iter().map(|(_, count)| count).sum();
+    println!(
+        "[firings] {proven} injection(s) proven across {recorded_sweeps} recorded sweep(s), \
+         {whole_sweeps} of them proven whole; {partial} injection(s) beside a partial record \
+         and {outstanding} in {} sweep(s) with no record at all",
+        unproven.len()
+    );
+    for (path, count) in &unproven {
+        println!("[firings] no record: {path} ({count} injection(s))");
+    }
+
+    assert!(
+        findings.is_empty(),
+        "{} injection(s) a record covers cannot be read as proven:\n  {}",
+        findings.len(),
+        findings.join("\n  ")
+    );
+    assert!(
+        whole_sweeps >= 1,
+        "no sweep in this repository has been proven WHOLE, so the half of this \
+         law with teeth holds over nothing — which is the empty answer that \
+         reads like a clean one"
+    );
 }
 
 #[test]

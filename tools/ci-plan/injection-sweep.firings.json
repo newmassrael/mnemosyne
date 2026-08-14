@@ -1,0 +1,449 @@
+{
+  "_": [
+    "Machine-written by tools/injection-harness. Do not edit by hand: a row somebody typed is evidence of nothing, and the law over this file is worth exactly what its being unforgeable is worth.",
+    "Each row is one injection that WAS RUN and DID redden what it names, kept beside the definition it was proven against — edit the injection and the gate says the evidence is about a different one."
+  ],
+  "complete": true,
+  "fired": {
+    "a-command-behind-a-shell-keyword-is-not-a-command": {
+      "edits": [
+        {
+          "file": "tools/ci-plan/src/lib.rs",
+          "from": "    \"if\", \"then\", \"else\", \"elif\", \"while\", \"until\", \"do\", \"!\", \"{\",",
+          "to": ""
+        }
+      ],
+      "expect_red": [
+        "a_command_written_behind_a_shell_keyword_is_still_a_command"
+      ],
+      "tests": [
+        "a_command_written_behind_a_shell_keyword_is_still_a_command"
+      ]
+    },
+    "a-declared-command-does-not-say-which-one-it-is": {
+      "edits": [
+        {
+          "file": "tools/ci-plan/src/lib.rs",
+          "from": "                owner: role.clone(),",
+          "to": "                owner: BUILD_DECLARATION.to_string(),"
+        }
+      ],
+      "expect_red": [
+        "the_declaration_is_read_for_the_commands_it_issues"
+      ],
+      "tests": [
+        "the_declaration_is_read_for_the_commands_it_issues"
+      ]
+    },
+    "a-fallback-that-still-hashes-is-accepted": {
+      "edits": [
+        {
+          "file": "tools/ci-plan/src/lib.rs",
+          "from": "        .find(|fallback| fallback.contains(\"${{\"))",
+          "to": "        .find(|fallback| fallback.contains(\"\\u{0}\"))"
+        }
+      ],
+      "expect_red": [
+        "a_fallback_that_cannot_serve_an_earlier_generation_is_named"
+      ],
+      "tests": [
+        "a_fallback_that_cannot_serve_an_earlier_generation_is_named"
+      ]
+    },
+    "a-free-resolve-over-an-owned-workspace-is-compliant": {
+      "edits": [
+        {
+          "file": "tools/ci-plan/src/lib.rs",
+          "from": "        (true, false) => LockVerdict::RepairsWhatItShouldReport,",
+          "to": "        (true, false) => LockVerdict::Pinned,"
+        }
+      ],
+      "expect_red": [
+        "a_resolve_without_the_flag_rewrites_the_lockfile_it_should_have_reported"
+      ],
+      "tests": [
+        "a_resolve_without_the_flag_rewrites_the_lockfile_it_should_have_reported"
+      ]
+    },
+    "a-runner-is-resolved-for-every-job-not-every-caching-job": {
+      "edits": [
+        {
+          "file": "tools/ci-plan/src/lib.rs",
+          "from": "        let mut os = None;",
+          "to": "        let mut os = Some(runner_os(job[\"runs-on\"].as_str().unwrap_or(\"?\")));"
+        }
+      ],
+      "expect_red": [
+        "a_job_with_no_cache_is_never_asked_for_a_runner_this_reader_must_refuse"
+      ],
+      "tests": [
+        "a_job_with_no_cache_is_never_asked_for_a_runner_this_reader_must_refuse"
+      ]
+    },
+    "a-tail-under-a-variable-need-not-be-qualified": {
+      "edits": [
+        {
+          "file": "tools/ci-plan/src/lib.rs",
+          "from": "        if must_be_qualified && !needle.contains('/') {",
+          "to": "        if false && must_be_qualified && !needle.contains('/') {"
+        }
+      ],
+      "expect_red": [
+        "a_command_this_reader_cannot_place_is_not_read_as_compliant"
+      ],
+      "tests": [
+        "a_command_this_reader_cannot_place_is_not_read_as_compliant"
+      ]
+    },
+    "a-workflow-that-uploads-nothing-still-collects": {
+      "edits": [
+        {
+          "file": "tools/ci-plan/src/lib.rs",
+          "from": "pub fn collects_artifacts(uploads: &[ArtifactUpload]) -> bool {\n    !uploads.is_empty()\n}",
+          "to": "pub fn collects_artifacts(uploads: &[ArtifactUpload]) -> bool {\n    let _ = uploads;\n    true\n}"
+        }
+      ],
+      "expect_red": [
+        "what_a_workflow_collects_is_read_because_it_decides_what_can_be_read_back"
+      ],
+      "tests": [
+        "what_a_workflow_collects_is_read_because_it_decides_what_can_be_read_back"
+      ]
+    },
+    "a-wrapper-carries-no-command": {
+      "edits": [
+        {
+          "file": "tools/ci-plan/src/lib.rs",
+          "from": "        let at = words.iter().position(|word| word == \"--\")?;",
+          "to": "        let at = words.iter().position(|word| word == \"\\u{0}\")?;"
+        }
+      ],
+      "expect_red": [
+        "a_command_a_wrapper_carries_is_still_a_command_this_repository_issues",
+        "the_reading_follows_every_hop_and_invents_no_command"
+      ],
+      "tests": [
+        "a_command_a_wrapper_carries_is_still_a_command_this_repository_issues",
+        "the_declaration_is_read_for_the_commands_it_issues",
+        "the_reading_follows_every_hop_and_invents_no_command"
+      ]
+    },
+    "an-unknown-ownership-verdict-is-read-as-owned": {
+      "edits": [
+        {
+          "file": "tools/ci-plan/src/lib.rs",
+          "from": "                _ => continue,\n            };\n            listed.ownership.insert(workspace.to_string(), ownership);",
+          "to": "                _ => Ownership::Ours,\n            };\n            listed.ownership.insert(workspace.to_string(), ownership);"
+        }
+      ],
+      "expect_red": [
+        "a_verdict_this_reader_does_not_know_is_not_read_as_either_answer"
+      ],
+      "tests": [
+        "a_verdict_this_reader_does_not_know_is_not_read_as_either_answer"
+      ]
+    },
+    "an-unknown-runner-is-guessed-at": {
+      "edits": [
+        {
+          "file": "tools/ci-plan/src/lib.rs",
+          "from": "    match label.split('-').next().unwrap_or(label) {",
+          "to": "    match \"ubuntu\" {"
+        }
+      ],
+      "expect_red": [
+        "a_runner_this_reader_cannot_name_refuses_instead_of_guessing"
+      ],
+      "tests": [
+        "a_runner_this_reader_cannot_name_refuses_instead_of_guessing"
+      ]
+    },
+    "an-unmeasured-subcommand-is-assumed-harmless": {
+      "edits": [
+        {
+          "file": "tools/ci-plan/src/lib.rs",
+          "from": "        \"fmt\" | \"sweep\" => Some(false),\n        _ => None,",
+          "to": "        \"fmt\" | \"sweep\" => Some(false),\n        _ => Some(false),"
+        }
+      ],
+      "expect_red": [
+        "a_command_this_reader_cannot_place_is_not_read_as_compliant"
+      ],
+      "tests": [
+        "a_command_this_reader_cannot_place_is_not_read_as_compliant"
+      ]
+    },
+    "an-unreadable-hashfiles-argument-is-taken-as-a-glob": {
+      "edits": [
+        {
+          "file": "tools/ci-plan/src/lib.rs",
+          "from": "            if let Some(glob) = unquoted {",
+          "to": "            if let Some(glob) = unquoted.or(Some(argument)) {"
+        }
+      ],
+      "expect_red": [
+        "a_key_says_which_files_would_legitimately_invalidate_it"
+      ],
+      "tests": [
+        "a_key_says_which_files_would_legitimately_invalidate_it"
+      ]
+    },
+    "cargos-own-marker-starts-a-second-command": {
+      "edits": [
+        {
+          "file": "tools/ci-plan/src/lib.rs",
+          "from": "        if words.first().map(String::as_str) == Some(\"cargo\") {",
+          "to": "        if words.first().map(String::as_str) == Some(\"cargo\")\n            && !words.iter().any(|word| word == \"--\")\n        {"
+        }
+      ],
+      "expect_red": [
+        "cargos_own_marker_does_not_start_a_second_command"
+      ],
+      "tests": [
+        "a_command_a_wrapper_carries_is_still_a_command_this_repository_issues",
+        "a_shell_line_is_split_where_cargo_stops_and_the_harness_starts",
+        "cargos_own_marker_does_not_start_a_second_command",
+        "the_declaration_is_read_for_the_commands_it_issues"
+      ]
+    },
+    "every-declared-command-is-a-suite": {
+      "edits": [
+        {
+          "file": "tools/ci-plan/src/lib.rs",
+          "from": "        .filter(|(declared, _)| declared.role == \"suite\")",
+          "to": "        .filter(|(declared, _)| !declared.role.is_empty())"
+        }
+      ],
+      "expect_red": [
+        "a_skipped_workspace_contributes_no_suite_to_run"
+      ],
+      "tests": [
+        "a_skipped_workspace_contributes_no_suite_to_run"
+      ]
+    },
+    "every-word-in-front-of-cargo-is-skipped": {
+      "edits": [
+        {
+          "file": "tools/ci-plan/src/lib.rs",
+          "from": "            .is_some_and(|word| SHELL_PREFIXES.contains(&word.as_str()))",
+          "to": "            .is_some_and(|word| word != \"cargo\")"
+        }
+      ],
+      "expect_red": [
+        "a_word_that_merely_starts_with_a_keyword_does_not_hide_a_command",
+        "the_reading_follows_every_hop_and_invents_no_command"
+      ],
+      "tests": [
+        "a_command_a_wrapper_carries_is_still_a_command_this_repository_issues",
+        "a_word_that_merely_starts_with_a_keyword_does_not_hide_a_command",
+        "the_declaration_is_read_for_the_commands_it_issues",
+        "the_reading_follows_every_hop_and_invents_no_command"
+      ]
+    },
+    "fmt-is-treated-as-a-resolve": {
+      "edits": [
+        {
+          "file": "tools/ci-plan/src/lib.rs",
+          "from": "        \"fmt\" | \"sweep\" => Some(false),",
+          "to": "        \"sweep\" => Some(false),\n        \"fmt\" => Some(true),"
+        }
+      ],
+      "expect_red": [
+        "a_resolve_without_the_flag_rewrites_the_lockfile_it_should_have_reported"
+      ],
+      "tests": [
+        "a_resolve_without_the_flag_rewrites_the_lockfile_it_should_have_reported"
+      ]
+    },
+    "needs-is-only-ever-a-list": {
+      "edits": [
+        {
+          "file": "tools/ci-plan/src/lib.rs",
+          "from": "            Yaml::String(one) => vec![one.clone()],",
+          "to": "            Yaml::String(_) => Vec::new(),"
+        }
+      ],
+      "expect_red": [
+        "what_a_job_waits_for_is_read_in_both_spellings_github_allows"
+      ],
+      "tests": [
+        "what_a_job_waits_for_is_read_in_both_spellings_github_allows"
+      ]
+    },
+    "only-a-saving-step-declares-a-cache": {
+      "edits": [
+        {
+          "file": "tools/ci-plan/src/lib.rs",
+          "from": "            if action != \"actions/cache\" && action != \"actions/cache/restore\" {",
+          "to": "            if action != \"actions/cache\" {"
+        }
+      ],
+      "expect_red": [
+        "a_restore_only_step_is_still_a_declaration"
+      ],
+      "tests": [
+        "a_restore_only_step_is_still_a_declaration"
+      ]
+    },
+    "restore-keys-goes-back-to-being-unread": {
+      "edits": [
+        {
+          "file": "tools/ci-plan/src/lib.rs",
+          "from": "            let restore_keys: Vec<String> = step[\"with\"][\"restore-keys\"]\n                .as_str()\n                .unwrap_or_default()",
+          "to": "            let restore_keys: Vec<String> = step[\"with\"][\"restore-keys\"]\n                .as_str()\n                .map(|_| \"\")\n                .unwrap_or_default()"
+        }
+      ],
+      "expect_red": [
+        "a_fallback_that_cannot_serve_an_earlier_generation_is_named",
+        "every_cache_here_survives_an_edit_to_the_workflow_it_is_written_in"
+      ],
+      "tests": [
+        "a_fallback_onto_a_build_directory_is_named_and_one_onto_a_cargo_home_is_not",
+        "a_fallback_that_cannot_serve_an_earlier_generation_is_named",
+        "every_cache_here_survives_an_edit_to_the_workflow_it_is_written_in"
+      ]
+    },
+    "the-build-machines-commands-are-not-this-repositorys": {
+      "edits": [
+        {
+          "file": "tools/ci-plan/src/lib.rs",
+          "from": "    let Some(commands) = parsed.get(\"commands\").and_then(toml::Value::as_table) else {",
+          "to": "    let Some(commands) = parsed.get(\"no-such-table\").and_then(toml::Value::as_table) else {"
+        }
+      ],
+      "expect_red": [
+        "the_declaration_is_read_for_the_commands_it_issues"
+      ],
+      "tests": [
+        "the_declaration_is_read_for_the_commands_it_issues"
+      ]
+    },
+    "the-flag-is-demanded-of-a-workspace-nobody-here-owns": {
+      "edits": [
+        {
+          "file": "tools/ci-plan/src/lib.rs",
+          "from": "        (false, true) => LockVerdict::PinsWhatItDoesNotOwn,",
+          "to": "        (false, true) => LockVerdict::Pinned,"
+        }
+      ],
+      "expect_red": [
+        "the_flag_is_wrong_on_a_workspace_whose_resolution_belongs_to_another_tree"
+      ],
+      "tests": [
+        "the_flag_is_wrong_on_a_workspace_whose_resolution_belongs_to_another_tree"
+      ]
+    },
+    "the-ref-is-cut-at-the-last-at-sign": {
+      "edits": [
+        {
+          "file": "tools/ci-plan/src/lib.rs",
+          "from": "        .map(|rest| rest.split('@').next().unwrap_or(rest))",
+          "to": "        .map(|rest| rest.rsplit('@').next().unwrap_or(rest))"
+        }
+      ],
+      "expect_red": [
+        "a_runners_workflow_reference_resolves_to_the_file_it_names"
+      ],
+      "tests": [
+        "a_reference_naming_a_workflow_this_repository_does_not_track_is_refused",
+        "a_runners_workflow_reference_resolves_to_the_file_it_names"
+      ]
+    },
+    "the-repository-segments-are-not-skipped": {
+      "edits": [
+        {
+          "file": "tools/ci-plan/src/lib.rs",
+          "from": "        .splitn(3, '/')\n        .nth(2)",
+          "to": "        .splitn(3, '/')\n        .next()"
+        }
+      ],
+      "expect_red": [
+        "a_runners_workflow_reference_resolves_to_the_file_it_names",
+        "a_reference_naming_a_workflow_this_repository_does_not_track_is_refused"
+      ],
+      "tests": [
+        "a_reference_naming_a_workflow_this_repository_does_not_track_is_refused",
+        "a_runners_workflow_reference_resolves_to_the_file_it_names"
+      ]
+    },
+    "the-runners-name-for-the-workflow-is-taken-as-read": {
+      "edits": [
+        {
+          "file": "tools/ci-plan/src/lib.rs",
+          "from": "    if !tracked.iter().any(|file| file == path) {",
+          "to": "    if false {"
+        }
+      ],
+      "expect_red": [
+        "a_reference_naming_a_workflow_this_repository_does_not_track_is_refused"
+      ],
+      "tests": [
+        "a_reference_naming_a_workflow_this_repository_does_not_track_is_refused"
+      ]
+    },
+    "the-shallowest-manifest-match-wins": {
+      "edits": [
+        {
+          "file": "tools/ci-plan/src/lib.rs",
+          "from": "            .max_by_key(|candidate| candidate.len())",
+          "to": "            .min_by_key(|candidate| candidate.len())"
+        }
+      ],
+      "expect_red": [
+        "the_flag_is_wrong_on_a_workspace_whose_resolution_belongs_to_another_tree"
+      ],
+      "tests": [
+        "the_flag_is_wrong_on_a_workspace_whose_resolution_belongs_to_another_tree"
+      ]
+    },
+    "the-two-spellings-of-the-identity-need-not-agree": {
+      "edits": [
+        {
+          "file": "tools/ci-plan/src/lib.rs",
+          "from": "        .any(|fallback| fallback == &declaration.prefix)",
+          "to": "        .any(|fallback| !fallback.is_empty())"
+        }
+      ],
+      "expect_red": [
+        "a_fallback_that_cannot_serve_an_earlier_generation_is_named"
+      ],
+      "tests": [
+        "a_fallback_that_cannot_serve_an_earlier_generation_is_named"
+      ]
+    },
+    "the-whole-key-is-the-identity": {
+      "edits": [
+        {
+          "file": "tools/ci-plan/src/lib.rs",
+          "from": "    match resolved.find(\"${{\") {",
+          "to": "    match None::<usize> {"
+        }
+      ],
+      "expect_red": [
+        "a_cache_key_is_read_down_to_the_prefix_a_restore_matches_on"
+      ],
+      "tests": [
+        "a_cache_key_is_read_down_to_the_prefix_a_restore_matches_on",
+        "a_fallback_that_cannot_serve_an_earlier_generation_is_named",
+        "every_cache_here_survives_an_edit_to_the_workflow_it_is_written_in"
+      ]
+    },
+    "what-carried-the-command-is-thrown-away": {
+      "edits": [
+        {
+          "file": "tools/ci-plan/src/lib.rs",
+          "from": "        carrier.extend(words.drain(..at));",
+          "to": "        words.drain(..at);"
+        }
+      ],
+      "expect_red": [
+        "a_command_a_wrapper_carries_is_still_a_command_this_repository_issues"
+      ],
+      "tests": [
+        "a_command_a_wrapper_carries_is_still_a_command_this_repository_issues",
+        "the_declaration_is_read_for_the_commands_it_issues",
+        "the_reading_follows_every_hop_and_invents_no_command"
+      ]
+    }
+  }
+}

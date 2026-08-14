@@ -1,0 +1,57 @@
+{
+  "_": [
+    "Machine-written by tools/injection-harness. Do not edit by hand: a row somebody typed is evidence of nothing, and the law over this file is worth exactly what its being unforgeable is worth.",
+    "Each row is one injection that WAS RUN and DID redden what it names, kept beside the definition it was proven against — edit the injection and the gate says the evidence is about a different one."
+  ],
+  "fired": {
+    "a-record-belongs-to-a-directory-rather-than-a-sweep": {
+      "edits": [
+        {
+          "file": "src/lib.rs",
+          "from": "        .join(format!(\"{stem}{FIRINGS_SUFFIX}\"))",
+          "to": "        .join(format!(\"injection{FIRINGS_SUFFIX}\"))"
+        }
+      ],
+      "expect_red": [
+        "a_record_belongs_to_one_sweep_and_not_to_a_directory"
+      ],
+      "tests": [
+        "every_injection_a_record_covers_is_one_that_has_fired",
+        "every_tracked_sweep_still_applies_to_the_tree_it_names",
+        "tests::a_record_belongs_to_one_sweep_and_not_to_a_directory"
+      ]
+    },
+    "a-record-is-read-as-absent-when-it-will-not-parse": {
+      "edits": [
+        {
+          "file": "src/lib.rs",
+          "from": "    serde_json::from_str(&raw)\n        .map(Some)\n        .map_err(|e| format!(\"{} is not a firing record: {e}\", path.display()))",
+          "to": "    Ok(serde_json::from_str(&raw).ok())"
+        }
+      ],
+      "expect_red": [
+        "a_record_that_will_not_parse_is_not_an_absent_one"
+      ],
+      "tests": [
+        "every_tracked_sweep_still_applies_to_the_tree_it_names",
+        "tests::a_record_that_will_not_parse_is_not_an_absent_one"
+      ]
+    },
+    "an-edited-injection-keeps-the-evidence-of-the-old-one": {
+      "edits": [
+        {
+          "file": "src/lib.rs",
+          "from": "    row.edits == injection.edits && row.expect_red == injection.expect_red",
+          "to": "    let _ = (row, injection);\n    true"
+        }
+      ],
+      "expect_red": [
+        "an_edited_injection_is_not_covered_by_the_old_evidence"
+      ],
+      "tests": [
+        "every_tracked_sweep_still_applies_to_the_tree_it_names",
+        "tests::an_edited_injection_is_not_covered_by_the_old_evidence"
+      ]
+    }
+  }
+}
