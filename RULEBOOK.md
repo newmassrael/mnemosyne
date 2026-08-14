@@ -65,6 +65,16 @@ until a gate.
   SSOT (one resolver per semantic, one home per datum). Run the CLI as
   `scripts/mn` — never `cargo install` into `~/.cargo/bin`, which is a slot
   shared with the consumer checkouts on this machine (Round 823).
+- **Verify with the whole population, not the changed one (R1195)** — run the
+  ROOT suite and `scripts/check-side-workspaces.sh`, whatever the change
+  touched. A round that edits only `tools/`, `scripts/` or `.github/` still
+  moves what the root workspace's gates read: `locked_resolution_smoke` reads
+  every cargo command in this repository's shell scripts, `ci-plan` reads the
+  workflows, and both live in the root suite. R1194 edited no `crates/` file,
+  verified the workspace it wrote plus the gates its change touched, and the
+  root suite it ran anyway is the only thing that caught the defect. Run them
+  through `scripts/verify.sh`, which since R1194 refuses a run that did not
+  cover every target it compiled.
 - **After** — the changelog entry is self-contained (R452); `validate-workspace`
   clean; commit per `COMMIT_FORMAT.md` (no `Co-Authored-By`; ≤ 72-byte lines;
   1–3 contiguous bullets; English); update the RESUME memory + the topic memory

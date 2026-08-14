@@ -20,7 +20,7 @@
 //! The two spellings in this repository put the root and the name on different
 //! lines:
 //!
-//! ```ignore
+//! ```text
 //! let dir = std::env::temp_dir().join(format!("thing-{}", std::process::id()));
 //!
 //! let mut path = std::env::temp_dir();
