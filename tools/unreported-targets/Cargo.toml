@@ -1,0 +1,23 @@
+[workspace]
+
+[package]
+name = "unreported-targets"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.88"
+publish = false
+license = "MIT OR Apache-2.0"
+description = "Mnemosyne — every test target a run compiled is one that run reported a result for"
+
+# ITS OWN WORKSPACE, like every other gate under `tools/`: these are separate
+# programs with their own dependency trees, and compiling them into the tree
+# they judge is how a gate starts depending on what it is checking.
+
+[dependencies]
+serde_json = "1"
+
+[dev-dependencies]
+tempfile = "3"
+
+[lints.clippy]
+all = "deny"

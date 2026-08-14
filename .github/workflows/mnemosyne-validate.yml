@@ -272,8 +272,16 @@ jobs:
           MNEMOSYNE_CACHE_HIT: ${{ steps.cache.outputs.cache-hit }}
         run: ./instruments/release/restored after
 
+      # R1194 — `--no-fail-fast`, and it was the ONE cargo test command in this
+      # repository without it. The server suite below carries it, and so does
+      # every separate workspace's in `scripts/check-side-workspaces.sh`, whose
+      # comment records what its absence cost there: the gate reported that
+      # `bench` had 6 failures, and the 6 were one target's — there were 18.
+      # Without it cargo stops at the first failing target, so the count in this
+      # job's log is one target's and somebody fixes to it; the targets behind it
+      # are not red, they were never asked.
       - name: cargo test --workspace
-        run: cargo test --workspace --locked
+        run: cargo test --workspace --locked --no-fail-fast
 
       - name: mnemosyne-cli validate-workspace
         run: cargo run --release -q --locked -p mnemosyne-cli -- validate-workspace
