@@ -606,6 +606,22 @@ struct TestNames {
     /// silence — see the law for why the first draft was wrong to let them
     /// suppress a verdict.
     opaque: BTreeSet<PathBuf>,
+    /// Every identifier appearing among the TOKENS of those invocations — the
+    /// WEAK half of the answer, and the half R1184 did not have.
+    ///
+    /// syn will not expand a macro, so a `#[test] fn` it generates is invisible
+    /// to `named` however plainly it is written. But the name is not invisible:
+    /// `exercised! { report_frame_view_branch_reaches_the_answer: … }` carries
+    /// that identifier as a token, and a walk of the token stream finds it
+    /// without knowing anything about what the macro does with it.
+    ///
+    /// IT IS EVIDENCE AND NOT PROOF, which is exactly why it is a second set
+    /// rather than more entries in `named`. An identifier among a macro's tokens
+    /// may be an argument, a field, a type — anything. What it rules out is the
+    /// only verdict this law is entitled to render: that the tree does not have
+    /// the test AT ALL. Tokens rather than the invocation's text, so a name that
+    /// merely occurs inside a string literal is not mistaken for one.
+    generated: BTreeSet<String>,
     /// Files that did not parse — a file genuinely unread, which is the one
     /// thing here that makes a miss unanswerable rather than reportable.
     unparsed: Vec<(PathBuf, String)>,
@@ -623,9 +639,26 @@ fn a_test_attribute(attr: &syn::Attribute) -> bool {
         .is_some_and(|segment| segment.ident == "test")
 }
 
+/// Every identifier among a token stream, through nested groups.
+///
+/// Recursive because the interesting names are never at the top: an invocation's
+/// arguments sit inside its braces, and its entries inside those.
+fn idents_in(tokens: proc_macro2::TokenStream, into: &mut BTreeSet<String>) {
+    for tree in tokens {
+        match tree {
+            proc_macro2::TokenTree::Ident(ident) => {
+                into.insert(ident.to_string());
+            }
+            proc_macro2::TokenTree::Group(group) => idents_in(group.stream(), into),
+            _ => {}
+        }
+    }
+}
+
 fn test_names_in(tree: &Path) -> TestNames {
     struct Collect<'a> {
         into: &'a mut BTreeSet<String>,
+        generated: &'a mut BTreeSet<String>,
         opaque: bool,
     }
     impl<'ast> syn::visit::Visit<'ast> for Collect<'_> {
@@ -641,6 +674,9 @@ fn test_names_in(tree: &Path) -> TestNames {
             // the second can put items this walk never sees into the crate.
             if item.ident.is_none() {
                 self.opaque = true;
+                // AND WHAT IT WAS HANDED IS READ, because "I cannot expand this"
+                // is not "there is nothing in here".
+                idents_in(item.mac.tokens.clone(), self.generated);
             }
             syn::visit::visit_item_macro(self, item);
         }
@@ -681,6 +717,7 @@ fn test_names_in(tree: &Path) -> TestNames {
                 Ok(file) => {
                     let mut collect = Collect {
                         into: &mut found.named,
+                        generated: &mut found.generated,
                         opaque: false,
                     };
                     syn::visit::visit_file(&mut collect, &file);
@@ -718,21 +755,40 @@ fn test_names_in(tree: &Path) -> TestNames {
 /// free. What is left here is total for the decay that actually happens: a test
 /// renamed or deleted.
 ///
-/// A FILE THAT DID NOT PARSE IS A REFUSAL; A MACRO IS A SENTENCE IN THE
-/// MESSAGE. The first draft had both as refusals, and the measurement rejected
-/// it: syn does not walk macro bodies, twenty files in this repository invoke an
-/// item-position macro, and making any of them silence the whole tree turned a
-/// TRUE finding — two expectations naming tests that had been renamed away —
-/// into "cannot answer". A guard that suppresses every verdict because
-/// somewhere in the tree something might have generated something is the
-/// vacuity this device exists to detect. So a miss is reported, and the message
-/// carries the one other explanation there is, with the count, so the next
-/// person can tell the two apart in a line.
+/// A FILE THAT DID NOT PARSE IS A REFUSAL; A MACRO IS ANSWERED WEAKLY.
+///
+/// R1184's first draft made both refusals, and the measurement rejected that:
+/// twenty files in this repository invoke an item-position macro, and letting
+/// any of them silence the whole tree is the vacuity this device exists to
+/// detect. So that round went the other way — report the miss, and MENTION the
+/// macro possibility in the message.
+///
+/// THAT WAS THE OPPOSITE ERROR, AND IT COST TWO TRUE EXPECTATIONS. The message
+/// hedged and the verdict did not: `missing` is an assertion failure, phrased
+/// "this tree no longer has that test", rendered about names nothing here could
+/// see. R1184 read it and deleted
+/// `tests::report_frame_view_branch_reaches_the_answer` and
+/// `tests::report_frame_view_order_path_reaches_the_answer` from the frame-view
+/// sweep. Both tests exist. `macro_rules! exercised!` in `mnemosyne-mcp`
+/// generates them, and R1186's sweep of that manifest reddened both — the
+/// deletion had quietly weakened an exhaustive red set to prove less.
+///
+/// The way out is neither refusal nor a hedged verdict: ASK A WEAKER QUESTION
+/// THAT CAN BE ANSWERED, and print both grounds. Strong ground is a `#[test] fn`
+/// of that name in the syntax. Weak ground is the name appearing among the
+/// TOKENS of an item-position macro invocation — which proves nothing about what
+/// the macro does, and rules out the only verdict this law is entitled to
+/// render. A name on neither ground is missing, and that is still a failure:
+/// a test genuinely deleted appears in no syntax and in no invocation's tokens.
 #[test]
 fn every_test_a_sweep_names_is_one_this_tree_still_has() {
     let root = repository_root();
     let mut trees: BTreeMap<PathBuf, TestNames> = BTreeMap::new();
     let mut judged = 0;
+    // THE TWO GROUNDS, COUNTED SEPARATELY AND BOTH PRINTED. A run in which every
+    // expectation was carried by the weak ground is a run this law barely
+    // answered, and a reader must be able to see that without re-deriving it.
+    let (mut by_syntax, mut by_macro) = (0, 0);
     let mut missing = Vec::new();
     let mut unreadable = Vec::new();
     for path in tracked_json(&root) {
@@ -754,14 +810,21 @@ fn every_test_a_sweep_names_is_one_this_tree_still_has() {
                 let leaf = expected.rsplit("::").next().unwrap_or(expected);
                 judged += 1;
                 if names.named.contains(leaf) {
+                    by_syntax += 1;
+                    continue;
+                }
+                // THE WEAK GROUND. Not proof that the test exists — proof that
+                // this walk is not entitled to say it does not.
+                if names.generated.contains(leaf) {
+                    by_macro += 1;
                     continue;
                 }
                 let report = format!("{path} / {}: `{expected}`", injection.name);
                 if names.unparsed.is_empty() {
                     missing.push(format!(
-                        "{report} — or it is generated by one of the {} item-position \
-                         macro invocation(s) in that tree, which no walk of the syntax \
-                         can see into",
+                        "{report} — no `#[test] fn` of that name in that tree, and none \
+                         of its {} item-position macro invocation(s) is even handed \
+                         that identifier",
                         names.opaque.len()
                     ));
                 } else {
@@ -784,6 +847,19 @@ fn every_test_a_sweep_names_is_one_this_tree_still_has() {
         "{read} file(s) read, {known} test name(s) found, {judged} expectation(s) judged \
          — too few to be this repository's, and a law over the wrong population is the \
          empty answer that reads as a clean one"
+    );
+    // AND ON WHICH GROUND EACH WAS CARRIED. A law whose every answer came from
+    // the weak half is one that read tokens and no syntax at all, which is a
+    // different device from the one this file claims to be.
+    assert!(
+        by_syntax > by_macro,
+        "{by_syntax} expectation(s) carried by a `#[test] fn` in the syntax and \
+         {by_macro} only by an identifier inside a macro invocation — the weak ground \
+         is a refusal to over-claim, not a way to answer"
+    );
+    eprintln!(
+        "[expectations] {judged} judged: {by_syntax} by syntax, {by_macro} by a macro's \
+         tokens alone"
     );
     assert!(
         unreadable.is_empty(),
@@ -828,9 +904,16 @@ fn the_walk_finds_a_test_wherever_it_is_written_and_says_what_it_could_not_see()
     // A DEFINITION carries an ident and generates nothing by itself; an
     // INVOCATION does not, and can put a `#[test]` into the crate that no walk
     // of the syntax will ever see.
+    //
+    // AND WHAT THE INVOCATION IS HANDED IS READ. `made_by_a_macro` is exactly
+    // the shape that cost R1184 two true expectations: a name that is plainly
+    // written, that `syn` will never report as a `#[test] fn`, and that this
+    // walk must not answer "absent" about. The string literal beside it is why
+    // the tokens are walked rather than the invocation's text.
     std::fs::write(
         at.join("src/generated.rs"),
-        "macro_rules! declare {\n    () => {};\n}\ndeclare!();\n",
+        "macro_rules! declare {\n    () => {};\n}\ndeclare!();\n\
+         exercised! { made_by_a_macro: \"only_in_a_literal\" }\n",
     )
     .expect("write macro user");
     // Cargo's output is not source, and it holds `.rs` files that no target
@@ -858,6 +941,22 @@ fn the_walk_finds_a_test_wherever_it_is_written_and_says_what_it_could_not_see()
     assert!(
         found.opaque.iter().all(|p| p.ends_with("generated.rs")),
         "a `macro_rules!` DEFINITION is not an invocation: {found:?}"
+    );
+    // THE WEAK GROUND, in both directions. A name handed to an invocation is
+    // found, and a name that only occurs inside a string literal is not — which
+    // is the whole reason this reads tokens instead of text.
+    assert!(
+        found.generated.contains("made_by_a_macro"),
+        "a name an invocation is handed is not a name this tree lacks: {found:?}"
+    );
+    assert!(
+        !found.generated.contains("only_in_a_literal"),
+        "a literal is not an identifier, and treating it as one would carry any \
+         expectation whose name a comment or a message happens to contain: {found:?}"
+    );
+    assert!(
+        !found.named.contains("made_by_a_macro"),
+        "and it is WEAK ground — the syntax never said this was a test: {found:?}"
     );
     assert_eq!(found.unparsed.len(), 1, "{found:?}");
     assert_eq!(

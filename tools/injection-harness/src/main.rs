@@ -62,6 +62,27 @@ use injection_harness::{
     answers_to, reached, replace_once, Edit, Injection, Manifest, RedSet, Scope,
 };
 
+/// How many test targets one run reached under each name cargo prints.
+///
+/// A MULTISET AND NOT A SET, and the difference is a whole sweep this tool used
+/// to refuse rather than run. Two targets may honestly share a name: `all` is
+/// the name of the folded suite in BOTH `mnemosyne-cli` and `mnemosyne-server`,
+/// and the line cargo announces a target with carries no package, so
+/// `all:tests/all.rs` is what both of them are called. Under a set the pair
+/// collapsed to one element, the control came back "82 targets under 81 names",
+/// and the harness refused the whole manifest — the repository's widest sweep,
+/// stopped by a name it had every right to.
+///
+/// THE INVARIANT THE REFUSAL WAS PROTECTING IS COMPARABILITY, and uniqueness was
+/// its proxy. A count of targets per name is comparable whether or not the names
+/// are unique: a run that loses one of the two `all` targets comes back with
+/// that name at 1 against the control's 2, which is the drift, said exactly.
+/// What uniqueness bought over this is the ability to say WHICH of an
+/// indistinguishable pair went missing — and no reading of cargo's output can
+/// say that, so the proxy was refusing sweeps for an answer it could not have
+/// given either.
+type Targets = BTreeMap<String, usize>;
+
 /// What one run of the suite said.
 #[derive(Debug, Clone, Default, Serialize)]
 struct Run {
@@ -69,11 +90,12 @@ struct Run {
     failed: usize,
     /// Every `test result:` line, which is one per target the run reached.
     targets: usize,
-    /// WHICH targets, by the name cargo prints for each one. A count alone
-    /// cannot tell a run that lost a target from one that lost a target and
-    /// gained another, and the whole point of the drift check is that a run
-    /// covering something else than the control is not comparable to it.
-    reached: BTreeSet<String>,
+    /// WHICH targets, by the name cargo prints for each one, and how many ran
+    /// under it. A count alone cannot tell a run that lost a target from one
+    /// that lost a target and gained another, and the whole point of the drift
+    /// check is that a run covering something else than the control is not
+    /// comparable to it.
+    reached: Targets,
     /// The names in the `failures:` lists, deduplicated.
     red: BTreeSet<String>,
     /// EVERY name the run executed, red or green — the population a plan's
@@ -127,6 +149,77 @@ fn verdict_disagreement(run: &Run) -> Option<String> {
     None
 }
 
+/// Whether the names a run announced ACCOUNT FOR the targets it ran.
+///
+/// THIS IS THE HONEST REMAINDER OF THE UNIQUENESS REFUSAL. That check compared
+/// the number of distinct names with the number of `test result:` lines, and it
+/// was firing for two different reasons wearing one message: names that collide
+/// (which the multiset above now handles) and targets that were never announced
+/// at all. The second is still fatal — a `test result:` with no `Running` line
+/// before it is a target the by-name comparison is simply blind to, so the check
+/// that replaced the count would be quietly weaker than the count it replaced.
+///
+/// A suite that announces NOTHING is not this case: that is a suite whose output
+/// has no target names in it, the count is all there is, and the drift check
+/// says so and falls back to it.
+fn unaccounted_targets(run: &Run) -> Option<String> {
+    let named: usize = run.reached.values().sum();
+    if run.reached.is_empty() || named == run.targets {
+        return None;
+    }
+    Some(format!(
+        "it announced {named} target(s) by name and printed {} result(s) — a \
+         target on one side of that and not the other is one the by-name \
+         comparison cannot see at all, which would make it weaker than the \
+         count it replaces",
+        run.targets
+    ))
+}
+
+/// What separates two runs' target coverage, per name.
+///
+/// Both directions, because they mean different things: a name the injected run
+/// reached fewer times ran less than the control did, and one it reached more
+/// times ran something the control never measured. Either way the two runs are
+/// over different populations and the red counts are not each other's baseline.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
+struct TargetGap {
+    /// `name → (control, run)` where the run reached it fewer times.
+    missing: BTreeMap<String, (usize, usize)>,
+    /// `name → (control, run)` where it reached it more times.
+    extra: BTreeMap<String, (usize, usize)>,
+}
+
+impl TargetGap {
+    fn is_empty(&self) -> bool {
+        self.missing.is_empty() && self.extra.is_empty()
+    }
+}
+
+/// The gap between what the control reached and what one run reached.
+fn compare_targets(control: &Targets, run: &Targets) -> TargetGap {
+    let mut gap = TargetGap::default();
+    // EVERY NAME EITHER RUN KNOWS, once — a name only one of them reached is
+    // the whole point, and a name both reached must not be judged twice.
+    let names: BTreeSet<&String> = control.keys().chain(run.keys()).collect();
+    for name in names {
+        let (before, after) = (
+            control.get(name).copied().unwrap_or(0),
+            run.get(name).copied().unwrap_or(0),
+        );
+        match before.cmp(&after) {
+            std::cmp::Ordering::Greater => {
+                gap.missing.insert(name.clone(), (before, after));
+            }
+            std::cmp::Ordering::Less => {
+                gap.extra.insert(name.clone(), (before, after));
+            }
+            std::cmp::Ordering::Equal => {}
+        }
+    }
+    gap
+}
+
 #[derive(Debug, Serialize)]
 struct Report {
     /// The suite every count below is a fact about, and the first field so a
@@ -173,7 +266,7 @@ fn report(
     }
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize)]
 struct InjectionResult {
     name: String,
     why: String,
@@ -187,9 +280,9 @@ struct InjectionResult {
     /// because for every other sweep this is the count of guards nobody has
     /// written down yet, which is a finding rather than a failure.
     unexpected: BTreeSet<String>,
-    /// Targets the control reached and this run did not, and the reverse.
-    targets_missing: BTreeSet<String>,
-    targets_extra: BTreeSet<String>,
+    /// Targets the control reached and this run reached fewer of, and the
+    /// reverse — by name, with both counts.
+    targets: TargetGap,
     /// The count difference, kept for a suite whose output names no targets.
     target_drift: i64,
 }
@@ -420,20 +513,13 @@ fn run() -> Result<(), String> {
     if let Some(disagreement) = verdict_disagreement(&control) {
         return Err(format!("the control cannot be a baseline: {disagreement}"));
     }
-    // THE NAMES MUST IDENTIFY THE TARGETS, or the set comparison below is
-    // quietly weaker than the count it replaced. This found its own first
-    // instance: three crates in this repository run unit tests for a library
-    // AND a binary under one stem, so 151 targets came out as 148 names until
-    // what cargo was RUNNING went into the name.
-    if !control.reached.is_empty() && control.reached.len() != control.targets {
-        return Err(format!(
-            "the control ran {} targets under {} distinct names — {} pair(s) \
-             share a name, and a drift check cannot see a pair it cannot tell \
-             apart",
-            control.targets,
-            control.reached.len(),
-            control.targets - control.reached.len()
-        ));
+    // THE NAMES MUST ACCOUNT FOR THE TARGETS, or the comparison below is quietly
+    // weaker than the count it replaced. Not that they must be UNIQUE: two
+    // targets may honestly share a name, and counting them is what keeps the
+    // comparison whole (see `Targets`). What cannot be tolerated is a target no
+    // name covers at all.
+    if let Some(unaccounted) = unaccounted_targets(&control) {
+        return Err(format!("the control cannot be a baseline: {unaccounted}"));
     }
     if control_only {
         // THE SAME SHAPE AS A FULL SWEEP'S, with the injections it has none of.
@@ -539,16 +625,15 @@ fn run() -> Result<(), String> {
             .cloned()
             .collect();
         let drift = run.targets as i64 - control.targets as i64;
-        let missing: BTreeSet<String> = control.reached.difference(&run.reached).cloned().collect();
-        let extra: BTreeSet<String> = run.reached.difference(&control.reached).cloned().collect();
+        let targets = compare_targets(&control.reached, &run.reached);
         eprintln!(
             "[{}] {} red, {} unnamed ({} targets, {} missing, {} extra)",
             injection.name,
             fired.len(),
             unexpected.len(),
             run.targets,
-            missing.len(),
-            extra.len(),
+            targets.missing.len(),
+            targets.extra.len(),
         );
         results.push(InjectionResult {
             name: injection.name.clone(),
@@ -557,8 +642,7 @@ fn run() -> Result<(), String> {
             fired,
             missed,
             unexpected,
-            targets_missing: missing,
-            targets_extra: extra,
+            targets,
             target_drift: drift,
         });
     }
@@ -567,13 +651,8 @@ fn run() -> Result<(), String> {
     // of a distribution that is the finding.
     println!(
         "{}",
-        serde_json::to_string_pretty(&report(
-            &manifest,
-            &scope,
-            &control,
-            results.iter().map(clone_result).collect()
-        ))
-        .map_err(err)?
+        serde_json::to_string_pretty(&report(&manifest, &scope, &control, results.clone()))
+            .map_err(err)?
     );
 
     let mut broken: Vec<String> = Vec::new();
@@ -584,14 +663,22 @@ fn run() -> Result<(), String> {
         if let Some(disagreement) = verdict_disagreement(&result.run) {
             broken.push(format!("{}: {}", result.name, disagreement));
         }
+        // AND WHETHER IT RAN THE SAME TARGETS, by the same law the control was
+        // held to: a run whose names do not account for its results is not
+        // comparable to anything, and it must be said before the comparison
+        // rather than read out of a gap the blindness itself produced.
+        if let Some(unaccounted) = unaccounted_targets(&result.run) {
+            broken.push(format!("{}: {unaccounted}", result.name));
+        }
         // BY NAME where the suite names its targets, and by count where it does
         // not — a run that lost one target and gained another has a drift of 0
         // and is not comparable to the control at all.
-        if !result.targets_missing.is_empty() || !result.targets_extra.is_empty() {
+        if !result.targets.is_empty() {
             broken.push(format!(
-                "{}: did not reach {:?} and reached {:?} the control did not — a \
-                 run over a different set is a smaller number, not a cleaner one",
-                result.name, result.targets_missing, result.targets_extra
+                "{}: reached {:?} fewer times than the control and {:?} more \
+                 (name → control, run) — a run over a different set is a \
+                 smaller number, not a cleaner one",
+                result.name, result.targets.missing, result.targets.extra
             ));
         } else if control.reached.is_empty() && result.target_drift != 0 {
             broken.push(format!(
@@ -627,20 +714,6 @@ fn run() -> Result<(), String> {
         return Err(broken.join("\n  "));
     }
     Ok(())
-}
-
-fn clone_result(result: &InjectionResult) -> InjectionResult {
-    InjectionResult {
-        name: result.name.clone(),
-        why: result.why.clone(),
-        run: result.run.clone(),
-        fired: result.fired.clone(),
-        missed: result.missed.clone(),
-        unexpected: result.unexpected.clone(),
-        targets_missing: result.targets_missing.clone(),
-        targets_extra: result.targets_extra.clone(),
-        target_drift: result.target_drift,
-    }
 }
 
 fn err<E: std::fmt::Display>(e: E) -> String {
@@ -769,16 +842,36 @@ fn execute(manifest: &Manifest, label: &str, files: &SweepFiles) -> Result<Run, 
 /// The name cargo gives one test target, off the line that announces it.
 ///
 /// `Running unittests src/lib.rs (target/debug/deps/foo-9a3f...)` is one target
-/// and `Doc-tests foo` is another. The trailing hash is dropped because it moves
-/// whenever the crate is rebuilt, which is every injection — a name that changes
-/// for a reason that is not about coverage would report drift on every run.
+/// and `Doc-tests foo` is another.
+///
+/// THE TRAILING HASH IS DROPPED, AND THE REASON THIS SAID FOR YEARS IS FALSE.
+/// It read "it moves whenever the crate is rebuilt, which is every injection".
+/// Measured across one sweep's control and two injected runs — three whole
+/// rebuilds of an edited crate — all four of that tree's hashes were identical.
+/// It is cargo's `-C metadata` fingerprint, computed from the package, its
+/// features and the profile, and a source edit does not touch any of them. So
+/// the hash WOULD have told the two `all` targets below apart.
+///
+/// It is dropped anyway, for the reasons that survive measuring: it is cargo's
+/// internal spelling rather than a fact about coverage, it is unreadable in the
+/// one place this name is ever printed — a drift message a person has to act on
+/// — and it changes nothing this tool DOES, because the refusal a lost target
+/// earns is the same either way. What it costs is stated rather than hidden:
+/// without it two targets can share a name, which is why what counts them is a
+/// multiset (see `Targets`) and not a set.
 ///
 /// THE BINARY STEM ALONE IS NOT UNIQUE, and this repository is where that shows:
 /// a crate with both a library and a binary runs its unit tests twice under one
 /// stem, so `mnemosyne_cli`, `mnemosyne_index` and `mnemosyne_render` each named
-/// two targets and 151 targets came out as 148 names. A set that collapses three
-/// pairs is three pairs a drift check cannot see, so what cargo was RUNNING —
-/// `unittests src/lib.rs` against `unittests src/main.rs` — goes in the name.
+/// two targets and 151 targets came out as 148 names. What cargo was RUNNING —
+/// `unittests src/lib.rs` against `unittests src/main.rs` — therefore goes in
+/// the name: it is free information that tells two real targets apart.
+///
+/// It does NOT make the name unique, and it was never able to. Cargo announces a
+/// target with a path relative to its own package and no package at all, so the
+/// folded `tests/all.rs` suites of two crates are announced identically. That is
+/// why what counts targets is a multiset (see `Targets`) rather than a set: the
+/// name is as much identity as the log carries, and the remainder is a count.
 fn target_name(line: &str) -> Option<String> {
     let line = line.trim_start();
     if let Some(crate_name) = line.strip_prefix("Doc-tests ") {
@@ -800,7 +893,7 @@ fn summarize(text: &str) -> Run {
     let mut in_failures = false;
     for line in text.lines() {
         if let Some(name) = target_name(line) {
-            run.reached.insert(name);
+            *run.reached.entry(name).or_default() += 1;
             continue;
         }
         if let Some(rest) = line.strip_prefix("test result:") {
@@ -937,12 +1030,16 @@ test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out
         let run = summarize(log);
         assert_eq!(
             run.reached,
-            BTreeSet::from([
-                "counted_without_naming:unittests src/main.rs".to_string(),
-                "doc:mnemosyne-ops".to_string()
+            Targets::from([
+                (
+                    "counted_without_naming:unittests src/main.rs".to_string(),
+                    1
+                ),
+                ("doc:mnemosyne-ops".to_string(), 1)
             ]),
-            "the hash moves on every rebuild, so a name that carried it would \
-             report drift on every injection"
+            "the hash is cargo's internal spelling of a target, not a fact about \
+             what ran; see `target_name` for what dropping it costs and what the \
+             measurement said about the reason this file used to give"
         );
         assert_eq!(run.targets, 2);
     }
@@ -951,8 +1048,8 @@ test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out
     fn one_crate_running_two_target_kinds_is_two_names() {
         // A crate with a library AND a binary runs its unit tests twice under
         // one binary stem. Three such crates in this repository turned 151
-        // targets into 148 names, and three collapsed pairs are three pairs the
-        // drift check could not have seen.
+        // targets into 148 names, and what cargo was RUNNING is what tells the
+        // two apart — free information the announce line already carries.
         let log = "\
      Running unittests src/lib.rs (target/debug/deps/mnemosyne_cli-aa11)
 test result: ok. 1 passed; 0 failed
@@ -961,12 +1058,66 @@ test result: ok. 1 passed; 0 failed
 ";
         let run = summarize(log);
         assert_eq!(run.reached.len(), 2, "{:?}", run.reached);
-        assert_eq!(run.reached.len(), run.targets);
+        assert!(unaccounted_targets(&run).is_none());
+    }
+
+    #[test]
+    fn two_targets_that_share_a_name_are_counted_and_not_collapsed() {
+        // WHAT USED TO STOP THE WIDEST SWEEP THIS REPOSITORY HAS. Cargo
+        // announces a test target by a path relative to ITS OWN package, so the
+        // folded suites of `mnemosyne-cli` and `mnemosyne-server` are both
+        // `Running tests/all.rs (…/deps/all-<hash>)` and there is nothing in the
+        // line to tell them apart. Under a set that pair was one element, the
+        // control read "2 targets under 1 name", and the harness refused the
+        // manifest for a collision it could do nothing about.
+        let run = summarize(
+            "     Running tests/all.rs (target/debug/deps/all-aa11)
+test result: ok. 40 passed; 0 failed
+     Running tests/all.rs (target/debug/deps/all-bb22)
+test result: ok. 30 passed; 0 failed
+",
+        );
+        assert_eq!(
+            run.reached,
+            Targets::from([("all:tests/all.rs".to_string(), 2)]),
+            "the name is as much identity as the log carries; the rest is a count"
+        );
+        assert_eq!(run.targets, 2);
+        assert!(
+            unaccounted_targets(&run).is_none(),
+            "two targets under one name are two targets the comparison can see"
+        );
+    }
+
+    #[test]
+    fn a_target_lost_from_a_shared_name_is_still_drift() {
+        // And this is why the count is enough: uniqueness bought the ability to
+        // say WHICH of an indistinguishable pair went missing, which no reading
+        // of this log could give. That one of them did is said exactly.
+        let control = summarize(
+            "     Running tests/all.rs (target/debug/deps/all-aa11)
+test result: ok. 40 passed; 0 failed
+     Running tests/all.rs (target/debug/deps/all-bb22)
+test result: ok. 30 passed; 0 failed
+",
+        );
+        let after = summarize(
+            "     Running tests/all.rs (target/debug/deps/all-cc33)
+test result: ok. 40 passed; 0 failed
+",
+        );
+        let gap = compare_targets(&control.reached, &after.reached);
+        assert_eq!(
+            gap.missing,
+            BTreeMap::from([("all:tests/all.rs".to_string(), (2, 1))]),
+            "a set would have called these two runs identical coverage"
+        );
+        assert!(gap.extra.is_empty(), "{gap:?}");
     }
 
     #[test]
     fn a_lost_target_and_a_gained_one_do_not_cancel() {
-        // The count is 2 either way; the SET is what says these two runs are
+        // The count is 2 either way; the NAMES are what say these two runs are
         // not comparable. This is the whole reason the check is by name.
         let control = summarize(
             "     Running unittests src/lib.rs (target/debug/deps/alpha-1)
@@ -983,20 +1134,44 @@ test result: ok. 1 passed; 0 failed
 ",
         );
         assert_eq!(control.targets, after.targets);
+        let gap = compare_targets(&control.reached, &after.reached);
         assert_eq!(
-            after
-                .reached
-                .difference(&control.reached)
-                .collect::<Vec<_>>(),
-            vec!["gamma:unittests src/lib.rs"]
+            gap.missing,
+            BTreeMap::from([("beta:unittests src/lib.rs".to_string(), (1, 0))])
         );
         assert_eq!(
-            control
-                .reached
-                .difference(&after.reached)
-                .collect::<Vec<_>>(),
-            vec!["beta:unittests src/lib.rs"]
+            gap.extra,
+            BTreeMap::from([("gamma:unittests src/lib.rs".to_string(), (0, 1))])
         );
+    }
+
+    #[test]
+    fn a_result_no_line_announced_is_a_target_no_name_covers() {
+        // THE HONEST REMAINDER OF THE UNIQUENESS REFUSAL. Names that collide are
+        // fine now; a `test result:` with no `Running` line before it is not,
+        // because the by-name comparison is blind to exactly that target and
+        // would be weaker than the count it replaced.
+        let run = summarize(
+            "     Running unittests src/lib.rs (target/debug/deps/alpha-1)
+test result: ok. 1 passed; 0 failed
+test result: ok. 1 passed; 0 failed
+",
+        );
+        let said = unaccounted_targets(&run).expect("one result is covered by no name");
+        assert!(said.contains("announced 1 target(s) by name"), "{said}");
+        assert!(said.contains("printed 2 result(s)"), "{said}");
+    }
+
+    #[test]
+    fn a_suite_that_announces_no_target_at_all_is_left_to_its_count() {
+        // A suite is free to print no announce lines — the fake suites this
+        // tool's own tests run do exactly that. The count is then all there is,
+        // and the drift check says so and falls back to it; refusing here would
+        // refuse every manifest whose suite is not cargo.
+        let run = summarize("test result: ok. 2 passed; 0 failed\n");
+        assert_eq!(run.targets, 1);
+        assert!(run.reached.is_empty());
+        assert!(unaccounted_targets(&run).is_none());
     }
 
     #[test]

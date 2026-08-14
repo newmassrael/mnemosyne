@@ -64,3 +64,9 @@ libc = "0.2"
 # `tools/blind-waits` and `tools/named-environment` each carry this rather than
 # a pattern. `visit` for the borrowing walk, `full` for item and fn syntax.
 syn = { version = "3", features = ["full", "visit"] }
+# The token side of that parser. `syn` will not walk INTO a macro invocation —
+# the body is a token stream, not syntax — but the tokens are right there, and a
+# name that appears among them is the difference between "this tree does not
+# have that test" and "no walk of the syntax can see it". R1186 paid two true
+# expectations to learn that those are not the same sentence.
+proc-macro2 = "1"

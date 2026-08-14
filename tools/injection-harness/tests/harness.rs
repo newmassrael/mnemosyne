@@ -993,10 +993,111 @@ fn a_run_that_exited_green_over_a_red_log_stops_the_sweep() {
     );
 }
 
+/// A suite that announces some number of targets ALL UNDER ONE NAME — the shape
+/// cargo prints when two packages fold their tests into `tests/all.rs` — and
+/// reddens its first target once the injection has landed.
+///
+/// The two counts are supplied separately so a run can honestly lose one of an
+/// indistinguishable pair, which is the case the multiset exists for.
+fn shared_name_suite(root: &Path, healthy: usize, broken: usize) -> PathBuf {
+    fs::create_dir_all(root.join("logs")).expect("mkdir");
+    fs::write(root.join("src.txt"), "HEALTHY\n").expect("write source");
+    // The hash after the stem moves on every rebuild and is dropped from the
+    // name, so these are one name however many of them there are.
+    let announce =
+        |which: usize| format!("     Running tests/all.rs (target/debug/deps/all-{which})\\n");
+    let targets = |count: usize, red_first: bool| -> String {
+        (0..count)
+            .map(|which| match red_first && which == 0 {
+                true => format!(
+                    "{}test the_law ... FAILED\\n\\nfailures:\\n    the_law\\n\\n\
+                     test result: FAILED. 0 passed; 1 failed; 0 ignored\\n",
+                    announce(which)
+                ),
+                false => format!(
+                    "{}test the_law ... ok\\ntest result: ok. 1 passed; 0 failed; 0 ignored\\n",
+                    announce(which)
+                ),
+            })
+            .collect()
+    };
+    let suite = root.join("suite.sh");
+    fs::write(
+        &suite,
+        format!(
+            "#!/bin/sh\n\
+             if grep -q HEALTHY src.txt; then\n\
+             printf '{}'\n\
+             else\n\
+             printf '{}'\n\
+             exit 1\n\
+             fi\n",
+            targets(healthy, false),
+            targets(broken, true)
+        ),
+    )
+    .expect("write suite");
+    make_runnable(&suite);
+    suite
+}
+
+/// The manifest every case below uses: one injection, aimed at the one test the
+/// fixture suite reddens.
+fn one_injection_at_the_law(root: &Path) -> PathBuf {
+    manifest(
+        root,
+        serde_json::json!([{
+            "name": "I1",
+            "edits": [{"file": "src.txt", "from": "HEALTHY", "to": "BROKEN"}],
+            "expect_red": ["the_law"],
+        }]),
+    )
+}
+
 #[test]
-fn names_that_do_not_identify_the_targets_stop_the_sweep() {
-    // A suite whose two targets announce the same name: the count says 2 and
-    // the set says 1, so a run that lost one of them would read as no drift.
+fn two_targets_that_share_a_name_are_a_baseline_a_sweep_can_use() {
+    // WHAT USED TO STOP THE WIDEST SWEEP THIS REPOSITORY HAS. Cargo announces a
+    // test target by a path relative to ITS OWN package, so the folded suites of
+    // `mnemosyne-cli` and `mnemosyne-server` are both `tests/all.rs` and there is
+    // nothing in the line to tell them apart. The harness demanded distinct
+    // names and refused the manifest — "82 targets under 81 distinct names" —
+    // for a collision no reading of the log could have resolved.
+    let root = tempdir();
+    shared_name_suite(root.path(), 2, 2);
+    let out = harness(&one_injection_at_the_law(root.path()));
+    assert!(
+        out.status.success(),
+        "a name two targets share is still a name both runs can be compared \
+         under: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+}
+
+#[test]
+fn a_target_lost_from_a_shared_name_still_stops_the_sweep() {
+    // And this is the invariant the old refusal was protecting, kept: the
+    // injected run reaches ONE of the pair, and a comparison that had collapsed
+    // them would have called that identical coverage and read the smaller red
+    // count as a cleaner one.
+    let root = tempdir();
+    shared_name_suite(root.path(), 2, 1);
+    let out = harness(&one_injection_at_the_law(root.path()));
+    let said = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        !out.status.success(),
+        "a run over fewer targets is not a run over the same ones: {said}"
+    );
+    assert!(
+        said.contains("all:tests/all.rs") && said.contains("(2, 1)"),
+        "the drift is said by name and by count: {said}"
+    );
+}
+
+#[test]
+fn a_result_nothing_announced_stops_the_sweep_in_the_control() {
+    // THE HONEST REMAINDER OF THAT REFUSAL. Names may collide; a `test result:`
+    // with no `Running` line before it is a target the by-name comparison is
+    // blind to, which would make it weaker than the count it replaced.
     let root = tempdir();
     fs::create_dir_all(root.path().join("logs")).expect("mkdir");
     fs::write(root.path().join("src.txt"), "HEALTHY\n").expect("write source");
@@ -1004,27 +1105,53 @@ fn names_that_do_not_identify_the_targets_stop_the_sweep() {
     fs::write(
         &suite,
         "#!/bin/sh\n\
-         printf '     Running unittests src/lib.rs (target/debug/deps/twin-1)\\n'\n\
+         printf '     Running unittests src/lib.rs (target/debug/deps/one-1)\\n'\n\
          printf 'test result: ok. 1 passed; 0 failed\\n'\n\
-         printf '     Running unittests src/lib.rs (target/debug/deps/twin-2)\\n'\n\
          printf 'test result: ok. 1 passed; 0 failed\\n'\n",
     )
     .expect("write suite");
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        fs::set_permissions(&suite, fs::Permissions::from_mode(0o755)).expect("chmod");
-    }
-    let path = manifest(root.path(), serde_json::json!([]));
-    let out = harness(&path);
+    make_runnable(&suite);
+    let out = harness(&manifest(root.path(), serde_json::json!([])));
+    let said = String::from_utf8_lossy(&out.stderr);
+    assert!(!out.status.success(), "{said}");
     assert!(
-        !out.status.success(),
-        "a name that identifies nothing is not a name"
+        said.contains("announced 1 target(s) by name") && said.contains("printed 2 result(s)"),
+        "{said}"
     );
+}
+
+#[test]
+fn a_result_nothing_announced_stops_the_sweep_in_an_injected_run_too() {
+    // The same law on the other side of the control, and it needs its own case
+    // because nothing else here would catch this run: the names it DID announce
+    // match the control's exactly, so the drift check is silent, and the
+    // injection reddens the test it was aimed at, so the aim check is too. A
+    // run that lost a whole target passes every other gate this tool has.
+    let root = tempdir();
+    split_verdict_suite(
+        root.path(),
+        (
+            "     Running tests/one.rs (target/debug/deps/one-1)\\n\
+             test the_law ... ok\\n\
+             test result: ok. 1 passed; 0 failed; 0 ignored\\n",
+            0,
+        ),
+        (
+            "     Running tests/one.rs (target/debug/deps/one-1)\\n\
+             test the_law ... FAILED\\n\\nfailures:\\n    the_law\\n\\n\
+             test result: FAILED. 0 passed; 1 failed; 0 ignored\\n\
+             test result: ok. 1 passed; 0 failed; 0 ignored\\n",
+            1,
+        ),
+        "HEALTHY\n",
+    );
+    let out = harness(&one_injection_at_the_law(root.path()));
+    let said = String::from_utf8_lossy(&out.stderr);
+    assert!(!out.status.success(), "{said}");
     assert!(
-        String::from_utf8_lossy(&out.stderr).contains("share a name"),
-        "{}",
-        String::from_utf8_lossy(&out.stderr)
+        said.contains("I1: it announced 1 target(s) by name")
+            && said.contains("printed 2 result(s)"),
+        "{said}"
     );
 }
 
