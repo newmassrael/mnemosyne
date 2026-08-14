@@ -194,6 +194,34 @@
       "expect_red": [
         "the_side_workspace_gate_tells_an_environment_it_could_not_read_from_one_it_judged"
       ]
+    },
+    {
+      "name": "the-lister-reports-an-unreadable-workspace-as-a-bad-citation",
+      "why": "the collapse this arm SHIPPED with, and the only one of the three that was measured in the wild rather than reasoned about: a concurrent prune of the one shared build directory left `librocksdb-sys` uncompilable, the gate answered 2 and said so, and the lister printed `bench carries a citation that names no item` — sending a reader to hunt a citation that does not exist",
+      "edits": [
+        {
+          "file": "scripts/check-side-workspaces.sh",
+          "from": "  case \"${citations_verdict:-0}\" in\n    0) ;;\n    1)",
+          "to": "  case \"${citations_verdict:-0}\" in\n    0) ;;\n    1|2)"
+        }
+      ],
+      "expect_red": [
+        "the_side_workspace_gate_tells_a_citation_it_could_not_read_from_one_it_judged"
+      ]
+    },
+    {
+      "name": "the-lister-passes-a-workspace-the-citation-gate-could-not-read",
+      "why": "the other direction, the one that commits a tree part of which was never read. The sentence stays true and only the rejection goes, so the exit code is the whole of what catches it",
+      "edits": [
+        {
+          "file": "scripts/check-side-workspaces.sh",
+          "from": "        \"(exit ${citations_verdict}); its own message is above\" >&2\n      exit 1",
+          "to": "        \"(exit ${citations_verdict}); its own message is above\" >&2\n      :"
+        }
+      ],
+      "expect_red": [
+        "the_side_workspace_gate_tells_a_citation_it_could_not_read_from_one_it_judged"
+      ]
     }
   ]
 }

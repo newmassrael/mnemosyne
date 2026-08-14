@@ -272,13 +272,36 @@ for ws in "${workspaces[@]}"; do
   # `--locked` UNCONDITIONALLY, and not `"${locked[@]}"`: this command resolves
   # the GATE's own workspace, which is always one of this repository's, whatever
   # the workspace it is pointed at turns out to be.
-  if ! declare_and_run citations cargo run -q --manifest-path "$citations" --locked \
-    --bin item-citations -- --workspace "$root/$ws/Cargo.toml"; then
-    echo "[side-workspaces] $ws carries a citation that names no item —" \
-      "fix: cargo run -q --manifest-path tools/item-citations/Cargo.toml" \
-      "--bin item-citations -- --workspace $ws/Cargo.toml" >&2
-    exit 1
-  fi
+  # THE SAME THREE CODES AS THE TWO GATES BELOW, and this arm was the one that
+  # never got them. `item-citations` has answered 0 / 1 / 2 since it was written
+  # — 2 being "a package does not check, so nothing can be said about the
+  # citations in it" — and this caller collapsed 1 and 2 into the finding.
+  #
+  # MEASURED, and that is why it is here rather than in a carry. A concurrent
+  # prune of this repository's ONE shared build directory (`.cargo/config.toml`
+  # points every workspace at `<repo>/target`) deleted artifacts under a running
+  # gate; `librocksdb-sys` then would not compile, the gate correctly answered 2
+  # and said so, and this line printed `bench carries a citation that names no
+  # item`. A reader sent to hunt a bad citation in `bench` would find none,
+  # because there is none. That sentence is the recorded shape of Z15 — a remote
+  # red that reads as a defect in the tree.
+  declare_and_run citations cargo run -q --manifest-path "$citations" --locked \
+    --bin item-citations -- --workspace "$root/$ws/Cargo.toml" || citations_verdict=$?
+  case "${citations_verdict:-0}" in
+    0) ;;
+    1)
+      echo "[side-workspaces] $ws carries a citation that names no item —" \
+        "fix: cargo run -q --manifest-path tools/item-citations/Cargo.toml" \
+        "--bin item-citations -- --workspace $ws/Cargo.toml" >&2
+      exit 1
+      ;;
+    *)
+      echo "[side-workspaces] the item-citation gate could not read $ws" \
+        "(exit ${citations_verdict}); its own message is above" >&2
+      exit 1
+      ;;
+  esac
+  unset citations_verdict
   # R1081 — in test code a wait ends on a condition and its budget is named.
   # The root workspace gets this from its own CI step and the pre-commit hook,
   # and pointing it ONLY at the root is the hole R1080 closed for the citation

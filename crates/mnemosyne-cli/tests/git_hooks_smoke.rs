@@ -768,6 +768,93 @@ fn the_side_workspace_gate_answers_two_when_it_was_not_started_in_a_tree() {
     );
 }
 
+/// A `cargo` that answers whatever the case needs for the CITATION gate and
+/// zero for everything else, so the lister's arm can be driven without
+/// compiling a tree. `$CITATIONS_EXIT` is the code under test.
+const CARGO_CITATIONS_STUB: &str = r#"#!/usr/bin/env bash
+case "$*" in
+    *"/tools/item-citations/Cargo.toml"*)
+        echo "[item-citations] a message of the gate's own"
+        exit "${CITATIONS_EXIT:-0}"
+        ;;
+esac
+exit 0
+"#;
+
+#[test]
+fn the_side_workspace_gate_tells_a_citation_it_could_not_read_from_one_it_judged() {
+    // THE THIRD GATE'S ARM, and the one that never had the distinction at all.
+    // `item-citations` has answered 0 / 1 / 2 since it was written — 2 being "a
+    // package does not check, so nothing can be said about the citations in it"
+    // — and this caller read only `if !`, so both arms printed the FINDING.
+    //
+    // IT WAS MEASURED, not imagined. A concurrent prune of this repository's one
+    // shared build directory deleted artifacts under a running gate;
+    // `librocksdb-sys` would not compile, the gate answered 2 and said so, and
+    // the lister printed `bench carries a citation that names no item`. There is
+    // no such citation in `bench`. That is the recorded shape of a remote red
+    // that reads as a defect in the tree.
+    //
+    // DRIVEN THROUGH A `cargo` SHIM, because the code under test is the ARM and
+    // not the gate: a fixture that made the real gate answer 2 would have to
+    // hold a tree that passes fmt and clippy and then fails to compile for
+    // rustdoc, which is a tree this case would be measuring instead.
+    let gate = repo_root().join("scripts/check-side-workspaces.sh");
+    let f = Fixture::new();
+    let shim = f.path().join("shim-cargo");
+    fs::create_dir_all(&shim).expect("mkdir shim");
+    write_exec(&shim.join("cargo"), CARGO_CITATIONS_STUB);
+    let hermetic = format!(
+        "{}:{}",
+        shim.to_str().expect("shim path is utf-8"),
+        std::env::var("PATH").unwrap_or_default()
+    );
+    let lister = |code: &str| {
+        Command::new(&gate)
+            .args(["--lint-only", "tools/sub"])
+            .current_dir(f.path())
+            .env("PATH", &hermetic)
+            .env("CITATIONS_EXIT", code)
+            .env("CARGO_TARGET_DIR", f.path().join("target"))
+            .output()
+            .expect("the gate runs")
+    };
+
+    // EXIT 2 — the gate could not read the workspace, so it has no finding.
+    let out = lister("2");
+    let err = stderr_of(&out);
+    assert_eq!(
+        out.status.code(),
+        Some(1),
+        "a workspace the citation gate could not read must not pass:\n{err}"
+    );
+    assert!(
+        err.contains("the item-citation gate could not read tools/sub (exit 2)"),
+        "the refusal must name the workspace and the code:\n{err}"
+    );
+    assert!(
+        !err.contains("carries a citation that names no item"),
+        "a workspace it could not read carries no finding about citations:\n{err}"
+    );
+
+    // EXIT 1 — the same tree, judged, with a defect in it.
+    let out = lister("1");
+    let err = stderr_of(&out);
+    assert_eq!(
+        out.status.code(),
+        Some(1),
+        "a workspace that broke the law is a rejection too:\n{err}"
+    );
+    assert!(
+        err.contains("tools/sub carries a citation that names no item"),
+        "the finding must name the workspace it is about:\n{err}"
+    );
+    assert!(
+        !err.contains("the item-citation gate could not read"),
+        "a workspace it judged was not one it failed to read:\n{err}"
+    );
+}
+
 #[test]
 fn the_side_workspace_gate_tells_an_environment_it_could_not_read_from_one_it_judged() {
     // THE THIRD GATE'S TWO ANSWERS, and the reason they need a reader here more
