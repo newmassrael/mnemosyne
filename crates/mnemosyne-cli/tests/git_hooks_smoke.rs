@@ -629,6 +629,87 @@ fn pre_commit_tells_a_gate_that_could_not_read_apart_from_one_that_found_a_defec
     );
 }
 
+/// A tree that passes fmt and clippy and that the item-citation gate REFUSES,
+/// which is the fixture Gate 5a never had.
+///
+/// The refusal is real rather than shimmed, and every part of it was measured:
+/// `cargo clippy --workspace --all-targets -- -D warnings` exits 0 here, and
+/// the gate exits 2 saying `declares helper only as a dev-dependency, and
+/// cargo's check of its benches produced no library for it`. Cargo omits a
+/// package's dev-dependencies from a BENCH target's documentation unit, so the
+/// gate has to put them back; a dev-dependency that is a binary produces no
+/// library to put back, and the gate stops rather than guessing — a wrong
+/// `--extern` does not fail loudly, it resolves citations against the wrong
+/// crate in silence.
+///
+/// WHY IT HAD TO BE THIS SHAPE. The obvious candidate — a workspace with no
+/// documentable target — never reaches Gate 5a: `cargo clippy --workspace` on
+/// an empty workspace exits 101, so the case would be measuring the clippy gate
+/// in front of it. The other obvious one, a package that does not compile, is
+/// stopped by that same clippy gate. What is left is a tree that BUILDS and
+/// that the citation gate still cannot read.
+const CITATION_GATE_REFUSES: &[(&str, &str)] = &[
+    (
+        "Cargo.toml",
+        "[package]\nname = \"fixture\"\nversion = \"0.0.0\"\nedition = \"2021\"\n\n\
+         [[bench]]\nname = \"measured\"\npath = \"benches/measured.rs\"\nharness = false\n\n\
+         [dev-dependencies]\nhelper = { path = \"helper\" }\n\n\
+         [workspace]\nmembers = [\"helper\"]\n",
+    ),
+    (
+        "helper/Cargo.toml",
+        "[package]\nname = \"helper\"\nversion = \"0.0.0\"\nedition = \"2021\"\n\n\
+         [[bin]]\nname = \"helper\"\npath = \"src/main.rs\"\n",
+    ),
+    ("helper/src/main.rs", "fn main() {}\n"),
+    ("benches/measured.rs", "fn main() {}\n"),
+];
+
+#[test]
+fn pre_commit_tells_a_citation_gate_that_could_not_read_from_one_that_found_a_defect() {
+    // GATE 5a's OTHER NON-ZERO EXIT, and the one nothing had ever run. The two
+    // gates BELOW it in this hook have read three codes since R1183; this one
+    // read `if !` and printed `a citation names no item` for both.
+    //
+    // It is the recorded shape of Z15 arriving at the person committing. A
+    // concurrent prune of this repository's one shared build directory left
+    // `librocksdb-sys` uncompilable, the citation gate answered 2 and said so,
+    // and the caller printed a finding about a citation that does not exist.
+    // R1185 repaired the separate-workspace lister and left this line, because
+    // the fixture that would have caught it is the one below: a tree that gets
+    // past fmt and clippy and still cannot be read.
+    let f = Fixture::new();
+    for (path, body) in CITATION_GATE_REFUSES {
+        f.write(path, body);
+    }
+    f.generate_lockfile("Cargo.toml");
+    f.stage_all();
+
+    let out = f.run_hook("pre-commit", &[], "", &[]);
+    assert!(
+        !out.status.success(),
+        "a tree the citation gate could not read must not pass a commit"
+    );
+    let err = both_of(&out);
+    assert!(
+        err.contains("the item-citation gate could not read this tree (exit 2)"),
+        "the rejection must say the gate could not judge, and with which code:\n{err}"
+    );
+    // THE MIRROR, and the whole point of this case. A hook that answered `1`
+    // here sends somebody hunting for a broken citation in a tree whose
+    // citations are all fine — and there is nothing in this fixture to find.
+    assert!(
+        !err.contains("a citation names no item"),
+        "a tree it could not read is not a tree with a bad citation in it:\n{err}"
+    );
+    // AND THE GATE'S OWN WORDS ARE ABOVE, which is what the hook's sentence
+    // promises the reader will find.
+    assert!(
+        err.contains("only as a dev-dependency"),
+        "the gate's own message must reach the same stream the hook points at:\n{err}"
+    );
+}
+
 #[test]
 fn pre_commit_gates_a_separate_in_repo_workspace_the_root_gates_miss() {
     // `cargo fmt --all` / `clippy --workspace` only see root members, so a

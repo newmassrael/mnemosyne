@@ -663,6 +663,81 @@ pub fn coherence(finished: Option<bool>, links_seen: usize, indecisive: usize) -
     }
 }
 
+// ---------------------------------------------------------------------------
+// The run's answer — the three codes a caller branches on
+// ---------------------------------------------------------------------------
+
+/// What this gate answers about a whole workspace.
+///
+/// THREE, and the third one is the point. "Every citation names an item" and "I
+/// could not read enough of this workspace to say" are different answers, and a
+/// caller handed one bit cannot tell them apart: it prints the finding it knows
+/// about a tree that has none, and sends a reader hunting a citation nobody
+/// wrote. That sentence has a recorded shape here — a concurrent prune of this
+/// repository's one shared build directory left `librocksdb-sys` uncompilable,
+/// this gate refused and said so, and its caller printed `bench carries a
+/// citation that names no item`. There is no such citation in `bench`.
+///
+/// R1185 gave that CALLER the distinction, from an error this gate returns
+/// before it can start. The half underneath it is here: a run that STARTS can
+/// still end with no verdict — a target rustdoc could not open is judged
+/// [`Verdict::Indecisive`], and a run of nothing but those left this gate as
+/// the finding, wearing exit 1, for every caller to mislabel again.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Answer {
+    /// Every citation in every target this workspace has names an item.
+    Clean,
+    /// At least one citation names nothing either authority knows. The law was
+    /// broken, and the run says by what.
+    Finding,
+    /// The gate has no verdict: it could not be started, could not document a
+    /// target, or read a run whose parts do not explain each other. NOT a
+    /// finding — there is nothing here for a reader to go fix.
+    CouldNotJudge,
+}
+
+impl Answer {
+    /// The process exit code, which is the whole of what a shell caller sees.
+    ///
+    /// One home for these numbers. `main` spells them by calling this, and
+    /// `tests/gate.rs` asserts against this rather than against literals, so a
+    /// gate that started answering 1 where it means 2 cannot pass its own
+    /// suite by having both sides changed to agree.
+    #[must_use]
+    pub fn exit_code(self) -> i32 {
+        match self {
+            Answer::Clean => 0,
+            Answer::Finding => 1,
+            Answer::CouldNotJudge => 2,
+        }
+    }
+}
+
+/// The run's answer, from what its verdicts came to.
+///
+/// INCOHERENCE OUTRANKS EVERYTHING. When cargo's verdict and what the gate saw
+/// do not explain each other, the defect count came out of a run that cannot be
+/// trusted to have measured this workspace at all — that is the ARM-B lesson
+/// [`coherence`] carries — so it is not evidence of a finding either.
+///
+/// A DEFECT OUTRANKS AN UNJUDGED TARGET. A workspace holding one of each does
+/// carry a citation that names no item, so that is the true sentence to print;
+/// the unjudged targets are printed next to it. What must never happen is the
+/// reverse — a run with no finding in it reported as one.
+#[must_use]
+pub fn answer(defects: usize, indecisive: usize, coherence: &Coherence) -> Answer {
+    if matches!(coherence, Coherence::Unexplained(_)) {
+        return Answer::CouldNotJudge;
+    }
+    if defects > 0 {
+        return Answer::Finding;
+    }
+    if indecisive > 0 {
+        return Answer::CouldNotJudge;
+    }
+    Answer::Clean
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -970,6 +1045,50 @@ mod tests {
             coherence(Some(true), 1, 0),
             Coherence::Unexplained(_)
         ));
+    }
+
+    #[test]
+    fn a_run_with_nothing_to_report_and_a_target_it_could_not_open_is_not_a_finding() {
+        // THE ONE THAT WAS WRONG. A workspace whose every citation resolved
+        // except in the one target rustdoc could not open carries no finding —
+        // and this gate answered with the finding's code, which is what both of
+        // its callers then printed a sentence about.
+        assert_eq!(
+            answer(0, 1, &Coherence::Coherent),
+            Answer::CouldNotJudge,
+            "an unjudged target is not a citation that names nothing"
+        );
+        // A real defect beside it is still a real defect: that sentence is
+        // true, and it is the one worth printing.
+        assert_eq!(answer(1, 1, &Coherence::Coherent), Answer::Finding);
+        assert_eq!(answer(1, 0, &Coherence::Coherent), Answer::Finding);
+        assert_eq!(answer(0, 0, &Coherence::Coherent), Answer::Clean);
+    }
+
+    #[test]
+    fn an_incoherent_run_has_no_finding_to_report_however_many_it_counted() {
+        // The defect count of a run that cannot be shown to have measured this
+        // workspace is not evidence about this workspace.
+        let broken = Coherence::Unexplained("cargo never answered".to_string());
+        assert_eq!(answer(0, 0, &broken), Answer::CouldNotJudge);
+        assert_eq!(answer(7, 0, &broken), Answer::CouldNotJudge);
+        assert_eq!(answer(7, 3, &broken), Answer::CouldNotJudge);
+    }
+
+    #[test]
+    fn the_three_answers_are_three_codes() {
+        // A caller branches on these numbers and nothing else, so two answers
+        // sharing one code is two answers a caller cannot tell apart.
+        let codes: BTreeSet<i32> = [Answer::Clean, Answer::Finding, Answer::CouldNotJudge]
+            .into_iter()
+            .map(Answer::exit_code)
+            .collect();
+        assert_eq!(codes.len(), 3, "each answer needs a code of its own");
+        assert_eq!(
+            Answer::Clean.exit_code(),
+            0,
+            "a clean run must be a success"
+        );
     }
 
     #[test]

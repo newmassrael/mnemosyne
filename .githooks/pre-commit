@@ -162,12 +162,36 @@ if printf '%s\n' "$staged" | grep -qE '\.rs$'; then
              "missing at $gates/tools/item-citations/Cargo.toml" >&2
         exit 1
     fi
-    if ! cargo run -q --locked --manifest-path "$gates/tools/item-citations/Cargo.toml" \
-        --bin item-citations -- --workspace "$(pwd)/Cargo.toml"; then
+    # THE THREE CODES THE TWO GATES BELOW ALREADY READ, and this arm was the
+    # last one in this repository collapsing them. 0 is clean, 1 is "a citation
+    # names no item", 2 is "I could not read enough of this tree to have an
+    # opinion" — and a bare `if !` prints the FINDING for both of the last two.
+    #
+    # It is the recorded shape of Z15, one caller over: a concurrent prune of
+    # this repository's one shared build directory left `librocksdb-sys`
+    # uncompilable, the gate answered 2 and said so, and the separate-workspace
+    # lister printed `bench carries a citation that names no item`. There is no
+    # such citation in `bench`. R1185 repaired that lister; this line said the
+    # same wrong sentence to whoever was committing, and nothing had asked it.
+    #
+    # `|| citations_verdict=$?` rather than a bare call and `$?`, because this
+    # file runs under `set -e` and would be killed at the failing command before
+    # any exit-code branch could read one — the correction Gate 5c below records
+    # having had to make.
+    citations_verdict=0
+    cargo run -q --locked --manifest-path "$gates/tools/item-citations/Cargo.toml" \
+        --bin item-citations -- --workspace "$(pwd)/Cargo.toml" || citations_verdict=$?
+    if [[ $citations_verdict -eq 1 ]]; then
         {
             echo "[mnemosyne pre-commit] commit rejected — a citation names no item"
             echo "  run: cargo run -q --manifest-path tools/item-citations/Cargo.toml \\"
             echo "         --bin item-citations -- --workspace Cargo.toml"
+        } >&2
+        exit 1
+    elif [[ $citations_verdict -ne 0 ]]; then
+        {
+            echo "[mnemosyne pre-commit] commit rejected — the item-citation gate could" \
+                 "not read this tree (exit $citations_verdict); its own message is above"
         } >&2
         exit 1
     fi

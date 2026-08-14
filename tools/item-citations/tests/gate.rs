@@ -15,10 +15,11 @@
 use std::path::Path;
 use std::process::Command;
 
+use item_citations::Answer;
 use tempfile::TempDir;
 
 struct Run {
-    ok: bool,
+    code: Option<i32>,
     stdout: String,
     stderr: String,
 }
@@ -27,6 +28,32 @@ impl Run {
     fn says(&self, needle: &str) -> bool {
         self.stdout.contains(needle)
     }
+}
+
+/// WHICH OF THE THREE ANSWERS came back, asserted by the number a shell caller
+/// reads — because that number is the entire interface this gate has to the two
+/// callers that branch on it (`.githooks/pre-commit` Gate 5a and
+/// `scripts/check-side-workspaces.sh`), and until this round nothing here
+/// looked at it. Every case below asked `status.success()`, which is ONE BIT,
+/// and one bit cannot tell a finding from a refusal — the distinction R1185 had
+/// to build a caller-side reader for, with no fixture on this side proving the
+/// gate ever produced it. Measured: with the refusal collapsed into the
+/// finding's code, the whole pre-round suite stayed green.
+///
+/// The expected code comes from [`Answer::exit_code`] rather than a literal, so
+/// a gate that starts answering 1 where it means 2 cannot pass by having both
+/// sides edited to agree.
+#[track_caller]
+fn assert_answer(run: &Run, expected: Answer, why: &str) {
+    assert_eq!(
+        run.code,
+        Some(expected.exit_code()),
+        "{why}\nexpected {expected:?} (exit {}), got exit {:?}\nstdout:\n{}\nstderr:\n{}",
+        expected.exit_code(),
+        run.code,
+        run.stdout,
+        run.stderr
+    );
 }
 
 /// Write a cargo workspace from `(relative path, contents)` pairs.
@@ -50,7 +77,7 @@ fn gate(workspace: &Path) -> Run {
         .output()
         .expect("the gate binary runs");
     Run {
-        ok: output.status.success(),
+        code: output.status.code(),
         stdout: String::from_utf8_lossy(&output.stdout).into_owned(),
         stderr: String::from_utf8_lossy(&output.stderr).into_owned(),
     }
@@ -99,7 +126,7 @@ fn a_clean_workspace_passes_and_says_how_many_targets_it_reached() {
         ),
     ]);
     let run = gate(dir.path());
-    assert!(run.ok, "stdout:\n{}\nstderr:\n{}", run.stdout, run.stderr);
+    assert_answer(&run, Answer::Clean, "a clean workspace is a clean answer");
     assert!(
         run.says("reached 2/2 targets"),
         "the gate must account for both the library and the test target:\n{}",
@@ -118,7 +145,12 @@ fn a_citation_naming_nothing_in_a_library_is_a_defect() {
         ),
     ]);
     let run = gate(dir.path());
-    assert!(!run.ok, "the gate must reject:\n{}", run.stdout);
+    assert_answer(
+        &run,
+        Answer::Finding,
+        "a citation that names nothing is the finding, and its caller prints a \
+         sentence about it",
+    );
     assert!(run.says("DEFECT"), "{}", run.stdout);
     assert!(run.says("NoSuchThing"), "{}", run.stdout);
 }
@@ -167,10 +199,10 @@ path = "src/main.rs"
     );
 
     let run = gate(dir.path());
-    assert!(
-        !run.ok,
-        "the shadowed binary must be reached and rejected:\n{}",
-        run.stdout
+    assert_answer(
+        &run,
+        Answer::Finding,
+        "the shadowed binary must be reached and its citation convicted",
     );
     assert!(run.says("OnlyInTheBinary"), "{}", run.stdout);
     assert!(run.says("Bin fixture"), "{}", run.stdout);
@@ -197,7 +229,11 @@ fn a_citation_naming_nothing_in_a_test_target_is_reached_here_and_not_by_cargo_d
     );
 
     let run = gate(dir.path());
-    assert!(!run.ok, "the test target must be rejected:\n{}", run.stdout);
+    assert_answer(
+        &run,
+        Answer::Finding,
+        "the citation in the test target must be convicted",
+    );
     assert!(run.says("OnlyInTheTest"), "{}", run.stdout);
     assert!(run.says("Test smoke"), "{}", run.stdout);
 }
@@ -217,10 +253,10 @@ fn the_harness_excuses_a_cited_test_and_convicts_a_cited_name_that_is_no_test() 
         ),
     ]);
     let run = gate(excused.path());
-    assert!(
-        run.ok,
-        "a citation to a sibling test must pass:\n{}\n{}",
-        run.stdout, run.stderr
+    assert_answer(
+        &run,
+        Answer::Clean,
+        "a citation to a sibling test resolves against the harness",
     );
     assert!(run.says("EXCUSED"), "{}", run.stdout);
     assert!(run.says("a_real_test"), "{}", run.stdout);
@@ -240,10 +276,10 @@ fn the_harness_excuses_a_cited_test_and_convicts_a_cited_name_that_is_no_test() 
         ),
     ]);
     let run = gate(convicted.path());
-    assert!(
-        !run.ok,
-        "a citation to a test that does not exist must NOT be excused:\n{}",
-        run.stdout
+    assert_answer(
+        &run,
+        Answer::Finding,
+        "a citation to a test that does not exist must NOT be excused",
     );
     assert!(run.says("a_test_that_was_renamed"), "{}", run.stdout);
     assert!(
@@ -263,10 +299,11 @@ fn the_harness_excuses_a_cited_test_and_convicts_a_cited_name_that_is_no_test() 
 fn a_workspace_with_no_documentable_target_is_refused() {
     let dir = fixture(&[("Cargo.toml", "[workspace]\nmembers = []\n")]);
     let run = gate(dir.path());
-    assert!(
-        !run.ok,
-        "an empty population must not pass:\n{}",
-        run.stdout
+    assert_answer(
+        &run,
+        Answer::CouldNotJudge,
+        "an empty population is nothing the gate could judge — and it is NOT a \
+         finding: there is no citation here for anybody to go fix",
     );
     assert!(
         run.stderr.contains("no documentable target") || run.stdout.contains("no documentable"),
@@ -293,10 +330,10 @@ fn a_test_target_that_uses_its_own_crate_is_reached_and_still_read() {
         ),
     ]);
     let run = gate(clean.path());
-    assert!(
-        run.ok,
-        "a test target using its own crate must be documentable:\n{}\n{}",
-        run.stdout, run.stderr
+    assert_answer(
+        &run,
+        Answer::Clean,
+        "a test target using its own crate must be documentable",
     );
     assert!(
         run.says("reached 2/2 targets"),
@@ -314,10 +351,10 @@ fn a_test_target_that_uses_its_own_crate_is_reached_and_still_read() {
         ),
     ]);
     let run = gate(broken.path());
-    assert!(
-        !run.ok,
-        "the citation in it must still be read:\n{}",
-        run.stdout
+    assert_answer(
+        &run,
+        Answer::Finding,
+        "the citation in it must still be read, and convicted",
     );
     assert!(run.says("DEFECT"), "{}", run.stdout);
     assert!(run.says("fixture::gone"), "{}", run.stdout);
@@ -501,10 +538,10 @@ helper = { path = "helper" }
     ));
     let dir = fixture(&clean);
     let run = gate(dir.path());
-    assert!(
-        run.ok,
-        "a bench target using its own crate and a dev-dependency must be documentable:\n{}\n{}",
-        run.stdout, run.stderr
+    assert_answer(
+        &run,
+        Answer::Clean,
+        "a bench target using its own crate and a dev-dependency must be documentable",
     );
     assert!(
         run.says("reached 3/3 targets"),
@@ -520,7 +557,11 @@ helper = { path = "helper" }
     ));
     let dir = fixture(&broken);
     let run = gate(dir.path());
-    assert!(!run.ok, "and its citations are still read:\n{}", run.stdout);
+    assert_answer(
+        &run,
+        Answer::Finding,
+        "and its citations are still read, and convicted",
+    );
     assert!(run.says("helper::absent"), "{}", run.stdout);
 }
 
@@ -528,21 +569,34 @@ helper = { path = "helper" }
 /// defect, and the gate says so rather than counting it as either. Without the
 /// reach accounting this run reports zero refused citations, which is the exact
 /// shape of a clean one.
+///
+/// AND IT IS NOT THE FINDING'S CODE. This target is reached through the
+/// VERDICTS rather than through an error, so it survived R1185's repair: the
+/// gate returned "not clean", `main` spelled that 1, and both of its callers
+/// print a sentence about a citation that names no item. There is no such
+/// citation in this fixture — its one citation resolves — so the reader that
+/// sentence sends looking would find nothing, which is the recorded shape of
+/// Z15 arriving through a second door.
 #[test]
 fn a_target_rustdoc_could_not_open_is_reported_rather_than_counted_as_clean() {
     let dir = fixture(&[
         ("Cargo.toml", MANIFEST),
-        ("src/lib.rs", "//! Clean library.\npub fn kept() {}\n"),
+        (
+            "src/lib.rs",
+            "//! A library whose only citation resolves: [`kept`].\npub fn kept() {}\n",
+        ),
         (
             "tests/smoke.rs",
             "//! This target does not parse.\nfn broken( {\n",
         ),
     ]);
     let run = gate(dir.path());
-    assert!(
-        !run.ok,
-        "a target that could not be documented must not pass:\n{}",
-        run.stdout
+    assert_answer(
+        &run,
+        Answer::CouldNotJudge,
+        "a workspace whose every readable citation resolved, and one target the \
+         gate could not open, carries NO finding — answering with the finding's \
+         code is what makes a caller print a defect nobody wrote",
     );
     assert!(
         run.says("INDECISIVE") || run.says("UNEXPLAINED"),
@@ -556,20 +610,105 @@ fn a_target_rustdoc_could_not_open_is_reported_rather_than_counted_as_clean() {
     );
 }
 
+/// The other side of that line, so the repair above cannot be a blanket
+/// downgrade: a workspace holding BOTH a citation that names nothing and a
+/// target the gate could not open really does carry the finding, and that is
+/// the sentence its caller should print. The unjudged target is reported next
+/// to it rather than instead of it.
+#[test]
+fn a_defect_beside_a_target_it_could_not_open_is_still_the_finding() {
+    let dir = fixture(&[
+        ("Cargo.toml", MANIFEST),
+        (
+            "src/lib.rs",
+            "//! This crate cites [`NoSuchThing`], which it does not have.\npub fn kept() {}\n",
+        ),
+        (
+            "tests/smoke.rs",
+            "//! This target does not parse.\nfn broken( {\n",
+        ),
+    ]);
+    let run = gate(dir.path());
+    assert_answer(
+        &run,
+        Answer::Finding,
+        "a real defect is not downgraded by an unjudged target beside it",
+    );
+    assert!(run.says("NoSuchThing"), "{}", run.stdout);
+    assert!(
+        run.says("INDECISIVE"),
+        "and the target it could not open is still reported:\n{}",
+        run.stdout
+    );
+}
+
+/// THE MEASURED REFUSAL, with a fixture at last.
+///
+/// Until this round the gate's exit 2 had no test on this side at all: the
+/// caller-side reader R1185 built was driven through a `cargo` shim, because
+/// the code under test there was the ARM. So the number that arm branches on
+/// was asserted by the shim that produced it and by nothing else — a gate that
+/// began answering 1 where it means 2 would have taken both suites green, which
+/// was measured this round by doing exactly that.
+///
+/// The cause here is the one that was actually MEASURED in the field: a package
+/// that does not compile. There it was `librocksdb-sys` after a concurrent
+/// prune of this repository's one shared build directory; here it is a library
+/// with a type error, which reaches the same line — cargo cannot check the
+/// package, so nothing at all can be said about the citations in it.
+#[test]
+fn a_package_that_does_not_check_is_a_refusal_and_not_a_finding() {
+    let dir = fixture(&[
+        ("Cargo.toml", MANIFEST),
+        (
+            "src/lib.rs",
+            "//! A library that does not compile.\n\
+             pub fn kept() -> u32 { \"this is not a u32\" }\n",
+        ),
+        // The test target is what makes the gate ask for the library at all:
+        // cargo omits a package's own library from its TEST targets' rustdoc
+        // command line, so this is the shape whose repair needs a `cargo check`
+        // to succeed first.
+        (
+            "tests/smoke.rs",
+            "//! Nothing cited here.\n#[test]\nfn passes() {}\n",
+        ),
+    ]);
+    let run = gate(dir.path());
+    assert_answer(
+        &run,
+        Answer::CouldNotJudge,
+        "a package that does not check is a workspace this gate could not read, \
+         and its caller must not print a citation finding about it",
+    );
+    assert!(
+        run.stderr.contains("does not check"),
+        "the refusal says what stopped it:\nstdout:\n{}\nstderr:\n{}",
+        run.stdout,
+        run.stderr
+    );
+    assert!(
+        !run.says("DEFECT"),
+        "a run that could not read the package convicts nothing in it:\n{}",
+        run.stdout
+    );
+}
+
 /// The gate is pointed at a workspace, and being pointed at nothing is an
-/// error rather than a default.
+/// error rather than a default — the refusal, not the finding.
 #[test]
 fn a_manifest_that_is_not_there_is_an_error_not_an_empty_pass() {
     let dir = fixture(&[("unrelated.txt", "")]);
-    let run = Run {
-        ok: Command::new(env!("CARGO_BIN_EXE_item-citations"))
-            .args(["--workspace", &dir.path().display().to_string()])
-            .output()
-            .expect("runs")
-            .status
-            .success(),
-        stdout: String::new(),
-        stderr: String::new(),
-    };
-    assert!(!run.ok);
+    let run = gate(dir.path());
+    assert_answer(
+        &run,
+        Answer::CouldNotJudge,
+        "a gate pointed at no workspace has no verdict about one",
+    );
+    assert!(
+        run.stderr.contains("is not a manifest"),
+        "stdout:\n{}\nstderr:\n{}",
+        run.stdout,
+        run.stderr
+    );
 }

@@ -8,15 +8,20 @@
 //! unresolved citations" and "never opened that target" print the same, and
 //! this repository has now shipped the second one four times.
 //!
-//! Exit 0 clean, 1 the gate says no, 2 the gate could not be run at all.
+//! Exit 0 clean, 1 a citation names no item, 2 the gate has no verdict — it
+//! could not be started, or it started and could not finish reading this
+//! workspace. Those last two are ONE code because they are one answer to a
+//! caller: there is nothing here to go fix, ask again. See
+//! [`item_citations::Answer`].
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 
 use item_citations::{
-    census, coherence, harness_names, judge, read_stream, BrokenLink, Census, Coherence,
-    DevOnlyDependency, OmittedExterns, StreamReport, TargetId, TargetKind, Verdict, LINT,
+    answer, census, coherence, harness_names, judge, read_stream, Answer, BrokenLink, Census,
+    Coherence, DevOnlyDependency, OmittedExterns, StreamReport, TargetId, TargetKind, Verdict,
+    LINT,
 };
 
 /// The flags every rustdoc invocation in this gate runs under.
@@ -29,11 +34,11 @@ const RUSTDOC_FLAGS: &str = "--document-private-items -D rustdoc::broken_intra_d
 
 fn main() {
     match run() {
-        Ok(true) => {}
-        Ok(false) => std::process::exit(1),
+        Ok(Answer::Clean) => {}
+        Ok(other) => std::process::exit(other.exit_code()),
         Err(message) => {
             eprintln!("[item-citations] {message}");
-            std::process::exit(2);
+            std::process::exit(Answer::CouldNotJudge.exit_code());
         }
     }
 }
@@ -72,7 +77,7 @@ fn parse_args() -> Result<Args, String> {
     Ok(Args { manifest })
 }
 
-fn run() -> Result<bool, String> {
+fn run() -> Result<Answer, String> {
     let args = parse_args()?;
     let manifest = args
         .manifest
@@ -531,7 +536,7 @@ fn report_verdicts(
     verdicts: &[(TargetId, Verdict)],
     stream: &StreamReport,
     logs: &BTreeMap<String, String>,
-) -> bool {
+) -> Answer {
     let mut clean = 0;
     let mut excused_targets = 0;
     let mut excused_links = 0;
@@ -586,22 +591,40 @@ fn report_verdicts(
     );
 
     let links_seen: usize = stream.broken.values().map(Vec::len).sum();
-    if let Coherence::Unexplained(why) = coherence(stream.finished, links_seen, indecisive.len()) {
+    let coherence = coherence(stream.finished, links_seen, indecisive.len());
+    if let Coherence::Unexplained(why) = &coherence {
         println!("[item-citations] UNEXPLAINED — {why}");
         for log in logs.values() {
             println!("{log}");
         }
-        return false;
     }
 
-    if defects.is_empty() && indecisive.is_empty() {
-        println!("[item-citations] every item citation in this workspace names an item");
-        return true;
+    // THE RUN'S ANSWER IS A DECISION, so it is made in one place a unit test can
+    // put cases to rather than by the shape of the returns here. What it
+    // corrects: `defects.is_empty() && indecisive.is_empty()` is TWO answers,
+    // and this gate has three — everything below that line left as the
+    // FINDING's code whether the run had found something or merely failed to
+    // look, and its callers print a sentence about the finding.
+    let answer = answer(defects.len(), indecisive.len(), &coherence);
+    match answer {
+        Answer::Clean => {
+            println!("[item-citations] every item citation in this workspace names an item");
+        }
+        Answer::Finding => {
+            println!(
+                "[item-citations] fix: give the citation a name that resolves, qualify it with \
+                 the path that reaches the item, or — if it was never a link — escape the \
+                 brackets. The lint is {LINT}."
+            );
+        }
+        Answer::CouldNotJudge => {
+            println!(
+                "[item-citations] this run carries no finding and no verdict for the targets \
+                 named above — a workspace this gate could not finish reading is neither a \
+                 clean one nor a guilty one, and a caller that prints it as either sends a \
+                 reader hunting a citation nobody wrote"
+            );
+        }
     }
-    println!(
-        "[item-citations] fix: give the citation a name that resolves, qualify it with the path \
-         that reaches the item, or — if it was never a link — escape the brackets. The lint is \
-         {LINT}."
-    );
-    false
+    answer
 }
