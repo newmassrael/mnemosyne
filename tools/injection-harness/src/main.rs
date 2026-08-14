@@ -58,7 +58,9 @@ static INTERRUPTED: AtomicI32 = AtomicI32::new(0);
 // THE MANIFEST TYPES AND THE ANCHOR LAW ARE THE LIBRARY'S, because a second
 // reader of every sweep this repository tracks needs them and a decision in
 // `main.rs` has no reader (R1096). See `lib.rs`.
-use injection_harness::{replace_once, Edit, Injection, Manifest, RedSet, Scope};
+use injection_harness::{
+    answers_to, reached, replace_once, Edit, Injection, Manifest, RedSet, Scope,
+};
 
 /// What one run of the suite said.
 #[derive(Debug, Clone, Default, Serialize)]
@@ -74,41 +76,18 @@ struct Run {
     reached: BTreeSet<String>,
     /// The names in the `failures:` lists, deduplicated.
     red: BTreeSet<String>,
+    /// EVERY name the run executed, red or green — the population a plan's
+    /// `expect_red` is addressed into. Kept out of the report, which is about
+    /// what an injection DID: this is what the control is asked before any
+    /// injection runs, and a list of two thousand names in a summary is not a
+    /// summary.
+    #[serde(skip)]
+    ran: BTreeSet<String>,
     /// What the suite exited with — `None` when a signal killed it before it
     /// could exit at all. Held against `red` by `verdict_disagreement`, because
     /// a status that is only recorded is a status that judges nothing.
     exit_code: Option<i32>,
     log: PathBuf,
-}
-
-/// Whether one expected name is among the tests that went red.
-///
-/// A harness prints a test by the path its target reaches it through —
-/// `read_agreement_population::the_walk` for a `#[test]` inside a module — and
-/// the person writing a plan writes down the name they gave the function. Held
-/// against each other as plain strings, a sweep in which every injection landed
-/// exactly where it was aimed comes back "aimed at X and did not reach it" for
-/// all of it. That happened, on six injections and forty minutes of suite runs,
-/// and the message it prints is the strongest one this tool has: a misaimed
-/// injection. A refusal a gate makes for a reason outside its own law is the
-/// same defect as a gate that does not fire.
-///
-/// So a name matches its own suffix at a MODULE BOUNDARY, and nowhere else:
-/// `a::b::name` answers to `name` and to `b::name`, and `other_name` does not
-/// answer to `name`. Not a substring test — that would let `judges` match
-/// `the_walk_judges_nothing` and quietly credit an injection with a red it did
-/// not cause.
-fn reached(fired: &BTreeSet<String>, expected: &str) -> bool {
-    fired.iter().any(|red| answers_to(red, expected))
-}
-
-/// The same rule for ONE red name, which is what the other direction needs: a
-/// red that answers to no expectation at all is one the manifest never described.
-fn answers_to(red: &str, expected: &str) -> bool {
-    red == expected
-        || red
-            .strip_suffix(expected)
-            .is_some_and(|prefix| prefix.ends_with("::"))
 }
 
 /// The two halves of a run's verdict — the status the suite exited with, and the
@@ -415,10 +394,24 @@ fn run() -> Result<(), String> {
         control.passed, control.failed, control.targets
     );
     if control.failed > 0 || !control.red.is_empty() {
+        // THE COUNT AND THE NAMES COME FROM DIFFERENT LINES OF THE LOG, so they
+        // can disagree — and this message printed both without saying which,
+        // which is how "3 red {}" reached a reader who then had to run the whole
+        // suite again to learn what had failed. A failure a `failures:` list
+        // never names is a real shape (a doc-test's name carries spaces, a
+        // target can die before it prints one), so it is SAID rather than shown
+        // as an empty set beside a number.
+        let named = match control.red.is_empty() {
+            true => "and its log names none of them — a doc-test, a target that \
+                     did not build, or a crash, none of which a `failures:` list \
+                     carries a name for"
+                .to_string(),
+            false => format!("{:?}", control.red),
+        };
         return Err(format!(
             "the control is {} red before any injection — a sweep from here \
-             measures nothing: {:?}",
-            control.failed, control.red
+             measures nothing: {named}",
+            control.failed
         ));
     }
     if control.targets == 0 {
@@ -450,6 +443,61 @@ fn run() -> Result<(), String> {
         let report = report(&manifest, &scope, &control, Vec::new());
         println!("{}", serde_json::to_string_pretty(&report).map_err(err)?);
         return Ok(());
+    }
+
+    // AND EVERY NAME THE PLAN IS ADDRESSED TO IS ONE THE CONTROL RAN.
+    //
+    // R1183 asked whether a sweep's command still names a suite that EXISTS and
+    // found three that did not. This is the same question one level in — whether
+    // the tests it names still exist inside that suite — and until now only one
+    // of the two had a reader. An `expect_red` whose test was renamed comes back
+    // `missed`, which is the word this tool also prints for an injection that
+    // landed somewhere else, and it prints it only AFTER a whole suite run per
+    // injection. Asked here it costs nothing: the control has already run, and
+    // the names it ran are the harness's own words rather than a second
+    // derivation of them.
+    //
+    // SCOPED TO WHAT THIS RUN WILL EXECUTE, and after the control-only return
+    // above so that mode stays what it says it is: a baseline measurement. An
+    // `--only` run is a claim about the injections it selects, and refusing it
+    // over a stale name in one it was asked to skip would take the narrow mode
+    // away from exactly the person repairing that name.
+    // AND "I COULD NOT READ THE NAMES" IS NOT "THE NAMES ARE WRONG". A suite is
+    // free to print no per-test line — `--quiet` does exactly that — and a run
+    // whose log has none gives this check an empty population, in which every
+    // expectation looks stale. The two answers are separated here, and the one
+    // that is not a verdict is PRINTED rather than passed over: a check that
+    // silently declined is indistinguishable from a check that held.
+    if control.ran.is_empty() {
+        eprintln!(
+            "[control] no per-test names in this log, so nothing here says whether the \
+             plan's {} expectation(s) still name tests that exist",
+            chosen
+                .iter()
+                .map(|injection| injection.expect_red.len())
+                .sum::<usize>()
+        );
+    } else {
+        let unaddressed: Vec<String> = chosen
+            .iter()
+            .flat_map(|injection| {
+                injection
+                    .expect_red
+                    .iter()
+                    .filter(|expected| !reached(&control.ran, expected))
+                    .map(|expected| format!("{}: {expected}", injection.name))
+            })
+            .collect();
+        if !unaddressed.is_empty() {
+            return Err(format!(
+                "{} expectation(s) name a test the control never ran, of {} it did. A name \
+                 that no longer exists scores `missed`, which is also what a misaimed \
+                 injection scores — and it scores it after a whole suite run:\n  {}",
+                unaddressed.len(),
+                control.ran.len(),
+                unaddressed.join("\n  ")
+            ));
+        }
     }
 
     let mut results = Vec::new();
@@ -776,6 +824,16 @@ fn summarize(text: &str) -> Run {
             in_failures = false;
             continue;
         }
+        // EVERY NAME THE RUN EXECUTED, which is the only list of them that is
+        // the harness's own words rather than a second derivation of them.
+        // `test <name> ... ok` — checked AFTER `test result:` above, which the
+        // same prefix would otherwise swallow.
+        if let Some(rest) = line.strip_prefix("test ") {
+            if let Some((name, _outcome)) = rest.rsplit_once(" ... ") {
+                run.ran.insert(name.to_string());
+                continue;
+            }
+        }
         if line.trim_end() == "failures:" {
             in_failures = true;
             continue;
@@ -800,43 +858,6 @@ fn summarize(text: &str) -> Run {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn a_test_answers_to_its_own_name_and_not_to_a_name_it_merely_contains() {
-        // THE REFUSAL THIS TOOL MADE FOR A REASON OUTSIDE ITS OWN LAW. A plan
-        // names the `#[test]` function; a harness prints the path its target
-        // reaches it through. Compared as plain strings, six injections that
-        // each landed exactly where they were aimed came back as six misaimed
-        // injections — the loudest verdict this tool has, spent on nothing.
-        let fired = BTreeSet::from([
-            "read_agreement_population::the_walk".to_string(),
-            "plain".to_string(),
-        ]);
-        assert!(
-            reached(&fired, "the_walk"),
-            "the name a plan is written with is the name the function has"
-        );
-        assert!(
-            reached(&fired, "read_agreement_population::the_walk"),
-            "and the path the harness prints is still itself"
-        );
-        assert!(reached(&fired, "plain"), "an unqualified red is unchanged");
-
-        // AND THE OTHER DIRECTION, which is why this is a suffix at a module
-        // boundary rather than a substring: crediting an injection with a red
-        // it did not cause is how a sweep says a contract is alive when the
-        // thing that went red was its neighbour.
-        assert!(
-            !reached(&fired, "walk"),
-            "`the_walk` is not the test called `walk` — a substring match would \
-             credit this injection with somebody else's failure"
-        );
-        assert!(
-            !reached(&fired, "population::the_walk"),
-            "half a module segment is not a module path"
-        );
-        assert!(!reached(&fired, "the_walk_that_is_not_this_one"));
-    }
 
     #[test]
     fn a_log_is_read_for_its_totals_and_its_names() {
@@ -864,6 +885,44 @@ test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out
         let run = summarize(log);
         assert_eq!((run.passed, run.failed, run.targets), (2, 1, 2));
         assert_eq!(run.red, BTreeSet::from(["beta".to_string()]));
+        // AND WHICH NAMES RAN, red or green — the population a plan's
+        // expectations are addressed into. `test result:` shares the prefix and
+        // is not one of them.
+        assert_eq!(
+            run.ran,
+            BTreeSet::from(["alpha".to_string(), "beta".to_string(), "gamma".to_string()]),
+            "every executed name is read, and no line that merely starts with `test `"
+        );
+    }
+
+    #[test]
+    fn a_name_a_plan_is_addressed_to_is_looked_for_among_the_names_that_ran() {
+        // THE DECISION THE PRE-FLIGHT MAKES, over the words a harness actually
+        // prints: the module path is part of what it prints, and a plan is
+        // written with the function's own name.
+        let ran = summarize(
+            "\
+running 3 tests
+test git_hooks_smoke::the_hook_rejects ... ok
+test audit::tests::subscribe_receives ... ok
+test plain ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out
+",
+        )
+        .ran;
+        assert!(reached(&ran, "the_hook_rejects"), "{ran:?}");
+        assert!(reached(&ran, "audit::tests::subscribe_receives"), "{ran:?}");
+        assert!(reached(&ran, "plain"), "{ran:?}");
+
+        // AND THE STALE SHAPES THIS EXISTS TO CATCH: a function renamed, and a
+        // MODULE renamed under an expectation that names one. Both leave the
+        // sweep's anchors applying perfectly to a plan aimed at nothing.
+        assert!(!reached(&ran, "the_hook_rejects_it"), "{ran:?}");
+        assert!(
+            !reached(&ran, "live_tail::tests::subscribe_receives"),
+            "{ran:?}"
+        );
     }
 
     #[test]

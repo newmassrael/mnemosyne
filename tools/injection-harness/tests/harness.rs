@@ -27,11 +27,17 @@ fn tree(root: &Path, source: &str) -> PathBuf {
     let suite = root.join("suite.sh");
     fs::write(
         &suite,
+        // THE PER-TEST LINES ARE PART OF WHAT A SUITE PRINTS, and leaving them
+        // out made this fixture unlike the thing it stands for in a way that
+        // mattered: the pre-flight that asks whether a plan's names still exist
+        // reads exactly those lines, so a fixture without them exercises the
+        // branch where the harness declines to judge instead of the one where
+        // it judges.
         "#!/bin/sh\n\
          if grep -q HEALTHY src.txt; then\n\
-         printf 'test result: ok. 2 passed; 0 failed; 0 ignored\\n'\n\
+         printf 'test the_law ... ok\\ntest the_other ... ok\\n\\ntest result: ok. 2 passed; 0 failed; 0 ignored\\n'\n\
          else\n\
-         printf 'failures:\\n    the_law\\n\\ntest result: FAILED. 1 passed; 1 failed; 0 ignored\\n'\n\
+         printf 'test the_law ... FAILED\\ntest the_other ... ok\\n\\nfailures:\\n    the_law\\n\\ntest result: FAILED. 1 passed; 1 failed; 0 ignored\\n'\n\
          exit 1\n\
          fi\n",
     )
@@ -489,6 +495,49 @@ fn a_red_control_stops_the_sweep() {
 }
 
 #[test]
+fn a_plan_aimed_at_a_test_that_no_longer_exists_stops_the_sweep_at_the_control() {
+    // THE DECAY ONE LEVEL IN FROM R1183's. That round asked whether a sweep's
+    // command still names a SUITE that exists and found three that did not; this
+    // is whether its plan still names TESTS inside that suite. Both leave every
+    // anchor applying perfectly to a proof aimed at nothing.
+    //
+    // It is caught at the CONTROL, which is the whole point: the same staleness
+    // reaches the report as `missed` — the word a misaimed injection also gets —
+    // and only after the suite has run once per injection.
+    let root = tempdir();
+    tree(root.path(), "the wire is HEALTHY here\n");
+    let path = manifest(
+        root.path(),
+        serde_json::json!([{
+            "name": "I1",
+            "edits": [{"file": "src.txt", "from": "HEALTHY", "to": "BROKEN"}],
+            "expect_red": ["the_law", "the_law_under_its_old_name"],
+        }]),
+    );
+    let out = harness(&path);
+    assert!(
+        !out.status.success(),
+        "a plan addressed at a test that does not exist proves nothing"
+    );
+    let err = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        err.contains("I1: the_law_under_its_old_name"),
+        "the refusal must name the injection and the expectation:\n{err}"
+    );
+    // AND NOT THE ONE THAT IS STILL THERE, which is what makes this a reader of
+    // the names rather than a reader of the list's length.
+    assert!(
+        !err.contains("I1: the_law\n"),
+        "an expectation that still names a test is not a finding:\n{err}"
+    );
+    // THE COST IT SAVES IS THE POINT: no injection was applied at all.
+    assert!(
+        !err.contains("applying"),
+        "the sweep must stop before it edits the tree:\n{err}"
+    );
+}
+
+#[test]
 fn an_injection_that_reaches_nothing_it_was_aimed_at_is_a_failure_of_the_sweep() {
     let root = tempdir();
     tree(root.path(), "the wire is HEALTHY here\n");
@@ -809,6 +858,42 @@ fn a_floor_this_machine_clears_lets_the_run_through() {
         String::from_utf8_lossy(&out.stderr).contains("MiB available (floor 0)"),
         "and it says what it read, so a floor nobody meets is told apart from a \
          reading nobody took"
+    );
+}
+
+#[test]
+fn a_control_that_counted_failures_it_cannot_name_says_which_half_is_empty() {
+    // THE MESSAGE THAT COST A DIAGNOSIS. The count comes from `test result:`
+    // and the names come from a `failures:` list, so they can disagree — a
+    // doc-test's name carries spaces and no list names it, a target can die
+    // before printing one — and this refusal used to print the number beside an
+    // empty set, `3 red {}`, leaving a reader to run the whole suite again to
+    // find out what had failed. It is now SAID.
+    let root = tempdir();
+    let counted_but_unnamed = "test result: FAILED. 1 passed; 3 failed; 0 ignored\\n";
+    split_verdict_suite(
+        root.path(),
+        (counted_but_unnamed, 1),
+        (counted_but_unnamed, 1),
+        "HEALTHY\n",
+    );
+    let path = manifest(
+        root.path(),
+        serde_json::json!([{
+            "name": "I1",
+            "edits": [{"file": "src.txt", "from": "HEALTHY", "to": "BROKEN"}],
+        }]),
+    );
+    let out = harness(&path);
+    assert!(!out.status.success(), "a red control is not a baseline");
+    let said = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        said.contains("the control is 3 red") && said.contains("names none of them"),
+        "the refusal must say the count came from one line and no name from another: {said}"
+    );
+    assert!(
+        !said.contains("{}"),
+        "an empty set printed beside a number is the shape this replaced: {said}"
     );
 }
 

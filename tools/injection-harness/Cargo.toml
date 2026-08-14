@@ -58,3 +58,9 @@ libc = "0.2"
 # The tests here kill the harness on purpose, which is a syscall and not a
 # shell-out — spawning `/bin/kill` to test signal handling would test the shell.
 libc = "0.2"
+# THE PARSER, for the law that asks whether a sweep's plan still names tests
+# that exist. A `#[test]` function is a syntactic shape and a regex over `.rs`
+# is a second parser that disagrees with the first — the same reason
+# `tools/blind-waits` and `tools/named-environment` each carry this rather than
+# a pattern. `visit` for the borrowing walk, `full` for item and fn syntax.
+syn = { version = "3", features = ["full", "visit"] }

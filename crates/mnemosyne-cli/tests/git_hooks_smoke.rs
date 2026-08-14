@@ -86,18 +86,21 @@ violate() { echo "$1" >> "$PWD/reporter-contract-violations.log"; }
 if [[ "${1:-}" != "run" ]]; then
     exit 0
 fi
-# The separate-workspace gate (R1156) runs three of this repository's own gate
-# programs through `cargo run` as well, and they are not this stub's subject —
-# each has its own suite. Named by PATH so the exemption cannot be claimed by
-# anything else the hook might call.
+# The separate-workspace gate (R1156) runs this repository's own gate programs
+# through `cargo run` as well, and they are not this stub's subject — each has
+# its own suite. This stub owns exactly ONE of them, the CI reporter.
 #
-# THIS LIST IS HAND-KEPT AND HAS ALREADY GONE STALE ONCE (R1182): the gate added
-# in that round was not on it, so the stub read it as "some other program" and
-# the case failed for a reason that has nothing to do with the seam it owns.
-# A gate added to the hook belongs here in the same change.
+# A RULE, NOT A LIST (R1184). Until this round the others were named one by one,
+# and that list went stale the moment a gate was added: R1182 added one, the stub
+# read it as "some other program", and the case failed for a reason that has
+# nothing to do with the seam it owns. What is asked now is the SHAPE — a
+# manifest under this repository's own `tools/` that is not the reporter's is
+# some other gate's business — so a gate added to the hook needs no edit here and
+# cannot silently fall off. Still by PATH, so the exemption cannot be claimed by
+# anything else the hook might call.
 case "$*" in
-    *"/tools/item-citations/Cargo.toml"*|*"/tools/blind-waits/Cargo.toml"*) exit 0 ;;
-    *"/tools/named-environment/Cargo.toml"*) exit 0 ;;
+    *"/tools/ci-state/Cargo.toml"*) ;;
+    *"/tools/"*"/Cargo.toml"*) exit 0 ;;
 esac
 [[ "$*" == *"/tools/ci-state/Cargo.toml"* ]] \
     || violate "pre-push ran some other program than the CI reporter: $*"
@@ -846,6 +849,90 @@ fn the_side_workspace_gate_tells_an_environment_it_could_not_read_from_one_it_ju
     assert!(
         !err.contains("the named-environment gate could not read"),
         "a workspace it judged was not one it failed to read:\n{err}"
+    );
+}
+
+/// A `grep` that has no PCRE at all — the reading the first repair of this
+/// defect guessed at, kept because it is the OTHER way the capability can be
+/// missing and the hook must answer for both.
+const GREP_WITHOUT_PCRE: &str = r#"#!/usr/bin/env bash
+for argument in "$@"; do
+    case "$argument" in
+        -*P*) echo "grep: invalid option -- 'P'" >&2; exit 2 ;;
+    esac
+done
+exec /usr/bin/grep "$@"
+"#;
+
+#[test]
+fn commit_msg_enforces_its_content_rules_in_a_locale_that_cannot_read_characters() {
+    // THE SILENT-FAIL THAT SHIPPED, and the reason it is written as an
+    // ENVIRONMENT rather than as a machine. Two of this hook's rules — no emoji,
+    // English only — are `grep -P` over Unicode code-point classes, and both
+    // ended in `2>/dev/null`, which makes every way of going wrong look like
+    // "no match".
+    //
+    // IT WAS FOUND BY PLACEMENT: this suite passes here and on one build host,
+    // and on the other it said `commit-msg must REJECT an emoji, but it
+    // accepted`. The cause is not a missing `-P` — that host has one — but a
+    // non-UTF-8 LOCALE, in which a four-byte emoji is four characters and no
+    // code-point class can match it. Named here, the other machine's condition
+    // is reproducible on this one, which is the whole point of naming it.
+    let f = Fixture::new();
+    let msg_path = f.path().join("COMMIT_EDITMSG_locale");
+    fs::write(&msg_path, "docs(narrative): an emoji sneaks in \u{1F600}\n").expect("write message");
+    let out = f.run_hook(
+        "commit-msg",
+        &[msg_path.to_str().expect("msg path is utf-8")],
+        "",
+        &[("LC_ALL", "C"), ("LANG", "C")],
+    );
+    let err = stderr_of(&out);
+    assert!(
+        !out.status.success(),
+        "a rule that cannot read the message must not report it clean:\n{err}"
+    );
+    assert!(
+        err.contains("Emoji detected"),
+        "and the hook repairs the locale rather than refusing, so the rule it \
+         claims to enforce is the one that answers:\n{err}"
+    );
+
+    // THE OTHER WAY THE CAPABILITY GOES MISSING, which no locale can repair: a
+    // grep with no PCRE at all. Here refusing IS the answer, and it must say
+    // what it could not do rather than merely fail.
+    let shim = f.path().join("shim-nopcre");
+    fs::create_dir_all(&shim).expect("mkdir shim");
+    write_exec(&shim.join("grep"), GREP_WITHOUT_PCRE);
+    let hobbled = format!(
+        "{}:{}",
+        shim.to_str().expect("shim path is utf-8"),
+        std::env::var("PATH").unwrap_or_default()
+    );
+    fs::write(&msg_path, "fix(ci): a message that breaks no other rule\n").expect("write message");
+    let out = f.run_hook(
+        "commit-msg",
+        &[msg_path.to_str().expect("msg path is utf-8")],
+        "",
+        &[("PATH", &hobbled)],
+    );
+    let err = stderr_of(&out);
+    assert!(
+        !out.status.success(),
+        "a hook that cannot enforce what it claims must not accept:\n{err}"
+    );
+    assert!(
+        err.contains("cannot match a Unicode code-point"),
+        "and it must name the capability it lacks:\n{err}"
+    );
+
+    // THE CONTROL: the same message through an unhobbled hook is accepted, so
+    // neither case above is merely a hook that rejects everything.
+    let out = f.commit_msg("fix(ci): a message that breaks no other rule");
+    assert!(
+        out.status.success(),
+        "the message itself is fine:\n{}",
+        stderr_of(&out)
     );
 }
 

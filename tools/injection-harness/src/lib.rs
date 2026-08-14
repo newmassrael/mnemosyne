@@ -16,7 +16,7 @@
 //!
 //! A proof that has quietly stopped proving reads exactly like one that holds.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -317,4 +317,86 @@ pub fn snapshot_and_dry_run(
         }
     }
     Ok(snapshot)
+}
+
+// --- what a plan's name answers to -------------------------------------------
+
+/// Whether one expected name is among the tests that went red.
+///
+/// A harness prints a test by the path its target reaches it through —
+/// `read_agreement_population::the_walk` for a `#[test]` inside a module — and
+/// the person writing a plan writes down the name they gave the function. Held
+/// against each other as plain strings, a sweep in which every injection landed
+/// exactly where it was aimed comes back "aimed at X and did not reach it" for
+/// all of it. That happened, on six injections and forty minutes of suite runs,
+/// and the message it prints is the strongest one this tool has: a misaimed
+/// injection. A refusal a gate makes for a reason outside its own law is the
+/// same defect as a gate that does not fire.
+///
+/// So a name matches its own suffix at a MODULE BOUNDARY, and nowhere else:
+/// `a::b::name` answers to `name` and to `b::name`, and `other_name` does not
+/// answer to `name`. Not a substring test — that would let `judges` match
+/// `the_walk_judges_nothing` and quietly credit an injection with a red it did
+/// not cause.
+///
+/// HERE RATHER THAN IN `main.rs`, for the reason at the top of this file. R1183
+/// gave the rule a SECOND READER — a law over every sweep this repository
+/// tracks, asking whether each `expect_red` still names a test that exists — and
+/// a second reader of a rule that lives inside a binary has no choice but to
+/// spell the rule again. Two spellings of "what a plan's name answers to" is the
+/// one way this device can call an injection misaimed for a reason of its own.
+pub fn reached(fired: &BTreeSet<String>, expected: &str) -> bool {
+    fired.iter().any(|red| answers_to(red, expected))
+}
+
+/// The same rule for ONE name, which is what the other directions need: a red
+/// that answers to no expectation is one the manifest never described, and an
+/// expectation no test answers to is one aimed at nothing.
+pub fn answers_to(red: &str, expected: &str) -> bool {
+    red == expected
+        || red
+            .strip_suffix(expected)
+            .is_some_and(|prefix| prefix.ends_with("::"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_test_answers_to_its_own_name_and_not_to_a_name_it_merely_contains() {
+        // THE REFUSAL THIS TOOL MADE FOR A REASON OUTSIDE ITS OWN LAW. A plan
+        // names the `#[test]` function; a harness prints the path its target
+        // reaches it through. Compared as plain strings, six injections that
+        // each landed exactly where they were aimed came back as six misaimed
+        // injections — the loudest verdict this tool has, spent on nothing.
+        let fired = BTreeSet::from([
+            "read_agreement_population::the_walk".to_string(),
+            "plain".to_string(),
+        ]);
+        assert!(
+            reached(&fired, "the_walk"),
+            "the name a plan is written with is the name the function has"
+        );
+        assert!(
+            reached(&fired, "read_agreement_population::the_walk"),
+            "and the path the harness prints is still itself"
+        );
+        assert!(reached(&fired, "plain"), "an unqualified red is unchanged");
+
+        // AND THE OTHER DIRECTION, which is why this is a suffix at a module
+        // boundary rather than a substring: crediting an injection with a red
+        // it did not cause is how a sweep says a contract is alive when the
+        // thing that went red was its neighbour.
+        assert!(
+            !reached(&fired, "walk"),
+            "`the_walk` is not the test called `walk` — a substring match would \
+             credit this injection with somebody else's failure"
+        );
+        assert!(
+            !reached(&fired, "population::the_walk"),
+            "half a module segment is not a module path"
+        );
+        assert!(!reached(&fired, "the_walk_that_is_not_this_one"));
+    }
 }

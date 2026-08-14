@@ -27,6 +27,45 @@ set -euo pipefail
 
 msg_file="$1"
 
+# THE TWO CONTENT RULES BELOW ARE THE ONLY THING HERE THAT READS THE MACHINE.
+# Both are `grep -P` over Unicode code-point classes, and both used to end in
+# `2>/dev/null`, which turns every way that can go wrong into the same answer as
+# "no match" — a rule reporting clean without having run.
+#
+# IT WENT WRONG, and not in the way the first repair guessed. `git_hooks_smoke`
+# passes on this machine and on one build host, and on the other it said
+# `commit-msg must REJECT an emoji, but it accepted`. The obvious reading is that
+# the second host's grep has no `-P`; the measurement says otherwise — it has
+# one. What it does not have is a UTF-8 LOCALE, and `grep -P` only interprets its
+# input as characters when the locale says to. Under `LC_ALL=C` every byte of a
+# four-byte emoji is its own character and no code-point class can match it, so
+# the emoji rule and the English-only rule were both silently off there.
+#
+# So what is probed is THE CAPABILITY, not the flag: an actual emoji through the
+# actual expression. A flag probe would have passed on the very host that was
+# broken. If the ambient locale cannot do it, one that can is asked for
+# explicitly, because repairing beats refusing; and only if neither works does
+# this refuse — loudly, because a hook that cannot enforce what it claims must
+# not look like one that found nothing.
+pcre_locale=()
+utf8_capable() {
+    printf '\360\237\230\200\n' | "$@" grep -qP '[\x{1F300}-\x{1FAFF}]'
+}
+if utf8_capable; then
+    :
+elif utf8_capable env LC_ALL=C.UTF-8; then
+    pcre_locale=(env LC_ALL=C.UTF-8)
+else
+    echo "commit-msg: this machine's grep cannot match a Unicode code-point" >&2
+    echo "  class — no -P (PCRE) support, or no UTF-8 locale for it to work" >&2
+    echo "  in — so the emoji rule and the English-only rule cannot run at" >&2
+    echo "  all. Refusing rather than passing: a rule that could not run must" >&2
+    echo "  not look like a rule that held. Install GNU grep and a UTF-8" >&2
+    echo "  locale (C.UTF-8 is enough), or commit from a machine that has" >&2
+    echo "  them." >&2
+    exit 1
+fi
+
 # Skip merge commits — git writes their subject and user did not author it.
 first_line=$(head -n 1 "$msg_file")
 if [[ "$first_line" =~ ^Merge ]]; then
@@ -132,7 +171,8 @@ fi
 # Emoji detection — Unicode pictograph / regional-indicator ranges.
 # Typographic symbols (§ U+00A7, → U+2192, – U+2013, • U+2022, etc.) are
 # below the U+1F300 cutoff so they are not flagged.
-if grep -qP '[\x{1F300}-\x{1FAFF}\x{1F1E6}-\x{1F1FF}]' "$msg_file" 2>/dev/null; then
+if ${pcre_locale[@]+"${pcre_locale[@]}"} \
+    grep -qP '[\x{1F300}-\x{1FAFF}\x{1F1E6}-\x{1F1FF}]' "$msg_file"; then
     errors+=("Emoji detected (COMMIT_FORMAT.md sec 4: no emojis)")
 fi
 
@@ -143,7 +183,8 @@ fi
 # Anything else (Hangul, Kana, CJK ideographs, Cyrillic, Greek, etc.) is
 # rejected — project narrative needing Korean lives in claudedocs/ or
 # memory/, not in commit messages.
-if non_english_lines=$(grep -nP '[^\x{0009}\x{000A}\x{000D}\x{0020}-\x{007E}\x{00A7}\x{2013}\x{2014}\x{2022}\x{2026}\x{2192}]' "$msg_file" 2>/dev/null); then
+if non_english_lines=$(${pcre_locale[@]+"${pcre_locale[@]}"} \
+    grep -nP '[^\x{0009}\x{000A}\x{000D}\x{0020}-\x{007E}\x{00A7}\x{2013}\x{2014}\x{2022}\x{2026}\x{2192}]' "$msg_file"); then
     if [[ -n "$non_english_lines" ]]; then
         errors+=("Non-English / non-whitelisted character (COMMIT_FORMAT.md sec 4: English only)")
         # Surface the first few offending lines so the author can locate

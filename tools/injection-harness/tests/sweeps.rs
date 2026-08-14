@@ -594,6 +594,279 @@ fn every_sweep_names_a_suite_this_tree_can_still_run() {
     );
 }
 
+/// Every `#[test]` function a tree holds, and what the walk could not see.
+#[derive(Debug, Default)]
+struct TestNames {
+    /// The function names, unqualified — see the law below for why the module
+    /// path is deliberately not part of this answer.
+    named: BTreeSet<String>,
+    /// Files carrying an item-position macro INVOCATION, which can expand to
+    /// tests this walk cannot see: syn does not walk macro bodies, which is what
+    /// R1182 paid to learn. COUNTED AND REPORTED rather than treated as a
+    /// silence — see the law for why the first draft was wrong to let them
+    /// suppress a verdict.
+    opaque: BTreeSet<PathBuf>,
+    /// Files that did not parse — a file genuinely unread, which is the one
+    /// thing here that makes a miss unanswerable rather than reportable.
+    unparsed: Vec<(PathBuf, String)>,
+    /// How many files were opened at all, so a zero is a measurement.
+    read: usize,
+}
+
+/// Whether an attribute is the one that makes a function a test — by its LAST
+/// segment, so `#[tokio::test]` counts and `#[cfg(test)]` on the module around
+/// it does not.
+fn a_test_attribute(attr: &syn::Attribute) -> bool {
+    attr.path()
+        .segments
+        .last()
+        .is_some_and(|segment| segment.ident == "test")
+}
+
+fn test_names_in(tree: &Path) -> TestNames {
+    struct Collect<'a> {
+        into: &'a mut BTreeSet<String>,
+        opaque: bool,
+    }
+    impl<'ast> syn::visit::Visit<'ast> for Collect<'_> {
+        fn visit_item_fn(&mut self, item: &'ast syn::ItemFn) {
+            if item.attrs.iter().any(a_test_attribute) {
+                self.into.insert(item.sig.ident.to_string());
+            }
+            syn::visit::visit_item_fn(self, item);
+        }
+        fn visit_item_macro(&mut self, item: &'ast syn::ItemMacro) {
+            // `macro_rules! name { .. }` DEFINES one and carries an ident;
+            // `name! { .. }` at item position INVOKES one and does not. Only
+            // the second can put items this walk never sees into the crate.
+            if item.ident.is_none() {
+                self.opaque = true;
+            }
+            syn::visit::visit_item_macro(self, item);
+        }
+    }
+
+    let mut found = TestNames::default();
+    let mut queue = vec![tree.to_path_buf()];
+    while let Some(directory) = queue.pop() {
+        let Ok(entries) = std::fs::read_dir(&directory) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                // `target/` is cargo's output and `.git/` is not source; both
+                // hold `.rs` files that no target compiles.
+                let skip = matches!(
+                    path.file_name().and_then(|name| name.to_str()),
+                    Some("target") | Some(".git")
+                );
+                if !skip {
+                    queue.push(path);
+                }
+                continue;
+            }
+            if path.extension().and_then(|e| e.to_str()) != Some("rs") {
+                continue;
+            }
+            found.read += 1;
+            let text = match std::fs::read_to_string(&path) {
+                Ok(text) => text,
+                Err(e) => {
+                    found.unparsed.push((path, e.to_string()));
+                    continue;
+                }
+            };
+            match syn::parse_file(&text) {
+                Ok(file) => {
+                    let mut collect = Collect {
+                        into: &mut found.named,
+                        opaque: false,
+                    };
+                    syn::visit::visit_file(&mut collect, &file);
+                    if collect.opaque {
+                        found.opaque.insert(path);
+                    }
+                }
+                Err(e) => found.unparsed.push((path, e.to_string())),
+            }
+        }
+    }
+    found
+}
+
+/// EVERY TEST A SWEEP'S PLAN NAMES IS ONE THIS TREE STILL HAS.
+///
+/// The law above asks whether a sweep's command still names a SUITE that
+/// exists. This is the same question one level in: whether the tests its
+/// `expect_red` lists name are still there. Both decay the same way and both
+/// leave every anchor applying perfectly to a proof aimed at nothing.
+///
+/// THE HARNESS ALSO ASKS THIS, EXACTLY, AND THAT IS NOT ENOUGH — the same
+/// argument R1183 made one level up. Its pre-flight holds each expectation
+/// against the names the CONTROL RAN, which is the harness's own words and
+/// cannot be wrong; it fires when somebody runs a sweep. This one fires on the
+/// commit that renames the test, which is where the person who can fix it is.
+///
+/// SO IT ANSWERS A DELIBERATELY WEAKER QUESTION: the LEAF name, and not the
+/// module path. Resolving `audit::tests::x` means following `mod` declarations
+/// and `#[path]` attributes from each target root — a rule that already exists,
+/// in `tools/named-environment`, that cost that round three defects to get
+/// right, and that this law would have to spell a second time. A second
+/// spelling of a resolver is the defect this repository keeps paying for, so
+/// the module half is left to the pre-flight, which gets it exactly and for
+/// free. What is left here is total for the decay that actually happens: a test
+/// renamed or deleted.
+///
+/// A FILE THAT DID NOT PARSE IS A REFUSAL; A MACRO IS A SENTENCE IN THE
+/// MESSAGE. The first draft had both as refusals, and the measurement rejected
+/// it: syn does not walk macro bodies, twenty files in this repository invoke an
+/// item-position macro, and making any of them silence the whole tree turned a
+/// TRUE finding — two expectations naming tests that had been renamed away —
+/// into "cannot answer". A guard that suppresses every verdict because
+/// somewhere in the tree something might have generated something is the
+/// vacuity this device exists to detect. So a miss is reported, and the message
+/// carries the one other explanation there is, with the count, so the next
+/// person can tell the two apart in a line.
+#[test]
+fn every_test_a_sweep_names_is_one_this_tree_still_has() {
+    let root = repository_root();
+    let mut trees: BTreeMap<PathBuf, TestNames> = BTreeMap::new();
+    let mut judged = 0;
+    let mut missing = Vec::new();
+    let mut unreadable = Vec::new();
+    for path in tracked_json(&root) {
+        let Ok(manifest) = injection_harness::read_manifest(&root.join(&path)) else {
+            continue;
+        };
+        if a_test_input(&path) {
+            continue;
+        }
+        // THE TREE THE SWEEP DECLARES, not the packages its command selects. A
+        // name found in a package the command does not reach is a miss this law
+        // does not report — generous in the direction that cannot raise a false
+        // alarm, and the pre-flight is exact about the rest.
+        let names = trees
+            .entry(manifest.repo.clone())
+            .or_insert_with(|| test_names_in(&manifest.repo));
+        for injection in &manifest.injections {
+            for expected in &injection.expect_red {
+                let leaf = expected.rsplit("::").next().unwrap_or(expected);
+                judged += 1;
+                if names.named.contains(leaf) {
+                    continue;
+                }
+                let report = format!("{path} / {}: `{expected}`", injection.name);
+                if names.unparsed.is_empty() {
+                    missing.push(format!(
+                        "{report} — or it is generated by one of the {} item-position \
+                         macro invocation(s) in that tree, which no walk of the syntax \
+                         can see into",
+                        names.opaque.len()
+                    ));
+                } else {
+                    unreadable.push(format!(
+                        "{report} — and {} file(s) in that tree did not parse, so an \
+                         absent name and an unread one look alike here",
+                        names.unparsed.len()
+                    ));
+                }
+            }
+        }
+    }
+
+    // NON-VACUITY. A walk that opened nothing, and a repository whose every
+    // expectation holds, print the same silence.
+    let read: usize = trees.values().map(|names| names.read).sum();
+    let known: usize = trees.values().map(|names| names.named.len()).sum();
+    assert!(
+        read >= 300 && known >= 500 && judged >= 50,
+        "{read} file(s) read, {known} test name(s) found, {judged} expectation(s) judged \
+         — too few to be this repository's, and a law over the wrong population is the \
+         empty answer that reads as a clean one"
+    );
+    assert!(
+        unreadable.is_empty(),
+        "{} expectation(s) this law cannot answer for, because part of the tree they are \
+         about would not parse:\n  {}",
+        unreadable.len(),
+        unreadable.join("\n  ")
+    );
+    assert!(
+        missing.is_empty(),
+        "{} expectation(s) name a test this tree no longer has. The sweep's anchors can \
+         all still apply and its command can still start, and it proves nothing, because \
+         what it says must go red does not exist:\n  {}",
+        missing.len(),
+        missing.join("\n  ")
+    );
+}
+
+/// THE CONTROL FOR THE WALK, over a tree this case builds. The law above found
+/// two real stale expectations on its first run, which is the evidence that it
+/// works — and that evidence is spent the moment they are repaired. What is left
+/// afterwards passes whether the walk sees anything or not.
+#[test]
+fn the_walk_finds_a_test_wherever_it_is_written_and_says_what_it_could_not_see() {
+    let at = std::env::temp_dir().join(format!(
+        "sweeps-walk-{}-{:?}",
+        std::process::id(),
+        std::thread::current().id()
+    ));
+    let _ = std::fs::remove_dir_all(&at);
+    for directory in ["src", "target/debug", "unparseable"] {
+        std::fs::create_dir_all(at.join(directory)).expect("mkdir");
+    }
+    std::fs::write(
+        at.join("src/lib.rs"),
+        "#[test]\nfn at_the_top() {}\n\
+         #[cfg(test)]\nmod tests {\n    #[test]\n    fn inside_a_module() {}\n\
+         \n    #[tokio::test]\n    async fn behind_a_path() {}\n}\n\
+         fn not_a_test() {}\n",
+    )
+    .expect("write lib");
+    // A DEFINITION carries an ident and generates nothing by itself; an
+    // INVOCATION does not, and can put a `#[test]` into the crate that no walk
+    // of the syntax will ever see.
+    std::fs::write(
+        at.join("src/generated.rs"),
+        "macro_rules! declare {\n    () => {};\n}\ndeclare!();\n",
+    )
+    .expect("write macro user");
+    // Cargo's output is not source, and it holds `.rs` files that no target
+    // compiles — counting them would let a stale name be answered for by a
+    // build artifact of the commit that made it stale.
+    std::fs::write(
+        at.join("target/debug/stale.rs"),
+        "#[test]\nfn only_in_the_build_directory() {}\n",
+    )
+    .expect("write artifact");
+    std::fs::write(at.join("unparseable/broken.rs"), "fn ( this is not rust\n")
+        .expect("write broken");
+
+    let found = test_names_in(&at);
+    assert_eq!(
+        found.named,
+        BTreeSet::from([
+            "at_the_top".to_string(),
+            "inside_a_module".to_string(),
+            "behind_a_path".to_string(),
+        ]),
+        "a test is found at any depth, and only a test is: {found:?}"
+    );
+    assert_eq!(found.opaque.len(), 1, "{found:?}");
+    assert!(
+        found.opaque.iter().all(|p| p.ends_with("generated.rs")),
+        "a `macro_rules!` DEFINITION is not an invocation: {found:?}"
+    );
+    assert_eq!(found.unparsed.len(), 1, "{found:?}");
+    assert_eq!(
+        found.read, 3,
+        "the build directory is not source: {found:?}"
+    );
+    let _ = std::fs::remove_dir_all(&at);
+}
+
 /// THE CONTROL FOR THE LAW ABOVE, and the reason it is not merely a walk over
 /// green files. The law's own first run is what proves it can fail — it named
 /// four stale selectors across three sweeps on a tree everything else called
