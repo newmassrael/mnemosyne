@@ -12482,6 +12482,44 @@
         "`stamp-inputs` seals what is declared, so the digest of a file nobody declared is not a fact anywhere. The two halves — declaring and sealing — are separate calls on purpose, and nothing enforces that the second follows the first"
       ]
     },
+    "Round 1192": {
+      "decision_summary": "R1192 (DEBT — a fixture that wrote the program it then ran, paid the round after it landed). Round 1191's separate-workspace verification turned red on a crate that had nothing to do with it: `unread-declaration`'s `a_key_the_program_does_not_extract_is_a_finding` failed with `could not run /tmp/…/never-heard-of-exclude — Text file busy (os error 26)`. The case is correct in isolation and had been green in every run of that crate alone; it is wrong the moment eleven cases are in flight, which under `check-side-workspaces.sh` on a build machine is the normal case rather than the unlucky one. THE MECHANISM IS OWNERSHIP, NOT SCHEDULING. Round 1189 built each case's answering program by WRITING a shell script into a temporary directory and then executing it. A file this process holds open for writing cannot be executed, and the descriptor does not have to be this thread's: another case's `Command::spawn` forks, the child inherits every open descriptor, and it holds them across exactly the window in which this thread execs the file it has just closed. That is the same family Round 1175 named — state a test binary does not own, treated as though it did — and its repair is the same shape: not a retry, not a lock, not a serial-test attribute, all of which would treat an ownership problem as a scheduling one. THE PROGRAM IS NOW BUILT AND THE ANSWER IS DATA. `src/bin/answering-program.rs` is compiled by cargo before any case starts, so no descriptor to it is ever open; what varies per case is a file it READS, named by `UNREAD_DECLARATION_ANSWER`, and data cannot be busy. The eleven cases are unchanged in what they assert. Measured the way Round 1175 measured its own fix: the suite run TWICE CONCURRENTLY, both arms 11 passed and 0 failed.",
+      "changes_bullets": [
+        "the answering program is a built binary rather than a shell script written at run time, so nothing executes a file this process has open",
+        "what varies per case is the answer text, in a file the program reads through `UNREAD_DECLARATION_ANSWER` — named on every spawn, because the gate hands its environment to the program it runs",
+        "the doc says WHY on both sides, so the next fixture in this crate reaches for data rather than for an executable"
+      ],
+      "verification_bullets": [
+        "the defect was not reproduced by argument: it arrived from the build machine, in `check-side-workspaces.sh`'s own log, with the message read rather than the word \"flake\" written — `Text file busy (os error 26)` naming the script the case had just written",
+        "the fix is measured the only way that means anything for a concurrency defect, which is Round 1175's standard: the crate's suite run TWICE CONCURRENTLY, arms exiting 0 and 0 with 11 passed each",
+        "the eleven cases assert exactly what they asserted before, and the crate is green alone as well: fmt, clippy `-D warnings`, 11 of 11"
+      ],
+      "impact_refs": [
+        "atomic-store-mutate-api"
+      ],
+      "carry_forward_bullets": [
+        "ONE CRATE WAS REPAIRED AND NOTHING ASKS THE OTHERS. A test that writes an executable and runs it is a shape a walk could find — `set_permissions` with an executable mode on a path this process wrote, followed by a spawn of it — and no gate asks. This crate was the only one doing it when it was written, which is a fact about today rather than a law",
+        "the window is a property of `fork` plus an inherited descriptor, so it is not this repository's to close in general: any concurrent spawn while any thread holds a write descriptor to an executable can produce it. What IS in reach is never writing the executable, which is what this round did"
+      ],
+      "publishable_decision_summary": "R1192 (DEBT — a fixture that wrote the program it then ran, paid the round after it landed). Round 1191's separate-workspace verification turned red on a crate that had nothing to do with it: `unread-declaration`'s `a_key_the_program_does_not_extract_is_a_finding` failed with `could not run /tmp/…/never-heard-of-exclude — Text file busy (os error 26)`. The case is correct in isolation and had been green in every run of that crate alone; it is wrong the moment eleven cases are in flight, which under `check-side-workspaces.sh` on a build machine is the normal case rather than the unlucky one. THE MECHANISM IS OWNERSHIP, NOT SCHEDULING. Round 1189 built each case's answering program by WRITING a shell script into a temporary directory and then executing it. A file this process holds open for writing cannot be executed, and the descriptor does not have to be this thread's: another case's `Command::spawn` forks, the child inherits every open descriptor, and it holds them across exactly the window in which this thread execs the file it has just closed. That is the same family Round 1175 named — state a test binary does not own, treated as though it did — and its repair is the same shape: not a retry, not a lock, not a serial-test attribute, all of which would treat an ownership problem as a scheduling one. THE PROGRAM IS NOW BUILT AND THE ANSWER IS DATA. `src/bin/answering-program.rs` is compiled by cargo before any case starts, so no descriptor to it is ever open; what varies per case is a file it READS, named by `UNREAD_DECLARATION_ANSWER`, and data cannot be busy. The eleven cases are unchanged in what they assert. Measured the way Round 1175 measured its own fix: the suite run TWICE CONCURRENTLY, both arms 11 passed and 0 failed.",
+      "publishable_changes_bullets": [
+        "the answering program is a built binary rather than a shell script written at run time, so nothing executes a file this process has open",
+        "what varies per case is the answer text, in a file the program reads through `UNREAD_DECLARATION_ANSWER` — named on every spawn, because the gate hands its environment to the program it runs",
+        "the doc says WHY on both sides, so the next fixture in this crate reaches for data rather than for an executable"
+      ],
+      "publishable_verification_bullets": [
+        "the defect was not reproduced by argument: it arrived from the build machine, in `check-side-workspaces.sh`'s own log, with the message read rather than the word \"flake\" written — `Text file busy (os error 26)` naming the script the case had just written",
+        "the fix is measured the only way that means anything for a concurrency defect, which is Round 1175's standard: the crate's suite run TWICE CONCURRENTLY, arms exiting 0 and 0 with 11 passed each",
+        "the eleven cases assert exactly what they asserted before, and the crate is green alone as well: fmt, clippy `-D warnings`, 11 of 11"
+      ],
+      "publishable_impact_refs": [
+        "atomic-store-mutate-api"
+      ],
+      "publishable_carry_forward_bullets": [
+        "ONE CRATE WAS REPAIRED AND NOTHING ASKS THE OTHERS. A test that writes an executable and runs it is a shape a walk could find — `set_permissions` with an executable mode on a path this process wrote, followed by a spawn of it — and no gate asks. This crate was the only one doing it when it was written, which is a fact about today rather than a law",
+        "the window is a property of `fork` plus an inherited descriptor, so it is not this repository's to close in general: any concurrent spawn while any thread holds a write descriptor to an executable can produce it. What IS in reach is never writing the executable, which is what this round did"
+      ]
+    },
     "Round 252": {
       "decision_summary": "Parser CommonMark conformance — recognize indented fenced code blocks (§98) and require whitespace after ATX hash sequence (§62)",
       "changes_bullets": [

@@ -46,31 +46,43 @@ fn answer(declaration: &Path, present: bool, extracts: &[(&str, &str)]) -> Strin
     lines.join("\n")
 }
 
-/// A program that answers `--explain-declaration` with fixed text.
+/// The answer one case wants back from the program, written where the built
+/// answering program will read it.
 ///
-/// It is a shell script rather than a second binary because it holds no logic at
-/// all: what it prints is the case's own data, and a fixture with a branch in it
-/// is a fixture that can be wrong in a way the case does not state.
-fn answering_program(root: &Path, name: &str, answer: &str) -> PathBuf {
-    let path = root.join(name);
-    std::fs::write(
-        &path,
-        format!("#!/usr/bin/env bash\ncat <<'THE_ANSWER'\n{answer}\nTHE_ANSWER\n"),
-    )
-    .expect("write the answering program");
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755))
-            .expect("make it executable");
-    }
+/// ⚠ THE PROGRAM IS BUILT AND THE ANSWER IS DATA, and the first draft had it the
+/// other way round: it wrote a shell script per case and executed it. Under
+/// `check-side-workspaces.sh` on the build machine that failed with `Text file
+/// busy` (R1192) — a file this process holds open for writing cannot be
+/// executed, and with eleven cases in flight another thread's `fork` inherits
+/// that descriptor across exactly the window in which this thread runs the file.
+/// The repair is structural rather than a retry, which would have treated an
+/// ownership problem as a scheduling one: cargo builds the program before any
+/// case starts, and what varies per case is a file nobody executes.
+fn answer_file(root: &Path, name: &str, answer: &str) -> PathBuf {
+    let path = root.join(format!("{name}.answer"));
+    std::fs::write(&path, answer).expect("write the answer");
     path
 }
 
-/// Run the gate. `HOME` is named on every spawn — set when the case is about the
-/// installed program, removed otherwise — because a variable a spawned program
-/// reads and its test does not name is one the machine underneath answers.
-fn gate(repository: &Path, program: Option<&Path>, home: Option<&Path>) -> std::process::Output {
+/// The program every case points the gate at, except the ones about the
+/// installed one.
+fn answering_program() -> PathBuf {
+    PathBuf::from(env!("CARGO_BIN_EXE_answering-program"))
+}
+
+/// Run the gate.
+///
+/// `HOME` is named on every spawn — set when the case is about the installed
+/// program, removed otherwise — because a variable a spawned program reads and
+/// its test does not name is one the machine underneath answers.
+/// `UNREAD_DECLARATION_ANSWER` is named for the same reason one level down: the
+/// gate hands its environment to the program it runs.
+fn gate(
+    repository: &Path,
+    program: Option<&Path>,
+    home: Option<&Path>,
+    answer: Option<&Path>,
+) -> std::process::Output {
     let mut command = Command::new(env!("CARGO_BIN_EXE_unread-declaration"));
     command.arg("--repo").arg(repository);
     if let Some(program) = program {
@@ -79,6 +91,10 @@ fn gate(repository: &Path, program: Option<&Path>, home: Option<&Path>) -> std::
     match home {
         Some(home) => command.env("HOME", home),
         None => command.env_remove("HOME"),
+    };
+    match answer {
+        Some(answer) => command.env("UNREAD_DECLARATION_ANSWER", answer),
+        None => command.env_remove("UNREAD_DECLARATION_ANSWER"),
     };
     command.output().expect("run the gate")
 }
@@ -104,7 +120,7 @@ fn a_declaration_every_key_of_which_is_read_is_clean() {
         root.path(),
         Some("send = \"tracked\"\nneeds = [\"cargo\", \"git\"]\npeak_gb_per_task = 2\n"),
     );
-    let program = answering_program(
+    let says = answer_file(
         root.path(),
         "reads-everything",
         &answer(
@@ -118,7 +134,7 @@ fn a_declaration_every_key_of_which_is_read_is_clean() {
             ],
         ),
     );
-    let output = gate(&repository, Some(&program), None);
+    let output = gate(&repository, Some(&answering_program()), None, Some(&says));
     assert_eq!(code(&output), 0, "{}", said(&output));
     assert!(
         said(&output).contains("every top-level key this repository declares is one the program"),
@@ -137,7 +153,7 @@ fn a_key_the_program_does_not_extract_is_a_finding() {
         root.path(),
         Some("send = \"tracked\"\nexclude = [\"/target\"]\n"),
     );
-    let program = answering_program(
+    let says = answer_file(
         root.path(),
         "never-heard-of-exclude",
         &answer(
@@ -146,7 +162,7 @@ fn a_key_the_program_does_not_extract_is_a_finding() {
             &[("send", "tracked")],
         ),
     );
-    let output = gate(&repository, Some(&program), None);
+    let output = gate(&repository, Some(&answering_program()), None, Some(&says));
     assert_eq!(code(&output), 1, "{}", said(&output));
     assert!(
         said(&output).contains("`exclude` is declared and the program never reads it"),
@@ -162,7 +178,7 @@ fn a_value_the_two_readings_disagree_about_is_a_finding() {
     // run uses a number nobody wrote.
     let root = tempfile::tempdir().expect("a temporary directory");
     let repository = repository_declaring(root.path(), Some("peak_gb_per_task = 2.5\n"));
-    let program = answering_program(
+    let says = answer_file(
         root.path(),
         "truncates-at-the-point",
         &answer(
@@ -171,7 +187,7 @@ fn a_value_the_two_readings_disagree_about_is_a_finding() {
             &[("peak_gb_per_task", "2")],
         ),
     );
-    let output = gate(&repository, Some(&program), None);
+    let output = gate(&repository, Some(&answering_program()), None, Some(&says));
     assert_eq!(code(&output), 1, "{}", said(&output));
     assert!(
         said(&output).contains("declared as `2.5` and the program reads `2`"),
@@ -191,7 +207,7 @@ fn a_key_inside_a_table_is_named_and_not_judged() {
             "send = \"tracked\"\n\n[commands]\nbuild = \"cargo build\"\nverify = \"cargo test\"\n",
         ),
     );
-    let program = answering_program(
+    let says = answer_file(
         root.path(),
         "top-level-only",
         &answer(
@@ -200,7 +216,7 @@ fn a_key_inside_a_table_is_named_and_not_judged() {
             &[("send", "tracked")],
         ),
     );
-    let output = gate(&repository, Some(&program), None);
+    let output = gate(&repository, Some(&answering_program()), None, Some(&says));
     assert_eq!(code(&output), 0, "{}", said(&output));
     assert!(
         said(&output).contains("2 key(s) inside a table are outside the program's namespace"),
@@ -218,7 +234,7 @@ fn a_key_inside_a_table_is_named_and_not_judged() {
 fn a_declaration_that_is_not_the_language_it_claims_is_a_finding() {
     let root = tempfile::tempdir().expect("a temporary directory");
     let repository = repository_declaring(root.path(), Some("send =\nneeds = [\"cargo\"]\n"));
-    let program = answering_program(
+    let says = answer_file(
         root.path(),
         "patterns-read-it-anyway",
         &answer(
@@ -227,7 +243,7 @@ fn a_declaration_that_is_not_the_language_it_claims_is_a_finding() {
             &[("send", ""), ("needs", "cargo")],
         ),
     );
-    let output = gate(&repository, Some(&program), None);
+    let output = gate(&repository, Some(&answering_program()), None, Some(&says));
     assert_eq!(code(&output), 1, "{}", said(&output));
     assert!(
         said(&output).contains("not valid TOML"),
@@ -240,7 +256,12 @@ fn a_declaration_that_is_not_the_language_it_claims_is_a_finding() {
 fn a_program_that_cannot_be_run_is_a_refusal_not_a_pass() {
     let root = tempfile::tempdir().expect("a temporary directory");
     let repository = repository_declaring(root.path(), Some("send = \"tracked\"\n"));
-    let output = gate(&repository, Some(&root.path().join("not-installed")), None);
+    let output = gate(
+        &repository,
+        Some(&root.path().join("not-installed")),
+        None,
+        None,
+    );
     assert_eq!(code(&output), 2, "{}", said(&output));
     assert!(said(&output).contains("NO VERDICT"), "{}", said(&output));
 }
@@ -252,8 +273,8 @@ fn a_program_without_the_seam_is_a_refusal() {
     // never asked.
     let root = tempfile::tempdir().expect("a temporary directory");
     let repository = repository_declaring(root.path(), Some("send = \"tracked\"\n"));
-    let program = answering_program(root.path(), "older-copy", "");
-    let output = gate(&repository, Some(&program), None);
+    let says = answer_file(root.path(), "older-copy", "");
+    let output = gate(&repository, Some(&answering_program()), None, Some(&says));
     assert_eq!(code(&output), 2, "{}", said(&output));
     assert!(
         said(&output).contains("does not have `--explain-declaration`"),
@@ -269,7 +290,7 @@ fn a_program_answering_about_another_file_is_a_refusal() {
     // another's values and agree or disagree for a reason neither file explains.
     let root = tempfile::tempdir().expect("a temporary directory");
     let repository = repository_declaring(root.path(), Some("send = \"tracked\"\n"));
-    let program = answering_program(
+    let says = answer_file(
         root.path(),
         "stood-somewhere-else",
         &answer(
@@ -278,7 +299,7 @@ fn a_program_answering_about_another_file_is_a_refusal() {
             &[("send", "tracked")],
         ),
     );
-    let output = gate(&repository, Some(&program), None);
+    let output = gate(&repository, Some(&answering_program()), None, Some(&says));
     assert_eq!(code(&output), 2, "{}", said(&output));
     assert!(
         said(&output).contains("it answered about"),
@@ -294,8 +315,8 @@ fn a_repository_declaring_nothing_says_so_rather_than_passing_quietly() {
     // answer, and it is said in words.
     let root = tempfile::tempdir().expect("a temporary directory");
     let repository = repository_declaring(root.path(), None);
-    let program = answering_program(root.path(), "unasked", "");
-    let output = gate(&repository, Some(&program), None);
+    let says = answer_file(root.path(), "unasked", "");
+    let output = gate(&repository, Some(&answering_program()), None, Some(&says));
     assert_eq!(code(&output), 0, "{}", said(&output));
     assert!(
         said(&output).contains("which is not the same as a clean check"),
@@ -319,7 +340,7 @@ fn the_installed_program_reads_every_key_this_repository_declares() {
     let home = std::env::var("HOME").expect("HOME is set for the test process");
     let installed = PathBuf::from(&home).join(unread_declaration::PROGRAM_UNDER_HOME);
 
-    let output = gate(&repository, None, Some(Path::new(&home)));
+    let output = gate(&repository, None, Some(Path::new(&home)), None);
     if installed.is_file() {
         assert_eq!(code(&output), 0, "{}", said(&output));
         assert!(
