@@ -760,6 +760,66 @@ fn cargos_own_marker_does_not_start_a_second_command() {
     );
 }
 
+/// R1197 — the fourth place a cargo command is written in this repository.
+///
+/// Against the TREE rather than pinned text, unlike its neighbours, and that is
+/// the point: what makes this reader worth having is that the file it reads is
+/// one nothing else did, so a fixture would be asserting about a declaration
+/// this repository does not have.
+#[test]
+fn the_declaration_is_read_for_the_commands_it_issues() {
+    let found = ci_plan::declared_build_commands(&repository_root());
+    let roles: Vec<&str> = found.iter().map(|command| command.owner.as_str()).collect();
+    assert_eq!(
+        roles,
+        vec!["build", "sweep", "verify"],
+        "each declared command is read, and it is read WITH ITS ROLE — a finding \
+         that named the file three times would leave a reader to work out which \
+         of the three is the defective one: {found:?}"
+    );
+    assert!(
+        found
+            .iter()
+            .all(|command| command.source == ci_plan::BUILD_DECLARATION),
+        "and they all say where they are written: {found:?}"
+    );
+
+    let verify = found
+        .iter()
+        .find(|command| command.owner == "verify")
+        .expect("the declaration says how a build machine verifies this tree");
+    assert_eq!(
+        verify.subcommand(),
+        Some("test"),
+        "the wrapper in front is read through, so the subcommand is cargo's own \
+         and not `scripts/verify.sh`: {verify:?}"
+    );
+    assert!(
+        verify
+            .carrier
+            .first()
+            .is_some_and(|program| program.ends_with("verify.sh")),
+        "and what carries it is kept, because that is what the coverage law \
+         reads: {verify:?}"
+    );
+
+    let sweep = found
+        .iter()
+        .find(|command| command.owner == "sweep")
+        .expect("the declaration says which sweep proves the contracts");
+    assert!(
+        sweep.carrier.is_empty(),
+        "a command issued directly is carried by nothing, so the two cases are \
+         distinguishable rather than assumed: {sweep:?}"
+    );
+    assert_eq!(
+        sweep.harness_args.len(),
+        1,
+        "and cargo's own bare `--` still separates it from what it passes on: \
+         {sweep:?}"
+    );
+}
+
 /// A wrapper may carry a wrapper, and a program with no cargo behind it carries
 /// nothing.
 #[test]

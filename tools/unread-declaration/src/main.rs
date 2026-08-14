@@ -101,6 +101,14 @@ fn main() -> ExitCode {
     // only, so a key inside a table is read by whoever drives the program and by
     // nothing this can interrogate. Printing the count and the names is what
     // keeps that hole a hole rather than a pass.
+    //
+    // R1197 — AND WHAT IT IS A HOLE IN, because the sentence without that clause
+    // misled a round. "Outside the program's namespace" is true of THIS reader
+    // and was read as a limit on EVERY reader, which left three cargo commands
+    // — one of them this repository's whole suite — in no law's population at
+    // all. They were all three defective the moment one looked. A gate that
+    // names what it cannot see should say who can, or its own honesty reads as
+    // a closed question.
     if report.tabled.is_empty() {
         println!("[unread-declaration] no key sits inside a table, so none went unasked");
     } else {
@@ -109,6 +117,11 @@ fn main() -> ExitCode {
              and are NOT judged here: {}",
             report.tabled.len(),
             report.tabled.join(", "),
+        );
+        println!(
+            "[unread-declaration] that is a limit on THIS reader and not on every reader — the \
+             cargo commands among them are judged by `locked_resolution_smoke` and \
+             `judged_test_runs`, which read the same file"
         );
     }
 

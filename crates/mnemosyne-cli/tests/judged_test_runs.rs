@@ -23,8 +23,8 @@ use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 
 use ci_plan::{
-    lister_declared_commands, script_cargo_commands, tracked_manifests, workflow_cargo_commands,
-    workspaces, CargoCommand, ManifestTarget,
+    declared_build_commands, lister_declared_commands, script_cargo_commands, tracked_manifests,
+    workflow_cargo_commands, workspaces, CargoCommand, ManifestTarget, BUILD_DECLARATION,
 };
 
 /// The wrapper, as this repository's own path names it.
@@ -56,6 +56,10 @@ fn everything_this_repository_issues(root: &Path) -> Vec<CargoCommand> {
             .into_iter()
             .filter(|command| command.source != "scripts/check-side-workspaces.sh"),
     );
+    // R1197 — a build machine running this repository's suite is a run whose
+    // coverage matters exactly as much as CI's; the words are just written
+    // somewhere neither the workflows nor the scripts reach.
+    commands.extend(declared_build_commands(root));
     commands
 }
 
@@ -115,6 +119,11 @@ fn every_test_run_this_repository_issues_goes_through_the_wrapper_that_judges_it
             .iter()
             .any(|source| source.starts_with(".github/workflows/")),
         "so is every suite in the workflows: {per_source:?}"
+    );
+    assert!(
+        per_source.contains(BUILD_DECLARATION),
+        "and so is the suite a build machine runs — the words are written in a \
+         tracked file of this repository, so the law reaches them: {per_source:?}"
     );
     assert!(
         suites.len() >= 20,

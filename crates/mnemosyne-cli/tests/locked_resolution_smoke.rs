@@ -27,8 +27,9 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use ci_plan::{
-    lister_declared_commands, lock_verdict, resolves_the_lockfile, script_cargo_commands,
-    tracked_manifests, workflow_cargo_commands, workspaces, CargoCommand, LockVerdict, Ownership,
+    declared_build_commands, lister_declared_commands, lock_verdict, resolves_the_lockfile,
+    script_cargo_commands, tracked_manifests, workflow_cargo_commands, workspaces, CargoCommand,
+    LockVerdict, Ownership, BUILD_DECLARATION,
 };
 
 fn repository_root() -> PathBuf {
@@ -56,6 +57,10 @@ fn everything_this_repository_issues(root: &Path) -> Vec<CargoCommand> {
             .into_iter()
             .filter(|command| command.source != "scripts/check-side-workspaces.sh"),
     );
+    // R1197 — AND THE BUILD MACHINE'S. `[commands]` in the build-machine
+    // declaration holds this repository's own suite, issued from somewhere else,
+    // and nothing had ever asked it for the flag.
+    commands.extend(declared_build_commands(root));
     commands
 }
 
@@ -117,11 +122,25 @@ fn every_command_this_repository_issues_pins_the_lockfiles_it_can() {
             "a workflow"
         } else if command.source == "scripts/check-side-workspaces.sh" {
             "the workspace lister"
+        } else if command.source == BUILD_DECLARATION {
+            "the build-machine declaration"
         } else {
             "a tracked script"
         };
         *per_source.entry(kind).or_default() += 1;
     }
+    // The build machine declares three commands and the others are walks, so its
+    // floor is its own — but it is still a floor, and a walk that stopped
+    // reading it would take this to zero rather than to two.
+    assert!(
+        per_source
+            .get("the build-machine declaration")
+            .copied()
+            .unwrap_or(0)
+            >= 3,
+        "the build-machine declaration issues this repository's own suite, and a \
+         run that found under three of its commands stopped reading: {per_source:?}"
+    );
     for kind in ["a workflow", "the workspace lister", "a tracked script"] {
         assert!(
             per_source.get(kind).copied().unwrap_or(0) >= 5,

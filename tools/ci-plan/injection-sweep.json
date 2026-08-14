@@ -242,6 +242,30 @@
       ]
     },
     {
+      "name": "the-build-machines-commands-are-not-this-repositorys",
+      "why": "R1197 — `[commands]` in the build-machine declaration is the fourth place a cargo command is written here, and while nothing read it all three were defective: none said `--locked`, so a lockfile disagreeing with the manifests was REWRITTEN by the machine that verifies this repository, and two of them ran a suite nothing judged for coverage. A reader that answers `no commands` puts them back outside every law and the finding disappears silently",
+      "edits": [
+        {
+          "file": "tools/ci-plan/src/lib.rs",
+          "from": "    let Some(commands) = parsed.get(\"commands\").and_then(toml::Value::as_table) else {",
+          "to": "    let Some(commands) = parsed.get(\"no-such-table\").and_then(toml::Value::as_table) else {"
+        }
+      ],
+      "expect_red": ["the_declaration_is_read_for_the_commands_it_issues"]
+    },
+    {
+      "name": "a-declared-command-does-not-say-which-one-it-is",
+      "why": "the role is what makes a finding actionable: this round's two gates printed `build`, `verify` and `sweep`, and a reader that recorded the FILE as the owner would print the same path three times and leave somebody to work out which of the three commands is the defective one",
+      "edits": [
+        {
+          "file": "tools/ci-plan/src/lib.rs",
+          "from": "                owner: role.clone(),",
+          "to": "                owner: BUILD_DECLARATION.to_string(),"
+        }
+      ],
+      "expect_red": ["the_declaration_is_read_for_the_commands_it_issues"]
+    },
+    {
       "name": "a-wrapper-carries-no-command",
       "why": "R1196, and this is the reading before it: a segment counted only when its FIRST word was `cargo`, so wrapping a suite in the script that judges what it covered DELETED that command from every population built on this crate — the largest `cargo test` in the tree would leave the gate that asks which tests CI runs, and the tests behind it would read as dark",
       "edits": [

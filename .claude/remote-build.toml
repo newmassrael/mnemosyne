@@ -85,11 +85,22 @@ min_free_gb = 20
 # `jobs = 4` 가 따로 묶고 있고 이 값은 거기 관여하지 않는다.
 peak_gb_per_task = 2
 
+# R1197 — 이 셋은 「이 저장소가 내는 cargo 명령」인데 오랫동안 어느 법의 모집단에도
+# 없었다. `tools/unread-declaration` 이 매 커밋 「commands.* 는 프로그램의 네임스페이스
+# 밖이라 판정하지 않는다」고 인쇄해 왔고, 그것은 **그 독자**에 대한 참인 문장인데
+# **모든 독자**에 대한 한계로 잘못 읽혔다. 이 줄들은 이 저장소의 추적 파일에 적힌
+# cargo 명령이므로, 이 저장소 자신의 법이 물을 수 있는 대상이다. 법이 보이자마자
+# 셋 다 결함이었다 — `--locked` 가 하나도 없었고(어긋난 락파일을 보고가 아니라
+# 재작성한다), test 둘은 커버리지 판정 밖이었다.
+#
+# `--no-fresh`: 원격 트리의 신선도는 bx 가 자기 `--fresh` 로 이미 소유한 질문이고
+# (겹친 실행 뒤에만 켜는 opt-in), 여기에 두 번째 `cargo clean` 을 쌓으면 그 플래그가
+# 선택으로 존재하는 의미가 없어진다.
 [commands]
-build = "cargo test --workspace --no-run"
-verify = "cargo test --workspace --no-fail-fast"
+build = "scripts/verify.sh --no-fresh --label bx-build -- cargo test --workspace --locked --no-run"
+verify = "scripts/verify.sh --no-fresh --label bx-verify -- cargo test --workspace --locked --no-fail-fast"
 
 # 주입 스윕 — 계약이 공허하지 않은지 증명한다. 컨트롤 1회 + 주입 16회이고 매번
 # 전체 스위트를 돌리므로 오래 걸린다. 32코어 / 125 GB 머신에서 테스트 실행만
 # 런당 389초 실측.
-sweep = "cargo run -q --manifest-path tools/injection-harness/Cargo.toml -- crates/mnemosyne-cli/sweeps/citation-path-scope.sweep.json"
+sweep = "cargo run -q --locked --manifest-path tools/injection-harness/Cargo.toml -- crates/mnemosyne-cli/sweeps/citation-path-scope.sweep.json"

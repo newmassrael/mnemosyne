@@ -42,6 +42,10 @@
 //!   R1115 added it: `locked_resolution_smoke` asks whether every cargo command
 //!   this repository issues pins the lockfile it resolves, and four of the ones
 //!   that did not were in the hooks, where no gate's population reached.
+//! - **The build-machine declaration** — [`declared_build_commands`] reads
+//!   `[commands]` out of `.claude/remote-build.toml`. R1197 added it for the
+//!   reason R1115 added the one above: three cargo commands were written there,
+//!   one of them the whole workspace suite, and no law reached any of them.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
@@ -1116,6 +1120,57 @@ pub fn script_cargo_commands(root: &Path) -> Vec<CargoCommand> {
             out.push(CargoCommand {
                 source: path.clone(),
                 owner: path.clone(),
+                carrier: found.carrier,
+                cargo_args: found.cargo_args,
+                harness_args: found.harness_args,
+                env: BTreeMap::new(),
+            });
+        }
+    }
+    out
+}
+
+/// Where this repository declares how a build machine verifies it.
+pub const BUILD_DECLARATION: &str = ".claude/remote-build.toml";
+
+/// Every cargo invocation this repository's build-machine declaration issues.
+///
+/// THE FOURTH PLACE A CARGO COMMAND IS WRITTEN, and until R1197 it was in no
+/// law's population at all. `[commands]` holds the words a build machine runs to
+/// verify this repository — the same suite CI runs, issued from somewhere else —
+/// and they had neither `--locked` nor a coverage judgement while every other
+/// command in the tree had both.
+///
+/// WHY NOTHING REACHED THEM: the program that consumes this file answers about
+/// TOP-LEVEL keys only, so `tools/unread-declaration` prints these three as
+/// outside its namespace and judges nothing about them. That is a true statement
+/// about THAT reader and it was mistaken here for a limit on every reader. These
+/// are cargo commands written in a tracked file of this repository, and this
+/// repository's own laws are exactly the ones that can be asked about them.
+///
+/// NOT ADDED TO THE `unrun-tests` POPULATION, and that is a boundary rather than
+/// an oversight. Its law is that every test this repository compiles is one some
+/// CI command runs; a build machine is not CI, and folding its suite into the
+/// RUN set would let a test that only ever runs there read as covered.
+pub fn declared_build_commands(root: &Path) -> Vec<CargoCommand> {
+    let path = root.join(BUILD_DECLARATION);
+    let Ok(raw) = std::fs::read_to_string(&path) else {
+        return Vec::new();
+    };
+    let parsed: toml::Value = toml::from_str(&raw)
+        .unwrap_or_else(|why| panic!("{} does not parse as TOML: {why}", path.display()));
+    let Some(commands) = parsed.get("commands").and_then(toml::Value::as_table) else {
+        return Vec::new();
+    };
+    let mut out = Vec::new();
+    for (role, written) in commands {
+        let Some(line) = written.as_str() else {
+            panic!("{BUILD_DECLARATION}: `commands.{role}` is {written:?} and not a string");
+        };
+        for found in parse_script(line) {
+            out.push(CargoCommand {
+                source: BUILD_DECLARATION.to_string(),
+                owner: role.clone(),
                 carrier: found.carrier,
                 cargo_args: found.cargo_args,
                 harness_args: found.harness_args,
