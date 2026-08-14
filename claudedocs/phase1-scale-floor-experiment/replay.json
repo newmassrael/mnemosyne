@@ -77,6 +77,36 @@
       "path": "run/store-B/typing-proposals.json",
       "role": "run-artifact",
       "sha256": "aa4a5bfee3841b291fe199ff48a30ebdb6d51670c8bc18a500e13b270e9b9abd"
+    },
+    {
+      "path": "evidence/defect-tables.md",
+      "role": "raw-agent-output",
+      "sha256": "0d8a2d7eef0920263dbc1b5042ff1172f1b2a07a56894ca6d1ade94ca953db56"
+    },
+    {
+      "path": "evidence/loop-story.md",
+      "role": "raw-agent-output",
+      "sha256": "8dc5c813ba87636bb5db3abadabdac0d2626c7859086bbb0c924959cc7393adf"
+    },
+    {
+      "path": "evidence/plain-story.md",
+      "role": "raw-agent-output",
+      "sha256": "0d7b2495ddeae6234be1db3033e75f68645cac1326712e7fcfc38ab5b1b515ed"
+    },
+    {
+      "path": "evidence/verdict-confess.md",
+      "role": "raw-agent-output",
+      "sha256": "e57c2d825f09ab94298728b56fdb6da63e22829f9bc28469d00e24980abe050c"
+    },
+    {
+      "path": "evidence/verdict-confront.md",
+      "role": "raw-agent-output",
+      "sha256": "e773cd95b4bc1c201ad45071c09f4a6ca8dbb76ec605c0c03b54ba1e2ffdaed5"
+    },
+    {
+      "path": "evidence/verdict-escalate.md",
+      "role": "raw-agent-output",
+      "sha256": "0aa562c64f409f6d9c330eae5bb4fbc4005c9bd99536590258c921b57ca194fb"
     }
   ],
   "replays": []

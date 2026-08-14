@@ -27,10 +27,21 @@
 //!     table (`D1 0/0 · D2 0/0 · D3 3/5 · D4 0/0`, primary endpoint 3 vs 5).
 //!
 //! The score is written HERE rather than parsed out of that document on
-//! purpose: the document is not sealed by the kit record (`replay.json`
-//! declares the two stores, and `declare-run-tree` walks only the run tree), so
-//! a law that read its expectations out of it would move whenever the document
-//! moved. Frozen in code, the two disagree loudly if either side is edited.
+//! purpose: a law that read its expectations out of the document would move
+//! whenever the document moved, and would agree with it by construction.
+//!
+//! ⚠ THE SECOND HALF OF THAT SENTENCE USED TO BE FALSE, and Round 1191 repaired
+//! the mechanism rather than the wording. It read "frozen in code, the two
+//! disagree loudly if either side is edited" — and nothing read the document, so
+//! editing it was SILENT. It also said why: the kit record declared only the two
+//! stores, because `declare-run-tree` walks the run tree and `set-input-role`
+//! refuses to create an entry, so no tool call could seal a file living outside
+//! one. `declare-evidence` is that call. The kit now declares its six evidence
+//! documents as `raw-agent-output` — the provenance its own runbook states, S13
+//! for the tables and S14-S16 for the verdicts — and `stamp-inputs` sealed their
+//! digests, so `every_declared_input_still_hashes_to_its_sealed_digest` is the
+//! reader the claim always needed. Measured by editing one heading: that test
+//! goes red naming the file.
 //!
 //! TWO THINGS ARE NOT THE SAME, and both are said rather than hidden.
 //!

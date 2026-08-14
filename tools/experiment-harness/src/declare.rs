@@ -358,9 +358,265 @@ pub fn run(records: &[String]) -> HResult<Declared> {
     Ok(out)
 }
 
+/// Declare named files that sit OUTSIDE every run tree (R1191).
+///
+/// WHY THIS HAD TO EXIST BESIDE [`run`]. That walk takes its population from
+/// `git ls-files` filtered on `/run/`, so a kit's evidence living anywhere else
+/// can never become a declaration — and [`set_role`] refuses to create one, by
+/// design. Between them there was NO tool call that could seal such a file, and
+/// the consequence was written down in the law that needed it:
+/// `scale_floor_scoreboard` pins the graded score in code and says it does so
+/// because "the document is not sealed by the kit record ... Frozen in code, the
+/// two disagree loudly if either side is edited". The first half was true and
+/// the second was not: nothing read the document, so editing it was silent.
+///
+/// Measured across the tracked kits when this was written: 193 files sit outside
+/// every run tree and 15 of them are declared, all of them `replay-input` —
+/// which is to say, nothing that is EVIDENCE was declared anywhere.
+///
+/// THE PATHS AND THE ROLE ARE THE CALLER'S, and that is the whole shape of the
+/// verb. A walk cannot establish what a file outside the run tree IS — a brief,
+/// a runbook, a report and an agent's transcript sit in the same directory — and
+/// Round 953 refused exactly that kind of inferred claim when it declined to
+/// call `mnemosyne.toml` raw agent output. So this creates nothing it was not
+/// told to create, and validates no role name: there is one home for that
+/// vocabulary and it is the gate.
+pub fn declare_evidence(record: &str, role: &str, paths: &[String]) -> HResult<Declared> {
+    let root_raw = Command::new("git")
+        .args(["rev-parse", "--show-toplevel"])
+        .output()
+        .map_err(|e| format!("git rev-parse: {e}"))?;
+    if !root_raw.status.success() {
+        return Err("not inside a git work tree".to_string());
+    }
+    let root = Path::new(
+        std::str::from_utf8(&root_raw.stdout)
+            .map_err(|e| format!("repo root is not utf-8: {e}"))?
+            .trim(),
+    )
+    .to_path_buf();
+
+    let tracked: BTreeSet<String> = git(&root, &["ls-files", "claudedocs/phase1-*"])?
+        .lines()
+        .map(str::to_string)
+        .collect();
+    let units: BTreeSet<String> = tracked
+        .iter()
+        .filter(|f| f.ends_with("/replay.json"))
+        .map(|f| f.trim_end_matches("/replay.json").to_string())
+        .collect();
+
+    let unit = Path::new(record)
+        .parent()
+        .ok_or_else(|| format!("{record} has no parent directory"))?
+        .to_string_lossy()
+        .into_owned();
+    let unit = unit
+        .strip_prefix(&format!("{}/", root.display()))
+        .unwrap_or(&unit)
+        .to_string();
+    if !units.contains(&unit) {
+        return Err(format!("{record} is not a tracked kit record"));
+    }
+
+    // EVERY record, not just this one: the coverage gate wants each path
+    // declared exactly once, so a file another kit already claims must not gain
+    // a second home here.
+    let mut already: BTreeSet<String> = BTreeSet::new();
+    for other in &units {
+        let path = root.join(other).join("replay.json");
+        let raw = read_file(path.to_str().ok_or("record path is not utf-8")?)?;
+        let doc: serde_json::Value = serde_json::from_str(&raw)
+            .map_err(|e| format!("{other}/replay.json is not JSON: {e}"))?;
+        already.extend(declared_paths(other, &doc)?);
+    }
+
+    let raw = read_file(record)?;
+    let mut doc: serde_json::Value =
+        serde_json::from_str(&raw).map_err(|e| format!("{record} is not JSON: {e}"))?;
+    let inputs = doc
+        .get_mut("inputs")
+        .and_then(|v| v.as_array_mut())
+        .ok_or_else(|| format!("{record} declares no `inputs` array"))?;
+
+    let mut out = Declared {
+        already: already.len(),
+        ..Declared::default()
+    };
+    for rel in plan_evidence(&unit, &tracked, &already, paths)? {
+        inputs.push(serde_json::json!({ "path": rel, "role": role }));
+        out.added.push(format!("{record} :: {rel}"));
+    }
+
+    let mut rendered = serde_json::to_string_pretty(&doc)
+        .map_err(|e| format!("{record}: cannot render the updated record: {e}"))?;
+    rendered.push('\n');
+    write_file(record, &rendered)?;
+    Ok(out)
+}
+
+/// What [`declare_evidence`] would add, decided apart from the machine that
+/// supplies the facts.
+///
+/// The four refusals are the verb, and a refusal reachable only through `git`
+/// and a real kit tree is one nothing asks about — the shape Round 1096 named
+/// when it found a decision living where no test could reach it. Everything
+/// here is an argument, so each one has a case.
+///
+/// # Errors
+///
+/// A path git does not track, one outside the unit, one under a run tree, or one
+/// some record already declares.
+pub fn plan_evidence(
+    unit: &str,
+    tracked: &BTreeSet<String>,
+    already: &BTreeSet<String>,
+    paths: &[String],
+) -> HResult<Vec<String>> {
+    let mut plan = Vec::with_capacity(paths.len());
+    for file in paths {
+        if !tracked.contains(file) {
+            return Err(format!(
+                "{file} is not tracked — a record may only pin bytes this \
+                 repository carries"
+            ));
+        }
+        let Some(rel) = file.strip_prefix(&format!("{unit}/")) else {
+            return Err(format!("{file} does not sit under {unit}"));
+        };
+        // The one location this verb refuses, and it refuses rather than
+        // silently duplicating: a run tree has its own walk, which computes
+        // ownership against every record so a nested kit cannot be claimed by
+        // the record above it. Reaching in from here would lose that.
+        if file.contains("/run/") {
+            return Err(format!(
+                "{file} sits under a run tree — that is `declare-run-tree`'s \
+                 population, and it decides ownership across every record"
+            ));
+        }
+        if already.contains(file) {
+            return Err(format!(
+                "{file} is already declared — this verb creates declarations, \
+                 and `set-input-role` is what changes one"
+            ));
+        }
+        plan.push(rel.to_string());
+    }
+    Ok(plan)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The facts the machine would have supplied, as arguments.
+    fn facts() -> (BTreeSet<String>, BTreeSet<String>) {
+        let tracked = [
+            "claudedocs/phase1-kit/evidence/tables.md",
+            "claudedocs/phase1-kit/evidence/story.md",
+            "claudedocs/phase1-kit/run/log.md",
+            "claudedocs/phase1-other/brief.md",
+        ]
+        .iter()
+        .map(|s| (*s).to_string())
+        .collect();
+        let already = ["claudedocs/phase1-kit/evidence/story.md".to_string()]
+            .into_iter()
+            .collect();
+        (tracked, already)
+    }
+
+    #[test]
+    fn a_tracked_file_outside_the_run_tree_becomes_a_unit_relative_entry() {
+        let (tracked, already) = facts();
+        let plan = plan_evidence(
+            "claudedocs/phase1-kit",
+            &tracked,
+            &already,
+            &["claudedocs/phase1-kit/evidence/tables.md".to_string()],
+        )
+        .expect("the shape the verb exists for");
+        assert_eq!(plan, ["evidence/tables.md"]);
+    }
+
+    /// A record may only pin bytes this repository carries: an untracked file
+    /// can differ on every machine, and a digest over it would say nothing.
+    #[test]
+    fn an_untracked_path_is_refused() {
+        let (tracked, already) = facts();
+        let err = plan_evidence(
+            "claudedocs/phase1-kit",
+            &tracked,
+            &already,
+            &["claudedocs/phase1-kit/evidence/scratch.md".to_string()],
+        )
+        .expect_err("an untracked path must not become a declaration");
+        assert!(err.contains("is not tracked"), "unhelpful error: {err}");
+    }
+
+    /// The run tree has its own walk, and that walk decides ownership across
+    /// EVERY record so a nested kit's tree cannot be claimed by the record above
+    /// it. Reaching in from here would lose that and declare the same file
+    /// twice.
+    #[test]
+    fn a_path_under_a_run_tree_is_refused_and_names_the_other_verb() {
+        let (tracked, already) = facts();
+        let err = plan_evidence(
+            "claudedocs/phase1-kit",
+            &tracked,
+            &already,
+            &["claudedocs/phase1-kit/run/log.md".to_string()],
+        )
+        .expect_err("a run-tree path belongs to the other verb");
+        assert!(err.contains("declare-run-tree"), "unhelpful error: {err}");
+    }
+
+    #[test]
+    fn a_path_outside_the_unit_is_refused() {
+        let (tracked, already) = facts();
+        let err = plan_evidence(
+            "claudedocs/phase1-kit",
+            &tracked,
+            &already,
+            &["claudedocs/phase1-other/brief.md".to_string()],
+        )
+        .expect_err("a record may not declare another kit's file");
+        assert!(err.contains("does not sit under"), "unhelpful error: {err}");
+    }
+
+    /// The coverage gate wants each path declared exactly once, so creating a
+    /// second home for one is the defect this refusal exists for — and changing
+    /// a role is a different verb.
+    #[test]
+    fn a_path_some_record_already_declares_is_refused() {
+        let (tracked, already) = facts();
+        let err = plan_evidence(
+            "claudedocs/phase1-kit",
+            &tracked,
+            &already,
+            &["claudedocs/phase1-kit/evidence/story.md".to_string()],
+        )
+        .expect_err("a second declaration must not be created");
+        assert!(err.contains("already declared"), "unhelpful error: {err}");
+    }
+
+    /// The refusals come before anything is written: a batch with one bad path
+    /// adds none of them, so a mistyped `--path` never leaves half a record.
+    #[test]
+    fn one_bad_path_stops_the_whole_batch() {
+        let (tracked, already) = facts();
+        let err = plan_evidence(
+            "claudedocs/phase1-kit",
+            &tracked,
+            &already,
+            &[
+                "claudedocs/phase1-kit/evidence/tables.md".to_string(),
+                "claudedocs/phase1-kit/run/log.md".to_string(),
+            ],
+        )
+        .expect_err("the batch must fail whole");
+        assert!(err.contains("declare-run-tree"), "unhelpful error: {err}");
+    }
 
     #[test]
     fn normalize_resolves_parent_segments() {

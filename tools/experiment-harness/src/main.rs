@@ -82,6 +82,20 @@ declare-run-tree
   entries are never touched, and ownership is computed against every tracked record,
   so a nested kit's tree cannot be claimed by the record above it.
 
+declare-evidence
+  Declare NAMED files that sit outside every run tree, with the role the caller
+  gives. `declare-run-tree` takes its population from the filesystem and can only
+  reach `/run/`; `set-input-role` refuses to create an entry at all. Between them
+  a kit's evidence living anywhere else could not be sealed by any tool call, and
+  a law that wanted to trust such a document had to pin its numbers in code and
+  say why. Measured when this was built: 193 tracked files sit outside every run
+  tree and 15 were declared, every one of them a `replay-input`.
+  The paths and the role are the caller's BECAUSE NO WALK CAN ESTABLISH THEM — a
+  brief, a runbook, a report and an agent's transcript share a directory, and a
+  record whose value is that its claims are true may not carry an inferred one.
+  A path under a run tree, one another record already declares, one outside the
+  unit, or one git does not track is an error rather than an entry.
+
 set-input-role
   Rewrite the role of inputs a record already declares. Use it when a mechanical
   walk's `run-artifact` turns out to be something the tree can establish — a
@@ -132,6 +146,7 @@ fn run(args: &[String]) -> HResult<ExitCode> {
         "splice" => cmd_splice(&args[1..]),
         "stamp-inputs" => cmd_stamp_inputs(&args[1..]),
         "declare-run-tree" => cmd_declare_run_tree(&args[1..]),
+        "declare-evidence" => cmd_declare_evidence(&args[1..]),
         "set-input-role" => cmd_set_input_role(&args[1..]),
         "set-replay-config" => cmd_set_replay_config(&args[1..]),
         "-h" | "--help" | "help" => {
@@ -235,6 +250,29 @@ fn cmd_declare_run_tree(args: &[String]) -> HResult<ExitCode> {
     eprintln!(
         "{} record(s): {} run artifact(s) newly declared, {} already declared",
         records.len(),
+        result.added.len(),
+        result.already
+    );
+    Ok(ExitCode::SUCCESS)
+}
+
+fn cmd_declare_evidence(args: &[String]) -> HResult<ExitCode> {
+    let mut p = Flags::new(args);
+    let record = p.require("--record")?;
+    let role = p.require("--role")?;
+    let paths = p.take_all("--path");
+    p.finish()?;
+    if paths.is_empty() {
+        return Err("declare-evidence needs at least one --path <file>".to_string());
+    }
+
+    let result = declare::declare_evidence(&record, &role, &paths)?;
+    for entry in &result.added {
+        println!("declared {entry}");
+    }
+    eprintln!(
+        "{}: {} input(s) newly declared as `{role}`, {} already declared across every record",
+        record,
         result.added.len(),
         result.already
     );
