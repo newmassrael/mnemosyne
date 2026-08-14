@@ -12,6 +12,10 @@
 //!   is one it gets to keep. That is a second question about the same files —
 //!   what CI asks to KEEP rather than what it RUNS — and it is answered here for
 //!   the reason the others are: a second reader is a second answer.
+//! - `judged_test_runs` checks that every `cargo test` this repository issues is
+//!   issued THROUGH the wrapper that judges what the run covered. A third
+//!   question about the same population, and the reason [`CargoCommand`] keeps
+//!   the words in FRONT of `cargo` rather than discarding them.
 //!
 //! A second loader is a second answer, free to drift from the first — the shape
 //! R777, R783, R1080 and R1082 each closed one level at a time, where a list
@@ -788,6 +792,18 @@ pub struct CargoCommand {
     pub source: String,
     /// The job or workspace it belongs to.
     pub owner: String,
+    /// The program that HANDS THIS COMMAND OVER, and its own arguments — empty
+    /// when the command is issued directly.
+    ///
+    /// R1196. A wrapper is not decoration: `scripts/verify.sh -- cargo test …`
+    /// is the same cargo command with something around it that judges what the
+    /// run covered, and which of the two a line is cannot be recovered from
+    /// [`cargo_args`](Self::cargo_args) — the wrapper's words are gone by then.
+    /// So the carrier is KEPT rather than discarded, and the law that every
+    /// `cargo test` this repository issues is judged for coverage has a datum to
+    /// read. Without it that law would have to re-read the shell a second time,
+    /// which is the second-spelling shape this crate exists to remove.
+    pub carrier: Vec<String>,
     /// Words from `cargo` up to (not including) a bare `--`, `cargo` first.
     pub cargo_args: Vec<String>,
     /// Words after the first bare `--`.
@@ -1096,12 +1112,13 @@ pub fn script_cargo_commands(root: &Path) -> Vec<CargoCommand> {
     let mut out = Vec::new();
     for path in script_files(root) {
         let text = std::fs::read_to_string(root.join(&path)).expect("read script");
-        for (cargo_args, harness_args) in parse_script(&text) {
+        for found in parse_script(&text) {
             out.push(CargoCommand {
                 source: path.clone(),
                 owner: path.clone(),
-                cargo_args,
-                harness_args,
+                carrier: found.carrier,
+                cargo_args: found.cargo_args,
+                harness_args: found.harness_args,
                 env: BTreeMap::new(),
             });
         }
@@ -1115,12 +1132,13 @@ pub fn workflow_cargo_commands(root: &Path) -> Vec<CargoCommand> {
     for path in workflow_files(root) {
         let doc = load_workflow(root, &path);
         for step in run_steps(&doc) {
-            for (cargo_args, harness_args) in parse_script(&step.script) {
+            for found in parse_script(&step.script) {
                 out.push(CargoCommand {
                     source: path.clone(),
                     owner: step.job.clone(),
-                    cargo_args,
-                    harness_args,
+                    carrier: found.carrier,
+                    cargo_args: found.cargo_args,
+                    harness_args: found.harness_args,
                     env: step.env.clone(),
                 });
             }
@@ -1129,36 +1147,95 @@ pub fn workflow_cargo_commands(root: &Path) -> Vec<CargoCommand> {
     out
 }
 
+/// The cargo invocation a list of shell words ultimately runs, with whatever
+/// hands it over kept beside it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Invocation {
+    /// The wrapper and its own arguments, empty when cargo is the first word.
+    pub carrier: Vec<String>,
+    /// Words from `cargo` up to (not including) its bare `--`, `cargo` first.
+    pub cargo_args: Vec<String>,
+    /// Words after that bare `--`.
+    pub harness_args: Vec<String>,
+}
+
+/// Cargo's side and the harness's, split at the first bare `--`.
+fn split_at_the_bare_marker(words: &[String]) -> (Vec<String>, Vec<String>) {
+    match words.iter().position(|word| word == "--") {
+        Some(at) => (words[..at].to_vec(), words[at + 1..].to_vec()),
+        None => (words.to_vec(), Vec::new()),
+    }
+}
+
+/// Read one command's words for the cargo invocation they run, `None` when they
+/// run none.
+///
+/// A BARE `--` HANDS THE REST OVER, and that is the whole of R1196. Until this
+/// round a segment counted only when its first word was `cargo`, so wrapping a
+/// suite in `scripts/verify.sh -- cargo test …` — which is what puts a run under
+/// the coverage law of `tools/unreported-targets` — DELETED that command from
+/// every population built on this crate. The gate asking which tests CI runs
+/// would have lost the largest command in the tree and reported the tests behind
+/// it as dark; the gate asking which commands pin their lockfile would have
+/// stopped seeing it at all, which is the quiet direction.
+///
+/// So the reading is the general one: everything up to a bare `--` belongs to
+/// the program in front, and what follows is a command in its own right. It
+/// recurses, because a wrapper may carry a wrapper. Cargo's own `--` is NOT this
+/// — a command whose head is already `cargo` is split once and never re-read,
+/// or `cargo test -- --nocapture` would go looking for a second command in its
+/// harness arguments.
+///
+/// WHAT IT CANNOT DO IS INVENT ONE. `grep -- cargo file` would read as a cargo
+/// command here, and that is deliberate over the alternative of a list of known
+/// wrappers: the mistake is LOUD (the judging gates answer `Unreadable` for a
+/// subcommand nobody has measured) where a stale list of wrappers is silent.
+pub fn cargo_invocation(words: &[String]) -> Option<Invocation> {
+    let mut carrier: Vec<String> = Vec::new();
+    let mut words = words.to_vec();
+    loop {
+        // `if ! cargo test …` is a cargo command, and a reader that took the
+        // first word literally answers `if`. R1115 found four of them in the
+        // git hooks — every one an unlocked resolve, none of them in any
+        // gate's population, because the word in front of `cargo` was a
+        // shell keyword rather than another command. A keyword is not a
+        // carrier: nothing runs it, so it is dropped rather than recorded.
+        while words
+            .first()
+            .is_some_and(|word| SHELL_PREFIXES.contains(&word.as_str()))
+        {
+            words.remove(0);
+        }
+        if words.first().map(String::as_str) == Some("cargo") {
+            let (cargo_args, harness_args) = split_at_the_bare_marker(&words);
+            return Some(Invocation {
+                carrier,
+                cargo_args,
+                harness_args,
+            });
+        }
+        // Not cargo, so this is either a wrapper or not a cargo command at all,
+        // and the bare `--` is what tells them apart.
+        let at = words.iter().position(|word| word == "--")?;
+        carrier.extend(words.drain(..at));
+        words.remove(0);
+    }
+}
+
 /// Split one shell script into the cargo invocations it holds.
 ///
 /// A `run:` step is shell, and this reads the part of shell the workflows
 /// actually use: continuation lines, and the `&& || ; |` operators that put two
-/// commands on one line. A segment counts only when its FIRST word is `cargo` —
-/// asking whether the word appears anywhere reads
-/// `--manifest-path tools/x/Cargo.toml` inside one command as the start of
+/// commands on one line. Which segments hold a cargo command is
+/// [`cargo_invocation`]'s answer — asking whether the word appears anywhere
+/// reads `--manifest-path tools/x/Cargo.toml` inside one command as the start of
 /// another.
-pub fn parse_script(script: &str) -> Vec<(Vec<String>, Vec<String>)> {
+pub fn parse_script(script: &str) -> Vec<Invocation> {
     let mut out = Vec::new();
     for line in join_continuations(script) {
         for segment in split_operators(&line) {
-            let mut words = words_of(&segment);
-            // `if ! cargo test …` is a cargo command, and a reader that took the
-            // first word literally answers `if`. R1115 found four of them in the
-            // git hooks — every one an unlocked resolve, none of them in any
-            // gate's population, because the word in front of `cargo` was a
-            // shell keyword rather than another command.
-            while words
-                .first()
-                .is_some_and(|word| SHELL_PREFIXES.contains(&word.as_str()))
-            {
-                words.remove(0);
-            }
-            if words.first().map(String::as_str) != Some("cargo") {
-                continue;
-            }
-            match words.iter().position(|word| word == "--") {
-                Some(at) => out.push((words[..at].to_vec(), words[at + 1..].to_vec())),
-                None => out.push((words, Vec::new())),
+            if let Some(found) = cargo_invocation(&words_of(&segment)) {
+                out.push(found);
             }
         }
     }
@@ -1398,14 +1475,23 @@ pub fn lister_declared_commands(listed: &Workspaces) -> Vec<CargoCommand> {
         .commands
         .iter()
         .map(|declared| {
-            let words = &declared.words;
-            let (cargo_args, harness_args) = match words.iter().position(|word| word == "--") {
-                Some(at) => (words[..at].to_vec(), words[at + 1..].to_vec()),
-                None => (words.clone(), Vec::new()),
+            // THE SAME READING THE SHELL WALK USES, so a wrapper the lister
+            // prints is read the way a wrapper a workflow writes is. A declared
+            // command this reader cannot resolve to cargo is kept AS WRITTEN
+            // rather than dropped: the gate that judges it then answers
+            // `Unreadable`, which is a verdict, and a command missing from the
+            // population is not one.
+            let (carrier, cargo_args, harness_args) = match cargo_invocation(&declared.words) {
+                Some(found) => (found.carrier, found.cargo_args, found.harness_args),
+                None => {
+                    let (cargo_args, harness_args) = split_at_the_bare_marker(&declared.words);
+                    (Vec::new(), cargo_args, harness_args)
+                }
             };
             CargoCommand {
                 source: "scripts/check-side-workspaces.sh".to_string(),
                 owner: declared.workspace.clone(),
+                carrier,
                 cargo_args,
                 harness_args,
                 env: BTreeMap::new(),

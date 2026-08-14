@@ -164,6 +164,9 @@ mod import_facts_smoke;
 #[path = "import_sections_smoke.rs"]
 mod import_sections_smoke;
 
+#[path = "judged_test_runs.rs"]
+mod judged_test_runs;
+
 #[path = "locked_resolution_smoke.rs"]
 mod locked_resolution_smoke;
 
@@ -295,6 +298,9 @@ mod validate_verifies_linkage_smoke;
 
 #[path = "verification_axis_smoke.rs"]
 mod verification_axis_smoke;
+
+#[path = "verify_wrapper_smoke.rs"]
+mod verify_wrapper_smoke;
 
 #[path = "world_projection_smoke.rs"]
 mod world_projection_smoke;

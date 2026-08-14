@@ -604,6 +604,9 @@ pub fn population_command(manifest: &str) -> CargoCommand {
         .iter()
         .map(|word| (*word).to_string())
         .collect(),
+        // A probe this gate builds for itself is issued directly; nothing hands
+        // it over.
+        carrier: Vec::new(),
         harness_args: Vec::new(),
         env: Default::default(),
     }

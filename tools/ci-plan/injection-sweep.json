@@ -232,11 +232,53 @@
       "edits": [
         {
           "file": "tools/ci-plan/src/lib.rs",
-          "from": "                .is_some_and(|word| SHELL_PREFIXES.contains(&word.as_str()))",
-          "to": "                .is_some_and(|word| word != \"cargo\")"
+          "from": "            .is_some_and(|word| SHELL_PREFIXES.contains(&word.as_str()))",
+          "to": "            .is_some_and(|word| word != \"cargo\")"
         }
       ],
-      "expect_red": ["a_word_that_merely_starts_with_a_keyword_does_not_hide_a_command"]
+      "expect_red": [
+        "a_word_that_merely_starts_with_a_keyword_does_not_hide_a_command",
+        "the_reading_follows_every_hop_and_invents_no_command"
+      ]
+    },
+    {
+      "name": "a-wrapper-carries-no-command",
+      "why": "R1196, and this is the reading before it: a segment counted only when its FIRST word was `cargo`, so wrapping a suite in the script that judges what it covered DELETED that command from every population built on this crate — the largest `cargo test` in the tree would leave the gate that asks which tests CI runs, and the tests behind it would read as dark",
+      "edits": [
+        {
+          "file": "tools/ci-plan/src/lib.rs",
+          "from": "        let at = words.iter().position(|word| word == \"--\")?;",
+          "to": "        let at = words.iter().position(|word| word == \"\\u{0}\")?;"
+        }
+      ],
+      "expect_red": [
+        "a_command_a_wrapper_carries_is_still_a_command_this_repository_issues",
+        "the_reading_follows_every_hop_and_invents_no_command"
+      ]
+    },
+    {
+      "name": "cargos-own-marker-starts-a-second-command",
+      "why": "the mirror of the hand-over rule: cargo's own bare `--` separates it from its harness, and a reader that treated it as a hand-over would go looking for a command inside `-- --nocapture` and find none — so `cargo test --workspace -- …` would vanish from the population entirely",
+      "edits": [
+        {
+          "file": "tools/ci-plan/src/lib.rs",
+          "from": "        if words.first().map(String::as_str) == Some(\"cargo\") {",
+          "to": "        if words.first().map(String::as_str) == Some(\"cargo\")\n            && !words.iter().any(|word| word == \"--\")\n        {"
+        }
+      ],
+      "expect_red": ["cargos_own_marker_does_not_start_a_second_command"]
+    },
+    {
+      "name": "what-carried-the-command-is-thrown-away",
+      "why": "the wrapper's words are the only evidence that a run is judged for what it covered; discarding them leaves `cargo_args` identical for a wrapped and an unwrapped suite, and the law that every test run goes through the wrapper would have nothing to read",
+      "edits": [
+        {
+          "file": "tools/ci-plan/src/lib.rs",
+          "from": "        carrier.extend(words.drain(..at));",
+          "to": "        words.drain(..at);"
+        }
+      ],
+      "expect_red": ["a_command_a_wrapper_carries_is_still_a_command_this_repository_issues"]
     },
     {
       "name": "an-unknown-ownership-verdict-is-read-as-owned",

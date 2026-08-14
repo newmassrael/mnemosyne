@@ -312,6 +312,9 @@ pub fn check_command(manifest: &str, all_features: bool) -> CargoCommand {
     CargoCommand {
         source: "scripts/check-side-workspaces.sh".to_string(),
         owner: manifest.to_string(),
+        // A probe this gate builds for itself is issued directly; nothing hands
+        // it over.
+        carrier: Vec::new(),
         cargo_args,
         harness_args: Vec::new(),
         env: Default::default(),

@@ -117,11 +117,22 @@ jobs:
 
       # The cheap half first: if a declaration is malformed there is no point
       # compiling 23 workspaces to find out.
+      # R1196 — every `cargo test` this repository issues runs through the
+      # wrapper that judges what it covered. These three each name ONE target, so
+      # what the judgement adds here is not today's coverage but tomorrow's: a
+      # `--test` added to any of them is covered without anybody remembering
+      # this file, and a target that fails to compile is a refusal rather than a
+      # smaller number. See `mnemosyne-validate.yml`'s workspace suite.
       - name: declaration gates
-        run: cargo test -p mnemosyne-cli --test evidence_replay_smoke --locked
+        run: >
+          ./scripts/verify.sh --no-fresh --label replay-declarations --
+          cargo test -p mnemosyne-cli --test evidence_replay_smoke --locked
 
       - name: replay
-        run: cargo test -p mnemosyne-cli --test evidence_replay_smoke --locked -- --ignored --nocapture
+        run: >
+          ./scripts/verify.sh --no-fresh --label replay --
+          cargo test -p mnemosyne-cli --test evidence_replay_smoke --locked
+          -- --ignored --nocapture
 
       # R1084 — the other `#[ignore]` of this family, which nothing ran.
       #
@@ -142,5 +153,6 @@ jobs:
       # has: full history for `git archive`, and a warm registry for old locks.
       - name: an old revision still builds and still reads its own evidence
         run: >
+          ./scripts/verify.sh --no-fresh --label replay-pinned-revision --
           cargo test -p mnemosyne-cli --test pinned_revision_rechecks_evidence_smoke
           --locked -- --ignored --nocapture

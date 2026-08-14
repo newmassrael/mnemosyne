@@ -411,12 +411,13 @@ fn a_command_is_read_for_the_features_it_actually_enables() {
     // Through the SAME reader the live census uses, so a change to how a shell
     // line becomes a cargo command is checked here rather than only in the tree.
     let read = |line: &str| match ci::parse_script(line).into_iter().next() {
-        Some((cargo_args, harness_args)) => features_enabled(
+        Some(found) => features_enabled(
             &ci::CargoCommand {
                 source: "pinned".to_string(),
                 owner: "pinned".to_string(),
-                cargo_args,
-                harness_args,
+                carrier: found.carrier,
+                cargo_args: found.cargo_args,
+                harness_args: found.harness_args,
                 env: Default::default(),
             },
             &declared,

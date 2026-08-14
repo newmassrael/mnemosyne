@@ -684,9 +684,111 @@ fn a_command_written_behind_a_shell_keyword_is_still_a_command() {
         "`if ! cargo …` is a cargo invocation and reading the first word \
          literally answers `if`: {parsed:?}"
     );
-    assert_eq!(parsed[0].0[0], "cargo", "{parsed:?}");
-    assert_eq!(parsed[0].0[1], "test", "{parsed:?}");
-    assert_eq!(parsed[1].0[1], "build", "{parsed:?}");
+    assert_eq!(parsed[0].cargo_args[0], "cargo", "{parsed:?}");
+    assert_eq!(parsed[0].cargo_args[1], "test", "{parsed:?}");
+    assert_eq!(parsed[1].cargo_args[1], "build", "{parsed:?}");
+    assert!(
+        parsed.iter().all(|found| found.carrier.is_empty()),
+        "a shell keyword is not a program that hands a command over — recording \
+         `if` as a carrier would make the law about wrappers read it as one: \
+         {parsed:?}"
+    );
+}
+
+/// R1196 — the reading that lets a suite be wrapped in the thing that judges
+/// what it covered without vanishing from every population built on this crate.
+#[test]
+fn a_command_a_wrapper_carries_is_still_a_command_this_repository_issues() {
+    let parsed = parse_script(
+        "scripts/verify.sh --no-fresh --label side-bench -- \
+         cargo test --manifest-path bench/Cargo.toml --locked -- --nocapture\n",
+    );
+    assert_eq!(
+        parsed.len(),
+        1,
+        "a wrapper hands the rest over after a bare `--`, and reading only the \
+         first word answers `scripts/verify.sh`: {parsed:?}"
+    );
+    assert_eq!(
+        parsed[0].carrier,
+        vec![
+            "scripts/verify.sh".to_string(),
+            "--no-fresh".to_string(),
+            "--label".to_string(),
+            "side-bench".to_string()
+        ],
+        "and WHAT carried it is kept, because a law about which runs are judged \
+         has nowhere else to read it: {parsed:?}"
+    );
+    assert_eq!(
+        parsed[0].cargo_args,
+        vec![
+            "cargo".to_string(),
+            "test".to_string(),
+            "--manifest-path".to_string(),
+            "bench/Cargo.toml".to_string(),
+            "--locked".to_string()
+        ],
+        "cargo's side is exactly what it would be unwrapped: {parsed:?}"
+    );
+    assert_eq!(
+        parsed[0].harness_args,
+        vec!["--nocapture".to_string()],
+        "and the SECOND bare `--` is still cargo's own: {parsed:?}"
+    );
+}
+
+/// The half that stops the new reading from eating a command's own arguments.
+#[test]
+fn cargos_own_marker_does_not_start_a_second_command() {
+    let parsed = parse_script("cargo test --workspace -- --exact cargo test\n");
+    assert_eq!(parsed.len(), 1, "{parsed:?}");
+    assert!(
+        parsed[0].carrier.is_empty(),
+        "cargo is the program here, so nothing carried it: {parsed:?}"
+    );
+    assert_eq!(
+        parsed[0].harness_args,
+        vec![
+            "--exact".to_string(),
+            "cargo".to_string(),
+            "test".to_string()
+        ],
+        "everything past cargo's own `--` is the harness's, whatever words it \
+         happens to hold — re-reading it would report a command nobody runs: \
+         {parsed:?}"
+    );
+}
+
+/// A wrapper may carry a wrapper, and a program with no cargo behind it carries
+/// nothing.
+#[test]
+fn the_reading_follows_every_hop_and_invents_no_command() {
+    let nested = parse_script("outer -x -- inner --flag -- cargo build --locked\n");
+    assert_eq!(nested.len(), 1, "{nested:?}");
+    assert_eq!(
+        nested[0].carrier,
+        vec![
+            "outer".to_string(),
+            "-x".to_string(),
+            "inner".to_string(),
+            "--flag".to_string()
+        ],
+        "both hops are what handed it over: {nested:?}"
+    );
+    assert_eq!(nested[0].cargo_args[1], "build", "{nested:?}");
+    assert!(
+        parse_script("scripts/verify.sh --label x -- ./scripts/check-side-workspaces.sh\n")
+            .is_empty(),
+        "a wrapper carrying something that is not cargo issues no cargo command"
+    );
+    assert!(
+        parse_script("timeout 60 cargo test --workspace\n").is_empty(),
+        "a wrapper that takes its command WITHOUT a bare `--` is not read, and \
+         that is the strict direction: the words in front of `cargo` could be \
+         anything, and guessing which of them take an argument of their own is \
+         how a reader starts answering about a command nobody runs"
+    );
 }
 
 #[test]
@@ -710,6 +812,7 @@ fn issued(line: &str) -> CargoCommand {
     CargoCommand {
         source: "a fixture".to_string(),
         owner: "a fixture".to_string(),
+        carrier: Vec::new(),
         cargo_args: words,
         harness_args,
         env: Default::default(),
@@ -873,11 +976,12 @@ fn a_shell_line_is_split_where_cargo_stops_and_the_harness_starts() {
     let read = |script: &str| {
         parse_script(script)
             .into_iter()
-            .map(|(cargo_args, harness_args)| CargoCommand {
+            .map(|found| CargoCommand {
                 source: "pinned".to_string(),
                 owner: "pinned".to_string(),
-                cargo_args,
-                harness_args,
+                carrier: found.carrier,
+                cargo_args: found.cargo_args,
+                harness_args: found.harness_args,
                 env: Default::default(),
             })
             .collect::<Vec<_>>()

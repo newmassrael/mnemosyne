@@ -202,7 +202,33 @@ for ws in "${workspaces[@]}"; do
   # reports a smaller number than the truth and somebody fixes to it. This gate
   # did exactly that on its first run: it said `bench` had 6 failures, and the
   # 6 were one target's — there were 18.
-  suite=(cargo test --manifest-path "$ws/Cargo.toml" "${locked[@]}" --no-fail-fast)
+  #
+  # AND THROUGH THE WRAPPER THAT JUDGES WHAT THE RUN COVERED (R1196). The flag
+  # above is DISCIPLINE: it has to be remembered on every invocation, and it says
+  # nothing at all when a target fails to COMPILE, which stops cargo just the
+  # same. `scripts/verify.sh` runs the command, keeps the whole log and holds it
+  # against what cargo says that command compiles (`tools/unreported-targets`),
+  # so a suite whose verdict covered less than it looks like says so HERE rather
+  # than in CI a round later. Until this round the coverage law reached only what
+  # a person chose to wrap; every suite in this file was outside it.
+  #
+  # Resolved from THIS SCRIPT's checkout and run against the WORKING DIRECTORY —
+  # the rule the four gates below state, and two different trees whenever this
+  # repository's gate runs over another one.
+  #
+  # `--no-fresh` is measured rather than lazy: the wrapper's freshness pass
+  # cleans the crates under `crates/` that differ from HEAD, which belong to the
+  # ROOT workspace and never to this one, so asking for it here would rebuild
+  # somebody else's tree and freshen nothing of this one.
+  verify="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/scripts/verify.sh"
+  if [[ ! -x "$verify" ]]; then
+    echo "[side-workspaces] the run wrapper is missing at $verify" >&2
+    exit 1
+  fi
+  suite=(
+    "$verify" --no-fresh --label "side-${ws//\//-}" --
+    cargo test --manifest-path "$ws/Cargo.toml" "${locked[@]}" --no-fail-fast
+  )
   # `--list` answers WHICH workspaces are checkable on this machine and stops.
   # R1082's feature gate needs exactly that answer and had written its own: on a
   # CI runner, `cargo metadata` for `studio` dies on the sibling `../pinion`

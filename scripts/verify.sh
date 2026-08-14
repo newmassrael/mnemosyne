@@ -26,6 +26,19 @@
 # (target/ is gitignored); the WRAPPED command's real exit status is returned
 # (PIPESTATUS[0], never tee's) so CI/callers still see a genuine non-zero.
 #
+# THE LOCK IS RE-ENTRANT ACROSS THE PROCESS TREE (R1196), and that is a
+# requirement rather than a convenience. `scripts/check-side-workspaces.sh` runs
+# each separate workspace's suite through this script, so wrapping that gate in
+# it — `scripts/verify.sh -- scripts/check-side-workspaces.sh`, which is what
+# RULEBOOK's checklist asks a round to do — puts one of these inside another. An
+# flock is held by the OPEN FILE DESCRIPTION, so the inner run opening the same
+# path would wait for a lock its own ancestor holds and never be woken: a
+# deadlock, not a slow gate. `VERIFY_LOCKS_HELD` is the exported list of locks
+# this process tree already holds, and a lock named in it is not taken again.
+# It is a list of PATHS rather than a flag because this repository's gates run
+# over ANOTHER tree as well as their own, and a marker that said only "held"
+# would skip the lock for a second tree that nothing has locked at all.
+#
 # AND, since R1194, every run is judged for what it COVERED: a `cargo test` that
 # stopped at the first failing target reports a smaller number than the truth,
 # and this wrapper now says so instead of leaving it for CI a round later. A
@@ -57,7 +70,9 @@ fi
 
 logdir="${VERIFY_LOGDIR:-target/verify-logs}"
 mkdir -p "$logdir"
-lock="target/.verify.lock"
+# ABSOLUTE, because it is also the identity compared against `VERIFY_LOCKS_HELD`
+# — two trees have a `target/.verify.lock` each and they are two locks.
+lock="$(pwd)/target/.verify.lock"
 
 if [[ -z "$label" ]]; then
   label="$(printf '%s' "$*" | tr -c 'A-Za-z0-9._-' '-' | cut -c1-60)"
@@ -70,11 +85,18 @@ ts="$(date -u +%Y%m%dT%H%M%SZ)"
 # correctly refuse to judge. A name nobody else can produce costs nothing.
 log="$logdir/${ts}-${label}-$$.log"
 
-# Serialise: no two verify.sh cargo runs touch target/ concurrently.
-exec 9>"$lock"
-echo "[verify] acquiring build lock ($lock) ..."
-flock 9
-echo "[verify] lock held."
+# Serialise: no two verify.sh cargo runs touch target/ concurrently — unless
+# this process tree is already holding this tree's lock, in which case taking it
+# again is a deadlock rather than a guarantee (see the header).
+if [[ ":${VERIFY_LOCKS_HELD:-}:" == *":$lock:"* ]]; then
+  echo "[verify] build lock ($lock) already held by this process tree — not re-taking it."
+else
+  exec 9>"$lock"
+  echo "[verify] acquiring build lock ($lock) ..."
+  flock 9
+  echo "[verify] lock held."
+  export VERIFY_LOCKS_HELD="${VERIFY_LOCKS_HELD:+$VERIFY_LOCKS_HELD:}$lock"
+fi
 
 changed_crates=""
 if [[ "$fresh" == 1 ]]; then

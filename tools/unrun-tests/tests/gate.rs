@@ -73,6 +73,7 @@ fn command(manifest: &Path, extra: &[&str], harness: &[&str]) -> CargoCommand {
     CargoCommand {
         source: "tests/gate.rs".to_string(),
         owner: "fixture".to_string(),
+        carrier: Vec::new(),
         cargo_args,
         harness_args: harness.iter().map(|word| (*word).to_string()).collect(),
         env: Default::default(),

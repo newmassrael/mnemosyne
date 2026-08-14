@@ -280,8 +280,20 @@ jobs:
       # Without it cargo stops at the first failing target, so the count in this
       # job's log is one target's and somebody fixes to it; the targets behind it
       # are not red, they were never asked.
+      #
+      # R1196 — AND THROUGH THE WRAPPER THAT JUDGES WHAT THE RUN COVERED. The
+      # flag above is discipline and it has a hole the flag cannot close: a
+      # target that fails to COMPILE stops cargo whatever `--no-fail-fast` says,
+      # and the targets behind it are not red, they were never asked.
+      # `scripts/verify.sh` holds this run's log against what cargo says this
+      # command compiles, so a job whose verdict covered less than it looks like
+      # says so instead of reporting one target's number. `--no-fresh` because a
+      # runner's checkout has no uncommitted change for the freshness pass to
+      # clean.
       - name: cargo test --workspace
-        run: cargo test --workspace --locked --no-fail-fast
+        run: >
+          ./scripts/verify.sh --no-fresh --label ci-workspace --
+          cargo test --workspace --locked --no-fail-fast
 
       - name: mnemosyne-cli validate-workspace
         run: cargo run --release -q --locked -p mnemosyne-cli -- validate-workspace
@@ -665,8 +677,11 @@ jobs:
           cargo clippy -p mnemosyne-server --all-features --all-targets
           --locked -- -D warnings
 
+      # R1196 — see `validate`'s suite for why the wrapper is here.
       - name: cargo test -p mnemosyne-server --all-features
-        run: cargo test -p mnemosyne-server --all-features --locked --no-fail-fast
+        run: >
+          ./scripts/verify.sh --no-fresh --label ci-server-features --
+          cargo test -p mnemosyne-server --all-features --locked --no-fail-fast
 
       # R1092 — see `validate`'s copy of this step.
       - name: Keep what this job compiled
