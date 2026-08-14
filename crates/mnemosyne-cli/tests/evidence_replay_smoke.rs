@@ -175,6 +175,18 @@ const REPLAY_SCHEMAS: &[&str] = &["kit-replay/v4"];
 /// build. It is checkable in full — the classifier that already decides which
 /// tracked files are input-shaped answers it.
 ///
+/// AND WHY THAT WEAKER REASON CANNOT SIMPLY BE REPAIRED INTO A REPLAY, measured
+/// in Round 1203 rather than assumed. R1177 left the shape of the repair —
+/// carry the graded stores in and declare what a rebuild may differ from them
+/// by — and the second half of it has no subject at HEAD: FOUR of `scale-floor`'s
+/// own manifests (`registries.json` and `typing-proposals.json`, in both stores)
+/// are among the 47 corpus inputs today's binary can no longer parse, so no
+/// rebuild can run here at all to be compared with anything. What remains is
+/// intake: the two graded stores are `belvoir-extraction`'s (4 of 4 section
+/// titles each; the `saltglass` pair matches neither), 64 KB and 72 KB, and they
+/// sit outside version control on one machine — irreplaceable evidence with no
+/// seal, which is the half worth doing whether or not a rebuild ever runs.
+///
 /// `built-outside-this-repository` is the weaker one, and it is weaker in a way
 /// that has to be said rather than hidden: the importable files DO exist and no
 /// revision of this repository ever ran the import that made them, so there is
