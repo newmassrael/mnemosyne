@@ -172,10 +172,88 @@ pub fn read_firings(path: &Path) -> Result<Option<Firings>, String> {
         .map_err(|e| format!("{} is not a firing record: {e}", path.display()))
 }
 
+/// Write one, pretty and newline-terminated.
+///
+/// HERE RATHER THAN AT EACH CALLER because there are now two — the run that
+/// records what fired, and the pass that voids evidence about an injection that
+/// has been edited since — and a record serialised two ways is a file whose
+/// shape depends on which path last touched it.
+pub fn write_firings(path: &Path, record: &Firings) -> Result<(), String> {
+    let mut serialized =
+        serde_json::to_string_pretty(record).map_err(|e| format!("{}: {e}", path.display()))?;
+    serialized.push('\n');
+    fs::write(path, serialized).map_err(|e| format!("{} unwritable: {e}", path.display()))
+}
+
 /// Does this row record the injection as it is written today?
 #[must_use]
 pub fn records_the_same_injection(row: &Firing, injection: &Injection) -> bool {
     row.edits == injection.edits && row.expect_red == injection.expect_red
+}
+
+/// Drop the rows that are evidence about a definition this manifest no longer
+/// has, for the injections a run is ABOUT TO re-prove. Returns their names.
+///
+/// WHY THIS HAPPENS BEFORE THE CONTROL AND NOT AFTER THE RUN. R1198's law says a
+/// row proven against a different definition is evidence about another
+/// injection, and it says so by turning red — which is right, and which for ONE
+/// sweep in this repository is a deadlock. The harness's own `self-check.json`
+/// runs the harness's own suite as its control, and that suite HOLDS that law:
+/// edit a proven injection there and the stale row reddens the control, the
+/// harness refuses to start on a red control, and the `--only` run that would
+/// clear the row can never happen. R1199 hit it and escaped only because the row
+/// was still uncommitted, so `git checkout` could remove it; for a committed one
+/// the only way out was to delete the whole record and re-prove every injection
+/// in it, which is the cost `--only` exists to avoid.
+///
+/// VOIDING IS NOT LAUNDERING, and the difference is that this removes evidence
+/// rather than inventing it. A row that still matches its injection is left
+/// alone — nothing about it is stale, and a pass that dropped it would be
+/// throwing away a proof. What is dropped is exactly what the gate would have
+/// called void, by the SAME predicate the gate uses, and the run that drops it
+/// is on its way to proving that injection again.
+///
+/// AND THE COMPLETENESS CLAIM CANNOT SURVIVE IT. `complete` says a run over the
+/// whole manifest established every row; with one of those rows gone the claim
+/// has nothing under it, and leaving it set would be the one shape R1198 built
+/// this record to catch — a file that claims to be whole while some injection is
+/// unaccounted for.
+pub fn void_stale_evidence(manifest: &Path, about: &[Injection]) -> Result<Vec<String>, String> {
+    let path = firings_path(manifest);
+    let Some(mut record) = read_firings(&path)? else {
+        return Ok(Vec::new());
+    };
+    let voided = stale_evidence(&record, about);
+    if !voided.is_empty() {
+        for name in &voided {
+            record.fired.remove(name);
+        }
+        record.complete = false;
+        write_firings(&path, &record)?;
+    }
+    Ok(voided)
+}
+
+/// Which of these injections a record holds evidence about that no longer
+/// describes them.
+///
+/// PURE, AND BOTH READERS DRIVE IT. One voids what it is about to re-prove; the
+/// other explains a red control by naming the rows the run did NOT select — and
+/// two spellings of "is this row stale" would let those two disagree about the
+/// same file, in a place where the disagreement reads as a sweep that simply
+/// cannot be run.
+#[must_use]
+pub fn stale_evidence(record: &Firings, about: &[Injection]) -> Vec<String> {
+    about
+        .iter()
+        .filter(|injection| {
+            record
+                .fired
+                .get(&injection.name)
+                .is_some_and(|row| !records_the_same_injection(row, injection))
+        })
+        .map(|injection| injection.name.clone())
+        .collect()
 }
 
 /// Which of a manifest's injections a sweep is to run.

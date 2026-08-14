@@ -54,6 +54,24 @@
         "tests::an_edited_injection_is_not_covered_by_the_old_evidence"
       ]
     },
+    "the-evidence-a-run-is-replacing-outlives-the-control-it-reddens": {
+      "edits": [
+        {
+          "file": "src/main.rs",
+          "from": "    for name in injection_harness::void_stale_evidence(Path::new(&manifest_path), &chosen)? {",
+          "to": "    for name in Vec::<String>::new() {"
+        }
+      ],
+      "expect_red": [
+        "a_sweep_whose_own_suite_reads_the_record_can_still_re_prove_an_injection_it_edited",
+        "evidence_about_a_definition_this_manifest_no_longer_has_is_voided_by_the_run_that_replaces_it"
+      ],
+      "tests": [
+        "a_sweep_whose_own_suite_reads_the_record_can_still_re_prove_an_injection_it_edited",
+        "every_tracked_sweep_still_applies_to_the_tree_it_names",
+        "evidence_about_a_definition_this_manifest_no_longer_has_is_voided_by_the_run_that_replaces_it"
+      ]
+    },
     "the-population-of-sweeps-is-whatever-a-glob-finds": {
       "edits": [
         {

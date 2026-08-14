@@ -1558,6 +1558,197 @@ fn harness_run(root: &Path) -> std::process::Output {
         .expect("harness runs")
 }
 
+/// A firing record written by a case rather than by a run.
+///
+/// THIS IS A FIXTURE AND NOT A FORGERY. The law over the real records says a row
+/// a person could type is evidence of nothing, and it is right; nothing written
+/// here is evidence about this repository, it is INPUT to a case about the
+/// reader of one, in the same way the manifests above are input rather than
+/// sweeps somebody runs.
+fn record(manifest: &Path, complete: bool, rows: serde_json::Value) {
+    let path = injection_harness::firings_path(manifest);
+    let body = serde_json::json!({ "complete": complete, "fired": rows });
+    fs::write(&path, serde_json::to_string(&body).expect("json")).expect("write record");
+}
+
+fn read_record(manifest: &Path) -> injection_harness::Firings {
+    injection_harness::read_firings(&injection_harness::firings_path(manifest))
+        .expect("the record reads")
+        .expect("the record exists")
+}
+
+/// The row `two_injections`'s first injection is proven by, as it stands today.
+fn matching_row_for_i1() -> serde_json::Value {
+    serde_json::json!({
+        "edits": [{"file": "src.txt", "from": "HEALTHY", "to": "BROKEN"}],
+        "expect_red": ["the_law"],
+        "tests": ["the_law"],
+    })
+}
+
+/// A row for the same injection, proven against edits the manifest no longer
+/// has. `STALE` is in it so that a suite can be made to READ the record — which
+/// is the shape the whole deadlock is made of.
+fn stale_row_for_i1() -> serde_json::Value {
+    serde_json::json!({
+        "edits": [{"file": "src.txt", "from": "STALE", "to": "BROKEN"}],
+        "expect_red": ["the_law"],
+        "tests": ["the_law"],
+    })
+}
+
+#[test]
+fn evidence_about_a_definition_this_manifest_no_longer_has_is_voided_by_the_run_that_replaces_it() {
+    let root = tempdir();
+    tree(root.path(), "the wire is HEALTHY here\n");
+    let path = manifest(root.path(), two_injections());
+    record(
+        &path,
+        true,
+        serde_json::json!({ "I1": stale_row_for_i1(), "I2": {
+            "edits": [{"file": "src.txt", "from": "HEALTHY here", "to": "BROKEN here"}],
+            "expect_red": ["the_law"],
+            "tests": ["the_law"],
+        }}),
+    );
+
+    let out = harness_only(&path, &["I1"]);
+    let said = String::from_utf8_lossy(&out.stderr).to_string();
+    assert!(out.status.success(), "{said}");
+    assert!(
+        said.contains("`I1` was proven against a different definition"),
+        "voiding evidence is said out loud, because the alternative is a run \
+         that quietly erased a disagreement: {said}"
+    );
+
+    let after = read_record(&path);
+    assert_eq!(
+        after.fired["I1"].edits[0].from, "HEALTHY",
+        "the row this run re-proved carries the definition it was proven against \
+         TODAY: {after:?}"
+    );
+    assert!(
+        !after.complete,
+        "a claim that a whole run established every row cannot survive one of \
+         them being dropped: {after:?}"
+    );
+    assert_eq!(
+        after.fired["I2"].edits[0].from, "HEALTHY here",
+        "and a row this run did not select is not this run's to touch: {after:?}"
+    );
+}
+
+#[test]
+fn evidence_that_still_matches_is_left_alone_and_so_is_the_claim_it_supports() {
+    // THE OTHER DIRECTION, and the one that keeps the pass above from being a
+    // way to drop evidence: a row that still describes its injection is a proof,
+    // and a run that discarded it would be throwing one away.
+    let root = tempdir();
+    tree(root.path(), "the wire is HEALTHY here\n");
+    let path = manifest(root.path(), two_injections());
+    record(
+        &path,
+        true,
+        serde_json::json!({ "I1": matching_row_for_i1() }),
+    );
+
+    let out = harness_only(&path, &["I1"]);
+    let said = String::from_utf8_lossy(&out.stderr).to_string();
+    assert!(out.status.success(), "{said}");
+    assert!(!said.contains("void"), "nothing was stale here: {said}");
+    assert!(
+        read_record(&path).complete,
+        "and the completeness claim is untouched by a run that voided nothing"
+    );
+}
+
+/// A suite that goes red while the record holds a stale row — the deadlock, end
+/// to end.
+///
+/// This is what `self-check.json` IS: its control runs the harness's own suite,
+/// which holds R1198's law over firing records, so a stale row makes the control
+/// red and the harness refuses to start on a red control. The `--only` run that
+/// would clear the row could then never happen. R1199 met it and escaped only
+/// because the row was uncommitted.
+fn suite_that_goes_red_while_the_record_is_stale(root: &Path) {
+    let suite = root.join("suite.sh");
+    fs::write(
+        &suite,
+        "#!/bin/sh\n\
+         if grep -q STALE manifest.firings.json 2>/dev/null; then\n\
+         printf 'test the_law ... FAILED\\ntest the_other ... ok\\n\\nfailures:\\n    the_law\\n\\ntest result: FAILED. 1 passed; 1 failed; 0 ignored\\n'\n\
+         exit 1\n\
+         elif grep -q HEALTHY src.txt; then\n\
+         printf 'test the_law ... ok\\ntest the_other ... ok\\n\\ntest result: ok. 2 passed; 0 failed; 0 ignored\\n'\n\
+         else\n\
+         printf 'test the_law ... FAILED\\ntest the_other ... ok\\n\\nfailures:\\n    the_law\\n\\ntest result: FAILED. 1 passed; 1 failed; 0 ignored\\n'\n\
+         exit 1\n\
+         fi\n",
+    )
+    .expect("write suite");
+    make_runnable(&suite);
+}
+
+#[test]
+fn a_sweep_whose_own_suite_reads_the_record_can_still_re_prove_an_injection_it_edited() {
+    let root = tempdir();
+    tree(root.path(), "the wire is HEALTHY here\n");
+    suite_that_goes_red_while_the_record_is_stale(root.path());
+    let path = manifest(root.path(), two_injections());
+    record(
+        &path,
+        false,
+        serde_json::json!({ "I1": stale_row_for_i1() }),
+    );
+
+    let out = harness_only(&path, &["I1"]);
+    let said = String::from_utf8_lossy(&out.stderr).to_string();
+    // WITHOUT THE VOIDING PASS THIS IS `the control is 1 red before any
+    // injection`, and no argument gets the sweep past it — which is the whole
+    // finding.
+    assert!(
+        out.status.success(),
+        "the run this sweep needs is exactly the run its own stale row was \
+         forbidding: {said}"
+    );
+    assert!(said.contains("2 passed, 0 failed"), "{said}");
+    let after = read_record(&path);
+    assert_eq!(after.fired["I1"].edits[0].from, "HEALTHY", "{after:?}");
+}
+
+#[test]
+fn a_red_control_says_when_this_runs_own_record_is_a_reason_and_which_names_to_add() {
+    // ONE STEP OVER FROM THE CASE ABOVE, and the trap it leaves: a run voids the
+    // rows it SELECTED, so a stale row for an injection it was not asked about
+    // keeps reddening the control — and what the reader sees is a failing test
+    // name with nothing connecting it to a record only this tool reads.
+    let root = tempdir();
+    tree(root.path(), "the wire is HEALTHY here\n");
+    suite_that_goes_red_while_the_record_is_stale(root.path());
+    let path = manifest(root.path(), two_injections());
+    record(
+        &path,
+        false,
+        serde_json::json!({ "I2": {
+            "edits": [{"file": "src.txt", "from": "STALE here", "to": "BROKEN here"}],
+            "expect_red": ["the_law"],
+            "tests": ["the_law"],
+        }}),
+    );
+
+    let out = harness_only(&path, &["I1"]);
+    let said = String::from_utf8_lossy(&out.stderr).to_string();
+    assert!(
+        !out.status.success(),
+        "the control IS red and refusing is right: {said}"
+    );
+    assert!(
+        said.contains("\"I2\"") && said.contains("--only I2"),
+        "the refusal names the row and the flag that clears it, because \
+         `the control is 1 red` sends the reader to the test: {said}"
+    );
+}
+
 /// A temp directory that removes itself, without taking a dependency for it.
 struct TempDir(PathBuf);
 

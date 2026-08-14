@@ -414,6 +414,26 @@ fn run() -> Result<(), String> {
     let chosen: Vec<Injection> = chosen.into_iter().cloned().collect();
     let snapshot = injection_harness::snapshot_and_dry_run(&manifest.repo, &chosen)?;
 
+    // AND THE EVIDENCE THIS RUN IS ABOUT TO REPLACE IS VOIDED BEFORE THE CONTROL
+    // READS IT (R1200). A row proven against a definition the manifest no longer
+    // has is evidence about another injection, and R1198's gate says so by going
+    // red — inside the suite that IS this repository's own self-check control.
+    // Editing a proven injection there deadlocked: the stale row reddened the
+    // control, the harness refuses to start on a red control, and the `--only`
+    // run that would clear the row could never happen.
+    //
+    // AFTER THE PRE-FLIGHT, so a manifest that will be refused for a loose
+    // anchor loses nothing, and BEFORE the control, which is the whole point:
+    // the control's tree must not still hold a claim this run has already
+    // decided is void. See `injection_harness::void_stale_evidence` for why
+    // removing evidence here is not a way to launder any.
+    for name in injection_harness::void_stale_evidence(Path::new(&manifest_path), &chosen)? {
+        eprintln!(
+            "[record] `{name}` was proven against a different definition — that evidence \
+             is void and this run re-proves it"
+        );
+    }
+
     // WHAT A PREVIOUS SWEEP LEFT BEHIND, before this one writes its own. A sweep
     // that ended under its own control removes these; finding them means one
     // died holding an edited tree, and the tree itself is asked whether that
@@ -509,6 +529,37 @@ fn run() -> Result<(), String> {
                 .to_string(),
             false => format!("{:?}", control.red),
         };
+        // AND ONE CAUSE OF A RED CONTROL IS THIS RECORD, WHICH ONLY THIS TOOL
+        // CAN SEE (R1200). A sweep whose own suite holds the law over firing
+        // records goes red on a row that was proven against an edited
+        // injection. The run VOIDS the rows it selected before getting here, so
+        // what can still be doing it is a row for an injection this run was NOT
+        // asked to re-prove — and the reader is then looking at a failing test
+        // name with no way to know that the fix is `--only` naming one more.
+        // Said only when it is true, so it cannot become the line that is always
+        // there.
+        let unselected: Vec<Injection> = manifest
+            .injections
+            .iter()
+            .filter(|injection| !chosen.iter().any(|run| run.name == injection.name))
+            .cloned()
+            .collect();
+        let stale = injection_harness::read_firings(&injection_harness::firings_path(Path::new(
+            &manifest_path,
+        )))
+        .ok()
+        .flatten()
+        .map(|record| injection_harness::stale_evidence(&record, &unselected))
+        .unwrap_or_default();
+        if !stale.is_empty() {
+            eprintln!(
+                "[control] this sweep's record still holds evidence about a different \
+                 definition of {stale:?}, which this run did not select. If the suite \
+                 above holds the law over these records, that is what is red, and the \
+                 way through is to re-prove them too: --only {}",
+                stale.join(" --only ")
+            );
+        }
         return Err(format!(
             "the control is {} red before any injection — a sweep from here \
              measures nothing: {named}",
@@ -785,9 +836,7 @@ fn record_firings(
             },
         );
     }
-    let mut serialized = serde_json::to_string_pretty(&record).map_err(err)?;
-    serialized.push('\n');
-    fs::write(&path, serialized).map_err(|e| format!("{} unwritable: {e}", path.display()))
+    injection_harness::write_firings(&path, &record)
 }
 
 fn err<E: std::fmt::Display>(e: E) -> String {
