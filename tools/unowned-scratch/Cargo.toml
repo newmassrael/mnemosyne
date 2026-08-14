@@ -1,0 +1,71 @@
+# unowned-scratch — the gate for a scratch path this process does not own.
+#
+# `std::env::temp_dir()` returns a directory EVERY process on the machine
+# shares. A path built by joining a fixed name onto it is therefore not this
+# run's path, it is every run's path — and the code that builds one almost
+# always also REMOVES it, which turns a second concurrent run into a deleter of
+# the first one's fixtures.
+#
+# Round 1175 found that by running into it. Round 1174's verification ran
+# `check-side-workspaces.sh` twice with an overlap, and
+# `experiment-harness`'s `seal::tests::a_changed_input_is_an_error_not_a_reseal`
+# panicked with `Os { code: 2, kind: NotFound }` at an `fs::write` one line after
+# `create_dir_all`: the other run's cleanup had removed the directory in between.
+# Alone, the same suite was green. Six sites were repaired by READING every
+# `temp_dir()` use across the side workspaces, and four sibling crates already
+# named the process — so this is a convention that existed and had holes.
+#
+# THE LAW IS ONE SENTENCE: a path derived from the process-wide temp root names
+# the process.
+#
+# It is asked of syntax rather than of a run, because the failure needs two runs
+# in flight to appear and the whole point is to catch the seventh site before
+# anyone runs anything. R1175's own carry said what was missing in exactly those
+# words: "nothing stops the seventh one".
+#
+# ITS OWN WORKSPACE, like every other gate under `tools/`: a separate program
+# with its own dependency tree, because compiling a gate into the tree it judges
+# is how a gate starts depending on what it is checking.
+[workspace]
+
+[package]
+name = "unowned-scratch"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.88"
+publish = false
+license = "MIT OR Apache-2.0"
+description = "Mnemosyne — a path built from the shared temp root names the process that owns it"
+keywords = ["test", "fixture", "gate"]
+categories = ["development-tools"]
+
+[dependencies]
+# NO CARGO CENSUS, and that is a decision rather than an omission. Its siblings
+# ask `cargo metadata` because their laws are about TARGETS — which test spawns
+# which binary, which file some target compiles. This law is about source text:
+# a `temp_dir()` in a file no target compiles today is the same latent defect as
+# one in a file every target does, and asking cargo would shrink the population
+# for no gain. The two directories that must still be excluded — `target/` and a
+# nested workspace — are decided by a manifest carrying `[workspace]`, which is
+# the same rule `scripts/check-side-workspaces.sh` discovers this crate by.
+#
+# THE PARSER, and the reason this gate is not a grep. What has to be decided is
+# whether the FUNCTION that reaches for the shared root also names the process,
+# and the two spellings in this repository put those on different lines — one
+# chains `.join(format!(..))`, the other binds and `push`es. No pattern spans
+# that; a syntax tree does.
+syn = { version = "3", features = ["full", "visit", "extra-traits"] }
+# `span-locations` turns a matched expression into a line a person can open. It
+# is a proc-macro2 feature rather than a syn one, and without it every finding
+# reports line 1.
+proc-macro2 = { version = "1", features = ["span-locations"] }
+
+[dev-dependencies]
+# The cases build throwaway cargo workspaces OUTSIDE this repository, for the
+# reason `blind-waits` gives: a fixture carrying its own `[workspace]` inside the
+# tree would be discovered by `scripts/check-side-workspaces.sh`, which would
+# then lint a workspace whose whole purpose is to be rejected.
+tempfile = "3"
+
+[lints.clippy]
+all = "deny"

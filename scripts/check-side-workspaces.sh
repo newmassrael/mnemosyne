@@ -367,6 +367,36 @@ for ws in "${workspaces[@]}"; do
   esac
   unset named_verdict
 
+  # And a path built from the shared temp root names the process (R1193), under
+  # the same three-code contract. THIS IS WHERE THAT LAW'S WHOLE POPULATION
+  # LIVES: the hook's Gate 5f points at the ROOT workspace, which reaches the
+  # temp root nowhere, while all eleven sites are in these crates — the six
+  # R1175 repaired among them. A gate wired only at the root would have been
+  # green about a tree it never read.
+  owner="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/tools/unowned-scratch/Cargo.toml"
+  if [[ ! -f "$owner" ]]; then
+    echo "[side-workspaces] the scratch-ownership gate is missing at $owner" >&2
+    exit 1
+  fi
+  declare_and_run scratch cargo run -q --manifest-path "$owner" --locked \
+    --bin unowned-scratch -- --workspace "$root/$ws/Cargo.toml" || owner_verdict=$?
+  case "${owner_verdict:-0}" in
+    0) ;;
+    1)
+      echo "[side-workspaces] $ws builds a path under the shared temp root that names" \
+        "no owner, so two runs share it —" \
+        "fix: cargo run -q --manifest-path tools/unowned-scratch/Cargo.toml" \
+        "--bin unowned-scratch -- --workspace $ws/Cargo.toml" >&2
+      exit 1
+      ;;
+    *)
+      echo "[side-workspaces] the scratch-ownership gate could not read $ws" \
+        "(exit ${owner_verdict}); its own message is above" >&2
+      exit 1
+      ;;
+  esac
+  unset owner_verdict
+
   if ! $lint_only; then
     declare_and_run suite "${suite[@]}"
   fi

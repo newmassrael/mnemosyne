@@ -59,6 +59,13 @@
 #      Closes the silent-fail where harness code committed unformatted because
 #      no gate compiled it.
 #
+#   5f. Scratch-ownership gate (R1193) — `tools/unowned-scratch` when any
+#      `.rs` is staged: a path built from `std::env::temp_dir()`, which every
+#      process on the machine shares, names the process that owns it. R1175
+#      repaired six such paths after two overlapping runs made one delete the
+#      other's fixtures mid-write, and its carry said what was missing:
+#      nothing stops the seventh one.
+#
 #   5e. Declaration gate (R1189) — `tools/unread-declaration`, on EVERY
 #      commit rather than on a staged path: every top-level key in
 #      `.claude/remote-build.toml` is one `bx` reports reading, asked of the
@@ -286,6 +293,39 @@ if printf '%s\n' "$staged" | grep -qE '\.rs$'; then
         {
             echo "[mnemosyne pre-commit] commit rejected — the named-environment gate" \
                  "could not read this tree (exit $environment_verdict); its own message is above"
+        } >&2
+        exit 1
+    fi
+
+    # Gate 5f — a path built from the shared temp root names the process
+    # (R1193). Same three-code contract as the two gates above.
+    #
+    # R1175 repaired six fixture paths that composed `std::env::temp_dir()` with
+    # a name fixed in the source, after two overlapping runs of
+    # `check-side-workspaces.sh` made one delete the other's directory mid-write.
+    # Its carry said what it could not do in four words — NOTHING STOPS THE
+    # SEVENTH ONE — and discipline is not a mechanism.
+    echo "[mnemosyne pre-commit] .rs staged — a scratch path names its owner" >&2
+    if [[ ! -f "$gates/tools/unowned-scratch/Cargo.toml" ]]; then
+        echo "[mnemosyne pre-commit] commit rejected — the scratch-ownership gate" \
+             "is missing at $gates/tools/unowned-scratch/Cargo.toml" >&2
+        exit 1
+    fi
+    scratch_verdict=0
+    cargo run -q --locked --manifest-path "$gates/tools/unowned-scratch/Cargo.toml" \
+        --bin unowned-scratch -- --workspace "$(pwd)/Cargo.toml" || scratch_verdict=$?
+    if [[ $scratch_verdict -eq 1 ]]; then
+        {
+            echo "[mnemosyne pre-commit] commit rejected — a path under the shared temp" \
+                 "root names no owner, so two runs share it"
+            echo "  run: cargo run -q --manifest-path tools/unowned-scratch/Cargo.toml \\"
+            echo "         --bin unowned-scratch -- --workspace Cargo.toml"
+        } >&2
+        exit 1
+    elif [[ $scratch_verdict -ne 0 ]]; then
+        {
+            echo "[mnemosyne pre-commit] commit rejected — the scratch-ownership gate" \
+                 "could not read this tree (exit $scratch_verdict); its own message is above"
         } >&2
         exit 1
     fi

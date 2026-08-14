@@ -710,6 +710,61 @@ fn pre_commit_tells_a_citation_gate_that_could_not_read_from_one_that_found_a_de
     );
 }
 
+#[test]
+fn pre_commit_rejects_a_scratch_path_that_names_no_owner() {
+    // GATE 5f. `temp_dir()` is the machine's directory, so a fixed name under it
+    // is one path for every run — and the code that builds one removes it too,
+    // which is how R1175's two overlapping runs deleted each other's fixtures.
+    let f = Fixture::new();
+    f.write(
+        "src/lib.rs",
+        "pub fn scratch() -> std::path::PathBuf {\n    \
+         std::env::temp_dir().join(\"fixture-with-no-owner\")\n}\n",
+    );
+    f.stage_all();
+
+    let out = f.run_hook("pre-commit", &[], "", &[]);
+    assert!(
+        !out.status.success(),
+        "a scratch path shared by every run must not pass a commit"
+    );
+    let err = both_of(&out);
+    assert!(
+        err.contains("names no owner, so two runs share it"),
+        "the rejection must say what was wrong:\n{err}"
+    );
+    assert!(
+        err.contains("`scratch` builds a path from the shared temp root"),
+        "the gate's own words must reach the same stream the hook points at:\n{err}"
+    );
+}
+
+#[test]
+fn pre_commit_accepts_a_scratch_path_that_names_the_process() {
+    // The control. `Fixture::new`'s own tree reaches no temp root at all, so
+    // without this the case above would prove only that the gate can say
+    // "defect" — and the arm that has to keep working is the one where a
+    // fixture path is written correctly.
+    let f = Fixture::new();
+    f.write(
+        "src/lib.rs",
+        "pub fn scratch() -> std::path::PathBuf {\n    \
+         std::env::temp_dir().join(format!(\"fixture-{}\", std::process::id()))\n}\n",
+    );
+    f.stage_all();
+
+    let out = f.run_hook("pre-commit", &[], "", &[]);
+    let err = both_of(&out);
+    assert!(
+        out.status.success(),
+        "a scratch path that names its owner must pass a commit:\n{err}"
+    );
+    assert!(
+        err.contains("name the process"),
+        "the gate's own verdict must reach the caller:\n{err}"
+    );
+}
+
 /// A declaration whose every key the build-machine program extracts.
 ///
 /// THE KEYS ARE THE PROGRAM'S OLDEST, not this repository's current ones: a
@@ -1175,6 +1230,53 @@ fn the_side_workspace_gate_tells_an_environment_it_could_not_read_from_one_it_ju
     );
     assert!(
         !err.contains("the named-environment gate could not read"),
+        "a workspace it judged was not one it failed to read:\n{err}"
+    );
+}
+
+#[test]
+fn the_side_workspace_gate_names_the_workspace_whose_scratch_path_has_no_owner() {
+    // THE FOURTH GATE'S FINDING SENTENCE, read here because the lister exits 1
+    // for every arm and the sentence is the only thing carrying which one. This
+    // arm is where R1193's whole population is judged: the hook's root gate
+    // reaches the shared temp root nowhere.
+    //
+    // ⚠ ITS REFUSAL SENTENCE IS NOT READ HERE, AND CANNOT BE. The measured
+    // reason: this gate's only refusal is a file that will not parse, and both
+    // `blind-waits` and the citation gate run BEFORE it and refuse the same
+    // input — so an unparsable orphan answers 2 two gates earlier and never
+    // arrives. The environment case above can read its refusal because ITS
+    // exit 2 is a name no walk can resolve, which no earlier gate cares about.
+    // Reaching this one would mean reordering the chain, which only moves the
+    // hole to whichever gate ends up second. The gate's own suite reads the
+    // code directly (`the_binary_answers_a_hook_in_three_codes`); what has no
+    // reader is the SCRIPT's wording for it, and that is stated rather than
+    // faked with a fixture built to exercise it.
+    let gate = repo_root().join("scripts/check-side-workspaces.sh");
+    let f = Fixture::new();
+    f.write(
+        "tools/sub/src/orphan.rs",
+        "pub fn scratch() -> std::path::PathBuf {\n    \
+         std::env::temp_dir().join(\"fixture-with-no-owner\")\n}\n",
+    );
+    let out = Command::new(&gate)
+        .args(["--lint-only", "tools/sub"])
+        .current_dir(f.path())
+        .env("CARGO_TARGET_DIR", f.path().join("target"))
+        .output()
+        .expect("the gate runs");
+    let err = stderr_of(&out);
+    assert_eq!(
+        out.status.code(),
+        Some(1),
+        "a workspace that broke the law is a rejection:\n{err}"
+    );
+    assert!(
+        err.contains("tools/sub builds a path under the shared temp root that names no owner"),
+        "the finding must name the workspace it is about:\n{err}"
+    );
+    assert!(
+        !err.contains("the scratch-ownership gate could not read"),
         "a workspace it judged was not one it failed to read:\n{err}"
     );
 }
