@@ -710,6 +710,165 @@ fn pre_commit_tells_a_citation_gate_that_could_not_read_from_one_that_found_a_de
     );
 }
 
+/// A declaration whose every key the build-machine program extracts.
+///
+/// THE KEYS ARE THE PROGRAM'S OLDEST, not this repository's current ones: a
+/// fixture that copied a live declaration would go red the day that declaration
+/// was correctly re-measured, which is the defect R1188 found in the gate beside
+/// the program and repaired by making the budget an argument.
+const READ_DECLARATION: &str = "send = \"tracked\"\nneeds = [\"cargo\"]\npeak_gb_per_task = 2\n";
+
+/// A `HOME` whose machine-wide program answers `--explain-declaration` with
+/// fixed text, or — with `None` — one where no such program is installed.
+///
+/// THE PROGRAM IS BUILT RATHER THAN FOUND, and that is what makes these three
+/// cases facts about the hook instead of facts about the machine running them.
+/// The first draft used the installed one, passed on this workstation and failed
+/// on the build machine, where it is not installed — and CI has no copy either,
+/// so two of the three would have been permanent refusals reporting themselves
+/// as checks. That is the shape R1188 found in the gate beside the program.
+fn home_whose_program_answers(answer: Option<&str>) -> TempDir {
+    let home = TempDir::new().expect("tempdir");
+    if let Some(answer) = answer {
+        write_exec(
+            &home.path().join(".claude/remote-build/bin/bx"),
+            &format!("#!/usr/bin/env bash\ncat <<'THE_ANSWER'\n{answer}\nTHE_ANSWER\n"),
+        );
+    }
+    home
+}
+
+/// The seam's wire form for a fixture's own declaration.
+fn declaration_answer(f: &Fixture, extracts: &[(&str, &str)]) -> String {
+    let mut lines = vec![format!(
+        "decl-file\t{}\tpresent",
+        f.path().join(".claude/remote-build.toml").display()
+    )];
+    for (key, value) in extracts {
+        lines.push(format!("decl\t{key}\t{value}"));
+    }
+    lines.join("\n")
+}
+
+/// `HOME` moves in every declaration case, so cargo is pointed at the real
+/// registry in the same breath: the gate is COMPILED by the hook, and a cargo
+/// that cannot find its own home would fail these cases one step before the
+/// branch under test.
+fn home_and_a_working_cargo(home: &Path) -> Vec<(String, String)> {
+    let real_home = std::env::var("HOME").expect("HOME is set for the test process");
+    vec![
+        ("HOME".to_owned(), home.to_str().expect("utf-8").to_owned()),
+        (
+            "CARGO_HOME".to_owned(),
+            std::env::var("CARGO_HOME").unwrap_or_else(|_| format!("{real_home}/.cargo")),
+        ),
+        (
+            "RUSTUP_HOME".to_owned(),
+            std::env::var("RUSTUP_HOME").unwrap_or_else(|_| format!("{real_home}/.rustup")),
+        ),
+    ]
+}
+
+fn run_pre_commit_with(f: &Fixture, home: &Path) -> Output {
+    let env = home_and_a_working_cargo(home);
+    let borrowed: Vec<(&str, &str)> = env
+        .iter()
+        .map(|(key, value)| (key.as_str(), value.as_str()))
+        .collect();
+    f.run_hook("pre-commit", &[], "", &borrowed)
+}
+
+#[test]
+fn pre_commit_accepts_a_declaration_every_key_of_which_the_program_reads() {
+    let f = Fixture::new();
+    f.write(".claude/remote-build.toml", READ_DECLARATION);
+    f.stage_all();
+    let home = home_whose_program_answers(Some(&declaration_answer(
+        &f,
+        &[
+            ("send", "tracked"),
+            ("needs", "cargo"),
+            ("peak_gb_per_task", "2"),
+            ("min_free_gb", ""),
+        ],
+    )));
+
+    let out = run_pre_commit_with(&f, home.path());
+    let err = both_of(&out);
+    assert!(
+        out.status.success(),
+        "a declaration the program reads whole must pass a commit:\n{err}"
+    );
+    // THE GATE MUST HAVE RUN. Without this the case passes on a hook that
+    // dropped the block entirely, which is the failure this file exists for.
+    assert!(
+        err.contains("every top-level key this repository declares"),
+        "the gate's own verdict must reach the caller:\n{err}"
+    );
+}
+
+#[test]
+fn pre_commit_rejects_a_declared_key_the_program_never_reads() {
+    // The measured shape, with this case's own key rather than a live one:
+    // `exclude` was declared by all five repositories on this machine and
+    // extracted by none, and `packages` was the same before it. The program here
+    // answers without the key, which is exactly what those programs did.
+    let f = Fixture::new();
+    f.write(
+        ".claude/remote-build.toml",
+        "send = \"tracked\"\nan_option_this_case_invented = 1\n",
+    );
+    f.stage_all();
+    let home = home_whose_program_answers(Some(&declaration_answer(
+        &f,
+        &[("send", "tracked"), ("needs", "")],
+    )));
+
+    let out = run_pre_commit_with(&f, home.path());
+    assert!(
+        !out.status.success(),
+        "a key the program never reads must not pass a commit"
+    );
+    let err = both_of(&out);
+    assert!(
+        err.contains("a declared key is not read as declared"),
+        "the rejection must name what was wrong:\n{err}"
+    );
+    assert!(
+        err.contains("`an_option_this_case_invented` is declared and the program never reads it"),
+        "the gate's own words must reach the same stream the hook points at:\n{err}"
+    );
+}
+
+#[test]
+fn pre_commit_tells_a_declaration_gate_that_could_not_ask_from_one_that_found_a_defect() {
+    // THE THIRD CODE, at the caller. The program that reads the declaration is
+    // machine-wide and outside every checkout, so "it is not installed here" is
+    // a state this gate meets in the ordinary course — and a caller that
+    // collapsed it into the finding would send somebody hunting for a bad key in
+    // a declaration whose keys are all fine.
+    let f = Fixture::new();
+    f.write(".claude/remote-build.toml", READ_DECLARATION);
+    f.stage_all();
+    let home = home_whose_program_answers(None);
+
+    let out = run_pre_commit_with(&f, home.path());
+    assert!(
+        !out.status.success(),
+        "a declaration the gate could not ask about must not pass a commit"
+    );
+    let err = both_of(&out);
+    assert!(
+        err.contains("the declaration gate could not ask the program that reads it (exit 2)"),
+        "the rejection must say it could not judge, and with which code:\n{err}"
+    );
+    // THE MIRROR, and the whole point of this case.
+    assert!(
+        !err.contains("a declared key is not read as declared"),
+        "a declaration it could not ask about is not one with a bad key in it:\n{err}"
+    );
+}
+
 #[test]
 fn pre_commit_gates_a_separate_in_repo_workspace_the_root_gates_miss() {
     // `cargo fmt --all` / `clippy --workspace` only see root members, so a

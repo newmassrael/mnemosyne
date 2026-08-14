@@ -1,0 +1,370 @@
+//! The law's arms, each killed by a different minimal signature.
+//!
+//! # Why the cases stand outside this checkout
+//!
+//! A declaration is a file at a fixed path inside a repository root, so the only
+//! way to vary one is to be somewhere else. Every case below builds a throwaway
+//! root and points the gate at it.
+//!
+//! # Why most cases answer with a stub rather than with the installed program
+//!
+//! The program is machine-wide and lives outside every checkout — that asymmetry
+//! is the whole reason this gate exists, and it means CI has no copy of it. A
+//! case that used the installed one would be a permanent refusal on a runner,
+//! and a refusal that passes is the shape R1188 found printing itself as a check
+//! in the gate beside the program. So the arms of the law are exercised against
+//! a program that answers from a fixture, and the INSTALLED one is held to a
+//! separate case that asserts an answer either way: clean where it exists,
+//! refusal where it does not. That case is what keeps the fixture's shape from
+//! drifting away from the real seam, and it is asserted rather than skipped.
+
+use std::path::{Path, PathBuf};
+use std::process::Command;
+
+/// A repository root that declares `text`, or nothing when `text` is `None`.
+fn repository_declaring(root: &Path, text: Option<&str>) -> PathBuf {
+    let repository = root.join("repository");
+    std::fs::create_dir_all(repository.join(".claude")).expect("make the throwaway root");
+    if let Some(text) = text {
+        std::fs::write(repository.join(unread_declaration::DECLARATION), text)
+            .expect("write the declaration");
+    }
+    repository
+}
+
+/// The seam's wire form, built here so a case states exactly what the program
+/// claims to have read.
+fn answer(declaration: &Path, present: bool, extracts: &[(&str, &str)]) -> String {
+    let mut lines = vec![format!(
+        "decl-file\t{}\t{}",
+        declaration.display(),
+        if present { "present" } else { "absent" }
+    )];
+    for (key, value) in extracts {
+        lines.push(format!("decl\t{key}\t{value}"));
+    }
+    lines.join("\n")
+}
+
+/// A program that answers `--explain-declaration` with fixed text.
+///
+/// It is a shell script rather than a second binary because it holds no logic at
+/// all: what it prints is the case's own data, and a fixture with a branch in it
+/// is a fixture that can be wrong in a way the case does not state.
+fn answering_program(root: &Path, name: &str, answer: &str) -> PathBuf {
+    let path = root.join(name);
+    std::fs::write(
+        &path,
+        format!("#!/usr/bin/env bash\ncat <<'THE_ANSWER'\n{answer}\nTHE_ANSWER\n"),
+    )
+    .expect("write the answering program");
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755))
+            .expect("make it executable");
+    }
+    path
+}
+
+/// Run the gate. `HOME` is named on every spawn — set when the case is about the
+/// installed program, removed otherwise — because a variable a spawned program
+/// reads and its test does not name is one the machine underneath answers.
+fn gate(repository: &Path, program: Option<&Path>, home: Option<&Path>) -> std::process::Output {
+    let mut command = Command::new(env!("CARGO_BIN_EXE_unread-declaration"));
+    command.arg("--repo").arg(repository);
+    if let Some(program) = program {
+        command.arg("--program").arg(program);
+    }
+    match home {
+        Some(home) => command.env("HOME", home),
+        None => command.env_remove("HOME"),
+    };
+    command.output().expect("run the gate")
+}
+
+fn code(output: &std::process::Output) -> i32 {
+    output.status.code().expect("the gate exited on a signal")
+}
+
+fn said(output: &std::process::Output) -> String {
+    format!(
+        "{}{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    )
+}
+
+#[test]
+fn a_declaration_every_key_of_which_is_read_is_clean() {
+    // THE CONTROL. Without it the cases below prove only that this gate can say
+    // "defect", which every broken gate also does.
+    let root = tempfile::tempdir().expect("a temporary directory");
+    let repository = repository_declaring(
+        root.path(),
+        Some("send = \"tracked\"\nneeds = [\"cargo\", \"git\"]\npeak_gb_per_task = 2\n"),
+    );
+    let program = answering_program(
+        root.path(),
+        "reads-everything",
+        &answer(
+            &repository.join(unread_declaration::DECLARATION),
+            true,
+            &[
+                ("send", "tracked"),
+                ("needs", "cargo git"),
+                ("peak_gb_per_task", "2"),
+                ("min_free_gb", ""),
+            ],
+        ),
+    );
+    let output = gate(&repository, Some(&program), None);
+    assert_eq!(code(&output), 0, "{}", said(&output));
+    assert!(
+        said(&output).contains("every top-level key this repository declares is one the program"),
+        "{}",
+        said(&output)
+    );
+}
+
+#[test]
+fn a_key_the_program_does_not_extract_is_a_finding() {
+    // The measured shape: `exclude` is documented in the same block of the same
+    // skill as `packages` was, four repositories carry it, and the program has no
+    // extractor for it. It reads as a safety measure and imposes nothing.
+    let root = tempfile::tempdir().expect("a temporary directory");
+    let repository = repository_declaring(
+        root.path(),
+        Some("send = \"tracked\"\nexclude = [\"/target\"]\n"),
+    );
+    let program = answering_program(
+        root.path(),
+        "never-heard-of-exclude",
+        &answer(
+            &repository.join(unread_declaration::DECLARATION),
+            true,
+            &[("send", "tracked")],
+        ),
+    );
+    let output = gate(&repository, Some(&program), None);
+    assert_eq!(code(&output), 1, "{}", said(&output));
+    assert!(
+        said(&output).contains("`exclude` is declared and the program never reads it"),
+        "{}",
+        said(&output)
+    );
+}
+
+#[test]
+fn a_value_the_two_readings_disagree_about_is_a_finding() {
+    // The costliest shape, because the value is neither absent nor what was
+    // written: the program's integer pattern stops at the decimal point and the
+    // run uses a number nobody wrote.
+    let root = tempfile::tempdir().expect("a temporary directory");
+    let repository = repository_declaring(root.path(), Some("peak_gb_per_task = 2.5\n"));
+    let program = answering_program(
+        root.path(),
+        "truncates-at-the-point",
+        &answer(
+            &repository.join(unread_declaration::DECLARATION),
+            true,
+            &[("peak_gb_per_task", "2")],
+        ),
+    );
+    let output = gate(&repository, Some(&program), None);
+    assert_eq!(code(&output), 1, "{}", said(&output));
+    assert!(
+        said(&output).contains("declared as `2.5` and the program reads `2`"),
+        "{}",
+        said(&output)
+    );
+}
+
+#[test]
+fn a_key_inside_a_table_is_named_and_not_judged() {
+    // The hole is printed with its size and its names. A key silently skipped is
+    // a hole that reads as a clean check.
+    let root = tempfile::tempdir().expect("a temporary directory");
+    let repository = repository_declaring(
+        root.path(),
+        Some(
+            "send = \"tracked\"\n\n[commands]\nbuild = \"cargo build\"\nverify = \"cargo test\"\n",
+        ),
+    );
+    let program = answering_program(
+        root.path(),
+        "top-level-only",
+        &answer(
+            &repository.join(unread_declaration::DECLARATION),
+            true,
+            &[("send", "tracked")],
+        ),
+    );
+    let output = gate(&repository, Some(&program), None);
+    assert_eq!(code(&output), 0, "{}", said(&output));
+    assert!(
+        said(&output).contains("2 key(s) inside a table are outside the program's namespace"),
+        "{}",
+        said(&output)
+    );
+    assert!(
+        said(&output).contains("commands.build") && said(&output).contains("commands.verify"),
+        "{}",
+        said(&output)
+    );
+}
+
+#[test]
+fn a_declaration_that_is_not_the_language_it_claims_is_a_finding() {
+    let root = tempfile::tempdir().expect("a temporary directory");
+    let repository = repository_declaring(root.path(), Some("send =\nneeds = [\"cargo\"]\n"));
+    let program = answering_program(
+        root.path(),
+        "patterns-read-it-anyway",
+        &answer(
+            &repository.join(unread_declaration::DECLARATION),
+            true,
+            &[("send", ""), ("needs", "cargo")],
+        ),
+    );
+    let output = gate(&repository, Some(&program), None);
+    assert_eq!(code(&output), 1, "{}", said(&output));
+    assert!(
+        said(&output).contains("not valid TOML"),
+        "{}",
+        said(&output)
+    );
+}
+
+#[test]
+fn a_program_that_cannot_be_run_is_a_refusal_not_a_pass() {
+    let root = tempfile::tempdir().expect("a temporary directory");
+    let repository = repository_declaring(root.path(), Some("send = \"tracked\"\n"));
+    let output = gate(&repository, Some(&root.path().join("not-installed")), None);
+    assert_eq!(code(&output), 2, "{}", said(&output));
+    assert!(said(&output).contains("NO VERDICT"), "{}", said(&output));
+}
+
+#[test]
+fn a_program_without_the_seam_is_a_refusal() {
+    // An older copy of the program: it runs, exits 0, and cannot say what it
+    // read. Reading that as "no findings" is how a gate reports on a question it
+    // never asked.
+    let root = tempfile::tempdir().expect("a temporary directory");
+    let repository = repository_declaring(root.path(), Some("send = \"tracked\"\n"));
+    let program = answering_program(root.path(), "older-copy", "");
+    let output = gate(&repository, Some(&program), None);
+    assert_eq!(code(&output), 2, "{}", said(&output));
+    assert!(
+        said(&output).contains("does not have `--explain-declaration`"),
+        "{}",
+        said(&output)
+    );
+}
+
+#[test]
+fn a_program_answering_about_another_file_is_a_refusal() {
+    // The program finds the declaration from where it was started, so an answer
+    // about a different file would compare one repository's keys against
+    // another's values and agree or disagree for a reason neither file explains.
+    let root = tempfile::tempdir().expect("a temporary directory");
+    let repository = repository_declaring(root.path(), Some("send = \"tracked\"\n"));
+    let program = answering_program(
+        root.path(),
+        "stood-somewhere-else",
+        &answer(
+            &root.path().join("elsewhere/.claude/remote-build.toml"),
+            true,
+            &[("send", "tracked")],
+        ),
+    );
+    let output = gate(&repository, Some(&program), None);
+    assert_eq!(code(&output), 2, "{}", said(&output));
+    assert!(
+        said(&output).contains("it answered about"),
+        "{}",
+        said(&output)
+    );
+}
+
+#[test]
+fn a_repository_declaring_nothing_says_so_rather_than_passing_quietly() {
+    // The hook that runs this gate also runs over trees that declare nothing —
+    // its own smoke test builds one. The law having no population is a complete
+    // answer, and it is said in words.
+    let root = tempfile::tempdir().expect("a temporary directory");
+    let repository = repository_declaring(root.path(), None);
+    let program = answering_program(root.path(), "unasked", "");
+    let output = gate(&repository, Some(&program), None);
+    assert_eq!(code(&output), 0, "{}", said(&output));
+    assert!(
+        said(&output).contains("which is not the same as a clean check"),
+        "{}",
+        said(&output)
+    );
+}
+
+#[test]
+fn the_installed_program_reads_every_key_this_repository_declares() {
+    // THE END-TO-END, and the only case that touches the real seam. It asserts
+    // an answer in BOTH worlds rather than stepping aside in one: where the
+    // program is installed this repository's own declaration must come back
+    // clean, and where it is not the gate must refuse. Neither branch can be
+    // reached by a gate that quietly does nothing.
+    let repository = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .and_then(Path::parent)
+        .expect("this crate sits two directories under the repository root")
+        .to_path_buf();
+    let home = std::env::var("HOME").expect("HOME is set for the test process");
+    let installed = PathBuf::from(&home).join(unread_declaration::PROGRAM_UNDER_HOME);
+
+    let output = gate(&repository, None, Some(Path::new(&home)));
+    if installed.is_file() {
+        assert_eq!(code(&output), 0, "{}", said(&output));
+        assert!(
+            said(&output).contains("every top-level key this repository declares"),
+            "{}",
+            said(&output)
+        );
+    } else {
+        assert_eq!(code(&output), 2, "{}", said(&output));
+        assert!(said(&output).contains("NO VERDICT"), "{}", said(&output));
+    }
+}
+
+#[test]
+fn the_installed_program_answers_in_the_shape_this_gate_parses() {
+    // The fixture above states the wire form; this is what keeps that statement
+    // honest where the real program lives. Where it does not, the assertion is
+    // that asking is impossible — which is the same fact, said from the other
+    // side.
+    let home = std::env::var("HOME").expect("HOME is set for the test process");
+    let installed = PathBuf::from(&home).join(unread_declaration::PROGRAM_UNDER_HOME);
+    let repository = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .and_then(Path::parent)
+        .expect("this crate sits two directories under the repository root")
+        .to_path_buf();
+
+    match unread_declaration::ask(&installed, &repository) {
+        Ok(report) => {
+            assert!(
+                report.present,
+                "it reports its own repository's file absent"
+            );
+            assert!(
+                report.extracts.contains_key("peak_gb_per_task"),
+                "the installed program named {:?}",
+                report.extracts.keys().collect::<Vec<_>>()
+            );
+        }
+        Err(message) => {
+            assert!(
+                !installed.is_file(),
+                "the program is installed at {} and could not be asked: {message}",
+                installed.display()
+            );
+        }
+    }
+}

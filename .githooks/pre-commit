@@ -59,6 +59,14 @@
 #      Closes the silent-fail where harness code committed unformatted because
 #      no gate compiled it.
 #
+#   5e. Declaration gate (R1189) — `tools/unread-declaration`, on EVERY
+#      commit rather than on a staged path: every top-level key in
+#      `.claude/remote-build.toml` is one `bx` reports reading, asked of the
+#      program (`--explain-declaration`) rather than of a copy of its schema.
+#      The reader is machine-wide and outside this checkout, so the half that
+#      rots moves no byte here — which is why there is no staged-file guard.
+#      A repository declaring nothing is exit 0 with a sentence.
+#
 # Install (one-time per clone):
 #   git config core.hooksPath .githooks
 #
@@ -329,6 +337,59 @@ if [[ -n "${sub_ws//[$'\n']/}" ]]; then
             exit 1
         fi
     done < <(printf '%s' "$sub_ws" | sort -u)
+fi
+
+# Gate 5e — every key this repository declares to the build-machine program is
+# one that program reads (R1189).
+#
+# NO `if staged` GUARD, AND THAT IS THE POINT. The other gates here run when a
+# file of theirs is staged because their subject is in this tree. This one's
+# subject is HALF outside it: the declaration is here and its only reader is
+# `~/.claude/remote-build/bin/bx`, a machine-wide program that can rename a key
+# or change a pattern without a single byte moving in this checkout. A trigger
+# that waited for `.claude/remote-build.toml` to be staged would never fire for
+# the half that actually rots.
+#
+# It has rotted twice on this one file. `packages` was documented for as long as
+# the format was and four repositories declared it, and nothing read it until a
+# new build machine failed a compile for a missing header. `peak_gb_per_task`
+# held a measurement of a defect that had already been fixed, and the cost was
+# not slowness but a fleet: a 21GB host `not a candidate` and a 125GB one held to
+# four threads with 28 cores idle (R1188). The measurement that opened this gate
+# found a third — `exclude`, declared by ALL FIVE repositories on this machine
+# and extracted by nothing, one of them (`scxml-core-engine`'s `/embed`) tracked
+# and therefore sent on every transfer by a repository that declared it never
+# would be.
+#
+# The three codes, as Gates 5a/5c/5d read them. 2 here means the program could
+# not be asked — a repository that declares nothing is exit 0 with a sentence,
+# not a refusal, which is what the hook's own smoke test runs over.
+#
+# Measured at 1.8s warm, which is what an unconditional gate has to be worth:
+# the program is asked once, reads one file, and runs nothing.
+echo "[mnemosyne pre-commit] the build-machine declaration is read as declared" >&2
+gates="$(cd "$(dirname "$0")/.." && pwd)"
+if [[ ! -f "$gates/tools/unread-declaration/Cargo.toml" ]]; then
+    echo "[mnemosyne pre-commit] commit rejected — the declaration gate is missing" \
+         "at $gates/tools/unread-declaration/Cargo.toml" >&2
+    exit 1
+fi
+declaration_verdict=0
+cargo run -q --locked --manifest-path "$gates/tools/unread-declaration/Cargo.toml" \
+    --bin unread-declaration -- --repo "$(pwd)" || declaration_verdict=$?
+if [[ $declaration_verdict -eq 1 ]]; then
+    {
+        echo "[mnemosyne pre-commit] commit rejected — a declared key is not read as declared"
+        echo "  run: cargo run -q --manifest-path tools/unread-declaration/Cargo.toml \\"
+        echo "         --bin unread-declaration -- --repo ."
+    } >&2
+    exit 1
+elif [[ $declaration_verdict -ne 0 ]]; then
+    {
+        echo "[mnemosyne pre-commit] commit rejected — the declaration gate could not ask" \
+             "the program that reads it (exit $declaration_verdict); its own message is above"
+    } >&2
+    exit 1
 fi
 
 # Gate 6 — vN version-postfix identifier ban (CLAUDE.md anti-pattern).

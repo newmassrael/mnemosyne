@@ -7,18 +7,38 @@
 # 추적 파일 + .git 만 보낸다. 이 저장소의 `claudedocs/` 는 gitignore 이고 아직
 # 전달되지 않은 외부 소비자 회신 문서를 담고 있어서, 다른 머신으로 조용히 넘어갈
 # 이유가 없다.
+#
+# `target` 을 막는 것도 이 줄이다. 그것은 `~/.buildcache/mnemosyne` 를 가리키는
+# 심볼릭 링크라서 보내면 원격에 깨진 링크로 가는데, 추적 파일이 아니므로 애초에
+# 전송 목록에 오르지 않는다.
 send = "tracked"
 
-# `target` 은 `~/.buildcache/mnemosyne` 를 가리키는 심볼릭 링크다. 보내면 원격에
-# 깨진 링크로 간다.
-exclude = ["/target"]
+# 여기 `exclude = ["/target"]` 이 있었고, 2026-08-14 에 지웠다. **bx 에 그 키의
+# 추출자가 없다** — 다섯 저장소가 전부 그것을 선언하고 있는데 아무도 읽지 않는다
+# (`packages` 가 네 저장소에서 그랬던 것과 같은 모양이고, 그때는 새 빌드 머신이
+# 헤더 하나 없어 죽고 나서야 드러났다). 위의 `target` 보호는 `send = "tracked"`
+# 가 하던 일이었고 이 키가 한 일은 없다. 요구사항처럼 읽히면서 아무것도 강제하지
+# 않는 줄은 안전 장치가 아니라 안전하다는 착각이다.
+#
+# 이 종류를 다시 조용히 쓰지 못하게 하는 것이 `tools/unread-declaration` 이다 —
+# 이 파일의 모든 top-level 키를 bx 자신에게 물어(`--explain-declaration`) 읽히는지
+# 대조하고, 안 읽히면 커밋을 거부한다.
 
-needs = ["cargo"]
+# `protoc` 은 `mnemosyne-server` 의 build.rs 가 prost-build 로 부르는 것이고, 없으면
+# 크레이트 269개를 컴파일한 뒤에야 `Could not find protoc` 로 죽는다 — 2026-08-14 에
+# pc3 에서 실측했다. 이것이 선언에 없던 이유가 기록해 둘 만하다: R1188 이 예산을
+# 고쳐 함대를 하나에서 셋으로 늘리기 전까지 이 저장소는 pc2 밖으로 나간 적이 없고,
+# pc2 는 그것을 갖고 있었다. **함대가 커지자 불완전한 선언이 처음 드러났다.**
+needs = ["cargo", "protoc"]
 
 # `librocksdb-sys` 의 bindgen 이 clang 내장 헤더를 요구한다. `libclang.so` 만으로는
 # 부족하고, 없으면 `'stdbool.h' file not found` 로 죽는다 (2026-08-12, Ubuntu
 # 24.04 빌드 머신에서 실측).
-packages = ["libclang-common-18-dev"]
+#
+# `protobuf-compiler` 는 위 `protoc` 의 설치 이름이다. 둘 다 적는 이유는 검사가
+# 다르기 때문이다 — `needs` 는 「돌아가는가」를, `packages` 는 「무엇을 깔면 되는가」를
+# 답한다.
+packages = ["libclang-common-18-dev", "protobuf-compiler"]
 
 # `min_ram_gb` 는 일부러 없다. 기계 총 RAM 은 이 저장소가 물어야 할 질문이 아니고,
 # 실제로 막는 것은 아래 `peak_gb_per_task` 다 — bx 는 `가용 RAM < peak` 인 호스트를

@@ -1,0 +1,62 @@
+# unread-declaration — the gate for what this repository declares to a program
+# that lives outside it.
+#
+# `.claude/remote-build.toml` says how this repository is verified on a build
+# machine: what to send, what the far side must have, and how much memory one of
+# its tasks takes. NOTHING IN THIS CHECKOUT PARSES IT. Its only reader is `bx`, a
+# machine-wide program under `~/.claude`, so a declaration that stops being read
+# goes wrong silently here — the key falls back to a default and the work merely
+# lands somewhere worse, which looks exactly like a normal day.
+#
+# That is not a hypothetical, and it has now happened twice on the same file:
+#
+#   - `packages` was documented for as long as the format was and FOUR
+#     repositories declared it. Nothing read it. The absence became visible only
+#     when a new build machine failed a compile for a missing header, after all
+#     seven declared tools had verified.
+#   - `peak_gb_per_task = 24` was a measurement of a defect that had already been
+#     fixed. The number stayed for two days after the code moved, and the cost
+#     was not slowness: a 21GB host was `not a candidate` and a 125GB one was
+#     held to four threads with 28 cores idle (R1188).
+#
+# THE LAW IS ONE SENTENCE: every key this repository declares is one the program
+# that reads it reports reading, with the value the declaration gives.
+#
+# It is asked of the PROGRAM rather than of a copy of its schema. `bx` extracts
+# with line patterns, not with a TOML parser, and the two languages are not the
+# same one — a value that gains a decimal point, moves into a table or changes
+# its quoting stays valid TOML and stops matching. A gate holding its own list of
+# keys would be a second spelling of the thing under test, and would agree with
+# the file while the program disagreed with both. `bx --explain-declaration`
+# prints what it extracted; this reads that.
+#
+# ITS OWN WORKSPACE, like every other gate under `tools/`: the root workspace's
+# build never compiles it, and `scripts/check-side-workspaces.sh` finds it by
+# walking for manifests that carry their own `[workspace]`, so there is no list
+# to update.
+[workspace]
+
+[package]
+name = "unread-declaration"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.88"
+publish = false
+license = "MIT OR Apache-2.0"
+description = "Mnemosyne — every key this repository declares is one the program that reads it reports reading"
+keywords = ["build", "declaration", "gate"]
+categories = ["development-tools"]
+
+[dependencies]
+# THE STRICT READING OF THE FILE, against which the program's line patterns are
+# held. This is the one place a second parser is correct: the disagreement
+# between what the file MEANS and what the program EXTRACTS is the finding.
+toml = "1"
+
+[dev-dependencies]
+# The cases build throwaway repositories OUTSIDE this checkout — a declaration is
+# a file at a fixed path, so the only way to vary one is to stand somewhere else.
+tempfile = "3"
+
+[lints.clippy]
+all = "deny"
