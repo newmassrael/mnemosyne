@@ -351,6 +351,71 @@ fn absolute(path: &Path) -> Result<PathBuf, String> {
     std::path::absolute(path).map_err(|e| format!("{}: {e}", path.display()))
 }
 
+/// Every tracked `.json` in a repository, from `git ls-files`.
+///
+/// FROM GIT AND NOT FROM A WALK, for the reason `ci-plan` reads workflows that
+/// way: a manifest that is not tracked is one nobody else can run, and one that
+/// is tracked is one a reader will believe. A list of sweeps kept beside a law
+/// would go stale the first time a crate gained one, in the direction that
+/// reads as a pass.
+///
+/// HERE RATHER THAN IN A TEST because it is now asked by more than one crate —
+/// `tests/sweeps.rs` asks it of every law it holds, and `tools/scratch-budget`
+/// asks it to find out which log directories this repository writes into. Two
+/// spellings of "the sweeps this repository tracks" is two populations that can
+/// disagree, and they would disagree silently.
+pub fn tracked_json(root: &Path) -> Result<Vec<String>, String> {
+    let out = std::process::Command::new("git")
+        .args(["ls-files", "*.json"])
+        .current_dir(root)
+        .output()
+        .map_err(|e| format!("git ls-files in {}: {e}", root.display()))?;
+    if !out.status.success() {
+        return Err(format!(
+            "git ls-files in {} failed: {}",
+            root.display(),
+            String::from_utf8_lossy(&out.stderr)
+        ));
+    }
+    let mut files: Vec<String> = String::from_utf8_lossy(&out.stdout)
+        .lines()
+        .map(str::to_string)
+        .collect();
+    files.sort();
+    Ok(files)
+}
+
+/// Whether a manifest is an INPUT TO A TEST rather than a sweep somebody runs.
+///
+/// Declared ONCE for every law that has a population, because two laws
+/// disagreeing about which files they are about is the same defect as a law
+/// over no files at all. What the rule cost to arrive at is written where the
+/// laws use it (`tests/sweeps.rs`): the classifier is where the file sits,
+/// because the obvious alternative — does the tree it names hold the files it
+/// edits — is the very question those laws ask.
+pub fn a_test_input(path: &str) -> bool {
+    path.split('/').any(|part| part == "tests")
+}
+
+/// The sweeps a repository TRACKS AND RUNS: every tracked `.json` that reads as
+/// a manifest and is not an input to a test, with its path as `git` spells it.
+///
+/// The one answer to "which sweeps are this repository's", so that a law about
+/// their anchors, a law about their commands and a law about the directories
+/// they write into cannot each be about a different set.
+pub fn tracked_sweeps(root: &Path) -> Result<Vec<(String, Manifest)>, String> {
+    let mut sweeps = Vec::new();
+    for path in tracked_json(root)? {
+        if a_test_input(&path) {
+            continue;
+        }
+        if let Ok(manifest) = read_manifest(&root.join(&path)) {
+            sweeps.push((path, manifest));
+        }
+    }
+    Ok(sweeps)
+}
+
 /// One replacement, as the law the dry run and the write BOTH obey: the anchor
 /// occurs EXACTLY once, and what comes back is the text with that one occurrence
 /// replaced.

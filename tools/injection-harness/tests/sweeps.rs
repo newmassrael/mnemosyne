@@ -53,23 +53,14 @@ fn repository_root() -> PathBuf {
 ///
 /// So the classification below is derived from the files instead, and every
 /// tracked `.json` is judged rather than filtered.
+///
+/// THE WALK ITSELF MOVED INTO THE LIBRARY IN R1199, and this is the thin call
+/// that keeps its `expect` at the test boundary. A second crate now asks the
+/// same question — `tools/scratch-budget` needs to know which sweeps this
+/// repository runs, to find out which log directories it writes into — and two
+/// spellings of one population disagree silently.
 fn tracked_json(root: &Path) -> Vec<String> {
-    let out = Command::new("git")
-        .args(["ls-files", "*.json"])
-        .current_dir(root)
-        .output()
-        .expect("git ls-files runs");
-    assert!(
-        out.status.success(),
-        "git ls-files failed: {}",
-        String::from_utf8_lossy(&out.stderr)
-    );
-    let mut files: Vec<String> = String::from_utf8_lossy(&out.stdout)
-        .lines()
-        .map(str::to_string)
-        .collect();
-    files.sort();
-    files
+    injection_harness::tracked_json(root).expect("git ls-files runs")
 }
 
 /// The directory a tracked path sits in, as the population is grouped by.
@@ -79,11 +70,12 @@ fn directory_of(path: &str) -> &str {
 
 /// Whether a manifest is an INPUT TO A TEST rather than a sweep somebody runs.
 ///
-/// Declared once for every law in this file, because two laws disagreeing about
-/// which files they are about is the same defect as a law over no files at all.
-/// The rule, and what it cost to arrive at, is written where it is first used.
+/// Declared once for every law with a population — in the library since R1199,
+/// for the reason above — because two laws disagreeing about which files they
+/// are about is the same defect as a law over no files at all. The rule, and
+/// what it cost to arrive at, is written where it is first used.
 fn a_test_input(path: &str) -> bool {
-    path.split('/').any(|part| part == "tests")
+    injection_harness::a_test_input(path)
 }
 
 #[test]

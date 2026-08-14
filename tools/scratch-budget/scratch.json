@@ -1,0 +1,49 @@
+{
+  "_": [
+    "The records this repository writes under `target/`, and how much disk each",
+    "of them may hold. One entry per directory; a directory not named here has",
+    "no collector at all, which is the state every one of these was in until",
+    "R1199.",
+    "",
+    "THE NUMBERS ARE MEASURED AND THE MEASUREMENT IS WRITTEN BESIDE THEM, so the",
+    "next reader can tell a budget that was chosen from one that was typed. Each",
+    "`why` says what the directory holds, what it grows at on this machine, and",
+    "what the number buys in days or in runs.",
+    "",
+    "EVICTION IS OLDEST-FIRST AND THE NEWEST FILE IS NEVER REMOVED. A budget",
+    "smaller than one file cannot be met, and the collector says so instead of",
+    "deleting the record somebody is reading right now."
+  ],
+  "directories": [
+    {
+      "path": "target/verify-logs",
+      "budget_mib": 32,
+      "why": "One file per `scripts/verify.sh` run, holding the whole combined output — the R743 lesson that a lossy `cargo test | grep` turns a deterministic regression into a mis-diagnosed flake. MEASURED 2026-08-14: 764 files, 48 MB, oldest sixteen days old, about 3 MB and 48 runs a day, roughly 63 KB per log. 32 MiB is about ten days of that, which is longer than any diagnosis in this ledger has reached back for one."
+    },
+    {
+      "path": "target/injection-logs",
+      "budget_mib": 48,
+      "why": "One file per injection the harness runs, holding the suite output that scored it. MEASURED 2026-08-14: 271 files, 26 MB, about 96 KB each. The budget is set from the WORST SINGLE RUN rather than from a day: this repository tracks 309 injections, so a full sweep of everything writes about 30 MB in one pass, and a budget under that would evict a run's own earlier logs while it was still running."
+    },
+    {
+      "path": "tools/injection-harness/target/self-check-logs",
+      "budget_mib": 8,
+      "why": "The harness's own self-check sweep writes here rather than into the shared directory, because it is the sweep that tests the sweeping. FOUND BY THE LAW IN tests/declared.rs ON ITS FIRST RUN, which is the whole argument for that law: three record directories sat beside a separate workspace where nobody was looking for one. MEASURED 2026-08-14: 19 files, 160 KB, oldest three days old, about 8 KB per log. 8 MiB is roughly fifty full self-checks."
+    },
+    {
+      "path": "tools/injection-harness/target/injection-logs",
+      "budget_mib": 8,
+      "why": "Where the harness's `example.json` sweep writes, beside the workspace it demonstrates on. MEASURED 2026-08-14: ABSENT — that sweep has not been run in this tree, which is a directory with no collector and no growth YET, and the two are not the same thing. The budget is its sibling's, for the same size of log."
+    },
+    {
+      "path": "tools/item-citations/target/item-citations-sweep-logs",
+      "budget_mib": 8,
+      "why": "Where the item-citation gate's sweep writes, beside its own workspace. MEASURED 2026-08-14: ABSENT — the sweep has not been run in this tree since the directory was named. The budget is its siblings'."
+    },
+    {
+      "path": "target/bx-logs",
+      "budget_mib": 16,
+      "why": "One file per remote build `bx` places, written into whichever repository's tree it was invoked from. MEASURED 2026-08-14: 502 files, 12 MB, in two days — the fastest-growing of the three. `bx` prunes the REMOTE tree it builds in and never the local one it writes these to, so nothing collected them anywhere. 16 MiB is about three days of placements, which is as far back as a placement question has ever been asked here. THE OTHER FOUR TREES ON THIS MACHINE ARE NOT THIS REPOSITORY'S TO COLLECT: pinion (21 MB), scxml-core-engine (30 MB) and watching-zenoh (7.5 MB) each carry one of these directories, growing the same way, and this declaration reaches only the tree it is run against."
+    }
+  ]
+}

@@ -112,6 +112,39 @@ else
   "${sweep[@]}" --installed
 fi
 
+# AND THE RECORDS, WHICH CARGO-SWEEP HAS NO OPINION ABOUT (R1199).
+#
+# Everything above delegates to cargo-sweep, and cargo-sweep knows what an
+# ARTIFACT is. The other thing in this tree is RECORDS — one log per
+# verification, one per injection, one per remote build placement — and measured
+# on the day this was written, `cargo sweep --installed --dry-run` answered
+# `Would clean: nothing` while those directories held 1537 files and 86 MB, the
+# oldest sixteen days old.
+#
+# A SEPARATE PROGRAM WITH A SEPARATE POLICY, because the argument this file
+# makes against sweeping by age is an argument about artifacts. A stale artifact
+# can be recent and a live one can be old, so age is a guess there. A record is
+# never live in that sense: nothing builds with a log, and the only thing that
+# makes one worth keeping is that somebody may still want to read it, which
+# decays with time and with nothing else. `tools/scratch-budget` states the
+# budgets and what measurement each came from.
+#
+# THE COLLECTOR'S REAL READER IS `scripts/verify.sh`, which runs it on every
+# verification. It is called here too because a person reaching for "reclaim
+# target/" should not have to know that half of the tree is collected by a
+# different program.
+echo "[gc] records (tools/scratch-budget)"
+scratch_flags=()
+[[ $dry == 1 ]] && scratch_flags+=(--dry-run)
+scratch_verdict=0
+cargo run -q --locked --manifest-path tools/scratch-budget/Cargo.toml \
+  --bin scratch-budget -- --at . "${scratch_flags[@]}" || scratch_verdict=$?
+if [[ $scratch_verdict -ne 0 ]]; then
+  echo "[gc] the record collector refused (exit $scratch_verdict); its own message is" \
+    "above. The artifact sweep above still happened" >&2
+  exit "$scratch_verdict"
+fi
+
 after="$(du -sb target 2>/dev/null | cut -f1)"
 printf '[gc] target: %s -> %s%s\n' \
   "$(numfmt --to=iec "$before")" "$(numfmt --to=iec "$after")" \

@@ -1,0 +1,67 @@
+# scratch-budget — the records this repository writes under `target/` are bounded.
+#
+# `scripts/gc` reclaims `target/` by asking cargo-sweep which ARTIFACTS are
+# live, and cargo-sweep knows about artifacts only. Everything else this
+# repository writes into that tree is invisible to it: measured on this machine
+# the day this crate was written, `cargo sweep --installed --dry-run` answered
+# `Would clean: nothing` while `target/verify-logs` held 764 files and 48 MB,
+# `target/injection-logs` 271 files and 26 MB, and `target/bx-logs` 502 files
+# and 12 MB. The oldest verify log was sixteen days old and nothing had ever
+# removed one.
+#
+# THE ASYMMETRY THAT MAKES THIS A SEPARATE PROGRAM rather than a flag on the gc.
+# `scripts/gc` refuses to sweep by age, and its header says why: an age window
+# "keeps stale artifacts that happen to be recent and deletes live ones that
+# happen not to be". That is true of an ARTIFACT, whose relevance is decided by
+# whether a build needs it. It is NOT true of a RECORD. A log is never live in
+# that sense — nothing reads one to build with — and the only thing that makes
+# one worth keeping is that somebody may still want to look at it, which decays
+# with time and with nothing else. So the key that is a guess for one of these
+# is the right key for the other, and the two policies had to be separable to be
+# stated honestly.
+#
+# WHAT IS BOUNDED IS DISK, which is the harm. Saturation on this machine does
+# not arrive announced: it arrives wearing the clothes of a defect — a
+# compilation that fails, a gate that cannot judge, a citation check that
+# reports findings it invented. Every one of those has been diagnosed here as a
+# full disk. A byte budget bounds the thing that actually hurts, and it needs no
+# guess about how many days of history somebody will want.
+#
+# ITS OWN WORKSPACE, like every other program under `tools/`: compiling a
+# collector into the tree it collects from is how a collector starts depending
+# on what it is deleting.
+[workspace]
+
+[package]
+name = "scratch-budget"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.88"
+publish = false
+license = "MIT OR Apache-2.0"
+description = "Mnemosyne — the records this repository writes under target/ are bounded"
+keywords = ["gc", "logs", "budget", "gate"]
+categories = ["development-tools"]
+
+[dependencies]
+# The declaration is data, and a reader that hand-parsed it would be a second
+# spelling of a schema this repository already knows how to write.
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[dev-dependencies]
+# THE LAW'S POPULATION COMES FROM THE HARNESS'S OWN READER, not from a second
+# one written here. `tests/declared.rs` asks which log directory every injection
+# sweep in this repository declares, and the answer lives in a field of a
+# manifest whose resolution rules — `logs` is relative to the manifest's own
+# directory, not to the tree it edits — are already implemented once. A copy of
+# them here would drift the first time the schema moved, and it would drift in
+# the direction that reads as "nothing to collect".
+injection-harness = { path = "../injection-harness" }
+# The collection cases build throwaway record directories OUTSIDE this
+# repository, for the reason `unowned-scratch` gives: a fixture inside the tree
+# would be found by the walks that judge it.
+tempfile = "3"
+
+[lints.clippy]
+all = "deny"

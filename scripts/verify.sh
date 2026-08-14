@@ -53,22 +53,43 @@ set -uo pipefail
 
 fresh=1
 label=""
+print_logdir=0
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --fresh) fresh=1; shift ;;
     --no-fresh) fresh=0; shift ;;
     --label) label="${2:-}"; shift 2 ;;
+    --print-logdir) print_logdir=1; shift ;;
     --) shift; break ;;
     -*) echo "verify.sh: unknown flag $1" >&2; exit 2 ;;
     *) break ;;
   esac
 done
+
+logdir="${VERIFY_LOGDIR:-target/verify-logs}"
+
+# WHERE THIS WRITES, ASKED RATHER THAN READ (R1199). The records under
+# `target/` are bounded by `tools/scratch-budget`, and the law that every
+# directory this repository writes records into is one something collects has to
+# know which directory THIS program uses. Matching the expansion above out of
+# this file would be a second definition of it, correct until the day somebody
+# changes the default — and then answering a path nothing writes to, which is a
+# directory that is always within its budget.
+#
+# BEFORE THE `mkdir` AND BEFORE THE LOCK, deliberately: asking a program where
+# it writes must not make it write, and a law that has to take this tree's build
+# lock to ask a question is one that cannot be asked while a build is running.
+if [[ $print_logdir == 1 ]]; then
+  printf '%s\n' "$logdir"
+  exit 0
+fi
+
 if [[ $# -eq 0 ]]; then
   echo "usage: scripts/verify.sh [--fresh|--no-fresh] [--label <name>] -- <command...>" >&2
+  echo "       scripts/verify.sh --print-logdir" >&2
   exit 2
 fi
 
-logdir="${VERIFY_LOGDIR:-target/verify-logs}"
 mkdir -p "$logdir"
 # ABSOLUTE, because it is also the identity compared against `VERIFY_LOCKS_HELD`
 # — two trees have a `target/.verify.lock` each and they are two locks.
@@ -90,12 +111,14 @@ log="$logdir/${ts}-${label}-$$.log"
 # again is a deadlock rather than a guarantee (see the header).
 if [[ ":${VERIFY_LOCKS_HELD:-}:" == *":$lock:"* ]]; then
   echo "[verify] build lock ($lock) already held by this process tree — not re-taking it."
+  outermost=0
 else
   exec 9>"$lock"
   echo "[verify] acquiring build lock ($lock) ..."
   flock 9
   echo "[verify] lock held."
   export VERIFY_LOCKS_HELD="${VERIFY_LOCKS_HELD:+$VERIFY_LOCKS_HELD:}$lock"
+  outermost=1
 fi
 
 changed_crates=""
@@ -177,6 +200,43 @@ case "$coverage_verdict" in
     if [[ "$status" -eq 0 ]]; then status=2; fi
     ;;
 esac
+
+# AND THE RECORD THIS RUN JUST WROTE IS ONE SOMETHING COLLECTS (R1199).
+#
+# Nothing reclaimed these until this round. `scripts/gc` delegates the whole of
+# `target/` to cargo-sweep, which knows what an ARTIFACT is and nothing else:
+# measured, `cargo sweep --installed --dry-run` answered `Would clean: nothing`
+# on a tree holding 1537 record files and 86 MB, the oldest of them sixteen days
+# old. A collector nobody runs is the state that produced that, so the caller is
+# here — the one program every verification in this repository goes through —
+# rather than left to a person remembering the gc.
+#
+# ONLY THE OUTERMOST RUN IN A TREE COLLECTS. `check-side-workspaces.sh` puts
+# eighteen of these inside one another, and each of the inner ones would survey
+# the same directories again for nothing. The lock already answers which one
+# this is: the run that TOOK it is the one whose end is the end of the whole
+# verification, and a nested run over ANOTHER tree takes that tree's lock and
+# correctly collects there.
+#
+# THE PROGRAM COMES FROM THIS SCRIPT'S CHECKOUT and the tree it collects in is
+# the WORKING DIRECTORY — the same two-tree rule as the gate above, and the
+# manifest path is spelled out for the same reason: `ci-plan` can place a cargo
+# command only when the literal tail names a directory.
+if [[ "$outermost" == 1 ]]; then
+  cargo run -q --locked --manifest-path "$here/tools/scratch-budget/Cargo.toml" \
+    --bin scratch-budget -- --at .
+  scratch_verdict=$?
+  if [[ "$scratch_verdict" -ne 0 ]]; then
+    # A REFUSAL IS NOT A FINDING ABOUT THE RUN, and it is not nothing either: a
+    # collector that stops working leaves growth nobody sees, because `target/`
+    # is gitignored and the build machine prunes its own copy. It fails the
+    # verification for the same reason the coverage gate's refusal does — a
+    # green line is what this defect looked like for sixteen days.
+    echo "[verify] the record collector did not run (exit $scratch_verdict); its own" \
+      "message is above. Nothing else bounds what this run wrote to $logdir" >&2
+    if [[ "$status" -eq 0 ]]; then status=2; fi
+  fi
+fi
 
 echo "[verify] exit=$status log=$log"
 if [[ "$status" -ne 0 ]]; then
