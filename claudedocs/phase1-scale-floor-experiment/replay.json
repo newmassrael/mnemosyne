@@ -1,5 +1,6 @@
 {
   "schema": "kit-replay/v4",
+  "no_replay_reason": "built-outside-this-repository",
   "no_replay": "The two stores are the S13 blind re-extraction's own output, and an out-of-tree harness built them: the extractor ran its own build script against the June 2026 CLI in a separate tree, so no revision of THIS repository ever ran that import and there is no revision worth pinning to rebuild it at. They are opened today by the in-tree corpus carriage (Round 1174 for the removed value/scalar shape and the split manifest, Round 1176 for the pre-R697 transition rule), which every corpus law exercises on each run. What this record can do is hold the bytes, which is why every artifact below is declared and sealed.",
   "note": "Written in Round 1176, the round that carried the stores into the tracked population. Until then this kit had a report and a run log but no record at all, so none of its artifacts was pinned by anything — and the stores themselves sat outside the repository, where no law could ask them.",
   "inputs": [

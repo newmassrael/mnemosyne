@@ -153,7 +153,36 @@ const PROVENANCE_KINDS: &[&str] = &["derived-upper-bound", "declared-at-run"];
 /// no field to put that in. The version moves because the DOCUMENT changed
 /// shape, so a record written against the old shape is told so instead of
 /// having its new field ignored.
+/// ROUND 1202 ADDED A REQUIRED KEY AND DELIBERATELY DID NOT MOVE THIS, which
+/// departs from the rule the two paragraphs above state, so it is argued here
+/// rather than done quietly. The version exists so that a record written
+/// against an older shape is TOLD SO instead of having a new field ignored. A
+/// replay-less record that lacks `no_replay_reason` IS told so — by name, with
+/// the reason, where it is parsed — and a record that carries replays does not
+/// change shape at all under the new key. What a bump would have bought is a
+/// second way to say the same refusal; what it costs is every one of the 30
+/// records and 4 runbooks on disk rewriting a literal for a case 28 of them
+/// cannot reach, and that tax is how a version stops being moved at all.
 const REPLAY_SCHEMAS: &[&str] = &["kit-replay/v4"];
+
+/// Why a kit can hold evidence and still declare no replay. TWO REASONS,
+/// BECAUSE THE TWO KITS THAT DO IT ARE NOT MAKING THE SAME CLAIM — measured
+/// before this vocabulary was written, and the measurement is what stopped this
+/// round shipping one law over both.
+///
+/// `nothing-a-verb-takes` is the strong one: the kit produced no file shaped
+/// like a mutate verb's input, in any arm, so there is no store for a replay to
+/// build. It is checkable in full — the classifier that already decides which
+/// tracked files are input-shaped answers it.
+///
+/// `built-outside-this-repository` is the weaker one, and it is weaker in a way
+/// that has to be said rather than hidden: the importable files DO exist and no
+/// revision of this repository ever ran the import that made them, so there is
+/// no revision worth pinning. Only half of that is checkable here — that such
+/// files exist. "No revision of this repository ever ran it" cannot be
+/// falsified from inside the repository, and a record that claims it is trusted
+/// on that half.
+const NO_REPLAY_REASONS: &[&str] = &["nothing-a-verb-takes", "built-outside-this-repository"];
 
 /// Every literal a kit's `replay.json` is checked against, keyed by the field
 /// that carries it. The cells ARE the consts above — a second reader of one
@@ -174,6 +203,12 @@ const REPLAY_SCHEMAS: &[&str] = &["kit-replay/v4"];
 /// violations.
 const CHECKED_LITERALS: &[(&str, &[&str])] = &[
     ("schema", REPLAY_SCHEMAS),
+    // KEYED `no_replay_reason` AND NOT `reason`, which is what a nested object
+    // would have made it. The sibling law below reads this same table to reject
+    // a RUNBOOK that teaches a value the gate refuses, and it finds fields by
+    // name in prose: `reason` is a word a runbook uses about anything at all,
+    // and a generic key here would turn an unrelated sentence into a red main.
+    ("no_replay_reason", NO_REPLAY_REASONS),
     ("revision_provenance", PROVENANCE_KINDS),
     ("role", INPUT_ROLES),
     ("expect", STEP_EXPECTATIONS),
@@ -545,9 +580,19 @@ struct Declarations {
     inputs: Vec<Input>,
     replays: Vec<Replay>,
     provenance: BTreeMap<String, String>,
-    /// Per unit: why this kit declares no replay at all, when it declares none.
-    /// Present exactly for the units whose `replays` is empty.
-    no_replay: BTreeMap<String, String>,
+    /// Per unit: WHICH reason this kit declares no replay for, and the prose
+    /// that states it. Present exactly for the units whose `replays` is empty.
+    no_replay: BTreeMap<String, NoReplay>,
+}
+
+/// A kit's stated reason for holding evidence and declaring no replay.
+struct NoReplay {
+    /// One of [`NO_REPLAY_REASONS`] — the half a program reads.
+    reason: String,
+    /// The half a person reads. Both are required: the word decides which check
+    /// applies, and the prose is where the particulars live, which no
+    /// vocabulary of two words can carry.
+    why: String,
 }
 
 fn declarations() -> Declarations {
@@ -670,10 +715,33 @@ fn declarations() -> Declarations {
                 "{file}: `no_replay` must name what cannot be replayed, not just \
                  say so: {why:?}"
             );
-            no_replay.insert(unit.clone(), why.to_string());
+            // AND THE PROSE NAMES A REASON A PROGRAM CAN ACT ON (Round 1202).
+            // The length rule above is all that stood behind this claim, and a
+            // claim checked by its character count is a claim checked by
+            // nothing. The word decides WHICH check applies below, because the
+            // two kits that declare no replay are not making the same claim.
+            let reason = doc["no_replay_reason"].as_str().unwrap_or_else(|| {
+                panic!(
+                    "{file} declares no replays and no `no_replay_reason`. The \
+                     prose beside it is the particulars; the word is what \
+                     decides which of them anything can check."
+                )
+            });
+            assert!(
+                vocabulary("no_replay_reason").contains(&reason),
+                "{file}: unknown `no_replay_reason` `{reason}` — accepted: {:?}",
+                vocabulary("no_replay_reason")
+            );
+            no_replay.insert(
+                unit.clone(),
+                NoReplay {
+                    reason: reason.to_string(),
+                    why: why.to_string(),
+                },
+            );
         } else {
             assert!(
-                doc.get("no_replay").is_none(),
+                doc.get("no_replay").is_none() && doc.get("no_replay_reason").is_none(),
                 "{file} declares {} replay(s) AND a `no_replay` reason — one of \
                  the two is a lie",
                 declared_replays.len()
@@ -1531,6 +1599,139 @@ fn a_kit_with_no_replay_states_why_and_declares_no_pin() {
         d.no_replay.len(),
         d.no_replay.keys().collect::<Vec<_>>()
     );
+}
+
+/// Whether a kit's stated reason for having no replay AGREES with what its
+/// declared evidence is shaped like.
+///
+/// PURE, AND THE LAW AND ITS CONTROL BOTH DRIVE IT. The law asks the corpus,
+/// where the answer today is "they agree" — and a walk that found nothing wrong
+/// prints exactly what a rule that cannot fail prints.
+///
+/// THE SECOND ARM IS NOT SYMMETRY FOR ITS OWN SAKE. A kit holding nothing a verb
+/// takes and claiming the weaker reason would be true and would say less: the
+/// strong reason is a statement about the kit's whole output, the weak one only
+/// about where an import ran. Letting a record pick the weaker of two true
+/// claims is how the informative one stops being written.
+fn reason_contradicted(reason: &str, input_shaped: &[String]) -> Option<String> {
+    match reason {
+        "nothing-a-verb-takes" if !input_shaped.is_empty() => Some(format!(
+            "claims no verb takes any of its evidence and declares {} file(s) \
+             shaped exactly like one's input: {input_shaped:?}",
+            input_shaped.len()
+        )),
+        "built-outside-this-repository" if input_shaped.is_empty() => Some(
+            "claims its importable evidence was built outside this repository \
+             and declares no file shaped like a verb's input at all — then \
+             nothing was imported anywhere, and `nothing-a-verb-takes` is the \
+             true claim that says more"
+                .to_string(),
+        ),
+        _ => None,
+    }
+}
+
+/// EVERY KIT THAT DECLARES NO REPLAY SAYS WHICH REASON, AND ITS EVIDENCE AGREES.
+///
+/// R1177 left this: `no_replay` was prose, and the only thing standing behind it
+/// was `why.len() > 30`. A claim checked by its character count is a claim
+/// checked by nothing — and this one is load-bearing, because a kit that
+/// declares no replay is exempt from the entire replay half of this gate.
+///
+/// THE MEASUREMENT CAME FIRST AND IT CHANGED THE LAW. The obvious rule — a kit
+/// with no replay holds nothing a verb takes — is TRUE of `factsfirst-craft`
+/// (0 input-shaped files) and FALSE of `scale-floor` (6: two stores' sections,
+/// typing proposals and edge proposals). One law over both would have turned
+/// main red on a record whose claim is honest, which is R1178's shape exactly:
+/// one question asked of a population whose members answer differently. So the
+/// reason is TYPED, and each type carries the check it can carry.
+#[test]
+fn a_kit_that_declares_no_replay_says_which_reason_and_its_evidence_agrees() {
+    let d = declarations();
+    let classified = classified_inputs();
+    // NON-VACUITY ON BOTH INPUTS. A corpus with no replay-less kit, and a
+    // classifier that recognises nothing, each make this law an empty walk that
+    // prints what a clean one prints.
+    assert!(
+        !d.no_replay.is_empty(),
+        "no kit declares an empty `replays`, so this law holds over nothing"
+    );
+    assert!(
+        !classified.is_empty(),
+        "the shape classifier recognises no tracked file at all, so the half of \
+         this law that reads shapes is asked of an empty set"
+    );
+
+    let mut findings = Vec::new();
+    let mut reasons: BTreeSet<&str> = BTreeSet::new();
+    for (unit, stated) in &d.no_replay {
+        reasons.insert(stated.reason.as_str());
+        let shaped: Vec<String> = d
+            .inputs
+            .iter()
+            .filter(|i| &i.unit == unit)
+            .map(|i| normalize(&format!("{}/{}", i.unit, i.path)))
+            .filter(|path| classified.contains_key(path))
+            .collect();
+        if let Some(why) = reason_contradicted(&stated.reason, &shaped) {
+            findings.push(format!(
+                "{unit} {why}\n    its prose says: {:?}",
+                stated.why
+            ));
+        }
+    }
+    assert!(
+        findings.is_empty(),
+        "{} kit(s) state a reason for having no replay that their own declared \
+         evidence contradicts:\n  {}",
+        findings.len(),
+        findings.join("\n  ")
+    );
+    // WHICH REASONS THE CORPUS ACTUALLY EXERCISES, printed and not asserted: a
+    // corpus using one of the two leaves the other's arm tested only by the
+    // control below, and that is a fact about the corpus rather than a defect
+    // in it.
+    println!(
+        "{} replay-less kit(s), reasons exercised by the corpus: {reasons:?}",
+        d.no_replay.len()
+    );
+}
+
+/// THE CONTROL, and the reason the law above is not a walk over a corpus that
+/// happens to agree with itself. Both arms are driven through the same
+/// `reason_contradicted` the law uses, in both directions.
+#[test]
+fn a_stated_reason_its_evidence_contradicts_is_named_rather_than_passed() {
+    let importable = vec!["kit/run/store-A/sections.json".to_string()];
+
+    // THE STRONG CLAIM WITH A COUNTEREXAMPLE UNDER IT — the shape that was
+    // unwatched until this round, and the one a kit falls into by declaring a
+    // manifest as a `run-artifact`, which no rule forbids.
+    let broken = reason_contradicted("nothing-a-verb-takes", &importable)
+        .expect("a kit holding an importable file cannot claim nothing takes one");
+    assert!(broken.contains("sections.json"), "{broken}");
+
+    // AND THE WEAK CLAIM WITH NOTHING TO BE WEAK ABOUT.
+    let understated = reason_contradicted("built-outside-this-repository", &[])
+        .expect("a kit with no importable file has the stronger claim available");
+    assert!(understated.contains("says more"), "{understated}");
+
+    // BOTH AGREEING CASES, which is what keeps the two arms above from being a
+    // rule that rejects everything.
+    assert!(reason_contradicted("nothing-a-verb-takes", &[]).is_none());
+    assert!(reason_contradicted("built-outside-this-repository", &importable).is_none());
+
+    // AND EVERY REASON THE VOCABULARY ACCEPTS IS ONE THIS FUNCTION DECIDES. A
+    // word added to the list with no arm here would be accepted by the parser
+    // and checked by nothing, which is the state `no_replay` was in.
+    for reason in NO_REPLAY_REASONS {
+        assert!(
+            reason_contradicted(reason, &[]).is_some()
+                || reason_contradicted(reason, &importable).is_some(),
+            "`{reason}` is an accepted reason that nothing here can contradict, \
+             so declaring it exempts a kit from this law entirely"
+        );
+    }
 }
 
 /// Every verb a step names is a verb this CLI actually has. Asked of the binary,
