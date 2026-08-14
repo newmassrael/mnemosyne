@@ -192,7 +192,7 @@ pub struct Declared {
     pub already: usize,
 }
 
-fn git(root: &Path, args: &[&str]) -> HResult<String> {
+pub(crate) fn git(root: &Path, args: &[&str]) -> HResult<String> {
     let out = Command::new("git")
         .args(args)
         .current_dir(root)

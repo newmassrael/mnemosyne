@@ -11,6 +11,7 @@
 //! defaults silently.
 
 mod assemble;
+mod carry;
 mod declare;
 mod playthrough;
 mod seal;
@@ -35,6 +36,7 @@ USAGE:
   experiment-harness splice --base <manuscript.md> --out <md> --replace <scene.md> [--replace <scene.md>...]
   experiment-harness stamp-inputs --record <replay.json> [--record <replay.json>...]
   experiment-harness declare-run-tree --record <replay.json> [--record <replay.json>...]
+  experiment-harness carry-run-artifact --record <replay.json> --into <unit>/run/<dir> --from <path> [--from <path>...]
   experiment-harness set-input-role --record <replay.json> --path <p> [--path <p>...] --role <r> [--after <replay>] [--with <p>...] [--exit <n>] [--unreproducible <why>] [--surplus <id>...] [-- <verb> <arg>...]
   experiment-harness set-replay-config --record <replay.json> --replay <name> --config <unit-relative toml>
 
@@ -81,6 +83,20 @@ declare-run-tree
   evidence the contamination bound rests on just as much as a manifest is. Existing
   entries are never touched, and ownership is computed against every tracked record,
   so a nested kit's tree cannot be claimed by the record above it.
+
+carry-run-artifact
+  Bring evidence INTO a kit's run tree and leave it tracked, declared and sealed
+  in the same call. The other verbs here describe what is already in the tree;
+  this is the step that was a person's `cp`, and it is the one handling bytes
+  nothing can regenerate. Measured on one kit: two graded stores sat outside
+  version control, sealed by nothing, unrebuildable at any revision this
+  repository has.
+  A copy cannot refuse, cannot declare, and cannot remember where the bytes came
+  from. This refuses a destination outside the run tree and one already holding
+  DIFFERENT bytes (identical bytes make it a no-op, so re-running is safe),
+  stages the file so the declaring walk can see it, and writes `carried_from`
+  beside the entry — which is what lets a gate re-check the carried bytes
+  against their source wherever that source still exists.
 
 declare-evidence
   Declare NAMED files that sit outside every run tree, with the role the caller
@@ -146,6 +162,7 @@ fn run(args: &[String]) -> HResult<ExitCode> {
         "splice" => cmd_splice(&args[1..]),
         "stamp-inputs" => cmd_stamp_inputs(&args[1..]),
         "declare-run-tree" => cmd_declare_run_tree(&args[1..]),
+        "carry-run-artifact" => cmd_carry_run_artifact(&args[1..]),
         "declare-evidence" => cmd_declare_evidence(&args[1..]),
         "set-input-role" => cmd_set_input_role(&args[1..]),
         "set-replay-config" => cmd_set_replay_config(&args[1..]),
@@ -252,6 +269,39 @@ fn cmd_declare_run_tree(args: &[String]) -> HResult<ExitCode> {
         records.len(),
         result.added.len(),
         result.already
+    );
+    Ok(ExitCode::SUCCESS)
+}
+
+fn cmd_carry_run_artifact(args: &[String]) -> HResult<ExitCode> {
+    let mut p = Flags::new(args);
+    let record = p.require("--record")?;
+    let into = p.require("--into")?;
+    let sources = p.take_all("--from");
+    p.finish()?;
+
+    let carried = carry::run(&record, &into, &sources)?;
+    for entry in &carried {
+        // THE DIGEST IS THE REVIEW. A diff of 64 KB of JSON tells a reader
+        // nothing; the sha256 of what landed, beside where it came from, is the
+        // whole of what there is to check about a byte-for-byte copy.
+        println!(
+            "{} {} <- {} ({})",
+            if entry.already {
+                "unchanged"
+            } else {
+                "carried"
+            },
+            entry.into,
+            entry.from,
+            entry.sha256
+        );
+    }
+    eprintln!(
+        "{} artifact(s): {} carried in, {} already here with the same bytes",
+        carried.len(),
+        carried.iter().filter(|c| !c.already).count(),
+        carried.iter().filter(|c| c.already).count()
     );
     Ok(ExitCode::SUCCESS)
 }

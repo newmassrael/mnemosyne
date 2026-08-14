@@ -108,6 +108,18 @@
       "path": "evidence/verdict-escalate.md",
       "role": "raw-agent-output",
       "sha256": "0aa562c64f409f6d9c330eae5bb4fbc4005c9bd99536590258c921b57ca194fb"
+    },
+    {
+      "path": "run/store-A/story-A.atomic.json",
+      "role": "run-artifact",
+      "carried_from": "/home/coin/belvoir-extraction/store-A/story-A.atomic.json",
+      "sha256": "6c1de282b7eb9f93ecac8075a472dd23d760e150febc62beeda76b9763cf5eb9"
+    },
+    {
+      "path": "run/store-B/story-B.atomic.json",
+      "role": "run-artifact",
+      "carried_from": "/home/coin/belvoir-extraction/store-B/story-B.atomic.json",
+      "sha256": "2dc122bee880dc0d389e848ca5109665cac924d4eb559f70d1b8e4955436e89d"
     }
   ],
   "replays": []

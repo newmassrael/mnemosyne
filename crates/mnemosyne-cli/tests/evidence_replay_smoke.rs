@@ -532,6 +532,20 @@ struct Input {
     /// the R469 contamination bound rests on, were pinned by nothing until this
     /// field existed. One rule with no exceptions beats two with a seam.
     sha256: String,
+    /// Where these bytes were carried in FROM, when `experiment-harness
+    /// carry-run-artifact` brought them into the tree (Round 1204).
+    ///
+    /// Evidence produced by a run that happened outside this repository used to
+    /// enter it by a person's `cp`, which leaves nothing anywhere saying the
+    /// bytes came from somewhere — the provenance lived in whatever session did
+    /// the copying. This is that fact, written where the rest of the record's
+    /// facts are.
+    ///
+    /// IT IS A PATH ON THE MACHINE THAT CARRIED IT, which is what makes the law
+    /// below machine-conditional rather than universal: nothing outside that
+    /// machine can resolve it, and a check that treated an unresolvable path as
+    /// agreement would answer "matches" about a file it never opened.
+    carried_from: Option<String>,
     /// The COMMAND that prints these bytes — verb first, then its arguments —
     /// on a `reproduced-output` and nowhere else (Round 973, widened to a full
     /// argv in Round 974). Present exactly when the role is that one, which is
@@ -679,6 +693,7 @@ fn declarations() -> Declarations {
                 path,
                 role: i["role"].as_str().expect("input role").to_string(),
                 sha256,
+                carried_from: i["carried_from"].as_str().map(str::to_string),
                 reproduced_by,
                 reproduced_after: i["reproduced_after"].as_str().map(str::to_string),
                 reproduced_with: i["reproduced_with"]
@@ -1707,6 +1722,129 @@ fn a_kit_that_declares_no_replay_says_which_reason_and_its_evidence_agrees() {
         "{} replay-less kit(s), reasons exercised by the corpus: {reasons:?}",
         d.no_replay.len()
     );
+}
+
+/// What can be said about a carried artifact against the source it came from.
+///
+/// THREE ANSWERS AND NOT TWO, which is the whole of this function. The source
+/// is a path on the machine that carried the bytes in; anywhere else it does
+/// not resolve, and a check with two answers would have to fold "I could not
+/// look" into one of them. Folding it into agreement is the failure this
+/// repository keeps paying for — a walk that could not read something answering
+/// as though it had.
+#[derive(Debug, PartialEq, Eq)]
+enum Origin {
+    /// The source is here and still hashes to what the record sealed.
+    Matches,
+    /// The source is here and does not.
+    Differs { recorded: String, found: String },
+    /// The source is not on this machine, so nothing was compared.
+    NotOnThisMachine,
+}
+
+fn judge_origin(recorded: &str, found: Option<&str>) -> Origin {
+    match found {
+        None => Origin::NotOnThisMachine,
+        Some(found) if found == recorded => Origin::Matches,
+        Some(found) => Origin::Differs {
+            recorded: recorded.to_string(),
+            found: found.to_string(),
+        },
+    }
+}
+
+/// A CARRIED ARTIFACT STILL AGREES WITH THE SOURCE IT WAS CARRIED FROM, on any
+/// machine that still has the source.
+///
+/// R1204 gave evidence a way into the tree that records where it came from.
+/// This is what that field is for: the bytes here were copied from somewhere,
+/// and where that somewhere survives, the two must still be the same file. It
+/// catches the one thing a seal alone cannot — a carried artifact edited in
+/// place and re-stamped, which leaves a record that is internally consistent and
+/// no longer describes what the run produced.
+///
+/// MACHINE-CONDITIONAL AND SAYS SO. On a CI runner none of these paths resolve
+/// and this law judges nothing; the count of what it could and could not reach
+/// is printed either way, in the shape `check-side-workspaces.sh` uses for a
+/// workspace whose sibling checkout is not on the machine asking.
+#[test]
+fn a_carried_artifact_still_matches_the_source_it_was_carried_from() {
+    let root = repo_root();
+    let d = declarations();
+    let carried: Vec<&Input> = d
+        .inputs
+        .iter()
+        .filter(|i| i.carried_from.is_some())
+        .collect();
+    assert!(
+        !carried.is_empty(),
+        "no input declares `carried_from`, so the law that a carried artifact \
+         still matches its source is asserted against nothing. If evidence has \
+         stopped being carried in by `experiment-harness carry-run-artifact`, \
+         that is what needs looking at, not this line"
+    );
+
+    let (mut judged, mut unreachable) = (0, 0);
+    let mut findings = Vec::new();
+    for input in &carried {
+        let source = input.carried_from.as_deref().expect("filtered on Some");
+        let found = std::fs::read(source)
+            .ok()
+            .map(|bytes| mnemosyne_core::sha256_hex(&bytes));
+        match judge_origin(&input.sha256, found.as_deref()) {
+            Origin::Matches => judged += 1,
+            Origin::NotOnThisMachine => unreachable += 1,
+            Origin::Differs { recorded, found } => findings.push(format!(
+                "{}/{} was carried from {source}, which is on this machine and \
+                 now hashes {found} against the {recorded} this record sealed — \
+                 one of the two was edited after the carry",
+                input.unit, input.path
+            )),
+        }
+        // AND THE BYTES HERE ARE WHAT THE RECORD SAYS, which is the half that
+        // holds on every machine. Without it a run where every source is absent
+        // would check nothing at all.
+        let here = root.join(&input.unit).join(&input.path);
+        let bytes = std::fs::read(&here)
+            .unwrap_or_else(|e| panic!("carried artifact {} is not here: {e}", here.display()));
+        assert_eq!(
+            mnemosyne_core::sha256_hex(&bytes),
+            input.sha256,
+            "{}/{} does not hash to what its record sealed",
+            input.unit,
+            input.path
+        );
+    }
+    assert!(
+        findings.is_empty(),
+        "{} carried artifact(s) no longer match the source they came from:\n  {}",
+        findings.len(),
+        findings.join("\n  ")
+    );
+    println!(
+        "{} carried artifact(s): {judged} re-checked against a source on this \
+         machine, {unreachable} whose source is not here and are therefore NOT \
+         judged by this law",
+        carried.len()
+    );
+}
+
+/// THE CONTROL FOR THE THREE-WAY ANSWER, and the case that matters is the third
+/// one: an absent source must not read as agreement.
+#[test]
+fn a_source_this_machine_does_not_have_is_not_an_agreement() {
+    assert_eq!(judge_origin("abc", Some("abc")), Origin::Matches);
+    assert_eq!(judge_origin("abc", None), Origin::NotOnThisMachine);
+    assert_eq!(
+        judge_origin("abc", Some("def")),
+        Origin::Differs {
+            recorded: "abc".to_string(),
+            found: "def".to_string()
+        }
+    );
+    // Said as a property rather than by inspection: the answer for a source
+    // nobody could open is never the answer for one that agreed.
+    assert_ne!(judge_origin("abc", None), judge_origin("abc", Some("abc")));
 }
 
 /// THE CONTROL, and the reason the law above is not a walk over a corpus that

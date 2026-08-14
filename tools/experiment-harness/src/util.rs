@@ -45,6 +45,24 @@ pub fn read_file(path: &str) -> HResult<String> {
     fs::read_to_string(path).map_err(|e| format!("cannot read {path}: {e}"))
 }
 
+/// Read a whole file AS BYTES, attributing the path in any error.
+///
+/// Beside its `String` sibling rather than replacing it, because the two are
+/// used for different things and only one of them may lose information.
+/// Everything that PARSES a file wants text and should fail loudly on bytes
+/// that are not UTF-8. Carrying evidence into the tree wants the bytes
+/// themselves: the whole claim a seal makes is that what is here is what was
+/// there, and a copy that went through a decode and an encode has already made
+/// that claim about something else.
+pub fn read_bytes(path: &str) -> HResult<Vec<u8>> {
+    fs::read(path).map_err(|e| format!("cannot read {path}: {e}"))
+}
+
+/// Write bytes verbatim, attributing the path in any error.
+pub fn write_bytes(path: &str, contents: &[u8]) -> HResult<()> {
+    fs::write(path, contents).map_err(|e| format!("cannot write {path}: {e}"))
+}
+
 /// Write a file, attributing the path in any error.
 pub fn write_file(path: &str, contents: &str) -> HResult<()> {
     fs::write(path, contents).map_err(|e| format!("cannot write {path}: {e}"))
