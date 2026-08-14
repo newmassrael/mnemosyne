@@ -9,6 +9,16 @@
 # having finished nothing.
 #
 # The defect that produced THAT number was in the test and is repaired there.
+#
+# AND THE REPAIR HAS BEEN MEASURED, because a number this large outlives the
+# defect that made it and gets read as a standing fact about this repository —
+# `.claude/remote-build.toml` carried 23.9 GiB forward as a memory budget until
+# 2026-08-14, and it was excluding a whole build machine from the fleet. On the
+# build machine, warm, under `/usr/bin/time -v` at `--test-threads 1`: that one
+# test now peaks at 732,320 kB (0.70 GiB), and the WHOLE workspace suite peaks
+# at 1,603,380 kB (1.53 GiB) in 15m29s with zero swapping. Whoever reads the
+# paragraph above next should read this one with it.
+#
 # What this file is about is the multiplier that stood behind it: cargo defaults
 # `jobs` to the CPU count and libtest defaults its thread count the same way, so
 # on 32 cores both were 32. Neither had ever been told what the memory budget
