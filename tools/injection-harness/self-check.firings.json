@@ -38,6 +38,22 @@
         "tests::a_record_that_will_not_parse_is_not_an_absent_one"
       ]
     },
+    "a-red-set-that-moved-since-the-proof-goes-back-to-being-silence": {
+      "edits": [
+        {
+          "file": "src/main.rs",
+          "from": "            if !appeared.is_empty() || !gone.is_empty() {",
+          "to": "            if false {"
+        }
+      ],
+      "expect_red": [
+        "a_red_set_that_has_moved_since_it_was_proven_is_said_and_an_unchanged_one_is_not"
+      ],
+      "tests": [
+        "a_red_set_that_has_moved_since_it_was_proven_is_said_and_an_unchanged_one_is_not",
+        "every_tracked_sweep_still_applies_to_the_tree_it_names"
+      ]
+    },
     "an-edited-injection-keeps-the-evidence-of-the-old-one": {
       "edits": [
         {

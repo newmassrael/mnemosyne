@@ -434,6 +434,13 @@ fn run() -> Result<(), String> {
         );
     }
 
+    // WHAT THE LAST MEASUREMENT SAID, read ONCE and before this run writes
+    // anything over it (R1201). Read after the voiding above, so a row this run
+    // has already decided is void is not a baseline anything is compared to.
+    let baseline = injection_harness::read_firings(&injection_harness::firings_path(Path::new(
+        &manifest_path,
+    )))?;
+
     // WHAT A PREVIOUS SWEEP LEFT BEHIND, before this one writes its own. A sweep
     // that ended under its own control removes these; finding them means one
     // died holding an edited tree, and the tree itself is asked whether that
@@ -694,6 +701,46 @@ fn run() -> Result<(), String> {
             targets.missing.len(),
             targets.extra.len(),
         );
+        // AND HOW THAT SET COMPARES TO THE LAST TIME ANYONE MEASURED IT (R1201).
+        //
+        // R1179 left this: under the default claim an unnamed red is reported
+        // and judged by nothing, so a repaired injection's red set can GROW in
+        // silence. R1178's `a-dependency-bump-…` reddened three tests beyond its
+        // own, all of them legitimate, and nothing would have said if a fourth
+        // had appeared that was not.
+        //
+        // WHAT CHANGED SINCE IS THAT THERE IS NOW SOMETHING TO COMPARE WITH.
+        // R1198's record keeps the WHOLE red set a run measured, not the named
+        // half — so the judgement the weak claim cannot make against a rule can
+        // be made against the last measurement. Only for a row whose DEFINITION
+        // still matches: R1200 voids the rest before the control, so a row still
+        // here is one this comparison is entitled to make.
+        //
+        // REPORTED AND NOT FAILED, deliberately. A new red under an unchanged
+        // injection is most often a guard somebody just wrote, and a sweep that
+        // went red for that would be a sweep people stop running. Failing on it
+        // is what `red_set: exhaustive` is for, and the manifests that claim it
+        // accept exactly that cost.
+        if let Some(before) = baseline.as_ref().and_then(|record| {
+            record
+                .fired
+                .get(&injection.name)
+                .filter(|row| injection_harness::records_the_same_injection(row, injection))
+        }) {
+            let then: BTreeSet<String> = before.tests.iter().cloned().collect();
+            let appeared: Vec<&String> = fired.difference(&then).collect();
+            let gone: Vec<&String> = then.difference(&fired).collect();
+            if !appeared.is_empty() || !gone.is_empty() {
+                eprintln!(
+                    "[{}] its red set has CHANGED since it was proven — {} new {appeared:?}, \
+                     {} no longer red {gone:?}. The injection is the same one; what moved is \
+                     the tree around it",
+                    injection.name,
+                    appeared.len(),
+                    gone.len(),
+                );
+            }
+        }
         results.push(InjectionResult {
             name: injection.name.clone(),
             why: injection.why.clone(),

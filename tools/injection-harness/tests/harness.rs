@@ -1577,13 +1577,18 @@ fn read_record(manifest: &Path) -> injection_harness::Firings {
         .expect("the record exists")
 }
 
-/// The row `two_injections`'s first injection is proven by, as it stands today.
-fn matching_row_for_i1() -> serde_json::Value {
+/// The row `two_injections`'s first injection is proven by, as it stands today,
+/// carrying whatever red set a case wants it to have measured.
+fn row_for_i1(tests: serde_json::Value) -> serde_json::Value {
     serde_json::json!({
         "edits": [{"file": "src.txt", "from": "HEALTHY", "to": "BROKEN"}],
         "expect_red": ["the_law"],
-        "tests": ["the_law"],
+        "tests": tests,
     })
+}
+
+fn matching_row_for_i1() -> serde_json::Value {
+    row_for_i1(serde_json::json!(["the_law"]))
 }
 
 /// A row for the same injection, proven against edits the manifest no longer
@@ -1746,6 +1751,54 @@ fn a_red_control_says_when_this_runs_own_record_is_a_reason_and_which_names_to_a
         said.contains("\"I2\"") && said.contains("--only I2"),
         "the refusal names the row and the flag that clears it, because \
          `the control is 1 red` sends the reader to the test: {said}"
+    );
+}
+
+#[test]
+fn a_red_set_that_has_moved_since_it_was_proven_is_said_and_an_unchanged_one_is_not() {
+    // R1179 LEFT THIS AND R1198 MADE IT ANSWERABLE. Under the default claim an
+    // unnamed red is judged by nothing, so a repaired injection's red set can
+    // GROW in silence — R1178's `a-dependency-bump-…` reddened three tests
+    // beyond its own, all legitimate, and nothing would have said if a fourth
+    // had appeared that was not. The record now holds the WHOLE set the last run
+    // measured, so the judgement the weak claim cannot make against a rule can
+    // be made against the last measurement.
+    let root = tempdir();
+    tree(root.path(), "the wire is HEALTHY here\n");
+    let path = manifest(root.path(), two_injections());
+
+    let run_against = |recorded: serde_json::Value| -> String {
+        record(
+            &path,
+            false,
+            serde_json::json!({ "I1": row_for_i1(recorded) }),
+        );
+        let out = harness_only(&path, &["I1"]);
+        let said = String::from_utf8_lossy(&out.stderr).to_string();
+        assert!(out.status.success(), "{said}");
+        said
+    };
+
+    // UNCHANGED IS SILENT, and this case is what stops the message becoming the
+    // line that is always there — which is the same as no message at all.
+    let same = run_against(serde_json::json!(["the_law"]));
+    assert!(!same.contains("CHANGED"), "nothing moved here: {same}");
+
+    // GREW: the record was written when this injection reddened nothing, and it
+    // reddens something now.
+    let grown = run_against(serde_json::json!([]));
+    assert!(
+        grown.contains("its red set has CHANGED") && grown.contains("1 new [\"the_law\"]"),
+        "a red that appeared since the proof is named: {grown}"
+    );
+
+    // AND SHRANK, which the same comparison has to see: a test that used to go
+    // red under this injection and no longer does is the direction where a guard
+    // has been weakened, and it is invisible in a count that only grows.
+    let shrunk = run_against(serde_json::json!(["the_law", "a_ghost"]));
+    assert!(
+        shrunk.contains("1 no longer red [\"a_ghost\"]"),
+        "a red that has gone since the proof is named too: {shrunk}"
     );
 }
 
