@@ -270,6 +270,122 @@ fn a_read_inside_a_path_dependency_is_still_the_binarys_read() {
     );
 }
 
+/// A spawn this walk cannot name is COUNTED, which is what stops its silence
+/// reading as coverage (R1190).
+///
+/// Before that round the population was "targets naming a binary", so a
+/// `Command::new` the walk did not recognise was missing from the judgement and
+/// from every number at once — nobody could tell a tree with none of them from a
+/// tree made of them. Measured on this repository the moment the census existed:
+/// 120 sites, of which the previous instrument attributed 6.
+#[test]
+fn a_spawn_this_walk_cannot_name_is_counted_rather_than_skipped() {
+    let at = workspace(
+        "fn main() { let _ = std::env::var(\"GITHUB_REF_NAME\"); }",
+        "#[test]\nfn spawns() {\n    \
+         let _ = std::process::Command::new(env!(\"CARGO_BIN_EXE_probe\"))\n        \
+         .env_remove(\"GITHUB_REF_NAME\")\n        .output();\n    \
+         let _ = std::process::Command::new(\"git\").output();\n}",
+    );
+    let report = gate(at.path());
+    assert_eq!(report.verdict(), Ok(()), "{report:?}");
+    assert!(report.findings.is_empty(), "{report:?}");
+    assert_eq!(report.reach.spawn_sites, 2, "{report:?}");
+    assert_eq!(report.reach.sites_attributed, 1, "{report:?}");
+    assert_eq!(report.other_spawns.len(), 1, "{report:?}");
+    assert_eq!(report.other_spawns[0].spelled, "\"git\"", "{report:?}");
+    // `git` has no spelling this tree could have used instead, so it is the
+    // limit rather than a defect — and that distinction is the whole census.
+    assert_eq!(report.other_spawns[0].instead_of, None, "{report:?}");
+}
+
+/// A helper one hop away is followed, because the walk resolves a constant on
+/// the environment side and refusing to here would print a hole it made itself.
+///
+/// This is the difference between the first census and the honest one: 114 of
+/// 120 sites in this repository were `cli_binary()`, whose body IS the macro.
+#[test]
+fn a_helper_that_hands_back_the_binary_is_followed() {
+    let at = workspace(
+        "fn main() { let _ = std::env::var(\"GITHUB_REF_NAME\"); }",
+        "fn probe_binary() -> &'static str { env!(\"CARGO_BIN_EXE_probe\") }\n\
+         #[test]\nfn spawns() {\n    \
+         let _ = std::process::Command::new(probe_binary())\n        \
+         .env_remove(\"GITHUB_REF_NAME\")\n        .output();\n}",
+    );
+    let report = gate(at.path());
+    assert_eq!(report.verdict(), Ok(()), "{report:?}");
+    assert_eq!(report.reach.spawn_sites, 1, "{report:?}");
+    assert_eq!(report.reach.sites_attributed, 1, "{report:?}");
+    assert!(report.other_spawns.is_empty(), "{report:?}");
+}
+
+/// Naming one of this workspace's OWN binaries by a literal is a defect: the
+/// spelling cargo checks was available, and a hand-built name can point at
+/// another build entirely.
+#[test]
+fn a_literal_naming_this_workspaces_own_binary_is_a_finding() {
+    let at = workspace(
+        "fn main() { let _ = std::env::var(\"GITHUB_REF_NAME\"); }",
+        "#[test]\nfn spawns() {\n    \
+         let _ = std::process::Command::new(\"target/debug/probe\").output();\n}",
+    );
+    let report = gate(at.path());
+    assert_eq!(report.verdict(), Ok(()), "{report:?}");
+    let unchecked = report.spawns_by_a_name_the_machine_answers();
+    assert_eq!(unchecked.len(), 1, "{report:?}");
+    assert_eq!(
+        unchecked[0].instead_of,
+        Some(named_environment::CheckedSpelling::WorkspaceBinary(
+            "probe".to_owned()
+        )),
+        "{report:?}"
+    );
+}
+
+/// Spawning `cargo` by its bare name lets PATH pick the toolchain. Two tests in
+/// this repository did, both of them building a PINNED OLD REVISION and both
+/// asserting that a failure there is "THIS is the finding" about the revision —
+/// so a machine on another channel would have had that sentence printed about
+/// the repository. Six neighbouring spawns already went through `CARGO`.
+#[test]
+fn spawning_cargo_by_its_bare_name_is_a_finding() {
+    let at = workspace(
+        "fn main() { let _ = std::env::var(\"GITHUB_REF_NAME\"); }",
+        "#[test]\nfn spawns() {\n    \
+         let _ = std::process::Command::new(\"cargo\").arg(\"build\").output();\n}",
+    );
+    let report = gate(at.path());
+    assert_eq!(report.verdict(), Ok(()), "{report:?}");
+    let unchecked = report.spawns_by_a_name_the_machine_answers();
+    assert_eq!(unchecked.len(), 1, "{report:?}");
+    assert_eq!(
+        unchecked[0].instead_of,
+        Some(named_environment::CheckedSpelling::TheCargoRunningThis),
+        "{report:?}"
+    );
+}
+
+/// The control for the case above: the same spawn asked of the cargo running the
+/// test is clean, and is still counted as unnameable — which is true, and is not
+/// the same as being a defect.
+#[test]
+fn the_same_spawn_through_the_running_cargo_is_clean() {
+    let at = workspace(
+        "fn main() { let _ = std::env::var(\"GITHUB_REF_NAME\"); }",
+        "#[test]\nfn spawns() {\n    \
+         let which = std::env::var(\"CARGO\").unwrap_or_else(|_| \"cargo\".to_string());\n    \
+         let _ = std::process::Command::new(which).arg(\"build\").output();\n}",
+    );
+    let report = gate(at.path());
+    assert_eq!(report.verdict(), Ok(()), "{report:?}");
+    assert!(
+        report.spawns_by_a_name_the_machine_answers().is_empty(),
+        "{report:?}"
+    );
+    assert_eq!(report.other_spawns.len(), 1, "{report:?}");
+}
+
 /// The gate runs as a hook runs it, and answers with the exit code the hook
 /// branches on: 0 clean, 1 judged and defective, 2 not judged.
 #[test]
@@ -292,7 +408,21 @@ fn the_binary_answers_a_hook_in_three_codes() {
         "#[test]\nfn spawns() {\n    \
          let _ = std::process::Command::new(env!(\"CARGO_BIN_EXE_probe\")).output();\n}",
     );
-    for (at, expected) in [(&clean, 0), (&defective, 1), (&unreadable, 2)] {
+    // ⚠ THE ORDER OF THE ARMS IN `main` IS WHAT THIS CATCHES. Here the ONLY
+    // spawn is the unchecked one, so no target reaches the law at all — and the
+    // "nothing here to apply to" arm, which used to come first, would print
+    // exactly that and exit 0 over the defect that made it true (R1190).
+    let only_unchecked = workspace(
+        "fn main() { let _ = std::env::var(\"GITHUB_REF_NAME\"); }",
+        "#[test]\nfn spawns() {\n    \
+         let _ = std::process::Command::new(\"target/debug/probe\").output();\n}",
+    );
+    for (at, expected) in [
+        (&clean, 0),
+        (&defective, 1),
+        (&unreadable, 2),
+        (&only_unchecked, 1),
+    ] {
         let out = Command::new(env!("CARGO_BIN_EXE_named-environment"))
             .args([
                 "--workspace",

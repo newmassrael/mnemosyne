@@ -33,9 +33,24 @@
 //! nowhere in that fixture.
 //!
 //! WHICH TEST SPAWNS WHICH BINARY is read from `env!("CARGO_BIN_EXE_<name>")`,
-//! the one spelling cargo checks at compile time. A test that finds its binary
-//! some other way is invisible here, and the report says so rather than letting
-//! the silence read as coverage.
+//! the one spelling cargo checks at compile time.
+//!
+//! AND THE SPAWNS THAT SPELLING DOES NOT COVER ARE COUNTED (R1190). Until that
+//! round the sentence above ended "a test that finds its binary some other way
+//! is invisible here, and the report says so" — the report said the LIMIT and
+//! never its SIZE, so a spawn the walk did not recognise was missing from the
+//! judgement and from every number at once. Nobody could tell a tree with no
+//! such spawn from a tree full of them. Every `Command::new(..)` in a test
+//! target is now the population: the attributed ones are judged, and the rest
+//! are printed with what they were pointed at, so the hole has a number.
+//!
+//! One shape inside that residue is a DEFECT rather than a hole: an argument
+//! that is a literal naming one of this workspace's own binaries. There the
+//! spelling cargo checks was available and was not used, so the law goes silent
+//! over a program this tree builds — and a hand-built path can also point at a
+//! binary from another build entirely. The rest — `git`, `bash`, a shell script
+//! this repository's hooks live in, a path computed at run time — is a limit
+//! this instrument cannot reach: their reads are not in this tree's Rust.
 //!
 //! A NAME IS NOT ALWAYS A LITERAL. Constants are resolved from the local
 //! sources, and a read whose name is a PARAMETER resolves through the call
@@ -125,6 +140,56 @@ pub struct Reach {
     pub named: usize,
     /// Spawning targets that name the whole environment with `env_clear`.
     pub clearing_targets: usize,
+    /// `Command::new` sites in test targets — the population the attributed set
+    /// is a fraction OF (R1190). Without it, a spawn the walk does not
+    /// recognise is missing from the judgement and from the count at once, and
+    /// that silence reads exactly like coverage.
+    pub spawn_sites: usize,
+    /// Of those, the ones spelled `env!("CARGO_BIN_EXE_…")` — the only spelling
+    /// that says which program without running it.
+    pub sites_attributed: usize,
+}
+
+/// A spelling that names a program without asking the machine which one.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub enum CheckedSpelling {
+    /// `env!("CARGO_BIN_EXE_<name>")` — a binary this workspace builds, checked
+    /// by cargo at compile time and pointing at the build that just happened.
+    WorkspaceBinary(String),
+    /// `CARGO` — the cargo that is running this test, rather than whichever one
+    /// `PATH` answers with.
+    TheCargoRunningThis,
+}
+
+impl fmt::Display for CheckedSpelling {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::WorkspaceBinary(name) => write!(f, "env!(\"CARGO_BIN_EXE_{name}\")"),
+            Self::TheCargoRunningThis => f.write_str(
+                "std::env::var(\"CARGO\") (the six other spawns of cargo in this workspace)",
+            ),
+        }
+    }
+}
+
+/// A `Command::new` in a test target that this gate cannot hold to the law,
+/// with what it was pointed at (R1190).
+///
+/// ONE HOME FOR THE DATUM: the subset that is a defect is derived from this by
+/// [`Report::spawns_by_a_name_the_machine_answers`] rather than stored twice.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub struct OtherSpawn {
+    pub test_target: String,
+    pub file: PathBuf,
+    pub line: usize,
+    /// The argument as written.
+    pub spelled: String,
+    /// `Some(spelling)` when the argument is a literal and this tree could have
+    /// named the same program without asking `PATH`. That is a DEFECT rather
+    /// than a hole: the machine decides which program runs, so a difference
+    /// between machines arrives as a finding about the repository. `"git"`,
+    /// `"tar"` and `"sh"` have no such spelling and are the limit, not a defect.
+    pub instead_of: Option<CheckedSpelling>,
 }
 
 /// The gate's answer.
@@ -135,6 +200,9 @@ pub struct Report {
     pub reach: Reach,
     pub findings: Vec<Finding>,
     pub unresolved: Vec<Unresolved>,
+    /// Every `Command::new` in a test target the walk could not attribute to one
+    /// of this workspace's binaries — counted and named, never skipped.
+    pub other_spawns: Vec<OtherSpawn>,
     /// Every variable each binary reads, for a report that can say what it held
     /// rather than only what it rejected.
     pub read_by: BTreeMap<String, BTreeSet<String>>,
@@ -158,6 +226,15 @@ impl Report {
     /// Whether this workspace holds the shape the law is about at all.
     pub fn found_a_spawn(&self) -> bool {
         self.reach.spawning_targets > 0
+    }
+
+    /// The spawns that are defects rather than holes: a test naming its program
+    /// by a literal the machine resolves, where this tree could have named it.
+    pub fn spawns_by_a_name_the_machine_answers(&self) -> Vec<&OtherSpawn> {
+        self.other_spawns
+            .iter()
+            .filter(|spawn| spawn.instead_of.is_some())
+            .collect()
     }
 }
 
@@ -403,7 +480,17 @@ pub fn run(manifest: &Path) -> Result<Report, String> {
         reach.reads += variables.len();
     }
 
+    // The names cargo builds, so a literal that spells one of them can be told
+    // from a literal that spells `git`. Asked of the target list rather than of
+    // the directory layout, for the reason the rest of this file is.
+    let binary_names: BTreeSet<String> = targets
+        .iter()
+        .filter(|target| target.kind == "bin")
+        .map(|target| target.name.clone())
+        .collect();
+
     let mut findings = Vec::new();
+    let mut other_spawns: Vec<OtherSpawn> = Vec::new();
     for target in targets
         .iter()
         .filter(|target| target.kind == "test" || target.kind == "bench")
@@ -414,11 +501,52 @@ pub fn run(manifest: &Path) -> Result<Report, String> {
         let mut mentions: BTreeSet<String> = BTreeSet::new();
         let mut names: BTreeSet<String> = BTreeSet::new();
         let mut clears = false;
+        // WHAT THIS TARGET BINDS TO A BINARY, over ALL its files before any of
+        // them is read for sites: the helper is regularly in `common/mod.rs` and
+        // the call is in the case file, and a per-file map would resolve one
+        // order of the walk and not the other.
+        let mut binders: BTreeMap<String, String> = BTreeMap::new();
+        for path in &files {
+            if let Some(file) = sources.get(path) {
+                binders_of_binaries(file, &mut binders);
+            }
+        }
         for path in &files {
             let Some(file) = sources.get(path) else {
                 continue;
             };
             spawns.extend(binaries_spawned(file));
+            // THE CENSUS RUNS BEFORE THE EARLY RETURN BELOW, and that placement
+            // is the whole point: a target whose every spawn is unattributable
+            // never reaches the law, so counting it after would count nothing.
+            for site in spawn_sites(file, &binders) {
+                reach.spawn_sites += 1;
+                match site.program {
+                    Program::WorkspaceBinary(_) => reach.sites_attributed += 1,
+                    Program::Other { spelled, literal } => {
+                        let instead_of = literal
+                            .as_deref()
+                            .and_then(|value| Path::new(value).file_name())
+                            .and_then(|stem| stem.to_str())
+                            .and_then(|stem| {
+                                if binary_names.contains(stem) {
+                                    Some(CheckedSpelling::WorkspaceBinary(stem.to_owned()))
+                                } else if stem == "cargo" {
+                                    Some(CheckedSpelling::TheCargoRunningThis)
+                                } else {
+                                    None
+                                }
+                            });
+                        other_spawns.push(OtherSpawn {
+                            test_target: target.name.clone(),
+                            file: path.clone(),
+                            line: site.line,
+                            spelled,
+                            instead_of,
+                        });
+                    }
+                }
+            }
             mentions.extend(names_mentioned(file, &constants));
             let (declared, cleared) = environment_named(file, &constants, &arguments);
             names.extend(declared);
@@ -458,6 +586,8 @@ pub fn run(manifest: &Path) -> Result<Report, String> {
     findings.dedup();
     unresolved.sort();
     unresolved.dedup();
+    other_spawns.sort();
+    other_spawns.dedup();
 
     Ok(Report {
         workspace_root: meta.workspace_root,
@@ -465,6 +595,7 @@ pub fn run(manifest: &Path) -> Result<Report, String> {
         reach,
         findings,
         unresolved,
+        other_spawns,
         read_by,
     })
 }
@@ -1051,6 +1182,193 @@ fn read_of(argument: &syn::Expr, enclosing: Option<&(String, Vec<String>)>) -> R
 
 /// The binaries one test source spawns, by the `CARGO_BIN_EXE_` spelling cargo
 /// checks at compile time.
+/// What one `Command::new(..)` was pointed at.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub enum Program {
+    /// `env!("CARGO_BIN_EXE_<name>")` — a binary of this workspace, spelled the
+    /// way cargo checks at compile time. The only shape the law can be asked of,
+    /// because it is the only one that says WHICH program without running.
+    WorkspaceBinary(String),
+    /// Anything else, kept as the source spelled it.
+    Other {
+        /// The argument as written.
+        spelled: String,
+        /// Its value when it is a plain string literal — the only shape that can
+        /// be held against this workspace's own binary names.
+        literal: Option<String>,
+    },
+}
+
+/// One `Command::new(..)` in a test target, and where it is.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub struct SpawnSite {
+    pub program: Program,
+    pub line: usize,
+}
+
+/// Whether a path ends in `Command::new`, however it was imported.
+///
+/// The last two segments, so `std::process::Command::new`, `process::Command::
+/// new` and a bare `Command::new` are one question. Any type spelled `Command`
+/// counts: what the law is about is a second program starting, and `tokio`'s is
+/// as much one as `std`'s.
+fn is_command_new(path: &syn::Path) -> bool {
+    let mut segments = path.segments.iter().rev().map(|s| s.ident.to_string());
+    let last = segments.next();
+    let before = segments.next();
+    matches!(
+        (last.as_deref(), before.as_deref()),
+        (Some("new"), Some("Command"))
+    )
+}
+
+/// Every name a source binds to `env!("CARGO_BIN_EXE_<binary>")` — a function
+/// that hands it back, a constant, a `let`.
+///
+/// A NAME IS NOT ALWAYS A LITERAL HERE EITHER (R1190). The first census this
+/// crate grew read the argument of `Command::new` and nothing else, and reported
+/// 114 of 120 sites in this repository as unnameable — when almost all of them
+/// were `cli_binary()`, a helper one hop away whose body is the very macro being
+/// looked for. A gate that resolves a constant on the environment side and
+/// refuses to on the program side would be printing a hole it made itself.
+///
+/// A binder that MENTIONS the macro is taken to hand it back, which is the same
+/// weakening the module doc defends for mention-over-control, and it errs toward
+/// attributing MORE sites. That direction cannot loosen the verdict: attribution
+/// here feeds the census, while the law is decided by [`binaries_spawned`] over
+/// the whole target.
+pub fn binders_of_binaries(file: &syn::File, into: &mut BTreeMap<String, String>) {
+    struct Binders<'a>(&'a mut BTreeMap<String, String>);
+    impl Binders<'_> {
+        fn record(&mut self, name: String, body: &dyn quote::ToTokens) {
+            let file = match syn::parse2::<syn::File>(quote::quote! { fn probe() { #body } }) {
+                Ok(file) => file,
+                Err(_) => return,
+            };
+            if let Some(binary) = binaries_spawned(&file).into_iter().next() {
+                self.0.insert(name, binary);
+            }
+        }
+    }
+    impl<'ast> syn::visit::Visit<'ast> for Binders<'_> {
+        fn visit_item_fn(&mut self, item: &'ast syn::ItemFn) {
+            let body = &item.block;
+            self.record(item.sig.ident.to_string(), body);
+            syn::visit::visit_item_fn(self, item);
+        }
+
+        fn visit_item_const(&mut self, item: &'ast syn::ItemConst) {
+            let value = &item.expr;
+            self.record(item.ident.to_string(), value);
+            syn::visit::visit_item_const(self, item);
+        }
+
+        fn visit_item_static(&mut self, item: &'ast syn::ItemStatic) {
+            let value = &item.expr;
+            self.record(item.ident.to_string(), value);
+            syn::visit::visit_item_static(self, item);
+        }
+
+        fn visit_local(&mut self, local: &'ast syn::Local) {
+            if let (syn::Pat::Ident(bound), Some(init)) = (&local.pat, &local.init) {
+                let value = &init.expr;
+                self.record(bound.ident.to_string(), value);
+            }
+            syn::visit::visit_local(self, local);
+        }
+    }
+    let mut binders = Binders(into);
+    syn::visit::visit_file(&mut binders, file);
+}
+
+/// Every `Command::new(..)` one source holds, with what it was pointed at.
+///
+/// WHY THIS EXISTS BESIDE [`binaries_spawned`] (R1190). That function answers
+/// "which of this workspace's binaries does this file name", which is what the
+/// law needs — and it answers NOTHING about the spawns it does not recognise. A
+/// test that finds its program some other way was invisible: not judged, and not
+/// counted either, so the silence read exactly like coverage. This is the
+/// population that makes the attributed set a FRACTION rather than a total.
+pub fn spawn_sites(file: &syn::File, binders: &BTreeMap<String, String>) -> Vec<SpawnSite> {
+    use quote::ToTokens;
+
+    struct Sites<'a> {
+        found: Vec<SpawnSite>,
+        binders: &'a BTreeMap<String, String>,
+    }
+    impl<'ast> syn::visit::Visit<'ast> for Sites<'_> {
+        fn visit_expr_call(&mut self, call: &'ast syn::ExprCall) {
+            if let syn::Expr::Path(path) = call.func.as_ref() {
+                if is_command_new(&path.path) {
+                    // A `Command::new` with no argument does not compile, so an
+                    // empty argument list is not a shape this has to answer for.
+                    if let Some(argument) = call.args.first() {
+                        self.found.push(SpawnSite {
+                            line: syn::spanned::Spanned::span(argument).start().line,
+                            program: program_of(argument, self.binders),
+                        });
+                    }
+                }
+            }
+            syn::visit::visit_expr_call(self, call);
+        }
+    }
+
+    /// The last segment of a path, which is how a helper is named whether it is
+    /// called bare or through its module.
+    fn tail(path: &syn::Path) -> Option<String> {
+        path.segments.last().map(|s| s.ident.to_string())
+    }
+
+    fn program_of(argument: &syn::Expr, binders: &BTreeMap<String, String>) -> Program {
+        let other = |expr: &syn::Expr, literal: Option<String>| Program::Other {
+            spelled: expr.to_token_stream().to_string(),
+            literal,
+        };
+        match argument {
+            // `&thing` and `thing` name the same program.
+            syn::Expr::Reference(reference) => program_of(&reference.expr, binders),
+            syn::Expr::Macro(invocation) if invocation.mac.path.is_ident("env") => {
+                match invocation.mac.parse_body::<syn::LitStr>() {
+                    Ok(text) => match text.value().strip_prefix("CARGO_BIN_EXE_") {
+                        Some(name) => Program::WorkspaceBinary(name.to_owned()),
+                        // `env!("CARGO")` and its neighbours: a real program,
+                        // named by the machine rather than by this tree.
+                        None => other(argument, None),
+                    },
+                    Err(_) => other(argument, None),
+                }
+            }
+            syn::Expr::Lit(syn::ExprLit {
+                lit: syn::Lit::Str(text),
+                ..
+            }) => other(argument, Some(text.value())),
+            // `cli_binary()` — a helper that hands back the macro's value.
+            syn::Expr::Call(call) => match call.func.as_ref() {
+                syn::Expr::Path(path) => match tail(&path.path).and_then(|name| binders.get(&name))
+                {
+                    Some(binary) => Program::WorkspaceBinary(binary.clone()),
+                    None => other(argument, None),
+                },
+                _ => other(argument, None),
+            },
+            // `PROBE` — a constant or a `let` bound to it.
+            syn::Expr::Path(path) => match tail(&path.path).and_then(|name| binders.get(&name)) {
+                Some(binary) => Program::WorkspaceBinary(binary.clone()),
+                None => other(argument, None),
+            },
+            other_expr => other(other_expr, None),
+        }
+    }
+
+    let mut sites = Sites {
+        found: Vec::new(),
+        binders,
+    };
+    syn::visit::visit_file(&mut sites, file);
+    sites.found
+}
+
 pub fn binaries_spawned(file: &syn::File) -> BTreeSet<String> {
     const PREFIX: &str = "CARGO_BIN_EXE_";
     struct Spawns(BTreeSet<String>);

@@ -171,7 +171,11 @@ fn an_old_revision_still_builds_and_still_reads_its_own_evidence() {
     // Build the CLI at that revision, into its own target dir so it can never
     // touch this workspace's.
     let target = TempDir::new().expect("target tempdir");
-    let build = Command::new("cargo")
+    // THE CARGO THAT IS RUNNING THIS TEST, not whichever one PATH answers with:
+    // the assertion below calls a failed build the finding, so on a machine
+    // whose PATH cargo is a different channel it would say that about the
+    // revision when the difference is the toolchain (R1190).
+    let build = Command::new(std::env::var("CARGO").unwrap_or_else(|_| "cargo".to_string()))
         .args(["build", "--bin", "mnemosyne-cli"])
         .current_dir(tree.path())
         .env("CARGO_TARGET_DIR", target.path())

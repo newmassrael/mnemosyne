@@ -68,6 +68,12 @@ syn = { version = "3", features = ["full", "visit", "extra-traits"] }
 # open. It is a proc-macro2 feature rather than a syn one, and without it every
 # finding reports line 1.
 proc-macro2 = { version = "1", features = ["span-locations"] }
+# THE FAITHFUL RENDERING OF AN EXPRESSION THE WALK CANNOT NAME (R1190). A census
+# of spawns this gate cannot attribute has to print WHAT each one was pointed at,
+# or the number is a number with nothing behind it. Hand-rolling a describer per
+# expression kind would be a second, lossy spelling of what `ToTokens` already
+# does exactly — and syn already pulls this crate in.
+quote = "1"
 
 [dev-dependencies]
 # The end-to-end tests build throwaway cargo workspaces OUTSIDE this repository

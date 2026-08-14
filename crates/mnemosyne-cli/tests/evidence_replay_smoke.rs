@@ -1919,7 +1919,11 @@ fn build_revision(root: &Path, rev: &str) -> (TempDir, TempDir, PathBuf) {
     );
 
     let target = TempDir::new().expect("target tempdir");
-    let build = Command::new("cargo")
+    // THE CARGO THAT IS RUNNING THIS TEST, not whichever one PATH answers with.
+    // The assertion below calls a failed build "THIS is the finding" about the
+    // revision — so a machine whose PATH cargo is a different channel would have
+    // that sentence printed about this repository (R1190).
+    let build = Command::new(std::env::var("CARGO").unwrap_or_else(|_| "cargo".to_string()))
         .args(["build", "--bin", "mnemosyne-cli"])
         .current_dir(tree.path())
         .env("CARGO_TARGET_DIR", target.path())

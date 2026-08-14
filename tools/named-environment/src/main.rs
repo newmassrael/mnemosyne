@@ -81,6 +81,27 @@ fn main() -> ExitCode {
         report.reach.named,
         report.reach.clearing_targets,
     );
+    // THE POPULATION THE ATTRIBUTION IS A FRACTION OF (R1190). A gate that
+    // prints only what it judged cannot be told from one that judged everything.
+    println!(
+        "[named-environment] {} Command::new site(s) in test targets — {} spelled \
+         env!(\"CARGO_BIN_EXE_…\") and judged, {} pointed at something this walk cannot name",
+        report.reach.spawn_sites,
+        report.reach.sites_attributed,
+        report.other_spawns.len(),
+    );
+    for spawn in &report.other_spawns {
+        if spawn.instead_of.is_some() {
+            continue;
+        }
+        println!(
+            "[named-environment] NOT JUDGED `{}` spawns {} at {}:{}",
+            spawn.test_target,
+            spawn.spelled,
+            show(&spawn.file),
+            spawn.line,
+        );
+    }
     for (binary, variables) in &report.read_by {
         if variables.is_empty() {
             continue;
@@ -100,7 +121,31 @@ fn main() -> ExitCode {
         return ExitCode::from(2);
     }
 
-    if !report.found_a_spawn() {
+    // BEFORE THE "NOTHING TO APPLY TO" ARM, and that order is load-bearing: a
+    // workspace whose ONLY spawns are unchecked ones reaches no law at all, so
+    // an early return would print "nothing here" over the very defect that made
+    // it true (R1190).
+    let unchecked = report.spawns_by_a_name_the_machine_answers();
+    for spawn in &unchecked {
+        let Some(instead) = &spawn.instead_of else {
+            continue;
+        };
+        println!(
+            "[named-environment] DEFECT test `{}` spawns {} — at {}:{}",
+            spawn.test_target,
+            spawn.spelled,
+            show(&spawn.file),
+            spawn.line,
+        );
+        println!(
+            "                    why: PATH decides which program that is, so a machine with a \
+             different one runs a different test — and a failure there reads as a finding about \
+             this repository"
+        );
+        println!("                    fix: name it — {instead}");
+    }
+
+    if !report.found_a_spawn() && unchecked.is_empty() {
         // A complete answer rather than a refusal: the law is about tests that
         // spawn a program, and there are none here. Said in words so it cannot
         // be read as "checked and clean".
@@ -111,12 +156,22 @@ fn main() -> ExitCode {
         return ExitCode::SUCCESS;
     }
 
-    if report.findings.is_empty() {
+    if report.findings.is_empty() && unchecked.is_empty() {
         println!(
             "[named-environment] every variable the spawned programs read is named by the test \
              that spawns them"
         );
         return ExitCode::SUCCESS;
+    }
+
+    if !unchecked.is_empty() {
+        eprintln!(
+            "[named-environment] {} spawn(s) let the machine decide which program runs",
+            unchecked.len(),
+        );
+        if report.findings.is_empty() {
+            return ExitCode::from(1);
+        }
     }
 
     for finding in &report.findings {
