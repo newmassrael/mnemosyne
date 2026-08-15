@@ -317,6 +317,22 @@ jobs:
           cargo run -q --locked --manifest-path tools/blind-waits/Cargo.toml
           --bin blind-waits -- --workspace Cargo.toml
 
+      # R1210 — every package THIS FILE installs is one the build-machine
+      # declaration names. The step is here rather than in a job of its own for
+      # the reason the one above is: it parses instead of building, measured at
+      # 0.05s warm.
+      #
+      # AND IT RUNS IN CI RATHER THAN ONLY IN THE HOOK, which is the half the
+      # sibling declaration gate cannot have: that one asks a machine-wide
+      # program no runner holds, while this one reads two files in this
+      # checkout. A law whose only reader is a local hook is a law that stops
+      # existing the day somebody commits with `--no-verify` (N37 is the open
+      # debt of exactly that shape).
+      - name: what this workflow installs is what the build machine is told
+        run: >
+          cargo run -q --locked --manifest-path tools/undeclared-requirement/Cargo.toml
+          --bin undeclared-requirement -- --repo .
+
       # R1092 — what this job compiled, for `twice-compiled` to join with every
       # other job's. `always()` because a job that failed still compiled
       # everything up to the point it failed, and a missing log would have the

@@ -793,6 +793,62 @@ pub fn artifact_uploads(doc: &Yaml, source: &str) -> Vec<ArtifactUpload> {
     out
 }
 
+/// One step that runs somebody else's action rather than a shell command.
+///
+/// R1210 — the law asking which packages CI installs reads shell, and a step
+/// with `uses:` runs no shell at all. Nothing in this crate could name those
+/// steps in general (the two readers above each match ONE action by name), so a
+/// law built on `run:` steps alone would report a workflow that installs its
+/// tools through an action as installing nothing — the empty answer wearing the
+/// shape of a clean one.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UsesStep {
+    /// The workflow file it is written in.
+    pub source: String,
+    /// The id of the job that runs it — the spelling `needs:` uses.
+    pub job: String,
+    /// Where it sits in that job's `steps:` list — the same counting
+    /// [`RunStep::index`] uses.
+    pub index: usize,
+    /// The whole `uses:` value, version included: what a reader must judge is
+    /// the action a maintainer pinned, and the version is part of its identity.
+    pub uses: String,
+}
+
+impl UsesStep {
+    /// The action without its version — `actions/checkout` for
+    /// `actions/checkout@v7`.
+    #[must_use]
+    pub fn action(&self) -> &str {
+        self.uses.split('@').next().unwrap_or(&self.uses)
+    }
+}
+
+/// Every `uses:` step in every job of one workflow.
+pub fn uses_steps(doc: &Yaml, source: &str) -> Vec<UsesStep> {
+    let mut out = Vec::new();
+    let Some(jobs) = doc["jobs"].as_hash() else {
+        return out;
+    };
+    for (name, job) in jobs {
+        let name = name.as_str().unwrap_or("<unnamed>").to_string();
+        let Some(steps) = job["steps"].as_vec() else {
+            continue;
+        };
+        for (index, step) in steps.iter().enumerate() {
+            if let Some(uses) = step["uses"].as_str() {
+                out.push(UsesStep {
+                    source: source.to_string(),
+                    job: name.clone(),
+                    index,
+                    uses: uses.to_string(),
+                });
+            }
+        }
+    }
+    out
+}
+
 /// Every cache declared by every tracked workflow.
 pub fn workflow_cache_declarations(root: &Path) -> Vec<CacheDeclaration> {
     let mut out = Vec::new();
@@ -1326,24 +1382,41 @@ pub fn cargo_invocation(words: &[String]) -> Option<Invocation> {
     }
 }
 
-/// Split one shell script into the cargo invocations it holds.
+/// Every command one shell script holds, as words, empty segments dropped.
 ///
 /// A `run:` step is shell, and this reads the part of shell the workflows
 /// actually use: continuation lines, and the `&& || ; |` operators that put two
-/// commands on one line. Which segments hold a cargo command is
-/// [`cargo_invocation`]'s answer — asking whether the word appears anywhere
-/// reads `--manifest-path tools/x/Cargo.toml` inside one command as the start of
-/// another.
-pub fn parse_script(script: &str) -> Vec<Invocation> {
+/// commands on one line.
+///
+/// IT IS PUBLIC BECAUSE A SECOND LAW ASKS ABOUT THE SAME SEGMENTS. R1210 asks
+/// which steps INSTALL something onto the machine CI runs on, which is a
+/// question about commands that are not cargo's, and the alternative was a
+/// second splitter — the exact shape this crate exists to prevent, and the one
+/// that would answer differently the first time a workflow put two commands on
+/// one line in a way only one of the two readers understood.
+pub fn shell_commands(script: &str) -> Vec<Vec<String>> {
     let mut out = Vec::new();
     for line in join_continuations(script) {
         for segment in split_operators(&line) {
-            if let Some(found) = cargo_invocation(&words_of(&segment)) {
-                out.push(found);
+            let words = words_of(&segment);
+            if !words.is_empty() {
+                out.push(words);
             }
         }
     }
     out
+}
+
+/// Split one shell script into the cargo invocations it holds.
+///
+/// Which segments hold a cargo command is [`cargo_invocation`]'s answer — asking
+/// whether the word appears anywhere reads `--manifest-path tools/x/Cargo.toml`
+/// inside one command as the start of another.
+pub fn parse_script(script: &str) -> Vec<Invocation> {
+    shell_commands(script)
+        .iter()
+        .filter_map(|words| cargo_invocation(words))
+        .collect()
 }
 
 /// Words a shell may put in front of a command without making it a different

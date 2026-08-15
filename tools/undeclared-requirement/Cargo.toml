@@ -1,0 +1,81 @@
+# undeclared-requirement — the gate for what a far side has to be GIVEN before
+# it can build this repository.
+#
+# `.claude/remote-build.toml` names what a build machine must have (`needs`) and
+# what to install to get it (`packages`). Nothing asked whether that list is
+# COMPLETE. The only oracle was to build on a host that lacked something and read
+# the failure, which is why `protoc` stayed unnamed there for as long as the
+# fleet was one machine that happened to have it. R1188 widened that fleet by
+# repairing a memory budget; the declaration's own comment records what happened
+# next, measured on 2026-08-14: a host without it was picked, and 269 crates
+# compiled before `Could not find protoc`.
+#
+# THE FACT WAS ALREADY IN THIS TREE, in another file, two weeks earlier. R888
+# hit the same missing tool on the hosted runner and repaired it where THAT far
+# side is configured — `.github/workflows/mnemosyne-validate.yml`, which has
+# installed `protobuf-compiler` since 2026-07-31. It said so in as many words:
+# "the local pre-commit and pre-push hooks cannot see it: they run on a machine
+# that HAS protoc". The declaration was written on 2026-08-12 with
+# `packages = ["libclang-common-18-dev"]` and did not name it. Two statements
+# about what a machine must be given, in one repository, that no law held
+# against each other.
+#
+# THE LAW IS ONE SENTENCE: every package this repository's CI installs is one the
+# build-machine declaration names.
+#
+# WHY CI IS THE WITNESS. "Everything the far side needs" has no answer without a
+# baseline — a build machine also needs a linker, a shell and a C compiler, and
+# none of those belong in this declaration. CI is the one far side this
+# repository specifies COMPLETELY: its baseline is a stock runner image and every
+# departure from it is written out as a step. So what CI has to install is
+# exactly the set this repository has already discovered a bare machine lacks,
+# and the declaration is the place that set is supposed to live.
+#
+# WHAT IT CANNOT SEE, said rather than hidden: a tool the runner image ships and
+# a bare Ubuntu host does not (`libclang-common-18-dev` is one — declared here,
+# installed by no job) is invisible to this witness. The report NAMES those, so
+# the hole is one somebody can close rather than one that reads as a pass.
+#
+# ITS OWN WORKSPACE, like every other gate under `tools/`: the root workspace's
+# build never compiles it, and `scripts/check-side-workspaces.sh` finds it by
+# walking for manifests that carry their own `[workspace]`, so there is no list
+# to update.
+[workspace]
+
+[package]
+name = "undeclared-requirement"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.88"
+publish = false
+license = "MIT OR Apache-2.0"
+description = "Mnemosyne — every package this repository's CI installs is one its build-machine declaration names"
+keywords = ["build", "declaration", "gate"]
+categories = ["development-tools"]
+
+[dependencies]
+# THE ONE ANSWER to what this repository's CI runs, and the one reader of the
+# workflow files. A second loader is a second answer: this law and the four
+# gates already built on that crate must agree about where one shell command
+# ends and the next begins, which is why R1210 made its splitter public instead
+# of writing a second one.
+ci-plan = { path = "../ci-plan" }
+# The declaration is TOML and is read here for what it MEANS. That it is also
+# read by a machine-wide program with line patterns — and that the two readings
+# can disagree — is `tools/unread-declaration`'s law, not this one.
+toml = "1"
+
+[dev-dependencies]
+# The cases build throwaway repositories OUTSIDE this checkout: both sides of
+# this law are files at fixed paths, so the only way to vary one is to stand
+# somewhere else.
+tempfile = "3"
+# THE CASES SPLIT THEIR LINES WITH THE PRODUCTION SPLITTER. A test helper that
+# did its own `split_whitespace` would hand the reader words the real path never
+# produces — quotes are trimmed there and not here — and the first draft of the
+# `bash -c '…'` case passed for exactly that reason, against a wrapper the gate
+# would have refused.
+ci-plan = { path = "../ci-plan" }
+
+[lints.clippy]
+all = "deny"

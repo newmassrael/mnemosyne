@@ -74,6 +74,15 @@
 #      rots moves no byte here — which is why there is no staged-file guard.
 #      A repository declaring nothing is exit 0 with a sentence.
 #
+#   5h. Requirement gate (R1210) — `tools/undeclared-requirement`, on EVERY
+#      commit: every package this repository's CI installs is one
+#      `.claude/remote-build.toml` names. CI is the one far side this
+#      repository specifies completely, so what it installs is the set a
+#      bare machine is already known to lack; the build machine's copy of
+#      that set had no witness, and `protobuf-compiler` was missing from it
+#      for the two weeks between R888 repairing the runner and a build host
+#      compiling 269 crates to find out.
+#
 # Install (one-time per clone):
 #   git config core.hooksPath .githooks
 #
@@ -464,6 +473,58 @@ elif [[ $declaration_verdict -ne 0 ]]; then
     {
         echo "[mnemosyne pre-commit] commit rejected — the declaration gate could not ask" \
              "the program that reads it (exit $declaration_verdict); its own message is above"
+    } >&2
+    exit 1
+fi
+
+# Gate 5h — every package CI installs is one the build-machine declaration
+# names (R1210).
+#
+# THE FAR SIDE THAT SPELLS ITSELF OUT IS THE WITNESS FOR THE ONE THAT DOES NOT.
+# "Everything a build machine needs" has no answer without a baseline — it also
+# needs a shell and a linker — and CI is the only far side this repository
+# specifies completely: a stock runner image, plus every departure written out as
+# a step. So what CI installs is exactly the set already discovered to be missing
+# from a bare machine, and `.claude/remote-build.toml` is where that set belongs.
+#
+# It was not there. `protobuf-compiler` has been installed by these workflows
+# since 2026-07-31 (R888, which noted that the local hooks could not see the
+# defect because this machine HAS protoc); the declaration was written on
+# 2026-08-12 naming `libclang-common-18-dev` alone, and the gap surfaced on
+# 2026-08-14 the only way it could — a host without it was chosen and 269 crates
+# compiled before the build script failed. Run against that history, this gate is
+# red at the commit that created the declaration and green at the commit that
+# repaired it, two days later.
+#
+# NO `if staged` GUARD, for a different reason than Gate 5e's: both halves are in
+# this tree, and the trigger would be right. It is measured at 0.05s warm, which
+# is cheaper than deciding whether to run it.
+#
+# The three codes, as Gates 5a/5c/5d/5e read them. 2 here means the population or
+# the declaration could not be read — a workflow that installs through an action,
+# a manager this law does not read, or a tree with nothing to compare.
+echo "[mnemosyne pre-commit] what CI installs is what the build machine is told" >&2
+gates="$(cd "$(dirname "$0")/.." && pwd)"
+if [[ ! -f "$gates/tools/undeclared-requirement/Cargo.toml" ]]; then
+    echo "[mnemosyne pre-commit] commit rejected — the requirement gate is missing" \
+         "at $gates/tools/undeclared-requirement/Cargo.toml" >&2
+    exit 1
+fi
+requirement_verdict=0
+cargo run -q --locked --manifest-path "$gates/tools/undeclared-requirement/Cargo.toml" \
+    --bin undeclared-requirement -- --repo "$(pwd)" || requirement_verdict=$?
+if [[ $requirement_verdict -eq 1 ]]; then
+    {
+        echo "[mnemosyne pre-commit] commit rejected — CI installs something the build-machine" \
+             "declaration does not name"
+        echo "  run: cargo run -q --manifest-path tools/undeclared-requirement/Cargo.toml \\"
+        echo "         --bin undeclared-requirement -- --repo ."
+    } >&2
+    exit 1
+elif [[ $requirement_verdict -ne 0 ]]; then
+    {
+        echo "[mnemosyne pre-commit] commit rejected — the requirement gate could not judge" \
+             "what CI installs (exit $requirement_verdict); its own message is above"
     } >&2
     exit 1
 fi

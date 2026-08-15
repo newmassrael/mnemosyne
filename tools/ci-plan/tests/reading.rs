@@ -931,6 +931,73 @@ fn a_word_that_merely_starts_with_a_keyword_does_not_hide_a_command() {
     );
 }
 
+#[test]
+fn one_script_is_split_into_commands_once_for_every_law_that_reads_it() {
+    // R1210 — the splitter is public because a second law asks about the same
+    // segments (which steps INSTALL something), and the two must not be able to
+    // disagree about where one command ends. The assertion is that they are the
+    // SAME reading: every cargo command `parse_script` finds is a segment
+    // `shell_commands` returns, on a script that puts three commands on two
+    // lines with three different operators.
+    let script = "sudo apt-get update && sudo apt-get install -y protobuf-compiler\n\
+                  cargo test --workspace --locked ; echo done\n";
+    let commands = ci_plan::shell_commands(script);
+    assert_eq!(
+        commands.len(),
+        4,
+        "four segments, and the empty one an operator leaves behind is not a \
+         command: {commands:?}"
+    );
+    assert_eq!(commands[1][1], "apt-get", "{commands:?}");
+    assert_eq!(
+        commands[1].last().expect("the package"),
+        "protobuf-compiler",
+        "the words of a non-cargo command survive whole, which is what the \
+         install law reads: {commands:?}"
+    );
+    let cargo: Vec<Vec<String>> = commands
+        .iter()
+        .filter(|words| words.first().map(String::as_str) == Some("cargo"))
+        .cloned()
+        .collect();
+    assert_eq!(
+        cargo.len(),
+        parse_script(script).len(),
+        "the two readings find the same cargo commands in the same script — a \
+         second splitter is what would let them drift: {commands:?}"
+    );
+}
+
+#[test]
+fn a_step_that_runs_an_action_is_read_on_the_same_coordinate_as_one_that_runs_shell() {
+    // R1210 — a law built on `run:` steps alone reports a job that installs its
+    // tools through an action as installing nothing. The two readings share
+    // `index` (every step counted, not only the ones of one kind), so a caller
+    // holding both can say which came first.
+    let doc = parse_workflow(
+        "jobs:\n  build:\n    steps:\n      - uses: actions/checkout@v7\n      \
+         - run: rustup show\n      - uses: arduino/setup-protoc@v3\n",
+        "x.yml",
+    );
+    let uses = ci_plan::uses_steps(&doc, "x.yml");
+    assert_eq!(uses.len(), 2, "{uses:?}");
+    assert_eq!(uses[0].action(), "actions/checkout", "{uses:?}");
+    assert_eq!(uses[0].index, 0, "{uses:?}");
+    assert_eq!(uses[1].action(), "arduino/setup-protoc", "{uses:?}");
+    assert_eq!(
+        uses[1].index, 2,
+        "the third step is at 2 whether or not the reader cares about the second \
+         — an index among `uses:` steps only would say this one is the second: \
+         {uses:?}"
+    );
+    let runs = run_steps(&doc);
+    assert_eq!(runs.len(), 1, "{runs:?}");
+    assert_eq!(
+        runs[0].index, 1,
+        "and the same counting on the other side: {runs:?}"
+    );
+}
+
 /// Build a `CargoCommand` from a line, the way a workflow or a script writes it.
 fn issued(line: &str) -> CargoCommand {
     let mut words: Vec<String> = line.split_whitespace().map(str::to_string).collect();

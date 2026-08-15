@@ -133,6 +133,23 @@ impl Fixture {
         );
         f.write("tools/sub/src/lib.rs", "pub fn two() -> u8 {\n    2\n}\n");
         f.generate_lockfile("tools/sub/Cargo.toml");
+        // A REPOSITORY HAS A WORKFLOW. Since R1210 `pre-commit` holds what CI
+        // installs against what the build-machine declaration names, and the
+        // population comes from `git ls-files .github/workflows`: a tree with
+        // none is one the shared loader refuses, by the same non-vacuity rule
+        // that made the lockfile and the separate workspace baselines above.
+        //
+        // IT INSTALLS NOTHING, which is a reading rather than a refusal — the
+        // witness looked and this runner needed nothing added — and it is the
+        // one shape that keeps the baseline out of the gate's subject. A
+        // fixture that installed something would need a declaration naming it,
+        // and a declaration in the baseline would send Gate 5e to the real
+        // machine-wide program in every case here, which is exactly what R1189
+        // built the stub to avoid.
+        f.write(
+            ".github/workflows/ci.yml",
+            "jobs:\n  build:\n    steps:\n      - run: cargo test --workspace --locked\n",
+        );
         f.stage_all();
         f
     }
@@ -859,6 +876,116 @@ fn pre_commit_tells_a_declaration_gate_that_could_not_ask_from_one_that_found_a_
     assert!(
         !err.contains("a declared key is not read as declared"),
         "a declaration it could not ask about is not one with a bad key in it:\n{err}"
+    );
+}
+
+/// A workflow that installs one package, the way this repository's own does.
+const WORKFLOW_INSTALLING: &str = "jobs:\n  build:\n    steps:\n      \
+                                   - run: sudo apt-get update && sudo apt-get install -y jq\n";
+
+/// The stub program's answer for a declaration that names `jq`.
+///
+/// Gate 5e runs BEFORE 5h and would reject first if the program disagreed with
+/// the file, so a case about what CI installs has to keep the other declaration
+/// gate satisfied — with the built stub rather than the installed program, for
+/// the reason the cases above use it.
+fn answers_for(f: &Fixture, packages: &str) -> TempDir {
+    home_whose_program_answers(Some(&declaration_answer(
+        f,
+        &[("send", "tracked"), ("packages", packages), ("needs", "")],
+    )))
+}
+
+#[test]
+fn pre_commit_accepts_a_workflow_whose_installs_the_declaration_names() {
+    let f = Fixture::new();
+    f.write(".github/workflows/ci.yml", WORKFLOW_INSTALLING);
+    f.write(
+        ".claude/remote-build.toml",
+        "send = \"tracked\"\npackages = [\"jq\"]\n",
+    );
+    f.stage_all();
+    let home = answers_for(&f, "jq");
+
+    let out = run_pre_commit_with(&f, home.path());
+    let err = both_of(&out);
+    assert!(
+        out.status.success(),
+        "a package CI installs and the declaration names must pass a commit:\n{err}"
+    );
+    // THE GATE MUST HAVE RUN. Without this the case passes on a hook that
+    // dropped the block entirely, which is the failure this file exists for.
+    assert!(
+        err.contains("every package this repository's CI installs is one the build-machine"),
+        "the gate's own verdict must reach the caller:\n{err}"
+    );
+}
+
+#[test]
+fn pre_commit_rejects_a_package_ci_installs_that_the_declaration_never_names() {
+    // THE MEASURED SHAPE. `protobuf-compiler` was installed by six jobs of this
+    // repository's workflow from 2026-07-31 and named in the declaration from
+    // 2026-08-14; in between, a build host was chosen without it and compiled
+    // 269 crates before saying so.
+    let f = Fixture::new();
+    f.write(".github/workflows/ci.yml", WORKFLOW_INSTALLING);
+    f.write(
+        ".claude/remote-build.toml",
+        "send = \"tracked\"\npackages = [\"libclang-common-18-dev\"]\n",
+    );
+    f.stage_all();
+    let home = answers_for(&f, "libclang-common-18-dev");
+
+    let out = run_pre_commit_with(&f, home.path());
+    assert!(
+        !out.status.success(),
+        "a package the far side is never told about must not pass a commit"
+    );
+    let err = both_of(&out);
+    assert!(
+        err.contains("CI installs something the build-machine declaration does not name"),
+        "the rejection must name what was wrong:\n{err}"
+    );
+    assert!(
+        err.contains("CI installs `jq` and the build-machine declaration names it nowhere"),
+        "the gate's own words must reach the same stream the hook points at:\n{err}"
+    );
+}
+
+#[test]
+fn pre_commit_tells_a_requirement_gate_that_could_not_judge_from_one_that_found_a_defect() {
+    // THE THIRD CODE, at the caller. An action installs onto the runner without
+    // writing a package name anywhere this law can read, so "there is a
+    // requirement here and I cannot say what it is" is a state this gate meets
+    // in the ordinary course — and a caller that collapsed it into the finding
+    // would send somebody hunting for a package nobody named.
+    let f = Fixture::new();
+    f.write(
+        ".github/workflows/ci.yml",
+        "jobs:\n  build:\n    steps:\n      - uses: arduino/setup-protoc@v3\n      \
+         - run: sudo apt-get install -y jq\n",
+    );
+    f.write(
+        ".claude/remote-build.toml",
+        "send = \"tracked\"\npackages = [\"jq\"]\n",
+    );
+    f.stage_all();
+    let home = answers_for(&f, "jq");
+
+    let out = run_pre_commit_with(&f, home.path());
+    assert!(
+        !out.status.success(),
+        "an install this law cannot read must not pass a commit"
+    );
+    let err = both_of(&out);
+    assert!(
+        err.contains("the requirement gate could not judge what CI installs (exit 2)"),
+        "the rejection must say it could not judge, and with which code:\n{err}"
+    );
+    // THE MIRROR, and the whole point of this case.
+    assert!(
+        !err.contains("CI installs something the build-machine declaration does not name"),
+        "a population it could not read is not a package nobody declared:\n{err}"
     );
 }
 
