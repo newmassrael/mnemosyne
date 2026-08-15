@@ -219,6 +219,257 @@ fn every_gap_the_frontier_names_is_one_a_single_authored_call_closes() {
     );
 }
 
+/// The frontier's whole answer, so a case can require an axis it does not touch
+/// to hold still.
+fn frontier(workspace: &Path, whose: &str) -> serde_json::Value {
+    let out = run(workspace, &["report-authoring-frontier", "--json"]);
+    assert!(out.status.success(), "{whose}: the frontier answers");
+    serde_json::from_slice(&out.stdout).expect("frontier json")
+}
+
+/// One axis of it, as a list of ids.
+fn axis(report: &serde_json::Value, key: &str) -> Vec<String> {
+    report[key]
+        .as_array()
+        .unwrap_or_else(|| panic!("`{key}` is a list"))
+        .iter()
+        .map(|v| v.as_str().unwrap_or_default().to_string())
+        .collect()
+}
+
+/// The second axis closed, and the one the census below says is non-empty.
+///
+/// R1216. A zero-fact scene is a registered section no fact anchors — the empty
+/// room a loop is supposed to write into. The call it implies is `add-fact` at
+/// that coordinate, and this requires it to work on the REAL ones: the scene
+/// leaves the list, the two placement axes hold still, and — the part that
+/// matters for a loop — closing this axis opens NO item on the payoff axis, so
+/// clearing the work-list cannot be a treadmill that refills itself.
+#[test]
+fn every_zero_fact_scene_is_one_a_single_authored_call_fills() {
+    let (stores, _) = authored_stores();
+    let mut filled = 0usize;
+    let mut stores_asked = 0usize;
+    let mut no_frame = Vec::new();
+    for store in &stores {
+        let workspace = store.ws.path();
+        let mut report = frontier(workspace, &store.name);
+        let mut empty = axis(&report, "zero_fact_scenes");
+        if empty.is_empty() {
+            continue;
+        }
+        // A FACT NEEDS A FRAME, and the frame registry is the store's own. A
+        // corpus that registers none cannot be authored into by any call, which
+        // is a fact about that corpus rather than about this axis.
+        let loaded = AtomicStore::load(&workspace.join(SIDECAR))
+            .unwrap_or_else(|e| panic!("{}: the store must load back: {e}", store.name));
+        let Some(frame) = loaded.frames.keys().next().map(ToString::to_string) else {
+            no_frame.push(store.name.clone());
+            continue;
+        };
+        stores_asked += 1;
+        empty.sort();
+        for (nth, scene) in empty.iter().enumerate() {
+            let before = report.clone();
+            let id = format!("frontier-fill-{nth}");
+            let out = run(
+                workspace,
+                &[
+                    "add-fact",
+                    "--fact",
+                    &id,
+                    "--frame",
+                    &frame,
+                    "--claim",
+                    "The empty room the frontier named is written into.",
+                    "--canon-from",
+                    scene,
+                    "--evidence",
+                    scene,
+                ],
+            );
+            assert!(
+                out.status.success(),
+                "{}: the call this axis implies was refused at `{scene}` (frame {frame}):\n{}",
+                store.name,
+                String::from_utf8_lossy(&out.stderr)
+            );
+            report = frontier(workspace, &store.name);
+            let mut expected = axis(&before, "zero_fact_scenes");
+            expected.retain(|s| s != scene);
+            assert_eq!(
+                axis(&report, "zero_fact_scenes"),
+                expected,
+                "{}: filling `{scene}` had to remove it and leave the rest",
+                store.name
+            );
+            // THE OTHER AXES HOLD STILL. A loop that closed one item and opened
+            // another would clear nothing, and the two placement axes are the
+            // ones a new fact could plausibly move.
+            for other in ["unplaced_scenes", "unordered_scenes"] {
+                assert_eq!(
+                    axis(&report, other),
+                    axis(&before, other),
+                    "{}: filling `{scene}` moved `{other}`",
+                    store.name
+                );
+            }
+            assert_eq!(
+                report["dangling_setups"], before["dangling_setups"],
+                "{}: filling `{scene}` opened work on the payoff axis — a work-list that \
+                 refills itself is a loop that never ends",
+                store.name
+            );
+            filled += 1;
+        }
+        assert!(
+            axis(&report, "zero_fact_scenes").is_empty(),
+            "{}: scenes are still empty after every one the frontier named was filled",
+            store.name
+        );
+    }
+    println!(
+        "  {} store(s) had empty scenes: {} filled one call each ({} skipped for registering no \
+         frame: {:?})",
+        stores_asked + no_frame.len(),
+        filled,
+        no_frame.len(),
+        no_frame
+    );
+    assert!(
+        filled > 0,
+        "no corpus here holds an empty scene, so this law read an empty population"
+    );
+}
+
+/// THE CONTROL for the axis above: it is the COORDINATE that fills the scene,
+/// not the write.
+///
+/// Without it, that law passes on a frontier that clears an empty scene for any
+/// fact landing anywhere — which would report a loop as filling rooms it never
+/// entered.
+#[test]
+fn a_fact_seated_at_a_scene_that_already_has_one_leaves_the_empty_ones_empty() {
+    let (stores, _) = authored_stores();
+    let mut asked = 0usize;
+    for store in &stores {
+        let workspace = store.ws.path();
+        let report = frontier(workspace, &store.name);
+        let empty = axis(&report, "zero_fact_scenes");
+        if empty.is_empty() {
+            continue;
+        }
+        // A scene that is NOT on the list — the coverage census names one with
+        // facts already anchored.
+        let Some(occupied) = report["scene_coverage"]
+            .as_array()
+            .expect("the census is a list")
+            .iter()
+            .find(|row| !row["facts"].as_array().map(Vec::is_empty).unwrap_or(true))
+            .and_then(|row| row["scene"].as_str())
+            .map(ToString::to_string)
+        else {
+            continue;
+        };
+        let loaded = AtomicStore::load(&workspace.join(SIDECAR))
+            .unwrap_or_else(|e| panic!("{}: the store must load back: {e}", store.name));
+        let Some(frame) = loaded.frames.keys().next().map(ToString::to_string) else {
+            continue;
+        };
+        let out = run(
+            workspace,
+            &[
+                "add-fact",
+                "--fact",
+                "frontier-fill-control",
+                "--frame",
+                &frame,
+                "--claim",
+                "A fact in a room that already had one.",
+                "--canon-from",
+                &occupied,
+                "--evidence",
+                &occupied,
+            ],
+        );
+        assert!(
+            out.status.success(),
+            "{}: the control fact must be authorable: {}",
+            store.name,
+            String::from_utf8_lossy(&out.stderr)
+        );
+        assert_eq!(
+            axis(&frontier(workspace, &store.name), "zero_fact_scenes"),
+            empty,
+            "{}: a fact seated at `{occupied}` moved the empty-scene list, so the list reacts \
+             to the write rather than to the coordinate",
+            store.name
+        );
+        asked += 1;
+        break;
+    }
+    assert_eq!(
+        asked, 1,
+        "the control needs one store with an empty scene and an occupied one"
+    );
+}
+
+/// What each axis of the frontier is holding, across the authored population.
+///
+/// R1216 — R1214 closed ONE of the six axes and said so: "the other five each
+/// need their own implied call, and nothing derives that call from the report".
+/// Before closing a second one, this counts what is actually there, because an
+/// axis no corpus reaches is a claim with no evidence behind it and an axis
+/// holding hundreds of items is where a loop's time goes.
+#[test]
+fn the_frontier_says_how_much_of_each_axis_the_corpora_are_holding() {
+    let (stores, skipped) = authored_stores();
+    let mut zero_fact = 0usize;
+    let mut unplaced = 0usize;
+    let mut unordered = 0usize;
+    let mut dangling_setups = 0usize;
+    let mut map_gaps = 0usize;
+    let mut stores_with_zero_fact = 0usize;
+    for store in &stores {
+        let out = run(store.ws.path(), &["report-authoring-frontier", "--json"]);
+        assert!(out.status.success(), "{}: the frontier answers", store.name);
+        let report: serde_json::Value = serde_json::from_slice(&out.stdout).expect("frontier json");
+        let len = |key: &str| {
+            report[key]
+                .as_array()
+                .map(Vec::len)
+                .unwrap_or_else(|| panic!("{}: `{key}` is a list", store.name))
+        };
+        let here = len("zero_fact_scenes");
+        if here > 0 {
+            stores_with_zero_fact += 1;
+        }
+        zero_fact += here;
+        unplaced += len("unplaced_scenes");
+        unordered += len("unordered_scenes");
+        dangling_setups += flat(&dangling(store.ws.path(), &store.name)).len();
+        map_gaps += report["map_frontier"]["total_gaps"]
+            .as_u64()
+            .unwrap_or_default() as usize;
+    }
+    println!(
+        "  {} store(s) asked ({} do not load): zero-fact scenes {} (in {} stores), unplaced {}, \
+         unordered {}, dangling setups {}, map gaps {}",
+        stores.len(),
+        skipped.len(),
+        zero_fact,
+        stores_with_zero_fact,
+        unplaced,
+        unordered,
+        dangling_setups,
+        map_gaps
+    );
+    assert!(
+        zero_fact > 0,
+        "the axis this round closes has to be non-empty here or the case below proves nothing"
+    );
+}
+
 /// THE CONTROL: it is the `--pays-off` that closes the item, not the write.
 ///
 /// Without this, the law above passes on a frontier that clears an item for any
