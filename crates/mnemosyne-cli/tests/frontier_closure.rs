@@ -430,6 +430,7 @@ fn the_frontier_says_how_much_of_each_axis_the_corpora_are_holding() {
     let mut dangling_setups = 0usize;
     let mut map_gaps = 0usize;
     let mut stores_with_zero_fact = 0usize;
+    let mut telling_needed = 0usize;
     for store in &stores {
         let out = run(store.ws.path(), &["report-authoring-frontier", "--json"]);
         assert!(out.status.success(), "{}: the frontier answers", store.name);
@@ -451,10 +452,19 @@ fn the_frontier_says_how_much_of_each_axis_the_corpora_are_holding() {
         map_gaps += report["map_frontier"]["total_gaps"]
             .as_u64()
             .unwrap_or_default() as usize;
+        // R1217's axis is a per-STORE bool rather than a list, so it is counted
+        // in stores. A store is one `add-disclosure-plan` away from it whatever
+        // else it is holding.
+        if report["telling_needed"]["gap"]
+            .as_bool()
+            .unwrap_or_else(|| panic!("{}: `telling_needed.gap` is a bool", store.name))
+        {
+            telling_needed += 1;
+        }
     }
     println!(
         "  {} store(s) asked ({} do not load): zero-fact scenes {} (in {} stores), unplaced {}, \
-         unordered {}, dangling setups {}, map gaps {}",
+         unordered {}, dangling setups {}, map gaps {}, stores needing a telling {}",
         stores.len(),
         skipped.len(),
         zero_fact,
@@ -462,11 +472,191 @@ fn the_frontier_says_how_much_of_each_axis_the_corpora_are_holding() {
         unplaced,
         unordered,
         dangling_setups,
-        map_gaps
+        map_gaps,
+        telling_needed
     );
     assert!(
         zero_fact > 0,
         "the axis this round closes has to be non-empty here or the case below proves nothing"
+    );
+}
+
+/// The third axis closed, and the one that opens a READ rather than filling a
+/// list.
+///
+/// R1217. `telling_needed.gap` says a store carries apparatus only a
+/// telling-scoped read projects — a world-line fork, a quest — and declares no
+/// telling to project it under. The call it implies is one
+/// `add-disclosure-plan`, and this requires it against the real corpora: the
+/// gap closes, the loop's gauge drops by exactly one, no other axis moves, and
+/// — the part that makes the item worth naming — the seam that refused the
+/// store before now answers. A work item whose closure opens nothing is a
+/// chore; this one is the door to the runtime.
+#[test]
+fn every_store_that_needs_a_telling_is_one_a_single_authored_call_opens() {
+    let (stores, skipped) = authored_stores();
+    let mut satisfied = 0usize;
+    let mut seams_opened = 0usize;
+    for store in &stores {
+        let workspace = store.ws.path();
+        let before = frontier(workspace, &store.name);
+        if !before["telling_needed"]["gap"]
+            .as_bool()
+            .unwrap_or_else(|| panic!("{}: `telling_needed.gap` is a bool", store.name))
+        {
+            continue;
+        }
+        // The seam BEFORE, so the sentence below is about a door that was shut.
+        // `--telling` is a required argument, so there is no way to ask.
+        let shut = run(workspace, &["report-playable-world", "--telling", "r1217"]);
+        assert!(
+            !shut.status.success(),
+            "{}: the store declares no telling, so the playable-world read cannot resolve one \
+             — if it answered, this axis is naming a door that is open",
+            store.name
+        );
+
+        let out = run(
+            workspace,
+            &[
+                "add-disclosure-plan",
+                "--telling",
+                "r1217",
+                "--default-mode",
+                "withhold",
+            ],
+        );
+        assert!(
+            out.status.success(),
+            "{}: the call this axis implies was refused:\n{}",
+            store.name,
+            String::from_utf8_lossy(&out.stderr)
+        );
+
+        let after = frontier(workspace, &store.name);
+        assert_eq!(
+            after["telling_needed"],
+            serde_json::json!({
+                "carried": before["telling_needed"]["carried"],
+                "gap": false
+            }),
+            "{}: declaring the telling had to close the gap and leave the apparatus it names \
+             exactly as it was",
+            store.name
+        );
+        let gauge = |r: &serde_json::Value| r["total_gaps"].as_u64().expect("a gap count");
+        assert_eq!(
+            gauge(&before) - gauge(&after),
+            1,
+            "{}: one call has to take exactly one item off the loop's gauge",
+            store.name
+        );
+        // NOTHING REFILLS, the R1216 cross-axis requirement one axis over: a
+        // telling is a discourse declaration and must not create authoring work
+        // on any axis that counts the fact base.
+        for other in ["zero_fact_scenes", "unplaced_scenes", "unordered_scenes"] {
+            assert_eq!(
+                axis(&after, other),
+                axis(&before, other),
+                "{}: declaring a telling moved `{other}`",
+                store.name
+            );
+        }
+        assert_eq!(
+            after["dangling_setups"], before["dangling_setups"],
+            "{}: declaring a telling opened work on the payoff axis",
+            store.name
+        );
+
+        // AND THE DOOR IS OPEN. This is what separates the item from a chore:
+        // the read that refused the store two calls ago now projects it.
+        let open = run(workspace, &["report-playable-world", "--telling", "r1217"]);
+        assert!(
+            open.status.success(),
+            "{}: after the one call the frontier's item implies, the playable-world seam still \
+             refuses:\n{}",
+            store.name,
+            String::from_utf8_lossy(&open.stderr)
+        );
+        seams_opened += 1;
+        satisfied += 1;
+    }
+    println!(
+        "  {} store(s) asked ({} do not load): {} needed a telling, one call each satisfied \
+         them, and {} playable-world seam(s) that refused before answered after",
+        stores.len(),
+        skipped.len(),
+        satisfied,
+        seams_opened
+    );
+    assert!(
+        satisfied > 0,
+        "no authored corpus here needs a telling, so this law read an empty population"
+    );
+}
+
+/// THE CONTROL for the axis above: it is the DECLARATION that closes the item,
+/// not any write.
+///
+/// Without it, that law passes on a frontier that clears the need for any
+/// mutation at all — which would report a loop as opening seams it never
+/// touched. The same store, a write it can certainly take, and the need must
+/// stand exactly where it was.
+#[test]
+fn a_write_that_declares_no_telling_leaves_the_need_exactly_where_it_was() {
+    let (stores, _) = authored_stores();
+    let mut asked = 0usize;
+    for store in &stores {
+        let workspace = store.ws.path();
+        let before = frontier(workspace, &store.name);
+        if !before["telling_needed"]["gap"].as_bool().unwrap_or(false) {
+            continue;
+        }
+        let loaded = AtomicStore::load(&workspace.join(SIDECAR))
+            .unwrap_or_else(|e| panic!("{}: the store must load back: {e}", store.name));
+        let (Some(frame), Some(scene)) = (
+            loaded.frames.keys().next().map(ToString::to_string),
+            loaded.sections.keys().next().map(ToString::to_string),
+        ) else {
+            continue;
+        };
+        let out = run(
+            workspace,
+            &[
+                "add-fact",
+                "--fact",
+                "telling-need-control",
+                "--frame",
+                &frame,
+                "--claim",
+                "A fact written into a store that still declares no telling.",
+                "--canon-from",
+                &scene,
+                "--evidence",
+                &scene,
+            ],
+        );
+        assert!(
+            out.status.success(),
+            "{}: the control fact must be authorable: {}",
+            store.name,
+            String::from_utf8_lossy(&out.stderr)
+        );
+        assert_eq!(
+            frontier(workspace, &store.name)["telling_needed"],
+            before["telling_needed"],
+            "{}: a write that declares no telling moved the need, so the axis reacts to the \
+             write rather than to the declaration",
+            store.name
+        );
+        asked += 1;
+        // ONE STORE IS THE WHOLE CLAIM, and every further store pays another
+        // import for the same sentence.
+        break;
+    }
+    assert_eq!(
+        asked, 1,
+        "the control needs one store that needs a telling, and the population gave none"
     );
 }
 

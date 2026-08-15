@@ -7376,7 +7376,13 @@ pub const QUEST_PRED_COMPLETED_BY: &str = "completed_by";
 /// first, so a non-entity object on a `pursues`/`requires` leg fails loud rather than
 /// dropping silently (the R631 `if let Entity` with no else); after it, those
 /// objects are entity-shaped.
-fn quest_ids(store: &AtomicStore) -> Result<BTreeSet<mnemosyne_core::EntityId>, String> {
+///
+/// PUBLIC since Round 1217, for the frontier's telling-need axis: whether a
+/// store carries quests is a question about the store and not about any telling,
+/// and the only honest answer to it is this one. A caller that counted typed
+/// `pursues`/`requires`/`completed_by` legs itself would be the second copy the
+/// paragraph above exists to prevent.
+pub fn quest_ids(store: &AtomicStore) -> Result<BTreeSet<mnemosyne_core::EntityId>, String> {
     check_quest_predicate_shapes(store)?;
     // Both sets hold ENTITY ids — the roles are what differ, not the vocabulary.
     // Keeping them `String` here would type the claim legs and then throw the

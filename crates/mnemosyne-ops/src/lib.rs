@@ -1053,7 +1053,12 @@ pub struct BranchDensity {
 /// quest R568, plus the store's own scene/fact structure) into one read. Pure
 /// read, never gated (the dangling-is-a-todo discipline). The telling-scoped
 /// gaps (quests / disclosures) are present only when a telling is given.
-#[derive(Debug, Clone, Serialize)]
+///
+/// `Default` since Round 1217, for the law that holds the MCP tool's
+/// description against the fields this actually emits: the names have to come
+/// from the TYPE, or the check is a second hand-written list free to drift
+/// beside the first one.
+#[derive(Debug, Clone, Default, Serialize)]
 pub struct AuthoringFrontierReport {
     /// The telling the quest + disclosure gaps were computed for (None = the
     /// telling-scoped sections were omitted).
@@ -1073,6 +1078,10 @@ pub struct AuthoringFrontierReport {
     /// UNASKABLE. A loop reading the report can now tell which, and pick a
     /// telling to pass without a second read.
     pub tellings_declared: Vec<String>,
+    /// Whether this store's OWN APPARATUS says it needs a telling it does not
+    /// have (Round 1217) — the axis's fourth state, and the first one that is
+    /// WORK. See [`TellingNeed`].
+    pub telling_needed: TellingNeed,
     /// Sections with NO fact anchored (no fact's `canon_from` names them) — the
     /// empty scenes to author into, sorted. Carries NO placement axis: a placed
     /// empty and an unplaced empty land here alike (see `unplaced_scenes`).
@@ -1180,6 +1189,44 @@ pub struct AuthoringFrontierReport {
     /// Total distinct gap items across every category — the loop's "work
     /// remaining" gauge (a dangling setup counted once across worlds).
     pub total_gaps: usize,
+}
+
+/// A telling this store's own apparatus requires and this store does not have
+/// (Round 1217) — the telling axis's fourth state, and the first one that is
+/// WORK a loop can pull.
+///
+/// Round 1215 gave the telling-scoped axes their THIRD state: a store declaring
+/// no disclosure plan is told so, instead of being told to pass one it does not
+/// have. That repaired the render and deliberately left the next question open —
+/// whether a missing telling is WORK — on the ground that the answer is "what
+/// was this corpus FOR", which this repository does not record.
+///
+/// It records something the store can answer instead: WHAT THE STORE CARRIES.
+/// Two reads refuse a store outright for want of a telling — the playable-world
+/// projection (the seam a pinion runtime consumes) and the quest graph beneath
+/// it — and both read apparatus that is visible WITHOUT one: world-lines beyond
+/// `main` (the fork topology) and quests (the R676 `quest_ids` kernel, the ONE
+/// definition of a quest). `--telling` is a REQUIRED argument of each, so for a
+/// store carrying either, the seam is not empty — it cannot be opened at all,
+/// and nothing said so: `report-authoring-frontier` answered `0 gap(s)`.
+///
+/// A store carrying NEITHER is a flat record, and this axis claims nothing about
+/// it. Whether such a store WANTS a telling is an authorial question the store
+/// cannot answer, and guessing would put the R1215 residue back as a false
+/// positive. The map is deliberately not apparatus here either: `transition_map`
+/// reads it with no telling at all, so a map is not evidence of this need.
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct TellingNeed {
+    /// What this store carries that ONLY a telling-scoped read projects, each
+    /// named with its size (`world-lines beyond main: 7`, `quests: 4`). EMPTY =
+    /// a flat record, and then no gap — the same three-state discipline the map
+    /// axis carries in `transition_rules` (R891): the count is what says which
+    /// silence this is, rather than a parallel bool free to drift from it.
+    pub carried: Vec<String>,
+    /// `carried` is non-empty AND the store declares no telling: ONE
+    /// `add-disclosure-plan` call is what the loop is missing, and until it
+    /// lands three axes of this report cannot be computed for this store at all.
+    pub gap: bool,
 }
 
 /// A disclosure whose authored seat sits earlier than the fact it discloses
@@ -1368,9 +1415,27 @@ pub fn authoring_frontier_report(
         );
     }
 
+    // Round 1217 — the telling axis's NEEDED state. Both counts are telling-free
+    // reads of the store's own apparatus, and `quest_ids` is the R676 kernel
+    // `structural_fact_ids` above already ran, so asking it here adds no way for
+    // this report to refuse a store it used to answer.
+    let quests = mnemosyne_validate::continuity::quest_ids(&store).map_err(OpError::Other)?;
+    let mut carried = Vec::new();
+    if !store.branches.is_empty() {
+        carried.push(format!("world-lines beyond main: {}", store.branches.len()));
+    }
+    if !quests.is_empty() {
+        carried.push(format!("quests: {}", quests.len()));
+    }
+    let telling_needed = TellingNeed {
+        gap: !carried.is_empty() && store.disclosure_plans.is_empty(),
+        carried,
+    };
+
     let total_gaps = zero_fact_scenes.len()
         + unordered_scenes.len()
         + distinct_dangling.len()
+        + usize::from(telling_needed.gap)
         + unresolved_quests.as_ref().map_or(0, Vec::len)
         + never_planned_disclosures.as_ref().map_or(0, Vec::len)
         + disclosures_seated_before_truth.as_ref().map_or(0, Vec::len)
@@ -1385,6 +1450,7 @@ pub fn authoring_frontier_report(
             .keys()
             .map(ToString::to_string)
             .collect(),
+        telling_needed,
         zero_fact_scenes,
         unplaced_scenes,
         unordered_scenes,
@@ -3412,7 +3478,15 @@ mod tests {
         assert_eq!(b.density, Some(1.0 / 3.0));
         assert!(b.density.is_some(), "a facts-only divergence is never None");
 
-        // density is a pure read: it does NOT feed the gap gauge.
-        assert_eq!(r.total_gaps, 0);
+        // density is a pure read: it does NOT feed the gap gauge. The only gap
+        // this store holds is the Round 1217 telling need — it forks two
+        // world-lines and declares no telling — so subtracting exactly that one
+        // is what keeps this line a statement about density.
+        assert!(
+            r.telling_needed.gap,
+            "two world-lines beyond main and no telling is the R1217 need: {:?}",
+            r.telling_needed
+        );
+        assert_eq!(r.total_gaps, usize::from(r.telling_needed.gap));
     }
 }

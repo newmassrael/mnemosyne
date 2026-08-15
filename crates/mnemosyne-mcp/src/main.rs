@@ -3213,7 +3213,7 @@ impl MnemosyneServer {
     }
 
     #[tool(
-        description = "Authoring frontier (R589, read-only): the consolidated coverage-gap surface an unattended generate-gate-repair loop pulls its next work from, JOINed from the scattered projections. Always: zero_fact_scenes (sections with no fact anchored) + scene_coverage (the fact ids anchored per section, NAMED not counted since R1053, plus the derived structural quest-plumbing subset of them, R619) + structural_facts (those same structural ids flat, to JOIN with each fact's branch, R619) + branch_owned_density (per world-line, own facts over its full traversed road — a divergent world that looks full by inheritance but owns little reads LOW, R617/R619) + dangling_setups (per world-line, R442 Expected facts with no visible payoff) + total_gaps. With telling: unresolved_quests (R568) + never_planned_disclosures (R507, facts never given an explicit disclosure decision). Plus map_frontier (R891): per declared map, the registered places its adjacency predicate's leg kinds admit that are NOT a node of it (places with no way in or out), plus costs/guards keyed to a non-edge. transition_rules 0 is the THIRD state — no adjacency predicate is declared, so the store cannot know which facts are edges — never 'no map work'. Pure read, never gated. Fail-loud on a typo'd telling."
+        description = "Authoring frontier (R589, read-only): the consolidated coverage-gap surface an unattended generate-gate-repair loop pulls its next work from, JOINed from the scattered projections. Always: zero_fact_scenes (sections with no fact anchored) + unplaced_scenes (R667: every section the canon order does not position, content-independent — deliberately NOT in total_gaps, each member is already counted once as zero-fact or unordered) + unordered_scenes (R596: fact-bearing sections the resolved order does not place; with NO order declared every fact-bearing scene is here) + tellings_declared (R1215: every telling the store HAS — empty is the third state, the telling-scoped axes below are unaskable rather than un-asked) + telling_needed (R1217: `carried` = the apparatus only a telling-scoped read projects (world-lines beyond main, quests), `gap` = it is carried and no telling is declared, so the playable-world / quest-graph seam cannot be opened at all; one add-disclosure-plan closes it and it counts in total_gaps) + scene_coverage (the fact ids anchored per section, NAMED not counted since R1053, plus the derived structural quest-plumbing subset of them, R619) + structural_facts (those same structural ids flat, to JOIN with each fact's branch, R619) + branch_owned_density (per world-line, own facts over its full traversed road — a divergent world that looks full by inheritance but owns little reads LOW, R617/R619) + dangling_setups (per world-line, R442 Expected facts with no visible payoff) + total_gaps. With telling: unresolved_quests (R568) + never_planned_disclosures (R507, facts never given an explicit disclosure decision) + disclosures_seated_before_truth (R949, an authored surface.scene earlier on the fact's own road than its canon_from). Plus map_frontier (R891): per declared map, the registered places its adjacency predicate's leg kinds admit that are NOT a node of it (places with no way in or out), plus costs/guards keyed to a non-edge. transition_rules 0 is the THIRD state — no adjacency predicate is declared, so the store cannot know which facts are edges — never 'no map work'. Pure read, never gated. Fail-loud on a typo'd telling."
     )]
     async fn report_authoring_frontier(
         &self,
@@ -3916,6 +3916,54 @@ mod tests {
         }
         // Non-vacuity: a non-tool must NOT route, so the check can actually fail.
         assert!(!router.has_route("definitely_not_a_tool"));
+    }
+
+    /// The frontier tool's description names EVERY field its report emits
+    /// (Round 1217).
+    ///
+    /// The description is the whole of what an agent knows before it calls: the
+    /// tool returns JSON with no schema, so a field the sentence omits is a
+    /// field nothing tells the agent to read. It is hand-written prose beside a
+    /// struct that grows, and it HAD already drifted — Round 1215 added
+    /// `tellings_declared`, the field that tells a loop whether the
+    /// telling-scoped axes are unaskable rather than un-asked, and the sentence
+    /// went on describing a report without it. Nothing was red. This round found
+    /// it while adding a second field, which is exactly the moment the next one
+    /// would be missed too.
+    ///
+    /// The field names come FROM the type, so a field added tomorrow joins this
+    /// check on its own. SCOPE, stated rather than implied: this holds for ONE
+    /// tool. The other report tools' descriptions have no such law, and the
+    /// mapping from a tool to the type it returns is a hand-written pair, which
+    /// is why this is one pair and not a table pretending to be a rule.
+    #[test]
+    fn the_frontier_tool_describes_every_field_its_report_emits() {
+        let described = agent_facing_tools()
+            .into_iter()
+            .find(|t| t.name == "report_authoring_frontier")
+            .and_then(|t| t.description.clone())
+            .expect("the frontier tool is routed and described")
+            .to_string();
+        let report = serde_json::to_value(ops::AuthoringFrontierReport::default())
+            .expect("the report serializes");
+        let emitted: Vec<String> = report
+            .as_object()
+            .expect("the report is a json object")
+            .keys()
+            .cloned()
+            .collect();
+        // `telling` is skipped when None and IS in the default, so the emitted
+        // set is the always-present half; the conditional fields are named by
+        // the same sentence and checked here when the default carries them.
+        let missing: Vec<&String> = emitted
+            .iter()
+            .filter(|key| !described.contains(key.as_str()))
+            .collect();
+        assert!(
+            missing.is_empty(),
+            "the frontier tool's description does not name {missing:?} — an agent reading it \
+             learns nothing about a field the tool returns. Emitted: {emitted:?}"
+        );
     }
 
     /// THE SECOND WIRE INTO `population_census` IS EXERCISED, NOT INSPECTED

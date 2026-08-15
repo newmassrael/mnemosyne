@@ -5012,6 +5012,30 @@ fn cmd_report_authoring_frontier(args: &[String]) -> Result<()> {
             );
         }
     }
+    // Round 1217 — and whether that absence is WORK. Printed unconditionally,
+    // like the map axis: a store that needs a telling needs it whether or not
+    // this call passed one, and the three states are said apart because the
+    // reason a store needs no telling is not the reason it has one.
+    let need = &report.telling_needed;
+    if need.gap {
+        println!(
+            "telling needed: yes — this store carries {}, and the reads that project \
+             them (playable-world, quest graph) REQUIRE --telling, so one \
+             `add-disclosure-plan` is what opens them",
+            need.carried.join(", ")
+        );
+    } else if need.carried.is_empty() {
+        println!(
+            "telling needed: no — this store forks no world-line and holds no quest, \
+             so no telling-scoped read is waiting on one"
+        );
+    } else {
+        println!(
+            "telling needed: satisfied — this store carries {} and declares a telling \
+             to project them under",
+            need.carried.join(", ")
+        );
+    }
     let unasked = if report.tellings_declared.is_empty() {
         "(no telling to pass)"
     } else {
