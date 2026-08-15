@@ -1,0 +1,25 @@
+#!/bin/sh
+# Stands in for an INSTALLED PINNED BUILD — a binary at the layout
+# `cargo install --root` writes and `mnemosyne_config::pinned_binary` reads.
+#
+# Round 861 made the answer load-bearing: the switch asks the installed build
+# which revision it is before handing over, so a stand-in that cannot say is a
+# broken install rather than a pinned one.
+#
+# WHAT VARIES PER CASE IS DATA BESIDE THIS FILE, not a body written into it. The
+# fixture symlinks this one tracked program into the pinned path and writes two
+# files next to it:
+#
+#   <name>.version — the whole of what `--version` prints
+#   <name>.body    — shell sourced for anything else, with the caller's "$@"
+#
+# The pinned path is what this is invoked as, so `$0` names it and the two files
+# are found beside it — no environment to plumb, and each installed name gets its
+# own answer. See README.md for why nothing here is written by the test.
+here=$(dirname "$0")
+me=$(basename "$0")
+if [ "$1" = --version ]; then
+    cat "$here/$me.version"
+    exit 0
+fi
+. "$here/$me.body"

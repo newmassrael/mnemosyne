@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+# A `grep` that has no PCRE at all — the reading the first repair of that defect
+# guessed at, kept because it is the OTHER way the capability can be missing and
+# the hook must answer for both. The locale case is the one that actually
+# shipped; this one no locale can repair.
+#
+# Reads nothing.
+for argument in "$@"; do
+    case "$argument" in
+        -*P*) echo "grep: invalid option -- 'P'" >&2; exit 2 ;;
+    esac
+done
+exec /usr/bin/grep "$@"

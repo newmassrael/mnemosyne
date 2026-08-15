@@ -26,6 +26,8 @@
 use std::path::Path;
 use std::process::Command;
 
+use crate::common::link_stub;
+
 /// Binaries that do NOT open a workspace, each with the reason it is out.
 ///
 /// The complement is DERIVED from cargo, never listed: `PINNED_BINARIES` below
@@ -169,35 +171,33 @@ fn empty_root() -> tempfile::TempDir {
     tempfile::TempDir::new().expect("tempdir")
 }
 
-/// Install `content` as the pinned build of `bin`, at the layout
+/// Install a stand-in as the pinned build of `bin`, at the layout
 /// `cargo install --root` writes and [`mnemosyne_config::pinned_binary`] reads.
-fn install_pinned(root: &Path, pin: &str, bin: &str, content: &[u8]) {
-    let dir = root.join(pin).join("bin");
-    std::fs::create_dir_all(&dir).expect("install dir");
-    let path = dir.join(bin);
-    std::fs::write(&path, content).expect("write pinned build");
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755))
-            .expect("make executable");
-    }
-}
-
-/// A stand-in build that ANSWERS `--version` with `revision`, and does `body`
-/// for anything else.
 ///
-/// Round 861 made the answer load-bearing: the switch now asks the installed
-/// build which revision it is before handing over, so a stand-in that cannot say
-/// is a broken install rather than a pinned one. Pass `None` to model exactly
-/// that — a build too old to have a `--version`, which is the case the check
-/// exists for.
-fn stand_in(revision: Option<&str>, body: &str) -> Vec<u8> {
-    let answer = match revision {
-        Some(rev) => format!("echo \"stand-in 0.0.0 ({rev})\"\n  exit 0"),
-        None => "echo \"stand-in with no revision\"\n  exit 0".to_string(),
+/// THE PROGRAM IS TRACKED AND REACHED BY SYMLINK; what varies per case is the
+/// two files written beside it (`common::link_stub`, `tests/stubs/pin-stand-in`).
+/// A pinned build this test WROTE and the CLI then execs is a file `exec`
+/// refuses with `ETXTBSY` while any process holds it open for writing — and the
+/// holder is a sibling test's fork rather than this thread (Round 1192).
+///
+/// `revision` is what the stand-in ANSWERS `--version` with. Round 861 made that
+/// load-bearing: the switch asks the installed build which revision it is before
+/// handing over, so a stand-in that cannot say is a broken install rather than a
+/// pinned one. `None` models exactly that — a build too old to have a parseable
+/// `--version`, which is the case the check exists for.
+///
+/// `body` is shell the stand-in runs for anything else, with the caller's
+/// arguments in `"$@"`.
+fn install_pinned(root: &Path, pin: &str, bin: &str, revision: Option<&str>, body: &str) {
+    let dir = root.join(pin).join("bin");
+    link_stub("pin-stand-in", &dir.join(bin));
+    let version = match revision {
+        Some(rev) => format!("stand-in 0.0.0 ({rev})\n"),
+        None => "stand-in with no revision\n".to_string(),
     };
-    format!("#!/bin/sh\nif [ \"$1\" = --version ]; then\n  {answer}\nfi\n{body}\n").into_bytes()
+    std::fs::write(dir.join(format!("{bin}.version")), version).expect("the stand-in's version");
+    std::fs::write(dir.join(format!("{bin}.body")), format!("{body}\n"))
+        .expect("the stand-in's body");
 }
 
 #[test]
@@ -274,7 +274,8 @@ fn the_waiver_is_honoured_and_never_silent() {
             root.path(),
             "deadbeef",
             bin,
-            &stand_in(Some("deadbeef"), "echo SWITCHED-TO-PINNED\nexit 0"),
+            Some("deadbeef"),
+            "echo SWITCHED-TO-PINNED\nexit 0",
         );
     }
     for bin in &pinned_binaries() {
@@ -320,7 +321,8 @@ fn a_key_this_build_does_not_know_still_reaches_the_pin() {
             root.path(),
             "deadbeef",
             bin,
-            &stand_in(Some("deadbeef"), "echo SWITCHED-TO-PINNED\nexit 0"),
+            Some("deadbeef"),
+            "echo SWITCHED-TO-PINNED\nexit 0",
         );
     }
     for bin in &pinned_binaries() {
@@ -377,7 +379,8 @@ fn an_installed_pinned_build_is_used_instead_of_refused() {
             root.path(),
             "deadbeef",
             bin,
-            &stand_in(Some("deadbeef"), "echo SWITCHED-TO-PINNED\nexit 0"),
+            Some("deadbeef"),
+            "echo SWITCHED-TO-PINNED\nexit 0",
         );
     }
     for bin in &pinned_binaries() {
@@ -433,7 +436,8 @@ fn a_pinned_path_holding_another_revision_is_refused_before_the_hand_off() {
             "deadbeef",
             bin,
             // Reports a revision, and it is not the one the directory names.
-            &stand_in(Some("cafef00d"), "echo RAN-THE-WRONG-BUILD\nexit 0"),
+            Some("cafef00d"),
+            "echo RAN-THE-WRONG-BUILD\nexit 0",
         );
     }
     for bin in &pinned_binaries() {
@@ -475,7 +479,8 @@ fn a_pinned_path_holding_a_build_that_names_no_revision_is_refused() {
             root.path(),
             "deadbeef",
             bin,
-            &stand_in(None, "echo RAN-AN-UNVERIFIABLE-BUILD\nexit 0"),
+            None,
+            "echo RAN-AN-UNVERIFIABLE-BUILD\nexit 0",
         );
     }
     for bin in &pinned_binaries() {
@@ -594,10 +599,8 @@ fn a_mis_installed_pin_stops_after_one_switch() {
         root.path(),
         "deadbeef",
         "mnemosyne-cli",
-        &stand_in(
-            Some("deadbeef"),
-            &format!("exec {} \"$@\"", env!("CARGO_BIN_EXE_mnemosyne-cli")),
-        ),
+        Some("deadbeef"),
+        &format!("exec {} \"$@\"", env!("CARGO_BIN_EXE_mnemosyne-cli")),
     );
 
     let out = run_in("mnemosyne-cli", ws.path(), false, root.path());

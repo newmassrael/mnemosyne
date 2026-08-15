@@ -30,6 +30,36 @@ pub fn repo_root() -> PathBuf {
         .to_path_buf()
 }
 
+/// Put one of the tracked stand-in programs on `at`, under whatever name the
+/// program being driven will look for.
+///
+/// A SYMLINK TO A FILE GIT TRACKS, never one this process writes. `exec` refuses
+/// a file some process holds open for writing with `ETXTBSY`, and the holder is
+/// a sibling test's fork inheriting our descriptor rather than this thread — so
+/// a stub written and then run is correct alone and a flake the moment anything
+/// else is running (Round 1192). `tests/stubs/README.md` carries the whole of
+/// the reasoning, and `tools/written-executable` is the gate that holds the
+/// repository to it. What varies per case is the environment, or a data file
+/// beside the symlink.
+///
+/// The parent directory is created, because every caller wants a shim directory
+/// that did not exist a moment ago.
+pub fn link_stub(name: &str, at: &Path) {
+    let from = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/stubs")
+        .join(name);
+    assert!(
+        from.is_file(),
+        "no tracked stand-in is called {name} — {} does not exist",
+        from.display()
+    );
+    if let Some(parent) = at.parent() {
+        fs::create_dir_all(parent).expect("the directory the stand-in goes in");
+    }
+    std::os::unix::fs::symlink(&from, at)
+        .unwrap_or_else(|e| panic!("link {} to {}: {e}", from.display(), at.display()));
+}
+
 /// The frozen experiment record. Read, never written: it is the blind author's
 /// own output and the experiment's sha-pinned evidence.
 pub fn audit_dir() -> PathBuf {

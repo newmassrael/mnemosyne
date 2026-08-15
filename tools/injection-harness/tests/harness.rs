@@ -42,7 +42,6 @@ fn tree(root: &Path, source: &str) -> PathBuf {
          fi\n",
     )
     .expect("write suite");
-    make_runnable(&suite);
     suite
 }
 
@@ -74,7 +73,6 @@ fn split_verdict_suite(
         ),
     )
     .expect("write suite");
-    make_runnable(&suite);
     suite
 }
 
@@ -85,42 +83,51 @@ const ALL_GREEN: &str = "test result: ok. 2 passed; 0 failed; 0 ignored\\n";
 const ONE_RED: &str =
     "failures:\\n    the_law\\n\\ntest result: FAILED. 1 passed; 1 failed; 0 ignored\\n";
 
-fn make_runnable(suite: &Path) {
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        fs::set_permissions(suite, fs::Permissions::from_mode(0o755)).expect("chmod");
+/// A SECOND NAME FOR THIS BINARY, not a copy of it.
+///
+/// One case needs a path the suite can remove while the sweep runs. A copy would
+/// be a file this process writes and then runs, and `exec` refuses that with
+/// `ETXTBSY` for as long as ANY process holds it open for writing — a sibling
+/// test's fork inheriting our descriptor, not this thread (Round 1192). That is
+/// what the retry loop this replaced was working around, and a retry treats an
+/// ownership problem as a scheduling one.
+///
+/// A hard link writes nothing: it is another name over the inode cargo already
+/// built. `rm` takes the name; the running process keeps the bytes, which is the
+/// very property the case is about.
+///
+/// BESIDE THE BINARY rather than in the fixture tree, because a hard link cannot
+/// cross a filesystem and the build directory is not the one temporary files
+/// land on — measured on this machine, where `/tmp` is the root filesystem and
+/// `target` is a symlink into a separate btrfs volume.
+struct SecondName(PathBuf);
+
+impl SecondName {
+    fn of_this_binary() -> Self {
+        let beside = Path::new(binary())
+            .parent()
+            .expect("the test binary has a directory")
+            .join(format!(
+                "harness-under-test-{}-{:?}",
+                std::process::id(),
+                std::thread::current().id()
+            ));
+        let _ = fs::remove_file(&beside);
+        fs::hard_link(binary(), &beside).expect("a second name for this binary");
+        SecondName(beside)
+    }
+
+    fn path(&self) -> &Path {
+        &self.0
     }
 }
 
-/// Run a program this process wrote a moment ago, past the kernel's window for
-/// saying it is still being written.
-///
-/// WHY THIS IS NOT A FLAKE TO SHRUG AT. `ETXTBSY` on exec means some process
-/// holds the file open for writing, and after `fs::copy` returns this one does
-/// not. Another does: a sibling test thread that forks between our write and our
-/// exec hands its child a copy of the whole descriptor table, and until that
-/// child reaches its own `exec` — which is where `O_CLOEXEC` finally closes our
-/// descriptor — the kernel is right that somebody has the file open. The window
-/// is microseconds wide and CI is where it gets hit, which is exactly the shape
-/// that reads as a gate being unreliable rather than a gate being right.
-///
-/// A CONDITION AND NOT A SLEEP. This retries on that one error kind and on
-/// nothing else, so a program that is genuinely missing or not executable fails
-/// on the first attempt with its own message. The bound exists so that a real
-/// permanent `ETXTBSY` ends as a failure rather than a hang.
-fn run_a_freshly_written_program(program: &Path, argument: &Path) -> std::process::Output {
-    for _ in 0..1_000 {
-        match Command::new(program).arg(argument).output() {
-            Err(busy) if busy.kind() == std::io::ErrorKind::ExecutableFileBusy => continue,
-            other => return other.expect("the copied tool runs"),
-        }
+impl Drop for SecondName {
+    fn drop(&mut self) {
+        // The case itself removes this — that is what it is for. This is the
+        // path where it did not get that far.
+        let _ = fs::remove_file(&self.0);
     }
-    panic!(
-        "{} was reported as still being written on every attempt — that is no \
-         longer another thread's fork-and-exec window",
-        program.display()
-    )
 }
 
 fn manifest(root: &Path, injections: serde_json::Value) -> PathBuf {
@@ -161,7 +168,14 @@ fn manifest_body(
     let path = root.join("manifest.json");
     let mut body = serde_json::json!({
         "repo": root,
-        "test_command": [root.join("suite.sh")],
+        // THE SUITE IS DATA AND `sh` IS THE PROGRAM (R1192). A test command with
+        // an interpreter in front of it is the ordinary shape — the tracked
+        // manifests say `cargo test …` — and it is what lets these fixtures
+        // stop creating executables: a script this process writes and then RUNS
+        // cannot be exec'd while any process holds it open for writing, and the
+        // holder is a sibling test's fork rather than this thread. `sh` only
+        // READS it, and a file nobody execs is never busy.
+        "test_command": ["sh", root.join("suite.sh")],
         "logs": root.join("logs"),
         "injections": injections,
     });
@@ -625,7 +639,7 @@ fn every_report_names_the_suite_whose_counts_it_carries() {
         String::from_utf8_lossy(&control_only.stderr)
     );
 
-    let expected = serde_json::json!([suite]);
+    let expected = serde_json::json!(["sh", suite]);
     for (mode, out, injections) in [
         ("a full sweep", &full, 1),
         ("--control-only", &control_only, 0),
@@ -1037,7 +1051,6 @@ fn shared_name_suite(root: &Path, healthy: usize, broken: usize) -> PathBuf {
         ),
     )
     .expect("write suite");
-    make_runnable(&suite);
     suite
 }
 
@@ -1110,7 +1123,6 @@ fn a_result_nothing_announced_stops_the_sweep_in_the_control() {
          printf 'test result: ok. 1 passed; 0 failed\\n'\n",
     )
     .expect("write suite");
-    make_runnable(&suite);
     let out = harness(&manifest(root.path(), serde_json::json!([])));
     let said = String::from_utf8_lossy(&out.stderr);
     assert!(!out.status.success(), "{said}");
@@ -1180,7 +1192,6 @@ fn slow_once_injected(root: &Path, source: &str) -> PathBuf {
          sleep 120\n",
     )
     .expect("write suite");
-    make_runnable(&suite);
     suite
 }
 
@@ -1366,7 +1377,10 @@ fn a_manifest_that_names_its_paths_relatively_is_still_run_from_one_place() {
         &path,
         serde_json::json!({
             "repo": "..",
-            "test_command": ["./suite.sh"],
+            // `sh` and a relative script, which is still a relative path handed
+            // across the change of directory — the thing this case is about —
+            // and no longer a file this fixture had to make executable.
+            "test_command": ["sh", "./suite.sh"],
             "logs": "logs",
             "injections": [{
                 "name": "I1",
@@ -1412,25 +1426,32 @@ fn a_manifest_that_names_its_paths_relatively_is_still_run_from_one_place() {
 fn a_suite_that_replaces_the_tool_does_not_end_the_sweep() {
     // A sweep may be aimed at the tree that BUILDS it — this crate's own
     // `self-check.json` is exactly that — and the suite then replaces the binary
-    // the sweep is executing. `/proc/self/exe` afterwards names a path that no
+    // the sweep is executing. A path resolved afterwards names a file that no
     // longer exists, and the first self-check ever run died on its SECOND
-    // injection with `No such file or directory`. The sweep's own copy is what
-    // makes the supervisor the code that started the sweep.
+    // injection with `No such file or directory`. What makes the supervisor the
+    // code that started the sweep is that it is reached as the running IMAGE.
+    //
+    // THE TOOL HERE IS A SECOND NAME FOR THIS BINARY, not a copy of it: the case
+    // needs a path the suite can remove, and a copy would be a file this process
+    // writes and then runs — see `SecondName`.
     let root = tempdir();
     fs::create_dir_all(root.path().join("logs")).expect("mkdir");
     fs::write(root.path().join("src.txt"), "one HEALTHY two SOUND\n").expect("write source");
-    let tool = root.path().join("harness-copy");
-    fs::copy(binary(), &tool).expect("copy the tool");
-    make_runnable(&tool);
+    let tool = SecondName::of_this_binary();
     let suite = root.path().join("suite.sh");
     fs::write(
         &suite,
-        "#!/bin/sh\n\
-         rm -f harness-copy\n\
-         printf 'test result: ok. 1 passed; 0 failed; 0 ignored\\n'\n",
+        // AN ABSOLUTE PATH, because the name being removed lives beside the
+        // binary rather than in the tree the suite runs in — a hard link cannot
+        // cross a filesystem and those two are not on one.
+        format!(
+            "#!/bin/sh\n\
+             rm -f '{}'\n\
+             printf 'test result: ok. 1 passed; 0 failed; 0 ignored\\n'\n",
+            tool.path().display()
+        ),
     )
     .expect("write suite");
-    make_runnable(&suite);
     let path = manifest(
         root.path(),
         serde_json::json!([
@@ -1438,10 +1459,13 @@ fn a_suite_that_replaces_the_tool_does_not_end_the_sweep() {
             {"name": "I2", "edits": [{"file": "src.txt", "from": "SOUND", "to": "BROKEN"}]},
         ]),
     );
-    let out = run_a_freshly_written_program(&tool, &path);
+    let out = Command::new(tool.path())
+        .arg(&path)
+        .output()
+        .expect("the tool runs");
     assert!(
-        !tool.exists(),
-        "the suite really did replace the binary the sweep was started from"
+        !tool.path().exists(),
+        "the suite really did remove the name the sweep was started from"
     );
     assert!(
         out.status.success(),
@@ -1526,7 +1550,6 @@ fn a_suite_killed_by_a_signal_is_not_a_run_that_finished() {
          kill -KILL $$\n",
     )
     .expect("write suite");
-    make_runnable(&suite);
     let path = manifest(
         root.path(),
         serde_json::json!([{
@@ -1691,7 +1714,6 @@ fn suite_that_goes_red_while_the_record_is_stale(root: &Path) {
          fi\n",
     )
     .expect("write suite");
-    make_runnable(&suite);
 }
 
 #[test]

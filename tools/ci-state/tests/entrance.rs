@@ -13,9 +13,12 @@
 //! `gh -q` had already flattened, so nothing between the hook and GitHub was ever
 //! executed, and two renamed fields left it at 14 passed / 0 failed. Here the stub
 //! hands over the same bytes GitHub sent and the reading runs for real.
+//!
+//! The stubs are `src/bin/gh-stub.rs` and `src/bin/gh-unreachable.rs`, programs
+//! cargo builds and this fixture SYMLINKS into place: R1192's rule, that nothing
+//! here writes a file it then runs.
 
 use std::fs;
-use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 
@@ -23,54 +26,23 @@ use tempfile::TempDir;
 
 const SHA: &str = "2d630331b1279e3b7a28985876b53ef0b07fbe77";
 
-/// Answers the two endpoints this reporter asks for, out of files on disk.
-///
-/// IT CHECKS THE REQUEST AS WELL AS ANSWERING IT. A stub that answers whatever it
-/// is asked lets the program hit the wrong endpoint and still be believed —
-/// R1132's correction to the hook suite's own stub. Violations land in a file the
-/// tests assert is empty.
-///
-/// ABSOLUTE PATHS INSIDE, AND THAT IS THE POINT OF THE WHOLE FIXTURE. `PATH` is
-/// set to the stub's directory and nothing else, so "gh is not installed" is a
-/// state these tests can PRODUCE rather than assert about in prose — and a stub
-/// that resolved its own interpreter or its own `cat` through `PATH` would then
-/// fail for a reason that is about the test. It did, on the first run: `env`
-/// could not find `bash`.
-const GH_STUB: &str = r#"#!/bin/bash
-violate() { echo "$1" >> "$GH_STUB_LOG"; }
-[[ "${1:-}" == "api" ]] || violate "gh was not asked for the api: $*"
-case "$*" in
-    *"--paginate"*"/check-runs")
-        [[ "$*" == *"commits/$GH_STUB_SHA/check-runs"* ]] \
-            || violate "the check-run request does not name the commit: $*"
-        exec /bin/cat "$GH_STUB_CHECKS"
-        ;;
-    *"/check-runs/"*"/annotations")
-        [[ "$*" == *"check-runs/$GH_STUB_CHECK/annotations"* ]] \
-            || violate "the annotation request names the wrong check: $*"
-        exec /bin/cat "$GH_STUB_ANNOTATIONS"
-        ;;
-    *)
-        violate "gh hit an unexpected endpoint: $*"
-        exit 1
-        ;;
-esac
-"#;
-
-/// A `gh` that is there and cannot answer — no network, no credential.
-const GH_UNREACHABLE: &str = "#!/bin/bash\necho 'could not resolve host' >&2\nexit 1\n";
-
 fn fixture(name: &str) -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests")
         .join(name)
 }
 
-fn write_exec(path: &Path, body: &str) {
-    fs::write(path, body).expect("write");
-    let mut perms = fs::metadata(path).expect("stat").permissions();
-    perms.set_mode(0o755);
-    fs::set_permissions(path, perms).expect("chmod");
+/// Put one of this crate's stub programs on `at` under the name `gh`.
+///
+/// A SYMLINK TO A BINARY CARGO BUILT, never a file this process writes (R1192).
+/// `exec` on a file some process holds open for writing fails with `ETXTBSY`,
+/// and the holder is a sibling test's fork rather than this thread — so the
+/// scripts this used to write were correct alone and a flake the moment anything
+/// else was running. `src/bin/gh-stub.rs` answers the recordings and checks what
+/// it was asked; `src/bin/gh-unreachable.rs` is a `gh` that is installed and
+/// fails.
+fn link_gh(at: &Path, program: &str) {
+    std::os::unix::fs::symlink(program, at).expect("link the gh stub");
 }
 
 /// A directory holding one `gh`, and the log of anything it was asked wrongly.
@@ -84,7 +56,7 @@ impl Stub {
         let stub = Stub {
             dir: TempDir::new().expect("tempdir"),
         };
-        write_exec(&stub.dir.path().join("gh"), GH_STUB);
+        link_gh(&stub.dir.path().join("gh"), env!("CARGO_BIN_EXE_gh-stub"));
         stub
     }
 
@@ -93,7 +65,10 @@ impl Stub {
         let stub = Stub {
             dir: TempDir::new().expect("tempdir"),
         };
-        write_exec(&stub.dir.path().join("gh"), GH_UNREACHABLE);
+        link_gh(
+            &stub.dir.path().join("gh"),
+            env!("CARGO_BIN_EXE_gh-unreachable"),
+        );
         stub
     }
 

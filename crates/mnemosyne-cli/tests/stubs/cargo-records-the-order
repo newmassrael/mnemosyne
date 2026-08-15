@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+# A `cargo` that compiles nothing, records every call it is given, and answers
+# "unformatted" for exactly the manifests whose path says so.
+#
+# THE SUBJECT IS THE ORDER, NOT RUSTFMT. What the cases using this have to see is
+# whether an expensive check was reached AT ALL, and a fixture built to make the
+# real clippy run would be measuring cargo instead of the gate.
+#
+# Reads: SIDE_GATE_CARGO_LOG — the file every call is appended to, one per line.
+echo "$*" >> "$SIDE_GATE_CARGO_LOG"
+if [[ "${1:-}" == "fmt" ]]; then
+    case "$*" in
+        *unformatted*) exit 1 ;;
+    esac
+fi
+exit 0

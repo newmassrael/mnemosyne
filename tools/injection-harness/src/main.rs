@@ -326,10 +326,11 @@ fn interrupted() -> Option<i32> {
     }
 }
 
-/// The private state one sweep owns on disk: the copy of this binary that
-/// supervises every run, and the originals whoever is still alive restores the
-/// tree from.
+/// The private state one sweep owns: the image that supervises every run, and
+/// the originals whoever is still alive restores the tree from.
 struct SweepFiles {
+    /// [`supervise::SUPERVISOR`] — the running image, which is a name for an
+    /// inode rather than a file on disk.
     supervisor: PathBuf,
     originals_index: PathBuf,
 }
@@ -486,11 +487,13 @@ fn run() -> Result<(), String> {
     let _originals = OriginalsGuard {
         logs: manifest.logs.clone(),
     };
-    // AND A COPY OF THIS BINARY, taken before the first run: a sweep may be
-    // aimed at the tree that builds it, and the suite would then replace the
-    // program that is running the sweep.
+    // AND THE IMAGE THIS PROCESS IS RUNNING, which is what supervises every run:
+    // a sweep may be aimed at the tree that builds it, and the suite would then
+    // replace the program running the sweep. `/proc/self/exe` names the inode
+    // rather than the path, so it survives that — see `supervise::SUPERVISOR`
+    // for why it is not a copy taken here.
     let files = SweepFiles {
-        supervisor: supervise::copy_self(&manifest.logs)?,
+        supervisor: PathBuf::from(supervise::SUPERVISOR),
         originals_index,
     };
 

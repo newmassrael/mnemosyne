@@ -29,6 +29,11 @@
 //!     passes its words through.
 //!   - the real workspace's fmt/clippy state, which CI and the hook itself
 //!     cover on the real tree.
+//!
+//! EVERY STAND-IN THIS FILE PUTS ON A PATH IS A TRACKED FILE reached by symlink
+//! (`tests/stubs/`), never one this process writes and then runs: `exec` refuses
+//! a file some process holds open for writing, and the holder is a sibling
+//! test's fork rather than this thread (Round 1192).
 
 use std::fs;
 use std::io::Write;
@@ -37,6 +42,8 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Output, Stdio};
 
 use tempfile::TempDir;
+
+use crate::common::link_stub;
 
 /// Formatted, lint-clean, and free of any version-postfix identifier — the
 /// baseline every gate must accept.
@@ -52,76 +59,10 @@ const CLEAN_LIB: &str = "pub fn one() -> u8 {\n    1\n}\n";
 /// have an opinion" — which is the one answer no case here had ever produced.
 const UNREADABLE_ORPHAN: &str = "fn ( this file is not rust\n";
 
-/// Logs the verb it was asked for, then REFUSES anything the real CLI does not
-/// answer to. Round 900: a stub that accepts every argument would let a hook
-/// call a misspelled verb and still pass — the gap Round 899 named in a carry
-/// instead of closing.
-const MN_STUB: &str = r#"#!/usr/bin/env bash
-echo "$@" >> "$PWD/mn-calls.log"
-case "${1:-}" in
-    validate-code-refs|validate-workspace) ;;
-    *)
-        echo "stub mn: no CLI verb is named '${1:-}'" >&2
-        exit 127
-        ;;
-esac
-exit "${MN_STUB_EXIT:-0}"
-"#;
-
-/// Stands in for the three `cargo` commands `pre-push` issues, and CHECKS THE
-/// ARGUMENTS of the one this file is about.
-///
-/// R1136 MOVED THE SEAM. The hook used to call `gh` three times and flatten the
-/// answers with `-q`; a stub could not evaluate those expressions, so the request
-/// contract was all this file could pin and two renamed fields passed it. The
-/// reading is now a program (`tools/ci-state`) with its own suite over recorded
-/// bodies, and what THIS file owns is the call: the hook must ask that reporter,
-/// with a lockfile it may not rewrite, about the commit it says it means — and
-/// must pass whatever comes back through to the person pushing.
-///
-/// `fmt` and `clippy` have their own cases above and are answered blindly here.
-/// Violations land in a file the test asserts is empty.
-const CARGO_STUB: &str = r#"#!/usr/bin/env bash
-violate() { echo "$1" >> "$PWD/reporter-contract-violations.log"; }
-if [[ "${1:-}" != "run" ]]; then
-    exit 0
-fi
-# The separate-workspace gate (R1156) runs this repository's own gate programs
-# through `cargo run` as well, and they are not this stub's subject — each has
-# its own suite. This stub owns exactly ONE of them, the CI reporter.
-#
-# A RULE, NOT A LIST (R1184). Until this round the others were named one by one,
-# and that list went stale the moment a gate was added: R1182 added one, the stub
-# read it as "some other program", and the case failed for a reason that has
-# nothing to do with the seam it owns. What is asked now is the SHAPE — a
-# manifest under this repository's own `tools/` that is not the reporter's is
-# some other gate's business — so a gate added to the hook needs no edit here and
-# cannot silently fall off. Still by PATH, so the exemption cannot be claimed by
-# anything else the hook might call.
-case "$*" in
-    *"/tools/ci-state/Cargo.toml"*) ;;
-    *"/tools/"*"/Cargo.toml"*) exit 0 ;;
-esac
-[[ "$*" == *"/tools/ci-state/Cargo.toml"* ]] \
-    || violate "pre-push ran some other program than the CI reporter: $*"
-[[ "$*" == *"--bin ci-state"* ]] \
-    || violate "pre-push did not name the reporter binary: $*"
-[[ "$*" == *"--locked"* ]] \
-    || violate "the reporter resolves freely and may rewrite a lockfile: $*"
-[[ "$*" == *"$REPORTER_SHA"* ]] \
-    || violate "pre-push asked about some commit other than origin/main: $*"
-case "${REPORTER_MODE:-reports}" in
-    reports)
-        echo "ci-state: CI on ${REPORTER_SHA:0:8} — 9 check(s): 1 failure, 8 success"
-        echo "ci-state:   failure — every cache declared is one CI keeps"
-        echo "ci-state: ^^ the commit you are building on is RED. Not blocking"
-        echo "ci-state: CI annotations on ${REPORTER_SHA:0:8} — 1 distinct of 3 reported:"
-        echo "ci-state:   warning Node.js 20 actions are deprecated"
-        exit 0
-        ;;
-    *) exit 2 ;;
-esac
-"#;
+/// The stand-in for the three `cargo` commands `pre-push` issues, which CHECKS
+/// THE ARGUMENTS of the one this file is about — `tests/stubs/`, with the rest
+/// of the reasoning in the file itself.
+const CARGO_PRE_PUSH_REPORTER: &str = "cargo-pre-push-reporter";
 
 fn repo_root() -> PathBuf {
     // CARGO_MANIFEST_DIR = <root>/crates/mnemosyne-cli
@@ -143,14 +84,6 @@ fn hook(name: &str) -> PathBuf {
         p.display()
     );
     p
-}
-
-fn write_exec(path: &Path, body: &str) {
-    fs::create_dir_all(path.parent().expect("parent")).expect("mkdir");
-    fs::write(path, body).expect("write");
-    let mut perms = fs::metadata(path).expect("stat").permissions();
-    perms.set_mode(0o755);
-    fs::set_permissions(path, perms).expect("chmod");
 }
 
 /// A throwaway git repo wired to the real hooks, holding the smallest tree the
@@ -182,7 +115,10 @@ impl Fixture {
         );
         f.write("src/lib.rs", CLEAN_LIB);
         f.write(".gitignore", "mn-calls.log\n/target\n");
-        write_exec(&f.path().join("scripts/mn"), MN_STUB);
+        // The stand-in for `scripts/mn`: it logs the verb it was asked for and
+        // REFUSES anything the real CLI does not answer to (Round 900), so a
+        // hook calling a misspelled verb fails here rather than passing.
+        link_stub("mn", &f.path().join("scripts/mn"));
         f.generate_lockfile("Cargo.toml");
         // A REPOSITORY HAS MORE THAN ONE WORKSPACE, and since R1156 `pre-push`
         // gates on the separate ones — whole. The gate refuses a tree it reached
@@ -785,10 +721,12 @@ const READ_DECLARATION: &str = "send = \"tracked\"\nneeds = [\"cargo\"]\npeak_gb
 fn home_whose_program_answers(answer: Option<&str>) -> TempDir {
     let home = TempDir::new().expect("tempdir");
     if let Some(answer) = answer {
-        write_exec(
-            &home.path().join(".claude/remote-build/bin/bx"),
-            &format!("#!/usr/bin/env bash\ncat <<'THE_ANSWER'\n{answer}\nTHE_ANSWER\n"),
-        );
+        // THE ANSWER IS DATA BESIDE THE PROGRAM, which is what lets the program
+        // be a tracked file rather than one this test writes and then has the
+        // hook run — `tests/stubs/bx-answering` finds it through `$0`.
+        let bin = home.path().join(".claude/remote-build/bin");
+        link_stub("bx-answering", &bin.join("bx"));
+        fs::write(bin.join("answer"), format!("{answer}\n")).expect("the program's answer");
     }
     home
 }
@@ -995,7 +933,7 @@ fn the_side_workspace_gate_tells_a_gate_it_could_not_read_from_one_that_found_a_
     // that ("reordering only moves the hole to whichever gate ends up second"),
     // and the hole is closed rather than moved by
     // `the_side_workspace_gate_tells_every_gate_it_could_not_read_from_one_it_judged`
-    // below, which drives all four arms through a shim and needs no order at
+    // below, which drives every arm through a shim and needs no order at
     // all. What is left HERE is the end-to-end fact that shim cannot show: a
     // real gate, refusing a real tree, through the real hook.
     let f = Fixture::new();
@@ -1079,19 +1017,11 @@ fn the_side_workspace_gate_answers_two_when_it_was_not_started_in_a_tree() {
 /// A `cargo` that answers ONE named gate program with a chosen code and zero for
 /// everything else, so any arm of the lister can be driven without compiling a
 /// tree. `$GATE_UNDER_TEST` is the gate's crate directory, `$GATE_EXIT` the code.
-const CARGO_GATE_STUB: &str = r#"#!/usr/bin/env bash
-case "$*" in
-    *"/tools/$GATE_UNDER_TEST/Cargo.toml"*)
-        echo "[$GATE_UNDER_TEST] a message of the gate's own"
-        exit "${GATE_EXIT:-0}"
-        ;;
-esac
-exit 0
-"#;
+const CARGO_ONE_GATE: &str = "cargo-one-gate";
 
 #[test]
 fn the_side_workspace_gate_tells_every_gate_it_could_not_read_from_one_it_judged() {
-    // FOUR ARMS, ONE SHAPE, AND NO ORDER CAN HIDE ONE. Each gate the lister
+    // ONE ARM PER GATE, ONE SHAPE, AND NO ORDER CAN HIDE ONE. Each gate the lister
     // runs answers 0 / 1 / 2 — 2 being "I could not read enough of this tree to
     // have an opinion" — and the lister exits 1 for BOTH non-zero codes, so the
     // only thing carrying the difference is the sentence. A sentence nothing
@@ -1134,12 +1064,16 @@ fn the_side_workspace_gate_tells_every_gate_it_could_not_read_from_one_it_judged
             "the scratch-ownership gate could not read tools/sub (exit 2)",
             "tools/sub builds a path under the shared temp root that names no owner",
         ),
+        (
+            "written-executable",
+            "the written-executable gate could not read tools/sub (exit 2)",
+            "tools/sub creates an executable file, which is a program it then runs",
+        ),
     ];
     for (gate_crate, refusal, finding) in arms {
         let f = Fixture::new();
         let shim = f.path().join("shim-cargo");
-        fs::create_dir_all(&shim).expect("mkdir shim");
-        write_exec(&shim.join("cargo"), CARGO_GATE_STUB);
+        link_stub(CARGO_ONE_GATE, &shim.join("cargo"));
         let hermetic = format!(
             "{}:{}",
             shim.to_str().expect("shim path is utf-8"),
@@ -1292,7 +1226,7 @@ fn the_side_workspace_gate_names_the_workspace_whose_scratch_path_has_no_owner()
     // what happened when the phases were put in measured order, so the hole was
     // closed rather than moved:
     // `the_side_workspace_gate_tells_every_gate_it_could_not_read_from_one_it_judged`
-    // drives all four arms through a shim and depends on no order at all. What
+    // drives every arm through a shim and depends on no order at all. What
     // this case owns is the FINDING sentence, over a real tree.
     let gate = repo_root().join("scripts/check-side-workspaces.sh");
     let f = Fixture::new();
@@ -1329,15 +1263,7 @@ fn the_side_workspace_gate_names_the_workspace_whose_scratch_path_has_no_owner()
 /// THE SUBJECT IS THE ORDER, NOT RUSTFMT. What the two cases below have to see
 /// is whether an expensive check was reached AT ALL, and a fixture built to make
 /// the real clippy run would be measuring cargo instead of the gate.
-const CARGO_ORDER_SHIM: &str = r#"#!/usr/bin/env bash
-echo "$*" >> "$SIDE_GATE_CARGO_LOG"
-if [[ "${1:-}" == "fmt" ]]; then
-    case "$*" in
-        *unformatted*) exit 1 ;;
-    esac
-fi
-exit 0
-"#;
+const CARGO_ORDER_SHIM: &str = "cargo-records-the-order";
 
 /// Run the real gate over a throwaway tree holding one separate workspace per
 /// name, in the order named, with a `cargo` that never compiles. Returns what
@@ -1356,7 +1282,7 @@ fn side_gate_run(workspaces: &[&str]) -> (Output, String) {
         f.write(&format!("{ws}/src/lib.rs"), CLEAN_LIB);
     }
     let shim = f.path().join("shim-cargo");
-    write_exec(&shim.join("cargo"), CARGO_ORDER_SHIM);
+    link_stub(CARGO_ORDER_SHIM, &shim.join("cargo"));
     let calls = f.path().join("cargo-calls.log");
     let hermetic = format!(
         "{}:{}",
@@ -1468,14 +1394,7 @@ fn the_side_workspace_gate_names_every_unformatted_manifest_in_one_run() {
 /// A `grep` that has no PCRE at all — the reading the first repair of this
 /// defect guessed at, kept because it is the OTHER way the capability can be
 /// missing and the hook must answer for both.
-const GREP_WITHOUT_PCRE: &str = r#"#!/usr/bin/env bash
-for argument in "$@"; do
-    case "$argument" in
-        -*P*) echo "grep: invalid option -- 'P'" >&2; exit 2 ;;
-    esac
-done
-exec /usr/bin/grep "$@"
-"#;
+const GREP_WITHOUT_PCRE: &str = "grep-without-pcre";
 
 #[test]
 fn commit_msg_enforces_its_content_rules_in_a_locale_that_cannot_read_characters() {
@@ -1515,8 +1434,7 @@ fn commit_msg_enforces_its_content_rules_in_a_locale_that_cannot_read_characters
     // grep with no PCRE at all. Here refusing IS the answer, and it must say
     // what it could not do rather than merely fail.
     let shim = f.path().join("shim-nopcre");
-    fs::create_dir_all(&shim).expect("mkdir shim");
-    write_exec(&shim.join("grep"), GREP_WITHOUT_PCRE);
+    link_stub(GREP_WITHOUT_PCRE, &shim.join("grep"));
     let hobbled = format!(
         "{}:{}",
         shim.to_str().expect("shim path is utf-8"),
@@ -1839,7 +1757,7 @@ fn pre_push_carries_the_ci_reporters_words_and_names_it_when_it_cannot_run() {
         );
         std::os::unix::fs::symlink(real, shim.join(tool)).expect("symlink");
     }
-    write_exec(&shim.join("cargo"), CARGO_STUB);
+    link_stub(CARGO_PRE_PUSH_REPORTER, &shim.join("cargo"));
     let hermetic = format!(
         "{}:{}",
         shim.to_str().expect("shim path is utf-8"),

@@ -166,7 +166,9 @@ citation_gate="$here/tools/item-citations/Cargo.toml"
 wait_gate="$here/tools/blind-waits/Cargo.toml"
 environment_gate="$here/tools/named-environment/Cargo.toml"
 scratch_gate="$here/tools/unowned-scratch/Cargo.toml"
-for program in "$verify" "$citation_gate" "$wait_gate" "$environment_gate" "$scratch_gate"; do
+executable_gate="$here/tools/written-executable/Cargo.toml"
+for program in "$verify" "$citation_gate" "$wait_gate" "$environment_gate" "$scratch_gate" \
+  "$executable_gate"; do
   if [[ ! -f "$program" ]]; then
     echo "[side-workspaces] a program this gate runs is missing at $program" >&2
     exit 1
@@ -190,6 +192,14 @@ fi
 #   clippy                       6.38 s   192 ms ->  770 ms
 #   citations                   12.32 s   289 ms -> 9158 ms
 #
+# `executable` arrived after that table and is placed by the SAME key rather
+# than by a fresh sweep: it parses `.rs` and compiles nothing, so it belongs in
+# the first group whatever its warm total turns out to be. That total, measured
+# over 20 workspaces on the build machine when it landed, is 2.84 s — 46 ms for
+# a small workspace and 1.7 s for `bench`, which is where the Rust is. The
+# second column is not restated for it because the answer is structural: with
+# nothing to compile there is nothing for a source edit to invalidate.
+#
 # THE PRIMARY KEY IS THE SECOND COLUMN, NOT THE FIRST. Four of these read the
 # tree and compile nothing, so what they cost does not depend on what the round
 # changed. `clippy` and `citations` compile, and `citations` builds
@@ -203,7 +213,7 @@ fi
 # LAST workspace waited behind every expensive question about the other
 # eighteen: 38.5 s with nothing at all to rebuild, and the whole of a
 # multi-minute wait twice in one session (Round 1200, Round 1204).
-phases=(scratch waits fmt named clippy citations suite)
+phases=(scratch executable waits fmt named clippy citations suite)
 
 # What the CHECK line announces is what the loop at the bottom will actually
 # run, derived from the one list rather than written out a second time — the
@@ -471,6 +481,35 @@ run_scratch() {
       ;;
     *)
       echo "[side-workspaces] the scratch-ownership gate could not read $ws" \
+        "(exit ${verdict}); its own message is above" >&2
+      exit 1
+      ;;
+  esac
+}
+
+# And nothing creates an executable file (R1192), under the same three-code
+# contract. THIS IS WHERE THAT LAW'S POPULATION LIVES, as it is for the gate
+# above: seven of the ten sites this gate found on its first run are in these
+# crates — a `gh` written and chmod'ed by four different fixtures, a recorder
+# stub, a suite, and the harness's own copy of itself. `exec` refuses a file some
+# process holds open for writing, and the holder is a sibling test's fork rather
+# than the thread that wrote it, so every one of them was green alone and a flake
+# the moment this script ran them together.
+run_executable() {
+  local ws=$1 verdict=0
+  declare_and_run executable cargo run -q --manifest-path "$executable_gate" --locked \
+    --bin written-executable -- --workspace "$root/$ws/Cargo.toml" || verdict=$?
+  case $verdict in
+    0) ;;
+    1)
+      echo "[side-workspaces] $ws creates an executable file, which is a program it" \
+        "then runs —" \
+        "fix: cargo run -q --manifest-path tools/written-executable/Cargo.toml" \
+        "--bin written-executable -- --workspace $ws/Cargo.toml" >&2
+      exit 1
+      ;;
+    *)
+      echo "[side-workspaces] the written-executable gate could not read $ws" \
         "(exit ${verdict}); its own message is above" >&2
       exit 1
       ;;

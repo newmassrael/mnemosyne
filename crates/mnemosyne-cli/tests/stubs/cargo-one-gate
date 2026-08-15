@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+# A `cargo` that answers ONE named gate program with a chosen code and zero for
+# everything else, so any arm of the workspace lister can be driven without
+# compiling a tree.
+#
+# Reads: GATE_UNDER_TEST — the gate's crate directory under `tools/`.
+#        GATE_EXIT — the code that gate should answer with, default 0.
+case "$*" in
+    *"/tools/$GATE_UNDER_TEST/Cargo.toml"*)
+        echo "[$GATE_UNDER_TEST] a message of the gate's own"
+        exit "${GATE_EXIT:-0}"
+        ;;
+esac
+exit 0

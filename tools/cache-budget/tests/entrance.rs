@@ -352,41 +352,32 @@ impl Fixture {
             Runs::LastWroteTheArchiveAtHeadMinus(back) => (at_head_minus(back), jobs_page(true)),
             Runs::RanAtHeadMinusAndWroteNothing(back) => (at_head_minus(back), jobs_page(false)),
         };
-        let stub = root.join("stub/gh");
-        std::fs::write(
-            &stub,
-            format!(
-                "#!/usr/bin/env bash\n\
-             {{ printf '%s\\n' \"$@\"; echo; }} >> \"$(dirname \"$0\")/{ASKED}\"\n\
-             case \"$*\" in\n\
-             \x20 *\"/actions/workflows/\"*)\n\
-             \x20   cat <<'RUNS_ANSWER'\n{runs}\nRUNS_ANSWER\n\
-             \x20   ;;\n\
-             \x20 *\"/jobs?\"*)\n\
-             \x20   cat <<'JOBS_ANSWER'\n{jobs}\nJOBS_ANSWER\n\
-             \x20   ;;\n\
-             \x20 *\"/actions/runs/\"*)\n\
-             \x20   cat <<'RUN_ANSWER'\n{run}\nRUN_ANSWER\n\
-             \x20   ;;\n\
-             \x20 *)\n\
-             \x20   cat <<'CACHE_ANSWER'\n{answer}\nCACHE_ANSWER\n\
-             \x20   ;;\n\
-             esac\n"
-            ),
-        )
-        .expect("write the gh stub");
-        make_runnable(&stub);
+        // THE ANSWERS ARE DATA, and the program that hands them over is one cargo
+        // built (R1192). This used to interpolate all four bodies into a shell
+        // script and chmod it, which is a file this process writes and then runs
+        // — the shape that fails with `ETXTBSY` whenever a sibling test forks
+        // between the write and the exec. `src/bin/gh-stub.rs` dispatches on the
+        // endpoint and reads these; nothing here is executable.
+        for (name, body) in [
+            ("runs.json", runs),
+            ("jobs.json", jobs),
+            ("run.json", run.to_owned()),
+            ("caches.json", answer.to_owned()),
+        ] {
+            std::fs::write(root.join("stub").join(name), body).expect("the stub's answer");
+        }
+        link_gh(&root.join("stub/gh"));
         at
     }
 }
 
-fn make_runnable(path: &Path) {
-    use std::os::unix::fs::PermissionsExt as _;
-    let mut mode = std::fs::metadata(path)
-        .expect("stub metadata")
-        .permissions();
-    mode.set_mode(0o755);
-    std::fs::set_permissions(path, mode).expect("make the stub runnable");
+/// Put the `gh` stub on this path.
+///
+/// A SYMLINK TO A BINARY CARGO BUILT, never a file this process writes. See
+/// `src/bin/gh-stub.rs` for the mechanism and for why the answers moved out of
+/// the program and into files beside it.
+fn link_gh(at: &Path) {
+    std::os::unix::fs::symlink(env!("CARGO_BIN_EXE_gh-stub"), at).expect("link the gh stub");
 }
 
 /// The same, with git's answer handed back — for the commits a fixture's history
@@ -440,8 +431,20 @@ fn gate_in_run(at: &Path) -> Output {
 /// `None` means REMOVED, which is a declaration too: a variable this suite does
 /// not name is one the machine underneath gets to answer, and that machine is a
 /// runner as often as it is a developer's shell.
-fn environment(run: Option<&str>) -> Vec<(String, Option<String>)> {
+fn environment(at: &Path, run: Option<&str>) -> Vec<(String, Option<String>)> {
     vec![
+        // WHERE THE `gh` STUB ANSWERS OUT OF (R1192). It is named here rather
+        // than worked out by the stub because a program reached through a
+        // symlink cannot find the directory it was reached from: `argv[0]` is
+        // the name `execvp` was given and `/proc/self/exe` is the cargo target.
+        // It belongs in THIS list because the law below walks every source in
+        // this crate, and the stub inherits the environment the gate is handed —
+        // so a variable it reads is one this fixture must name for exactly the
+        // reason the gate's own are.
+        (
+            "GH_STUB_DIR".to_string(),
+            Some(at.join("stub").display().to_string()),
+        ),
         // The range a caller may pin. Never inherited: a runner sets it.
         (cache_budget::RANGE_VARIABLE.to_string(), None),
         // Which run this is, and of which workflow — the pair that decides
@@ -472,7 +475,7 @@ fn run_gate(at: &Path, run: Option<&str>) -> Output {
     );
     let mut command = Command::new(env!("CARGO_BIN_EXE_cache-budget"));
     command.arg(at).current_dir(at).env("PATH", path);
-    for (name, value) in environment(run) {
+    for (name, value) in environment(at, run) {
         match value {
             Some(value) => command.env(name, value),
             None => command.env_remove(name),
@@ -493,9 +496,13 @@ fn run_gate(at: &Path, run: Option<&str>) -> Output {
 /// attached rather than with a red `main`.
 #[test]
 fn the_fixture_names_every_variable_the_gate_reads() {
+    // The NAMES are what this law is about, so the tree the values would point
+    // at is irrelevant here and this crate's own directory serves — a real path
+    // rather than an invented one, so nothing in it reads as a claim.
+    let anywhere = Path::new(env!("CARGO_MANIFEST_DIR"));
     let named: BTreeSet<String> = [None, Some(RUN_ID)]
         .into_iter()
-        .flat_map(environment)
+        .flat_map(|run| environment(anywhere, run))
         .map(|(name, _)| name)
         .collect();
     let read = variables_read(Path::new(env!("CARGO_MANIFEST_DIR")).join("src"));

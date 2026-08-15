@@ -1,0 +1,56 @@
+#!/usr/bin/env bash
+# Stands in for the three `cargo` commands `pre-push` issues, and CHECKS THE
+# ARGUMENTS of the one this suite is about.
+#
+# R1136 MOVED THE SEAM. The hook used to call `gh` three times and flatten the
+# answers with `-q`; a stub could not evaluate those expressions, so the request
+# contract was all that could be pinned and two renamed fields passed it. The
+# reading is now a program (`tools/ci-state`) with its own suite over recorded
+# bodies, and what the hook suite owns is the CALL: the hook must ask that
+# reporter, with a lockfile it may not rewrite, about the commit it says it
+# means — and must pass whatever comes back through to the person pushing.
+#
+# `fmt` and `clippy` have their own cases and are answered blindly here.
+#
+# Reads: REPORTER_SHA — the commit the hook must ask about.
+#        REPORTER_MODE — `reports` (default) or anything else, which exits 2.
+# Writes: $PWD/reporter-contract-violations.log, which the test asserts is empty.
+violate() { echo "$1" >> "$PWD/reporter-contract-violations.log"; }
+if [[ "${1:-}" != "run" ]]; then
+    exit 0
+fi
+# The separate-workspace gate (R1156) runs this repository's own gate programs
+# through `cargo run` as well, and they are not this stub's subject — each has
+# its own suite. This stub owns exactly ONE of them, the CI reporter.
+#
+# A RULE, NOT A LIST (R1184). The others were once named one by one, and that
+# list went stale the moment a gate was added: R1182 added one, the stub read it
+# as "some other program", and the case failed for a reason that has nothing to
+# do with the seam it owns. What is asked is the SHAPE — a manifest under this
+# repository's own `tools/` that is not the reporter's is some other gate's
+# business — so a gate added to the hook needs no edit here and cannot silently
+# fall off. Still by PATH, so the exemption cannot be claimed by anything else
+# the hook might call.
+case "$*" in
+    *"/tools/ci-state/Cargo.toml"*) ;;
+    *"/tools/"*"/Cargo.toml"*) exit 0 ;;
+esac
+[[ "$*" == *"/tools/ci-state/Cargo.toml"* ]] \
+    || violate "pre-push ran some other program than the CI reporter: $*"
+[[ "$*" == *"--bin ci-state"* ]] \
+    || violate "pre-push did not name the reporter binary: $*"
+[[ "$*" == *"--locked"* ]] \
+    || violate "the reporter resolves freely and may rewrite a lockfile: $*"
+[[ "$*" == *"$REPORTER_SHA"* ]] \
+    || violate "pre-push asked about some commit other than origin/main: $*"
+case "${REPORTER_MODE:-reports}" in
+    reports)
+        echo "ci-state: CI on ${REPORTER_SHA:0:8} — 9 check(s): 1 failure, 8 success"
+        echo "ci-state:   failure — every cache declared is one CI keeps"
+        echo "ci-state: ^^ the commit you are building on is RED. Not blocking"
+        echo "ci-state: CI annotations on ${REPORTER_SHA:0:8} — 1 distinct of 3 reported:"
+        echo "ci-state:   warning Node.js 20 actions are deprecated"
+        exit 0
+        ;;
+    *) exit 2 ;;
+esac

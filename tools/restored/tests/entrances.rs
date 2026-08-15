@@ -397,18 +397,13 @@ fn nothing_matched_while_something_arrived_is_two_steps_reading_two_caches() {
 fn the_after_step_asks_the_recorder_what_it_was_built_from() {
     let (home, tree) = workspace();
     let record = tree.path().join("rustc-log/unrun-tests.restored");
-    let recorder = tree.path().join("a-recorder");
-    std::fs::write(
-        &recorder,
-        "#!/usr/bin/env bash\n[[ \"$1\" == --built-from ]] || exit 3\necho cafe1234\n",
-    )
-    .expect("the stub recorder");
-    let mut permissions = std::fs::metadata(&recorder).expect("stat").permissions();
-    std::os::unix::fs::PermissionsExt::set_mode(&mut permissions, 0o755);
-    std::fs::set_permissions(&recorder, permissions).expect("chmod");
-
+    // THE RECORDER IS A BINARY CARGO BUILT (`src/bin/recorder-stub.rs`), not a
+    // script this test writes and then has the program run. R1192: `exec` on a
+    // file some process holds open for writing fails with `ETXTBSY`, and the
+    // holder is a sibling test's fork rather than this thread — correct alone,
+    // a flake the moment anything else runs beside it.
     let mut wiring = Wiring::wired(home.path(), &record);
-    wiring.recorder = Some(recorder.display().to_string());
+    wiring.recorder = Some(env!("CARGO_BIN_EXE_recorder-stub").to_string());
     let before = wiring.run(tree.path(), &["before", "--cache", A_CACHE, "target"]);
     assert_eq!(before.code(), 0, "{}", before.transcript());
     let after = wiring.run(tree.path(), &["after"]);

@@ -329,6 +329,42 @@ if printf '%s\n' "$staged" | grep -qE '\.rs$'; then
         } >&2
         exit 1
     fi
+
+    # Gate 5g — nothing creates an executable file (R1192). Same three-code
+    # contract as the three gates above.
+    #
+    # `exec` refuses a file some process holds open for writing with `ETXTBSY`,
+    # and the holder is a SIBLING test's fork inheriting the descriptor rather
+    # than the thread that wrote it. R1192 met it in `unread-declaration`, whose
+    # eleven cases each wrote a shell script and ran it: green alone, in every
+    # run, until eleven ran beside ten other crates under
+    # `check-side-workspaces.sh` and one died. That round repaired one crate and
+    # wrote down what it could not do — NOTHING ASKS THE OTHERS — and ten more
+    # sites were sitting in seven workspaces.
+    echo "[mnemosyne pre-commit] .rs staged — nothing writes a program it runs" >&2
+    if [[ ! -f "$gates/tools/written-executable/Cargo.toml" ]]; then
+        echo "[mnemosyne pre-commit] commit rejected — the written-executable gate" \
+             "is missing at $gates/tools/written-executable/Cargo.toml" >&2
+        exit 1
+    fi
+    executable_verdict=0
+    cargo run -q --locked --manifest-path "$gates/tools/written-executable/Cargo.toml" \
+        --bin written-executable -- --workspace "$(pwd)/Cargo.toml" || executable_verdict=$?
+    if [[ $executable_verdict -eq 1 ]]; then
+        {
+            echo "[mnemosyne pre-commit] commit rejected — a file this repository" \
+                 "writes is one it then runs"
+            echo "  run: cargo run -q --manifest-path tools/written-executable/Cargo.toml \\"
+            echo "         --bin written-executable -- --workspace Cargo.toml"
+        } >&2
+        exit 1
+    elif [[ $executable_verdict -ne 0 ]]; then
+        {
+            echo "[mnemosyne pre-commit] commit rejected — the written-executable gate" \
+                 "could not read this tree (exit $executable_verdict); its own message is above"
+        } >&2
+        exit 1
+    fi
 fi
 
 # Gate 5b — separate in-repo workspaces (own `[workspace]`; Gates 4/5 above,

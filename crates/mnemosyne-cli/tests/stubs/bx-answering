@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+# Stands in for the build-machine program the hook asks about a declaration.
+#
+# A STAND-IN RATHER THAN THE INSTALLED ONE, and that is what makes those cases
+# facts about the hook instead of facts about the machine running them: the first
+# draft used the installed `bx`, passed on one workstation and failed on the
+# build machine, where it is not installed — and CI has no copy either, so two of
+# the three cases would have been permanent refusals reporting themselves as
+# checks. That is the shape R1188 found in the gate beside the program.
+#
+# WHAT VARIES PER CASE IS THE FILE BESIDE THIS ONE. `$0` is the path the hook
+# invoked, so `answer` is found next to it — no environment to plumb through the
+# hook, and a fixture that wrote this program per case would be writing a
+# program it then runs. See README.md.
+cat "$(dirname "$0")/answer"

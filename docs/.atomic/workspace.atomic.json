@@ -13314,6 +13314,110 @@
         "WHAT REMAINS UNJOINABLE IS ACROSS WORKFLOWS, and it is not a hole: the runs page is asked per workflow, so two files may each name a step `Cache cargo` without either answer reaching the other. The uniqueness rule is scoped to a workflow for that reason rather than by omission."
       ]
     },
+    "Round 1208": {
+      "decision_summary": "R1208 (BUILD — N34 CLOSED: the shape Round 1192 repaired in one crate, asked of the whole repository, and the ten other sites it found). ETXTBSY IS AN OWNERSHIP FAILURE WEARING A SCHEDULING FAILURE'S CLOTHES. `exec` refuses a file some process holds open for writing, and the holder is not the thread that wrote it: a sibling test's `Command::spawn` forks, the child inherits every open descriptor, and until it reaches its own exec the kernel is right that somebody has the file open. Round 1192 met it in `unread-declaration`, whose eleven cases each wrote a shell script and ran it — green alone, in every run, until eleven ran beside ten other crates under `check-side-workspaces.sh` and one died. It repaired that crate by not writing the program, and wrote down what it could not do in four words: NOTHING ASKS THE OTHERS. THE LAW IS ONE SENTENCE: nothing here creates an executable file; the bit belongs to a file cargo built or git tracks, and a fixture needing a program at a particular name reaches it by SYMLINK with what varies per case as DATA the program reads. `tools/written-executable` is a sibling of `unowned-scratch` under the same three-code contract, wired into `pre-commit` (Gate 5g) and `check-side-workspaces.sh`, so every one of the twenty workspaces is asked on every commit. IT HAS TWO ARMS BECAUSE A CHMOD-ONLY RULE IS HALF A LAW, and the missing half was what production code used: `fs::copy` carries the SOURCE's mode, so copying `current_exe()` writes an executable with no chmod in the function at all — which is exactly what `injection-harness` did to take its supervisor. THE MEASUREMENT: 10 findings across 7 workspaces, every one real, and 0 false. Four fixtures wrote a `gh`, one a `cargo`, one an `mn`, one a `grep`, one a recorder, one a suite; the tenth is production. WHAT THE REPAIRS ARE, and they are two shapes rather than one, because the packages differ: in the `tools/*` gate workspaces the stand-in is now a cargo-built binary (`src/bin/gh-stub.rs` and siblings), and in `mnemosyne-cli` — a PRODUCT, where `env!(\"CARGO_BIN_EXE_…\")` resolves only within the package and a binary added is a binary that ships — the stand-ins are TRACKED files under `tests/stubs/`, reached by the same symlink. Both are the same rule read literally: the executable is a file this process did not write. `injection-harness` needed neither: its supervisor is now `/proc/self/exe`, the running image rather than a path, which is stronger than the copy it replaced (a copy is of whatever was on disk when it was taken); its fixture suites are DATA run as `sh suite.sh`, which deletes the retry loop that was the wrong repair of this very defect; and the one case that needs a removable program uses `fs::hard_link` — a second name over cargo's inode, since `/tmp` and the build directory are different filesystems on this machine, measured. THE GATE FOUND TWO DEFECTS IN ITSELF BY BEING RUN, both by its own tests and both now laws: the ordinary spelling `set_permissions(p, Permissions::from_mode(0o755))` is two calls on one line and was reported twice, once with a path and once without, so a single site counted as both the strongest evidence grade and a weaker one; and `mode` is not a rare method name — `bench/crates/sled-baseline` calls `sled::Config::default().mode(sled::Mode::HighThroughput)`, over which the first draft REFUSED that whole workspace. The second fact for `mode` is the one Rust already requires: a trait method is callable only where the trait is imported. AND ONE HOP OF COPY-SOURCE RESOLUTION, which is not speculative substrate: `injection-harness` held `fs::copy(binary(), &tool)` while this gate was being written, with `binary()` three lines up returning the cargo path, and the gate read it as an ordinary copy and said nothing — a person found it by reading, which is the thing a gate exists to stop being necessary.",
+      "changes_bullets": [
+        "new gate tools/written-executable (own workspace, syn): nothing creates an executable file — a mode carrying an exec bit, or a copy of a program this walk can name",
+        "wired into .githooks/pre-commit (Gate 5g) and scripts/check-side-workspaces.sh as the `executable` phase, the same three-code contract as blind-waits: 0 clean, 1 judged and defective, 2 not judged",
+        "26 laws over throwaway cargo workspaces outside this repository: both arms and their controls, the two-statement spelling, the unreadable mode, nested functions in both directions, a trait default, a chmod inside a macro, the four run-evidence grades, the symlink repair, one hop of copy-source resolution and where the hop stops, and the exit codes end to end",
+        "repaired 4 gate workspaces with a cargo-built stand-in reached by symlink: cache-price, ci-state (two programs), cache-budget (whose four answers became data files), restored",
+        "repaired crates/mnemosyne-cli with 8 TRACKED stand-ins under tests/stubs/, reached by common::link_stub — a product package cannot hold a stub binary",
+        "injection-harness: the supervisor is /proc/self/exe rather than a copy of the binary, the fixture suites are data run as `sh suite.sh`, and the case that needs a removable program takes a hard link",
+        "the hook suite's hand-kept arm list gains the new gate, which is the list R1177 recorded as the one that goes stale"
+      ],
+      "verification_bullets": [
+        "measured with the gate over the whole repository BEFORE and AFTER: 10 findings across 7 workspaces, then 0 across 20, with the populations still non-zero where they should be — the two non-executable chmods in uncompiled-sources are still counted and still clean, so the zero is a measurement rather than an absence",
+        "28 laws over throwaway cargo workspaces outside this repository, every finding beside its control",
+        "every repaired workspace ran its own suite as it was repaired: cache-price 3, ci-state 32, cache-budget 101, restored 49, injection-harness 64, and mnemosyne-cli's three files 27 + 15",
+        "the root workspace through the wrapper that judges coverage: 57 test target(s) compiled, 57 reported a result, 0 failures; clippy --workspace --all-targets -D warnings 0",
+        "scripts/check-side-workspaces.sh WHOLE over all 20 workspaces — scratch, executable, waits, fmt, named, clippy, citations and the suites — checked 20, skipped 0, exit 0",
+        "the gate found three defects IN ITSELF by being run rather than by being reasoned about: a single chmod site counted twice, caught by its own evidence-grade law; a `sled::Config::mode` refusal over a whole workspace, caught by pointing it at bench; and the one hop failing to fire on the spacing `ToTokens` puts between tokens, caught by the law written for it",
+        "two OTHER gates caught this round's own mistakes, which is what makes them worth having: the docs gate read `[[bin]]` in a new README as a claimed config section, and the tracked-sweep law found the self-check manifest's anchor moved by the supervisor change",
+        "the ETXTBSY retry loop in injection-harness is DELETED rather than left beside the repair — a retry is the wrong shape for an ownership failure, and nothing writes an executable for it to guard any more"
+      ],
+      "impact_refs": [
+        "atomic-store-mutate-api"
+      ],
+      "carry_forward_bullets": [
+        "`fs::copy` CARRIES THE SOURCE'S MODE and this walk cannot read the mode of a file it is not looking at, because the source is a runtime path. What IS checkable is a source the function names as a program, and now also one a same-file argument-less helper returns; a name that arrives through a `let` in a caller or a struct field is in the printed census instead. Measured: 8 copy sites in this repository today, every one of them data",
+        "A DECIMAL MODE LITERAL IS NOT READ AS A MODE, and that is a decision rather than a gap. Octal is how a Unix mode is written; reading every integer in a chmod-ing function as a possible mode would make `let n = 7;` a finding, and 7 & 0o111 is not zero",
+        "THE EVIDENCE GRADE, not the verdict, is what a spawn other than `Command::new` is invisible to — a helper, `CommandExt::exec`, a shell. The verdict rests on the bit, because who execs a file does not move the window that makes it busy",
+        "🆕 `bx` RUNS A COMMAND THAT WRITES THE TREE ON THE REMOTE COPY AND EXITS 0. `bx -- cargo fmt` formatted the build machine's checkout and left this one unformatted, which the side-workspace gate then reported — a silent no-op wearing a green exit code. It is the owner's domain (bx is machine-global, outside this repository) and the honest shapes are two: sync a writing command's result back, or refuse the command and say which"
+      ],
+      "population_census": [
+        {
+          "axis": "transition rules by `undirected`",
+          "left_label": "undirected",
+          "left": 10,
+          "right_label": "directed",
+          "right": 29
+        },
+        {
+          "axis": "map corpora by leg-kind declaration",
+          "left_label": "omitted",
+          "left": 6,
+          "right_label": "declared",
+          "right": 24
+        },
+        {
+          "axis": "cost-carrying corpora by direction-dependent pricing",
+          "left_label": "prices a way by direction",
+          "left": 4,
+          "right_label": "prices no way by direction",
+          "right": 6
+        },
+        {
+          "axis": "run trees by authoring mode",
+          "left_label": "hand script",
+          "left": 10,
+          "right_label": "file-only",
+          "right": 256
+        },
+        {
+          "axis": "map corpora by declared boundary crossing",
+          "left_label": "declares an exit",
+          "left": 6,
+          "right_label": "declares none",
+          "right": 24
+        },
+        {
+          "axis": "authored submissions by map and telling",
+          "left_label": "carries both",
+          "left": 10,
+          "right_label": "carries one",
+          "right": 24
+        }
+      ],
+      "publishable_decision_summary": "R1208 (BUILD — N34 CLOSED: the shape Round 1192 repaired in one crate, asked of the whole repository, and the ten other sites it found). ETXTBSY IS AN OWNERSHIP FAILURE WEARING A SCHEDULING FAILURE'S CLOTHES. `exec` refuses a file some process holds open for writing, and the holder is not the thread that wrote it: a sibling test's `Command::spawn` forks, the child inherits every open descriptor, and until it reaches its own exec the kernel is right that somebody has the file open. Round 1192 met it in `unread-declaration`, whose eleven cases each wrote a shell script and ran it — green alone, in every run, until eleven ran beside ten other crates under `check-side-workspaces.sh` and one died. It repaired that crate by not writing the program, and wrote down what it could not do in four words: NOTHING ASKS THE OTHERS. THE LAW IS ONE SENTENCE: nothing here creates an executable file; the bit belongs to a file cargo built or git tracks, and a fixture needing a program at a particular name reaches it by SYMLINK with what varies per case as DATA the program reads. `tools/written-executable` is a sibling of `unowned-scratch` under the same three-code contract, wired into `pre-commit` (Gate 5g) and `check-side-workspaces.sh`, so every one of the twenty workspaces is asked on every commit. IT HAS TWO ARMS BECAUSE A CHMOD-ONLY RULE IS HALF A LAW, and the missing half was what production code used: `fs::copy` carries the SOURCE's mode, so copying `current_exe()` writes an executable with no chmod in the function at all — which is exactly what `injection-harness` did to take its supervisor. THE MEASUREMENT: 10 findings across 7 workspaces, every one real, and 0 false. Four fixtures wrote a `gh`, one a `cargo`, one an `mn`, one a `grep`, one a recorder, one a suite; the tenth is production. WHAT THE REPAIRS ARE, and they are two shapes rather than one, because the packages differ: in the `tools/*` gate workspaces the stand-in is now a cargo-built binary (`src/bin/gh-stub.rs` and siblings), and in `mnemosyne-cli` — a PRODUCT, where `env!(\"CARGO_BIN_EXE_…\")` resolves only within the package and a binary added is a binary that ships — the stand-ins are TRACKED files under `tests/stubs/`, reached by the same symlink. Both are the same rule read literally: the executable is a file this process did not write. `injection-harness` needed neither: its supervisor is now `/proc/self/exe`, the running image rather than a path, which is stronger than the copy it replaced (a copy is of whatever was on disk when it was taken); its fixture suites are DATA run as `sh suite.sh`, which deletes the retry loop that was the wrong repair of this very defect; and the one case that needs a removable program uses `fs::hard_link` — a second name over cargo's inode, since `/tmp` and the build directory are different filesystems on this machine, measured. THE GATE FOUND TWO DEFECTS IN ITSELF BY BEING RUN, both by its own tests and both now laws: the ordinary spelling `set_permissions(p, Permissions::from_mode(0o755))` is two calls on one line and was reported twice, once with a path and once without, so a single site counted as both the strongest evidence grade and a weaker one; and `mode` is not a rare method name — `bench/crates/sled-baseline` calls `sled::Config::default().mode(sled::Mode::HighThroughput)`, over which the first draft REFUSED that whole workspace. The second fact for `mode` is the one Rust already requires: a trait method is callable only where the trait is imported. AND ONE HOP OF COPY-SOURCE RESOLUTION, which is not speculative substrate: `injection-harness` held `fs::copy(binary(), &tool)` while this gate was being written, with `binary()` three lines up returning the cargo path, and the gate read it as an ordinary copy and said nothing — a person found it by reading, which is the thing a gate exists to stop being necessary.",
+      "publishable_changes_bullets": [
+        "new gate tools/written-executable (own workspace, syn): nothing creates an executable file — a mode carrying an exec bit, or a copy of a program this walk can name",
+        "wired into .githooks/pre-commit (Gate 5g) and scripts/check-side-workspaces.sh as the `executable` phase, the same three-code contract as blind-waits: 0 clean, 1 judged and defective, 2 not judged",
+        "26 laws over throwaway cargo workspaces outside this repository: both arms and their controls, the two-statement spelling, the unreadable mode, nested functions in both directions, a trait default, a chmod inside a macro, the four run-evidence grades, the symlink repair, one hop of copy-source resolution and where the hop stops, and the exit codes end to end",
+        "repaired 4 gate workspaces with a cargo-built stand-in reached by symlink: cache-price, ci-state (two programs), cache-budget (whose four answers became data files), restored",
+        "repaired crates/mnemosyne-cli with 8 TRACKED stand-ins under tests/stubs/, reached by common::link_stub — a product package cannot hold a stub binary",
+        "injection-harness: the supervisor is /proc/self/exe rather than a copy of the binary, the fixture suites are data run as `sh suite.sh`, and the case that needs a removable program takes a hard link",
+        "the hook suite's hand-kept arm list gains the new gate, which is the list R1177 recorded as the one that goes stale"
+      ],
+      "publishable_verification_bullets": [
+        "measured with the gate over the whole repository BEFORE and AFTER: 10 findings across 7 workspaces, then 0 across 20, with the populations still non-zero where they should be — the two non-executable chmods in uncompiled-sources are still counted and still clean, so the zero is a measurement rather than an absence",
+        "28 laws over throwaway cargo workspaces outside this repository, every finding beside its control",
+        "every repaired workspace ran its own suite as it was repaired: cache-price 3, ci-state 32, cache-budget 101, restored 49, injection-harness 64, and mnemosyne-cli's three files 27 + 15",
+        "the root workspace through the wrapper that judges coverage: 57 test target(s) compiled, 57 reported a result, 0 failures; clippy --workspace --all-targets -D warnings 0",
+        "scripts/check-side-workspaces.sh WHOLE over all 20 workspaces — scratch, executable, waits, fmt, named, clippy, citations and the suites — checked 20, skipped 0, exit 0",
+        "the gate found three defects IN ITSELF by being run rather than by being reasoned about: a single chmod site counted twice, caught by its own evidence-grade law; a `sled::Config::mode` refusal over a whole workspace, caught by pointing it at bench; and the one hop failing to fire on the spacing `ToTokens` puts between tokens, caught by the law written for it",
+        "two OTHER gates caught this round's own mistakes, which is what makes them worth having: the docs gate read `[[bin]]` in a new README as a claimed config section, and the tracked-sweep law found the self-check manifest's anchor moved by the supervisor change",
+        "the ETXTBSY retry loop in injection-harness is DELETED rather than left beside the repair — a retry is the wrong shape for an ownership failure, and nothing writes an executable for it to guard any more"
+      ],
+      "publishable_impact_refs": [
+        "atomic-store-mutate-api"
+      ],
+      "publishable_carry_forward_bullets": [
+        "`fs::copy` CARRIES THE SOURCE'S MODE and this walk cannot read the mode of a file it is not looking at, because the source is a runtime path. What IS checkable is a source the function names as a program, and now also one a same-file argument-less helper returns; a name that arrives through a `let` in a caller or a struct field is in the printed census instead. Measured: 8 copy sites in this repository today, every one of them data",
+        "A DECIMAL MODE LITERAL IS NOT READ AS A MODE, and that is a decision rather than a gap. Octal is how a Unix mode is written; reading every integer in a chmod-ing function as a possible mode would make `let n = 7;` a finding, and 7 & 0o111 is not zero",
+        "THE EVIDENCE GRADE, not the verdict, is what a spawn other than `Command::new` is invisible to — a helper, `CommandExt::exec`, a shell. The verdict rests on the bit, because who execs a file does not move the window that makes it busy",
+        "🆕 `bx` RUNS A COMMAND THAT WRITES THE TREE ON THE REMOTE COPY AND EXITS 0. `bx -- cargo fmt` formatted the build machine's checkout and left this one unformatted, which the side-workspace gate then reported — a silent no-op wearing a green exit code. It is the owner's domain (bx is machine-global, outside this repository) and the honest shapes are two: sync a writing command's result back, or refuse the command and say which"
+      ]
+    },
     "Round 252": {
       "decision_summary": "Parser CommonMark conformance — recognize indented fenced code blocks (§98) and require whitespace after ATX hash sequence (§62)",
       "changes_bullets": [

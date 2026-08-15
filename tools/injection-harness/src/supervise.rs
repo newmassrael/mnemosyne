@@ -88,39 +88,35 @@ pub fn index_path(logs: &Path) -> PathBuf {
     sweep_dir(logs).join("originals.json")
 }
 
-/// The sweep's own copy of the binary running it.
+/// The running image of this program, as a path a child can be exec'd from.
 ///
 /// A sweep can be aimed at the tree that BUILDS it — this crate's `self-check`
 /// is exactly that — and then the suite replaces the binary this process is
-/// executing. `/proc/self/exe` afterwards names a path that no longer exists,
+/// executing. Resolving the path afterwards names a file that no longer exists,
 /// and the next run cannot be started at all: the second injection of the first
-/// self-check ever run died with `No such file or directory`. Re-resolving the
-/// path would be worse than failing, because it would supervise the following
-/// runs with whatever the suite just built — including the injected build.
+/// self-check ever run died with `No such file or directory`. Re-resolving would
+/// be worse than failing, because it would supervise the following runs with
+/// whatever the suite just built — including the injected build.
 ///
-/// So the supervisor is a COPY, taken before the first run: the code that
-/// started the sweep is the code that owns it, whatever happens to the tree.
-pub fn supervisor_path(logs: &Path) -> PathBuf {
-    sweep_dir(logs).join("supervisor")
-}
-
-/// Take the sweep's copy of this binary.
-pub fn copy_self(logs: &Path) -> Result<PathBuf, String> {
-    let exe = std::env::current_exe().map_err(|e| format!("cannot find my own binary: {e}"))?;
-    let target = supervisor_path(logs);
-    let dir = sweep_dir(logs);
-    fs::create_dir_all(&dir).map_err(|e| format!("{}: {e}", dir.display()))?;
-    fs::copy(&exe, &target).map_err(|e| {
-        format!(
-            "cannot take a copy of {} to supervise with: {e}",
-            exe.display()
-        )
-    })?;
-    use std::os::unix::fs::PermissionsExt;
-    fs::set_permissions(&target, fs::Permissions::from_mode(0o755))
-        .map_err(|e| format!("{}: {e}", target.display()))?;
-    Ok(target)
-}
+/// THIS NAMES AN INODE, NOT A FILE. `/proc/self/exe` is a magic link the kernel
+/// resolves to the image the process is running, and a child between `fork` and
+/// `exec` still has this process's image — so `execve` through it starts THE
+/// CODE THAT STARTED THE SWEEP, whatever has happened to the tree, and whether
+/// the original path was replaced, renamed or unlinked. It is the same mechanism
+/// `clear_originals` already relies on one page down: a supervisor holds the
+/// inode, not the name.
+///
+/// WHAT IT REPLACED, and why the replacement is not merely tidier: this used to
+/// be a `fs::copy` of the binary followed by a chmod. That is a file this
+/// process writes and then runs, which `exec` refuses with `ETXTBSY` for as long
+/// as any process holds it open for writing — and the holder is a sibling's fork
+/// inheriting the descriptor, not this thread (Round 1192). A copy is also
+/// weaker than it looks: it is a copy of whatever was on disk when it was taken,
+/// where this is the image actually running.
+///
+/// Linux, as this whole module already is — process groups, `libc::kill`, the
+/// signal mask.
+pub const SUPERVISOR: &str = "/proc/self/exe";
 
 /// Write the pre-sweep bytes of every file the sweep may touch, and the index a
 /// dying supervisor reads them back from.
@@ -318,8 +314,9 @@ fn in_its_own_group(command: &mut Command, die_with_parent: bool) {
 ///
 /// The supervisor is this same program because the alternative is a shell
 /// script, and a shell script that silently does nothing is the failure mode
-/// this whole tool exists to remove. It is the sweep's own COPY of it because
-/// the suite may replace the original — see `supervisor_path`.
+/// this whole tool exists to remove. It is reached as the RUNNING IMAGE rather
+/// than as a path, because the suite may replace the original — see
+/// [`SUPERVISOR`].
 pub fn supervised_command(
     supervisor: &Path,
     originals_index: Option<&Path>,

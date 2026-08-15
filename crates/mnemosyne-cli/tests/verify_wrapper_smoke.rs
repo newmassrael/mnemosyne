@@ -20,17 +20,15 @@
 //! a fixture that made the real coverage gate answer would be measuring the gate
 //! instead. The stub is PREPENDED to `PATH` rather than replacing it — the
 //! script also needs `git`, `flock`, `tee` and `date`, and a hermetic path would
-//! be testing which coreutils this machine has.
+//! be testing which coreutils this machine has. It is a TRACKED stand-in reached
+//! by symlink (`tests/stubs/`), never a file this process writes and then runs.
 
-use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 
 use tempfile::TempDir;
 
-/// A `cargo` that succeeds at everything, so the coverage gate's call is a
-/// no-op and what remains is the script.
-const CARGO_STUB: &str = "#!/usr/bin/env bash\nexit 0\n";
+use crate::common::link_stub;
 
 fn wrapper() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -50,12 +48,7 @@ impl Tree {
     fn new() -> Self {
         let dir = TempDir::new().expect("tempdir");
         let shim = dir.path().join("shim");
-        std::fs::create_dir_all(&shim).expect("mkdir shim");
-        let stub = shim.join("cargo");
-        std::fs::write(&stub, CARGO_STUB).expect("write the cargo stub");
-        let mut mode = std::fs::metadata(&stub).expect("stat").permissions();
-        mode.set_mode(0o755);
-        std::fs::set_permissions(&stub, mode).expect("chmod the cargo stub");
+        link_stub("cargo-always-succeeds", &shim.join("cargo"));
         let path = format!(
             "{}:{}",
             shim.to_str().expect("the shim path is utf-8"),

@@ -9,39 +9,15 @@
 //!
 //! `gh` IS STUBBED BY PATH AND ANSWERS WITH THE RECORDINGS, unfiltered — the same
 //! discipline `tools/ci-state` adopted in R1136 after two `gh -q` expressions in a
-//! hook were measured silent.
+//! hook were measured silent. The stub is `src/bin/gh-stub.rs`, a program cargo
+//! builds and this fixture SYMLINKS into place: R1192's rule, that nothing here
+//! writes a file it then runs.
 
 use std::fs;
-use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 
 use tempfile::TempDir;
-
-/// Answers the two endpoints this program asks for, out of files on disk.
-///
-/// ABSOLUTE PATHS INSIDE: `PATH` is the stub's directory and nothing else, so
-/// "gh is not installed" is a state these tests can PRODUCE rather than assert
-/// about in prose — and a stub resolving its own interpreter through `PATH` would
-/// then fail for a reason about the test.
-const GH_STUB: &str = r#"#!/bin/bash
-violate() { echo "$1" >> "$GH_STUB_LOG"; }
-[[ "${1:-}" == "api" ]] || violate "gh was not asked for the api: $*"
-case "$*" in
-    *"/actions/workflows/"*"/runs?per_page="*)
-        [[ "$*" == *"per_page=$GH_STUB_WANTED"* ]] \
-            || violate "the run list asked for a different sample than the program was given: $*"
-        exec /bin/cat "$GH_STUB_RUNS"
-        ;;
-    *"--paginate"*"/jobs")
-        exec /bin/cat "$GH_STUB_JOBS"
-        ;;
-    *)
-        violate "gh hit an unexpected endpoint: $*"
-        exit 1
-        ;;
-esac
-"#;
 
 fn fixture(name: &str) -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -49,11 +25,16 @@ fn fixture(name: &str) -> PathBuf {
         .join(name)
 }
 
-fn write_exec(path: &Path, body: &str) {
-    fs::write(path, body).expect("write");
-    let mut perms = fs::metadata(path).expect("stat").permissions();
-    perms.set_mode(0o755);
-    fs::set_permissions(path, perms).expect("chmod");
+/// Put the `gh` stub on this directory as a program named `gh`.
+///
+/// A SYMLINK TO A BINARY CARGO BUILT, never a file this process writes (R1192).
+/// `exec` on a file some process holds open for writing fails with `ETXTBSY`,
+/// and the holder is a sibling test's fork rather than this thread — so the
+/// script this used to write was correct alone and a flake the moment anything
+/// else was running. What varies per run is the environment `run` names below.
+/// `src/bin/gh-stub.rs` says what it answers and what it refuses.
+fn link_gh(at: &Path) {
+    std::os::unix::fs::symlink(env!("CARGO_BIN_EXE_gh-stub"), at).expect("link the gh stub");
 }
 
 struct Stub {
@@ -67,7 +48,7 @@ impl Stub {
             dir: TempDir::new().expect("tempdir"),
             with_gh: true,
         };
-        write_exec(&stub.dir.path().join("gh"), GH_STUB);
+        link_gh(&stub.dir.path().join("gh"));
         stub
     }
 

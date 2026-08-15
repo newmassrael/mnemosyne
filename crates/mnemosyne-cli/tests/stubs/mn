@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+# Stands in for `scripts/mn`, the CLI the hooks call.
+#
+# It RECORDS every call and REFUSES a verb no CLI has, so a hook that invented
+# one fails here rather than passing silently.
+#
+# Reads: MN_STUB_EXIT — the code to end with, default 0.
+# Writes: $PWD/mn-calls.log, one call per line.
+echo "$@" >> "$PWD/mn-calls.log"
+case "${1:-}" in
+    validate-code-refs|validate-workspace) ;;
+    *)
+        echo "stub mn: no CLI verb is named '${1:-}'" >&2
+        exit 127
+        ;;
+esac
+exit "${MN_STUB_EXIT:-0}"

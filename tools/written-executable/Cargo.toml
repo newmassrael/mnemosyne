@@ -1,0 +1,93 @@
+# written-executable — the gate for a file this repository writes and then runs.
+#
+# Round 1192 paid for this one with a red `main` that named the wrong crate.
+# `unread-declaration`'s eleven cases each BUILT their answering program by
+# writing a shell script into a temporary directory, chmod +x, and executing it;
+# every one of them was green alone and had been for a round. Then eleven cases
+# ran beside ten other crates under `scripts/check-side-workspaces.sh`, and one
+# died with
+#
+#     could not run /tmp/…/never-heard-of-exclude — Text file busy (os error 26)
+#
+# THE MECHANISM IS OWNERSHIP, NOT SCHEDULING. `ETXTBSY` on exec means some
+# process holds the file open for writing — and it does not have to be this
+# thread. A sibling test's `Command::spawn` forks, the child inherits the whole
+# descriptor table, and until it reaches its own `exec` the kernel is right that
+# somebody still has our file open. The window is microseconds wide, it opens
+# only when something else is running, and it arrives wearing the clothes of a
+# flake. A retry, a lock or `#[serial]` would each treat it as scheduling and
+# each would be wrong.
+#
+# THE LAW IS ONE SENTENCE: nothing here creates an executable file. The
+# executable bit belongs to a file cargo built or git tracks, and a fixture that
+# needs a program at a particular path reaches it with a SYMLINK — what varies
+# per case is DATA the program reads, because data cannot be busy.
+#
+# TWO WAYS TO CREATE ONE, and the second is the one a chmod-only rule misses:
+#
+#   1. a permission mode carrying an executable bit — `set_permissions`,
+#      `Permissions::from_mode`, `PermissionsExt::set_mode`, `OpenOptionsExt::mode`
+#   2. `fs::copy` OF A PROGRAM, because a copy carries the source's mode. A
+#      function that copies `current_exe()` writes an executable with no chmod
+#      anywhere in it, which is exactly what `injection-harness` was doing.
+#
+# It is checked with a real parser (`syn`) rather than a pattern, for the reason
+# its siblings give and one of its own: the mode and the call that applies it are
+# on DIFFERENT STATEMENTS in most of this repository's spellings —
+#
+#     let mut perms = fs::metadata(path)?.permissions();
+#     perms.set_mode(0o755);
+#     fs::set_permissions(path, perms)?;
+#
+# so the unit is the FUNCTION, the same choice `unowned-scratch` made and for the
+# same reason: a gate that refuses the tidier spelling of the shape it enforces
+# is one people route around.
+#
+# A SEPARATE in-repo workspace (the pattern of `bench/`, `studio/` and the other
+# `tools/*`): its own `[workspace]` so the root workspace's build gates never
+# compile it. It depends on nothing in the core crates — it reads Rust.
+[workspace]
+
+[package]
+name = "written-executable"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.94"
+license = "MIT OR Apache-2.0"
+publish = false
+description = "Fail-loud gate: nothing in this repository writes a file it then runs"
+
+[[bin]]
+name = "written-executable"
+path = "src/main.rs"
+
+[lib]
+name = "written_executable"
+path = "src/lib.rs"
+
+[dependencies]
+# THE PARSER, and the reason this gate is not a grep. See the head of this file
+# for the spelling that decides it: the mode is bound on one statement and
+# applied on another, and no pattern spans that.
+syn = { version = "3", features = ["full", "visit", "extra-traits"] }
+# `span-locations` is what turns a matched expression into a line a person can
+# open. It is a proc-macro2 feature rather than a syn one, and without it every
+# finding reports line 1.
+proc-macro2 = { version = "1", features = ["span-locations"] }
+# THE PATH, RENDERED EXACTLY AS IT WAS WRITTEN. The strongest thing this walk can
+# say is that the expression made executable and the expression handed to
+# `Command::new` are the SAME ONE, and that comparison is between two rendered
+# token streams. Hand-rolling a describer per expression kind would be a second,
+# lossy spelling of what `ToTokens` already does exactly.
+quote = "1"
+
+[dev-dependencies]
+# The end-to-end tests build throwaway cargo workspaces OUTSIDE this repository
+# and run the real gate over them. Outside, because a fixture carrying its own
+# `[workspace]` inside the tree would be discovered by
+# `scripts/check-side-workspaces.sh`, which would then try to lint a workspace
+# whose whole purpose is to be rejected.
+tempfile = "3"
+
+[lints.clippy]
+all = "deny"

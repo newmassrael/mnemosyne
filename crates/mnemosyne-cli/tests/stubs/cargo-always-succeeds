@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+# A `cargo` that succeeds at everything, so the coverage gate's call is a no-op
+# and what remains under test is the wrapper script itself.
+#
+# Reads nothing. See README.md for why this is a tracked file.
+exit 0
