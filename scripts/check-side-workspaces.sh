@@ -538,13 +538,18 @@ for phase in "${phases[@]}"; do
   # failure — see `run_fmt` for why it is the only one that can afford to.
   if [[ $phase == fmt && ${#unformatted[@]} -gt 0 ]]; then
     for member in "${unformatted[@]}"; do
-      echo "[side-workspaces] UNFORMATTED $member —" \
-        "fix: cargo fmt --manifest-path $member" >&2
+      echo "[side-workspaces] UNFORMATTED $member" >&2
     done
+    # ONE COMMAND, NAMED ONCE. Until R1206 each line above carried its own
+    # `cargo fmt --manifest-path …`, so a run that found nine of them handed a
+    # reader nine commands to paste out of a population only this gate knew.
+    # `scripts/fmt.sh` derives that population from THIS script's `--list`, so
+    # what it writes is what the lines above check, and `formatting_population`
+    # in the root suite is what holds the two against each other.
     echo "[side-workspaces] ${#unformatted[@]} unformatted package manifest(s) across" \
       "the ${#checked[@]} workspace(s) this run covered — every one of them is named" \
       "above, because this check compiles nothing and finishing it is what makes the" \
-      "count true rather than a first sighting" >&2
+      "count true rather than a first sighting. fix: scripts/fmt.sh" >&2
     exit 1
   fi
 done

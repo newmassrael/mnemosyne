@@ -134,6 +134,9 @@ mod feature_coverage_smoke;
 #[path = "filtered_read_selects.rs"]
 mod filtered_read_selects;
 
+#[path = "formatting_population.rs"]
+mod formatting_population;
+
 #[path = "frame_view_playable_agreement.rs"]
 mod frame_view_playable_agreement;
 

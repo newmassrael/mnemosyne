@@ -1,0 +1,54 @@
+{
+  "_": [
+    "Machine-written by tools/injection-harness. Do not edit by hand: a row somebody typed is evidence of nothing, and the law over this file is worth exactly what its being unforgeable is worth.",
+    "Each row is one injection that WAS RUN and DID redden what it names, kept beside the definition it was proven against — edit the injection and the gate says the evidence is about a different one."
+  ],
+  "complete": true,
+  "fired": {
+    "the-formatter-checks-instead-of-writing": {
+      "edits": [
+        {
+          "file": "scripts/fmt.sh",
+          "from": "    if [[ $word == --check ]]; then\n      checking=true\n    else",
+          "to": "    if [[ $word == --check ]]; then\n      checking=true\n      writing+=(\"$word\")\n    else"
+        }
+      ],
+      "expect_red": [
+        "the_formatter_writes_every_manifest_the_gate_checks"
+      ],
+      "tests": [
+        "formatting_population::the_formatter_writes_every_manifest_the_gate_checks"
+      ]
+    },
+    "the-formatter-forgets-the-root": {
+      "edits": [
+        {
+          "file": "scripts/fmt.sh",
+          "from": "run cargo fmt --all",
+          "to": ": cargo fmt --all"
+        }
+      ],
+      "expect_red": [
+        "the_formatter_writes_every_manifest_the_gate_checks"
+      ],
+      "tests": [
+        "formatting_population::the_formatter_writes_every_manifest_the_gate_checks"
+      ]
+    },
+    "the-formatter-stops-reaching-a-workspace": {
+      "edits": [
+        {
+          "file": "scripts/fmt.sh",
+          "from": "  [[ ${field[3]:-} == fmt ]] || continue",
+          "to": "  [[ ${field[3]:-} == fmt && ${field[2]:-} != bench ]] || continue"
+        }
+      ],
+      "expect_red": [
+        "the_formatter_writes_every_manifest_the_gate_checks"
+      ],
+      "tests": [
+        "formatting_population::the_formatter_writes_every_manifest_the_gate_checks"
+      ]
+    }
+  }
+}

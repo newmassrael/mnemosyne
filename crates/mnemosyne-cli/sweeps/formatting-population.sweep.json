@@ -1,0 +1,77 @@
+{
+  "_": [
+    "THE SWEEP THAT SAYS R1206's CONTRACT IS NOT VACUOUS — run it from the",
+    "repository root:",
+    "    cargo run -q --manifest-path tools/injection-harness/Cargo.toml -- \\",
+    "        crates/mnemosyne-cli/sweeps/formatting-population.sweep.json",
+    "",
+    "WHAT THE CONTRACT IS. `scripts/fmt.sh` must WRITE every package manifest",
+    "`scripts/check-side-workspaces.sh` CHECKS, and the root workspace besides.",
+    "It derives that population from the gate's own `--list` rather than keeping",
+    "a second list, so the law it has to hold is easy to state and easy to make",
+    "vacuous by accident: two programs that agree because neither was asked.",
+    "",
+    "SO EACH INJECTION BREAKS ONE WAY THE FIXER COULD STOP COVERING THE CHECKER,",
+    "and each of the three is a thing that would otherwise be silent. A dropped",
+    "workspace leaves a file the repository can reject and cannot fix. A `--check`",
+    "left on leaves a command that reports exactly like one that formatted and",
+    "wrote nothing. A missing root leaves the half that was already working.",
+    "",
+    "RUN IT LOCALLY. The harness edits this tree and writes the firing record",
+    "beside this file, so a run sent to a build machine leaves its evidence on a",
+    "throwaway copy — measured in R1205, which is why that round's carry names",
+    "`bx`'s WRITES vocabulary."
+  ],
+  "repo": "../../..",
+  "test_command": [
+    "cargo",
+    "test",
+    "-p",
+    "mnemosyne-cli",
+    "--test",
+    "all",
+    "--no-fail-fast",
+    "formatting_population::"
+  ],
+  "red_set": "exhaustive",
+  "logs": "../../../target/injection-logs",
+  "min_free_mb": 8000,
+  "injections": [
+    {
+      "name": "the-formatter-stops-reaching-a-workspace",
+      "why": "the failure the two-population arrangement had by default and nothing noticed: a workspace the gate checks that the fixing command never reaches, so the repository can REJECT a file it has no command to fix. `bench` is the one used here because it is nine of the twenty-seven manifests, and a drop that size is still invisible to a person reading a green run",
+      "edits": [
+        {
+          "file": "scripts/fmt.sh",
+          "from": "  [[ ${field[3]:-} == fmt ]] || continue",
+          "to": "  [[ ${field[3]:-} == fmt && ${field[2]:-} != bench ]] || continue"
+        }
+      ],
+      "expect_red": ["the_formatter_writes_every_manifest_the_gate_checks"]
+    },
+    {
+      "name": "the-formatter-checks-instead-of-writing",
+      "why": "the one failure that looks EXACTLY like success: `cargo fmt --check` and `cargo fmt` differ by a flag and by everything, and a fixer that kept the flag would exit 0 on a formatted tree, print the same lines, and write nothing at all. The check-that-is-not-checking refusal in the script is the mirror of this, and this is the direction with no message of its own",
+      "edits": [
+        {
+          "file": "scripts/fmt.sh",
+          "from": "    if [[ $word == --check ]]; then\n      checking=true\n    else",
+          "to": "    if [[ $word == --check ]]; then\n      checking=true\n      writing+=(\"$word\")\n    else"
+        }
+      ],
+      "expect_red": ["the_formatter_writes_every_manifest_the_gate_checks"]
+    },
+    {
+      "name": "the-formatter-forgets-the-root",
+      "why": "the half that already worked, and therefore the half a repair is most likely to drop while its author is watching the other one. `cargo fmt --all` is the ONLY thing covering the root workspace's members here, and nothing in the side gate would notice its absence — the root is exactly what that gate deliberately does not read",
+      "edits": [
+        {
+          "file": "scripts/fmt.sh",
+          "from": "run cargo fmt --all",
+          "to": ": cargo fmt --all"
+        }
+      ],
+      "expect_red": ["the_formatter_writes_every_manifest_the_gate_checks"]
+    }
+  ]
+}
