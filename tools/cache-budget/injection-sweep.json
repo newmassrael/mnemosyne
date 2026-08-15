@@ -216,16 +216,16 @@
     },
     {
       "name": "a-key-is-judged-over-the-interval-its-own-workflow-could-have-seen",
-      "why": "R1178 — a cache key is asked for only when the workflow DECLARING it runs, so the interval a miss can be explained over is that workflow's own. With no run of it findable the gate narrows to the commits one push carried, which is the reading that called a legitimate rebuild a defect and turned main red on run 31695396997: `evidence-replay.yml` is path-filtered, and the lockfiles its key hashes moved twice in commits it never ran on",
+      "why": "R1178 — a cache key is asked for only when the workflow DECLARING it runs, so the interval a miss can be explained over is that workflow's own. With no run of it findable the gate narrows to the commits one push carried, which is the reading that called a legitimate rebuild a defect and turned main red on run 31695396997: `evidence-replay.yml` is path-filtered, and the lockfiles its key hashes moved twice in commits it never ran on. R1207 re-aimed the anchor when the reader stopped answering with one run and started answering with the candidates",
       "edits": [
         {
           "file": "tools/cache-budget/src/lib.rs",
-          "from": "    Ok(newest)",
-          "to": "    Ok(None)"
+          "from": "    Ok(candidates)",
+          "to": "    Ok(Vec::new())"
         }
       ],
       "expect_red": [
-        "the_recorded_answer_names_the_run_that_last_left_an_archive",
+        "the_recorded_answer_names_every_run_that_could_have_left_an_archive",
         "a_cache_rebuilt_after_its_lockfile_moved_outside_this_push_is_not_a_defect"
       ]
     },
@@ -235,27 +235,54 @@
       "edits": [
         {
           "file": "tools/cache-budget/src/lib.rs",
-          "from": "            WindowSource::Ran(prior) => Window::SinceThatWorkflowLastRan {\n                workflow: declaration.source.clone(),\n                sha: prior.sha.clone(),\n                at: prior.started_at.clone(),\n            },",
+          "from": "            WindowSource::Ran(prior) => Window::SinceThatArchiveWasSaved {\n                workflow: declaration.source.clone(),\n                step: declaration.step.clone(),\n                sha: prior.sha.clone(),\n                at: prior.started_at.clone(),\n            },",
           "to": "            WindowSource::Ran(prior) => Window::ThisPush {\n                start: push.clone(),\n                why: prior.sha.clone(),\n            },"
         }
       ],
       "expect_red": [
-        "every_declared_key_is_judged_over_its_own_workflow_history",
-        "a_key_is_asked_about_the_interval_its_own_workflow_could_have_seen",
+        "every_declared_key_is_judged_over_its_own_archives_history",
+        "a_key_is_asked_about_the_interval_its_own_archive_could_have_seen",
         "a_cache_rebuilt_after_its_lockfile_moved_outside_this_push_is_not_a_defect"
       ]
     },
     {
-      "name": "a-failed-run-saved-nothing-so-it-bounds-no-interval",
-      "why": "R1178 — `actions/cache` does not save from a failed job, so a red run left no archive behind. Starting a key's interval at one would begin it AFTER a change no archive ever absorbed, and the next miss would be refused for a dependency bump that really did happen",
+      "name": "a-run-that-wrote-no-archive-bounds-the-interval-anyway",
+      "why": "R1207 REPLACED THE INJECTION THAT STOOD HERE, because its premise was measured and found false. It read `a-failed-run-saved-nothing-so-it-bounds-no-interval` and aimed at the `conclusion == success` filter — but a run's conclusion is a fact about every job in it, and a failed run routinely contains cache jobs that finished and wrote their archives: 122 such saves inside the 19 red runs of this repository's newest hundred. What decides is the save step, and this is the injection that says so — with every run read as having written every archive, a bound is taken from a moment nothing was observed at, which starts the interval too LATE and refuses a miss a real dependency bump explains",
       "edits": [
         {
           "file": "tools/cache-budget/src/lib.rs",
-          "from": "        if row.conclusion.as_deref() != Some(\"success\") {",
-          "to": "        if false {"
+          "from": "    let wanted = format!(\"{SAVE_STEP_PREFIX}{step}\");\n    let mut saved = false;",
+          "to": "    let wanted = format!(\"{SAVE_STEP_PREFIX}{step}\");\n    let mut saved = true;"
         }
       ],
-      "expect_red": ["a_failed_run_saved_nothing_and_does_not_bound_the_interval"]
+      "expect_red": [
+        "a_failed_run_that_wrote_the_archive_bounds_the_interval_and_a_skipped_save_does_not",
+        "a_run_that_wrote_no_archive_does_not_bound_the_interval"
+      ]
+    },
+    {
+      "name": "a-truncated-jobs-page-is-read-as-a-run-that-saved-nothing",
+      "why": "R1207 — 'I was not sent that job' and 'that job did not save' are different answers, and folding the first into the second widens every interval it bounds. GitHub's `total_count` is the only thing in the answer that can catch a page that stopped early, which is the same class of silence `an_answer_that_stops_early_is_unjudged_rather_than_a_repository_that_fits` already pays for on the cache endpoint",
+      "edits": [
+        {
+          "file": "tools/cache-budget/src/lib.rs",
+          "from": "    if page.total_count > page.jobs.len() {",
+          "to": "    if false {"
+        }
+      ],
+      "expect_red": ["a_truncated_jobs_page_is_a_refusal_rather_than_a_run_that_saved_nothing"]
+    },
+    {
+      "name": "a-completed-job-that-sent-no-steps-is-read-as-one-that-saved-nothing",
+      "why": "R1207 — the other door into the same widening. A job GitHub has not started legitimately carries no step list; a job that says it COMPLETED and carries none is an answer this gate cannot use, and reading it as 'no' is a well-formed lie in the lenient direction — which is exactly what a renamed `steps` field would arrive as",
+      "edits": [
+        {
+          "file": "tools/cache-budget/src/lib.rs",
+          "from": "        let Some(steps) = job.steps.as_ref() else {\n            if job.status == \"completed\" {",
+          "to": "        let Some(steps) = job.steps.as_ref() else {\n            if false {"
+        }
+      ],
+      "expect_red": ["an_answer_about_a_runs_jobs_this_gate_cannot_read_is_a_refusal"]
     },
     {
       "name": "the-run-being-judged-cannot-bound-its-own-interval",

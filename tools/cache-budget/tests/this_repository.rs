@@ -63,6 +63,10 @@ fn declaration(owner: &str, prefix: &str, paths: &[&str]) -> CacheDeclaration {
         restore_keys: vec![prefix.to_string()],
         paths: paths.iter().map(|path| path.to_string()).collect(),
         hashed: vec!["**/Cargo.lock".to_string()],
+        // This gate asks what a cache HOLDS; the step name is what joins a
+        // declaration to the run that saved it (R1207), and it is distinct per
+        // prefix here for the same reason the prefix is.
+        step: format!("Cache {prefix}"),
     }
 }
 
@@ -700,18 +704,21 @@ fn a_cache_is_declared_in_a_workflow_that_does_not_run_on_every_push() {
     );
 }
 
-/// Every key this repository declares is judged over ITS OWN workflow's history.
+/// Every key this repository declares is judged over ITS OWN archive's history.
 ///
 /// THE WIRING, OVER THE REAL DECLARATIONS. `windows_asked` is pure and both of its
 /// answers are injected, so this drives it with the nine keys the files actually
 /// declare and a recording resolver: what it proves is that the interval each key
-/// carries names the workflow that key is written in, and that the gate asks about
-/// a workflow ONCE however many keys it declares.
+/// carries names the workflow AND THE CACHE STEP that key is written as, and that
+/// the gate asks about a given cache ONCE however many times it is declared.
 ///
-/// A gate that went back to one interval for the whole run would pass every case
-/// in `law.rs` that builds its own declarations, and fail here.
+/// R1207 NARROWED WHAT "ITS OWN" MEANS. It used to be the workflow's history, so
+/// nine keys in two files carried two intervals; the bound is now the run that
+/// WROTE that key's archive, and two caches in one file are routinely written at
+/// different commits. A gate that went back to one interval per workflow would
+/// pass every case in `law.rs` that builds its own declarations, and fail here.
 #[test]
-fn every_declared_key_is_judged_over_its_own_workflow_history() {
+fn every_declared_key_is_judged_over_its_own_archives_history() {
     let root = repository_root();
     let declared = ci_plan::workflow_cache_declarations(&root);
     let sources: BTreeSet<&str> = declared
@@ -725,14 +732,15 @@ fn every_declared_key_is_judged_over_its_own_workflow_history() {
          per-key interval from a per-run one: {sources:?}"
     );
 
-    let mut asked_about: Vec<String> = Vec::new();
+    let mut asked_about: Vec<(String, String)> = Vec::new();
     let asked = windows_asked(
         &declared,
         &RangeStart::ParentOfHead("not a push — this suite is not a runner"),
-        |workflow| {
-            asked_about.push(workflow.to_string());
+        |workflow, step| {
+            asked_about.push((workflow.to_string(), step.to_string()));
             Ok(WindowSource::Ran(PriorRun {
-                sha: format!("{workflow}'s last run"),
+                id: 1,
+                sha: format!("the run that last wrote `{step}`"),
                 started_at: "2026-08-12T14:44:58Z".to_string(),
             }))
         },
@@ -746,16 +754,29 @@ fn every_declared_key_is_judged_over_its_own_workflow_history() {
     assert_eq!(
         asked_about
             .iter()
-            .map(String::as_str)
+            .map(|(workflow, _)| workflow.as_str())
             .collect::<BTreeSet<_>>(),
         sources,
         "each workflow declaring a key is asked about, and only those"
     );
+    // ONE QUESTION PER CACHE SINCE R1207, not per workflow. The bound is the run
+    // that WROTE that key's archive, and two caches in one file are routinely
+    // written at different commits — so the count this asserts is the number of
+    // distinct (workflow, step) pairs among the keys that hash something.
+    let pairs: BTreeSet<(&str, &str)> = declared
+        .iter()
+        .filter(|cache| !cache.hashed.is_empty())
+        .map(|cache| (cache.source.as_str(), cache.step.as_str()))
+        .collect();
+    assert!(
+        pairs.len() > sources.len(),
+        "this file could not tell a per-cache interval from a per-workflow one \
+         unless some workflow declares more than one: {pairs:?}"
+    );
     assert_eq!(
         asked_about.len(),
-        sources.len(),
-        "and asked ONCE — nine keys in two files is two questions, not nine: \
-         {asked_about:?}"
+        pairs.len(),
+        "and each asked ONCE: {asked_about:?}"
     );
     for cache in declared.iter().filter(|cache| !cache.hashed.is_empty()) {
         let carried = asked
@@ -763,11 +784,18 @@ fn every_declared_key_is_judged_over_its_own_workflow_history() {
             .find(|it| it.prefix == cache.prefix)
             .unwrap_or_else(|| panic!("{} was asked about nothing", cache.prefix));
         match &carried.over {
-            Window::SinceThatWorkflowLastRan { workflow, .. } => assert_eq!(
-                workflow, &cache.source,
-                "`{}` is judged over the history of the workflow that declares it",
-                cache.prefix
-            ),
+            Window::SinceThatArchiveWasSaved { workflow, step, .. } => {
+                assert_eq!(
+                    workflow, &cache.source,
+                    "`{}` is judged over the history of the workflow that declares it",
+                    cache.prefix
+                );
+                assert_eq!(
+                    step, &cache.step,
+                    "`{}` is judged over the history of ITS OWN archive, not a sibling's",
+                    cache.prefix
+                );
+            }
             other => panic!(
                 "`{}` fell back to the push range with an answer available: {other:?}",
                 cache.prefix

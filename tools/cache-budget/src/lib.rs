@@ -242,67 +242,80 @@ struct RunsPage {
     workflow_runs: Vec<RunRow>,
 }
 
-/// One run in that page — the four fields this gate reads of the sixty GitHub
+/// One run in that page — the three fields this gate reads of the sixty GitHub
 /// sends.
 ///
-/// `conclusion` IS AN `Option` BECAUSE GITHUB SENDS `null` FOR A RUN STILL IN
-/// FLIGHT, and that is exactly the row this gate must not accept: a run that has
-/// not finished has not saved a cache, so it cannot bound the interval since one
-/// was last asked for. Reading it as a `String` would refuse the whole answer for
-/// containing an in-progress run, which is what the answer contains whenever CI
-/// is busy.
+/// `conclusion` IS NOT AMONG THEM SINCE R1207, and its absence is the whole of
+/// this round. A run's conclusion is not evidence about an archive: what writes
+/// one is the cache step's own `Post …`, which lives in a job and has a
+/// conclusion of its own. A run can fail with that step long since finished —
+/// measured on this repository's own history at 122 saves inside 19 red runs of
+/// the newest hundred — and a run can conclude success with the declaring job
+/// skipped. The id is here for the same reason: it is how the jobs endpoint,
+/// which does carry that evidence, is addressed.
 #[derive(serde::Deserialize)]
 struct RunRow {
+    id: u64,
     head_sha: String,
     run_started_at: String,
-    conclusion: Option<String>,
 }
 
-/// A run that came before this one — the last moment one of its workflow's keys
-/// was asked for.
+/// A run that came before this one — a candidate for the last moment one of its
+/// workflow's archives was written.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PriorRun {
+    /// GitHub's id for it, which is what the jobs endpoint is addressed by.
+    pub id: u64,
     /// The commit it ran at, in full.
     pub sha: String,
     /// When it started, in the runs endpoint's own spelling.
     pub started_at: String,
 }
 
-/// The newest run of one workflow that could have left the archive this run
-/// failed to hit — read off GitHub's own answer.
+/// Every run of one workflow that could have left the archive this run failed to
+/// hit, newest first — read off GitHub's own answer.
 ///
-/// THREE CONDITIONS, AND EVERY ONE OF THEM IS A CASE THIS REPOSITORY REALLY
-/// PRODUCED:
+/// TWO CONDITIONS, AND BOTH ARE CASES THIS REPOSITORY REALLY PRODUCED:
 ///
-///   - `conclusion == "success"`. `actions/cache` does not save from a failed
-///     job, so a red run left nothing behind and naming it would start the
-///     interval after a change that no archive ever absorbed. The recording in
-///     `tests/actions-workflow-runs.json` has such a run as its NEWEST row.
 ///   - started strictly before this run. Two workflows triggered by one push
 ///     start in the same second — measured: `mnemosyne-validate` and
 ///     `evidence-replay` both report `2026-08-13T11:24:58Z` for the push that
 ///     made this reader necessary.
-///   - at a commit other than the one being judged. That last one is
-///     load-bearing rather than defensive: the run of THIS commit is the run
-///     whose miss is being judged, and an interval of `HEAD..HEAD` answers
-///     "nothing moved" for every key in the repository — the narrow-range
-///     failure R1095 already paid for once.
+///   - at a commit other than the one being judged. That one is load-bearing
+///     rather than defensive: the run of THIS commit is the run whose miss is
+///     being judged, and an interval of `HEAD..HEAD` answers "nothing moved" for
+///     every key in the repository — the narrow-range failure R1095 already paid
+///     for once.
 ///
-/// NEWEST BY THE STAMP AND NOT BY POSITION. GitHub does send them newest first,
-/// but that is an ordering this gate would be trusting silently; the stamps are
-/// one fixed-width UTC spelling from a single endpoint, so the maximum of them is
-/// an answer this program can defend.
+/// THE THIRD CONDITION USED TO BE `conclusion == "success"` AND IT WAS THE WRONG
+/// QUESTION. A run's conclusion is a fact about every job in it; what leaves an
+/// archive is one step of one job. R1207 measured the disagreement over this
+/// repository's newest hundred runs and nine declarations: 134 of the 900 bounds
+/// were OLDER than the truth, and in 16 more this gate had no bound at all where
+/// the step had one. Older means WIDER, and a wider interval excuses a miss whose
+/// inputs moved before the archive was actually last written — leniency, in a
+/// gate whose whole job is to notice.
 ///
-/// `Ok(None)` IS A READING AND NOT A FAILURE: a workflow whose newest page holds
-/// no qualifying run is one this gate cannot bound an interval with, and the
-/// caller narrows to the push range and prints why. An unreadable answer is the
-/// other thing entirely, and it is an `Err`.
-pub fn last_run_in(
+/// So the conclusion is gone from here and the evidence is asked of
+/// [`saved_the_archive`], one run at a time, by the caller that can pay for the
+/// call. Returning CANDIDATES rather than one answer is what lets that caller
+/// stop at the first run that really saved.
+///
+/// NEWEST FIRST BY THE STAMP AND NOT BY POSITION. GitHub does send them newest
+/// first, but that is an ordering this gate would be trusting silently; the
+/// stamps are one fixed-width UTC spelling from a single endpoint, so sorting
+/// them is an answer this program can defend.
+///
+/// An EMPTY LIST is a reading and not a failure: a workflow whose newest page
+/// holds no qualifying run is one this gate cannot bound an interval with, and
+/// the caller narrows to the push range and prints why. An unreadable answer is
+/// the other thing entirely, and it is an `Err`.
+pub fn candidate_runs(
     workflow: &str,
     body: &str,
     started_before: &str,
     not_at: &str,
-) -> Result<Option<PriorRun>, String> {
+) -> Result<Vec<PriorRun>, String> {
     if body.trim().is_empty() {
         return Err(format!(
             "`gh` printed nothing at all about the runs of `{workflow}`, which is not the \
@@ -318,11 +331,8 @@ pub fn last_run_in(
              that failed, not a workflow nothing has ever run"
         )
     })?;
-    let mut newest: Option<PriorRun> = None;
+    let mut candidates: Vec<PriorRun> = Vec::new();
     for row in page.workflow_runs {
-        if row.conclusion.as_deref() != Some("success") {
-            continue;
-        }
         let started_at = row.run_started_at.trim();
         let sha = row.head_sha.trim();
         if sha.is_empty() || started_at.is_empty() {
@@ -335,17 +345,129 @@ pub fn last_run_in(
         if to_the_second(started_at) >= to_the_second(started_before) || sha == not_at {
             continue;
         }
-        if newest
-            .as_ref()
-            .is_none_or(|held| to_the_second(&held.started_at) < to_the_second(started_at))
-        {
-            newest = Some(PriorRun {
-                sha: sha.to_string(),
-                started_at: started_at.to_string(),
-            });
-        }
+        candidates.push(PriorRun {
+            id: row.id,
+            sha: sha.to_string(),
+            started_at: started_at.to_string(),
+        });
     }
-    Ok(newest)
+    candidates.sort_by(|left, right| {
+        to_the_second(&right.started_at)
+            .cmp(to_the_second(&left.started_at))
+            .then_with(|| right.id.cmp(&left.id))
+    });
+    Ok(candidates)
+}
+
+/// What this gate asks GitHub about the jobs of ONE run.
+///
+/// A PAGE SIZE THAT CANNOT TRUNCATE THIS REPOSITORY'S ANSWER: `mnemosyne-validate`
+/// has nine jobs and GitHub's maximum here is a hundred. A truncated page would
+/// answer "that step did not save" about a job it never sent, which is the
+/// silent-lenient direction this whole round exists to remove — so the reader
+/// below refuses a page that says there are more jobs than it was handed.
+pub fn run_jobs_query(run_id: u64) -> Vec<String> {
+    vec![
+        "api".to_string(),
+        format!("repos/{{owner}}/{{repo}}/actions/runs/{run_id}/jobs?per_page=100"),
+    ]
+}
+
+/// One page of GitHub's answer about a run's jobs.
+#[derive(serde::Deserialize)]
+struct JobsPage {
+    total_count: usize,
+    jobs: Vec<JobRow>,
+}
+
+/// One job in that page — its steps, which is where the archive's fate is.
+///
+/// `steps` IS OPTIONAL IN THE ANSWER AND REQUIRED IN A COMPLETED JOB, and those
+/// are two different facts that one `#[serde(default)]` would fold together. A
+/// job GitHub has not started sends no step list and legitimately says nothing
+/// about any archive; a COMPLETED job that sends none is an answer this gate
+/// cannot use, and defaulting it to empty would read as "that step did not save"
+/// — the silent-lenient direction, arriving through a renamed field.
+#[derive(serde::Deserialize)]
+struct JobRow {
+    name: String,
+    status: String,
+    steps: Option<Vec<StepRow>>,
+}
+
+/// One step of a job.
+///
+/// `conclusion` IS AN `Option` BECAUSE GITHUB SENDS `null` FOR A STEP THAT HAS
+/// NOT FINISHED, and that is exactly the step this gate must not read as a save:
+/// a run still in flight has an archive it may or may not end up writing.
+#[derive(serde::Deserialize)]
+struct StepRow {
+    name: String,
+    conclusion: Option<String>,
+}
+
+/// The prefix GitHub gives the step that WRITES an `actions/cache` archive.
+///
+/// The action declares a post-step, and GitHub names it after the step that
+/// declared it. That naming is the join, which is why `ci-plan` refuses a cache
+/// step with no name of its own.
+pub const SAVE_STEP_PREFIX: &str = "Post ";
+
+/// Whether one run wrote the archive of ONE declared cache, read off GitHub's
+/// answer about that run's jobs.
+///
+/// THE EVIDENCE IS THE STEP'S OWN CONCLUSION and nothing above it. The job may
+/// have failed after saving, the run may have failed because a different job
+/// did, and neither changes what is in the cache — R1207 measured 122 such saves
+/// inside the 19 red runs of the newest hundred.
+///
+/// A TRUNCATED PAGE IS A REFUSAL. "I was not sent that job" and "that job did not
+/// save" are different answers, and folding the first into the second is the
+/// shape this repository has paid for repeatedly: a check that could not look
+/// reporting the answer of one that looked and found nothing.
+pub fn saved_the_archive(run: &PriorRun, step: &str, body: &str) -> Result<bool, String> {
+    let id = run.id;
+    if body.trim().is_empty() {
+        return Err(format!(
+            "`gh` printed nothing at all about the jobs of run {id}, which is not the answer \
+             a run with no jobs gives — that one arrives as a page carrying no rows"
+        ));
+    }
+    let page: JobsPage = serde_json::from_str(body).map_err(|why| {
+        format!(
+            "GitHub's answer about the jobs of run {id} is not a shape this gate can read \
+             ({why}) — it needs `total_count` and `jobs`, and in each job a `steps` list \
+             whose entries carry a `name` and a `conclusion`"
+        )
+    })?;
+    if page.total_count > page.jobs.len() {
+        return Err(format!(
+            "GitHub says run {id} has {} job(s) and sent {} — an answer this gate cannot \
+             complete says nothing about whether `{step}` saved, and reading it as `no` \
+             would widen every interval it bounds",
+            page.total_count,
+            page.jobs.len()
+        ));
+    }
+    let wanted = format!("{SAVE_STEP_PREFIX}{step}");
+    let mut saved = false;
+    for job in &page.jobs {
+        let Some(steps) = job.steps.as_ref() else {
+            if job.status == "completed" {
+                return Err(format!(
+                    "GitHub sent no step list for job `{}` of run {id}, which it says is \
+                     completed — so whether `{step}` saved is unknown rather than no, and \
+                     reading it as no would widen the interval this run bounds",
+                    job.name
+                ));
+            }
+            continue;
+        };
+        saved |= steps.iter().any(|step| {
+            step.name.trim() == wanted && step.conclusion.as_deref() == Some("success")
+        });
+    }
+    Ok(saved)
 }
 
 /// Why a page of the answer could not be read, in the reader's words and this
@@ -840,11 +962,19 @@ pub struct Asked {
 /// anything asked for that key at all.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Window {
-    /// Since the workflow declaring the key last ran successfully at another
-    /// commit — the last moment the key was asked for.
-    SinceThatWorkflowLastRan {
+    /// Since the run that last WROTE this key's archive, at another commit — the
+    /// last moment its inputs were observed.
+    ///
+    /// R1207 MOVED THIS FROM THE RUN TO THE STEP. It used to mean "since the
+    /// declaring workflow last CONCLUDED success", which is a fact about every
+    /// job in that run and not about this archive; the two disagreed on 134 of
+    /// 900 measured bounds, always in the direction that starts the interval too
+    /// early and excuses too much.
+    SinceThatArchiveWasSaved {
         /// The workflow file, as `ci-plan` spells it.
         workflow: String,
+        /// The cache step whose `Post …` wrote it, as the workflow names it.
+        step: String,
         /// The commit that run was of.
         sha: String,
         /// When it started, in the runs endpoint's spelling.
@@ -870,7 +1000,7 @@ impl Window {
     /// The revision to diff from.
     pub fn rev(&self) -> &str {
         match self {
-            Window::SinceThatWorkflowLastRan { sha, .. } => sha,
+            Window::SinceThatArchiveWasSaved { sha, .. } => sha,
             Window::ThisPush { start, .. } => start.rev(),
         }
     }
@@ -878,8 +1008,14 @@ impl Window {
     /// One line naming the interval and where it came from.
     pub fn why(&self) -> String {
         match self {
-            Window::SinceThatWorkflowLastRan { workflow, sha, at } => format!(
-                "over {}..HEAD, since {workflow} last ran successfully at another commit ({at})",
+            Window::SinceThatArchiveWasSaved {
+                workflow,
+                step,
+                sha,
+                at,
+            } => format!(
+                "over {}..HEAD, since `{step}` in {workflow} last wrote its archive at another \
+                 commit ({at})",
                 &sha[..7.min(sha.len())]
             ),
             Window::ThisPush { start, why } => format!("{} — {why}", start.why()),
@@ -911,9 +1047,13 @@ pub enum WindowSource {
 /// found unreadable: this reasoning lived in `main.rs`, where nothing could ask
 /// it anything, and it was wrong in a way that only a red `main` reported.
 ///
-/// ONE QUESTION PER WORKFLOW, not per key. Two keys declared in one file share an
-/// interval, and asking twice would spend a network round trip to be told the
-/// same thing — the answers are held as they arrive.
+/// ONE QUESTION PER DECLARATION SINCE R1207, not per workflow. Two keys declared
+/// in one file used to share an interval, because the bound was the workflow's
+/// last successful RUN; the bound is now the last run that wrote THAT key's
+/// archive, and two keys in one file are routinely written at different commits —
+/// a job can be skipped, or fail before its post step, while its sibling saves.
+/// The answers are still held as they arrive, keyed by the pair, so a repeated
+/// question costs nothing.
 ///
 /// FIRST DECLARATION OF A PREFIX WINS, which is the same choice [`Row`] makes for
 /// `hashed`: one key is one cache, and a second declaration of it naming
@@ -922,28 +1062,28 @@ pub enum WindowSource {
 pub fn windows_asked(
     declared: &[CacheDeclaration],
     push: &RangeStart,
-    mut last_run_of: impl FnMut(&str) -> Result<WindowSource, String>,
+    mut last_save_of: impl FnMut(&str, &str) -> Result<WindowSource, String>,
     mut moved_since: impl FnMut(&str, &[String]) -> Result<bool, String>,
 ) -> Result<Vec<Asked>, String> {
     let mut out: Vec<Asked> = Vec::new();
     let mut seen: BTreeSet<&str> = BTreeSet::new();
-    let mut source_of: BTreeMap<&str, WindowSource> = BTreeMap::new();
+    let mut source_of: BTreeMap<(&str, &str), WindowSource> = BTreeMap::new();
     for declaration in declared {
         if declaration.hashed.is_empty() || !seen.insert(declaration.prefix.as_str()) {
             continue;
         }
-        let source = match source_of.get(declaration.source.as_str()) {
+        let at = (declaration.source.as_str(), declaration.step.as_str());
+        let source = match source_of.get(&at) {
             Some(source) => source,
             None => {
-                let source = last_run_of(&declaration.source)?;
-                source_of
-                    .entry(declaration.source.as_str())
-                    .or_insert(source)
+                let source = last_save_of(&declaration.source, &declaration.step)?;
+                source_of.entry(at).or_insert(source)
             }
         };
         let over = match source {
-            WindowSource::Ran(prior) => Window::SinceThatWorkflowLastRan {
+            WindowSource::Ran(prior) => Window::SinceThatArchiveWasSaved {
                 workflow: declaration.source.clone(),
+                step: declaration.step.clone(),
                 sha: prior.sha.clone(),
                 at: prior.started_at.clone(),
             },

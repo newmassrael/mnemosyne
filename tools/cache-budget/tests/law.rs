@@ -96,6 +96,11 @@ fn declaration(owner: &str, prefix: &str, paths: &[&str]) -> CacheDeclaration {
         restore_keys: vec![prefix.to_string()],
         paths: paths.iter().map(|path| path.to_string()).collect(),
         hashed: vec!["**/Cargo.lock".to_string()],
+        // The step name is what joins a declaration to the run that SAVED its
+        // archive (R1207). Derived from the prefix here so that two fixture
+        // declarations never share it, which is the one property this file's
+        // cases depend on.
+        step: format!("Cache {prefix}"),
     }
 }
 
@@ -397,6 +402,10 @@ fn a_cache_built_because_this_commit_moved_what_the_key_hashes_is_not_refused() 
 /// repair below is about.
 const LAST_RUN: &str = "153d8dd18e2d4b6a2f4e9c0e5b2f7a1c9d3e8f04";
 const LAST_RAN_AT: &str = "2026-08-12T14:44:58Z";
+/// GitHub's id for that run — what the jobs endpoint is addressed by, and the
+/// half of a bound that only became load-bearing when R1207 made the evidence a
+/// step's conclusion rather than a run's.
+const LAST_RUN_ID: u64 = 31_432_163_172;
 
 /// The cache key of a workflow that does not run on every push.
 const FILTERED: &str = "Linux-cargo-replay-";
@@ -428,7 +437,7 @@ fn moved_only_since_that_workflow_ran(rev: &str, _globs: &[String]) -> Result<bo
 /// the key was asked about, so a repair that stopped asking would show up as this
 /// case passing for the wrong reason.
 #[test]
-fn a_key_is_asked_about_the_interval_its_own_workflow_could_have_seen() {
+fn a_key_is_asked_about_the_interval_its_own_archive_could_have_seen() {
     let declared = [declaration("replay", FILTERED, REGISTRY)];
     let started_at = "2026-08-13T11:24:58Z";
     let storage = [
@@ -449,8 +458,9 @@ fn a_key_is_asked_about_the_interval_its_own_workflow_could_have_seen() {
     let over_its_own_history = windows_asked(
         &declared,
         &PUSH_RANGE,
-        |_| {
+        |_, _| {
             Ok(WindowSource::Ran(PriorRun {
+                id: LAST_RUN_ID,
                 sha: LAST_RUN.to_string(),
                 started_at: LAST_RAN_AT.to_string(),
             }))
@@ -473,7 +483,7 @@ fn a_key_is_asked_about_the_interval_its_own_workflow_could_have_seen() {
     let over_the_push_alone = windows_asked(
         &declared,
         &PUSH_RANGE,
-        |_| {
+        |_, _| {
             Ok(WindowSource::Unavailable(
                 "this fixture's control".to_string(),
             ))
@@ -498,24 +508,35 @@ fn a_key_is_asked_about_the_interval_its_own_workflow_could_have_seen() {
     );
 }
 
-/// Two keys written in one workflow ask about its history once.
+/// Two keys written in one workflow are asked about SEPARATELY, and each once.
 ///
-/// THE ANSWER COSTS A NETWORK ROUND TRIP. An interval belongs to the workflow that
-/// declares a key, so every key in one file shares it; asking per key would spend
-/// eight calls to be told the same thing eight times.
+/// R1207 CHANGED THIS TEST'S PREMISE, and the old one is worth stating because it
+/// was wrong in a measurable way. It used to assert that ONE question per
+/// WORKFLOW was enough, on the grounds that every key in a file shares an
+/// interval — true only while the bound was the run's own conclusion. What bounds
+/// an interval is the run that WROTE that key's archive, and two caches in one
+/// workflow are routinely written at different commits: a job can be skipped, or
+/// fail before its post step, while its sibling saves. Over this repository's
+/// newest hundred runs, the nine declarations disagreed with the run-level answer
+/// on 134 of 900 bounds.
+///
+/// THE ROUND TRIP IS STILL PAID ONCE PER PAIR, which is the second half: a key
+/// declared twice asks nothing more.
 #[test]
-fn two_keys_in_one_workflow_ask_about_its_history_once() {
+fn two_keys_in_one_workflow_are_asked_about_separately_and_each_once() {
     let declared = [
         declaration("one", "Linux-one-", REGISTRY),
         declaration("two", "Linux-two-", REGISTRY),
+        declaration("one-again", "Linux-one-", REGISTRY),
     ];
-    let mut asked_about: Vec<String> = Vec::new();
+    let mut asked_about: Vec<(String, String)> = Vec::new();
     let out = windows_asked(
         &declared,
         &PUSH_RANGE,
-        |workflow| {
-            asked_about.push(workflow.to_string());
+        |workflow, step| {
+            asked_about.push((workflow.to_string(), step.to_string()));
             Ok(WindowSource::Ran(PriorRun {
+                id: LAST_RUN_ID,
                 sha: LAST_RUN.to_string(),
                 started_at: LAST_RAN_AT.to_string(),
             }))
@@ -523,11 +544,18 @@ fn two_keys_in_one_workflow_ask_about_its_history_once() {
         |_, _| Ok(false),
     )
     .expect("both sides answered");
-    assert_eq!(asked_about, vec![WORKFLOW.to_string()]);
+    assert_eq!(
+        asked_about,
+        vec![
+            (WORKFLOW.to_string(), "Cache Linux-one-".to_string()),
+            (WORKFLOW.to_string(), "Cache Linux-two-".to_string()),
+        ],
+        "one question per cache, and the prefix declared twice asks nothing more"
+    );
     assert_eq!(
         out.iter().map(|it| it.prefix.as_str()).collect::<Vec<_>>(),
         vec!["Linux-one-", "Linux-two-"],
-        "and both keys still carry the interval that answer bought"
+        "and both keys still carry the interval their answer bought"
     );
 }
 
@@ -544,7 +572,7 @@ fn a_key_that_hashes_nothing_is_asked_nothing() {
     let out = windows_asked(
         &declared,
         &PUSH_RANGE,
-        |_| panic!("a key hashing nothing has no interval worth a network call"),
+        |_, _| panic!("a key hashing nothing has no interval worth a network call"),
         |_, _| panic!("and nothing to ask git about"),
     )
     .expect("both sides answered");
@@ -570,8 +598,9 @@ fn the_report_says_which_interval_each_key_answered_over() {
     let asked = vec![
         Asked {
             prefix: "Linux-one-".to_string(),
-            over: Window::SinceThatWorkflowLastRan {
+            over: Window::SinceThatArchiveWasSaved {
                 workflow: WORKFLOW.to_string(),
+                step: "Cache Linux-one-".to_string(),
                 sha: LAST_RUN.to_string(),
                 at: LAST_RAN_AT.to_string(),
             },
@@ -594,8 +623,13 @@ fn the_report_says_which_interval_each_key_answered_over() {
         "the count, and what it is out of:\n{printed}"
     );
     assert!(
-        printed.contains("153d8dd..HEAD, since .github/workflows/w.yml last ran successfully"),
-        "the interval a key was excused over, named with the workflow whose it is:\n{printed}"
+        printed.contains(
+            "153d8dd..HEAD, since `Cache Linux-one-` in .github/workflows/w.yml last wrote \
+             its archive"
+        ),
+        "the interval a key was excused over, named with the CACHE whose it is — R1207 \
+         moved that from the workflow, because two caches in one file are written at \
+         different commits:\n{printed}"
     );
     assert!(
         printed.contains("Linux-one- MOVED"),

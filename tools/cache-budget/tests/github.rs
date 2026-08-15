@@ -21,7 +21,9 @@
 //! smaller is the direction that passes a budget. `total_count` is the only
 //! thing in the answer that can catch it, and the projection threw it away.
 
-use cache_budget::{caches_in, last_run_in, run_started_in, workflow_runs_query};
+use cache_budget::{
+    caches_in, candidate_runs, run_started_in, saved_the_archive, workflow_runs_query, PriorRun,
+};
 
 /// This repository's cache storage, as GitHub answered on 2026-08-10.
 const ONE_PAGE: &str = include_str!("actions-caches.one-page.json");
@@ -278,10 +280,40 @@ fn a_run_answer_that_never_arrives_is_a_refusal() {
 /// the two.
 ///
 /// AND ITS NEWEST ROW IS A REAL FAILURE — run 31695396997, the run this reader
-/// exists because of. `actions/cache` does not save from a failed job, so that row
-/// must not bound an interval; a recording in which every run had succeeded would
-/// pass a reader that never looked at `conclusion`.
+/// exists because of. R1178 read that as "saved nothing" and excluded it; R1207
+/// measured the claim and it is false. A run's conclusion is a fact about every
+/// job in it, and a failed run routinely contains cache jobs that finished and
+/// wrote their archives — 122 such saves inside the 19 red runs of this
+/// repository's newest hundred. So `conclusion` is no longer read here at all,
+/// and what decides is `actions-run-jobs.json` below.
 const RUNS: &str = include_str!("actions-workflow-runs.json");
+
+/// What GitHub answered about the JOBS of one run, byte for byte.
+///
+/// UNABRIDGED, AND ITS SHA256 IS `5877bc0aacab2d42c7b36fd1f08400e7e82f06d40374dd17e8fea35524bd3ebe`
+/// — the answer to `gh api "repos/{owner}/{repo}/actions/runs/31782330835/jobs\
+/// ?per_page=100"` with nothing removed, because every field this reader is
+/// wrong about is one it would otherwise have invented.
+///
+/// THIS ONE RECORDING CARRIES BOTH HALVES OF R1207's LAW, which is why it is the
+/// one kept. Run 31782330835 CONCLUDED FAILURE, and inside it:
+///
+///   - seven cache jobs finished and their `Post Cache …` steps concluded
+///     `success` — archives really written, at a commit R1178's reader passed
+///     over, which is the leniency this round removes;
+///   - the job that failed (`every test compiled is one CI runs`) has its two
+///     `Post Cache …` steps at `skipped` — archives NOT written, in the same run.
+///
+/// So the answer differs BETWEEN KEYS OF ONE RUN, and no reading at run level can
+/// be right about both. That is the measurement that made the bound per cache.
+const JOBS: &str = include_str!("actions-run-jobs.json");
+
+/// The run that recording is of.
+const JOBS_RUN: u64 = 31_782_330_835;
+
+/// A cache whose archive that run really wrote, and one whose it did not.
+const SAVED_STEP: &str = "Cache cargo";
+const SKIPPED_STEP: &str = "Cache cargo (unrun tests, cargo home)";
 
 /// The workflow that recording is of, and the two runs in it.
 const WORKFLOW: &str = ".github/workflows/mnemosyne-validate.yml";
@@ -299,62 +331,133 @@ const ELSEWHERE: &str = "0000000000000000000000000000000000000000";
 /// Late enough that both recorded runs are earlier than it.
 const LATER: &str = "2026-08-13T12:00:00Z";
 
-/// The same recording with its newest run reported as having SUCCEEDED.
-///
-/// THE CONTROL EVERY CASE BELOW NEEDS. With that row failed, three separate rules
-/// exclude it and a test asserting the answer cannot say which one did the work;
-/// flipping it makes each rule the only difference between two answers. `replacen`
-/// rather than `replace`, because the recording's other run really did succeed and
-/// rewriting both would model nothing.
-fn newest_run_succeeded() -> String {
-    let flipped = RUNS.replacen(
-        "\"conclusion\": \"failure\"",
-        "\"conclusion\": \"success\"",
-        1,
-    );
-    assert_ne!(
-        flipped, RUNS,
-        "the recording's newest row says `failure`, and every case below is built on it"
-    );
-    flipped
-}
-
-/// The recorded answer names the run that last left an archive.
+/// The recorded answer names every run that could have left an archive, newest
+/// first.
 ///
 /// THE QUESTION THIS ENDPOINT IS ASKED, and the answer that repairs run
 /// 31695396997: the interval a cache key can be judged over runs from the last
-/// time the workflow declaring it ran, not from the commits one push carried.
+/// time that key's archive was written, not from the commits one push carried.
+/// This endpoint narrows the candidates; the jobs endpoint decides among them.
 #[test]
-fn the_recorded_answer_names_the_run_that_last_left_an_archive() {
-    let prior = last_run_in(WORKFLOW, RUNS, THIS_RUN_STARTED, HEAD)
-        .expect("a real answer is one this gate can read")
-        .expect("and it holds a run this gate can bound an interval with");
-    assert_eq!(prior.sha, PRIOR);
-    assert_eq!(prior.started_at, PRIOR_STARTED);
+fn the_recorded_answer_names_every_run_that_could_have_left_an_archive() {
+    let both = candidate_runs(WORKFLOW, RUNS, LATER, ELSEWHERE)
+        .expect("a real answer is one this gate can read");
+    assert_eq!(
+        both.iter().map(|run| run.sha.as_str()).collect::<Vec<_>>(),
+        vec![HEAD, PRIOR],
+        "newest first, and the FAILED newest row is a candidate — R1207: its cache \
+         jobs may have written their archives before the run went red"
+    );
+    assert_eq!(
+        both[0].id, 31_695_396_997,
+        "with the id the jobs endpoint takes"
+    );
+    assert_eq!(both[1].started_at, PRIOR_STARTED);
+
+    let one = candidate_runs(WORKFLOW, RUNS, THIS_RUN_STARTED, HEAD)
+        .expect("a real answer is one this gate can read");
+    assert_eq!(
+        one.iter().map(|run| run.sha.as_str()).collect::<Vec<_>>(),
+        vec![PRIOR],
+        "and asked as the run of HEAD would ask, only the earlier one remains"
+    );
 }
 
-/// A failed run saved nothing, so it does not bound the interval.
+/// A FAILED run that wrote the archive bounds the interval, and a step that was
+/// skipped in that same run does not.
 ///
-/// NON-VACUOUS BY CONSTRUCTION: the only difference between the two answers below
-/// is the `conclusion` of one row, so the second one is what proves the field is
-/// read at all. Without it, a reader ignoring `conclusion` agrees with the case
-/// above — every other rule excludes that row too.
+/// THIS IS THE WHOLE OF R1207, AND ONE RECORDING PROVES BOTH HALVES. Run
+/// 31782330835 concluded FAILURE. Inside it `Post Cache cargo` concluded
+/// `success` — an archive really written at that commit, which R1178's reader
+/// passed over — while `Post Cache cargo (unrun tests, cargo home)`, in the job
+/// that failed, concluded `skipped`. Two keys, one run, opposite answers: no
+/// reading at run level can be right about both, and that is why the bound moved
+/// from the run to the step.
 #[test]
-fn a_failed_run_saved_nothing_and_does_not_bound_the_interval() {
-    let refused = last_run_in(WORKFLOW, RUNS, LATER, ELSEWHERE)
-        .expect("a real answer is readable")
-        .expect("the older run is still there to be named");
-    assert_eq!(
-        refused.sha, PRIOR,
-        "the newest run failed, so the one before it is what left an archive"
+fn a_failed_run_that_wrote_the_archive_bounds_the_interval_and_a_skipped_save_does_not() {
+    let run = PriorRun {
+        id: JOBS_RUN,
+        sha: HEAD.to_string(),
+        started_at: PRIOR_STARTED.to_string(),
+    };
+    assert!(
+        saved_the_archive(&run, SAVED_STEP, JOBS).expect("a real answer is readable"),
+        "`{SAVED_STEP}` wrote its archive in a run that concluded failure"
     );
-    let accepted = last_run_in(WORKFLOW, &newest_run_succeeded(), LATER, ELSEWHERE)
-        .expect("the same answer with that row green is readable")
-        .expect("and it names a run");
-    assert_eq!(
-        accepted.sha, HEAD,
-        "and with that one row green it is the newest — which is what makes the \
-         `conclusion` read load-bearing rather than decoration"
+    assert!(
+        !saved_the_archive(&run, SKIPPED_STEP, JOBS).expect("the same answer is readable"),
+        "`{SKIPPED_STEP}` did not, in the SAME run — which is what makes the \
+         per-step read load-bearing rather than decoration"
+    );
+    assert!(
+        !saved_the_archive(
+            &run,
+            "Cache cargo (a key this workflow does not declare)",
+            JOBS
+        )
+        .expect("readable"),
+        "and a step the run never held saved nothing"
+    );
+}
+
+/// A jobs page GitHub truncated is a refusal, not a run that saved nothing.
+///
+/// "I WAS NOT SENT THAT JOB" AND "THAT JOB DID NOT SAVE" ARE DIFFERENT ANSWERS,
+/// and folding the first into the second widens every interval it bounds — the
+/// silent-lenient direction this round exists to remove. `total_count` is the
+/// only thing in the answer that can catch it.
+#[test]
+fn a_truncated_jobs_page_is_a_refusal_rather_than_a_run_that_saved_nothing() {
+    let run = PriorRun {
+        id: JOBS_RUN,
+        sha: HEAD.to_string(),
+        started_at: PRIOR_STARTED.to_string(),
+    };
+    let claims_more = JOBS.replacen("\"total_count\":9", "\"total_count\":10", 1);
+    assert_ne!(claims_more, JOBS, "the recording really says nine");
+    let why = saved_the_archive(&run, SAVED_STEP, &claims_more)
+        .expect_err("a page that did not arrive whole has no verdict");
+    assert!(
+        why.contains("9") && why.contains("10"),
+        "and it says what it was promised and what it got: {why}"
+    );
+}
+
+/// An unreadable or absent answer about a run's jobs is a refusal that says so.
+#[test]
+fn an_answer_about_a_runs_jobs_this_gate_cannot_read_is_a_refusal() {
+    let run = PriorRun {
+        id: JOBS_RUN,
+        sha: HEAD.to_string(),
+        started_at: PRIOR_STARTED.to_string(),
+    };
+    let silent =
+        saved_the_archive(&run, SAVED_STEP, "  ").expect_err("silence is not a run with no jobs");
+    assert!(
+        silent.contains(&JOBS_RUN.to_string()),
+        "and it names the run it could not read: {silent}"
+    );
+    // A RENAMED `steps` IS THE DANGEROUS ONE, and it is why the field is an
+    // `Option` read against `status` rather than a `#[serde(default)]`: defaulted
+    // to empty it would answer "that step did not save" about every job, which is
+    // a well-formed lie in the widening direction.
+    let renamed = JOBS.replace("\"steps\":", "\"stages\":");
+    let why = saved_the_archive(&run, SAVED_STEP, &renamed)
+        .expect_err("a field GitHub renamed is not a run that saved nothing");
+    assert!(
+        why.contains("no step list") && why.contains("validate"),
+        "and it names the job it could not read: {why}"
+    );
+    // THE MIRROR, AND IT CANNOT COME FROM THE RECORDING: a completed run holds no
+    // queued job, so the state that legitimately carries no step list has to be
+    // written out. A job GitHub has not started says nothing about any archive,
+    // and answering "it did not save" is the right reading there — the refusal
+    // above is about a job that says it FINISHED and sent no steps.
+    let queued = "{\"total_count\":1,\"jobs\":[{\"name\":\"one this run has not started\",\
+                  \"status\":\"queued\"}]}";
+    assert!(
+        !saved_the_archive(&run, SAVED_STEP, queued).expect("a job that has not run is readable"),
+        "a queued job saved nothing, and saying so is not a refusal"
     );
 }
 
@@ -366,16 +469,18 @@ fn a_failed_run_saved_nothing_and_does_not_bound_the_interval() {
 /// once already, arriving by a different door.
 #[test]
 fn a_run_of_the_commit_being_judged_cannot_bound_its_own_interval() {
-    let green = newest_run_succeeded();
-    let excluded = last_run_in(WORKFLOW, &green, LATER, HEAD)
-        .expect("readable")
-        .expect("a run remains");
-    assert_eq!(excluded.sha, PRIOR, "the run of HEAD is passed over");
-    let included = last_run_in(WORKFLOW, &green, LATER, ELSEWHERE)
-        .expect("readable")
-        .expect("a run remains");
+    let excluded = candidate_runs(WORKFLOW, RUNS, LATER, HEAD).expect("readable");
     assert_eq!(
-        included.sha, HEAD,
+        excluded
+            .iter()
+            .map(|run| run.sha.as_str())
+            .collect::<Vec<_>>(),
+        vec![PRIOR],
+        "the run of HEAD is passed over"
+    );
+    let included = candidate_runs(WORKFLOW, RUNS, LATER, ELSEWHERE).expect("readable");
+    assert_eq!(
+        included[0].sha, HEAD,
         "and it is passed over for being HEAD's rather than for anything else"
     );
 }
@@ -390,16 +495,16 @@ fn a_run_of_the_commit_being_judged_cannot_bound_its_own_interval() {
 /// every question with `HEAD..HEAD`.
 #[test]
 fn a_run_that_started_in_the_same_second_is_not_an_earlier_run() {
-    let green = newest_run_succeeded();
-    let tied = last_run_in(WORKFLOW, &green, THIS_RUN_STARTED, ELSEWHERE)
-        .expect("readable")
-        .expect("a run remains");
-    assert_eq!(tied.sha, PRIOR, "the tie is not earlier");
-    let after = last_run_in(WORKFLOW, &green, "2026-08-13T11:24:59Z", ELSEWHERE)
-        .expect("readable")
-        .expect("a run remains");
+    let tied = candidate_runs(WORKFLOW, RUNS, THIS_RUN_STARTED, ELSEWHERE).expect("readable");
     assert_eq!(
-        after.sha, HEAD,
+        tied.iter().map(|run| run.sha.as_str()).collect::<Vec<_>>(),
+        vec![PRIOR],
+        "the tie is not earlier"
+    );
+    let after =
+        candidate_runs(WORKFLOW, RUNS, "2026-08-13T11:24:59Z", ELSEWHERE).expect("readable");
+    assert_eq!(
+        after[0].sha, HEAD,
         "and one second later it is earlier — which is what makes the comparison \
          strict rather than accidentally right"
     );
@@ -407,23 +512,22 @@ fn a_run_that_started_in_the_same_second_is_not_an_earlier_run() {
 
 /// A page carrying no run this gate can use is a READING, and not a refusal.
 ///
-/// A workflow that has never run, or whose newest page is all failures, is a
-/// repository this gate cannot bound an interval for — and the caller narrows to
-/// the push range and prints why. Refusing here would turn a first-ever run of a
-/// new workflow into a red `main`.
+/// A workflow that has never run is a repository this gate cannot bound an
+/// interval for — and the caller narrows to the push range and prints why.
+/// Refusing here would turn a first-ever run of a new workflow into a red `main`.
 #[test]
 fn a_page_with_no_usable_run_is_a_reading_rather_than_a_refusal() {
     let empty = "{\"total_count\":515,\"workflow_runs\":[]}";
-    let answer = last_run_in(WORKFLOW, empty, LATER, ELSEWHERE)
+    let answer = candidate_runs(WORKFLOW, empty, LATER, ELSEWHERE)
         .expect("a page carrying no rows is an answer");
-    assert_eq!(answer, None);
+    assert_eq!(answer, Vec::new());
 }
 
 /// A commit GitHub stops sending is a refusal, and not a run at no commit.
 #[test]
 fn a_head_sha_this_gate_cannot_find_is_a_refusal_rather_than_a_run_at_no_commit() {
     let renamed = RUNS.replace("\"head_sha\"", "\"sha\"");
-    let why = last_run_in(WORKFLOW, &renamed, LATER, ELSEWHERE)
+    let why = candidate_runs(WORKFLOW, &renamed, LATER, ELSEWHERE)
         .expect_err("a row with no commit is not a run at no commit");
     assert!(
         why.contains("missing field `head_sha`"),
@@ -439,8 +543,8 @@ fn a_head_sha_this_gate_cannot_find_is_a_refusal_rather_than_a_run_at_no_commit(
 #[test]
 fn a_run_with_an_empty_commit_is_refused_by_name() {
     let blank = RUNS.replace(PRIOR, "");
-    let why =
-        last_run_in(WORKFLOW, &blank, LATER, ELSEWHERE).expect_err("an empty sha is not a commit");
+    let why = candidate_runs(WORKFLOW, &blank, LATER, ELSEWHERE)
+        .expect_err("an empty sha is not a commit");
     assert!(
         why.contains(WORKFLOW),
         "and it says whose runs it could not read: {why}"
@@ -450,7 +554,7 @@ fn a_run_with_an_empty_commit_is_refused_by_name() {
 /// Nothing printed about a workflow is not a workflow that never ran.
 #[test]
 fn nothing_printed_about_a_workflow_is_not_a_workflow_that_never_ran() {
-    let why = last_run_in(WORKFLOW, "", LATER, ELSEWHERE).expect_err("silence is not an answer");
+    let why = candidate_runs(WORKFLOW, "", LATER, ELSEWHERE).expect_err("silence is not an answer");
     assert!(
         why.contains(WORKFLOW) && why.contains("printed nothing"),
         "and it says which of the two silences it is: {why}"

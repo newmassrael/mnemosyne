@@ -143,8 +143,18 @@ enum Runs {
     /// A page carrying no run at all — a workflow nothing has run yet, and the
     /// state in which this gate narrows to the push range and says so.
     NoneYet,
-    /// The workflow last ran successfully at `HEAD~n` of the fixture's history.
-    LastRanAtHeadMinus(usize),
+    /// The workflow last ran at `HEAD~n` of the fixture's history AND that run
+    /// wrote the fixture's archive.
+    LastWroteTheArchiveAtHeadMinus(usize),
+    /// The same run, which did NOT write it — its cache job was skipped, or
+    /// failed before its post step.
+    ///
+    /// A STATE THAT DID NOT EXIST BEFORE R1207, because the bound used to be the
+    /// run's own conclusion and a run either counted or did not. It is the case
+    /// this repository produces constantly: measured over the newest hundred
+    /// runs, 122 archives were written inside runs that concluded failure, and
+    /// two caches of one run routinely disagree.
+    RanAtHeadMinusAndWroteNothing(usize),
 }
 
 /// When the fixture's last run of its own workflow started — before the run being
@@ -168,6 +178,29 @@ fn runs_page(runs: &[(&str, &str, &str)]) -> String {
         "{{\"total_count\":{},\"workflow_runs\":[{}]}}",
         runs.len(),
         rows.join(",")
+    )
+}
+
+/// The cache step this fixture's workflow declares, and therefore the `Post …`
+/// step GitHub would report for it.
+const FIXTURE_STEP: &str = "Cache cargo (fixture)";
+
+/// GitHub's answer about a run's JOBS, in the shape `tests/actions-run-jobs.json`
+/// records from the real endpoint.
+///
+/// THE ANSWER THAT DECIDES A BOUND SINCE R1207. What writes an archive is the
+/// post step of the job holding the cache, so `wrote` is the whole difference
+/// between a run that bounds an interval and one that does not — and the two
+/// pages differ in exactly one word, which is what makes the case below a
+/// control rather than two unrelated fixtures.
+fn jobs_page(wrote: bool) -> String {
+    let conclusion = if wrote { "success" } else { "skipped" };
+    format!(
+        "{{\"total_count\":1,\"jobs\":[{{\"name\":\"the fixture's only job\",\
+         \"status\":\"completed\",\"steps\":[\
+         {{\"name\":\"{FIXTURE_STEP}\",\"status\":\"completed\",\"conclusion\":\"success\"}},\
+         {{\"name\":\"Post {FIXTURE_STEP}\",\"status\":\"completed\",\
+         \"conclusion\":\"{conclusion}\"}}]}}]}}"
     )
 }
 
@@ -240,8 +273,14 @@ impl Fixture {
             "  {JOB}:\n    runs-on: ubuntu-latest\n    steps:\n"
         ));
         if caches {
+            // NAMED, because the save GitHub reports is `Post <this name>` and
+            // that name is the only join between a declaration and the run that
+            // wrote its archive (R1207). `ci-plan` refuses an unnamed cache
+            // step, so a fixture without one is a tree this gate correctly will
+            // not read — which is how this line came to be written.
             workflow.push_str(
-                "      - uses: actions/cache@v6\n        with:\n          path: |\n            \
+                "      - name: Cache cargo (fixture)\n        uses: actions/cache@v6\n        \
+             with:\n          path: |\n            \
              ~/.cargo/registry\n          key: ${{ runner.os }}-fixture-build-\
              ${{ hashFiles('**/Cargo.lock') }}\n",
             );
@@ -301,13 +340,17 @@ impl Fixture {
         // model a checkout too shallow to hold it — a different case, which has its
         // own test.
         let run = self.run.as_str();
-        let runs = match self.runs {
-            Runs::NoneYet => runs_page(&[]),
-            Runs::LastRanAtHeadMinus(back) => runs_page(&[(
+        let at_head_minus = |back: usize| {
+            runs_page(&[(
                 &git_says(root, &["rev-parse", &format!("HEAD~{back}")]),
                 "success",
                 LAST_RAN_AT,
-            )]),
+            )])
+        };
+        let (runs, jobs) = match self.runs {
+            Runs::NoneYet => (runs_page(&[]), jobs_page(true)),
+            Runs::LastWroteTheArchiveAtHeadMinus(back) => (at_head_minus(back), jobs_page(true)),
+            Runs::RanAtHeadMinusAndWroteNothing(back) => (at_head_minus(back), jobs_page(false)),
         };
         let stub = root.join("stub/gh");
         std::fs::write(
@@ -318,6 +361,9 @@ impl Fixture {
              case \"$*\" in\n\
              \x20 *\"/actions/workflows/\"*)\n\
              \x20   cat <<'RUNS_ANSWER'\n{runs}\nRUNS_ANSWER\n\
+             \x20   ;;\n\
+             \x20 *\"/jobs?\"*)\n\
+             \x20   cat <<'JOBS_ANSWER'\n{jobs}\nJOBS_ANSWER\n\
              \x20   ;;\n\
              \x20 *\"/actions/runs/\"*)\n\
              \x20   cat <<'RUN_ANSWER'\n{run}\nRUN_ANSWER\n\
@@ -959,7 +1005,7 @@ fn a_cache_rebuilt_after_its_lockfile_moved_outside_this_push_is_not_a_defect() 
         // movement of it at all.
         commits: 3,
         lockfile_moves_at: &[1],
-        runs: Runs::LastRanAtHeadMinus(2),
+        runs: Runs::LastWroteTheArchiveAtHeadMinus(2),
         ..Fixture::default()
     }
     .build();
@@ -967,8 +1013,8 @@ fn a_cache_rebuilt_after_its_lockfile_moved_outside_this_push_is_not_a_defect() 
     assert_eq!(
         code(&out),
         0,
-        "the lockfile moved since that workflow last ran, so the rebuild is the \
-         price of a dependency change\nstdout:\n{}\nstderr:\n{}",
+        "the lockfile moved since that archive was last written, so the rebuild is \
+         the price of a dependency change\nstdout:\n{}\nstderr:\n{}",
         stdout(&out),
         stderr(&out)
     );
@@ -978,8 +1024,11 @@ fn a_cache_rebuilt_after_its_lockfile_moved_outside_this_push_is_not_a_defect() 
         stdout(&out)
     );
     assert!(
-        stdout(&out).contains("since .github/workflows/ci.yml last ran successfully"),
-        "naming the interval it answered over, and whose history that is\n{}",
+        stdout(&out).contains(
+            "since `Cache cargo (fixture)` in .github/workflows/ci.yml last wrote its archive"
+        ),
+        "naming the interval it answered over, and whose history that is — since R1207 \
+         that is the CACHE's and not the workflow's\n{}",
         stdout(&out)
     );
 
@@ -1008,9 +1057,57 @@ fn a_cache_rebuilt_after_its_lockfile_moved_outside_this_push_is_not_a_defect() 
         stderr(&out)
     );
     assert!(
-        stdout(&out).contains("no successful run of `.github/workflows/ci.yml`"),
+        stdout(&out).contains("no run of `.github/workflows/ci.yml`"),
         "and the report says the interval was narrowed and why, rather than \
          printing a number from a question nobody can see\n{}",
+        stdout(&out)
+    );
+}
+
+/// A run that HAPPENED but did not write the archive does not bound the interval.
+///
+/// R1207, END TO END, AND THE TWO FIXTURES DIFFER IN ONE WORD. The tree, the
+/// storage, the git history and GitHub's answer about the RUNS are identical to
+/// the case above; the only difference is that the jobs endpoint reports the
+/// save step as `skipped` rather than `success`. A reader that bounds by the
+/// run's own conclusion cannot tell those apart, and this repository produces
+/// the difference constantly — 122 archives written inside runs that concluded
+/// failure over the newest hundred, and 134 of 900 measured bounds older than
+/// the truth.
+///
+/// THE DIRECTION IT MOVES IS THE POINT. Bounding with a run that saved nothing
+/// starts the interval too EARLY, and an interval that starts too early excuses
+/// a miss whose inputs moved before the archive was actually written — leniency,
+/// in a gate whose whole job is to notice.
+#[test]
+fn a_run_that_wrote_no_archive_does_not_bound_the_interval() {
+    let wrote_nothing = Fixture {
+        caches: a_key_rebuilt_during_the_run(),
+        commits: 3,
+        lockfile_moves_at: &[1],
+        runs: Runs::RanAtHeadMinusAndWroteNothing(2),
+        ..Fixture::default()
+    }
+    .build();
+    let out = gate_in_run(wrote_nothing.path());
+    assert_eq!(
+        code(&out),
+        1,
+        "the run is there and the archive is not, so the interval narrows to the \
+         push and the miss is unexplained\nstdout:\n{}\nstderr:\n{}",
+        stdout(&out),
+        stderr(&out)
+    );
+    assert!(
+        stdout(&out).contains("wrote the archive of `Cache cargo (fixture)`"),
+        "and the report names the cache whose history it could not find, rather \
+         than the workflow's\n{}",
+        stdout(&out)
+    );
+    assert!(
+        stdout(&out).contains("1 candidate(s) asked"),
+        "and how many runs it asked before saying so — a count of zero and a count \
+         of one are different states\n{}",
         stdout(&out)
     );
 }

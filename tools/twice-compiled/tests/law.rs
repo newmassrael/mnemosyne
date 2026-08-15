@@ -1536,6 +1536,11 @@ fn cache(job: &str, paths: &[&str]) -> ci_plan::CacheDeclaration {
         restore_keys: vec![format!("Linux-cargo-{job}-")],
         paths: paths.iter().map(|path| (*path).to_string()).collect(),
         hashed: vec!["**/Cargo.lock".to_string()],
+        // This gate asks where a cache step SITS in its job, never what wrote
+        // its archive; the step name is what joins a declaration to the run that
+        // did (R1207), and it is distinct per job here for the same reason the
+        // prefix is.
+        step: format!("Cache cargo ({job})"),
     }
 }
 

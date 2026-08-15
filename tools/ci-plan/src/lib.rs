@@ -259,6 +259,24 @@ pub struct CacheDeclaration {
     /// hashes `**/Cargo.lock`, so "the lockfiles changed" is a different question
     /// per key and only the key can answer it.
     pub hashed: Vec<String>,
+    /// The step's own `name:`, which is the ONE thing that joins this
+    /// declaration to what a run actually did with it.
+    ///
+    /// WHAT SAVES AN ARCHIVE IS A STEP, NOT A RUN. `actions/cache` writes in its
+    /// post step, which GitHub reports as `Post <this name>` inside the job that
+    /// held it, with a conclusion of its own — so "the archive for this key was
+    /// last saved at commit X" is a question about that step and nothing else.
+    /// R1178 bounded the interval with the RUN's conclusion instead, and R1207
+    /// measured what that costs on this repository's own history: over 100 runs
+    /// and 9 declarations, 134 of the 900 bounds were OLDER than the truth
+    /// (a failed run whose cache job had already saved) and 16 more had no bound
+    /// at all where the step had one.
+    ///
+    /// A CACHE STEP WITHOUT A NAME IS A REFUSAL rather than a guess. GitHub then
+    /// names it after the action, so two unnamed cache steps in one job are
+    /// indistinguishable in the answer — and a join that picks whichever came
+    /// first would bound one key's interval with another key's save.
+    pub step: String,
 }
 
 /// What GitHub sets `runner.os` to for a `runs-on` label.
@@ -361,6 +379,20 @@ pub fn cache_steps(doc: &Yaml, source: &str) -> Vec<CacheDeclaration> {
             let Some(key) = step["with"]["key"].as_str() else {
                 panic!("{source}: job `{owner}` caches with no key at all");
             };
+            // THE JOIN AXIS, refused rather than defaulted. GitHub reports the
+            // save as `Post <name>`, so an unnamed cache step is one no reader
+            // can tell from another unnamed cache step in the same job.
+            let Some(step_name) = step["name"]
+                .as_str()
+                .map(str::trim)
+                .filter(|n| !n.is_empty())
+            else {
+                panic!(
+                    "{source}: job `{owner}` caches with no step name, so nothing can join \
+                     its archive to the run that saved it — GitHub reports the save as \
+                     `Post <the step's name>`"
+                );
+            };
             let paths: Vec<String> = step["with"]["path"]
                 .as_str()
                 .unwrap_or_else(|| panic!("{source}: job `{owner}` caches no path"))
@@ -386,8 +418,25 @@ pub fn cache_steps(doc: &Yaml, source: &str) -> Vec<CacheDeclaration> {
                 paths,
                 hashed: hashed_globs(key),
                 restore_keys,
+                step: step_name.to_string(),
             });
         }
+    }
+    // THE JOIN HAS TO BE UNIQUE WITHIN A WORKFLOW, or it is silently about the
+    // wrong archive. A run's jobs page is asked as one document, so two cache
+    // steps sharing a name — which GitHub allows, in different jobs of one file —
+    // would answer "yes, that archive was written" for EITHER of them, and the
+    // key whose job was skipped would be bounded by its sibling's save. Refusing
+    // an unnamed step is only half the rule; this is the other half, and it costs
+    // one sort over a list this repository has nine entries in.
+    let mut named: Vec<&str> = out.iter().map(|cache| cache.step.as_str()).collect();
+    named.sort_unstable();
+    if let Some(shared) = named.windows(2).find(|pair| pair[0] == pair[1]) {
+        panic!(
+            "{source}: two cache steps are both named `{}`, so GitHub reports one \
+             `Post {}` for two archives and no reader can tell which was written",
+            shared[0], shared[0]
+        );
     }
     out
 }

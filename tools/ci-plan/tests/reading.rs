@@ -116,7 +116,8 @@ jobs:
   reader:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/cache/restore@v6
+      - name: Cache target (restore only)
+        uses: actions/cache/restore@v6
         with:
           path: target
           key: ${{ runner.os }}-cargo-shared-
@@ -153,7 +154,8 @@ jobs:
   exotic:
     runs-on: freebsd-14
     steps:
-      - uses: actions/cache@v6
+      - name: Cache target
+        uses: actions/cache@v6
         with:
           path: target
           key: ${{ runner.os }}-cargo-
@@ -177,7 +179,8 @@ jobs:
   ordinary:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/cache@v6
+      - name: Cache target
+        uses: actions/cache@v6
         with:
           path: target
           key: ${{ runner.os }}-cargo-
@@ -185,6 +188,71 @@ jobs:
     );
     assert_eq!(found.len(), 1, "{found:?}");
     assert_eq!(found[0].prefix, "Linux-cargo-");
+    assert_eq!(
+        found[0].step, "Cache target",
+        "and the step's own name, which is what joins it to the run that wrote \
+         its archive (R1207)"
+    );
+}
+
+/// A cache step with no name of its own is a REFUSAL, not a declaration nobody
+/// can trace.
+///
+/// GITHUB NAMES THE SAVE AFTER THE STEP — `Post <name>` — so an unnamed cache
+/// step is reported as `Post Run actions/cache@v6`, which two unnamed steps in
+/// one job share. R1207 made the interval a key is judged over the history of
+/// THAT key's archive, and a join that picked whichever came first would bound
+/// one cache's interval with another cache's save. Refusing is the only answer
+/// that is not silently about the wrong archive.
+/// Two cache steps of one workflow sharing a name is a REFUSAL too.
+///
+/// THE OTHER HALF OF THE SAME RULE. Refusing an unnamed step keeps the join from
+/// being absent; this keeps it from being AMBIGUOUS. A run's jobs page is one
+/// document, so a reader asking "did `Post Cache cargo` conclude success" cannot
+/// tell two jobs apart — and the key whose job was skipped would be bounded by
+/// its sibling's save, which is a wrong interval wearing the shape of a right
+/// one. GitHub allows the duplicate; this repository does not.
+#[test]
+#[should_panic(expected = "two cache steps are both named `Cache cargo`")]
+fn two_cache_steps_of_one_workflow_sharing_a_name_are_refused() {
+    caches_of(
+        r#"
+jobs:
+  one:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Cache cargo
+        uses: actions/cache@v6
+        with:
+          path: target
+          key: ${{ runner.os }}-cargo-one-
+  two:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Cache cargo
+        uses: actions/cache@v6
+        with:
+          path: target
+          key: ${{ runner.os }}-cargo-two-
+"#,
+    );
+}
+
+#[test]
+#[should_panic(expected = "caches with no step name")]
+fn a_cache_step_with_no_name_of_its_own_is_refused() {
+    caches_of(
+        r#"
+jobs:
+  anonymous:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/cache@v6
+        with:
+          path: target
+          key: ${{ runner.os }}-cargo-
+"#,
+    );
 }
 
 #[test]
@@ -266,7 +334,8 @@ fn one_cache_holding(paths: &str, key: &str, restore_keys: &str) -> CacheDeclara
         .map(|path| format!("            {}\n", path.trim()))
         .collect();
     let yaml = format!(
-        "jobs:\n  j:\n    runs-on: ubuntu-latest\n    steps:\n      - uses: actions/cache@v6\n\
+        "jobs:\n  j:\n    runs-on: ubuntu-latest\n    steps:\n      - name: Cache j\n\
+         \x20       uses: actions/cache@v6\n\
          \x20       with:\n          path: |\n{held}          key: {key}\n{with_restore}"
     );
     let declared = cache_steps(&parse_workflow(&yaml, "fixture"), "fixture");

@@ -1,0 +1,96 @@
+{
+  "_": [
+    "Machine-written by tools/injection-harness. Do not edit by hand: a row somebody typed is evidence of nothing, and the law over this file is worth exactly what its being unforgeable is worth.",
+    "Each row is one injection that WAS RUN and DID redden what it names, kept beside the definition it was proven against — edit the injection and the gate says the evidence is about a different one."
+  ],
+  "complete": false,
+  "fired": {
+    "a-completed-job-that-sent-no-steps-is-read-as-one-that-saved-nothing": {
+      "edits": [
+        {
+          "file": "tools/cache-budget/src/lib.rs",
+          "from": "        let Some(steps) = job.steps.as_ref() else {\n            if job.status == \"completed\" {",
+          "to": "        let Some(steps) = job.steps.as_ref() else {\n            if false {"
+        }
+      ],
+      "expect_red": [
+        "an_answer_about_a_runs_jobs_this_gate_cannot_read_is_a_refusal"
+      ],
+      "tests": [
+        "an_answer_about_a_runs_jobs_this_gate_cannot_read_is_a_refusal"
+      ]
+    },
+    "a-key-is-judged-over-the-interval-its-own-workflow-could-have-seen": {
+      "edits": [
+        {
+          "file": "tools/cache-budget/src/lib.rs",
+          "from": "    Ok(candidates)",
+          "to": "    Ok(Vec::new())"
+        }
+      ],
+      "expect_red": [
+        "the_recorded_answer_names_every_run_that_could_have_left_an_archive",
+        "a_cache_rebuilt_after_its_lockfile_moved_outside_this_push_is_not_a_defect"
+      ],
+      "tests": [
+        "a_cache_rebuilt_after_its_lockfile_moved_outside_this_push_is_not_a_defect",
+        "a_run_of_the_commit_being_judged_cannot_bound_its_own_interval",
+        "a_run_that_started_in_the_same_second_is_not_an_earlier_run",
+        "a_run_that_wrote_no_archive_does_not_bound_the_interval",
+        "the_recorded_answer_names_every_run_that_could_have_left_an_archive"
+      ]
+    },
+    "a-run-that-wrote-no-archive-bounds-the-interval-anyway": {
+      "edits": [
+        {
+          "file": "tools/cache-budget/src/lib.rs",
+          "from": "    let wanted = format!(\"{SAVE_STEP_PREFIX}{step}\");\n    let mut saved = false;",
+          "to": "    let wanted = format!(\"{SAVE_STEP_PREFIX}{step}\");\n    let mut saved = true;"
+        }
+      ],
+      "expect_red": [
+        "a_failed_run_that_wrote_the_archive_bounds_the_interval_and_a_skipped_save_does_not",
+        "a_run_that_wrote_no_archive_does_not_bound_the_interval"
+      ],
+      "tests": [
+        "a_failed_run_that_wrote_the_archive_bounds_the_interval_and_a_skipped_save_does_not",
+        "a_run_that_wrote_no_archive_does_not_bound_the_interval",
+        "an_answer_about_a_runs_jobs_this_gate_cannot_read_is_a_refusal"
+      ]
+    },
+    "a-truncated-jobs-page-is-read-as-a-run-that-saved-nothing": {
+      "edits": [
+        {
+          "file": "tools/cache-budget/src/lib.rs",
+          "from": "    if page.total_count > page.jobs.len() {",
+          "to": "    if false {"
+        }
+      ],
+      "expect_red": [
+        "a_truncated_jobs_page_is_a_refusal_rather_than_a_run_that_saved_nothing"
+      ],
+      "tests": [
+        "a_truncated_jobs_page_is_a_refusal_rather_than_a_run_that_saved_nothing"
+      ]
+    },
+    "the-interval-comes-from-the-workflow-that-declares-the-key": {
+      "edits": [
+        {
+          "file": "tools/cache-budget/src/lib.rs",
+          "from": "            WindowSource::Ran(prior) => Window::SinceThatArchiveWasSaved {\n                workflow: declaration.source.clone(),\n                step: declaration.step.clone(),\n                sha: prior.sha.clone(),\n                at: prior.started_at.clone(),\n            },",
+          "to": "            WindowSource::Ran(prior) => Window::ThisPush {\n                start: push.clone(),\n                why: prior.sha.clone(),\n            },"
+        }
+      ],
+      "expect_red": [
+        "every_declared_key_is_judged_over_its_own_archives_history",
+        "a_key_is_asked_about_the_interval_its_own_archive_could_have_seen",
+        "a_cache_rebuilt_after_its_lockfile_moved_outside_this_push_is_not_a_defect"
+      ],
+      "tests": [
+        "a_cache_rebuilt_after_its_lockfile_moved_outside_this_push_is_not_a_defect",
+        "a_key_is_asked_about_the_interval_its_own_archive_could_have_seen",
+        "every_declared_key_is_judged_over_its_own_archives_history"
+      ]
+    }
+  }
+}

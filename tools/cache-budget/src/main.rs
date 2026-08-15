@@ -1,6 +1,6 @@
 //! Ask both sides, print what was reached, and only then judge any of it.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 use std::path::Path;
 use std::process::Command;
 
@@ -149,32 +149,63 @@ fn run_window(root: &Path, run_id: &str, declared: &[CacheDeclaration]) -> Resul
         .filter(|base| !base.trim().is_empty())
         .or_else(|| std::env::var("GITHUB_REF_NAME").ok());
 
+    // THE TWO ANSWERS THIS COSTS A NETWORK CALL FOR, held so that neither is
+    // bought twice: one page of a workflow's runs, and one page of a candidate
+    // run's jobs. Nine declarations over two workflows share five candidates
+    // each, so without this the finer bound R1207 asks for would cost forty-five
+    // calls instead of at most twelve.
+    let mut runs_of: HashMap<String, String> = HashMap::new();
+    let mut jobs_of: HashMap<u64, String> = HashMap::new();
     let asked = cache_budget::windows_asked(
         declared,
         &push,
-        |workflow| {
-            let answer = gh(
-                root,
-                &cache_budget::workflow_runs_query(workflow, branch.as_deref()),
-            )?;
-            match cache_budget::last_run_in(workflow, &answer, &started_at, &head)? {
+        |workflow, step| {
+            let answer = match runs_of.get(workflow) {
+                Some(held) => held.clone(),
+                None => {
+                    let fresh = gh(
+                        root,
+                        &cache_budget::workflow_runs_query(workflow, branch.as_deref()),
+                    )?;
+                    runs_of.insert(workflow.to_string(), fresh.clone());
+                    fresh
+                }
+            };
+            let candidates = cache_budget::candidate_runs(workflow, &answer, &started_at, &head)?;
+            // NEWEST FIRST, AND THE FIRST ONE THAT ACTUALLY SAVED WINS. Asking
+            // about a run that did not write this archive and stopping there
+            // would bound the interval with a moment nothing was observed at.
+            for prior in &candidates {
+                let jobs = match jobs_of.get(&prior.id) {
+                    Some(held) => held.clone(),
+                    None => {
+                        let fresh = gh(root, &cache_budget::run_jobs_query(prior.id))?;
+                        jobs_of.insert(prior.id, fresh.clone());
+                        fresh
+                    }
+                };
+                if !cache_budget::saved_the_archive(prior, step, &jobs)? {
+                    continue;
+                }
                 // NAMED BUT NOT HELD, which is the shallow-clone case and the
                 // same one `range_start` narrows for: diffing from a commit this
                 // checkout does not have makes git fail, and a gate that refused
                 // there would refuse a repository that is fine.
-                Some(prior) if !commit_is_here(root, &prior.sha) => {
-                    Ok(cache_budget::WindowSource::Unavailable(format!(
-                        "`{workflow}` last ran at {} and this checkout does not hold that \
-                         commit, so the interval since then cannot be diffed",
+                if !commit_is_here(root, &prior.sha) {
+                    return Ok(cache_budget::WindowSource::Unavailable(format!(
+                        "`{step}` in `{workflow}` last wrote its archive at {} and this \
+                         checkout does not hold that commit, so the interval since then \
+                         cannot be diffed",
                         &prior.sha[..7.min(prior.sha.len())]
-                    )))
+                    )));
                 }
-                Some(prior) => Ok(cache_budget::WindowSource::Ran(prior)),
-                None => Ok(cache_budget::WindowSource::Unavailable(format!(
-                    "no successful run of `{workflow}` at another commit is in the newest \
-                     page of its runs"
-                ))),
+                return Ok(cache_budget::WindowSource::Ran(prior.clone()));
             }
+            Ok(cache_budget::WindowSource::Unavailable(format!(
+                "no run of `{workflow}` at another commit in the newest page of its runs \
+                 wrote the archive of `{step}` ({} candidate(s) asked)",
+                candidates.len()
+            )))
         },
         |rev, globs| moved_since(root, rev, globs),
     )?;

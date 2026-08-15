@@ -210,8 +210,14 @@ fn workflow(jobs: &[Job]) -> String {
 
 /// One `actions/cache` step over the paths a fixture job holds.
 fn cache_step(job: &str, paths: &[&str]) -> String {
-    let mut out =
-        String::from("      - uses: actions/cache@v6\n        with:\n          path: |\n");
+    // NAMED, AND NAMED PER JOB. GitHub reports the save as `Post <this name>`, so
+    // the name is what joins a declaration to the run that wrote its archive
+    // (R1207) — `ci-plan` refuses an unnamed cache step, and refuses two of one
+    // workflow that share a name.
+    let mut out = format!(
+        "      - name: Cache cargo ({job})\n        uses: actions/cache@v6\n        \
+         with:\n          path: |\n"
+    );
     for path in paths {
         out.push_str(&format!("            {path}\n"));
     }
