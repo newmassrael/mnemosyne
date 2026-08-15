@@ -55,6 +55,134 @@ fn the_roster_says(at: &Path, field: &str, verb: &str) {
     );
 }
 
+// ==========================================================================
+// THE CALLS THEMSELVES (Round 1220), one builder per closable axis.
+//
+// They exist so the per-axis laws below and the DRAIN law at the end of this
+// file make the same call rather than two spellings of it. A drain that closed
+// items its own way would prove that some sequence of calls empties the list,
+// which is not the claim: the claim is that the calls this repository publishes
+// through `describe-frontier-axes`, and proves one axis at a time, compose into
+// a loop that finishes.
+// ==========================================================================
+
+/// `run` with an argv the builders produced.
+fn run_argv(workspace: &Path, argv: &[String]) -> std::process::Output {
+    let refs: Vec<&str> = argv.iter().map(String::as_str).collect();
+    run(workspace, &refs)
+}
+
+/// The payoff the dangling axis implies — seated at the setup's OWN frame,
+/// branch and coordinate, which is what the frontier's answer gives a loop.
+fn payoff_call(setup: &str, fact: &mnemosyne_core::NarrativeFact, nth: usize) -> Vec<String> {
+    [
+        "add-fact",
+        "--fact",
+        &format!("frontier-closure-{nth}"),
+        "--frame",
+        fact.frame.as_str(),
+        "--branch",
+        fact.branch.as_str(),
+        "--claim",
+        "The gun the frontier named goes off.",
+        "--canon-from",
+        fact.canon_from.as_str(),
+        "--evidence",
+        fact.canon_from.as_str(),
+        "--pays-off",
+        setup,
+    ]
+    .map(ToString::to_string)
+    .to_vec()
+}
+
+/// The fact the zero-fact axis implies — the COORDINATE is what fills the room.
+fn fill_call(frame: &str, scene: &str, nth: usize) -> Vec<String> {
+    [
+        "add-fact",
+        "--fact",
+        &format!("frontier-fill-{nth}"),
+        "--frame",
+        frame,
+        "--claim",
+        "The empty room the frontier named is written into.",
+        "--canon-from",
+        scene,
+        "--evidence",
+        scene,
+    ]
+    .map(ToString::to_string)
+    .to_vec()
+}
+
+/// The telling the need axis implies.
+fn plan_call(telling: &str) -> Vec<String> {
+    [
+        "add-disclosure-plan",
+        "--telling",
+        telling,
+        "--default-mode",
+        "withhold",
+    ]
+    .map(ToString::to_string)
+    .to_vec()
+}
+
+/// The completion that BINDS a quest: a giving setup is derived as the Expected
+/// fact the quest's own completion pays off, so the binding is that argument.
+fn bind_call(
+    quest: &str,
+    actor: &str,
+    setup: &str,
+    seat: &mnemosyne_core::NarrativeFact,
+    nth: usize,
+) -> Vec<String> {
+    [
+        "add-fact",
+        "--fact",
+        &format!("frontier-quest-bind-{nth}"),
+        "--frame",
+        seat.frame.as_str(),
+        "--branch",
+        seat.branch.as_str(),
+        "--claim",
+        "The quest the frontier named is bound to what gives it.",
+        "--canon-from",
+        seat.canon_from.as_str(),
+        "--evidence",
+        seat.canon_from.as_str(),
+        "--entities",
+        &format!("{quest},{actor}"),
+        "--typed-subject",
+        quest,
+        "--typed-predicate",
+        "completed_by",
+        "--typed-object-entity",
+        actor,
+        "--pays-off",
+        setup,
+    ]
+    .map(ToString::to_string)
+    .to_vec()
+}
+
+/// The decision the never-planned axis implies. `state` is the one mode that
+/// needs nothing else of the fact — `withhold` and any `first_at` pin require a
+/// typed claim — and WHICH mode is right is the authorial half.
+fn decide_call(telling: &str, fact: &str) -> Vec<String> {
+    [
+        "set-disclosure",
+        "--telling",
+        telling,
+        "--fact",
+        fact,
+        "--mode",
+        "state",
+    ]
+    .map(ToString::to_string)
+    .to_vec()
+}
+
 /// What each road still owes, by world.
 fn dangling(workspace: &Path, whose: &str) -> BTreeMap<String, BTreeSet<String>> {
     let out = run(workspace, &["report-authoring-frontier", "--json"]);
@@ -160,27 +288,7 @@ fn every_gap_the_frontier_names_is_one_a_single_authored_call_closes() {
                     store.name
                 )
             });
-            let payoff = format!("frontier-closure-{nth}");
-            let out = run(
-                workspace,
-                &[
-                    "add-fact",
-                    "--fact",
-                    &payoff,
-                    "--frame",
-                    fact.frame.as_str(),
-                    "--branch",
-                    fact.branch.as_str(),
-                    "--claim",
-                    "The gun the frontier named goes off.",
-                    "--canon-from",
-                    fact.canon_from.as_str(),
-                    "--evidence",
-                    fact.canon_from.as_str(),
-                    "--pays-off",
-                    setup,
-                ],
-            );
+            let out = run_argv(workspace, &payoff_call(setup, fact, nth));
             assert!(
                 out.status.success(),
                 "{}: the payoff the frontier's item implies was refused for `{setup}` \
@@ -291,23 +399,7 @@ fn every_zero_fact_scene_is_one_a_single_authored_call_fills() {
         empty.sort();
         for (nth, scene) in empty.iter().enumerate() {
             let before = report.clone();
-            let id = format!("frontier-fill-{nth}");
-            let out = run(
-                workspace,
-                &[
-                    "add-fact",
-                    "--fact",
-                    &id,
-                    "--frame",
-                    &frame,
-                    "--claim",
-                    "The empty room the frontier named is written into.",
-                    "--canon-from",
-                    scene,
-                    "--evidence",
-                    scene,
-                ],
-            );
+            let out = run_argv(workspace, &fill_call(&frame, scene, nth));
             assert!(
                 out.status.success(),
                 "{}: the call this axis implies was refused at `{scene}` (frame {frame}):\n{}",
@@ -537,16 +629,7 @@ fn every_store_that_needs_a_telling_is_one_a_single_authored_call_opens() {
             store.name
         );
 
-        let out = run(
-            workspace,
-            &[
-                "add-disclosure-plan",
-                "--telling",
-                "r1217",
-                "--default-mode",
-                "withhold",
-            ],
-        );
+        let out = run_argv(workspace, &plan_call("r1217"));
         assert!(
             out.status.success(),
             "{}: the call this axis implies was refused:\n{}",
@@ -770,36 +853,7 @@ fn every_unresolved_quest_is_one_a_single_authored_call_binds() {
                 Some(mnemosyne_core::TypedObject::Entity { id }) => id.to_string(),
                 other => panic!("{name}: a `completed_by` leg points at an actor, got {other:?}"),
             };
-            let id = format!("frontier-quest-bind-{nth}");
-            let entities = format!("{quest},{actor}");
-            let out = run(
-                workspace,
-                &[
-                    "add-fact",
-                    "--fact",
-                    &id,
-                    "--frame",
-                    existing.frame.as_str(),
-                    "--branch",
-                    existing.branch.as_str(),
-                    "--claim",
-                    "The quest the frontier named is bound to what gives it.",
-                    "--canon-from",
-                    existing.canon_from.as_str(),
-                    "--evidence",
-                    existing.canon_from.as_str(),
-                    "--entities",
-                    &entities,
-                    "--typed-subject",
-                    quest,
-                    "--typed-predicate",
-                    "completed_by",
-                    "--typed-object-entity",
-                    &actor,
-                    "--pays-off",
-                    &setup,
-                ],
-            );
+            let out = run_argv(workspace, &bind_call(quest, &actor, &setup, existing, nth));
             assert!(
                 out.status.success(),
                 "{name}: the call this axis implies was refused for `{quest}`:\n{}",
@@ -869,18 +923,7 @@ fn every_never_planned_disclosure_is_one_a_single_authored_call_plans() {
         unplanned.sort();
         for fact in &unplanned {
             let before = report.clone();
-            let out = run(
-                workspace,
-                &[
-                    "set-disclosure",
-                    "--telling",
-                    &telling,
-                    "--fact",
-                    fact,
-                    "--mode",
-                    "state",
-                ],
-            );
+            let out = run_argv(workspace, &decide_call(&telling, fact));
             assert!(
                 out.status.success(),
                 "{name}: the call this axis implies was refused for `{fact}`:\n{}",
@@ -1054,5 +1097,224 @@ fn a_fact_that_names_no_setup_leaves_the_frontier_exactly_where_it_was() {
     assert_eq!(
         asked, 1,
         "the control needs one store that owes work, and the population gave none"
+    );
+}
+
+// ==========================================================================
+// THE LOOP ITSELF (Round 1220) — does the work-list DRAIN?
+//
+// Five laws above each close ONE axis and stop. None of them asks the question
+// an unattended run lives on: if a loop keeps pulling the frontier's next item
+// and making the call the roster names, does it ever finish, and does it stop
+// where the contract says it must? Those are two different failures. A list
+// that never empties is a run that spins; a list that empties past what this
+// API can close would mean the roster is lying about `no_verb`.
+//
+// The answer is not obvious, and one axis makes it interesting: closing the
+// telling need GROWS the list. Declaring a telling is what makes the
+// telling-scoped axes answerable at all, and the first thing they answer is
+// that every fact in the store is undecided. R1216 named the shape to fear —
+// "a work-list that refills itself is a loop that never ends" — and this is the
+// one axis in the report that really does refill. What has to be true is not
+// that the gauge falls monotonically; it is that the refill is BOUNDED and paid
+// off, which is what a drain measures and no per-axis law can.
+// ==========================================================================
+
+/// The witness for the drain, chosen mechanically and printed: the store whose
+/// drain is cheapest among those that exercise the telling need AND at least one
+/// other closable axis. Cheapest, because the refill is one item per FACT and
+/// the largest corpora here hold hundreds — a drain over the whole population
+/// would be the same claim at fifty times the wall clock.
+fn cheapest_store_that_refills() -> Option<(String, tempfile::TempDir, usize)> {
+    let (stores, _) = authored_stores();
+    let mut best: Option<(String, tempfile::TempDir, usize)> = None;
+    for store in stores {
+        let report = frontier(store.ws.path(), &store.name);
+        if !report["telling_needed"]["gap"].as_bool().unwrap_or(false) {
+            continue;
+        }
+        let others = axis(&report, "zero_fact_scenes").len()
+            + flat(&dangling(store.ws.path(), &store.name)).len();
+        if others == 0 {
+            continue;
+        }
+        // The refill is one decision per fact, and the census names the facts
+        // per scene — so the store's own report prices its own drain.
+        let facts: usize = report["scene_coverage"]
+            .as_array()
+            .expect("the census is a list")
+            .iter()
+            .map(|row| row["facts"].as_array().map_or(0, Vec::len))
+            .sum();
+        let cost = facts + others;
+        if best
+            .as_ref()
+            .is_none_or(|(_, _, cheapest)| cost < *cheapest)
+        {
+            best = Some((store.name.clone(), store.ws, cost));
+        }
+    }
+    best
+}
+
+#[test]
+fn a_loop_that_only_reads_the_frontier_drains_it_to_the_floor_the_roster_names() {
+    let Some((name, ws, priced)) = cheapest_store_that_refills() else {
+        panic!("no authored store needs a telling and holds other work — the drain has no witness");
+    };
+    let workspace = ws.path();
+    // A BOUND, so a loop that fails to converge fails HERE rather than running
+    // until something else kills it. Twice the priced cost is slack for the
+    // refill this store cannot price in advance (its own fact count is the
+    // refill, and each closed item may seat one more fact).
+    let cap = (priced + 1) * 2 + 8;
+    let mut calls = 0usize;
+    let mut trajectory: Vec<u64> = Vec::new();
+    let mut by_axis: BTreeMap<&str, usize> = BTreeMap::new();
+
+    loop {
+        let told = frontier(workspace, &name)["tellings_declared"][0]
+            .as_str()
+            .map(ToString::to_string);
+        let report = match &told {
+            Some(t) => frontier_told(workspace, &name, t),
+            None => frontier(workspace, &name),
+        };
+        let gauge = report["total_gaps"].as_u64().expect("a gap count");
+        trajectory.push(gauge);
+
+        // THE LOOP'S ONLY KNOWLEDGE: the report, and the roster's verb for the
+        // axis it is about to act on. Nothing here reads the corpus by name.
+        let loaded = AtomicStore::load(&workspace.join(SIDECAR))
+            .unwrap_or_else(|e| panic!("{name}: the store must load back: {e}"));
+        let facts: BTreeMap<&str, _> = loaded
+            .narrative_facts
+            .iter()
+            .map(|(id, fact)| (id.as_str(), fact))
+            .collect();
+
+        let (axis_name, argv) = if report["telling_needed"]["gap"].as_bool().unwrap_or(false) {
+            ("telling_needed", plan_call("r1220"))
+        } else if let Some(scene) = axis(&report, "zero_fact_scenes").first().cloned() {
+            let frame = loaded
+                .frames
+                .keys()
+                .next()
+                .map(ToString::to_string)
+                .unwrap_or_else(|| panic!("{name}: a fact needs a frame and this store has none"));
+            ("zero_fact_scenes", fill_call(&frame, &scene, calls))
+        } else if let Some(setup) = flat(&dangling(workspace, &name)).into_iter().next() {
+            let fact = facts.get(setup.as_str()).copied().unwrap_or_else(|| {
+                panic!(
+                    "{name}: the frontier names `{setup}` and the store \
+                                           holds no such fact"
+                )
+            });
+            ("dangling_setups", payoff_call(&setup, fact, calls))
+        } else if let Some(item) = report["unresolved_quests"]
+            .as_array()
+            .and_then(|items| items.first())
+        {
+            let quest = item["quest"].as_str().expect("the item names its quest");
+            let completion = item["completions"][0]
+                .as_str()
+                .expect("the gated reason names the completions");
+            let seat = facts
+                .get(completion)
+                .copied()
+                .unwrap_or_else(|| panic!("{name}: `{completion}` is not in the store"));
+            let actor = match seat.typed.as_ref().map(|t| &t.object) {
+                Some(mnemosyne_core::TypedObject::Entity { id }) => id.to_string(),
+                other => panic!("{name}: a `completed_by` leg points at an actor, got {other:?}"),
+            };
+            let setup = flat(&dangling(workspace, &name))
+                .into_iter()
+                .next()
+                .unwrap_or_else(|| panic!("{name}: a quest to bind and no Expected setup left"));
+            (
+                "unresolved_quests",
+                bind_call(quest, &actor, &setup, seat, calls),
+            )
+        } else if let Some(fact) = axis(&report, "never_planned_disclosures").first().cloned() {
+            let telling = told
+                .clone()
+                .expect("the axis is only answered under a telling");
+            ("never_planned_disclosures", decide_call(&telling, &fact))
+        } else {
+            break;
+        };
+
+        the_roster_says(workspace, axis_name, &argv[0]);
+        let out = run_argv(workspace, &argv);
+        assert!(
+            out.status.success(),
+            "{name}: the loop's call on `{axis_name}` was refused:\n{}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+        *by_axis.entry(axis_name).or_default() += 1;
+        calls += 1;
+        assert!(
+            calls <= cap,
+            "{name}: the loop made {calls} calls without emptying the list (cap {cap}) — the \
+             work-list is not draining. Trajectory: {trajectory:?}"
+        );
+    }
+    // THE REFILL IS READ OFF THE TRAJECTORY, not asked for with a second call.
+    // The first draft asked, and asked WRONG: it re-read with the telling the
+    // loop held BEFORE the call, so the one call that creates a telling was
+    // measured under no telling — the axes it opens were `null` and the growth
+    // it exists to show read as a fall. The gauge each iteration already
+    // recorded is the same number under the telling of its own moment.
+    let grew = trajectory
+        .windows(2)
+        .filter(|pair| pair[1] > pair[0])
+        .count();
+
+    // THE FLOOR, and what it must be made of: exactly the axes nothing in this
+    // API closes. Anything else left standing would mean the loop stopped early;
+    // an empty floor where the roster says `no_verb` would mean the roster lies.
+    let told = frontier(workspace, &name)["tellings_declared"][0]
+        .as_str()
+        .map(ToString::to_string);
+    let last = match &told {
+        Some(t) => frontier_told(workspace, &name, t),
+        None => frontier(workspace, &name),
+    };
+    let floor = last["total_gaps"].as_u64().expect("a gap count");
+    let unclosable = axis(&last, "unordered_scenes").len()
+        + last["disclosures_seated_before_truth"]
+            .as_array()
+            .map_or(0, Vec::len)
+        + last["map_frontier"]["total_gaps"].as_u64().unwrap_or(0) as usize;
+    println!(
+        "  witness `{name}` (priced {priced}): {calls} call(s) {by_axis:?}, the gauge grew \
+         {grew} time(s), floor {floor} = {unclosable} unclosable. Trajectory: {trajectory:?}"
+    );
+    assert_eq!(
+        floor as usize, unclosable,
+        "{name}: the loop stopped with {floor} gap(s) and only {unclosable} of them are ones \
+         this API cannot close — either it stopped early or an axis it can close was missed"
+    );
+    // THE FLOOR IS ZERO HERE, and that is a fact about the population rather
+    // than about the formula: no authored corpus in this tree holds an unordered
+    // scene, a seat before truth or a map gap (R1216 counted all three at 0). So
+    // this equality is real but its non-zero side is unwitnessed, and the
+    // constructed case in `frontier_axis_closures` is what shows the `no_verb`
+    // axis being counted at all.
+    assert_eq!(
+        unclosable, 0,
+        "an authored corpus now holds an item nothing can close, which this population never \
+         did — read the floor rather than trusting this line"
+    );
+    // NON-VACUITY, both halves: a drain that made no calls proves nothing, and
+    // the refill is the property this law exists to measure rather than assume.
+    assert!(
+        calls > 3,
+        "the witness gave the loop {calls} call(s) of work, which is not a drain"
+    );
+    assert!(
+        grew > 0,
+        "the gauge never grew, so this witness never exercised the refill — the one shape \
+         R1216 says a work-list must not have and this axis really does"
     );
 }
