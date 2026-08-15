@@ -4991,6 +4991,32 @@ fn cmd_report_authoring_frontier(args: &[String]) -> Result<()> {
             );
         }
     }
+    // Round 1215 — THE THIRD STATE FOR THE TELLING-SCOPED AXES, which the map
+    // axis below has had since R891. "No telling was passed" and "this store has
+    // no telling to pass" both rendered as `(pass --telling)`, and against the
+    // authored population the second is the majority case: 32 of the 43 corpora
+    // that load declare no disclosure plan at all. A loop told to pass one finds
+    // nothing to pass, and an axis that is UNASKABLE reads exactly like one that
+    // is merely un-asked.
+    if report.telling.is_none() {
+        if report.tellings_declared.is_empty() {
+            println!(
+                "tellings declared: none — this store has no telling, so the three \
+                 telling-scoped axes below cannot be pulled at all"
+            );
+        } else {
+            println!(
+                "tellings declared ({}): {}",
+                report.tellings_declared.len(),
+                report.tellings_declared.join(", ")
+            );
+        }
+    }
+    let unasked = if report.tellings_declared.is_empty() {
+        "(no telling to pass)"
+    } else {
+        "(pass --telling)"
+    };
     match &report.unresolved_quests {
         Some(q) => list(
             "unresolved quests",
@@ -4998,11 +5024,11 @@ fn cmd_report_authoring_frontier(args: &[String]) -> Result<()> {
                 .map(mnemosyne_validate::continuity::UnresolvedQuest::describe)
                 .collect::<Vec<_>>(),
         ),
-        None => println!("unresolved quests: (pass --telling)"),
+        None => println!("unresolved quests: {unasked}"),
     }
     match &report.never_planned_disclosures {
         Some(d) => list("never-planned disclosures", d),
-        None => println!("never-planned disclosures: (pass --telling)"),
+        None => println!("never-planned disclosures: {unasked}"),
     }
     // Round 949 — a disclosure seated before its fact is true. Each row names
     // both authored coordinates, because the repair is to move one of them and
@@ -5019,7 +5045,7 @@ fn cmd_report_authoring_frontier(args: &[String]) -> Result<()> {
                 );
             }
         }
-        None => println!("disclosures seated before truth: (pass --telling)"),
+        None => println!("disclosures seated before truth: {unasked}"),
     }
     // The map axis (Round 891). The no-rule case gets its OWN sentence: a store
     // that cannot know which facts are edges must never render like a store

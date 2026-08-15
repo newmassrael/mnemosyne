@@ -1059,6 +1059,20 @@ pub struct AuthoringFrontierReport {
     /// telling-scoped sections were omitted).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub telling: Option<String>,
+    /// Every telling this store DECLARES, sorted (Round 1215) — the third state
+    /// the telling-scoped axes were missing, and the one the map axis has had
+    /// since R891.
+    ///
+    /// Without it, "no telling was passed" and "this store has no telling to
+    /// pass" are the same answer: `unresolved_quests`, `never_planned_disclosures`
+    /// and `disclosures_seated_before_truth` are all `None`, and the human render
+    /// said `(pass --telling)` to both. Measured against the authored population,
+    /// the two are not a corner case — 32 of the 43 corpora that load declare no
+    /// disclosure plan at all, so for the majority of this repository's records
+    /// that instruction cannot be followed and the axis is not un-asked but
+    /// UNASKABLE. A loop reading the report can now tell which, and pick a
+    /// telling to pass without a second read.
+    pub tellings_declared: Vec<String>,
     /// Sections with NO fact anchored (no fact's `canon_from` names them) — the
     /// empty scenes to author into, sorted. Carries NO placement axis: a placed
     /// empty and an unplaced empty land here alike (see `unplaced_scenes`).
@@ -1364,6 +1378,13 @@ pub fn authoring_frontier_report(
 
     Ok(AuthoringFrontierReport {
         telling: telling.map(str::to_string),
+        // ASKED OF THE STORE, not of the caller: the registry is what says
+        // whether there is a telling to pass at all.
+        tellings_declared: store
+            .disclosure_plans
+            .keys()
+            .map(ToString::to_string)
+            .collect(),
         zero_fact_scenes,
         unplaced_scenes,
         unordered_scenes,

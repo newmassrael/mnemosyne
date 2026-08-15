@@ -149,6 +149,9 @@ mod frontier_closure;
 #[path = "frontier_dangling_agreement.rs"]
 mod frontier_dangling_agreement;
 
+#[path = "frontier_telling_axis.rs"]
+mod frontier_telling_axis;
+
 #[path = "frontier_manuscript_agreement.rs"]
 mod frontier_manuscript_agreement;
 
