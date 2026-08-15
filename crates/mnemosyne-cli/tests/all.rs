@@ -143,6 +143,9 @@ mod formatting_population;
 #[path = "frame_view_playable_agreement.rs"]
 mod frame_view_playable_agreement;
 
+#[path = "frontier_closure.rs"]
+mod frontier_closure;
+
 #[path = "frontier_dangling_agreement.rs"]
 mod frontier_dangling_agreement;
 
