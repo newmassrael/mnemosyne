@@ -180,15 +180,17 @@ fn only_a_call_this_repository_has_run_is_published_as_proven() {
     }
     proven.sort();
     println!("  proven {proven:?}, believed {believed}, no verb {no_verb:?}, not work {not_work}");
-    // PINNED, because `closes` is a claim about what this suite RUNS. The three
-    // are the axes Rounds 1214, 1216 and 1217 closed over the authored corpora,
-    // and each of those laws reads its verb from the roster. A fourth may only
-    // appear beside a law that proves it.
+    // PINNED, because `closes` is a claim about what this suite RUNS. These are
+    // the axes Rounds 1214, 1216, 1217 and 1219 closed over the authored
+    // corpora, and each of those laws reads its verb from the roster. A sixth
+    // may only appear beside a law that proves it.
     assert_eq!(
         proven,
         vec![
             "dangling_setups".to_string(),
+            "never_planned_disclosures".to_string(),
             "telling_needed".to_string(),
+            "unresolved_quests".to_string(),
             "zero_fact_scenes".to_string()
         ],
         "the proven set changed: either a law arrived (say so here) or a call was published \

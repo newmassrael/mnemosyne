@@ -1381,24 +1381,25 @@ pub fn frontier_axes() -> &'static [FrontierAxis] {
         },
         FrontierAxis {
             field: "unresolved_quests",
-            closure: AxisClosure::Believed {
+            closure: AxisClosure::Closes {
                 verb: "add-fact",
                 argument: "a typed `completed_by` leg from the quest to its actor, with \
-                           --pays-off naming the giving setup",
-                why_unproven: "no law here closes one over an authored corpus; the axis is \
-                               telling-scoped, so the population walks that pull work \
-                               without a telling never reach it",
+                           --pays-off naming an Expected setup — a quest's giving setup is \
+                           DERIVED as the Expected fact its own completion pays off, so the \
+                           binding IS the payoff argument. `amend-fact` on one of the \
+                           completions the item names does it too, but amend is a REPLACE: \
+                           restating a fact to add one field is how a caller drops another",
             },
         },
         FrontierAxis {
             field: "never_planned_disclosures",
-            closure: AxisClosure::Believed {
+            closure: AxisClosure::Closes {
                 verb: "set-disclosure",
-                argument: "--telling <the telling> --fact <the unplanned fact> --mode \
-                           withhold|state|hint|imply",
-                why_unproven: "same reason as `unresolved_quests`, and one more: which mode \
-                               is right is the authorial decision the substrate must not \
-                               make",
+                argument: "--telling <the telling> --fact <the undecided fact> --mode \
+                           withhold|state|hint|imply. WHICH MODE is the authorial half and \
+                           this substrate must not pick it; note that `withhold` and any \
+                           `first_at` pin require the fact to carry a typed claim, so on an \
+                           untyped fact only state/hint/imply are available",
             },
         },
         FrontierAxis {
@@ -1407,9 +1408,14 @@ pub fn frontier_axes() -> &'static [FrontierAxis] {
                 verb: "set-disclosure",
                 argument: "re-seat `surface.scene` at or after the fact's `canon_from` — or \
                            move the fact instead",
-                why_unproven: "the row names both authored coordinates because the repair is \
-                               to move ONE of them and only the author knows which, so a law \
-                               that picked would be asserting an authorial choice",
+                why_unproven: "no corpus this repository holds reaches this axis: measured 0 \
+                               across the 11 authored stores that declare a telling. The \
+                               R949 witness was constructed, and a made witness is weaker \
+                               than a found one — so the call stays believed rather than \
+                               wearing the evidence of the two axes beside it. There is a \
+                               second reason not to guess at a law: the row names BOTH \
+                               authored coordinates because the repair moves one of them, \
+                               and only the author knows which",
             },
         },
         FrontierAxis {

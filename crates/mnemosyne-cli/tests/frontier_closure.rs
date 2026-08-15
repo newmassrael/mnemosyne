@@ -616,6 +616,311 @@ fn every_store_that_needs_a_telling_is_one_a_single_authored_call_opens() {
     );
 }
 
+/// What the THREE TELLING-SCOPED axes are holding, across the stores that
+/// declare a telling to ask them under.
+///
+/// R1219. The frontier's population walks all pull work WITHOUT a telling, so
+/// those three axes have never been counted here at all — R1218 published a
+/// call for each and had to mark all three `believed` for exactly that reason.
+/// Before writing a closure law, count: an axis no corpus reaches cannot be
+/// proven over real stores, and an axis holding hundreds decides how a closure
+/// law must be shaped.
+#[test]
+fn the_telling_scoped_axes_say_how_much_the_corpora_are_holding() {
+    let (stores, _) = authored_stores();
+    let mut asked = 0usize;
+    let mut quests = 0usize;
+    let mut unplanned = 0usize;
+    let mut seated_early = 0usize;
+    let mut with_quests = Vec::new();
+    for store in &stores {
+        let report = frontier(store.ws.path(), &store.name);
+        let Some(telling) = report["tellings_declared"][0].as_str() else {
+            continue;
+        };
+        asked += 1;
+        let out = run(
+            store.ws.path(),
+            &["report-authoring-frontier", "--json", "--telling", telling],
+        );
+        assert!(
+            out.status.success(),
+            "{}: the frontier answers under its own telling `{telling}`: {}",
+            store.name,
+            String::from_utf8_lossy(&out.stderr)
+        );
+        let asked_report: serde_json::Value =
+            serde_json::from_slice(&out.stdout).expect("frontier json");
+        let len = |key: &str| {
+            asked_report[key]
+                .as_array()
+                .map(Vec::len)
+                .unwrap_or_else(|| {
+                    panic!("{}: `{key}` is a list once a telling is given", store.name)
+                })
+        };
+        let here = len("unresolved_quests");
+        if here > 0 {
+            with_quests.push(format!(
+                "{} [{here}] {}",
+                store.name, asked_report["unresolved_quests"]
+            ));
+        }
+        quests += here;
+        unplanned += len("never_planned_disclosures");
+        seated_early += len("disclosures_seated_before_truth");
+    }
+    println!(
+        "  {} store(s) declare a telling: unresolved quests {} {:?}, never-planned disclosures \
+         {}, disclosures seated before truth {}",
+        asked, quests, with_quests, unplanned, seated_early
+    );
+}
+
+/// Every store that declares a telling, with the telling to ask it under — the
+/// population the three telling-scoped axes live in, which no walk here could
+/// reach before R1219 because they all pull work without one.
+fn stores_with_a_telling() -> Vec<(String, tempfile::TempDir, String)> {
+    let (stores, _) = authored_stores();
+    stores
+        .into_iter()
+        .filter_map(|store| {
+            let report = frontier(store.ws.path(), &store.name);
+            let telling = report["tellings_declared"][0].as_str()?.to_string();
+            Some((store.name, store.ws, telling))
+        })
+        .collect()
+}
+
+/// The frontier under a telling, so the telling-scoped axes are present.
+fn frontier_told(workspace: &Path, whose: &str, telling: &str) -> serde_json::Value {
+    let out = run(
+        workspace,
+        &["report-authoring-frontier", "--json", "--telling", telling],
+    );
+    assert!(
+        out.status.success(),
+        "{whose}: the frontier answers under `{telling}`: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    serde_json::from_slice(&out.stdout).expect("frontier json")
+}
+
+/// The fourth axis closed: a quest the store says nothing gives.
+///
+/// R1219. `completion_gives_nothing` is the gated half of this axis (R1037): a
+/// `completed_by` fact names the quest and pays off no `Expected` setup, so the
+/// store says both "this quest is completed by X" and "nothing gives it", and
+/// its state reads `unknown` on every road forever — a runtime is handed an
+/// obligation it can never show as available and never as done.
+///
+/// The giving setup is DERIVED, not declared (R619: "a quest's giving setup is
+/// an `Expected` fact its OWN `completed_by`-typed fact pays off"), so the call
+/// that closes the item is one that makes a completion pay off an Expected fact.
+/// This authors that completion rather than amending an existing one — `amend`
+/// is a REPLACE and restating a fact to add one field is how a loop silently
+/// drops another.
+#[test]
+fn every_unresolved_quest_is_one_a_single_authored_call_binds() {
+    let mut closed = 0usize;
+    let mut asked = 0usize;
+    for (name, ws, telling) in stores_with_a_telling() {
+        let workspace = ws.path();
+        let before = frontier_told(workspace, &name, &telling);
+        let items = before["unresolved_quests"]
+            .as_array()
+            .unwrap_or_else(|| panic!("{name}: the axis is a list once a telling is given"))
+            .clone();
+        if items.is_empty() {
+            continue;
+        }
+        asked += 1;
+        the_roster_says(workspace, "unresolved_quests", "add-fact");
+        // An `Expected` fact to bind to. The frontier's own payoff axis names
+        // them, so the call is assembled from the report rather than from
+        // knowledge of the corpus.
+        let setup = flat(&dangling(workspace, &name))
+            .into_iter()
+            .next()
+            .unwrap_or_else(|| {
+                panic!("{name}: a quest to bind and no Expected setup to bind it to")
+            });
+        let loaded = AtomicStore::load(&workspace.join(SIDECAR))
+            .unwrap_or_else(|e| panic!("{name}: the store must load back: {e}"));
+        // KEYED BY THE STRING THE FRONTIER PRINTS, the same join the payoff law
+        // above makes: the store's key is a typed id and the report's is JSON
+        // text, and `as_str` is the one place the two spellings meet.
+        let facts: BTreeMap<&str, _> = loaded
+            .narrative_facts
+            .iter()
+            .map(|(id, fact)| (id.as_str(), fact))
+            .collect();
+
+        for (nth, item) in items.iter().enumerate() {
+            let quest = item["quest"].as_str().expect("the item names its quest");
+            // The completion the item names is READ for its seat and its actor
+            // — both are the store's, not this law's.
+            let completion = item["completions"][0]
+                .as_str()
+                .expect("`completion_gives_nothing` names the completions");
+            let existing = facts.get(completion).copied().unwrap_or_else(|| {
+                panic!("{name}: the item names `{completion}` and the store holds no such fact")
+            });
+            let actor = match existing.typed.as_ref().map(|t| &t.object) {
+                Some(mnemosyne_core::TypedObject::Entity { id }) => id.to_string(),
+                other => panic!("{name}: a `completed_by` leg points at an actor, got {other:?}"),
+            };
+            let id = format!("frontier-quest-bind-{nth}");
+            let entities = format!("{quest},{actor}");
+            let out = run(
+                workspace,
+                &[
+                    "add-fact",
+                    "--fact",
+                    &id,
+                    "--frame",
+                    existing.frame.as_str(),
+                    "--branch",
+                    existing.branch.as_str(),
+                    "--claim",
+                    "The quest the frontier named is bound to what gives it.",
+                    "--canon-from",
+                    existing.canon_from.as_str(),
+                    "--evidence",
+                    existing.canon_from.as_str(),
+                    "--entities",
+                    &entities,
+                    "--typed-subject",
+                    quest,
+                    "--typed-predicate",
+                    "completed_by",
+                    "--typed-object-entity",
+                    &actor,
+                    "--pays-off",
+                    &setup,
+                ],
+            );
+            assert!(
+                out.status.success(),
+                "{name}: the call this axis implies was refused for `{quest}`:\n{}",
+                String::from_utf8_lossy(&out.stderr)
+            );
+            closed += 1;
+        }
+
+        let after = frontier_told(workspace, &name, &telling);
+        assert_eq!(
+            after["unresolved_quests"],
+            serde_json::json!([]),
+            "{name}: every quest the frontier named had to leave the axis"
+        );
+        let gauge = |r: &serde_json::Value| r["total_gaps"].as_u64().expect("a gap count");
+        assert_eq!(
+            gauge(&before) - gauge(&after),
+            items.len() as u64,
+            "{name}: one call per item, one item off the gauge each"
+        );
+        // THE PAYOFF AXIS DOES NOT MOVE, and the reason is worth the assertion:
+        // payoff coverage is PER WORLD, so a completion on one road paying off
+        // a setup does not discharge that setup on the roads it is dangling on.
+        // If a corpus ever makes this move, the sentence is what to re-read.
+        assert_eq!(
+            after["dangling_setups"], before["dangling_setups"],
+            "{name}: binding a quest moved the per-world payoff axis"
+        );
+        for other in ["zero_fact_scenes", "unplaced_scenes", "unordered_scenes"] {
+            assert_eq!(
+                axis(&after, other),
+                axis(&before, other),
+                "{name}: binding a quest moved `{other}`"
+            );
+        }
+    }
+    println!("  {asked} store(s) held an unresolved quest: {closed} bound, one call each");
+    assert_eq!(
+        asked, 1,
+        "the authored population holds exactly one store with an unresolved quest, and if that \
+         changes this law's single witness should be re-read rather than trusted"
+    );
+}
+
+/// The fifth axis closed: a fact the telling never decided about.
+///
+/// The R507 coverage read calls these the author's todo list — under a
+/// withhold-default telling, a fact with no override is withheld by omission
+/// rather than by decision. The call is one `set-disclosure`, and the MODE is
+/// the authorial half this law must not pretend to make: it uses `state`, the
+/// one mode that needs nothing else of the fact (a `withhold` or any `first_at`
+/// pin requires a typed claim, so a law that reached for the default would fail
+/// on untyped facts for a reason that is about the mode, not about the axis).
+#[test]
+fn every_never_planned_disclosure_is_one_a_single_authored_call_plans() {
+    let mut planned = 0usize;
+    let mut stores_asked = 0usize;
+    for (name, ws, telling) in stores_with_a_telling() {
+        let workspace = ws.path();
+        let mut report = frontier_told(workspace, &name, &telling);
+        let mut unplanned = axis(&report, "never_planned_disclosures");
+        if unplanned.is_empty() {
+            continue;
+        }
+        stores_asked += 1;
+        the_roster_says(workspace, "never_planned_disclosures", "set-disclosure");
+        unplanned.sort();
+        for fact in &unplanned {
+            let before = report.clone();
+            let out = run(
+                workspace,
+                &[
+                    "set-disclosure",
+                    "--telling",
+                    &telling,
+                    "--fact",
+                    fact,
+                    "--mode",
+                    "state",
+                ],
+            );
+            assert!(
+                out.status.success(),
+                "{name}: the call this axis implies was refused for `{fact}`:\n{}",
+                String::from_utf8_lossy(&out.stderr)
+            );
+            report = frontier_told(workspace, &name, &telling);
+            let mut expected = axis(&before, "never_planned_disclosures");
+            expected.retain(|f| f != fact);
+            assert_eq!(
+                axis(&report, "never_planned_disclosures"),
+                expected,
+                "{name}: deciding `{fact}` had to remove it and leave the rest"
+            );
+            // A DISCOURSE DECISION MAKES NO FACT-BASE WORK, and one axis in
+            // particular could react: a seat before the fact is true. `state`
+            // with no `surface` seats nothing, so this must stay empty.
+            assert_eq!(
+                report["disclosures_seated_before_truth"],
+                before["disclosures_seated_before_truth"],
+                "{name}: deciding `{fact}` moved the seating axis"
+            );
+            assert_eq!(
+                report["dangling_setups"], before["dangling_setups"],
+                "{name}: deciding `{fact}` opened work on the payoff axis"
+            );
+            planned += 1;
+        }
+        assert!(
+            axis(&report, "never_planned_disclosures").is_empty(),
+            "{name}: facts are still undecided after every one the frontier named was decided"
+        );
+    }
+    println!("  {stores_asked} store(s) held an undecided fact: {planned} decided, one call each");
+    assert!(
+        planned > 0,
+        "no corpus here holds an undecided fact under its own telling, so this law read an \
+         empty population"
+    );
+}
+
 /// THE CONTROL for the axis above: it is the DECLARATION that closes the item,
 /// not any write.
 ///
