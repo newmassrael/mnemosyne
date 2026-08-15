@@ -83,6 +83,9 @@ mod authoring_surface;
 #[path = "blanket_verifies_smoke.rs"]
 mod blanket_verifies_smoke;
 
+#[path = "build_width.rs"]
+mod build_width;
+
 #[path = "commit_ledger_gate_smoke.rs"]
 mod commit_ledger_gate_smoke;
 

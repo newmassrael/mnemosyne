@@ -27,9 +27,8 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use ci_plan::{
-    declared_build_commands, lister_declared_commands, lock_verdict, resolves_the_lockfile,
-    script_cargo_commands, tracked_manifests, workflow_cargo_commands, workspaces, CargoCommand,
-    LockVerdict, Ownership, BUILD_DECLARATION,
+    commands_this_repository_issues, lock_verdict, resolves_the_lockfile, tracked_manifests,
+    workspaces, CargoCommand, LockVerdict, Ownership, BUILD_DECLARATION,
 };
 
 fn repository_root() -> PathBuf {
@@ -41,27 +40,19 @@ fn repository_root() -> PathBuf {
 }
 
 /// Everything this repository issues: the workflows GitHub runs, the shell the
-/// hooks and scripts run, and the commands the workspace lister declares.
+/// hooks and scripts run, the commands the workspace lister declares, and the
+/// build machine's.
 ///
 /// THE THIRD SOURCE IS NOT A DUPLICATE OF THE SECOND. The lister's commands are
 /// assembled at runtime — `cargo clippy --manifest-path "$ws/Cargo.toml"
 /// "${locked[@]}"` — so its shell says which words exist and only its output
 /// says what they expand to. Reading its text instead would ask whether a
 /// variable is spelled `--locked`.
+///
+/// R1212 moved the assembly into `ci-plan`: a second law now asks about the same
+/// population, and two assemblies are two answers.
 fn everything_this_repository_issues(root: &Path) -> Vec<CargoCommand> {
-    let mut commands = workflow_cargo_commands(root);
-    let listed = workspaces(root);
-    commands.extend(lister_declared_commands(&listed));
-    commands.extend(
-        script_cargo_commands(root)
-            .into_iter()
-            .filter(|command| command.source != "scripts/check-side-workspaces.sh"),
-    );
-    // R1197 — AND THE BUILD MACHINE'S. `[commands]` in the build-machine
-    // declaration holds this repository's own suite, issued from somewhere else,
-    // and nothing had ever asked it for the flag.
-    commands.extend(declared_build_commands(root));
-    commands
+    commands_this_repository_issues(root)
 }
 
 fn workspaces_this_repository_cannot_pin(root: &Path) -> BTreeSet<String> {

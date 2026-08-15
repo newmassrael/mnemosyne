@@ -34,6 +34,28 @@
 # a sibling checkout to be doing the same thing, which is the actual operating
 # condition rather than the ideal one.
 #
+# AND IT IS A DEFAULT, NOT A BOUND ON EVERY MACHINE — R1212 measured what this
+# file had never been asked. A number here is a fact about ONE host and it
+# travels with the tree to every checkout, so the question is whether it GOVERNS
+# there. Three arms, each with a fresh build directory so the build script that
+# reads cargo's own `NUM_JOBS` actually ran:
+#
+#   this config alone                     NUM_JOBS = 4
+#   CARGO_BUILD_JOBS=8 against it         NUM_JOBS = 8
+#   `-j 2` against that variable          NUM_JOBS = 2
+#
+# So it governs exactly where nothing else decides — this workstation, and a CI
+# runner, neither of which has a scheduler in front of it. On the build machine
+# it does not: `bx` exports a per-host width and a full cold workspace build
+# there ran at `NUM_JOBS=31`, in 46.07s at 1874% CPU with zero swapping, its
+# heaviest single process peaking at 777,424 kB (0.74 GiB). That measurement is
+# also the compile side's per-task cost, which nothing had ever measured — see
+# `.claude/remote-build.toml`'s `peak_gb_per_task`.
+#
+# The third arm is why `crates/mnemosyne-cli/tests/build_width.rs` exists: a flag
+# beats the environment, so a `-j` written into any command this repository
+# issues would take the width away from every scheduler at once, silently.
+#
 # BOTH DEFAULTS, NOT ONE. `jobs` bounds the compile side; `RUST_TEST_THREADS`
 # bounds the run side, which is where the memory in this repository actually
 # lives — `authoring_surface` is one binary holding twelve tests over a shared

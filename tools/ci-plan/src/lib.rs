@@ -1286,6 +1286,62 @@ pub fn declared_build_commands(root: &Path) -> Vec<CargoCommand> {
     out
 }
 
+/// EVERY cargo command this repository issues, from all four sources.
+///
+/// ONE ASSEMBLY, because more than one law asks about the same population and a
+/// second assembly is a second answer: `locked_resolution_smoke` asks whether
+/// each one pins its lockfile and R1212's `build_width` asks whether any of them
+/// decides how wide it runs. The one subtlety belongs here rather than in each
+/// caller — `scripts/check-side-workspaces.sh` is dropped from the SHELL source
+/// because the lister reports the same commands assembled, and reading its text
+/// as well would ask twice about words that are `"${locked[@]}"` on the page.
+pub fn commands_this_repository_issues(root: &Path) -> Vec<CargoCommand> {
+    let mut commands = workflow_cargo_commands(root);
+    let listed = workspaces(root);
+    commands.extend(lister_declared_commands(&listed));
+    commands.extend(
+        script_cargo_commands(root)
+            .into_iter()
+            .filter(|command| command.source != "scripts/check-side-workspaces.sh"),
+    );
+    commands.extend(declared_build_commands(root));
+    commands
+}
+
+/// The words in one command that decide how wide it runs, if it decides at all.
+///
+/// R1212 — THE WIDTH IS THE RUNNER'S DECISION, and a command that writes one
+/// takes it away from every place a scheduler can set one. Measured on this
+/// machine's cargo, three arms with a fresh build directory each: this tree's
+/// `[build] jobs = 4` gives a build script `NUM_JOBS=4`; `CARGO_BUILD_JOBS=8`
+/// against that same config gives 8; and `-j 2` against that same variable gives
+/// 2. So a flag beats the environment, which is how the build machine is sized —
+/// `bx` exports `CARGO_BUILD_JOBS` and `RUST_TEST_THREADS` per host, measured at
+/// 31 on a 32-core one where this tree's config says 4.
+///
+/// Both sides are read. `--jobs` bounds compiling; `--test-threads` after the
+/// bare `--` bounds running, and this repository's memory lives on that side.
+#[must_use]
+pub fn decides_its_own_width(command: &CargoCommand) -> Vec<String> {
+    let mut found = Vec::new();
+    for word in &command.cargo_args {
+        // `-j`, `-j4`, `--jobs`, `--jobs=4` — one flag in four spellings, and a
+        // reader that knew one of them would answer "absent" for the others.
+        let short_with_value = word.starts_with("-j")
+            && word.len() > 2
+            && word[2..].chars().all(|c| c.is_ascii_digit());
+        if word == "-j" || word == "--jobs" || word.starts_with("--jobs=") || short_with_value {
+            found.push(word.clone());
+        }
+    }
+    for word in &command.harness_args {
+        if word == "--test-threads" || word.starts_with("--test-threads=") {
+            found.push(word.clone());
+        }
+    }
+    found
+}
+
 /// Every cargo invocation in every job of every tracked workflow.
 pub fn workflow_cargo_commands(root: &Path) -> Vec<CargoCommand> {
     let mut out = Vec::new();
