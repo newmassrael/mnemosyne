@@ -35,7 +35,25 @@ use std::path::Path;
 use mnemosyne_atomic::AtomicStore;
 
 use crate::common;
+use crate::frontier_axis_closures::closing_verb;
 use common::{authored_stores, run, SIDECAR};
+
+/// The verb the ROSTER says closes this axis (Round 1218), asserted to be the
+/// one this law is about to call.
+///
+/// The point is not convenience. `describe-frontier-axes` publishes these verbs
+/// to an unattended loop as calls this repository has RUN, and a published claim
+/// nothing tests is the drift every table beside an API grows. Reading it here
+/// makes the declaration the thing under test: rename the verb in the roster and
+/// this law fails, which is the only way the two stay one statement.
+fn the_roster_says(at: &Path, field: &str, verb: &str) {
+    assert_eq!(
+        closing_verb(at, field).as_deref(),
+        Some(verb),
+        "`describe-frontier-axes` must publish `{verb}` as what closes `{field}` — this law \
+         runs that call, and it is the evidence behind the roster's `closes` state"
+    );
+}
 
 /// What each road still owes, by world.
 fn dangling(workspace: &Path, whose: &str) -> BTreeMap<String, BTreeSet<String>> {
@@ -113,6 +131,7 @@ fn every_gap_the_frontier_names_is_one_a_single_authored_call_closes() {
             continue;
         }
         stores_with_work += 1;
+        the_roster_says(workspace, "dangling_setups", "add-fact");
         let roads_at_first = left.len();
         sightings += left.values().map(BTreeSet::len).sum::<usize>();
 
@@ -268,6 +287,7 @@ fn every_zero_fact_scene_is_one_a_single_authored_call_fills() {
             continue;
         };
         stores_asked += 1;
+        the_roster_says(workspace, "zero_fact_scenes", "add-fact");
         empty.sort();
         for (nth, scene) in empty.iter().enumerate() {
             let before = report.clone();
@@ -506,6 +526,7 @@ fn every_store_that_needs_a_telling_is_one_a_single_authored_call_opens() {
         {
             continue;
         }
+        the_roster_says(workspace, "telling_needed", "add-disclosure-plan");
         // The seam BEFORE, so the sentence below is about a door that was shut.
         // `--telling` is a required argument, so there is no way to ask.
         let shut = run(workspace, &["report-playable-world", "--telling", "r1217"]);

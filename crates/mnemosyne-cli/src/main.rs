@@ -1004,6 +1004,22 @@ static COMMANDS: &[Command] = &[
         run: |c| cmd_report_authoring_frontier(c.rest()).map_err(CliError::from),
     },
     Command {
+        name: "describe-frontier-axes",
+        aliases: &[],
+        group: Some(&GROUP_ATOMIC_MUTATE),
+        blank_before: false,
+        usage: &["describe-frontier-axes [--json]"],
+        notes: &[
+            "   Round 1218 — WHAT CLOSES EACH ITEM the frontier hands a loop: every field that",
+            "   report emits, and for each either the call that closes it (marked whether this",
+            "   repository has RUN that call over the authored corpora, or merely believes it),",
+            "   or why no verb here closes it, or why it is not work at all. `unordered_scenes`",
+            "   is the one that counts as work and has no verb — hand it to the author.",
+            "   A property of the binary, so it needs no workspace and answers the same anywhere.",
+        ],
+        run: |c| cmd_describe_frontier_axes(c.rest()).map_err(CliError::from),
+    },
+    Command {
         name: "report-disclosure-coverage",
         aliases: &[],
         group: Some(&GROUP_ATOMIC_MUTATE),
@@ -4896,6 +4912,59 @@ fn cmd_propose_verdict(args: &[String]) -> Result<()> {
     }
     if report.verdict == mnemosyne_ops::ProposeVerdict::Rollback {
         std::process::exit(1);
+    }
+    Ok(())
+}
+
+/// Round 1218 — what CLOSES each item the frontier hands a loop
+/// (`describe-frontier-axes`). Static: a property of this build, so it needs no
+/// workspace. The roster itself lives beside the report it describes, and a law
+/// requires it to name exactly that report's fields.
+fn cmd_describe_frontier_axes(args: &[String]) -> Result<()> {
+    let mut json = false;
+    for arg in args {
+        match arg.as_str() {
+            "--json" => json = true,
+            other => return Err(anyhow!("describe-frontier-axes: unexpected arg `{other}`")),
+        }
+    }
+    let axes = mnemosyne_ops::frontier_axes();
+    if json {
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&serde_json::json!({ "axes": axes }))?
+        );
+        return Ok(());
+    }
+    println!("=== what closes each authoring-frontier item (a property of this build) ===");
+    for axis in axes {
+        match &axis.closure {
+            mnemosyne_ops::AxisClosure::Closes { verb, argument } => {
+                println!("\n{} — CLOSED BY `{verb}`", axis.field);
+                println!("  {argument}");
+                println!("  this repository has run that call over the authored corpora");
+            }
+            mnemosyne_ops::AxisClosure::Believed {
+                verb,
+                argument,
+                why_unproven,
+            } => {
+                println!(
+                    "\n{} — believed closed by `{verb}` (NOT RUN HERE)",
+                    axis.field
+                );
+                println!("  {argument}");
+                println!("  unproven: {why_unproven}");
+            }
+            mnemosyne_ops::AxisClosure::NoVerb { why } => {
+                println!("\n{} — NO VERB IN THIS API CLOSES IT", axis.field);
+                println!("  {why}");
+            }
+            mnemosyne_ops::AxisClosure::NotWork { why } => {
+                println!("\n{} — not work", axis.field);
+                println!("  {why}");
+            }
+        }
     }
     Ok(())
 }

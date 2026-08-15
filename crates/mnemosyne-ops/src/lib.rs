@@ -1242,6 +1242,196 @@ pub struct SeatBeforeTruth {
     pub true_from: String,
 }
 
+/// What closes one item on one axis of the authoring frontier (Round 1218).
+///
+/// The frontier calls itself the read "an unattended loop pulls its next work
+/// from", and until this type it published WHAT is outstanding and never WHAT
+/// TO CALL. Rounds 1214, 1216 and 1217 each closed one axis by hand and each
+/// wrote the same carry: the loop reads an axis NAME and learns the verb from a
+/// person. Three rounds writing one sentence is undone work, not a limit.
+///
+/// The four states are not decoration. An axis that counts as work and has no
+/// verb in this API (`unordered_scenes`) is the one a loop can spin on forever,
+/// and from outside that looks exactly like a loop that is working — so it must
+/// be SAID rather than left to a caller who assumes every gap is closable. And
+/// a call this repository has RUN against the authored corpora is a different
+/// claim from one it believes; publishing both under one name would let the
+/// weaker wear the stronger's evidence (the R1216 discipline).
+#[derive(Debug, Clone, Serialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum AxisClosure {
+    /// One call closes an item here AND this repository's suite has run it over
+    /// the authored corpora. The closure laws read the verb from HERE, so the
+    /// declaration is the thing under test rather than a second spelling of it.
+    Closes {
+        verb: &'static str,
+        /// What makes that call a CLOSURE rather than any write — the argument
+        /// the control cases drop to show the list does not move without it.
+        argument: &'static str,
+    },
+    /// The call this substrate believes closes it, which nothing here has run
+    /// against a real corpus. A loop may use it; a round may not cite it as
+    /// proven.
+    Believed {
+        verb: &'static str,
+        argument: &'static str,
+        why_unproven: &'static str,
+    },
+    /// NO verb in this API closes it. Counted as work all the same, so a loop
+    /// that reads only the count will not finish — which is the reason this
+    /// state exists instead of an omission.
+    NoVerb { why: &'static str },
+    /// Not an item at all: a census, an echo of the argument, or a derived view
+    /// the axes above are computed from. Never in `total_gaps`.
+    NotWork { why: &'static str },
+}
+
+/// One field of [`AuthoringFrontierReport`] and what closes an item on it.
+#[derive(Debug, Clone, Serialize)]
+pub struct FrontierAxis {
+    /// The report's own JSON key — the name a loop already holds.
+    pub field: &'static str,
+    pub closure: AxisClosure,
+}
+
+/// Every field the frontier emits, with what closes it (Round 1218).
+///
+/// TOTAL over the report's fields by law, not by care: `frontier_axis_closures`
+/// serializes an `AuthoringFrontierReport` and requires this roster's keys to be
+/// exactly its own. A field added tomorrow with no row here turns that test red,
+/// which is the only way a contract beside a growing struct stays true.
+pub fn frontier_axes() -> &'static [FrontierAxis] {
+    &[
+        FrontierAxis {
+            field: "telling",
+            closure: AxisClosure::NotWork {
+                why: "the argument this call was given, echoed back so an answer can be \
+                      filed against the question it answers",
+            },
+        },
+        FrontierAxis {
+            field: "tellings_declared",
+            closure: AxisClosure::NotWork {
+                why: "the store's own registry (R1215), so a loop can pick a telling to pass \
+                      without a second read; whether the ABSENCE of one is work is answered \
+                      by `telling_needed`, not here",
+            },
+        },
+        FrontierAxis {
+            field: "telling_needed",
+            closure: AxisClosure::Closes {
+                verb: "add-disclosure-plan",
+                argument: "--telling <a fresh id> --default-mode withhold",
+            },
+        },
+        FrontierAxis {
+            field: "zero_fact_scenes",
+            closure: AxisClosure::Closes {
+                verb: "add-fact",
+                argument: "--canon-from <the empty scene> (the COORDINATE is what fills it, \
+                           not the write)",
+            },
+        },
+        FrontierAxis {
+            field: "unplaced_scenes",
+            closure: AxisClosure::NotWork {
+                why: "the placement census (R667). Every member is already counted once, as \
+                      `zero_fact_scenes` if empty or `unordered_scenes` if fact-bearing, so \
+                      it is deliberately not in `total_gaps`",
+            },
+        },
+        FrontierAxis {
+            field: "unordered_scenes",
+            closure: AxisClosure::NoVerb {
+                why: "the canon order is a DECLARED partial order this API never infers, and \
+                      no verb here writes the order manifest — it is the consumer's file. \
+                      This axis DOES count toward `total_gaps`, so it is the one place a \
+                      loop can pull an item it cannot close by calling anything: hand it to \
+                      the author instead of retrying",
+            },
+        },
+        FrontierAxis {
+            field: "scene_coverage",
+            closure: AxisClosure::NotWork {
+                why: "the per-scene census the emptiness axis is derived from, named rather \
+                      than counted since R1053",
+            },
+        },
+        FrontierAxis {
+            field: "branch_owned_density",
+            closure: AxisClosure::NotWork {
+                why: "a per-world-line read (R617): a world that looks full by inheritance \
+                      and owns little reads low. A signal to an author, never a gap",
+            },
+        },
+        FrontierAxis {
+            field: "structural_facts",
+            closure: AxisClosure::NotWork {
+                why: "the derived quest-plumbing subset (R619), exposed flat so a consumer \
+                      can JOIN it to each fact's branch",
+            },
+        },
+        FrontierAxis {
+            field: "dangling_setups",
+            closure: AxisClosure::Closes {
+                verb: "add-fact",
+                argument: "--pays-off <the dangling setup>, seated at the setup's own frame, \
+                           branch and coordinate",
+            },
+        },
+        FrontierAxis {
+            field: "unresolved_quests",
+            closure: AxisClosure::Believed {
+                verb: "add-fact",
+                argument: "a typed `completed_by` leg from the quest to its actor, with \
+                           --pays-off naming the giving setup",
+                why_unproven: "no law here closes one over an authored corpus; the axis is \
+                               telling-scoped, so the population walks that pull work \
+                               without a telling never reach it",
+            },
+        },
+        FrontierAxis {
+            field: "never_planned_disclosures",
+            closure: AxisClosure::Believed {
+                verb: "set-disclosure",
+                argument: "--telling <the telling> --fact <the unplanned fact> --mode \
+                           withhold|state|hint|imply",
+                why_unproven: "same reason as `unresolved_quests`, and one more: which mode \
+                               is right is the authorial decision the substrate must not \
+                               make",
+            },
+        },
+        FrontierAxis {
+            field: "disclosures_seated_before_truth",
+            closure: AxisClosure::Believed {
+                verb: "set-disclosure",
+                argument: "re-seat `surface.scene` at or after the fact's `canon_from` — or \
+                           move the fact instead",
+                why_unproven: "the row names both authored coordinates because the repair is \
+                               to move ONE of them and only the author knows which, so a law \
+                               that picked would be asserting an authorial choice",
+            },
+        },
+        FrontierAxis {
+            field: "map_frontier",
+            closure: AxisClosure::Believed {
+                verb: "add-fact",
+                argument: "an edge fact typed with the rule's adjacency predicate, joining \
+                           the unconnected place to a sibling in its scope",
+                why_unproven: "this population's map axis is empty (R1216 counted 0), so \
+                               there is nothing here to run it against",
+            },
+        },
+        FrontierAxis {
+            field: "total_gaps",
+            closure: AxisClosure::NotWork {
+                why: "the sum a loop reads as work-remaining. Closing it means closing the \
+                      axes above; it is not itself an item",
+            },
+        },
+    ]
+}
+
 /// Compose the authoring-frontier report (Round 589). ONE store load + order
 /// compose, then every sub-projection runs over it (no redundant reloads): the
 /// scene/fact structure gives zero-fact scenes + per-node coverage, R442 payoff
