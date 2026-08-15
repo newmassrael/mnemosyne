@@ -14,23 +14,33 @@
 //!   * what the test MENTIONS: every environment name that appears anywhere in
 //!     the test target's own sources.
 //!
-//! MENTION, RATHER THAN CONTROL, and the weaker word is deliberate. What the
-//! law wants is that the test SETS or REMOVES the variable, and the first draft
-//! of this gate asked exactly that — the arguments of `.env(..)` and
+//! CONTROL WHERE CONTROL IS READABLE, MENTION ONLY WHERE IT IS NOT (R1211), and
+//! which basis a target was judged on is a fact about THAT TARGET.
+//!
+//! What the law wants is that the test SETS or REMOVES the variable, and the
+//! first draft of this gate asked exactly that — the arguments of `.env(..)` and
 //! `.env_remove(..)`. Measured against this repository, that question could not
 //! be answered for the very fixture it was written for: R1181 had just moved
 //! `cache-budget`'s environment into a list the spawn loops over, so the
-//! arguments are a loop variable and no walk can read them. A gate that refuses
-//! the tidiest version of the shape it is enforcing is one people route around.
+//! arguments were a loop variable. R1182 answered by weakening the question for
+//! EVERY target, which is a universal fallback bought with one unreadable shape
+//! — and it cost exactly what a silent fallback costs: `item-citations` let the
+//! machine decide `CARGO` for a program it spawned, under a gate that reported
+//! that variable as accounted for.
 //!
-//! Mention is a NECESSARY condition for control, it is checkable no matter how
-//! the fixture is factored, and its failure is never a false alarm: a test whose
-//! sources never say `GITHUB_REF_NAME` is certainly not deciding what
-//! `GITHUB_REF_NAME` is. It is also weaker than the law in words, so the report
-//! prints both numbers — mentioned, and of those, named at an `.env` /
-//! `.env_remove` call site — rather than letting the weaker basis pass for the
-//! stronger one. R1181's defect fails this test: `GITHUB_REF_NAME` appeared
-//! nowhere in that fixture.
+//! So the walk now follows a value into the loop: `for (name, value) in
+//! environment(..)` is resolved through the helper that builds the list, by
+//! POSITION, because what makes `name` a variable is that it is the first field
+//! of every tuple. A `.env` site it still cannot resolve is COUNTED AND NAMED,
+//! and the one target holding such a site is the only one judged on mention —
+//! since what that site sets is unknown, demanding a set there would reject a
+//! fixture for the walk's blindness.
+//!
+//! Mention remains a NECESSARY condition for control and its failure is never a
+//! false alarm: a test whose sources never say `GITHUB_REF_NAME` is certainly
+//! not deciding what `GITHUB_REF_NAME` is. Both numbers are printed, and so is
+//! the count of targets that fell back, so a fallback can never again be a
+//! silence.
 //!
 //! WHICH TEST SPAWNS WHICH BINARY is read from `env!("CARGO_BIN_EXE_<name>")`,
 //! the one spelling cargo checks at compile time.
@@ -66,7 +76,7 @@ use std::process::Command;
 
 use serde::Deserialize;
 
-/// One variable a spawned program reads and its test never mentions.
+/// One variable a spawned program reads that its test does not decide.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Finding {
     /// The test target that spawns the program.
@@ -77,6 +87,12 @@ pub struct Finding {
     pub variable: String,
     /// Where the program reads it.
     pub read_in: PathBuf,
+    /// Whether the target SAYS the name somewhere without setting or removing
+    /// it (R1211). The two are different repairs and different sentences: a
+    /// name nowhere in the sources was never thought about, while a name the
+    /// target says and never sets is one whose value the machine still decides
+    /// — which is what `item-citations` did with `CARGO`.
+    pub mentioned: bool,
     pub line: usize,
 }
 
@@ -84,8 +100,15 @@ impl fmt::Display for Finding {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "test `{}` spawns `{}`, which reads `{}`, and never mentions it",
-            self.test_target, self.binary, self.variable
+            "test `{}` spawns `{}`, which reads `{}`, and {}",
+            self.test_target,
+            self.binary,
+            self.variable,
+            if self.mentioned {
+                "says the name without setting or removing it, so the machine still decides"
+            } else {
+                "never mentions it"
+            }
         )
     }
 }
@@ -140,6 +163,10 @@ pub struct Reach {
     pub named: usize,
     /// Spawning targets that name the whole environment with `env_clear`.
     pub clearing_targets: usize,
+    /// Spawning targets judged on MENTION rather than on control, because a
+    /// `.env` site in them did not resolve (R1211). Zero here means the law is
+    /// being enforced as it is written everywhere it applies.
+    pub targets_on_mention: usize,
     /// `Command::new` sites in test targets — the population the attributed set
     /// is a fraction OF (R1190). Without it, a spawn the walk does not
     /// recognise is missing from the judgement and from the count at once, and
@@ -192,6 +219,17 @@ pub struct OtherSpawn {
     pub instead_of: Option<CheckedSpelling>,
 }
 
+/// A `.env` / `.env_remove` in a test target whose first argument names nothing
+/// this walk could resolve (R1211), with where it is written.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub struct UnreadControlSite {
+    pub test_target: String,
+    pub file: PathBuf,
+    pub line: usize,
+    /// The call, as written.
+    pub spelled: String,
+}
+
 /// The gate's answer.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Report {
@@ -203,6 +241,11 @@ pub struct Report {
     /// Every `Command::new` in a test target the walk could not attribute to one
     /// of this workspace's binaries — counted and named, never skipped.
     pub other_spawns: Vec<OtherSpawn>,
+    /// Every `.env` / `.env_remove` whose first argument the walk could not
+    /// resolve (R1211). The distance between the weak basis and the strong one
+    /// is made of these, so they are named rather than left as a difference
+    /// between two numbers.
+    pub unread_control: Vec<UnreadControlSite>,
     /// Every variable each binary reads, for a report that can say what it held
     /// rather than only what it rejected.
     pub read_by: BTreeMap<String, BTreeSet<String>>,
@@ -491,6 +534,7 @@ pub fn run(manifest: &Path) -> Result<Report, String> {
 
     let mut findings = Vec::new();
     let mut other_spawns: Vec<OtherSpawn> = Vec::new();
+    let mut unread_control: Vec<UnreadControlSite> = Vec::new();
     for target in targets
         .iter()
         .filter(|target| target.kind == "test" || target.kind == "bench")
@@ -506,9 +550,15 @@ pub fn run(manifest: &Path) -> Result<Report, String> {
         // the call is in the case file, and a per-file map would resolve one
         // order of the walk and not the other.
         let mut binders: BTreeMap<String, String> = BTreeMap::new();
+        // AND WHAT ITS HELPERS RETURN, gathered over all the target's files for
+        // the same reason: `for (name, value) in environment(..)` is written in
+        // the case file and `environment` is defined beside it, so a per-file
+        // map would resolve one order of the walk and not the other.
+        let mut lists: BTreeMap<String, ListPositions> = BTreeMap::new();
         for path in &files {
             if let Some(file) = sources.get(path) {
                 binders_of_binaries(file, &mut binders);
+                returned_lists(file, &constants, &mut lists);
             }
         }
         for path in &files {
@@ -548,9 +598,17 @@ pub fn run(manifest: &Path) -> Result<Report, String> {
                 }
             }
             mentions.extend(names_mentioned(file, &constants));
-            let (declared, cleared) = environment_named(file, &constants, &arguments);
-            names.extend(declared);
-            clears = clears || cleared;
+            let controlled = environment_named(file, &constants, &arguments, &lists);
+            names.extend(controlled.names);
+            clears = clears || controlled.clears;
+            for site in controlled.unread {
+                unread_control.push(UnreadControlSite {
+                    test_target: target.name.clone(),
+                    file: path.clone(),
+                    line: site.line,
+                    spelled: site.spelled,
+                });
+            }
         }
         if spawns.is_empty() {
             continue;
@@ -560,13 +618,33 @@ pub fn run(manifest: &Path) -> Result<Report, String> {
             reach.clearing_targets += 1;
             continue;
         }
+        // WHICH BASIS THIS TARGET IS JUDGED ON, and the answer is a fact about
+        // THE TARGET rather than about the law (R1211). Where every `.env` call
+        // resolved, the walk has seen everything this target controls, so the
+        // law can be what it says in words: the test SETS or REMOVES it.
+        // Where a site did not resolve, what that site sets is unknown, and
+        // demanding a set would reject a fixture for the walk's blindness — so
+        // that target falls back to the weaker basis and the report names the
+        // site that caused it.
+        //
+        // Before this the fallback was UNIVERSAL and unstated: every target was
+        // judged on mention because ONE shape in the tree could not be read, and
+        // `item-citations` inherited `CARGO` from the machine under a gate that
+        // reported it as named.
+        let unreadable_here = unread_control
+            .iter()
+            .any(|site| site.test_target == target.name);
+        if unreadable_here {
+            reach.targets_on_mention += 1;
+        }
         for binary in &spawns {
             let Some(variables) = read_by.get(binary) else {
                 continue;
             };
             reach.mentioned += variables.intersection(&mentions).count();
             reach.named += variables.intersection(&names).count();
-            for variable in variables.difference(&mentions) {
+            let basis = if unreadable_here { &mentions } else { &names };
+            for variable in variables.difference(basis) {
                 let (read_in, line) = reads_at
                     .get(&(binary.clone(), variable.clone()))
                     .cloned()
@@ -576,6 +654,7 @@ pub fn run(manifest: &Path) -> Result<Report, String> {
                     binary: binary.clone(),
                     variable: variable.clone(),
                     read_in,
+                    mentioned: mentions.contains(variable),
                     line,
                 });
             }
@@ -588,6 +667,8 @@ pub fn run(manifest: &Path) -> Result<Report, String> {
     unresolved.dedup();
     other_spawns.sort();
     other_spawns.dedup();
+    unread_control.sort();
+    unread_control.dedup();
 
     Ok(Report {
         workspace_root: meta.workspace_root,
@@ -596,6 +677,7 @@ pub fn run(manifest: &Path) -> Result<Report, String> {
         findings,
         unresolved,
         other_spawns,
+        unread_control,
         read_by,
     })
 }
@@ -1436,43 +1518,285 @@ pub fn names_mentioned(
     mentions.found
 }
 
-/// What one test source SETS or REMOVES, and whether it clears the environment
-/// whole — the stronger claim, reported beside the mention the verdict uses.
+/// The names each position of a list's elements holds — position 0 of
+/// `[(A, ..), (B, ..)]` is `{A, B}`.
+///
+/// A LIST IS READ BY POSITION BECAUSE A LOOP BINDS BY POSITION. The shape this
+/// exists for is `for (name, value) in environment()`, where what makes `name`
+/// an environment variable is that it is the FIRST field of every tuple — a
+/// reading that pooled the fields would credit a value as a name.
+pub type ListPositions = Vec<BTreeSet<String>>;
+
+/// The names a list-shaped expression holds, by position, or `None` when this is
+/// not a list this can read.
+fn positions_of(
+    expr: &syn::Expr,
+    constants: &BTreeMap<String, BTreeSet<String>>,
+) -> Option<ListPositions> {
+    let elements: Vec<syn::Expr> = match expr {
+        syn::Expr::Array(array) => array.elems.iter().cloned().collect(),
+        syn::Expr::Macro(invocation) if invocation.mac.path.is_ident("vec") => {
+            macro_expressions(&invocation.mac)
+        }
+        syn::Expr::Reference(reference) => return positions_of(&reference.expr, constants),
+        // `….into_iter()`, `….iter()`, `….clone()`: the same list one hop away.
+        // A method that RESHAPES it (`map`, `filter`) is not one of these, and
+        // falls through to the refusal rather than being read as its receiver.
+        syn::Expr::MethodCall(call)
+            if matches!(
+                call.method.to_string().as_str(),
+                "into_iter" | "iter" | "clone" | "to_vec"
+            ) =>
+        {
+            return positions_of(&call.receiver, constants)
+        }
+        _ => return None,
+    };
+    let mut positions: ListPositions = Vec::new();
+    for element in &elements {
+        let fields: Vec<&syn::Expr> = match element {
+            syn::Expr::Tuple(tuple) => tuple.elems.iter().collect(),
+            // A list of bare names binds one variable, so it is one position.
+            other => vec![other],
+        };
+        for (at, field) in fields.iter().enumerate() {
+            if positions.len() <= at {
+                positions.resize(at + 1, BTreeSet::new());
+            }
+            positions[at].extend(strings_in(field, constants));
+        }
+    }
+    Some(positions)
+}
+
+/// Every list a function of these sources RETURNS, by function name.
+///
+/// THE LOOP IS RARELY OVER A LITERAL. `for (name, value) in environment(at, run)`
+/// is the shape R1181 wrote and R1182 could not read, and the list it walks is
+/// built by a helper beside it. Reading the helper is what turns a name the
+/// fixture merely SAYS into one it demonstrably SETS.
+pub fn returned_lists(
+    file: &syn::File,
+    constants: &BTreeMap<String, BTreeSet<String>>,
+    into: &mut BTreeMap<String, ListPositions>,
+) {
+    struct Functions<'a> {
+        constants: &'a BTreeMap<String, BTreeSet<String>>,
+        found: BTreeMap<String, ListPositions>,
+    }
+    impl<'ast> syn::visit::Visit<'ast> for Functions<'_> {
+        fn visit_item_fn(&mut self, function: &'ast syn::ItemFn) {
+            // The tail expression and every `return`, because a helper that
+            // branches writes one of each.
+            let mut candidates: Vec<syn::Expr> = Vec::new();
+            if let Some(syn::Stmt::Expr(tail, None)) = function.block.stmts.last() {
+                candidates.push(tail.clone());
+            }
+            struct Returns(Vec<syn::Expr>);
+            impl<'ast> syn::visit::Visit<'ast> for Returns {
+                fn visit_expr_return(&mut self, returned: &'ast syn::ExprReturn) {
+                    if let Some(value) = &returned.expr {
+                        self.0.push((**value).clone());
+                    }
+                    syn::visit::visit_expr_return(self, returned);
+                }
+            }
+            let mut returns = Returns(Vec::new());
+            syn::visit::visit_block(&mut returns, &function.block);
+            candidates.extend(returns.0);
+
+            let name = function.sig.ident.to_string();
+            for candidate in &candidates {
+                if let Some(positions) = positions_of(candidate, self.constants) {
+                    let slot = self.found.entry(name.clone()).or_default();
+                    for (at, names) in positions.into_iter().enumerate() {
+                        if slot.len() <= at {
+                            slot.resize(at + 1, BTreeSet::new());
+                        }
+                        slot[at].extend(names);
+                    }
+                }
+            }
+            syn::visit::visit_item_fn(self, function);
+        }
+    }
+    let mut functions = Functions {
+        constants,
+        found: BTreeMap::new(),
+    };
+    syn::visit::visit_file(&mut functions, file);
+    for (name, positions) in functions.found {
+        let slot: &mut ListPositions = into.entry(name).or_default();
+        for (at, names) in positions.into_iter().enumerate() {
+            if slot.len() <= at {
+                slot.resize(at + 1, BTreeSet::new());
+            }
+            slot[at].extend(names);
+        }
+    }
+}
+
+/// A `.env` / `.env_remove` whose first argument this walk could not resolve to
+/// any name.
+///
+/// COUNTED RATHER THAN DROPPED. Before R1211 a site like this contributed
+/// nothing to either number, so a fixture that controls its whole environment
+/// through a shape the walk cannot read was indistinguishable from one that
+/// controls nothing — and the gate's answer for both was the weaker basis
+/// passing silently.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub struct UnreadControl {
+    /// The call, as written.
+    pub spelled: String,
+    pub line: usize,
+}
+
+/// What one test source SETS or REMOVES, what it could not be read as setting,
+/// and whether it clears the environment whole.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Controlled {
+    /// Names set or removed at a call site this walk resolved.
+    pub names: BTreeSet<String>,
+    /// Call sites it could not resolve to any name.
+    pub unread: Vec<UnreadControl>,
+    /// `env_clear` — the whole environment named at once.
+    pub clears: bool,
+}
+
+/// Read one test source for the environment it controls.
 pub fn environment_named(
     file: &syn::File,
     constants: &BTreeMap<String, BTreeSet<String>>,
     arguments: &BTreeMap<(String, usize), BTreeSet<String>>,
-) -> (BTreeSet<String>, bool) {
+    lists: &BTreeMap<String, ListPositions>,
+) -> Controlled {
     struct Named<'a> {
         constants: &'a BTreeMap<String, BTreeSet<String>>,
         arguments: &'a BTreeMap<(String, usize), BTreeSet<String>>,
-        found: BTreeSet<String>,
-        clears: bool,
+        lists: &'a BTreeMap<String, ListPositions>,
+        /// What each `for` binding in scope can be, innermost last.
+        scopes: Vec<BTreeMap<String, BTreeSet<String>>>,
+        found: Controlled,
     }
+
+    impl Named<'_> {
+        /// The names a loop's iterator holds by position, following one call
+        /// into the helper that builds the list.
+        fn iterated(&self, expr: &syn::Expr) -> Option<ListPositions> {
+            if let Some(positions) = positions_of(expr, self.constants) {
+                return Some(positions);
+            }
+            match expr {
+                syn::Expr::Call(call) => match call.func.as_ref() {
+                    syn::Expr::Path(path) => path
+                        .path
+                        .segments
+                        .last()
+                        .and_then(|segment| self.lists.get(&segment.ident.to_string()))
+                        .cloned(),
+                    _ => None,
+                },
+                syn::Expr::Reference(reference) => self.iterated(&reference.expr),
+                syn::Expr::MethodCall(call)
+                    if matches!(
+                        call.method.to_string().as_str(),
+                        "into_iter" | "iter" | "clone" | "to_vec"
+                    ) =>
+                {
+                    self.iterated(&call.receiver)
+                }
+                _ => None,
+            }
+        }
+
+        /// Bind what a loop's pattern takes from each position.
+        fn bind(
+            pattern: &syn::Pat,
+            positions: &[BTreeSet<String>],
+            into: &mut BTreeMap<String, BTreeSet<String>>,
+        ) {
+            match pattern {
+                syn::Pat::Tuple(tuple) => {
+                    for (at, element) in tuple.elems.iter().enumerate() {
+                        if let Some(names) = positions.get(at) {
+                            Self::bind(element, std::slice::from_ref(names), into);
+                        }
+                    }
+                }
+                syn::Pat::Ident(ident) => {
+                    if let Some(names) = positions.first() {
+                        into.entry(ident.ident.to_string())
+                            .or_default()
+                            .extend(names.iter().cloned());
+                    }
+                }
+                syn::Pat::Reference(reference) => Self::bind(&reference.pat, positions, into),
+                syn::Pat::Type(typed) => Self::bind(&typed.pat, positions, into),
+                _ => {}
+            }
+        }
+
+        /// What a `for` binding in scope resolves to.
+        fn in_scope(&self, name: &str) -> BTreeSet<String> {
+            let mut found = BTreeSet::new();
+            for scope in self.scopes.iter().rev() {
+                if let Some(names) = scope.get(name) {
+                    found.extend(names.iter().cloned());
+                }
+            }
+            found
+        }
+    }
+
     impl<'ast> syn::visit::Visit<'ast> for Named<'_> {
+        fn visit_expr_for_loop(&mut self, loop_: &'ast syn::ExprForLoop) {
+            syn::visit::visit_expr(self, &loop_.expr);
+            let mut bound = BTreeMap::new();
+            if let Some(positions) = self.iterated(&loop_.expr) {
+                Self::bind(&loop_.pat, &positions, &mut bound);
+            }
+            self.scopes.push(bound);
+            syn::visit::visit_block(self, &loop_.body);
+            self.scopes.pop();
+        }
+
         fn visit_expr_method_call(&mut self, call: &'ast syn::ExprMethodCall) {
             match call.method.to_string().as_str() {
                 "env" | "env_remove" => {
                     if let Some(first) = call.args.first() {
-                        self.found.extend(strings_in(first, self.constants));
-                        // A name handed in as a variable resolves the same way
-                        // a read does: through what the enclosing helper is
-                        // called with.
+                        let mut names = strings_in(first, self.constants);
                         if let syn::Expr::Path(path) = first {
                             if let Some(last) = path.path.segments.last() {
-                                let name = last.ident.to_string();
+                                let bound = last.ident.to_string();
+                                // A loop variable, resolved through the list the
+                                // loop walks.
+                                names.extend(self.in_scope(&bound));
+                                // A name handed in as a variable resolves the
+                                // same way a read does: through what the
+                                // enclosing helper is called with.
                                 for ((_, _), values) in self
                                     .arguments
                                     .iter()
-                                    .filter(|((function, _), _)| function == &name)
+                                    .filter(|((function, _), _)| function == &bound)
                                 {
-                                    self.found.extend(values.iter().cloned());
+                                    names.extend(values.iter().cloned());
                                 }
                             }
                         }
+                        if names.is_empty() {
+                            self.found.unread.push(UnreadControl {
+                                spelled: format!(
+                                    ".{}(<an expression this walk cannot resolve>)",
+                                    call.method
+                                ),
+                                line: line_of(syn::spanned::Spanned::span(first)),
+                            });
+                        } else {
+                            self.found.names.extend(names);
+                        }
                     }
                 }
-                "env_clear" => self.clears = true,
+                "env_clear" => self.found.clears = true,
                 _ => {}
             }
             syn::visit::visit_expr_method_call(self, call);
@@ -1485,12 +1809,16 @@ pub fn environment_named(
             syn::visit::visit_macro(self, invocation);
         }
     }
+
     let mut named = Named {
         constants,
         arguments,
-        found: BTreeSet::new(),
-        clears: false,
+        lists,
+        scopes: Vec::new(),
+        found: Controlled::default(),
     };
     syn::visit::visit_file(&mut named, file);
-    (named.found, named.clears)
+    named.found.unread.sort();
+    named.found.unread.dedup();
+    named.found
 }

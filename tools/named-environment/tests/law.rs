@@ -118,6 +118,11 @@ fn a_variable_named_inside_a_macro_body_still_counts() {
     let report = gate(at.path());
     assert_eq!(report.verdict(), Ok(()), "{report:?}");
     assert!(report.findings.is_empty(), "{report:?}");
+    assert_eq!(
+        report.reach.named, 1,
+        "and since R1211 the loop over that macro's list is followed, so this \
+         passes on CONTROL rather than on the literal being in the file: {report:?}"
+    );
 }
 
 /// A read whose name is a PARAMETER resolves through the call sites of the
@@ -384,6 +389,154 @@ fn the_same_spawn_through_the_running_cargo_is_clean() {
         "{report:?}"
     );
     assert_eq!(report.other_spawns.len(), 1, "{report:?}");
+}
+
+/// The shape the whole weakening was bought for (R1181, R1182, R1211): the
+/// environment is a list a helper returns and the spawn loops over it, so the
+/// argument of `.env` is a loop variable. Following the value into the loop is
+/// what lets this be judged on CONTROL rather than on mention.
+#[test]
+fn a_list_a_helper_returns_is_followed_into_the_loop() {
+    let at = workspace(
+        "fn main() { let _ = std::env::var(\"GITHUB_RUN_ID\"); }",
+        "fn environment() -> Vec<(String, Option<String>)> {\n    \
+         vec![(\"GITHUB_RUN_ID\".to_string(), Some(\"7\".to_string()))]\n}\n\
+         #[test]\nfn spawns() {\n    \
+         let mut command = std::process::Command::new(env!(\"CARGO_BIN_EXE_probe\"));\n    \
+         for (name, value) in environment() {\n        \
+         match value {\n            \
+         Some(value) => command.env(name, value),\n            \
+         None => command.env_remove(name),\n        \
+         };\n    }\n    let _ = command.output();\n}",
+    );
+    let report = gate(at.path());
+    assert_eq!(report.verdict(), Ok(()), "{report:?}");
+    assert!(report.findings.is_empty(), "{report:?}");
+    assert_eq!(
+        report.reach.named, 1,
+        "the name is SET, not merely said — before R1211 this was 0 and the \
+         verdict rested on the literal being somewhere in the file: {report:?}"
+    );
+    assert_eq!(
+        report.reach.targets_on_mention, 0,
+        "and nothing here fell back: {report:?}"
+    );
+    assert!(report.unread_control.is_empty(), "{report:?}");
+}
+
+/// A list is read BY POSITION, because a loop binds by position. The value of
+/// each pair is not a name, and a reading that pooled the fields would credit
+/// this fixture with setting a variable it only passes as a value.
+#[test]
+fn the_value_half_of_a_pair_is_not_read_as_a_name() {
+    let at = workspace(
+        "fn main() { let _ = std::env::var(\"GITHUB_RUN_ID\"); }",
+        "fn environment() -> Vec<(&'static str, &'static str)> {\n    \
+         vec![(\"PROBE_SETS\", \"GITHUB_RUN_ID\")]\n}\n\
+         #[test]\nfn spawns() {\n    \
+         let mut command = std::process::Command::new(env!(\"CARGO_BIN_EXE_probe\"));\n    \
+         for (name, value) in environment() {\n        \
+         command.env(name, value);\n    }\n    let _ = command.output();\n}",
+    );
+    let report = gate(at.path());
+    assert_eq!(report.verdict(), Ok(()), "{report:?}");
+    assert_eq!(
+        report.findings.first().map(|f| f.variable.as_str()),
+        Some("GITHUB_RUN_ID"),
+        "position 1 is a value: {report:?}"
+    );
+    assert!(
+        report.findings[0].mentioned,
+        "and the finding says WHICH repair it needs — the name is said here, in \
+         the value half, and still nobody sets it: {report:?}"
+    );
+}
+
+/// A method that RESHAPES the list is not read as its receiver, and the site it
+/// makes unreadable is named rather than dropped. The target then falls back to
+/// the weaker basis — stated, counted, and only for that target.
+#[test]
+fn a_reshaping_method_leaves_a_site_this_walk_names_rather_than_drops() {
+    let at = workspace(
+        "fn main() { let _ = std::env::var(\"GITHUB_RUN_ID\"); }",
+        "fn environment() -> Vec<(&'static str, &'static str)> {\n    \
+         vec![(\"GITHUB_RUN_ID\", \"7\")]\n}\n\
+         #[test]\nfn spawns() {\n    \
+         let mut command = std::process::Command::new(env!(\"CARGO_BIN_EXE_probe\"));\n    \
+         for (name, value) in environment().into_iter().map(|pair| pair) {\n        \
+         command.env(name, value);\n    }\n    let _ = command.output();\n}",
+    );
+    let report = gate(at.path());
+    assert_eq!(report.verdict(), Ok(()), "{report:?}");
+    assert_eq!(report.unread_control.len(), 1, "{report:?}");
+    assert_eq!(report.unread_control[0].test_target, "entrance");
+    assert_eq!(
+        report.reach.targets_on_mention, 1,
+        "the fallback is per target and is counted: {report:?}"
+    );
+    assert!(
+        report.findings.is_empty(),
+        "and it IS a fallback: demanding a set here would reject a fixture for \
+         this walk's blindness: {report:?}"
+    );
+    assert_eq!(report.reach.named, 0, "{report:?}");
+}
+
+/// The defect the universal fallback hid, in the shape it had in this
+/// repository: the test SAYS the name — because it reads the variable itself —
+/// and never decides what the program it spawns will see.
+#[test]
+fn a_name_said_and_never_set_is_a_finding_where_control_is_readable() {
+    let at = workspace(
+        "fn main() { let _ = std::env::var(\"CARGO\"); }",
+        "#[test]\nfn spawns() {\n    \
+         let which = std::env::var(\"CARGO\").unwrap_or_default();\n    \
+         let _ = std::process::Command::new(env!(\"CARGO_BIN_EXE_probe\"))\n        \
+         .env(\"PROBE_OTHER\", which)\n        .output();\n}",
+    );
+    let report = gate(at.path());
+    assert_eq!(report.verdict(), Ok(()), "{report:?}");
+    assert_eq!(
+        report.findings.first().map(|f| f.variable.as_str()),
+        Some("CARGO"),
+        "mentioning a name while spawning is not deciding it: {report:?}"
+    );
+    assert!(report.findings[0].mentioned, "{report:?}");
+    assert!(
+        report.findings[0]
+            .to_string()
+            .contains("without setting or removing it"),
+        "the two repairs are different sentences: {report:?}"
+    );
+    assert_eq!(
+        report.reach.targets_on_mention, 0,
+        "this target's every .env resolved, so it is held to the law as written: {report:?}"
+    );
+}
+
+/// A list handed in as a PARAMETER is the residue this walk does not reach: the
+/// caller builds it, so what the loop sets is decided outside the function the
+/// walk is reading. The target falls back, and the site is printed with its line.
+#[test]
+fn a_list_a_caller_hands_in_is_the_residue_and_it_is_named() {
+    let at = workspace(
+        "fn main() { let _ = std::env::var(\"GITHUB_RUN_ID\"); }",
+        "fn set(command: &mut std::process::Command, pairs: &[(&str, &str)]) {\n    \
+         for (name, value) in pairs {\n        command.env(name, value);\n    }\n}\n\
+         #[test]\nfn spawns() {\n    \
+         let mut command = std::process::Command::new(env!(\"CARGO_BIN_EXE_probe\"));\n    \
+         set(&mut command, &[(\"GITHUB_RUN_ID\", \"7\")]);\n    \
+         let _ = command.output();\n}",
+    );
+    let report = gate(at.path());
+    assert_eq!(report.verdict(), Ok(()), "{report:?}");
+    assert_eq!(report.unread_control.len(), 1, "{report:?}");
+    assert!(
+        report.unread_control[0].line > 0,
+        "a site with no line is one nobody can go and read: {report:?}"
+    );
+    assert_eq!(report.reach.targets_on_mention, 1, "{report:?}");
+    assert!(report.findings.is_empty(), "{report:?}");
 }
 
 /// The gate runs as a hook runs it, and answers with the exit code the hook

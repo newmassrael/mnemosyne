@@ -71,16 +71,45 @@ fn main() -> ExitCode {
         report.coverage.foreign_workspaces.len(),
         report.coverage.build_artifacts,
     );
+    // BOTH BASES, which the module doc has promised since R1182 and which this
+    // sentence printed only half of until R1211: the verdict rests on MENTION,
+    // and a report that showed only the stronger number could not be read for
+    // how far apart they are — which is the whole of the debt that closed here.
     println!(
         "[named-environment] {} binary(ies) reading {} variable(s); {} of {} test target(s) spawn \
-         one, naming {} (and {} clear the environment whole)",
+         one, mentioning {} of them and SETTING {} (and {} clear the environment whole)",
         report.reach.binaries,
         report.reach.reads,
         report.reach.spawning_targets,
         report.reach.test_targets,
+        report.reach.mentioned,
         report.reach.named,
         report.reach.clearing_targets,
     );
+    // AND WHAT THE DISTANCE BETWEEN THEM IS MADE OF. A site the walk cannot
+    // resolve contributed to neither number before R1211, so a fixture
+    // controlling its whole environment through an unreadable shape looked
+    // exactly like one controlling nothing.
+    if report.unread_control.is_empty() {
+        println!(
+            "[named-environment] every .env / .env_remove here names a variable this walk resolved"
+        );
+    } else {
+        println!(
+            "[named-environment] {} .env / .env_remove site(s) name something this walk cannot \
+             resolve, so what they set is NOT counted above:",
+            report.unread_control.len()
+        );
+        for site in &report.unread_control {
+            println!(
+                "[named-environment]   `{}` {} at {}:{}",
+                site.test_target,
+                site.spelled,
+                show(&site.file),
+                site.line,
+            );
+        }
+    }
     // THE POPULATION THE ATTRIBUTION IS A FRACTION OF (R1190). A gate that
     // prints only what it judged cannot be told from one that judged everything.
     println!(
@@ -161,6 +190,22 @@ fn main() -> ExitCode {
             "[named-environment] every variable the spawned programs read is named by the test \
              that spawns them"
         );
+        // WHICH BASIS THAT VERDICT RESTS ON. Zero here means the law was
+        // enforced as it is written — the test SETS or REMOVES it — everywhere
+        // it applied. A number means some target holds a `.env` this walk could
+        // not read, and was held to the weaker question instead.
+        if report.reach.targets_on_mention == 0 {
+            println!(
+                "[named-environment] and every one of them at an .env / .env_remove call site, \
+                 which is the law as it is written"
+            );
+        } else {
+            println!(
+                "[named-environment] {} of them on MENTION rather than control, because a .env \
+                 site named above did not resolve — what those targets set is not known here",
+                report.reach.targets_on_mention
+            );
+        }
         return ExitCode::SUCCESS;
     }
 
