@@ -945,8 +945,9 @@ fn pre_commit_gates_a_separate_in_repo_workspace_the_root_gates_miss() {
     );
     let err = stderr_of(&out);
     assert!(
-        err.contains("tools/sub is unformatted"),
-        "the rejection must name the separate workspace:\n{err}"
+        err.contains("UNFORMATTED tools/sub/Cargo.toml"),
+        "the rejection must name the manifest to fix, and with it the separate \
+         workspace it is in:\n{err}"
     );
     assert!(
         err.contains("side-workspaces"),
@@ -980,11 +981,23 @@ fn pre_commit_gates_a_separate_in_repo_workspace_the_root_gates_miss() {
 #[test]
 fn the_side_workspace_gate_tells_a_gate_it_could_not_read_from_one_that_found_a_defect() {
     // THE SAME TWO ANSWERS, ONE LEVEL DOWN. `scripts/check-side-workspaces.sh`
-    // is where a separate workspace's blind-wait gate is run, and it too prints
-    // a different sentence for exit 1 and exit 2 — a branch nothing had ever
-    // taken. It matters more here than in the hook: the message names the
-    // WORKSPACE, so the wrong one sends somebody looking for a `sleep` in
+    // is where a separate workspace's tree-walking gates are run, and they too
+    // print a different sentence for exit 1 and exit 2 — a branch nothing had
+    // ever taken. It matters more here than in the hook: the message names the
+    // WORKSPACE, so the wrong one sends somebody looking for a defect in
     // whichever crate the gate merely failed to read.
+    //
+    // WHICH gate answers here is a fact about the PHASE ORDER, not about this
+    // fixture. An unparsable file is refused by every gate that walks the tree,
+    // so the first one to run owns the sentence — it was `blind-waits` until
+    // this round put the phases in measured order, and it is now
+    // `unowned-scratch`. The comment this case used to carry predicted exactly
+    // that ("reordering only moves the hole to whichever gate ends up second"),
+    // and the hole is closed rather than moved by
+    // `the_side_workspace_gate_tells_every_gate_it_could_not_read_from_one_it_judged`
+    // below, which drives all four arms through a shim and needs no order at
+    // all. What is left HERE is the end-to-end fact that shim cannot show: a
+    // real gate, refusing a real tree, through the real hook.
     let f = Fixture::new();
     f.write(
         "tools/sub/Cargo.toml",
@@ -1002,14 +1015,14 @@ fn the_side_workspace_gate_tells_a_gate_it_could_not_read_from_one_that_found_a_
     );
     let err = stderr_of(&out);
     assert!(
-        err.contains("the blind-wait gate could not read tools/sub (exit 2)"),
+        err.contains("the scratch-ownership gate could not read tools/sub (exit 2)"),
         "the refusal must name the workspace and the code:\n{err}"
     );
     // THE MIRROR: the sentence the other exit prints, which is the one this
     // branch exists to not be.
     assert!(
-        !err.contains("carries a wait that ends on a clock"),
-        "a workspace it could not read carries no finding about waits:\n{err}"
+        !err.contains("builds a path under the shared temp root"),
+        "a workspace it could not read carries no finding about scratch paths:\n{err}"
     );
 }
 
@@ -1063,91 +1076,121 @@ fn the_side_workspace_gate_answers_two_when_it_was_not_started_in_a_tree() {
     );
 }
 
-/// A `cargo` that answers whatever the case needs for the CITATION gate and
-/// zero for everything else, so the lister's arm can be driven without
-/// compiling a tree. `$CITATIONS_EXIT` is the code under test.
-const CARGO_CITATIONS_STUB: &str = r#"#!/usr/bin/env bash
+/// A `cargo` that answers ONE named gate program with a chosen code and zero for
+/// everything else, so any arm of the lister can be driven without compiling a
+/// tree. `$GATE_UNDER_TEST` is the gate's crate directory, `$GATE_EXIT` the code.
+const CARGO_GATE_STUB: &str = r#"#!/usr/bin/env bash
 case "$*" in
-    *"/tools/item-citations/Cargo.toml"*)
-        echo "[item-citations] a message of the gate's own"
-        exit "${CITATIONS_EXIT:-0}"
+    *"/tools/$GATE_UNDER_TEST/Cargo.toml"*)
+        echo "[$GATE_UNDER_TEST] a message of the gate's own"
+        exit "${GATE_EXIT:-0}"
         ;;
 esac
 exit 0
 "#;
 
 #[test]
-fn the_side_workspace_gate_tells_a_citation_it_could_not_read_from_one_it_judged() {
-    // THE THIRD GATE'S ARM, and the one that never had the distinction at all.
-    // `item-citations` has answered 0 / 1 / 2 since it was written — 2 being "a
-    // package does not check, so nothing can be said about the citations in it"
-    // — and this caller read only `if !`, so both arms printed the FINDING.
+fn the_side_workspace_gate_tells_every_gate_it_could_not_read_from_one_it_judged() {
+    // FOUR ARMS, ONE SHAPE, AND NO ORDER CAN HIDE ONE. Each gate the lister
+    // runs answers 0 / 1 / 2 — 2 being "I could not read enough of this tree to
+    // have an opinion" — and the lister exits 1 for BOTH non-zero codes, so the
+    // only thing carrying the difference is the sentence. A sentence nothing
+    // reads is a sentence that drifts.
+    //
+    // WHY A SHIM RATHER THAN FOUR FIXTURES, and this is the whole reason the
+    // case exists in this shape: the real refusal of three of these gates is
+    // the SAME input, a file that will not parse, so whichever one runs first
+    // refuses and the others are never reached. That was true before this round
+    // with `blind-waits` first, and it is true after it with `unowned-scratch`
+    // first — the phase order moves the hole, it does not close it, exactly as
+    // the comment on the case below predicted. Driving the code directly closes
+    // it: every arm has a reader, and no arm's reader depends on the order.
     //
     // IT WAS MEASURED, not imagined. A concurrent prune of this repository's one
     // shared build directory deleted artifacts under a running gate;
-    // `librocksdb-sys` would not compile, the gate answered 2 and said so, and
-    // the lister printed `bench carries a citation that names no item`. There is
-    // no such citation in `bench`. That is the recorded shape of a remote red
-    // that reads as a defect in the tree.
-    //
-    // DRIVEN THROUGH A `cargo` SHIM, because the code under test is the ARM and
-    // not the gate: a fixture that made the real gate answer 2 would have to
-    // hold a tree that passes fmt and clippy and then fails to compile for
-    // rustdoc, which is a tree this case would be measuring instead.
+    // `librocksdb-sys` would not compile, the citation gate answered 2 and said
+    // so, and the lister printed `bench carries a citation that names no item`.
+    // There is no such citation in `bench`. That is the recorded shape of a
+    // remote red that reads as a defect in the tree.
     let gate = repo_root().join("scripts/check-side-workspaces.sh");
-    let f = Fixture::new();
-    let shim = f.path().join("shim-cargo");
-    fs::create_dir_all(&shim).expect("mkdir shim");
-    write_exec(&shim.join("cargo"), CARGO_CITATIONS_STUB);
-    let hermetic = format!(
-        "{}:{}",
-        shim.to_str().expect("shim path is utf-8"),
-        std::env::var("PATH").unwrap_or_default()
-    );
-    let lister = |code: &str| {
-        Command::new(&gate)
-            .args(["--lint-only", "tools/sub"])
-            .current_dir(f.path())
-            .env("PATH", &hermetic)
-            .env("CITATIONS_EXIT", code)
-            .env("CARGO_TARGET_DIR", f.path().join("target"))
-            .output()
-            .expect("the gate runs")
-    };
+    let arms = [
+        (
+            "item-citations",
+            "the item-citation gate could not read tools/sub (exit 2)",
+            "tools/sub carries a citation that names no item",
+        ),
+        (
+            "blind-waits",
+            "the blind-wait gate could not read tools/sub (exit 2)",
+            "tools/sub carries a wait that ends on a clock",
+        ),
+        (
+            "named-environment",
+            "the named-environment gate could not read tools/sub (exit 2)",
+            "tools/sub spawns a program whose environment its test leaves to the machine",
+        ),
+        (
+            "unowned-scratch",
+            "the scratch-ownership gate could not read tools/sub (exit 2)",
+            "tools/sub builds a path under the shared temp root that names no owner",
+        ),
+    ];
+    for (gate_crate, refusal, finding) in arms {
+        let f = Fixture::new();
+        let shim = f.path().join("shim-cargo");
+        fs::create_dir_all(&shim).expect("mkdir shim");
+        write_exec(&shim.join("cargo"), CARGO_GATE_STUB);
+        let hermetic = format!(
+            "{}:{}",
+            shim.to_str().expect("shim path is utf-8"),
+            std::env::var("PATH").unwrap_or_default()
+        );
+        let lister = |code: &str| {
+            Command::new(&gate)
+                .args(["--lint-only", "tools/sub"])
+                .current_dir(f.path())
+                .env("PATH", &hermetic)
+                .env("GATE_UNDER_TEST", gate_crate)
+                .env("GATE_EXIT", code)
+                .env("CARGO_TARGET_DIR", f.path().join("target"))
+                .output()
+                .expect("the gate runs")
+        };
 
-    // EXIT 2 — the gate could not read the workspace, so it has no finding.
-    let out = lister("2");
-    let err = stderr_of(&out);
-    assert_eq!(
-        out.status.code(),
-        Some(1),
-        "a workspace the citation gate could not read must not pass:\n{err}"
-    );
-    assert!(
-        err.contains("the item-citation gate could not read tools/sub (exit 2)"),
-        "the refusal must name the workspace and the code:\n{err}"
-    );
-    assert!(
-        !err.contains("carries a citation that names no item"),
-        "a workspace it could not read carries no finding about citations:\n{err}"
-    );
+        // EXIT 2 — the gate could not read the workspace, so it has no finding.
+        let out = lister("2");
+        let err = stderr_of(&out);
+        assert_eq!(
+            out.status.code(),
+            Some(1),
+            "a workspace {gate_crate} could not read must not pass:\n{err}"
+        );
+        assert!(
+            err.contains(refusal),
+            "the refusal must name the workspace and the code:\n{err}"
+        );
+        assert!(
+            !err.contains(finding),
+            "a workspace it could not read carries no finding:\n{err}"
+        );
 
-    // EXIT 1 — the same tree, judged, with a defect in it.
-    let out = lister("1");
-    let err = stderr_of(&out);
-    assert_eq!(
-        out.status.code(),
-        Some(1),
-        "a workspace that broke the law is a rejection too:\n{err}"
-    );
-    assert!(
-        err.contains("tools/sub carries a citation that names no item"),
-        "the finding must name the workspace it is about:\n{err}"
-    );
-    assert!(
-        !err.contains("the item-citation gate could not read"),
-        "a workspace it judged was not one it failed to read:\n{err}"
-    );
+        // EXIT 1 — the same tree, judged, with a defect in it.
+        let out = lister("1");
+        let err = stderr_of(&out);
+        assert_eq!(
+            out.status.code(),
+            Some(1),
+            "a workspace that broke {gate_crate}'s law is a rejection too:\n{err}"
+        );
+        assert!(
+            err.contains(finding),
+            "the finding must name the workspace it is about:\n{err}"
+        );
+        assert!(
+            !err.contains(refusal),
+            "a workspace it judged was not one it failed to read:\n{err}"
+        );
+    }
 }
 
 #[test]
@@ -1241,17 +1284,16 @@ fn the_side_workspace_gate_names_the_workspace_whose_scratch_path_has_no_owner()
     // arm is where R1193's whole population is judged: the hook's root gate
     // reaches the shared temp root nowhere.
     //
-    // ⚠ ITS REFUSAL SENTENCE IS NOT READ HERE, AND CANNOT BE. The measured
-    // reason: this gate's only refusal is a file that will not parse, and both
-    // `blind-waits` and the citation gate run BEFORE it and refuse the same
-    // input — so an unparsable orphan answers 2 two gates earlier and never
-    // arrives. The environment case above can read its refusal because ITS
-    // exit 2 is a name no walk can resolve, which no earlier gate cares about.
-    // Reaching this one would mean reordering the chain, which only moves the
-    // hole to whichever gate ends up second. The gate's own suite reads the
-    // code directly (`the_binary_answers_a_hook_in_three_codes`); what has no
-    // reader is the SCRIPT's wording for it, and that is stated rather than
-    // faked with a fixture built to exercise it.
+    // ITS REFUSAL SENTENCE HAS A READER NOW, and it is not this case. It used
+    // to have none: this gate's only real refusal is a file that will not
+    // parse, `blind-waits` and the citation gate ran before it and refused the
+    // same input, and reaching it would have meant reordering the chain — which
+    // only moves the hole to whichever gate ends up second. That is precisely
+    // what happened when the phases were put in measured order, so the hole was
+    // closed rather than moved:
+    // `the_side_workspace_gate_tells_every_gate_it_could_not_read_from_one_it_judged`
+    // drives all four arms through a shim and depends on no order at all. What
+    // this case owns is the FINDING sentence, over a real tree.
     let gate = repo_root().join("scripts/check-side-workspaces.sh");
     let f = Fixture::new();
     f.write(
@@ -1278,6 +1320,148 @@ fn the_side_workspace_gate_names_the_workspace_whose_scratch_path_has_no_owner()
     assert!(
         !err.contains("the scratch-ownership gate could not read"),
         "a workspace it judged was not one it failed to read:\n{err}"
+    );
+}
+
+/// A `cargo` that compiles nothing, records every call it is given, and answers
+/// "unformatted" for exactly the manifests whose path says so.
+///
+/// THE SUBJECT IS THE ORDER, NOT RUSTFMT. What the two cases below have to see
+/// is whether an expensive check was reached AT ALL, and a fixture built to make
+/// the real clippy run would be measuring cargo instead of the gate.
+const CARGO_ORDER_SHIM: &str = r#"#!/usr/bin/env bash
+echo "$*" >> "$SIDE_GATE_CARGO_LOG"
+if [[ "${1:-}" == "fmt" ]]; then
+    case "$*" in
+        *unformatted*) exit 1 ;;
+    esac
+fi
+exit 0
+"#;
+
+/// Run the real gate over a throwaway tree holding one separate workspace per
+/// name, in the order named, with a `cargo` that never compiles. Returns what
+/// the gate said and every cargo call it made, one per line.
+fn side_gate_run(workspaces: &[&str]) -> (Output, String) {
+    let f = Fixture::new();
+    for ws in workspaces {
+        let name = ws.replace('/', "-");
+        f.write(
+            &format!("{ws}/Cargo.toml"),
+            &format!(
+                "[package]\nname = \"{name}\"\nversion = \"0.0.0\"\n\
+                 edition = \"2021\"\n\n[workspace]\n"
+            ),
+        );
+        f.write(&format!("{ws}/src/lib.rs"), CLEAN_LIB);
+    }
+    let shim = f.path().join("shim-cargo");
+    write_exec(&shim.join("cargo"), CARGO_ORDER_SHIM);
+    let calls = f.path().join("cargo-calls.log");
+    let hermetic = format!(
+        "{}:{}",
+        shim.to_str().expect("shim path is utf-8"),
+        std::env::var("PATH").unwrap_or_default()
+    );
+    let out = Command::new(repo_root().join("scripts/check-side-workspaces.sh"))
+        .arg("--lint-only")
+        .args(workspaces)
+        .current_dir(f.path())
+        .env("PATH", &hermetic)
+        .env("SIDE_GATE_CARGO_LOG", &calls)
+        .env("CARGO_TARGET_DIR", f.path().join("target"))
+        .output()
+        .expect("the gate runs");
+    (out, fs::read_to_string(&calls).unwrap_or_default())
+}
+
+/// How many times the shim was asked to check formatting.
+fn fmt_calls(calls: &str) -> usize {
+    calls.lines().filter(|c| c.starts_with("fmt ")).count()
+}
+
+#[test]
+fn the_side_workspace_gate_asks_the_cheap_law_everywhere_before_any_expensive_one() {
+    // MEASURED, NOT FELT. `cargo fmt --check` over all 27 package manifests of
+    // this repository's 19 separate workspaces costs 3.4 s and compiles
+    // nothing. The checks that used to stand in front of it cost 38.5 s with
+    // every artifact already built, and that is the FLOOR: a round that edited
+    // code is exactly a round that makes clippy rebuild, and twice in one
+    // session (R1200, R1204) the whole of a multi-minute wait bought one
+    // sentence about formatting.
+    //
+    // So the gate is phase-major: no check starts on ANY workspace until the
+    // cheaper checks have answered on EVERY workspace. The cost of the cheap
+    // law does not depend on what the round changed; the cost of the one behind
+    // it has no upper bound at all.
+    let (out, calls) = side_gate_run(&["tools/formatted-first", "tools/unformatted-second"]);
+    let said = both_of(&out);
+    assert_eq!(
+        out.status.code(),
+        Some(1),
+        "an unformatted workspace is a rejection:\n{said}"
+    );
+    assert!(
+        said.contains("tools/unformatted-second"),
+        "the refusal must name the workspace it is about:\n{said}"
+    );
+    // NON-VACUITY: the cheap law was asked of BOTH, so the absence below is an
+    // ordering fact and not a gate that stopped early.
+    assert_eq!(
+        fmt_calls(&calls),
+        2,
+        "the cheap law must be asked of every workspace, not only the one that \
+         failed:\n{calls}"
+    );
+    assert!(
+        !calls.contains("clippy"),
+        "an expensive check started somewhere while a cheap one still had an \
+         answer to give:\n{calls}"
+    );
+    // AND THE GATE SAYS SO ITSELF. What one law cost over the whole population
+    // is the number the phase order was chosen by, and a number nobody reads
+    // drifts — this is that reader, and it pins the POPULATION too: a phase
+    // line claiming fewer workspaces than the run has is a law that quietly
+    // stopped covering them.
+    assert!(
+        said.contains("PHASE fmt over 2 workspace(s)"),
+        "the gate must report what the cheap law cost over every workspace \
+         it covered:\n{said}"
+    );
+}
+
+#[test]
+fn the_side_workspace_gate_names_every_unformatted_manifest_in_one_run() {
+    // THE SCRIPT'S OWN DOCTRINE, APPLIED TO THE CHECK IT HAD NEVER APPLIED IT
+    // TO. `--no-fail-fast` is on the suite because "a gate that stops at the
+    // first failing target reports a smaller number than the truth and somebody
+    // fixes to it" — measured on this gate's first run, which reported 6
+    // failures in `bench` when there were 18. The formatting check stopped at
+    // the first unformatted manifest, so a tree with three of them took three
+    // runs to learn that.
+    //
+    // THIS PHASE CAN AFFORD TOTALITY AND THE ONES BEHIND IT CANNOT, and the
+    // difference is the measurement above: finishing it costs 3.4 s over the
+    // whole repository, while finishing clippy after a failure costs minutes.
+    let (out, calls) = side_gate_run(&["tools/unformatted-first", "tools/unformatted-second"]);
+    let said = both_of(&out);
+    assert_eq!(
+        out.status.code(),
+        Some(1),
+        "an unformatted workspace is a rejection:\n{said}"
+    );
+    assert!(
+        said.contains("tools/unformatted-first/Cargo.toml"),
+        "the first unformatted manifest must be named:\n{said}"
+    );
+    assert!(
+        said.contains("tools/unformatted-second/Cargo.toml"),
+        "and so must the second, in the SAME run:\n{said}"
+    );
+    assert_eq!(
+        fmt_calls(&calls),
+        2,
+        "both had to be asked for both to be named:\n{calls}"
     );
 }
 
@@ -1534,8 +1718,9 @@ fn pre_push_gates_on_every_separate_workspace_and_names_the_one_that_fails() {
     );
     let err = stderr_of(&out);
     assert!(
-        err.contains("tools/sub is unformatted"),
-        "the block must name the separate workspace:\n{err}"
+        err.contains("UNFORMATTED tools/sub/Cargo.toml"),
+        "the block must name the manifest to fix, and with it the separate \
+         workspace it is in:\n{err}"
     );
     assert!(
         err.contains("separate in-repo workspace does not pass its own gate"),

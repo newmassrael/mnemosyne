@@ -533,35 +533,80 @@ pub fn replace_once(text: &str, edit: &Edit) -> Result<String, String> {
 /// TAKING NO SUITE AND RUNNING NOTHING is what lets a test call it over every
 /// sweep this repository tracks — the anchors are text, and whether they still
 /// apply is a question about text.
+///
+/// IT REPORTS EVERY INJECTION THAT WILL NOT APPLY, not the first, and that is a
+/// measured correction rather than a preference. R1205 restructured the workspace
+/// lister and left SIX dead anchors across two manifests; this function returned
+/// at the first one, so the law above it printed "2 of the sweeps this repository
+/// tracks no longer apply" — one per manifest — and a reader who fixed those two
+/// would have re-run to find two more, twice. Finishing costs nothing here: no
+/// suite runs, no tree is edited, and the work is `str::matches` over files
+/// already in memory. A count that is smaller than the truth is the shape this
+/// repository has paid for before, and `--no-fail-fast` is on its suites for it.
+///
+/// An injection that fails is abandoned at its failing edit rather than carried
+/// on with: its later edits may legitimately depend on what the failed one would
+/// have written, so judging them against a tree that never got it would report
+/// problems the sweep does not have.
+///
+/// The problems are joined with newlines, one per line, each naming its
+/// injection — so a caller that wants them counted can split them, and a caller
+/// that only prints gets them all.
 pub fn snapshot_and_dry_run(
     repo: &Path,
     injections: &[Injection],
 ) -> Result<BTreeMap<PathBuf, Vec<u8>>, String> {
     let mut snapshot: BTreeMap<PathBuf, Vec<u8>> = BTreeMap::new();
-    for injection in injections {
+    let mut problems: Vec<String> = Vec::new();
+    'injection: for injection in injections {
         let mut staged: BTreeMap<PathBuf, String> = BTreeMap::new();
         for edit in &injection.edits {
             let path = repo.join(&edit.file);
             if !snapshot.contains_key(&path) {
-                let bytes =
-                    fs::read(&path).map_err(|e| format!("{} unreadable: {e}", path.display()))?;
-                snapshot.insert(path.clone(), bytes);
+                match fs::read(&path) {
+                    Ok(bytes) => {
+                        snapshot.insert(path.clone(), bytes);
+                    }
+                    Err(e) => {
+                        problems.push(format!(
+                            "{}: {} unreadable: {e}",
+                            injection.name,
+                            path.display()
+                        ));
+                        continue 'injection;
+                    }
+                }
             }
             let text = match staged.remove(&path) {
                 Some(edited) => edited,
-                None => String::from_utf8(snapshot[&path].clone()).map_err(|_| {
-                    format!(
-                        "{} is not text, so no replacement in it can be described",
-                        path.display()
-                    )
-                })?,
+                None => match String::from_utf8(snapshot[&path].clone()) {
+                    Ok(text) => text,
+                    Err(_) => {
+                        problems.push(format!(
+                            "{}: {} is not text, so no replacement in it can be described",
+                            injection.name,
+                            path.display()
+                        ));
+                        continue 'injection;
+                    }
+                },
             };
-            let edited = replace_once(&text, edit)
-                .map_err(|problem| format!("{}: {problem}", injection.name))?;
-            staged.insert(path, edited);
+            match replace_once(&text, edit) {
+                Ok(edited) => {
+                    staged.insert(path, edited);
+                }
+                Err(problem) => {
+                    problems.push(format!("{}: {problem}", injection.name));
+                    continue 'injection;
+                }
+            }
         }
     }
-    Ok(snapshot)
+    if problems.is_empty() {
+        Ok(snapshot)
+    } else {
+        Err(problems.join("\n"))
+    }
 }
 
 // --- what a plan's name answers to -------------------------------------------

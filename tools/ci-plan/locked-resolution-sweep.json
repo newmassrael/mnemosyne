@@ -68,8 +68,8 @@
       "edits": [
         {
           "file": "scripts/check-side-workspaces.sh",
-          "from": "    locked=(--locked)\n    echo \"[side-workspaces] LOCK $ws ours\"",
-          "to": "    locked=()\n    echo \"[side-workspaces] LOCK $ws ours\""
+          "from": "    locked_of[\"$ws\"]=yes\n    echo \"[side-workspaces] LOCK $ws ours\"",
+          "to": "    locked_of[\"$ws\"]=no\n    echo \"[side-workspaces] LOCK $ws ours\""
         }
       ],
       "expect_red": ["every_command_this_repository_issues_pins_the_lockfiles_it_can"]

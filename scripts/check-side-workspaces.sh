@@ -135,11 +135,91 @@ declare_and_run() {
   if $list_only; then
     return 0
   fi
-  "$@"
+  local began=${EPOCHREALTIME/./} status=0
+  "$@" || status=$?
+  local ended=${EPOCHREALTIME/./}
+  echo "[side-workspaces] TOOK $ws $role $(((ended - began) / 1000))ms"
+  return $status
 }
+
+# A MEASUREMENT NEEDS A CLOCK, and a clock that is not there must say so. The
+# phase order below IS a measurement, so a shell without `EPOCHREALTIME` would
+# print a nonsense duration beside every check and the next reader would order
+# the phases by it. R1184 is what this line is afraid of: a `2>/dev/null` that
+# turned "this rule did not run" into "this rule found nothing".
+if [[ -z ${EPOCHREALTIME:-} ]]; then
+  echo "[side-workspaces] this gate reports what each check costs and needs a shell" \
+    "with EPOCHREALTIME (bash 5) to do it; this is bash ${BASH_VERSION:-unknown}" >&2
+  exit 2
+fi
+
+# THE PROGRAMS come from THIS script's checkout; the TREE they are pointed at is
+# the working directory. Those are two different things and two different trees
+# whenever this repository's gate runs over another one — resolving a program
+# from `$root` looks for it inside the tree under check, where it does not exist.
+# Resolved ONCE rather than per workspace: nineteen identical `cd`s answered the
+# same question nineteen times, and a question asked once cannot be asked
+# differently the second time.
+here=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+verify="$here/scripts/verify.sh"
+citation_gate="$here/tools/item-citations/Cargo.toml"
+wait_gate="$here/tools/blind-waits/Cargo.toml"
+environment_gate="$here/tools/named-environment/Cargo.toml"
+scratch_gate="$here/tools/unowned-scratch/Cargo.toml"
+for program in "$verify" "$citation_gate" "$wait_gate" "$environment_gate" "$scratch_gate"; do
+  if [[ ! -f "$program" ]]; then
+    echo "[side-workspaces] a program this gate runs is missing at $program" >&2
+    exit 1
+  fi
+done
+if [[ ! -x "$verify" ]]; then
+  echo "[side-workspaces] the run wrapper at $verify is not executable" >&2
+  exit 1
+fi
+
+# THE PHASE ORDER, AND IT IS A MEASUREMENT RATHER THAN A HABIT. Every check runs
+# over EVERY workspace before the next check runs anywhere, cheapest first, and
+# "cheapest" was measured on this repository's own 19 separate workspaces —
+# twice, because the first two guesses were both wrong.
+#
+#   role        all 19 workspaces, warm   ONE workspace, after one source edit
+#   scratch                      2.17 s   110 ms ->  111 ms
+#   waits                        2.58 s   138 ms ->  107 ms
+#   fmt         2.81 s (27 manifests)     154 ms ->  117 ms
+#   named                       22.97 s  1689 ms -> 1590 ms
+#   clippy                       6.38 s   192 ms ->  770 ms
+#   citations                   12.32 s   289 ms -> 9158 ms
+#
+# THE PRIMARY KEY IS THE SECOND COLUMN, NOT THE FIRST. Four of these read the
+# tree and compile nothing, so what they cost does not depend on what the round
+# changed. `clippy` and `citations` compile, and `citations` builds
+# documentation — which is how a 289 ms check became 9.2 s from a single touched
+# file, and 7m21s in Round 1171. A round that runs this gate is by definition a
+# round that changed something, so the compile-bound pair goes last whatever
+# their warm numbers say; inside each group the order is the warm total, which
+# is all that separates them.
+#
+# WHAT THIS REPLACED was workspace-major, where the cheapest question about the
+# LAST workspace waited behind every expensive question about the other
+# eighteen: 38.5 s with nothing at all to rebuild, and the whole of a
+# multi-minute wait twice in one session (Round 1200, Round 1204).
+phases=(scratch waits fmt named clippy citations suite)
+
+# What the CHECK line announces is what the loop at the bottom will actually
+# run, derived from the one list rather than written out a second time — the
+# sentence it replaced said "fmt, clippy, item citations, blind waits" and had
+# been missing two checks since R1182 added them.
+announced=()
+for phase in "${phases[@]}"; do
+  if [[ $phase == suite ]] && $lint_only; then
+    continue
+  fi
+  announced+=("$phase")
+done
 
 checked=()
 skipped=()
+declare -A locked_of=()
 for ws in "${workspaces[@]}"; do
   if [[ -v ungated["$ws"] ]]; then
     echo "[side-workspaces] SKIP $ws — ${ungated[$ws]}"
@@ -166,12 +246,12 @@ for ws in "${workspaces[@]}"; do
   # repository can pin, and nothing else is.
   foreign=$(outside_dependencies "$ws" | cut -f2 | sort -u | tr '\n' ' ')
   if [[ -n "${foreign// /}" ]]; then
-    locked=()
+    locked_of["$ws"]=no
     echo "[side-workspaces] LOCK $ws foreign — it resolves against trees this" \
       "repository does not own, so its lockfile is not this repository's to pin:" \
       "${foreign% }"
   else
-    locked=(--locked)
+    locked_of["$ws"]=yes
     echo "[side-workspaces] LOCK $ws ours"
   fi
   # AFTER the ownership line and not before it. Ownership is the same answer on
@@ -187,48 +267,6 @@ for ws in "${workspaces[@]}"; do
     skipped+=("$ws")
     continue
   fi
-  # EVERY COMMAND THIS SCRIPT RUNS, DECLARED ONCE. `--list` prints them and the
-  # run below executes the same words, because a reader that has to know what
-  # this script runs must not be re-deriving it: R1084's gate asks which tests
-  # every CI command executes, and a separate workspace's suite is a command
-  # only this file knows. A second spelling drifts the first time a flag changes.
-  #
-  # R1115 widened this from the suite alone to all five. The suite was declared
-  # and the four around it were not, so the gate that reads what this repository
-  # runs could see the one command that already carried `--locked` and none of
-  # the four that did not — and the four are the ones that run first.
-  #
-  # `--no-fail-fast`, because a gate that stops at the first failing target
-  # reports a smaller number than the truth and somebody fixes to it. This gate
-  # did exactly that on its first run: it said `bench` had 6 failures, and the
-  # 6 were one target's — there were 18.
-  #
-  # AND THROUGH THE WRAPPER THAT JUDGES WHAT THE RUN COVERED (R1196). The flag
-  # above is DISCIPLINE: it has to be remembered on every invocation, and it says
-  # nothing at all when a target fails to COMPILE, which stops cargo just the
-  # same. `scripts/verify.sh` runs the command, keeps the whole log and holds it
-  # against what cargo says that command compiles (`tools/unreported-targets`),
-  # so a suite whose verdict covered less than it looks like says so HERE rather
-  # than in CI a round later. Until this round the coverage law reached only what
-  # a person chose to wrap; every suite in this file was outside it.
-  #
-  # Resolved from THIS SCRIPT's checkout and run against the WORKING DIRECTORY —
-  # the rule the four gates below state, and two different trees whenever this
-  # repository's gate runs over another one.
-  #
-  # `--no-fresh` is measured rather than lazy: the wrapper's freshness pass
-  # cleans the crates under `crates/` that differ from HEAD, which belong to the
-  # ROOT workspace and never to this one, so asking for it here would rebuild
-  # somebody else's tree and freshen nothing of this one.
-  verify="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/scripts/verify.sh"
-  if [[ ! -x "$verify" ]]; then
-    echo "[side-workspaces] the run wrapper is missing at $verify" >&2
-    exit 1
-  fi
-  suite=(
-    "$verify" --no-fresh --label "side-${ws//\//-}" --
-    cargo test --manifest-path "$ws/Cargo.toml" "${locked[@]}" --no-fail-fast
-  )
   # `--list` answers WHICH workspaces are checkable on this machine and stops.
   # R1082's feature gate needs exactly that answer and had written its own: on a
   # CI runner, `cargo metadata` for `studio` dies on the sibling `../pinion`
@@ -238,23 +276,50 @@ for ws in "${workspaces[@]}"; do
   if $list_only; then
     echo "[side-workspaces] CHECKABLE $ws"
   else
-    echo "[side-workspaces] CHECK $ws — fmt, clippy, item citations, blind waits$($lint_only || echo ', tests')"
+    echo "[side-workspaces] CHECK $ws — ${announced[*]}"
   fi
-  # PACKAGE BY PACKAGE, over the manifests that live INSIDE this workspace's
-  # directory, which is the same thing as "the packages this repository owns".
-  #
-  # Not `--all`: R1066 used it because a VIRTUAL manifest (`bench/Cargo.toml` is
-  # one: `[workspace]` and no `[package]`) has no targets of its own, and
-  # `cargo fmt` without it exits non-zero printing its usage — which a caller
-  # reads as "unformatted" while nothing was checked at all. But `--all` walks
-  # PATH DEPENDENCIES, and `studio` depends on a sibling checkout: this gate
-  # spent three rounds reporting `studio` as unformatted because of files in
-  # `../pinion`, which this repository does not own, cannot commit, and had
-  # another session live in. A gate that fails on somebody else's file is a gate
-  # that gets ignored. Walking this workspace's own manifests keeps the virtual
-  # case working (the virtual manifest declares no package and is skipped) and
-  # cannot leave the tree.
-  formatted=0
+  checked+=("$ws")
+done
+
+# ── THE CHECKS ───────────────────────────────────────────────────────────────
+#
+# One function per phase, each pointed at ONE workspace. The loop at the bottom
+# calls each of them over EVERY checkable workspace before calling the next —
+# the measured order is declared above, and this is why the checks had to leave
+# the discovery loop to become functions.
+#
+# `declare_and_run` reads `$ws` from its caller's frame, so every one of these
+# names its parameter `ws` and nothing else.
+#
+# `${locked_of[$ws]}` was decided ONCE, in the pass above, where the ownership
+# question is asked. Deciding it here would ask it six times per workspace and
+# give six chances to answer differently.
+
+# PACKAGE BY PACKAGE, over the manifests that live INSIDE this workspace's
+# directory, which is the same thing as "the packages this repository owns".
+#
+# Not `--all`: R1066 used it because a VIRTUAL manifest (`bench/Cargo.toml` is
+# one: `[workspace]` and no `[package]`) has no targets of its own, and
+# `cargo fmt` without it exits non-zero printing its usage — which a caller
+# reads as "unformatted" while nothing was checked at all. But `--all` walks
+# PATH DEPENDENCIES, and `studio` depends on a sibling checkout: this gate
+# spent three rounds reporting `studio` as unformatted because of files in
+# `../pinion`, which this repository does not own, cannot commit, and had
+# another session live in. A gate that fails on somebody else's file is a gate
+# that gets ignored. Walking this workspace's own manifests keeps the virtual
+# case working (the virtual manifest declares no package and is skipped) and
+# cannot leave the tree.
+#
+# IT COLLECTS RATHER THAN EXITS, and it is the only phase here that does. The
+# reason is the measurement above: finishing this one costs 2.8 s over the whole
+# repository, so a run that stops at the first unformatted manifest is buying
+# nothing and reporting a smaller number than the truth — the very thing
+# `--no-fail-fast` is on the suite for. It matters most HERE because these
+# failures come in groups: the command a person types to fix formatting
+# (`cargo fmt --all` at the root) reaches a SMALLER population than this check
+# does, so every side manifest an edit touched is unformatted at once.
+run_fmt() {
+  local ws=$1 member formatted=0
   while IFS= read -r -d '' member; do
     grep -qE '^\[package\]' "$member" || continue
     formatted=$((formatted + 1))
@@ -263,9 +328,7 @@ for ws in "${workspaces[@]}"; do
     # issues that leaves a disagreeing lockfile alone. `locked_resolution_smoke`
     # asks cargo which is which rather than trusting this sentence.
     if ! declare_and_run fmt cargo fmt --manifest-path "$member" --check; then
-      echo "[side-workspaces] $ws is unformatted —" \
-        "fix: cargo fmt --manifest-path $member" >&2
-      exit 1
+      unformatted+=("$member")
     fi
   done < <(find "$ws" -name Cargo.toml -not -path '*/target/*' -print0 | sort -z)
   if [[ $formatted -eq 0 ]]; then
@@ -273,47 +336,48 @@ for ws in "${workspaces[@]}"; do
       "gate formats nothing in is one it is not checking" >&2
     exit 1
   fi
+}
+
+run_clippy() {
+  local ws=$1 locked=()
+  if [[ ${locked_of[$ws]} == yes ]]; then locked=(--locked); fi
   declare_and_run clippy \
     cargo clippy --manifest-path "$ws/Cargo.toml" "${locked[@]}" --all-targets -- -D warnings
-  # R1078 — every item citation in this workspace names an item. The root
-  # workspace gets this from the pre-commit hook and its own CI job; ZZ10 named
-  # the general hole that a check taking only the root leaves these four out,
-  # and this one does not take only the root: it is pointed at a manifest.
-  #
-  # It found something on its first run here, which is the whole argument for
-  # putting it in: two citations in `bench` and one in `studio` that named
-  # nothing (`#[tracked]`, `child[i]`, `argv[1]` — brackets are markdown whether
-  # or not anyone meant them that way), and NINE bench targets it could not
-  # document at all until cargo's omissions were put back.
-  # THE PROGRAM comes from THIS script's checkout; the TREE it is pointed at is
-  # the working directory, per the rule above. Those are two different things
-  # and they are two different trees whenever this repository's gate runs over
-  # another one — resolving the program from `$root` looks for it inside the
-  # tree under check, where it does not exist.
-  citations="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/tools/item-citations/Cargo.toml"
-  if [[ ! -f "$citations" ]]; then
-    echo "[side-workspaces] the item-citation gate is missing at $citations" >&2
-    exit 1
-  fi
-  # `--locked` UNCONDITIONALLY, and not `"${locked[@]}"`: this command resolves
-  # the GATE's own workspace, which is always one of this repository's, whatever
-  # the workspace it is pointed at turns out to be.
-  # THE SAME THREE CODES AS THE TWO GATES BELOW, and this arm was the one that
-  # never got them. `item-citations` has answered 0 / 1 / 2 since it was written
-  # — 2 being "a package does not check, so nothing can be said about the
-  # citations in it" — and this caller collapsed 1 and 2 into the finding.
-  #
-  # MEASURED, and that is why it is here rather than in a carry. A concurrent
-  # prune of this repository's ONE shared build directory (`.cargo/config.toml`
-  # points every workspace at `<repo>/target`) deleted artifacts under a running
-  # gate; `librocksdb-sys` then would not compile, the gate correctly answered 2
-  # and said so, and this line printed `bench carries a citation that names no
-  # item`. A reader sent to hunt a bad citation in `bench` would find none,
-  # because there is none. That sentence is the recorded shape of Z15 — a remote
-  # red that reads as a defect in the tree.
-  declare_and_run citations cargo run -q --manifest-path "$citations" --locked \
-    --bin item-citations -- --workspace "$root/$ws/Cargo.toml" || citations_verdict=$?
-  case "${citations_verdict:-0}" in
+}
+
+# R1078 — every item citation in this workspace names an item. The root
+# workspace gets this from the pre-commit hook and its own CI job; ZZ10 named
+# the general hole that a check taking only the root leaves these four out,
+# and this one does not take only the root: it is pointed at a manifest.
+#
+# It found something on its first run here, which is the whole argument for
+# putting it in: two citations in `bench` and one in `studio` that named
+# nothing (`#[tracked]`, `child[i]`, `argv[1]` — brackets are markdown whether
+# or not anyone meant them that way), and NINE bench targets it could not
+# document at all until cargo's omissions were put back.
+#
+# `--locked` UNCONDITIONALLY, and not `"${locked[@]}"`: this command resolves
+# the GATE's own workspace, which is always one of this repository's, whatever
+# the workspace it is pointed at turns out to be.
+#
+# THE SAME THREE CODES AS THE GATES BELOW, and this arm was the one that never
+# got them. `item-citations` has answered 0 / 1 / 2 since it was written — 2
+# being "a package does not check, so nothing can be said about the citations in
+# it" — and this caller collapsed 1 and 2 into the finding.
+#
+# MEASURED, and that is why it is here rather than in a carry. A concurrent
+# prune of this repository's ONE shared build directory (`.cargo/config.toml`
+# points every workspace at `<repo>/target`) deleted artifacts under a running
+# gate; `librocksdb-sys` then would not compile, the gate correctly answered 2
+# and said so, and this line printed `bench carries a citation that names no
+# item`. A reader sent to hunt a bad citation in `bench` would find none,
+# because there is none. That sentence is the recorded shape of Z15 — a remote
+# red that reads as a defect in the tree.
+run_citations() {
+  local ws=$1 verdict=0
+  declare_and_run citations cargo run -q --manifest-path "$citation_gate" --locked \
+    --bin item-citations -- --workspace "$root/$ws/Cargo.toml" || verdict=$?
+  case $verdict in
     0) ;;
     1)
       echo "[side-workspaces] $ws carries a citation that names no item —" \
@@ -323,32 +387,28 @@ for ws in "${workspaces[@]}"; do
       ;;
     *)
       echo "[side-workspaces] the item-citation gate could not read $ws" \
-        "(exit ${citations_verdict}); its own message is above" >&2
+        "(exit ${verdict}); its own message is above" >&2
       exit 1
       ;;
   esac
-  unset citations_verdict
-  # R1081 — in test code a wait ends on a condition and its budget is named.
-  # The root workspace gets this from its own CI step and the pre-commit hook,
-  # and pointing it ONLY at the root is the hole R1080 closed for the citation
-  # gate one round earlier. It is pointed at a manifest for the same reason that
-  # one is: `bench` is where the class was first found (R1073's red main), and
-  # `tools/injection-harness` deliberately uses processes, signals and real
-  # time, so it is the likeliest place for the next one.
-  #
-  # Resolved from THIS SCRIPT's checkout, run against the WORKING DIRECTORY —
-  # two different trees whenever this repository's gate runs over another one.
-  waits="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/tools/blind-waits/Cargo.toml"
-  if [[ ! -f "$waits" ]]; then
-    echo "[side-workspaces] the blind-wait gate is missing at $waits" >&2
-    exit 1
-  fi
-  # Exit 1 and exit 2 are different answers — "these sites break the law" and
-  # "I could not read enough of this tree to have one" — and one message for
-  # both mislabels whichever it did not mean.
-  declare_and_run waits cargo run -q --manifest-path "$waits" --locked \
-    --bin blind-waits -- --workspace "$root/$ws/Cargo.toml" || waits_verdict=$?
-  case "${waits_verdict:-0}" in
+}
+
+# R1081 — in test code a wait ends on a condition and its budget is named.
+# The root workspace gets this from its own CI step and the pre-commit hook,
+# and pointing it ONLY at the root is the hole R1080 closed for the citation
+# gate one round earlier. It is pointed at a manifest for the same reason that
+# one is: `bench` is where the class was first found (R1073's red main), and
+# `tools/injection-harness` deliberately uses processes, signals and real
+# time, so it is the likeliest place for the next one.
+#
+# Exit 1 and exit 2 are different answers — "these sites break the law" and
+# "I could not read enough of this tree to have one" — and one message for
+# both mislabels whichever it did not mean.
+run_waits() {
+  local ws=$1 verdict=0
+  declare_and_run waits cargo run -q --manifest-path "$wait_gate" --locked \
+    --bin blind-waits -- --workspace "$root/$ws/Cargo.toml" || verdict=$?
+  case $verdict in
     0) ;;
     1)
       echo "[side-workspaces] $ws carries a wait that ends on a clock, or a" \
@@ -359,24 +419,21 @@ for ws in "${workspaces[@]}"; do
       ;;
     *)
       echo "[side-workspaces] the blind-wait gate could not read $ws" \
-        "(exit ${waits_verdict}); its own message is above" >&2
+        "(exit ${verdict}); its own message is above" >&2
       exit 1
       ;;
   esac
-  unset waits_verdict
+}
 
-  # And every environment a spawned program reads is one its test names (R1182),
-  # under the same three-code contract. This is the gate the `main` R1181 found
-  # red would have caught at the fixture: a side workspace's own suite is where
-  # the stale list lived.
-  named="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/tools/named-environment/Cargo.toml"
-  if [[ ! -f "$named" ]]; then
-    echo "[side-workspaces] the named-environment gate is missing at $named" >&2
-    exit 1
-  fi
-  declare_and_run named cargo run -q --manifest-path "$named" --locked \
-    --bin named-environment -- --workspace "$root/$ws/Cargo.toml" || named_verdict=$?
-  case "${named_verdict:-0}" in
+# And every environment a spawned program reads is one its test names (R1182),
+# under the same three-code contract. This is the gate the `main` R1181 found
+# red would have caught at the fixture: a side workspace's own suite is where
+# the stale list lived.
+run_named() {
+  local ws=$1 verdict=0
+  declare_and_run named cargo run -q --manifest-path "$environment_gate" --locked \
+    --bin named-environment -- --workspace "$root/$ws/Cargo.toml" || verdict=$?
+  case $verdict in
     0) ;;
     1)
       echo "[side-workspaces] $ws spawns a program whose environment its test" \
@@ -387,26 +444,23 @@ for ws in "${workspaces[@]}"; do
       ;;
     *)
       echo "[side-workspaces] the named-environment gate could not read $ws" \
-        "(exit ${named_verdict}); its own message is above" >&2
+        "(exit ${verdict}); its own message is above" >&2
       exit 1
       ;;
   esac
-  unset named_verdict
+}
 
-  # And a path built from the shared temp root names the process (R1193), under
-  # the same three-code contract. THIS IS WHERE THAT LAW'S WHOLE POPULATION
-  # LIVES: the hook's Gate 5f points at the ROOT workspace, which reaches the
-  # temp root nowhere, while all eleven sites are in these crates — the six
-  # R1175 repaired among them. A gate wired only at the root would have been
-  # green about a tree it never read.
-  owner="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/tools/unowned-scratch/Cargo.toml"
-  if [[ ! -f "$owner" ]]; then
-    echo "[side-workspaces] the scratch-ownership gate is missing at $owner" >&2
-    exit 1
-  fi
-  declare_and_run scratch cargo run -q --manifest-path "$owner" --locked \
-    --bin unowned-scratch -- --workspace "$root/$ws/Cargo.toml" || owner_verdict=$?
-  case "${owner_verdict:-0}" in
+# And a path built from the shared temp root names the process (R1193), under
+# the same three-code contract. THIS IS WHERE THAT LAW'S WHOLE POPULATION
+# LIVES: the hook's Gate 5f points at the ROOT workspace, which reaches the
+# temp root nowhere, while all eleven sites are in these crates — the six
+# R1175 repaired among them. A gate wired only at the root would have been
+# green about a tree it never read.
+run_scratch() {
+  local ws=$1 verdict=0
+  declare_and_run scratch cargo run -q --manifest-path "$scratch_gate" --locked \
+    --bin unowned-scratch -- --workspace "$root/$ws/Cargo.toml" || verdict=$?
+  case $verdict in
     0) ;;
     1)
       echo "[side-workspaces] $ws builds a path under the shared temp root that names" \
@@ -417,16 +471,82 @@ for ws in "${workspaces[@]}"; do
       ;;
     *)
       echo "[side-workspaces] the scratch-ownership gate could not read $ws" \
-        "(exit ${owner_verdict}); its own message is above" >&2
+        "(exit ${verdict}); its own message is above" >&2
       exit 1
       ;;
   esac
-  unset owner_verdict
+}
 
-  if ! $lint_only; then
-    declare_and_run suite "${suite[@]}"
+# EVERY COMMAND THIS SCRIPT RUNS, DECLARED ONCE. `--list` prints them and the
+# run executes the same words, because a reader that has to know what this
+# script runs must not be re-deriving it: R1084's gate asks which tests every CI
+# command executes, and a separate workspace's suite is a command only this file
+# knows. A second spelling drifts the first time a flag changes.
+#
+# R1115 widened this from the suite alone to all five. The suite was declared
+# and the four around it were not, so the gate that reads what this repository
+# runs could see the one command that already carried `--locked` and none of
+# the four that did not — and the four are the ones that run first.
+#
+# `--no-fail-fast`, because a gate that stops at the first failing target
+# reports a smaller number than the truth and somebody fixes to it. This gate
+# did exactly that on its first run: it said `bench` had 6 failures, and the
+# 6 were one target's — there were 18.
+#
+# AND THROUGH THE WRAPPER THAT JUDGES WHAT THE RUN COVERED (R1196). The flag
+# above is DISCIPLINE: it has to be remembered on every invocation, and it says
+# nothing at all when a target fails to COMPILE, which stops cargo just the
+# same. `scripts/verify.sh` runs the command, keeps the whole log and holds it
+# against what cargo says that command compiles (`tools/unreported-targets`),
+# so a suite whose verdict covered less than it looks like says so HERE rather
+# than in CI a round later.
+#
+# `--no-fresh` is measured rather than lazy: the wrapper's freshness pass
+# cleans the crates under `crates/` that differ from HEAD, which belong to the
+# ROOT workspace and never to this one, so asking for it here would rebuild
+# somebody else's tree and freshen nothing of this one.
+run_suite() {
+  local ws=$1 locked=()
+  if [[ ${locked_of[$ws]} == yes ]]; then locked=(--locked); fi
+  declare_and_run suite \
+    "$verify" --no-fresh --label "side-${ws//\//-}" -- \
+    cargo test --manifest-path "$ws/Cargo.toml" "${locked[@]}" --no-fail-fast
+}
+
+# ── PHASE-MAJOR ──────────────────────────────────────────────────────────────
+#
+# One check, every workspace, then the next check. The order is the measured one
+# declared at the top of this file, and the whole point is that no expensive
+# question is asked ANYWHERE until every cheap question has been answered
+# EVERYWHERE.
+unformatted=()
+for phase in "${phases[@]}"; do
+  if [[ $phase == suite ]] && $lint_only; then
+    continue
   fi
-  checked+=("$ws")
+  phase_began=${EPOCHREALTIME/./}
+  for ws in "${checked[@]}"; do
+    "run_$phase" "$ws"
+  done
+  # WHAT ONE LAW COST OVER THE WHOLE POPULATION, which is the number the order
+  # above was chosen by and the number `TOOK` cannot add up for a reader: a
+  # phase that fails part way through never prints this line, so its absence
+  # says the law did not finish rather than that it was cheap.
+  echo "[side-workspaces] PHASE $phase over ${#checked[@]} workspace(s)" \
+    "$(((${EPOCHREALTIME/./} - phase_began) / 1000))ms"
+  # The one phase that reports after it finishes rather than at its first
+  # failure — see `run_fmt` for why it is the only one that can afford to.
+  if [[ $phase == fmt && ${#unformatted[@]} -gt 0 ]]; then
+    for member in "${unformatted[@]}"; do
+      echo "[side-workspaces] UNFORMATTED $member —" \
+        "fix: cargo fmt --manifest-path $member" >&2
+    done
+    echo "[side-workspaces] ${#unformatted[@]} unformatted package manifest(s) across" \
+      "the ${#checked[@]} workspace(s) this run covered — every one of them is named" \
+      "above, because this check compiles nothing and finishing it is what makes the" \
+      "count true rather than a first sighting" >&2
+    exit 1
+  fi
 done
 
 echo "[side-workspaces] checked ${#checked[@]} (${checked[*]-}), skipped ${#skipped[@]} (${skipped[*]-})"

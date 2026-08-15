@@ -91,12 +91,12 @@
       "edits": [
         {
           "file": "scripts/check-side-workspaces.sh",
-          "from": "  case \"${waits_verdict:-0}\" in\n    0) ;;\n    1)",
-          "to": "  case \"${waits_verdict:-0}\" in\n    0) ;;\n    1|2)"
+          "from": "    --bin blind-waits -- --workspace \"$root/$ws/Cargo.toml\" || verdict=$?\n  case $verdict in\n    0) ;;\n    1)",
+          "to": "    --bin blind-waits -- --workspace \"$root/$ws/Cargo.toml\" || verdict=$?\n  case $verdict in\n    0) ;;\n    1|2)"
         }
       ],
       "expect_red": [
-        "the_side_workspace_gate_tells_a_gate_it_could_not_read_from_one_that_found_a_defect"
+        "the_side_workspace_gate_tells_every_gate_it_could_not_read_from_one_it_judged"
       ]
     },
     {
@@ -173,8 +173,8 @@
       "edits": [
         {
           "file": "scripts/check-side-workspaces.sh",
-          "from": "  case \"${named_verdict:-0}\" in\n    0) ;;\n    1)",
-          "to": "  case \"${named_verdict:-0}\" in\n    0) ;;\n    1|2)"
+          "from": "    --bin named-environment -- --workspace \"$root/$ws/Cargo.toml\" || verdict=$?\n  case $verdict in\n    0) ;;\n    1)",
+          "to": "    --bin named-environment -- --workspace \"$root/$ws/Cargo.toml\" || verdict=$?\n  case $verdict in\n    0) ;;\n    1|2)"
         }
       ],
       "expect_red": [
@@ -187,8 +187,8 @@
       "edits": [
         {
           "file": "scripts/check-side-workspaces.sh",
-          "from": "        \"(exit ${named_verdict}); its own message is above\" >&2\n      exit 1",
-          "to": "        \"(exit ${named_verdict}); its own message is above\" >&2\n      :"
+          "from": "      echo \"[side-workspaces] the named-environment gate could not read $ws\" \\\n        \"(exit ${verdict}); its own message is above\" >&2\n      exit 1",
+          "to": "      echo \"[side-workspaces] the named-environment gate could not read $ws\" \\\n        \"(exit ${verdict}); its own message is above\" >&2\n      :"
         }
       ],
       "expect_red": [
@@ -201,12 +201,12 @@
       "edits": [
         {
           "file": "scripts/check-side-workspaces.sh",
-          "from": "  case \"${citations_verdict:-0}\" in\n    0) ;;\n    1)",
-          "to": "  case \"${citations_verdict:-0}\" in\n    0) ;;\n    1|2)"
+          "from": "    --bin item-citations -- --workspace \"$root/$ws/Cargo.toml\" || verdict=$?\n  case $verdict in\n    0) ;;\n    1)",
+          "to": "    --bin item-citations -- --workspace \"$root/$ws/Cargo.toml\" || verdict=$?\n  case $verdict in\n    0) ;;\n    1|2)"
         }
       ],
       "expect_red": [
-        "the_side_workspace_gate_tells_a_citation_it_could_not_read_from_one_it_judged"
+        "the_side_workspace_gate_tells_every_gate_it_could_not_read_from_one_it_judged"
       ]
     },
     {
@@ -215,12 +215,12 @@
       "edits": [
         {
           "file": "scripts/check-side-workspaces.sh",
-          "from": "        \"(exit ${citations_verdict}); its own message is above\" >&2\n      exit 1",
-          "to": "        \"(exit ${citations_verdict}); its own message is above\" >&2\n      :"
+          "from": "      echo \"[side-workspaces] the item-citation gate could not read $ws\" \\\n        \"(exit ${verdict}); its own message is above\" >&2\n      exit 1",
+          "to": "      echo \"[side-workspaces] the item-citation gate could not read $ws\" \\\n        \"(exit ${verdict}); its own message is above\" >&2\n      :"
         }
       ],
       "expect_red": [
-        "the_side_workspace_gate_tells_a_citation_it_could_not_read_from_one_it_judged"
+        "the_side_workspace_gate_tells_every_gate_it_could_not_read_from_one_it_judged"
       ]
     }
   ]

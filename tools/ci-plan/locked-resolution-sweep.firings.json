@@ -3,7 +3,7 @@
     "Machine-written by tools/injection-harness. Do not edit by hand: a row somebody typed is evidence of nothing, and the law over this file is worth exactly what its being unforgeable is worth.",
     "Each row is one injection that WAS RUN and DID redden what it names, kept beside the definition it was proven against — edit the injection and the gate says the evidence is about a different one."
   ],
-  "complete": true,
+  "complete": false,
   "fired": {
     "a-git-hook-resolves-freely": {
       "edits": [
@@ -69,8 +69,8 @@
       "edits": [
         {
           "file": "scripts/check-side-workspaces.sh",
-          "from": "    locked=(--locked)\n    echo \"[side-workspaces] LOCK $ws ours\"",
-          "to": "    locked=()\n    echo \"[side-workspaces] LOCK $ws ours\""
+          "from": "    locked_of[\"$ws\"]=yes\n    echo \"[side-workspaces] LOCK $ws ours\"",
+          "to": "    locked_of[\"$ws\"]=no\n    echo \"[side-workspaces] LOCK $ws ours\""
         }
       ],
       "expect_red": [

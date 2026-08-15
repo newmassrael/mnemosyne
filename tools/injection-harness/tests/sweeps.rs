@@ -222,7 +222,16 @@ fn every_tracked_sweep_still_applies_to_the_tree_it_names() {
         if let Err(why) =
             injection_harness::snapshot_and_dry_run(&manifest.repo, &manifest.injections)
         {
-            broken.push(format!("{path}: {why}"));
+            // ONE ENTRY PER DEAD ANCHOR, so the number below counts what it says
+            // it counts. It used to be one entry per MANIFEST, which is not the
+            // same population and was smaller than the truth every time more
+            // than one injection into a file went stale together — the case
+            // R1205 produced by restructuring the workspace lister: six dead
+            // anchors, two printed, and a reader who fixed those two would have
+            // been told about the next two, twice.
+            for problem in why.lines() {
+                broken.push(format!("{path}: {problem}"));
+            }
         }
     }
 
@@ -236,10 +245,10 @@ fn every_tracked_sweep_still_applies_to_the_tree_it_names() {
     );
     assert!(
         broken.is_empty(),
-        "{} of the sweeps this repository tracks no longer apply to it. An \
-         anchor is exact text and the source it names moves; a sweep that \
-         refuses is a proof nobody is running, and it looks exactly like one \
-         that holds:\n  {}",
+        "{} tracked injection(s) no longer apply to the tree they name, and \
+         every one of them is below. An anchor is exact text and the source it \
+         names moves; a sweep that refuses is a proof nobody is running, and it \
+         looks exactly like one that holds:\n  {}",
         broken.len(),
         broken.join("\n  ")
     );
@@ -1229,5 +1238,63 @@ fn a_sweep_whose_anchor_has_come_loose_is_named_rather_than_skipped() {
         injection_harness::replace_once(text, &once).expect("exactly once"),
         "one\ntwo\n3\ntwo\n",
         "and the one that does apply is applied"
+    );
+}
+
+#[test]
+fn the_dry_run_names_every_injection_that_will_not_apply_rather_than_the_first() {
+    // MEASURED, AND THE MEASUREMENT IS WHY THIS TEST EXISTS. R1205 restructured
+    // `scripts/check-side-workspaces.sh` and left SIX dead anchors across two
+    // sweep manifests. The dry run returned at the first one, so the law above
+    // printed "2 of the sweeps this repository tracks no longer apply" — one per
+    // manifest — and a reader who repaired those two would have been handed two
+    // more, twice. With the whole answer the same tree, unchanged, reported all
+    // six at once.
+    //
+    // FINISHING COSTS NOTHING HERE, which is the argument for totality in this
+    // check and not in the ones that compile: no suite runs, no tree is edited,
+    // and the work is `str::matches` over files already read into memory. It is
+    // the same reason `--no-fail-fast` is on this repository's suites — a count
+    // smaller than the truth is one somebody fixes to.
+    //
+    // NO FIXTURE TREE: the anchors are text that cannot occur, so a real file
+    // this repository certainly has is a perfectly good subject and the case
+    // cannot pass because a tempdir was empty.
+    let absent = |name: &str| injection_harness::Injection {
+        name: name.to_string(),
+        why: "a fixture anchor no source of this repository contains".to_string(),
+        edits: vec![injection_harness::Edit {
+            file: "Cargo.toml".to_string(),
+            from: format!("<<no tracked file of this repository contains this: {name}>>"),
+            to: "irrelevant, because it will never be applied".to_string(),
+        }],
+        expect_red: Vec::new(),
+    };
+    let why = injection_harness::snapshot_and_dry_run(
+        &repository_root(),
+        &[absent("the-first-one"), absent("the-second-one")],
+    )
+    .expect_err("two anchors that cannot apply");
+    assert_eq!(
+        why.lines().count(),
+        2,
+        "one line per injection that will not apply, so the caller counting them \
+         counts injections and not manifests:\n{why}"
+    );
+    for name in ["the-first-one", "the-second-one"] {
+        assert!(
+            why.contains(name),
+            "and each line names the injection it is about, or the report cannot \
+             be repaired from:\n{why}"
+        );
+    }
+    // THE MIRROR: a dry run with nothing wrong in it still answers with the
+    // snapshot, so the assertion above is about the failing path and not about a
+    // function that has stopped succeeding.
+    let snapshot = injection_harness::snapshot_and_dry_run(&repository_root(), &[])
+        .expect("no injections is not a problem");
+    assert!(
+        snapshot.is_empty(),
+        "and it read nothing it was not asked about"
     );
 }
