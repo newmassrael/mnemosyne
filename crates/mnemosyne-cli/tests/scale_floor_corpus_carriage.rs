@@ -35,7 +35,7 @@ use mnemosyne_atomic::AtomicStore;
 use crate::common;
 use common::{
     authored_stores, corpus_fact_manifest, corpus_typed_legs, corpus_workspace_try, read_json,
-    repo_root, run, upgrade_corpus_rules, SIDECAR,
+    repo_root, run, upgrade_corpus_rules, workspace_try, Manifests, SIDECAR,
 };
 
 /// The two stores, by the name every walk prints.
@@ -281,4 +281,276 @@ fn the_transition_carriage_names_every_row_it_adds() {
         assert_eq!(rules["rules"][1]["class"], "exclusive", "{arm}");
         assert!(rules["rules"][1].get("adjacency").is_none(), "{arm}");
     }
+}
+
+// ==========================================================================
+// R1213 — the arcs no corpus in this tree declares, and whether each invented
+// row is NEEDED.
+//
+// R1176 shipped the carriage with two witnesses that declare the SAME one-step
+// arc, and wrote down what that leaves unasked: "a multi-step arc, a cycle, or
+// a rule whose FROM token is already a registered entity would each take a path
+// this round did not walk". Those three sentences describe the work rather than
+// a limit of the world, so they are walked here — against corpora built for the
+// purpose, because no author in this tree writes one.
+//
+// The same round said the invention is "measurement, not proof": the write path
+// taught the shape by rejecting twice, and nothing in the tree re-asks it. The
+// second half below re-asks it by REMOVAL, which is the only form of minimality
+// a measurement can carry — each invented row is dropped in turn and the import
+// must refuse, and the untouched carriage must import.
+// ==========================================================================
+
+/// A rules file declaring one pre-R697 transition rule over `steps`.
+fn rules_declaring(steps: &[(&str, &str)]) -> serde_json::Value {
+    serde_json::json!({
+        "rules": [{
+            "id": "probe-arc",
+            "class": "transition",
+            "predicate": "probe_state",
+            "allowed": steps
+                .iter()
+                .map(|(from, to)| serde_json::json!([from, to]))
+                .collect::<Vec<_>>(),
+        }]
+    })
+}
+
+/// A fact manifest with the one seat fact the carriage clones, declaring
+/// `entities` as already registered.
+fn manifest_declaring(entities: &[&str]) -> serde_json::Value {
+    serde_json::json!({
+        "entities": entities
+            .iter()
+            .map(|id| serde_json::json!({ "entity_id": id, "kind": "person" }))
+            .collect::<Vec<_>>(),
+        "facts": [{
+            "fact_id": "seat",
+            "claim": "The fact this corpus opens on.",
+            "scene": "one",
+        }],
+    })
+}
+
+/// Rows of one manifest key, by their id field.
+fn ids(manifest: &serde_json::Value, key: &str, id_field: &str) -> Vec<String> {
+    manifest
+        .get(key)
+        .and_then(|rows| rows.as_array())
+        .map(|rows| {
+            rows.iter()
+                .filter_map(|row| row[id_field].as_str().map(str::to_string))
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+#[test]
+fn a_multi_step_arc_registers_every_state_it_leaves_and_none_it_only_enters() {
+    let mut facts = manifest_declaring(&[]);
+    let mut rules = rules_declaring(&[("a", "b"), ("b", "c")]);
+    let carriage =
+        upgrade_corpus_rules(&mut rules, &mut facts).expect("the rule is a pre-R697 pair list");
+
+    assert_eq!(carriage.steps.len(), 2, "{carriage:?}");
+    // A TYPED SUBJECT MUST BE AN ENTITY AND A TOKEN OBJECT MUST NOT, so what a
+    // step LEAVES becomes an entity and what it only ENTERS stays a token. `c`
+    // is never a subject here, and registering it would be an invention the
+    // pair list does not imply.
+    assert_eq!(carriage.state_entities, ["a", "b"], "{carriage:?}");
+    assert_eq!(ids(&facts, "entities", "entity_id"), ["a", "b"]);
+    // One predicate for the rule, one entity kind for the states it invented,
+    // one edge fact per step, and the seat untouched.
+    assert_eq!(
+        ids(&facts, "predicates", "predicate_id"),
+        ["probe_state_adjacent"]
+    );
+    assert_eq!(
+        ids(&facts, "entity_kinds", "kind_id"),
+        ["probe_state-state"]
+    );
+    assert_eq!(
+        ids(&facts, "facts", "fact_id"),
+        [
+            "seat",
+            "probe_state_adjacent-a-to-b",
+            "probe_state_adjacent-b-to-c"
+        ]
+    );
+    // And the predicate's token list holds every state either leg names, or the
+    // edge fact's object would be a token the predicate does not admit.
+    assert_eq!(
+        facts["predicates"][0]["object_tokens"],
+        serde_json::json!(["a", "b", "c"])
+    );
+}
+
+#[test]
+fn a_cycle_carries_both_directions_as_two_edges_and_registers_each_state_once() {
+    let mut facts = manifest_declaring(&[]);
+    let mut rules = rules_declaring(&[("a", "b"), ("b", "a")]);
+    let carriage =
+        upgrade_corpus_rules(&mut rules, &mut facts).expect("the rule is a pre-R697 pair list");
+
+    assert_eq!(
+        carriage.steps,
+        [
+            ("a".to_string(), "b".to_string()),
+            ("b".to_string(), "a".to_string())
+        ],
+        "a cycle is two steps and the carriage must not fold them"
+    );
+    assert_eq!(
+        carriage.state_entities,
+        ["a", "b"],
+        "each state is registered once however many steps leave it: {carriage:?}"
+    );
+    assert_eq!(
+        ids(&facts, "facts", "fact_id"),
+        [
+            "seat",
+            "probe_state_adjacent-a-to-b",
+            "probe_state_adjacent-b-to-a"
+        ],
+        "the two directions are two facts, and their ids differ"
+    );
+}
+
+#[test]
+fn a_state_the_corpus_already_registers_is_not_invented_a_second_time() {
+    let mut facts = manifest_declaring(&["a"]);
+    let mut rules = rules_declaring(&[("a", "b"), ("b", "c")]);
+    let carriage =
+        upgrade_corpus_rules(&mut rules, &mut facts).expect("the rule is a pre-R697 pair list");
+
+    assert_eq!(
+        carriage.state_entities,
+        ["b"],
+        "`a` is the author's own entity, so carrying it again would be the recipe \
+         claiming a row the author wrote: {carriage:?}"
+    );
+    assert_eq!(
+        ids(&facts, "entities", "entity_id"),
+        ["a", "b"],
+        "and the author's row is left as it stands"
+    );
+    // THE KIND IS DECLARED ONLY WHERE A STATE IS INVENTED. A corpus whose every
+    // FROM token it already registers gets no `-state` kind at all, which is the
+    // arm below.
+    assert_eq!(
+        ids(&facts, "entity_kinds", "kind_id"),
+        ["probe_state-state"]
+    );
+
+    let mut facts = manifest_declaring(&["a", "b"]);
+    let mut rules = rules_declaring(&[("a", "b"), ("b", "a")]);
+    let carriage = upgrade_corpus_rules(&mut rules, &mut facts).expect("a pre-R697 pair list");
+    assert!(
+        carriage.state_entities.is_empty(),
+        "nothing was invented here: {carriage:?}"
+    );
+    assert!(
+        ids(&facts, "entity_kinds", "kind_id").is_empty(),
+        "so no kind is declared either — a kind with no member is a row the \
+         recipe added for nobody"
+    );
+}
+
+/// Every row the carriage invents is one the import REFUSES to do without, and
+/// the three of them together are enough.
+///
+/// This is what "minimal" can mean for a measurement: each invented row is
+/// removed in turn from a manifest that imports, and the import must refuse; the
+/// untouched one must import. It cannot prove no OTHER shape would also work —
+/// that is not a question a run can answer — but it does answer the two halves
+/// that were being taken on trust, and R1176's own words for the state of this
+/// knowledge were "the write path taught the constraint by rejecting twice".
+#[test]
+fn each_row_the_carriage_invents_is_one_the_import_refuses_to_do_without() {
+    let arm = ARMS[0];
+    let dir = repo_root().join(arm);
+    let sections = read_json(&dir.join("sections.json"));
+    let order = read_json(&dir.join("order.json"));
+    let carried = || {
+        let mut facts = corpus_fact_manifest(&dir);
+        common::upgrade_corpus_manifest(&mut facts, &corpus_typed_legs(&dir));
+        let mut rules = read_json(&dir.join("narrative-rules.json"));
+        let carriage =
+            upgrade_corpus_rules(&mut rules, &mut facts).expect("this arm carries a rule");
+        (facts, carriage)
+    };
+    let imports = |facts: serde_json::Value| -> Result<(), String> {
+        workspace_try(
+            &Manifests {
+                sections: sections.clone(),
+                order: order.clone(),
+                facts,
+            },
+            None,
+        )
+        .map(|_| ())
+    };
+
+    // THE CONTROL, and it is half the law: with the three inventions and nothing
+    // else, the manifest imports. A fourth missing row would fail here.
+    let (whole, carriage) = carried();
+    imports(whole.clone()).unwrap_or_else(|e| {
+        panic!("{arm}: the carried manifest must import as it stands, and did not: {e}")
+    });
+
+    let adjacency = carriage.adjacency[0].clone();
+    let state = carriage.state_entities[0].clone();
+    // THE KIND IS READ OFF THE ROW THE CARRIAGE WROTE, not spelled again here: a
+    // second spelling of `{predicate}-state` would agree with the recipe until
+    // the day it did not.
+    let kind = whole["entities"]
+        .as_array()
+        .expect("the manifest holds entities")
+        .iter()
+        .find(|row| row["entity_id"] == serde_json::json!(state))
+        .and_then(|row| row["kind"].as_str())
+        .unwrap_or_else(|| panic!("{arm}: the invented state `{state}` names a kind"))
+        .to_string();
+    for (what, key, id_field, id) in [
+        (
+            "the adjacency predicate",
+            "predicates",
+            "predicate_id",
+            adjacency.as_str(),
+        ),
+        ("the state entity", "entities", "entity_id", state.as_str()),
+        (
+            "the entity kind that state belongs to",
+            "entity_kinds",
+            "kind_id",
+            kind.as_str(),
+        ),
+    ] {
+        let mut without = whole.clone();
+        // `drop_row` refuses a removal that removed nothing, so a case about a
+        // row the carriage did not add fails here rather than passing quietly.
+        drop_row(&mut without, key, id_field, id);
+        let verdict = imports(without);
+        assert!(
+            verdict.is_err(),
+            "{arm}: the import accepted a manifest without {what}, so the carriage adds a row \
+             nothing requires"
+        );
+        println!("  {arm} without {what}: refused");
+    }
+}
+
+/// Remove the row of `key` whose `id_field` is `id`, and say so if there was
+/// none — a removal that removed nothing is a case about nothing.
+fn drop_row(manifest: &mut serde_json::Value, key: &str, id_field: &str, id: &str) {
+    let rows = manifest[key]
+        .as_array_mut()
+        .unwrap_or_else(|| panic!("`{key}` is an array of rows"));
+    let before = rows.len();
+    rows.retain(|row| row[id_field] != serde_json::json!(id));
+    assert_eq!(
+        rows.len() + 1,
+        before,
+        "`{key}` held no row whose {id_field} is `{id}`"
+    );
 }
