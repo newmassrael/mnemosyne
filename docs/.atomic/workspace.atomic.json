@@ -13418,6 +13418,100 @@
         "🆕 `bx` RUNS A COMMAND THAT WRITES THE TREE ON THE REMOTE COPY AND EXITS 0. `bx -- cargo fmt` formatted the build machine's checkout and left this one unformatted, which the side-workspace gate then reported — a silent no-op wearing a green exit code. It is the owner's domain (bx is machine-global, outside this repository) and the honest shapes are two: sync a writing command's result back, or refuse the command and say which"
       ]
     },
+    "Round 1209": {
+      "decision_summary": "R1209 (BUILD — the build-placement program sent a command that WRITES this tree to a machine that throws its tree away, and answered zero). WHAT THIS REPOSITORY SAW. Round 1208 ran `bx -- cargo fmt --manifest-path …`, got exit 0, and the local tree was not formatted at all: what had been formatted was the build machine's copy, which the next transfer erases. It surfaced two steps later as four unformatted manifests in `check-side-workspaces.sh`, a gate with no idea why. THE SHAPE IS A SILENT NO-OP WEARING A GREEN EXIT CODE, and it is the worst answer a wrapper can give — the command really did run, really did succeed, and really did nothing here. It was the SECOND firing of one defect: the first sent an injection sweep away and its `*.firings.json`, which this repository TRACKS as evidence, was written on pc2 and never came back. THE MECHANISM WAS A HAND-KEPT VOCABULARY. `bx` decides placement by scanning the flattened command for words that mean \"this writes\" — `git commit`, `git push`, `cargo publish`, the mnemosyne mutate verbs — and anything unrecognised is SENT. Its own comment claimed the opposite (\"an unrecognised command is not assumed safe, it is assumed LOCAL\"), which is the shape where a reader trusts a safety net that is not there; the program is the specification and the comment now says what the program does. WHAT THE REPAIR IS, in four parts. (1) `cargo fmt` writes UNLESS `--check` — the one flag-sensitive entry, and the safe direction is that an unflagged `cargo fmt` is a write. (2) The vocabulary gains what the tools do whoever runs them: git moving the working tree (`checkout`, `switch`, `restore`, `stash`, `merge`, `rebase`, `cherry-pick`, `apply`, `am`, `reset`, `clean`, `add`, `rm`, `mv`, `worktree`) and cargo rewriting sources, manifests or lockfiles (`fix`, `--fix`, `add`, `remove`, `update`, `generate-lockfile`, `vendor`). (3) A REPOSITORY DECLARES ITS OWN, through a new `writes` key in `.claude/remote-build.toml`, because a machine-global tool cannot know one repository's script names and a repository cannot reach into a machine-global tool — this repository declares `scripts/fmt.sh` and `.sweep.json`. (4) The refusal names WHICH reason, where one sentence used to cover four. WHAT THE FIX FOUND THAT NOBODY HAD REPORTED: run the new gate against the previous binary and nine of thirteen cases go red, and two of them are placements this repository had never noticed — `git checkout` and `cargo update` were both being sent to a throwaway tree. AND THE DISCRIMINATOR IS A SUBSTRING, so it has to be one only the WRITING form carries: the first draft declared `injection-harness` and pulled that crate's read-only SUITE onto a machine 14GB into swap, which is why the declaration says `.sweep.json` instead.",
+      "changes_bullets": [
+        "this repository declares `writes = [\"scripts/fmt.sh\", \".sweep.json\"]` — the commands only it can know write its tree, which the build-placement program now reads",
+        "the machine-global program's rule is rewritten: cargo fmt writes unless --check, git tree-movers and cargo lockfile rewrites join the vocabulary, and the refusal names which reason",
+        "a new gate beside its four siblings — writes-never-leave-this-tree.sh, 13 cases, every one paired with the control that must still be SENT"
+      ],
+      "verification_bullets": [
+        "the defect was REPRODUCED through the seam a gate can use before anything was changed: `--explain-choice -- cargo fmt …` answered `where=remote`, which is the placement that formatted a copy and exited 0",
+        "13 gate cases, every finding beside the control that keeps the rule from collapsing into \"never send anything\": `cargo fmt --check` and `cargo test` must still be SENT, and the same script undeclared must still be SENT",
+        "MUTATION-PROVEN AGAINST THE PREVIOUS BINARY, which is what the gate's second argument is for: 9 of 13 red on the pre-fix bx, including the case that was paid for",
+        "and that run found two placements nobody had reported: `git checkout` and `cargo update` were being sent to a tree that is thrown away",
+        "the declaration is checkable from OUTSIDE the program that reads it — `bx --explain-declaration` prints `writes`, and this repository's `tools/unread-declaration` gate answers \"every top-level key this repository declares is one the program reads as declared\"",
+        "the four sibling gates are green after the change (placement, argv, locks, sentinel), so the rule that decides placement did not move the rules that decide everything else",
+        "the discriminator was MEASURED both ways rather than assumed: a sweep command stays local and `cargo test --manifest-path tools/injection-harness/Cargo.toml` is still sent",
+        "the gate caught a defect in its OWN fixture first: `local a=$1 b=${a:+x}` expands `a` before the builtin runs, so every declaring case shared one directory holding no declaration and three cases failed for a reason that was the fixture's"
+      ],
+      "impact_refs": [
+        "atomic-store-mutate-api"
+      ],
+      "carry_forward_bullets": [
+        "THE DECLARATION IS MATCHED AS A SUBSTRING, so a badly chosen one pulls read-only commands onto a machine that may be swapping — measured, with `injection-harness` doing exactly that to its own suite. A word-precise rule would be worse in the direction that costs work, because it cannot see a write inside `bash -c '…'`; the honest instruction is to declare a string only the WRITING form carries, and it is written beside the key",
+        "THE PROGRAM THAT DECIDES PLACEMENT HAS NO VERSION CONTROL. It is 1669 lines shared by six repositories, its only history is five hand-made `bx.bak-*` copies, and none of them records which one is the immediately-previous state — the mutation proof above ran against a backup that predates other changes as well. Whether that directory becomes a repository is the owner's, since every repository on this machine depends on it",
+        "FIVE GATES NOW STAND BESIDE IT AND NOTHING RUNS THEM AUTOMATICALLY. This one is fast, but its siblings do real transfers; a pre-commit hook in one repository cannot be the reader for a tool six repositories share"
+      ],
+      "population_census": [
+        {
+          "axis": "transition rules by `undirected`",
+          "left_label": "undirected",
+          "left": 10,
+          "right_label": "directed",
+          "right": 29
+        },
+        {
+          "axis": "map corpora by leg-kind declaration",
+          "left_label": "omitted",
+          "left": 6,
+          "right_label": "declared",
+          "right": 24
+        },
+        {
+          "axis": "cost-carrying corpora by direction-dependent pricing",
+          "left_label": "prices a way by direction",
+          "left": 4,
+          "right_label": "prices no way by direction",
+          "right": 6
+        },
+        {
+          "axis": "run trees by authoring mode",
+          "left_label": "hand script",
+          "left": 10,
+          "right_label": "file-only",
+          "right": 256
+        },
+        {
+          "axis": "map corpora by declared boundary crossing",
+          "left_label": "declares an exit",
+          "left": 6,
+          "right_label": "declares none",
+          "right": 24
+        },
+        {
+          "axis": "authored submissions by map and telling",
+          "left_label": "carries both",
+          "left": 10,
+          "right_label": "carries one",
+          "right": 24
+        }
+      ],
+      "publishable_decision_summary": "R1209 (BUILD — the build-placement program sent a command that WRITES this tree to a machine that throws its tree away, and answered zero). WHAT THIS REPOSITORY SAW. Round 1208 ran `bx -- cargo fmt --manifest-path …`, got exit 0, and the local tree was not formatted at all: what had been formatted was the build machine's copy, which the next transfer erases. It surfaced two steps later as four unformatted manifests in `check-side-workspaces.sh`, a gate with no idea why. THE SHAPE IS A SILENT NO-OP WEARING A GREEN EXIT CODE, and it is the worst answer a wrapper can give — the command really did run, really did succeed, and really did nothing here. It was the SECOND firing of one defect: the first sent an injection sweep away and its `*.firings.json`, which this repository TRACKS as evidence, was written on pc2 and never came back. THE MECHANISM WAS A HAND-KEPT VOCABULARY. `bx` decides placement by scanning the flattened command for words that mean \"this writes\" — `git commit`, `git push`, `cargo publish`, the mnemosyne mutate verbs — and anything unrecognised is SENT. Its own comment claimed the opposite (\"an unrecognised command is not assumed safe, it is assumed LOCAL\"), which is the shape where a reader trusts a safety net that is not there; the program is the specification and the comment now says what the program does. WHAT THE REPAIR IS, in four parts. (1) `cargo fmt` writes UNLESS `--check` — the one flag-sensitive entry, and the safe direction is that an unflagged `cargo fmt` is a write. (2) The vocabulary gains what the tools do whoever runs them: git moving the working tree (`checkout`, `switch`, `restore`, `stash`, `merge`, `rebase`, `cherry-pick`, `apply`, `am`, `reset`, `clean`, `add`, `rm`, `mv`, `worktree`) and cargo rewriting sources, manifests or lockfiles (`fix`, `--fix`, `add`, `remove`, `update`, `generate-lockfile`, `vendor`). (3) A REPOSITORY DECLARES ITS OWN, through a new `writes` key in `.claude/remote-build.toml`, because a machine-global tool cannot know one repository's script names and a repository cannot reach into a machine-global tool — this repository declares `scripts/fmt.sh` and `.sweep.json`. (4) The refusal names WHICH reason, where one sentence used to cover four. WHAT THE FIX FOUND THAT NOBODY HAD REPORTED: run the new gate against the previous binary and nine of thirteen cases go red, and two of them are placements this repository had never noticed — `git checkout` and `cargo update` were both being sent to a throwaway tree. AND THE DISCRIMINATOR IS A SUBSTRING, so it has to be one only the WRITING form carries: the first draft declared `injection-harness` and pulled that crate's read-only SUITE onto a machine 14GB into swap, which is why the declaration says `.sweep.json` instead.",
+      "publishable_changes_bullets": [
+        "this repository declares `writes = [\"scripts/fmt.sh\", \".sweep.json\"]` — the commands only it can know write its tree, which the build-placement program now reads",
+        "the machine-global program's rule is rewritten: cargo fmt writes unless --check, git tree-movers and cargo lockfile rewrites join the vocabulary, and the refusal names which reason",
+        "a new gate beside its four siblings — writes-never-leave-this-tree.sh, 13 cases, every one paired with the control that must still be SENT"
+      ],
+      "publishable_verification_bullets": [
+        "the defect was REPRODUCED through the seam a gate can use before anything was changed: `--explain-choice -- cargo fmt …` answered `where=remote`, which is the placement that formatted a copy and exited 0",
+        "13 gate cases, every finding beside the control that keeps the rule from collapsing into \"never send anything\": `cargo fmt --check` and `cargo test` must still be SENT, and the same script undeclared must still be SENT",
+        "MUTATION-PROVEN AGAINST THE PREVIOUS BINARY, which is what the gate's second argument is for: 9 of 13 red on the pre-fix bx, including the case that was paid for",
+        "and that run found two placements nobody had reported: `git checkout` and `cargo update` were being sent to a tree that is thrown away",
+        "the declaration is checkable from OUTSIDE the program that reads it — `bx --explain-declaration` prints `writes`, and this repository's `tools/unread-declaration` gate answers \"every top-level key this repository declares is one the program reads as declared\"",
+        "the four sibling gates are green after the change (placement, argv, locks, sentinel), so the rule that decides placement did not move the rules that decide everything else",
+        "the discriminator was MEASURED both ways rather than assumed: a sweep command stays local and `cargo test --manifest-path tools/injection-harness/Cargo.toml` is still sent",
+        "the gate caught a defect in its OWN fixture first: `local a=$1 b=${a:+x}` expands `a` before the builtin runs, so every declaring case shared one directory holding no declaration and three cases failed for a reason that was the fixture's"
+      ],
+      "publishable_impact_refs": [
+        "atomic-store-mutate-api"
+      ],
+      "publishable_carry_forward_bullets": [
+        "THE DECLARATION IS MATCHED AS A SUBSTRING, so a badly chosen one pulls read-only commands onto a machine that may be swapping — measured, with `injection-harness` doing exactly that to its own suite. A word-precise rule would be worse in the direction that costs work, because it cannot see a write inside `bash -c '…'`; the honest instruction is to declare a string only the WRITING form carries, and it is written beside the key",
+        "THE PROGRAM THAT DECIDES PLACEMENT HAS NO VERSION CONTROL. It is 1669 lines shared by six repositories, its only history is five hand-made `bx.bak-*` copies, and none of them records which one is the immediately-previous state — the mutation proof above ran against a backup that predates other changes as well. Whether that directory becomes a repository is the owner's, since every repository on this machine depends on it",
+        "FIVE GATES NOW STAND BESIDE IT AND NOTHING RUNS THEM AUTOMATICALLY. This one is fast, but its siblings do real transfers; a pre-commit hook in one repository cannot be the reader for a tool six repositories share"
+      ]
+    },
     "Round 252": {
       "decision_summary": "Parser CommonMark conformance — recognize indented fenced code blocks (§98) and require whitespace after ATX hash sequence (§62)",
       "changes_bullets": [
