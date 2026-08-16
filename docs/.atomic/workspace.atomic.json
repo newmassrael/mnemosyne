@@ -14434,6 +14434,98 @@
         "THE ERROR HALF STILL CARRIES NO SCHEMA (R1222's carry, unchanged), and nothing here proves a client validates any of this (R1223's, unchanged)"
       ]
     },
+    "Round 1225": {
+      "decision_summary": "R1225 (BUILD — a push gate stops answering a question about somebody else's working tree). On 2026-08-16 three finished, locally-verified rounds could not be published. `pre-push` runs `scripts/check-side-workspaces.sh` over every separate in-repo workspace, `studio` path-depends on the sibling `pinion` checkout, and a session in THAT repository was mid-edit — three unused imports in `pinion-core`. Nothing in this tree was wrong and nothing in this tree could fix it. The owner chose the narrow answer: take `studio` out of the PUSH gate and leave it in every other reader.\n\nTHE FLAG NAMES NO WORKSPACE, and that is the difference between this and a hardcoded exception. The gate already decides ownership per workspace and prints it — `LOCK <ws> ours` or `LOCK <ws> foreign — it resolves against trees this repository does not own` — because Round 1110 needed the same answer to decide where `--locked` may be used. `--ours-only` consumes that existing answer, so a second sibling-dependent workspace is treated the same way the day it arrives and no list has to be maintained.\n\nIT IS THE SAME REASON `--locked` WAS ALREADY OFF THERE, one step further. A workspace whose resolution changes when somebody else commits cannot have its lockfile pinned by this repository; a workspace whose COMPILATION depends on somebody else's uncommitted edits cannot have its verdict given by this repository either. The gate had already conceded the first half and was still asserting the second.\n\nWHAT IS GIVEN UP, recorded rather than implied, because this is a loosening: `studio` now has no UNCONDITIONAL automated reader. CI has no sibling checkout and skips it — that path already existed and is why the gate distinguishes \"not on this machine\" from \"not ours\". What remains is the pre-commit gate when a side `.rs` is staged, and the whole-gate run the round checklist asks for, which is DISCIPLINE rather than mechanism in this repository's own vocabulary. Round 784 had to repair this crate precisely because no gate was watching it, so the risk is not hypothetical. The trade is taken because a gate that blocks on another repository's working tree reports something other than what it claims to, and a reader who cannot tell those apart learns the wrong thing from a red.\n\nTHE SKIP IS LOUD BY CONSTRUCTION. The gate's closing line already names what it checked and what it skipped, and it already fails when it checked nothing at all — \"a green run that checked nothing is the failure it exists to prevent\". `--ours-only` adds a SKIP line carrying the workspace, the reason, and the foreign paths that caused it, so a green push never quietly means less than it did yesterday.",
+      "changes_bullets": [
+        "`--ours-only` skips the workspaces that resolve against trees this repository does not own, consuming the ownership answer the gate already prints",
+        "pre-push passes it, so a sibling repository being mid-edit no longer blocks a push this repository has fully verified",
+        "the skip names the workspace, the reason and the foreign paths; the whole gate is unchanged and still covers everything"
+      ],
+      "verification_bullets": [
+        "TWO INJECTIONS, ONE PER HALF, because a flag that is passed and inert and a flag that works and is never passed fail identically from a distance. Removing `--ours-only` from the hook goes red with \"`pre-push` does not run the side gate with `--ours-only`, so a sibling repository's working tree can still block a push from this one\"; disabling the skip inside the gate goes red with \"`--ours-only` still checks `studio`, which resolves against a tree this repository does not own\". Both trees restored byte-identical",
+        "THE LAW WRITES DOWN NO WORKSPACE NAME. It reads the gate's own `LOCK <ws> foreign` lines to learn which workspaces are foreign, requires the flag to drop exactly those and NOTHING else, and fails loudly if the tree ever has none — a flag with nothing to drop would make the case pass for the wrong reason, and the message says so and asks for both to be deleted",
+        "IT ALSO ASSERTS THE PLAIN LISTER STILL OFFERS THEM, so \"the flag dropped it\" cannot be satisfied by the workspace having been unreachable all along",
+        "`--list` IS THE ORACLE RATHER THAN A FULL RUN: what is under test is WHICH workspaces are chosen, and choosing is exactly what the lister prints. A full run would spend minutes compiling to re-answer a question already on screen",
+        "THE EVENT THIS ROUND ANSWERS IS ON THE RECORD, not hypothesised: the push of R1222-R1224 was refused at 2026-08-16 with three `pinion-core` unused-import errors, and the same push succeeded twenty minutes later when the other session finished, with nothing in this repository changed between the two attempts",
+        "root workspace suite + clippy --workspace --all-targets -D warnings + the separate in-repo workspaces (the WHOLE gate, not `--ours-only`), run through scripts/verify.sh"
+      ],
+      "impact_refs": [
+        "atomic-store-mutate-api"
+      ],
+      "carry_forward_bullets": [
+        "`studio` HAS NO UNCONDITIONAL AUTOMATED READER NOW, and that is the price rather than a side effect. CI cannot see it (no sibling checkout), pre-push no longer asks, and what is left is the pre-commit gate WHEN a side `.rs` is staged plus the whole-gate run the round checklist asks for. This repository has a word for that difference — mechanism versus discipline — and has recorded that a checklist line is the second one. Round 784 repaired this crate because no gate was watching it; the shape that produced that rot is partly back",
+        "WHAT WOULD CLOSE IT PROPERLY IS ATTRIBUTION, NOT EXEMPTION: compile `studio` and read WHERE the errors point — a failure whose every diagnostic names a path outside this checkout is not this repository's verdict, and one that names a path inside it is. That is decidable and was not attempted here, because it keeps the sibling compile on every push (minutes) and the owner chose the narrow answer. It is undone work rather than a limit, and this is where the next round would start if the loosening turns out to cost something",
+        "NOTHING MEASURES WHETHER `studio` ROTS AGAIN. The honest instrument would be a record of when the whole gate last ran green over it, so a reader could see the gap grow; there is none, and the crate's own history says the gap is what precedes the rot",
+        "THE FLAG IS ABOUT OWNERSHIP, NOT ABOUT SPEED, and must not become the way a slow workspace is dropped. The predicate is `LOCK … foreign`, which is a fact about where a manifest resolves; anything wanting to skip for another reason needs its own predicate and its own argument"
+      ],
+      "population_census": [
+        {
+          "axis": "transition rules by `undirected`",
+          "left_label": "undirected",
+          "left": 10,
+          "right_label": "directed",
+          "right": 29
+        },
+        {
+          "axis": "map corpora by leg-kind declaration",
+          "left_label": "omitted",
+          "left": 6,
+          "right_label": "declared",
+          "right": 24
+        },
+        {
+          "axis": "cost-carrying corpora by direction-dependent pricing",
+          "left_label": "prices a way by direction",
+          "left": 4,
+          "right_label": "prices no way by direction",
+          "right": 6
+        },
+        {
+          "axis": "run trees by authoring mode",
+          "left_label": "hand script",
+          "left": 10,
+          "right_label": "file-only",
+          "right": 256
+        },
+        {
+          "axis": "map corpora by declared boundary crossing",
+          "left_label": "declares an exit",
+          "left": 6,
+          "right_label": "declares none",
+          "right": 24
+        },
+        {
+          "axis": "authored submissions by map and telling",
+          "left_label": "carries both",
+          "left": 10,
+          "right_label": "carries one",
+          "right": 24
+        }
+      ],
+      "publishable_decision_summary": "R1225 (BUILD — a push gate stops answering a question about somebody else's working tree). On 2026-08-16 three finished, locally-verified rounds could not be published. `pre-push` runs `scripts/check-side-workspaces.sh` over every separate in-repo workspace, `studio` path-depends on the sibling `pinion` checkout, and a session in THAT repository was mid-edit — three unused imports in `pinion-core`. Nothing in this tree was wrong and nothing in this tree could fix it. The owner chose the narrow answer: take `studio` out of the PUSH gate and leave it in every other reader.\n\nTHE FLAG NAMES NO WORKSPACE, and that is the difference between this and a hardcoded exception. The gate already decides ownership per workspace and prints it — `LOCK <ws> ours` or `LOCK <ws> foreign — it resolves against trees this repository does not own` — because Round 1110 needed the same answer to decide where `--locked` may be used. `--ours-only` consumes that existing answer, so a second sibling-dependent workspace is treated the same way the day it arrives and no list has to be maintained.\n\nIT IS THE SAME REASON `--locked` WAS ALREADY OFF THERE, one step further. A workspace whose resolution changes when somebody else commits cannot have its lockfile pinned by this repository; a workspace whose COMPILATION depends on somebody else's uncommitted edits cannot have its verdict given by this repository either. The gate had already conceded the first half and was still asserting the second.\n\nWHAT IS GIVEN UP, recorded rather than implied, because this is a loosening: `studio` now has no UNCONDITIONAL automated reader. CI has no sibling checkout and skips it — that path already existed and is why the gate distinguishes \"not on this machine\" from \"not ours\". What remains is the pre-commit gate when a side `.rs` is staged, and the whole-gate run the round checklist asks for, which is DISCIPLINE rather than mechanism in this repository's own vocabulary. Round 784 had to repair this crate precisely because no gate was watching it, so the risk is not hypothetical. The trade is taken because a gate that blocks on another repository's working tree reports something other than what it claims to, and a reader who cannot tell those apart learns the wrong thing from a red.\n\nTHE SKIP IS LOUD BY CONSTRUCTION. The gate's closing line already names what it checked and what it skipped, and it already fails when it checked nothing at all — \"a green run that checked nothing is the failure it exists to prevent\". `--ours-only` adds a SKIP line carrying the workspace, the reason, and the foreign paths that caused it, so a green push never quietly means less than it did yesterday.",
+      "publishable_changes_bullets": [
+        "`--ours-only` skips the workspaces that resolve against trees this repository does not own, consuming the ownership answer the gate already prints",
+        "pre-push passes it, so a sibling repository being mid-edit no longer blocks a push this repository has fully verified",
+        "the skip names the workspace, the reason and the foreign paths; the whole gate is unchanged and still covers everything"
+      ],
+      "publishable_verification_bullets": [
+        "TWO INJECTIONS, ONE PER HALF, because a flag that is passed and inert and a flag that works and is never passed fail identically from a distance. Removing `--ours-only` from the hook goes red with \"`pre-push` does not run the side gate with `--ours-only`, so a sibling repository's working tree can still block a push from this one\"; disabling the skip inside the gate goes red with \"`--ours-only` still checks `studio`, which resolves against a tree this repository does not own\". Both trees restored byte-identical",
+        "THE LAW WRITES DOWN NO WORKSPACE NAME. It reads the gate's own `LOCK <ws> foreign` lines to learn which workspaces are foreign, requires the flag to drop exactly those and NOTHING else, and fails loudly if the tree ever has none — a flag with nothing to drop would make the case pass for the wrong reason, and the message says so and asks for both to be deleted",
+        "IT ALSO ASSERTS THE PLAIN LISTER STILL OFFERS THEM, so \"the flag dropped it\" cannot be satisfied by the workspace having been unreachable all along",
+        "`--list` IS THE ORACLE RATHER THAN A FULL RUN: what is under test is WHICH workspaces are chosen, and choosing is exactly what the lister prints. A full run would spend minutes compiling to re-answer a question already on screen",
+        "THE EVENT THIS ROUND ANSWERS IS ON THE RECORD, not hypothesised: the push of R1222-R1224 was refused at 2026-08-16 with three `pinion-core` unused-import errors, and the same push succeeded twenty minutes later when the other session finished, with nothing in this repository changed between the two attempts",
+        "root workspace suite + clippy --workspace --all-targets -D warnings + the separate in-repo workspaces (the WHOLE gate, not `--ours-only`), run through scripts/verify.sh"
+      ],
+      "publishable_impact_refs": [
+        "atomic-store-mutate-api"
+      ],
+      "publishable_carry_forward_bullets": [
+        "`studio` HAS NO UNCONDITIONAL AUTOMATED READER NOW, and that is the price rather than a side effect. CI cannot see it (no sibling checkout), pre-push no longer asks, and what is left is the pre-commit gate WHEN a side `.rs` is staged plus the whole-gate run the round checklist asks for. This repository has a word for that difference — mechanism versus discipline — and has recorded that a checklist line is the second one. Round 784 repaired this crate because no gate was watching it; the shape that produced that rot is partly back",
+        "WHAT WOULD CLOSE IT PROPERLY IS ATTRIBUTION, NOT EXEMPTION: compile `studio` and read WHERE the errors point — a failure whose every diagnostic names a path outside this checkout is not this repository's verdict, and one that names a path inside it is. That is decidable and was not attempted here, because it keeps the sibling compile on every push (minutes) and the owner chose the narrow answer. It is undone work rather than a limit, and this is where the next round would start if the loosening turns out to cost something",
+        "NOTHING MEASURES WHETHER `studio` ROTS AGAIN. The honest instrument would be a record of when the whole gate last ran green over it, so a reader could see the gap grow; there is none, and the crate's own history says the gap is what precedes the rot",
+        "THE FLAG IS ABOUT OWNERSHIP, NOT ABOUT SPEED, and must not become the way a slow workspace is dropped. The predicate is `LOCK … foreign`, which is a fact about where a manifest resolves; anything wanting to skip for another reason needs its own predicate and its own argument"
+      ]
+    },
     "Round 252": {
       "decision_summary": "Parser CommonMark conformance — recognize indented fenced code blocks (§98) and require whitespace after ATX hash sequence (§62)",
       "changes_bullets": [

@@ -141,8 +141,26 @@ if [[ ! -x "$side_gate" ]]; then
     echo "pre-push: push rejected — the separate-workspace gate is missing at $side_gate" >&2
     exit 1
 fi
-echo "pre-push: scripts/check-side-workspaces.sh (every separate workspace, whole) ..." >&2
-if ! "$side_gate"; then
+# `--ours-only` SINCE ROUND 1225, and the flag is the whole of what this hook
+# gives up. `studio` path-depends on the sibling `pinion` checkout, so running
+# its gate here asks whether SOMEBODY ELSE'S working tree compiles at this
+# instant. On 2026-08-16 the answer was no — a session in that repository was
+# mid-edit — and three finished, locally-verified rounds could not be published
+# for a reason nothing in this repository could fix. A hook that blocks on that
+# is not answering the question it claims to.
+#
+# The flag names no workspace: the gate already decides ownership per workspace
+# and prints it (`LOCK <ws> ours|foreign`), and this consumes that answer.
+# The skipped ones are NAMED in the gate's closing line, so a green push never
+# means "and something was quietly not looked at".
+#
+# WHAT IS GIVEN UP, so the next reader does not have to re-derive it: `studio`
+# now has no unconditional automated reader. CI has no sibling checkout and
+# skips it; what remains is the pre-commit gate when a side `.rs` is staged, and
+# the whole-gate run the round checklist asks for. Round 784 repaired this crate
+# precisely because no gate was watching it.
+echo "pre-push: scripts/check-side-workspaces.sh (every workspace this repo owns, whole) ..." >&2
+if ! "$side_gate" --ours-only; then
     echo "pre-push: a separate in-repo workspace does not pass its own gate" >&2
     echo "  run: scripts/check-side-workspaces.sh" >&2
     exit 1

@@ -1091,6 +1091,119 @@ fn the_side_workspace_gate_tells_a_gate_it_could_not_read_from_one_that_found_a_
     );
 }
 
+/// `--ours-only` DROPS EXACTLY THE WORKSPACES THIS REPOSITORY DOES NOT OWN, AND
+/// THE PUSH HOOK IS WHY IT EXISTS (Round 1225).
+///
+/// `pre-push` asks whether the commit about to be published breaks THIS
+/// repository. `studio` path-depends on the sibling `pinion` checkout, so its
+/// gate also answers whether somebody else's working tree compiles right now —
+/// and on 2026-08-16 it did not, so three finished rounds could not be pushed
+/// for a reason nothing here could fix.
+///
+/// TWO FACTS, EACH EXECUTED, because a flag that is passed and does nothing and
+/// a flag that works but is never passed fail the same way from a distance:
+/// the gate's `--list` answers differently with and without the flag, and the
+/// hook's own text carries it. `--list` rather than a full run because what is
+/// under test is WHICH workspaces are chosen, and choosing is what `--list`
+/// prints — a full run would spend minutes compiling to re-answer it.
+///
+/// THE POPULATION IS NOT WRITTEN DOWN HERE EITHER. The test does not name
+/// `studio`; it asks the gate which workspaces it calls foreign and requires
+/// the flag to drop those and keep the rest. A second sibling-dependent
+/// workspace changes both answers together.
+#[test]
+fn ours_only_drops_the_workspaces_this_repository_does_not_own() {
+    let gate = repo_root().join("scripts/check-side-workspaces.sh");
+    let list = |flags: &[&str]| -> String {
+        let out = Command::new(&gate)
+            .args(flags)
+            .current_dir(repo_root())
+            .output()
+            .expect("the gate runs");
+        assert!(
+            out.status.success(),
+            "the lister failed with {flags:?}:\n{}",
+            stderr_of(&out)
+        );
+        String::from_utf8_lossy(&out.stdout).into_owned()
+    };
+    let named = |text: &str, marker: &str| -> Vec<String> {
+        text.lines()
+            .filter_map(|line| line.strip_prefix(&format!("[side-workspaces] {marker} ")))
+            .map(|rest| {
+                rest.split_whitespace()
+                    .next()
+                    .unwrap_or_default()
+                    .to_string()
+            })
+            .filter(|name| !name.is_empty())
+            .collect()
+    };
+
+    let whole = list(&["--list"]);
+    // The gate's OWN answer about ownership, read rather than restated.
+    let foreign: Vec<String> = whole
+        .lines()
+        .filter_map(|line| line.strip_prefix("[side-workspaces] LOCK "))
+        .filter_map(|rest| {
+            let mut parts = rest.split_whitespace();
+            let name = parts.next()?;
+            (parts.next()? == "foreign").then(|| name.to_string())
+        })
+        .collect();
+    assert!(
+        !foreign.is_empty(),
+        "no workspace in this tree resolves against a foreign one, so this flag \
+         has nothing to drop and the case proves nothing. If that is now true, \
+         the flag and this test are both dead and should go: {whole}"
+    );
+    let checkable = named(&whole, "CHECKABLE");
+    for name in &foreign {
+        assert!(
+            checkable.contains(name),
+            "`{name}` is foreign but the plain lister did not offer to check it, \
+             so the comparison below would pass for the wrong reason"
+        );
+    }
+
+    let ours = list(&["--list", "--ours-only"]);
+    let kept = named(&ours, "CHECKABLE");
+    for name in &foreign {
+        assert!(
+            !kept.contains(name),
+            "`--ours-only` still checks `{name}`, which resolves against a tree \
+             this repository does not own"
+        );
+    }
+    let expected: Vec<&String> = checkable.iter().filter(|c| !foreign.contains(c)).collect();
+    assert_eq!(
+        kept.iter().collect::<Vec<_>>(),
+        expected,
+        "`--ours-only` changed the set by more than the foreign workspaces — it \
+         must drop those and NOTHING else"
+    );
+    // The skip is LOUD: a caller must be able to tell "checked everything" from
+    // "checked what it could", which is the whole reason the closing line names
+    // what it skipped.
+    for name in &foreign {
+        assert!(
+            ours.contains(&format!("SKIP {name} — --ours-only")),
+            "`--ours-only` dropped `{name}` without saying so; a green run that \
+             quietly checked less is the failure this gate exists to prevent"
+        );
+    }
+
+    // AND THE HOOK PASSES IT. Without this half the flag could be correct and
+    // unreached; with only this half it could be passed and inert.
+    let hook = std::fs::read_to_string(repo_root().join(".githooks/pre-push"))
+        .expect("the pre-push hook is tracked");
+    assert!(
+        hook.contains("\"$side_gate\" --ours-only"),
+        "`pre-push` does not run the side gate with `--ours-only`, so a sibling \
+         repository's working tree can still block a push from this one"
+    );
+}
+
 #[test]
 fn the_side_workspace_gate_answers_two_when_it_was_not_started_in_a_tree() {
     // THE LISTER'S OWN TWO CODES, which nothing anywhere reads: the hook and CI

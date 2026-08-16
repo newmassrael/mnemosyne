@@ -107,11 +107,15 @@ missing_siblings() {
 
 lint_only=false
 list_only=false
+ours_only=false
 named=()
 for argument in "$@"; do
   case "$argument" in
     --lint-only) lint_only=true ;;
     --list) list_only=true ;;
+    # `--ours-only` — check only the workspaces that resolve INSIDE this
+    # checkout (Round 1225). See the skip below for why a caller would want it.
+    --ours-only) ours_only=true ;;
     -*) echo "check-side-workspaces: unknown flag $argument" >&2; exit 2 ;;
     *) named+=("$argument") ;;
   esac
@@ -263,6 +267,35 @@ for ws in "${workspaces[@]}"; do
   else
     locked_of["$ws"]=yes
     echo "[side-workspaces] LOCK $ws ours"
+  fi
+  # `--ours-only` — A WORKSPACE WHOSE RESULT IS NOT THIS PUSH'S TO JUDGE
+  # (Round 1225).
+  #
+  # The ownership line above already decides this; the flag only consumes it, so
+  # no workspace is named here and a second foreign one gets the same treatment
+  # the day it arrives. What the flag is FOR is `pre-push`: that hook asks "does
+  # the commit I am about to publish break this repository", and `studio`
+  # path-depends on a sibling checkout, so its answer also depends on whether
+  # somebody else's tree happens to compile right now. On 2026-08-16 it did not
+  # — three finished, verified rounds could not be pushed because a session in
+  # `pinion` was mid-edit, and nothing in this repository could have fixed it.
+  # `--locked` was already taken off these for the same reason (above): their
+  # resolution is not ours. This is that reason applied to the verdict.
+  #
+  # THE COST, STATED RATHER THAN IMPLIED: `studio`'s only unconditional
+  # automated reader was this hook. CI never sees it (no sibling checkout there
+  # — the SKIP below is what happens on a runner), so what is left is the
+  # pre-commit gate when a side `.rs` is staged, and the whole gate run the
+  # round checklist asks for. Round 784 had to repair this crate precisely
+  # because no gate was watching it, so this is a real loosening and not a
+  # tidy-up. It is taken because a gate that blocks on ANOTHER repository's
+  # working tree reports something other than what it claims to.
+  if $ours_only && [[ ${locked_of["$ws"]} == no ]]; then
+    echo "[side-workspaces] SKIP $ws — --ours-only, and this workspace resolves" \
+      "against trees this repository does not own, so a verdict on it is not this" \
+      "repository's to give: ${foreign% }"
+    skipped+=("$ws")
+    continue
   fi
   # AFTER the ownership line and not before it. Ownership is the same answer on
   # every machine — `realpath -m` does not need the tree to exist — so a runner
