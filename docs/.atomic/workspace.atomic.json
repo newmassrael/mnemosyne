@@ -14526,6 +14526,98 @@
         "THE FLAG IS ABOUT OWNERSHIP, NOT ABOUT SPEED, and must not become the way a slow workspace is dropped. The predicate is `LOCK … foreign`, which is a fact about where a manifest resolves; anything wanting to skip for another reason needs its own predicate and its own argument"
       ]
     },
+    "Round 1226": {
+      "decision_summary": "R1226 (BUILD — the output-schema arc, step four: the four answers this wire assembled by hand become types, and one of them was a second spelling all along). What remained after Round 1224 split three ways: three tools that answer PROSE, and four that built their answer with a `serde_json::json!` literal at the wire. This does the four. A literal is a shape with no type — it cannot carry an output schema, nothing can compare it against anything, and it is where a duplicate hides without ever being called one.\n\n`redact_term` HELD THE FINDING. Its handler listed the five fields of a redaction hit — entry_id, field, index, original, redacted — into a `json!` object, one by one. `RedactionHit` is a struct with exactly those five fields, and the reason the handler re-spelled them is that NEITHER `RedactionHit` NOR `RedactionReport` DERIVED `Serialize`. So the wire had a second spelling of a type that existed all along, and no test could compare the two because only one of them was a type. They derive it now and the literal is gone rather than schematised: the report IS the answer, flattened under a struct that adds the one field the literal contributed (`primitive`).\n\nThe other three were smaller and the same kind. `describe_schema` already returned `SchemaContract` and wrapped it for no reason; it now returns it, and with no failure path it returns `Json<T>` rather than `Result<Json<T>, _>`. `describe_frontier_axes` and `emit_publishable_override_ledger_draft` each get the struct their literal was pretending to be — `{axes}` and `{entry_id, in_sync, ledger_draft}`.\n\nTHE COUNT IS 102 OF 105, and what is left is exactly the three prose tools. `validate_workspace`, `validate_projection` and `list_sections` each RENDER a summary from a report they already hold, so typing them is not a conversion: it decides whether the tool's answer BECOMES that report, which changes what an agent reads. That is the owner's call and the arc stops here without it.",
+      "changes_bullets": [
+        "the four tools that built their answer with a json! literal now return types, and publish schemas for them — 102 of 105",
+        "RedactionHit and RedactionReport derive Serialize at last, so the MCP wire stops re-spelling five fields the struct already had",
+        "describe_schema returns the contract it always built, with no Result around an operation that cannot fail",
+        "`tool_json`, the hand-serializer every tool used to answer through, has no callers left and is deleted — the compiler is what noticed"
+      ],
+      "verification_bullets": [
+        "THE WIRE IS UNCHANGED AND THE EXISTING LAWS ARE WHAT SAY SO: `redact_term` is in the sweep, so both the description law and the schema law ran over its actual answer, and the description Round 1221 wrote for it names `primitive`, `dry_run`, `hits` and `ledger_drafts`. A flatten that dropped or renamed any of them would have gone red there rather than in a new test",
+        "INJECTED AND RESTORED BYTE-IDENTICAL: `#[schemars(skip)]` on the flattened report — the one thing that could make a `#[serde(flatten)]` answer and its schema disagree — goes red with \"`redact_term` answered with [dry_run, hits, ledger_drafts], which its declared output schema does not describe. Schema properties: {primitive}\". That is the evidence schemars carries the flatten through rather than an assumption that it does",
+        "THE COUNT MOVED 98 TO 102 IN ONE COMMIT and is asserted, so none of the four could have been converted without the arc's ledger saying so, and none can lose its schema quietly",
+        "`describe_schema` RETURNS `Json<T>` WITH NO `Result`, which is worth stating because every other converted tool has one: the operation reads a static contract and cannot fail, and wrapping it in a Result would have been a refusal branch nothing can reach — the vacuous arm this repository keeps deleting",
+        "mnemosyne-mcp 246 tests green; root workspace suite + clippy --workspace --all-targets -D warnings + the separate in-repo workspaces (the WHOLE gate), run through scripts/verify.sh"
+      ],
+      "impact_refs": [
+        "atomic-store-mutate-api"
+      ],
+      "carry_forward_bullets": [
+        "THREE TOOLS REMAIN AND THEY ARE ONE QUESTION FOR THE OWNER, not three pieces of work. `validate_workspace`, `validate_projection` and `list_sections` each hold a typed report and RENDER a human-readable summary from it. Typing them means deciding whether the tool's answer becomes the report — which changes what an agent reads, from a paragraph it can quote to a structure it must walk. Nothing here can decide that: this repository has no measurement of which an agent uses better, and inventing a shape to make a count reach 105 is the drift it keeps deleting",
+        "THE ARC'S NUMBER STOPS AT 102 OF 105 AND THAT IS ITS FINISHED STATE unless the owner answers above. A later reader should not treat the gap as unfinished work",
+        "`RedactionReport` IS NOW SERIALIZABLE AND THE CLI DOES NOT USE THAT. It has one consumer, the MCP wire; the CLI renders its own text. So the derive is not a second path into a shared shape today, and if a second consumer arrives the two must be held to one answer — the parity discipline this repository already applies to fields with two write paths",
+        "NOTHING PROVES A CLIENT VALIDATES ANY OF THIS (R1223's carry, unchanged), and the error half still carries no schema (R1222's, unchanged)"
+      ],
+      "population_census": [
+        {
+          "axis": "transition rules by `undirected`",
+          "left_label": "undirected",
+          "left": 10,
+          "right_label": "directed",
+          "right": 29
+        },
+        {
+          "axis": "map corpora by leg-kind declaration",
+          "left_label": "omitted",
+          "left": 6,
+          "right_label": "declared",
+          "right": 24
+        },
+        {
+          "axis": "cost-carrying corpora by direction-dependent pricing",
+          "left_label": "prices a way by direction",
+          "left": 4,
+          "right_label": "prices no way by direction",
+          "right": 6
+        },
+        {
+          "axis": "run trees by authoring mode",
+          "left_label": "hand script",
+          "left": 10,
+          "right_label": "file-only",
+          "right": 256
+        },
+        {
+          "axis": "map corpora by declared boundary crossing",
+          "left_label": "declares an exit",
+          "left": 6,
+          "right_label": "declares none",
+          "right": 24
+        },
+        {
+          "axis": "authored submissions by map and telling",
+          "left_label": "carries both",
+          "left": 10,
+          "right_label": "carries one",
+          "right": 24
+        }
+      ],
+      "publishable_decision_summary": "R1226 (BUILD — the output-schema arc, step four: the four answers this wire assembled by hand become types, and one of them was a second spelling all along). What remained after Round 1224 split three ways: three tools that answer PROSE, and four that built their answer with a `serde_json::json!` literal at the wire. This does the four. A literal is a shape with no type — it cannot carry an output schema, nothing can compare it against anything, and it is where a duplicate hides without ever being called one.\n\n`redact_term` HELD THE FINDING. Its handler listed the five fields of a redaction hit — entry_id, field, index, original, redacted — into a `json!` object, one by one. `RedactionHit` is a struct with exactly those five fields, and the reason the handler re-spelled them is that NEITHER `RedactionHit` NOR `RedactionReport` DERIVED `Serialize`. So the wire had a second spelling of a type that existed all along, and no test could compare the two because only one of them was a type. They derive it now and the literal is gone rather than schematised: the report IS the answer, flattened under a struct that adds the one field the literal contributed (`primitive`).\n\nThe other three were smaller and the same kind. `describe_schema` already returned `SchemaContract` and wrapped it for no reason; it now returns it, and with no failure path it returns `Json<T>` rather than `Result<Json<T>, _>`. `describe_frontier_axes` and `emit_publishable_override_ledger_draft` each get the struct their literal was pretending to be — `{axes}` and `{entry_id, in_sync, ledger_draft}`.\n\nTHE COUNT IS 102 OF 105, and what is left is exactly the three prose tools. `validate_workspace`, `validate_projection` and `list_sections` each RENDER a summary from a report they already hold, so typing them is not a conversion: it decides whether the tool's answer BECOMES that report, which changes what an agent reads. That is the owner's call and the arc stops here without it.",
+      "publishable_changes_bullets": [
+        "the four tools that built their answer with a json! literal now return types, and publish schemas for them — 102 of 105",
+        "RedactionHit and RedactionReport derive Serialize at last, so the MCP wire stops re-spelling five fields the struct already had",
+        "describe_schema returns the contract it always built, with no Result around an operation that cannot fail",
+        "`tool_json`, the hand-serializer every tool used to answer through, has no callers left and is deleted — the compiler is what noticed"
+      ],
+      "publishable_verification_bullets": [
+        "THE WIRE IS UNCHANGED AND THE EXISTING LAWS ARE WHAT SAY SO: `redact_term` is in the sweep, so both the description law and the schema law ran over its actual answer, and the description Round 1221 wrote for it names `primitive`, `dry_run`, `hits` and `ledger_drafts`. A flatten that dropped or renamed any of them would have gone red there rather than in a new test",
+        "INJECTED AND RESTORED BYTE-IDENTICAL: `#[schemars(skip)]` on the flattened report — the one thing that could make a `#[serde(flatten)]` answer and its schema disagree — goes red with \"`redact_term` answered with [dry_run, hits, ledger_drafts], which its declared output schema does not describe. Schema properties: {primitive}\". That is the evidence schemars carries the flatten through rather than an assumption that it does",
+        "THE COUNT MOVED 98 TO 102 IN ONE COMMIT and is asserted, so none of the four could have been converted without the arc's ledger saying so, and none can lose its schema quietly",
+        "`describe_schema` RETURNS `Json<T>` WITH NO `Result`, which is worth stating because every other converted tool has one: the operation reads a static contract and cannot fail, and wrapping it in a Result would have been a refusal branch nothing can reach — the vacuous arm this repository keeps deleting",
+        "mnemosyne-mcp 246 tests green; root workspace suite + clippy --workspace --all-targets -D warnings + the separate in-repo workspaces (the WHOLE gate), run through scripts/verify.sh"
+      ],
+      "publishable_impact_refs": [
+        "atomic-store-mutate-api"
+      ],
+      "publishable_carry_forward_bullets": [
+        "THREE TOOLS REMAIN AND THEY ARE ONE QUESTION FOR THE OWNER, not three pieces of work. `validate_workspace`, `validate_projection` and `list_sections` each hold a typed report and RENDER a human-readable summary from it. Typing them means deciding whether the tool's answer becomes the report — which changes what an agent reads, from a paragraph it can quote to a structure it must walk. Nothing here can decide that: this repository has no measurement of which an agent uses better, and inventing a shape to make a count reach 105 is the drift it keeps deleting",
+        "THE ARC'S NUMBER STOPS AT 102 OF 105 AND THAT IS ITS FINISHED STATE unless the owner answers above. A later reader should not treat the gap as unfinished work",
+        "`RedactionReport` IS NOW SERIALIZABLE AND THE CLI DOES NOT USE THAT. It has one consumer, the MCP wire; the CLI renders its own text. So the derive is not a second path into a shared shape today, and if a second consumer arrives the two must be held to one answer — the parity discipline this repository already applies to fields with two write paths",
+        "NOTHING PROVES A CLIENT VALIDATES ANY OF THIS (R1223's carry, unchanged), and the error half still carries no schema (R1222's, unchanged)"
+      ]
+    },
     "Round 252": {
       "decision_summary": "Parser CommonMark conformance — recognize indented fenced code blocks (§98) and require whitespace after ATX hash sequence (§62)",
       "changes_bullets": [

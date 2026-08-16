@@ -1321,13 +1321,14 @@ impl MnemosyneServer {
         CallToolResult::error(vec![rmcp::model::ContentBlock::text(s)])
     }
 
-    /// Serialize a structured payload to pretty JSON (read ops + receipts).
-    fn tool_json<T: Serialize>(&self, value: &T) -> CallToolResult {
-        match serde_json::to_string_pretty(value) {
-            Ok(s) => Self::tool_text(s),
-            Err(e) => Self::tool_error(format!("serialize: {}", e)),
-        }
-    }
+    // `tool_json` LIVED HERE AND IS GONE (Round 1226). It hand-serialized a
+    // payload to pretty JSON, and every tool that used it now returns `Json<T>`
+    // — which puts the value in `structuredContent` and lets the `#[tool]` macro
+    // derive an output schema from the type. Its last caller disappeared with
+    // the four `json!` literals this round removed, and the compiler is what
+    // said so. Kept as a sentence rather than a function: a serializer sitting
+    // beside the typed path is the second way to answer that this arc exists to
+    // remove, and the next reader should reach for `Json<T>`.
 
     /// Map an in-process op error to a tool error with workspace context.
     fn op_error(&self, e: OpError) -> CallToolResult {
@@ -3531,15 +3532,17 @@ impl MnemosyneServer {
     #[tool(
         description = "Authoring contract (R587, static): the medium-neutral schema an agent reads to self-serve BEFORE authoring — the registries (frames/branches/entities/predicates/disclosure_plans/sections; declare an id before a fact references it), the narrative-fact shape (required/optional fields), the fixed vocabularies (disclosure_mode, payoff_expectation, predicate_object_kind — the closed enums), the deterministic narrative-rule classes (exclusive/transition/interval), the quest encoding (quests DERIVED from pursues/requires/completed_by roles, no kind marker; completion pays off an Expected setup), and the write-time fail-loud invariants. Store-independent — the contract is fixed; store CONTENTS are query/list_*. No args. ANSWERS WITH: `schema_version`, `overview`, and one section per part of the contract — the wires you author through (`manifest_wire`, `sections_wire`, `narrative_rules_wire`, `side_table_wire`), then `typed_claim`, `canon_order`, `narrative_rules`, `quest_encoding`, `disclosure_encoding`, `invariant_enforcement`."
     )]
-    async fn describe_schema(&self, _args: Parameters<EmptyArgs>) -> CallToolResult {
-        self.tool_json(&ops::describe_schema())
+    async fn describe_schema(&self, _args: Parameters<EmptyArgs>) -> Json<ops::SchemaContract> {
+        Json(ops::describe_schema())
     }
 
     #[tool(
         description = "What CLOSES each item the authoring frontier hands a loop (R1218, static, no args). One row per FIELD of report_authoring_frontier, each carrying one of: `closes` — the verb plus the argument that makes it a closure, and this repository has RUN that call over its own authored corpora; `believed` — the call it believes closes it, with why nothing here has run it; `no_verb` — nothing in this API closes it (`unordered_scenes` is that one, and it still counts in total_gaps, so hand it to the author instead of retrying); `not_work` — a census, an echo, or a derived view, never in total_gaps. Read it ONCE per session: it is a property of the build, not of a store. Without it a loop reads an axis NAME and has to learn the verb from a person. ANSWERS WITH: `axes` — one row per field, each carrying the field name, its `closure` (one of the four states above, with the `why` that state was chosen) and the call where there is one."
     )]
-    async fn describe_frontier_axes(&self, _args: Parameters<EmptyArgs>) -> CallToolResult {
-        self.tool_json(&serde_json::json!({ "axes": ops::frontier_axes() }))
+    async fn describe_frontier_axes(&self, _args: Parameters<EmptyArgs>) -> Json<FrontierAxes> {
+        Json(FrontierAxes {
+            axes: ops::frontier_axes().to_vec(),
+        })
     }
 
     #[tool(
@@ -3820,7 +3823,10 @@ impl MnemosyneServer {
     #[tool(
         description = "Scan the publishable half of every ChangelogEntry for `pattern` and substitute `replacement`, emitting ledger drafts so the publishable_override_ledger gate accepts the result. Audit half is never read or written. mode = literal (default) or regex; set case_insensitive for either. scope = all | decision_summary | changes_bullets | verification_bullets | impact_refs | carry_forward_bullets. dry_run = true returns hits + drafts without mutating. reason + applied_in required; kind defaults to \"redaction\". ANSWERS WITH: `primitive`, `dry_run` (what it actually did, not what you asked for), `hits` (each naming entry_id, field, index, original, redacted), and `ledger_drafts` — TOML blocks that paste directly into mnemosyne.toml `[[publishable_override_ledger]]`, without which the gate rejects the result. Note this answers with drafts rather than the `receipt` every other write gives."
     )]
-    async fn redact_term(&self, args: Parameters<RedactTermArgs>) -> CallToolResult {
+    async fn redact_term(
+        &self,
+        args: Parameters<RedactTermArgs>,
+    ) -> Result<Json<RedactionAnswer>, Refused> {
         let input = RedactTermInput {
             pattern: args.0.pattern.clone(),
             replacement: args.0.replacement.clone(),
@@ -3837,29 +3843,15 @@ impl MnemosyneServer {
                 // A non-dry-run redaction mutated the store, so re-sync the warm
                 // validation projection from the just-written log (fail-loud).
                 if !report.dry_run {
-                    if let Err(e) = self.sync_read_models_after_mutate() {
-                        return self.op_error(e);
-                    }
+                    self.sync_read_models_after_mutate()
+                        .map_err(|e| self.refused(e))?;
                 }
-                let payload = serde_json::json!({
-                    "primitive": "redact_term",
-                    "dry_run": report.dry_run,
-                    "hits": report
-                        .hits
-                        .iter()
-                        .map(|h| serde_json::json!({
-                            "entry_id": h.entry_id,
-                            "field": h.field,
-                            "index": h.index,
-                            "original": h.original,
-                            "redacted": h.redacted,
-                        }))
-                        .collect::<Vec<_>>(),
-                    "ledger_drafts": report.ledger_drafts,
-                });
-                self.tool_json(&payload)
+                Ok(Json(RedactionAnswer {
+                    primitive: "redact_term",
+                    report,
+                }))
             }
-            Err(e) => self.op_error(e),
+            Err(e) => Err(self.refused(e)),
         }
     }
 
@@ -3869,7 +3861,7 @@ impl MnemosyneServer {
     async fn emit_publishable_override_ledger_draft(
         &self,
         args: Parameters<EmitPublishableOverrideLedgerDraftArgs>,
-    ) -> CallToolResult {
+    ) -> Result<Json<LedgerDraftAnswer>, Refused> {
         match ops::emit_publishable_override_ledger_draft(
             &self.workspace,
             None,
@@ -3878,12 +3870,12 @@ impl MnemosyneServer {
             &args.0.applied_in,
             args.0.kind.as_deref(),
         ) {
-            Ok(draft) => self.tool_json(&serde_json::json!({
-                "entry_id": &*args.0.entry_id,
-                "in_sync": draft.is_none(),
-                "ledger_draft": draft,
+            Ok(draft) => Ok(Json(LedgerDraftAnswer {
+                entry_id: args.0.entry_id.to_string(),
+                in_sync: draft.is_none(),
+                ledger_draft: draft,
             })),
-            Err(e) => self.op_error(e),
+            Err(e) => Err(self.refused(e)),
         }
     }
 
@@ -4062,6 +4054,43 @@ struct SectionAnswer {
     /// The changelog entries citing this section, `null` unless
     /// `include_changelog`.
     changelog: Option<Vec<ops::ChangelogEntryView>>,
+}
+
+/// THE FOUR ANSWERS THIS WIRE USED TO ASSEMBLE BY HAND (Round 1226).
+///
+/// Each of these tools built its answer with a `serde_json::json!` literal — a
+/// shape with no type, which is the thing this arc exists to remove. A literal
+/// cannot carry an output schema, cannot be compared against anything, and in
+/// `redact_term`'s case had drifted into a SECOND SPELLING of a struct that
+/// existed all along: the handler re-listed the five fields of a redaction hit
+/// because `RedactionHit` had no `Serialize`. It has one now, and the literal
+/// is gone rather than schematised.
+#[derive(Debug, Clone, Serialize, schemars::JsonSchema)]
+struct FrontierAxes {
+    /// One row per field of `report_authoring_frontier`.
+    axes: Vec<ops::FrontierAxis>,
+}
+
+/// What a redaction did, with the primitive that did it.
+#[derive(Debug, Clone, Serialize, schemars::JsonSchema)]
+struct RedactionAnswer {
+    /// The mutate primitive, so a receipt-shaped reader finds one here too.
+    primitive: &'static str,
+    /// `dry_run`, `hits` and `ledger_drafts` — the report itself, flattened so
+    /// the wire is what it always was.
+    #[serde(flatten)]
+    report: atomic::RedactionReport,
+}
+
+/// Whether an entry's publishable half already matches its ledger row, and the
+/// draft to paste when it does not.
+#[derive(Debug, Clone, Serialize, schemars::JsonSchema)]
+struct LedgerDraftAnswer {
+    entry_id: String,
+    /// True when the ledger already records this entry as it stands, in which
+    /// case `ledger_draft` is null and there is nothing to paste.
+    in_sync: bool,
+    ledger_draft: Option<String>,
 }
 
 /// A LIST ANSWER, IN AN OBJECT (Round 1223).
@@ -6655,11 +6684,12 @@ mod tests {
             .collect();
         // R1222 did the write envelope (65). R1223 did every read whose answer
         // is a REPORT. R1224 did `query_section`, whose three shapes became one.
+        // R1226 did the four that assembled their answer with a `json!` literal.
         // What is left is named in the ledger rather than counted here: three
-        // tools that answer PROSE, and four that assemble a shape at the wire.
+        // tools that answer PROSE, and whether they get a shape is a decision.
         assert_eq!(
             typed.len(),
-            98,
+            102,
             "[output schema] {} of {} routed tools publish one. The arc converts in groups and \
              this number is its ledger — if a group just landed, raise it; if it FELL, a tool \
              lost its schema and the agent lost the contract. Typed: {typed:?}",

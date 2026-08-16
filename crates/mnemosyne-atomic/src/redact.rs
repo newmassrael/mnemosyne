@@ -14,6 +14,7 @@ use crate::{
     set_changelog_publishable_decision_summary, set_changelog_publishable_impact_refs,
     set_changelog_publishable_verification_bullets, AtomicMutateError, AtomicStore,
 };
+use serde::Serialize;
 use std::path::Path;
 use thiserror::Error;
 
@@ -79,7 +80,12 @@ pub struct RedactRequest {
     pub kind: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+/// `Serialize` since Round 1226. It had none, which is why the MCP wire
+/// hand-built a JSON object naming these five fields again — a second spelling
+/// that no test could compare against this one, because only one of them was a
+/// type.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct RedactionHit {
     pub entry_id: String,
     pub field: &'static str,
@@ -93,7 +99,8 @@ pub struct RedactionHit {
     pub redacted: String,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct RedactionReport {
     pub dry_run: bool,
     pub hits: Vec<RedactionHit>,
