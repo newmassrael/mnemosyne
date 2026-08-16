@@ -25,6 +25,7 @@ use crate::continuity::{ContinuityViolation, RungMiss};
 /// coordinates that apply. Sparse: only the coordinates a given rule implicates
 /// are populated.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Default)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct ViolationLocus {
     /// The fact id(s) at fault — the primary one first.
     pub facts: Vec<String>,
@@ -58,6 +59,7 @@ pub struct ViolationLocus {
 ///
 /// The wire is unchanged — it serializes to the same lowercase strings.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[serde(rename_all = "snake_case")]
 pub enum ViolationSource {
     /// A write-time invariant, from applying the batch.
@@ -95,6 +97,7 @@ impl ViolationSource {
 ///
 /// The wire is unchanged — every variant serializes to its existing id.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[serde(into = "String")]
 pub enum ViolationRule {
     /// `shape-invariant` — a write-time invariant, which has no continuity kind.
@@ -261,6 +264,7 @@ impl std::fmt::Display for ViolationRule {
 
 /// One gate finding an agent can repair without parsing prose (R588).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct ActionableViolation {
     /// Which gate produced it.
     pub source: ViolationSource,

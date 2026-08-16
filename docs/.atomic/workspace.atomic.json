@@ -14250,6 +14250,98 @@
         "NOTHING HERE PROVES A CLIENT VALIDATES THE SCHEMA. What is proven is that the server's own answers satisfy what it publishes. Whether an agent's behaviour improves because the contract is machine-readable is the same prose-band question R1221 left open, and the unattended-loop experiment is where it gets asked"
       ]
     },
+    "Round 1223": {
+      "decision_summary": "R1223 (BUILD — the output-schema arc, step two: every read whose answer is a REPORT now declares it, and the two that cannot say why). Round 1222 typed the write envelope — 65 tools sharing two answer types — and left 40 reads whose types live across four crates. This converts 32 of them and records, as a fact about the tools rather than a shortfall, why the rest do not.\n\nTHE FEATURE SHAPE IS ROUND 690'S, EXTENDED TWICE MORE. `mnemosyne-validate` and `mnemosyne-query` gain the same optional `schemars` feature core and atomic have carried since Round 690 and ops gained in Round 1222: off by default, pulled only by `mnemosyne-mcp`, forwarding to its own dependencies. Nothing outside the MCP binary compiles a line of schema code.\n\nTHE DERIVE IS BLANKET WITHIN THE REPORT MODULES, and that is a decision. A hand-picked list of \"types an MCP answer can reach\" would be a list nobody maintains — a nested type added tomorrow would need finding. Deriving on every serializable type in the report modules makes the property statable instead: THESE MODULES' TYPES ARE SCHEMA-PUBLISHABLE. The compiler then walked the closure for us: eight more types in core and atomic (`Entity`, `Predicate`, `DisclosureReveal`, `DisclosureSurface`, `EpubLocator`, `Binding`, `PopulationCensus`, `MutationReason`) and the two import verdicts, each named by a build error rather than found by reading.\n\n`ops` NOW RE-EXPORTS WHAT ITS READS RETURN, which is a wart this round exposed rather than created. Those functions have always returned the validator's and the query crate's types, and nothing could NAME them without reaching past `ops` into a crate it exists to wrap — the same reach Round 1009 re-exported `ViolationSource` to avoid. It stayed latent while every caller wrote `match … { Ok(r) => serialize(&r) }` and never spelled a type, and stopped being latent the moment a caller had to DECLARE one. A boundary crate owns the vocabulary of what it answers with.\n\nTWO TOOLS COULD NOT BE TYPED, AND MCP IS WHY. The specification requires a tool's `output_schema` to have root type `object`, and rmcp refuses to publish anything else — which is right, and which turned two shapes in this surface into findings:\n\n- `query_section` answers an ENUM: one shape for the bare section, a different one when a neighborhood is asked for. A schema saying \"one of two shapes\" tells an agent to branch on what it sent. The fix is to make the answer ONE shape with the neighborhood optional, which changes the wire for the bare case — a decision, not a conversion, and it is left as one.\n- `query_term` and `list_inventory` answered a bare JSON ARRAY. That one IS a conversion and was done: each answer is now an object with a named field. Wrapping is an improvement rather than a tax — a named field is where a count or a truncation flag can go, which is exactly what Round 1221 found missing on reads whose empty list read as a clean answer.\n\nTHE COUNT IS 97 OF 105. What is left is three tools that answer PROSE (`validate_workspace`, `validate_projection`, `list_sections`), `query_section` above, and `describe_frontier_axes`, `redact_term`, `emit_publishable_override_ledger_draft`, `describe_schema`. Each is a shape question rather than a typing one.\n\nTHE OBSERVER HAD TO MOVE WITH THE WIRE, and noticing that was the round's sharpest correction. `Json<T>` writes its text half COMPACT; the differential cases name needles like `\"at_placed\": false`, pretty-printed. Fifteen of them went red at once — and every one of those failures was a change in the OBSERVER dressed as a change in the tool. The oracle now reads `structuredContent` and pretty-prints it, so what a needle follows is the value the schema describes rather than a rendering choice made inside rmcp. Rewriting fifteen needles would have passed the suite and left the differentials watching the wrong half of the answer.",
+      "changes_bullets": [
+        "97 of 105 routed tools publish an output schema derived from the type they return; validate and query gain the Round 690 optional schemars feature",
+        "ops re-exports the report types its reads return, so a caller can name what it answers with without reaching past the boundary crate",
+        "two tools that answered a bare JSON array now answer an object, because MCP requires an output schema rooted at one"
+      ],
+      "verification_bullets": [
+        "THE SCHEMA LAW WENT RED ON ITS OWN BEFORE ANY INJECTION, twice, and both reds were findings rather than noise: rmcp refused `Result<Json<QuerySectionPayload>, _>` because an enum has no root `object` type, and refused `Json<Vec<TermHit>>` because an array has none either. That is the MCP specification catching two shapes in this surface, and it is the evidence the declaration is real rather than decorative",
+        "INJECTED AND RESTORED BYTE-IDENTICAL: `#[schemars(skip)]` on `ForkTreeReport::branch_count` — a field the answer carries and the schema would then omit — goes red naming `report_fork_tree` and the field, so the R1222 law reaches the read half exactly as it reaches the write half",
+        "THE COUNT IS ASSERTED AT 97 OF 105 and moved from 65 in one commit, so the group cannot land without saying so and a tool cannot lose its schema quietly",
+        "THE CONVERSION WAS COMPILER-DRIVEN THROUGHOUT: every type that needed a derive, every handler that needed a new return type, and every test call site was named by `cargo check` with a file and a line. No regex touched any of the seven files",
+        "FIFTEEN DIFFERENTIALS WENT RED ON WHITESPACE and were NOT patched needle by needle — the oracle was moved onto `structuredContent`, because fifteen green needles over the wrong half of the answer is the failure this repository keeps recording",
+        "mnemosyne-mcp 245 tests green; root workspace suite + clippy --workspace --all-targets -D warnings + the separate in-repo workspaces, run through scripts/verify.sh. Clippy caught a helper this round wrote and did not end up using, and it was deleted rather than allowed"
+      ],
+      "impact_refs": [
+        "atomic-store-mutate-api"
+      ],
+      "carry_forward_bullets": [
+        "EIGHT TOOLS REMAIN AND THEY ARE FOUR DIFFERENT QUESTIONS, not one backlog. (1) `query_section` answers an enum — two shapes chosen by the arguments sent — and the fix is one shape with the neighborhood optional, which changes the wire for the bare case. That is undone work, not a limit, and it is the next round of this arc. (2) Three tools answer PROSE (`validate_workspace`, `validate_projection`, `list_sections`): each renders a summary from a report it already has, so typing them means deciding whether the tool's answer BECOMES the report — a change to what an agent reads, which is the owner's call rather than a conversion. (3) `describe_schema`, `describe_frontier_axes`, `redact_term` and `emit_publishable_override_ledger_draft` each answer a shape assembled at the wire; typing them means naming that shape. (4) None of the four is blocked by anything the world does not allow",
+        "THE BLANKET DERIVE COVERS MORE TYPES THAN ANY ANSWER REACHES. 116 serializable types in the report modules now derive `JsonSchema` under the feature, and the ones an MCP answer can reach are fewer. The trade was taken deliberately — a hand-picked list is a list nobody maintains — but the cost is real: schema code compiled for types nothing publishes, and the only reader of that cost is the mcp binary's build time, which nothing here measures",
+        "THE ERROR HALF STILL CARRIES NO SCHEMA (R1222's carry, unchanged). A refusal is `is_error: true` with prose, and MCP has no output schema for that half",
+        "NOTHING PROVES A CLIENT VALIDATES ANY OF THIS. What is proven is that the server's answers satisfy what it publishes, and that rmcp refuses to publish what the specification forbids. Whether a machine-readable contract changes what an agent does is the prose-band question R1221 left open"
+      ],
+      "population_census": [
+        {
+          "axis": "transition rules by `undirected`",
+          "left_label": "undirected",
+          "left": 10,
+          "right_label": "directed",
+          "right": 29
+        },
+        {
+          "axis": "map corpora by leg-kind declaration",
+          "left_label": "omitted",
+          "left": 6,
+          "right_label": "declared",
+          "right": 24
+        },
+        {
+          "axis": "cost-carrying corpora by direction-dependent pricing",
+          "left_label": "prices a way by direction",
+          "left": 4,
+          "right_label": "prices no way by direction",
+          "right": 6
+        },
+        {
+          "axis": "run trees by authoring mode",
+          "left_label": "hand script",
+          "left": 10,
+          "right_label": "file-only",
+          "right": 256
+        },
+        {
+          "axis": "map corpora by declared boundary crossing",
+          "left_label": "declares an exit",
+          "left": 6,
+          "right_label": "declares none",
+          "right": 24
+        },
+        {
+          "axis": "authored submissions by map and telling",
+          "left_label": "carries both",
+          "left": 10,
+          "right_label": "carries one",
+          "right": 24
+        }
+      ],
+      "publishable_decision_summary": "R1223 (BUILD — the output-schema arc, step two: every read whose answer is a REPORT now declares it, and the two that cannot say why). Round 1222 typed the write envelope — 65 tools sharing two answer types — and left 40 reads whose types live across four crates. This converts 32 of them and records, as a fact about the tools rather than a shortfall, why the rest do not.\n\nTHE FEATURE SHAPE IS ROUND 690'S, EXTENDED TWICE MORE. `mnemosyne-validate` and `mnemosyne-query` gain the same optional `schemars` feature core and atomic have carried since Round 690 and ops gained in Round 1222: off by default, pulled only by `mnemosyne-mcp`, forwarding to its own dependencies. Nothing outside the MCP binary compiles a line of schema code.\n\nTHE DERIVE IS BLANKET WITHIN THE REPORT MODULES, and that is a decision. A hand-picked list of \"types an MCP answer can reach\" would be a list nobody maintains — a nested type added tomorrow would need finding. Deriving on every serializable type in the report modules makes the property statable instead: THESE MODULES' TYPES ARE SCHEMA-PUBLISHABLE. The compiler then walked the closure for us: eight more types in core and atomic (`Entity`, `Predicate`, `DisclosureReveal`, `DisclosureSurface`, `EpubLocator`, `Binding`, `PopulationCensus`, `MutationReason`) and the two import verdicts, each named by a build error rather than found by reading.\n\n`ops` NOW RE-EXPORTS WHAT ITS READS RETURN, which is a wart this round exposed rather than created. Those functions have always returned the validator's and the query crate's types, and nothing could NAME them without reaching past `ops` into a crate it exists to wrap — the same reach Round 1009 re-exported `ViolationSource` to avoid. It stayed latent while every caller wrote `match … { Ok(r) => serialize(&r) }` and never spelled a type, and stopped being latent the moment a caller had to DECLARE one. A boundary crate owns the vocabulary of what it answers with.\n\nTWO TOOLS COULD NOT BE TYPED, AND MCP IS WHY. The specification requires a tool's `output_schema` to have root type `object`, and rmcp refuses to publish anything else — which is right, and which turned two shapes in this surface into findings:\n\n- `query_section` answers an ENUM: one shape for the bare section, a different one when a neighborhood is asked for. A schema saying \"one of two shapes\" tells an agent to branch on what it sent. The fix is to make the answer ONE shape with the neighborhood optional, which changes the wire for the bare case — a decision, not a conversion, and it is left as one.\n- `query_term` and `list_inventory` answered a bare JSON ARRAY. That one IS a conversion and was done: each answer is now an object with a named field. Wrapping is an improvement rather than a tax — a named field is where a count or a truncation flag can go, which is exactly what Round 1221 found missing on reads whose empty list read as a clean answer.\n\nTHE COUNT IS 97 OF 105. What is left is three tools that answer PROSE (`validate_workspace`, `validate_projection`, `list_sections`), `query_section` above, and `describe_frontier_axes`, `redact_term`, `emit_publishable_override_ledger_draft`, `describe_schema`. Each is a shape question rather than a typing one.\n\nTHE OBSERVER HAD TO MOVE WITH THE WIRE, and noticing that was the round's sharpest correction. `Json<T>` writes its text half COMPACT; the differential cases name needles like `\"at_placed\": false`, pretty-printed. Fifteen of them went red at once — and every one of those failures was a change in the OBSERVER dressed as a change in the tool. The oracle now reads `structuredContent` and pretty-prints it, so what a needle follows is the value the schema describes rather than a rendering choice made inside rmcp. Rewriting fifteen needles would have passed the suite and left the differentials watching the wrong half of the answer.",
+      "publishable_changes_bullets": [
+        "97 of 105 routed tools publish an output schema derived from the type they return; validate and query gain the Round 690 optional schemars feature",
+        "ops re-exports the report types its reads return, so a caller can name what it answers with without reaching past the boundary crate",
+        "two tools that answered a bare JSON array now answer an object, because MCP requires an output schema rooted at one"
+      ],
+      "publishable_verification_bullets": [
+        "THE SCHEMA LAW WENT RED ON ITS OWN BEFORE ANY INJECTION, twice, and both reds were findings rather than noise: rmcp refused `Result<Json<QuerySectionPayload>, _>` because an enum has no root `object` type, and refused `Json<Vec<TermHit>>` because an array has none either. That is the MCP specification catching two shapes in this surface, and it is the evidence the declaration is real rather than decorative",
+        "INJECTED AND RESTORED BYTE-IDENTICAL: `#[schemars(skip)]` on `ForkTreeReport::branch_count` — a field the answer carries and the schema would then omit — goes red naming `report_fork_tree` and the field, so the R1222 law reaches the read half exactly as it reaches the write half",
+        "THE COUNT IS ASSERTED AT 97 OF 105 and moved from 65 in one commit, so the group cannot land without saying so and a tool cannot lose its schema quietly",
+        "THE CONVERSION WAS COMPILER-DRIVEN THROUGHOUT: every type that needed a derive, every handler that needed a new return type, and every test call site was named by `cargo check` with a file and a line. No regex touched any of the seven files",
+        "FIFTEEN DIFFERENTIALS WENT RED ON WHITESPACE and were NOT patched needle by needle — the oracle was moved onto `structuredContent`, because fifteen green needles over the wrong half of the answer is the failure this repository keeps recording",
+        "mnemosyne-mcp 245 tests green; root workspace suite + clippy --workspace --all-targets -D warnings + the separate in-repo workspaces, run through scripts/verify.sh. Clippy caught a helper this round wrote and did not end up using, and it was deleted rather than allowed"
+      ],
+      "publishable_impact_refs": [
+        "atomic-store-mutate-api"
+      ],
+      "publishable_carry_forward_bullets": [
+        "EIGHT TOOLS REMAIN AND THEY ARE FOUR DIFFERENT QUESTIONS, not one backlog. (1) `query_section` answers an enum — two shapes chosen by the arguments sent — and the fix is one shape with the neighborhood optional, which changes the wire for the bare case. That is undone work, not a limit, and it is the next round of this arc. (2) Three tools answer PROSE (`validate_workspace`, `validate_projection`, `list_sections`): each renders a summary from a report it already has, so typing them means deciding whether the tool's answer BECOMES the report — a change to what an agent reads, which is the owner's call rather than a conversion. (3) `describe_schema`, `describe_frontier_axes`, `redact_term` and `emit_publishable_override_ledger_draft` each answer a shape assembled at the wire; typing them means naming that shape. (4) None of the four is blocked by anything the world does not allow",
+        "THE BLANKET DERIVE COVERS MORE TYPES THAN ANY ANSWER REACHES. 116 serializable types in the report modules now derive `JsonSchema` under the feature, and the ones an MCP answer can reach are fewer. The trade was taken deliberately — a hand-picked list is a list nobody maintains — but the cost is real: schema code compiled for types nothing publishes, and the only reader of that cost is the mcp binary's build time, which nothing here measures",
+        "THE ERROR HALF STILL CARRIES NO SCHEMA (R1222's carry, unchanged). A refusal is `is_error: true` with prose, and MCP has no output schema for that half",
+        "NOTHING PROVES A CLIENT VALIDATES ANY OF THIS. What is proven is that the server's answers satisfy what it publishes, and that rmcp refuses to publish what the specification forbids. Whether a machine-readable contract changes what an agent does is the prose-band question R1221 left open"
+      ]
+    },
     "Round 252": {
       "decision_summary": "Parser CommonMark conformance — recognize indented fenced code blocks (§98) and require whitespace after ATX hash sequence (§62)",
       "changes_bullets": [

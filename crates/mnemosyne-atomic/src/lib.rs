@@ -444,6 +444,7 @@ pub struct SectionLadder {
 /// an updated anchor map overwrites it, since it is a derived pointer, not an
 /// authored audit value.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct EpubLocator {
     /// EPUB spine document holding this Section (e.g. `OEBPS/spec.xhtml`).
     pub spine_href: String,
@@ -534,6 +535,7 @@ fn binding_kind_implements_default() -> BindingKind {
 /// explicitly. `#[serde(default)]` only so pre-v5 stores (which have no
 /// `kind`) still deserialize during the load migration.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct Binding {
     pub file: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -608,6 +610,7 @@ pub struct ExcerptHashBackfillReport {
 /// Both write paths — CLI and MCP — take a BOOLEAN and read the numbers from
 /// the workspace's census report, so neither wire accepts a count at all.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct PopulationCensus {
     /// The question this axis answers about the recorded population.
     pub axis: String,
@@ -1216,6 +1219,7 @@ pub struct ArtifactHashes {
 /// is why the ledger costs one argument at one choke point rather than a field
 /// on nine record types.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct MutationReason {
     /// The primitive that made the change, as the receipt names it.
     pub primitive: String,
@@ -10674,6 +10678,7 @@ pub fn load_typing_proposals(path: &Path) -> Result<(TypingProposalsFile, String
 
 /// One per-proposal verdict (full list always surfaced — no silent caps).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct TypingProposalVerdict {
     pub fact: String,
     /// `accepted`, or the reject reason verbatim.
@@ -10684,6 +10689,7 @@ pub struct TypingProposalVerdict {
 /// was a real run AND every proposal accepted (all-or-nothing: the file
 /// is the reviewed artifact — make it fully valid; no half-applied state).
 #[derive(Debug, Clone, Serialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct TypingImportReport {
     /// sha256 of the proposals file content (audit anchor).
     pub file_sha256: String,
@@ -10899,6 +10905,7 @@ pub fn load_edge_proposals(path: &Path) -> Result<(EdgeProposalsFile, String), S
 /// `kind` = `succession` | `conflict`; for succession `fact` is the
 /// successor and `target` the predecessor.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct EdgeProposalVerdict {
     pub kind: &'static str,
     pub fact: String,
@@ -10909,6 +10916,7 @@ pub struct EdgeProposalVerdict {
 
 /// The import outcome both wires emit (the [`TypingImportReport`] shape).
 #[derive(Debug, Clone, Serialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct EdgeImportReport {
     /// sha256 of the proposals file content (audit anchor).
     pub file_sha256: String,

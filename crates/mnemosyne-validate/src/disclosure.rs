@@ -87,6 +87,7 @@ pub fn resolve_reveal_pin(
 /// dangling-is-a-todo discipline: `never_planned` is the author's todo list,
 /// never a gate reject.
 #[derive(Debug, Clone, Serialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct DisclosureCoverageReport {
     pub telling: String,
     pub facts: usize,
@@ -119,6 +120,7 @@ pub struct DisclosureCoverageReport {
 /// wrote meaning "hidden until here, then told", which the store accepts and no
 /// surface reads (Round 946, sharpened in Round 947).
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct InertRevealPin {
     pub fact_id: String,
     pub world: String,
@@ -201,6 +203,7 @@ pub fn disclosure_coverage(
 /// = matched at a coord incomparable to the pin (an honesty surface, not a
 /// verdict — carried in the report's `unordered`, never `leaks`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[serde(rename_all = "snake_case")]
 pub enum LeakKind {
     Withhold,
@@ -221,6 +224,7 @@ impl LeakKind {
 
 /// One premature-leak finding (Round 507).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct DisclosureLeak {
     /// The authored plan-targeted fact (withhold or first_at).
     pub fact_id: String,
@@ -240,6 +244,7 @@ pub struct DisclosureLeak {
 
 /// Premature-leak gate report (Round 507).
 #[derive(Debug, Clone, Serialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct DisclosureLeakReport {
     pub telling: String,
     pub world: String,
@@ -412,6 +417,7 @@ pub fn disclosure_leak(
 
 /// One off-path / unplaced re-extracted fact (Round 507).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct RenderPathFact {
     pub fact_id: String,
     pub coord: String,
@@ -420,6 +426,7 @@ pub struct RenderPathFact {
 /// Render↔world-line fidelity report (Round 507, R505 input 1 — the prose
 /// analog of R488 `FactCanonOffBranch`).
 #[derive(Debug, Clone, Serialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct RenderFidelityReport {
     pub world: String,
     pub reextracted_facts: usize,

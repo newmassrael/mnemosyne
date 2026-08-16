@@ -24,6 +24,25 @@ pub use mnemosyne_config::AbsolutePath;
 /// carry without reaching past its kernel into the validator (Round 1009).
 pub use mnemosyne_validate::verdict::ViolationSource;
 
+/// THE REPORT TYPES THIS CRATE'S READS HAND BACK (Round 1223).
+///
+/// These functions have always RETURNED these types; nothing here could NAME
+/// them without depending on the validator directly, which is the reach-past
+/// Round 1009 re-exported `ViolationSource` to avoid. It stayed latent while
+/// every caller wrote `match … { Ok(r) => serialize(&r) }` and never spelled the
+/// type — and stopped being latent the moment a caller had to declare one,
+/// which is what publishing an MCP `output_schema` requires. A boundary crate
+/// owns the vocabulary of what it answers with.
+pub use mnemosyne_validate::continuity::{
+    EdgeCandidatesReport, ForkTreeReport, IronyIntervalsReport, PayoffCoverageReport,
+    PayoffSubstantiationReport, PlayableWorldReport, PlaythroughManuscriptReport, QuestGraphReport,
+    TimelineGapsReport, TransitionMapReport, TypingCandidatesReport,
+};
+pub use mnemosyne_validate::disclosure::{
+    DisclosureCoverageReport, DisclosureLeakReport, RenderFidelityReport,
+};
+pub use mnemosyne_validate::schema::SchemaContract;
+
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
@@ -34,9 +53,13 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 pub use cascade::{validate_atomic_store, AtomicValidationSummary};
+/// The query crate's views, for the same reason as the validator's above: these
+/// reads return them, so a caller that must declare what it answers with has to
+/// be able to name them (Round 1223).
+pub use mnemosyne_query::{ChangelogEntryView, ChangelogLedgerView, TermHit};
 pub use query::{
     list_changelog, list_inventory, list_sections, query_inventory, query_section, query_term,
-    InventoryEntryView, ListSectionsReport, QuerySectionMode, QueryTermInput,
+    InventoryEntryView, ListSectionsReport, QuerySectionMode, QuerySectionPayload, QueryTermInput,
 };
 pub use style::{style_check, StyleCheckInput, StyleCheckReport};
 pub use validate::{validate_workspace, ValidateWorkspaceReport};
@@ -85,6 +108,7 @@ pub struct MutateOutcome {
 
 /// Input to the convenience-form `redact_term` op.
 #[derive(Debug, Clone, Serialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct RedactTermInput {
     pub pattern: String,
     pub replacement: String,
@@ -205,6 +229,7 @@ pub fn workspace_entry_id_prefix(workspace_root: &Path) -> Result<String, OpErro
 /// the file format is not a second contract that could drift from the field: it
 /// IS the field's serialization, and the compiler owns the correspondence.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[serde(deny_unknown_fields)]
 pub struct PopulationCensusReport {
     /// Why these bytes may not be hand-edited.
@@ -393,6 +418,7 @@ pub fn entity_kinds(
 /// object would be hand-parsing our store again — the thing this read exists to
 /// stop.
 #[derive(Debug, Clone, Serialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct TypedClaimRow {
     pub fact_id: String,
     pub subject: String,
@@ -674,6 +700,7 @@ fn world_scoped_inputs(
 /// reported) plus the full frame-scoped report. Gating policy (exit code /
 /// MCP error) stays with the caller.
 #[derive(Debug, Clone, Serialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct ContinuityScanReport {
     pub severity: Option<String>,
     /// Per-class severity for interval (timeline) violations (Round 491,
@@ -829,6 +856,7 @@ pub fn continuity_scan(
 
 /// The verdict of a `propose-verdict` dry-run transaction (Round 588).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[serde(rename_all = "snake_case")]
 pub enum ProposeVerdict {
     /// The batch applied cleanly and passed every gate — safe to commit (apply
@@ -854,6 +882,7 @@ impl ProposeVerdict {
 /// return commit-or-rollback plus actionable violations. A pure DRY RUN: the
 /// real store is never written (the scratch-sidecar contract, done in memory).
 #[derive(Debug, Clone, Serialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct ProposeVerdictReport {
     /// The authoritative go/no-go: commit = the store's configured gate ACCEPTS
     /// this batch (safe to apply); rollback = it would reject. Mirrors
@@ -1002,6 +1031,7 @@ pub fn propose_verdict(
 /// counts. The count is `facts.len()` — kept nowhere, so it cannot drift from
 /// the list it summarizes.
 #[derive(Debug, Clone, Serialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct SceneCoverage {
     pub scene: String,
     pub facts: Vec<String>,
@@ -1031,6 +1061,7 @@ pub struct SceneCoverage {
 /// divide-by-zero and no confusing "rides the trunk" inversion. It is NOT claimed
 /// to match any external divisor.
 #[derive(Debug, Clone, Serialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct BranchDensity {
     /// The facts this world-line authored, NAMED (Round 1054). It shipped as
     /// `owned_facts`, a count, and a walk over every shipped read measured what
@@ -1068,6 +1099,7 @@ pub struct BranchDensity {
 /// from the TYPE, or the check is a second hand-written list free to drift
 /// beside the first one.
 #[derive(Debug, Clone, Default, Serialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct AuthoringFrontierReport {
     /// The telling the quest + disclosure gaps were computed for (None = the
     /// telling-scoped sections were omitted).
@@ -1225,6 +1257,7 @@ pub struct AuthoringFrontierReport {
 /// positive. The map is deliberately not apparatus here either: `transition_map`
 /// reads it with no telling at all, so a map is not evidence of this need.
 #[derive(Debug, Clone, Default, Serialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct TellingNeed {
     /// What this store carries that ONLY a telling-scoped read projects, each
     /// named with its size (`world-lines beyond main: 7`, `quests: 4`). EMPTY =
@@ -1241,6 +1274,7 @@ pub struct TellingNeed {
 /// A disclosure whose authored seat sits earlier than the fact it discloses
 /// becomes true (Round 949).
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, serde::Serialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct SeatBeforeTruth {
     pub fact_id: String,
     /// The world whose road ordered the two coordinates — the fact's own branch.
@@ -1267,6 +1301,7 @@ pub struct SeatBeforeTruth {
 /// claim from one it believes; publishing both under one name would let the
 /// weaker wear the stronger's evidence (the R1216 discipline).
 #[derive(Debug, Clone, Serialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum AxisClosure {
     /// One call closes an item here AND this repository's suite has run it over
@@ -1297,6 +1332,7 @@ pub enum AxisClosure {
 
 /// One field of [`AuthoringFrontierReport`] and what closes an item on it.
 #[derive(Debug, Clone, Serialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct FrontierAxis {
     /// The report's own JSON key — the name a loop already holds.
     pub field: &'static str,
@@ -1674,6 +1710,7 @@ pub fn authoring_frontier_report(
 /// The frame-view envelope both wires emit (Round 435). `holding_count`
 /// rides beside the full entries so a scanning consumer never counts.
 #[derive(Debug, Clone, Serialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct FrameViewReport {
     pub frame: String,
     pub branch: String,
@@ -2120,6 +2157,7 @@ pub fn render_fidelity_report(
 /// What one single-world projection did (Round 1070) — the counts a caller
 /// needs to see that the file it just wrote is about something.
 #[derive(Debug, Clone, Serialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct WorldProjectionReport {
     pub world: String,
     /// Where the projected store was written.
@@ -2183,6 +2221,7 @@ pub fn project_world_store(
 /// (no holds evaluation; the frame-at-T projection is `continuity_frame_view`
 /// with the entity filter).
 #[derive(Debug, Clone, Serialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct EntityFactRow {
     pub fact_id: String,
     pub frame: String,
@@ -2207,6 +2246,7 @@ pub struct EntityFactRow {
 /// R679 — one unregistered entity kind and the entities that name it, the unit
 /// of the migration worklist a pre-registry (v23-) or out-of-band store needs.
 #[derive(Debug, Clone, Serialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct EntityKindMigrationRow {
     pub kind: String,
     pub entities: Vec<String>,
@@ -2221,6 +2261,7 @@ pub struct EntityKindMigrationRow {
 /// [`mnemosyne_atomic::unregistered_entity_kinds`] detector, so the report and
 /// the gate's kind facet cannot disagree.
 #[derive(Debug, Clone, Serialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct EntityKindMigration {
     pub unregistered_kinds: Vec<EntityKindMigrationRow>,
     /// Entities naming an UNREGISTERED kind — the size of the worklist, not of
@@ -2260,6 +2301,7 @@ pub fn entity_kind_migration(
 /// economy read. `op` is the operator SYMBOL (`>=` etc.), the interval rule's
 /// reporting symbol (shared since the R730 `IntervalOp` lift).
 #[derive(Debug, Clone, Serialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct ParameterEconomyGateRow {
     /// The choice fact the gate rides.
     pub fact: String,
@@ -2281,6 +2323,7 @@ pub struct ParameterEconomyGateRow {
 /// different beats and the same totals produced BYTE-IDENTICAL reports, which is
 /// the property the discriminating-pair test now forbids.
 #[derive(Debug, Clone, Serialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct ParameterEconomyDeltaRow {
     /// The beat (fact) carrying the delta.
     pub fact: String,
@@ -2299,6 +2342,7 @@ pub struct ParameterEconomyDeltaRow {
 /// consumer's dynamic playthrough evaluation, not Mnemosyne's — the R712 layering
 /// line).
 #[derive(Debug, Clone, Serialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct ParameterEconomyRow {
     pub parameter: String,
     pub description: String,
@@ -2325,6 +2369,7 @@ pub struct ParameterEconomyRow {
 /// the validate detectors (`parameter_delta_violations` /
 /// `parameter_gate_violations`), not this read — the report is registered-scoped.
 #[derive(Debug, Clone, Serialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct ParameterEconomyReport {
     pub meters: Vec<ParameterEconomyRow>,
 }
@@ -2362,6 +2407,7 @@ pub fn mutation_reason_report(
 /// `rows` is filtered, so a caller can never read a narrow answer as the whole
 /// of what the store holds (the Round 854 rule these gates keep re-learning).
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct MutationReasonReport {
     pub target: Option<String>,
     pub total: usize,
@@ -2428,6 +2474,7 @@ pub fn parameter_economy_report(
 /// downgraded to `String`). It serialises `rename_all = "lowercase"`, so the CLI
 /// json is byte-identical to the prior hand-stringified form.
 #[derive(Debug, Clone, Serialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct BindingKindMigrationRow {
     pub section_id: String,
     pub file: String,
@@ -2442,6 +2489,7 @@ pub struct BindingKindMigrationRow {
 /// is `None` when the store is already at the current schema — no migration
 /// pending, `rows` empty.
 #[derive(Debug, Clone, Serialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct BindingKindMigration {
     pub from_schema_version: Option<u32>,
     pub rows: Vec<BindingKindMigrationRow>,
@@ -2483,6 +2531,7 @@ pub fn binding_kind_migration(
 /// referencing the entity, across all frames and branches, with the
 /// registry row. Fail-loud on an unregistered entity.
 #[derive(Debug, Clone, Serialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct EntityDossier {
     pub entity_id: String,
     pub kind: String,

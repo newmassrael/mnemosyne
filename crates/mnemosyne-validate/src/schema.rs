@@ -47,6 +47,7 @@ use crate::continuity::{
 /// The complete medium-neutral authoring contract (R587). Every field is a
 /// static description of the substrate's shape, not any store's contents.
 #[derive(Debug, Clone, Serialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct SchemaContract {
     /// The store schema generation this contract describes
     /// ([`mnemosyne_atomic::CURRENT_SCHEMA_VERSION`]).
@@ -156,6 +157,7 @@ pub struct SchemaContract {
 /// thirteen rounds, which is how two blind authors both concluded a Quantity
 /// could not be authored from a file (R904 gap 2).
 #[derive(Debug, Clone, Serialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct ManifestWireSpec {
     /// The batch verbs this manifest is fed to.
     pub add_op: &'static str,
@@ -174,6 +176,7 @@ pub struct ManifestWireSpec {
 
 /// One kind's serialized JSON key names in the batch manifest (Round 595).
 #[derive(Debug, Clone, Serialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct KindWire {
     /// The manifest array this describes (`frames` / `branches` / …).
     pub kind: &'static str,
@@ -183,6 +186,7 @@ pub struct KindWire {
 
 /// One registry: an id space that must be populated before a fact references it.
 #[derive(Debug, Clone, Serialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct RegistrySpec {
     /// The `AtomicStore` field / registry name.
     pub name: &'static str,
@@ -201,6 +205,7 @@ pub struct RegistrySpec {
 
 /// One field of a struct in the contract.
 #[derive(Debug, Clone, Serialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct FieldSpec {
     pub name: &'static str,
     /// A description of the field's type (not a Rust path — an authoring hint).
@@ -211,6 +216,7 @@ pub struct FieldSpec {
 
 /// The narrative-fact shape.
 #[derive(Debug, Clone, Serialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct FactSpec {
     pub description: &'static str,
     pub add_op: &'static str,
@@ -219,6 +225,7 @@ pub struct FactSpec {
 
 /// The typed-claim (subject–predicate–object) contract.
 #[derive(Debug, Clone, Serialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct TypedClaimSpec {
     pub description: &'static str,
     pub subject: &'static str,
@@ -229,6 +236,7 @@ pub struct TypedClaimSpec {
 
 /// One value of a fixed vocabulary (a closed enum variant).
 #[derive(Debug, Clone, Serialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct EnumValue {
     pub value: &'static str,
     pub description: &'static str,
@@ -236,6 +244,7 @@ pub struct EnumValue {
 
 /// A fixed, substrate-defined vocabulary — a closed enum an author picks from.
 #[derive(Debug, Clone, Serialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct Vocabulary {
     pub name: &'static str,
     pub applies_to: &'static str,
@@ -247,6 +256,7 @@ pub struct Vocabulary {
 
 /// One narrative-rule class and its parameters.
 #[derive(Debug, Clone, Serialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct RuleClassSpec {
     pub class: &'static str,
     pub description: &'static str,
@@ -255,6 +265,7 @@ pub struct RuleClassSpec {
 
 /// One typed predicate reserved by the quest convention.
 #[derive(Debug, Clone, Serialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct QuestPredicate {
     pub predicate: &'static str,
     pub role: &'static str,
@@ -279,6 +290,7 @@ pub struct QuestPredicate {
 /// primitives, NOT new substrate: an author adopts these ids so the quest-graph
 /// projection can read their store.
 #[derive(Debug, Clone, Serialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct QuestEncoding {
     pub description: &'static str,
     /// How the quest-graph projection IDENTIFIES a quest (R676): a quest is any
@@ -293,6 +305,7 @@ pub struct QuestEncoding {
 
 /// One write-time fail-loud invariant.
 #[derive(Debug, Clone, Serialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct Invariant {
     pub name: &'static str,
     pub rule: &'static str,

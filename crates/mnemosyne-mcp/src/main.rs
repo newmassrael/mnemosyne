@@ -1990,10 +1990,13 @@ impl MnemosyneServer {
     #[tool(
         description = "List the changelog ledger as JSON {total, entries}, in round-number order (oldest first). `limit` keeps only the newest N entries while `total` reports the full ledger size — pass a small limit for the session-start 'where did the last session leave off' read instead of pulling the whole ledger into context. Per-section history is query_section with include_changelog."
     )]
-    async fn list_changelog(&self, args: Parameters<ListChangelogArgs>) -> CallToolResult {
+    async fn list_changelog(
+        &self,
+        args: Parameters<ListChangelogArgs>,
+    ) -> Result<Json<ops::ChangelogLedgerView>, Refused> {
         match ops::list_changelog(&self.workspace, args.0.limit) {
-            Ok(view) => self.tool_json(&view),
-            Err(e) => self.op_error(e),
+            Ok(view) => Ok(Json(view)),
+            Err(e) => Err(self.refused(e)),
         }
     }
 
@@ -2003,16 +2006,24 @@ impl MnemosyneServer {
     async fn query_changelog_entry(
         &self,
         args: Parameters<QueryChangelogEntryArgs>,
-    ) -> CallToolResult {
+    ) -> Result<Json<ops::ChangelogEntryView>, Refused> {
         match ops::query::query_changelog_entry(&self.workspace, &args.0.entry_id) {
-            Ok(view) => self.tool_json(&view),
-            Err(e) => self.op_error(e),
+            Ok(view) => Ok(Json(view)),
+            Err(e) => Err(self.refused(e)),
         }
     }
 
     #[tool(
         description = "Look up a single section. Optionally include 1-hop CrossRef neighborhood and §N citations from changelog entries. Always call this BEFORE mutating a section to verify decision_status and avoid editing strong-carry / Superseded sections. ANSWERS WITH: `section_id`, `parent_doc`, `parent_section`, `title`, `decision_status`, `body`, `line_anchor`. ASKING FOR EITHER NEIGHBORHOOD CHANGES THE SHAPE rather than adding to it: that answer nests under `section`, beside `related` (outbound_refs / inbound_refs) and `changelog` (the entries citing this section)."
     )]
+    // NOT TYPED YET, AND THE REASON IS A FACT ABOUT THIS TOOL (Round 1223).
+    // `QuerySectionPayload` is an ENUM: this tool answers one shape when asked
+    // for the bare section and a DIFFERENT one when asked for a neighborhood.
+    // MCP requires an output schema whose root type is `object`, and rmcp
+    // refuses to publish a `oneOf` — correctly, because a schema that says "one
+    // of two shapes" tells an agent to branch on what it sent. The fix is to
+    // make this answer ONE shape with the neighborhood optional, which changes
+    // the wire for the bare case, so it is a decision rather than a conversion.
     async fn query_section(&self, args: Parameters<QuerySectionArgs>) -> CallToolResult {
         let mode = match (args.0.include_related, args.0.include_changelog) {
             (true, true) => QuerySectionMode::Envelope,
@@ -2028,7 +2039,7 @@ impl MnemosyneServer {
     #[tool(
         description = "Literal/regex search across atomic Section + ChangelogEntry + Inventory text fields, including identifier keys (section_id / entry_id / inventory_id). Returns hits as JSON: target_kind (section|changelog_entry|inventory), target_id, field_path (e.g. `rationale_bullets[2]`), line_context. Read-only. Use before redact_term or before mutating prose, to know which entries cite a term."
     )]
-    async fn query_term(&self, args: Parameters<QueryTermArgs>) -> CallToolResult {
+    async fn query_term(&self, args: Parameters<QueryTermArgs>) -> Result<Json<TermHits>, Refused> {
         let input = QueryTermInput {
             pattern: args.0.pattern.clone(),
             regex: args.0.regex,
@@ -2037,22 +2048,25 @@ impl MnemosyneServer {
             fields: args.0.fields.clone(),
         };
         match ops::query_term(&self.workspace, &input) {
-            Ok(hits) => self.tool_json(&hits),
-            Err(e) => self.op_error(e),
+            Ok(hits) => Ok(Json(TermHits { hits })),
+            Err(e) => Err(self.refused(e)),
         }
     }
 
     #[tool(
         description = "Run T3/T4 style checks. T3 = warning surface (max_paragraph_length, sentence length, terminology); T4 = info. Reject power is configurable; default = warn-only so existing prose stays valid on day 1. ANSWERS WITH: `doc_filter` and `severity_filter` (what the scan was actually scoped to, echoed back), `violations` (each naming doc_path, section_id, rule_id, severity and message), and the tallies `t3_reject`, `t3_warn`, `t4_info`."
     )]
-    async fn style_check(&self, args: Parameters<StyleCheckArgs>) -> CallToolResult {
+    async fn style_check(
+        &self,
+        args: Parameters<StyleCheckArgs>,
+    ) -> Result<Json<ops::StyleCheckReport>, Refused> {
         let input = StyleCheckInput {
             doc: args.0.doc.clone(),
             severity: args.0.severity.clone(),
         };
         match ops::style_check(&self.workspace, &input) {
-            Ok(report) => self.tool_json(&report),
-            Err(e) => self.op_error(e),
+            Ok(report) => Ok(Json(report)),
+            Err(e) => Err(self.refused(e)),
         }
     }
 
@@ -2945,20 +2959,26 @@ impl MnemosyneServer {
     #[tool(
         description = "Entity dossier (R437, read-only): every fact referencing the entity across all frames and branches — 'all facts about X' for background-vs-narrative verification. The at-a-point projection is report_frame_view with the entity filter. ANSWERS WITH: `entity_id`, `kind`, `description`, `fact_count`, and `facts` — every fact in full (fact_id, frame, branch, claim, canon_from/canon_to, evidence, typed subject/predicate/object, quote)."
     )]
-    async fn report_entity(&self, args: Parameters<ReportEntityArgs>) -> CallToolResult {
+    async fn report_entity(
+        &self,
+        args: Parameters<ReportEntityArgs>,
+    ) -> Result<Json<ops::EntityDossier>, Refused> {
         match ops::entity_dossier(&self.workspace, None, &args.0.entity_id) {
-            Ok(d) => self.tool_json(&d),
-            Err(e) => self.op_error(e),
+            Ok(d) => Ok(Json(d)),
+            Err(e) => Err(self.refused(e)),
         }
     }
 
     #[tool(
         description = "Entity-kind migration worklist (R679, read-only): the distinct unregistered entity kinds a store uses, each with the entities naming it — the exact add_entity_kind calls a pre-registry (v23-) or out-of-band store needs. The complete list of the KIND facet, which the validate-workspace failure only samples (R681: the gate covers more than kinds); shares the kind detector the gate uses, so the two cannot disagree on kinds. ANSWERS WITH: `unregistered_kinds`, each naming the entities that use it; `entities_naming_an_unregistered_kind`; and `entities_examined`. READ THAT LAST ONE FIRST — an empty list over zero entities examined says nothing, where an empty list over a real population says every in-use kind is registered."
     )]
-    async fn report_entity_kind_migration(&self, _args: Parameters<EmptyArgs>) -> CallToolResult {
+    async fn report_entity_kind_migration(
+        &self,
+        _args: Parameters<EmptyArgs>,
+    ) -> Result<Json<ops::EntityKindMigration>, Refused> {
         match ops::entity_kind_migration(&self.workspace, None) {
-            Ok(r) => self.tool_json(&r),
-            Err(e) => self.op_error(e),
+            Ok(r) => Ok(Json(r)),
+            Err(e) => Err(self.refused(e)),
         }
     }
 
@@ -2968,30 +2988,36 @@ impl MnemosyneServer {
     async fn report_mutation_reasons(
         &self,
         args: Parameters<ReportMutationReasonsArgs>,
-    ) -> CallToolResult {
+    ) -> Result<Json<ops::MutationReasonReport>, Refused> {
         match ops::mutation_reason_report(&self.workspace, None, args.0.target.as_deref()) {
-            Ok(r) => self.tool_json(&r),
-            Err(e) => self.op_error(e),
+            Ok(r) => Ok(Json(r)),
+            Err(e) => Err(self.refused(e)),
         }
     }
 
     #[tool(
         description = "Parameter-economy read (R730, DEBT-K, read-only): the VISIBLE accumulation surface (gap 3). Per REGISTERED meter, the delta inventory (count, Σ+ = apply-once max reach, Σ- = apply-once min) and the gates that threshold it. NEUTRAL — the Σ is DESCRIPTIVE, NOT a reachability verdict: the consumer applies its OWN accumulation model (grinding / one-shot / clamped), so Mnemosyne never judges whether a gate is reachable (the R712 layering line). Deltas/gates on an unregistered parameter are out-of-band (the validate detectors' job), not this registered-scoped read. ANSWERS WITH: `meters` — one row per registered meter, and nothing else, so an empty `meters` means no meter is REGISTERED rather than no delta is authored."
     )]
-    async fn report_parameter_economy(&self, _args: Parameters<EmptyArgs>) -> CallToolResult {
+    async fn report_parameter_economy(
+        &self,
+        _args: Parameters<EmptyArgs>,
+    ) -> Result<Json<ops::ParameterEconomyReport>, Refused> {
         match ops::parameter_economy_report(&self.workspace, None) {
-            Ok(r) => self.tool_json(&r),
-            Err(e) => self.op_error(e),
+            Ok(r) => Ok(Json(r)),
+            Err(e) => Err(self.refused(e)),
         }
     }
 
     #[tool(
         description = "Binding-kind migration worklist (Round 686, read-only): every code binding that inherited kind=implements by default from a pre-v5 store, pending review as implements vs references. `from_schema_version` is null when the store is already current (no migration; rows empty). Shares the ops report the CLI `report-binding-migration` renders, so the two surfaces cannot disagree. The sibling of report_entity_kind_migration, which was CLI-only until now (DEBT-BINDING-MIGRATION-MCP)."
     )]
-    async fn report_binding_migration(&self, _args: Parameters<EmptyArgs>) -> CallToolResult {
+    async fn report_binding_migration(
+        &self,
+        _args: Parameters<EmptyArgs>,
+    ) -> Result<Json<ops::BindingKindMigration>, Refused> {
         match ops::binding_kind_migration(&self.workspace, None) {
-            Ok(r) => self.tool_json(&r),
-            Err(e) => self.op_error(e),
+            Ok(r) => Ok(Json(r)),
+            Err(e) => Err(self.refused(e)),
         }
     }
 
@@ -3078,30 +3104,33 @@ impl MnemosyneServer {
     async fn validate_continuity(
         &self,
         args: Parameters<ValidateContinuityArgs>,
-    ) -> CallToolResult {
+    ) -> Result<Json<ops::ContinuityScanReport>, Refused> {
         match ops::continuity_scan(
             &self.workspace,
             None,
             match mcp_path(&self.workspace, args.0.order_path.as_ref()) {
                 Ok(v) => v,
-                Err(e) => return Self::tool_error(e),
+                Err(e) => return Err(Refused(e)),
             }
             .as_ref(),
             match mcp_path(&self.workspace, args.0.rules_path.as_ref()) {
                 Ok(v) => v,
-                Err(e) => return Self::tool_error(e),
+                Err(e) => return Err(Refused(e)),
             }
             .as_ref(),
         ) {
-            Ok(report) => self.tool_json(&report),
-            Err(e) => self.op_error(e),
+            Ok(report) => Ok(Json(report)),
+            Err(e) => Err(self.refused(e)),
         }
     }
 
     #[tool(
         description = "Propose-verdict (R588, DRY RUN): the generate-gate-repair loop's atomic gate. Reads a candidate import-facts manifest from manifest_path, applies it to a THROWAWAY in-memory clone of the store, runs the shape invariants + the continuity gate, and returns verdict=commit|rollback plus actionable violations. THE TWO CAN DISAGREE: `verdict` reflects only violations your workspace's `[continuity] severity` makes GATING, so a workspace that declares none gets `commit` with `violation_count` non-zero beside it (Round 1004). Read `violations`, not `verdict` alone (each carries rule + locus {facts,field,frame,branch,at} + expected + repair_hint + message). The real store is NEVER written — on commit, apply for real via the import-facts CLI. Deterministic, AI out of the gate. Fail-loud on an unreadable/unparseable manifest. ANSWERS WITH: `verdict`; `applied_summary`, what the manifest would add counted by kind; `violation_count` beside `gating_violation_count` (the pair that disagrees, above); `violations`; and `dangling_setups` — per world-line, the Expected setups this manifest would leave unpaid."
     )]
-    async fn propose_verdict(&self, args: Parameters<ProposeVerdictArgs>) -> CallToolResult {
+    async fn propose_verdict(
+        &self,
+        args: Parameters<ProposeVerdictArgs>,
+    ) -> Result<Json<ops::ProposeVerdictReport>, Refused> {
         // Round 1001 — an agent's manifest path goes through the same wire
         // resolver as every other path it sends. Round 1000 typed the
         // overrides that passed through `ops` and left the ones the wire
@@ -3109,11 +3138,11 @@ impl MnemosyneServer {
         // the ambiguity an agent faces is identical either way.
         let manifest_path = match mcp_path(&self.workspace, Some(&args.0.manifest_path)) {
             Ok(p) => p.expect("a Some input yields a Some path"),
-            Err(e) => return Self::tool_error(e),
+            Err(e) => return Err(Refused(e)),
         };
         let raw = match std::fs::read_to_string(manifest_path.as_path()) {
             Ok(r) => r,
-            Err(e) => return Self::tool_error(format!("read manifest {manifest_path}: {e}")),
+            Err(e) => return Err(Refused(format!("read manifest {manifest_path}: {e}"))),
         };
         let manifest = match mnemosyne_atomic::parse_facts_manifest(&raw) {
             Ok(m) => m,
@@ -3122,11 +3151,11 @@ impl MnemosyneServer {
                 // found this message naming the argument received rather than
                 // the file opened, which is identical in production and
                 // misleading in exactly the case where it is wrong.
-                return Self::tool_error(format!(
+                return Err(Refused(format!(
                     "parse manifest {} ({}): {e}",
                     manifest_path,
                     mnemosyne_atomic::FACTS_MANIFEST_SHAPE
-                ));
+                )));
             }
         };
         match ops::propose_verdict(
@@ -3134,25 +3163,28 @@ impl MnemosyneServer {
             None,
             match mcp_path(&self.workspace, args.0.order_path.as_ref()) {
                 Ok(v) => v,
-                Err(e) => return Self::tool_error(e),
+                Err(e) => return Err(Refused(e)),
             }
             .as_ref(),
             match mcp_path(&self.workspace, args.0.rules_path.as_ref()) {
                 Ok(v) => v,
-                Err(e) => return Self::tool_error(e),
+                Err(e) => return Err(Refused(e)),
             }
             .as_ref(),
             &manifest,
         ) {
-            Ok(report) => self.tool_json(&report),
-            Err(e) => self.op_error(e),
+            Ok(report) => Ok(Json(report)),
+            Err(e) => Err(self.refused(e)),
         }
     }
 
     #[tool(
         description = "Frame-at-T read projection (R432): the facts frame F holds on branch B at canon point T, over the SAME holds-semantics as the continuity gate. Three-state honest under the declared partial order: holding / not_holding / unknown (the declaration cannot decide). Call before writing the next scene to load the in-effect beliefs. ANSWERS WITH: the coordinates you asked for — `frame`, `branch`, `at`, and `entity` (null unless you filtered) — then `holding` with its `holding_count`, `not_holding`, `unknown`, and `confluence_fragment`: true when this world-line is a MERGE node read as a prefix-less fragment, so its pre-merge trunk reads `unknown` rather than being absent."
     )]
-    async fn report_frame_view(&self, args: Parameters<ReportFrameViewArgs>) -> CallToolResult {
+    async fn report_frame_view(
+        &self,
+        args: Parameters<ReportFrameViewArgs>,
+    ) -> Result<Json<ops::FrameViewReport>, Refused> {
         match ops::continuity_frame_view(
             &self.workspace,
             None,
@@ -3162,12 +3194,12 @@ impl MnemosyneServer {
             &args.0.at,
             match mcp_path(&self.workspace, args.0.order_path.as_ref()) {
                 Ok(v) => v,
-                Err(e) => return Self::tool_error(e),
+                Err(e) => return Err(Refused(e)),
             }
             .as_ref(),
         ) {
-            Ok(view) => self.tool_json(&view),
-            Err(e) => self.op_error(e),
+            Ok(view) => Ok(Json(view)),
+            Err(e) => Err(self.refused(e)),
         }
     }
 
@@ -3177,28 +3209,31 @@ impl MnemosyneServer {
     async fn report_payoff_coverage(
         &self,
         args: Parameters<ReportPayoffCoverageArgs>,
-    ) -> CallToolResult {
+    ) -> Result<Json<ops::PayoffCoverageReport>, Refused> {
         match ops::payoff_coverage_report(
             &self.workspace,
             None,
             match mcp_path(&self.workspace, args.0.order_path.as_ref()) {
                 Ok(v) => v,
-                Err(e) => return Self::tool_error(e),
+                Err(e) => return Err(Refused(e)),
             }
             .as_ref(),
         ) {
-            Ok(report) => self.tool_json(&report),
-            Err(e) => self.op_error(e),
+            Ok(report) => Ok(Json(report)),
+            Err(e) => Err(self.refused(e)),
         }
     }
 
     #[tool(
         description = "Typing-discovery input package (R458, read-only): every untyped narrative fact (claim text + claim_sha256 pin + frame/branch/entities) plus the registered predicate and entity vocabulary, in one call. The contract for typing-proposals/v1 authoring: propose typed legs ONLY from this vocabulary, stamp each proposal with the candidate's claim_sha256. Order-independent. ANSWERS WITH: `candidates` (the untyped facts), the counts `facts` and `typed` (so an empty candidate list can be told apart from an empty store), and the vocabularies `predicates` and `entities` a proposal may draw from."
     )]
-    async fn report_typing_candidates(&self, _args: Parameters<EmptyArgs>) -> CallToolResult {
+    async fn report_typing_candidates(
+        &self,
+        _args: Parameters<EmptyArgs>,
+    ) -> Result<Json<ops::TypingCandidatesReport>, Refused> {
         match ops::typing_candidates_report(&self.workspace, None) {
-            Ok(report) => self.tool_json(&report),
-            Err(e) => self.op_error(e),
+            Ok(report) => Ok(Json(report)),
+            Err(e) => Err(self.refused(e)),
         }
     }
 
@@ -3208,14 +3243,14 @@ impl MnemosyneServer {
     async fn import_typing_proposals(
         &self,
         args: Parameters<ImportTypingProposalsArgs>,
-    ) -> CallToolResult {
+    ) -> Result<Json<atomic::TypingImportReport>, Refused> {
         // Verdict-report mutate: same single lock site as every other
         // mutate (Round 460 — with_mutate_lock), report-shaped return.
         // Resolved BEFORE the lock closure: a `return` inside a closure
         // leaves the closure, not the tool call.
         let proposals_path = match mcp_path(&self.workspace, Some(&args.0.proposals_path)) {
             Ok(p) => p.expect("a Some input yields a Some path"),
-            Err(e) => return Self::tool_error(e),
+            Err(e) => return Err(Refused(e)),
         };
         match self.with_mutate_lock(|| {
             ops::import_typing_proposals_report(
@@ -3227,13 +3262,12 @@ impl MnemosyneServer {
         }) {
             Ok(report) => {
                 if report.applied {
-                    if let Err(e) = self.sync_read_models_after_mutate() {
-                        return self.op_error(e);
-                    }
+                    self.sync_read_models_after_mutate()
+                        .map_err(|e| self.refused(e))?;
                 }
-                self.tool_json(&report)
+                Ok(Json(report))
             }
-            Err(e) => self.op_error(e),
+            Err(e) => Err(self.refused(e)),
         }
     }
 
@@ -3243,18 +3277,18 @@ impl MnemosyneServer {
     async fn report_payoff_substantiation(
         &self,
         args: Parameters<ReportPayoffCoverageArgs>,
-    ) -> CallToolResult {
+    ) -> Result<Json<ops::PayoffSubstantiationReport>, Refused> {
         match ops::payoff_substantiation_report(
             &self.workspace,
             None,
             match mcp_path(&self.workspace, args.0.order_path.as_ref()) {
                 Ok(v) => v,
-                Err(e) => return Self::tool_error(e),
+                Err(e) => return Err(Refused(e)),
             }
             .as_ref(),
         ) {
-            Ok(report) => self.tool_json(&report),
-            Err(e) => self.op_error(e),
+            Ok(report) => Ok(Json(report)),
+            Err(e) => Err(self.refused(e)),
         }
     }
 
@@ -3264,18 +3298,18 @@ impl MnemosyneServer {
     async fn report_timeline_gaps(
         &self,
         args: Parameters<ReportTimelineGapsArgs>,
-    ) -> CallToolResult {
+    ) -> Result<Json<ops::TimelineGapsReport>, Refused> {
         match ops::timeline_gaps_report(
             &self.workspace,
             None,
             match mcp_path(&self.workspace, args.0.order_path.as_ref()) {
                 Ok(v) => v,
-                Err(e) => return Self::tool_error(e),
+                Err(e) => return Err(Refused(e)),
             }
             .as_ref(),
             match mcp_path(&self.workspace, args.0.rules_path.as_ref()) {
                 Ok(v) => v,
-                Err(e) => return Self::tool_error(e),
+                Err(e) => return Err(Refused(e)),
             }
             .as_ref(),
             // This tool has never advertised a road filter, and `None` is the
@@ -3283,8 +3317,8 @@ impl MnemosyneServer {
             // CLI's filter into the projection; it did not add one here).
             None,
         ) {
-            Ok(report) => self.tool_json(&report),
-            Err(e) => self.op_error(e),
+            Ok(report) => Ok(Json(report)),
+            Err(e) => Err(self.refused(e)),
         }
     }
 
@@ -3294,18 +3328,18 @@ impl MnemosyneServer {
     async fn report_transition_map(
         &self,
         args: Parameters<ReportTransitionMapArgs>,
-    ) -> CallToolResult {
+    ) -> Result<Json<ops::TransitionMapReport>, Refused> {
         match ops::transition_map_report(
             &self.workspace,
             None,
             match mcp_path(&self.workspace, args.0.rules_path.as_ref()) {
                 Ok(v) => v,
-                Err(e) => return Self::tool_error(e),
+                Err(e) => return Err(Refused(e)),
             }
             .as_ref(),
         ) {
-            Ok(report) => self.tool_json(&report),
-            Err(e) => self.op_error(e),
+            Ok(report) => Ok(Json(report)),
+            Err(e) => Err(self.refused(e)),
         }
     }
 
@@ -3315,18 +3349,18 @@ impl MnemosyneServer {
     async fn report_edge_candidates(
         &self,
         args: Parameters<ReportEdgeCandidatesArgs>,
-    ) -> CallToolResult {
+    ) -> Result<Json<ops::EdgeCandidatesReport>, Refused> {
         match ops::edge_candidates_report(
             &self.workspace,
             None,
             match mcp_path(&self.workspace, args.0.order_path.as_ref()) {
                 Ok(v) => v,
-                Err(e) => return Self::tool_error(e),
+                Err(e) => return Err(Refused(e)),
             }
             .as_ref(),
         ) {
-            Ok(report) => self.tool_json(&report),
-            Err(e) => self.op_error(e),
+            Ok(report) => Ok(Json(report)),
+            Err(e) => Err(self.refused(e)),
         }
     }
 
@@ -3336,14 +3370,14 @@ impl MnemosyneServer {
     async fn import_edge_proposals(
         &self,
         args: Parameters<ImportEdgeProposalsArgs>,
-    ) -> CallToolResult {
+    ) -> Result<Json<atomic::EdgeImportReport>, Refused> {
         // Verdict-report mutate: same single lock site as every other
         // mutate (Round 460 — with_mutate_lock), report-shaped return.
         // Resolved BEFORE the lock closure: a `return` inside a closure
         // leaves the closure, not the tool call.
         let proposals_path = match mcp_path(&self.workspace, Some(&args.0.proposals_path)) {
             Ok(p) => p.expect("a Some input yields a Some path"),
-            Err(e) => return Self::tool_error(e),
+            Err(e) => return Err(Refused(e)),
         };
         match self.with_mutate_lock(|| {
             ops::import_edge_proposals_report(
@@ -3355,13 +3389,12 @@ impl MnemosyneServer {
         }) {
             Ok(report) => {
                 if report.applied {
-                    if let Err(e) = self.sync_read_models_after_mutate() {
-                        return self.op_error(e);
-                    }
+                    self.sync_read_models_after_mutate()
+                        .map_err(|e| self.refused(e))?;
                 }
-                self.tool_json(&report)
+                Ok(Json(report))
             }
-            Err(e) => self.op_error(e),
+            Err(e) => Err(self.refused(e)),
         }
     }
 
@@ -3371,18 +3404,18 @@ impl MnemosyneServer {
     async fn report_irony_intervals(
         &self,
         args: Parameters<ReportIronyIntervalsArgs>,
-    ) -> CallToolResult {
+    ) -> Result<Json<ops::IronyIntervalsReport>, Refused> {
         match ops::irony_intervals_report(
             &self.workspace,
             None,
             match mcp_path(&self.workspace, args.0.order_path.as_ref()) {
                 Ok(v) => v,
-                Err(e) => return Self::tool_error(e),
+                Err(e) => return Err(Refused(e)),
             }
             .as_ref(),
         ) {
-            Ok(report) => self.tool_json(&report),
-            Err(e) => self.op_error(e),
+            Ok(report) => Ok(Json(report)),
+            Err(e) => Err(self.refused(e)),
         }
     }
 
@@ -3392,39 +3425,42 @@ impl MnemosyneServer {
     async fn report_playthrough_manuscript(
         &self,
         args: Parameters<ReportPlaythroughManuscriptArgs>,
-    ) -> CallToolResult {
+    ) -> Result<Json<ops::PlaythroughManuscriptReport>, Refused> {
         match ops::playthrough_manuscript_report(
             &self.workspace,
             None,
             args.0.world.as_deref(),
             match mcp_path(&self.workspace, args.0.order_path.as_ref()) {
                 Ok(v) => v,
-                Err(e) => return Self::tool_error(e),
+                Err(e) => return Err(Refused(e)),
             }
             .as_ref(),
             args.0.telling.as_deref(),
             args.0.reading_walk,
         ) {
-            Ok(report) => self.tool_json(&report),
-            Err(e) => self.op_error(e),
+            Ok(report) => Ok(Json(report)),
+            Err(e) => Err(self.refused(e)),
         }
     }
 
     #[tool(
         description = "Fork tree (R497, read-only): the cross-world choice graph — every registered world-line with its divergence coordinate (parent + fork point + the branch description = the CYOA choice label), the fork point resolved against the parent's composed order (at_placed; false = surfaced in unplaced_fork_points, never dropped). The per-world manuscripts (R466) stitched at the fork points. `converges` = the merges flowing INTO a world-line; `rejoins` = the confluences it flows OUT into (R836, derived by inverting the merges — a branch that rejoins is not a permanent divergence, and its record alone would not say so). Fail-loud on a fork whose parent is neither `main` nor registered. Reading surface, never gated. ANSWERS WITH: `branches`, `unplaced_fork_points` and `branch_count`."
     )]
-    async fn report_fork_tree(&self, args: Parameters<ReportForkTreeArgs>) -> CallToolResult {
+    async fn report_fork_tree(
+        &self,
+        args: Parameters<ReportForkTreeArgs>,
+    ) -> Result<Json<ops::ForkTreeReport>, Refused> {
         match ops::fork_tree_report(
             &self.workspace,
             None,
             match mcp_path(&self.workspace, args.0.order_path.as_ref()) {
                 Ok(v) => v,
-                Err(e) => return Self::tool_error(e),
+                Err(e) => return Err(Refused(e)),
             }
             .as_ref(),
         ) {
-            Ok(report) => self.tool_json(&report),
-            Err(e) => self.op_error(e),
+            Ok(report) => Ok(Json(report)),
+            Err(e) => Err(self.refused(e)),
         }
     }
 
@@ -3434,40 +3470,43 @@ impl MnemosyneServer {
     async fn report_playable_world(
         &self,
         args: Parameters<ReportPlayableWorldArgs>,
-    ) -> CallToolResult {
+    ) -> Result<Json<ops::PlayableWorldReport>, Refused> {
         match ops::playable_world_report(
             &self.workspace,
             None,
             args.0.world.as_deref(),
             match mcp_path(&self.workspace, args.0.order_path.as_ref()) {
                 Ok(v) => v,
-                Err(e) => return Self::tool_error(e),
+                Err(e) => return Err(Refused(e)),
             }
             .as_ref(),
             &args.0.telling,
         ) {
-            Ok(report) => self.tool_json(&report),
-            Err(e) => self.op_error(e),
+            Ok(report) => Ok(Json(report)),
+            Err(e) => Err(self.refused(e)),
         }
     }
 
     #[tool(
         description = "Quest graph (R559/568, read-only): the fact->quest leg a pinion narrative runtime / authoring consumer needs, the sibling of report_playable_world. Per telling, every derived quest (pursues object / requires endpoint / completed_by subject) projected to a QuestNode — objective + actor (pursues) + prerequisites (requires) + giving setups + per-world DERIVED open/done (the R442 payoff coverage: a quest done on one road and open on another) + the completion fact (with discharger) + the giver-surface MapLocator (R557). Plus roads (R1061): per world-line, the scene walk each locator's scene_ordinal INDEXES, read from the manuscript this report already reuses — the pointer and what it points into travel together, as they do in report_playable_world. A pure JOIN over payoff-coverage + playable-world; `world` filters the per-world map (the fork tree stays full). Reading surface, never gated; quest STATE derived per world-line, never stored. Executable quest logic (lifecycle/guards) is SCE/pinion's. Fail-loud on a typo'd telling / unregistered world. ANSWERS WITH: `telling`, `world` (null when unfiltered), `fork_tree`, `worlds` (the world-lines covered), `quests` (the QuestNodes above), `roads`, and `unresolved_quests` — the quests this scan GATES on, the frontier's own work-list for the quest axis; plus `confluence_fragment_worlds`, the subset of `worlds` that are merge nodes whose per_world column is a fragment view."
     )]
-    async fn report_quest_graph(&self, args: Parameters<ReportQuestGraphArgs>) -> CallToolResult {
+    async fn report_quest_graph(
+        &self,
+        args: Parameters<ReportQuestGraphArgs>,
+    ) -> Result<Json<ops::QuestGraphReport>, Refused> {
         match ops::quest_graph_report(
             &self.workspace,
             None,
             args.0.world.as_deref(),
             match mcp_path(&self.workspace, args.0.order_path.as_ref()) {
                 Ok(v) => v,
-                Err(e) => return Self::tool_error(e),
+                Err(e) => return Err(Refused(e)),
             }
             .as_ref(),
             &args.0.telling,
         ) {
-            Ok(report) => self.tool_json(&report),
-            Err(e) => self.op_error(e),
+            Ok(report) => Ok(Json(report)),
+            Err(e) => Err(self.refused(e)),
         }
     }
 
@@ -3491,24 +3530,24 @@ impl MnemosyneServer {
     async fn report_authoring_frontier(
         &self,
         args: Parameters<ReportAuthoringFrontierArgs>,
-    ) -> CallToolResult {
+    ) -> Result<Json<ops::AuthoringFrontierReport>, Refused> {
         match ops::authoring_frontier_report(
             &self.workspace,
             None,
             match mcp_path(&self.workspace, args.0.order_path.as_ref()) {
                 Ok(v) => v,
-                Err(e) => return Self::tool_error(e),
+                Err(e) => return Err(Refused(e)),
             }
             .as_ref(),
             args.0.telling.as_deref(),
             match mcp_path(&self.workspace, args.0.rules_path.as_ref()) {
                 Ok(v) => v,
-                Err(e) => return Self::tool_error(e),
+                Err(e) => return Err(Refused(e)),
             }
             .as_ref(),
         ) {
-            Ok(report) => self.tool_json(&report),
-            Err(e) => self.op_error(e),
+            Ok(report) => Ok(Json(report)),
+            Err(e) => Err(self.refused(e)),
         }
     }
 
@@ -3518,10 +3557,10 @@ impl MnemosyneServer {
     async fn report_disclosure_coverage(
         &self,
         args: Parameters<ReportDisclosureCoverageArgs>,
-    ) -> CallToolResult {
+    ) -> Result<Json<ops::DisclosureCoverageReport>, Refused> {
         match ops::disclosure_coverage_report(&self.workspace, None, &args.0.telling) {
-            Ok(report) => self.tool_json(&report),
-            Err(e) => self.op_error(e),
+            Ok(report) => Ok(Json(report)),
+            Err(e) => Err(self.refused(e)),
         }
     }
 
@@ -3531,11 +3570,11 @@ impl MnemosyneServer {
     async fn validate_disclosure_leak(
         &self,
         args: Parameters<DisclosureLeakArgs>,
-    ) -> CallToolResult {
+    ) -> Result<Json<ops::DisclosureLeakReport>, Refused> {
         let a = args.0;
         let against = match mcp_path(&self.workspace, Some(&a.against)) {
             Ok(p) => p.expect("a Some input yields a Some path"),
-            Err(e) => return Self::tool_error(e),
+            Err(e) => return Err(Refused(e)),
         };
         match ops::disclosure_leak_report(
             &self.workspace,
@@ -3543,40 +3582,43 @@ impl MnemosyneServer {
             &against,
             match mcp_path(&self.workspace, a.order_path.as_ref()) {
                 Ok(v) => v,
-                Err(e) => return Self::tool_error(e),
+                Err(e) => return Err(Refused(e)),
             }
             .as_ref(),
             &a.telling,
             &a.world,
             &a.truth_frame,
         ) {
-            Ok(report) => self.tool_json(&report),
-            Err(e) => self.op_error(e),
+            Ok(report) => Ok(Json(report)),
+            Err(e) => Err(self.refused(e)),
         }
     }
 
     #[tool(
         description = "Emit the SINGLE-WORLD PROJECTION validate_render_fidelity requires of its `against` store (R1070). That gate is single-world by contract, so a store spanning several world-lines draws its siblings off-path in bulk — a verdict about the caller, not the prose. Keeps every fact whose DECLARED world is part of `world`'s world-line (the world_membership lattice) and drops the rest; `store` omitted = the workspace's own store. Selection is by branch so the gate can still disagree on the COORDINATE — projecting by coordinate would hand the gate its own predicate and report clean forever. Fail-loud on a typo'd world. ANSWERS WITH: `world`, `out` (the path written), and the two counts that say whether the projection was worth making — `kept` and `dropped`."
     )]
-    async fn project_world(&self, args: Parameters<ProjectWorldArgs>) -> CallToolResult {
+    async fn project_world(
+        &self,
+        args: Parameters<ProjectWorldArgs>,
+    ) -> Result<Json<ops::WorldProjectionReport>, Refused> {
         let a = args.0;
         let out = match mcp_path(&self.workspace, Some(&a.out)) {
             Ok(p) => p.expect("a Some input yields a Some path"),
-            Err(e) => return Self::tool_error(e),
+            Err(e) => return Err(Refused(e)),
         };
         match ops::project_world_store(
             &self.workspace,
             None,
             match mcp_path(&self.workspace, a.store.as_ref()) {
                 Ok(v) => v,
-                Err(e) => return Self::tool_error(e),
+                Err(e) => return Err(Refused(e)),
             }
             .as_ref(),
             &a.world,
             &out,
         ) {
-            Ok(report) => self.tool_json(&report),
-            Err(e) => self.op_error(e),
+            Ok(report) => Ok(Json(report)),
+            Err(e) => Err(self.refused(e)),
         }
     }
 
@@ -3586,11 +3628,11 @@ impl MnemosyneServer {
     async fn validate_render_fidelity(
         &self,
         args: Parameters<RenderFidelityArgs>,
-    ) -> CallToolResult {
+    ) -> Result<Json<ops::RenderFidelityReport>, Refused> {
         let a = args.0;
         let against = match mcp_path(&self.workspace, Some(&a.against)) {
             Ok(p) => p.expect("a Some input yields a Some path"),
-            Err(e) => return Self::tool_error(e),
+            Err(e) => return Err(Refused(e)),
         };
         match ops::render_fidelity_report(
             &self.workspace,
@@ -3598,13 +3640,13 @@ impl MnemosyneServer {
             &against,
             match mcp_path(&self.workspace, a.order_path.as_ref()) {
                 Ok(v) => v,
-                Err(e) => return Self::tool_error(e),
+                Err(e) => return Err(Refused(e)),
             }
             .as_ref(),
             &a.world,
         ) {
-            Ok(report) => self.tool_json(&report),
-            Err(e) => self.op_error(e),
+            Ok(report) => Ok(Json(report)),
+            Err(e) => Err(self.refused(e)),
         }
     }
 
@@ -3830,22 +3872,28 @@ impl MnemosyneServer {
     // Round 278 — Phase 1A inventory tool surface.
 
     #[tool(
-        description = "List every inventory entry in the atomic store (id, status, section_ref), in id order."
+        description = "List every inventory entry in the atomic store, in id order. ANSWERS WITH: `entries`, each carrying `id`, `status`, `section_ref`, `source` and `reason`."
     )]
-    async fn list_inventory(&self, _args: Parameters<EmptyArgs>) -> CallToolResult {
+    async fn list_inventory(
+        &self,
+        _args: Parameters<EmptyArgs>,
+    ) -> Result<Json<InventoryEntries>, Refused> {
         match ops::list_inventory(&self.workspace) {
-            Ok(entries) => self.tool_json(&entries),
-            Err(e) => self.op_error(e),
+            Ok(entries) => Ok(Json(InventoryEntries { entries })),
+            Err(e) => Err(self.refused(e)),
         }
     }
 
     #[tool(
         description = "Look up a single inventory entry. Call this BEFORE writing an inventory citation in code to verify status (Deprecated → don't cite). ANSWERS WITH: `id` (the entry looked up), `status`, `section_ref`, `source`, `reason`."
     )]
-    async fn query_inventory(&self, args: Parameters<InventoryIdArgs>) -> CallToolResult {
+    async fn query_inventory(
+        &self,
+        args: Parameters<InventoryIdArgs>,
+    ) -> Result<Json<ops::InventoryEntryView>, Refused> {
         match ops::query_inventory(&self.workspace, &args.0.inventory_id) {
-            Ok(view) => self.tool_json(&view),
-            Err(e) => self.op_error(e),
+            Ok(view) => Ok(Json(view)),
+            Err(e) => Err(self.refused(e)),
         }
     }
 
@@ -3964,6 +4012,30 @@ impl rmcp::handler::server::tool::IntoCallToolResult for Refused {
         // as the tool's answer, exactly as `op_error` did.
         Ok(MnemosyneServer::tool_error(self.0))
     }
+}
+
+/// A LIST ANSWER, IN AN OBJECT (Round 1223).
+///
+/// MCP requires a tool's `output_schema` to have root type `object`, and rmcp
+/// refuses to publish one whose root is an array — so a tool that answered a
+/// bare JSON list could not carry a contract at all. Wrapping is the fix and it
+/// is an improvement rather than a tax: a named field is where a count or a
+/// truncation flag can later go, which is exactly what Round 1221 found missing
+/// on the reads whose empty list read as a clean answer.
+///
+/// The wrapper lives HERE rather than in `ops` because it is a fact about the
+/// MCP wire; the CLI reads the same op and wants the list.
+#[derive(Debug, Clone, Serialize, schemars::JsonSchema)]
+struct TermHits {
+    /// Every match, in the order the search found them.
+    hits: Vec<ops::TermHit>,
+}
+
+/// The inventory listing, in an object for the same reason as [`TermHits`].
+#[derive(Debug, Clone, Serialize, schemars::JsonSchema)]
+struct InventoryEntries {
+    /// Every registered entry, in id order.
+    entries: Vec<ops::InventoryEntryView>,
 }
 
 /// The answer an inventory mutate gives — the receipt every write carries, plus
@@ -4458,13 +4530,13 @@ mod tests {
             }))
             .expect("args parse")
         };
-        let absolute = answer_text(
-            &server
+        let absolute = observed_answer(&answered(
+            server
                 .validate_render_fidelity(Parameters(fidelity(
                     ws.path().join("blind.json").display().to_string(),
                 )))
                 .await,
-        );
+        ));
         assert!(
             absolute.contains("\"reextracted_facts\": 1"),
             "the absolute arm did not read the one fact the blind store holds, \
@@ -4472,11 +4544,11 @@ mod tests {
              than the base: {absolute}"
         );
 
-        let relative = answer_text(
-            &server
+        let relative = observed_answer(&answered(
+            server
                 .validate_render_fidelity(Parameters(fidelity("blind.json".to_string())))
                 .await,
-        );
+        ));
         assert_eq!(
             relative, absolute,
             "`against: \"blind.json\"` did not reach the file of that name in \
@@ -4541,14 +4613,14 @@ mod tests {
             "against": absent, "world": "main", "order_path": "order.json",
         }))
         .expect("args parse");
-        let answered = server.validate_render_fidelity(Parameters(fidelity)).await;
+        let said = answered(server.validate_render_fidelity(Parameters(fidelity)).await);
         assert_eq!(
-            answered.is_error,
+            said.is_error,
             Some(true),
             "the fidelity gate answered a store that is not there instead of \
              refusing it, and the answer an agent gets is the shape of a pass: \
              {}",
-            answer_text(&answered)
+            answer_text(&said)
         );
 
         let leak: DisclosureLeakArgs = serde_json::from_value(serde_json::json!({
@@ -4556,13 +4628,13 @@ mod tests {
             "truth_frame": "ground-truth", "order_path": "order.json",
         }))
         .expect("args parse");
-        let answered = server.validate_disclosure_leak(Parameters(leak)).await;
+        let said = answered(server.validate_disclosure_leak(Parameters(leak)).await);
         assert_eq!(
-            answered.is_error,
+            said.is_error,
             Some(true),
             "the leak gate answered a store that is not there instead of \
              refusing it: {}",
-            answer_text(&answered)
+            answer_text(&said)
         );
     }
 
@@ -5838,7 +5910,7 @@ mod tests {
             "manifest_path": ws.join("candidate.json").to_string_lossy(),
         }))
         .expect("args parse");
-        let said = answer_text(&server.propose_verdict(Parameters(named)).await);
+        let said = answer_text(&answered(server.propose_verdict(Parameters(named)).await));
         assert!(
             said.contains("sc-nowhere"),
             "the verdict says nothing about the manifest the agent named, so \
@@ -5852,7 +5924,7 @@ mod tests {
             "manifest_path": ws.join("no-such-manifest.json").to_string_lossy(),
         }))
         .expect("args parse");
-        let result = server.propose_verdict(Parameters(missing)).await;
+        let result = answered(server.propose_verdict(Parameters(missing)).await);
         assert_eq!(
             result.is_error,
             Some(true),
@@ -6064,11 +6136,11 @@ mod tests {
                 "falls-after-it-rises",
             ),
         ] {
-            let refused = answer_text(
-                &server
+            let refused = observed_answer(&answered(
+                server
                     .propose_verdict(Parameters(verdict_on(manifest, name)))
                     .await,
-            );
+            ));
             assert!(
                 refused.contains("rollback"),
                 "{what} came back without `rollback`, so an agent acting on this \
@@ -6106,11 +6178,11 @@ mod tests {
              work here rather than a sentence in a carry"
         );
 
-        let accepted = answer_text(
-            &server
+        let accepted = observed_answer(&answered(
+            server
                 .propose_verdict(Parameters(verdict_on(staying, "staying.json")))
                 .await,
-        );
+        ));
         assert!(
             accepted.contains("commit"),
             "a beat the map has no objection to did not come back `commit`, so \
@@ -6136,7 +6208,9 @@ mod tests {
             "rules_path": "rules.json",
         }))
         .expect("args parse");
-        let lenient = answer_text(&unset.propose_verdict(Parameters(same_candidate)).await);
+        let lenient = observed_answer(&answered(
+            unset.propose_verdict(Parameters(same_candidate)).await,
+        ));
         assert!(
             lenient.contains("\"verdict\": \"commit\"")
                 && lenient.contains("rule_transition_invalid"),
@@ -6417,11 +6491,13 @@ mod tests {
             .filter(|t| t.output_schema.is_some())
             .map(|t| t.name.to_string())
             .collect();
-        // The write envelope, and nothing else yet: 62 tools answering
-        // `MutateOutcome` and 3 answering the inventory cascade.
+        // R1222 did the write envelope (65). R1223 did every read whose answer
+        // is a REPORT — the 31 that already spoke JSON. What is left is named in
+        // the ledger rather than counted here: three tools that answer PROSE,
+        // and whether they get a shape is a decision, not a conversion.
         assert_eq!(
             typed.len(),
-            65,
+            97,
             "[output schema] {} of {} routed tools publish one. The arc converts in groups and \
              this number is its ledger — if a group just landed, raise it; if it FELL, a tool \
              lost its schema and the agent lost the contract. Typed: {typed:?}",
@@ -6560,6 +6636,23 @@ mod tests {
     fn answered<R: rmcp::handler::server::tool::IntoCallToolResult>(r: R) -> CallToolResult {
         r.into_call_tool_result()
             .expect("a tool must refuse as a tool result, never as a protocol error")
+    }
+
+    /// WHAT A DIFFERENTIAL READS WHEN IT WATCHES A TOOL'S ANSWER (Round 1223).
+    ///
+    /// A typed tool's answer is its `structuredContent`; the text block beside
+    /// it is a rendering, and rmcp writes that one COMPACT. The differentials
+    /// name needles like `"at_placed": false` — pretty-printed — so reading the
+    /// text half would have made every one of them fail on spacing the moment
+    /// its tool was typed, which is a change in the OBSERVER dressed as a change
+    /// in the tool. Reading the structured half and pretty-printing it keeps the
+    /// oracle on the contract: what the needle now follows is the value the
+    /// schema describes, not a rendering choice made inside rmcp.
+    fn observed_answer(result: &CallToolResult) -> String {
+        match &result.structured_content {
+            Some(value) => serde_json::to_string_pretty(value).unwrap_or_default(),
+            None => answer_text(result),
+        }
     }
 
     /// Everything a tool said, joined — the read-side counterpart of the store
@@ -6787,7 +6880,7 @@ mod tests {
                         written.push(match stringify!($oracle) {
                             "store" => std::fs::read_to_string(&store_path)
                                 .expect("read the store"),
-                            "output" | "outcome" => answer_text(&result),
+                            "output" | "outcome" => observed_answer(&result),
                             other => panic!(
                                 "`{other}` is not an oracle this macro knows; \
                                  write `store` or `output`"

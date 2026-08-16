@@ -476,6 +476,7 @@ impl EvidenceRef {
 /// `entity_id` seat of the convergence-B index key
 /// `(branch_id, entity_id, valid_from)`.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct Entity {
     /// Registered kind ref — a key of `AtomicStore.entity_kinds`, NOT free
     /// text. Optional (empty = unspecified); a NON-empty value must resolve,
@@ -729,6 +730,7 @@ crate::closed_vocabulary!(PredicateObjectKind {
 /// `subject_kind` / `object_entity_kind` (Round 701) it becomes load-bearing —
 /// the write-path endpoint gate matches an endpoint entity's kind against it.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct Predicate {
     /// Declared object shape; the builder enforces it on every typed leg.
     pub object_kind: PredicateObjectKind,
@@ -1066,6 +1068,7 @@ fn disclosure_mode_is_withhold(m: &DisclosureMode) -> bool {
 /// STORED for the render-brief carrier but NOT gated (the gate uses `mode` +
 /// `first_at` only; `surface` is craft guidance).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct DisclosureSurface {
     /// Structure-section ref the disclosure surfaces in.
     pub scene: crate::SectionId,
@@ -1093,6 +1096,7 @@ pub struct DisclosureSurface {
 /// canonical first-reached default); UNLIKE the edge guard, `Some(len)` is NOT
 /// normalized away — each k is a DISTINCT semantic (`Some(len)` = last-reached).
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct DisclosureReveal {
     /// The discourse-coordinate trigger set (each a canon structure-section ref,
     /// per-member dangling-ref checked). An emptied set drops the whole world

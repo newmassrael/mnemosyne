@@ -18,6 +18,14 @@ serde_json.workspace = true
 anyhow.workspace = true
 thiserror.workspace = true
 regex.workspace = true
+# Round 1223 — OPTIONAL, off by default, the shape Round 690 established for
+# core and atomic and Round 1222 extended to ops. Only the `schemars` feature —
+# enabled solely by mnemosyne-mcp — pulls it, so the reports this crate produces
+# can publish a real MCP `output_schema` from the one type.
+schemars = { workspace = true, optional = true }
+
+[features]
+schemars = ["dep:schemars", "mnemosyne-atomic/schemars", "mnemosyne-core/schemars"]
 
 [dev-dependencies]
 tempfile.workspace = true

@@ -19,6 +19,7 @@ pub struct StyleCheckInput {
 }
 
 #[derive(Debug, Clone, Serialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct StyleCheckReport {
     pub doc_filter: Option<String>,
     pub severity_filter: String,
@@ -29,6 +30,7 @@ pub struct StyleCheckReport {
 }
 
 #[derive(Debug, Clone, Serialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct StyleViolationView {
     pub doc_path: String,
     pub section_id: String,

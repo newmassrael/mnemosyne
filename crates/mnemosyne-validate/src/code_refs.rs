@@ -82,6 +82,7 @@ use serde::Serialize;
 /// `""` — `§` prefix kept so the kind axis is readable from the id
 /// alone).
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct Citation {
     pub file: PathBuf,
     pub line: usize,
@@ -96,6 +97,7 @@ pub struct Citation {
 /// comparison is membership and the report prints the whole set rather than
 /// picking one to look definite.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct ReadSymbol {
     /// The symbol the resolver answered for this line.
     pub found: String,
@@ -120,6 +122,7 @@ pub struct ReadSymbol {
 /// whether it exists carries nothing, and says so by name in the table rather
 /// than by an absence a reader has to interpret.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub enum CitationEvidence {
     /// [`ViolationKind::SymbolMismatch`] — the name the resolver answered and
     /// the set the store records (Round 1158).
@@ -230,6 +233,7 @@ impl CitationEvidence {
 /// code witness vs a section with no impl entries at all), so the enum
 /// splits at those natural boundaries.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub enum CodeRefViolation {
     /// Citation-side violation — there is a concrete cite at file:line,
     /// and the cite is wrong in some way (`kind` distinguishes how).
@@ -869,6 +873,7 @@ pub struct PathScope {
 /// run, at every value, for the Round 819 reason: an empty answer is the shape
 /// of "clean" and the shape of "nothing was read".
 #[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct PathScopeCoverage {
     /// Every path the caller named, normalized workspace-relative.
     pub requested: Vec<String>,
@@ -1370,6 +1375,7 @@ pub enum DefectClass {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub enum ViolationKind {
     /// `entry_id` not in the atomic store `changelog_entries` map
     /// (hallucinated or refers to a removed entry).
@@ -1624,6 +1630,7 @@ pub fn scan_coverage(
 
 /// A citation that exists ONLY inside an excluded tree (Round 840).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct SwallowedCitation {
     /// The cited section id, exactly as written.
     pub section_id: String,
@@ -1740,6 +1747,7 @@ pub fn swallowed_citations(
 /// ADVISORY finding, never a violation. See [`scan_id_citations`] for why the
 /// axis stops at advisory.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct IdCiteFinding {
     pub file: PathBuf,
     pub line: usize,
@@ -1751,6 +1759,7 @@ pub struct IdCiteFinding {
 /// because an axis that quietly covers nothing reads exactly like an axis that
 /// passes (the Round 807/811 rule).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Default)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct IdCiteReport {
     /// Namespace prefixes DERIVED from the store's own key space, with the
     /// number of ids each covers. Empty = the axis has nothing to run on.
@@ -3025,6 +3034,7 @@ pub fn comment_syntax_for(path: &Path) -> CommentSyntax {
 /// artifact is excluded by the UTF-8 property it inherently lacks, not by a name
 /// on a skip list that would drift the way every hand list here has.
 #[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct CommentModeCoverage {
     /// Files under the configured paths.
     pub scanned: usize,
@@ -3120,6 +3130,7 @@ pub fn comment_mode_coverage(read_set: &[PathBuf]) -> CommentModeCoverage {
 /// handed a path list, and has no `--no-index` footgun a later edit could trip.
 /// Nothing in the counts depends on it.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[serde(tag = "state", rename_all = "snake_case")]
 pub enum VcsIgnoreAxis {
     /// The VCS answered for this tree.
@@ -3315,6 +3326,7 @@ fn extension_histogram(paths: &[PathBuf]) -> BTreeMap<String, usize> {
 /// set of files (Round 984). Three states for the Round 856 reason: "none
 /// absent" and "nobody asked" are different facts.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum VcsRecordAxis {
     Measured {
@@ -3372,6 +3384,7 @@ pub enum VcsRecordAxis {
 /// other axis in this family, this one LOOSENS — it makes citations disappear —
 /// so an unanswerable VCS must never be able to un-gate anything.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[serde(tag = "state", rename_all = "snake_case")]
 pub enum NumberingOriginAxis {
     /// The VCS answered for this tree.
@@ -3446,6 +3459,7 @@ impl NumberingOriginAxis {
 
 /// What one file's `§N.M` tokens turned out to be.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Default)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct FileCitations {
     /// Tokens that cite THIS store, `(line, section_id)`.
     pub cited: Vec<(usize, String)>,
@@ -3593,6 +3607,7 @@ impl<'a> CitationAttribution<'a> {
 /// built: a monorepo that shares numbering across a submodule reads this line and
 /// asks for an override, rather than the override being speculated into existence.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct NumberingOriginReport {
     pub axis: NumberingOriginAxis,
     /// Files handed in — the set whose attribution this describes.
@@ -4903,6 +4918,7 @@ impl SetEqualityValidator {
 
 /// Files an axis reached, and how many of them carry a citation it gates.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct AxisFileCount {
     pub files: usize,
     /// Of those, the ones holding at least one citation this ledger gates —
@@ -4913,6 +4929,7 @@ pub struct AxisFileCount {
 /// What the symbol axis covers under a given config (Round 855). See
 /// [`SetEqualityValidator::symbol_axis_coverage`].
 #[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct SymbolAxisCoverage {
     /// Extension → count, for extensions no resolver can apply to. A citation
     /// in one of these binds at FILE level whatever `severity_binding` says.
@@ -4970,6 +4987,7 @@ impl SymbolAxisCoverage {
 /// citation-density dimension). `file` is workspace-relative; `line` is
 /// 1-indexed. `Ord` sorts by `(file, line)` for stable output.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, serde::Serialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct CitationSite {
     pub file: String,
     pub line: usize,
@@ -4982,6 +5000,7 @@ pub struct CitationSite {
 /// the resolver could not name (no resolver for the language, or a cite
 /// sitting outside any declaration) — those bind at file granularity only.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, serde::Serialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct ProposedImplementation {
     pub section_id: String,
     pub file: String,

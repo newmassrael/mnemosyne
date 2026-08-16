@@ -46,6 +46,7 @@ use thiserror::Error;
 
 /// SectionView — `section_by_id` carry form. Top-level of the JSON envelope.
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct SectionView {
     pub section_id: String,
     pub parent_doc: String,
@@ -101,6 +102,7 @@ pub struct SectionView {
 
 /// RelatedSections — `related_sections` carry form. 1-hop traversal result.
 #[derive(Debug, Clone, Default, Serialize, PartialEq, Eq)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct RelatedSections {
     pub outbound_refs: Vec<CrossRefView>,
     pub inbound_refs: Vec<CrossRefView>,
@@ -108,6 +110,7 @@ pub struct RelatedSections {
 
 /// CrossRefView — RelatedSections's nested cross-ref view.
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct CrossRefView {
     pub from_doc: String,
     pub from_section: String,
@@ -125,6 +128,7 @@ pub struct CrossRefView {
 /// 244 schema-doc consistency. citation_count = sub_bullets + atomic 5-field
 /// summed across fulltext + impact_refs structural matches.
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct ChangelogEntryView {
     pub entry_id: String,
     pub parent_doc: String,
@@ -155,6 +159,7 @@ pub struct ChangelogEntryView {
 
 /// QueryEnvelope — top-level JSON output shape (Claude-consumable).
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct QueryEnvelope {
     pub section: SectionView,
     pub outbound_refs: Vec<CrossRefView>,
@@ -292,6 +297,7 @@ pub fn changelog_entries_for_section(
 /// ledger size, so a `limit`-bounded read is never mistaken for the whole
 /// ledger (no-silent-caps — Round 470).
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct ChangelogLedgerView {
     pub total: usize,
     pub entries: Vec<ChangelogEntryView>,
@@ -531,6 +537,7 @@ pub enum TermScope {
 
 /// Entity kind a [`TermHit`] originated from.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[serde(rename_all = "snake_case")]
 pub enum TermTargetKind {
     Section,
@@ -558,6 +565,7 @@ pub struct TermQuery {
 
 /// One match returned by [`query_term`].
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct TermHit {
     pub target_kind: TermTargetKind,
     pub target_id: String,

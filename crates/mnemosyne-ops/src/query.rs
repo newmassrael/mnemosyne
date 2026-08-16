@@ -26,12 +26,14 @@ pub enum QuerySectionMode {
 }
 
 #[derive(Debug, Clone, Serialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct ListSectionsReport {
     pub section_ids: Vec<String>,
     pub total: usize,
 }
 
 #[derive(Debug, Clone, Serialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct InventoryEntryView {
     pub id: String,
     pub status: &'static str,
@@ -41,6 +43,7 @@ pub struct InventoryEntryView {
 }
 
 #[derive(Debug, Clone, Serialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[serde(untagged)]
 pub enum QuerySectionPayload {
     Brief(SectionView),

@@ -108,6 +108,7 @@ fn evidence_sections(fact: &NarrativeFact) -> Vec<String> {
 /// it is measured against the real corpus: over-rejection is as fatal as the
 /// silent pass it replaces.
 #[derive(Debug, Clone, Default, Deserialize, Serialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[serde(deny_unknown_fields)]
 pub struct CanonOrderFile {
     /// Version tag the dogfood/consumer files carry; parsed so it is allowed.
@@ -899,6 +900,7 @@ pub enum IntervalBound {
 
 /// Which typed leg an exclusive rule keys on.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[serde(rename_all = "snake_case")]
 pub enum ExclusiveKey {
     Subject,
@@ -1142,6 +1144,7 @@ const NARRATIVE_RULES_SCHEMA: &str = "narrative-rules/v1";
 // names every emitted key, so a serde rename here fails the build until the prose
 // is updated (the TEST-guarded tier, not hand-authored tier-3).
 #[derive(Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[serde(deny_unknown_fields)]
 struct NarrativeRulesWire {
     #[serde(default)]
@@ -1159,6 +1162,7 @@ struct NarrativeRulesWire {
 /// miss) or an exclusive carrying `adjacency` rejects rather than silently
 /// dropping the stray leg, and a missing leg is named.
 #[derive(Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[serde(deny_unknown_fields)]
 struct NarrativeRuleWire {
     id: String,
@@ -1205,6 +1209,7 @@ struct NarrativeRuleWire {
 /// of `predicate` / `const` set (checked in [`narrative_rule_from_wire`], the
 /// explicit-coherence idiom over serde `untagged`).
 #[derive(Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[serde(deny_unknown_fields)]
 struct IntervalBoundWire {
     #[serde(default)]
@@ -1227,6 +1232,7 @@ struct IntervalBoundWire {
 /// contract). The enumeration is now derived from serde's own variant list
 /// (`schema::serde_variants`); the exhaustive match still forces the gloss.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[serde(rename_all = "snake_case")]
 pub(crate) enum RuleClass {
     Exclusive,
@@ -1496,6 +1502,7 @@ fn interval_bound_from_wire(id: &str, w: IntervalBoundWire) -> Result<IntervalBo
 
 /// One continuity violation.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum ContinuityViolation {
     /// Same-scope conflicting claims co-hold at canon point `at`. Scope =
@@ -2032,6 +2039,7 @@ pub enum ContinuityViolation {
 /// [`mnemosyne_core::PrefixResolution`], the one rule both the store and the
 /// engine's slicer call (Round 815).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub enum RungMiss {
     /// The prefix does not occur in the section's current prose — the shape a
     /// re-imported or edited excerpt produces.
@@ -2101,6 +2109,7 @@ pub fn evaluate_continuity_gate(
 
 /// Scan result — pure data; severity/gating policy belongs to the caller.
 #[derive(Debug, Clone, Default, Serialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct ContinuityReport {
     pub violations: Vec<ContinuityViolation>,
     /// Distinct recorded conflict pairs evaluated.
@@ -2283,6 +2292,7 @@ pub struct ContinuityReport {
 
 /// One transition rule whose completeness class went unevaluated (Round 934).
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct UnaskableCompleteness {
     /// The rule that declares the map.
     pub rule: String,
@@ -2843,6 +2853,7 @@ fn resolve_operand<'a>(
 /// `report-timeline-gaps` (the read surface) presents all three. So the gate
 /// and the report can never drift (R305/R390 single-reader discipline).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct IntervalOutcome {
     pub rule: String,
     /// Left operand predicate (the rule's primary `predicate`).
@@ -2861,6 +2872,7 @@ pub struct IntervalOutcome {
 
 /// The three deterministic interval verdicts (Round 489/490).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum IntervalVerdict {
     /// Both operands and the bound resolved; the relation HELD.
@@ -3125,6 +3137,7 @@ fn check_rule_predicates(store: &AtomicStore, rules: &[NarrativeRule]) -> Result
 /// One world's interval outcomes (Round 490). Every query world appears, so a
 /// world with no gaps shows an explicit empty list (a clean dashboard).
 #[derive(Debug, Clone, Default, Serialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct WorldTimelineGaps {
     pub outcomes: Vec<IntervalOutcome>,
 }
@@ -3134,6 +3147,7 @@ pub struct WorldTimelineGaps {
 /// gated. Only `interval` rules contribute; exclusive/transition rules are
 /// the continuity gate's, not a timeline surface.
 #[derive(Debug, Clone, Default, Serialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct TimelineGapsReport {
     /// THE `--world` FILTER (Round 1049), `None` = every query world. `worlds`
     /// below is what ANSWERED; this is what was asked, and the two are not the
@@ -4756,6 +4770,7 @@ fn adjacency_allowed_at<'a>(
 /// a second walk built to describe the first is the instrument defect R920
 /// measured, where a regex built beside the data answered for the data.
 #[derive(Debug, Clone, serde::Serialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct StepJudgement {
     pub rule: String,
     pub predicate: String,
@@ -5497,6 +5512,7 @@ fn scan_spatial_map(
 
 /// One fact currently in effect in a frame view.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct FrameViewEntry {
     pub fact_id: String,
     pub claim: String,
@@ -5526,6 +5542,7 @@ pub struct FrameViewEntry {
 /// comparable to the query point, so the declaration cannot decide. Scoped
 /// to one world-line (`branch`, Round 433) — a view never mixes branches.
 #[derive(Debug, Clone, Default, Serialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct FrameView {
     /// OUTPUT BOUNDARY (Round 843) — see [`ManuscriptFactEvent::frame`].
     pub frame: String,
@@ -5676,6 +5693,7 @@ pub fn frame_view(
 
 /// One payoff edge reference surfaced by the coverage report (Round 442).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct PayoffEdgeRef {
     pub payoff: String,
     pub setup: String,
@@ -5683,6 +5701,7 @@ pub struct PayoffEdgeRef {
 
 /// One paid setup with the in-world payoffs that credit it.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct PaidSetup {
     pub setup: String,
     pub payoffs: Vec<String>,
@@ -5698,6 +5717,7 @@ pub struct PaidSetup {
 /// by setup read a narrowing as a contradiction — the R1037 class, in a store
 /// where nothing is wrong. The field says which one it is.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct SubstantiatedSetup {
     pub setup: String,
     pub discharging_payoffs: Vec<String>,
@@ -5714,6 +5734,7 @@ pub struct SubstantiatedSetup {
 /// never gated), and `unknown` (world visibility undecidable under the
 /// declared order — B-1, mirroring the frame view).
 #[derive(Debug, Clone, Default, Serialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct WorldPayoffCoverage {
     pub paid: Vec<PaidSetup>,
     pub dangling: Vec<String>,
@@ -5734,6 +5755,7 @@ pub struct WorldPayoffCoverage {
 /// projection — severity/gating policy deliberately does not exist for
 /// dangling setups.
 #[derive(Debug, Clone, Default, Serialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct PayoffCoverageReport {
     pub worlds: BTreeMap<String, WorldPayoffCoverage>,
     pub facts: usize,
@@ -5950,6 +5972,7 @@ pub fn payoff_coverage(
 ///   class on a prose-first store and is the correct deterministic statement,
 ///   not a failure.
 #[derive(Debug, Clone, Default, Serialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct WorldPayoffSubstantiation {
     pub substantiated: Vec<SubstantiatedSetup>,
     pub unsubstantiated: Vec<PaidSetup>,
@@ -5971,6 +5994,7 @@ pub struct WorldPayoffSubstantiation {
 /// Whole-store payoff substantiation (Round 485). Pure read projection over the
 /// declared typed structure — no LLM, re-runnable, deterministic.
 #[derive(Debug, Clone, Default, Serialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct PayoffSubstantiationReport {
     pub worlds: BTreeMap<String, WorldPayoffSubstantiation>,
     /// Distinct facts marked `expected`, store-wide (pass-through from coverage).
@@ -6064,6 +6088,7 @@ pub fn payoff_substantiation(
 /// One recorded cross-frame conflict edge (read symmetrically; endpoints
 /// id-ordered like the gate's pair key).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct IronyEdgeRef {
     pub fact_a: String,
     pub fact_b: String,
@@ -6075,6 +6100,7 @@ pub struct IronyEdgeRef {
 /// not a span — under a partial (DAG) order the co-hold region need not
 /// be contiguous, and a (from, to) pair would lie about that.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct IronyWindow {
     pub fact_a: String,
     pub fact_b: String,
@@ -6103,6 +6129,7 @@ pub struct IronyWindow {
 /// with an `Out` endpoint is not this world's business and reports where
 /// it IS visible.
 #[derive(Debug, Clone, Default, Serialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct WorldIrony {
     pub windows: Vec<IronyWindow>,
     pub windowless: Vec<IronyEdgeRef>,
@@ -6113,6 +6140,7 @@ pub struct WorldIrony {
 /// Dramatic-irony intervals over every query world (Round 455) — pure
 /// read projection, never gated (irony is craft signal, not defect).
 #[derive(Debug, Clone, Default, Serialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct IronyIntervalsReport {
     pub worlds: BTreeMap<String, WorldIrony>,
     pub facts: usize,
@@ -6240,6 +6268,7 @@ pub fn irony_intervals(
 /// `canon_from` = when it is TRUE); `surface` = the diegetic carrier. Craft
 /// guidance for the LLM render step (Layer B), NEVER gated.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct FactDisclosure {
     /// The effective disclosure mode — serializes as its snake_case tag
     /// (`withhold`/`state`/`hint`/`imply`); a typed enum, not a stringly field
@@ -6260,6 +6289,7 @@ pub struct FactDisclosure {
 /// world-scoped, so frame is data on the event (a renderer splits
 /// reader-knowledge from character-belief without a second query).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct ManuscriptFactEvent {
     pub fact_id: String,
     /// OUTPUT BOUNDARY (Round 843): the store holds this as a
@@ -6294,6 +6324,7 @@ pub struct ManuscriptFactEvent {
 /// successor's `canon_from` equals the scene node (the replaced fact no
 /// longer holds FROM it).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[serde(rename_all = "snake_case")]
 pub enum ManuscriptEndKind {
     Expired,
@@ -6302,6 +6333,7 @@ pub enum ManuscriptEndKind {
 
 /// One end event in a playthrough scene (Round 466).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct ManuscriptEndEvent {
     pub fact_id: String,
     pub frame: String,
@@ -6319,6 +6351,7 @@ pub struct ManuscriptEndEvent {
 /// other — a delta reconstruction that disagrees with the count has hit
 /// an unplaced coordinate, never a second semantics).
 #[derive(Debug, Clone, Serialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct ManuscriptScene {
     pub section: String,
     pub title: String,
@@ -6340,6 +6373,7 @@ pub struct ManuscriptScene {
 /// coordinate is a section, but this world's composed order never names
 /// it, so no scene carries the event — surfaced, never silently dropped.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct ManuscriptUnplacedFact {
     pub fact_id: String,
     /// Which declared field points outside the order: `canon_from`,
@@ -6353,6 +6387,7 @@ pub struct ManuscriptUnplacedFact {
 
 /// One world's linear manuscript (Round 466, design sec 7.17).
 #[derive(Debug, Clone, Default, Serialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct WorldManuscript {
     pub scenes: Vec<ManuscriptScene>,
     /// Adjacent emitted pairs the composed order cannot compare — the
@@ -6386,6 +6421,7 @@ pub struct WorldManuscript {
 /// projection, never gated (a manuscript is a reading surface, not a
 /// defect detector).
 #[derive(Debug, Clone, Default, Serialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct PlaythroughManuscriptReport {
     /// THE TELLING THIS MANUSCRIPT WAS READ UNDER (Round 1048), `None` when
     /// none was named — the argument that decided the `disclosure` column on
@@ -6636,6 +6672,7 @@ fn resolve_fact_disclosure(
 /// A fork's divergence coordinate, resolved against the parent world's
 /// composed order (Round 497, design sec 7.21).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct ForkTreeEdge {
     /// Parent world-line (`MAIN_BRANCH` or a registered branch).
     pub parent: String,
@@ -6664,6 +6701,7 @@ pub struct ForkTreeEdge {
 /// confluence a branch flows into is the opposite direction. One message for two
 /// relations is the naming lie this project refuses elsewhere.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct ForkTreeRejoin {
     /// The confluence world-line this branch merges into.
     pub into: String,
@@ -6682,6 +6720,7 @@ pub struct ForkTreeRejoin {
 /// state), the `fork` = the choice point, `description` = the choice label.
 /// Pure projection of the stored [`mnemosyne_core::Branch`].
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct ForkTreeBranch {
     pub branch_id: String,
     /// The branch's free-form description — the CYOA choice label for a
@@ -6719,6 +6758,7 @@ pub struct ForkTreeBranch {
 /// stitches them at the fork points. Pure read projection, never gated (a
 /// choice graph is a reading surface, not a defect detector).
 #[derive(Debug, Clone, Default, Serialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct ForkTreeReport {
     /// Every registered branch, branch-id sorted (the `BTreeMap` order;
     /// `MAIN_BRANCH` is the default axis, never registered, so never listed).
@@ -6846,6 +6886,7 @@ pub fn fork_tree(store: &AtomicStore, order: &CanonOrder) -> Result<ForkTreeRepo
 /// resolver (R510), so a locator cannot drift from the coverage surface or the
 /// `--telling` carrier (one resolver, no second semantics).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct MapLocator {
     /// The world-line this pointer belongs to (`MAIN_BRANCH` or a branch id).
     pub world_line: String,
@@ -6891,6 +6932,7 @@ pub struct MapLocator {
 /// `sections_off_road`. A [`MapLocator`]'s `scene_ordinal` indexes
 /// `manuscript.scenes`.
 #[derive(Debug, Clone, Default, Serialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct PlayableWorld {
     /// The world's manuscript (R466) reused verbatim: the ordered scene walk +
     /// the B-1 honesty surfaces. `MapLocator::scene_ordinal` indexes
@@ -6912,6 +6954,7 @@ pub struct PlayableWorld {
 /// One map edge as the read emits it (Round 875) — the `adjacency` fact that
 /// declares the step, plus the two side-table values keyed by that fact id.
 #[derive(Debug, Clone, Serialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct TransitionMapEdge {
     /// The `adjacency` fact declaring this step — the key BOTH side tables use.
     pub fact_id: String,
@@ -6936,6 +6979,7 @@ pub struct TransitionMapEdge {
 
 /// An edge's stored cost (Round 875 read of the R710 `edge_costs` side table).
 #[derive(Debug, Clone, Serialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct TransitionMapCost {
     pub n: i64,
     /// A ref into the store's `units` registry, checked at write time (R706).
@@ -6945,6 +6989,7 @@ pub struct TransitionMapCost {
 /// An edge's stored guard (Round 875 read of the R722/R723 `edge_guards` side
 /// table). `threshold` absent = require ALL the conditions (the canonical AND).
 #[derive(Debug, Clone, Serialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct TransitionMapGuard {
     pub conditions: Vec<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -6955,6 +7000,7 @@ pub struct TransitionMapGuard {
 /// gate excludes a self-loop from the edge set, and an authored fact missing
 /// from `edges` with no reason given reads as "never authored".
 #[derive(Debug, Clone, Serialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct TransitionMapSelfLoop {
     pub fact_id: String,
     pub node: String,
@@ -6963,6 +7009,7 @@ pub struct TransitionMapSelfLoop {
 /// One declared map (Round 875) — a transition rule plus the store facts its
 /// `adjacency` predicate names.
 #[derive(Debug, Clone, Serialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct TransitionMapView {
     /// The transition rule that DECLARES this map ("룰로 박아" — the rule is the
     /// declaration, the store facts are the edges).
@@ -7000,6 +7047,7 @@ pub struct TransitionMapView {
 /// Pure read projection, never gated. Flat and un-scoped, exactly as the gate
 /// evaluates the map.
 #[derive(Debug, Clone, Default, Serialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct TransitionMapReport {
     /// One entry per transition rule, in rule order.
     pub maps: Vec<TransitionMapView>,
@@ -7119,6 +7167,7 @@ pub fn transition_map(
 /// One declared map's AUTHORING gap (Round 891) — the registered places the
 /// map leaves unconnected.
 #[derive(Debug, Clone, Serialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct MapFrontierView {
     /// The transition rule that DECLARES this map (R697) — the finding's name.
     pub rule: String,
@@ -7162,6 +7211,7 @@ pub struct MapFrontierView {
 /// re-deriving edges: the frontier cannot disagree with the read about what an
 /// edge is, exactly as R875 made the read unable to disagree with the gate.
 #[derive(Debug, Clone, Default, Serialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct MapFrontierReport {
     /// One entry per declared map, in rule order.
     pub maps: Vec<MapFrontierView>,
@@ -7234,6 +7284,7 @@ pub fn map_frontier(
 /// Pure read projection, never gated (a playable surface is a reading surface,
 /// not a defect detector) — it adds no traversal and no authoritative state.
 #[derive(Debug, Clone, Default, Serialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct PlayableWorldReport {
     /// The telling whose disclosure plan resolved the locators.
     pub telling: String,
@@ -7526,6 +7577,7 @@ fn quest_discharges<'a>(
 /// line: a reader who cannot tell "nothing to prove here" from "this is broken"
 /// is misinformed by a clean report).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[serde(rename_all = "snake_case")]
 pub enum UnresolvedQuestReason {
     /// No `completed_by` fact names this quest at all — the author has not
@@ -7554,6 +7606,7 @@ impl UnresolvedQuestReason {
 
 /// One quest with no giving setup bound, and why (Round 1037).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct UnresolvedQuest {
     pub quest: String,
     pub reason: UnresolvedQuestReason,
@@ -7639,6 +7692,7 @@ pub fn unresolved_quests(store: &AtomicStore) -> Result<Vec<UnresolvedQuest>, St
 /// is being misinformed by a clean report (the R918/R924 line, applied to a
 /// verdict rather than a counter).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[serde(tag = "verdict", rename_all = "snake_case")]
 pub enum QuestPrerequisiteVerdict {
     /// This road discharges the prerequisite strictly before the dependent.
@@ -7666,6 +7720,7 @@ pub enum QuestPrerequisiteVerdict {
 /// Collapsing those to an "earliest" would need a total order the canon order
 /// does not promise, and would hide the second promise behind the first.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct QuestPrerequisiteJudgement {
     /// The `requires` subject — the quest that declares the gate.
     pub quest: String,
@@ -7870,6 +7925,7 @@ pub fn structural_fact_ids(store: &AtomicStore) -> Result<BTreeSet<String>, Stri
 /// so the two shipped reads contradicted each other about the blind-authored
 /// corpus's main quest.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[serde(rename_all = "snake_case")]
 pub enum QuestState {
     /// A giving fact of this quest is `paid` in this world (R442) — done here.
@@ -7901,6 +7957,7 @@ impl QuestState {
 /// paid here), kept only when the crediting fact carries THIS quest's
 /// `completed_by` claim; the `actor` is that claim's named discharger.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct QuestCompletion {
     /// The fact that pays off a giving setup in this world (a `narrative_facts`
     /// key) — what pinion dereferences for the completion beat.
@@ -7919,6 +7976,7 @@ pub struct QuestCompletion {
 /// quest done on one terminal and open on another — is exactly two different
 /// `QuestWorldState`s, the R559 "derived per world-line" claim made data.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct QuestWorldState {
     pub state: QuestState,
     /// The completion fact(s) discharging this quest here; empty when open.
@@ -7950,6 +8008,7 @@ pub struct QuestWorldState {
 /// those givings; `locators` are the giver surfaces (R557) resolved under the
 /// telling (where the quest is picked up).
 #[derive(Debug, Clone, Default, Serialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct QuestNode {
     /// The quest entity id (a derived quest — a pursues/requires/completed_by role).
     pub quest_id: String,
@@ -7992,6 +8051,7 @@ pub struct QuestNode {
 /// SCE/pinion's, NOT modeled here (the R546/R559 declarative-vs-executable line).
 /// Fails loud through the sub-projections (a typo'd telling / world).
 #[derive(Debug, Clone, Default, Serialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct QuestGraphReport {
     /// The telling whose disclosure plan resolved the giver locators.
     pub telling: String,
@@ -8333,6 +8393,7 @@ pub fn quest_graph(
 /// proposal must stamp (import re-checks it, so a fact amended after
 /// proposing fails loud as stale).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct TypingCandidate {
     pub fact_id: String,
     pub frame: String,
@@ -8349,6 +8410,7 @@ pub struct TypingCandidate {
 /// own context from N queries and never sees unregistered vocabulary as
 /// proposable. Pure read projection; the substrate contains no LLM client.
 #[derive(Debug, Clone, Default, Serialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct TypingCandidatesReport {
     /// Untyped facts, id-sorted.
     pub candidates: Vec<TypingCandidate>,
@@ -8399,6 +8461,7 @@ pub fn typing_candidates(store: &AtomicStore) -> Result<TypingCandidatesReport, 
 /// pin, TWO-SIDED for edges — a proposal stamps both endpoints) and every
 /// recorded edge, so the proposer never re-proposes existing structure.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct EdgeCandidateFact {
     pub fact_id: String,
     pub frame: String,
@@ -8428,6 +8491,7 @@ pub struct EdgeCandidateFact {
 /// rule-free generalization of the `unchained_state_pairs` count, surfaced
 /// as PAIRS because the proposer needs the candidates, not a number.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct SuccessionGap {
     pub fact_a: String,
     pub fact_b: String,
@@ -8442,6 +8506,7 @@ pub struct SuccessionGap {
 /// their candidate surface is the facts table itself (the LLM's reading
 /// job). Pure read projection; the substrate contains no LLM client.
 #[derive(Debug, Clone, Default, Serialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct EdgeCandidatesReport {
     /// Every fact, id-sorted.
     pub facts: Vec<EdgeCandidateFact>,

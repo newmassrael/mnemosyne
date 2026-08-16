@@ -18,6 +18,7 @@ use crate::cascade::validate_atomic_store;
 use crate::{query::load_workspace, OpError, PopulationCensusReport};
 
 #[derive(Debug, Clone, Serialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct ValidateWorkspaceReport {
     pub orphan_actual: Vec<OrphanRef>,
     pub orphan_ledger: Vec<OrphanRef>,
@@ -94,6 +95,7 @@ pub struct ValidateWorkspaceReport {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct OrphanRef {
     pub doc: String,
     pub from_section: String,
@@ -553,6 +555,7 @@ pub fn validate_workspace(workspace_root: &Path) -> Result<ValidateWorkspaceRepo
 /// this type: every way of not knowing gets a name in the output, which is the
 /// Round 854 rule (a zero out of a population of zero is not a clean bill).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum CensusReach {
     /// The workspace declares no `[census] report`, so no entry here can record
@@ -598,6 +601,7 @@ pub enum CensusReach {
 /// the output, so a workspace that has the protection and one that never could
 /// no longer print the same clean.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum EntryIdDating {
     /// No `schema.entry_id_prefix`, so the Round 976 gate stands down: nothing
