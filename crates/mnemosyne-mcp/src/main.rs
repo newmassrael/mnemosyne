@@ -1759,8 +1759,151 @@ fn agent_facing_tools() -> Vec<rmcp::model::Tool> {
             };
             property.insert("description".to_string(), serde_json::Value::from(stamped));
         }
+        // THE ANSWER ENVELOPE IS STAMPED THE SAME WAY THE PATH RULE IS, and for
+        // the same reason (Round 1221). Every writing tool answers with the ONE
+        // envelope `finish_mutate` builds, and not one of the sixty-one
+        // descriptions said so — an agent calling `add_section` got back a
+        // receipt naming the bytes written and the sidecar it wrote them to,
+        // and nothing had told it there would be one. Writing that sentence
+        // sixty-one times by hand is the copy this repository keeps paying for;
+        // generating it means a field added to the receipt tomorrow appears in
+        // every description at once.
+        if let Some(envelope) = answer_envelope_of(&name) {
+            let stamped = match tool.description.take() {
+                Some(described) if !described.is_empty() => {
+                    format!("{described}\n\n{envelope}")
+                }
+                _ => envelope,
+            };
+            tool.description = Some(stamped.into());
+        }
     }
     tools
+}
+
+/// The tools that answer with [`ops::MutateOutcome`] — every atomic write.
+///
+/// A DECLARATION HELD BY EXECUTION IN BOTH DIRECTIONS, which is why it is a list
+/// and not a drift table. A tool that writes and is MISSING here answers with a
+/// `receipt` its description does not name, and the sweep's description law goes
+/// red naming the field. A tool listed here that does NOT answer with the
+/// envelope is stamped with a sentence about an answer it never gives, and the
+/// sweep's `a_stamped_envelope_is_one_the_tool_answered_with` goes red (named
+/// rather than linked: it is a `cfg(test)` helper, so no link from here reaches
+/// it). Neither direction is trusted, so the list cannot quietly stop being true.
+const ANSWERS_WITH_RECEIPT: &[&str] = &[
+    "add_branch",
+    "add_confirmation_event",
+    "add_disclosure_plan",
+    "add_disclosure_reveal_coord",
+    "add_edge_cost",
+    "add_edge_guard",
+    "add_entity",
+    "add_entity_kind",
+    "add_fact",
+    "add_fact_conflict",
+    "add_fact_count",
+    "add_frame",
+    "add_parameter",
+    "add_parameter_delta",
+    "add_parameter_gate",
+    "add_predicate",
+    "add_section",
+    "add_section_binding",
+    "add_section_caveat",
+    "add_section_example",
+    "add_unit",
+    "amend_fact",
+    "append_changelog_entry",
+    "import_facts",
+    "import_sections",
+    "remove_disclosure_reveal_coord",
+    "remove_edge_cost",
+    "remove_edge_guard",
+    "remove_edge_guard_condition",
+    "remove_entity_kind",
+    "remove_fact_count",
+    "remove_parameter_delta",
+    "remove_parameter_gate",
+    "remove_predicate",
+    "remove_section_binding",
+    "retract_fact",
+    "set_changelog_publishable_carry_forward",
+    "set_changelog_publishable_changes",
+    "set_changelog_publishable_decision_summary",
+    "set_changelog_publishable_impact_refs",
+    "set_changelog_publishable_verification",
+    "set_disclosure",
+    "set_disclosure_reveal_threshold",
+    "set_edge_guard_threshold",
+    "set_entity_kind_parents",
+    "set_inventory_section_ref",
+    "set_predicate",
+    "set_section_alternatives",
+    "set_section_binding_kind",
+    "set_section_coverage_expectation",
+    "set_section_decision_status",
+    "set_section_impact_scope",
+    "set_section_inputs",
+    "set_section_intent",
+    "set_section_outputs",
+    "set_section_parent_doc",
+    "set_section_parent_section",
+    "set_section_rationale",
+    "set_section_title",
+    "set_section_verification_expectation",
+];
+
+/// The inventory tools, which answer with the receipt AND what the R276 decay
+/// cascade found. Same two-directional guard as [`ANSWERS_WITH_RECEIPT`].
+const ANSWERS_WITH_INVENTORY_CASCADE: &[&str] = &[
+    "add_inventory_entry",
+    "remove_inventory_entry",
+    "set_inventory_status",
+];
+
+/// The keys a shape serializes to, in the order it emits them — the field names
+/// a description has to account for, taken from the shape rather than from a
+/// sentence beside it.
+fn emitted_keys<T: Serialize>(shape: &T) -> Vec<String> {
+    serde_json::to_value(shape)
+        .ok()
+        .and_then(|v| v.as_object().map(|o| o.keys().cloned().collect()))
+        .unwrap_or_default()
+}
+
+/// The sentence stamped onto a tool that answers with a write envelope, GENERATED
+/// from the envelope's own fields (Round 1221).
+fn answer_envelope_of(tool: &str) -> Option<String> {
+    let receipt = emitted_keys(&atomic::AtomicMutateReceipt::default()).join(", ");
+    if ANSWERS_WITH_RECEIPT.contains(&tool) {
+        return Some(format!(
+            "ANSWERS WITH: `receipt` ({receipt}). The write already persisted when you \
+             read this; there is nothing further to commit."
+        ));
+    }
+    if ANSWERS_WITH_INVENTORY_CASCADE.contains(&tool) {
+        // THE INSTANCE CARRIES THE CONDITIONAL FIELD, so the sentence names it
+        // too. `cascade_decay_error` is skipped when it is `None`, and a
+        // sentence generated from the default alone would silently stop naming
+        // the field an agent most needs to be told about.
+        let cascade: Vec<String> = emitted_keys(&InventoryMutateAnswer {
+            cascade_decay_error: Some(String::new()),
+            ..Default::default()
+        })
+        .into_iter()
+        .filter(|k| k != "receipt")
+        .map(|k| format!("`{k}`"))
+        .collect();
+        return Some(format!(
+            "ANSWERS WITH: `receipt` ({receipt}), and {} — the cite-sites this write just \
+             made stale (R276 decay cascade), each naming its file, line and entry_id, \
+             beside the reason the scan itself could not run. The write persisted either \
+             way.",
+            cascade.join(" and ")
+        ));
+    }
+    None
 }
 
 /// Render a warm-projection validation result as a plain-text summary.
@@ -1840,7 +1983,7 @@ impl MnemosyneServer {
     }
 
     #[tool(
-        description = "Verify and read ONE changelog entry by its `Round NNN` citation. THIS IS THE CITATION CHECK: call it before writing any `Round NNN` into code, a comment, a commit message, or a ledger entry — an error means the round does not exist and the citation must not be written. It resolves either stored key shape (short-form `Round 292`, long-form `Round 293 — <title>`), so never hand-match round numbers against list_changelog's keys yourself. Returns the full ChangelogEntryView (decision_summary + bullets), which is also how to read ONE decision without pulling the whole ledger into context."
+        description = "Verify and read ONE changelog entry by its `Round NNN` citation. THIS IS THE CITATION CHECK: call it before writing any `Round NNN` into code, a comment, a commit message, or a ledger entry — an error means the round does not exist and the citation must not be written. It resolves either stored key shape (short-form `Round 292`, long-form `Round 293 — <title>`), so never hand-match round numbers against list_changelog's keys yourself. This is also how to read ONE decision without pulling the whole ledger into context. ANSWERS WITH: `entry_id` (the resolved key), `parent_doc`, `parent_changelog_entry`, `frozen_at_transaction_time`, `sub_bullets`, `citation_count`, and the audit half — `atomic_decision_summary`, `atomic_changes_bullets`, `atomic_verification_bullets`."
     )]
     async fn query_changelog_entry(
         &self,
@@ -1853,7 +1996,7 @@ impl MnemosyneServer {
     }
 
     #[tool(
-        description = "Look up a single section. Returns the SectionView (atomic fields rendered as JSON). Optionally include 1-hop CrossRef neighborhood and §N citations from changelog entries. Always call this BEFORE mutating a section to verify decision_status and avoid editing strong-carry / Superseded sections."
+        description = "Look up a single section. Optionally include 1-hop CrossRef neighborhood and §N citations from changelog entries. Always call this BEFORE mutating a section to verify decision_status and avoid editing strong-carry / Superseded sections. ANSWERS WITH: `section_id`, `parent_doc`, `parent_section`, `title`, `decision_status`, `body`, `line_anchor`. ASKING FOR EITHER NEIGHBORHOOD CHANGES THE SHAPE rather than adding to it: that answer nests under `section`, beside `related` (outbound_refs / inbound_refs) and `changelog` (the entries citing this section)."
     )]
     async fn query_section(&self, args: Parameters<QuerySectionArgs>) -> CallToolResult {
         let mode = match (args.0.include_related, args.0.include_changelog) {
@@ -1885,7 +2028,7 @@ impl MnemosyneServer {
     }
 
     #[tool(
-        description = "Run T3/T4 style checks. T3 = warning surface (max_paragraph_length, sentence length, terminology); T4 = info. Reject power is configurable; default = warn-only so existing prose stays valid on day 1."
+        description = "Run T3/T4 style checks. T3 = warning surface (max_paragraph_length, sentence length, terminology); T4 = info. Reject power is configurable; default = warn-only so existing prose stays valid on day 1. ANSWERS WITH: `doc_filter` and `severity_filter` (what the scan was actually scoped to, echoed back), `violations` (each naming doc_path, section_id, rule_id, severity and message), and the tallies `t3_reject`, `t3_warn`, `t4_info`."
     )]
     async fn style_check(&self, args: Parameters<StyleCheckArgs>) -> CallToolResult {
         let input = StyleCheckInput {
@@ -2695,7 +2838,7 @@ impl MnemosyneServer {
     }
 
     #[tool(
-        description = "Entity dossier (R437, read-only): every fact referencing the entity across all frames and branches — 'all facts about X' for background-vs-narrative verification. The at-a-point projection is report_frame_view with the entity filter."
+        description = "Entity dossier (R437, read-only): every fact referencing the entity across all frames and branches — 'all facts about X' for background-vs-narrative verification. The at-a-point projection is report_frame_view with the entity filter. ANSWERS WITH: `entity_id`, `kind`, `description`, `fact_count`, and `facts` — every fact in full (fact_id, frame, branch, claim, canon_from/canon_to, evidence, typed subject/predicate/object, quote)."
     )]
     async fn report_entity(&self, args: Parameters<ReportEntityArgs>) -> CallToolResult {
         match ops::entity_dossier(&self.workspace, None, &args.0.entity_id) {
@@ -2705,7 +2848,7 @@ impl MnemosyneServer {
     }
 
     #[tool(
-        description = "Entity-kind migration worklist (R679, read-only): the distinct unregistered entity kinds a store uses, each with the entities naming it — the exact add_entity_kind calls a pre-registry (v23-) or out-of-band store needs. The complete list of the KIND facet, which the validate-workspace failure only samples (R681: the gate covers more than kinds); shares the kind detector the gate uses, so the two cannot disagree on kinds. Empty = every in-use kind is registered."
+        description = "Entity-kind migration worklist (R679, read-only): the distinct unregistered entity kinds a store uses, each with the entities naming it — the exact add_entity_kind calls a pre-registry (v23-) or out-of-band store needs. The complete list of the KIND facet, which the validate-workspace failure only samples (R681: the gate covers more than kinds); shares the kind detector the gate uses, so the two cannot disagree on kinds. ANSWERS WITH: `unregistered_kinds`, each naming the entities that use it; `entities_naming_an_unregistered_kind`; and `entities_examined`. READ THAT LAST ONE FIRST — an empty list over zero entities examined says nothing, where an empty list over a real population says every in-use kind is registered."
     )]
     async fn report_entity_kind_migration(&self, _args: Parameters<EmptyArgs>) -> CallToolResult {
         match ops::entity_kind_migration(&self.workspace, None) {
@@ -2728,7 +2871,7 @@ impl MnemosyneServer {
     }
 
     #[tool(
-        description = "Parameter-economy read (R730, DEBT-K, read-only): the VISIBLE accumulation surface (gap 3). Per REGISTERED meter, the delta inventory (count, Σ+ = apply-once max reach, Σ- = apply-once min) and the gates that threshold it. NEUTRAL — the Σ is DESCRIPTIVE, NOT a reachability verdict: the consumer applies its OWN accumulation model (grinding / one-shot / clamped), so Mnemosyne never judges whether a gate is reachable (the R712 layering line). Deltas/gates on an unregistered parameter are out-of-band (the validate detectors' job), not this registered-scoped read."
+        description = "Parameter-economy read (R730, DEBT-K, read-only): the VISIBLE accumulation surface (gap 3). Per REGISTERED meter, the delta inventory (count, Σ+ = apply-once max reach, Σ- = apply-once min) and the gates that threshold it. NEUTRAL — the Σ is DESCRIPTIVE, NOT a reachability verdict: the consumer applies its OWN accumulation model (grinding / one-shot / clamped), so Mnemosyne never judges whether a gate is reachable (the R712 layering line). Deltas/gates on an unregistered parameter are out-of-band (the validate detectors' job), not this registered-scoped read. ANSWERS WITH: `meters` — one row per registered meter, and nothing else, so an empty `meters` means no meter is REGISTERED rather than no delta is authored."
     )]
     async fn report_parameter_economy(&self, _args: Parameters<EmptyArgs>) -> CallToolResult {
         match ops::parameter_economy_report(&self.workspace, None) {
@@ -2807,7 +2950,7 @@ impl MnemosyneServer {
     }
 
     #[tool(
-        description = "Frame-scoped continuity scan (R431, read-only): same-(frame, branch) conflicting pairs whose derived canon extents co-hold are violations; cross-scope pairs are data. With a declared narrative-rules/v1 artifact (R449) it also derives typed-claim rule findings — exclusive (one co-holding value per subject / one holder per object), transition (allowed state steps on succession edges), and interval (R489: a scalar/arithmetic relation value(left) − value(right) op bound per frame-world-subject) — plus the unchained_state_pairs, unchained_unreachable_pairs (R916: the subset no ROUTE joins in the hierarchy-augmented map, so no untold journey could cover it — EVERY transition rule since R924, the claim needing no genre and being conservative on a directed rule because the walk symmetrizes) and interval_unverifiable honesty counts, each of which is NULL when no rule of its class was declared (R924: a silence is not a zero). It also judges every declared QUEST PREREQUISITE against every road (R1031): a `requires` claim promises its object quest is discharged FIRST, so a world-line that discharges the subject must discharge the object too, strictly earlier — `quest_prerequisite_unreachable` names the road and whether it discharges the prerequisite late or never. `quest_prerequisite_judgements` carries every (quest, prerequisite, world, discharge) row including the ones that prove nothing (inapplicable = this road never discharges the quest; unverifiable = the order cannot compare the two coordinates), and is EMPTY when no `requires` claim is declared at all. Interval violations ride a SEPARATE per-class severity (R491, interval_severity, OFF by default — a timeline gap can be an intentional time-bend); structural violations ride severity. Returns the JSON report (both severities, interval_violation_count, counts, violations); gating policy belongs to the caller."
+        description = "Frame-scoped continuity scan (R431, read-only): same-(frame, branch) conflicting pairs whose derived canon extents co-hold are violations; cross-scope pairs are data. With a declared narrative-rules/v1 artifact (R449) it also derives typed-claim rule findings — exclusive (one co-holding value per subject / one holder per object), transition (allowed state steps on succession edges), and interval (R489: a scalar/arithmetic relation value(left) − value(right) op bound per frame-world-subject) — plus the unchained_state_pairs, unchained_unreachable_pairs (R916: the subset no ROUTE joins in the hierarchy-augmented map, so no untold journey could cover it — EVERY transition rule since R924, the claim needing no genre and being conservative on a directed rule because the walk symmetrizes) and interval_unverifiable honesty counts, each of which is NULL when no rule of its class was declared (R924: a silence is not a zero). It also judges every declared QUEST PREREQUISITE against every road (R1031): a `requires` claim promises its object quest is discharged FIRST, so a world-line that discharges the subject must discharge the object too, strictly earlier — `quest_prerequisite_unreachable` names the road and whether it discharges the prerequisite late or never. `quest_prerequisite_judgements` carries every (quest, prerequisite, world, discharge) row including the ones that prove nothing (inapplicable = this road never discharges the quest; unverifiable = the order cannot compare the two coordinates), and is EMPTY when no `requires` claim is declared at all. Interval violations ride a SEPARATE per-class severity (R491, interval_severity, OFF by default — a timeline gap can be an intentional time-bend); structural violations ride severity. Gating policy belongs to the caller. ANSWERS WITH: the two declared severities (`severity`, `interval_severity`); the verdict pair `violation_count` / `interval_violation_count` beside `violations`; the POPULATION the verdict was drawn from — `facts`, `sections`, `order_nodes`, `rules`, `interval_rules`, `conflict_pairs_checked`, `cross_scope_pairs`, `unordered_pairs`; and the honesty surfaces, which say what the scan COULD NOT ask rather than what it found: `evidence_unreviewed`, `fact_quotes_uncheckable`, `ladder_rungs_resolved`, `undeclared_roads`, `rule_unordered_pairs`, `unchained_state_pairs`, `unchained_unreachable_pairs`, `interval_unverifiable`, `step_judgements`, `quest_prerequisite_judgements`, `completeness_unaskable`. A null is a SILENCE (no rule of that class was declared), never a zero."
     )]
     async fn validate_continuity(
         &self,
@@ -2833,7 +2976,7 @@ impl MnemosyneServer {
     }
 
     #[tool(
-        description = "Propose-verdict (R588, DRY RUN): the generate-gate-repair loop's atomic gate. Reads a candidate import-facts manifest from manifest_path, applies it to a THROWAWAY in-memory clone of the store, runs the shape invariants + the continuity gate, and returns verdict=commit|rollback plus actionable violations. THE TWO CAN DISAGREE: `verdict` reflects only violations your workspace's `[continuity] severity` makes GATING, so a workspace that declares none gets `commit` with `violation_count` non-zero beside it (Round 1004). Read `violations`, not `verdict` alone (each carries rule + locus {facts,field,frame,branch,at} + expected + repair_hint + message). The real store is NEVER written — on commit, apply for real via the import-facts CLI. Deterministic, AI out of the gate. Fail-loud on an unreadable/unparseable manifest."
+        description = "Propose-verdict (R588, DRY RUN): the generate-gate-repair loop's atomic gate. Reads a candidate import-facts manifest from manifest_path, applies it to a THROWAWAY in-memory clone of the store, runs the shape invariants + the continuity gate, and returns verdict=commit|rollback plus actionable violations. THE TWO CAN DISAGREE: `verdict` reflects only violations your workspace's `[continuity] severity` makes GATING, so a workspace that declares none gets `commit` with `violation_count` non-zero beside it (Round 1004). Read `violations`, not `verdict` alone (each carries rule + locus {facts,field,frame,branch,at} + expected + repair_hint + message). The real store is NEVER written — on commit, apply for real via the import-facts CLI. Deterministic, AI out of the gate. Fail-loud on an unreadable/unparseable manifest. ANSWERS WITH: `verdict`; `applied_summary`, what the manifest would add counted by kind; `violation_count` beside `gating_violation_count` (the pair that disagrees, above); `violations`; and `dangling_setups` — per world-line, the Expected setups this manifest would leave unpaid."
     )]
     async fn propose_verdict(&self, args: Parameters<ProposeVerdictArgs>) -> CallToolResult {
         // Round 1001 — an agent's manifest path goes through the same wire
@@ -2884,7 +3027,7 @@ impl MnemosyneServer {
     }
 
     #[tool(
-        description = "Frame-at-T read projection (R432): the facts frame F holds on branch B at canon point T, over the SAME holds-semantics as the continuity gate. Three-state honest under the declared partial order: holding / not_holding count / unknown (the declaration cannot decide). Call before writing the next scene to load the in-effect beliefs."
+        description = "Frame-at-T read projection (R432): the facts frame F holds on branch B at canon point T, over the SAME holds-semantics as the continuity gate. Three-state honest under the declared partial order: holding / not_holding / unknown (the declaration cannot decide). Call before writing the next scene to load the in-effect beliefs. ANSWERS WITH: the coordinates you asked for — `frame`, `branch`, `at`, and `entity` (null unless you filtered) — then `holding` with its `holding_count`, `not_holding`, `unknown`, and `confluence_fragment`: true when this world-line is a MERGE node read as a prefix-less fragment, so its pre-merge trunk reads `unknown` rather than being absent."
     )]
     async fn report_frame_view(&self, args: Parameters<ReportFrameViewArgs>) -> CallToolResult {
         match ops::continuity_frame_view(
@@ -2906,7 +3049,7 @@ impl MnemosyneServer {
     }
 
     #[tool(
-        description = "Setup/payoff coverage (R442, read-only): per query world, every setup fact (payoff_expectation=expected) classified paid/dangling against world-visible pays_off edges; unmarked facts exempt. Dangling = the author's todo list, never gated. Honesty counts: payoffs_to_unmarked, payoff_before_setup, unknown."
+        description = "Setup/payoff coverage (R442, read-only): per query world, every setup fact (payoff_expectation=expected) classified paid/dangling against world-visible pays_off edges; unmarked facts exempt. Dangling = the author's todo list, never gated. ANSWERS WITH: `worlds` (paid / dangling / exempt per world-line, with the honesty counts payoffs_to_unmarked, payoff_before_setup and unknown), `facts` and `setups_total` (the population — `setups_total: 0` makes an empty dangling list say nothing), and the cross-world halves `uncredited_edges` and `undecidable_edges`."
     )]
     async fn report_payoff_coverage(
         &self,
@@ -2927,7 +3070,7 @@ impl MnemosyneServer {
     }
 
     #[tool(
-        description = "Typing-discovery input package (R458, read-only): every untyped narrative fact (claim text + claim_sha256 pin + frame/branch/entities) plus the registered predicate and entity vocabulary, in one call. The contract for typing-proposals/v1 authoring: propose typed legs ONLY from this vocabulary, stamp each proposal with the candidate's claim_sha256. Order-independent."
+        description = "Typing-discovery input package (R458, read-only): every untyped narrative fact (claim text + claim_sha256 pin + frame/branch/entities) plus the registered predicate and entity vocabulary, in one call. The contract for typing-proposals/v1 authoring: propose typed legs ONLY from this vocabulary, stamp each proposal with the candidate's claim_sha256. Order-independent. ANSWERS WITH: `candidates` (the untyped facts), the counts `facts` and `typed` (so an empty candidate list can be told apart from an empty store), and the vocabularies `predicates` and `entities` a proposal may draw from."
     )]
     async fn report_typing_candidates(&self, _args: Parameters<EmptyArgs>) -> CallToolResult {
         match ops::typing_candidates_report(&self.workspace, None) {
@@ -2937,7 +3080,7 @@ impl MnemosyneServer {
     }
 
     #[tool(
-        description = "Import reviewed typed-leg proposals from a typing-proposals/v1 artifact (R459, mutate): ALL-OR-NOTHING with full per-proposal verdicts (fill-blanks only, claim_sha256 staleness re-checked, predicates/entities validated by the one builder). dry_run=true validates without writing. Returns the verdict report; applied=true only when every proposal accepted on a real run."
+        description = "Import reviewed typed-leg proposals from a typing-proposals/v1 artifact (R459, mutate): ALL-OR-NOTHING with full per-proposal verdicts (fill-blanks only, claim_sha256 staleness re-checked, predicates/entities validated by the one builder). dry_run=true validates without writing. ANSWERS WITH: `file_sha256` (the artifact actually read), `verdicts` (one per proposal, naming the fact and accepted/rejected), the counts `accepted` and `rejected`, `dry_run` and `applied` AS THEY RESOLVED rather than as you asked — `applied` is true only when every proposal was accepted on a real run — and `written_bytes`, which is 0 on a dry run."
     )]
     async fn import_typing_proposals(
         &self,
@@ -2972,7 +3115,7 @@ impl MnemosyneServer {
     }
 
     #[tool(
-        description = "Deterministic payoff substantiation (R485, read-only): per query world, each credited setup is classified substantiated (a payoff carries a typed state-change on the setup's same subject+predicate, discharging it) / unsubstantiated (typed setup, no discharging payoff — a hollow payoff, the deterministic analogue of drift) / unverifiable (the setup is untyped, so no discharge is definable — type it via typing-discovery). No LLM: a pure comparison of declared typed legs. Replaces the retired R481 LLM-verdict drift surface (R484 redesign)."
+        description = "Deterministic payoff substantiation (R485, read-only): per query world, each credited setup is classified substantiated (a payoff carries a typed state-change on the setup's same subject+predicate, discharging it) / unsubstantiated (typed setup, no discharging payoff — a hollow payoff, the deterministic analogue of drift) / unverifiable (the setup is untyped, so no discharge is definable — type it via typing-discovery). No LLM: a pure comparison of declared typed legs. Replaces the retired R481 LLM-verdict drift surface (R484 redesign). ANSWERS WITH: `worlds` — per world-line the substantiated / unsubstantiated / unverifiable / dangling lists — and `setups_total`, the population all four are drawn from."
     )]
     async fn report_payoff_substantiation(
         &self,
@@ -2993,7 +3136,7 @@ impl MnemosyneServer {
     }
 
     #[tool(
-        description = "Timeline-gap projection (R490, read-only, surface-not-gate): the interval-rule evaluator as a READ report. Per query world, each declared interval rule (value(left) - value(right) op bound, op ge/le/eq/gt/lt, bound a const or a same-subject scalar predicate) is evaluated at the left fact's canon point, classified violated / unverifiable (an operand non-numeric, absent on the right/bound leg, or ambiguous — type it) / satisfied. Same narrative-rules artifact as the continuity gate, only interval rules contribute. Deterministic, no LLM; never gates (the gate is validate_continuity under opt-in severity)."
+        description = "Timeline-gap projection (R490, read-only, surface-not-gate): the interval-rule evaluator as a READ report. Per query world, each declared interval rule (value(left) - value(right) op bound, op ge/le/eq/gt/lt, bound a const or a same-subject scalar predicate) is evaluated at the left fact's canon point, classified violated / unverifiable (an operand non-numeric, absent on the right/bound leg, or ambiguous — type it) / satisfied. Same narrative-rules artifact as the continuity gate, only interval rules contribute. Deterministic, no LLM; never gates (the gate is validate_continuity under opt-in severity). ANSWERS WITH: `world` (null when unfiltered), `worlds` (per world-line the per-rule outcomes), and `interval_rules` — how many rules were even declared, without which a world of empty outcomes reads as clean rather than as unasked."
     )]
     async fn report_timeline_gaps(
         &self,
@@ -3023,7 +3166,7 @@ impl MnemosyneServer {
     }
 
     #[tool(
-        description = "The declared map (R875, read-only): per transition rule, the map its `adjacency` predicate names — nodes, edges (each the declaring fact id + from/to + the fact's frame/branch), and per edge the STORED side-table values: `cost` {n, registered unit} (R710) and `guard` {conditions, optional k-of-N threshold} (R722/R723). The read half of the map axis: `add_edge_cost` / `add_edge_guard` write these, and until now no read handed them back, so a consumer had to parse the store sidecar itself. Also names what a naive bake would silently lose: self-loops (excluded from edges, as the gate excludes them) and side-table keys on facts that are not an edge of any declared map. Flat and un-scoped, exactly as the continuity gate evaluates the map — `undirected` is reported, never applied, and a guard is never evaluated (the R712 layering line). `transition_rules: 0` means no rule declares an adjacency predicate, which is NOT the same as a map with no edges."
+        description = "The declared map (R875, read-only): per transition rule, the map its `adjacency` predicate names — nodes, edges (each the declaring fact id + from/to + the fact's frame/branch), and per edge the STORED side-table values: `cost` {n, registered unit} (R710) and `guard` {conditions, optional k-of-N threshold} (R722/R723). The read half of the map axis: `add_edge_cost` / `add_edge_guard` write these, and until now no read handed them back, so a consumer had to parse the store sidecar itself. Also names what a naive bake would silently lose: self-loops (excluded from edges, as the gate excludes them) and side-table keys on facts that are not an edge of any declared map. Flat and un-scoped, exactly as the continuity gate evaluates the map — `undirected` is reported, never applied, and a guard is never evaluated (the R712 layering line). ANSWERS WITH: `maps` (the nodes and edges above), `transition_rules`, and the two loss surfaces `unattached_costs` and `unattached_guards` — side-table keys on facts that are not an edge of any declared map. `transition_rules: 0` means no rule declares an adjacency predicate, which is NOT the same as a map with no edges."
     )]
     async fn report_transition_map(
         &self,
@@ -3044,7 +3187,7 @@ impl MnemosyneServer {
     }
 
     #[tool(
-        description = "Edge-discovery input package (R462, read-only): every fact row (claim text + claim_sha256 pin + frame/branch/entities + ALL recorded edges) plus deterministic succession-gap hints (same-frame same typed predicate+subject pairs no succession path connects). The contract for edge-proposals/v1 authoring: propose succession/conflict edges between listed facts only, stamp BOTH endpoint claim_sha256 pins, never re-propose a recorded edge."
+        description = "Edge-discovery input package (R462, read-only): every fact row (claim text + claim_sha256 pin + frame/branch/entities + ALL recorded edges) plus deterministic succession-gap hints (same-frame same typed predicate+subject pairs no succession path connects). The contract for edge-proposals/v1 authoring: propose succession/conflict edges between listed facts only, stamp BOTH endpoint claim_sha256 pins, never re-propose a recorded edge. ANSWERS WITH: `facts` (the rows above) and `fact_count`; `succession_edges` and `conflict_pairs`, counts of what is ALREADY recorded; and `succession_gaps`, the hints, each naming fact_a, fact_b, predicate and subject."
     )]
     async fn report_edge_candidates(
         &self,
@@ -3065,7 +3208,7 @@ impl MnemosyneServer {
     }
 
     #[tool(
-        description = "Import reviewed succession/conflict edge proposals from an edge-proposals/v1 artifact (R463, mutate): ALL-OR-NOTHING with full per-proposal verdicts (fill-blanks only, BOTH endpoint claim_sha256 pins re-checked, in-frame/fork-lineage/cycle invariants ride the shared succession check). dry_run=true validates without writing. applied=true only when every proposal accepted on a real run."
+        description = "Import reviewed succession/conflict edge proposals from an edge-proposals/v1 artifact (R463, mutate): ALL-OR-NOTHING with full per-proposal verdicts (fill-blanks only, BOTH endpoint claim_sha256 pins re-checked, in-frame/fork-lineage/cycle invariants ride the shared succession check). dry_run=true validates without writing. ANSWERS WITH: `file_sha256` (the artifact actually read), `verdicts` (one per proposal, naming the edge kind, its endpoints and accepted/rejected), the counts `accepted` and `rejected`, `dry_run` and `applied` AS THEY RESOLVED rather than as you asked — `applied` is true only when every proposal was accepted on a real run — and `written_bytes`, which is 0 on a dry run."
     )]
     async fn import_edge_proposals(
         &self,
@@ -3100,7 +3243,7 @@ impl MnemosyneServer {
     }
 
     #[tool(
-        description = "Dramatic-irony intervals (R455, read-only): per query world, every recorded CROSS-FRAME conflict edge classified as a co-hold window (node set where both ends hold under the one holds-semantics, with starts + open-at-world-line-end flag), windowless, unordered (incomparable starts, R456), or undecidable (B-1). Same-frame edges are the continuity gate's territory (counted, skipped). Craft signal, never gated."
+        description = "Dramatic-irony intervals (R455, read-only): per query world, every recorded CROSS-FRAME conflict edge classified as a co-hold window (node set where both ends hold under the one holds-semantics, with starts + open-at-world-line-end flag), windowless, unordered (incomparable starts, R456), or undecidable (B-1). ANSWERS WITH: `worlds` (the windows, per world-line), `facts` (the population scanned), `cross_frame_edges` (what this read is about) and `same_frame_edges` — counted and SKIPPED, because those are the continuity gate's territory. Craft signal, never gated."
     )]
     async fn report_irony_intervals(
         &self,
@@ -3121,7 +3264,7 @@ impl MnemosyneServer {
     }
 
     #[tool(
-        description = "Playthrough manuscript (R466, read-only): per query world (or the single `world` filter), the composed canon order's deterministic topological walk with declared fact events placed on each scene — begins, ends (expired / superseded-by), holds-judged holding_count, skeleton title + EPUB locator. Honesty surfaces: undeclared_adjacencies (incomparable emitted neighbors — one valid reading, never the only one), unplaced_facts, undecidable (B-1), sections_off_road (scenes belonging to another world-line, or isolated coordinates). Reading surface, never gated."
+        description = "Playthrough manuscript (R466, read-only): per query world (or the single `world` filter), the composed canon order's deterministic topological walk with declared fact events placed on each scene — begins, ends (expired / superseded-by), holds-judged holding_count, skeleton title + EPUB locator. Honesty surfaces: undeclared_adjacencies (incomparable emitted neighbors — one valid reading, never the only one), unplaced_facts, undecidable (B-1), sections_off_road (scenes belonging to another world-line, or isolated coordinates). Reading surface, never gated. ANSWERS WITH: `telling`, `world` (null when unfiltered), `reading_walk` as it RESOLVED, `worlds` (the scene walks), and `facts` — the population placed."
     )]
     async fn report_playthrough_manuscript(
         &self,
@@ -3145,7 +3288,7 @@ impl MnemosyneServer {
     }
 
     #[tool(
-        description = "Fork tree (R497, read-only): the cross-world choice graph — every registered world-line with its divergence coordinate (parent + fork point + the branch description = the CYOA choice label), the fork point resolved against the parent's composed order (at_placed; false = surfaced in unplaced_fork_points, never dropped). The per-world manuscripts (R466) stitched at the fork points. `converges` = the merges flowing INTO a world-line; `rejoins` = the confluences it flows OUT into (R836, derived by inverting the merges — a branch that rejoins is not a permanent divergence, and its record alone would not say so). Fail-loud on a fork whose parent is neither `main` nor registered. Reading surface, never gated."
+        description = "Fork tree (R497, read-only): the cross-world choice graph — every registered world-line with its divergence coordinate (parent + fork point + the branch description = the CYOA choice label), the fork point resolved against the parent's composed order (at_placed; false = surfaced in unplaced_fork_points, never dropped). The per-world manuscripts (R466) stitched at the fork points. `converges` = the merges flowing INTO a world-line; `rejoins` = the confluences it flows OUT into (R836, derived by inverting the merges — a branch that rejoins is not a permanent divergence, and its record alone would not say so). Fail-loud on a fork whose parent is neither `main` nor registered. Reading surface, never gated. ANSWERS WITH: `branches`, `unplaced_fork_points` and `branch_count`."
     )]
     async fn report_fork_tree(&self, args: Parameters<ReportForkTreeArgs>) -> CallToolResult {
         match ops::fork_tree_report(
@@ -3163,7 +3306,7 @@ impl MnemosyneServer {
     }
 
     #[tool(
-        description = "Playable world (R556/557, read-only): the map_locator seam a pinion narrative runtime consumes — per telling, the cross-world fork topology (R497) + each world-line's scene walk (R466) + the per-scene disclosure MapLocators (the authored DisclosureSurface resolved to a stable pointer {world_line, scene, scene_ordinal, object, mode, first_at}, no baked geometry = CQRS read-side). first_at is the order-free reveal DECLARATION {coords[], threshold?} (R752) — a first-reached-of-a-SET trigger the runtime resolves against the player's actual non-linear path, not a single baked coordinate. A pure JOIN over the manuscript + fork-tree projections; `world` filters the per-world map (the fork tree stays full). Reading surface, never gated. Fail-loud on a typo'd telling / unregistered world."
+        description = "Playable world (R556/557, read-only): the map_locator seam a pinion narrative runtime consumes — per telling, the cross-world fork topology (R497) + each world-line's scene walk (R466) + the per-scene disclosure MapLocators (the authored DisclosureSurface resolved to a stable pointer {world_line, scene, scene_ordinal, object, mode, first_at}, no baked geometry = CQRS read-side). first_at is the order-free reveal DECLARATION {coords[], threshold?} (R752) — a first-reached-of-a-SET trigger the runtime resolves against the player's actual non-linear path, not a single baked coordinate. A pure JOIN over the manuscript + fork-tree projections; `world` filters the per-world map (the fork tree stays full). Reading surface, never gated. Fail-loud on a typo'd telling / unregistered world. ANSWERS WITH: `telling`, `world` (null when unfiltered), `fork_tree` (branches with their fork point, unplaced_fork_points, branch_count), and `worlds` — the per-world-line map keyed by world-line id."
     )]
     async fn report_playable_world(
         &self,
@@ -3186,7 +3329,7 @@ impl MnemosyneServer {
     }
 
     #[tool(
-        description = "Quest graph (R559/568, read-only): the fact->quest leg a pinion narrative runtime / authoring consumer needs, the sibling of report_playable_world. Per telling, every derived quest (pursues object / requires endpoint / completed_by subject) projected to a QuestNode — objective + actor (pursues) + prerequisites (requires) + giving setups + per-world DERIVED open/done (the R442 payoff coverage: a quest done on one road and open on another) + the completion fact (with discharger) + the giver-surface MapLocator (R557). Plus roads (R1061): per world-line, the scene walk each locator's scene_ordinal INDEXES, read from the manuscript this report already reuses — the pointer and what it points into travel together, as they do in report_playable_world. A pure JOIN over payoff-coverage + playable-world; `world` filters the per-world map (the fork tree stays full). Reading surface, never gated; quest STATE derived per world-line, never stored. Executable quest logic (lifecycle/guards) is SCE/pinion's. Fail-loud on a typo'd telling / unregistered world."
+        description = "Quest graph (R559/568, read-only): the fact->quest leg a pinion narrative runtime / authoring consumer needs, the sibling of report_playable_world. Per telling, every derived quest (pursues object / requires endpoint / completed_by subject) projected to a QuestNode — objective + actor (pursues) + prerequisites (requires) + giving setups + per-world DERIVED open/done (the R442 payoff coverage: a quest done on one road and open on another) + the completion fact (with discharger) + the giver-surface MapLocator (R557). Plus roads (R1061): per world-line, the scene walk each locator's scene_ordinal INDEXES, read from the manuscript this report already reuses — the pointer and what it points into travel together, as they do in report_playable_world. A pure JOIN over payoff-coverage + playable-world; `world` filters the per-world map (the fork tree stays full). Reading surface, never gated; quest STATE derived per world-line, never stored. Executable quest logic (lifecycle/guards) is SCE/pinion's. Fail-loud on a typo'd telling / unregistered world. ANSWERS WITH: `telling`, `world` (null when unfiltered), `fork_tree`, `worlds` (the world-lines covered), `quests` (the QuestNodes above), `roads`, and `unresolved_quests` — the quests this scan GATES on, the frontier's own work-list for the quest axis; plus `confluence_fragment_worlds`, the subset of `worlds` that are merge nodes whose per_world column is a fragment view."
     )]
     async fn report_quest_graph(&self, args: Parameters<ReportQuestGraphArgs>) -> CallToolResult {
         match ops::quest_graph_report(
@@ -3206,14 +3349,14 @@ impl MnemosyneServer {
     }
 
     #[tool(
-        description = "Authoring contract (R587, static): the medium-neutral schema an agent reads to self-serve BEFORE authoring — the registries (frames/branches/entities/predicates/disclosure_plans/sections; declare an id before a fact references it), the narrative-fact shape (required/optional fields), the fixed vocabularies (disclosure_mode, payoff_expectation, predicate_object_kind — the closed enums), the deterministic narrative-rule classes (exclusive/transition/interval), the quest encoding (quests DERIVED from pursues/requires/completed_by roles, no kind marker; completion pays off an Expected setup), and the write-time fail-loud invariants. Store-independent — the contract is fixed; store CONTENTS are query/list_*. No args."
+        description = "Authoring contract (R587, static): the medium-neutral schema an agent reads to self-serve BEFORE authoring — the registries (frames/branches/entities/predicates/disclosure_plans/sections; declare an id before a fact references it), the narrative-fact shape (required/optional fields), the fixed vocabularies (disclosure_mode, payoff_expectation, predicate_object_kind — the closed enums), the deterministic narrative-rule classes (exclusive/transition/interval), the quest encoding (quests DERIVED from pursues/requires/completed_by roles, no kind marker; completion pays off an Expected setup), and the write-time fail-loud invariants. Store-independent — the contract is fixed; store CONTENTS are query/list_*. No args. ANSWERS WITH: `schema_version`, `overview`, and one section per part of the contract — the wires you author through (`manifest_wire`, `sections_wire`, `narrative_rules_wire`, `side_table_wire`), then `typed_claim`, `canon_order`, `narrative_rules`, `quest_encoding`, `disclosure_encoding`, `invariant_enforcement`."
     )]
     async fn describe_schema(&self, _args: Parameters<EmptyArgs>) -> CallToolResult {
         self.tool_json(&ops::describe_schema())
     }
 
     #[tool(
-        description = "What CLOSES each item the authoring frontier hands a loop (R1218, static, no args). One row per FIELD of report_authoring_frontier, each carrying one of: `closes` — the verb plus the argument that makes it a closure, and this repository has RUN that call over its own authored corpora; `believed` — the call it believes closes it, with why nothing here has run it; `no_verb` — nothing in this API closes it (`unordered_scenes` is that one, and it still counts in total_gaps, so hand it to the author instead of retrying); `not_work` — a census, an echo, or a derived view, never in total_gaps. Read it ONCE per session: it is a property of the build, not of a store. Without it a loop reads an axis NAME and has to learn the verb from a person."
+        description = "What CLOSES each item the authoring frontier hands a loop (R1218, static, no args). One row per FIELD of report_authoring_frontier, each carrying one of: `closes` — the verb plus the argument that makes it a closure, and this repository has RUN that call over its own authored corpora; `believed` — the call it believes closes it, with why nothing here has run it; `no_verb` — nothing in this API closes it (`unordered_scenes` is that one, and it still counts in total_gaps, so hand it to the author instead of retrying); `not_work` — a census, an echo, or a derived view, never in total_gaps. Read it ONCE per session: it is a property of the build, not of a store. Without it a loop reads an axis NAME and has to learn the verb from a person. ANSWERS WITH: `axes` — one row per field, each carrying the field name, its `closure` (one of the four states above, with the `why` that state was chosen) and the call where there is one."
     )]
     async fn describe_frontier_axes(&self, _args: Parameters<EmptyArgs>) -> CallToolResult {
         self.tool_json(&serde_json::json!({ "axes": ops::frontier_axes() }))
@@ -3247,7 +3390,7 @@ impl MnemosyneServer {
     }
 
     #[tool(
-        description = "Disclosure coverage (R507, read-only): per telling, every fact classified disclosed / hidden-by-design (an explicit withhold override) / never-planned (no override under a withhold-default telling = the author's todo list). A SURFACE (the R442 dangling-is-a-todo discipline), never gated. Fail-loud on a typo'd telling."
+        description = "Disclosure coverage (R507, read-only): per telling, every fact classified disclosed / hidden-by-design (an explicit withhold override) / never-planned (no override under a withhold-default telling = the author's todo list). A SURFACE (the R442 dangling-is-a-todo discipline), never gated. Fail-loud on a typo'd telling. ANSWERS WITH: `telling`; the counts `facts`, `disclosed` and `hidden_by_design`; `never_planned` as the LIST of fact ids nobody decided about; and `inert_reveal_pins` (R946, advisory) — a `withhold` override that ALSO carries a `first_at` pin, which no surface reads, each naming fact_id, world, pin and the `authored_seat` the author already wrote. That shape is one word from the author's intent: `state` with the same pin is what discloses late."
     )]
     async fn report_disclosure_coverage(
         &self,
@@ -3260,7 +3403,7 @@ impl MnemosyneServer {
     }
 
     #[tool(
-        description = "Premature-leak gate (R507/R502): the authored disclosure plan vs a BLIND RE-EXTRACTED prose store (against), matched by typed (subject,predicate,object) tuple in truth_frame for world. A withheld fact that re-extracts, or a first_at-pinned fact re-extractable before its pin in the world's order, is a leak (leaks[] non-empty = FAIL). Deterministic — AI out of the gate. Returns the report; gating policy is the caller's. Fail-loud on typo'd telling / world / truth_frame."
+        description = "Premature-leak gate (R507/R502): the authored disclosure plan vs a BLIND RE-EXTRACTED prose store (against), matched by typed (subject,predicate,object) tuple in truth_frame for world. A withheld fact that re-extracts, or a first_at-pinned fact re-extractable before its pin in the world's order, is a leak (leaks[] non-empty = FAIL). Deterministic — AI out of the gate. Gating policy is the caller's. Fail-loud on typo'd telling / world / truth_frame. ANSWERS WITH: `telling`, `world`, `truth_frame`; `targeted` (plan-targeted facts checked); `leaks` (empty = PASS); `unordered` (matched at a coord INCOMPARABLE to its pin — surfaced, not a verdict); `unmatched` (pinned facts the prose never discloses — coverage, not a leak); `truth_frame_typed_facts` (the universe matched against); and `vocabulary_shared`. READ THAT LAST ONE BEFORE BELIEVING A PASS: `targeted > 0` with `vocabulary_shared == 0` means the re-extraction used foreign ids, so `leaks == []` is VACUOUS rather than clean."
     )]
     async fn validate_disclosure_leak(
         &self,
@@ -3290,7 +3433,7 @@ impl MnemosyneServer {
     }
 
     #[tool(
-        description = "Emit the SINGLE-WORLD PROJECTION validate_render_fidelity requires of its `against` store (R1070). That gate is single-world by contract, so a store spanning several world-lines draws its siblings off-path in bulk — a verdict about the caller, not the prose. Keeps every fact whose DECLARED world is part of `world`'s world-line (the world_membership lattice) and drops the rest; `store` omitted = the workspace's own store. Selection is by branch so the gate can still disagree on the COORDINATE — projecting by coordinate would hand the gate its own predicate and report clean forever. Fail-loud on a typo'd world."
+        description = "Emit the SINGLE-WORLD PROJECTION validate_render_fidelity requires of its `against` store (R1070). That gate is single-world by contract, so a store spanning several world-lines draws its siblings off-path in bulk — a verdict about the caller, not the prose. Keeps every fact whose DECLARED world is part of `world`'s world-line (the world_membership lattice) and drops the rest; `store` omitted = the workspace's own store. Selection is by branch so the gate can still disagree on the COORDINATE — projecting by coordinate would hand the gate its own predicate and report clean forever. Fail-loud on a typo'd world. ANSWERS WITH: `world`, `out` (the path written), and the two counts that say whether the projection was worth making — `kept` and `dropped`."
     )]
     async fn project_world(&self, args: Parameters<ProjectWorldArgs>) -> CallToolResult {
         let a = args.0;
@@ -3315,7 +3458,7 @@ impl MnemosyneServer {
     }
 
     #[tool(
-        description = "Render<->world-line fidelity gate (R507/R505): a BLIND RE-EXTRACTED prose store (against) checked against world's composed order — a re-extracted canon_from that is a declaration node of ANOTHER world is off-path (the prose drifted onto the wrong world-line; off_path[] non-empty = FAIL). The prose analog of R488 FactCanonOffBranch. Returns the report; gating policy is the caller's. Fail-loud on a typo'd world."
+        description = "Render<->world-line fidelity gate (R507/R505): a BLIND RE-EXTRACTED prose store (against) checked against world's composed order — a re-extracted canon_from that is a declaration node of ANOTHER world is off-path (the prose drifted onto the wrong world-line; off_path[] non-empty = FAIL). The prose analog of R488 FactCanonOffBranch. Gating policy is the caller's. Fail-loud on a typo'd world. ANSWERS WITH: `world`; `reextracted_facts` (the population — a small one makes any verdict weak); `off_path` (the FAIL signal); `unplaced`, whose canon_from is not a declaration node at all, so the extractor's coordinate could not be placed; and `reached_terminal`, true only when some re-extracted coord is a maximal node of this world — the prose actually reached the assigned world-line's ending."
     )]
     async fn validate_render_fidelity(
         &self,
@@ -3497,7 +3640,7 @@ impl MnemosyneServer {
     }
 
     #[tool(
-        description = "Scan the publishable half of every ChangelogEntry for `pattern` and substitute `replacement`, emitting ledger drafts so the publishable_override_ledger gate accepts the result. Audit half is never read or written. mode = literal (default) or regex; set case_insensitive for either. scope = all | decision_summary | changes_bullets | verification_bullets | impact_refs | carry_forward_bullets. dry_run = true returns hits + drafts without mutating. reason + applied_in required; kind defaults to \"redaction\". Drafts paste directly into mnemosyne.toml `[[publishable_override_ledger]]`."
+        description = "Scan the publishable half of every ChangelogEntry for `pattern` and substitute `replacement`, emitting ledger drafts so the publishable_override_ledger gate accepts the result. Audit half is never read or written. mode = literal (default) or regex; set case_insensitive for either. scope = all | decision_summary | changes_bullets | verification_bullets | impact_refs | carry_forward_bullets. dry_run = true returns hits + drafts without mutating. reason + applied_in required; kind defaults to \"redaction\". ANSWERS WITH: `primitive`, `dry_run` (what it actually did, not what you asked for), `hits` (each naming entry_id, field, index, original, redacted), and `ledger_drafts` — TOML blocks that paste directly into mnemosyne.toml `[[publishable_override_ledger]]`, without which the gate rejects the result. Note this answers with drafts rather than the `receipt` every other write gives."
     )]
     async fn redact_term(&self, args: Parameters<RedactTermArgs>) -> CallToolResult {
         let input = RedactTermInput {
@@ -3579,7 +3722,7 @@ impl MnemosyneServer {
     }
 
     #[tool(
-        description = "Look up a single inventory entry (status / section_ref / source / reason). Call this BEFORE writing an inventory citation in code to verify status (Deprecated → don't cite)."
+        description = "Look up a single inventory entry. Call this BEFORE writing an inventory citation in code to verify status (Deprecated → don't cite). ANSWERS WITH: `id` (the entry looked up), `status`, `section_ref`, `source`, `reason`."
     )]
     async fn query_inventory(&self, args: Parameters<InventoryIdArgs>) -> CallToolResult {
         match ops::query_inventory(&self.workspace, &args.0.inventory_id) {
@@ -3678,6 +3821,30 @@ impl MnemosyneServer {
     }
 }
 
+/// The answer an inventory mutate gives — the receipt every write carries, plus
+/// what the R276 decay cascade found (Round 1221).
+///
+/// A TYPE RATHER THAN TWO `json!` LITERALS, and that is the load-bearing part.
+/// This envelope was spelled inline twice — once for the scan that ran and once
+/// for the scan that failed — so the two branches could disagree about their own
+/// shape, and did: the failing branch omitted `cascade_decay_hits` entirely. It
+/// is also the shape the description stamp reads its field names from, and a
+/// stamp generated from a `json!` literal would have to re-spell it a third
+/// time. Round 1221 collapsed all three into this.
+#[derive(Debug, Clone, Serialize, Default)]
+struct InventoryMutateAnswer {
+    /// The write itself — identical to what every other mutate answers with.
+    #[serde(flatten)]
+    outcome: MutateOutcome,
+    /// Cite-sites the removal or Deprecated transition just made stale.
+    cascade_decay_hits: Vec<serde_json::Value>,
+    /// Why the scan could not run. The mutate ALREADY PERSISTED when this is
+    /// set, so the failure is surfaced beside the receipt rather than turned
+    /// into a refusal that would misreport the store.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    cascade_decay_error: Option<String>,
+}
+
 impl MnemosyneServer {
     /// Finish an inventory mutate that may trigger the R276 decay cascade.
     /// On success, when `run_cascade` is set (Deprecated transition or
@@ -3711,19 +3878,21 @@ impl MnemosyneServer {
                         // decay set (fail-loud without falsely failing the
                         // mutate).
                         Err(e) => {
-                            return self.tool_json(&serde_json::json!({
-                                "receipt": o.receipt,
-                                "cascade_decay_error": format!("{:#}", e),
-                            }));
+                            return self.tool_json(&InventoryMutateAnswer {
+                                outcome: o,
+                                cascade_decay_error: Some(format!("{:#}", e)),
+                                ..Default::default()
+                            });
                         }
                     }
                 } else {
                     Vec::new()
                 };
-                self.tool_json(&serde_json::json!({
-                    "receipt": o.receipt,
-                    "cascade_decay_hits": decay,
-                }))
+                self.tool_json(&InventoryMutateAnswer {
+                    outcome: o,
+                    cascade_decay_hits: decay,
+                    cascade_decay_error: None,
+                })
             }
             Err(e) => self.op_error(e),
         }
@@ -3939,37 +4108,31 @@ mod tests {
     /// would be missed too.
     ///
     /// The field names come FROM the type, so a field added tomorrow joins this
-    /// check on its own. SCOPE, stated rather than implied: this holds for ONE
-    /// tool. The other report tools' descriptions have no such law, and the
-    /// mapping from a tool to the type it returns is a hand-written pair, which
-    /// is why this is one pair and not a table pretending to be a rule.
+    /// check on its own.
+    ///
+    /// SCOPE, RESTATED AFTER ROUND 1221. This used to say the law "holds for ONE
+    /// tool" because "the mapping from a tool to the type it returns is a
+    /// hand-written pair". That was true of the TYPE and false of the ANSWER:
+    /// Round 1221 generalised the law by OBTAINING the pair — the sweep already
+    /// makes one valid call per tool — and it now runs over every tool
+    /// [`PROBED`] declares, which found the same drift in eleven more
+    /// descriptions and a receipt envelope sixty-one had never mentioned.
+    ///
+    /// THIS TEST STAYS, AND IT IS NOT THE SAME QUESTION. `report_authoring_frontier`
+    /// takes no required argument, so the sweep does not reach it; and the
+    /// default carries the ALWAYS-PRESENT half of the report, where a live call
+    /// carries whatever that call happened to produce. The rule itself is spelled
+    /// once, in [`describes_answer`], so the two callers cannot drift apart.
     #[test]
     fn the_frontier_tool_describes_every_field_its_report_emits() {
-        let described = agent_facing_tools()
-            .into_iter()
-            .find(|t| t.name == "report_authoring_frontier")
-            .and_then(|t| t.description.clone())
-            .expect("the frontier tool is routed and described")
-            .to_string();
-        let report = serde_json::to_value(ops::AuthoringFrontierReport::default())
+        let report = serde_json::to_string(&ops::AuthoringFrontierReport::default())
             .expect("the report serializes");
-        let emitted: Vec<String> = report
-            .as_object()
-            .expect("the report is a json object")
-            .keys()
-            .cloned()
-            .collect();
-        // `telling` is skipped when None and IS in the default, so the emitted
-        // set is the always-present half; the conditional fields are named by
-        // the same sentence and checked here when the default carries them.
-        let missing: Vec<&String> = emitted
-            .iter()
-            .filter(|key| !described.contains(key.as_str()))
-            .collect();
-        assert!(
-            missing.is_empty(),
-            "the frontier tool's description does not name {missing:?} — an agent reading it \
-             learns nothing about a field the tool returns. Emitted: {emitted:?}"
+        assert_eq!(
+            describes_answer("report_authoring_frontier", &report),
+            Described::Fully,
+            "the frontier tool's description does not name a field its report always carries — \
+             an agent reading it learns nothing about a field the tool returns. The default \
+             report: {report}"
         );
     }
 
@@ -5834,6 +5997,281 @@ mod tests {
         );
     }
 
+    /// A TOOL'S DESCRIPTION NAMES EVERY FIELD OF THE ANSWER IT ACTUALLY GAVE
+    /// (Round 1221).
+    ///
+    /// Round 1217 wrote this law for ONE tool and recorded the reason it stopped
+    /// there: "the mapping from a tool to the type it returns is a hand-written
+    /// pair, which is why this is one pair and not a table pretending to be a
+    /// rule". That is true of the TYPE and false of the ANSWER. This repository
+    /// already declares a valid call for every tool the sweep reaches, makes it,
+    /// and asserts it succeeded — so the pair is not written anywhere, it is
+    /// OBTAINED, the same move Round 1218 made when it held the frontier roster
+    /// against the keys the tool emits rather than against the type.
+    ///
+    /// The verdict is per ANSWER rather than per tool, because whether a tool
+    /// answers with a report is not declared here either: an answer that is not
+    /// a JSON object carries no field names to check, and is counted rather than
+    /// skipped by [`Described`] so a population that quietly stopped being
+    /// checked is visible as a number.
+    fn description_of(tool: &str) -> String {
+        agent_facing_tools()
+            .into_iter()
+            .find(|t| t.name == tool)
+            .unwrap_or_else(|| panic!("`{tool}` is not routed, so no agent can read about it"))
+            .description
+            .clone()
+            .unwrap_or_else(|| panic!("`{tool}` is routed with NO description at all"))
+            .to_string()
+    }
+
+    /// What one answer was to this law: a report whose fields are all named, a
+    /// report missing some, or not a report at all.
+    #[derive(Debug, PartialEq, Eq)]
+    enum Described {
+        /// The answer is a JSON object and the description names every key.
+        Fully,
+        /// The answer is a JSON object and these keys are unnamed.
+        Missing(Vec<String>),
+        /// The answer carries no field names — prose, a bare scalar, or a list.
+        NotAReport,
+    }
+
+    fn describes_answer(tool: &str, answer: &str) -> Described {
+        let Ok(value) = serde_json::from_str::<serde_json::Value>(answer) else {
+            return Described::NotAReport;
+        };
+        let Some(object) = value.as_object() else {
+            return Described::NotAReport;
+        };
+        let described = description_of(tool);
+        let missing: Vec<String> = object
+            .keys()
+            .filter(|key| !described.contains(key.as_str()))
+            .cloned()
+            .collect();
+        if missing.is_empty() {
+            Described::Fully
+        } else {
+            Described::Missing(missing)
+        }
+    }
+
+    /// The law, at the one place in this file that spells it.
+    fn description_names_every_field_the_answer_carries(tool: &str, answer: &str) {
+        if let Described::Missing(missing) = describes_answer(tool, answer) {
+            panic!(
+                "`{tool}`'s description does not name {missing:?} — the tool returns JSON with \
+                 no schema, so a field the sentence omits is a field nothing tells the agent to \
+                 read. The answer this verdict is about:\n{answer}"
+            );
+        }
+    }
+
+    /// EVERY ROUTED TOOL IS ONE THIS LAW HAS AN ANSWER FROM, OR IS NAMED HERE
+    /// WITH WHY NOT (Round 1221).
+    ///
+    /// WITHOUT THIS THE GENERALISATION IS A CLAIM WITH NO DENOMINATOR. "The
+    /// description law is no longer one tool wide" is worth exactly the fraction
+    /// of the surface it reaches, and that fraction is invisible from a green
+    /// sweep: a tool nothing calls is indistinguishable from a tool whose
+    /// description is right. Round 1049 asked a hand-met question of the whole
+    /// read surface and got shipping defects back; this is the same move applied
+    /// to the law's own coverage.
+    ///
+    /// THE UNREACHED SET IS STRUCTURAL, NOT A BACKLOG. The sweep declares one
+    /// VALID CALL per tool and probes its required arguments, so a tool with no
+    /// required argument has nothing to probe and no declaration
+    /// (`probed!` refuses one). Those tools are listed here BY NAME rather than
+    /// counted, so a tool that acquires a required argument — or a new tool that
+    /// arrives with none — changes this list and has to be looked at.
+    #[test]
+    fn every_routed_tool_is_one_this_law_holds_an_answer_from() {
+        let routed: BTreeSet<String> = agent_facing_tools()
+            .into_iter()
+            .map(|t| t.name.to_string())
+            .collect();
+        // THREE SEATS, AND EACH ONE IS A CALL THAT ACTUALLY HAPPENS. `PROBED`
+        // is the required-argument sweep, `EXERCISED` the optional-argument
+        // differentials, `ANSWERED_WITHOUT_ARGUMENTS` the tools that need
+        // neither. None of the three is a list written for this accounting —
+        // the first two already existed, and the third emits its own tests.
+        // A SET, NOT A SUM. The first draft added the seats up and printed "106
+        // of 105 routed tools", which is arithmetically impossible and came out
+        // of a GREEN test: `report_authoring_frontier` is held twice, by the
+        // differentials and by the type-side law, and a tool held twice is
+        // still one tool. The union is what "how much of the surface" means.
+        let held: BTreeSet<String> = PROBED
+            .iter()
+            .map(|(tool, _)| (*tool).to_string())
+            .chain(EXERCISED.iter().map(|(tool, _)| (*tool).to_string()))
+            .chain(ANSWERED_WITHOUT_ARGUMENTS.iter().map(|t| (*t).to_string()))
+            // The frontier tool is also held by
+            // [`the_frontier_tool_describes_every_field_its_report_emits`]
+            // against the TYPE rather than a call.
+            .chain(std::iter::once("report_authoring_frontier".to_string()))
+            .collect();
+        let unreached: Vec<&String> = routed.iter().filter(|t| !held.contains(*t)).collect();
+        // A NAME HERE THAT IS NOT ROUTED would silence a tool by misspelling it.
+        for name in &held {
+            assert!(
+                routed.contains(name),
+                "`{name}` is accounted for as held to its description, but the router does not \
+                 expose it at all"
+            );
+        }
+        assert!(
+            !routed.is_empty() && held.len() > 1,
+            "the router or the sweep came back empty, so this accounting is vacuous"
+        );
+        // THE COUNT IS ASSERTED, NOT ONLY PRINTED. A seat that stopped holding
+        // anything would shrink this silently otherwise, and the whole value of
+        // this test is that the fraction cannot move without saying so.
+        assert_eq!(
+            held.len(),
+            routed.len(),
+            "[description law] {} of {} routed tools are held to an answer; {} are not: \
+             {unreached:?}",
+            held.len(),
+            routed.len(),
+            unreached.len()
+        );
+        // WHAT THE COVERAGE COSTS, PRINTED BESIDE IT. Every field named here is
+        // a field an agent loads before it can call anything, and this round
+        // added prose to 31 descriptions and a generated stamp to 63 more. That
+        // is a real trade against the tool-list payload this repository already
+        // tracks, so the number lives where a later round will see it rather
+        // than in a session that is gone.
+        let served: usize = agent_facing_tools()
+            .iter()
+            .filter_map(|t| t.description.as_ref().map(|d| d.len()))
+            .sum();
+        println!(
+            "[description law] {} of {} routed tools are held to an answer; none are not. \
+             The descriptions an agent loads are {served} bytes.",
+            held.len(),
+            routed.len(),
+        );
+        assert_eq!(
+            unreached.iter().map(|t| t.as_str()).collect::<Vec<&str>>(),
+            NO_REQUIRED_ARGUMENT_SO_NOT_SWEPT,
+            "the set of routed tools this law holds no answer from has changed. A tool that \
+             GAINED a required argument belongs in the sweep (declare it in `probed!`); a NEW \
+             tool with none needs a decision, not a silent seat on this list"
+        );
+    }
+
+    /// The routed tools no seat holds an answer from. EMPTY, and the accounting
+    /// above is what keeps it that way: a new tool arrives unheld and says so.
+    const NO_REQUIRED_ARGUMENT_SO_NOT_SWEPT: &[&str] = &[];
+
+    /// THE TOOLS THAT TAKE NO ARGUMENT AT ALL (Round 1221).
+    ///
+    /// `probed!` refuses a tool with no required argument — there is nothing to
+    /// probe — and `exercised!` needs an optional one to differ by. Nine routed
+    /// tools have neither, so before this round nothing in this repository ever
+    /// called them, and the description law's denominator stopped at 78 of 105.
+    /// They are the cheapest calls on the whole surface: an empty workspace and
+    /// no arguments.
+    ///
+    /// ONE INVOCATION EMITS BOTH THE TEST AND ITS ROW, the discipline
+    /// `exercised!` records: a row that could exist without the test would be a
+    /// claim that a call happens, which is the shape Round 986 shipped and
+    /// Round 1019 removed.
+    macro_rules! answered_without_arguments {
+        ($($test:ident : $tool:ident;)*) => {
+            const ANSWERED_WITHOUT_ARGUMENTS: &[&str] = &[$(stringify!($tool)),*];
+            $(
+                #[tokio::test]
+                async fn $test() {
+                    let tool = stringify!($tool);
+                    let tmp = agent_workspace();
+                    let server =
+                        MnemosyneServer::new(tmp.path().to_path_buf()).expect("server");
+                    let args: EmptyArgs = serde_json::from_value(serde_json::json!({}))
+                        .expect("the empty argument shape must parse");
+                    let result = server.$tool(Parameters(args)).await;
+                    // THE FLOOR, same as the sweep's: a refusal is not an answer
+                    // the description can be about, and a tool that cannot run on
+                    // an empty workspace would make this case vacuous forever.
+                    assert!(
+                        result.is_error != Some(true),
+                        "`{tool}` takes no argument, so a call against an empty \
+                         workspace must ANSWER rather than refuse: {:?}",
+                        result.content
+                    );
+                    let answer = answer_text(&result);
+                    // WHAT THIS TOOL ANSWERS WITH, PRINTED. A tool whose answer
+                    // is not a JSON object has no field names for the law to
+                    // check, and that is a real state rather than a pass — the
+                    // number of them is what a reader needs to discount the
+                    // green by.
+                    println!(
+                        "[description law] {tool} answered {}",
+                        match describes_answer(tool, &answer) {
+                            Described::Fully => "a report whose fields are all named",
+                            Described::Missing(_) => "a report with unnamed fields",
+                            Described::NotAReport => "NO JSON OBJECT — nothing to check here",
+                        }
+                    );
+                    description_names_every_field_the_answer_carries(tool, &answer);
+                }
+            )*
+        };
+    }
+
+    answered_without_arguments! {
+        validate_workspace_answers_without_arguments: validate_workspace;
+        list_sections_answers_without_arguments: list_sections;
+        list_inventory_answers_without_arguments: list_inventory;
+        describe_schema_answers_without_arguments: describe_schema;
+        describe_frontier_axes_answers_without_arguments: describe_frontier_axes;
+        report_typing_candidates_answers_without_arguments: report_typing_candidates;
+        report_parameter_economy_answers_without_arguments: report_parameter_economy;
+        report_entity_kind_migration_answers_without_arguments: report_entity_kind_migration;
+        report_binding_migration_answers_without_arguments: report_binding_migration;
+    }
+
+    /// A TOOL STAMPED WITH AN ANSWER ENVELOPE ANSWERED WITH IT (Round 1221).
+    ///
+    /// The other direction of the same claim. The field law asks whether an
+    /// EMITTED key is named, so it is blind to a description that names a field
+    /// the tool never emits — and [`ANSWERS_WITH_RECEIPT`] is a list, so getting
+    /// it wrong that way is exactly one typo. A stamped tool whose answer does
+    /// not carry the envelope's keys is a description telling an agent to read
+    /// something that will not be there.
+    fn a_stamped_envelope_is_one_the_tool_answered_with(tool: &str, answer: &str) {
+        let expected: Vec<String> = if ANSWERS_WITH_RECEIPT.contains(&tool) {
+            emitted_keys(&ops::MutateOutcome::default())
+        } else if ANSWERS_WITH_INVENTORY_CASCADE.contains(&tool) {
+            emitted_keys(&InventoryMutateAnswer::default())
+        } else {
+            return;
+        };
+        let value: serde_json::Value = serde_json::from_str(answer).unwrap_or_else(|e| {
+            panic!(
+                "`{tool}` is declared to answer with a write envelope, but what it said is not \
+                 JSON at all ({e}):\n{answer}"
+            )
+        });
+        let carried = value.as_object().unwrap_or_else(|| {
+            panic!(
+                "`{tool}` is declared to answer with a write envelope, but its answer is not a \
+                 JSON object:\n{answer}"
+            )
+        });
+        let absent: Vec<&String> = expected
+            .iter()
+            .filter(|key| !carried.contains_key(key.as_str()))
+            .collect();
+        assert!(
+            absent.is_empty(),
+            "`{tool}` is declared to answer with a write envelope and its description is \
+             stamped accordingly, but the answer carries no {absent:?}. Either the tool does \
+             not belong on that list, or the envelope changed and the list did not.\n{answer}"
+        );
+    }
+
     /// Everything a tool said, joined — the read-side counterpart of the store
     /// bytes.
     fn answer_text(result: &CallToolResult) -> String {
@@ -6024,6 +6462,22 @@ mod tests {
                                 stringify!($tool),
                                 $field,
                                 result.content
+                            );
+                        }
+                        // THE DESCRIPTION IS HELD TO THIS ANSWER TOO (R1221).
+                        // The sweep in `probed!` reaches only tools with a
+                        // REQUIRED argument, and eighteen of the tools it
+                        // cannot reach already have a valid call declared here.
+                        // Holding them from this seat costs one line and no new
+                        // declaration; the alternative was a second table of
+                        // calls beside the one that already exists. Refusals
+                        // are skipped because a refusal is not the answer the
+                        // description is about — `in outcome` cases make one on
+                        // purpose.
+                        if result.is_error != Some(true) {
+                            description_names_every_field_the_answer_carries(
+                                stringify!($tool),
+                                &answer_text(&result),
                             );
                         }
                         wrote |= std::fs::read_to_string(&store_path)
@@ -6476,6 +6930,24 @@ mod tests {
                                  probed: {:?}",
                                 result.content
                             );
+                            // AND THE STAMP IS HELD TO IT TOO, the other way
+                            // round: a tool declared to answer with an envelope
+                            // must have answered with it. Without this the
+                            // declaration could name a read, which would stamp
+                            // a sentence about a receipt that never comes — a
+                            // description the field law cannot see is wrong,
+                            // because it only ever asks whether an EMITTED key
+                            // is named.
+                            a_stamped_envelope_is_one_the_tool_answered_with(tool, &answer);
+                            // THE DESCRIPTION IS HELD TO THIS ANSWER (R1221).
+                            // The call above is declared valid and has just been
+                            // asserted to have worked, so what it answered is
+                            // what an agent calling this tool gets — and the
+                            // description is the whole of what it knew before
+                            // calling. The pair is obtained here rather than
+                            // written down anywhere, which is why this
+                            // generalises the one-tool law R1217 left behind.
+                            description_names_every_field_the_answer_carries(tool, &answer);
                             base_answer = answer;
                             base_store = after;
                             base_wrote = base_store != before;

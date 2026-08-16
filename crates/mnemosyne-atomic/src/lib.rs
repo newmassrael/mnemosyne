@@ -2500,7 +2500,12 @@ pub enum AtomicMutateError {
 }
 
 /// Mutate primitive receipt — minimal shape for atomic mutations.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+///
+/// `Default` since Round 1221, for the same reason Round 1217 gave the frontier
+/// report one: a law that holds an MCP tool's description to the fields its
+/// answer carries needs those field names, and the honest source of them is the
+/// shape itself rather than a second list beside it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Default)]
 pub struct AtomicMutateReceipt {
     pub primitive: String,
     pub target_kind: &'static str,

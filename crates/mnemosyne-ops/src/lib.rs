@@ -69,7 +69,12 @@ impl From<std::io::Error> for OpError {
 /// Outcome of a successful atomic mutate — the receipt the primitive
 /// produced. The atomic store is the only artifact; there is nothing to
 /// regenerate.
-#[derive(Debug, Clone, Serialize)]
+///
+/// `Default` since Round 1221: this is the envelope every writing MCP tool
+/// answers with, and the sentence that tells an agent so is GENERATED from the
+/// keys this shape serializes to. A hand-written sentence beside a struct is
+/// what drifted in the first place.
+#[derive(Debug, Clone, Serialize, Default)]
 pub struct MutateOutcome {
     pub receipt: AtomicMutateReceipt,
 }
