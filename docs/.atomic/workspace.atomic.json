@@ -14618,6 +14618,96 @@
         "NOTHING PROVES A CLIENT VALIDATES ANY OF THIS (R1223's carry, unchanged), and the error half still carries no schema (R1222's, unchanged)"
       ]
     },
+    "Round 1227": {
+      "decision_summary": "R1227 (DEBT — the law Round 1225 wrote was a claim about the machine that ran it, and CI said so one push later). `ours_only_drops_the_workspaces_this_repository_does_not_own` asserted that every FOREIGN workspace is one the plain lister offers to check. That holds on a machine carrying the sibling checkout and is false on a runner, where the gate has already dropped `studio` for the OTHER reason — not on this machine. The `validate` job went red with exactly that sentence, and the defect is mine and one round old.\n\nTHE TWO ANSWERS ARE THE ONES THIS GATE EXISTS TO KEEP APART. Round 1115 separated \"not ours\" from \"not on this machine\" because one predicate serving both left the second fact with nowhere to be said; the gate prints a different SKIP sentence for each, and its own comments say why. Round 1225 read the ownership line and then assumed the checkability answer agreed with it. It does not, and cannot: a workspace can be both.\n\nTHE REPAIRED CASE TAKES WHICHEVER BRANCH ITS MACHINE IS ON. It computes the foreign set from the gate's own `LOCK` lines, intersects it with what the plain lister offers, and requires `--ours-only` to drop exactly that intersection and nothing else. Where the intersection is empty it asserts the flag is INERT — which is a real claim rather than a skip — and PRINTS that the drop went unexercised here, so a green run on a runner never reads as evidence about the drop.\n\nAND A SECOND CASE RUNS THE RUNNER'S CONDITION DELIBERATELY, because leaving that branch to CI is what just cost a red. Both machines this repository builds on hold the sibling checkout, so the absent branch would have shipped unexercised a second time. The fixture is a tree with a foreign workspace whose sibling is not there, plus one workspace that IS ours — the second is needed because the gate refuses a run that reached nothing, which is a guard working exactly as intended.\n\nTHAT FIXTURE IMMEDIATELY FOUND A REAL ORDERING DEFECT, which is the round's actual finding rather than the repair. `--ours-only` skipped BEFORE the absence check, so on a runner the more specific fact — the tree is not here — was replaced by the ownership choice. A reader on CI would have been told \"this repository declined to judge it\" when the truth is \"it is not present\". The skip now runs AFTER the absence check, so each machine reports the plainest true reason: absence where the tree is missing, ownership where it is there and foreign.",
+      "changes_bullets": [
+        "the ours-only law no longer assumes foreign implies checkable, which was true only on a machine holding the sibling checkout",
+        "a second case runs the runner's condition locally — a foreign workspace whose tree is absent — instead of leaving that branch to CI",
+        "the skip moved after the absence check, so a machine without the tree is told the plainer fact rather than the ownership choice"
+      ],
+      "verification_bullets": [
+        "THE FAILURE BEING REPAIRED IS ON THE RECORD, not reconstructed: run 31954139184 over `2a6e4a5`, job `validate`, `git_hooks_smoke::ours_only_drops_the_workspaces_this_repository_does_not_own` FAILED at the assertion that a foreign workspace is one the plain lister offers. Eight of nine jobs were green; the two cache jobs were skipped behind it",
+        "BOTH BRANCHES ARE NOW EXERCISED ON THIS MACHINE, which is the whole point of the second case. Before it, the drop branch ran here and on the build machine (both hold the sibling) and the absent branch ran only on CI — the arrangement that let a one-round-old defect reach main",
+        "THE FIXTURE FOUND A DEFECT ON ITS FIRST RUN, and it was not the one it was written for: `--ours-only` announced its own skip for a workspace the gate had already skipped for absence. That is the R1115 conflation coming back in the other direction, and moving the check below the absence test is what fixed it. A case that only re-proved the repair would not have found this",
+        "THE `--list` ORACLE IS WHAT MAKES THE FIXTURE CHEAP: it answers which workspaces are chosen and compiles nothing, so the runner's condition costs milliseconds rather than a build of a tree that is not there",
+        "THE GATE'S OWN \"REACHED NOTHING\" GUARD FIRED DURING CONSTRUCTION and is why the fixture carries a second workspace — the first draft had only the absent one, and the gate correctly refused to call that a green run",
+        "root workspace suite + clippy --workspace --all-targets -D warnings + the separate in-repo workspaces (the WHOLE gate), run through scripts/verify.sh"
+      ],
+      "impact_refs": [
+        "atomic-store-mutate-api"
+      ],
+      "carry_forward_bullets": [
+        "THE DROP BRANCH IS STILL MACHINE-DEPENDENT and always will be: it needs a foreign workspace whose tree is present, which is a fact about the machine rather than about this repository. What changed is that its ABSENCE is now announced rather than silently passed, so a green CI run cannot be read as evidence the drop works",
+        "THE FIXTURE'S FOREIGN WORKSPACE IS INVENTED, not `studio`. It shares the shape — a `[workspace]` with a path dependency leaving the tree — and nothing holds the two together, so a change to how `studio` declares its dependencies would not move this case. The alternative was to point the fixture at the real crate and inherit its compile cost, which the `--list` oracle exists to avoid",
+        "NOTHING HERE MEASURES WHETHER OTHER LAWS IN THIS SUITE CARRY THE SAME ASSUMPTION. The defect class is \"a test that is true only on the machine that wrote it\", this repository has now paid for it more than once, and the population would be every case whose fixture reaches outside its own tempdir. That is a sweep rather than a test and it has not been run"
+      ],
+      "population_census": [
+        {
+          "axis": "transition rules by `undirected`",
+          "left_label": "undirected",
+          "left": 10,
+          "right_label": "directed",
+          "right": 29
+        },
+        {
+          "axis": "map corpora by leg-kind declaration",
+          "left_label": "omitted",
+          "left": 6,
+          "right_label": "declared",
+          "right": 24
+        },
+        {
+          "axis": "cost-carrying corpora by direction-dependent pricing",
+          "left_label": "prices a way by direction",
+          "left": 4,
+          "right_label": "prices no way by direction",
+          "right": 6
+        },
+        {
+          "axis": "run trees by authoring mode",
+          "left_label": "hand script",
+          "left": 10,
+          "right_label": "file-only",
+          "right": 256
+        },
+        {
+          "axis": "map corpora by declared boundary crossing",
+          "left_label": "declares an exit",
+          "left": 6,
+          "right_label": "declares none",
+          "right": 24
+        },
+        {
+          "axis": "authored submissions by map and telling",
+          "left_label": "carries both",
+          "left": 10,
+          "right_label": "carries one",
+          "right": 24
+        }
+      ],
+      "publishable_decision_summary": "R1227 (DEBT — the law Round 1225 wrote was a claim about the machine that ran it, and CI said so one push later). `ours_only_drops_the_workspaces_this_repository_does_not_own` asserted that every FOREIGN workspace is one the plain lister offers to check. That holds on a machine carrying the sibling checkout and is false on a runner, where the gate has already dropped `studio` for the OTHER reason — not on this machine. The `validate` job went red with exactly that sentence, and the defect is mine and one round old.\n\nTHE TWO ANSWERS ARE THE ONES THIS GATE EXISTS TO KEEP APART. Round 1115 separated \"not ours\" from \"not on this machine\" because one predicate serving both left the second fact with nowhere to be said; the gate prints a different SKIP sentence for each, and its own comments say why. Round 1225 read the ownership line and then assumed the checkability answer agreed with it. It does not, and cannot: a workspace can be both.\n\nTHE REPAIRED CASE TAKES WHICHEVER BRANCH ITS MACHINE IS ON. It computes the foreign set from the gate's own `LOCK` lines, intersects it with what the plain lister offers, and requires `--ours-only` to drop exactly that intersection and nothing else. Where the intersection is empty it asserts the flag is INERT — which is a real claim rather than a skip — and PRINTS that the drop went unexercised here, so a green run on a runner never reads as evidence about the drop.\n\nAND A SECOND CASE RUNS THE RUNNER'S CONDITION DELIBERATELY, because leaving that branch to CI is what just cost a red. Both machines this repository builds on hold the sibling checkout, so the absent branch would have shipped unexercised a second time. The fixture is a tree with a foreign workspace whose sibling is not there, plus one workspace that IS ours — the second is needed because the gate refuses a run that reached nothing, which is a guard working exactly as intended.\n\nTHAT FIXTURE IMMEDIATELY FOUND A REAL ORDERING DEFECT, which is the round's actual finding rather than the repair. `--ours-only` skipped BEFORE the absence check, so on a runner the more specific fact — the tree is not here — was replaced by the ownership choice. A reader on CI would have been told \"this repository declined to judge it\" when the truth is \"it is not present\". The skip now runs AFTER the absence check, so each machine reports the plainest true reason: absence where the tree is missing, ownership where it is there and foreign.",
+      "publishable_changes_bullets": [
+        "the ours-only law no longer assumes foreign implies checkable, which was true only on a machine holding the sibling checkout",
+        "a second case runs the runner's condition locally — a foreign workspace whose tree is absent — instead of leaving that branch to CI",
+        "the skip moved after the absence check, so a machine without the tree is told the plainer fact rather than the ownership choice"
+      ],
+      "publishable_verification_bullets": [
+        "THE FAILURE BEING REPAIRED IS ON THE RECORD, not reconstructed: run 31954139184 over `2a6e4a5`, job `validate`, `git_hooks_smoke::ours_only_drops_the_workspaces_this_repository_does_not_own` FAILED at the assertion that a foreign workspace is one the plain lister offers. Eight of nine jobs were green; the two cache jobs were skipped behind it",
+        "BOTH BRANCHES ARE NOW EXERCISED ON THIS MACHINE, which is the whole point of the second case. Before it, the drop branch ran here and on the build machine (both hold the sibling) and the absent branch ran only on CI — the arrangement that let a one-round-old defect reach main",
+        "THE FIXTURE FOUND A DEFECT ON ITS FIRST RUN, and it was not the one it was written for: `--ours-only` announced its own skip for a workspace the gate had already skipped for absence. That is the R1115 conflation coming back in the other direction, and moving the check below the absence test is what fixed it. A case that only re-proved the repair would not have found this",
+        "THE `--list` ORACLE IS WHAT MAKES THE FIXTURE CHEAP: it answers which workspaces are chosen and compiles nothing, so the runner's condition costs milliseconds rather than a build of a tree that is not there",
+        "THE GATE'S OWN \"REACHED NOTHING\" GUARD FIRED DURING CONSTRUCTION and is why the fixture carries a second workspace — the first draft had only the absent one, and the gate correctly refused to call that a green run",
+        "root workspace suite + clippy --workspace --all-targets -D warnings + the separate in-repo workspaces (the WHOLE gate), run through scripts/verify.sh"
+      ],
+      "publishable_impact_refs": [
+        "atomic-store-mutate-api"
+      ],
+      "publishable_carry_forward_bullets": [
+        "THE DROP BRANCH IS STILL MACHINE-DEPENDENT and always will be: it needs a foreign workspace whose tree is present, which is a fact about the machine rather than about this repository. What changed is that its ABSENCE is now announced rather than silently passed, so a green CI run cannot be read as evidence the drop works",
+        "THE FIXTURE'S FOREIGN WORKSPACE IS INVENTED, not `studio`. It shares the shape — a `[workspace]` with a path dependency leaving the tree — and nothing holds the two together, so a change to how `studio` declares its dependencies would not move this case. The alternative was to point the fixture at the real crate and inherit its compile cost, which the `--list` oracle exists to avoid",
+        "NOTHING HERE MEASURES WHETHER OTHER LAWS IN THIS SUITE CARRY THE SAME ASSUMPTION. The defect class is \"a test that is true only on the machine that wrote it\", this repository has now paid for it more than once, and the population would be every case whose fixture reaches outside its own tempdir. That is a sweep rather than a test and it has not been run"
+      ]
+    },
     "Round 252": {
       "decision_summary": "Parser CommonMark conformance — recognize indented fenced code blocks (§98) and require whitespace after ATX hash sequence (§62)",
       "changes_bullets": [

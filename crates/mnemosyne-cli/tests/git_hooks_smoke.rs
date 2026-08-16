@@ -1157,24 +1157,22 @@ fn ours_only_drops_the_workspaces_this_repository_does_not_own() {
          has nothing to drop and the case proves nothing. If that is now true, \
          the flag and this test are both dead and should go: {whole}"
     );
+    // TWO ANSWERS THE GATE KEEPS APART AND THIS CASE MUST TOO (Round 1227).
+    // "not ours" and "not on this machine" are different facts — Round 1115
+    // separated them and the gate says so in two different SKIP lines. A
+    // workspace can be BOTH, and on a CI runner `studio` is: it resolves
+    // against the sibling checkout AND that checkout is not there. The plain
+    // lister already drops it for the second reason, so there is nothing left
+    // for `--ours-only` to drop and nothing this machine can learn about the
+    // flag from it. Round 1225 asserted every foreign workspace was offered by
+    // the plain lister, which is true here and false on a runner, and CI said so
+    // — a claim about the machine asking, which is the shape this repository
+    // has now paid for several times.
     let checkable = named(&whole, "CHECKABLE");
-    for name in &foreign {
-        assert!(
-            checkable.contains(name),
-            "`{name}` is foreign but the plain lister did not offer to check it, \
-             so the comparison below would pass for the wrong reason"
-        );
-    }
+    let droppable: Vec<&String> = foreign.iter().filter(|f| checkable.contains(f)).collect();
 
     let ours = list(&["--list", "--ours-only"]);
     let kept = named(&ours, "CHECKABLE");
-    for name in &foreign {
-        assert!(
-            !kept.contains(name),
-            "`--ours-only` still checks `{name}`, which resolves against a tree \
-             this repository does not own"
-        );
-    }
     let expected: Vec<&String> = checkable.iter().filter(|c| !foreign.contains(c)).collect();
     assert_eq!(
         kept.iter().collect::<Vec<_>>(),
@@ -1182,10 +1180,31 @@ fn ours_only_drops_the_workspaces_this_repository_does_not_own() {
         "`--ours-only` changed the set by more than the foreign workspaces — it \
          must drop those and NOTHING else"
     );
-    // The skip is LOUD: a caller must be able to tell "checked everything" from
-    // "checked what it could", which is the whole reason the closing line names
-    // what it skipped.
-    for name in &foreign {
+
+    if droppable.is_empty() {
+        // THE THIRD STATE, SAID RATHER THAN PASSED OVER. This machine holds no
+        // foreign checkout, so the flag has nothing to drop here and the
+        // assertion above only witnesses that it is INERT when there is nothing
+        // to drop — which is a real claim, and not the one the flag exists for.
+        // The drop itself is exercised where the sibling checkout lives, which
+        // is the same machine the gate can check `studio` on at all.
+        println!(
+            "[ours-only] this machine holds no foreign workspace the plain lister \
+             offers, so the DROP is unexercised here; what is checked is that the \
+             flag changes nothing when there is nothing to change. Foreign: \
+             {foreign:?}"
+        );
+        return;
+    }
+    for name in droppable {
+        assert!(
+            !kept.contains(name),
+            "`--ours-only` still checks `{name}`, which resolves against a tree \
+             this repository does not own"
+        );
+        // The skip is LOUD: a caller must be able to tell "checked everything"
+        // from "checked what it could", which is the whole reason the closing
+        // line names what it skipped.
         assert!(
             ours.contains(&format!("SKIP {name} — --ours-only")),
             "`--ours-only` dropped `{name}` without saying so; a green run that \
@@ -1201,6 +1220,107 @@ fn ours_only_drops_the_workspaces_this_repository_does_not_own() {
         hook.contains("\"$side_gate\" --ours-only"),
         "`pre-push` does not run the side gate with `--ours-only`, so a sibling \
          repository's working tree can still block a push from this one"
+    );
+}
+
+/// WHERE THE SIBLING IS NOT THERE, `--ours-only` CHANGES NOTHING — AND THAT IS
+/// THE BRANCH CI RUNS (Round 1227).
+///
+/// Round 1225's case asserted every FOREIGN workspace was one the plain lister
+/// offered to check. That is true on a machine holding the sibling checkout and
+/// false on a runner, where the gate has already skipped it for the OTHER
+/// reason — "not on this machine" — which Round 1115 separated from "not ours"
+/// precisely because they are different facts. CI is what said so, one push
+/// after the flag landed.
+///
+/// The repaired case above takes whichever branch its machine is on, and BOTH
+/// machines this repository builds on hold the sibling — so the absent branch
+/// would ship unexercised, which is the shape that just cost a red. This runs
+/// the gate over a tree that HAS a foreign workspace and NOT the tree it points
+/// at, which is the runner's condition made local and deterministic.
+#[test]
+fn ours_only_is_inert_where_the_foreign_tree_is_not_on_this_machine() {
+    let gate = repo_root().join("scripts/check-side-workspaces.sh");
+    let tmp = TempDir::new().expect("tempdir");
+    // A root so the gate agrees it was started in a tree, and one separate
+    // workspace whose path dependency leaves it — pointing at a sibling that
+    // does not exist, the way `studio` points at one that does not exist on a
+    // runner.
+    std::fs::write(
+        tmp.path().join("Cargo.toml"),
+        "[package]\nname = \"fixture-root\"\nversion = \"0.0.0\"\nedition = \"2021\"\n\n[workspace]\n",
+    )
+    .expect("root manifest");
+    std::fs::create_dir_all(tmp.path().join("src")).expect("src");
+    std::fs::write(tmp.path().join("src/lib.rs"), "").expect("root lib");
+    std::fs::create_dir_all(tmp.path().join("viewer/src")).expect("viewer");
+    std::fs::write(
+        tmp.path().join("viewer/Cargo.toml"),
+        "[workspace]\n\n[package]\nname = \"viewer\"\nversion = \"0.0.0\"\nedition = \"2021\"\n\n\
+         [dependencies]\nabsent-sibling = { path = \"../../not-here/crates/absent-sibling\" }\n",
+    )
+    .expect("viewer manifest");
+    std::fs::write(tmp.path().join("viewer/src/lib.rs"), "").expect("viewer lib");
+    // A SECOND WORKSPACE THAT IS OURS, because the gate refuses a run that
+    // reached nothing — "a green run that checked nothing is the failure it
+    // exists to prevent" — and with only the absent one there is nothing left.
+    // It is also what makes the comparison below mean something: the flag must
+    // leave THIS one alone while the other is already gone.
+    std::fs::create_dir_all(tmp.path().join("tool/src")).expect("tool");
+    std::fs::write(
+        tmp.path().join("tool/Cargo.toml"),
+        "[workspace]\n\n[package]\nname = \"tool\"\nversion = \"0.0.0\"\nedition = \"2021\"\n",
+    )
+    .expect("tool manifest");
+    std::fs::write(tmp.path().join("tool/src/lib.rs"), "").expect("tool lib");
+
+    let list = |flags: &[&str]| -> String {
+        let out = Command::new(&gate)
+            .args(flags)
+            .current_dir(tmp.path())
+            .output()
+            .expect("the gate runs");
+        assert!(
+            out.status.success(),
+            "the lister failed with {flags:?}:\n{}",
+            stderr_of(&out)
+        );
+        String::from_utf8_lossy(&out.stdout).into_owned()
+    };
+
+    let whole = list(&["--list"]);
+    // THE GATE ALREADY DROPS IT, for absence rather than for ownership — and it
+    // says which, because the two sentences are different.
+    assert!(
+        whole.contains("SKIP viewer — its path dependencies leave this repository"),
+        "the gate did not skip a workspace pointing at a tree that is not here, \
+         so this fixture is not the runner's condition:\n{whole}"
+    );
+    assert!(
+        whole.contains("LOCK viewer foreign"),
+        "the gate did not call it foreign, so the ownership answer this flag \
+         consumes is not being produced:\n{whole}"
+    );
+    let ours = list(&["--list", "--ours-only"]);
+    assert!(
+        !ours.contains("SKIP viewer — --ours-only"),
+        "`--ours-only` claimed the drop for a workspace the gate had already \
+         skipped for absence — two reasons for one skip, and a reader cannot \
+         tell which machine it is on:\n{ours}"
+    );
+    // INERT, not merely quiet: the set of workspaces offered is identical, so a
+    // runner's verdict is the same with the flag as without it.
+    let offered = |text: &str| -> Vec<String> {
+        text.lines()
+            .filter(|l| l.starts_with("[side-workspaces] CHECKABLE "))
+            .map(|l| l.to_string())
+            .collect()
+    };
+    assert_eq!(
+        offered(&ours),
+        offered(&whole),
+        "`--ours-only` changed what a machine WITHOUT the sibling checks; there \
+         is nothing there for it to drop, so it must change nothing"
     );
 }
 

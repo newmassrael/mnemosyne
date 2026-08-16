@@ -290,13 +290,6 @@ for ws in "${workspaces[@]}"; do
   # because no gate was watching it, so this is a real loosening and not a
   # tidy-up. It is taken because a gate that blocks on ANOTHER repository's
   # working tree reports something other than what it claims to.
-  if $ours_only && [[ ${locked_of["$ws"]} == no ]]; then
-    echo "[side-workspaces] SKIP $ws — --ours-only, and this workspace resolves" \
-      "against trees this repository does not own, so a verdict on it is not this" \
-      "repository's to give: ${foreign% }"
-    skipped+=("$ws")
-    continue
-  fi
   # AFTER the ownership line and not before it. Ownership is the same answer on
   # every machine — `realpath -m` does not need the tree to exist — so a runner
   # that cannot COMPILE `studio` can still say whose resolution it records, and
@@ -307,6 +300,21 @@ for ws in "${workspaces[@]}"; do
   if [[ -n "${absent// /}" ]]; then
     echo "[side-workspaces] SKIP $ws — its path dependencies leave this repository" \
       "and are not on this machine: ${absent% }"
+    skipped+=("$ws")
+    continue
+  fi
+  # AND ONLY THEN `--ours-only` (Round 1227 moved this below the absence check).
+  # A workspace can be both foreign and absent, and on a CI runner `studio` is:
+  # skipping it HERE would report the ownership reason on a machine where the
+  # plainer fact is that the tree is not present at all. Round 1115 separated
+  # those two answers because one predicate serving both left the second with
+  # nowhere to be said; announcing the choice over the absence puts it back.
+  # A fixture in `git_hooks_smoke` runs the gate over a tree with a foreign
+  # workspace and no tree behind it, and that is what caught the order.
+  if $ours_only && [[ ${locked_of["$ws"]} == no ]]; then
+    echo "[side-workspaces] SKIP $ws — --ours-only, and this workspace resolves" \
+      "against trees this repository does not own, so a verdict on it is not this" \
+      "repository's to give: ${foreign% }"
     skipped+=("$ws")
     continue
   fi
