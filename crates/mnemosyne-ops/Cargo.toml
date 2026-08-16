@@ -19,6 +19,14 @@ anyhow.workspace = true
 serde = { workspace = true }
 serde_json.workspace = true
 thiserror.workspace = true
+# Round 1222 — OPTIONAL, off by default, the shape Round 690 established for
+# core and atomic. `schemars` is serde's schema sibling; only the `schemars`
+# feature — enabled solely by mnemosyne-mcp — pulls it, so a tool's ANSWER type
+# can publish a real `output_schema` from the one type rather than from prose.
+schemars = { workspace = true, optional = true }
+
+[features]
+schemars = ["dep:schemars", "mnemosyne-atomic/schemars", "mnemosyne-core/schemars"]
 
 [dev-dependencies]
 tempfile.workspace = true

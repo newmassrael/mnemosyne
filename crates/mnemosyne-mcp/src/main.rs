@@ -30,7 +30,12 @@ use mnemosyne_ops::{
 };
 use mnemosyne_projection::{ProjectionService, ProjectionValidation};
 use rmcp::{
-    handler::server::{router::tool::ToolRouter, wrapper::Parameters},
+    handler::server::{
+        router::tool::ToolRouter,
+        // Round 1222 — `Json<T>` is what makes a tool's answer STRUCTURED on the
+        // wire and its `output_schema` derivable from `T`.
+        wrapper::{Json, Parameters},
+    },
     model::{
         CallToolResult, ListResourcesResult, PaginatedRequestParams, ReadResourceRequestParams,
         ReadResourceResult, Resource, ResourceContents, ServerCapabilities, ServerInfo,
@@ -1329,19 +1334,29 @@ impl MnemosyneServer {
         Self::tool_error(format!("workspace={}\n{}", self.workspace.display(), e))
     }
 
+    /// The same refusal, as the error half of a typed answer (Round 1222).
+    fn refused(&self, e: OpError) -> Refused {
+        Refused(format!("workspace={}\n{}", self.workspace.display(), e))
+    }
+
     /// Finish a mutate op: re-sync the warm validation projection from the
-    /// just-written log, then receipt JSON. The atomic store is the only
+    /// just-written log, then the receipt. The atomic store is the only
     /// authoritative artifact; there is nothing rendered to regenerate.
-    fn finish_mutate(&self, outcome: Result<MutateOutcome, OpError>) -> CallToolResult {
-        match outcome {
-            Ok(o) => {
-                if let Err(e) = self.sync_read_models_after_mutate() {
-                    return self.op_error(e);
-                }
-                self.tool_json(&o)
-            }
-            Err(e) => self.op_error(e),
-        }
+    ///
+    /// TYPED SINCE ROUND 1222, and the type is what an agent gets told. Written
+    /// as `Result<Json<..>, ..>` rather than behind an alias BECAUSE THE `#[tool]`
+    /// MACRO READS THE RETURN TYPE SYNTACTICALLY: it derives the tool's
+    /// `output_schema` from the `T` inside `Json<T>`, and an alias — however
+    /// much tidier at 62 call sites — is a path it cannot see through, so the
+    /// schema would silently be `None` again.
+    fn finish_mutate(
+        &self,
+        outcome: Result<MutateOutcome, OpError>,
+    ) -> Result<Json<MutateOutcome>, Refused> {
+        let o = outcome.map_err(|e| self.refused(e))?;
+        self.sync_read_models_after_mutate()
+            .map_err(|e| self.refused(e))?;
+        Ok(Json(o))
     }
 
     /// Re-sync the warm validation projection from the just-written log after a
@@ -2044,7 +2059,10 @@ impl MnemosyneServer {
     #[tool(
         description = "Create a new Section (outline fields only): `section_id` (no `§` prefix), `parent_doc`, `title`, optional `parent_section`. Content fields (intent, rationale, etc.) populate via subsequent set_section_* / add_section_* calls. Rejects duplicate `section_id` and missing `parent_section`."
     )]
-    async fn add_section(&self, args: Parameters<AddSectionArgs>) -> CallToolResult {
+    async fn add_section(
+        &self,
+        args: Parameters<AddSectionArgs>,
+    ) -> Result<Json<MutateOutcome>, Refused> {
         let section = strip_section_marker(&args.0.section_id).to_string();
         let parent_doc = args.0.parent_doc.clone();
         let title = args.0.title.clone();
@@ -2069,7 +2087,10 @@ impl MnemosyneServer {
     #[tool(
         description = "Set Section.title (heading text). Section must exist (use add_section to create first)."
     )]
-    async fn set_section_title(&self, args: Parameters<SetSectionTitleArgs>) -> CallToolResult {
+    async fn set_section_title(
+        &self,
+        args: Parameters<SetSectionTitleArgs>,
+    ) -> Result<Json<MutateOutcome>, Refused> {
         let section = strip_section_marker(&args.0.section_id).to_string();
         let title = args.0.title.clone();
         let outcome =
@@ -2083,7 +2104,7 @@ impl MnemosyneServer {
     async fn set_section_parent_doc(
         &self,
         args: Parameters<SetSectionParentDocArgs>,
-    ) -> CallToolResult {
+    ) -> Result<Json<MutateOutcome>, Refused> {
         let section = strip_section_marker(&args.0.section_id).to_string();
         let parent_doc = args.0.parent_doc.clone();
         let outcome = self.run_mutate(|store, path| {
@@ -2098,7 +2119,7 @@ impl MnemosyneServer {
     async fn set_section_parent_section(
         &self,
         args: Parameters<SetSectionParentSectionArgs>,
-    ) -> CallToolResult {
+    ) -> Result<Json<MutateOutcome>, Refused> {
         let section = strip_section_marker(&args.0.section_id).to_string();
         let parent = args
             .0
@@ -2114,7 +2135,10 @@ impl MnemosyneServer {
     #[tool(
         description = "Set Section.intent atomic field. The intent is a one-sentence statement of what the section is for. Replaces any previous intent. T1+T2 run pre-write."
     )]
-    async fn set_section_intent(&self, args: Parameters<SetSectionIntentArgs>) -> CallToolResult {
+    async fn set_section_intent(
+        &self,
+        args: Parameters<SetSectionIntentArgs>,
+    ) -> Result<Json<MutateOutcome>, Refused> {
         let section = strip_section_marker(&args.0.section_id).to_string();
         let intent = args.0.intent.clone();
         let outcome = self
@@ -2128,7 +2152,7 @@ impl MnemosyneServer {
     async fn set_section_rationale(
         &self,
         args: Parameters<SetSectionBulletsArgs>,
-    ) -> CallToolResult {
+    ) -> Result<Json<MutateOutcome>, Refused> {
         let section = strip_section_marker(&args.0.section_id).to_string();
         let bullets = args.0.bullets.clone();
         let outcome = self.run_mutate(|store, path| {
@@ -2138,7 +2162,10 @@ impl MnemosyneServer {
     }
 
     #[tool(description = "Set Section.inputs_bullets. Replaces existing.")]
-    async fn set_section_inputs(&self, args: Parameters<SetSectionBulletsArgs>) -> CallToolResult {
+    async fn set_section_inputs(
+        &self,
+        args: Parameters<SetSectionBulletsArgs>,
+    ) -> Result<Json<MutateOutcome>, Refused> {
         let section = strip_section_marker(&args.0.section_id).to_string();
         let bullets = args.0.bullets.clone();
         let outcome = self
@@ -2147,7 +2174,10 @@ impl MnemosyneServer {
     }
 
     #[tool(description = "Set Section.outputs_bullets. Replaces existing.")]
-    async fn set_section_outputs(&self, args: Parameters<SetSectionBulletsArgs>) -> CallToolResult {
+    async fn set_section_outputs(
+        &self,
+        args: Parameters<SetSectionBulletsArgs>,
+    ) -> Result<Json<MutateOutcome>, Refused> {
         let section = strip_section_marker(&args.0.section_id).to_string();
         let bullets = args.0.bullets.clone();
         let outcome = self
@@ -2158,7 +2188,10 @@ impl MnemosyneServer {
     #[tool(
         description = "Append a single caveat bullet to Section.caveats_bullets. Append-only — does not replace existing caveats."
     )]
-    async fn add_section_caveat(&self, args: Parameters<AddSectionCaveatArgs>) -> CallToolResult {
+    async fn add_section_caveat(
+        &self,
+        args: Parameters<AddSectionCaveatArgs>,
+    ) -> Result<Json<MutateOutcome>, Refused> {
         let section = strip_section_marker(&args.0.section_id).to_string();
         let bullet = args.0.bullet.clone();
         let outcome = self
@@ -2170,7 +2203,7 @@ impl MnemosyneServer {
     async fn set_section_alternatives(
         &self,
         args: Parameters<SetSectionAlternativesArgs>,
-    ) -> CallToolResult {
+    ) -> Result<Json<MutateOutcome>, Refused> {
         let section = strip_section_marker(&args.0.section_id).to_string();
         let alternatives = args.0.alternatives.clone();
         let outcome = self.run_mutate(|store, path| {
@@ -2185,7 +2218,7 @@ impl MnemosyneServer {
     async fn set_section_impact_scope(
         &self,
         args: Parameters<SetImpactScopeArgs>,
-    ) -> CallToolResult {
+    ) -> Result<Json<MutateOutcome>, Refused> {
         let section = strip_section_marker(&args.0.section_id).to_string();
         let refs: Vec<String> = args
             .0
@@ -2210,7 +2243,10 @@ impl MnemosyneServer {
     #[tool(
         description = "Append a code-fenced example to Section.examples. The code block is rendered with the supplied language tag."
     )]
-    async fn add_section_example(&self, args: Parameters<AddSectionExampleArgs>) -> CallToolResult {
+    async fn add_section_example(
+        &self,
+        args: Parameters<AddSectionExampleArgs>,
+    ) -> Result<Json<MutateOutcome>, Refused> {
         let section = strip_section_marker(&args.0.section_id).to_string();
         let example = ExampleBlock {
             language: args.0.language.clone(),
@@ -2224,7 +2260,10 @@ impl MnemosyneServer {
     #[tool(
         description = "Append a typed (file, symbol?, kind) trace-link binding to Section.bindings. file = workspace-relative POSIX path (no leading `/`, `..`, or `\\`); symbol = optional opaque identifier (function/type/qualified path). kind = `implements` (the symbol fulfills the section's requirement — the only kind counted as coverage) or `references` (related, no fulfillment claim). Duplicate (file, symbol) rejected regardless of kind (use set_section_binding_kind to change kind). File existence not checked here (validate-code-refs does that)."
     )]
-    async fn add_section_binding(&self, args: Parameters<AddSectionBindingArgs>) -> CallToolResult {
+    async fn add_section_binding(
+        &self,
+        args: Parameters<AddSectionBindingArgs>,
+    ) -> Result<Json<MutateOutcome>, Refused> {
         let section = strip_section_marker(&args.0.section_id).to_string();
         let file = args.0.file.clone();
         let symbol = args.0.symbol.clone();
@@ -2238,7 +2277,10 @@ impl MnemosyneServer {
     #[tool(
         description = "Remove one section from the store (R267). `reason` mandatory — recorded on the receipt. Rejects if any live cross-ref still points at it (orphan guard); NotFound if absent (no silent no-op). The MCP parity for the CLI `remove-section` (R678): an MCP agent could create/edit sections but not remove one. Don't edit the sidecar JSON directly."
     )]
-    async fn remove_section(&self, args: Parameters<RemoveSectionArgs>) -> CallToolResult {
+    async fn remove_section(
+        &self,
+        args: Parameters<RemoveSectionArgs>,
+    ) -> Result<Json<MutateOutcome>, Refused> {
         let section = strip_section_marker(&args.0.section_id).to_string();
         let reason = args.0.reason.clone();
         let outcome =
@@ -2252,7 +2294,7 @@ impl MnemosyneServer {
     async fn set_section_decision_status(
         &self,
         args: Parameters<SetSectionDecisionStatusArgs>,
-    ) -> CallToolResult {
+    ) -> Result<Json<MutateOutcome>, Refused> {
         let section = strip_section_marker(&args.0.section_id).to_string();
         let status = args.0.status;
         let superseding = args
@@ -2284,7 +2326,7 @@ impl MnemosyneServer {
     async fn remove_section_binding(
         &self,
         args: Parameters<RemoveSectionBindingArgs>,
-    ) -> CallToolResult {
+    ) -> Result<Json<MutateOutcome>, Refused> {
         let section = strip_section_marker(&args.0.section_id).to_string();
         let file = args.0.file.clone();
         let symbol = args.0.symbol.clone();
@@ -2301,7 +2343,7 @@ impl MnemosyneServer {
     async fn set_section_binding_kind(
         &self,
         args: Parameters<SetSectionBindingKindArgs>,
-    ) -> CallToolResult {
+    ) -> Result<Json<MutateOutcome>, Refused> {
         let section = strip_section_marker(&args.0.section_id).to_string();
         let file = args.0.file.clone();
         let symbol = args.0.symbol.clone();
@@ -2327,7 +2369,7 @@ impl MnemosyneServer {
     async fn set_section_coverage_expectation(
         &self,
         args: Parameters<SetSectionCoverageExpectationArgs>,
-    ) -> CallToolResult {
+    ) -> Result<Json<MutateOutcome>, Refused> {
         let section = strip_section_marker(&args.0.section_id).to_string();
         let expectation = args.0.expectation;
         let reason = args.0.reason.clone();
@@ -2343,7 +2385,7 @@ impl MnemosyneServer {
     async fn set_section_verification_expectation(
         &self,
         args: Parameters<SetSectionVerificationExpectationArgs>,
-    ) -> CallToolResult {
+    ) -> Result<Json<MutateOutcome>, Refused> {
         let section = strip_section_marker(&args.0.section_id).to_string();
         let expectation = args.0.expectation;
         let reason = args.0.reason.clone();
@@ -2365,7 +2407,7 @@ impl MnemosyneServer {
     async fn add_confirmation_event(
         &self,
         args: Parameters<AddConfirmationEventArgs>,
-    ) -> CallToolResult {
+    ) -> Result<Json<MutateOutcome>, Refused> {
         let a = args.0;
         let section = strip_section_marker(&a.section_id).to_string();
         let outcome = self.run_mutate(|store, path| {
@@ -2416,7 +2458,10 @@ impl MnemosyneServer {
     #[tool(
         description = "Register one epistemic frame (R430) — the axis a narrative fact's `frame` must reference. Idempotent on a byte-identical description; a divergent description rejects (no silent overwrite)."
     )]
-    async fn add_frame(&self, args: Parameters<AddFrameArgs>) -> CallToolResult {
+    async fn add_frame(
+        &self,
+        args: Parameters<AddFrameArgs>,
+    ) -> Result<Json<MutateOutcome>, Refused> {
         let a = args.0;
         let outcome = self
             .run_mutate(|store, path| atomic::add_frame(store, path, &a.frame_id, &a.description));
@@ -2426,7 +2471,10 @@ impl MnemosyneServer {
     #[tool(
         description = "Register one world-line branch (R436) — the registry key every non-default fact branch must reference (fail-loud at the write path; `main` never registers). Idempotent on a byte-identical description; divergent rejects."
     )]
-    async fn add_branch(&self, args: Parameters<AddBranchArgs>) -> CallToolResult {
+    async fn add_branch(
+        &self,
+        args: Parameters<AddBranchArgs>,
+    ) -> Result<Json<MutateOutcome>, Refused> {
         let a = args.0;
         let outcome = self.run_mutate(|store, path| {
             let fork = match (&a.forks_from, &a.forks_at) {
@@ -2458,7 +2506,10 @@ impl MnemosyneServer {
     #[tool(
         description = "Register one entity kind (R669) — the vocabulary `add_entity`'s `kind` refs name (character / place / item). The consumer declares the members; the substrate never enumerates them (ARCHITECTURE.md sec 6 invariant 4) and enforces only that a kind in use was declared. The extension path a closed set requires (R626: a guard without an escape hatch is a trap) — register a new kind the moment authoring needs one. Optional `parents` (R732 DEBT-M as one, R738 as a SET — multiple inheritance) make this kind a SUBKIND of each, so a rule scoped to any ancestor accepts it (a `thing`-scoped predicate admits a `weapon` when `thing` is reachable from `weapon`'s parents; a `magic-sword` with parents `[\"weapon\",\"magic-item\"]` satisfies both); each parent must be registered first and cannot be the kind itself. Idempotent on identical content; divergent rejects. Without this an MCP-only agent could not declare a kind (the Phase-0 AI-first north star)."
     )]
-    async fn add_entity_kind(&self, args: Parameters<AddEntityKindArgs>) -> CallToolResult {
+    async fn add_entity_kind(
+        &self,
+        args: Parameters<AddEntityKindArgs>,
+    ) -> Result<Json<MutateOutcome>, Refused> {
         let a = args.0;
         let parents: Vec<&str> = a.parents.iter().map(String::as_str).collect();
         let outcome = self.run_mutate(|store, path| {
@@ -2473,7 +2524,7 @@ impl MnemosyneServer {
     async fn set_entity_kind_parents(
         &self,
         args: Parameters<SetEntityKindParentsArgs>,
-    ) -> CallToolResult {
+    ) -> Result<Json<MutateOutcome>, Refused> {
         let a = args.0;
         let parents: Vec<&str> = a.parents.iter().map(String::as_str).collect();
         let outcome = self.run_mutate(|store, path| {
@@ -2485,7 +2536,10 @@ impl MnemosyneServer {
     #[tool(
         description = "Remove an entity kind from the registry (R740) — the remove peer of add_entity_kind. REFUSES while the kind is still referenced by an entity (Entity.kind), a child kind (a parents link), or a predicate endpoint (subject_kind / object_entity_kind, R701) — removing it would orphan those refs, which the write paths forbid. Absent kind rejects (not an idempotent no-op); a kind naming itself as a parent does not block its own removal."
     )]
-    async fn remove_entity_kind(&self, args: Parameters<RemoveEntityKindArgs>) -> CallToolResult {
+    async fn remove_entity_kind(
+        &self,
+        args: Parameters<RemoveEntityKindArgs>,
+    ) -> Result<Json<MutateOutcome>, Refused> {
         let a = args.0;
         let outcome =
             self.run_mutate(|store, path| atomic::remove_entity_kind(store, path, &a.kind_id));
@@ -2495,7 +2549,10 @@ impl MnemosyneServer {
     #[tool(
         description = "Register one unit of measure (R706) — the vocabulary a `quantity` typed object's `unit` refs (day / minute / metre). The consumer declares the members; the substrate never enumerates them (invariant 4, the R700 place-kind lesson one axis over) and enforces only that a unit in use was declared — a bare unit string would drift min/minute/분. Register a unit before a Quantity uses it (the R626 escape hatch). Idempotent on identical content; divergent rejects. Without this an MCP-only agent could not declare a unit, so no Quantity fact could pass the units gate."
     )]
-    async fn add_unit(&self, args: Parameters<AddUnitArgs>) -> CallToolResult {
+    async fn add_unit(
+        &self,
+        args: Parameters<AddUnitArgs>,
+    ) -> Result<Json<MutateOutcome>, Refused> {
         let a = args.0;
         let outcome = self
             .run_mutate(|store, path| atomic::add_unit(store, path, &a.unit_id, &a.description));
@@ -2505,7 +2562,10 @@ impl MnemosyneServer {
     #[tool(
         description = "Register a numeric PARAMETER (R729, DEBT-K) — an accumulating meter (affection / karma / gold / an RPG stat). The consumer declares the members; the substrate never enumerates them (invariant 4) and enforces only that a parameter in use was declared — a bare string would drift affection/affinity/호감도. Register a parameter before a delta or gate names it. Idempotent on identical content; divergent rejects. Like units, empty does not pass."
     )]
-    async fn add_parameter(&self, args: Parameters<AddParameterArgs>) -> CallToolResult {
+    async fn add_parameter(
+        &self,
+        args: Parameters<AddParameterArgs>,
+    ) -> Result<Json<MutateOutcome>, Refused> {
         let a = args.0;
         let outcome = self.run_mutate(|store, path| {
             atomic::add_parameter(store, path, &a.parameter_id, &a.description)
@@ -2516,7 +2576,10 @@ impl MnemosyneServer {
     #[tool(
         description = "Attach a SIGNED per-beat DELTA to a parameter (R729, DEBT-K) — a side-table entry keyed by the BEAT FACT ID, value = a parameter -> signed delta (+2 a gift, -1 an insult; one beat may move several meters). Fail-loud: the fact must exist, the parameter be registered (add_parameter first), and the delta be NON-ZERO (0 = a no-op beat) — both signs legal (the weighted/negative axis K-of-N cannot express). retract_fact cascade-drops the beat's deltas, so none dangles. Mnemosyne holds the authored delta; it NEVER computes a running sum along a playthrough (the consumer's job — the layering line). A2-consistent per (fact, parameter): identical is a no-op, divergent rejects."
     )]
-    async fn add_parameter_delta(&self, args: Parameters<AddParameterDeltaArgs>) -> CallToolResult {
+    async fn add_parameter_delta(
+        &self,
+        args: Parameters<AddParameterDeltaArgs>,
+    ) -> Result<Json<MutateOutcome>, Refused> {
         let a = args.0;
         let outcome = self.run_mutate(|store, path| {
             atomic::add_parameter_delta(store, path, &a.fact_id, &a.parameter, a.delta)
@@ -2530,7 +2593,7 @@ impl MnemosyneServer {
     async fn remove_parameter_delta(
         &self,
         args: Parameters<RemoveParameterDeltaArgs>,
-    ) -> CallToolResult {
+    ) -> Result<Json<MutateOutcome>, Refused> {
         let a = args.0;
         let outcome = self.run_mutate(|store, path| {
             atomic::remove_parameter_delta(store, path, &a.fact_id, &a.parameter)
@@ -2541,7 +2604,10 @@ impl MnemosyneServer {
     #[tool(
         description = "Attach a numeric-value THRESHOLD GATE to a CHOICE edge (R730, DEBT-K) — a side-table entry keyed by the CHOICE FACT ID, value = {parameter, op, threshold} (\"romance route unlocks if affection >= 4\"). The axis K-of-N (edge_guards threshold) cannot express: a signed/weighted meter compared to a threshold. Fail-loud: the fact must exist, the parameter be registered (add_parameter first). Rides ANY real fact — NO map-edge check (a meter-gated route unlock is a narrative branch, not a spatial move). Because the gate references the meter DIRECTLY, the boolean-proxy silent hole is unrepresentable (no disconnected proxy fact to leave stale). op = ge|le|eq|gt|lt; threshold is signed (0/negative legal — satisfiability is the consumer's model, never Mnemosyne's). retract_fact cascade-drops the gate. Mnemosyne holds the declaration; it NEVER accumulates the meter or evaluates whether the gate holds now (the consumer's job — the layering line). A2-consistent: identical is a no-op, divergent rejects."
     )]
-    async fn add_parameter_gate(&self, args: Parameters<AddParameterGateArgs>) -> CallToolResult {
+    async fn add_parameter_gate(
+        &self,
+        args: Parameters<AddParameterGateArgs>,
+    ) -> Result<Json<MutateOutcome>, Refused> {
         let a = args.0;
         let outcome = self.run_mutate(|store, path| {
             atomic::add_parameter_gate(store, path, &a.fact_id, &a.parameter, a.op, a.threshold)
@@ -2555,7 +2621,7 @@ impl MnemosyneServer {
     async fn remove_parameter_gate(
         &self,
         args: Parameters<RemoveParameterGateArgs>,
-    ) -> CallToolResult {
+    ) -> Result<Json<MutateOutcome>, Refused> {
         let a = args.0;
         let outcome =
             self.run_mutate(|store, path| atomic::remove_parameter_gate(store, path, &a.fact_id));
@@ -2565,7 +2631,10 @@ impl MnemosyneServer {
     #[tool(
         description = "Attach a cost to one map EDGE (R709 → DEBT-J) — a side-table entry keyed by the ADJACENT FACT ID (the adjacent(a,b) fact), value = a number + registered unit (the Quantity shape). NOT a reified fact: the cost is frame-invariant edge metadata, so it carries no per-fact frame/branch/evidence. Fail-loud: the fact must exist, n must be POSITIVE (G3 — 0/negative is a free teleport), and the unit must be registered (add_unit first). `retract_fact` cascade-drops the cost when its fact goes, so it never dangles. Idempotent on identical content; divergent rejects."
     )]
-    async fn add_edge_cost(&self, args: Parameters<AddEdgeCostArgs>) -> CallToolResult {
+    async fn add_edge_cost(
+        &self,
+        args: Parameters<AddEdgeCostArgs>,
+    ) -> Result<Json<MutateOutcome>, Refused> {
         let a = args.0;
         let outcome = self
             .run_mutate(|store, path| atomic::add_edge_cost(store, path, &a.fact_id, a.n, &a.unit));
@@ -2575,7 +2644,10 @@ impl MnemosyneServer {
     #[tool(
         description = "Remove a map EDGE's cost (R711) — the peer of add_edge_cost. A cost is subordinate metadata that retract_fact cascade-drops with its edge, but a cost mistakenly attached to a NON-edge fact (which validate-continuity flags as edge_cost_not_an_edge) must be removable WITHOUT retracting the fact (the fact may be legitimate, or referenced so retract refuses it). Also cleans an out-of-band orphan cost. Fail-loud if the fact has no edge cost."
     )]
-    async fn remove_edge_cost(&self, args: Parameters<RemoveEdgeCostArgs>) -> CallToolResult {
+    async fn remove_edge_cost(
+        &self,
+        args: Parameters<RemoveEdgeCostArgs>,
+    ) -> Result<Json<MutateOutcome>, Refused> {
         let a = args.0;
         let outcome =
             self.run_mutate(|store, path| atomic::remove_edge_cost(store, path, &a.fact_id));
@@ -2585,7 +2657,10 @@ impl MnemosyneServer {
     #[tool(
         description = "Attach a multiset COUNT to a fact (R731 → DEBT-L) — a side-table entry keyed by the fact id, value = a POSITIVE count (holds(A, potion) count 5 = A holds FIVE potions). The thing singular holds custody cannot express: a stackable-item quantity tied to the custody edge (the distinct part of DEBT-L; currency is a DEBT-K meter). NOT a reified fact: the count is frame-invariant metadata, a bare int (no unit — the thing counted is the fact's object leg). Fail-loud: the fact must EXIST and count must be POSITIVE (0/negative = not holding it — retract the fact). Rides ANY fact — NO custody-predicate check: anchoring to the per:object Exclusive rule is semantically inverted (a multiset count is meaningful for FUNGIBLE items, which are exactly the ones NOT under exclusivity). retract_fact cascade-drops the count, so it never dangles — the orphaned-count silent hole is unrepresentable. Idempotent on identical content; divergent rejects. Mnemosyne holds the count; it NEVER evaluates the multiset (the consumer's job — the layering line)."
     )]
-    async fn add_fact_count(&self, args: Parameters<AddFactCountArgs>) -> CallToolResult {
+    async fn add_fact_count(
+        &self,
+        args: Parameters<AddFactCountArgs>,
+    ) -> Result<Json<MutateOutcome>, Refused> {
         let a = args.0;
         let outcome =
             self.run_mutate(|store, path| atomic::add_fact_count(store, path, &a.fact_id, a.count));
@@ -2595,7 +2670,10 @@ impl MnemosyneServer {
     #[tool(
         description = "Remove a fact's multiset COUNT (R731) — the peer of add_fact_count. A count is subordinate metadata that retract_fact cascade-drops with its fact, but a count must also be removable WITHOUT retracting the fact (the author may want it kept un-counted, or the fact may be referenced so retract refuses it). Also cleans an out-of-band orphan count. Fail-loud if the fact has no count."
     )]
-    async fn remove_fact_count(&self, args: Parameters<RemoveFactCountArgs>) -> CallToolResult {
+    async fn remove_fact_count(
+        &self,
+        args: Parameters<RemoveFactCountArgs>,
+    ) -> Result<Json<MutateOutcome>, Refused> {
         let a = args.0;
         let outcome =
             self.run_mutate(|store, path| atomic::remove_fact_count(store, path, &a.fact_id));
@@ -2605,7 +2683,10 @@ impl MnemosyneServer {
     #[tool(
         description = "Add a place-access GUARD condition to one map EDGE (R717/721 design → R720/722) — a side-table entry keyed by the ADJACENT (edge) FACT ID, value = the SET of CONDITION fact ids the edge REQUIRES (\"this passage requires the key AND low tide\"). A guard is a SET (AND-semantics): call this N times to add N conditions; OR is authored as MULTIPLE guarded edges to the same target (never a stored boolean expression tree — the layering line). Both facts must EXIST (a per-member dangling-ref check); an edge cannot guard itself. Mnemosyne holds the DECLARATION and integrity-checks only that each resolves — it NEVER evaluates whether the guard holds now (the consumer's playthrough job). retract_fact cascade-drops the whole set when its EDGE goes and REFUSES to retract a CONDITION any guard's set still references. Idempotent on an already-present condition."
     )]
-    async fn add_edge_guard(&self, args: Parameters<AddEdgeGuardArgs>) -> CallToolResult {
+    async fn add_edge_guard(
+        &self,
+        args: Parameters<AddEdgeGuardArgs>,
+    ) -> Result<Json<MutateOutcome>, Refused> {
         let a = args.0;
         let outcome = self.run_mutate(|store, path| {
             atomic::add_edge_guard(store, path, &a.fact_id, &a.condition)
@@ -2616,7 +2697,10 @@ impl MnemosyneServer {
     #[tool(
         description = "Remove a map EDGE's WHOLE guard set (R720) — the peer of add_edge_guard. A guard is subordinate metadata that retract_fact cascade-drops with its edge, but a guard mistakenly attached to a NON-edge fact (which validate-continuity flags as edge_guard_not_an_edge) must be removable WITHOUT retracting the fact. Also cleans an out-of-band orphan guard. Fail-loud if the fact has no edge guard. To drop just ONE condition, use remove_edge_guard_condition."
     )]
-    async fn remove_edge_guard(&self, args: Parameters<RemoveEdgeGuardArgs>) -> CallToolResult {
+    async fn remove_edge_guard(
+        &self,
+        args: Parameters<RemoveEdgeGuardArgs>,
+    ) -> Result<Json<MutateOutcome>, Refused> {
         let a = args.0;
         let outcome =
             self.run_mutate(|store, path| atomic::remove_edge_guard(store, path, &a.fact_id));
@@ -2629,7 +2713,7 @@ impl MnemosyneServer {
     async fn remove_edge_guard_condition(
         &self,
         args: Parameters<RemoveEdgeGuardConditionArgs>,
-    ) -> CallToolResult {
+    ) -> Result<Json<MutateOutcome>, Refused> {
         let a = args.0;
         let outcome = self.run_mutate(|store, path| {
             atomic::remove_edge_guard_condition(store, path, &a.fact_id, &a.condition)
@@ -2643,7 +2727,7 @@ impl MnemosyneServer {
     async fn set_edge_guard_threshold(
         &self,
         args: Parameters<SetEdgeGuardThresholdArgs>,
-    ) -> CallToolResult {
+    ) -> Result<Json<MutateOutcome>, Refused> {
         let a = args.0;
         let outcome = self.run_mutate(|store, path| {
             atomic::set_edge_guard_threshold(store, path, &a.fact_id, a.threshold)
@@ -2654,7 +2738,10 @@ impl MnemosyneServer {
     #[tool(
         description = "Register one narrative entity (R437) — the retrieval key for entity-scoped verification (a character's background, a location's lore). Fact `entities` refs must name a registered id (fail-loud). `kind` is a REF into the entity-kind registry (R669) — `add_entity_kind` first. Idempotent on identical content; divergent rejects."
     )]
-    async fn add_entity(&self, args: Parameters<AddEntityArgs>) -> CallToolResult {
+    async fn add_entity(
+        &self,
+        args: Parameters<AddEntityArgs>,
+    ) -> Result<Json<MutateOutcome>, Refused> {
         let a = args.0;
         let outcome = self.run_mutate(|store, path| {
             atomic::add_entity(store, path, &a.entity_id, &a.kind, &a.description)
@@ -2665,7 +2752,10 @@ impl MnemosyneServer {
     #[tool(
         description = "Register one predicate (R446) — the 4th registry: TypedClaim predicates are load-bearing refs (narrative rules key off them), so a typo must fail loud, never silently escape its rule. object_kind declares the object leg's shape: entity | token | quantity | fact (R708 removed the free-text `scalar` shape — every machine-slot object is registered/enumerable now, free text lives only in the prose `claim`). R705 — `token` is a CLOSED, enumerable vocabulary declared in object_tokens (required non-empty under object_kind=token, rejected otherwise); the write path rejects a token outside the set. R706 — `quantity` is a number + a registered unit (units registry, add_unit first). R707 — `fact` references another fact of this store (phase-2 existence check, self-ref rejected, delete-guarded). R701 — optional subject_kind / object_entity_kind (registered entity_kinds refs) require the endpoint entity's kind at write time (the spatial-map gate); object_entity_kind rejects unless object_kind=entity. Idempotent on identical content; divergent rejects."
     )]
-    async fn add_predicate(&self, args: Parameters<AddPredicateArgs>) -> CallToolResult {
+    async fn add_predicate(
+        &self,
+        args: Parameters<AddPredicateArgs>,
+    ) -> Result<Json<MutateOutcome>, Refused> {
         let a = args.0;
         let outcome = self.run_mutate(|store, path| {
             atomic::add_predicate(
@@ -2685,7 +2775,10 @@ impl MnemosyneServer {
     #[tool(
         description = "Re-type or re-describe an EXISTING predicate (R658) — the repair half of the registry: add_predicate could create a state no primitive could undo (a divergent re-declare rejects), leaving only a vN id or a hand-edit, both banned. Full replace, so state description AND any subject_kind / object_entity_kind (R701; omit = clear) AND object_tokens (R705 — the closed vocabulary; required non-empty under object_kind=token, and the extension path: a re-declare that DROPS a token an existing use holds REJECTS, so widen the set, never silently narrow it). A re-declare REJECTS while any existing use fails the new object shape OR the new endpoint kinds OR the new vocabulary (a registry disagreeing with its uses is a silent broken state). Absent predicate rejects — add_predicate creates, this mutates."
     )]
-    async fn set_predicate(&self, args: Parameters<SetPredicateArgs>) -> CallToolResult {
+    async fn set_predicate(
+        &self,
+        args: Parameters<SetPredicateArgs>,
+    ) -> Result<Json<MutateOutcome>, Refused> {
         let a = args.0;
         let outcome = self.run_mutate(|store, path| {
             atomic::set_predicate(
@@ -2705,7 +2798,10 @@ impl MnemosyneServer {
     #[tool(
         description = "Remove a predicate from the registry (R658). REJECTS while any typed leg still names it — removing it would orphan those refs, which the write path forbids. Absent predicate rejects (not an idempotent no-op)."
     )]
-    async fn remove_predicate(&self, args: Parameters<RemovePredicateArgs>) -> CallToolResult {
+    async fn remove_predicate(
+        &self,
+        args: Parameters<RemovePredicateArgs>,
+    ) -> Result<Json<MutateOutcome>, Refused> {
         let a = args.0;
         let outcome =
             self.run_mutate(|store, path| atomic::remove_predicate(store, path, &a.predicate_id));
@@ -2715,7 +2811,10 @@ impl MnemosyneServer {
     #[tool(
         description = "Register one disclosure (discourse) plan (R506) — a named telling over the fact base: a default_mode (withhold | state | hint | imply, default withhold = the sparse-frame ethos) the per-fact overrides sit on. Many plans over one base = many tellings (Dark-Souls-fragment / classic-mystery / expository-thriller). Idempotent on identical policy; a changed description/default_mode rejects (set_disclosure edits the overrides)."
     )]
-    async fn add_disclosure_plan(&self, args: Parameters<AddDisclosurePlanArgs>) -> CallToolResult {
+    async fn add_disclosure_plan(
+        &self,
+        args: Parameters<AddDisclosurePlanArgs>,
+    ) -> Result<Json<MutateOutcome>, Refused> {
         let a = args.0;
         let outcome = self.run_mutate(|store, path| {
             atomic::add_disclosure_plan(
@@ -2732,7 +2831,10 @@ impl MnemosyneServer {
     #[tool(
         description = "Set one per-fact disclosure override within a telling (R506/R752): mode (withhold | state | hint | imply), per-world-line first_at timing (each entry {branch, coords[], threshold?} — a first-reached-of-a-SET trigger, coords the trigger set, threshold the optional K-of-N k-th-earliest; omit threshold = first-reached; multiple entries for one branch accumulate), and an optional diegetic surface (scene + entity). A setter (last-write-wins). Fail-loud refs: telling + fact must exist, first_at branches/coords + surface scene must resolve, surface object must be a registered entity. THE gate-enabling invariant: a withhold mode OR any first_at trigger requires the fact to carry a typed claim — the premature-leak render-acceptance gate matches re-extracted prose to the plan by typed tuple, so an untyped target is un-gateable."
     )]
-    async fn set_disclosure(&self, args: Parameters<SetDisclosureArgs>) -> CallToolResult {
+    async fn set_disclosure(
+        &self,
+        args: Parameters<SetDisclosureArgs>,
+    ) -> Result<Json<MutateOutcome>, Refused> {
         let a = args.0;
         let first_at: Vec<atomic::DisclosureRevealImport> = a
             .first_at
@@ -2766,7 +2868,10 @@ impl MnemosyneServer {
     #[tool(
         description = "Clear one telling's disclosure decision for one fact (R626). The fact is untouched — a disclosure decision belongs to the TELLING, not the fact (R506). This is the escape hatch the R626 referential guards require: retract_fact refuses to delete a fact an override still points at, and amend_fact refuses to drop the typed leg out from under a withhold/first_at decision, both saying 'clear the decision first' — so clearing must be possible. Fail-loud: the telling and the decision must exist (no silent no-op), reason mandatory. NOT NEUTRAL (R627): the fact then rides the plan's default_mode, which defaults to `withhold` — so clearing a `state` decision flips that fact from told to never-told for that telling. The receipt names the resulting effective mode; if you are clearing only to retract the fact, do both, or the fact is left silently withheld."
     )]
-    async fn remove_disclosure(&self, args: Parameters<RemoveDisclosureArgs>) -> CallToolResult {
+    async fn remove_disclosure(
+        &self,
+        args: Parameters<RemoveDisclosureArgs>,
+    ) -> Result<Json<MutateOutcome>, Refused> {
         let a = args.0;
         let outcome = self.run_mutate(|store, path| {
             atomic::remove_disclosure(store, path, &a.telling_id, &a.fact_id, &a.reason)
@@ -2780,7 +2885,7 @@ impl MnemosyneServer {
     async fn add_disclosure_reveal_coord(
         &self,
         args: Parameters<AddDisclosureRevealCoordArgs>,
-    ) -> CallToolResult {
+    ) -> Result<Json<MutateOutcome>, Refused> {
         let a = args.0;
         let outcome = self.run_mutate(|store, path| {
             atomic::add_disclosure_reveal_coord(
@@ -2801,7 +2906,7 @@ impl MnemosyneServer {
     async fn remove_disclosure_reveal_coord(
         &self,
         args: Parameters<RemoveDisclosureRevealCoordArgs>,
-    ) -> CallToolResult {
+    ) -> Result<Json<MutateOutcome>, Refused> {
         let a = args.0;
         let outcome = self.run_mutate(|store, path| {
             atomic::remove_disclosure_reveal_coord(
@@ -2822,7 +2927,7 @@ impl MnemosyneServer {
     async fn set_disclosure_reveal_threshold(
         &self,
         args: Parameters<SetDisclosureRevealThresholdArgs>,
-    ) -> CallToolResult {
+    ) -> Result<Json<MutateOutcome>, Refused> {
         let a = args.0;
         let outcome = self.run_mutate(|store, path| {
             atomic::set_disclosure_reveal_threshold(
@@ -2893,7 +2998,10 @@ impl MnemosyneServer {
     #[tool(
         description = "Create one narrative fact (R430): a claim held in exactly one epistemic frame on one world-line branch over a canon extent, evidenced by structure sections. Frame must be registered; a non-default branch must be registered (add_branch); canon/evidence refs must be sections; divergent re-add rejects — in-world belief change = supersedes_in_frame, authorial correction = amend_fact / retract_fact."
     )]
-    async fn add_fact(&self, args: Parameters<atomic::FactImport>) -> CallToolResult {
+    async fn add_fact(
+        &self,
+        args: Parameters<atomic::FactImport>,
+    ) -> Result<Json<MutateOutcome>, Refused> {
         let fact = args.0;
         let outcome = self.run_mutate(|store, path| atomic::add_fact(store, path, &fact));
         self.finish_mutate(outcome)
@@ -2902,7 +3010,10 @@ impl MnemosyneServer {
     #[tool(
         description = "Transactional batch fact authoring (Round 687, typed Round 690): import a whole FactsManifest — optional frames/branches/entity_kinds/entities/predicates plus the facts — in ONE atomic write. The AI-first way to author a scene: N separate add_* calls are non-atomic, so a mid-sequence failure leaves a partial store; this is all-or-nothing. The manifest is a TYPED argument (real JSON Schema), not an opaque string. Same invariants as add_fact per row; forward succession refs within the manifest are legal."
     )]
-    async fn import_facts(&self, args: Parameters<atomic::FactsManifest>) -> CallToolResult {
+    async fn import_facts(
+        &self,
+        args: Parameters<atomic::FactsManifest>,
+    ) -> Result<Json<MutateOutcome>, Refused> {
         let manifest = args.0;
         let outcome = self.run_mutate(|store, path| atomic::import_facts(store, path, &manifest));
         self.finish_mutate(outcome)
@@ -2911,7 +3022,10 @@ impl MnemosyneServer {
     #[tool(
         description = "Transactional batch section authoring (Round 687, typed Round 690): create a batch of structure sections — what facts evidence against — in ONE atomic write. All-or-nothing, same as import_facts. `sections` is a TYPED array of SectionImport (real JSON Schema), not an opaque string."
     )]
-    async fn import_sections(&self, args: Parameters<ImportSectionsArgs>) -> CallToolResult {
+    async fn import_sections(
+        &self,
+        args: Parameters<ImportSectionsArgs>,
+    ) -> Result<Json<MutateOutcome>, Refused> {
         let sections = args.0.sections;
         let outcome =
             self.run_mutate(|store, path| atomic::import_sections(store, path, &sections));
@@ -2921,7 +3035,10 @@ impl MnemosyneServer {
     #[tool(
         description = "Record one conflict assertion edge between two existing facts (R430). Contradiction is a recorded semantic judgment, never derived from claim text; the continuity gate evaluates it (frame, branch)-scoped — cross-scope edges are data, never gated."
     )]
-    async fn add_fact_conflict(&self, args: Parameters<AddFactConflictArgs>) -> CallToolResult {
+    async fn add_fact_conflict(
+        &self,
+        args: Parameters<AddFactConflictArgs>,
+    ) -> Result<Json<MutateOutcome>, Refused> {
         let a = args.0;
         let outcome = self.run_mutate(|store, path| {
             atomic::add_fact_conflict(store, path, &a.fact_id, &a.conflicts_with)
@@ -2932,7 +3049,10 @@ impl MnemosyneServer {
     #[tool(
         description = "Authorial in-place revision of an existing fact, keeping its id (R434, axis-4 correction: a typo or wrong coordinate; in-world belief change is supersedes_in_frame instead). Same invariants as add_fact; inbound successors must stay same-(frame, branch). Mandatory reason."
     )]
-    async fn amend_fact(&self, args: Parameters<AmendFactArgs>) -> CallToolResult {
+    async fn amend_fact(
+        &self,
+        args: Parameters<AmendFactArgs>,
+    ) -> Result<Json<MutateOutcome>, Refused> {
         let AmendFactArgs { fact, reason } = args.0;
         let outcome =
             self.run_mutate(|store, path| atomic::amend_fact(store, path, &fact, &reason));
@@ -2942,7 +3062,10 @@ impl MnemosyneServer {
     #[tool(
         description = "Authorial retract of an unreferenced fact (R434). Any inbound conflict edge / succession pointer blocks it fail-loud with the referrer list; the retraction's transaction-time audit is the git history of the log. Mandatory reason."
     )]
-    async fn retract_fact(&self, args: Parameters<RetractFactArgs>) -> CallToolResult {
+    async fn retract_fact(
+        &self,
+        args: Parameters<RetractFactArgs>,
+    ) -> Result<Json<MutateOutcome>, Refused> {
         let a = args.0;
         let outcome =
             self.run_mutate(|store, path| atomic::retract_fact(store, path, &a.fact_id, &a.reason));
@@ -3491,7 +3614,7 @@ impl MnemosyneServer {
     async fn append_changelog_entry(
         &self,
         args: Parameters<AppendChangelogEntryArgs>,
-    ) -> CallToolResult {
+    ) -> Result<Json<MutateOutcome>, Refused> {
         let entry_id = args.0.entry_id.clone();
         let decision = args.0.decision_summary.clone();
         let changes = args.0.changes_bullets.clone();
@@ -3505,18 +3628,13 @@ impl MnemosyneServer {
         let carry = args.0.carry_forward_bullets.clone();
         // Round 424 — append conformance gate policy, resolved through the
         // single shared path (CLI + MCP parity).
-        let entry_id_prefix = match ops::workspace_entry_id_prefix(&self.workspace) {
-            Ok(p) => p,
-            Err(e) => return self.op_error(e),
-        };
+        let entry_id_prefix =
+            ops::workspace_entry_id_prefix(&self.workspace).map_err(|e| self.refused(e))?;
         // Round 979 — the same resolver the CLI calls. Two wires into one field
         // must enforce one invariant set, and the way this one does it is by
         // having no second reading of the report to diverge from.
         let population_census = if args.0.record_census {
-            match ops::workspace_population_census(&self.workspace) {
-                Ok(c) => c,
-                Err(e) => return self.op_error(e),
-            }
+            ops::workspace_population_census(&self.workspace).map_err(|e| self.refused(e))?
         } else {
             Vec::new()
         };
@@ -3555,7 +3673,7 @@ impl MnemosyneServer {
     async fn set_changelog_publishable_decision_summary(
         &self,
         args: Parameters<SetChangelogPublishableStringArgs>,
-    ) -> CallToolResult {
+    ) -> Result<Json<MutateOutcome>, Refused> {
         let entry_id = args.0.entry_id.clone();
         let value = args.0.value.clone();
         let outcome = self.run_mutate(|store, path| {
@@ -3570,7 +3688,7 @@ impl MnemosyneServer {
     async fn set_changelog_publishable_changes(
         &self,
         args: Parameters<SetChangelogPublishableBulletsArgs>,
-    ) -> CallToolResult {
+    ) -> Result<Json<MutateOutcome>, Refused> {
         let entry_id = args.0.entry_id.clone();
         let bullets = args.0.bullets.clone();
         let outcome = self.run_mutate(|store, path| {
@@ -3585,7 +3703,7 @@ impl MnemosyneServer {
     async fn set_changelog_publishable_verification(
         &self,
         args: Parameters<SetChangelogPublishableBulletsArgs>,
-    ) -> CallToolResult {
+    ) -> Result<Json<MutateOutcome>, Refused> {
         let entry_id = args.0.entry_id.clone();
         let bullets = args.0.bullets.clone();
         let outcome = self.run_mutate(|store, path| {
@@ -3600,7 +3718,7 @@ impl MnemosyneServer {
     async fn set_changelog_publishable_impact_refs(
         &self,
         args: Parameters<SetChangelogPublishableBulletsArgs>,
-    ) -> CallToolResult {
+    ) -> Result<Json<MutateOutcome>, Refused> {
         let entry_id = args.0.entry_id.clone();
         let bullets: Vec<String> = args
             .0
@@ -3628,7 +3746,7 @@ impl MnemosyneServer {
     async fn set_changelog_publishable_carry_forward(
         &self,
         args: Parameters<SetChangelogPublishableBulletsArgs>,
-    ) -> CallToolResult {
+    ) -> Result<Json<MutateOutcome>, Refused> {
         let entry_id = args.0.entry_id.clone();
         let bullets = args.0.bullets.clone();
         let outcome = self.run_mutate(|store, path| {
@@ -3734,7 +3852,10 @@ impl MnemosyneServer {
     #[tool(
         description = "Register a new inventory entry. Duplicate inventory_id rejects. Registering as deprecated surfaces any pre-existing cite-sites via the mutate-time cascade. section_ref omits the leading §."
     )]
-    async fn add_inventory_entry(&self, args: Parameters<AddInventoryEntryArgs>) -> CallToolResult {
+    async fn add_inventory_entry(
+        &self,
+        args: Parameters<AddInventoryEntryArgs>,
+    ) -> Result<Json<InventoryMutateAnswer>, Refused> {
         let inventory_id = args.0.inventory_id.clone();
         let status = args.0.status;
         let section_ref = args
@@ -3768,7 +3889,7 @@ impl MnemosyneServer {
     async fn set_inventory_status(
         &self,
         args: Parameters<SetInventoryStatusArgs>,
-    ) -> CallToolResult {
+    ) -> Result<Json<InventoryMutateAnswer>, Refused> {
         let inventory_id = args.0.inventory_id.clone();
         let status = args.0.status;
         let reason = args.0.reason.clone();
@@ -3788,14 +3909,14 @@ impl MnemosyneServer {
     async fn set_inventory_section_ref(
         &self,
         args: Parameters<SetInventorySectionRefArgs>,
-    ) -> CallToolResult {
+    ) -> Result<Json<MutateOutcome>, Refused> {
         let cleaned: Option<String> = match (&args.0.section_ref, args.0.clear) {
             (Some(s), false) => Some(strip_section_marker(s).to_string()),
             (None, true) => None,
             _ => {
-                return Self::tool_error(
+                return Err(Refused(
                     "exactly one of section_ref or clear must be supplied".to_string(),
-                );
+                ));
             }
         };
         let inventory_id = args.0.inventory_id.clone();
@@ -3811,13 +3932,37 @@ impl MnemosyneServer {
     async fn remove_inventory_entry(
         &self,
         args: Parameters<RemoveInventoryEntryArgs>,
-    ) -> CallToolResult {
+    ) -> Result<Json<InventoryMutateAnswer>, Refused> {
         let inventory_id = args.0.inventory_id.clone();
         let reason = args.0.reason.clone();
         let outcome = self.run_mutate(|store, path| {
             atomic::remove_inventory_entry(store, path, &inventory_id, &reason)
         });
         self.finish_inventory_mutate(outcome, &inventory_id, true)
+    }
+}
+
+/// A REFUSAL, AND DELIBERATELY NOT A PROTOCOL ERROR (Round 1222).
+///
+/// `Result<Json<T>, E>` is the shape the `#[tool]` macro derives an output
+/// schema from, so every typed handler needs an error half — and WHICH error
+/// half is a decision about what an agent sees. rmcp turns an `Err(E)` into a
+/// transport-level JSON-RPC error when `E` converts to one, and into a tool
+/// RESULT carrying `is_error: true` when `E` converts to a result. This server
+/// has always refused the second way: a typo'd telling is the tool answering
+/// "no, and here is why", which the model reads and acts on, not a protocol
+/// fault the model never sees. Converting the surface must not quietly change
+/// that, so this type exists to keep it — `rmcp::ErrorData` in its place would
+/// have been shorter and would have moved every refusal out of the model's
+/// sight.
+#[derive(Debug)]
+struct Refused(String);
+
+impl rmcp::handler::server::tool::IntoCallToolResult for Refused {
+    fn into_call_tool_result(self) -> Result<CallToolResult, rmcp::ErrorData> {
+        // `Ok` — so rmcp's `Result` impl marks it `is_error` and hands it back
+        // as the tool's answer, exactly as `op_error` did.
+        Ok(MnemosyneServer::tool_error(self.0))
     }
 }
 
@@ -3831,7 +3976,7 @@ impl MnemosyneServer {
 /// is also the shape the description stamp reads its field names from, and a
 /// stamp generated from a `json!` literal would have to re-spell it a third
 /// time. Round 1221 collapsed all three into this.
-#[derive(Debug, Clone, Serialize, Default)]
+#[derive(Debug, Clone, Serialize, Default, schemars::JsonSchema)]
 struct InventoryMutateAnswer {
     /// The write itself — identical to what every other mutate answers with.
     #[serde(flatten)]
@@ -3855,11 +4000,11 @@ impl MnemosyneServer {
         outcome: Result<MutateOutcome, OpError>,
         inventory_id: &str,
         run_cascade: bool,
-    ) -> CallToolResult {
+    ) -> Result<Json<InventoryMutateAnswer>, Refused> {
         match outcome {
             Ok(o) => {
                 if let Err(e) = self.sync_read_models_after_mutate() {
-                    return self.op_error(e);
+                    return Err(self.refused(e));
                 }
                 let decay = if run_cascade {
                     match ops::inventory_decay_scan(&self.workspace, inventory_id) {
@@ -3878,23 +4023,23 @@ impl MnemosyneServer {
                         // decay set (fail-loud without falsely failing the
                         // mutate).
                         Err(e) => {
-                            return self.tool_json(&InventoryMutateAnswer {
+                            return Ok(Json(InventoryMutateAnswer {
                                 outcome: o,
                                 cascade_decay_error: Some(format!("{:#}", e)),
                                 ..Default::default()
-                            });
+                            }));
                         }
                     }
                 } else {
                     Vec::new()
                 };
-                self.tool_json(&InventoryMutateAnswer {
+                Ok(Json(InventoryMutateAnswer {
                     outcome: o,
                     cascade_decay_hits: decay,
                     cascade_decay_error: None,
-                })
+                }))
             }
-            Err(e) => self.op_error(e),
+            Err(e) => Err(self.refused(e)),
         }
     }
 }
@@ -4197,7 +4342,7 @@ mod tests {
         assert!(args.record_census, "the flag deserialized as false");
 
         let server = MnemosyneServer::new(ws.to_path_buf()).expect("server");
-        let result = server.append_changelog_entry(Parameters(args)).await;
+        let result = answered(server.append_changelog_entry(Parameters(args)).await);
         assert!(
             result.is_error != Some(true),
             "the MCP append failed: {:?}",
@@ -4227,7 +4372,7 @@ mod tests {
             "verification_bullets": ["checked the thing"],
         }))
         .expect("args without the flag");
-        let result = server.append_changelog_entry(Parameters(bare)).await;
+        let result = answered(server.append_changelog_entry(Parameters(bare)).await);
         assert!(result.is_error != Some(true), "the second append failed");
         let store = atomic::AtomicStore::load(&ws.join("docs/.atomic/workspace.atomic.json"))
             .expect("reload");
@@ -4274,7 +4419,9 @@ mod tests {
         // real one.
         let blind_ws = agent_workspace();
         let blind = MnemosyneServer::new(blind_ws.path().to_path_buf()).expect("server");
-        assert!(blind.import_sections(Parameters(sections())).await.is_error != Some(true));
+        assert!(
+            answered(blind.import_sections(Parameters(sections())).await).is_error != Some(true)
+        );
         let facts: atomic::FactsManifest = serde_json::from_value(serde_json::json!({
             "frames": [{"frame_id": "ground-truth"}],
             "entity_kinds": [{"kind_id": "place"}],
@@ -4285,7 +4432,7 @@ mod tests {
             }],
         }))
         .expect("blind facts parse");
-        assert!(blind.import_facts(Parameters(facts)).await.is_error != Some(true));
+        assert!(answered(blind.import_facts(Parameters(facts)).await).is_error != Some(true));
         let blind_bytes =
             std::fs::read_to_string(blind_ws.path().join("docs/.atomic/workspace.atomic.json"))
                 .expect("the blind store");
@@ -4300,11 +4447,7 @@ mod tests {
         .expect("order");
         let server = MnemosyneServer::new(ws.path().to_path_buf()).expect("server");
         assert!(
-            server
-                .import_sections(Parameters(sections()))
-                .await
-                .is_error
-                != Some(true)
+            answered(server.import_sections(Parameters(sections())).await).is_error != Some(true)
         );
 
         let fidelity = |against: String| {
@@ -4378,13 +4521,15 @@ mod tests {
             ],
         }))
         .expect("sections parse");
-        assert!(server.import_sections(Parameters(sections)).await.is_error != Some(true));
+        assert!(
+            answered(server.import_sections(Parameters(sections)).await).is_error != Some(true)
+        );
         let facts: atomic::FactsManifest = serde_json::from_value(serde_json::json!({
             "frames": [{"frame_id": "ground-truth"}],
             "disclosure_plans": [{"telling_id": "t-quiet", "default_mode": "state"}],
         }))
         .expect("facts parse");
-        assert!(server.import_facts(Parameters(facts)).await.is_error != Some(true));
+        assert!(answered(server.import_facts(Parameters(facts)).await).is_error != Some(true));
 
         let absent = ws.path().join("never-written.json").display().to_string();
         assert!(
@@ -5538,7 +5683,7 @@ mod tests {
             }))
             .expect("sections parse");
             assert!(
-                server.import_sections(Parameters(sections)).await.is_error != Some(true),
+                answered(server.import_sections(Parameters(sections)).await).is_error != Some(true),
                 "seeding the canon coordinate failed"
             );
 
@@ -5546,7 +5691,7 @@ mod tests {
             let before = std::fs::read_to_string(&store_path).expect("read the store");
             let args: atomic::FactsManifest =
                 serde_json::from_value(manifest(canon_from)).expect("manifest parse");
-            let result = server.import_facts(Parameters(args)).await;
+            let result = answered(server.import_facts(Parameters(args)).await);
             let after = std::fs::read_to_string(&store_path).expect("read the store");
 
             assert_eq!(
@@ -5626,7 +5771,7 @@ mod tests {
             let args: ImportSectionsArgs =
                 serde_json::from_value(serde_json::json!({ "sections": sections }))
                     .expect("manifest parse");
-            let result = server.import_sections(Parameters(args)).await;
+            let result = answered(server.import_sections(Parameters(args)).await);
             let after = std::fs::read_to_string(&store_path).expect("read the store");
 
             assert_eq!(
@@ -5672,7 +5817,9 @@ mod tests {
             "sections": [{"section_id": "sc-01", "parent_doc": "spec", "title": "scene one"}],
         }))
         .expect("sections parse");
-        assert!(server.import_sections(Parameters(sections)).await.is_error != Some(true));
+        assert!(
+            answered(server.import_sections(Parameters(sections)).await).is_error != Some(true)
+        );
 
         // A manifest whose only fact names a canon coordinate that does not
         // exist: the gate must say so, and saying so proves it read THIS file.
@@ -5774,7 +5921,9 @@ mod tests {
             ],
         }))
         .expect("sections parse");
-        assert!(server.import_sections(Parameters(sections)).await.is_error != Some(true));
+        assert!(
+            answered(server.import_sections(Parameters(sections)).await).is_error != Some(true)
+        );
 
         // A world with a map: two places, no way between them.
         let world = serde_json::json!({
@@ -5805,7 +5954,7 @@ mod tests {
             }],
         });
         let base: atomic::FactsManifest = serde_json::from_value(world).expect("world parse");
-        assert!(server.import_facts(Parameters(base)).await.is_error != Some(true));
+        assert!(answered(server.import_facts(Parameters(base)).await).is_error != Some(true));
         std::fs::write(
             ws.join("rules.json"),
             serde_json::json!({
@@ -6057,6 +6206,88 @@ mod tests {
         }
     }
 
+    /// A DECLARED OUTPUT SCHEMA IS ONE THE ANSWER SATISFIES (Round 1222).
+    ///
+    /// The description law (Round 1221) holds PROSE to the answer. This holds
+    /// the SCHEMA to it, and the two fail differently: a sentence that omits a
+    /// field leaves an agent uninformed, where a schema that omits one — or
+    /// requires one the answer does not carry — is a contract the server
+    /// advertises and breaks. That is the reason the arc could not stop at
+    /// declaring schemas: a schema without the wire behind it is worse than the
+    /// prose it replaces.
+    ///
+    /// WHAT IS CHECKED, and no more: every property the schema declares is a
+    /// key the answer may carry, every `required` property is one it DOES
+    /// carry, and the answer names nothing the schema does not. Types are not
+    /// checked — `schemars` derives them from the Rust type the handler
+    /// literally returns, so a type mismatch is a compile error rather than a
+    /// runtime one, and re-checking it here would be a second reading of a fact
+    /// the compiler already holds.
+    fn declared_schema_is_one_the_answer_satisfies(tool: &str, result: &CallToolResult) {
+        let Some(schema) = agent_facing_tools()
+            .into_iter()
+            .find(|t| t.name == tool)
+            .and_then(|t| t.output_schema.clone())
+        else {
+            return;
+        };
+        // THE WIRE HAS TO CARRY IT, not just the text. A server that publishes
+        // an output schema and answers with prose is advertising a contract it
+        // does not honour — the half-step this arc refused to take — and the
+        // only place that shows is `structuredContent`, which the text half
+        // looks identical without.
+        let value = result.structured_content.clone().unwrap_or_else(|| {
+            panic!(
+                "`{tool}` publishes an output schema and answered with NO structured content, so \
+                 a consumer reading the schema gets prose to parse.\nText was:\n{}",
+                answer_text(result)
+            )
+        });
+        let answer = serde_json::to_string_pretty(&value).unwrap_or_default();
+        let carried = value.as_object().unwrap_or_else(|| {
+            panic!("`{tool}` declares an output schema but its answer is not an object:\n{answer}")
+        });
+        let declared: BTreeSet<String> = schema
+            .get("properties")
+            .and_then(|p| p.as_object())
+            .map(|p| p.keys().cloned().collect())
+            .unwrap_or_default();
+        assert!(
+            !declared.is_empty(),
+            "`{tool}` declares an output schema with no properties at all, which cannot be \
+             checked against anything: {schema:?}"
+        );
+        let undeclared: Vec<&String> = carried
+            .keys()
+            .filter(|key| !declared.contains(*key))
+            .collect();
+        assert!(
+            undeclared.is_empty(),
+            "`{tool}` answered with {undeclared:?}, which its declared output schema does not \
+             describe — a consumer validating against the schema would reject the server's own \
+             answer.\nSchema properties: {declared:?}\nAnswer:\n{answer}"
+        );
+        let required: Vec<String> = schema
+            .get("required")
+            .and_then(|r| r.as_array())
+            .map(|r| {
+                r.iter()
+                    .filter_map(|v| v.as_str().map(str::to_string))
+                    .collect()
+            })
+            .unwrap_or_default();
+        let missing: Vec<&String> = required
+            .iter()
+            .filter(|key| !carried.contains_key(key.as_str()))
+            .collect();
+        assert!(
+            missing.is_empty(),
+            "`{tool}`'s output schema REQUIRES {missing:?}, and the answer does not carry them. \
+             A consumer that trusts the schema would read a field that is not there.\nAnswer:\n\
+             {answer}"
+        );
+    }
+
     /// The law, at the one place in this file that spells it.
     fn description_names_every_field_the_answer_carries(tool: &str, answer: &str) {
         if let Described::Missing(missing) = describes_answer(tool, answer) {
@@ -6165,6 +6396,45 @@ mod tests {
     /// above is what keeps it that way: a new tool arrives unheld and says so.
     const NO_REQUIRED_ARGUMENT_SO_NOT_SWEPT: &[&str] = &[];
 
+    /// HOW FAR THE OUTPUT-SCHEMA CONVERSION HAS GOT, AS A NUMBER (Round 1222).
+    ///
+    /// The arc converts handlers from a hand-built `CallToolResult` to a typed
+    /// `Result<Json<T>, Refused>` in groups, and a partly-converted surface is
+    /// the normal state between rounds. What must NOT be normal is not knowing
+    /// which state it is in: "the tools declare schemas now" is worth the
+    /// fraction that do, and a green suite says nothing about the fraction.
+    ///
+    /// SO THE COUNT IS PINNED RATHER THAN PRINTED. A conversion that lands
+    /// without this number moving fails here, and so does a tool that QUIETLY
+    /// LOSES its schema — which is the regression that matters, because the
+    /// surface would keep answering and only a consumer validating against the
+    /// schema would ever know.
+    #[test]
+    fn the_tools_that_publish_an_output_schema_are_the_ones_converted_so_far() {
+        let tools = agent_facing_tools();
+        let typed: Vec<String> = tools
+            .iter()
+            .filter(|t| t.output_schema.is_some())
+            .map(|t| t.name.to_string())
+            .collect();
+        // The write envelope, and nothing else yet: 62 tools answering
+        // `MutateOutcome` and 3 answering the inventory cascade.
+        assert_eq!(
+            typed.len(),
+            65,
+            "[output schema] {} of {} routed tools publish one. The arc converts in groups and \
+             this number is its ledger — if a group just landed, raise it; if it FELL, a tool \
+             lost its schema and the agent lost the contract. Typed: {typed:?}",
+            typed.len(),
+            tools.len()
+        );
+        println!(
+            "[output schema] {} of {} routed tools publish one",
+            typed.len(),
+            tools.len()
+        );
+    }
+
     /// THE TOOLS THAT TAKE NO ARGUMENT AT ALL (Round 1221).
     ///
     /// `probed!` refuses a tool with no required argument — there is nothing to
@@ -6190,7 +6460,7 @@ mod tests {
                         MnemosyneServer::new(tmp.path().to_path_buf()).expect("server");
                     let args: EmptyArgs = serde_json::from_value(serde_json::json!({}))
                         .expect("the empty argument shape must parse");
-                    let result = server.$tool(Parameters(args)).await;
+                    let result = answered(server.$tool(Parameters(args)).await);
                     // THE FLOOR, same as the sweep's: a refusal is not an answer
                     // the description can be about, and a tool that cannot run on
                     // an empty workspace would make this case vacuous forever.
@@ -6215,6 +6485,7 @@ mod tests {
                         }
                     );
                     description_names_every_field_the_answer_carries(tool, &answer);
+                    declared_schema_is_one_the_answer_satisfies(tool, &result);
                 }
             )*
         };
@@ -6270,6 +6541,25 @@ mod tests {
              stamped accordingly, but the answer carries no {absent:?}. Either the tool does \
              not belong on that list, or the envelope changed and the list did not.\n{answer}"
         );
+    }
+
+    /// WHAT A TOOL ANSWERED, WHATEVER SHAPE ITS HANDLER IS WRITTEN IN
+    /// (Round 1222).
+    ///
+    /// The output-schema conversion changes handlers from `CallToolResult` to
+    /// `Result<Json<T>, Refused>` one group at a time, and every seat in this
+    /// file calls a handler and reads the answer. Normalising through rmcp's own
+    /// `IntoCallToolResult` — the trait the router itself uses — means a
+    /// converted handler and an unconverted one are read by the SAME line, so
+    /// the conversion can proceed without the tests tracking which group a tool
+    /// is in. `CallToolResult` implements it as the identity.
+    ///
+    /// The `expect` is the honest part: a handler whose error half converts to a
+    /// PROTOCOL error rather than a refusal would panic here, which is exactly
+    /// the regression `Refused` exists to prevent.
+    fn answered<R: rmcp::handler::server::tool::IntoCallToolResult>(r: R) -> CallToolResult {
+        r.into_call_tool_result()
+            .expect("a tool must refuse as a tool result, never as a protocol error")
     }
 
     /// Everything a tool said, joined — the read-side counterpart of the store
@@ -6400,7 +6690,8 @@ mod tests {
                                         serde_json::json!($blind_base),
                                     )
                                     .expect("the blind store call's shape must parse");
-                                    let built = blind.$blind_call(Parameters(seed)).await;
+                                    let built =
+                                        answered(blind.$blind_call(Parameters(seed)).await);
                                     assert!(
                                         built.is_error != Some(true),
                                         "building the blind store `{}` failed at {}, \
@@ -6422,7 +6713,7 @@ mod tests {
                             let setup: $setup_args =
                                 serde_json::from_value(serde_json::json!($setup_base))
                                     .expect("the setup call's shape must parse");
-                            let ready = server.$setup(Parameters(setup)).await;
+                            let ready = answered(server.$setup(Parameters(setup)).await);
                             assert!(
                                 ready.is_error != Some(true),
                                 "the `given` call {} failed, so {} was never \
@@ -6435,7 +6726,7 @@ mod tests {
                         let store_path = tmp.path().join("docs/.atomic/workspace.atomic.json");
                         let before_call =
                             std::fs::read_to_string(&store_path).expect("read the store");
-                        let result = server.$tool(Parameters(args)).await;
+                        let result = answered(server.$tool(Parameters(args)).await);
                         // AN ARGUMENT THE TOOL'S OWN CONTRACT MAKES CONDITIONAL
                         // CANNOT BE OMITTED AND STILL LEAVE A VALID CALL — one
                         // half of an exactly-one-of pair has no arm without it.
@@ -6475,9 +6766,14 @@ mod tests {
                         // description is about — `in outcome` cases make one on
                         // purpose.
                         if result.is_error != Some(true) {
+                            let said = answer_text(&result);
                             description_names_every_field_the_answer_carries(
                                 stringify!($tool),
-                                &answer_text(&result),
+                                &said,
+                            );
+                            declared_schema_is_one_the_answer_satisfies(
+                                stringify!($tool),
+                                &result,
                             );
                         }
                         wrote |= std::fs::read_to_string(&store_path)
@@ -6806,7 +7102,8 @@ mod tests {
                                         serde_json::json!($blind_base),
                                     )
                                     .expect("the blind store call's shape must parse");
-                                    let built = blind.$blind_call(Parameters(seed)).await;
+                                    let built =
+                                        answered(blind.$blind_call(Parameters(seed)).await);
                                     assert!(
                                         built.is_error != Some(true),
                                         "building the blind store `{}` failed at {}: {:?}",
@@ -6826,7 +7123,7 @@ mod tests {
                             let setup: $setup_args =
                                 serde_json::from_value(serde_json::json!($setup_base))
                                     .expect("the setup call's shape must parse");
-                            let ready = server.$setup(Parameters(setup)).await;
+                            let ready = answered(server.$setup(Parameters(setup)).await);
                             assert!(
                                 ready.is_error != Some(true),
                                 "the `given` call {} failed, so {tool} was never \
@@ -6913,7 +7210,7 @@ mod tests {
                             tmp.path().join("docs/.atomic/workspace.atomic.json");
                         let before = std::fs::read_to_string(&store_path)
                             .expect("read the store");
-                        let result = server.$tool(Parameters(args)).await;
+                        let result = answered(server.$tool(Parameters(args)).await);
                         let after = std::fs::read_to_string(&store_path)
                             .expect("read the store");
                         let answer = answer_text(&result);
@@ -6948,6 +7245,7 @@ mod tests {
                             // written down anywhere, which is why this
                             // generalises the one-tool law R1217 left behind.
                             description_names_every_field_the_answer_carries(tool, &answer);
+                            declared_schema_is_one_the_answer_satisfies(tool, &result);
                             base_answer = answer;
                             base_store = after;
                             base_wrote = base_store != before;
@@ -6990,7 +7288,7 @@ mod tests {
                                 );
                                 let again: $args = serde_json::from_value(declared)
                                     .expect("the declared call's shape must parse");
-                                let _ = server.$tool(Parameters(again)).await;
+                                let _ = answered(server.$tool(Parameters(again)).await);
                                 let twice = std::fs::read_to_string(&store_path)
                                     .expect("read the store");
                                 assert_eq!(
@@ -7349,7 +7647,7 @@ mod tests {
                             let setup: $setup_args =
                                 serde_json::from_value(serde_json::json!($setup_base))
                                     .expect("the setup call's shape must parse");
-                            server.$setup(Parameters(setup)).await;
+                            let _ = answered(server.$setup(Parameters(setup)).await);
                         )*
                         let clean = answer_text(
                             &server.validate_workspace(Parameters(EmptyArgs {})).await,
@@ -7369,7 +7667,7 @@ mod tests {
                         json[arg.as_str()] = value;
                         let args: $args = serde_json::from_value(json)
                             .expect("the probe call's shape must parse");
-                        let dangled = server.$tool(Parameters(args)).await;
+                        let dangled = answered(server.$tool(Parameters(args)).await);
                         assert!(
                             dangled.is_error != Some(true),
                             "`{tool}.{arg}` is typed `ScannedRef` but the call \
@@ -7468,7 +7766,7 @@ mod tests {
                         let setup: $setup_args =
                             serde_json::from_value(serde_json::json!($setup_base))
                                 .expect("the world's setup call must parse");
-                        let ready = server.$setup(Parameters(setup)).await;
+                        let ready = answered(server.$setup(Parameters(setup)).await);
                         assert!(
                             ready.is_error != Some(true),
                             "establishing the world `{}` failed at {}, so every \
@@ -8297,25 +8595,29 @@ mod tests {
         let server = MnemosyneServer::new(tmp.path().to_path_buf()).expect("server");
         branch_story(&server, tmp.path()).await;
         let reason = "the ledger has to hold this sentence";
-        let added = server
-            .add_section(
-                serde_json::from_value::<AddSectionArgs>(serde_json::json!({
-                    "section_id": "sc-06", "parent_doc": "spec", "title": "six"
-                }))
-                .map(Parameters)
-                .expect("shape parses"),
-            )
-            .await;
+        let added = answered(
+            server
+                .add_section(
+                    serde_json::from_value::<AddSectionArgs>(serde_json::json!({
+                        "section_id": "sc-06", "parent_doc": "spec", "title": "six"
+                    }))
+                    .map(Parameters)
+                    .expect("shape parses"),
+                )
+                .await,
+        );
         assert!(added.is_error != Some(true), "adding: {:?}", added.content);
-        let removed = server
-            .remove_section(
-                serde_json::from_value::<RemoveSectionArgs>(serde_json::json!({
-                    "section_id": "sc-06", "reason": reason
-                }))
-                .map(Parameters)
-                .expect("shape parses"),
-            )
-            .await;
+        let removed = answered(
+            server
+                .remove_section(
+                    serde_json::from_value::<RemoveSectionArgs>(serde_json::json!({
+                        "section_id": "sc-06", "reason": reason
+                    }))
+                    .map(Parameters)
+                    .expect("shape parses"),
+                )
+                .await,
+        );
         assert!(
             removed.is_error != Some(true),
             "the removal failed: {:?}",
@@ -8353,15 +8655,17 @@ mod tests {
             ("f-quest-done", "the crossing was never made"),
             ("f-alt", "the fork is cut"),
         ] {
-            let out = server
-                .retract_fact(
-                    serde_json::from_value::<RetractFactArgs>(serde_json::json!({
-                        "fact_id": fact, "reason": why
-                    }))
-                    .map(Parameters)
-                    .expect("shape parses"),
-                )
-                .await;
+            let out = answered(
+                server
+                    .retract_fact(
+                        serde_json::from_value::<RetractFactArgs>(serde_json::json!({
+                            "fact_id": fact, "reason": why
+                        }))
+                        .map(Parameters)
+                        .expect("shape parses"),
+                    )
+                    .await,
+            );
             assert!(
                 out.is_error != Some(true),
                 "retracting {fact}: {:?}",
@@ -8389,15 +8693,17 @@ mod tests {
         // A BLANK REASON IS REFUSED BEFORE ANYTHING MOVES, which is where the
         // check has to be: Round 1024 first put it in the save and four atomic
         // tests said the store had already been mutated in memory.
-        let blank = server
-            .remove_section(
-                serde_json::from_value::<RemoveSectionArgs>(serde_json::json!({
-                    "section_id": "sc-03", "reason": "   "
-                }))
-                .map(Parameters)
-                .expect("shape parses"),
-            )
-            .await;
+        let blank = answered(
+            server
+                .remove_section(
+                    serde_json::from_value::<RemoveSectionArgs>(serde_json::json!({
+                        "section_id": "sc-03", "reason": "   "
+                    }))
+                    .map(Parameters)
+                    .expect("shape parses"),
+                )
+                .await,
+        );
         assert!(
             blank.is_error == Some(true),
             "a blank reason must be refused"
@@ -8487,10 +8793,10 @@ mod tests {
                 "authoring_run": "run-a", "confirming_run": run
             })
         };
-        let call = |json: serde_json::Value| {
+        let call = |json: serde_json::Value| async {
             let args: AddConfirmationEventArgs =
                 serde_json::from_value(json).expect("the agent-facing shape parses");
-            server.add_confirmation_event(Parameters(args))
+            answered(server.add_confirmation_event(Parameters(args)).await)
         };
         let first = call(act("2026-08-04T00:00:00Z", "run-b")).await;
         assert!(
@@ -8946,11 +9252,13 @@ mod tests {
         };
 
         // 1) import_sections creates the section a fact will evidence against.
-        let r = server
-            .import_sections(Parameters(ImportSectionsArgs {
-                sections: vec![section("A")],
-            }))
-            .await;
+        let r = answered(
+            server
+                .import_sections(Parameters(ImportSectionsArgs {
+                    sections: vec![section("A")],
+                }))
+                .await,
+        );
         assert!(r.is_error != Some(true), "import_sections failed: {r:?}");
         assert!(
             read_store().sections.contains_key(&"sec-a".into()),
@@ -8988,7 +9296,7 @@ mod tests {
             }],
             disclosure_plans: vec![],
         };
-        let r = server.import_facts(Parameters(manifest)).await;
+        let r = answered(server.import_facts(Parameters(manifest)).await);
         assert!(r.is_error != Some(true), "import_facts failed: {r:?}");
         assert!(
             read_store().narrative_facts.contains_key(&"f1".into()),
@@ -8998,11 +9306,13 @@ mod tests {
         // 3) A divergent section (same id, different title) rejects the WHOLE
         //    import and writes NOTHING — all-or-nothing at the wrapper layer.
         let before = fs::read(&sidecar).unwrap();
-        let r = server
-            .import_sections(Parameters(ImportSectionsArgs {
-                sections: vec![section("DIFFERENT")],
-            }))
-            .await;
+        let r = answered(
+            server
+                .import_sections(Parameters(ImportSectionsArgs {
+                    sections: vec![section("DIFFERENT")],
+                }))
+                .await,
+        );
         assert!(
             r.is_error == Some(true),
             "divergent import must be rejected"

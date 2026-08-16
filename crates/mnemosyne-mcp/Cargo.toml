@@ -11,7 +11,9 @@ name = "mnemosyne-mcp"
 path = "src/main.rs"
 
 [dependencies]
-mnemosyne-ops = { path = "../mnemosyne-ops" }
+# Round 1222 — the `schemars` feature is what lets the mutate answer type
+# publish a real `output_schema`; same opt-in shape as atomic/core below.
+mnemosyne-ops = { path = "../mnemosyne-ops", features = ["schemars"] }
 mnemosyne-config = { path = "../mnemosyne-config" }
 # Round 690 — enable the atomic/core `schemars` feature so the manifest / fact
 # DTOs derive JsonSchema and the authoring tools type them directly (no mirror).

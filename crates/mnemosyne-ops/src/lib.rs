@@ -74,7 +74,11 @@ impl From<std::io::Error> for OpError {
 /// answers with, and the sentence that tells an agent so is GENERATED from the
 /// keys this shape serializes to. A hand-written sentence beside a struct is
 /// what drifted in the first place.
+/// `JsonSchema` since Round 1222: this is the answer type 62 MCP tools return,
+/// so deriving it here is what lets every one of them publish a real
+/// `output_schema` instead of a sentence about one.
 #[derive(Debug, Clone, Serialize, Default)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct MutateOutcome {
     pub receipt: AtomicMutateReceipt,
 }

@@ -2506,6 +2506,7 @@ pub enum AtomicMutateError {
 /// answer carries needs those field names, and the honest source of them is the
 /// shape itself rather than a second list beside it.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Default)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct AtomicMutateReceipt {
     pub primitive: String,
     pub target_kind: &'static str,

@@ -14160,6 +14160,96 @@
         "A REFUSAL IS NOT HELD TO ANY DESCRIPTION. The law reads the answer of a call that SUCCEEDED, so an error path returning a differently-shaped payload — the inventory cascade's `cascade_decay_error` is one — is described because the stamp is generated from an instance carrying that field, not because anything observed it. What would observe it is a call whose decay scan fails while the write persists, and that is a fixture about the FILESYSTEM rather than about the store: the shape this repository has twice recorded paying for. Not attempted, and stated as not attempted"
       ]
     },
+    "Round 1222": {
+      "decision_summary": "R1222 (BUILD — the output-schema arc, step one: the write envelope stops being described and starts being DECLARED). R1221 generalised a law that holds a tool's DESCRIPTION to the fields its answer carries, and named what that law is a substitute for: `rmcp` carries a real `output_schema` on every tool and this server declared none on any, so prose was the whole contract. It also named why it stopped — declaring a schema the wire does not honour tells an agent something false, and honouring it means changing what every handler returns. This round does the first group properly rather than the whole surface badly.\n\nTHE MECHANISM, MEASURED BEFORE ANYTHING WAS WRITTEN. The `#[tool]` macro reads the handler's return type SYNTACTICALLY: `Json<T>` or `Result<Json<T>, E>` makes it derive the tool's output schema from `T`, and `Json<T>` converts to `CallToolResult::structured(..)`, which fills `structuredContent` on the wire beside the text. An alias over that `Result` — far tidier at sixty-five call sites — is a path the macro cannot see through, so the schema would silently be `None` again; the type is therefore spelled out at every one, and the reason is written where a later round will read it.\n\nTHE ERROR HALF IS A DECISION, NOT A DETAIL, and it is the one thing that could have been quietly lost. rmcp turns `Err(E)` into a transport-level JSON-RPC error when `E` converts to one, and into a tool RESULT carrying `is_error: true` when `E` converts to a result. This server has always refused the second way — a typo'd telling is the tool saying \"no, and here is why\", which a model reads and acts on, not a protocol fault it never sees. `rmcp::ErrorData` in the error slot would have been shorter and would have moved every refusal out of the model's sight, so a `Refused` type exists to keep the old behaviour exactly.\n\nWHAT WAS CONVERTED, and why this group first: SIXTY-FIVE of the 105 routed tools share TWO answer types. Sixty-two answer `ops::MutateOutcome` through the one `finish_mutate` wire and three answer the inventory cascade envelope, so two `JsonSchema` derives buy schemas for 62% of the surface. `mnemosyne-ops` gains the optional `schemars` feature the Round 690 shape established for core and atomic — off by default, enabled solely by `mnemosyne-mcp`.\n\nTHE CONVERSION IS INCREMENTAL BY CONSTRUCTION, which is what keeps the arc from being one enormous round. Every seat in the test file that calls a handler now normalises through rmcp's OWN `IntoCallToolResult` — the trait the router itself uses — so a converted handler and an unconverted one are read by the same line and the remaining groups can land without the tests tracking which group a tool is in. The `expect` on that conversion is load-bearing rather than decorative: a handler whose error half became a PROTOCOL error would panic there, which is exactly the regression `Refused` exists to prevent.\n\nTWO LAWS, AND THEY FAIL DIFFERENTLY FROM THE PROSE ONE. The first holds a DECLARED schema to the answer actually obtained: every property the schema declares is one the answer may carry, every `required` property is one it does carry, and the answer names nothing the schema omits. Types are not re-checked — `schemars` derives them from the type the handler literally returns, so a mismatch is a compile error and re-reading it here would be a second reading of a fact the compiler already holds. The second holds the WIRE to the declaration: a tool that publishes a schema must answer with `structuredContent`, because a schema with prose behind it is the half-step this arc refused, and it is invisible from the text half.\n\nTHE ARC'S PROGRESS IS A PINNED NUMBER, not a claim. 65 of 105 tools publish an output schema, asserted. A group that lands raises it; a tool that quietly LOSES its schema lowers it and fails — and that is the regression that matters, because the surface would go on answering and only a consumer validating against the schema would ever find out.\n\nWHAT CHANGED ON THE WIRE, stated rather than left for someone to notice: the converted tools' TEXT half is now compact JSON rather than pretty-printed, because `CallToolResult::structured` writes the value and the structured half is the contract now. Nothing in the suite depended on the whitespace.",
+      "changes_bullets": [
+        "65 of 105 routed tools publish a real output_schema derived from the type they return, and answer with structuredContent behind it",
+        "a refusal stays a tool result an agent reads, not a protocol error it never sees — the one thing the conversion could have silently lost",
+        "two laws: a declared schema is one the answer satisfies, and a published schema is one the wire carries; the converted count is pinned"
+      ],
+      "verification_bullets": [
+        "THREE INJECTIONS, ONE PER FAILURE MODE, each red naming the injected thing and the tree restored byte-identical afterwards. (1) `#[schemars(skip)]` on a serialized field — seven tests red with \"`add_inventory_entry` answered with [cascade_decay_hits], which its declared output schema does not describe\". (2) `#[serde(skip_serializing)]` on a schema-required field — the other direction, \"output schema REQUIRES [cascade_decay_hits], and the answer does not carry them\". (3) an `output_schema` declared on a tool that still answers with prose — \"publishes an output schema and answered with NO structured content\", which is precisely the half-step this arc exists to refuse, and the pinned count went red beside it at 66",
+        "THE CONVERSION WAS COMPILER-DRIVEN, NOT PATTERN-MATCHED: the two `finish_mutate` wires were retyped first and `cargo check` then named all 65 handlers and every test call site by file and line. No regex touched this file",
+        "THE COUNT IS ASSERTED AT 65 OF 105, so the next group cannot land without moving it and a tool cannot lose its schema quietly",
+        "the description law (R1221) and the accounting that keeps it at 105 of 105 are unchanged and still green, so the prose half did not regress while the machine half was added",
+        "mnemosyne-mcp 245 tests green; root workspace suite + clippy --workspace --all-targets -D warnings + the separate in-repo workspaces, run through scripts/verify.sh"
+      ],
+      "impact_refs": [
+        "atomic-store-mutate-api"
+      ],
+      "carry_forward_bullets": [
+        "FORTY TOOLS REMAIN, and they are the harder half rather than more of the same. The 65 done here share two answer types; the 40 left are 37 distinct report types spread across `mnemosyne-ops`, `mnemosyne-validate` and `mnemosyne-query`, each needing its own `JsonSchema` derive behind the same optional feature, plus 3 tools that answer PROSE (`validate_workspace`, `validate_projection`, `list_sections`) and have no structured shape at all. That last group is a decision, not a conversion: either a shape is invented for them or they are the tools this surface honestly cannot type, and inventing one to make a number reach 105 would be the drift this repository keeps deleting",
+        "THE ERROR PATH STILL CARRIES NO SCHEMA. A refusal is `is_error: true` with text, and MCP has no output schema for that half, so what an agent gets when a call fails is prose exactly as before. Typing refusals is a separate question about whether a model reads a structured error better than a sentence, and this repository has no measurement either way",
+        "THE PROSE CHECK IS NOW REDUNDANT FOR THE CONVERTED 65 and is kept anyway, deliberately: the schema says what the shape IS and the description says what the fields MEAN, and R1221 measured that three of the fields it repaired were ones whose absence made a green answer read as its opposite. A schema cannot carry that",
+        "NOTHING HERE PROVES A CLIENT VALIDATES THE SCHEMA. What is proven is that the server's own answers satisfy what it publishes. Whether an agent's behaviour improves because the contract is machine-readable is the same prose-band question R1221 left open, and the unattended-loop experiment is where it gets asked"
+      ],
+      "population_census": [
+        {
+          "axis": "transition rules by `undirected`",
+          "left_label": "undirected",
+          "left": 10,
+          "right_label": "directed",
+          "right": 29
+        },
+        {
+          "axis": "map corpora by leg-kind declaration",
+          "left_label": "omitted",
+          "left": 6,
+          "right_label": "declared",
+          "right": 24
+        },
+        {
+          "axis": "cost-carrying corpora by direction-dependent pricing",
+          "left_label": "prices a way by direction",
+          "left": 4,
+          "right_label": "prices no way by direction",
+          "right": 6
+        },
+        {
+          "axis": "run trees by authoring mode",
+          "left_label": "hand script",
+          "left": 10,
+          "right_label": "file-only",
+          "right": 256
+        },
+        {
+          "axis": "map corpora by declared boundary crossing",
+          "left_label": "declares an exit",
+          "left": 6,
+          "right_label": "declares none",
+          "right": 24
+        },
+        {
+          "axis": "authored submissions by map and telling",
+          "left_label": "carries both",
+          "left": 10,
+          "right_label": "carries one",
+          "right": 24
+        }
+      ],
+      "publishable_decision_summary": "R1222 (BUILD — the output-schema arc, step one: the write envelope stops being described and starts being DECLARED). R1221 generalised a law that holds a tool's DESCRIPTION to the fields its answer carries, and named what that law is a substitute for: `rmcp` carries a real `output_schema` on every tool and this server declared none on any, so prose was the whole contract. It also named why it stopped — declaring a schema the wire does not honour tells an agent something false, and honouring it means changing what every handler returns. This round does the first group properly rather than the whole surface badly.\n\nTHE MECHANISM, MEASURED BEFORE ANYTHING WAS WRITTEN. The `#[tool]` macro reads the handler's return type SYNTACTICALLY: `Json<T>` or `Result<Json<T>, E>` makes it derive the tool's output schema from `T`, and `Json<T>` converts to `CallToolResult::structured(..)`, which fills `structuredContent` on the wire beside the text. An alias over that `Result` — far tidier at sixty-five call sites — is a path the macro cannot see through, so the schema would silently be `None` again; the type is therefore spelled out at every one, and the reason is written where a later round will read it.\n\nTHE ERROR HALF IS A DECISION, NOT A DETAIL, and it is the one thing that could have been quietly lost. rmcp turns `Err(E)` into a transport-level JSON-RPC error when `E` converts to one, and into a tool RESULT carrying `is_error: true` when `E` converts to a result. This server has always refused the second way — a typo'd telling is the tool saying \"no, and here is why\", which a model reads and acts on, not a protocol fault it never sees. `rmcp::ErrorData` in the error slot would have been shorter and would have moved every refusal out of the model's sight, so a `Refused` type exists to keep the old behaviour exactly.\n\nWHAT WAS CONVERTED, and why this group first: SIXTY-FIVE of the 105 routed tools share TWO answer types. Sixty-two answer `ops::MutateOutcome` through the one `finish_mutate` wire and three answer the inventory cascade envelope, so two `JsonSchema` derives buy schemas for 62% of the surface. `mnemosyne-ops` gains the optional `schemars` feature the Round 690 shape established for core and atomic — off by default, enabled solely by `mnemosyne-mcp`.\n\nTHE CONVERSION IS INCREMENTAL BY CONSTRUCTION, which is what keeps the arc from being one enormous round. Every seat in the test file that calls a handler now normalises through rmcp's OWN `IntoCallToolResult` — the trait the router itself uses — so a converted handler and an unconverted one are read by the same line and the remaining groups can land without the tests tracking which group a tool is in. The `expect` on that conversion is load-bearing rather than decorative: a handler whose error half became a PROTOCOL error would panic there, which is exactly the regression `Refused` exists to prevent.\n\nTWO LAWS, AND THEY FAIL DIFFERENTLY FROM THE PROSE ONE. The first holds a DECLARED schema to the answer actually obtained: every property the schema declares is one the answer may carry, every `required` property is one it does carry, and the answer names nothing the schema omits. Types are not re-checked — `schemars` derives them from the type the handler literally returns, so a mismatch is a compile error and re-reading it here would be a second reading of a fact the compiler already holds. The second holds the WIRE to the declaration: a tool that publishes a schema must answer with `structuredContent`, because a schema with prose behind it is the half-step this arc refused, and it is invisible from the text half.\n\nTHE ARC'S PROGRESS IS A PINNED NUMBER, not a claim. 65 of 105 tools publish an output schema, asserted. A group that lands raises it; a tool that quietly LOSES its schema lowers it and fails — and that is the regression that matters, because the surface would go on answering and only a consumer validating against the schema would ever find out.\n\nWHAT CHANGED ON THE WIRE, stated rather than left for someone to notice: the converted tools' TEXT half is now compact JSON rather than pretty-printed, because `CallToolResult::structured` writes the value and the structured half is the contract now. Nothing in the suite depended on the whitespace.",
+      "publishable_changes_bullets": [
+        "65 of 105 routed tools publish a real output_schema derived from the type they return, and answer with structuredContent behind it",
+        "a refusal stays a tool result an agent reads, not a protocol error it never sees — the one thing the conversion could have silently lost",
+        "two laws: a declared schema is one the answer satisfies, and a published schema is one the wire carries; the converted count is pinned"
+      ],
+      "publishable_verification_bullets": [
+        "THREE INJECTIONS, ONE PER FAILURE MODE, each red naming the injected thing and the tree restored byte-identical afterwards. (1) `#[schemars(skip)]` on a serialized field — seven tests red with \"`add_inventory_entry` answered with [cascade_decay_hits], which its declared output schema does not describe\". (2) `#[serde(skip_serializing)]` on a schema-required field — the other direction, \"output schema REQUIRES [cascade_decay_hits], and the answer does not carry them\". (3) an `output_schema` declared on a tool that still answers with prose — \"publishes an output schema and answered with NO structured content\", which is precisely the half-step this arc exists to refuse, and the pinned count went red beside it at 66",
+        "THE CONVERSION WAS COMPILER-DRIVEN, NOT PATTERN-MATCHED: the two `finish_mutate` wires were retyped first and `cargo check` then named all 65 handlers and every test call site by file and line. No regex touched this file",
+        "THE COUNT IS ASSERTED AT 65 OF 105, so the next group cannot land without moving it and a tool cannot lose its schema quietly",
+        "the description law (R1221) and the accounting that keeps it at 105 of 105 are unchanged and still green, so the prose half did not regress while the machine half was added",
+        "mnemosyne-mcp 245 tests green; root workspace suite + clippy --workspace --all-targets -D warnings + the separate in-repo workspaces, run through scripts/verify.sh"
+      ],
+      "publishable_impact_refs": [
+        "atomic-store-mutate-api"
+      ],
+      "publishable_carry_forward_bullets": [
+        "FORTY TOOLS REMAIN, and they are the harder half rather than more of the same. The 65 done here share two answer types; the 40 left are 37 distinct report types spread across `mnemosyne-ops`, `mnemosyne-validate` and `mnemosyne-query`, each needing its own `JsonSchema` derive behind the same optional feature, plus 3 tools that answer PROSE (`validate_workspace`, `validate_projection`, `list_sections`) and have no structured shape at all. That last group is a decision, not a conversion: either a shape is invented for them or they are the tools this surface honestly cannot type, and inventing one to make a number reach 105 would be the drift this repository keeps deleting",
+        "THE ERROR PATH STILL CARRIES NO SCHEMA. A refusal is `is_error: true` with text, and MCP has no output schema for that half, so what an agent gets when a call fails is prose exactly as before. Typing refusals is a separate question about whether a model reads a structured error better than a sentence, and this repository has no measurement either way",
+        "THE PROSE CHECK IS NOW REDUNDANT FOR THE CONVERTED 65 and is kept anyway, deliberately: the schema says what the shape IS and the description says what the fields MEAN, and R1221 measured that three of the fields it repaired were ones whose absence made a green answer read as its opposite. A schema cannot carry that",
+        "NOTHING HERE PROVES A CLIENT VALIDATES THE SCHEMA. What is proven is that the server's own answers satisfy what it publishes. Whether an agent's behaviour improves because the contract is machine-readable is the same prose-band question R1221 left open, and the unattended-loop experiment is where it gets asked"
+      ]
+    },
     "Round 252": {
       "decision_summary": "Parser CommonMark conformance — recognize indented fenced code blocks (§98) and require whitespace after ATX hash sequence (§62)",
       "changes_bullets": [

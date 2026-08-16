@@ -1182,6 +1182,7 @@ dependencies = [
  "mnemosyne-query",
  "mnemosyne-style",
  "mnemosyne-validate",
+ "schemars",
  "serde",
  "serde_json",
  "tempfile",
