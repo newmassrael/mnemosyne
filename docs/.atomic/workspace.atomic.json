@@ -14342,6 +14342,98 @@
         "NOTHING PROVES A CLIENT VALIDATES ANY OF THIS. What is proven is that the server's answers satisfy what it publishes, and that rmcp refuses to publish what the specification forbids. Whether a machine-readable contract changes what an agent does is the prose-band question R1221 left open"
       ]
     },
+    "Round 1224": {
+      "decision_summary": "R1224 (BUILD — the output-schema arc, step three: the tool that answered three shapes answers one, and a law now says so). Round 1223 met `query_section` as a refusal rather than a conversion: rmcp would not publish an output schema for it because `QuerySectionPayload` is an enum, and MCP requires a schema rooted at an `object`. That refusal was correct and it was a finding — a schema saying \"one of three shapes\" tells an agent to branch on what it sent.\n\nWHAT THE SHAPES ACTUALLY WERE, measured rather than assumed, and there were THREE rather than the two the carry named. Asked for nothing, the tool answered the section's fields FLAT. Asked for a neighborhood, it answered `{section, related, changelog}`. Asked for both, it answered `{section, outbound_refs, inbound_refs, related_changelog_entries}` — the same information as the second under different field names. That last pair is a SECOND SPELLING of one thing, and nothing could see it while the answer had no declared shape: no test compared the two, because no test could say what either was supposed to be.\n\nAND THE TWO ARGUMENTS WERE NOT INDEPENDENT, which is the defect underneath the defect. `include_related` and `include_changelog` read as two switches, and the mode mapping resolved `(true,false)` and `(false,true)` to the SAME mode — so a caller asking only for the changelog was handed the cross-ref neighborhood too, and vice versa. Nothing declared that coupling and no consumer could want it; it survived because with three shapes there was nowhere to notice it. One shape leaves the coupling no reason to exist, and it is gone: each flag now decides exactly its own field.\n\nTHE ANSWER IS ONE STRUCT WITH THREE KEYS ALWAYS PRESENT — `section`, `related`, `changelog` — with `null` meaning \"you did not ask\". Optional-and-absent would also satisfy the schema, and it is the ordinary JSON idiom, but it is not what this fix is FOR: the guarantee worth having is that an agent never has to discover which shape it got. The wire changes for the bare case (the section's fields now nest under `section`), which is the cost, stated.\n\nA LAW NOW ASSERTS IT, and writing it found that NEITHER EXISTING LAW WOULD HAVE. The schema law asks that every key carried is declared and every REQUIRED key is carried — an optional key that vanishes when unasked satisfies both. The description law asks that a carried key is named — an absent key is not carried. So the tool could have gone back to three shapes with the suite fully green, which is exactly the regression this round exists to prevent. The new law calls the tool with all four flag combinations and asserts the KEY SET is identical, with a non-vacuity check on each arm that asked for something — four calls all answering nothing would otherwise agree for the wrong reason. Injecting `skip_serializing_if` on one field turns it red naming both key sets.\n\nTHE COUNT IS 98 OF 105. What remains is three tools that answer PROSE and four that assemble their shape at the wire; each is a shape question rather than a typing one, and none is blocked by anything the world does not allow.",
+      "changes_bullets": [
+        "query_section answers ONE shape — section, related, changelog, always present, null when not asked — and publishes a schema for it",
+        "its two arguments are independent at last: asking only for the changelog no longer delivers the cross-ref neighborhood as well",
+        "a law asserts the key set does not move across all four flag combinations, which neither the schema law nor the description law can see"
+      ],
+      "verification_bullets": [
+        "THE NEW LAW WAS WRITTEN BECAUSE THE OLD ONES COULD NOT SEE THIS, and that was checked rather than assumed: an optional key that vanishes when unasked satisfies the schema law (it is neither undeclared nor required) and the description law (an absent key is not carried). Without this test the tool could return to three shapes with a fully green suite",
+        "INJECTED AND RESTORED BYTE-IDENTICAL: `#[serde(skip_serializing_if = \"Option::is_none\")]` on one field — the exact regression — goes red naming both key sets, `[\"changelog\",\"related\",\"section\"]` against `[\"changelog\",\"section\"]`",
+        "THE LAW CARRIES ITS OWN NON-VACUITY: each arm that asks for a neighborhood asserts it got one, so four calls answering nothing cannot agree their way to a pass. The fixture is built with a section that HAS a parent and a changelog entry citing it",
+        "THE DIFFERENTIAL NEEDLE WAS MOVED INSIDE `related` rather than left naming the key: with the key present in both arms, `\"related\"` now occurs once on each side and would prove nothing. That is the same class of mistake as Round 1223's fifteen whitespace failures — an observer left pointing at what no longer distinguishes the arms",
+        "the pinned count moved 97 to 98 in the same commit, so the group cannot land without saying so",
+        "mnemosyne-mcp 246 tests green; root workspace suite + clippy --workspace --all-targets -D warnings + the separate in-repo workspaces, run through scripts/verify.sh"
+      ],
+      "impact_refs": [
+        "atomic-store-mutate-api"
+      ],
+      "carry_forward_bullets": [
+        "SEVEN TOOLS REMAIN AND NONE IS BLOCKED BY THE WORLD. Three answer PROSE (`validate_workspace`, `validate_projection`, `list_sections`): each renders a summary from a report it already holds, so typing them means deciding whether the tool's answer BECOMES that report — a change to what an agent reads rather than a conversion, and the owner's call. Four assemble their shape at the wire (`describe_schema`, `describe_frontier_axes`, `redact_term`, `emit_publishable_override_ledger_draft`); typing them means naming that shape, which is work",
+        "THE ONE-SHAPE LAW IS ONE TOOL WIDE, and the same blindness it was written for applies everywhere: any tool whose answer carries an optional field could drop the key without either general law noticing. Whether other tools DO vary their key set is unmeasured — the population would be every tool with an `Option` field in its answer type, asked under every combination of the arguments that reach it, and that product is what makes it a measurement rather than a test",
+        "THE BARE-SECTION WIRE CHANGED: a caller that asked for nothing used to get the section's fields at the top level and now gets them under `section`. Nothing in this repository consumed that shape, and nothing outside it is known to — which is a statement about what is known, not about what exists",
+        "THE ERROR HALF STILL CARRIES NO SCHEMA (R1222's carry, unchanged), and nothing here proves a client validates any of this (R1223's, unchanged)"
+      ],
+      "population_census": [
+        {
+          "axis": "transition rules by `undirected`",
+          "left_label": "undirected",
+          "left": 10,
+          "right_label": "directed",
+          "right": 29
+        },
+        {
+          "axis": "map corpora by leg-kind declaration",
+          "left_label": "omitted",
+          "left": 6,
+          "right_label": "declared",
+          "right": 24
+        },
+        {
+          "axis": "cost-carrying corpora by direction-dependent pricing",
+          "left_label": "prices a way by direction",
+          "left": 4,
+          "right_label": "prices no way by direction",
+          "right": 6
+        },
+        {
+          "axis": "run trees by authoring mode",
+          "left_label": "hand script",
+          "left": 10,
+          "right_label": "file-only",
+          "right": 256
+        },
+        {
+          "axis": "map corpora by declared boundary crossing",
+          "left_label": "declares an exit",
+          "left": 6,
+          "right_label": "declares none",
+          "right": 24
+        },
+        {
+          "axis": "authored submissions by map and telling",
+          "left_label": "carries both",
+          "left": 10,
+          "right_label": "carries one",
+          "right": 24
+        }
+      ],
+      "publishable_decision_summary": "R1224 (BUILD — the output-schema arc, step three: the tool that answered three shapes answers one, and a law now says so). Round 1223 met `query_section` as a refusal rather than a conversion: rmcp would not publish an output schema for it because `QuerySectionPayload` is an enum, and MCP requires a schema rooted at an `object`. That refusal was correct and it was a finding — a schema saying \"one of three shapes\" tells an agent to branch on what it sent.\n\nWHAT THE SHAPES ACTUALLY WERE, measured rather than assumed, and there were THREE rather than the two the carry named. Asked for nothing, the tool answered the section's fields FLAT. Asked for a neighborhood, it answered `{section, related, changelog}`. Asked for both, it answered `{section, outbound_refs, inbound_refs, related_changelog_entries}` — the same information as the second under different field names. That last pair is a SECOND SPELLING of one thing, and nothing could see it while the answer had no declared shape: no test compared the two, because no test could say what either was supposed to be.\n\nAND THE TWO ARGUMENTS WERE NOT INDEPENDENT, which is the defect underneath the defect. `include_related` and `include_changelog` read as two switches, and the mode mapping resolved `(true,false)` and `(false,true)` to the SAME mode — so a caller asking only for the changelog was handed the cross-ref neighborhood too, and vice versa. Nothing declared that coupling and no consumer could want it; it survived because with three shapes there was nowhere to notice it. One shape leaves the coupling no reason to exist, and it is gone: each flag now decides exactly its own field.\n\nTHE ANSWER IS ONE STRUCT WITH THREE KEYS ALWAYS PRESENT — `section`, `related`, `changelog` — with `null` meaning \"you did not ask\". Optional-and-absent would also satisfy the schema, and it is the ordinary JSON idiom, but it is not what this fix is FOR: the guarantee worth having is that an agent never has to discover which shape it got. The wire changes for the bare case (the section's fields now nest under `section`), which is the cost, stated.\n\nA LAW NOW ASSERTS IT, and writing it found that NEITHER EXISTING LAW WOULD HAVE. The schema law asks that every key carried is declared and every REQUIRED key is carried — an optional key that vanishes when unasked satisfies both. The description law asks that a carried key is named — an absent key is not carried. So the tool could have gone back to three shapes with the suite fully green, which is exactly the regression this round exists to prevent. The new law calls the tool with all four flag combinations and asserts the KEY SET is identical, with a non-vacuity check on each arm that asked for something — four calls all answering nothing would otherwise agree for the wrong reason. Injecting `skip_serializing_if` on one field turns it red naming both key sets.\n\nTHE COUNT IS 98 OF 105. What remains is three tools that answer PROSE and four that assemble their shape at the wire; each is a shape question rather than a typing one, and none is blocked by anything the world does not allow.",
+      "publishable_changes_bullets": [
+        "query_section answers ONE shape — section, related, changelog, always present, null when not asked — and publishes a schema for it",
+        "its two arguments are independent at last: asking only for the changelog no longer delivers the cross-ref neighborhood as well",
+        "a law asserts the key set does not move across all four flag combinations, which neither the schema law nor the description law can see"
+      ],
+      "publishable_verification_bullets": [
+        "THE NEW LAW WAS WRITTEN BECAUSE THE OLD ONES COULD NOT SEE THIS, and that was checked rather than assumed: an optional key that vanishes when unasked satisfies the schema law (it is neither undeclared nor required) and the description law (an absent key is not carried). Without this test the tool could return to three shapes with a fully green suite",
+        "INJECTED AND RESTORED BYTE-IDENTICAL: `#[serde(skip_serializing_if = \"Option::is_none\")]` on one field — the exact regression — goes red naming both key sets, `[\"changelog\",\"related\",\"section\"]` against `[\"changelog\",\"section\"]`",
+        "THE LAW CARRIES ITS OWN NON-VACUITY: each arm that asks for a neighborhood asserts it got one, so four calls answering nothing cannot agree their way to a pass. The fixture is built with a section that HAS a parent and a changelog entry citing it",
+        "THE DIFFERENTIAL NEEDLE WAS MOVED INSIDE `related` rather than left naming the key: with the key present in both arms, `\"related\"` now occurs once on each side and would prove nothing. That is the same class of mistake as Round 1223's fifteen whitespace failures — an observer left pointing at what no longer distinguishes the arms",
+        "the pinned count moved 97 to 98 in the same commit, so the group cannot land without saying so",
+        "mnemosyne-mcp 246 tests green; root workspace suite + clippy --workspace --all-targets -D warnings + the separate in-repo workspaces, run through scripts/verify.sh"
+      ],
+      "publishable_impact_refs": [
+        "atomic-store-mutate-api"
+      ],
+      "publishable_carry_forward_bullets": [
+        "SEVEN TOOLS REMAIN AND NONE IS BLOCKED BY THE WORLD. Three answer PROSE (`validate_workspace`, `validate_projection`, `list_sections`): each renders a summary from a report it already holds, so typing them means deciding whether the tool's answer BECOMES that report — a change to what an agent reads rather than a conversion, and the owner's call. Four assemble their shape at the wire (`describe_schema`, `describe_frontier_axes`, `redact_term`, `emit_publishable_override_ledger_draft`); typing them means naming that shape, which is work",
+        "THE ONE-SHAPE LAW IS ONE TOOL WIDE, and the same blindness it was written for applies everywhere: any tool whose answer carries an optional field could drop the key without either general law noticing. Whether other tools DO vary their key set is unmeasured — the population would be every tool with an `Option` field in its answer type, asked under every combination of the arguments that reach it, and that product is what makes it a measurement rather than a test",
+        "THE BARE-SECTION WIRE CHANGED: a caller that asked for nothing used to get the section's fields at the top level and now gets them under `section`. Nothing in this repository consumed that shape, and nothing outside it is known to — which is a statement about what is known, not about what exists",
+        "THE ERROR HALF STILL CARRIES NO SCHEMA (R1222's carry, unchanged), and nothing here proves a client validates any of this (R1223's, unchanged)"
+      ]
+    },
     "Round 252": {
       "decision_summary": "Parser CommonMark conformance — recognize indented fenced code blocks (§98) and require whitespace after ATX hash sequence (§62)",
       "changes_bullets": [

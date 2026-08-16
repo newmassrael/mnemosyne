@@ -2014,26 +2014,44 @@ impl MnemosyneServer {
     }
 
     #[tool(
-        description = "Look up a single section. Optionally include 1-hop CrossRef neighborhood and §N citations from changelog entries. Always call this BEFORE mutating a section to verify decision_status and avoid editing strong-carry / Superseded sections. ANSWERS WITH: `section_id`, `parent_doc`, `parent_section`, `title`, `decision_status`, `body`, `line_anchor`. ASKING FOR EITHER NEIGHBORHOOD CHANGES THE SHAPE rather than adding to it: that answer nests under `section`, beside `related` (outbound_refs / inbound_refs) and `changelog` (the entries citing this section)."
+        description = "Look up a single section. Optionally include 1-hop CrossRef neighborhood and §N citations from changelog entries. Always call this BEFORE mutating a section to verify decision_status and avoid editing strong-carry / Superseded sections. ANSWERS WITH ONE SHAPE, always three keys: `section` (section_id, parent_doc, parent_section, title, decision_status, body, line_anchor), `related` (outbound_refs / inbound_refs) and `changelog` (the entries citing this section). The last two are `null` unless you asked for them — the shape never depends on what you sent."
     )]
-    // NOT TYPED YET, AND THE REASON IS A FACT ABOUT THIS TOOL (Round 1223).
-    // `QuerySectionPayload` is an ENUM: this tool answers one shape when asked
-    // for the bare section and a DIFFERENT one when asked for a neighborhood.
-    // MCP requires an output schema whose root type is `object`, and rmcp
-    // refuses to publish a `oneOf` — correctly, because a schema that says "one
-    // of two shapes" tells an agent to branch on what it sent. The fix is to
-    // make this answer ONE shape with the neighborhood optional, which changes
-    // the wire for the bare case, so it is a decision rather than a conversion.
-    async fn query_section(&self, args: Parameters<QuerySectionArgs>) -> CallToolResult {
-        let mode = match (args.0.include_related, args.0.include_changelog) {
-            (true, true) => QuerySectionMode::Envelope,
-            (true, false) | (false, true) => QuerySectionMode::WithRelated,
-            (false, false) => QuerySectionMode::Brief,
+    async fn query_section(
+        &self,
+        args: Parameters<QuerySectionArgs>,
+    ) -> Result<Json<SectionAnswer>, Refused> {
+        let (want_related, want_changelog) = (args.0.include_related, args.0.include_changelog);
+        // The op still has three modes; ONE of them computes everything, and
+        // which fields the caller gets is decided here by what it asked for
+        // rather than by which mode the pair of flags happened to select.
+        let mode = if want_related || want_changelog {
+            QuerySectionMode::Envelope
+        } else {
+            QuerySectionMode::Brief
         };
-        match ops::query_section(&self.workspace, &args.0.section_id, mode) {
-            Ok(payload) => self.tool_json(&payload),
-            Err(e) => self.op_error(e),
-        }
+        let payload = ops::query_section(&self.workspace, &args.0.section_id, mode)
+            .map_err(|e| self.refused(e))?;
+        let (section, related, changelog) = match payload {
+            ops::QuerySectionPayload::Brief(section) => (section, None, None),
+            ops::QuerySectionPayload::WithRelated {
+                section,
+                related,
+                changelog,
+            } => (section, Some(related), Some(changelog)),
+            ops::QuerySectionPayload::Envelope(envelope) => (
+                envelope.section,
+                Some(ops::RelatedSections {
+                    outbound_refs: envelope.outbound_refs,
+                    inbound_refs: envelope.inbound_refs,
+                }),
+                Some(envelope.related_changelog_entries),
+            ),
+        };
+        Ok(Json(SectionAnswer {
+            section,
+            related: want_related.then_some(related).flatten(),
+            changelog: want_changelog.then_some(changelog).flatten(),
+        }))
     }
 
     #[tool(
@@ -4012,6 +4030,38 @@ impl rmcp::handler::server::tool::IntoCallToolResult for Refused {
         // as the tool's answer, exactly as `op_error` did.
         Ok(MnemosyneServer::tool_error(self.0))
     }
+}
+
+/// ONE SHAPE FOR A SECTION LOOKUP, WHATEVER WAS ASKED FOR (Round 1224).
+///
+/// `query_section` answered THREE shapes: the section's fields flat when
+/// nothing else was asked, `{section, related, changelog}` when a neighborhood
+/// was, and a fourth spelling — `{section, outbound_refs, inbound_refs,
+/// related_changelog_entries}` — when BOTH were. The last two carry the same
+/// information under different field names, which is a second spelling nothing
+/// could see while the answer had no declared shape. Round 1223 met it as a
+/// refusal: MCP requires an output schema rooted at an `object`, and a `oneOf`
+/// tells an agent to branch on what it sent.
+///
+/// THE FIELDS ARE ALWAYS PRESENT, `null` when not asked for, rather than
+/// omitted. Optional-and-absent would also validate, but "the key is always
+/// there and null means you did not ask" is the guarantee this fix is FOR — an
+/// agent that never has to discover which shape it got.
+///
+/// AND THE TWO ARGUMENTS ARE NOW INDEPENDENT, which they always read as being.
+/// The old mode mapping gave `related` to a caller who asked only for the
+/// changelog and vice versa: `(true,false)` and `(false,true)` both resolved to
+/// the same mode. Nothing declared that coupling and no consumer could want it;
+/// it survived because with three shapes there was no place to notice it.
+#[derive(Debug, Clone, Serialize, schemars::JsonSchema)]
+struct SectionAnswer {
+    /// The section itself — always.
+    section: ops::SectionView,
+    /// The 1-hop cross-ref neighborhood, `null` unless `include_related`.
+    related: Option<ops::RelatedSections>,
+    /// The changelog entries citing this section, `null` unless
+    /// `include_changelog`.
+    changelog: Option<Vec<ops::ChangelogEntryView>>,
 }
 
 /// A LIST ANSWER, IN AN OBJECT (Round 1223).
@@ -6470,6 +6520,118 @@ mod tests {
     /// above is what keeps it that way: a new tool arrives unheld and says so.
     const NO_REQUIRED_ARGUMENT_SO_NOT_SWEPT: &[&str] = &[];
 
+    /// A SECTION LOOKUP ANSWERS THE SAME KEYS WHATEVER WAS ASKED FOR
+    /// (Round 1224).
+    ///
+    /// NEITHER EXISTING LAW SEES THIS, which is why it is its own. The schema
+    /// law asks that every key carried is declared and every REQUIRED key is
+    /// carried — an optional key that vanishes when the caller did not ask for
+    /// it satisfies both. The description law asks that a carried key is named.
+    /// So a tool could go back to answering three shapes and the suite would
+    /// stay green, and that is precisely the defect Round 1223 met as an rmcp
+    /// refusal and this round fixed.
+    ///
+    /// The claim is about the KEY SET rather than the values: `related` is
+    /// `null` when unasked and an object when asked, and both are the same
+    /// shape to a consumer. What must never happen is the key being there for
+    /// one caller and gone for another.
+    #[tokio::test]
+    async fn a_section_lookup_answers_the_same_keys_whatever_was_asked_for() {
+        let tmp = agent_workspace();
+        let server = MnemosyneServer::new(tmp.path().to_path_buf()).expect("server");
+        // A section that HAS a neighborhood to report, so the arms that ask for
+        // one are answered with something rather than with emptiness — an
+        // always-empty world would make every arm agree for the wrong reason.
+        let sections: ImportSectionsArgs = serde_json::from_value(serde_json::json!({
+            "sections": [
+                {"section_id": "40", "parent_doc": "spec", "title": "the section"},
+                {"section_id": "41", "parent_doc": "spec", "title": "the other"},
+            ]
+        }))
+        .expect("shape parses");
+        assert!(
+            answered(server.import_sections(Parameters(sections)).await).is_error != Some(true)
+        );
+        let parent: SetSectionParentSectionArgs = serde_json::from_value(serde_json::json!({
+            "section_id": "41", "parent_section": "40"
+        }))
+        .expect("shape parses");
+        assert!(
+            answered(server.set_section_parent_section(Parameters(parent)).await).is_error
+                != Some(true)
+        );
+        let entry: AppendChangelogEntryArgs = serde_json::from_value(serde_json::json!({
+            "entry_id": "Round 1", "decision_summary": "a decision naming the section",
+            "changes_bullets": ["a change"], "verification_bullets": ["a check"],
+            "impact_refs": ["40"],
+        }))
+        .expect("shape parses");
+        assert!(
+            answered(server.append_changelog_entry(Parameters(entry)).await).is_error != Some(true)
+        );
+
+        let mut shapes: Vec<(bool, bool, Vec<String>)> = Vec::new();
+        for related in [false, true] {
+            for changelog in [false, true] {
+                let args: QuerySectionArgs = serde_json::from_value(serde_json::json!({
+                    "section_id": "40",
+                    "include_related": related,
+                    "include_changelog": changelog,
+                }))
+                .expect("shape parses");
+                let result = answered(server.query_section(Parameters(args)).await);
+                let value = result
+                    .structured_content
+                    .clone()
+                    .expect("a typed tool answers with structured content");
+                let keys: Vec<String> = value
+                    .as_object()
+                    .expect("the answer is an object")
+                    .keys()
+                    .cloned()
+                    .collect();
+                // NON-VACUITY: the arm that asked got something, so agreement
+                // below is not four calls all answering nothing.
+                if related {
+                    assert!(
+                        !value["related"].is_null(),
+                        "asking for the neighborhood answered `related: null`, so the \
+                         agreement this test asserts would be four empty answers"
+                    );
+                }
+                if changelog {
+                    assert!(
+                        !value["changelog"].is_null(),
+                        "asking for the changelog answered `changelog: null`, so the \
+                         agreement this test asserts would be four empty answers"
+                    );
+                }
+                shapes.push((related, changelog, keys));
+            }
+        }
+        let (_, _, first) = &shapes[0];
+        for (related, changelog, keys) in &shapes {
+            assert_eq!(
+                keys, first,
+                "`query_section` answered a DIFFERENT key set for \
+                 include_related={related} include_changelog={changelog}: {keys:?} against \
+                 {first:?}. The shape of an answer must not depend on what the caller sent — \
+                 that is the three-shape defect this tool had, and a consumer cannot write one \
+                 reader for it"
+            );
+        }
+        // AND THE FLAGS ARE INDEPENDENT: asking for one must not deliver the
+        // other, which the old mode mapping did in both directions.
+        let only_changelog = shapes
+            .iter()
+            .find(|(r, c, _)| !*r && *c)
+            .expect("the arm exists");
+        assert_eq!(
+            only_changelog.2, *first,
+            "the key set moved when only the changelog was asked for"
+        );
+    }
+
     /// HOW FAR THE OUTPUT-SCHEMA CONVERSION HAS GOT, AS A NUMBER (Round 1222).
     ///
     /// The arc converts handlers from a hand-built `CallToolResult` to a typed
@@ -6492,12 +6654,12 @@ mod tests {
             .map(|t| t.name.to_string())
             .collect();
         // R1222 did the write envelope (65). R1223 did every read whose answer
-        // is a REPORT — the 31 that already spoke JSON. What is left is named in
-        // the ledger rather than counted here: three tools that answer PROSE,
-        // and whether they get a shape is a decision, not a conversion.
+        // is a REPORT. R1224 did `query_section`, whose three shapes became one.
+        // What is left is named in the ledger rather than counted here: three
+        // tools that answer PROSE, and four that assemble a shape at the wire.
         assert_eq!(
             typed.len(),
-            97,
+            98,
             "[output schema] {} of {} routed tools publish one. The arc converts in groups and \
              this number is its ledger — if a group just landed, raise it; if it FELL, a tool \
              lost its schema and the agent lost the contract. Typed: {typed:?}",
@@ -8006,7 +8168,10 @@ mod tests {
             [import_sections(ImportSectionsArgs) {"sections": [{"section_id": "40", "parent_doc": "spec", "title": "the section"}, {"section_id": "41", "parent_doc": "spec", "title": "the other"}]}]
             [set_section_parent_section(SetSectionParentSectionArgs) {"section_id": "41", "parent_section": "40"}]
             query_section(QuerySectionArgs) {"section_id": "40"}
-            ."include_related" = true seen "related" in output;
+            // The needle is INSIDE `related` since Round 1224: the key itself
+            // is present in both arms now (`null` when not asked), so naming it
+            // would count once on each side and prove nothing.
+            ."include_related" = true seen "outbound_refs" in output;
         redact_term_dry_run_reaches_the_answer:
             [append_changelog_entry(AppendChangelogEntryArgs) {"entry_id": "Round 1", "decision_summary": "the one who Waits", "changes_bullets": ["a change"], "verification_bullets": ["a check"]}]
             redact_term(RedactTermArgs) {"pattern": "Waits", "replacement": "waits", "reason": "case", "applied_in": "Round 1"}

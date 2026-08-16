@@ -57,6 +57,9 @@ pub use cascade::{validate_atomic_store, AtomicValidationSummary};
 /// reads return them, so a caller that must declare what it answers with has to
 /// be able to name them (Round 1223).
 pub use mnemosyne_query::{ChangelogEntryView, ChangelogLedgerView, TermHit};
+/// The section views a caller has to be able to build when it answers with one
+/// shape rather than three (Round 1224).
+pub use mnemosyne_query::{RelatedSections, SectionView};
 pub use query::{
     list_changelog, list_inventory, list_sections, query_inventory, query_section, query_term,
     InventoryEntryView, ListSectionsReport, QuerySectionMode, QuerySectionPayload, QueryTermInput,
