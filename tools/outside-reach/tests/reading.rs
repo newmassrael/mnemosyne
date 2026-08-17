@@ -349,3 +349,108 @@ fn a_trace_that_never_arrived_is_distinguishable_from_a_clean_one() {
     // Same `reaches`, different `lines` — which is the whole reason the count
     // is reported beside the verdict rather than behind it.
 }
+
+// --------------------------------------------------------------- the verdict
+
+/// THE THREE ANSWERS OF `--verdict-of`, ASKED OF THE PROCESS (R1230).
+///
+/// The census cannot fail the step it rides on — `strace` returns the wrapped
+/// command's status and says nothing about the program on the other end of its
+/// pipe — so it writes a status to a file and a LATER step exits with it. That
+/// step was four lines of shell until the first hosted run measured what shell
+/// costs here: the job hit its budget and was cancelled before the reader wrote
+/// anything, `cat` on a file that does not exist left an empty string, and
+/// `exit ""` failed with a message about `exit`. A census that NEVER ANSWERED
+/// and a census that answered `no` came out of that step identical — and the
+/// first is the answer to the question this gate has open, whether `ptrace`
+/// attaches on a hosted runner at all.
+///
+/// Run as a PROCESS, because an exit code is the whole of what this mode
+/// produces: R1127 measured this crate's sibling reporting a refusal path as a
+/// clean pass with the entire suite green, because nothing ran the binary.
+#[test]
+fn a_verdict_that_was_never_written_is_the_third_answer_and_not_the_first() {
+    let at = std::env::temp_dir().join(format!("outside-reach-verdict-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&at);
+    std::fs::create_dir_all(&at).expect("fixture directory");
+
+    // THE ENVIRONMENT THIS SPAWN GIVES IS NAMED, NOT INHERITED, and the gate
+    // that insisted is right to: this binary reads five variables to place the
+    // toolchain, and a test that leaves them to the machine runs a different
+    // program on a machine that sets them. `--verdict-of` reads none of the five
+    // — it opens one file and exits with what is in it — so what this case
+    // declares is their ABSENCE, which is a claim rather than a shrug.
+    let run = |file: &Path| {
+        std::process::Command::new(env!("CARGO_BIN_EXE_outside-reach"))
+            .env_remove("CARGO_HOME")
+            .env_remove("RUSTUP_HOME")
+            .env_remove("SCCACHE_DIR")
+            .env_remove("CCACHE_DIR")
+            .env_remove("HOME")
+            .arg("--verdict-of")
+            .arg(file)
+            .output()
+            .expect("the reader runs")
+    };
+    let code =
+        |out: &std::process::Output| out.status.code().expect("it exits rather than signals");
+    let said = |out: &std::process::Output| {
+        format!(
+            "{}{}",
+            String::from_utf8_lossy(&out.stdout),
+            String::from_utf8_lossy(&out.stderr)
+        )
+    };
+
+    // NO FILE AT ALL — the run was killed before the census could answer.
+    let missing = at.join("never-written.rc");
+    let out = run(&missing);
+    assert_eq!(
+        code(&out),
+        2,
+        "a verdict nobody wrote is `could not judge`, never `clean`:\n{}",
+        said(&out)
+    );
+    assert!(
+        said(&out).contains("never answered") && said(&out).contains("never-written.rc"),
+        "and it says which of the two it is, with the file it looked for:\n{}",
+        said(&out)
+    );
+
+    // A FILE HOLDING SOMETHING THAT IS NOT A STATUS — the same third answer, and
+    // not the silent pass `exit "$verdict"` would have made of it.
+    let garbage = at.join("garbage.rc");
+    std::fs::write(&garbage, "strace: Operation not permitted\n").expect("write");
+    let out = run(&garbage);
+    assert_eq!(code(&out), 2, "{}", said(&out));
+    assert!(
+        said(&out).contains("is not a status"),
+        "and it says what it found rather than the file's name alone:\n{}",
+        said(&out)
+    );
+
+    // AND THE REAL VERDICTS PASS THROUGH UNCHANGED, which is what stops all of
+    // the above from holding for a reader that simply always refuses.
+    for (recorded, expected) in [("0\n", 0), ("1\n", 1), ("2", 2)] {
+        let file = at.join(format!("verdict-{expected}.rc"));
+        std::fs::write(&file, recorded).expect("write");
+        let out = run(&file);
+        assert_eq!(
+            code(&out),
+            expected,
+            "a recorded `{recorded}` is the status this step exits with:\n{}",
+            said(&out)
+        );
+        if expected == 0 {
+            // The clean one says so out loud: a step that printed nothing on the
+            // path that matters cannot be told from a step that never ran.
+            assert!(
+                said(&out).contains("verdict=0"),
+                "the verdict is printed, not only returned:\n{}",
+                said(&out)
+            );
+        }
+    }
+
+    let _ = std::fs::remove_dir_all(&at);
+}

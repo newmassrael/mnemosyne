@@ -95,9 +95,30 @@ env:
 # hosted runner reported 2.336.0 on the last green run, and a self-hosted one
 # would have to be checked.
 jobs:
+  # R1230 — THIS JOB'S BUDGET IS 90 BECAUSE ROUND 1229 CHANGED WHAT ITS LONGEST
+  # STEP DOES AND LEFT THE NUMBER WHERE IT WAS.
+  #
+  # MEASURED, on the first hosted run that carried the census: `cargo test
+  # --workspace` ran 29m32s and was CANCELLED at this job's 30-minute limit,
+  # taking the whole verdict with it — the suite's own result, the four gates
+  # after it, and the two jobs that `needs:` this one. A measurement destroyed
+  # the thing it was measuring, which is the worst way for a gate to be wrong.
+  #
+  # The number this file HAD was argued for the job as it stood: 20m5s cold on
+  # the timetable at R1091, and the `blind-waits` comment below still claimed
+  # fifteen minutes of headroom. `strace -f` with `%file,%process` over 156,692
+  # processes is a multiplier on every syscall the suite makes, and the true
+  # figure is not known — the run that would have measured it is the one that
+  # was cancelled.
+  #
+  # SO 90, THE SAME NUMBER AND THE SAME ARGUMENT AS `uncompiled-sources`: an
+  # upper bound argued from the other jobs rather than measured on a runner,
+  # because a job that runs out of minutes is a red CI nobody can read a result
+  # from. `unrun-tests`, the heaviest job here, is budgeted 90 and has measured
+  # 23m45s to 28m29s. The first run under this number is what measures it.
   validate:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 90
     env:
       MNEMOSYNE_RUSTC_LOG: ${{ github.workspace }}/rustc-log/validate.log
       # R1101 — and what this job STARTED FROM, beside what it compiled, because
@@ -350,13 +371,22 @@ jobs:
       # `if: always()` because the census is about the run that HAPPENED. A
       # suite that went red still read whatever it read, and a reach that only
       # appears on a failing run is exactly the one nobody would otherwise see.
+      # R1230 — AND THE READING IS THE PROGRAM'S, not four lines of shell. This
+      # step was `verdict=$(cat …); exit "$verdict"`, and the first hosted run
+      # measured what that costs: the job hit its budget, was CANCELLED before
+      # the reader wrote anything, and `exit ""` failed with a message about
+      # `exit`. A census that never answered and a census that answered `no` came
+      # out of this step looking the same — including for the one question this
+      # gate has open, whether `ptrace` attaches on a runner at all.
+      #
+      # `|| true` ON THE `cat` AND NOT ON THE VERDICT: the census's own prose is
+      # worth printing when it exists and is not the thing that decides, so its
+      # absence must not mask the program's answer below it.
       - name: what that run read outside this repository
         if: always()
         run: |
-          cat "${TMPDIR:-/tmp}/outside-reach.txt"
-          verdict=$(cat "${TMPDIR:-/tmp}/outside-reach.rc")
-          echo "[outside-reach] verdict=${verdict}"
-          exit "${verdict}"
+          cat "${TMPDIR:-/tmp}/outside-reach.txt" || true
+          ./instruments/release/outside-reach --verdict-of "${TMPDIR:-/tmp}/outside-reach.rc"
 
       - name: mnemosyne-cli validate-workspace
         run: cargo run --release -q --locked -p mnemosyne-cli -- validate-workspace
@@ -373,8 +403,12 @@ jobs:
       # is the sweep of the tree that runs on EVERY push, and it found nine
       # sites, four of them waits that end on a clock. A step here rather than
       # its own job because the gate parses instead of building: measured at
-      # 9.5s warm and 33.4s including its own cold compile, against this job's
-      # 30-minute budget with 15 minutes of headroom.
+      # 9.5s warm and 33.4s including its own cold compile, which is noise beside
+      # the step above it whatever this job's budget is. THE HEADROOM SENTENCE
+      # THAT STOOD HERE WAS STALE (R1230): it read "against this job's 30-minute
+      # budget with 15 minutes of headroom", and by then Round 1229 had put a
+      # syscall census on the suite and spent all of it. A number in prose beside
+      # a number in the file is two answers, and this one only ever moved.
       - name: blind-waits (a wait ends on a condition, its budget is named)
         run: >
           cargo run -q --locked --manifest-path tools/blind-waits/Cargo.toml

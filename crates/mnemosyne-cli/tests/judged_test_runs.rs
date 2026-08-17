@@ -243,15 +243,60 @@ fn a_census_verdict_written_to_a_file_is_one_a_step_exits_with() {
         for verdict in &written {
             checked += 1;
             // SOME step in the same workflow must exit with what that file
-            // holds. Read as a shape — a script that both names the file and
-            // ends a line with `exit "$…"` — because the variable it lands in
-            // is the author's to name and the file is not.
+            // holds, and there are two ways to do that. Both are read off the
+            // step's LAST command, because a step's status is its last command's
+            // status and nothing before it decides anything.
+            //
+            // R1230 WIDENED THIS, and the reason is the reason the law exists.
+            // The shell form — `verdict=$(cat …); exit "$verdict"` — could not
+            // tell a census that answered `no` from one that was never allowed
+            // to answer: the first hosted run carrying the census was cancelled
+            // at its budget, `cat` on a missing file left an empty string, and
+            // `exit ""` failed with a message about `exit`. So the reading moved
+            // into the program that wrote the file, where a missing verdict is
+            // the third answer and has a test that RUNS it. A law that accepted
+            // only the shell spelling would have rejected the repair.
+            //
+            // WHAT IS NOT ACCEPTED IS A SWALLOW. `|| true` after either form
+            // makes the step green whatever the file holds, and that is the one
+            // word this whole law exists to keep out.
+            //
+            // AND CONSUMING IS NOT WRITING — measured, by injection. The first
+            // version of this widening accepted any last command that NAMED the
+            // file, and the step that names it first is the one that WRITES it:
+            // `run: >` folds a step into a single line, so the census step's
+            // whole script is its own last command and it holds
+            // `echo $? > "…/outside-reach.rc"`. The swallow injection stayed
+            // green against that reading. A word is an input here only when
+            // nothing redirects into it.
+            let names_as_input = |line: &str| {
+                let words: Vec<&str> = line.split_whitespace().collect();
+                words.iter().enumerate().any(|(index, word)| {
+                    word.contains(verdict.as_str())
+                        && !word.starts_with('>')
+                        && index
+                            .checked_sub(1)
+                            .and_then(|before| words.get(before))
+                            .is_none_or(|before| !before.ends_with('>'))
+                })
+            };
             let honoured = steps.iter().any(|step| {
-                step.script.contains(verdict.as_str())
-                    && step
-                        .script
-                        .lines()
-                        .any(|line| line.trim_start().starts_with("exit \"$"))
+                let last = step
+                    .script
+                    .lines()
+                    .rev()
+                    .find(|line| !line.trim().is_empty())
+                    .unwrap_or_default()
+                    .trim();
+                if last.ends_with("|| true") || last.ends_with("; true") {
+                    return false;
+                }
+                // The program form: the last command is HANDED the file, so its
+                // status is the step's.
+                names_as_input(last)
+                    // The shell form: the last command exits with a variable,
+                    // and the script is the one that read the file into it.
+                    || (last.starts_with("exit \"$") && step.script.contains(verdict.as_str()))
             });
             assert!(
                 honoured,

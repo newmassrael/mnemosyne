@@ -83,15 +83,77 @@ fn usage() -> ExitCode {
          \n\
          Reads the trace on stdin. Nothing is written to disk.\n\
          \n\
-         --repo     the repository the run is about\n\
-         --build    its build directory (a symlink out of the tree, here)\n\
-         --fixture  the TMPDIR the run was given\n\
-         --report   print the census and return 0 whatever it found"
+         --repo        the repository the run is about\n\
+         --build       its build directory (a symlink out of the tree, here)\n\
+         --fixture     the TMPDIR the run was given\n\
+         --report      print the census and return 0 whatever it found\n\
+         --verdict-of  exit with the status recorded in a file by an earlier run \
+         of this program"
     );
     ExitCode::from(2)
 }
 
+/// Exit with the status an earlier run of this program left in a file.
+///
+/// # Why this is a program and not four lines of shell
+///
+/// `strace` returns the status of the command it WRAPPED and says nothing about
+/// the program on the other end of its `-o "|…"` pipe, so the census writes its
+/// verdict to a file and a later step turns that into the job's answer. That
+/// step was shell, and R1230 measured what shell costs here: the suite under the
+/// census overran its job's budget, the job was CANCELLED before the reader
+/// wrote anything, and `verdict=$(cat …)` on a file that does not exist left an
+/// empty string that `exit "$verdict"` turned into a shell error. The step went
+/// red — correctly — with a message about `exit` and nothing about the census.
+///
+/// FROM OUTSIDE, THAT IS INDISTINGUISHABLE FROM THE CENSUS REFUSING, which is
+/// the one thing this gate must never be. "The trace was empty so this gate
+/// never saw the run" and "the run was killed before this gate could look" are
+/// different facts with different repairs, and the first is the answer to a
+/// question this repository has open — whether `ptrace` attaches on a hosted
+/// runner at all. A step that cannot tell them apart destroys that measurement.
+///
+/// So it is a program, for the reason R1136 made `tools/ci-state` one: shell in
+/// a workflow is the part no test can execute. The three answers this file
+/// already gives are the three it gives here — 0 clean, 1 a finding, 2 could not
+/// judge — and NO VERDICT AT ALL IS THE THIRD, not the first.
+fn verdict_of(path: &Path) -> ExitCode {
+    let text = match std::fs::read_to_string(path) {
+        Ok(text) => text,
+        Err(e) => {
+            eprintln!(
+                "[outside-reach] no verdict at {} ({e}) — this census never \
+                 answered. The run it rides on was killed, or never started it; \
+                 whatever this job says about reaches outside the tree, it did \
+                 not learn it here",
+                path.display()
+            );
+            return ExitCode::from(2);
+        }
+    };
+    let trimmed = text.trim();
+    match trimmed.parse::<u8>() {
+        Ok(code) => {
+            println!("[outside-reach] verdict={code}");
+            ExitCode::from(code)
+        }
+        Err(_) => {
+            eprintln!(
+                "[outside-reach] the verdict at {} is `{trimmed}`, which is not a \
+                 status. A file that holds something else holds nothing this step \
+                 can exit with, and passing over it would report the census as \
+                 clean",
+                path.display()
+            );
+            ExitCode::from(2)
+        }
+    }
+}
+
 fn main() -> ExitCode {
+    if let Some(path) = flag("--verdict-of") {
+        return verdict_of(Path::new(&path));
+    }
     let (Some(repo), Some(build), Some(fixture)) =
         (flag("--repo"), flag("--build"), flag("--fixture"))
     else {
