@@ -143,6 +143,47 @@ impl Census {
     }
 }
 
+/// The same file, spelled the one way this gate compares.
+///
+/// `/../lib/gcc/x86_64-linux-gnu/14/crtbegin.o` and
+/// `/lib/gcc/x86_64-linux-gnu/14/crtbegin.o` are one file, and the first is what
+/// a gcc driver actually writes: it builds search paths by concatenation and
+/// leaves the `..` in. The first hosted run that carried this census reported
+/// ELEVEN of its nineteen findings in that shape, every one of them inside the
+/// toolchain the ground already names — because `starts_with("/lib")` is false
+/// for a path whose first component after the root is `..`.
+///
+/// THE GATE WAS DISAGREEING WITH ITSELF ABOUT THE SAME PATH, which is how it was
+/// found: [`tree_of`] drops non-`Normal` components, so the report printed
+/// `REACH /lib/gcc` in one list and `(the cargo driver itself) reached
+/// /../lib/gcc` in the other. One of those two readings had to be wrong for
+/// both to be about one file.
+///
+/// LEXICAL, AND THAT IS A DECISION WITH A COST. Resolving `..` without asking
+/// the filesystem is wrong exactly when a component is a SYMLINK, and this
+/// reader cannot ask: a trace is historical, the run is over, and the machine it
+/// ran on may not be this one. The alternative is to compare the unnormalised
+/// spelling, which is what produced eleven findings about the toolchain — a
+/// false finding is worse than a normalisation that is right about every path
+/// with no symlinked parent.
+#[must_use]
+pub fn normalise(path: &Path) -> PathBuf {
+    let mut out = PathBuf::from("/");
+    for component in path.components() {
+        match component {
+            std::path::Component::Normal(name) => out.push(name),
+            // `/..` IS `/`. Popping at the root is a no-op rather than an error,
+            // which is what the kernel does with the same path.
+            std::path::Component::ParentDir => {
+                out.pop();
+            }
+            // `.` and the root itself add nothing; a prefix cannot occur here.
+            _ => {}
+        }
+    }
+    out
+}
+
 /// The first `depth` components of a path, which is the tree it is in.
 #[must_use]
 pub fn tree_of(path: &Path, depth: usize) -> PathBuf {
@@ -399,13 +440,13 @@ pub fn read_stream(stream: impl BufRead, ground: &Ground) -> Census {
                 }
                 match first_quoted(call) {
                     Some(named) if named.starts_with('/') => {
-                        let named = Path::new(named);
-                        if !ground.holds(named) {
-                            traced
-                                .entry(id)
-                                .or_default()
-                                .outside
-                                .insert(named.to_path_buf());
+                        // NORMALISED BEFORE IT IS JUDGED, and before it is
+                        // stored, so the ground check and the report are about
+                        // the same spelling. R1231's census found eleven
+                        // toolchain paths reported as reaches for want of this.
+                        let named = normalise(Path::new(named));
+                        if !ground.holds(&named) {
+                            traced.entry(id).or_default().outside.insert(named);
                         }
                     }
                     Some(named) if !named.is_empty() => census.relative += 1,

@@ -350,6 +350,73 @@ fn a_trace_that_never_arrived_is_distinguishable_from_a_clean_one() {
     // is reported beside the verdict rather than behind it.
 }
 
+/// `/../lib` AND `/lib` ARE ONE FILE, AND THE GATE MUST NOT REPORT ONE OF THEM
+/// (R1232).
+///
+/// Measured, on the first hosted run that ever carried this census: ELEVEN of
+/// its nineteen findings were toolchain paths written the way a gcc driver
+/// writes them — `/../lib/gcc/x86_64-linux-gnu/14/crtbegin.o` — and every one
+/// was inside the ground already named, because `starts_with("/lib")` is false
+/// for a path whose first component after the root is `..`.
+///
+/// THE GATE WAS DISAGREEING WITH ITSELF, which is how it showed: `tree_of`
+/// drops non-`Normal` components, so the same run printed `REACH /lib/gcc` in
+/// one list and `reached /../lib/gcc` in the other.
+#[test]
+fn a_path_written_through_its_own_parent_is_the_file_it_names() {
+    // `/lib64` IS A SEPARATE ENTRY AND NOT A CHILD OF `/lib` — the ground the
+    // binary declares names both, and a fixture that named only the first would
+    // fail here for a reason that is about the fixture. The second line below is
+    // why: it normalises to `/lib64`, which starts with `/lib` as a STRING and
+    // not as a path, which is the comparison this gate makes.
+    let ground = Ground {
+        owned: vec![PathBuf::from("/repo")],
+        toolchain: vec![PathBuf::from("/lib"), PathBuf::from("/lib64")],
+    };
+    let census = read_stream(
+        Cursor::new(
+            "110 newfstatat(AT_FDCWD, \"/../lib/gcc/x86_64-linux-gnu/14/crtbegin.o\", \
+             {st_mode=S_IFREG|0644, st_size=3560, ...}, 0) = 0\n\
+             110 newfstatat(AT_FDCWD, \"/../lib/gcc/x86_64-linux-gnu/14/../../../../lib64\", \
+             {st_mode=S_IFDIR|0755, st_size=4096, ...}, 0) = 0\n"
+                .as_bytes(),
+        ),
+        &ground,
+    );
+    assert!(
+        census.reaches.is_empty(),
+        "a toolchain path spelled through `..` is still the toolchain: {:?}",
+        census.reaches
+    );
+    assert_eq!(census.lines, 2, "and the lines were read, not skipped");
+
+    // THE CONTROL, and it is what stops the repair from being "excuse anything
+    // with a `..` in it": a path that STILL leaves the ground once normalised is
+    // still a finding, and it is reported under the name it resolves to.
+    let census = read_stream(
+        Cursor::new(
+            "111 openat(AT_FDCWD, \"/repo/../elsewhere/crates/thing/Cargo.toml\", \
+             O_RDONLY|O_CLOEXEC) = 3\n"
+                .as_bytes(),
+        ),
+        &ground,
+    );
+    let reached: Vec<&PathBuf> = census.reaches.values().flatten().collect();
+    assert_eq!(
+        reached,
+        vec![&PathBuf::from("/elsewhere/crates/thing/Cargo.toml")],
+        "a reach that survives normalisation is reported, and by the path it \
+         actually names: {:?}",
+        census.reaches
+    );
+    // AND THE TWO HALVES OF THE REPORT AGREE ABOUT IT, which is the property
+    // whose absence made this findable at all.
+    assert_eq!(
+        census.trees(2).keys().collect::<Vec<_>>(),
+        vec![&PathBuf::from("/elsewhere/crates")]
+    );
+}
+
 // --------------------------------------------------------------- the verdict
 
 /// THE THREE ANSWERS OF `--verdict-of`, ASKED OF THE PROCESS (R1230).

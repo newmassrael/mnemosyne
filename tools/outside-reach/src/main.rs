@@ -61,10 +61,39 @@ const DECLARED: &[DeclaredReach] = &[
         only_where_the_tree_exists: false,
     },
     DeclaredReach {
-        at: Where::Home(".config/git"),
-        why: "the other half of git's configuration search, same nine binaries \
-              and the same measured answer",
+        at: Where::Home(".config"),
+        why: "the other half of git's configuration search — `~/.config/git` — \
+              and the directory it stats on the way there, which is the shape a \
+              hosted runner reported. The row is the DIRECTORY rather than the \
+              file, and the cost of that is stated: anything else under \
+              `~/.config` a run reads is excused with it. Same nine binaries and \
+              the same measured answer as the row above",
         only_where_the_tree_exists: false,
+    },
+    // R1232 — THE TWO BELOW ARE THE HOSTED RUNNER'S OWN HOME, and this is the
+    // first census that ever ran there. Neither is on a workstation, which is
+    // why `only_where_the_tree_exists` is true for both and why they will read
+    // as `DECLARED BUT NOT REACHED HERE` in every local run.
+    DeclaredReach {
+        at: Where::Home(".dotnet"),
+        why: "the GitHub-hosted runner image puts `~/.dotnet/tools` on `PATH`, \
+              so a program lookup stats it and the directory above it. Reached \
+              by the cargo driver and by the `all` suite; nothing in this \
+              repository asks for .NET",
+        only_where_the_tree_exists: true,
+    },
+    DeclaredReach {
+        at: Where::Home("work/_temp"),
+        why: "`actions/checkout` persists credentials by writing a git config \
+              into the runner's scratch and pointing git at it, so EVERY git \
+              invocation on a runner reads it — measured: the `all` suite, \
+              `evidence_replay_smoke`, `reading` and the cargo driver all did. \
+              This is `RUNNER_TEMP`, written relative to HOME because that is \
+              what this table can resolve without an environment read; if the \
+              runner's layout moves, this row goes unexercised and the reach \
+              comes back as a finding, which is the loud failure rather than the \
+              quiet one. It excuses the whole scratch root, and that is the cost",
+        only_where_the_tree_exists: true,
     },
 ];
 
@@ -162,9 +191,16 @@ fn main() -> ExitCode {
     // THE TOOLCHAIN AND THE OPERATING SYSTEM, which every machine that can
     // build this has — including a hosted runner. Read from the environment
     // rather than written down: a path spelled here would be this machine's.
+    // `/lib32` AND `/libx32` ARE HERE BECAUSE A CENSUS FOUND THEM, not because
+    // somebody remembered multilib (R1232). A gcc driver stats every library
+    // root it knows on the way to linking, and these two are siblings of
+    // `/lib64` in every sense except that the first version of this list was
+    // written from memory. Measured twice: the hosted runner reported `/lib32`
+    // among nineteen findings, and a whole-suite census on a build machine
+    // reported exactly `/lib32` and `/libx32` once the rest was repaired.
     let mut toolchain: Vec<PathBuf> = [
-        "/usr", "/lib", "/lib64", "/bin", "/sbin", "/etc", "/proc", "/sys", "/dev", "/run", "/opt",
-        "/snap", "/var",
+        "/usr", "/lib", "/lib32", "/lib64", "/libx32", "/bin", "/sbin", "/etc", "/proc", "/sys",
+        "/dev", "/run", "/opt", "/snap", "/var",
     ]
     .iter()
     .map(PathBuf::from)
