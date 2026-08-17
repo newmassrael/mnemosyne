@@ -99,8 +99,8 @@ fn workspaces() -> ci::Workspaces {
     // The skipped ones are PRINTED, never silently dropped: a workspace nobody
     // could ask about is a fact, and a fact that does not appear in the output
     // is one nobody can act on.
-    for reason in &listed.skipped {
-        println!("not asked (the lister says why): {reason}");
+    for skipped in &listed.skipped {
+        println!("{}", skipped.was_not("asked"));
     }
     listed
 }

@@ -23,8 +23,8 @@ use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 
 use ci_plan::{
-    declared_build_commands, lister_declared_commands, script_cargo_commands, tracked_manifests,
-    workflow_cargo_commands, workspaces, CargoCommand, ManifestTarget, BUILD_DECLARATION,
+    commands_this_repository_issues, script_cargo_commands, tracked_manifests, CargoCommand,
+    ManifestTarget, BUILD_DECLARATION,
 };
 
 /// The wrapper, as this repository's own path names it.
@@ -41,26 +41,27 @@ fn repository_root() -> PathBuf {
         .to_path_buf()
 }
 
-/// Every cargo command this repository issues, from all three places one can be
-/// written.
+/// Every cargo command this repository issues, from all four places one can be
+/// written — and what the machine asking could not reach.
 ///
-/// `scripts/check-side-workspaces.sh` is read from the LISTER'S OUTPUT and not
-/// from its text, the same split `locked_resolution_smoke` makes: that script
-/// assembles its commands at runtime, so its source says which words exist and
-/// only its output says what they expand to.
+/// ASKED OF `ci-plan`, NOT ASSEMBLED AGAIN (R1228). This function had spelled
+/// the four-source walk out a second time, including the subtlety that
+/// `scripts/check-side-workspaces.sh` is read from the LISTER'S OUTPUT rather
+/// than from its text. `commands_this_repository_issues` is that same walk, and
+/// R1212's own note on it says why one copy is the limit: "a second assembly is
+/// a second answer". Two of them had already drifted apart in what they SAID —
+/// neither said anything, but only one of them could have.
+///
+/// And the population is machine-conditional, so the part this machine could
+/// not reach is printed. On a hosted runner `studio` is not there and its
+/// commands are not in the set below; a reader of one run has no other way to
+/// tell which machine produced it.
 fn everything_this_repository_issues(root: &Path) -> Vec<CargoCommand> {
-    let mut commands = workflow_cargo_commands(root);
-    commands.extend(lister_declared_commands(&workspaces(root)));
-    commands.extend(
-        script_cargo_commands(root)
-            .into_iter()
-            .filter(|command| command.source != "scripts/check-side-workspaces.sh"),
-    );
-    // R1197 — a build machine running this repository's suite is a run whose
-    // coverage matters exactly as much as CI's; the words are just written
-    // somewhere neither the workflows nor the scripts reach.
-    commands.extend(declared_build_commands(root));
-    commands
+    let issued = commands_this_repository_issues(root);
+    for skipped in &issued.skipped {
+        println!("[judged-test-runs] {}", skipped.was_not("judged"));
+    }
+    issued.commands
 }
 
 /// Does something hand this command over, and is that something the wrapper?

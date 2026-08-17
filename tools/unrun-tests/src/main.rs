@@ -44,8 +44,8 @@ fn main() -> ExitCode {
             probe.listed.len()
         );
     }
-    for reason in &report.skipped_workspaces {
-        println!("[unrun-tests] not probed (the lister says why): {reason}");
+    for skipped in &report.skipped_workspaces {
+        println!("[unrun-tests] {}", skipped.was_not("probed"));
     }
     for probe in &report.ci_probes {
         println!(

@@ -12,7 +12,7 @@ use std::collections::BTreeSet;
 use ci_plan::{
     cache_steps, job_needs, lister_declared_commands, lister_suite_commands, lock_verdict,
     parse_lister, parse_script, parse_workflow, run_steps, CacheDeclaration, CargoCommand,
-    LockVerdict, Ownership,
+    IssuedCommands, LockVerdict, Ownership,
 };
 
 /// A workflow with two cached jobs, one of them registry-only.
@@ -660,6 +660,82 @@ fn a_skipped_workspace_contributes_no_suite_to_run() {
             .all(|command| command.harness_args.is_empty()),
         "the lister passes the harness nothing, so it runs every test the \
          command's targets hold: {commands:?}"
+    );
+}
+
+/// THE POPULATION CARRIES WHAT THE MACHINE COULD NOT REACH, AND BOTH MACHINES
+/// ARE RUN HERE (R1228).
+///
+/// The commands a law judges come from the lister, so on a hosted runner they
+/// are `studio`'s eight fewer than on a workstation holding the sibling
+/// checkout. Until this round `commands_this_repository_issues` handed back the
+/// commands alone: three laws read a population whose size is a fact about the
+/// machine and not one of them could say so, while the three laws that take the
+/// lister's answer directly all say it. The difference was the shape, not the
+/// authors.
+///
+/// BOTH ARMS RUN ON EVERY MACHINE, which is the discipline Round 1227 paid for:
+/// a case that only exercises the branch its author's machine is on ships the
+/// other one untested. `LISTED` is a runner and `LISTED_WITH_THE_SIBLING` is a
+/// workstation, and the assertion below is that the pairing holds in both
+/// directions — a skip present and named, and a skip absent with the commands
+/// it would have contributed present instead.
+#[test]
+fn the_commands_a_machine_can_issue_carry_the_workspaces_it_could_not_reach() {
+    let runner = IssuedCommands::from_lister(&parse_lister(LISTED));
+    assert_eq!(
+        runner
+            .skipped
+            .iter()
+            .map(|skipped| skipped.directory.as_str())
+            .collect::<Vec<_>>(),
+        vec!["studio"],
+        "the lister skipped a workspace and the population handed on did not \
+         carry it, so a law reading this cannot say what it did not judge: {:?}",
+        runner.skipped
+    );
+    // AND THE SENTENCE NAMES BOTH HALVES. A law prints this and nothing else
+    // about the workspace, so a reason that went missing here is a skip a
+    // reader cannot act on.
+    let said = runner.skipped[0].was_not("judged");
+    assert!(
+        said.starts_with("not judged (the lister says why): studio "),
+        "the sentence must carry the verb of the law saying it and the \
+         workspace: {said}"
+    );
+    assert!(
+        said.contains("../pinion"),
+        "and the lister's own reason, which is the half that says WHY this \
+         machine could not: {said}"
+    );
+    assert!(
+        !runner
+            .commands
+            .iter()
+            .any(|command| command.owner == "studio"),
+        "a workspace the lister skipped contributed commands anyway, so the \
+         skip is decoration: {:?}",
+        runner.commands
+    );
+
+    // THE OTHER MACHINE. Same call, a lister that HAS the sibling: nothing is
+    // skipped and the commands are there, so the empty `skipped` above is a
+    // real answer rather than a field nothing ever fills.
+    let workstation = IssuedCommands::from_lister(&parse_lister(LISTED_WITH_THE_SIBLING));
+    assert!(
+        workstation.skipped.is_empty(),
+        "this lister reached every workspace, so nothing should be reported \
+         unreachable: {:?}",
+        workstation.skipped
+    );
+    assert!(
+        workstation
+            .commands
+            .iter()
+            .any(|command| command.owner == "studio"),
+        "the workspace the other machine could not reach is IN the population \
+         here, which is the difference the pairing exists to state: {:?}",
+        workstation.commands
     );
 }
 

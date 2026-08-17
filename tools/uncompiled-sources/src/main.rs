@@ -48,8 +48,9 @@ fn main() -> ExitCode {
     }
     for skipped in &report.skipped_workspaces {
         println!(
-            "[uncompiled-sources] not probed (the lister says why): {skipped} — \
-             {} tracked file(s) under it are outside this machine's answer",
+            "[uncompiled-sources] {} — {} tracked file(s) under it are outside \
+             this machine's answer",
+            skipped.was_not("probed"),
             report
                 .in_skipped_workspace
                 .iter()

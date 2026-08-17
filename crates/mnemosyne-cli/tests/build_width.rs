@@ -58,7 +58,17 @@ fn issued(line: &str) -> CargoCommand {
 #[test]
 fn no_command_this_repository_issues_decides_how_wide_it_runs() {
     let root = repository_root();
-    let commands = commands_this_repository_issues(&root);
+    let issued = commands_this_repository_issues(&root);
+    let commands = &issued.commands;
+    // AND WHAT THIS MACHINE COULD NOT REACH, R1228. The population comes from
+    // the lister, so it is `studio`'s eight commands larger on a workstation
+    // holding the sibling checkout than it is on a hosted runner. The count
+    // below therefore means something different on the two machines, and until
+    // this line the printed number changed with nothing beside it saying why —
+    // 231 here against 223 on a runner, measured.
+    for skipped in &issued.skipped {
+        println!("[build-width] {}", skipped.was_not("judged"));
+    }
     // NON-VACUITY FIRST. A law over an empty population reports zero findings,
     // and zero findings is what a clean tree looks like.
     assert!(
@@ -71,12 +81,14 @@ fn no_command_this_repository_issues_decides_how_wide_it_runs() {
     // alibi: the day one source stops being assembled, this number drops and
     // nothing else says so.
     let mut by_source: std::collections::BTreeMap<&str, usize> = std::collections::BTreeMap::new();
-    for command in &commands {
+    for command in commands {
         *by_source.entry(command.source.as_str()).or_default() += 1;
     }
     println!(
-        "[build-width] {} cargo command(s) this repository issues: {}",
+        "[build-width] {} cargo command(s) this repository issues \
+         ({} workspace(s) not reachable here and not in that number): {}",
         commands.len(),
+        issued.skipped.len(),
         by_source
             .iter()
             .map(|(source, count)| format!("{source} {count}"))

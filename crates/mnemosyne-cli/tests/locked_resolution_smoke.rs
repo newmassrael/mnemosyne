@@ -51,8 +51,19 @@ fn repository_root() -> PathBuf {
 ///
 /// R1212 moved the assembly into `ci-plan`: a second law now asks about the same
 /// population, and two assemblies are two answers.
+///
+/// AND WHAT THIS MACHINE COULD NOT REACH IS SAID HERE (R1228). The lister's
+/// answer is the population's third source, so on a hosted runner it is eight
+/// commands smaller than it is on a workstation holding the sibling checkout.
+/// The per-source floors below survive that — they are floors — but a reader of
+/// one run could not tell the two machines apart, and this law's whole subject
+/// is a command nobody looked at.
 fn everything_this_repository_issues(root: &Path) -> Vec<CargoCommand> {
-    commands_this_repository_issues(root)
+    let issued = commands_this_repository_issues(root);
+    for skipped in &issued.skipped {
+        println!("[locked-resolution] {}", skipped.was_not("judged"));
+    }
+    issued.commands
 }
 
 fn workspaces_this_repository_cannot_pin(root: &Path) -> BTreeSet<String> {

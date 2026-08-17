@@ -1286,6 +1286,54 @@ pub fn declared_build_commands(root: &Path) -> Vec<CargoCommand> {
     out
 }
 
+/// Every cargo command this repository issues ON THE MACHINE ASKING, and the
+/// workspaces that machine could not reach.
+///
+/// # Both halves, because the population is machine-conditional
+///
+/// R1228 measured what this type is for. The lister answers with the
+/// workspaces present HERE, so on a workstation holding the sibling checkout
+/// this population is `studio`'s eight commands larger than it is on a hosted
+/// runner — and until this round the function handed back the commands alone
+/// and dropped the reason. Three laws read it that way (`locked_resolution_
+/// smoke`, `build_width`, `judged_test_runs`) and not one of them could say
+/// what it had not judged, while the three laws that take the lister's answer
+/// directly all say it. The difference was not the authors' care: it was that
+/// this shape had nowhere to put the second fact.
+///
+/// Returning it means a caller RECEIVES what it could not reach, which the
+/// compiler enforces, and a caller that then says nothing about it is a
+/// decision somebody made rather than a fact nobody was handed.
+#[derive(Debug, Clone, Default)]
+pub struct IssuedCommands {
+    /// The commands, from all four sources.
+    pub commands: Vec<CargoCommand>,
+    /// The workspaces the lister declined on this machine, with its reasons.
+    /// Empty is a real answer — it says every separate workspace was reachable
+    /// here — and is not the same as never having asked.
+    pub skipped: Vec<SkippedWorkspace>,
+}
+
+impl IssuedCommands {
+    /// The lister's answer decides BOTH halves, so they are taken from it
+    /// together. A constructor rather than two field writes at the call site:
+    /// the pairing is the invariant, and a caller that could build one half
+    /// without the other is a caller that eventually does.
+    #[must_use]
+    pub fn from_lister(listed: &Workspaces) -> Self {
+        Self {
+            commands: lister_declared_commands(listed),
+            skipped: listed.skipped.clone(),
+        }
+    }
+
+    /// Add commands from a source that is not the lister — a source that says
+    /// nothing about which workspaces this machine has.
+    pub fn extend(&mut self, more: impl IntoIterator<Item = CargoCommand>) {
+        self.commands.extend(more);
+    }
+}
+
 /// EVERY cargo command this repository issues, from all four sources.
 ///
 /// ONE ASSEMBLY, because more than one law asks about the same population and a
@@ -1295,17 +1343,22 @@ pub fn declared_build_commands(root: &Path) -> Vec<CargoCommand> {
 /// caller — `scripts/check-side-workspaces.sh` is dropped from the SHELL source
 /// because the lister reports the same commands assembled, and reading its text
 /// as well would ask twice about words that are `"${locked[@]}"` on the page.
-pub fn commands_this_repository_issues(root: &Path) -> Vec<CargoCommand> {
-    let mut commands = workflow_cargo_commands(root);
-    let listed = workspaces(root);
-    commands.extend(lister_declared_commands(&listed));
-    commands.extend(
+///
+/// THE ORDER IS THE LISTER'S FIRST since R1228, because the lister's answer is
+/// what carries the second half and taking both from it together is what makes
+/// the pairing a constructor rather than two writes. No law reads this
+/// population by position — they tally it by source or scan it whole — and the
+/// change is written here rather than left for somebody to discover.
+pub fn commands_this_repository_issues(root: &Path) -> IssuedCommands {
+    let mut issued = IssuedCommands::from_lister(&workspaces(root));
+    issued.extend(workflow_cargo_commands(root));
+    issued.extend(
         script_cargo_commands(root)
             .into_iter()
             .filter(|command| command.source != "scripts/check-side-workspaces.sh"),
     );
-    commands.extend(declared_build_commands(root));
-    commands
+    issued.extend(declared_build_commands(root));
+    issued
 }
 
 /// The words in one command that decide how wide it runs, if it decides at all.
@@ -1557,6 +1610,22 @@ pub struct SkippedWorkspace {
 impl std::fmt::Display for SkippedWorkspace {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{} {}", self.directory, self.reason)
+    }
+}
+
+impl SkippedWorkspace {
+    /// The one sentence this repository says a workspace was not reached with,
+    /// and the verb of the law saying it.
+    ///
+    /// ONE SPELLING, R1228. Three programs had written this line themselves —
+    /// `uncompiled-sources` and `unrun-tests` "not probed", the feature-coverage
+    /// law "not asked" — and three more laws over the same population had
+    /// written no line at all. A sentence copied three times is a sentence that
+    /// drifts three ways, and a reader comparing a run here with a run on a
+    /// hosted runner is comparing exactly these lines.
+    #[must_use]
+    pub fn was_not(&self, verb: &str) -> String {
+        format!("not {verb} (the lister says why): {self}")
     }
 }
 
