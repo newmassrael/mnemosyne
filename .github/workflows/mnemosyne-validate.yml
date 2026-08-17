@@ -120,8 +120,15 @@ jobs:
       # for at least four commits. It is installed from the runner's own apt
       # source rather than a third-party action: one less thing to trust, and
       # the version question is prost-build's, which accepts what Ubuntu ships.
+      #
+      # R1229 — `strace` IN THE SAME CALL, because the runner image does not
+      # ship it: checked against `actions/runner-images`' own Ubuntu 24.04
+      # readme, where it appears in no section. The census wrapping this job's
+      # suite step is what needs it, and `tools/undeclared-requirement` requires
+      # a package CI installs to be named in `.claude/remote-build.toml`, which
+      # this one now is.
       - name: Install protoc (mnemosyne-server build script)
-        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
+        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler strace
 
       - name: Install rust toolchain (rust-toolchain.toml)
         run: rustup show
@@ -166,6 +173,10 @@ jobs:
         run: |
           cargo build --release -q --locked --manifest-path tools/rustc-log/Cargo.toml
           cargo build --release -q --locked --manifest-path tools/restored/Cargo.toml
+          # R1229 — the census reader, an instrument for R1118's reason: this
+          # job's suite step runs it, and a program a job runs must not live
+          # under a path a cache restore can overwrite.
+          cargo build --release -q --locked --manifest-path tools/outside-reach/Cargo.toml
 
       # ONE OF THE TWO JOBS IN THIS FILE THAT KEEPS A `target`, and R1090
       # measured which two. GitHub gives a repository 10 GB of cache and deletes,
@@ -290,10 +301,62 @@ jobs:
       # says so instead of reporting one target's number. `--no-fresh` because a
       # runner's checkout has no uncommitted change for the freshness pass to
       # clean.
+      # R1229 — AND THE RUN IS CENSUSED FOR WHAT IT READS OUTSIDE THIS TREE.
+      #
+      # WHY IT WRAPS THIS STEP AND NOT A SECOND ONE: a census needs a RUN, and
+      # the only run that exercises every law is this one. A separate job would
+      # compile the whole workspace again, which is the duplication
+      # `twice-compiled` exists to forbid, and it would pay for it twice over.
+      #
+      # WHY IT COSTS NOTHING ON DISK: `strace -o "|program"` hands the trace to
+      # the reader through a PIPE. Measured on this repository's whole suite —
+      # 611 MB passes through and ZERO bytes are written, against the 2.8 GB
+      # across 155,072 files that Round 1228 wrote when it took the same census
+      # into files and recorded that as the price of asking.
+      #
+      # RELATIVE, AND NOT `${{ github.workspace }}`, for R1117's reason one step
+      # over: a GitHub expression in a step's script makes the whole job
+      # unreplayable, and `tools/twice-compiled` refuses a census that cannot
+      # replay it. The first draft of this step wrote the expression and took
+      # `validate` straight out of that census — the gate said so by name. Every
+      # step in this file runs with the checkout root as its working directory,
+      # so `$PWD` is the same path and a local replay can resolve it.
+      #
+      # `%file` IS THE REQUIREMENT AND NARROWING IT IS THE TRAP: the sibling
+      # checkout is reached by `newfstatat` — cargo asking whether a path
+      # dependency's directory is THERE, never opening it — so a census watching
+      # `openat` answers zero, and zero is what a hermetic tree looks like.
+      # `%process` is the other half: a Rust test is a thread, and only the
+      # clone lines lead a reach back to the binary that made it.
+      # `status=successful` is the one free cut — a failed call reached nothing.
       - name: cargo test --workspace
         run: >
+          strace -f -qq -e trace=%file,%process -e status=successful
+          -o "|./instruments/release/outside-reach
+          --repo \"$PWD\" --build \"$PWD/target\"
+          --fixture \"${TMPDIR:-/tmp}\"
+          > \"${TMPDIR:-/tmp}/outside-reach.txt\" 2>&1;
+          echo \$? > \"${TMPDIR:-/tmp}/outside-reach.rc\""
           ./scripts/verify.sh --no-fresh --label ci-workspace --
           cargo test --workspace --locked --no-fail-fast
+
+      # THE READER'S VERDICT IS READ FROM A FILE, and that is a requirement
+      # rather than a style. `strace` returns the WRAPPED command's status and
+      # says nothing at all about the program on the other end of its `-o` pipe,
+      # so a census that failed would leave the step above green. This
+      # repository has paid for reading a wrapper's exit code instead of the
+      # one that matters; the file is what cannot be forged.
+      #
+      # `if: always()` because the census is about the run that HAPPENED. A
+      # suite that went red still read whatever it read, and a reach that only
+      # appears on a failing run is exactly the one nobody would otherwise see.
+      - name: what that run read outside this repository
+        if: always()
+        run: |
+          cat "${TMPDIR:-/tmp}/outside-reach.txt"
+          verdict=$(cat "${TMPDIR:-/tmp}/outside-reach.rc")
+          echo "[outside-reach] verdict=${verdict}"
+          exit "${verdict}"
 
       - name: mnemosyne-cli validate-workspace
         run: cargo run --release -q --locked -p mnemosyne-cli -- validate-workspace

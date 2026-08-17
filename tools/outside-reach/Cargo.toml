@@ -1,0 +1,27 @@
+[workspace]
+
+[package]
+name = "outside-reach"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.88"
+publish = false
+license = "MIT OR Apache-2.0"
+description = "Mnemosyne — every path this repository's suite reads outside itself is one it declares"
+keywords = ["test", "hermetic", "gate"]
+categories = ["development-tools"]
+
+# ITS OWN WORKSPACE, like every other gate under `tools/`, and with no
+# dependency on `ci-plan`. The neighbouring gates ask what this repository
+# DECLARES — the workflows, the scripts, the build-machine file. This one asks
+# what a run actually DID, which is a different source and cannot be derived
+# from any of theirs: a path a spawned `bash` opens is written in no Rust source
+# at all.
+
+[dev-dependencies]
+# The fixtures are trace directories, and a directory that removes itself is
+# what keeps a suite that writes them from leaving them behind.
+tempfile = "3"
+
+[lints.clippy]
+all = "deny"

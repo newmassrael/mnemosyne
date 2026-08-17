@@ -64,17 +64,27 @@ fn everything_this_repository_issues(root: &Path) -> Vec<CargoCommand> {
     issued.commands
 }
 
-/// Does something hand this command over, and is that something the wrapper?
+/// Does something hand this command over, and is the wrapper among them?
 ///
-/// A path rather than a word, because the three callers spell it three ways: a
+/// A path rather than a word, because the callers spell it three ways: a
 /// workflow writes `./scripts/verify.sh`, the workspace lister expands an
 /// absolute path resolved from its own checkout, and a hook would write it
 /// relative to the repository root. All three name one file.
+///
+/// ANYWHERE IN THE CARRIER, NOT ONLY IN FRONT (R1229). This asked for the FIRST
+/// carrier and that was a claim about how many programs may stand in front of a
+/// suite, which is not what the law is about: what it wants is that the wrapper
+/// judges what the run covered, and a program in front of the wrapper does not
+/// take that away. The case is real rather than hypothetical — the census this
+/// round added runs the workspace suite under `strace`, so the carrier is
+/// `strace … ./scripts/verify.sh …` and the wrapper is second. Reading only the
+/// first word would have called this repository's largest suite unjudged while
+/// `verify.sh` was carrying it exactly as before.
 fn judged_for_coverage(command: &CargoCommand) -> bool {
     command
         .carrier
-        .first()
-        .is_some_and(|program| program == WRAPPER || program.ends_with(&format!("/{WRAPPER}")))
+        .iter()
+        .any(|program| program == WRAPPER || program.ends_with(&format!("/{WRAPPER}")))
 }
 
 #[test]
@@ -148,6 +158,118 @@ fn every_test_run_this_repository_issues_goes_through_the_wrapper_that_judges_it
         "a command that runs no test target has no coverage for the wrapper to \
          judge, so this law must not be reading `everything is wrapped`: only \
          {unwrapped_others} of the non-test commands are issued directly"
+    );
+}
+
+/// A PROGRAM IN FRONT OF THE WRAPPER DOES NOT TAKE THE JUDGING AWAY, and a
+/// command with no wrapper at all is still unjudged (R1229).
+///
+/// The census this round added runs the workspace suite under `strace`, so the
+/// carrier became `strace … ./scripts/verify.sh …` and the wrapper stopped
+/// being the first word. Both directions are asserted here because loosening a
+/// predicate is exactly where a law quietly starts accepting everything: the
+/// first case must pass and the second must NOT.
+#[test]
+fn the_wrapper_is_found_wherever_it_carries_and_a_command_it_does_not_carry_is_not() {
+    let carried = CargoCommand {
+        source: "a case".to_string(),
+        owner: "a case".to_string(),
+        carrier: vec![
+            "strace".to_string(),
+            "-f".to_string(),
+            "./scripts/verify.sh".to_string(),
+            "--no-fresh".to_string(),
+        ],
+        cargo_args: ["cargo", "test", "--workspace"]
+            .iter()
+            .map(|word| (*word).to_string())
+            .collect(),
+        harness_args: Vec::new(),
+        env: Default::default(),
+    };
+    assert!(
+        judged_for_coverage(&carried),
+        "the wrapper carries this suite; something standing in front of it does \
+         not stop it judging what the run covered"
+    );
+
+    let observer_only = CargoCommand {
+        carrier: vec!["strace".to_string(), "-f".to_string()],
+        ..carried.clone()
+    };
+    assert!(
+        !judged_for_coverage(&observer_only),
+        "and a suite carried by something that is NOT the wrapper is still \
+         unjudged — a law that answered yes here would accept every command in \
+         this repository"
+    );
+}
+
+/// A VERDICT WRITTEN TO A FILE IS ONE A STEP EXITS WITH (R1229).
+///
+/// `strace` returns the status of the command it WRAPPED and says nothing at
+/// all about the program on the other end of its `-o "|…"` pipe. So the census
+/// this repository runs over its own suite cannot fail the step it rides on:
+/// it writes its verdict to a file, and a LATER step is what turns that into
+/// the job's answer. That indirection is the whole of the gate's teeth, and it
+/// is one word long — a step that reads the file and then `exit 0` looks
+/// exactly like one that honours it, in a diff and on a green run alike.
+///
+/// This repository has paid for reading a wrapper's status instead of the one
+/// that matters. The law is therefore not "a census runs" but "what it decided
+/// is what the job returns".
+#[test]
+fn a_census_verdict_written_to_a_file_is_one_a_step_exits_with() {
+    let root = repository_root();
+    let mut checked = 0;
+    for path in ci_plan::workflow_files(&root) {
+        let doc = ci_plan::load_workflow(&root, &path);
+        let steps = ci_plan::run_steps(&doc);
+        // The steps that WRITE a verdict, found by the shape rather than by a
+        // name: `echo $? > <something>.rc` is how a status survives a program
+        // that will not propagate it.
+        // KEYED ON THE FILE'S OWN NAME, not on the directory holding it. Where
+        // a workflow puts its scratch is the author's to change — `$RUNNER_TEMP`,
+        // `${TMPDIR:-/tmp}`, the checkout root — and a law matching the whole
+        // path would go quiet the first time one of them did, which is the
+        // silence it exists to prevent.
+        let written: Vec<String> = steps
+            .iter()
+            .flat_map(|step| step.script.split_whitespace().collect::<Vec<_>>())
+            .map(|word| word.trim_matches(|c| c == '"' || c == '\\').to_string())
+            .filter(|word| word.ends_with(".rc"))
+            .filter_map(|word| word.rsplit('/').next().map(str::to_string))
+            .collect();
+        for verdict in &written {
+            checked += 1;
+            // SOME step in the same workflow must exit with what that file
+            // holds. Read as a shape — a script that both names the file and
+            // ends a line with `exit "$…"` — because the variable it lands in
+            // is the author's to name and the file is not.
+            let honoured = steps.iter().any(|step| {
+                step.script.contains(verdict.as_str())
+                    && step
+                        .script
+                        .lines()
+                        .any(|line| line.trim_start().starts_with("exit \"$"))
+            });
+            assert!(
+                honoured,
+                "{path} writes a verdict to `{verdict}` and no step exits with \
+                 it, so whatever wrote it cannot fail this job. A census whose \
+                 answer nothing reads is the shape this repository keeps \
+                 deleting — and it is one word away from the shape that works"
+            );
+        }
+    }
+    // NON-VACUITY. This law is a walk over a shape, and a walk that found no
+    // verdict file reports no violations — which is exactly what it would do
+    // the day the census step was deleted.
+    assert!(
+        checked >= 1,
+        "no workflow in this repository writes a verdict to a `.rc` file, so \
+         this law asserted nothing. If the census was removed, this law goes \
+         with it rather than passing over an empty population"
     );
 }
 
