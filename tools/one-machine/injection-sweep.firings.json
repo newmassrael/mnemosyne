@@ -1,0 +1,269 @@
+{
+  "_": [
+    "Machine-written by tools/injection-harness. Do not edit by hand: a row somebody typed is evidence of nothing, and the law over this file is worth exactly what its being unforgeable is worth.",
+    "Each row is one injection that WAS RUN and DID redden what it names, kept beside the definition it was proven against — edit the injection and the gate says the evidence is about a different one."
+  ],
+  "complete": true,
+  "fired": {
+    "a-census-about-other-bytes-answers-for-these": {
+      "edits": [
+        {
+          "file": "tools/one-machine/src/lib.rs",
+          "from": "    if header.fingerprint != seen.here {",
+          "to": "    if header.fingerprint != header.fingerprint {"
+        }
+      ],
+      "expect_red": [
+        "a_census_about_other_bytes_is_not_about_these",
+        "read_refuses_a_census_about_bytes_that_have_changed"
+      ],
+      "tests": [
+        "a_census_about_other_bytes_is_not_about_these",
+        "read_refuses_a_census_about_bytes_that_have_changed"
+      ]
+    },
+    "a-census-taken-here-answers-for-a-second-machine": {
+      "edits": [
+        {
+          "file": "tools/one-machine/src/lib.rs",
+          "from": "    if header.host.eq_ignore_ascii_case(&seen.this_host) {",
+          "to": "    if header.host.eq_ignore_ascii_case(\"a name no machine has\") {"
+        }
+      ],
+      "expect_red": [
+        "a_census_taken_on_this_machine_is_not_a_second_opinion",
+        "identity_is_answered_before_freshness",
+        "read_refuses_a_census_taken_on_this_very_machine",
+        "the_machine_is_the_same_machine_whatever_its_case"
+      ],
+      "tests": [
+        "a_census_taken_on_this_machine_is_not_a_second_opinion",
+        "identity_is_answered_before_freshness",
+        "read_refuses_a_census_taken_on_this_very_machine",
+        "the_machine_is_the_same_machine_whatever_its_case"
+      ]
+    },
+    "a-claim-is-recorded-beside-a-dispatch-that-failed": {
+      "edits": [
+        {
+          "file": "tools/one-machine/src/main.rs",
+          "from": "    if !sent.status.success() {",
+          "to": "    if sent.status.code() == Some(-12345) {"
+        }
+      ],
+      "expect_red": [
+        "send_records_nothing_when_the_dispatch_itself_fails"
+      ],
+      "tests": [
+        "send_records_nothing_when_the_dispatch_itself_fails"
+      ]
+    },
+    "a-placement-on-this-machine-is-dispatched-to": {
+      "edits": [
+        {
+          "file": "tools/one-machine/src/main.rs",
+          "from": "    let Some(host) = placement.host.filter(|_| placement.remote) else {",
+          "to": "    let Some(host) = placement.host.filter(|_| true) else {"
+        }
+      ],
+      "expect_red": [
+        "send_refuses_a_placement_on_this_machine"
+      ],
+      "tests": [
+        "send_refuses_a_placement_on_this_machine"
+      ]
+    },
+    "a-red-suite-elsewhere-is-read-as-a-clean-census": {
+      "edits": [
+        {
+          "file": "tools/one-machine/src/lib.rs",
+          "from": "    if answer.suite != Some(0) {",
+          "to": "    if answer.suite == Some(i64::MIN) {"
+        }
+      ],
+      "expect_red": [
+        "a_suite_that_failed_elsewhere_is_a_finding_of_its_own",
+        "a_suite_whose_status_was_never_recorded_is_not_passed_over"
+      ],
+      "tests": [
+        "a_suite_that_failed_elsewhere_is_a_finding_of_its_own",
+        "a_suite_whose_status_was_never_recorded_is_not_passed_over"
+      ]
+    },
+    "a-run-still-going-is-read-as-one-that-answered": {
+      "edits": [
+        {
+          "file": "tools/one-machine/src/lib.rs",
+          "from": "    let mut answer = Answer::default();",
+          "to": "    let mut answer = Answer { sentinel: Some(0), ..Answer::default() };"
+        }
+      ],
+      "expect_red": [
+        "a_run_that_has_not_ended_has_not_answered"
+      ],
+      "tests": [
+        "a_run_that_has_not_ended_has_not_answered"
+      ]
+    },
+    "a-suite-that-failed-elsewhere-is-shown-without-its-failure": {
+      "edits": [
+        {
+          "file": "tools/one-machine/src/lib.rs",
+          "from": "        || FAILURE_MARKERS.iter().any(|marker| line.contains(marker))",
+          "to": "        || FAILURE_MARKERS.iter().any(|marker| line.contains(marker) && false)"
+        }
+      ],
+      "expect_red": [
+        "what_the_reader_is_shown_is_what_decides_and_not_the_whole_log"
+      ],
+      "tests": [
+        "what_the_reader_is_shown_is_what_decides_and_not_the_whole_log"
+      ]
+    },
+    "the-claim-does-not-name-the-bytes-it-sent": {
+      "edits": [
+        {
+          "file": "tools/one-machine/src/main.rs",
+          "from": "        fingerprint: here,",
+          "to": "        fingerprint: String::new(),"
+        }
+      ],
+      "expect_red": [
+        "send_dispatches_once_and_records_where"
+      ],
+      "tests": [
+        "send_dispatches_once_and_records_where"
+      ]
+    },
+    "the-fingerprint-carries-the-commit": {
+      "edits": [
+        {
+          "file": "tools/one-machine/src/lib.rs",
+          "from": "    let index = git(repository, &[\"ls-files\", \"--stage\"])?;",
+          "to": "    let index = git(repository, &[\"diff\", \"--patch\", \"--binary\", \"HEAD\"])?;"
+        }
+      ],
+      "expect_red": [
+        "a_commit_does_not_change_it"
+      ],
+      "tests": [
+        "a_commit_does_not_change_it"
+      ]
+    },
+    "the-fingerprint-forgets-the-working-tree": {
+      "edits": [
+        {
+          "file": "tools/one-machine/src/lib.rs",
+          "from": "    let worktree = git(repository, &[\"diff-files\", \"--patch\", \"--binary\"])?;",
+          "to": "    let worktree: Vec<u8> = Vec::new();"
+        }
+      ],
+      "expect_red": [
+        "a_changed_tracked_byte_changes_it",
+        "a_deleted_tracked_file_changes_it",
+        "read_refuses_a_census_about_bytes_that_have_changed",
+        "send_dispatches_again_when_the_bytes_have_changed",
+        "two_different_binary_contents_are_two_trees"
+      ],
+      "tests": [
+        "a_changed_tracked_byte_changes_it",
+        "a_deleted_tracked_file_changes_it",
+        "read_refuses_a_census_about_bytes_that_have_changed",
+        "send_dispatches_again_when_the_bytes_have_changed",
+        "two_different_binary_contents_are_two_trees"
+      ]
+    },
+    "the-launcher-hands-the-run-the-transports-own-stdin": {
+      "edits": [
+        {
+          "file": "tools/one-machine/src/lib.rs",
+          "from": "         > \\\"{log}\\\" 2>&1 < /dev/null &\"",
+          "to": "         > \\\"{log}\\\" 2>&1 &\""
+        }
+      ],
+      "expect_red": [
+        "send_dispatches_once_and_records_where"
+      ],
+      "tests": [
+        "send_dispatches_once_and_records_where"
+      ]
+    },
+    "the-launcher-keeps-the-transports-descriptors": {
+      "edits": [
+        {
+          "file": "tools/one-machine/src/lib.rs",
+          "from": "        \"mkdir -p \\\"$(dirname \\\"{log}\\\")\\\"; \\",
+          "to": "        \"mkdir -p \\\"$(dirname \\\"{log}\\\")\\\" && \\"
+        }
+      ],
+      "expect_red": [
+        "the_launcher_returns_while_the_run_it_started_is_still_going"
+      ],
+      "tests": [
+        "the_launcher_returns_while_the_run_it_started_is_still_going"
+      ]
+    },
+    "the-same-bytes-are-dispatched-again-on-every-commit": {
+      "edits": [
+        {
+          "file": "tools/one-machine/src/main.rs",
+          "from": "            if claim.fingerprint == here {",
+          "to": "            if claim.fingerprint != claim.fingerprint {"
+        }
+      ],
+      "expect_red": [
+        "send_dispatches_once_and_records_where"
+      ],
+      "tests": [
+        "send_dispatches_once_and_records_where"
+      ]
+    },
+    "the-sentinel-is-only-looked-for-at-the-start-of-a-line": {
+      "edits": [
+        {
+          "file": "tools/one-machine/src/lib.rs",
+          "from": "        if let Some(at) = line.find(SENTINEL) {",
+          "to": "        if let Some(at) = line.strip_prefix(SENTINEL).map(|_| 0) {"
+        }
+      ],
+      "expect_red": [
+        "the_sentinel_is_found_when_the_transport_leaves_it_mid_line"
+      ],
+      "tests": [
+        "the_sentinel_is_found_when_the_transport_leaves_it_mid_line"
+      ]
+    },
+    "the-whole-log-is-tipped-into-the-hook": {
+      "edits": [
+        {
+          "file": "tools/one-machine/src/lib.rs",
+          "from": "    line.starts_with(TAG)\n        || line.contains(\"[outside-reach]\")",
+          "to": "    true\n        || line.contains(\"[outside-reach]\")"
+        }
+      ],
+      "expect_red": [
+        "a_finding_inside_a_log_the_size_of_a_real_one_is_not_buried",
+        "what_the_reader_is_shown_is_what_decides_and_not_the_whole_log"
+      ],
+      "tests": [
+        "a_finding_inside_a_log_the_size_of_a_real_one_is_not_buried",
+        "what_the_reader_is_shown_is_what_decides_and_not_the_whole_log"
+      ]
+    },
+    "what-arrived-is-not-checked-against-what-left": {
+      "edits": [
+        {
+          "file": "tools/one-machine/src/lib.rs",
+          "from": "    if header.fingerprint != claim.fingerprint {",
+          "to": "    if header.fingerprint != header.fingerprint {"
+        }
+      ],
+      "expect_red": [
+        "what_arrived_is_not_what_left"
+      ],
+      "tests": [
+        "what_arrived_is_not_what_left"
+      ]
+    }
+  }
+}

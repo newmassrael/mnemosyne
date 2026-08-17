@@ -83,6 +83,15 @@
 #      for the two weeks between R888 repairing the runner and a build host
 #      compiling 269 crates to find out.
 #
+#   7. Second-machine gate (R1234) — `tools/one-machine --send`, on EVERY
+#      commit: this tree's syscall census is put on a machine the placement
+#      program chooses, detached, and `pre-push` reads what it wrote. The
+#      census answers a question about a MACHINE, and every one of the four
+#      defects this repository has found in it was found where its author was
+#      not sitting; until this gate there was no automated second machine at
+#      all. REPORTS AND NEVER BLOCKS, for the reason `pre-push`'s CI reporter
+#      does not: a fleet that is busy is not this repository's defect.
+#
 # Install (one-time per clone):
 #   git config core.hooksPath .githooks
 #
@@ -548,4 +557,47 @@ if printf '%s\n' "$staged" | grep -qE '\.rs$'; then
         } >&2
         exit 1
     fi
+fi
+
+# Gate 7 — put this tree's census on a machine that is not this one (R1234).
+#
+# WHY IT IS HERE AND NOT AT PUSH. `tools/outside-reach` answers what this
+# repository's suite reaches outside itself, and that answer is a claim about a
+# MACHINE. It has been wrong four times and every one was found somewhere its
+# author was not sitting — a hosted runner's HOME, a gcc driver's spelling, a
+# `find(1)` reaching a descriptor through `fcntl` in a population no workstation
+# run reproduces. There was no automated second machine until this gate: the
+# hosted run happens once per push and after it, and the two build-machine arms
+# that found the last two defects were launched by hand.
+#
+# A COMMIT IS WHEN THE BYTES OF A ROUND STOP MOVING, which is why the dispatch is
+# here and the reading is at push. The census takes minutes on the machine it is
+# sent to; those minutes are spent while this round writes its ledger entry and
+# runs the push's own gates, so the lane costs no wall clock. The fingerprint it
+# claims is over TRACKED CONTENT and not over `HEAD`, precisely so that the
+# commit this hook is part of does not turn the answer into one about another
+# tree.
+#
+# IT REPORTS AND NEVER BLOCKS, the semantics `pre-push`'s CI reporter has and for
+# the same reason recorded there: a machine being busy, absent or mid-upgrade is
+# not this repository's defect, and a commit that cannot be made while the fleet
+# is down is a gate that stops the work it exists to check. The ANSWER is not
+# softened by that — `one-machine --read` still exits 0, 1 or 2 honestly for
+# every caller that wants to gate on it.
+#
+# NO `-f` GUARD IN FRONT OF THE PROGRAM, unlike the gates above and for the
+# reason `pre-push`'s CI reporter states: it is resolved from THIS checkout,
+# where it always exists, so the guard is a branch nothing could reach — and one
+# that is missing makes `cargo run` fail, which is the branch below, and that one
+# prints the true sentence. `gates` is re-derived rather than inherited from the
+# block above it, because a gate whose path comes from a neighbour is a gate that
+# breaks when the neighbour moves.
+echo "[mnemosyne pre-commit] the census of this tree, on a machine that is not this one" >&2
+gates="$(cd "$(dirname "$0")/.." && pwd)"
+census_verdict=0
+cargo run -q --locked --manifest-path "$gates/tools/one-machine/Cargo.toml" \
+    --bin one-machine -- --repo "$(pwd)" --send || census_verdict=$?
+if [[ $census_verdict -ne 0 ]]; then
+    echo "[mnemosyne pre-commit] NOTE no second machine has this tree" \
+         "(exit $census_verdict); its own message is above. The push will say so too" >&2
 fi

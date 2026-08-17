@@ -2334,3 +2334,66 @@ fn pre_push_carries_the_ci_reporters_words_and_names_it_when_it_cannot_run() {
         f.reporter_contract_violations()
     );
 }
+
+/// The census of this tree is put on a machine that is not this one, and a fleet
+/// that cannot take it does not stop the work (R1234).
+///
+/// WHAT THIS CASE OWNS IS THE CALL AND THE CARRIAGE, the same division the CI
+/// reporter's case draws: whether a dispatch is legitimate, whether an answer is
+/// stale, and whether the machine that answered was this one are all decided in
+/// `tools/one-machine`, against stub placement programs and stub transports, and
+/// nothing here re-asks them. What lives HERE is that the hook calls that
+/// program with the tree it means, prints whatever it says, and does not turn a
+/// busy build machine into a commit nobody can make.
+///
+/// The fixture declares no `[commands] verify`, so the program refuses — which
+/// is the state this gate must survive, not an accident of the fixture. A
+/// repository that says nothing about how it is verified on a build machine has
+/// no census to dispatch, and a hook that failed there would make this gate cost
+/// every commit in every tree the hooks are run over.
+#[test]
+fn pre_commit_dispatches_the_census_elsewhere_and_a_fleet_that_cannot_take_it_blocks_nothing() {
+    let f = Fixture::new();
+    let out = f.run_hook("pre-commit", &[], "", &[]);
+    let err = stderr_of(&out);
+    assert!(
+        out.status.success(),
+        "a second machine that cannot be reached is not this repository's defect:\n{err}"
+    );
+    assert!(
+        err.contains("on a machine that is not this one"),
+        "the gate must announce itself, or a gate that stopped running looks \
+         exactly like one that found nothing:\n{err}"
+    );
+    assert!(
+        err.contains("no second machine has this tree"),
+        "and it must say that it did NOT get one — silence here is the shape \
+         every defect this lane exists for wore:\n{err}"
+    );
+}
+
+/// And what that machine found reaches the person pushing, without blocking them.
+#[test]
+fn pre_push_reports_what_a_second_machine_found_and_never_blocks() {
+    let f = Fixture::new();
+    f.git(&["commit", "--no-verify", "-q", "-m", "test(fixture): seed"]);
+    let sha = head_sha(&f);
+    let stdin = push_line(&sha);
+    let out = f.run_hook("pre-push", &["origin", "git@example:x"], &stdin, &[]);
+    let err = stderr_of(&out);
+    assert!(
+        out.status.success(),
+        "R888 and R889 were both pushes made deliberately while a gate was red, \
+         to fix it; this one blocks for the same reason gate 6 does not:\n{err}"
+    );
+    assert!(
+        err.contains("what a machine that is not this one found here"),
+        "the gate announces itself:\n{err}"
+    );
+    assert!(
+        err.contains("no second machine has judged this tree")
+            || err.contains("no machine has been asked"),
+        "a tree nothing was dispatched for must SAY so — that state reports zero \
+         findings, and zero findings is what a clean tree looks like:\n{err}"
+    );
+}

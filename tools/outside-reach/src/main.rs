@@ -19,7 +19,7 @@ use std::io::{self, BufReader};
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
-use outside_reach::{judge, read_stream, DeclaredReach, Ground, Where};
+use outside_reach::{judge, read_stream, DeclaredReach, Ground, Where, TRACE_FILTER};
 
 /// The trees this repository's own suite reaches, and why each one.
 ///
@@ -108,7 +108,7 @@ fn flag(name: &str) -> Option<String> {
 fn usage() -> ExitCode {
     eprintln!(
         "usage: strace -f -qq \\\n\
-         \x20         -e trace=%file,%process,close,close_range,dup,dup2,dup3,fchdir,fcntl \\\n\
+         \x20         -e trace={TRACE_FILTER} \\\n\
          \x20         -e status=successful \\\n\
          \x20         -o \"|outside-reach --repo <path> --build <path> --fixture <path> \
          --cwd <path>\" <command…>\n\
@@ -125,7 +125,11 @@ fn usage() -> ExitCode {
          \x20             unresolvable rather than wrong\n\
          --report      print the census and return 0 whatever it found\n\
          --verdict-of  exit with the status recorded in a file by an earlier run \
-         of this program"
+         of this program\n\
+         --trace-filter print the `-e trace=` list this reader's model requires, \
+         so a caller\n\
+         \x20             building the command asks for it rather than spelling a \
+         second copy"
     );
     ExitCode::from(2)
 }
@@ -188,6 +192,13 @@ fn verdict_of(path: &Path) -> ExitCode {
 }
 
 fn main() -> ExitCode {
+    // ASKED, NOT SPELLED — the seam that keeps the filter to one copy. The
+    // shell that builds the census command has no way to hold its own list
+    // against this reader's model, so it does not carry one.
+    if std::env::args().any(|argument| argument == "--trace-filter") {
+        println!("{TRACE_FILTER}");
+        return ExitCode::SUCCESS;
+    }
     if let Some(path) = flag("--verdict-of") {
         return verdict_of(Path::new(&path));
     }

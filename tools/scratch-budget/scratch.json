@@ -41,6 +41,11 @@
       "why": "Where the item-citation gate's sweep writes, beside its own workspace. MEASURED 2026-08-14: ABSENT — the sweep has not been run in this tree since the directory was named. The budget is its siblings'."
     },
     {
+      "path": "target/one-machine",
+      "budget_mib": 1,
+      "why": "What this machine dispatched to another one and where its answer will be. MEASURED 2026-08-18, after three real dispatches: 1 file, 150 bytes — the `claim` is REWRITTEN by each dispatch rather than accumulated, so the directory's size is one claim whatever the round count. It is named here anyway, because a directory this repository writes into and nobody collects is the state R1199 found six of, and the argument for an entry does not depend on today's growth rate. 1 MiB is four orders of magnitude above the measurement, and the collector never removes the newest file, so no budget here can delete the claim a push is about to read."
+    },
+    {
       "path": "target/bx-logs",
       "budget_mib": 16,
       "why": "One file per remote build `bx` places, written into whichever repository's tree it was invoked from. MEASURED 2026-08-14: 502 files, 12 MB, in two days — the fastest-growing of the three. `bx` prunes the REMOTE tree it builds in and never the local one it writes these to, so nothing collected them anywhere. 16 MiB is about three days of placements, which is as far back as a placement question has ever been asked here. THE OTHER FOUR TREES ON THIS MACHINE ARE NOT THIS REPOSITORY'S TO COLLECT: pinion (21 MB), scxml-core-engine (30 MB) and watching-zenoh (7.5 MB) each carry one of these directories, growing the same way, and this declaration reaches only the tree it is run against."

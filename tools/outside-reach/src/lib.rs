@@ -132,6 +132,27 @@ use std::io::BufRead;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
+/// The syscalls a trace must carry for this reader's model to hold.
+///
+/// THE FILTER BELONGS TO THE READER, not to the caller that spells it. Which
+/// calls have to be in the stream is a fact about the model above — `%file` for
+/// the names, `%process` for the parentage that attributes them, and the seven
+/// descriptor calls because they are the only way this model could answer WRONG
+/// instead of UNKNOWN. A caller that writes its own list is writing a second
+/// copy of that reasoning, free to drift from it silently: a narrower filter
+/// resolves FEWER names, and fewer names is what a hermetic run looks like.
+///
+/// R1233 measured that drift as a real cost before it was a hypothesis. The
+/// filter was one `fcntl` short of the model for as long as the model existed,
+/// and the missing call left 433,904 names unplaced in a single whole-suite run
+/// — found by the residue report, not by anything holding the filter against
+/// what the reader needs.
+///
+/// So there is one spelling and the callers ask for it: this constant, printed
+/// by `outside-reach --trace-filter` for the shell that builds the `strace`
+/// command, and held against the workflow's own census step by a law.
+pub const TRACE_FILTER: &str = "%file,%process,close,close_range,dup,dup2,dup3,fchdir,fcntl";
+
 /// The places a run is entitled to stand on.
 #[derive(Debug, Clone, Default)]
 pub struct Ground {

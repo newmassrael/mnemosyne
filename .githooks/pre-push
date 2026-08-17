@@ -58,6 +58,12 @@
 #        this hook up stubs `gh` with already-filtered lines, so nothing
 #        could ask whether they still named fields GitHub still sends.
 #
+#   7. `tools/one-machine --read` — what a machine that is not this one found
+#      in this tree (R1234). REPORT ONLY, on gate 6's argument. `pre-commit`
+#      dispatched the census when the round's bytes stopped moving; this reads
+#      the answer. The census is a claim about a MACHINE and has been wrong
+#      four times, every one found where its author was not sitting.
+#
 # Install (one-time per clone):
 #   git config core.hooksPath .githooks
 #
@@ -307,6 +313,35 @@ else
         # it cannot answer is indistinguishable from one that answered "fine".
         echo "pre-push: NOTE the CI reporter could not run — CI state for ${base:0:8} unknown" >&2
     fi
+fi
+
+# 7. What a machine that is not this one found in this tree (R1234).
+#
+# `tools/outside-reach` decides what this repository's suite reaches outside
+# itself, and its answer is a claim about a MACHINE as much as about the source.
+# This repository has caught it wrong four times and every one was found where
+# its author was not sitting. `pre-commit` sends the census to a machine the
+# placement program chose; this reads what that machine wrote, and the reading is
+# a program because the states that matter are not two.
+#
+# THE THREE CODES ARE PRINTED AND NONE OF THEM BLOCKS, which is gate 6's
+# semantics and gate 6's argument: R888 and R889 were both pushes made
+# deliberately while CI was red, to fix it, and a gate would have been wrong both
+# times. What is missing when a second machine has not answered is KNOWLEDGE, not
+# restraint — and "not answered" is most of what the third code means here (no
+# dispatch, a machine that is busy, a run still going, an answer about bytes that
+# have since changed). Every one of those states reports zero findings under a
+# two-code gate, which is why the program names them apart out loud.
+echo "pre-push: tools/one-machine (what a machine that is not this one found here) ..." >&2
+elsewhere_verdict=0
+cargo run -q --locked --manifest-path "$hook_checkout/tools/one-machine/Cargo.toml" \
+    --bin one-machine -- --repo "$repo_root" --read >&2 || elsewhere_verdict=$?
+if [[ $elsewhere_verdict -eq 1 ]]; then
+    echo "pre-push: NOTE a second machine found something in this tree — its report is" \
+         "above. Nothing here blocks on it, for the reason gate 6 does not" >&2
+elif [[ $elsewhere_verdict -ne 0 ]]; then
+    echo "pre-push: NOTE no second machine has judged this tree (exit $elsewhere_verdict);" \
+         "its own message is above. This push carries only this machine's opinion" >&2
 fi
 
 exit 0

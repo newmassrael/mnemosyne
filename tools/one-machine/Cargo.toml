@@ -1,0 +1,65 @@
+# one-machine — the gate for a verdict only one machine has ever given.
+#
+# `tools/outside-reach` decides what this repository's suite reaches outside
+# itself. Its answer is a claim ABOUT A MACHINE, and this repository has now
+# caught it being wrong four times:
+#
+#   - R1229 wrote `/home/coin/…` into the declaration table, so on a hosted
+#     runner every git row matched nothing;
+#   - R1231 found the verdict unreadable when the job carrying it was cancelled,
+#     which made "the census said no" and "the census never answered" one shape;
+#   - R1232 found eleven FALSE findings — a gcc driver writes `/../lib/gcc/…`
+#     and `starts_with("/lib")` is false of it — plus a ground list written from
+#     memory that was missing `/lib32` and `/libx32`;
+#   - R1233 found the trace filter one `fcntl` short of the model it feeds, and
+#     found it in a population no run on the author's workstation reproduces.
+#
+# EVERY ONE OF THOSE WAS FOUND SOMEWHERE ITS AUTHOR WAS NOT SITTING, and until
+# this crate there was no automated second machine: the hosted run happens once
+# per push and after it, and the build-machine arms of R1232 and R1233 were
+# scripts launched by hand. A gate whose correctness depends on the machine it
+# runs on, verified on a sample of one, is a gate with an untested premise.
+#
+# THE LAW IS ONE SENTENCE: a census verdict this repository acts on was given by
+# a machine that is not this one, about the tree that is asking.
+#
+# The three answers are the ones its siblings give — 0 clean, 1 a finding, 2 NOT
+# JUDGED — and the third carries most of the weight here. "No machine has
+# answered yet", "the machine that answered was this one" and "that answer is
+# about a tree with different bytes in it" are all states in which a two-code
+# gate reports zero findings, and zero findings is what a clean tree looks like.
+#
+# ITS OWN WORKSPACE, like every other program under `tools/`: the root gates
+# never compile it, and `scripts/check-side-workspaces.sh` discovers it by
+# walking for manifests that carry their own `[workspace]`, so there is no list
+# to update.
+[workspace]
+
+[package]
+name = "one-machine"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.88"
+publish = false
+license = "MIT OR Apache-2.0"
+description = "Mnemosyne — a census verdict this repository acts on was given by a machine that is not this one"
+keywords = ["census", "gate", "build"]
+categories = ["development-tools"]
+
+[dependencies]
+# THE COMMAND THE CENSUS RUNS COMES FROM THE DECLARATION, not from this crate.
+# `.claude/remote-build.toml` already states how this repository is verified on a
+# build machine (`[commands] verify`), and R1197 put those values into the
+# population of the laws that read every cargo command this repository issues. A
+# copy spelled here would be a second command outside every one of them.
+toml = "1"
+
+[dev-dependencies]
+# The cases build throwaway repositories and throwaway stub programs OUTSIDE
+# this checkout: a fingerprint is a fact about a tree, so the only way to vary
+# one is to stand in another, and the placement program and the transport are
+# both asked as PROCESSES rather than re-implemented.
+tempfile = "3"
+
+[lints.clippy]
+all = "deny"

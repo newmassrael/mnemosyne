@@ -1277,3 +1277,70 @@ fn a_verdict_that_was_never_written_is_the_third_answer_and_not_the_first() {
 
     let _ = std::fs::remove_dir_all(&at);
 }
+
+/// The filter every caller builds a census command with is THIS reader's, asked
+/// of it rather than copied.
+///
+/// R1233 is the argument, and it is not a hypothesis: the `-e trace=` list was
+/// one `fcntl` short of the model it feeds for as long as the model existed, and
+/// what that cost was 433,904 names unplaced in a single whole-suite run. Which
+/// syscalls the stream must carry is a fact about the resolution above — a
+/// narrower filter resolves FEWER names, and fewer names is what a hermetic run
+/// looks like, so the drift is silent in the direction that reads as clean.
+///
+/// The hosted job cannot ask a program for its filter — it is YAML, and the
+/// value is in the command it hands `strace`. So the agreement is asked HERE, of
+/// the file, and the shell that CAN ask does (`scripts/census-elsewhere.sh`).
+///
+/// WHAT THIS CANNOT SEE, SAID RATHER THAN HIDDEN: it reads the workflow's text,
+/// so a filter assembled at run time out of a variable would not be compared.
+/// That state is not silent either — the count below would be zero, and a law
+/// that finds nothing to judge fails rather than passes.
+#[test]
+fn every_census_command_in_this_repository_asks_this_reader_for_its_filter() {
+    let program = std::process::Command::new(env!("CARGO_BIN_EXE_outside-reach"))
+        .arg("--trace-filter")
+        .output()
+        .expect("the reader under test");
+    assert!(program.status.success());
+    assert_eq!(
+        String::from_utf8_lossy(&program.stdout).trim(),
+        outside_reach::TRACE_FILTER,
+        "the seam has to answer with the constant the model is written against"
+    );
+
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .and_then(Path::parent)
+        .expect("tools/<name> sits two levels under the root");
+    let workflows = root.join(".github/workflows");
+    let mut compared = 0;
+    for entry in std::fs::read_dir(&workflows).expect("this repository has workflows") {
+        let path = entry.expect("a directory entry").path();
+        let text = std::fs::read_to_string(&path).expect("a workflow");
+        for line in text.lines() {
+            let Some(at) = line.find("-e trace=") else {
+                continue;
+            };
+            let spelled = line[at + "-e trace=".len()..]
+                .split_whitespace()
+                .next()
+                .unwrap_or_default();
+            assert_eq!(
+                spelled,
+                outside_reach::TRACE_FILTER,
+                "{} builds a census with a filter this reader did not give it — a \
+                 second copy of the model's requirements, free to drift the way \
+                 R1233 measured",
+                path.display()
+            );
+            compared += 1;
+        }
+    }
+    assert!(
+        compared > 0,
+        "no workflow in {} names a trace filter at all — this law found nothing \
+         to judge, which is not the same as finding nothing wrong",
+        workflows.display()
+    );
+}
