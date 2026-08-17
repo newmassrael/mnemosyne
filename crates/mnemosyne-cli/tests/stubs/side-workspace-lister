@@ -1,0 +1,36 @@
+#!/usr/bin/env bash
+# Stands in for `scripts/check-side-workspaces.sh --list` INSIDE THE FIXTURE
+# TREE, for the one gate that reads the lister out of the tree it is judging.
+#
+# TWO LISTERS RUN IN A `pre-push` CASE AND THEY ARE NOT THE SAME CALL. Gate 4
+# runs the REAL script, resolved from the hook's checkout and pointed at the
+# working directory — the program comes from one tree and the subject is
+# another. Gate 5 (`tools/unrun-tests`) asks `ci_plan::workspaces`, which runs
+# `scripts/check-side-workspaces.sh` OF THE TREE UNDER CHECK, because the
+# population it needs is that tree's own workspaces. A fixture is a tree, so it
+# needs one of its own, and the real script cannot be it: that script resolves
+# the six gate programs it runs relative to itself, and a symlink into a fixture
+# resolves to the fixture, where none of them are.
+#
+# It answers for the ONE separate workspace `Fixture::new` writes and nothing
+# else. `--ours-only` is accepted and changes nothing here: that workspace's
+# dependencies all land inside the fixture, so there is nothing for the flag to
+# drop — which is the real lister's answer about it too. The flag's DROP is
+# exercised where it belongs, in `tools/unrun-tests/tests/entrance.rs` and in
+# `ours_only_drops_the_workspaces_this_repository_does_not_own`.
+#
+# Reads: LISTER_MODE — `answers` (default), or `offers-what-is-not-there`, which
+#        names a workspace no tree has. That is how a case reaches the gate's
+#        THIRD answer — "I could not read enough of this to have an opinion" —
+#        without breaking anything a fixture needs for the other two.
+case "${LISTER_MODE:-answers}" in
+    offers-what-is-not-there)
+        echo '[side-workspaces] LOCK tools/absent ours'
+        echo '[side-workspaces] CHECKABLE tools/absent'
+        ;;
+    *)
+        echo '[side-workspaces] LOCK tools/sub ours'
+        echo '[side-workspaces] CHECKABLE tools/sub'
+        echo '[side-workspaces] COMMAND tools/sub suite cargo test --manifest-path tools/sub/Cargo.toml --locked --no-fail-fast'
+        ;;
+esac

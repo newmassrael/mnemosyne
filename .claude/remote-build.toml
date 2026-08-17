@@ -69,7 +69,7 @@ min_free_gb = 20
 #
 #   scripts/fmt.sh   R1206 이 만든 **유일한** 포맷 명령. 게이트의 `--list` 에서
 #                    모집단을 유도하므로, 검사하는 것과 고치는 것이 같은 집합이다.
-#   .sweep.json      주입 스윕이 `*.firings.json`(추적되는 증거)을 쓴다. Z28 의 첫
+#   sweep.json       주입 스윕이 `*.firings.json`(추적되는 증거)을 쓴다. Z28 의 첫
 #                    발화가 이것이었다 — 주입 하나를 재증명했더니 기록이 pc2 에 남고
 #                    돌아오지 않았다.
 #
@@ -77,11 +77,22 @@ min_free_gb = 20
 # `injection-harness` 라고 적었는데, 그건 부분문자열이라 그 크레이트의 **스위트**
 # (`cargo test --manifest-path tools/injection-harness/Cargo.toml`, 읽기만 한다)까지
 # 로컬로 끌어당긴다 — 로컬이 스왑에 14 GB 물려 있는 기계인데. 쓰는 형태만이
-# `<…>.sweep.json` 을 인자로 지목하므로 그것이 실제 판별자다.
+# 매니페스트를 인자로 지목하므로 그것이 실제 판별자다.
+#
+# 🔴**판별자는 옳았고 «철자»가 틀렸다 (R1230 실측).** 이 줄은 `.sweep.json` 이었고,
+# `git ls-files` 상 스윕 매니페스트 **23개 중 4개**(`crates/mnemosyne-cli/sweeps/`)만
+# 그 모양이다. 나머지 19개는 `injection-sweep.json`·`locked-resolution-sweep.json`
+# 이라 앞 글자가 `-` 이고, **부분문자열 `.sweep.json` 에 안 걸린다** ⇒ 그 열아홉의
+# 스윕은 전부 빌드 머신으로 갔고 `*.firings.json` 은 거기 남았다. 실제로 발화했다:
+# 이 라운드가 `tools/unrun-tests` 주입 둘을 돌리자 기록이 pc2 에 생겼고, 다음 bx 호출이
+# 「원격에만 있는 항목」으로 거부됐다. `sweep.json` 은 **양쪽 모양을 다 덮는다**
+# (`injection-sweep.json` ⊃ `sweep.json`, `x.sweep.json` ⊃ `sweep.json`).
+# ⚠이 사건이 N46(「주입 309개 중 271개에 발화 기록 없음」)에 **기전**을 붙인다 —
+# 기록은 스윕이 «돈 곳»에 쓰이고, 이 줄이 그곳을 정한다.
 #
 # 검사 방법: `bx --explain-declaration` 이 이 키를 인쇄하고,
 # `tools/unread-declaration` 이 매 커밋 그 답과 이 파일을 맞댄다.
-writes = ["scripts/fmt.sh", ".sweep.json"]
+writes = ["scripts/fmt.sh", "sweep.json"]
 
 # 병렬도는 여기 적지 않는다 — 스킬이 코어 수와 동시 실행 수로 계산한다. 이건 이
 # 저장소의 **작업 하나**가 쥐는 RAM 이고, bx 는 이 값으로 (ㄱ)호스트 후보 자격과

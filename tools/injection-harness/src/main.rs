@@ -1061,10 +1061,53 @@ fn target_name(line: &str) -> Option<String> {
 ///
 /// Parsed from the whole log rather than a filtered view of it — a pipeline that
 /// filters before counting is how one round lost an exit code to `tail`.
+/// Does this line open one of libtest's captured-output blocks?
+///
+/// `---- <test name> stdout ----`, and the `stderr` form beside it. What follows
+/// is THE SUBJECT'S OWN OUTPUT, replayed because that test failed.
+fn opens_captured_output(line: &str) -> bool {
+    let line = line.trim_end();
+    line.starts_with("---- ") && line.ends_with(" ----")
+}
+
 fn summarize(text: &str) -> Run {
     let mut run = Run::default();
     let mut in_failures = false;
+    // WHAT A FAILING TEST PRINTED IS NOT WHAT THIS RUN DID (R1230).
+    //
+    // libtest replays a failed test's captured output under `---- <name> stdout
+    // ----`, and in this repository that output is routinely another cargo's:
+    // the hook suite drives real `pre-push` over throwaway trees, so an assertion
+    // that prints what the hook said prints a nested `Running unittests
+    // src/lib.rs (…)` and its `test result:` line with it. Read as this run's own,
+    // they are targets that appeared out of nowhere — measured here, a sweep of
+    // three injections reported `3 targets, 0 missing, 2 extra` and refused,
+    // where every injection had in fact fired exactly as named.
+    //
+    // IT IS THE SHAPE R1125 PAID FOR ONE TOOL OVER: an oracle that was a
+    // substring of the failure output. The repair is the same — read the run's
+    // own announcements and skip the block that is somebody else's.
+    //
+    // WHAT IT CANNOT DO, said rather than implied: the block is left at the
+    // `failures:` list libtest writes after the last one, so a subject printing
+    // an unindented `failures:` of its own inside its captured output would end
+    // the skip early. Nothing here can tell that apart from libtest's — the two
+    // are the same bytes in one stream — and the honest boundary is the marker,
+    // not a guess about the words after it.
+    let mut in_captured_output = false;
     for line in text.lines() {
+        if opens_captured_output(line) {
+            in_captured_output = true;
+            in_failures = false;
+            continue;
+        }
+        if in_captured_output {
+            if line.trim_end() == "failures:" {
+                in_captured_output = false;
+                in_failures = true;
+            }
+            continue;
+        }
         if let Some(name) = target_name(line) {
             *run.reached.entry(name).or_default() += 1;
             continue;
@@ -1262,6 +1305,59 @@ test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out
              measurement said about the reason this file used to give"
         );
         assert_eq!(run.targets, 2);
+    }
+
+    /// WHAT A FAILING TEST PRINTED IS NOT WHAT THIS RUN DID (R1230).
+    ///
+    /// This log is the shape a hook-suite sweep produces: the failing case drives
+    /// a real `pre-push` over a throwaway tree and prints what it said, so
+    /// ANOTHER cargo's announcements and totals are inside libtest's captured
+    /// block. Read as this run's own they are two targets that appeared out of
+    /// nowhere, and the harness refuses the sweep for target drift — measured, on
+    /// three injections that had each fired exactly as named.
+    #[test]
+    fn what_a_failing_test_printed_is_not_what_this_run_ran() {
+        let log = "\
+     Running tests/all.rs (target/debug/deps/all-aa11)
+
+failures:
+
+---- git_hooks_smoke::pre_push_refuses_a_tree stdout ----
+thread 'git_hooks_smoke::pre_push_refuses_a_tree' panicked at the gate said:
+     Running unittests src/lib.rs (target/debug/deps/sub-bb22)
+test tests::the_subjects_own ... ok
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out
+   Doc-tests sub
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out
+
+failures:
+    git_hooks_smoke::pre_push_refuses_a_tree
+
+test result: FAILED. 32 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out
+";
+        let run = summarize(log);
+        assert_eq!(
+            run.reached,
+            Targets::from([("all:tests/all.rs".to_string(), 1)]),
+            "a target the SUBJECT ran is not one this run reached"
+        );
+        assert_eq!(run.targets, 1, "and neither are its `test result:` lines");
+        assert_eq!((run.passed, run.failed), (32, 1), "nor its totals");
+        // AND THE THREE ANSWERS THAT MUST SURVIVE THE SKIP: the red name is read
+        // off the list AFTER the block, and the subject's own passing test is not
+        // recorded as one this run executed.
+        assert!(
+            run.red.contains("git_hooks_smoke::pre_push_refuses_a_tree"),
+            "{:?}",
+            run.red
+        );
+        assert!(
+            run.ran.is_empty(),
+            "the only `test … ok` line in this log is the SUBJECT'S, and a run \
+             that claims to have executed it would let an injection aimed at a \
+             name score `missed` against a test it never touched: {:?}",
+            run.ran
+        );
     }
 
     #[test]

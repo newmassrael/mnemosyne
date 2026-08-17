@@ -1689,9 +1689,31 @@ pub struct Workspaces {
 /// one program holding this answer must not fall back to deriving it, which is
 /// exactly the failure R1083 repaired.
 pub fn workspaces(root: &Path) -> Workspaces {
+    ask_lister(root, &[])
+}
+
+/// Ask the lister for the workspaces whose verdict is THIS repository's to give.
+///
+/// The same answer minus the ones that resolve against a tree this checkout does
+/// not own — the lister's `--ours-only`, which it decides from the ownership it
+/// already prints (`LOCK <ws> ours|foreign`) rather than from any name written
+/// down. R1225 added the flag for `pre-push`, and the reason generalises to
+/// every gate a push runs: a workspace whose compilation depends on somebody
+/// else's working tree cannot answer a question about this commit. Round 1230
+/// is where a second gate needed it.
+///
+/// NOT A SUBSTITUTE FOR [`workspaces`]: CI has no sibling checkout and must
+/// judge the whole population it can reach, so the flag is a caller's choice
+/// about what its verdict is ABOUT, never a default.
+pub fn workspaces_ours_only(root: &Path) -> Workspaces {
+    ask_lister(root, &["--ours-only"])
+}
+
+fn ask_lister(root: &Path, extra: &[&str]) -> Workspaces {
     let out = Command::new("bash")
         .arg("scripts/check-side-workspaces.sh")
         .arg("--list")
+        .args(extra)
         .current_dir(root)
         .output()
         .expect("check-side-workspaces.sh runs");

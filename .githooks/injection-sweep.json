@@ -222,6 +222,42 @@
       "expect_red": [
         "the_side_workspace_gate_tells_every_gate_it_could_not_read_from_one_it_judged"
       ]
+    },
+    {
+      "name": "the-push-gate-does-not-ask-whether-a-test-is-run-at-all",
+      "why": "R1230. The gate that answers this existed and ran on CI ALONE, which is how a doc-test nothing runs reached `origin/main` (R1193, paid by R1195). Take the call out and the hook is exactly what it was before that round: green on a tree carrying a test no command executes",
+      "edits": [
+        {
+          "file": ".githooks/pre-push",
+          "from": "cargo run -q --locked --manifest-path \"$hook_checkout/tools/unrun-tests/Cargo.toml\" \\\n    --bin unrun-tests -- --ours-only || dark_verdict=$?",
+          "to": ": the gate is not run || dark_verdict=$?"
+        }
+      ],
+      "expect_red": ["pre_push_refuses_a_tree_that_compiles_a_test_no_ci_command_runs"]
+    },
+    {
+      "name": "the-push-gate-publishes-a-tree-the-gate-could-not-read",
+      "why": "the dangerous half of the three codes, one hook over from where `pre-commit` already records it: exit 2 is not a verdict, and reading it as a pass publishes a tree part of which was never looked at — the shape R1078 shipped",
+      "edits": [
+        {
+          "file": ".githooks/pre-push",
+          "from": "elif [[ $dark_verdict -ne 0 ]]; then",
+          "to": "elif false; then"
+        }
+      ],
+      "expect_red": ["pre_push_refuses_a_tree_that_compiles_a_test_no_ci_command_runs"]
+    },
+    {
+      "name": "the-push-gate-reports-an-unreadable-tree-as-a-dark-test",
+      "why": "and the other direction, which costs a reader rather than a commit: a tree the gate could not build is announced as `this tree compiles a test no CI command runs`, sending whoever is pushing to hunt for a test that is not there",
+      "edits": [
+        {
+          "file": ".githooks/pre-push",
+          "from": "if [[ $dark_verdict -eq 1 ]]; then",
+          "to": "if [[ $dark_verdict -ne 0 ]]; then"
+        }
+      ],
+      "expect_red": ["pre_push_refuses_a_tree_that_compiles_a_test_no_ci_command_runs"]
     }
   ]
 }

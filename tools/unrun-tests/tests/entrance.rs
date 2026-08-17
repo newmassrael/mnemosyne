@@ -41,6 +41,19 @@ const RUN_TEST: &str = "tests::run_by_ci";
 /// So the fixture stages what it writes, and a file this forgot to add would
 /// make the gate say the tree has no workflows at all.
 fn tree(name: &str, ci: &str) -> std::path::PathBuf {
+    // THE LISTER'S SIDE OF THE CONTRACT, and no more of it. `ci_plan::workspaces`
+    // refuses a lister that names nothing, because in the repository this gate
+    // guards an empty answer means the reading failed. One SKIP satisfies that
+    // without adding a second workspace for the probe to build.
+    tree_with_lister(
+        name,
+        ci,
+        "#!/usr/bin/env bash\n\
+         echo '[side-workspaces] SKIP side this fixture has no side workspace'\n",
+    )
+}
+
+fn tree_with_lister(name: &str, ci: &str, lister: &str) -> std::path::PathBuf {
     let at = std::env::temp_dir().join(format!(
         "unrun-tests-entrance-{name}-{}",
         std::process::id()
@@ -70,15 +83,7 @@ fn tree(name: &str, ci: &str) -> std::path::PathBuf {
          \x20   fn not_run_by_ci() {}\n\
          }\n",
     );
-    // THE LISTER'S SIDE OF THE CONTRACT, and no more of it. `ci_plan::workspaces`
-    // refuses a lister that names nothing, because in the repository this gate
-    // guards an empty answer means the reading failed. One SKIP satisfies that
-    // without adding a second workspace for the probe to build.
-    write(
-        &at.join("scripts/check-side-workspaces.sh"),
-        "#!/usr/bin/env bash\n\
-         echo '[side-workspaces] SKIP side this fixture has no side workspace'\n",
-    );
+    write(&at.join("scripts/check-side-workspaces.sh"), lister);
     write(
         &at.join(".github/workflows/ci.yml"),
         &format!(
@@ -116,7 +121,12 @@ fn git(at: &Path, arguments: &[&str]) {
 
 /// Run the gate in that tree, exactly as a hook does: from its root.
 fn gate(at: &Path) -> Output {
+    gate_with(at, &[])
+}
+
+fn gate_with(at: &Path, flags: &[&str]) -> Output {
     Command::new(env!("CARGO_BIN_EXE_unrun-tests"))
+        .args(flags)
         .current_dir(at)
         // NAMED RATHER THAN INHERITED (R1182): the gate asks cargo for the
         // workspace census, and which cargo it asks is `$CARGO` — set when a
@@ -232,6 +242,158 @@ fn a_tree_whose_ci_runs_no_tests_is_unjudged_rather_than_clean() {
         !stdout(&out).contains("every test this repository compiles is run by CI"),
         "a tree it did not read is not a tree it found clean\n{}",
         stdout(&out)
+    );
+    let _ = std::fs::remove_dir_all(&at);
+}
+
+/// A lister that offers a workspace this repository does not own, and a tree
+/// behind it that will not compile — the condition `pre-push` runs in.
+///
+/// `foreign` is the lister's own word for a workspace whose path dependencies
+/// land outside this checkout, and whether such a tree compiles is somebody
+/// else's working state at this instant. `--ours-only` asks the lister for the
+/// population whose verdict is this repository's to give; the flag names no
+/// workspace, here or in the gate.
+const LISTER_OFFERING_A_FOREIGN_WORKSPACE: &str = r#"#!/usr/bin/env bash
+echo '[side-workspaces] LOCK side foreign — it resolves against trees this repository does not own: ../elsewhere'
+for argument in "$@"; do
+  if [[ $argument == --ours-only ]]; then
+    echo '[side-workspaces] SKIP side — --ours-only, and this workspace resolves against trees this repository does not own: ../elsewhere'
+    exit 0
+  fi
+done
+echo '[side-workspaces] CHECKABLE side'
+"#;
+
+/// Write the workspace that lister offers, and make it one that will not build.
+fn with_a_foreign_workspace_that_will_not_compile(at: &Path) {
+    std::fs::create_dir_all(at.join("side/src")).expect("fixture side workspace");
+    write(
+        &at.join("side/Cargo.toml"),
+        "[workspace]\n\
+         \n\
+         [package]\n\
+         name = \"side\"\n\
+         version = \"0.1.0\"\n\
+         edition = \"2021\"\n",
+    );
+    // Whether the sibling checkout compiles is the thing this repository cannot
+    // answer for; a file that does not parse is that condition, deterministically.
+    write(&at.join("side/src/lib.rs"), "fn ( this does not parse\n");
+    git(at, &["add", "-A"]);
+}
+
+/// A WORKSPACE THIS REPOSITORY DOES NOT OWN CAN STOP THIS GATE FROM JUDGING —
+/// AND `--ours-only` IS WHAT MAKES THE ANSWER THIS REPOSITORY'S OWN (R1230).
+///
+/// This gate builds every workspace its lister offers, so on the machine that
+/// holds the sibling checkout its verdict depends on whether SOMEBODY ELSE'S
+/// working tree compiles right now. Measured, not argued: on 2026-08-17 it
+/// answered `2` — could not judge — in this repository because a session in
+/// `pinion` was mid-edit, while every other gate here was green. That is the
+/// same condition Round 1225 took the side gate out of, and it is why this gate
+/// could not be a push gate until it had the flag.
+///
+/// THREE RUNS, because "the flag was passed and did nothing" and "the flag
+/// worked and blinded the gate" fail identically from a distance:
+///   - without it the foreign tree stops the verdict,
+///   - with it the verdict is given and the skip is NAMED,
+///   - and with it a dark test in a workspace this repository DOES own is still
+///     found, which is what says the flag dropped a workspace rather than the
+///     gate's eyes.
+#[test]
+fn a_foreign_workspace_that_will_not_compile_stops_the_verdict_until_ours_only_drops_it() {
+    let at = tree_with_lister("foreign", "cargo test", LISTER_OFFERING_A_FOREIGN_WORKSPACE);
+    with_a_foreign_workspace_that_will_not_compile(&at);
+
+    let whole = gate_with(&at, &[]);
+    assert_eq!(
+        code(&whole),
+        2,
+        "a tree this repository does not own must not be reported as a finding \
+         about this one\nstdout:\n{}\nstderr:\n{}",
+        stdout(&whole),
+        stderr(&whole)
+    );
+    assert!(
+        stderr(&whole).contains("side/Cargo.toml"),
+        "and it says which workspace it could not build\n{}",
+        stderr(&whole)
+    );
+
+    let ours = gate_with(&at, &["--ours-only"]);
+    assert_eq!(
+        code(&ours),
+        0,
+        "with the foreign workspace dropped the rest is judgeable\nstdout:\n{}\nstderr:\n{}",
+        stdout(&ours),
+        stderr(&ours)
+    );
+    assert!(
+        stdout(&ours).contains("not probed (the lister says why): side"),
+        "a workspace left out is named, or a green run means `and something was \
+         quietly not looked at`\n{}",
+        stdout(&ours)
+    );
+    let _ = std::fs::remove_dir_all(&at);
+
+    // THE CONTROL. The same flag over a tree whose CI leaves a test out: the
+    // finding still arrives, so what the flag dropped is a workspace and not the
+    // gate's ability to look at the ones that are left.
+    let at = tree_with_lister(
+        "foreign-dark",
+        &format!("cargo test -- {RUN_TEST}"),
+        LISTER_OFFERING_A_FOREIGN_WORKSPACE,
+    );
+    with_a_foreign_workspace_that_will_not_compile(&at);
+    let ours = gate_with(&at, &["--ours-only"]);
+    assert_eq!(
+        code(&ours),
+        1,
+        "stdout:\n{}\nstderr:\n{}",
+        stdout(&ours),
+        stderr(&ours)
+    );
+    assert!(
+        stderr(&ours).contains(DARK_TEST),
+        "and the dark test is named under the flag exactly as without it\n{}",
+        stderr(&ours)
+    );
+    let _ = std::fs::remove_dir_all(&at);
+}
+
+/// An argument this gate does not know is the third answer, not a run.
+///
+/// A flag it silently ignored would report on a population its caller did not
+/// ask about — and `pre-push` is a caller that would then be publishing a green
+/// it never asked for. The two spellings a hook is most likely to reach for are
+/// each refused by NAME here.
+#[test]
+fn an_argument_the_gate_does_not_know_is_refused_rather_than_ignored() {
+    let at = tree("unknown-argument", "cargo test");
+    for spelling in ["--ours", "--ours-only=true"] {
+        let out = gate_with(&at, &[spelling]);
+        assert_eq!(
+            code(&out),
+            2,
+            "`{spelling}` must not be read as a clean run\nstdout:\n{}\nstderr:\n{}",
+            stdout(&out),
+            stderr(&out)
+        );
+        assert!(
+            stderr(&out).contains(spelling),
+            "and the refusal names what it did not understand\n{}",
+            stderr(&out)
+        );
+    }
+    // THE MIRROR: the flag it DOES know is not refused by the same arm.
+    let out = gate_with(&at, &["--ours-only"]);
+    assert_eq!(
+        code(&out),
+        0,
+        "stdout:\n{}\nstderr:\n{}",
+        stdout(&out),
+        stderr(&out)
     );
     let _ = std::fs::remove_dir_all(&at);
 }

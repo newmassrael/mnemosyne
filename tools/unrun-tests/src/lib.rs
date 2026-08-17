@@ -612,11 +612,38 @@ pub fn population_command(manifest: &str) -> CargoCommand {
     }
 }
 
+/// Which workspaces a run draws its population from.
+///
+/// # Why a caller gets to choose
+///
+/// The population is "every workspace the lister says this machine can build",
+/// and on the machine that holds the sibling checkout that set includes one
+/// whose compilation is somebody else's working tree. CI never sees it — no
+/// runner has the sibling — so the choice only exists locally, and it is a
+/// choice about what the verdict is ABOUT rather than a way to check less:
+/// [`Population::Ours`] is what `pre-push` asks, because a push publishes THIS
+/// repository's commit and cannot be blocked by whether another repository
+/// compiles at this instant (R1225's reason, one gate over).
+///
+/// Either way what was left out is NAMED — the lister's own sentence, printed
+/// through [`ci_plan::SkippedWorkspace::was_not`] — so a green run never means
+/// "and something was quietly not looked at".
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Population {
+    /// Every workspace the lister says this machine can build. What CI runs.
+    Whole,
+    /// Only the ones whose resolution this repository owns.
+    Ours,
+}
+
 /// Run the gate over the repository rooted here.
-pub fn run(root: &Path) -> Report {
+pub fn run(root: &Path, population_of: Population) -> Report {
     let mut refusals = Vec::new();
 
-    let listed = ci_plan::workspaces(root);
+    let listed = match population_of {
+        Population::Whole => ci_plan::workspaces(root),
+        Population::Ours => ci_plan::workspaces_ours_only(root),
+    };
     let mut population_probes = Vec::new();
     let mut population: BTreeSet<TestId> = BTreeSet::new();
     for manifest in &listed.askable {

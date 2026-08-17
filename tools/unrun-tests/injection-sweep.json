@@ -47,8 +47,8 @@
       "edits": [
         {
           "file": "tools/unrun-tests/src/main.rs",
-          "from": "        return ExitCode::from(2);\n    }\n\n    let report = unrun_tests::run(&root);",
-          "to": "        return ExitCode::SUCCESS;\n    }\n\n    let report = unrun_tests::run(&root);"
+          "from": "        return ExitCode::from(2);\n    }\n\n    let report = unrun_tests::run(&root, population_of);",
+          "to": "        return ExitCode::SUCCESS;\n    }\n\n    let report = unrun_tests::run(&root, population_of);"
         }
       ],
       "expect_red": ["a_directory_that_is_not_a_cargo_tree_is_unjudged_too"]
@@ -166,6 +166,32 @@
         }
       ],
       "expect_red": ["the_verdict_and_the_findings_are_two_different_answers"]
+    },
+    {
+      "name": "the-narrowed-population-is-asked-for-and-not-passed-on",
+      "why": "R1230. `--ours-only` is what lets this gate stand in `pre-push` at all: it BUILDS every workspace the lister offers, so on the machine holding the sibling checkout its verdict was hostage to whether somebody else's working tree compiles at that instant — measured, 2026-08-17, exit 2 while everything here was green. A flag that is read and then not passed to the one program that decides ownership leaves the gate exactly where it was, and the accepted flag makes it look repaired",
+      "edits": [
+        {
+          "file": "tools/unrun-tests/src/lib.rs",
+          "from": "        Population::Ours => ci_plan::workspaces_ours_only(root),",
+          "to": "        Population::Ours => ci_plan::workspaces(root),"
+        }
+      ],
+      "expect_red": [
+        "a_foreign_workspace_that_will_not_compile_stops_the_verdict_until_ours_only_drops_it"
+      ]
+    },
+    {
+      "name": "an-argument-the-gate-does-not-know-is-ignored",
+      "why": "the quiet half of the same seam: a hook asks for one population and a gate that shrugs at a flag it does not recognise answers about another one, as `0`. `--ours` and `--ours-only=true` are both a keystroke from the real spelling, and a push would carry the green either way",
+      "edits": [
+        {
+          "file": "tools/unrun-tests/src/main.rs",
+          "from": "                return ExitCode::from(2);\n            }\n        }\n    }",
+          "to": "                continue;\n            }\n        }\n    }"
+        }
+      ],
+      "expect_red": ["an_argument_the_gate_does_not_know_is_refused_rather_than_ignored"]
     }
   ]
 }

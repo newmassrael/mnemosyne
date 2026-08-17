@@ -47,7 +47,27 @@ use crate::common::link_stub;
 
 /// Formatted, lint-clean, and free of any version-postfix identifier — the
 /// baseline every gate must accept.
-const CLEAN_LIB: &str = "pub fn one() -> u8 {\n    1\n}\n";
+///
+/// AND IT HOLDS A TEST (R1230), for the reason the lockfile, the separate
+/// workspace and the workflow above it are here: `pre-push` now runs
+/// `tools/unrun-tests`, whose whole job is to refuse a tree it could not read a
+/// population out of. A crate with no test at all is such a tree — the gate
+/// answers "not one workspace holds a test", correctly — so a fixture without
+/// one is a tree the hooks rightly refuse, and the refusal would be about the
+/// fixture rather than about the case.
+const CLEAN_LIB: &str = "pub fn one() -> u8 {\n    1\n}\n\
+                         \n\
+                         #[cfg(test)]\n\
+                         mod tests {\n\
+                         \x20   #[test]\n\
+                         \x20   fn one_is_one() {\n\
+                         \x20       assert_eq!(super::one(), 1);\n\
+                         \x20   }\n\
+                         }\n";
+
+/// The stand-in for the workspace lister, IN THE FIXTURE TREE — the file itself
+/// carries why a fixture needs one and why the real script cannot be it.
+const SIDE_WORKSPACE_LISTER: &str = "side-workspace-lister";
 
 /// A `.rs` file the COMPILER never sees and the gates DO: a module nothing
 /// declares.
@@ -133,6 +153,14 @@ impl Fixture {
         );
         f.write("tools/sub/src/lib.rs", "pub fn two() -> u8 {\n    2\n}\n");
         f.generate_lockfile("tools/sub/Cargo.toml");
+        // AND A REPOSITORY ANSWERS WHICH WORKSPACES IT HAS. Since R1230
+        // `pre-push` runs `tools/unrun-tests`, and that gate asks the lister OF
+        // THE TREE IT IS JUDGING for its population — the real script is gate
+        // 4's, resolved from the hook's checkout, which is a different call.
+        link_stub(
+            SIDE_WORKSPACE_LISTER,
+            &f.path().join("scripts/check-side-workspaces.sh"),
+        );
         // A REPOSITORY HAS A WORKFLOW. Since R1210 `pre-commit` holds what CI
         // installs against what the build-machine declaration names, and the
         // population comes from `git ls-files .github/workflows`: a tree with
@@ -2046,6 +2074,130 @@ fn pre_push_gates_on_every_separate_workspace_and_names_the_one_that_fails() {
         !both.contains("--lint-only"),
         "the mirror of the assertion above — the lint-only form must be gone \
          from this call, not merely joined by the suite:\n{both}"
+    );
+}
+
+/// A tree whose only test outside the baseline is one nothing runs.
+///
+/// `#[ignore]` rather than a feature or a filter, because it is the cheapest
+/// dark test there is: `--list` prints it, `--list --ignored` prints it too, and
+/// a command that passes neither runs its list minus its ignored list. The name
+/// is read back by the assertions, so a fixture that stopped holding it could
+/// not pass by spelling the name a second time.
+const DARK_LIB: &str = "pub fn one() -> u8 {\n    1\n}\n\
+                        \n\
+                        #[cfg(test)]\n\
+                        mod tests {\n\
+                        \x20   #[test]\n\
+                        \x20   fn one_is_one() {\n\
+                        \x20       assert_eq!(super::one(), 1);\n\
+                        \x20   }\n\
+                        \n\
+                        \x20   #[test]\n\
+                        \x20   #[ignore]\n\
+                        \x20   fn nothing_runs_this() {}\n\
+                        }\n";
+
+const DARK_TEST: &str = "tests::nothing_runs_this";
+
+/// A PUSH DOES NOT PUBLISH A TEST NOTHING RUNS (Round 1230).
+///
+/// `tools/unrun-tests` had run on CI and nowhere else since it was written, and
+/// the cost of that is on the record rather than argued: R1193 wrote a
+/// ```` ```ignore ```` fence, which makes a doc-test no command in this
+/// repository runs; every local gate was green, the push went out, and the
+/// runner turned `origin/main` red. R1195 paid it. This case is the reader that
+/// branch was missing — the same repair R1156 made for the separate workspaces'
+/// suites and R890 for CI state.
+///
+/// THREE ARMS, because this gate answers THREE things and a hook that read two
+/// of them would publish the third as a pass:
+///   - a dark test is a refusal, and the test is named,
+///   - a gate that could not judge is a refusal too, and says which it was,
+///   - and the mirror: the same tree whose CI DOES run that test is pushed, with
+///     the gate's own clean sentence in the output — which is what stops the
+///     first arm from holding for a hook that rejects every push.
+///
+/// The three trees differ in ONE line each — the workflow's command, and the
+/// lister's mode — so the verdict is attributable to it.
+#[test]
+fn pre_push_refuses_a_tree_that_compiles_a_test_no_ci_command_runs() {
+    let dark = Fixture::new();
+    dark.write("src/lib.rs", DARK_LIB);
+    dark.stage_all();
+    dark.git(&["commit", "--no-verify", "-q", "-m", "test(fixture): seed"]);
+    let out = dark.run_hook(
+        "pre-push",
+        &["origin", "git@example:x"],
+        &push_line(&head_sha(&dark)),
+        &[],
+    );
+    let both = both_of(&out);
+    assert!(
+        !out.status.success(),
+        "a test this push would publish and nothing runs must block it:\n{both}"
+    );
+    assert!(
+        both.contains(DARK_TEST),
+        "and the block is worth nothing without the test's name:\n{both}"
+    );
+    assert!(
+        both.contains("compiles a test no CI command runs"),
+        "and it must be this hook's own refusal, not a message from some other \
+         gate the push happened to trip:\n{both}"
+    );
+
+    // THE SECOND ANSWER. A gate that could not read the tree has not found it
+    // clean, and the two look identical in an exit code alone — which is the
+    // failure `tools/unrun-tests` was given a third code for.
+    let unjudged = Fixture::new();
+    unjudged.git(&["commit", "--no-verify", "-q", "-m", "test(fixture): seed"]);
+    let out = unjudged.run_hook(
+        "pre-push",
+        &["origin", "git@example:x"],
+        &push_line(&head_sha(&unjudged)),
+        &[("LISTER_MODE", "offers-what-is-not-there")],
+    );
+    let both = both_of(&out);
+    assert!(
+        !out.status.success(),
+        "a gate that could not judge is not a gate that passed:\n{both}"
+    );
+    assert!(
+        both.contains("could not judge this tree (exit 2)"),
+        "and the hook says WHICH of the two refusals it is, with the code:\n{both}"
+    );
+    assert!(
+        !both.contains("compiles a test no CI command runs"),
+        "the two answers must not be reported as each other:\n{both}"
+    );
+
+    // THE MIRROR. The same dark tree, and one CI command that selects the
+    // ignored tests — so nothing is dark and the push goes.
+    let covered = Fixture::new();
+    covered.write("src/lib.rs", DARK_LIB);
+    covered.write(
+        ".github/workflows/ci.yml",
+        "jobs:\n  build:\n    steps:\n      - run: cargo test --workspace --locked\n\
+         \x20     - run: cargo test --workspace --locked -- --ignored\n",
+    );
+    covered.stage_all();
+    covered.git(&["commit", "--no-verify", "-q", "-m", "test(fixture): seed"]);
+    let out = covered.run_hook(
+        "pre-push",
+        &["origin", "git@example:x"],
+        &push_line(&head_sha(&covered)),
+        &[],
+    );
+    let both = both_of(&out);
+    assert!(
+        out.status.success(),
+        "a tree whose CI runs every test it compiles must be pushable:\n{both}"
+    );
+    assert!(
+        both.contains("every test this repository compiles is run by CI"),
+        "and the gate must be SEEN to have run — a pass that skipped it looks \
+         the same from here:\n{both}"
     );
 }
 

@@ -41,7 +41,12 @@
 #        exact text naming root files — and that is how R1151/R1152 put a red
 #        on `origin/main` behind five green root runs.
 #
-#   5. CI state of `origin/main` (R890, R893) — REPORT ONLY, never blocks.
+#   5. `tools/unrun-tests` — every test this commit publishes is one some CI
+#      command runs (R1230). CI ran this and nothing here did, so a test
+#      nothing executes reached `origin/main` and was found by the runner
+#      (R1193, repaired by R1195). `--ours-only`, for the reason gate 4 has it.
+#
+#   6. CI state of `origin/main` (R890, R893) — REPORT ONLY, never blocks.
 #      - Nothing here could see a red CI; four consecutive red runs went
 #        unnoticed for eleven hours. See the block at the bottom for why
 #        this reports rather than gates, and what it cannot see.
@@ -136,7 +141,15 @@ fi
 # also run on a deliberately hermetic PATH holding only `bash`, `git` and a cargo
 # stub — and `dirname` is not on it. The case that found this is the CI
 # reporter's, which proves the hook still works when almost nothing is reachable.
-side_gate="$(cd "${BASH_SOURCE[0]%/*}/.." && pwd)/scripts/check-side-workspaces.sh"
+#
+# ONE SPELLING OF "THE CHECKOUT THIS HOOK CAME FROM", used by every gate below
+# that runs a program of this repository's over whatever tree it was invoked in.
+# Three gates need it now and this file held two spellings of it, the second
+# reaching for `dirname` where this one is a BUILTIN — the difference the block
+# below records having been bitten by, on the deliberately hermetic PATH its own
+# smoke case runs this hook under.
+hook_checkout="$(cd "${BASH_SOURCE[0]%/*}/.." && pwd)"
+side_gate="$hook_checkout/scripts/check-side-workspaces.sh"
 if [[ ! -x "$side_gate" ]]; then
     echo "pre-push: push rejected — the separate-workspace gate is missing at $side_gate" >&2
     exit 1
@@ -166,7 +179,63 @@ if ! "$side_gate" --ours-only; then
     exit 1
 fi
 
-# 5. Report what CI said about the commit this push builds on (R890).
+# 5. EVERY TEST THIS PUSH PUBLISHES IS ONE SOME CI COMMAND RUNS (Round 1230).
+#
+# This gate had run on CI and NOWHERE ELSE since it was written. What that cost
+# is on the record: R1193 put a ```` ```ignore ```` fence in a doc comment, which
+# makes a doc-test no command in this repository runs; every local gate was
+# green, the push went out, and `origin/main` went red on the runner. R1195 paid
+# it. The gate that found it is this one, and the first reader it had was a
+# hosted job — the shape R890 recorded for CI state and R1156 for the separate
+# workspaces, met a third time.
+#
+# WHY PUSH AND NOT COMMIT: measured on this workstation, warm, 88 seconds — it
+# builds every test target of every workspace the lister offers and asks each
+# binary what it holds. Gate 5a of `pre-commit` is seconds; this is not a
+# per-commit price, and push is where the answer becomes shared anyway.
+#
+# `--ours-only`, FOR THE REASON GATE 4 HAS IT, and this gate needed it more: it
+# BUILDS what the lister offers, so on the machine holding the sibling checkout
+# its verdict depended on whether somebody else's working tree compiles at this
+# instant. On 2026-08-17 it answered 2 — could not judge — for exactly that
+# reason while everything in this repository was green. The flag names no
+# workspace; the lister decides ownership and this consumes that answer, and
+# what was left out is printed by name.
+#
+# THE THREE CODES, READ AS THREE (the shape `pre-commit` Gate 5a records): 0 is
+# clean, 1 is "a test exists that nothing runs", 2 is "I could not read enough
+# of this tree to have an opinion". A gate that could not judge is not a gate
+# that passed, so both non-zero codes block — and they say which they were.
+#
+# `|| dark_verdict=$?` rather than a bare call: this file runs under `set -e`
+# and would be killed at the failing command before any branch could read a code.
+#
+# NO `-f` GUARD IN FRONT OF IT, for the reason the CI reporter below states: the
+# program is resolved from THIS checkout, where it always exists, so the guard is
+# a branch nothing could reach — and a branch with no reader is the shape R1127
+# to R1129 measured three times over. A gate that is not there makes `cargo run`
+# fail, and that is the `-ne 0` arm, which prints the true sentence.
+echo "pre-push: tools/unrun-tests (every test this publishes is one CI runs) ..." >&2
+dark_verdict=0
+cargo run -q --locked --manifest-path "$hook_checkout/tools/unrun-tests/Cargo.toml" \
+    --bin unrun-tests -- --ours-only || dark_verdict=$?
+if [[ $dark_verdict -eq 1 ]]; then
+    {
+        echo "pre-push: push rejected — this tree compiles a test no CI command runs"
+        echo "  the gate named them above. Fix: run it from a job (a feature it"
+        echo "  hides behind needs --all-features; an #[ignore] needs a command that"
+        echo "  passes --ignored), or delete it."
+    } >&2
+    exit 1
+elif [[ $dark_verdict -ne 0 ]]; then
+    {
+        echo "pre-push: push rejected — the unrun-tests gate could not judge this" \
+             "tree (exit $dark_verdict); its own message is above"
+    } >&2
+    exit 1
+fi
+
+# 6. Report what CI said about the commit this push builds on (R890).
 #
 # Nothing in this repo could see a red CI. `mnemosyne-validate` failed on four
 # consecutive pushes over eleven hours (R872, R874, R877, R883) and was found by
@@ -227,7 +296,10 @@ else
     # counts as a failure, because a gate that cannot say which workspace a
     # command resolves cannot say whether that lockfile is pinned. It caught this
     # exact line in this round.
-    hook_checkout="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+    # `$hook_checkout` IS RESOLVED ONCE, above (R1230). This line used to resolve
+    # the same directory a second time, and with `dirname` — an external program
+    # where the other spelling is a builtin, which is the difference the side
+    # gate's comment above records having been bitten by.
     if ! cargo run -q --manifest-path "$hook_checkout/tools/ci-state/Cargo.toml" --locked --bin ci-state -- "$base" >&2; then
         # It exits 2 only when it could not produce a report AT ALL; every state
         # it can describe — gh absent, gh unreachable, an answer it cannot read,

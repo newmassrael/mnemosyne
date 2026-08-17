@@ -1,0 +1,39 @@
+{
+  "_": [
+    "Machine-written by tools/injection-harness. Do not edit by hand: a row somebody typed is evidence of nothing, and the law over this file is worth exactly what its being unforgeable is worth.",
+    "Each row is one injection that WAS RUN and DID redden what it names, kept beside the definition it was proven against — edit the injection and the gate says the evidence is about a different one."
+  ],
+  "complete": false,
+  "fired": {
+    "an-argument-the-gate-does-not-know-is-ignored": {
+      "edits": [
+        {
+          "file": "tools/unrun-tests/src/main.rs",
+          "from": "                return ExitCode::from(2);\n            }\n        }\n    }",
+          "to": "                continue;\n            }\n        }\n    }"
+        }
+      ],
+      "expect_red": [
+        "an_argument_the_gate_does_not_know_is_refused_rather_than_ignored"
+      ],
+      "tests": [
+        "an_argument_the_gate_does_not_know_is_refused_rather_than_ignored"
+      ]
+    },
+    "the-narrowed-population-is-asked-for-and-not-passed-on": {
+      "edits": [
+        {
+          "file": "tools/unrun-tests/src/lib.rs",
+          "from": "        Population::Ours => ci_plan::workspaces_ours_only(root),",
+          "to": "        Population::Ours => ci_plan::workspaces(root),"
+        }
+      ],
+      "expect_red": [
+        "a_foreign_workspace_that_will_not_compile_stops_the_verdict_until_ours_only_drops_it"
+      ],
+      "tests": [
+        "a_foreign_workspace_that_will_not_compile_stops_the_verdict_until_ours_only_drops_it"
+      ]
+    }
+  }
+}

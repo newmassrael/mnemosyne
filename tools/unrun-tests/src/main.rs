@@ -13,11 +13,36 @@
 //! Exit codes are three answers, not two: `0` the law holds, `1` tests are dark,
 //! `2` the gate could not judge. One code for the last two mislabels whichever
 //! it did not mean, which is the failure R1078 shipped.
+//!
+//! `--ours-only` narrows the population to the workspaces whose resolution this
+//! repository owns — see [`unrun_tests::Population`] for what that is a choice
+//! about. It is what `pre-push` passes; CI passes nothing.
 
 use std::path::PathBuf;
 use std::process::ExitCode;
 
+use unrun_tests::Population;
+
 fn main() -> ExitCode {
+    let mut population_of = Population::Whole;
+    for argument in std::env::args().skip(1) {
+        match argument.as_str() {
+            "--ours-only" => population_of = Population::Ours,
+            // A GATE THAT IGNORES AN ARGUMENT IT DOES NOT KNOW answers about a
+            // population its caller did not ask for, and answers it as `0`. The
+            // third code is for exactly this: the gate could not judge, because
+            // it does not know what it was asked.
+            other => {
+                eprintln!(
+                    "[unrun-tests] unknown argument `{other}` — this gate takes \
+                     `--ours-only` and nothing else, and a run that ignored it \
+                     would report on a population nobody asked about"
+                );
+                return ExitCode::from(2);
+            }
+        }
+    }
+
     let root = match std::env::current_dir() {
         Ok(root) => root,
         Err(e) => {
@@ -34,7 +59,7 @@ fn main() -> ExitCode {
         return ExitCode::from(2);
     }
 
-    let report = unrun_tests::run(&root);
+    let report = unrun_tests::run(&root, population_of);
 
     for probe in &report.population_probes {
         println!(
