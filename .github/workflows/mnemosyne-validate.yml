@@ -350,12 +350,34 @@ jobs:
       # `%process` is the other half: a Rust test is a thread, and only the
       # clone lines lead a reach back to the binary that made it.
       # `status=successful` is the one free cut — a failed call reached nothing.
+      #
+      # R1233 — AND THE SEVEN BY NAME, WHICH IS WIDENING RATHER THAN NARROWING.
+      # None of `close`, `close_range`, `dup`, `dup2`, `dup3`, `fchdir`, `fcntl`
+      # takes a filename, so none is in `%file`; without them a descriptor NUMBER
+      # can be re-pointed where the reader cannot see it, and the model that
+      # resolves `openat(3, "…")` would answer WRONG instead of UNKNOWN. Named
+      # individually rather than as `%desc`, which would add every `read` and
+      # `write` the run makes. THE COST IS MEASURED, not assumed — the numbers
+      # are in R1233's ledger entry beside the resolution they bought.
+      #
+      # `fcntl` IS THE ONE NOBODY WOULD HAVE GUESSED, and it was not guessed:
+      # the census reported its residue by kind and by example, and the example
+      # was `newfstatat(5, "src")` from a `find(1)` that had reached 5 through
+      # `fcntl(4, F_DUPFD_CLOEXEC, 3)` — which is how `fdopendir`, and so every
+      # tree walk, gets its descriptor.
+      #
+      # `--cwd` is the one fact about a run its own syscalls never state. Every
+      # step in this file runs with the checkout root as its working directory,
+      # so `$PWD` is what the traced command starts in — and without it every
+      # bare name (`cd /etc && cat hostname`) is unresolvable.
       - name: cargo test --workspace
         run: >
-          strace -f -qq -e trace=%file,%process -e status=successful
+          strace -f -qq
+          -e trace=%file,%process,close,close_range,dup,dup2,dup3,fchdir,fcntl
+          -e status=successful
           -o "|./instruments/release/outside-reach
           --repo \"$PWD\" --build \"$PWD/target\"
-          --fixture \"${TMPDIR:-/tmp}\"
+          --fixture \"${TMPDIR:-/tmp}\" --cwd \"$PWD\"
           > \"${TMPDIR:-/tmp}/outside-reach.txt\" 2>&1;
           echo \$? > \"${TMPDIR:-/tmp}/outside-reach.rc\""
           ./scripts/verify.sh --no-fresh --label ci-workspace --

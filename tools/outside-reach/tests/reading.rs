@@ -2,16 +2,18 @@
 //! of a run — so these cost milliseconds and hold on every machine.
 //!
 //! THE FIXTURES ARE REAL LINES. Every one below was copied from a
-//! `strace -f -qq -e trace=%file,%process -e status=successful` stream this
-//! repository actually produced, ids and all. A simplified fixture is what
-//! Round 1096 measured as passing on the day the thing it stood for was broken:
-//! the spelling is what decides whether a reader is right.
+//! `strace -f -qq -e trace=%file,%process,close,close_range,dup,dup2,dup3,
+//! fchdir,fcntl -e status=successful` stream this repository actually produced,
+//! ids and all — with ONE exception, which says so where it stands. A simplified
+//! fixture is what Round 1096 measured as passing on the day the thing it stood
+//! for was broken: the spelling is what decides whether a reader is right, and
+//! R1233's whole `fcntl` mechanism was found by reading a spelling.
 
 use std::io::Cursor;
 use std::path::{Path, PathBuf};
 
 use outside_reach::{
-    judge, read_stream, tree_of, Census, DeclaredReach, Ground, Where, THE_DRIVER,
+    judge, read_stream, tree_of, Census, DeclaredReach, Ground, Unplaced, Where, THE_DRIVER,
 };
 
 fn ground() -> Ground {
@@ -25,8 +27,21 @@ fn ground() -> Ground {
     }
 }
 
+/// A trace of a command whose launch directory nobody told the reader — so every
+/// bare name in it is unresolvable, which is the honest answer and not a wrong
+/// one.
 fn census_of(trace: &str) -> Census {
-    read_stream(Cursor::new(trace.as_bytes()), &ground())
+    read_stream(Cursor::new(trace.as_bytes()), &ground(), None)
+}
+
+/// A trace of a command launched from a known directory, which is what the
+/// workflow passes and what makes `cd … && cat name` legible.
+fn census_from(trace: &str, started_in: &str) -> Census {
+    read_stream(
+        Cursor::new(trace.as_bytes()),
+        &ground(),
+        Some(Path::new(started_in)),
+    )
 }
 
 /// THE SIBLING IS REACHED BY `newfstatat`, NOT BY `openat`, and a reader that
@@ -125,25 +140,197 @@ fn a_call_that_failed_reached_nothing() {
     );
 }
 
-/// WHAT THE READER CANNOT PLACE IS COUNTED, NEVER DROPPED.
+/// A DESCRIPTOR IS A PLACE TO START WALKING FROM, NOT A FLOOR — and this is the
+/// case that killed the argument for not modelling the file table (R1233).
 ///
-/// A path named relative to a directory descriptor cannot be resolved from this
-/// trace. That is not a hole in the census of TREES — to read inside a tree
-/// something must first open the directory, absolutely — but it is a hole in
-/// the count of FILES, and a total that quietly omitted some is the shape this
-/// repository keeps deleting.
+/// The reason written into this crate for counting descriptor-relative names and
+/// dropping them was that it costs the census of FILES but not the census of
+/// TREES, "because to read a file inside a tree, something must first open the
+/// directory, and that open is absolute and is recorded". These two lines are
+/// that claim's counterexample: the only absolute path in them is INSIDE the
+/// ground, and the file actually reached is in a tree nothing here names.
 #[test]
-fn a_path_this_reader_cannot_place_is_counted_rather_than_ignored() {
+fn a_descriptor_is_a_place_to_start_walking_from_and_not_a_floor() {
     let census = census_of(concat!(
-        "100 openat(3, \"nested/file.json\", O_RDONLY|O_CLOEXEC) = 4\n",
+        "100 execve(\"/build/debug/deps/one_smoke-a1b2c3d4e5\", [\"one\"], 0x7f) = 0\n",
+        "100 openat(AT_FDCWD, \"/repo\", O_RDONLY|O_CLOEXEC|O_DIRECTORY) = 3\n",
+        "100 openat(3, \"../elsewhere/thing/Cargo.toml\", O_RDONLY|O_CLOEXEC) = 4\n",
+    ));
+    assert_eq!(
+        census
+            .reaches
+            .get("one_smoke")
+            .map(|paths| paths.iter().cloned().collect::<Vec<_>>()),
+        Some(vec![PathBuf::from("/elsewhere/thing/Cargo.toml")]),
+        "the descriptor was opened inside the ground and the name walked OUT of \
+         it: a census that dropped the second line reports this run as clean, \
+         which is what it did until R1233: {:?}",
+        census.reaches
+    );
+    assert_eq!(
+        census.unresolved_total(),
+        0,
+        "and nothing was left unplaced: {:?}",
+        census.unresolved
+    );
+    assert_eq!(census.relative, 1, "one name was given relative");
+}
+
+/// A BARE NAME IS MEASURED FROM WHERE THE COMMAND STARTED, and the trace never
+/// says where that is.
+///
+/// EVERY LINE BELOW IS REAL — `strace -f -qq -e
+/// trace=%file,%process,close,close_range,dup,dup2,dup3,fchdir -e
+/// status=successful /bin/sh -c 'cd /etc && cat hostname'`, ids and all. It is
+/// the whole mechanism in one command: the shell `chdir`s, `vfork` hands the
+/// working directory to a child that never mentions it again, and the file the
+/// run actually read appears in the trace as the word `hostname`.
+#[test]
+fn a_bare_name_is_measured_from_where_the_command_started() {
+    let trace = concat!(
+        "4071742 execve(\"/bin/sh\", [\"/bin/sh\", \"-c\", \"cd /etc && cat hostname\"], 0x7ffe /* 99 vars */) = 0\n",
+        "4071742 newfstatat(AT_FDCWD, \"/fixture/scratchpad\", {st_mode=S_IFDIR|0700, st_size=4096, ...}, 0) = 0\n",
+        "4071742 newfstatat(AT_FDCWD, \".\", {st_mode=S_IFDIR|0700, st_size=4096, ...}, 0) = 0\n",
+        "4071742 chdir(\"/etc\")                   = 0\n",
+        "4071742 vfork()                         = 4071744\n",
+        "4071744 execve(\"/usr/bin/cat\", [\"cat\", \"hostname\"], 0x6125 /* 99 vars */) = 0\n",
+        "4071744 openat(AT_FDCWD, \"hostname\", O_RDONLY) = 3\n",
+    );
+    let census = census_from(trace, "/fixture/scratchpad");
+    let reached: Vec<&PathBuf> = census.reaches.values().flatten().collect();
+    assert_eq!(
+        reached,
+        vec![
+            // The shell itself, which this ground does not name — the real
+            // binary's does, and `/usr/bin/cat` on the sixth line is excused by
+            // it here, which is what keeps this from being "everything is a
+            // reach".
+            &PathBuf::from("/bin/sh"),
+            // The directory the shell moved into is a place it reached.
+            &PathBuf::from("/etc"),
+            // AND THE FILE, which no line of the trace spells.
+            &PathBuf::from("/etc/hostname"),
+        ],
+        "the file this command read is `/etc/hostname`: {:?}",
+        census.reaches
+    );
+    assert_eq!(
+        census.unresolved_total(),
+        0,
+        "the working directory was inherited across the vfork, so nothing here \
+         was unplaceable: {:?}",
+        census.unresolved
+    );
+
+    // AND TOLD NOTHING, THE READER LOSES THE NAMES BEFORE THE `chdir` AND
+    // KEEPS THE ONES AFTER IT — measured here rather than assumed. An absolute
+    // `chdir` states the working directory as surely as a launch flag does, so
+    // the file is still found; the `.` on the third line, made while the
+    // directory was unknown, is the residue and is counted rather than guessed.
+    let blind = census_of(trace);
+    assert!(
+        blind
+            .reaches
+            .values()
+            .flatten()
+            .any(|path| path == Path::new("/etc/hostname")),
+        "an absolute `chdir` re-establishes the working directory whatever the \
+         reader was told: {:?}",
+        blind.reaches
+    );
+    assert_eq!(
+        blind.unresolved_total(),
+        1,
+        "and the one name made BEFORE it — `.` — is unplaceable, which is the \
+         honest answer rather than a guess about where this command started: \
+         {:?}",
+        blind.unresolved
+    );
+}
+
+/// WHAT THE MODEL CANNOT PLACE IS COUNTED AND ATTRIBUTED, NEVER GUESSED.
+///
+/// A descriptor opened before the trace began, one handed over a socket, one
+/// whose `clone` line `strace` could not render whole: the model has no binding
+/// for it, and the only answer it is allowed to give is "unknown". A residue
+/// nobody can attribute is a number rather than a finding, so it is carried per
+/// binary — the same reason the reaches themselves are.
+#[test]
+fn a_name_the_model_cannot_place_is_counted_against_the_binary_that_made_it() {
+    let census = census_of(concat!(
+        "100 execve(\"/build/debug/deps/one_smoke-a1b2c3d4e5\", [\"one\"], 0x7f) = 0\n",
+        "100 openat(9, \"nested/file.json\", O_RDONLY|O_CLOEXEC) = 4\n",
         "100 newfstatat(4, \"\", {st_mode=S_IFREG|0644, ...}, AT_EMPTY_PATH) = 0\n",
     ));
     assert_eq!(
-        census.relative, 1,
-        "a relative path is reported, so no reader is shown a total that \
-         silently omitted it"
+        census.relative, 2,
+        "both names were given relative, and the total says so whatever became \
+         of them"
     );
-    assert!(census.reaches.is_empty(), "{:?}", census.reaches);
+    assert_eq!(
+        census.unresolved.get("one_smoke").map(Unplaced::total),
+        Some(2),
+        "descriptor 9 was never opened in this trace, so neither the name under \
+         it nor the descriptor it produced can be placed — and the binary that \
+         made them is named: {:?}",
+        census.unresolved
+    );
+    assert!(
+        census.reaches.is_empty(),
+        "and nothing is reported as reached on a guess: {:?}",
+        census.reaches
+    );
+}
+
+/// THE RESIDUE SAYS WHAT IT IS MADE OF, because the three kinds are three
+/// different pieces of work.
+///
+/// MEASURED, AND THE NUMBER IS WHY THIS EXISTS: the first whole-suite run under
+/// the file table placed 601,965 names and left 391,418, and 391,417 of those
+/// were one test binary's. As a single total that is a blind spot somebody has
+/// to re-measure before they can act on it — closing a residue of descriptors
+/// nobody saw opened is not the same work as closing one of unnamed working
+/// directories, and neither is reading an argument this reader cannot parse.
+///
+/// THE LAST LINE BELOW IS THE ONE CONSTRUCTED FIXTURE IN THIS FILE, and it is
+/// named as such because everything else here was copied from a real stream. It
+/// stands for a syscall shape this reader has NOT been taught, which is the one
+/// case that cannot be copied from a run — it does not exist until `strace`
+/// renders something new. That the third count is normally zero is the point of
+/// having it: a run that suddenly reports many is a run whose lines this reader
+/// is no longer reading, and without the breakdown that is indistinguishable
+/// from a run that opened more descriptors.
+#[test]
+fn what_the_model_could_not_place_says_which_of_the_three_kinds_it_is() {
+    let census = census_of(concat!(
+        "100 execve(\"/build/debug/deps/one_smoke-a1b2c3d4e5\", [\"one\"], 0x7f) = 0\n",
+        // No launch directory was given and nothing has said where this stands.
+        "100 newfstatat(AT_FDCWD, \"under-an-unnamed-directory\", {st_mode=S_IFREG|0644, ...}, 0) = 0\n",
+        // A descriptor this trace never shows being opened.
+        "100 openat(9, \"under-an-unseen-descriptor\", O_RDONLY) = 4\n",
+        // An argument that is neither `AT_FDCWD`, a descriptor, nor absent.
+        "100 somecall(FUTURE_FLAG_THIS_READER_CANNOT_READ, \"after-an-unreadable-argument\", 0) = 0\n",
+    ));
+    let residue = census.unresolved.get("one_smoke").expect("attributed");
+    assert_eq!(
+        (residue.working, residue.descriptor, residue.unreadable),
+        (1, 1, 1),
+        "one of each, and a total of three would say nothing about which work \
+         would close any of them: {residue:?}"
+    );
+    // AND A FEW SPELLINGS, which is what turns the kind into a diagnosis. The
+    // whole of R1233's largest residue was closed by reading one of these and
+    // finding `fcntl(4, F_DUPFD_CLOEXEC, 3) = 5` behind it.
+    assert_eq!(
+        residue.examples,
+        vec![
+            "newfstatat(AT_FDCWD, \"under-an-unnamed-directory\")".to_string(),
+            "openat(9, \"under-an-unseen-descriptor\")".to_string(),
+            "somecall(?, \"after-an-unreadable-argument\")".to_string(),
+        ],
+        "each is spelled with the call and the descriptor it was measured from: \
+         {residue:?}"
+    );
 }
 
 /// A SIGNAL IS NOT A SYSCALL, and a run makes hundreds of them.
@@ -382,6 +569,7 @@ fn a_path_written_through_its_own_parent_is_the_file_it_names() {
                 .as_bytes(),
         ),
         &ground,
+        None,
     );
     assert!(
         census.reaches.is_empty(),
@@ -400,6 +588,7 @@ fn a_path_written_through_its_own_parent_is_the_file_it_names() {
                 .as_bytes(),
         ),
         &ground,
+        None,
     );
     let reached: Vec<&PathBuf> = census.reaches.values().flatten().collect();
     assert_eq!(
@@ -417,7 +606,574 @@ fn a_path_written_through_its_own_parent_is_the_file_it_names() {
     );
 }
 
+/// A THREAD SEES WHAT ITS SIBLINGS OPEN NEXT; A FORK SEES A COPY FROZEN AT THE
+/// CLONE. The flags on the line are what says which, and a cargo run is full of
+/// both.
+///
+/// Getting this wrong is not a lost resolution but a WRONG one in the sharing
+/// direction: a model that always shared would resolve a forked child's
+/// `openat(3, …)` against a directory only its parent went on to open, and
+/// report a reach that never happened.
+#[test]
+fn a_thread_shares_the_file_table_and_a_fork_gets_a_copy() {
+    let census = census_of(concat!(
+        "100 execve(\"/build/debug/deps/one_smoke-a1b2c3d4e5\", [\"one\"], 0x7f) = 0\n",
+        // The thread and the forked child are both made BEFORE the descriptor
+        // exists, which is the whole point: only one of them can see it.
+        "100 clone(child_stack=0x7f, flags=CLONE_VM|CLONE_FS|CLONE_FILES|CLONE_SIGHAND|CLONE_THREAD, parent_tid=[101]) = 101\n",
+        "100 clone(child_stack=NULL, flags=CLONE_CHILD_CLEARTID|SIGCHLD, child_tidptr=0x7f) = 102\n",
+        "100 openat(AT_FDCWD, \"/repo/crates\", O_RDONLY|O_DIRECTORY) = 3\n",
+        "101 openat(3, \"../../elsewhere/seen-by-the-thread\", O_RDONLY) = 4\n",
+        "102 openat(3, \"../../elsewhere/hidden-from-the-fork\", O_RDONLY) = 5\n",
+    ));
+    assert_eq!(
+        census
+            .reaches
+            .get("one_smoke")
+            .map(|paths| paths.iter().cloned().collect::<Vec<_>>()),
+        Some(vec![PathBuf::from("/elsewhere/seen-by-the-thread")]),
+        "the thread shares the table and its name resolves; the forked child's \
+         copy predates the open, so its name is unplaceable rather than resolved \
+         against a descriptor it does not hold: {:?}",
+        census.reaches
+    );
+    assert_eq!(
+        census.unresolved.get("one_smoke").map(Unplaced::total),
+        Some(1),
+        "and the fork's name is the residue, counted: {:?}",
+        census.unresolved
+    );
+}
+
+/// A PROCESS THAT SPOKE BEFORE ITS OWN CLONE LINE IS ADOPTED, NOT ORPHANED —
+/// and this is the NORMAL shape of a spawn rather than an oddity.
+///
+/// THE LINE NUMBERS ARE REAL AND SO IS THE ORDER. In this repository's own
+/// suite, a `posix_spawn` child's `dup2`, `dup2`, `dup2`, `chdir` and `execve`
+/// are all printed BEFORE its parent's `clone3(…) = <pid>` — because a `vfork`
+/// parent is blocked until the child execs, so it cannot print anything until
+/// then. A reader that treats such a child's empty table as its own state gives
+/// it nothing to resolve against, and every name it later gives under an
+/// inherited descriptor becomes residue. Measured: 391,762 of one whole-suite
+/// census's 433,904 unplaced names were exactly this.
+#[test]
+fn a_process_that_spoke_before_its_clone_line_still_inherits() {
+    let census = census_of(concat!(
+        "100 execve(\"/build/debug/deps/one_smoke-a1b2c3d4e5\", [\"one\"], 0x7f) = 0\n",
+        "100 openat(AT_FDCWD, \"/elsewhere/opened-by-the-parent\", O_RDONLY|O_DIRECTORY) = 3\n",
+        // The child speaks first — the real order, from a real trace.
+        "102 dup2(5, 0)                      = 0\n",
+        "102 openat(3, \"under-what-it-inherited\", O_RDONLY) = 6\n",
+        // …and only now does the parent's clone return.
+        "100 clone3({flags=CLONE_VM|CLONE_VFORK|CLONE_CLEAR_SIGHAND, exit_signal=SIGCHLD, stack=0x763e, stack_size=0x9000}, 88) = 102\n",
+        "102 openat(3, \"named-after-the-clone-line\", O_RDONLY) = 7\n",
+    ));
+    assert_eq!(
+        census
+            .reaches
+            .get("one_smoke")
+            .map(|paths| paths.iter().cloned().collect::<Vec<_>>()),
+        Some(vec![
+            PathBuf::from("/elsewhere/opened-by-the-parent"),
+            PathBuf::from("/elsewhere/opened-by-the-parent/named-after-the-clone-line"),
+        ]),
+        "the name the child gives AFTER its clone line resolves against what it \
+         inherited, and it is attributed to the binary above it: {:?}",
+        census.reaches
+    );
+    assert_eq!(
+        census.unresolved.get("one_smoke").map(Unplaced::total),
+        Some(1),
+        "the one name it gave BEFORE the clone line stays residue — this reader \
+         had not been told the child existed yet, and inventing a parent for it \
+         would be a guess: {:?}",
+        census.unresolved
+    );
+
+    // AND WHAT THE CHILD ALREADY LEARNED IS NEWER THAN WHAT IT WOULD INHERIT.
+    // Under `CLONE_FS` the working directory is ONE object, so the child's
+    // `chdir` moved the parent too; adopting the parent's answer would put the
+    // pair back where the child had already left, which is the model answering
+    // WRONG rather than late.
+    let census = census_of(concat!(
+        "100 execve(\"/build/debug/deps/one_smoke-a1b2c3d4e5\", [\"one\"], 0x7f) = 0\n",
+        "100 chdir(\"/repo\")                     = 0\n",
+        "103 chdir(\"/elsewhere/where-the-child-went\") = 0\n",
+        "100 clone(child_stack=0x7f, flags=CLONE_VM|CLONE_FS|CLONE_FILES|CLONE_SIGHAND|CLONE_THREAD, parent_tid=[103]) = 103\n",
+        "103 openat(AT_FDCWD, \"named-after\", O_RDONLY) = 4\n",
+        "100 openat(AT_FDCWD, \"named-by-the-parent\", O_RDONLY) = 5\n",
+    ));
+    assert_eq!(
+        census
+            .reaches
+            .get("one_smoke")
+            .map(|paths| paths.iter().cloned().collect::<Vec<_>>()),
+        Some(vec![
+            PathBuf::from("/elsewhere/where-the-child-went"),
+            PathBuf::from("/elsewhere/where-the-child-went/named-after"),
+            PathBuf::from("/elsewhere/where-the-child-went/named-by-the-parent"),
+        ]),
+        "both stand where the LAST `chdir` put them, and that was the child's: \
+         {:?}",
+        census.reaches
+    );
+}
+
+/// A DESCRIPTOR CLOSED ON EXEC IS NOT THERE AFTERWARDS, and the kernel is what
+/// closed it.
+///
+/// Nearly every open in a Rust build carries `O_CLOEXEC` — the four lines of a
+/// real `/bin/sh` trace above carry it three times — so a model that kept them
+/// across `execve` would be holding stale bindings through every spawn in the
+/// run. The failure that costs is not the lost resolution: it is that the new
+/// program's own descriptor 3 would be read as the old program's file.
+#[test]
+fn a_descriptor_the_kernel_closed_at_exec_is_not_read_as_the_old_file() {
+    let census = census_of(concat!(
+        "100 openat(AT_FDCWD, \"/elsewhere/before-the-exec\", O_RDONLY|O_CLOEXEC|O_DIRECTORY) = 3\n",
+        "100 openat(AT_FDCWD, \"/elsewhere/kept\", O_RDONLY|O_DIRECTORY) = 4\n",
+        "100 execve(\"/build/debug/deps/one_smoke-a1b2c3d4e5\", [\"one\"], 0x7f) = 0\n",
+        "100 openat(3, \"after\", O_RDONLY) = 5\n",
+        "100 openat(4, \"after\", O_RDONLY) = 6\n",
+    ));
+    assert_eq!(
+        census
+            .reaches
+            .get("one_smoke")
+            .map(|paths| paths.iter().cloned().collect::<Vec<_>>()),
+        Some(vec![
+            PathBuf::from("/elsewhere/before-the-exec"),
+            PathBuf::from("/elsewhere/kept"),
+            PathBuf::from("/elsewhere/kept/after"),
+        ]),
+        "the descriptor without O_CLOEXEC survives the exec and its name \
+         resolves; the one the kernel closed resolves to nothing: {:?}",
+        census.reaches
+    );
+    assert_eq!(
+        census.unresolved.get("one_smoke").map(Unplaced::total),
+        Some(1),
+        "and the name under the closed descriptor is residue, not a path: {:?}",
+        census.unresolved
+    );
+}
+
+/// A NUMBER SOMETHING RE-POINTED IS FORGOTTEN RATHER THAN BELIEVED.
+///
+/// `dup2(10, 1) = 1` IS A REAL LINE — from `/bin/sh -c 'cat hostname >
+/// /dev/null'`, where descriptor 10 is the shell's saved copy of its own stdout
+/// and was opened before the trace began. Nothing in the stream says what 10 is,
+/// so nothing can say what 1 is afterwards; the binding this reader was holding
+/// under 1 is now a lie, and deleting it is the difference between the model
+/// answering UNKNOWN and answering WRONG.
+#[test]
+fn a_descriptor_re_pointed_from_an_unknown_source_is_forgotten() {
+    let census = census_of(concat!(
+        "100 execve(\"/build/debug/deps/one_smoke-a1b2c3d4e5\", [\"one\"], 0x7f) = 0\n",
+        "100 openat(AT_FDCWD, \"/elsewhere/first\", O_RDONLY|O_DIRECTORY) = 1\n",
+        "100 dup2(10, 1)                        = 1\n",
+        "100 openat(1, \"under-whatever-1-is-now\", O_RDONLY) = 3\n",
+    ));
+    assert_eq!(
+        census
+            .reaches
+            .get("one_smoke")
+            .map(|paths| paths.iter().cloned().collect::<Vec<_>>()),
+        Some(vec![PathBuf::from("/elsewhere/first")]),
+        "only the open itself is a reach — the name under the re-pointed \
+         descriptor must not be reported against the directory that used to be \
+         there: {:?}",
+        census.reaches
+    );
+    assert_eq!(
+        census.unresolved.get("one_smoke").map(Unplaced::total),
+        Some(1),
+        "it is residue: {:?}",
+        census.unresolved
+    );
+
+    // AND A `dup2` WHOSE SOURCE IS KNOWN CARRIES THE PATH ACROSS, which is what
+    // stops the rule above from being "forget every duplicated descriptor".
+    let census = census_of(concat!(
+        "100 execve(\"/build/debug/deps/one_smoke-a1b2c3d4e5\", [\"one\"], 0x7f) = 0\n",
+        "100 openat(AT_FDCWD, \"/elsewhere/first\", O_RDONLY|O_DIRECTORY) = 3\n",
+        "100 dup2(3, 7)                         = 7\n",
+        "100 openat(7, \"still-the-same-directory\", O_RDONLY) = 8\n",
+    ));
+    assert!(
+        census.reaches.get("one_smoke").is_some_and(
+            |paths| paths.contains(&PathBuf::from("/elsewhere/first/still-the-same-directory"))
+        ),
+        "a duplicate of a known descriptor names the same directory: {:?}",
+        census.reaches
+    );
+}
+
+/// A CLOSED DESCRIPTOR IS GONE, WHICH IS WHY THE TRACE ASKS FOR `close` AT ALL.
+///
+/// `close` takes no filename, so it is not in `%file` and the census did not see
+/// it before R1233. Without it a number stays bound to a directory the process
+/// has finished with — and the kernel hands that same number to the NEXT thing
+/// that asks, which is how a model with no `close` answers wrong rather than
+/// unknown. `close_range` is the same fact for a spawner that closes everything
+/// above 2 in one call.
+#[test]
+fn a_closed_descriptor_is_not_a_directory_any_more() {
+    let census = census_of(concat!(
+        "100 execve(\"/build/debug/deps/one_smoke-a1b2c3d4e5\", [\"one\"], 0x7f) = 0\n",
+        "100 openat(AT_FDCWD, \"/elsewhere/closed\", O_RDONLY|O_DIRECTORY) = 3\n",
+        "100 close(3)                           = 0\n",
+        "100 openat(3, \"under-a-free-number\", O_RDONLY) = 4\n",
+        "100 openat(AT_FDCWD, \"/elsewhere/ranged\", O_RDONLY|O_DIRECTORY) = 5\n",
+        "100 close_range(3, 4294967295, 0)      = 0\n",
+        "100 openat(5, \"under-a-freed-range\", O_RDONLY) = 6\n",
+    ));
+    assert_eq!(
+        census
+            .reaches
+            .get("one_smoke")
+            .map(|paths| paths.iter().cloned().collect::<Vec<_>>()),
+        Some(vec![
+            PathBuf::from("/elsewhere/closed"),
+            PathBuf::from("/elsewhere/ranged"),
+        ]),
+        "the two opens are reaches; neither name under a closed number is: {:?}",
+        census.reaches
+    );
+    assert_eq!(
+        census.unresolved.get("one_smoke").map(Unplaced::total),
+        Some(2),
+        "both are residue: {:?}",
+        census.unresolved
+    );
+}
+
+/// `fcntl` IS HOW A DESCRIPTOR IS USUALLY DUPLICATED, and this is the case the
+/// residue found rather than the manual.
+///
+/// EVERY LINE BELOW IS REAL — `find studio -name Cargo.toml`, traced on this
+/// repository. It opens the directory, immediately does
+/// `fcntl(4, F_DUPFD_CLOEXEC, 3) = 5`, and then names everything it walks under
+/// FIVE. `dup`/`dup2`/`dup3` never appear. Until the trace asked for `fcntl`,
+/// 33,791 of one run's 33,792 unplaced names were that one descriptor — the
+/// count said "under a descriptor never seen opened" and the example said which
+/// call, which is what turned a number into this test.
+///
+/// `F_SETFD` is here for the same reason `O_CLOEXEC` is: it is how a
+/// descriptor's survival across `execve` is decided after the fact.
+#[test]
+fn a_descriptor_duplicated_by_fcntl_names_the_same_directory() {
+    let census = census_from(
+        concat!(
+            "100 execve(\"/build/debug/deps/one_smoke-a1b2c3d4e5\", [\"one\"], 0x7f) = 0\n",
+            "100 openat(AT_FDCWD, \"elsewhere\", O_RDONLY|O_NOCTTY|O_NONBLOCK|O_NOFOLLOW|O_CLOEXEC|O_DIRECTORY) = 4\n",
+            "100 fcntl(4, F_GETFL)               = 0x38800 (flags O_RDONLY|O_NONBLOCK|O_LARGEFILE|O_NOFOLLOW|O_DIRECTORY)\n",
+            "100 fcntl(4, F_SETFD, FD_CLOEXEC)   = 0\n",
+            "100 fcntl(4, F_DUPFD_CLOEXEC, 3)    = 5\n",
+            "100 newfstatat(5, \"walked\", {st_mode=S_IFDIR|0775, st_size=4096, ...}, AT_SYMLINK_NOFOLLOW) = 0\n",
+        ),
+        "/",
+    );
+    assert_eq!(
+        census
+            .reaches
+            .get("one_smoke")
+            .map(|paths| paths.iter().cloned().collect::<Vec<_>>()),
+        Some(vec![
+            PathBuf::from("/elsewhere"),
+            PathBuf::from("/elsewhere/walked"),
+        ]),
+        "the duplicate names the directory the original named, so what the walk \
+         reaches is reported rather than counted: {:?}",
+        census.reaches
+    );
+    assert_eq!(
+        census.unresolved_total(),
+        0,
+        "and nothing is left over: {:?}",
+        census.unresolved
+    );
+
+    // AND `F_SETFD` DECIDES WHAT AN `execve` KEEPS. The same open without
+    // `O_CLOEXEC`, marked close-on-exec afterwards, must not survive the exec —
+    // otherwise the new program's descriptor 4 reads as the old program's
+    // directory.
+    let census = census_from(
+        concat!(
+            "100 openat(AT_FDCWD, \"elsewhere\", O_RDONLY|O_DIRECTORY) = 4\n",
+            "100 fcntl(4, F_SETFD, FD_CLOEXEC)   = 0\n",
+            "100 execve(\"/build/debug/deps/one_smoke-a1b2c3d4e5\", [\"one\"], 0x7f) = 0\n",
+            "100 newfstatat(4, \"after\", {st_mode=S_IFDIR|0775, ...}, 0) = 0\n",
+        ),
+        "/",
+    );
+    assert_eq!(
+        census.unresolved.get("one_smoke").map(Unplaced::total),
+        Some(1),
+        "the descriptor the kernel closed at the exec is residue, not the old \
+         directory: {:?}",
+        census.unresolved
+    );
+}
+
+/// `fchdir` MOVES THE WORKING DIRECTORY WITHOUT NAMING IT, and to an unknown
+/// descriptor it makes the working directory UNKNOWN rather than stale.
+#[test]
+fn the_working_directory_follows_fchdir_and_becomes_unknown_when_it_cannot() {
+    let census = census_from(
+        concat!(
+            "100 execve(\"/build/debug/deps/one_smoke-a1b2c3d4e5\", [\"one\"], 0x7f) = 0\n",
+            "100 openat(AT_FDCWD, \"/elsewhere/somewhere\", O_RDONLY|O_DIRECTORY) = 3\n",
+            "100 fchdir(3)                          = 0\n",
+            "100 openat(AT_FDCWD, \"named-from-there\", O_RDONLY) = 4\n",
+        ),
+        "/repo",
+    );
+    assert!(
+        census.reaches.get("one_smoke").is_some_and(
+            |paths| paths.contains(&PathBuf::from("/elsewhere/somewhere/named-from-there"))
+        ),
+        "the bare name is measured from the directory the descriptor named: {:?}",
+        census.reaches
+    );
+
+    let census = census_from(
+        concat!(
+            "100 execve(\"/build/debug/deps/one_smoke-a1b2c3d4e5\", [\"one\"], 0x7f) = 0\n",
+            "100 fchdir(9)                          = 0\n",
+            "100 openat(AT_FDCWD, \"named-from-nowhere\", O_RDONLY) = 4\n",
+        ),
+        "/repo",
+    );
+    assert!(
+        census.reaches.is_empty(),
+        "a working directory this reader cannot name must not leave the previous \
+         one in place — the name would be measured from a directory the process \
+         has left: {:?}",
+        census.reaches
+    );
+    assert_eq!(
+        census.unresolved.get("one_smoke").map(Unplaced::total),
+        Some(1),
+        "it is residue: {:?}",
+        census.unresolved
+    );
+}
+
+/// `getcwd` IS THE KERNEL ANSWERING THE QUESTION THIS READER CANNOT ASK.
+///
+/// It takes no filename — it RETURNS one, into a buffer `strace` renders as the
+/// first quoted argument — and it is in `%file` already, so it costs nothing to
+/// read. Any process that asks it says where it stands, which repairs a working
+/// directory whose descent from the launch directory was broken. Measured:
+/// 41,828 of one whole-suite census's unplaced names were the cargo driver's,
+/// under a directory nothing had named; the line below is a real one from this
+/// repository's own suite.
+#[test]
+fn a_process_that_asks_where_it_stands_has_told_this_reader() {
+    let census = census_of(concat!(
+        "100 execve(\"/build/debug/deps/one_smoke-a1b2c3d4e5\", [\"one\"], 0x7f) = 0\n",
+        // Before it says so, a bare name cannot be placed.
+        "100 newfstatat(AT_FDCWD, \"before-it-said\", {st_mode=S_IFREG|0644, ...}, 0) = 0\n",
+        "100 getcwd(\"/elsewhere/where-it-stands\", 512)  = 26\n",
+        "100 openat(AT_FDCWD, \"after-it-said\", O_RDONLY) = 3\n",
+    ));
+    assert_eq!(
+        census
+            .reaches
+            .get("one_smoke")
+            .map(|paths| paths.iter().cloned().collect::<Vec<_>>()),
+        Some(vec![
+            PathBuf::from("/elsewhere/where-it-stands"),
+            PathBuf::from("/elsewhere/where-it-stands/after-it-said"),
+        ]),
+        "the directory it named is a place it stands, and every bare name after \
+         it is measured from there: {:?}",
+        census.reaches
+    );
+    assert_eq!(
+        census.unresolved.get("one_smoke").map(Unplaced::total),
+        Some(1),
+        "and the one name it gave BEFORE saying so is still residue — this is a \
+         reader of a stream, not of a run it can re-question: {:?}",
+        census.unresolved
+    );
+
+    // EXCEPT WHEN THE ANSWER IS NOT A PATH. A process whose working directory
+    // has been removed is told `"/tmp/x (deleted)"`, which is what the kernel
+    // says and not where anything is. Taking it would measure every later name
+    // from a directory that does not exist under a name nothing has.
+    let census = census_of(concat!(
+        "100 execve(\"/build/debug/deps/one_smoke-a1b2c3d4e5\", [\"one\"], 0x7f) = 0\n",
+        "100 getcwd(\"/elsewhere/pulled-out-from-under-it (deleted)\", 512) = 44\n",
+        "100 openat(AT_FDCWD, \"after-it-said\", O_RDONLY) = 3\n",
+    ));
+    assert_eq!(
+        census.unresolved.get("one_smoke").map(Unplaced::total),
+        Some(1),
+        "the bare name after it stays unplaced, rather than being reported under \
+         a directory spelled `… (deleted)`: {:?}",
+        census.unresolved
+    );
+}
+
+/// THE CONTENT OF A SYMLINK IS NOT A PATH THE RUN REACHED.
+///
+/// `symlink("../../elsewhere/target", "link")` writes a STRING; the file it
+/// touches is the second argument. A reader that took the first quoted string
+/// off every line — which is what this one did — would resolve that string
+/// against the working directory and report a reach into a tree the run never
+/// looked at. A false finding is the one outcome worse than a missing one.
+#[test]
+fn the_content_of_a_symlink_is_not_a_path_the_run_reached() {
+    let census = census_from(
+        concat!(
+            "100 execve(\"/build/debug/deps/one_smoke-a1b2c3d4e5\", [\"one\"], 0x7f) = 0\n",
+            "100 symlink(\"../elsewhere/never-touched\", \"/fixture/link\") = 0\n",
+            "100 symlinkat(\"../elsewhere/never-touched\", 3, \"link\") = 0\n",
+        ),
+        "/repo",
+    );
+    assert!(
+        census.reaches.is_empty(),
+        "neither line reaches anything outside the ground — the link's content \
+         is a string, and where it points is not where anything looked: {:?}",
+        census.reaches
+    );
+}
+
+/// A PROGRAM A RUN EXECUTES IS A FILE IT READ (R1233).
+///
+/// The `execve` arm took the name to attribute reaches to it and judged the path
+/// itself against nothing, so a binary run from outside the ground was a reach
+/// this census could not report. A test that shells out to a tool the machine
+/// beside it does not have is exactly the finding this gate exists to make
+/// visible.
+#[test]
+fn a_program_a_run_executes_is_a_file_it_read() {
+    let census = census_of(concat!(
+        "100 execve(\"/build/debug/deps/one_smoke-a1b2c3d4e5\", [\"one\"], 0x7f) = 0\n",
+        "100 clone(child_stack=NULL, flags=CLONE_CHILD_CLEARTID|SIGCHLD, child_tidptr=0x7f) = 101\n",
+        "101 execve(\"/elsewhere/bin/a-tool-only-this-machine-has\", [\"a-tool\"], 0x7f) = 0\n",
+    ));
+    assert_eq!(
+        census
+            .reaches
+            .get("one_smoke")
+            .map(|paths| paths.iter().cloned().collect::<Vec<_>>()),
+        Some(vec![PathBuf::from(
+            "/elsewhere/bin/a-tool-only-this-machine-has"
+        )]),
+        "the program is the file, and the reach belongs to the test binary that \
+         spawned it: {:?}",
+        census.reaches
+    );
+}
+
 // --------------------------------------------------------------- the verdict
+
+/// THE CENSUS'S OWN THREE ANSWERS, ASKED OF THE PROCESS (R1233).
+///
+/// Every case above asks the LIBRARY, and R1127 measured what that leaves open
+/// in this repository's gates: a refusal path reported as a clean pass with the
+/// whole suite green, because nothing ran the binary. `--verdict-of` has had a
+/// process-level reader since R1230; the census itself — the path that decides
+/// what a run reached and whether that is a finding — had none.
+///
+/// The fourth case is this round's mechanism at the level that matters: a reach
+/// made through a descriptor must reach the VERDICT, not only the census, or the
+/// model resolves paths nothing acts on.
+#[test]
+fn the_census_answers_empty_clean_and_finding_as_three_different_statuses() {
+    // THE ENVIRONMENT IS NAMED RATHER THAN INHERITED. This binary reads five
+    // variables to place the toolchain and the home the declaration resolves
+    // against, and a test that left them to the machine would run a different
+    // program on a machine that sets them. All five are declared ABSENT, which
+    // makes the ground exactly `--repo`, `--build`, `--fixture` and the
+    // operating system's own roots.
+    let run = |trace: &str| {
+        let mut child = std::process::Command::new(env!("CARGO_BIN_EXE_outside-reach"))
+            .env_remove("CARGO_HOME")
+            .env_remove("RUSTUP_HOME")
+            .env_remove("SCCACHE_DIR")
+            .env_remove("CCACHE_DIR")
+            .env_remove("HOME")
+            .args([
+                "--repo",
+                "/repo",
+                "--build",
+                "/build",
+                "--fixture",
+                "/fixture",
+            ])
+            .stdin(std::process::Stdio::piped())
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .spawn()
+            .expect("the reader runs");
+        {
+            use std::io::Write;
+            child
+                .stdin
+                .as_mut()
+                .expect("stdin")
+                .write_all(trace.as_bytes())
+                .expect("the trace goes in");
+        }
+        let out = child.wait_with_output().expect("it finishes");
+        let said = format!(
+            "{}{}",
+            String::from_utf8_lossy(&out.stdout),
+            String::from_utf8_lossy(&out.stderr)
+        );
+        (
+            out.status.code().expect("it exits rather than signals"),
+            said,
+        )
+    };
+
+    // NO TRACE AT ALL — which is what a run this gate never saw looks like, and
+    // is indistinguishable from a hermetic one by the reaches alone.
+    let (code, said) = run("");
+    assert_eq!(code, 2, "an empty trace is `could not judge`:\n{said}");
+    assert!(said.contains("EMPTY"), "and it says so:\n{said}");
+
+    // A RUN THAT STAYED HOME.
+    let (code, said) = run("100 openat(AT_FDCWD, \"/repo/src/lib.rs\", O_RDONLY|O_CLOEXEC) = 3\n");
+    assert_eq!(code, 0, "everything it read is ground:\n{said}");
+    assert!(
+        said.contains("1 line(s)"),
+        "and the count is printed beside the verdict, which is what makes the \
+         case above readable at all:\n{said}"
+    );
+
+    // A REACH NOTHING DECLARES.
+    let (code, said) = run(concat!(
+        "100 execve(\"/build/debug/deps/one_smoke-a1b2c3d4e5\", [\"one\"], 0x7f) = 0\n",
+        "100 newfstatat(AT_FDCWD, \"/elsewhere/thing\", {st_mode=S_IFDIR|0775, ...}, 0) = 0\n",
+    ));
+    assert_eq!(code, 1, "a reach no row covers is a finding:\n{said}");
+    assert!(
+        said.contains("one_smoke reached /elsewhere/thing"),
+        "named, with the binary that made it:\n{said}"
+    );
+
+    // AND THE SAME REACH MADE THROUGH A DESCRIPTOR (R1233), which no absolute
+    // path in this trace names. Before the file table this exited 0.
+    let (code, said) = run(concat!(
+        "100 execve(\"/build/debug/deps/one_smoke-a1b2c3d4e5\", [\"one\"], 0x7f) = 0\n",
+        "100 openat(AT_FDCWD, \"/repo\", O_RDONLY|O_CLOEXEC|O_DIRECTORY) = 3\n",
+        "100 openat(3, \"../elsewhere/through-a-descriptor\", O_RDONLY) = 4\n",
+    ));
+    assert_eq!(
+        code, 1,
+        "the model must reach the VERDICT and not only the census:\n{said}"
+    );
+    assert!(
+        said.contains("one_smoke reached /elsewhere/through-a-descriptor"),
+        "and the path it names is the one the descriptor resolves to:\n{said}"
+    );
+}
 
 /// THE THREE ANSWERS OF `--verdict-of`, ASKED OF THE PROCESS (R1230).
 ///

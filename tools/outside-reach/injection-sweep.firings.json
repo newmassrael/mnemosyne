@@ -1,0 +1,362 @@
+{
+  "_": [
+    "Machine-written by tools/injection-harness. Do not edit by hand: a row somebody typed is evidence of nothing, and the law over this file is worth exactly what its being unforgeable is worth.",
+    "Each row is one injection that WAS RUN and DID redden what it names, kept beside the definition it was proven against — edit the injection and the gate says the evidence is about a different one."
+  ],
+  "complete": true,
+  "fired": {
+    "a-close-is-not-read": {
+      "edits": [
+        {
+          "file": "tools/outside-reach/src/lib.rs",
+          "from": "                        traced.entry(id).or_default().files.borrow_mut().remove(&fd);",
+          "to": "                        let _ = fd;"
+        }
+      ],
+      "expect_red": [
+        "a_closed_descriptor_is_not_a_directory_any_more"
+      ],
+      "tests": [
+        "a_closed_descriptor_is_not_a_directory_any_more"
+      ]
+    },
+    "a-deleted-working-directory-is-taken-as-a-path": {
+      "edits": [
+        {
+          "file": "tools/outside-reach/src/lib.rs",
+          "from": "                } else if name == \"getcwd\" && !named.ends_with(\" (deleted)\") {",
+          "to": "                } else if name == \"getcwd\" {"
+        }
+      ],
+      "expect_red": [
+        "a_process_that_asks_where_it_stands_has_told_this_reader"
+      ],
+      "tests": [
+        "a_process_that_asks_where_it_stands_has_told_this_reader"
+      ]
+    },
+    "a-descriptor-duplicated-by-fcntl-is-not-followed": {
+      "edits": [
+        {
+          "file": "tools/outside-reach/src/lib.rs",
+          "from": "                if command.contains(\"F_DUPFD\") {",
+          "to": "                if false {"
+        }
+      ],
+      "expect_red": [
+        "a_descriptor_duplicated_by_fcntl_names_the_same_directory"
+      ],
+      "tests": [
+        "a_descriptor_duplicated_by_fcntl_names_the_same_directory"
+      ]
+    },
+    "a-descriptor-marked-close-on-exec-afterwards-survives": {
+      "edits": [
+        {
+          "file": "tools/outside-reach/src/lib.rs",
+          "from": "                } else if command.contains(\"F_SETFD\") {",
+          "to": "                } else if false {"
+        }
+      ],
+      "expect_red": [
+        "a_descriptor_duplicated_by_fcntl_names_the_same_directory"
+      ],
+      "tests": [
+        "a_descriptor_duplicated_by_fcntl_names_the_same_directory"
+      ]
+    },
+    "a-descriptor-names-nothing": {
+      "edits": [
+        {
+          "file": "tools/outside-reach/src/lib.rs",
+          "from": "            Base::Descriptor(fd) => self.files.borrow().get(&fd)?.at.clone(),",
+          "to": "            Base::Descriptor(_) => return None,"
+        }
+      ],
+      "expect_red": [
+        "a_descriptor_duplicated_by_fcntl_names_the_same_directory",
+        "a_descriptor_is_a_place_to_start_walking_from_and_not_a_floor",
+        "a_descriptor_re_pointed_from_an_unknown_source_is_forgotten",
+        "a_descriptor_the_kernel_closed_at_exec_is_not_read_as_the_old_file",
+        "a_process_that_spoke_before_its_clone_line_still_inherits",
+        "a_thread_shares_the_file_table_and_a_fork_gets_a_copy",
+        "the_census_answers_empty_clean_and_finding_as_three_different_statuses"
+      ],
+      "tests": [
+        "a_descriptor_duplicated_by_fcntl_names_the_same_directory",
+        "a_descriptor_is_a_place_to_start_walking_from_and_not_a_floor",
+        "a_descriptor_re_pointed_from_an_unknown_source_is_forgotten",
+        "a_descriptor_the_kernel_closed_at_exec_is_not_read_as_the_old_file",
+        "a_process_that_spoke_before_its_clone_line_still_inherits",
+        "a_thread_shares_the_file_table_and_a_fork_gets_a_copy",
+        "the_census_answers_empty_clean_and_finding_as_three_different_statuses"
+      ]
+    },
+    "a-finding-is-printed-and-then-passed": {
+      "edits": [
+        {
+          "file": "tools/outside-reach/src/main.rs",
+          "from": "    ExitCode::from(1)\n}",
+          "to": "    ExitCode::SUCCESS\n}"
+        }
+      ],
+      "expect_red": [
+        "the_census_answers_empty_clean_and_finding_as_three_different_statuses"
+      ],
+      "tests": [
+        "the_census_answers_empty_clean_and_finding_as_three_different_statuses"
+      ]
+    },
+    "a-process-that-says-where-it-stands-is-not-heard": {
+      "edits": [
+        {
+          "file": "tools/outside-reach/src/lib.rs",
+          "from": "                } else if name == \"getcwd\" && !named.ends_with(\" (deleted)\") {",
+          "to": "                } else if false {"
+        }
+      ],
+      "expect_red": [
+        "a_process_that_asks_where_it_stands_has_told_this_reader"
+      ],
+      "tests": [
+        "a_process_that_asks_where_it_stands_has_told_this_reader"
+      ]
+    },
+    "a-process-that-spoke-first-is-orphaned": {
+      "edits": [
+        {
+          "file": "tools/outside-reach/src/lib.rs",
+          "from": "                        adopt(child, &parent_files, &parent_cwd, shares_files, shares_cwd);",
+          "to": "                        let _ = (&parent_files, &parent_cwd, shares_files, shares_cwd);"
+        }
+      ],
+      "expect_red": [
+        "a_process_that_spoke_before_its_clone_line_still_inherits"
+      ],
+      "tests": [
+        "a_process_that_spoke_before_its_clone_line_still_inherits"
+      ]
+    },
+    "a-program-a-run-executes-is-judged-against-nothing": {
+      "edits": [
+        {
+          "file": "tools/outside-reach/src/lib.rs",
+          "from": "                match me.resolve(base, named) {\n                    Some(path) => {\n                        if !ground.holds(&path) {\n                            me.outside.insert(path);\n                        }\n                    }\n                    None => me.unresolved.note(base, name, named),\n                }",
+          "to": "                match me.resolve(base, named) {\n                    Some(_) => {}\n                    None => me.unresolved.note(base, name, named),\n                }"
+        }
+      ],
+      "expect_red": [
+        "a_bare_name_is_measured_from_where_the_command_started",
+        "a_program_a_run_executes_is_a_file_it_read"
+      ],
+      "tests": [
+        "a_bare_name_is_measured_from_where_the_command_started",
+        "a_program_a_run_executes_is_a_file_it_read"
+      ]
+    },
+    "a-re-pointed-descriptor-keeps-its-old-binding": {
+      "edits": [
+        {
+          "file": "tools/outside-reach/src/lib.rs",
+          "from": "            me.files.borrow_mut().remove(&new);",
+          "to": "            let _ = new;"
+        }
+      ],
+      "expect_red": [
+        "a_descriptor_re_pointed_from_an_unknown_source_is_forgotten"
+      ],
+      "tests": [
+        "a_descriptor_re_pointed_from_an_unknown_source_is_forgotten"
+      ]
+    },
+    "an-empty-trace-reports-clean": {
+      "edits": [
+        {
+          "file": "tools/outside-reach/src/main.rs",
+          "from": "        return ExitCode::from(2);\n    }\n\n    let home = PathBuf::from(",
+          "to": "        return ExitCode::SUCCESS;\n    }\n\n    let home = PathBuf::from("
+        }
+      ],
+      "expect_red": [
+        "the_census_answers_empty_clean_and_finding_as_three_different_statuses"
+      ],
+      "tests": [
+        "the_census_answers_empty_clean_and_finding_as_three_different_statuses"
+      ]
+    },
+    "an-unknown-fchdir-leaves-the-old-directory": {
+      "edits": [
+        {
+          "file": "tools/outside-reach/src/lib.rs",
+          "from": "                *me.cwd.borrow_mut() = to;",
+          "to": "                if to.is_some() {\n                    *me.cwd.borrow_mut() = to;\n                }"
+        }
+      ],
+      "expect_red": [
+        "the_working_directory_follows_fchdir_and_becomes_unknown_when_it_cannot"
+      ],
+      "tests": [
+        "the_working_directory_follows_fchdir_and_becomes_unknown_when_it_cannot"
+      ]
+    },
+    "an-unplaceable-name-is-passed-over": {
+      "edits": [
+        {
+          "file": "tools/outside-reach/src/lib.rs",
+          "from": "                let Some(path) = resolved else {\n                    me.unresolved.note(base, name, named);\n                    continue;\n                };",
+          "to": "                let Some(path) = resolved else {\n                    continue;\n                };"
+        }
+      ],
+      "expect_red": [
+        "a_bare_name_is_measured_from_where_the_command_started",
+        "a_closed_descriptor_is_not_a_directory_any_more",
+        "a_descriptor_duplicated_by_fcntl_names_the_same_directory",
+        "a_descriptor_re_pointed_from_an_unknown_source_is_forgotten",
+        "a_descriptor_the_kernel_closed_at_exec_is_not_read_as_the_old_file",
+        "a_name_the_model_cannot_place_is_counted_against_the_binary_that_made_it",
+        "a_process_that_asks_where_it_stands_has_told_this_reader",
+        "a_process_that_spoke_before_its_clone_line_still_inherits",
+        "a_thread_shares_the_file_table_and_a_fork_gets_a_copy",
+        "the_working_directory_follows_fchdir_and_becomes_unknown_when_it_cannot",
+        "what_the_model_could_not_place_says_which_of_the_three_kinds_it_is"
+      ],
+      "tests": [
+        "a_bare_name_is_measured_from_where_the_command_started",
+        "a_closed_descriptor_is_not_a_directory_any_more",
+        "a_descriptor_duplicated_by_fcntl_names_the_same_directory",
+        "a_descriptor_re_pointed_from_an_unknown_source_is_forgotten",
+        "a_descriptor_the_kernel_closed_at_exec_is_not_read_as_the_old_file",
+        "a_name_the_model_cannot_place_is_counted_against_the_binary_that_made_it",
+        "a_process_that_asks_where_it_stands_has_told_this_reader",
+        "a_process_that_spoke_before_its_clone_line_still_inherits",
+        "a_thread_shares_the_file_table_and_a_fork_gets_a_copy",
+        "the_working_directory_follows_fchdir_and_becomes_unknown_when_it_cannot",
+        "what_the_model_could_not_place_says_which_of_the_three_kinds_it_is"
+      ]
+    },
+    "close-on-exec-descriptors-survive-the-exec": {
+      "edits": [
+        {
+          "file": "tools/outside-reach/src/lib.rs",
+          "from": "                me.files.borrow_mut().retain(|_, file| !file.cloexec);",
+          "to": "                me.files.borrow_mut().retain(|_, _file| true);"
+        }
+      ],
+      "expect_red": [
+        "a_descriptor_duplicated_by_fcntl_names_the_same_directory",
+        "a_descriptor_the_kernel_closed_at_exec_is_not_read_as_the_old_file"
+      ],
+      "tests": [
+        "a_descriptor_duplicated_by_fcntl_names_the_same_directory",
+        "a_descriptor_the_kernel_closed_at_exec_is_not_read_as_the_old_file"
+      ]
+    },
+    "every-clone-shares-the-file-table": {
+      "edits": [
+        {
+          "file": "tools/outside-reach/src/lib.rs",
+          "from": "                let shares_files = flags.contains(\"CLONE_FILES\");",
+          "to": "                let shares_files = true;"
+        }
+      ],
+      "expect_red": [
+        "a_thread_shares_the_file_table_and_a_fork_gets_a_copy"
+      ],
+      "tests": [
+        "a_thread_shares_the_file_table_and_a_fork_gets_a_copy"
+      ]
+    },
+    "no-clone-shares-the-file-table": {
+      "edits": [
+        {
+          "file": "tools/outside-reach/src/lib.rs",
+          "from": "                let shares_files = flags.contains(\"CLONE_FILES\");",
+          "to": "                let shares_files = false;"
+        }
+      ],
+      "expect_red": [
+        "a_thread_shares_the_file_table_and_a_fork_gets_a_copy"
+      ],
+      "tests": [
+        "a_thread_shares_the_file_table_and_a_fork_gets_a_copy"
+      ]
+    },
+    "the-adopted-child-is-put-back-where-its-parent-was": {
+      "edits": [
+        {
+          "file": "tools/outside-reach/src/lib.rs",
+          "from": "        let learned = child.cwd.borrow().clone();\n        if learned.is_some() {\n            *cwd.borrow_mut() = learned;\n        }\n        child.cwd = Rc::clone(cwd);",
+          "to": "        child.cwd = Rc::clone(cwd);"
+        }
+      ],
+      "expect_red": [
+        "a_process_that_spoke_before_its_clone_line_still_inherits"
+      ],
+      "tests": [
+        "a_process_that_spoke_before_its_clone_line_still_inherits"
+      ]
+    },
+    "the-content-of-a-symlink-is-taken-as-a-path": {
+      "edits": [
+        {
+          "file": "tools/outside-reach/src/lib.rs",
+          "from": "                let which = usize::from(matches!(name, \"symlink\" | \"symlinkat\"));",
+          "to": "                let which = 0;"
+        }
+      ],
+      "expect_red": [
+        "the_content_of_a_symlink_is_not_a_path_the_run_reached"
+      ],
+      "tests": [
+        "the_content_of_a_symlink_is_not_a_path_the_run_reached"
+      ]
+    },
+    "the-launch-directory-is-never-seeded": {
+      "edits": [
+        {
+          "file": "tools/outside-reach/src/lib.rs",
+          "from": "                *traced.entry(id).or_default().cwd.borrow_mut() = Some(normalise(dir));",
+          "to": "                let _ = dir;"
+        }
+      ],
+      "expect_red": [
+        "a_bare_name_is_measured_from_where_the_command_started",
+        "a_descriptor_duplicated_by_fcntl_names_the_same_directory"
+      ],
+      "tests": [
+        "a_bare_name_is_measured_from_where_the_command_started",
+        "a_descriptor_duplicated_by_fcntl_names_the_same_directory"
+      ]
+    },
+    "the-residue-is-a-total-and-not-three-kinds": {
+      "edits": [
+        {
+          "file": "tools/outside-reach/src/lib.rs",
+          "from": "            Base::Working => self.working += 1,\n            Base::Descriptor(_) => self.descriptor += 1,\n            Base::Unknown => self.unreadable += 1,",
+          "to": "            Base::Working | Base::Descriptor(_) | Base::Unknown => self.working += 1,"
+        }
+      ],
+      "expect_red": [
+        "what_the_model_could_not_place_says_which_of_the_three_kinds_it_is"
+      ],
+      "tests": [
+        "what_the_model_could_not_place_says_which_of_the_three_kinds_it_is"
+      ]
+    },
+    "the-residue-is-counted-but-never-spelled": {
+      "edits": [
+        {
+          "file": "tools/outside-reach/src/lib.rs",
+          "from": "        if self.examples.len() < EXAMPLES_KEPT {",
+          "to": "        if false {"
+        }
+      ],
+      "expect_red": [
+        "what_the_model_could_not_place_says_which_of_the_three_kinds_it_is"
+      ],
+      "tests": [
+        "what_the_model_could_not_place_says_which_of_the_three_kinds_it_is"
+      ]
+    }
+  }
+}

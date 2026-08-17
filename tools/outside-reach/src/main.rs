@@ -107,14 +107,22 @@ fn flag(name: &str) -> Option<String> {
 
 fn usage() -> ExitCode {
     eprintln!(
-        "usage: strace -f -qq -e trace=%file,%process -e status=successful \\\n\
-         \x20         -o \"|outside-reach --repo <path> --build <path> --fixture <path>\" <command…>\n\
+        "usage: strace -f -qq \\\n\
+         \x20         -e trace=%file,%process,close,close_range,dup,dup2,dup3,fchdir,fcntl \\\n\
+         \x20         -e status=successful \\\n\
+         \x20         -o \"|outside-reach --repo <path> --build <path> --fixture <path> \
+         --cwd <path>\" <command…>\n\
          \n\
          Reads the trace on stdin. Nothing is written to disk.\n\
          \n\
          --repo        the repository the run is about\n\
          --build       its build directory (a symlink out of the tree, here)\n\
          --fixture     the TMPDIR the run was given\n\
+         --cwd         the directory the traced command was launched from, which \
+         is the one fact\n\
+         \x20             about a run its own syscalls never state; without it a \
+         bare name is\n\
+         \x20             unresolvable rather than wrong\n\
          --report      print the census and return 0 whatever it found\n\
          --verdict-of  exit with the status recorded in a file by an earlier run \
          of this program"
@@ -243,12 +251,44 @@ fn main() -> ExitCode {
         toolchain,
     };
 
-    let census = read_stream(BufReader::new(io::stdin().lock()), &ground);
+    // THE ONE FACT A RUN'S OWN SYSCALLS NEVER STATE. Optional, and its absence
+    // costs resolution rather than correctness: without it every bare name is
+    // counted unresolved instead of being measured from the wrong directory.
+    let started_in = flag("--cwd").map(PathBuf::from);
+    let census = read_stream(
+        BufReader::new(io::stdin().lock()),
+        &ground,
+        started_in.as_deref(),
+    );
+    let unresolved = census.unresolved_total();
     println!(
         "[outside-reach] {} process(es), {} line(s), {} path(s) named relative to \
-         a descriptor, {} line(s) this reader could not read whole",
-        census.processes, census.lines, census.relative, census.unparsed
+         a descriptor or the working directory ({} placed by the file table, {} \
+         not), {} line(s) this reader could not read whole",
+        census.processes,
+        census.lines,
+        census.relative,
+        census.relative.saturating_sub(unresolved),
+        unresolved,
+        census.unparsed
     );
+    // ATTRIBUTED AND BROKEN OUT, BECAUSE A RESIDUE NOBODY CAN PLACE IS A NUMBER.
+    // A binary whose relative names went unresolved is a binary this census saw
+    // less of than its other lines suggest; WHICH of the three kinds it is
+    // decides what closing it would take, and they are three different pieces of
+    // work.
+    for (target, unplaced) in &census.unresolved {
+        println!(
+            "[outside-reach] UNRESOLVED {} name(s) — by {target}: {} under a \
+             working directory this reader cannot name, {} under a descriptor it \
+             never saw opened, {} after an argument it could not read. e.g. {}",
+            unplaced.total(),
+            unplaced.working,
+            unplaced.descriptor,
+            unplaced.unreadable,
+            unplaced.examples.join(" · ")
+        );
+    }
     // NON-VACUITY, FIRST AND LOUDEST. A census over a trace that never arrived
     // reports no reaches, and no reaches is what a hermetic suite looks like.
     if census.lines == 0 {

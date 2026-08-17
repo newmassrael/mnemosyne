@@ -1,0 +1,338 @@
+{
+  "_": [
+    "THE SWEEP THAT SAYS THIS CENSUS IS NOT VACUOUS — run it from the",
+    "repository root:",
+    "    cargo run -q --manifest-path tools/injection-harness/Cargo.toml -- \\",
+    "        tools/outside-reach/injection-sweep.json",
+    "",
+    "This gate had none until R1233, and it is the gate this repository has",
+    "caught being wrong three times — every one of them on a machine its author",
+    "was not sitting at. Its fixtures are cheap and its suite is under a second,",
+    "so what a sweep costs here is nothing and what it answers is whether those",
+    "fixtures would NOTICE: a fixture-based test passes because the fixture is",
+    "wrong as easily as because the code is right.",
+    "",
+    "MOST OF WHAT IS BROKEN BELOW IS THE FILE TABLE, because that is the part",
+    "whose failures are SILENT BY CONSTRUCTION. A model that loses a descriptor",
+    "resolves fewer names, and fewer names is what a hermetic run looks like; a",
+    "model that keeps one too long resolves a name against the wrong directory,",
+    "and a wrong path is a finding somebody chases. Two of the pairs below are",
+    "deliberately opposite directions of one line, because a test that only",
+    "catches the loosening is half a test.",
+    "",
+    "Scoped to this crate's own suite: nothing here touches the tree it judges.",
+    "",
+    "THE RED SETS ARE EXHAUSTIVE AND THEY ARE MEASURED RATHER THAN INTENDED. The",
+    "first run of this sweep found one injection reddening something else",
+    "entirely: dropping the launch directory does not disturb the `fchdir` case",
+    "(that trace establishes its directory absolutely), it disturbs the RESIDUE",
+    "COUNT of the shell case. Under the weaker `at-least` claim that run would",
+    "have been a pass with a wrong sentence in it. From here, running this",
+    "manifest narrower names the missing reds and running it wider names the new",
+    "ones — a subset claim is silent in both directions."
+  ],
+  "repo": "../..",
+  "test_command": [
+    "cargo",
+    "test",
+    "--manifest-path",
+    "tools/outside-reach/Cargo.toml",
+    "--no-fail-fast"
+  ],
+  "logs": "../../target/injection-logs",
+  "min_free_mb": 4000,
+  "red_set": "exhaustive",
+  "injections": [
+    {
+      "name": "a-descriptor-names-nothing",
+      "why": "the whole of R1233 in one line. Before it, a name given relative to a descriptor was counted and dropped, and the reason written into this crate was that it costs the census of FILES but not of TREES — false, because `..` walks OUT of the directory the descriptor names and no absolute path in the trace ever spells where it lands",
+      "edits": [
+        {
+          "file": "tools/outside-reach/src/lib.rs",
+          "from": "            Base::Descriptor(fd) => self.files.borrow().get(&fd)?.at.clone(),",
+          "to": "            Base::Descriptor(_) => return None,"
+        }
+      ],
+      "expect_red": [
+        "a_descriptor_duplicated_by_fcntl_names_the_same_directory",
+        "a_descriptor_is_a_place_to_start_walking_from_and_not_a_floor",
+        "a_descriptor_re_pointed_from_an_unknown_source_is_forgotten",
+        "a_descriptor_the_kernel_closed_at_exec_is_not_read_as_the_old_file",
+        "a_process_that_spoke_before_its_clone_line_still_inherits",
+        "a_thread_shares_the_file_table_and_a_fork_gets_a_copy",
+        "the_census_answers_empty_clean_and_finding_as_three_different_statuses"
+      ]
+    },
+    {
+      "name": "the-launch-directory-is-never-seeded",
+      "why": "the working directory is the one fact about a run that its own syscalls never state, and without it every bare name is unresolvable. A reader that silently ignored the flag would look exactly like one whose caller forgot to pass it. WHERE THIS SHOWS is not where it was first aimed: the shell case's REACHES are unchanged (its `chdir` names `/etc` absolutely, so the file is found either way) and what moves is its RESIDUE — the `.` made before the `chdir`, which is placeable only from the launch directory",
+      "edits": [
+        {
+          "file": "tools/outside-reach/src/lib.rs",
+          "from": "                *traced.entry(id).or_default().cwd.borrow_mut() = Some(normalise(dir));",
+          "to": "                let _ = dir;"
+        }
+      ],
+      "expect_red": [
+        "a_bare_name_is_measured_from_where_the_command_started",
+        "a_descriptor_duplicated_by_fcntl_names_the_same_directory"
+      ]
+    },
+    {
+      "name": "every-clone-shares-the-file-table",
+      "why": "the loosening direction, and it is the one that answers WRONG rather than unknown: a forked child would resolve `openat(3, …)` against a directory only its parent went on to open, and report a reach that never happened",
+      "edits": [
+        {
+          "file": "tools/outside-reach/src/lib.rs",
+          "from": "                let shares_files = flags.contains(\"CLONE_FILES\");",
+          "to": "                let shares_files = true;"
+        }
+      ],
+      "expect_red": ["a_thread_shares_the_file_table_and_a_fork_gets_a_copy"]
+    },
+    {
+      "name": "no-clone-shares-the-file-table",
+      "why": "the tightening direction of the same line, and a test that only caught the other one would be half a test. Most of a cargo run is THREADS — a Rust test is one — so a model that always copies loses the descriptors its siblings open after the clone, which is most of the resolution this round bought",
+      "edits": [
+        {
+          "file": "tools/outside-reach/src/lib.rs",
+          "from": "                let shares_files = flags.contains(\"CLONE_FILES\");",
+          "to": "                let shares_files = false;"
+        }
+      ],
+      "expect_red": ["a_thread_shares_the_file_table_and_a_fork_gets_a_copy"]
+    },
+    {
+      "name": "close-on-exec-descriptors-survive-the-exec",
+      "why": "nearly every open in a Rust build carries `O_CLOEXEC`, so a model that kept them across `execve` holds a stale binding through every spawn in the run — and the cost is not the lost resolution, it is that the NEW program's descriptor 3 reads as the old program's file",
+      "edits": [
+        {
+          "file": "tools/outside-reach/src/lib.rs",
+          "from": "                me.files.borrow_mut().retain(|_, file| !file.cloexec);",
+          "to": "                me.files.borrow_mut().retain(|_, _file| true);"
+        }
+      ],
+      "expect_red": [
+        "a_descriptor_duplicated_by_fcntl_names_the_same_directory",
+        "a_descriptor_the_kernel_closed_at_exec_is_not_read_as_the_old_file"
+      ]
+    },
+    {
+      "name": "a-close-is-not-read",
+      "why": "`close` takes no filename, so it is not in `%file` and this census did not see it before R1233. It is in the trace now for exactly this: the kernel hands a closed number to the next thing that asks, and a model that never frees one answers about the directory that used to be there",
+      "edits": [
+        {
+          "file": "tools/outside-reach/src/lib.rs",
+          "from": "                        traced.entry(id).or_default().files.borrow_mut().remove(&fd);",
+          "to": "                        let _ = fd;"
+        }
+      ],
+      "expect_red": ["a_closed_descriptor_is_not_a_directory_any_more"]
+    },
+    {
+      "name": "a-re-pointed-descriptor-keeps-its-old-binding",
+      "why": "`dup2(10, 1) = 1` is a real line from a real shell, where descriptor 10 was opened before the trace began. Nothing in the stream says what 10 is, so nothing can say what 1 is afterwards — and the binding held under 1 is now a lie. This is the difference between the model answering UNKNOWN and answering WRONG",
+      "edits": [
+        {
+          "file": "tools/outside-reach/src/lib.rs",
+          "from": "            me.files.borrow_mut().remove(&new);",
+          "to": "            let _ = new;"
+        }
+      ],
+      "expect_red": ["a_descriptor_re_pointed_from_an_unknown_source_is_forgotten"]
+    },
+    {
+      "name": "a-descriptor-duplicated-by-fcntl-is-not-followed",
+      "why": "`fcntl(4, F_DUPFD_CLOEXEC, 3) = 5` is how `fdopendir` gets its descriptor, so it is how every tree walk in a run does — `find(1)` opens a directory and then names everything under the DUPLICATE. This was 33,791 of one whole-suite run's 33,792 unplaced names, and it was found by reading the residue's own example rather than by knowing the manual",
+      "edits": [
+        {
+          "file": "tools/outside-reach/src/lib.rs",
+          "from": "                if command.contains(\"F_DUPFD\") {",
+          "to": "                if false {"
+        }
+      ],
+      "expect_red": ["a_descriptor_duplicated_by_fcntl_names_the_same_directory"]
+    },
+    {
+      "name": "a-descriptor-marked-close-on-exec-afterwards-survives",
+      "why": "`O_CLOEXEC` at the open is not the only way a descriptor is marked: `fcntl(fd, F_SETFD, FD_CLOEXEC)` does it after the fact, and `find(1)` does exactly that one line before it duplicates. A model that read only the open flags keeps such a descriptor across `execve`, and the new program's descriptor 4 then reads as the old program's directory",
+      "edits": [
+        {
+          "file": "tools/outside-reach/src/lib.rs",
+          "from": "                } else if command.contains(\"F_SETFD\") {",
+          "to": "                } else if false {"
+        }
+      ],
+      "expect_red": ["a_descriptor_duplicated_by_fcntl_names_the_same_directory"]
+    },
+    {
+      "name": "a-deleted-working-directory-is-taken-as-a-path",
+      "why": "a process whose working directory has been removed is told `\"/tmp/x (deleted)\"` — what the kernel says, not where anything is — and a test that deletes its own fixture while something stands in it produces exactly that. Taken, every later bare name is measured from a directory that does not exist under a name nothing has, which is the model answering WRONG where UNKNOWN is required",
+      "edits": [
+        {
+          "file": "tools/outside-reach/src/lib.rs",
+          "from": "                } else if name == \"getcwd\" && !named.ends_with(\" (deleted)\") {",
+          "to": "                } else if name == \"getcwd\" {"
+        }
+      ],
+      "expect_red": ["a_process_that_asks_where_it_stands_has_told_this_reader"]
+    },
+    {
+      "name": "the-adopted-child-is-put-back-where-its-parent-was",
+      "why": "under `CLONE_FS` the working directory is ONE object, so a child's `chdir` moved its parent too. Adopting the parent's answer at the clone line puts the pair back where the child had already left — and the parent was BLOCKED in the clone, so it cannot have been the newer word. This is the direction of the merge, which no count of resolutions would show",
+      "edits": [
+        {
+          "file": "tools/outside-reach/src/lib.rs",
+          "from": "        let learned = child.cwd.borrow().clone();\n        if learned.is_some() {\n            *cwd.borrow_mut() = learned;\n        }\n        child.cwd = Rc::clone(cwd);",
+          "to": "        child.cwd = Rc::clone(cwd);"
+        }
+      ],
+      "expect_red": ["a_process_that_spoke_before_its_clone_line_still_inherits"]
+    },
+    {
+      "name": "a-process-that-spoke-first-is-orphaned",
+      "why": "a `vfork`/`posix_spawn` parent is BLOCKED until its child execs, so the child's `dup2`, `chdir` and `execve` are printed before the parent's `clone3(…) = <pid>` — the normal shape of a spawn, not an oddity. A reader that treats such a child's empty table as its own state gives it nothing to resolve against for the rest of its life",
+      "edits": [
+        {
+          "file": "tools/outside-reach/src/lib.rs",
+          "from": "                        adopt(child, &parent_files, &parent_cwd, shares_files, shares_cwd);",
+          "to": "                        let _ = (&parent_files, &parent_cwd, shares_files, shares_cwd);"
+        }
+      ],
+      "expect_red": ["a_process_that_spoke_before_its_clone_line_still_inherits"]
+    },
+    {
+      "name": "the-residue-is-a-total-and-not-three-kinds",
+      "why": "a residue reported as one number is a blind spot somebody must re-measure before they can act: closing descriptors nobody saw opened is not the same work as closing unnamed working directories, and neither is reading an argument this reader cannot parse. The three counts are what turned 433,904 into a diagnosis",
+      "edits": [
+        {
+          "file": "tools/outside-reach/src/lib.rs",
+          "from": "            Base::Working => self.working += 1,\n            Base::Descriptor(_) => self.descriptor += 1,\n            Base::Unknown => self.unreadable += 1,",
+          "to": "            Base::Working | Base::Descriptor(_) | Base::Unknown => self.working += 1,"
+        }
+      ],
+      "expect_red": [
+        "what_the_model_could_not_place_says_which_of_the_three_kinds_it_is"
+      ]
+    },
+    {
+      "name": "the-residue-is-counted-but-never-spelled",
+      "why": "a kind and a count still do not say WHICH CALL. The entire `fcntl` mechanism above was found by reading one spelling — `newfstatat(5, \"src\")` — off a report, on a machine nobody could attach a debugger to. Without it that residue is a number waiting for somebody to re-run the census by hand",
+      "edits": [
+        {
+          "file": "tools/outside-reach/src/lib.rs",
+          "from": "        if self.examples.len() < EXAMPLES_KEPT {",
+          "to": "        if false {"
+        }
+      ],
+      "expect_red": [
+        "what_the_model_could_not_place_says_which_of_the_three_kinds_it_is"
+      ]
+    },
+    {
+      "name": "an-unknown-fchdir-leaves-the-old-directory",
+      "why": "`fchdir` moves the working directory without naming it. To a descriptor this reader never saw, the honest answer is that the directory is now unknown; keeping the previous one measures every later bare name from a directory the process has left",
+      "edits": [
+        {
+          "file": "tools/outside-reach/src/lib.rs",
+          "from": "                *me.cwd.borrow_mut() = to;",
+          "to": "                if to.is_some() {\n                    *me.cwd.borrow_mut() = to;\n                }"
+        }
+      ],
+      "expect_red": [
+        "the_working_directory_follows_fchdir_and_becomes_unknown_when_it_cannot"
+      ]
+    },
+    {
+      "name": "a-process-that-says-where-it-stands-is-not-heard",
+      "why": "`getcwd` is the kernel answering the one question this reader cannot ask, it is already in `%file`, and reading it costs nothing. Ignored, every process whose descent from the launch directory was broken keeps naming files under a directory nobody can name — 41,828 of one whole-suite census's unplaced names were exactly that",
+      "edits": [
+        {
+          "file": "tools/outside-reach/src/lib.rs",
+          "from": "                } else if name == \"getcwd\" && !named.ends_with(\" (deleted)\") {",
+          "to": "                } else if false {"
+        }
+      ],
+      "expect_red": ["a_process_that_asks_where_it_stands_has_told_this_reader"]
+    },
+    {
+      "name": "the-content-of-a-symlink-is-taken-as-a-path",
+      "why": "`symlink(\"../../elsewhere/target\", \"link\")` writes a STRING; the file it touches is the second argument. A reader that took the first quoted string off every line — which is what this one did until R1233 — resolves that string against the working directory and reports a reach into a tree the run never looked at. A false finding is the one outcome worse than a missing one",
+      "edits": [
+        {
+          "file": "tools/outside-reach/src/lib.rs",
+          "from": "                let which = usize::from(matches!(name, \"symlink\" | \"symlinkat\"));",
+          "to": "                let which = 0;"
+        }
+      ],
+      "expect_red": ["the_content_of_a_symlink_is_not_a_path_the_run_reached"]
+    },
+    {
+      "name": "a-program-a-run-executes-is-judged-against-nothing",
+      "why": "the `execve` arm took the program's name to attribute reaches to it and judged the path itself against nothing, so a binary run from outside the ground was a reach this census could not report. A test that shells out to a tool the machine beside it does not have is exactly what this gate exists to make visible",
+      "edits": [
+        {
+          "file": "tools/outside-reach/src/lib.rs",
+          "from": "                match me.resolve(base, named) {\n                    Some(path) => {\n                        if !ground.holds(&path) {\n                            me.outside.insert(path);\n                        }\n                    }\n                    None => me.unresolved.note(base, name, named),\n                }",
+          "to": "                match me.resolve(base, named) {\n                    Some(_) => {}\n                    None => me.unresolved.note(base, name, named),\n                }"
+        }
+      ],
+      "expect_red": [
+        "a_bare_name_is_measured_from_where_the_command_started",
+        "a_program_a_run_executes_is_a_file_it_read"
+      ]
+    },
+    {
+      "name": "an-unplaceable-name-is-passed-over",
+      "why": "the residue is the honest half of the model: what it could not place is what a reader must not be shown a total without. Dropped silently, every number this census prints reads as covering the whole run",
+      "edits": [
+        {
+          "file": "tools/outside-reach/src/lib.rs",
+          "from": "                let Some(path) = resolved else {\n                    me.unresolved.note(base, name, named);\n                    continue;\n                };",
+          "to": "                let Some(path) = resolved else {\n                    continue;\n                };"
+        }
+      ],
+      "expect_red": [
+        "a_bare_name_is_measured_from_where_the_command_started",
+        "a_closed_descriptor_is_not_a_directory_any_more",
+        "a_descriptor_duplicated_by_fcntl_names_the_same_directory",
+        "a_descriptor_re_pointed_from_an_unknown_source_is_forgotten",
+        "a_descriptor_the_kernel_closed_at_exec_is_not_read_as_the_old_file",
+        "a_name_the_model_cannot_place_is_counted_against_the_binary_that_made_it",
+        "a_process_that_asks_where_it_stands_has_told_this_reader",
+        "a_process_that_spoke_before_its_clone_line_still_inherits",
+        "a_thread_shares_the_file_table_and_a_fork_gets_a_copy",
+        "the_working_directory_follows_fchdir_and_becomes_unknown_when_it_cannot",
+        "what_the_model_could_not_place_says_which_of_the_three_kinds_it_is"
+      ]
+    },
+    {
+      "name": "an-empty-trace-reports-clean",
+      "why": "the gate's own non-vacuity, and the one answer it must never give: a census over a trace that never arrived reports no reaches, and no reaches is exactly what a hermetic suite looks like. R1127 measured this crate's sibling reporting a refusal path as a clean pass with the whole suite green, because nothing ran the binary",
+      "edits": [
+        {
+          "file": "tools/outside-reach/src/main.rs",
+          "from": "        return ExitCode::from(2);\n    }\n\n    let home = PathBuf::from(",
+          "to": "        return ExitCode::SUCCESS;\n    }\n\n    let home = PathBuf::from("
+        }
+      ],
+      "expect_red": [
+        "the_census_answers_empty_clean_and_finding_as_three_different_statuses"
+      ]
+    },
+    {
+      "name": "a-finding-is-printed-and-then-passed",
+      "why": "the findings and the verdict are two answers, and a census that names its reaches and exits 0 is one no workflow can fail over. The step that reads this exits with what the file holds, so a zero here is a green push",
+      "edits": [
+        {
+          "file": "tools/outside-reach/src/main.rs",
+          "from": "    ExitCode::from(1)\n}",
+          "to": "    ExitCode::SUCCESS\n}"
+        }
+      ],
+      "expect_red": [
+        "the_census_answers_empty_clean_and_finding_as_three_different_statuses"
+      ]
+    }
+  ]
+}
