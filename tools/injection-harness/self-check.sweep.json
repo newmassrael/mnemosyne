@@ -1,7 +1,7 @@
 {
   "_": [
     "THE HARNESS AIMED AT ITSELF — run it from this crate's directory:",
-    "    cargo run -- self-check.json",
+    "    cargo run -- self-check.sweep.json",
     "Every property this tool holds is a property its own suite claims to hold,",
     "and a claim nobody has broken is a claim nobody has measured. So each",
     "injection here removes ONE of them and names the tests that must go red.",

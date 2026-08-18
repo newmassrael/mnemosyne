@@ -52,6 +52,15 @@ categories = ["development-tools"]
 # held. This is the one place a second parser is correct: the disagreement
 # between what the file MEANS and what the program EXTRACTS is the finding.
 toml = "1"
+# WHICH SWEEPS THIS REPOSITORY TRACKS, ASKED OF THE PROGRAM THAT OWNS THE
+# ANSWER. The value half of the law needs a population — the files whose evidence
+# would land on a build machine if the declaration did not name them — and
+# `injection_harness::tracked_sweeps` is that population, already asked by
+# `tools/scratch-budget` for its own question. A second reading here would be a
+# list that goes stale the first time a crate gains a sweep, and it would go
+# stale in the direction that reads as a pass, which is the exact defect the
+# value half exists to catch.
+injection-harness = { path = "../injection-harness" }
 
 [dev-dependencies]
 # The cases build throwaway repositories OUTSIDE this checkout — a declaration is

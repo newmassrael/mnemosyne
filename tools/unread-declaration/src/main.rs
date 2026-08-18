@@ -125,10 +125,36 @@ fn main() -> ExitCode {
         );
     }
 
+    // WHAT THE VALUE HALF LOOKED AT, COUNTED. The number is the finding that was
+    // missed for a round: a token reaching four of twenty-three sweeps matches
+    // something, so only the count tells it apart from one reaching all of them.
+    if report.writes_reach.is_empty() {
+        println!(
+            "[unread-declaration] no `{}` key here, so no value was held against this tree; it \
+             tracks {} sweep(s), and every one of them would be sent to a build machine",
+            unread_declaration::WRITES,
+            report.sweeps_tracked,
+        );
+    } else {
+        println!(
+            "[unread-declaration] {} `{}` token(s) against {} tracked sweep(s):",
+            report.writes_reach.len(),
+            unread_declaration::WRITES,
+            report.sweeps_tracked,
+        );
+        for reach in &report.writes_reach {
+            println!(
+                "[unread-declaration]   `{}` names {} tracked path(s), {} of them sweep(s)",
+                reach.token, reach.paths, reach.sweeps,
+            );
+        }
+    }
+
     if report.findings.is_empty() {
         println!(
             "[unread-declaration] every top-level key this repository declares is one the \
-             program reads as declared"
+             program reads as declared, and every token of `{}` names something here",
+            unread_declaration::WRITES,
         );
         return ExitCode::SUCCESS;
     }
@@ -152,6 +178,21 @@ fn main() -> ExitCode {
                 "                     why: the program's line patterns will still read PARTS of \
                  a file that does not parse, which is worse than a clean failure\n\
                  \x20                    fix: make it parse"
+            ),
+            unread_declaration::Finding::NamesNothingHere { token, .. } => println!(
+                "                     why: the program looks for `{token}` in a command and no \
+                 file here carries that text, so the declaration reads as a requirement and \
+                 imposes none — which is what `exclude` did, one key over, for five repositories\n\
+                 \x20                    fix: spell it the way this repository spells the file, \
+                 or delete it"
+            ),
+            unread_declaration::Finding::EvidenceWouldLandElsewhere { manifest } => println!(
+                "                     why: running `{manifest}` edits this tree and writes \
+                 tracked evidence beside itself, so a run sent to a build machine changes a \
+                 throwaway copy and leaves the record there — green, and about nothing\n\
+                 \x20                    fix: widen a `{}` token until it names this manifest \
+                 too; the counts printed above say how much each one reaches",
+                unread_declaration::WRITES,
             ),
         }
     }

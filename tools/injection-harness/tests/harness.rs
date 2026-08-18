@@ -1356,7 +1356,7 @@ fn a_tree_left_injected_by_a_dead_sweep_stops_the_next_one() {
 #[test]
 fn a_manifest_that_names_its_paths_relatively_is_still_run_from_one_place() {
     // THE SHAPE THE TRACKED MANIFESTS USE, and the one every other test here
-    // does not: `example.json` says `"repo": "../.."` and
+    // does not: `example.sweep.json` says `"repo": "../.."` and
     // `"logs": "target/injection-logs"`. The suite is started with the TREE as
     // its working directory, so a relative path handed across that change
     // resolves somewhere else — the first real sweep under a supervisor died
@@ -1425,7 +1425,7 @@ fn a_manifest_that_names_its_paths_relatively_is_still_run_from_one_place() {
 #[test]
 fn a_suite_that_replaces_the_tool_does_not_end_the_sweep() {
     // A sweep may be aimed at the tree that BUILDS it — this crate's own
-    // `self-check.json` is exactly that — and the suite then replaces the binary
+    // `self-check.sweep.json` is exactly that — and the suite then replaces the binary
     // the sweep is executing. A path resolved afterwards names a file that no
     // longer exists, and the first self-check ever run died on its SECOND
     // injection with `No such file or directory`. What makes the supervisor the
@@ -1693,7 +1693,7 @@ fn evidence_that_still_matches_is_left_alone_and_so_is_the_claim_it_supports() {
 /// A suite that goes red while the record holds a stale row — the deadlock, end
 /// to end.
 ///
-/// This is what `self-check.json` IS: its control runs the harness's own suite,
+/// This is what `self-check.sweep.json` IS: its control runs the harness's own suite,
 /// which holds R1198's law over firing records, so a stale row makes the control
 /// red and the harness refuses to start on a red control. The `--only` run that
 /// would clear the row could then never happen. R1199 met it and escaped only

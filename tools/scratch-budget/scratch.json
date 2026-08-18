@@ -33,7 +33,7 @@
     {
       "path": "tools/injection-harness/target/injection-logs",
       "budget_mib": 8,
-      "why": "Where the harness's `example.json` sweep writes, beside the workspace it demonstrates on. MEASURED 2026-08-14: ABSENT — that sweep has not been run in this tree, which is a directory with no collector and no growth YET, and the two are not the same thing. The budget is its sibling's, for the same size of log."
+      "why": "Where the harness's `example.sweep.json` sweep writes, beside the workspace it demonstrates on. MEASURED 2026-08-14: ABSENT — that sweep has not been run in this tree, which is a directory with no collector and no growth YET, and the two are not the same thing. The budget is its sibling's, for the same size of log."
     },
     {
       "path": "tools/item-citations/target/item-citations-sweep-logs",

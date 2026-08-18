@@ -1,0 +1,96 @@
+{
+  "_": [
+    "THE SWEEP THAT SAYS R1241's VALUE HALF IS NOT VACUOUS — run it from the",
+    "repository root:",
+    "    cargo run -q --manifest-path tools/injection-harness/Cargo.toml -- \\",
+    "        tools/unread-declaration/injection-sweep.json",
+    "",
+    "WHAT THE CONTRACT IS. The key half of this gate asks the program; the value",
+    "half cannot, because whether a substring names anything is a question about",
+    "THIS repository, which the program has never seen. So it asks the VCS: every",
+    "token of `writes` reaches something tracked, and every sweep this repository",
+    "tracks is reached by some token.",
+    "",
+    "EXISTENCE IS NOT ENOUGH AND THAT IS WHY THERE ARE FOUR. `.sweep.json` named",
+    "four of twenty-three manifests — the token matched something, every key was",
+    "read as declared, and nineteen sweeps ran on a build machine with the tracked",
+    "evidence they write left behind. So one injection removes the coverage half",
+    "and one removes the existence half; a third stops printing the counts, which",
+    "are the only thing that tells four-of-twenty-three from all-of-them; and the",
+    "fourth turns the refusal into an answer, because a tree this gate cannot ask",
+    "about must not come back clean.",
+    "",
+    "Scoped to this crate's own suite: nothing here touches the tree it judges.",
+    "",
+    "RUN IT LOCALLY. The harness edits this tree and writes the firing record",
+    "beside this file, so a run sent to a build machine leaves its evidence on a",
+    "throwaway copy (R1205's carry, and the `writes` line in the declaration)."
+  ],
+  "repo": "../..",
+  "test_command": [
+    "cargo",
+    "test",
+    "--manifest-path",
+    "tools/unread-declaration/Cargo.toml",
+    "--locked",
+    "--no-fail-fast"
+  ],
+  "red_set": "exhaustive",
+  "logs": "../../target/injection-logs",
+  "min_free_mb": 8000,
+  "injections": [
+    {
+      "name": "no-sweep-is-asked-whether-a-token-reaches-it",
+      "why": "the defect exactly as it stood, and the one this half was written after. With the coverage loop gone the law asks only whether each token names SOMETHING, which `.sweep.json` did — four of twenty-three — while nineteen sweeps ran elsewhere and their tracked evidence stayed there. Every key read as declared, every token naming a file, and the thing the declaration was written to do not happening",
+      "edits": [
+        {
+          "file": "tools/unread-declaration/src/lib.rs",
+          "from": "    for manifest in &sweeps {\n        if !declared\n            .items\n            .iter()\n            .any(|token| manifest.contains(token.as_str()))\n        {\n            findings.push(Finding::EvidenceWouldLandElsewhere {\n                manifest: manifest.clone(),\n            });\n        }\n    }\n",
+          "to": ""
+        }
+      ],
+      "expect_red": ["a_token_that_reaches_only_some_of_the_sweeps_is_a_finding"]
+    },
+    {
+      "name": "a-token-that-names-nothing-is-taken-as-naming-something",
+      "why": "the other direction, and the `exclude` shape one key over: a token the program dutifully looks for and no command here can contain. Five repositories declared that key and nothing read it, which was invisible until a build machine failed a compile for a missing header",
+      "edits": [
+        {
+          "file": "tools/unread-declaration/src/lib.rs",
+          "from": "        if matched_paths == 0 {\n            findings.push(Finding::NamesNothingHere {\n                key: declared.key.clone(),\n                token: token.clone(),\n            });\n        }\n",
+          "to": ""
+        }
+      ],
+      "expect_red": ["a_writes_token_that_names_nothing_here_is_a_finding"]
+    },
+    {
+      "name": "the-reach-of-a-token-is-computed-and-not-printed",
+      "why": "a count nobody can read is a count nobody watches drift. Four of twenty-three and twenty-three of twenty-three are both `matches something`, so the number is the whole of what tells them apart — and a reader who never sees it on a GREEN run cannot notice the day it falls. R1130 measured this shape: a field read and never printed",
+      "edits": [
+        {
+          "file": "tools/unread-declaration/src/main.rs",
+          "from": "        for reach in &report.writes_reach {\n            println!(\n                \"[unread-declaration]   `{}` names {} tracked path(s), {} of them sweep(s)\",\n                reach.token, reach.paths, reach.sweeps,\n            );\n        }\n",
+          "to": ""
+        }
+      ],
+      "expect_red": ["the_reach_of_every_token_is_counted_and_printed"]
+    },
+    {
+      "name": "a-tree-this-gate-cannot-ask-about-is-called-clean",
+      "why": "the third exit code, which this repository keeps paying for: a check that never ran reports zero findings, and zero findings is what a clean tree looks like. Both populations come from the VCS, so a tree without one has no answer — and swallowing that into an empty list turns `I could not look` into `there is nothing there`",
+      "edits": [
+        {
+          "file": "tools/unread-declaration/src/lib.rs",
+          "from": "        .map_err(|why| format!(\"which sweeps this repository tracks could not be asked — {why}\"))?",
+          "to": "        .unwrap_or_default()"
+        },
+        {
+          "file": "tools/unread-declaration/src/lib.rs",
+          "from": "    let paths = tracked_paths(root)?;",
+          "to": "    let paths = tracked_paths(root).unwrap_or_default();"
+        }
+      ],
+      "expect_red": ["a_tree_with_no_vcs_is_no_verdict_rather_than_a_clean_value_half"]
+    }
+  ]
+}

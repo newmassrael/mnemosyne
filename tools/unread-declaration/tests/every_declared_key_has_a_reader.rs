@@ -22,14 +22,75 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 /// A repository root that declares `text`, or nothing when `text` is `None`.
+///
+/// IT IS A REAL REPOSITORY, because the value half of the law asks the VCS what
+/// this tree tracks and a directory that is not one has no answer to give. A
+/// fixture without `git init` would make every case here a refusal, which is why
+/// one case deliberately has none — and asserts the refusal rather than reading
+/// it as a clean check.
 fn repository_declaring(root: &Path, text: Option<&str>) -> PathBuf {
+    tracked_repository_declaring(root, text, &[])
+}
+
+/// The same, plus files to CREATE AND TRACK — the population the value half is
+/// judged against.
+fn tracked_repository_declaring(
+    root: &Path,
+    text: Option<&str>,
+    files: &[(&str, &str)],
+) -> PathBuf {
     let repository = root.join("repository");
     std::fs::create_dir_all(repository.join(".claude")).expect("make the throwaway root");
     if let Some(text) = text {
         std::fs::write(repository.join(unread_declaration::DECLARATION), text)
             .expect("write the declaration");
     }
+    git(&repository, &["init", "-q", "."]);
+    git(&repository, &["config", "user.email", "gate@test"]);
+    git(&repository, &["config", "user.name", "gate test"]);
+    for (path, body) in files {
+        let file = repository.join(path);
+        if let Some(parent) = file.parent() {
+            std::fs::create_dir_all(parent).expect("the fixture file's directory");
+        }
+        std::fs::write(&file, body).expect("the fixture file");
+        git(&repository, &["add", path]);
+    }
     repository
+}
+
+/// A root that is NOT a repository — for the one case about what this gate can
+/// and cannot be asked.
+fn unversioned_declaring(root: &Path, text: &str) -> PathBuf {
+    let repository = root.join("unversioned");
+    std::fs::create_dir_all(repository.join(".claude")).expect("make the throwaway root");
+    std::fs::write(repository.join(unread_declaration::DECLARATION), text)
+        .expect("write the declaration");
+    repository
+}
+
+fn git(repository: &Path, args: &[&str]) {
+    let out = Command::new("git")
+        .args(args)
+        .current_dir(repository)
+        .output()
+        .expect("git, which the value half of the law asks what this tree tracks");
+    assert!(
+        out.status.success(),
+        "git {args:?} failed in the fixture: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+}
+
+/// A manifest the harness reads as a sweep — the smallest one that does.
+fn a_sweep() -> String {
+    concat!(
+        "{\"repo\": \".\", \"test_command\": [\"cargo\", \"test\"], ",
+        "\"logs\": \"target/logs\", \"injections\": [{\"name\": \"n\", ",
+        "\"why\": \"w\", \"edits\": [{\"file\": \"f\", \"from\": \"a\", \"to\": \"b\"}], ",
+        "\"expect_red\": [\"t\"]}]}"
+    )
+    .to_owned()
 }
 
 /// The seam's wire form, built here so a case states exactly what the program
@@ -388,4 +449,148 @@ fn the_installed_program_answers_in_the_shape_this_gate_parses() {
             );
         }
     }
+}
+
+/// What every case about the value half declares — the program reads `writes`,
+/// so the KEY half is clean and what is left is the value.
+fn reads_writes(root: &Path, name: &str, repository: &Path, value: &str) -> PathBuf {
+    answer_file(
+        root,
+        name,
+        &answer(
+            &repository.join(unread_declaration::DECLARATION),
+            true,
+            &[("writes", value)],
+        ),
+    )
+}
+
+#[test]
+fn a_writes_token_that_names_nothing_here_is_a_finding() {
+    // THE `exclude` SHAPE, one key over and one half down: the program reads the
+    // key exactly as declared, and looks for a substring no command of this
+    // repository can contain. A requirement that imposes nothing, and the key
+    // half is clean while it does.
+    let root = tempfile::tempdir().expect("a temporary directory");
+    let repository = tracked_repository_declaring(
+        root.path(),
+        Some("writes = [\"scripts/fmt.sh\", \"scripts/nope.sh\"]\n"),
+        &[("scripts/fmt.sh", "#!/bin/sh\n")],
+    );
+    let says = reads_writes(
+        root.path(),
+        "reads-writes",
+        &repository,
+        "scripts/fmt.sh scripts/nope.sh",
+    );
+    let output = gate(&repository, Some(&answering_program()), None, Some(&says));
+    assert_eq!(code(&output), 1, "{}", said(&output));
+    let words = said(&output);
+    assert!(
+        words.contains("`writes` declares `scripts/nope.sh` and no file this repository tracks"),
+        "{words}"
+    );
+    assert!(
+        !words.contains("declares `scripts/fmt.sh` and no file"),
+        "the token that DOES name something must not be reported, or the finding \
+         says nothing about which token is wrong:\n{words}"
+    );
+}
+
+#[test]
+fn a_token_that_reaches_only_some_of_the_sweeps_is_a_finding() {
+    // THE MEASURED DEFECT, and the reason existence is not the law. `.sweep.json`
+    // named four of the twenty-three manifests this repository tracks: the token
+    // matched something, every key was read as declared, and nineteen sweeps ran
+    // on a build machine with their tracked evidence left behind. A gate that
+    // asked only "does this token match a path" called that clean.
+    let root = tempfile::tempdir().expect("a temporary directory");
+    let repository = tracked_repository_declaring(
+        root.path(),
+        Some("writes = [\".sweep.json\"]\n"),
+        &[
+            ("sweeps/alpha.sweep.json", &a_sweep()),
+            ("tools/gate/injection-sweep.json", &a_sweep()),
+        ],
+    );
+    let says = reads_writes(
+        root.path(),
+        "reads-the-narrow-one",
+        &repository,
+        ".sweep.json",
+    );
+    let output = gate(&repository, Some(&answering_program()), None, Some(&says));
+    assert_eq!(code(&output), 1, "{}", said(&output));
+    let words = said(&output);
+    assert!(
+        words.contains(
+            "`tools/gate/injection-sweep.json` is a sweep this repository tracks and no \
+             `writes` token names it"
+        ),
+        "{words}"
+    );
+    assert!(
+        !words.contains("`sweeps/alpha.sweep.json` is a sweep"),
+        "the manifest the token DOES name must not be reported, or the finding \
+         cannot be acted on:\n{words}"
+    );
+}
+
+#[test]
+fn the_reach_of_every_token_is_counted_and_printed() {
+    // WHAT MAKES A PARTIAL REACH VISIBLE AT ALL. Four of twenty-three and
+    // twenty-three of twenty-three are both "matches something"; the number is
+    // the only thing that tells them apart, so a clean run prints it too. A count
+    // published only when a law fails is a count nobody can watch drift.
+    let root = tempfile::tempdir().expect("a temporary directory");
+    let repository = tracked_repository_declaring(
+        root.path(),
+        Some("writes = [\"sweep.json\"]\n"),
+        &[
+            ("sweeps/alpha.sweep.json", &a_sweep()),
+            ("tools/gate/injection-sweep.json", &a_sweep()),
+        ],
+    );
+    let says = reads_writes(root.path(), "reads-the-wide-one", &repository, "sweep.json");
+    let output = gate(&repository, Some(&answering_program()), None, Some(&says));
+    assert_eq!(code(&output), 0, "{}", said(&output));
+    let words = said(&output);
+    assert!(
+        words.contains("1 `writes` token(s) against 2 tracked sweep(s):"),
+        "{words}"
+    );
+    assert!(
+        words.contains("`sweep.json` names 2 tracked path(s), 2 of them sweep(s)"),
+        "the count is the finding a round missed, so a clean run has to print \
+         it:\n{words}"
+    );
+}
+
+#[test]
+fn a_tree_with_no_vcs_is_no_verdict_rather_than_a_clean_value_half() {
+    // THE REFUSAL, ASSERTED. The population comes from the VCS, so a tree without
+    // one cannot be judged — and this gate's whole third exit code exists because
+    // a check that never ran reports zero findings, which is what a clean tree
+    // looks like. The key half being answerable does not make the value half
+    // answered.
+    let root = tempfile::tempdir().expect("a temporary directory");
+    let repository = unversioned_declaring(root.path(), "writes = [\"scripts/fmt.sh\"]\n");
+    let says = reads_writes(
+        root.path(),
+        "reads-writes-unversioned",
+        &repository,
+        "scripts/fmt.sh",
+    );
+    let output = gate(&repository, Some(&answering_program()), None, Some(&says));
+    assert_eq!(
+        code(&output),
+        2,
+        "a tree this gate cannot ask about must not exit 0:\n{}",
+        said(&output)
+    );
+    assert!(
+        said(&output).contains("NO VERDICT"),
+        "and it must say so in the words the other gates use:\n{}",
+        said(&output)
+    );
 }

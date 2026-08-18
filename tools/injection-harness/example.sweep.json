@@ -1,12 +1,20 @@
 {
   "_": [
     "A REAL, RUNNABLE SWEEP — run it from this crate's directory:",
-    "    cargo run -- example.json",
+    "    cargo run -- example.sweep.json",
     "It reverts the wire Round 1056 shipped (payoff substantiation naming the",
     "setups no payoff credits) and names the three tests that should go red.",
     "Round 1057 ran this same injection by hand and got exactly those three.",
     "Keep this file runnable: it is the shape the next round copies, and a",
-    "shape nobody can run is a shape nobody trusts."
+    "shape nobody can run is a shape nobody trusts.",
+    "",
+    "THE NAME CARRIES `sweep` BECAUSE THE DECLARATION READS NAMES (R1241). The",
+    "build-machine declaration marks a sweep-running command as one that WRITES",
+    "this tree by looking for the substring `sweep.json` in it, and a manifest",
+    "named without it is a run sent to a build machine — where it edits a",
+    "throwaway copy and leaves the tracked record it writes behind. This file was",
+    "`example.json` until the law over that declaration's values was written and",
+    "found it."
   ],
   "repo": "../..",
   "test_command": ["cargo", "test", "--workspace", "--all-features", "--no-fail-fast"],

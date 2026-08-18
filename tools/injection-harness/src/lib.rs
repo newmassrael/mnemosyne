@@ -197,7 +197,7 @@ pub fn records_the_same_injection(row: &Firing, injection: &Injection) -> bool {
 /// WHY THIS HAPPENS BEFORE THE CONTROL AND NOT AFTER THE RUN. R1198's law says a
 /// row proven against a different definition is evidence about another
 /// injection, and it says so by turning red — which is right, and which for ONE
-/// sweep in this repository is a deadlock. The harness's own `self-check.json`
+/// sweep in this repository is a deadlock. The harness's own `self-check.sweep.json`
 /// runs the harness's own suite as its control, and that suite HOLDS that law:
 /// edit a proven injection there and the stale row reddens the control, the
 /// harness refuses to start on a red control, and the `--only` run that would

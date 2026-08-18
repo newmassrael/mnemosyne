@@ -188,9 +188,19 @@ fn every_tracked_sweep_still_applies_to_the_tree_it_names() {
         // OR NAMED LIKE ONE, wherever it sits: the first sweep in a fresh
         // directory has no neighbour to be judged against, and a typo in it
         // would otherwise leave this population in silence.
-        if path.rsplit('/').next().is_some_and(|name| {
-            name.contains("sweep") || name == "self-check.json" || name == "example.json"
-        }) {
+        // R1241 DELETED THE TWO NAMES THAT USED TO SIT HERE. `self-check.json`
+        // and `example.json` were this crate's own sweeps, named without the
+        // word, so this branch carried them by name — a list beside a law, which
+        // is the shape that goes stale in the direction reading as a pass. They
+        // are `self-check.sweep.json` and `example.sweep.json` now, because the
+        // build-machine declaration marks a sweep-running command as one that
+        // WRITES this tree by looking for that same substring, and a manifest
+        // without it was a run sent elsewhere. One convention, two laws, no list.
+        if path
+            .rsplit('/')
+            .next()
+            .is_some_and(|name| name.contains("sweep"))
+        {
             hiding.push(format!(
                 "{path} is named like a sweep and does not read as one: {why}"
             ));

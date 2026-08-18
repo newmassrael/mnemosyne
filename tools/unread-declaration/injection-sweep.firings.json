@@ -1,0 +1,74 @@
+{
+  "_": [
+    "Machine-written by tools/injection-harness. Do not edit by hand: a row somebody typed is evidence of nothing, and the law over this file is worth exactly what its being unforgeable is worth.",
+    "Each row is one injection that WAS RUN and DID redden what it names, kept beside the definition it was proven against — edit the injection and the gate says the evidence is about a different one."
+  ],
+  "complete": true,
+  "fired": {
+    "a-token-that-names-nothing-is-taken-as-naming-something": {
+      "edits": [
+        {
+          "file": "tools/unread-declaration/src/lib.rs",
+          "from": "        if matched_paths == 0 {\n            findings.push(Finding::NamesNothingHere {\n                key: declared.key.clone(),\n                token: token.clone(),\n            });\n        }\n",
+          "to": ""
+        }
+      ],
+      "expect_red": [
+        "a_writes_token_that_names_nothing_here_is_a_finding"
+      ],
+      "tests": [
+        "a_writes_token_that_names_nothing_here_is_a_finding"
+      ]
+    },
+    "a-tree-this-gate-cannot-ask-about-is-called-clean": {
+      "edits": [
+        {
+          "file": "tools/unread-declaration/src/lib.rs",
+          "from": "        .map_err(|why| format!(\"which sweeps this repository tracks could not be asked — {why}\"))?",
+          "to": "        .unwrap_or_default()"
+        },
+        {
+          "file": "tools/unread-declaration/src/lib.rs",
+          "from": "    let paths = tracked_paths(root)?;",
+          "to": "    let paths = tracked_paths(root).unwrap_or_default();"
+        }
+      ],
+      "expect_red": [
+        "a_tree_with_no_vcs_is_no_verdict_rather_than_a_clean_value_half"
+      ],
+      "tests": [
+        "a_tree_with_no_vcs_is_no_verdict_rather_than_a_clean_value_half"
+      ]
+    },
+    "no-sweep-is-asked-whether-a-token-reaches-it": {
+      "edits": [
+        {
+          "file": "tools/unread-declaration/src/lib.rs",
+          "from": "    for manifest in &sweeps {\n        if !declared\n            .items\n            .iter()\n            .any(|token| manifest.contains(token.as_str()))\n        {\n            findings.push(Finding::EvidenceWouldLandElsewhere {\n                manifest: manifest.clone(),\n            });\n        }\n    }\n",
+          "to": ""
+        }
+      ],
+      "expect_red": [
+        "a_token_that_reaches_only_some_of_the_sweeps_is_a_finding"
+      ],
+      "tests": [
+        "a_token_that_reaches_only_some_of_the_sweeps_is_a_finding"
+      ]
+    },
+    "the-reach-of-a-token-is-computed-and-not-printed": {
+      "edits": [
+        {
+          "file": "tools/unread-declaration/src/main.rs",
+          "from": "        for reach in &report.writes_reach {\n            println!(\n                \"[unread-declaration]   `{}` names {} tracked path(s), {} of them sweep(s)\",\n                reach.token, reach.paths, reach.sweeps,\n            );\n        }\n",
+          "to": ""
+        }
+      ],
+      "expect_red": [
+        "the_reach_of_every_token_is_counted_and_printed"
+      ],
+      "tests": [
+        "the_reach_of_every_token_is_counted_and_printed"
+      ]
+    }
+  }
+}
