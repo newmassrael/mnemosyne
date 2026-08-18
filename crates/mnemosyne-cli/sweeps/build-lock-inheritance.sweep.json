@@ -1,0 +1,79 @@
+{
+  "_": [
+    "THE SWEEP THAT SAYS R1235's CONTRACT IS NOT VACUOUS — run it from the",
+    "repository root:",
+    "    cargo run -q --manifest-path tools/injection-harness/Cargo.toml -- \\",
+    "        crates/mnemosyne-cli/sweeps/build-lock-inheritance.sweep.json",
+    "",
+    "WHAT THE CONTRACT IS. `scripts/verify.sh` takes this tree's build lock and",
+    "must be the ONLY thing holding it: an flock belongs to the open file",
+    "description, and a descriptor is copied into every child unless something",
+    "closes it, so a process the wrapped command leaves behind went on holding",
+    "the lock after the wrapper was gone. That is what stopped R1234's push at",
+    "`acquiring build lock`, with nothing red anywhere.",
+    "",
+    "SO THE THREE INJECTIONS ARE THE THREE WAYS THAT PROPERTY GOES QUIET. Two",
+    "break the closing — removed, and pointed at a descriptor nobody opened,",
+    "which is the typo that reads exactly like the repair. The third breaks it",
+    "from the other side: a wrapper that lets the lock go the instant it takes",
+    "it passes any check that only asks whether the lock is free AFTERWARDS,",
+    "and leaves this repository's cargo runs unserialised — the R743 corruption",
+    "the lock exists to prevent, silently.",
+    "",
+    "RUN IT LOCALLY. The harness edits this tree and writes the firing record",
+    "beside this file, so a run sent to a build machine leaves its evidence on a",
+    "throwaway copy (R1205's carry, and the `writes` line in the declaration)."
+  ],
+  "repo": "../../..",
+  "test_command": [
+    "cargo",
+    "test",
+    "-p",
+    "mnemosyne-cli",
+    "--test",
+    "all",
+    "--no-fail-fast",
+    "verify_wrapper_smoke::"
+  ],
+  "red_set": "exhaustive",
+  "logs": "../../../target/injection-logs",
+  "min_free_mb": 8000,
+  "injections": [
+    {
+      "name": "the-lock-descriptor-reaches-what-the-wrapper-runs",
+      "why": "the defect exactly as it stood, and the one that cost a push. With the group's close gone, fd 9 is in the table of every process the wrapper starts, so anything left behind holds this tree's build lock for as long as it lives — and the suite that left it behind was green",
+      "edits": [
+        {
+          "file": "scripts/verify.sh",
+          "from": "} 9>&-",
+          "to": "}"
+        }
+      ],
+      "expect_red": ["the_lock_is_held_while_the_wrapper_runs_and_by_nothing_once_it_returns"]
+    },
+    {
+      "name": "the-close-names-a-descriptor-nobody-opened",
+      "why": "the typo that reads like the repair. `8>&-` closes a descriptor this script never opened, which is not an error and prints nothing, so the group is there, the comment above it is true of the intent, and the lock goes on being inherited. A gate that only read this file for the characters `9>&-` would call this fixed",
+      "edits": [
+        {
+          "file": "scripts/verify.sh",
+          "from": "} 9>&-",
+          "to": "} 8>&-"
+        }
+      ],
+      "expect_red": ["the_lock_is_held_while_the_wrapper_runs_and_by_nothing_once_it_returns"]
+    },
+    {
+      "name": "the-lock-is-let-go-the-moment-it-is-taken",
+      "why": "the same claim broken from the other side, and the reason this case asks two halves. A wrapper that closes its own descriptor after locking still prints `acquiring build lock` and `lock held`, still exports the marker the nesting rule reads, and still leaves the lock free afterwards — so every check that asks only about AFTER is satisfied while nothing in this repository is serialised any more",
+      "edits": [
+        {
+          "file": "scripts/verify.sh",
+          "from": "  flock 9\n  echo \"[verify] lock held.\"",
+          "to": "  flock 9\n  exec 9>&-\n  echo \"[verify] lock held.\""
+        }
+      ],
+      "expect_red": ["the_lock_is_held_while_the_wrapper_runs_and_by_nothing_once_it_returns"]
+    }
+  ]
+}

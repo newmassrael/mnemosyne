@@ -1,0 +1,54 @@
+{
+  "_": [
+    "Machine-written by tools/injection-harness. Do not edit by hand: a row somebody typed is evidence of nothing, and the law over this file is worth exactly what its being unforgeable is worth.",
+    "Each row is one injection that WAS RUN and DID redden what it names, kept beside the definition it was proven against — edit the injection and the gate says the evidence is about a different one."
+  ],
+  "complete": true,
+  "fired": {
+    "the-close-names-a-descriptor-nobody-opened": {
+      "edits": [
+        {
+          "file": "scripts/verify.sh",
+          "from": "} 9>&-",
+          "to": "} 8>&-"
+        }
+      ],
+      "expect_red": [
+        "the_lock_is_held_while_the_wrapper_runs_and_by_nothing_once_it_returns"
+      ],
+      "tests": [
+        "verify_wrapper_smoke::the_lock_is_held_while_the_wrapper_runs_and_by_nothing_once_it_returns"
+      ]
+    },
+    "the-lock-descriptor-reaches-what-the-wrapper-runs": {
+      "edits": [
+        {
+          "file": "scripts/verify.sh",
+          "from": "} 9>&-",
+          "to": "}"
+        }
+      ],
+      "expect_red": [
+        "the_lock_is_held_while_the_wrapper_runs_and_by_nothing_once_it_returns"
+      ],
+      "tests": [
+        "verify_wrapper_smoke::the_lock_is_held_while_the_wrapper_runs_and_by_nothing_once_it_returns"
+      ]
+    },
+    "the-lock-is-let-go-the-moment-it-is-taken": {
+      "edits": [
+        {
+          "file": "scripts/verify.sh",
+          "from": "  flock 9\n  echo \"[verify] lock held.\"",
+          "to": "  flock 9\n  exec 9>&-\n  echo \"[verify] lock held.\""
+        }
+      ],
+      "expect_red": [
+        "the_lock_is_held_while_the_wrapper_runs_and_by_nothing_once_it_returns"
+      ],
+      "tests": [
+        "verify_wrapper_smoke::the_lock_is_held_while_the_wrapper_runs_and_by_nothing_once_it_returns"
+      ]
+    }
+  }
+}

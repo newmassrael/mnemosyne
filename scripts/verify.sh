@@ -39,6 +39,19 @@
 # over ANOTHER tree as well as their own, and a marker that said only "held"
 # would skip the lock for a second tree that nothing has locked at all.
 #
+# AND THE LOCK LIVES IN THIS PROCESS AND IN NOTHING BELOW IT (R1235). The same
+# sentence — an flock is held by the open file description — has a second edge:
+# a descriptor is COPIED INTO EVERY CHILD unless something closes it, so every
+# process this script started held the build lock too, and a process that
+# outlived the script went on holding it after the script was gone. Measured
+# 2026-08-18: a case in `tools/one-machine` ended a child whose background
+# `sleep 600` survived it, the side-workspace gate ran that suite, and the
+# `git push` behind it stopped at `acquiring build lock` until the leftover was
+# found with `fuser` and killed by hand. Nothing was red. The body below is a
+# group with `9>&-` so the descriptor is closed for everything this script
+# starts; re-entrancy is untouched, because what a nested run reads is the
+# exported VARIABLE and never an inherited descriptor.
+#
 # AND, since R1194, every run is judged for what it COVERED: a `cargo test` that
 # stopped at the first failing target reports a smaller number than the truth,
 # and this wrapper now says so instead of leaving it for CI a round later. A
@@ -120,6 +133,19 @@ else
   export VERIFY_LOCKS_HELD="${VERIFY_LOCKS_HELD:+$VERIFY_LOCKS_HELD:}$lock"
   outermost=1
 fi
+
+# NOTHING BELOW THIS LINE CAN SEE THE LOCK (R1235 — the header's fourth
+# paragraph has the measurement). `9>&-` closes fd 9 for the whole group, so no
+# program this script starts inherits the build lock and no process one of them
+# leaves behind can hold it after this script is gone.
+#
+# THE GROUP RATHER THAN THE ONE LINE THAT RUNS THE COMMAND, because the property
+# belongs to the LOCK and not to whatever is being verified: a program added
+# here later would otherwise re-open the same hole in silence. Bash restores
+# fd 9 when the group ends, so the lock is still this process's until it exits,
+# and `9>&-` where fd 9 was never opened — the re-entrant branch above — is not
+# an error. Both were measured before this was written.
+{
 
 changed_crates=""
 if [[ "$fresh" == 1 ]]; then
@@ -244,3 +270,5 @@ if [[ "$status" -ne 0 ]]; then
   grep -nE "error\[|error:|panicked|test result: FAILED|FAILED| failed" "$log" | tail -40 || true
 fi
 exit "$status"
+
+} 9>&-

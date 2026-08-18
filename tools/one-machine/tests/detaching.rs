@@ -29,6 +29,11 @@ const RETURNING: Duration = Duration::from_secs(30);
 /// condition rather than slept through.
 const SENTINEL_ARRIVING: Duration = Duration::from_secs(30);
 
+/// How long to wait for something a case started to END, once it has been let
+/// go. Same kind of number as the two above — a bound on a hang rather than an
+/// expectation, since it takes one asking interval when it is right.
+const ENDING: Duration = Duration::from_secs(30);
+
 /// How often that condition is asked.
 const ASKING: Duration = Duration::from_millis(50);
 
@@ -190,12 +195,46 @@ fn a_program_that_does_not_return_is_ended_and_named() {
 /// A grandchild still holding the output must not extend the wait either — the
 /// shape that made the bound above meaningless in the first draft, where the
 /// output went to a pipe and reading it to end-of-file was unbounded.
+///
+/// ⚠ AND THE GRANDCHILD ENDS WHEN THIS CASE SAYS SO, which the first version of
+/// this case did not arrange and paid for. It read `sleep 600 & sleep 600`, and
+/// measured, BOTH of those survive the gate's kill: the background job because
+/// it was never the shell's to carry, and the foreground one because a shell
+/// holding a background job does not `exec` its last command, so the kill lands
+/// on `bash`. Ten minutes of two processes, each holding every descriptor the
+/// test binary had inherited — and one of those was `scripts/verify.sh`'s build
+/// lock on fd 9, so the `git push` behind that round's side-workspace gate
+/// stopped at `acquiring build lock` until they were found with `fuser` and
+/// killed by hand. Nothing was red; the suite had passed.
+///
+/// The lock is out of reach now (R1235 closes fd 9 across the wrapper's body),
+/// but a case that deliberately makes a process outlive its parent still owns
+/// the end of it — which is what `LetGo` above exists for, and this case now
+/// uses the same shape as the first one.
 #[test]
 fn output_held_open_by_something_the_child_left_behind_does_not_extend_the_wait() {
+    let at = tempfile::tempdir().expect("a directory to stand in");
+    let gate = at.path().join("let-it-go");
+    let ended = at.path().join("the-leftover-ended");
+    let _let_go = LetGo(gate.clone());
+
+    // A CONDITION THIS CASE HOLDS THE END OF, exactly as the first case has: the
+    // leftover outlives the budget because this case has not let go yet, not
+    // because a clock was set long enough to be sure. The directory test is the
+    // panic path — `TempDir` removes it while unwinding, and the loop notices
+    // within one asking interval.
+    let holding = format!(
+        "while [ -d {} ] && [ ! -f {} ]; do sleep 0.05; done",
+        at.path().display(),
+        gate.display()
+    );
     let mut command = Command::new("bash");
-    // The child is ended at the budget; the `sleep` it left behind still holds
+    // The child is ended at the budget; the group it left behind still holds
     // whatever it inherited, and this call must come back regardless.
-    command.arg("-c").arg("sleep 600 & sleep 600");
+    command.arg("-c").arg(format!(
+        "{{ {holding}; : > {}; }} & {holding}",
+        ended.display()
+    ));
     let started = Instant::now();
     let error = run_bounded(&mut command, Duration::from_secs(1))
         .expect_err("a child that outlives its budget");
@@ -203,5 +242,16 @@ fn output_held_open_by_something_the_child_left_behind_does_not_extend_the_wait(
     assert!(
         started.elapsed() < RETURNING,
         "the wait was extended by a process this gate never asked about"
+    );
+
+    // AND WHAT IT LEFT BEHIND IS ENDED BEFORE THIS CASE IS. The marker is
+    // written by the leftover itself on its way out, so this is the process's
+    // own word for having gone rather than an interval somebody hoped covered
+    // it.
+    std::fs::write(&gate, "").expect("let the leftover end");
+    wait_for(
+        || ended.exists(),
+        ENDING,
+        "the process this case left behind ending",
     );
 }
