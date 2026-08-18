@@ -1,0 +1,84 @@
+{
+  "_": [
+    "Machine-written by tools/injection-harness. Do not edit by hand: a row somebody typed is evidence of nothing, and the law over this file is worth exactly what its being unforgeable is worth.",
+    "Each row is one injection that WAS RUN and DID redden what it names, kept beside the definition it was proven against — edit the injection and the gate says the evidence is about a different one."
+  ],
+  "complete": true,
+  "fired": {
+    "the-command-is-given-the-shells-default-standard-input": {
+      "edits": [
+        {
+          "file": "scripts/verify.sh",
+          "from": "  \"$@\" >>\"$log\" 2>&1 <&\"$verify_stdin\" &",
+          "to": "  \"$@\" >>\"$log\" 2>&1 &"
+        }
+      ],
+      "expect_red": [
+        "the_wrapped_command_still_reads_the_callers_standard_input"
+      ],
+      "tests": [
+        "verify_wrapper_smoke::the_wrapped_command_still_reads_the_callers_standard_input"
+      ]
+    },
+    "the-follower-echoes-the-log-from-its-beginning": {
+      "edits": [
+        {
+          "file": "scripts/verify.sh",
+          "from": "  tail -c \"+$((before + 1))\" -f -s 0.05 --pid=\"$child\" \"$log\"",
+          "to": "  tail -c \"+1\" -f -s 0.05 --pid=\"$child\" \"$log\""
+        }
+      ],
+      "expect_red": [
+        "everything_the_wrapped_command_wrote_reaches_both_the_log_and_the_caller"
+      ],
+      "tests": [
+        "verify_wrapper_smoke::everything_the_wrapped_command_wrote_reaches_both_the_log_and_the_caller"
+      ]
+    },
+    "the-record-collector-is-run-without-the-plumbing": {
+      "edits": [
+        {
+          "file": "scripts/verify.sh",
+          "from": "  run_into_log -- cargo run -q --locked --manifest-path \"$here/tools/scratch-budget/Cargo.toml\" \\\n    --bin scratch-budget -- --at .",
+          "to": "  cargo run -q --locked --manifest-path \"$here/tools/scratch-budget/Cargo.toml\" \\\n    --bin scratch-budget -- --at ."
+        }
+      ],
+      "expect_red": [
+        "every_cargo_command_the_wrapper_issues_goes_through_its_one_plumbing"
+      ],
+      "tests": [
+        "judged_test_runs::every_cargo_command_the_wrapper_issues_goes_through_its_one_plumbing"
+      ]
+    },
+    "the-status-is-the-followers-and-not-the-commands": {
+      "edits": [
+        {
+          "file": "scripts/verify.sh",
+          "from": "  wait \"$child\"",
+          "to": "  wait"
+        }
+      ],
+      "expect_red": [
+        "the_wrapped_commands_own_exit_status_is_what_the_wrapper_returns"
+      ],
+      "tests": [
+        "verify_wrapper_smoke::the_wrapped_commands_own_exit_status_is_what_the_wrapper_returns"
+      ]
+    },
+    "the-wrapped-command-is-handed-a-pipe-again": {
+      "edits": [
+        {
+          "file": "scripts/verify.sh",
+          "from": "run_into_log -- \"$@\"\nstatus=$?",
+          "to": "\"$@\" 2>&1 | tee -a \"$log\"\nstatus=\"${PIPESTATUS[0]}\""
+        }
+      ],
+      "expect_red": [
+        "a_leftover_holding_the_wrappers_stdout_does_not_keep_the_wrapper_running"
+      ],
+      "tests": [
+        "verify_wrapper_smoke::a_leftover_holding_the_wrappers_stdout_does_not_keep_the_wrapper_running"
+      ]
+    }
+  }
+}

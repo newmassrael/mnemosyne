@@ -33,6 +33,9 @@ const WRAPPER: &str = "scripts/verify.sh";
 /// The gate it runs, as a manifest this repository tracks.
 const COVERAGE_GATE: &str = "tools/unreported-targets/Cargo.toml";
 
+/// The one function inside the wrapper that runs something into the log.
+const PLUMBING: &str = "run_into_log";
+
 fn repository_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
         .parent()
@@ -346,4 +349,49 @@ fn the_wrapper_that_law_names_is_the_one_that_runs_the_coverage_gate() {
          the comparison: {:?}",
         gate_calls[0].harness_args
     );
+}
+
+#[test]
+fn every_cargo_command_the_wrapper_issues_goes_through_its_one_plumbing() {
+    // ONE FIELD, ONE WRITE PATH — the anti-pattern this repository names, asked
+    // of the script every verification goes through. `scripts/verify.sh` runs
+    // more than one thing into the log it keeps, and each of them wants the same
+    // three properties: the output in both places, the command's own status
+    // back, and a lifetime that a process the command leaves behind cannot
+    // extend. A second spelling for any one of them is not a style difference —
+    // it is a property enforced on one path and not the other, which is the
+    // state where the invariant has already stopped holding.
+    //
+    // IT WAS ONE ROUND'S REAL STATE. Until R1239 the record collector's output
+    // reached the caller and never the log, because it was the one call written
+    // without the plumbing the other two shared, and nothing said so.
+    //
+    // THE CARRIER IS WHAT MAKES THIS ASKABLE AT ALL. `ci-plan` keeps the words
+    // in front of a bare `--` rather than discarding them, so "which program
+    // hands this cargo command over" is a datum here and not a second reading of
+    // the shell.
+    let root = repository_root();
+    let issued: Vec<CargoCommand> = script_cargo_commands(&root)
+        .into_iter()
+        .filter(|command| command.source == WRAPPER)
+        .collect();
+    assert!(
+        issued.len() >= 2,
+        "`{WRAPPER}` issues {} cargo command(s), so this law is asserting about \
+         almost nothing. It runs a coverage gate and a record collector; a \
+         population that has lost one of them is that gate gone, not this law \
+         being satisfied",
+        issued.len()
+    );
+    for command in &issued {
+        assert_eq!(
+            command.carrier,
+            vec![PLUMBING.to_string()],
+            "`{WRAPPER}` runs `{:?}` without `{PLUMBING}`, so that one command's \
+             output, status and lifetime follow different rules from every other \
+             command this script runs. Carrier read: {:?}",
+            command.cargo_args,
+            command.carrier
+        );
+    }
 }

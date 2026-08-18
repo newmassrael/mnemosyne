@@ -6,7 +6,9 @@
 //!
 //!   1. THE WRAPPED COMMAND'S EXIT STATUS IS WHAT COMES BACK. A wrapper that
 //!      returned its own would turn every red suite green, silently, everywhere
-//!      at once. `PIPESTATUS[0]` is what makes that true and nothing read it.
+//!      at once. `wait` on the process the script started is what makes that
+//!      true — it was `PIPESTATUS[0]` until the pipe went away — and nothing
+//!      read it.
 //!   2. THE BUILD LOCK IS RE-ENTRANT ACROSS THE PROCESS TREE. An flock belongs
 //!      to the open file description, so a nested run opening the same path
 //!      waits for a lock its own ancestor holds and is never woken. That is not
@@ -23,8 +25,9 @@
 //! be testing which coreutils this machine has. It is a TRACKED stand-in reached
 //! by symlink (`tests/stubs/`), never a file this process writes and then runs.
 
+use std::io::Write;
 use std::path::{Path, PathBuf};
-use std::process::{Child, Command, Output};
+use std::process::{Child, Command, Output, Stdio};
 use std::time::{Duration, Instant};
 
 use tempfile::TempDir;
@@ -196,6 +199,13 @@ fn lock_is_held(path: &str) -> bool {
     Path::new(path).exists() && !lock_is_free(path)
 }
 
+/// How long a case here waits for something it is not itself the cause of.
+///
+/// ONE NUMBER FOR EVERY WAIT IN THIS FILE. None of these are measurements — each
+/// is "the other side has had every chance", and the only thing a per-site
+/// literal adds is a machine assumption written where nobody reviews it.
+const WAIT_BUDGET: Duration = Duration::from_secs(30);
+
 fn wait_until(condition: impl Fn() -> bool, budget: Duration, what: &str) {
     let deadline = Instant::now() + budget;
     while Instant::now() < deadline {
@@ -262,7 +272,7 @@ fn the_lock_is_held_while_the_wrapper_runs_and_by_nothing_once_it_returns() {
     // locks nothing.
     wait_until(
         || lock_is_held(&tree.lock()),
-        Duration::from_secs(30),
+        WAIT_BUDGET,
         "the wrapper taking this tree's build lock",
     );
 
@@ -283,7 +293,7 @@ fn the_lock_is_held_while_the_wrapper_runs_and_by_nothing_once_it_returns() {
     std::fs::write(&gate, "").expect("let the leftover end");
     wait_until(
         || gone.exists(),
-        Duration::from_secs(30),
+        WAIT_BUDGET,
         "the process this case left behind ending",
     );
     assert!(
@@ -309,5 +319,184 @@ fn the_marker_reaches_the_command_the_wrapper_runs() {
         "the command a wrapper runs must be able to see which lock is already \
          held, or nesting deadlocks however carefully the parent recorded it:\
          \n{words}"
+    );
+}
+
+#[test]
+fn a_leftover_holding_the_wrappers_stdout_does_not_keep_the_wrapper_running() {
+    // THE SECOND EDGE OF THE SAME LEFTOVER, and it is not the lock. The case
+    // above had to redirect its leftover's stdio away to be about the lock at
+    // all, and wrote down why: a leftover holding the descriptor it was given
+    // for stdout keeps `tee` from ever reaching end of file, so the wrapper does
+    // not finish until the leftover does. Measured 2026-08-18 on the same
+    // command with and without that redirection: 4002 ms against 2 ms. Nothing
+    // is red, nothing is blocked — the verification simply does not come back,
+    // which is the shape a person reads as a hung build machine.
+    //
+    // ⚠ AND IT ASKS THE VACUITY QUESTION THE LOCK CASE TAUGHT. "The wrapper
+    // returned" is also true of a run whose leftover had already ended, which
+    // proves nothing about waiting; so the leftover ends on a CONDITION THIS
+    // CASE HOLDS, and what is asserted is that it was still running at the
+    // moment the wrapper came back.
+    let tree = Tree::new();
+    let started = tree.dir.path().join("the-leftover-started");
+    let release = tree.dir.path().join("let-the-leftover-go");
+    let ended = tree.dir.path().join("the-leftover-ended");
+
+    // NO REDIRECTION ANYWHERE IN THIS COMMAND, which is the whole of what it is
+    // for: the leftover is handed the wrapper's stdout and keeps it. The
+    // directory test is the panic path, as above — `TempDir` removes it while
+    // unwinding and the loop notices within one asking interval.
+    let leftover = format!(
+        ": > {started}; while [ -d {tree_dir} ] && [ ! -f {release} ]; do sleep 0.05; done; \
+         : > {ended}",
+        started = started.display(),
+        tree_dir = tree.dir.path().display(),
+        release = release.display(),
+        ended = ended.display(),
+    );
+    let mut running = tree.start(None, &["bash", "-c", &format!("{{ {leftover}; }} &")]);
+
+    wait_until(
+        || started.exists(),
+        WAIT_BUDGET,
+        "the process this case leaves behind starting",
+    );
+
+    // `try_wait` and not `wait_with_output`: reading the wrapper's output to end
+    // of file is the very thing the leftover prevents, so a case that waited for
+    // that would hang whether or not the wrapper had returned.
+    let deadline = Instant::now() + WAIT_BUDGET;
+    let status = loop {
+        match running
+            .try_wait()
+            .expect("asking whether the wrapper has ended")
+        {
+            Some(status) => break status,
+            None if Instant::now() < deadline => std::thread::sleep(Duration::from_millis(50)),
+            None => {
+                std::fs::write(&release, "").expect("let the leftover end");
+                panic!(
+                    "the wrapper is still running 30 second(s) after the command it \
+                     wrapped exited, because a process that command left behind holds \
+                     the descriptor it was given for stdout. Every verification in this \
+                     repository goes through this script, so what this looks like from \
+                     outside is a suite that never finishes"
+                );
+            }
+        }
+    };
+
+    // READ BEFORE THE LEFTOVER IS LET GO, so what is asserted is the state at
+    // the moment the wrapper came back.
+    let leftover_was_still_running = !ended.exists();
+    std::fs::write(&release, "").expect("let the leftover end");
+    wait_until(
+        || ended.exists(),
+        WAIT_BUDGET,
+        "the process this case left behind ending",
+    );
+
+    assert!(
+        status.success(),
+        "the wrapper has to have returned the wrapped command's own status for \
+         this case to be about when it returned"
+    );
+    assert!(
+        leftover_was_still_running,
+        "the leftover had already ended before the wrapper returned, so this case \
+         says nothing about whether the wrapper waits for one. It is not a finding \
+         about the wrapper — it is this case having stopped being a test"
+    );
+}
+
+#[test]
+fn everything_the_wrapped_command_wrote_reaches_both_the_log_and_the_caller() {
+    // WHAT THE PIPE USED TO GUARANTEE, asked directly. `tee` copied every byte
+    // to both places by construction; a log the command writes itself and a
+    // follower echoing it to the caller is two mechanisms, and each has an end
+    // it can lose — the follower can start after the first line is written, or
+    // stop before the last one is read. Both were measured to be sound, and this
+    // is what keeps them so: a wrapper that dropped either end would be showing
+    // CI a shorter run than the one that happened, which is the R743 defect this
+    // whole script exists for.
+    let tree = Tree::new();
+    let out = tree.run(
+        None,
+        &[
+            "bash",
+            "-c",
+            "echo THE-FIRST-LINE; for i in $(seq 1 2000); do echo line$i; done; \
+             echo THE-LAST-LINE",
+        ],
+    );
+    let words = said(&out);
+    for line in ["THE-FIRST-LINE", "line1", "line2000", "THE-LAST-LINE"] {
+        assert!(
+            words.contains(line),
+            "`{line}` reached the log but not the caller, so what CI prints is a \
+             shorter run than the one that happened:\n{words}"
+        );
+    }
+
+    // ONCE, AND THE COUNT IS THE POINT. The follower is started at the log's
+    // CURRENT end rather than its beginning, and this script runs two things
+    // into one log — the command and then the coverage gate. A follower that
+    // began at byte one would replay everything the command wrote a second time
+    // when the gate ran, which for a suite of any size is megabytes of the same
+    // output and a reader who cannot tell a re-run from a repeat.
+    assert_eq!(
+        words.matches("line2000").count(),
+        1,
+        "the caller was shown the wrapped command's output more than once:\n{words}"
+    );
+
+    let named = words
+        .lines()
+        .find_map(|line| line.strip_prefix("[verify] log: "))
+        .expect("the wrapper names the log it is writing");
+    let recorded = std::fs::read_to_string(tree.dir.path().join(named))
+        .expect("the log the wrapper named exists");
+    for line in ["THE-FIRST-LINE", "line1", "line2000", "THE-LAST-LINE"] {
+        assert!(
+            recorded.contains(line),
+            "`{line}` reached the caller but not the log, so the record this \
+             repository keeps of the run is not the run:\n{recorded}"
+        );
+    }
+}
+
+#[test]
+fn the_wrapped_command_still_reads_the_callers_standard_input() {
+    // THE SILENT HALF OF RUNNING THE COMMAND ASYNCHRONOUSLY. A shell with job
+    // control off assigns /dev/null to an asynchronous command's standard input
+    // before any redirection written on the command itself, so the obvious
+    // spelling takes the caller's stdin away from whatever is being verified and
+    // says nothing: a command that reads gets end of file instead of input, and
+    // a suite that read a fixture from stdin would go red somewhere else
+    // entirely. Measured both ways before the wrapper was written this way.
+    let tree = Tree::new();
+    let mut invocation = tree.invocation(None, &["bash", "-c", "read line; echo GOT=[$line]"]);
+    let mut running = invocation
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("the wrapper starts");
+    running
+        .stdin
+        .take()
+        .expect("the wrapper was given a stdin to pass on")
+        .write_all(b"from-the-caller\n")
+        .expect("writing to the wrapper's stdin");
+    let out = running
+        .wait_with_output()
+        .expect("the wrapper, whose command reads one line and ends");
+    let words = said(&out);
+    assert!(
+        words.contains("GOT=[from-the-caller]"),
+        "the command the wrapper ran did not receive the caller's standard \
+         input, so this wrapper is silently a different environment from running \
+         the command directly:\n{words}"
     );
 }

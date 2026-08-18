@@ -22,9 +22,10 @@
 #   use when nothing changed and you want speed).
 #
 # Always: an flock on target/.verify.lock serialises verify.sh runs; the full
-# combined stdout+stderr is tee'd to target/verify-logs/<utc-ts>-<label>.log
-# (target/ is gitignored); the WRAPPED command's real exit status is returned
-# (PIPESTATUS[0], never tee's) so CI/callers still see a genuine non-zero.
+# combined stdout+stderr is written to target/verify-logs/<utc-ts>-<label>.log
+# (target/ is gitignored) and echoed to the caller as it arrives; the WRAPPED
+# command's real exit status is returned — `wait` on the process this script
+# started, never a pipeline's — so CI/callers still see a genuine non-zero.
 #
 # THE LOCK IS RE-ENTRANT ACROSS THE PROCESS TREE (R1196), and that is a
 # requirement rather than a convenience. `scripts/check-side-workspaces.sh` runs
@@ -51,6 +52,12 @@
 # group with `9>&-` so the descriptor is closed for everything this script
 # starts; re-entrancy is untouched, because what a nested run reads is the
 # exported VARIABLE and never an inherited descriptor.
+#
+# AND THE SAME LEFTOVER REACHES THIS WRAPPER'S OUTPUT (R1239), which the lock's
+# repair does not touch and which is not the same failure. A leftover holding the
+# descriptor it was given for stdout keeps `tee` from ever reaching end of file,
+# so the wrapper does not finish until the leftover does — a HANG rather than a
+# held lock. So nothing here hands a command a pipe: see `run_into_log` below.
 #
 # AND, since R1194, every run is judged for what it COVERED: a `cargo test` that
 # stopped at the first failing target reports a smaller number than the truth,
@@ -147,18 +154,82 @@ fi
 # an error. Both were measured before this was written.
 {
 
+# EVERY RUN THIS SCRIPT MAKES REACHES BOTH THE LOG AND THE CALLER, AND NOT
+# THROUGH A PIPE (R1239).
+#
+# `cmd 2>&1 | tee -a "$log"` is the obvious spelling, and it makes this
+# wrapper's lifetime somebody else's. `tee` ends when its input reaches END OF
+# FILE, which is when the LAST holder of the write end lets go — so a command
+# that returns at once while leaving a process behind holds this wrapper open
+# for as long as that leftover lives. Measured 2026-08-18, on the same command
+# with and without the leftover's stdio redirected away: 4002 ms against 2 ms.
+# That is a hang and not a block, and it is the second edge of the leftover the
+# lock's repair above is about.
+#
+# A FILE CANNOT BE HELD OPEN AGAINST ANYBODY. The command writes to the log
+# directly, so what is on disk is complete the moment the command exits however
+# many descriptors it left behind; a follower started at the log's current end
+# echoes those same bytes to the caller as they arrive and stops when the
+# command does. The status is then the command's OWN — `wait` answers about the
+# process this script started, where `${PIPESTATUS[0]}` answers about a pipeline
+# whose other member is `tee`, which is why the pipe could not simply be
+# redirected away.
+#
+# `-s 0.05` BOUNDS HOW LONG THE FOLLOWER OUTLIVES THE COMMAND: it is the
+# interval at which `tail` re-checks the pid, and coreutils reads the file once
+# more after seeing it dead, so nothing written before the exit is lost.
+# Measured: 59 ms end to end for the leftover case that cost 4002 ms, with every
+# one of 2002 written lines present on BOTH sides.
+#
+# STDIN IS HANDED ON DELIBERATELY. A shell with job control off gives an
+# asynchronous command /dev/null for input, so an unqualified `&` here would
+# quietly take the caller's stdin away from whatever is being verified —
+# measured, the same command reads nothing at all. `verify_stdin` is that
+# descriptor duplicated BEFORE the `&`, which is the only place it can be: the
+# /dev/null assignment happens before any redirection written on the command
+# itself, so `<&0` there would duplicate /dev/null onto itself.
+#
+# THIS ONE IS LEFT OPEN FOR CHILDREN ON PURPOSE, which the paragraph about the
+# lock says nothing here should be. It is a DUPLICATE OF THEIR OWN STDIN: every
+# child already holds that open file description as fd 0, so nothing is reachable
+# through this descriptor that was not already, and nothing waits on it. The
+# number is auto-allocated rather than written out so that it cannot collide
+# with fd 9 or with a descriptor an injection into this file names.
+#
+# AND THE COMMAND IS HANDED OVER AFTER A BARE `--`, which is not a convention
+# invented here. `tools/ci-plan` reads every cargo command this repository
+# writes, and it peels a carrier at the bare marker rather than keeping a list
+# of known wrapper names — deliberately, because a stale list is silent where an
+# unreadable command is loud. A cargo command run through this function without
+# the marker is one no gate can see: measured 2026-08-18, the law that this
+# script asks `tools/unreported-targets` what a run covered went red the moment
+# the call gained a word in front of `cargo`.
+exec {verify_stdin}<&0
+run_into_log() {
+  local before child
+  if [[ "${1:-}" != "--" ]]; then
+    echo "verify.sh: run_into_log needs a bare -- before the command it runs" >&2
+    exit 2
+  fi
+  shift
+  before="$(wc -c <"$log")"
+  "$@" >>"$log" 2>&1 <&"$verify_stdin" &
+  child=$!
+  tail -c "+$((before + 1))" -f -s 0.05 --pid="$child" "$log"
+  wait "$child"
+}
+
+# WHICH CRATES A FRESH RUN WOULD CLEAN IS ASKED BEFORE THE LOG IS OPENED, and
+# the cleaning happens after it. The header records the answer, so the question
+# has to come first; the cleaning is a cargo command like every other one this
+# script runs, so it goes into the log rather than to /dev/null — what a fresh
+# run threw away is part of the record of why the run that followed rebuilt what
+# it did. The caller sees exactly what it saw before: `>/dev/null` here applies
+# to the follower and not to what is written.
 changed_crates=""
 if [[ "$fresh" == 1 ]]; then
   changed_crates="$(git diff --name-only HEAD -- crates/ 2>/dev/null \
     | sed -n 's#^crates/\([^/]*\)/.*#\1#p' | sort -u | tr '\n' ' ')"
-  if [[ -n "${changed_crates// }" ]]; then
-    for c in $changed_crates; do
-      echo "[verify] fresh: cargo clean -p $c"
-      cargo clean -p "$c" --locked >/dev/null 2>&1 || true
-    done
-  else
-    echo "[verify] fresh: no uncommitted crate changes; nothing to clean."
-  fi
 fi
 
 echo "[verify] cmd: $*"
@@ -171,8 +242,19 @@ echo "[verify] log: $log"
   echo
 } >>"$log"
 
-"$@" 2>&1 | tee -a "$log"
-status="${PIPESTATUS[0]}"
+if [[ "$fresh" == 1 ]]; then
+  if [[ -n "${changed_crates// }" ]]; then
+    for c in $changed_crates; do
+      echo "[verify] fresh: cargo clean -p $c"
+      run_into_log -- cargo clean -p "$c" --locked >/dev/null || true
+    done
+  else
+    echo "[verify] fresh: no uncommitted crate changes; nothing to clean."
+  fi
+fi
+
+run_into_log -- "$@"
+status=$?
 
 # EVERY TEST TARGET THIS RUN COMPILED IS ONE IT REPORTED A RESULT FOR (R1194).
 #
@@ -202,9 +284,9 @@ status="${PIPESTATUS[0]}"
 # separate existence check — a missing manifest makes `cargo run` fail, which is
 # the `*)` branch below, and it says so.
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-cargo run -q --locked --manifest-path "$here/tools/unreported-targets/Cargo.toml" \
-  --bin unreported-targets -- --log "$log" --at . -- "$@" 2>&1 | tee -a "$log"
-coverage_verdict="${PIPESTATUS[0]}"
+run_into_log -- cargo run -q --locked --manifest-path "$here/tools/unreported-targets/Cargo.toml" \
+  --bin unreported-targets -- --log "$log" --at . -- "$@"
+coverage_verdict=$?
 case "$coverage_verdict" in
   0) ;;
   1)
@@ -249,7 +331,7 @@ esac
 # manifest path is spelled out for the same reason: `ci-plan` can place a cargo
 # command only when the literal tail names a directory.
 if [[ "$outermost" == 1 ]]; then
-  cargo run -q --locked --manifest-path "$here/tools/scratch-budget/Cargo.toml" \
+  run_into_log -- cargo run -q --locked --manifest-path "$here/tools/scratch-budget/Cargo.toml" \
     --bin scratch-budget -- --at .
   scratch_verdict=$?
   if [[ "$scratch_verdict" -ne 0 ]]; then

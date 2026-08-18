@@ -1,0 +1,108 @@
+{
+  "_": [
+    "THE SWEEP THAT SAYS R1239's CONTRACT IS NOT VACUOUS — run it from the",
+    "repository root:",
+    "    cargo run -q --manifest-path tools/injection-harness/Cargo.toml -- \\",
+    "        crates/mnemosyne-cli/sweeps/wrapper-output-plumbing.sweep.json",
+    "",
+    "WHAT THE CONTRACT IS. `scripts/verify.sh` gives the command it wraps a FILE",
+    "to write to and echoes that file to the caller, rather than handing it a",
+    "pipe into `tee`. A pipe ends when its LAST holder lets go, so a command that",
+    "returns at once while leaving a process behind held the wrapper open for as",
+    "long as the leftover lived — measured 4002 ms against 2 ms. That is the",
+    "second edge of the leftover R1235's sweep is about: the lock was let go and",
+    "the OUTPUT was not.",
+    "",
+    "SO THE FOUR INJECTIONS ARE THE FOUR WAYS THIS SHAPE GOES QUIET. One puts",
+    "the pipe back, which is the defect exactly as it stood. One takes the status",
+    "from the follower instead of the command, which is the catastrophe this file",
+    "has guarded since R1196 wearing a new spelling — every red suite green,",
+    "everywhere. One starts the follower at the log's beginning instead of its",
+    "end, which shows the caller the same output twice because this script runs",
+    "two things into one log. One drops the standard input the command used to",
+    "get, which a shell with job control off replaces with /dev/null in silence.",
+    "",
+    "RUN IT LOCALLY. The harness edits this tree and writes the firing record",
+    "beside this file, so a run sent to a build machine leaves its evidence on a",
+    "throwaway copy (R1205's carry, and the `writes` line in the declaration)."
+  ],
+  "repo": "../../..",
+  "test_command": [
+    "cargo",
+    "test",
+    "-p",
+    "mnemosyne-cli",
+    "--test",
+    "all",
+    "--locked",
+    "--no-fail-fast",
+    "--",
+    "verify_wrapper_smoke::",
+    "judged_test_runs::"
+  ],
+  "red_set": "exhaustive",
+  "logs": "../../../target/injection-logs",
+  "min_free_mb": 8000,
+  "injections": [
+    {
+      "name": "the-wrapped-command-is-handed-a-pipe-again",
+      "why": "the defect exactly as it stood, and the reason the neighbouring lock case had to redirect its leftover's stdio away to be about the lock at all. `tee` reaches end of file when the LAST holder of the write end lets go, so the wrapper's lifetime becomes the leftover's. Nothing is red and nothing is blocked — the verification simply does not come back",
+      "edits": [
+        {
+          "file": "scripts/verify.sh",
+          "from": "run_into_log -- \"$@\"\nstatus=$?",
+          "to": "\"$@\" 2>&1 | tee -a \"$log\"\nstatus=\"${PIPESTATUS[0]}\""
+        }
+      ],
+      "expect_red": ["a_leftover_holding_the_wrappers_stdout_does_not_keep_the_wrapper_running"]
+    },
+    {
+      "name": "the-status-is-the-followers-and-not-the-commands",
+      "why": "the catastrophe this file has guarded since R1196, wearing the spelling the new shape invites. A bare `wait` waits for every background job and answers 0 whatever they did, so the wrapper returns success for a suite that failed — every red green, silently, everywhere at once. It is one character away from the repair and prints nothing different",
+      "edits": [
+        {
+          "file": "scripts/verify.sh",
+          "from": "  wait \"$child\"",
+          "to": "  wait"
+        }
+      ],
+      "expect_red": ["the_wrapped_commands_own_exit_status_is_what_the_wrapper_returns"]
+    },
+    {
+      "name": "the-follower-echoes-the-log-from-its-beginning",
+      "why": "the offset read as decoration rather than as the thing that makes two runs into one log legible. This script runs the command and then the coverage gate through the same log, so a follower starting at byte one replays everything the command wrote when the gate runs — for a suite of any size, megabytes of the same output, and a reader who cannot tell a repeat from a re-run",
+      "edits": [
+        {
+          "file": "scripts/verify.sh",
+          "from": "  tail -c \"+$((before + 1))\" -f -s 0.05 --pid=\"$child\" \"$log\"",
+          "to": "  tail -c \"+1\" -f -s 0.05 --pid=\"$child\" \"$log\""
+        }
+      ],
+      "expect_red": ["everything_the_wrapped_command_wrote_reaches_both_the_log_and_the_caller"]
+    },
+    {
+      "name": "the-command-is-given-the-shells-default-standard-input",
+      "why": "the silent half of running the command asynchronously. A shell with job control off assigns /dev/null to an asynchronous command's standard input before any redirection written on the command itself, so dropping this one word makes the wrapper a different environment from running the command directly — and says nothing at all about it",
+      "edits": [
+        {
+          "file": "scripts/verify.sh",
+          "from": "  \"$@\" >>\"$log\" 2>&1 <&\"$verify_stdin\" &",
+          "to": "  \"$@\" >>\"$log\" 2>&1 &"
+        }
+      ],
+      "expect_red": ["the_wrapped_command_still_reads_the_callers_standard_input"]
+    },
+    {
+      "name": "the-record-collector-is-run-without-the-plumbing",
+      "why": "one field with two write paths, which is this repository's named anti-pattern and was this script's real state until R1239: the collector's output reached the caller and never the log, because it was the one call written without what the other two shared. Nothing said so — a command run beside the plumbing rather than through it looks identical from every angle except the record it leaves",
+      "edits": [
+        {
+          "file": "scripts/verify.sh",
+          "from": "  run_into_log -- cargo run -q --locked --manifest-path \"$here/tools/scratch-budget/Cargo.toml\" \\\n    --bin scratch-budget -- --at .",
+          "to": "  cargo run -q --locked --manifest-path \"$here/tools/scratch-budget/Cargo.toml\" \\\n    --bin scratch-budget -- --at ."
+        }
+      ],
+      "expect_red": ["every_cargo_command_the_wrapper_issues_goes_through_its_one_plumbing"]
+    }
+  ]
+}
