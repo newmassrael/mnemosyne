@@ -23,7 +23,7 @@ use std::process::Command;
 
 use ci_state::{
     annotations_in, annotations_query, checks_in, checks_query, is_failing, job_of, report,
-    steps_in, steps_query, stoppage_line, stopped_at, Annotation, Check, STOPPED_NOWHERE,
+    steps_in, steps_query, stoppage_line, stopped_at, Check, Said, STOPPED_NOWHERE,
 };
 
 fn main() {
@@ -110,12 +110,19 @@ fn state_of(root: &Path, sha: &str) -> Vec<String> {
         .iter()
         .map(|check| check.output.annotations_count)
         .sum();
-    let mut read: Vec<Annotation> = Vec::new();
+    // PAIRED WITH THE CHECK THAT SAID IT (R1238). This loop already knows which
+    // check it is asking about — the name was thrown away here, one line down,
+    // and getting it back cost three `gh api` calls by hand the day a red commit
+    // carried two failing jobs and five flat lines.
+    let mut read: Vec<Said> = Vec::new();
     for check in checks.iter().filter(|c| c.output.annotations_count > 0) {
         match gh(root, &annotations_query(check.id))
             .and_then(|body| annotations_in(check.id, &body))
         {
-            Ok(mut some) => read.append(&mut some),
+            Ok(some) => read.extend(some.into_iter().map(|annotation| Said {
+                check: check.name.clone(),
+                annotation,
+            })),
             // NAMED, AND THE REST STILL READ: one check whose annotations cannot
             // be fetched must not take the other checks' annotations down with
             // it, and the shortfall shows up in the "N distinct of D reported"

@@ -20,6 +20,21 @@
         "more_annotations_than_are_shown_are_counted_rather_than_dropped"
       ]
     },
+    "a-check-cap-that-does-not-say-what-it-dropped": {
+      "edits": [
+        {
+          "file": "tools/ci-state/src/lib.rs",
+          "from": "        format!(\" (+{rest} more)\")",
+          "to": "        format!(\"\")"
+        }
+      ],
+      "expect_red": [
+        "more_checks_than_are_named_under_one_annotation_are_counted"
+      ],
+      "tests": [
+        "more_checks_than_are_named_under_one_annotation_are_counted"
+      ]
+    },
     "a-check-that-has-not-concluded-is-called-a-failure": {
       "edits": [
         {
@@ -222,6 +237,40 @@
         "the_stalled_job_names_the_step_that_ate_it_and_what_never_ran"
       ]
     },
+    "the-check-that-said-it-is-thrown-away-again": {
+      "edits": [
+        {
+          "file": "tools/ci-state/src/main.rs",
+          "from": "                check: check.name.clone(),",
+          "to": "                check: String::new(),"
+        }
+      ],
+      "expect_red": [
+        "the_recorded_red_commit_is_reported_as_red_with_its_annotation"
+      ],
+      "tests": [
+        "the_recorded_red_commit_is_reported_as_red_with_its_annotation"
+      ]
+    },
+    "the-checks-under-an-annotation-are-counted-and-not-named": {
+      "edits": [
+        {
+          "file": "tools/ci-state/src/lib.rs",
+          "from": "    format!(\"{} check(s): {}{tail}\", checks.len(), named.join(\", \"))",
+          "to": "    let _ = (named, tail);\n    format!(\"{} check(s)\", checks.len())"
+        }
+      ],
+      "expect_red": [
+        "every_distinct_annotation_names_the_checks_that_said_it",
+        "more_checks_than_are_named_under_one_annotation_are_counted",
+        "the_recorded_red_commit_is_reported_as_red_with_its_annotation"
+      ],
+      "tests": [
+        "every_distinct_annotation_names_the_checks_that_said_it",
+        "more_checks_than_are_named_under_one_annotation_are_counted",
+        "the_recorded_red_commit_is_reported_as_red_with_its_annotation"
+      ]
+    },
     "the-conclusion-this-reporter-treats-as-routine-is-misspelled": {
       "edits": [
         {
@@ -273,15 +322,19 @@
       "edits": [
         {
           "file": "tools/ci-state/src/lib.rs",
-          "from": "    let distinct: BTreeSet<String> = read.iter().map(one_line).collect();",
-          "to": "    let distinct: Vec<String> = read.iter().map(one_line).collect();"
+          "from": "            .entry(one_line(&said.annotation))",
+          "to": "            .entry(format!(\"{} {}\", one_line(&said.annotation), said.check))"
         }
       ],
       "expect_red": [
-        "annotations_are_deduplicated_and_both_numbers_are_printed"
+        "annotations_are_deduplicated_and_both_numbers_are_printed",
+        "every_distinct_annotation_names_the_checks_that_said_it",
+        "more_checks_than_are_named_under_one_annotation_are_counted"
       ],
       "tests": [
-        "annotations_are_deduplicated_and_both_numbers_are_printed"
+        "annotations_are_deduplicated_and_both_numbers_are_printed",
+        "every_distinct_annotation_names_the_checks_that_said_it",
+        "more_checks_than_are_named_under_one_annotation_are_counted"
       ]
     }
   }

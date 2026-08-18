@@ -445,6 +445,28 @@ pub fn one_line(annotation: &Annotation) -> String {
     format!("{} {}", annotation.annotation_level, head)
 }
 
+/// One annotation, and the check that reported it.
+///
+/// THE PAIR AND NOT THE ANNOTATION ALONE (R1238). GitHub answers about
+/// annotations one CHECK at a time, so the caller holds both — and this reporter
+/// used to take only the second, merge every check's into one list, and print
+/// the distinct set with nothing saying who said what. Measured on `cabcd5c`:
+/// two checks failed, five distinct annotations came back flat, and finding out
+/// which job carried `Process completed with exit code 127` took three `gh api`
+/// calls made by hand. It was `validate` and only `validate`; the other two
+/// lines were consequences both jobs emitted.
+///
+/// THAT IS THE SAME DEFECT R1236 REPAIRED ONE FIELD OVER. A conclusion without
+/// the step that ended it, an annotation without the check that said it: both
+/// are well-formed answers that cannot be attributed, and attribution is the
+/// whole of what a person reads a red commit for.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Said {
+    /// The check that reported it, by the name the run shows.
+    pub check: String,
+    pub annotation: Annotation,
+}
+
 /// What a commit's checks add up to.
 ///
 /// THREE ANSWERS AND NOT TWO. A commit whose checks have not finished is neither
@@ -555,12 +577,29 @@ pub fn report(sha: &str, checks: &[Check]) -> Vec<String> {
 /// distinct set is what a reader wants — and a cap that does not say what it
 /// dropped reads as "that was all of them". `declared` is GitHub's own count from
 /// the check rows; `read` is what actually came back.
-pub fn annotation_report(sha: &str, declared: u64, read: &[Annotation]) -> Vec<String> {
+///
+/// AND EVERY DISTINCT LINE NAMES THE CHECKS THAT SAID IT (R1238). Deduplicating
+/// across jobs is what makes this readable and it is also what threw the one fact
+/// a reader needs on the floor: `Process completed with exit code 127` beside
+/// `The operation was canceled` says nothing about whether one job carried both
+/// or two jobs carried one each. Attribution is not a nicety here — it is the
+/// difference between "our change did this" and "this happened to us".
+pub fn annotation_report(sha: &str, declared: u64, read: &[Said]) -> Vec<String> {
     let short = short(sha);
     if declared == 0 {
         return vec![format!("no CI annotations on {short}")];
     }
-    let distinct: BTreeSet<String> = read.iter().map(one_line).collect();
+    // ONE ENTRY PER DISTINCT LINE, holding the checks that reported it. A
+    // `BTreeMap` keyed on the rendered line is the dedup this already did; the
+    // value is what it used to discard.
+    let mut distinct: std::collections::BTreeMap<String, BTreeSet<String>> =
+        std::collections::BTreeMap::new();
+    for said in read {
+        distinct
+            .entry(one_line(&said.annotation))
+            .or_default()
+            .insert(said.check.clone());
+    }
     if distinct.is_empty() {
         return vec![format!(
             "NOTE {short} reports {declared} annotation(s), none readable"
@@ -570,7 +609,10 @@ pub fn annotation_report(sha: &str, declared: u64, read: &[Annotation]) -> Vec<S
         "CI annotations on {short} — {} distinct of {declared} reported:",
         distinct.len()
     )];
-    lines.extend(distinct.iter().take(SHOWN).map(|note| format!("  {note}")));
+    for (note, checks) in distinct.iter().take(SHOWN) {
+        lines.push(format!("  {note}"));
+        lines.push(format!("      from {}", said_by(checks)));
+    }
     if distinct.len() > SHOWN {
         lines.push(format!(
             "   (+{} distinct not shown)",
@@ -580,5 +622,26 @@ pub fn annotation_report(sha: &str, declared: u64, read: &[Annotation]) -> Vec<S
     lines
 }
 
+/// The checks that reported one line, as the line under it reads.
+///
+/// NAMED AND NOT COUNTED, up to a cap that says what it left out — the same rule
+/// the distinct cap above follows. A job name in this repository is a sentence,
+/// so a commit where every job says the same thing would otherwise be one
+/// unreadable line; a commit where TWO jobs do is the case this exists for, and
+/// there the names are the whole answer.
+fn said_by(checks: &BTreeSet<String>) -> String {
+    let named: Vec<&str> = checks.iter().take(NAMED).map(String::as_str).collect();
+    let rest = checks.len().saturating_sub(named.len());
+    let tail = if rest == 0 {
+        String::new()
+    } else {
+        format!(" (+{rest} more)")
+    };
+    format!("{} check(s): {}{tail}", checks.len(), named.join(", "))
+}
+
 /// How many distinct annotations are printed before the rest are counted instead.
 const SHOWN: usize = 10;
+
+/// How many checks are named under one annotation before the rest are counted.
+const NAMED: usize = 4;

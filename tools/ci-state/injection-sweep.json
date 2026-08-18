@@ -152,15 +152,19 @@
     },
     {
       "name": "the-same-annotation-from-nine-jobs-is-printed-nine-times",
-      "why": "GitHub emits one annotation per job, so one deprecation notice arrives nine times. Printing all of them buries the second distinct finding under the first, and this is the half that must not be paid for by dropping the count of what came",
+      "why": "GitHub emits one annotation per job, so one deprecation notice arrives nine times. Printing all of them buries the second distinct finding under the first, and this is the half that must not be paid for by dropping the count of what came. ⚠ R1238 RE-AIMED THIS: the dedup used to be a `BTreeSet` of rendered lines and is now a map from that line to the checks that said it, so the way to break it is to key on the PAIR — which is also the mistake somebody adding attribution would actually make",
       "edits": [
         {
           "file": "tools/ci-state/src/lib.rs",
-          "from": "    let distinct: BTreeSet<String> = read.iter().map(one_line).collect();",
-          "to": "    let distinct: Vec<String> = read.iter().map(one_line).collect();"
+          "from": "            .entry(one_line(&said.annotation))",
+          "to": "            .entry(format!(\"{} {}\", one_line(&said.annotation), said.check))"
         }
       ],
-      "expect_red": ["annotations_are_deduplicated_and_both_numbers_are_printed"]
+      "expect_red": [
+        "annotations_are_deduplicated_and_both_numbers_are_printed",
+        "every_distinct_annotation_names_the_checks_that_said_it",
+        "more_checks_than_are_named_under_one_annotation_are_counted"
+      ]
     },
     {
       "name": "a-cap-that-does-not-say-what-it-dropped",
@@ -261,6 +265,50 @@
       ],
       "expect_red": [
         "a_check_no_actions_job_is_behind_is_said_so_rather_than_asked_about"
+      ]
+    },
+    {
+      "name": "the-check-that-said-it-is-thrown-away-again",
+      "why": "R1238 — the state this reporter was in until that round. The loop that fetches annotations knows which check it is asking about and dropped the name one line later, so a red commit with two failing jobs printed five flat lines and finding out which job said `exit code 127` took three `gh api` calls by hand. The name is right there; discarding it is the whole defect",
+      "edits": [
+        {
+          "file": "tools/ci-state/src/main.rs",
+          "from": "                check: check.name.clone(),",
+          "to": "                check: String::new(),"
+        }
+      ],
+      "expect_red": [
+        "the_recorded_red_commit_is_reported_as_red_with_its_annotation"
+      ]
+    },
+    {
+      "name": "the-checks-under-an-annotation-are-counted-and-not-named",
+      "why": "the half-repair that reads as done. `2 check(s)` beside a line says there were two and not WHICH two, and which two is the entire difference between a consequence both jobs emitted and a cause only one did — the exact pair this round's own red carried",
+      "edits": [
+        {
+          "file": "tools/ci-state/src/lib.rs",
+          "from": "    format!(\"{} check(s): {}{tail}\", checks.len(), named.join(\", \"))",
+          "to": "    let _ = (named, tail);\n    format!(\"{} check(s)\", checks.len())"
+        }
+      ],
+      "expect_red": [
+        "every_distinct_annotation_names_the_checks_that_said_it",
+        "more_checks_than_are_named_under_one_annotation_are_counted",
+        "the_recorded_red_commit_is_reported_as_red_with_its_annotation"
+      ]
+    },
+    {
+      "name": "a-check-cap-that-does-not-say-what-it-dropped",
+      "why": "the same silence the distinct cap already refuses, one level down. A job name in this repository is a sentence, so the cap is necessary — and a cap that prints four names and nothing else reads as `these are the jobs`, which is a wrong answer wearing the shape of a complete one",
+      "edits": [
+        {
+          "file": "tools/ci-state/src/lib.rs",
+          "from": "        format!(\" (+{rest} more)\")",
+          "to": "        format!(\"\")"
+        }
+      ],
+      "expect_red": [
+        "more_checks_than_are_named_under_one_annotation_are_counted"
       ]
     },
     {

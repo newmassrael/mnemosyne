@@ -165,6 +165,12 @@ fn the_recorded_red_commit_is_reported_as_red_with_its_annotation() {
         "and the STEP that ended that job is named, which is the fact no check-run \
          row carries (R1236): {said}"
     );
+    assert!(
+        said.contains("from 1 check(s): every cache declared is one CI keeps"),
+        "and the CHECK that said the annotation is named (R1238) — the loop that \
+         fetches them knows which one it asked, and used to throw the name away \
+         one line later: {said}"
+    );
 }
 
 /// The stalled job reads, through this binary, as one this repository never reached.

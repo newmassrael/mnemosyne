@@ -7,7 +7,9 @@
 //! sentence is the failure R1125 shipped one gate over, where an oracle matching
 //! a SUBSTRING of the failure output agreed with the output it existed to refuse.
 
-use ci_state::{annotation_report, one_line, report, verdict, Annotation, Check, Output, Verdict};
+use ci_state::{
+    annotation_report, one_line, report, verdict, Annotation, Check, Output, Said, Verdict,
+};
 
 const SHA: &str = "2d630331b1279e3b7a28985876b53ef0b07fbe77";
 
@@ -36,6 +38,14 @@ fn note(level: &str, message: &str) -> Annotation {
     Annotation {
         annotation_level: level.to_string(),
         message: message.to_string(),
+    }
+}
+
+/// One annotation as a check reported it (R1238).
+fn said(check: &str, level: &str, message: &str) -> Said {
+    Said {
+        check: check.to_string(),
+        annotation: note(level, message),
     }
 }
 
@@ -180,36 +190,112 @@ fn the_commit_is_printed_short_and_it_is_the_commit_asked_about() {
 #[test]
 fn annotations_are_deduplicated_and_both_numbers_are_printed() {
     let read = vec![
-        note("warning", "Node.js 20 actions are deprecated"),
-        note("warning", "Node.js 20 actions are deprecated"),
-        note("failure", "Process completed with exit code 1."),
+        said("validate", "warning", "Node.js 20 actions are deprecated"),
+        said("msrv", "warning", "Node.js 20 actions are deprecated"),
+        said("validate", "failure", "Process completed with exit code 1."),
     ];
-    let said = annotation_report(SHA, 3, &read).join("\n");
-    assert!(said.contains("2 distinct of 3 reported"), "{said}");
+    let printed = annotation_report(SHA, 3, &read).join("\n");
+    assert!(printed.contains("2 distinct of 3 reported"), "{printed}");
     assert_eq!(
-        said.matches("Node.js 20").count(),
+        printed.matches("Node.js 20").count(),
         1,
-        "the repeated one is printed once: {said}"
+        "the repeated one is printed once: {printed}"
     );
-    assert!(said.contains("exit code 1."), "{said}");
+    assert!(printed.contains("exit code 1."), "{printed}");
+}
+
+/// Every distinct annotation names the checks that reported it.
+///
+/// THE WHOLE POINT OF R1238, and the case is the shape that cost this repository
+/// an afternoon: two failing jobs, one line carried by BOTH of them and one
+/// carried by ONE. Deduplicated without attribution those two read identically,
+/// and the reader cannot tell "the change did this" from "this happened to us"
+/// without leaving the tool — which is what happened, three `gh api` calls by
+/// hand, on `cabcd5c`.
+#[test]
+fn every_distinct_annotation_names_the_checks_that_said_it() {
+    let read = vec![
+        said("validate", "failure", "The operation was canceled."),
+        said("server-features", "failure", "The operation was canceled."),
+        said(
+            "validate",
+            "failure",
+            "Process completed with exit code 127.",
+        ),
+    ];
+    let printed = annotation_report(SHA, 3, &read).join("\n");
+
+    let shared = printed
+        .lines()
+        .skip_while(|line| !line.contains("was canceled."))
+        .nth(1)
+        .expect("a line under the shared annotation");
+    assert!(
+        shared.contains("2 check(s)")
+            && shared.contains("validate")
+            && shared.contains("server-features"),
+        "the line both jobs emitted names both: {printed}"
+    );
+
+    let alone = printed
+        .lines()
+        .skip_while(|line| !line.contains("exit code 127."))
+        .nth(1)
+        .expect("a line under the lone annotation");
+    assert!(
+        alone.contains("1 check(s)") && alone.contains("validate"),
+        "and the one only `validate` emitted names only it — which is the fact \
+         that separates a consequence from a cause: {printed}"
+    );
+    assert!(
+        !alone.contains("server-features"),
+        "and it does NOT name the other job, or the attribution says nothing: \
+         {printed}"
+    );
+}
+
+/// More checks than are named under one annotation are counted, never dropped.
+///
+/// A job name here is a sentence, so nine of them under one line is unreadable —
+/// and a cap that said nothing would read as "these are the jobs", which is the
+/// failure the distinct cap above already refuses.
+#[test]
+fn more_checks_than_are_named_under_one_annotation_are_counted() {
+    let read: Vec<Said> = (0..7)
+        .map(|n| said(&format!("job number {n}"), "warning", "the same thing"))
+        .collect();
+    let printed = annotation_report(SHA, 7, &read).join("\n");
+    assert!(printed.contains("7 check(s)"), "{printed}");
+    assert_eq!(
+        printed.matches("job number").count(),
+        4,
+        "four are named: {printed}"
+    );
+    assert!(
+        printed.contains("(+3 more)"),
+        "and the other three are counted rather than dropped: {printed}"
+    );
 }
 
 /// A cap that does not say what it dropped reads as "that was all of them".
 #[test]
 fn more_annotations_than_are_shown_are_counted_rather_than_dropped() {
-    let read: Vec<Annotation> = (0..14)
-        .map(|n| note("warning", &format!("finding number {n}")))
+    let read: Vec<Said> = (0..14)
+        .map(|n| said("validate", "warning", &format!("finding number {n}")))
         .collect();
-    let said = annotation_report(SHA, 14, &read).join("\n");
-    assert!(said.contains("14 distinct of 14 reported"), "{said}");
+    let printed = annotation_report(SHA, 14, &read).join("\n");
+    assert!(printed.contains("14 distinct of 14 reported"), "{printed}");
     assert_eq!(
-        said.lines().filter(|line| line.contains("finding")).count(),
+        printed
+            .lines()
+            .filter(|line| line.contains("finding"))
+            .count(),
         10,
-        "ten are shown: {said}"
+        "ten are shown: {printed}"
     );
     assert!(
-        said.contains("(+4 distinct not shown)"),
-        "and the other four are counted: {said}"
+        printed.contains("(+4 distinct not shown)"),
+        "and the other four are counted: {printed}"
     );
 }
 
