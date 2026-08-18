@@ -83,8 +83,22 @@ impl Stub {
         self.dir.path().join("gh-contract-violations.log")
     }
 
+    /// Run the reporter over a named job's recorded steps.
+    fn run_with_job(&self, arguments: &[&str], checks: &Path, job: &str, body: &Path) -> Output {
+        self.invoke(arguments, checks, job, body)
+    }
+
     /// Run the reporter with this stub as the whole of `PATH`.
     fn run(&self, arguments: &[&str], checks: &Path) -> Output {
+        self.invoke(
+            arguments,
+            checks,
+            "93478488570",
+            &fixture("job.failure.json"),
+        )
+    }
+
+    fn invoke(&self, arguments: &[&str], checks: &Path, job: &str, body: &Path) -> Output {
         let out = Command::new(env!("CARGO_BIN_EXE_ci-state"))
             .args(arguments)
             .current_dir(self.dir.path())
@@ -96,6 +110,12 @@ impl Stub {
             .env("GH_STUB_CHECK", "93478488570")
             .env("GH_STUB_CHECKS", checks)
             .env("GH_STUB_ANNOTATIONS", fixture("annotations.json"))
+            // R1236 — the steps of the one job that failed on this commit. The
+            // stub REFUSES a request for any other job, so every case is also
+            // asserting that this reporter asks about the job the failing check
+            // names and about no other.
+            .env("GH_STUB_JOB", job)
+            .env("GH_STUB_JOB_BODY", body)
             .output()
             .expect("the reporter runs");
         let asked_wrongly = fs::read_to_string(self.log()).unwrap_or_default();
@@ -140,6 +160,49 @@ fn the_recorded_red_commit_is_reported_as_red_with_its_annotation() {
         said.contains("1 distinct of 1 reported") && said.contains("exit code 1."),
         "and the annotation behind it is printed: {said}"
     );
+    assert!(
+        said.contains("stopped at step 6 `every cache this repository declares is one it keeps`"),
+        "and the STEP that ended that job is named, which is the fact no check-run \
+         row carries (R1236): {said}"
+    );
+}
+
+/// The stalled job reads, through this binary, as one this repository never reached.
+///
+/// THE ROUND'S OWN RED, END TO END. On 2026-08-18 a job of this repository was
+/// `cancelled` after forty-five minutes, and from the check-run rows that is
+/// indistinguishable from the push's own change hanging it — the reading this
+/// session started with, and abandoned only after a SECOND tool was asked for the
+/// steps. What comes out of this binary now is the whole attribution: the step was
+/// `apt-get`, it ate the job, and the clippy, the suite and the wrapper behind it
+/// never ran.
+#[test]
+fn the_job_that_stalled_before_anything_of_ours_ran_says_so_through_this_binary() {
+    let stub = Stub::recording();
+    let checks = stub.dir.path().join("cancelled.json");
+    // The recorded rows, with the one failing check turned into the cancelled job
+    // recorded beside it. THE CHECK ROW IS WHAT DRIFTS AND THE JOB BODY IS REAL:
+    // GitHub answers about a commit and about a job at two endpoints, and this
+    // case is about the reporter joining them, so only the join is composed here.
+    let rows = fs::read_to_string(fixture("check-runs.one-page.json")).expect("the recording");
+    fs::write(&checks, rows.replace("\"failure\"", "\"cancelled\"")).expect("write");
+    let out = stub.run_with_job(
+        &[SHA],
+        &checks,
+        "93478488570",
+        &fixture("job.cancelled.json"),
+    );
+    let said = said(&out);
+    assert_eq!(out.status.code(), Some(0), "{said}");
+    assert!(
+        said.contains("stopped at step 3 `Install protoc (mnemosyne-server build script)`"),
+        "the step that ate the job is named: {said}"
+    );
+    assert!(
+        said.contains("7 of the 10 step(s) after it never ran"),
+        "and what never ran is counted, which is what says the change this push \
+         carried was never reached: {said}"
+    );
 }
 
 /// Three pages of the same answer report the same commit.
@@ -155,6 +218,49 @@ fn the_paginated_recording_reports_the_same_commit() {
     assert!(
         said.contains("9 check(s)") && said.contains("is RED"),
         "{said}"
+    );
+}
+
+/// A check no Actions job is behind is SAID to have none, and is not asked about.
+///
+/// WHY THE JOB IS READ OUT OF `details_url` AND NOT TAKEN FROM `id`. For GitHub
+/// Actions those two integers are equal — `github.rs` asserts it against the
+/// recording — so on this repository's own data the two spellings are
+/// indistinguishable, and a reporter written the easy way would look identical
+/// until the day a check arrives that no Actions job is behind. Then `id` names a
+/// job belonging to somebody else's numbering, and the steps of whatever comes
+/// back would be printed as this check's.
+///
+/// THE STUB IS TOLD A JOB THIS CASE FORBIDS, so an ask of any kind is a logged
+/// contract violation and `run_with_job` fails on it. "It printed the right
+/// sentence" and "it never asked" are two claims, and this makes both.
+#[test]
+fn a_check_no_actions_job_is_behind_is_said_so_rather_than_asked_about() {
+    let stub = Stub::recording();
+    let checks = stub.dir.path().join("foreign.json");
+    let rows = fs::read_to_string(fixture("check-runs.one-page.json")).expect("the recording");
+    fs::write(
+        &checks,
+        rows.replace(
+            "https://github.com/newmassrael/mnemosyne/actions/runs/31394095606/job/93478488570",
+            "https://audit.example.com/reports/17",
+        ),
+    )
+    .expect("write");
+    let out = stub.run_with_job(&[SHA], &checks, "no-job-may-be-asked-about", &checks);
+    let said = said(&out);
+    assert_eq!(out.status.code(), Some(0), "{said}");
+    assert!(
+        said.contains("no Actions job behind `every cache declared is one CI keeps`"),
+        "the check is named and so is the absence: {said}"
+    );
+    assert!(
+        said.contains("https://audit.example.com/reports/17"),
+        "and the reader is sent where the check itself points: {said}"
+    );
+    assert!(
+        !said.contains("stopped at step"),
+        "and no other job's steps are printed as this one's: {said}"
     );
 }
 

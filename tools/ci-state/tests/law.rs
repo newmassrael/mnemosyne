@@ -16,6 +16,9 @@ fn check(id: u64, name: &str, conclusion: Option<&str>, annotations: u64) -> Che
     Check {
         id,
         name: name.to_string(),
+        // The shape GitHub writes for an Actions job, with this row's own id in
+        // it — the same equality `github.rs` asserts against the recording.
+        details_url: format!("https://github.com/o/r/actions/runs/1/job/{id}"),
         head_sha: SHA.to_string(),
         status: if conclusion.is_some() {
             "completed".to_string()

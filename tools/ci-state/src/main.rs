@@ -21,7 +21,10 @@
 use std::path::Path;
 use std::process::Command;
 
-use ci_state::{annotations_in, annotations_query, checks_in, checks_query, report, Annotation};
+use ci_state::{
+    annotations_in, annotations_query, checks_in, checks_query, is_failing, job_of, report,
+    steps_in, steps_query, stoppage_line, stopped_at, Annotation, Check, STOPPED_NOWHERE,
+};
 
 fn main() {
     let arguments: Vec<String> = std::env::args().skip(1).collect();
@@ -88,6 +91,17 @@ fn state_of(root: &Path, sha: &str) -> Vec<String> {
     };
     let mut lines = report(sha, &checks);
 
+    // WHICH STEP ENDED IT, FOR EVERY CHECK THAT DID NOT PASS (R1236). The
+    // per-commit endpoint answers with a conclusion and no steps, and those two
+    // words are not enough to attribute anything: `cancelled` after 45 minutes
+    // reads as "the change this push is about hung the job", and the run that made
+    // this round was `apt-get` stalling three steps in, with every later step —
+    // this repository's clippy, its suite, its wrapper — never run at all. That
+    // was a second tool's answer for one afternoon; it is this one's now.
+    for check in checks.iter().filter(|check| is_failing(check)) {
+        lines.extend(steps_of(root, check));
+    }
+
     // THE OTHER HALF OF WHAT CI SAID (R893). A conclusion is one word, and a green
     // run can still be reporting something: the Node 20 runtime deprecation rode
     // in the annotations of every run this repository could see while every
@@ -111,4 +125,28 @@ fn state_of(root: &Path, sha: &str) -> Vec<String> {
     }
     lines.extend(ci_state::annotation_report(sha, declared, &read));
     lines
+}
+
+/// What one failing check's own steps say about where its job stopped.
+///
+/// EVERY WAY THIS CAN COME BACK EMPTY IS A SENTENCE. A check no Actions job is
+/// behind, a `gh` that could not be asked, an answer that would not read, a job
+/// whose steps name no stopping point: each returns a line saying which one it
+/// was, because the whole value here is that a reader stops guessing — and a
+/// reporter that fell silent would hand back exactly the guess it exists to end.
+fn steps_of(root: &Path, check: &Check) -> Vec<String> {
+    let Some(job) = job_of(&check.details_url) else {
+        return vec![format!(
+            "      no Actions job behind `{}` — its details are at {}",
+            check.name, check.details_url
+        )];
+    };
+    let steps = match gh(root, &steps_query(job)).and_then(|body| steps_in(job, &body)) {
+        Ok(steps) => steps,
+        Err(why) => return vec![format!("      NOTE {why}")],
+    };
+    match stopped_at(&steps) {
+        Some(stoppage) => vec![format!("      {}", stoppage_line(&stoppage))],
+        None => vec![format!("      {STOPPED_NOWHERE}")],
+    }
 }

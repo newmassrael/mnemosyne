@@ -1,0 +1,288 @@
+{
+  "_": [
+    "Machine-written by tools/injection-harness. Do not edit by hand: a row somebody typed is evidence of nothing, and the law over this file is worth exactly what its being unforgeable is worth.",
+    "Each row is one injection that WAS RUN and DID redden what it names, kept beside the definition it was proven against — edit the injection and the gate says the evidence is about a different one."
+  ],
+  "complete": true,
+  "fired": {
+    "a-cap-that-does-not-say-what-it-dropped": {
+      "edits": [
+        {
+          "file": "tools/ci-state/src/lib.rs",
+          "from": "const SHOWN: usize = 10;",
+          "to": "const SHOWN: usize = 100;"
+        }
+      ],
+      "expect_red": [
+        "more_annotations_than_are_shown_are_counted_rather_than_dropped"
+      ],
+      "tests": [
+        "more_annotations_than_are_shown_are_counted_rather_than_dropped"
+      ]
+    },
+    "a-check-that-has-not-concluded-is-called-a-failure": {
+      "edits": [
+        {
+          "file": "tools/ci-state/src/lib.rs",
+          "from": "    conclusion.is_some_and(|conclusion| FAILING.contains(&conclusion))",
+          "to": "    conclusion.is_none_or(|conclusion| FAILING.contains(&conclusion))"
+        }
+      ],
+      "expect_red": [
+        "a_commit_still_running_is_neither_red_nor_clear",
+        "a_conclusion_sent_as_null_is_a_check_that_has_not_concluded"
+      ],
+      "tests": [
+        "a_commit_still_running_is_neither_red_nor_clear",
+        "a_conclusion_sent_as_null_is_a_check_that_has_not_concluded"
+      ]
+    },
+    "a-conclusion-github-stops-sending-reads-as-a-check-still-running": {
+      "edits": [
+        {
+          "file": "tools/ci-state/src/lib.rs",
+          "from": "    #[serde(deserialize_with = \"present_but_nullable\")]\n    pub conclusion: Option<String>,\n    pub output: Output,",
+          "to": "    pub conclusion: Option<String>,\n    pub output: Output,"
+        }
+      ],
+      "expect_red": [
+        "a_conclusion_this_reporter_cannot_find_is_a_refusal_rather_than_a_pending_check"
+      ],
+      "tests": [
+        "a_conclusion_this_reporter_cannot_find_is_a_refusal_rather_than_a_pending_check"
+      ]
+    },
+    "a-gh-that-failed-is-reported-as-a-gh-nobody-installed": {
+      "edits": [
+        {
+          "file": "tools/ci-state/src/main.rs",
+          "from": "            std::io::ErrorKind::NotFound => \"`gh` is not installed on this machine\".to_string(),",
+          "to": "            std::io::ErrorKind::NotFound => format!(\"`gh` could not be run at all: {why}\"),"
+        }
+      ],
+      "expect_red": [
+        "a_gh_that_is_not_installed_is_reported_and_the_reporter_still_exits_zero"
+      ],
+      "tests": [
+        "a_gh_that_is_not_installed_is_reported_and_the_reporter_still_exits_zero"
+      ]
+    },
+    "a-message-is-cut-by-bytes-instead-of-characters": {
+      "edits": [
+        {
+          "file": "tools/ci-state/src/lib.rs",
+          "from": "    let head: String = annotation\n        .message\n        .lines()\n        .next()\n        .unwrap_or_default()\n        .chars()\n        .take(160)\n        .collect();",
+          "to": "    let first = annotation.message.lines().next().unwrap_or_default();\n    let head: String = first[..first.len().min(160)].to_string();"
+        }
+      ],
+      "expect_red": [
+        "a_long_message_is_cut_by_characters_and_survives_a_non_ascii_one"
+      ],
+      "tests": [
+        "a_long_message_is_cut_by_characters_and_survives_a_non_ascii_one"
+      ]
+    },
+    "a-reporter-asked-about-no-commit-answers-that-everything-is-fine": {
+      "edits": [
+        {
+          "file": "tools/ci-state/src/main.rs",
+          "from": "             argument(s), there is no commit to report on\",\n            arguments.len()\n        );\n        std::process::exit(2);",
+          "to": "             argument(s), there is no commit to report on\",\n            arguments.len()\n        );\n        std::process::exit(0);"
+        }
+      ],
+      "expect_red": [
+        "a_reporter_given_no_commit_exits_two_rather_than_reporting_on_nothing"
+      ],
+      "tests": [
+        "a_reporter_given_no_commit_exits_two_rather_than_reporting_on_nothing"
+      ]
+    },
+    "a-skipped-job-is-called-a-failure": {
+      "edits": [
+        {
+          "file": "tools/ci-state/src/lib.rs",
+          "from": "pub const FAILING: [&str; 4] = [\"failure\", \"cancelled\", \"timed_out\", \"startup_failure\"];",
+          "to": "pub const FAILING: [&str; 5] = [\"failure\", \"cancelled\", \"timed_out\", \"startup_failure\", \"skipped\"];"
+        }
+      ],
+      "expect_red": [
+        "the_skipped_check_in_the_recording_is_not_read_as_a_failure",
+        "a_conclusion_sent_as_null_is_a_check_that_has_not_concluded",
+        "the_recorded_red_commit_is_reported_as_red_with_its_annotation",
+        "the_paginated_recording_reports_the_same_commit",
+        "the_job_that_stalled_before_anything_of_ours_ran_says_so_through_this_binary",
+        "a_check_no_actions_job_is_behind_is_said_so_rather_than_asked_about"
+      ],
+      "tests": [
+        "a_check_no_actions_job_is_behind_is_said_so_rather_than_asked_about",
+        "a_conclusion_sent_as_null_is_a_check_that_has_not_concluded",
+        "the_job_that_stalled_before_anything_of_ours_ran_says_so_through_this_binary",
+        "the_paginated_recording_reports_the_same_commit",
+        "the_recorded_red_commit_is_reported_as_red_with_its_annotation",
+        "the_skipped_check_in_the_recording_is_not_read_as_a_failure"
+      ]
+    },
+    "a-step-conclusion-github-stops-sending-reads-as-a-step-still-running": {
+      "edits": [
+        {
+          "file": "tools/ci-state/src/lib.rs",
+          "from": "    #[serde(deserialize_with = \"present_but_nullable\")]\n    pub conclusion: Option<String>,\n    pub started_at: Option<String>,",
+          "to": "    pub conclusion: Option<String>,\n    pub started_at: Option<String>,"
+        }
+      ],
+      "expect_red": [
+        "a_step_field_this_reporter_cannot_find_is_a_refusal"
+      ],
+      "tests": [
+        "a_step_field_this_reporter_cannot_find_is_a_refusal"
+      ]
+    },
+    "a-well-formed-answer-about-another-commit-is-printed-as-this-ones": {
+      "edits": [
+        {
+          "file": "tools/ci-state/src/lib.rs",
+          "from": "    if let Some(other) = checks.iter().find(|check| check.head_sha != sha) {",
+          "to": "    if let Some(other) = checks.iter().find(|check| check.head_sha.is_empty()) {"
+        }
+      ],
+      "expect_red": [
+        "an_answer_about_another_commit_is_refused_and_says_which"
+      ],
+      "tests": [
+        "an_answer_about_another_commit_is_refused_and_says_which"
+      ]
+    },
+    "an-answer-that-stopped-early-is-believed": {
+      "edits": [
+        {
+          "file": "tools/ci-state/src/lib.rs",
+          "from": "    if checks.len() as u64 != counted {",
+          "to": "    if checks.len() as u64 > counted {"
+        }
+      ],
+      "expect_red": [
+        "an_answer_that_stops_early_is_a_read_that_failed_and_not_a_shorter_commit",
+        "an_answer_the_reporter_cannot_read_is_printed_rather_than_swallowed"
+      ],
+      "tests": [
+        "an_answer_that_stops_early_is_a_read_that_failed_and_not_a_shorter_commit",
+        "an_answer_the_reporter_cannot_read_is_printed_rather_than_swallowed"
+      ]
+    },
+    "no-failing-check-is-asked-what-step-ended-it": {
+      "edits": [
+        {
+          "file": "tools/ci-state/src/main.rs",
+          "from": "        lines.extend(steps_of(root, check));",
+          "to": "        let _ = steps_of(root, check);"
+        }
+      ],
+      "expect_red": [
+        "the_recorded_red_commit_is_reported_as_red_with_its_annotation",
+        "the_job_that_stalled_before_anything_of_ours_ran_says_so_through_this_binary",
+        "a_check_no_actions_job_is_behind_is_said_so_rather_than_asked_about"
+      ],
+      "tests": [
+        "a_check_no_actions_job_is_behind_is_said_so_rather_than_asked_about",
+        "the_job_that_stalled_before_anything_of_ours_ran_says_so_through_this_binary",
+        "the_recorded_red_commit_is_reported_as_red_with_its_annotation"
+      ]
+    },
+    "only-the-word-failure-gets-its-step-named": {
+      "edits": [
+        {
+          "file": "tools/ci-state/src/main.rs",
+          "from": "    for check in checks.iter().filter(|check| is_failing(check)) {",
+          "to": "    for check in checks.iter().filter(|check| check.conclusion.as_deref() == Some(\"failure\")) {"
+        }
+      ],
+      "expect_red": [
+        "the_job_that_stalled_before_anything_of_ours_ran_says_so_through_this_binary"
+      ],
+      "tests": [
+        "the_job_that_stalled_before_anything_of_ours_ran_says_so_through_this_binary"
+      ]
+    },
+    "steps-that-never-ran-are-counted-as-having-run": {
+      "edits": [
+        {
+          "file": "tools/ci-state/src/lib.rs",
+          "from": "            .filter(|step| step.conclusion.as_deref() == Some(NEVER_RAN))",
+          "to": "            .filter(|step| step.conclusion.as_deref() != Some(NEVER_RAN))"
+        }
+      ],
+      "expect_red": [
+        "the_stalled_job_names_the_step_that_ate_it_and_what_never_ran",
+        "a_job_that_failed_and_carried_on_is_not_reported_as_one_that_stopped_everything",
+        "the_job_that_stalled_before_anything_of_ours_ran_says_so_through_this_binary"
+      ],
+      "tests": [
+        "a_job_that_failed_and_carried_on_is_not_reported_as_one_that_stopped_everything",
+        "the_job_that_stalled_before_anything_of_ours_ran_says_so_through_this_binary",
+        "the_stalled_job_names_the_step_that_ate_it_and_what_never_ran"
+      ]
+    },
+    "the-conclusion-this-reporter-treats-as-routine-is-misspelled": {
+      "edits": [
+        {
+          "file": "tools/ci-state/src/lib.rs",
+          "from": "        if check.conclusion.as_deref() != Some(\"success\") {",
+          "to": "        if check.conclusion.as_deref() != Some(\"succeeded\") {"
+        }
+      ],
+      "expect_red": [
+        "the_census_names_every_row_and_the_lines_name_every_row_that_is_not_success"
+      ],
+      "tests": [
+        "the_census_names_every_row_and_the_lines_name_every_row_that_is_not_success"
+      ]
+    },
+    "the-job-is-taken-from-the-checks-own-id": {
+      "edits": [
+        {
+          "file": "tools/ci-state/src/main.rs",
+          "from": "    let Some(job) = job_of(&check.details_url) else {",
+          "to": "    let Some(job) = job_of(&check.details_url).or(Some(check.id)) else {"
+        }
+      ],
+      "expect_red": [
+        "a_check_no_actions_job_is_behind_is_said_so_rather_than_asked_about"
+      ],
+      "tests": [
+        "a_check_no_actions_job_is_behind_is_said_so_rather_than_asked_about"
+      ]
+    },
+    "the-last-failing-step-is-named-instead-of-the-first": {
+      "edits": [
+        {
+          "file": "tools/ci-state/src/lib.rs",
+          "from": "        .position(|step| ended_it(step.conclusion.as_deref()))?;",
+          "to": "        .rposition(|step| ended_it(step.conclusion.as_deref()))?;"
+        }
+      ],
+      "expect_red": [
+        "the_stalled_job_names_the_step_that_ate_it_and_what_never_ran",
+        "the_job_that_stalled_before_anything_of_ours_ran_says_so_through_this_binary"
+      ],
+      "tests": [
+        "the_job_that_stalled_before_anything_of_ours_ran_says_so_through_this_binary",
+        "the_stalled_job_names_the_step_that_ate_it_and_what_never_ran"
+      ]
+    },
+    "the-same-annotation-from-nine-jobs-is-printed-nine-times": {
+      "edits": [
+        {
+          "file": "tools/ci-state/src/lib.rs",
+          "from": "    let distinct: BTreeSet<String> = read.iter().map(one_line).collect();",
+          "to": "    let distinct: Vec<String> = read.iter().map(one_line).collect();"
+        }
+      ],
+      "expect_red": [
+        "annotations_are_deduplicated_and_both_numbers_are_printed"
+      ],
+      "tests": [
+        "annotations_are_deduplicated_and_both_numbers_are_printed"
+      ]
+    }
+  }
+}

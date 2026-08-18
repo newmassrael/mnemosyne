@@ -148,7 +148,24 @@ jobs:
       # suite step is what needs it, and `tools/undeclared-requirement` requires
       # a package CI installs to be named in `.claude/remote-build.toml`, which
       # this one now is.
+      #
+      # R1236 — BOUNDED, AND THE BOUND IS MEASURED. On 2026-08-18 this step in
+      # `server-features` did not fail: it STALLED, for 45m09s, until the job's
+      # own 45-minute timeout killed it. Every step behind it — the clippy, the
+      # suite, the wrapper this repository verifies through — was then skipped,
+      # and what a reader saw was a job of this repository `cancelled` after
+      # forty-five minutes, which is also exactly what the change being pushed
+      # hanging the job would look like. The same step on the previous green run
+      # of the same job took TWELVE SECONDS, and the whole job takes about seven
+      # minutes. Five is twenty-five times the measured cost and still fails
+      # forty minutes before the job's own bound, so a stalled archive is a
+      # named step rather than a whole job's budget spent on nothing.
+      #
+      # ON EVERY COPY OF THIS STEP AND NOT ONLY THE ONE THAT STALLED: six jobs
+      # install from the same archive, and a bound on the one that happened to
+      # be unlucky is a habit rather than a rule.
       - name: Install protoc (mnemosyne-server build script)
+        timeout-minutes: 5
         run: sudo apt-get update && sudo apt-get install -y protobuf-compiler strace
 
       - name: Install rust toolchain (rust-toolchain.toml)
@@ -502,6 +519,8 @@ jobs:
       # Same reason as `validate`: documenting `mnemosyne-server` runs its build
       # script, which shells out to protoc.
       - name: Install protoc (mnemosyne-server build script)
+        # R1236 — see `validate`'s copy of this step for the measurement.
+        timeout-minutes: 5
         run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
 
       - name: Install rust toolchain (rust-toolchain.toml)
@@ -732,6 +751,8 @@ jobs:
       - uses: actions/checkout@v7
 
       - name: Install protoc (mnemosyne-server build script)
+        # R1236 — see `validate`'s copy of this step for the measurement.
+        timeout-minutes: 5
         run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
 
       - name: Install rust toolchain (rust-toolchain.toml)
@@ -877,6 +898,8 @@ jobs:
       - uses: actions/checkout@v7
 
       - name: Install protoc (mnemosyne-server build script)
+        # R1236 — see `validate`'s copy of this step for the measurement.
+        timeout-minutes: 5
         run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
 
       - name: Install rust toolchain (rust-toolchain.toml)
@@ -1090,6 +1113,8 @@ jobs:
       - uses: actions/checkout@v7
 
       - name: Install protoc (mnemosyne-server build script)
+        # R1236 — see `validate`'s copy of this step for the measurement.
+        timeout-minutes: 5
         run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
 
       - name: Install rust toolchain (rust-toolchain.toml)
@@ -1192,6 +1217,8 @@ jobs:
       # `mnemosyne-server`'s script too, so this job was failing on the missing
       # `protoc` as well.
       - name: Install protoc (mnemosyne-server build script)
+        # R1236 — see `validate`'s copy of this step for the measurement.
+        timeout-minutes: 5
         run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
 
       - name: Read MSRV from Cargo.toml

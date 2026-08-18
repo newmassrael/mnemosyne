@@ -29,6 +29,8 @@
 //! | `GH_STUB_CHECK` | the check the annotation request must name |
 //! | `GH_STUB_CHECKS` | the recorded body for the check-run list |
 //! | `GH_STUB_ANNOTATIONS` | the recorded body for the annotation list |
+//! | `GH_STUB_JOB` | the job the step request must name |
+//! | `GH_STUB_JOB_BODY` | the recorded body for that job's steps |
 
 use std::io::Write as _;
 use std::process::ExitCode;
@@ -61,6 +63,17 @@ fn main() -> ExitCode {
             }
             return answer_with("GH_STUB_ANNOTATIONS");
         }
+    }
+    // R1236 — the steps of one job. Asked ONLY about a check that did not pass, so
+    // a fixture that sets no `GH_STUB_JOB` is asserting this endpoint is never
+    // reached, and a run that reaches it anyway is a logged violation rather than
+    // a quiet extra call.
+    if asked.contains("/actions/jobs/") {
+        let job = std::env::var("GH_STUB_JOB").unwrap_or_default();
+        if !asked.contains(&format!("actions/jobs/{job}")) {
+            violate(&format!("the step request names the wrong job: {asked}"));
+        }
+        return answer_with("GH_STUB_JOB_BODY");
     }
 
     violate(&format!("gh hit an unexpected endpoint: {asked}"));

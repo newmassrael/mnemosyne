@@ -55,13 +55,23 @@ pub const FAILING: [&str; 4] = ["failure", "cancelled", "timed_out", "startup_fa
 /// field GitHub renames stops this program rather than emptying it, and
 /// `tests/github.rs` holds that rename against a RECORDED REAL body so the day it
 /// happens is a red test. Every other field on the row — `app`, `check_suite`,
-/// `details_url`, `html_url`, `started_at`, `completed_at`, `pull_requests` — is
-/// ignored on purpose: a reader that refused unknown fields would go red the day
-/// GitHub adds one, which is a gate failing for somebody else's work.
+/// `html_url`, `started_at`, `completed_at`, `pull_requests` — is ignored on
+/// purpose: a reader that refused unknown fields would go red the day GitHub adds
+/// one, which is a gate failing for somebody else's work.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Deserialize)]
 pub struct Check {
     pub id: u64,
     pub name: String,
+    /// Where GitHub sends a person who clicks this check, and — for a check an
+    /// Actions job is the face of — the only thing in this answer that names the
+    /// JOB behind it. [`job_of`] reads the id out of it.
+    ///
+    /// IT WAS IGNORED ON PURPOSE UNTIL R1236, and what that cost is written in
+    /// that round: this endpoint's rows carry a conclusion and no steps, so a job
+    /// reported as `cancelled` after 45 minutes is indistinguishable from one this
+    /// repository's own change hung. It was `apt-get` stalling before anything of
+    /// this repository ran, and finding that out took a second tool.
+    pub details_url: String,
     /// The commit this row is ABOUT, which is not the same fact as the commit it
     /// was asked for. A well-formed answer to the wrong question is the failure
     /// R1122 paid for in the neighbouring gate — perfectly shaped, and carrying
@@ -160,6 +170,163 @@ pub fn annotations_query(check_id: u64) -> Vec<String> {
     ]
 }
 
+/// The Actions job a check run is the face of, read out of its `details_url`.
+///
+/// THE ONLY LINK THE PER-COMMIT ENDPOINT CARRIES. A check run's `id` is the CHECK's
+/// and the steps live on the JOB, and nothing in this answer says the two are the
+/// same thing — the URL a person would click is where GitHub writes the job's id
+/// down: `…/actions/runs/<run>/job/<job>`.
+///
+/// `None` IS AN ANSWER AND NOT A FAILURE. A check that is not an Actions job at all
+/// — anything another app posts against a commit — has a `details_url` pointing
+/// somewhere else entirely, and there is no job to ask about. The caller prints
+/// that rather than treating it as an unreadable answer.
+pub fn job_of(details_url: &str) -> Option<u64> {
+    let (_, tail) = details_url.rsplit_once("/job/")?;
+    tail.parse().ok()
+}
+
+/// What this program asks GitHub about one job's steps.
+///
+/// ASKED ONLY ABOUT A CHECK THAT DID NOT PASS, which is what keeps this free on
+/// the ordinary push: a green commit makes no such call at all, the same rule the
+/// annotations call already follows through `annotations_count`.
+pub fn steps_query(job_id: u64) -> Vec<String> {
+    vec![
+        "api".to_string(),
+        format!("repos/{{owner}}/{{repo}}/actions/jobs/{job_id}"),
+    ]
+}
+
+/// One step of one job, as GitHub answers for it.
+///
+/// THE TIMES ARE A PLAIN `Option` AND THE CONCLUSION IS NOT, and the difference is
+/// which fact this program depends on. A step's name and conclusion are what say
+/// where a job stopped; the timestamps are what turn "cancelled" into "stalled for
+/// forty-five minutes", and a step that has not started carries neither. So a
+/// missing `conclusion` key is a refusal ([`present_but_nullable`]) and a missing
+/// time is a line with less on it.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Deserialize)]
+pub struct Step {
+    pub name: String,
+    pub number: u64,
+    pub status: String,
+    #[serde(deserialize_with = "present_but_nullable")]
+    pub conclusion: Option<String>,
+    pub started_at: Option<String>,
+    pub completed_at: Option<String>,
+}
+
+/// The part of a job's answer this program reads.
+#[derive(serde::Deserialize)]
+struct Job {
+    steps: Vec<Step>,
+}
+
+/// Every step of one job, read off GitHub's own answer.
+pub fn steps_in(job_id: u64, body: &str) -> Result<Vec<Step>, String> {
+    if body.trim().is_empty() {
+        return Err(format!(
+            "`gh` printed nothing at all about job {job_id}, which is not the answer a job with \
+             no steps gives — that one arrives as a body carrying an empty list"
+        ));
+    }
+    serde_json::from_str::<Job>(body)
+        .map(|job| job.steps)
+        .map_err(|why| {
+            format!(
+                "GitHub's answer about job {job_id}'s steps is not a shape this reporter can read \
+                 ({why}) — it needs a `steps` list, and on every row a `name`, a `number`, a \
+                 `status` and a `conclusion`. An answer without them is a read that failed, not a \
+                 job that stopped nowhere"
+            )
+        })
+}
+
+/// Where a job stopped, and what that left unrun.
+///
+/// THE FIRST FAILING STEP AND NOT THE LAST, because the later ones are its
+/// consequences: today's recording carries a `failure` on the artifact upload
+/// eight steps after the one that actually stalled, and a reporter naming that one
+/// would send a reader to the wrong repair.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Stoppage<'a> {
+    /// The step whose conclusion ended the job.
+    pub step: &'a Step,
+    /// How many steps came after it, whatever they did.
+    pub after: usize,
+    /// How many of those never ran at all.
+    pub never_ran: usize,
+}
+
+/// What GitHub calls a step that was never reached.
+const NEVER_RAN: &str = "skipped";
+
+/// Where this job stopped, if any step says so.
+///
+/// `None` IS A FACT WORTH PRINTING. A job can end in a way no step carries — a
+/// runner that never started, a job cancelled before its first step — and a
+/// reporter that simply said nothing there would be silent in exactly the case
+/// where a reader has the least to go on.
+pub fn stopped_at(steps: &[Step]) -> Option<Stoppage<'_>> {
+    let at = steps
+        .iter()
+        .position(|step| ended_it(step.conclusion.as_deref()))?;
+    let rest = &steps[at + 1..];
+    Some(Stoppage {
+        step: &steps[at],
+        after: rest.len(),
+        never_ran: rest
+            .iter()
+            .filter(|step| step.conclusion.as_deref() == Some(NEVER_RAN))
+            .count(),
+    })
+}
+
+/// What a stoppage reads as, on the one line printed under a failing check.
+///
+/// THE NAME, THE CLOCK, AND WHAT NEVER RAN — the three facts that separate "this
+/// repository's change broke it" from "it never got as far as this repository's
+/// change". R1236's own red is the worked example: a job cancelled at 45 minutes,
+/// stopped at `Install protoc`, with every later step skipped, which is a stall in
+/// the Ubuntu archive and not a line anybody here wrote.
+pub fn stoppage_line(stoppage: &Stoppage) -> String {
+    let when = match (
+        stoppage.step.started_at.as_deref(),
+        stoppage.step.completed_at.as_deref(),
+    ) {
+        (Some(from), Some(to)) => format!(", {from} → {to}"),
+        _ => String::new(),
+    };
+    let rest = if stoppage.after == 0 {
+        "and it was the last step".to_string()
+    } else if stoppage.never_ran == 0 {
+        format!(
+            "and every one of the {} step(s) after it still ran",
+            stoppage.after
+        )
+    } else {
+        format!(
+            "and {} of the {} step(s) after it never ran",
+            stoppage.never_ran, stoppage.after
+        )
+    };
+    format!(
+        "stopped at step {} `{}` ({}{when}) {rest}",
+        stoppage.step.number,
+        stoppage.step.name,
+        stoppage
+            .step
+            .conclusion
+            .as_deref()
+            .unwrap_or("no conclusion"),
+    )
+}
+
+/// What this reporter says when a job's steps name no stopping point.
+pub const STOPPED_NOWHERE: &str = "no step of that job carries the failure — GitHub reported it \
+     on the job itself, which is what a runner that never started looks like";
+
 /// The answer a `gh` that failed quietly gives, and a commit with no checks never
 /// does.
 ///
@@ -178,9 +345,9 @@ fn unreadable_page(page: usize, why: &serde_json::Error) -> String {
     format!(
         "page {page} of `gh`'s answer about this commit is not a shape this reporter can read \
          ({why}) — it needs GitHub's own `total_count` and `check_runs`, and in each row an \
-         `id`, a `name`, a `head_sha`, a `status`, a `conclusion` and an `output` carrying \
-         `annotations_count`. An answer missing one of those is a read that failed, not a \
-         commit nothing ran on"
+         `id`, a `name`, a `head_sha`, a `details_url`, a `status`, a `conclusion` and an \
+         `output` carrying `annotations_count`. An answer missing one of those is a read that \
+         failed, not a commit nothing ran on"
     )
 }
 
@@ -312,12 +479,21 @@ pub fn verdict(checks: &[Check]) -> Verdict {
     Verdict::Clear
 }
 
+/// Whether a conclusion is one of the words that means "did not pass".
+///
+/// ONE SPELLING FOR A CHECK AND FOR A STEP (R1236). The same four words decide
+/// both questions, and the moment they were written twice the two could disagree —
+/// a reporter that called a job red and then found no step in it that ended it,
+/// which reads as GitHub's answer being inconsistent rather than as this file
+/// being. The injection over this line reddens both laws at once, which is the
+/// truth about them.
+fn ended_it(conclusion: Option<&str>) -> bool {
+    conclusion.is_some_and(|conclusion| FAILING.contains(&conclusion))
+}
+
 /// Whether one check concluded in a way that means the commit did not pass.
 pub fn is_failing(check: &Check) -> bool {
-    check
-        .conclusion
-        .as_deref()
-        .is_some_and(|conclusion| FAILING.contains(&conclusion))
+    ended_it(check.conclusion.as_deref())
 }
 
 /// How a check reads in the census and in a row — its conclusion, or the fact

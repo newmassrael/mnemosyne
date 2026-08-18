@@ -21,7 +21,10 @@
 //! THE COMMIT THESE RECORDINGS ARE OF WAS RED, and that is why it was chosen: a
 //! green recording proves a reporter can agree that nothing is wrong.
 
-use ci_state::{annotations_in, checks_in, is_failing, verdict, Verdict};
+use ci_state::{
+    annotations_in, checks_in, is_failing, job_of, steps_in, stoppage_line, stopped_at, verdict,
+    Verdict,
+};
 
 /// This repository's checks on `2d63033`, as GitHub answered.
 const ONE_PAGE: &str = include_str!("check-runs.one-page.json");
@@ -70,8 +73,13 @@ fn the_recorded_answer_reads_as_the_checks_it_carries() {
     // carries `app`, `check_suite`, `pull_requests`, `html_url` and more on every
     // row; a reader that refused unknown fields would go red the day GitHub adds
     // one, which is a gate failing for somebody else's work.
+    //
+    // ⚠ `details_url` USED TO BE ONE OF THE EXAMPLES HERE and stopped being one in
+    // R1236, which is why the list is spelled out rather than gestured at: a
+    // sentence naming a field this reporter now reads would go on passing while
+    // saying the opposite of what it means.
     assert!(
-        ONE_PAGE.contains("\"check_suite\"") && ONE_PAGE.contains("\"details_url\""),
+        ONE_PAGE.contains("\"check_suite\"") && ONE_PAGE.contains("\"pull_requests\""),
         "the recording carries fields this reporter ignores — if it stops doing \
          so, this test has stopped proving that ignoring them works"
     );
@@ -287,6 +295,179 @@ fn an_annotation_level_this_reporter_cannot_find_is_a_refusal() {
     assert!(
         why.contains("missing field `annotation_level`"),
         "and it names the field GitHub stopped sending: {why}"
+    );
+}
+
+// ─── R1236: which STEP ended a job ───────────────────────────────────────────
+//
+// TWO MORE RECORDINGS, AND THEY ARE THE TWO SHAPES A FAILING JOB COMES IN.
+// `job.failure.json` is the job behind the failing check in the recordings above
+// — it failed at its own gate and every step after it still ran. `job.cancelled.
+// json` is the run that made this round: `apt-get` stalled for forty-five minutes
+// three steps in, the job hit its timeout, and every later step — the clippy, the
+// suite, the wrapper this repository verifies through — never ran at all. Told
+// apart, those two are "our change broke it" and "it never reached our change";
+// from the check-run rows ALONE, both are the word `cancelled` or `failure` beside
+// a job name, and this repository spent an afternoon reading the second as the
+// first.
+
+/// The job behind the failing check in the recordings above, as GitHub answered.
+const JOB_FAILURE: &str = include_str!("job.failure.json");
+
+/// The job that stalled in `apt-get` and was killed at its timeout.
+const JOB_CANCELLED: &str = include_str!("job.cancelled.json");
+
+/// The check row names the job its steps live on, and the two agree.
+///
+/// READ OUT OF `details_url` AND NOT ASSUMED FROM `id`. For GitHub Actions those
+/// two integers are in fact equal, and this asserts it against the recording
+/// rather than depending on it: `details_url` is GitHub SAYING which job this
+/// check is the face of, and an `id` that happens to match is a coincidence of
+/// their implementation. The day the two diverge, this test says so instead of a
+/// reporter fetching another job's steps and printing them as this one's.
+#[test]
+fn the_check_row_names_the_job_whose_steps_it_is() {
+    let checks = checks_in(SHA, ONE_PAGE).expect("a real answer");
+    let failed = checks
+        .iter()
+        .find(|check| check.id == FAILED_ID)
+        .expect("the check that failed");
+    let job = job_of(&failed.details_url).expect("a check an Actions job is behind names it");
+    assert_eq!(
+        job, FAILED_ID,
+        "the job the recording points at is the one whose steps were recorded beside it"
+    );
+
+    let recorded: serde_json::Value = serde_json::from_str(JOB_FAILURE).expect("the recording");
+    assert_eq!(
+        recorded["id"].as_u64(),
+        Some(job),
+        "and the recorded job body is that same job's"
+    );
+}
+
+/// A `details_url` no Actions job is behind is `None` rather than a wrong number.
+#[test]
+fn a_check_that_is_not_an_actions_job_names_no_job() {
+    assert_eq!(job_of("https://example.com/somebody-elses-check"), None);
+    assert_eq!(
+        job_of("https://github.com/o/r/actions/runs/1/job/not-a-number"),
+        None,
+        "a tail that is not an integer is no job at all, not a zero"
+    );
+}
+
+/// The stalled job says it stopped at `apt-get`, and that nothing after it ran.
+///
+/// THE WHOLE POINT OF THE ROUND IS THIS ASSERTION. `cancelled` after 45 minutes is
+/// what a change of this repository's hanging a job looks like AND what an archive
+/// mirror stalling looks like; the step name and the count of steps that never ran
+/// are what separate them, and neither is in the check-run row.
+#[test]
+fn the_stalled_job_names_the_step_that_ate_it_and_what_never_ran() {
+    let steps = steps_in(95_576_934_260, JOB_CANCELLED).expect("a real answer");
+    assert_eq!(steps.len(), 13, "every step GitHub sent");
+
+    let stoppage = stopped_at(&steps).expect("a cancelled job stopped somewhere");
+    assert_eq!(
+        stoppage.step.name,
+        "Install protoc (mnemosyne-server build script)"
+    );
+    assert_eq!(stoppage.step.number, 3);
+    assert_eq!(stoppage.step.conclusion.as_deref(), Some("cancelled"));
+    assert_eq!(stoppage.after, 10, "the steps behind it in the job");
+    assert_eq!(
+        stoppage.never_ran, 7,
+        "and the ones that never ran, which is what says this repository's own \
+         clippy, suite and wrapper were never reached"
+    );
+
+    // THE FIRST FAILING STEP AND NOT THE LAST. This recording carries a SECOND
+    // `failure` eight steps later — the artifact upload, which found nothing to
+    // upload because nothing had been built — and a reporter naming that one would
+    // send a reader to repair the artifact step.
+    assert_eq!(
+        steps
+            .iter()
+            .filter(|step| step.conclusion.as_deref() == Some("failure"))
+            .count(),
+        1,
+        "the consequence is in the recording, so the choice of the FIRST one is a \
+         real choice and not a distinction with one candidate"
+    );
+
+    let line = stoppage_line(&stoppage);
+    for fragment in [
+        "step 3",
+        "Install protoc (mnemosyne-server build script)",
+        "cancelled",
+        "2026-08-18T02:43:03Z",
+        "2026-08-18T03:28:12Z",
+        "7 of the 10 step(s) after it never ran",
+    ] {
+        assert!(
+            line.contains(fragment),
+            "the line a reader gets carries `{fragment}`: {line}"
+        );
+    }
+}
+
+/// The job that merely failed says so, and says that it carried on afterwards.
+///
+/// THE CONTROL FOR THE ONE ABOVE. A reporter that always said "and the rest never
+/// ran" would be as useless as one that never did, and only this direction says
+/// which of the two this is.
+#[test]
+fn a_job_that_failed_and_carried_on_is_not_reported_as_one_that_stopped_everything() {
+    let steps = steps_in(FAILED_ID, JOB_FAILURE).expect("a real answer");
+    let stoppage = stopped_at(&steps).expect("a failed job stopped somewhere");
+    assert_eq!(
+        stoppage.step.name,
+        "every cache this repository declares is one it keeps"
+    );
+    assert_eq!(stoppage.step.number, 6);
+    assert_eq!(stoppage.after, 3);
+    assert_eq!(stoppage.never_ran, 0, "nothing was skipped behind it");
+
+    let line = stoppage_line(&stoppage);
+    assert!(
+        line.contains("every one of the 3 step(s) after it still ran"),
+        "and the line says the job carried on, which is the opposite reading from \
+         the stalled one: {line}"
+    );
+}
+
+/// A job whose steps carry no failure is said to carry none.
+///
+/// A RUNNER THAT NEVER STARTED IS A REAL STATE, and a reporter that returned
+/// nothing there would be silent exactly where a reader has least to go on.
+#[test]
+fn a_job_whose_steps_name_no_failure_says_so_rather_than_nothing() {
+    let green = JOB_FAILURE.replace("\"conclusion\":\"failure\"", "\"conclusion\":\"success\"");
+    let steps = steps_in(FAILED_ID, &green).expect("a real answer, mutated");
+    assert!(
+        stopped_at(&steps).is_none(),
+        "no step of this one names a failure"
+    );
+}
+
+/// A `steps` list GitHub renames is a refusal, not a job that stopped nowhere.
+#[test]
+fn a_step_field_this_reporter_cannot_find_is_a_refusal() {
+    let renamed =
+        JOB_CANCELLED.replace("\"conclusion\":\"cancelled\"", "\"verdict\":\"cancelled\"");
+    let why = steps_in(95_576_934_260, &renamed)
+        .expect_err("a step with no conclusion is not a step this reporter can judge");
+    assert!(
+        why.contains("missing field `conclusion`"),
+        "and it names the field GitHub stopped sending: {why}"
+    );
+
+    let silence = steps_in(95_576_934_260, "")
+        .expect_err("silence is not the answer a job with no steps gives");
+    assert!(
+        silence.contains("printed nothing") && silence.contains("95576934260"),
+        "and it says which job it could not read about: {silence}"
     );
 }
 

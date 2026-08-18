@@ -30,6 +30,7 @@
     "--no-fail-fast"
   ],
   "logs": "../../target/injection-logs",
+  "red_set": "exhaustive",
   "min_free_mb": 8000,
   "injections": [
     {
@@ -43,7 +44,8 @@
         }
       ],
       "expect_red": [
-        "an_answer_that_stops_early_is_a_read_that_failed_and_not_a_shorter_commit"
+        "an_answer_that_stops_early_is_a_read_that_failed_and_not_a_shorter_commit",
+        "an_answer_the_reporter_cannot_read_is_printed_rather_than_swallowed"
       ]
     },
     {
@@ -64,8 +66,8 @@
       "edits": [
         {
           "file": "tools/ci-state/src/lib.rs",
-          "from": "    #[serde(deserialize_with = \"present_but_nullable\")]\n    pub conclusion: Option<String>,",
-          "to": "    pub conclusion: Option<String>,"
+          "from": "    #[serde(deserialize_with = \"present_but_nullable\")]\n    pub conclusion: Option<String>,\n    pub output: Output,",
+          "to": "    pub conclusion: Option<String>,\n    pub output: Output,"
         }
       ],
       "expect_red": [
@@ -82,7 +84,14 @@
           "to": "pub const FAILING: [&str; 5] = [\"failure\", \"cancelled\", \"timed_out\", \"startup_failure\", \"skipped\"];"
         }
       ],
-      "expect_red": ["the_skipped_check_in_the_recording_is_not_read_as_a_failure"]
+      "expect_red": [
+        "the_skipped_check_in_the_recording_is_not_read_as_a_failure",
+        "a_conclusion_sent_as_null_is_a_check_that_has_not_concluded",
+        "the_recorded_red_commit_is_reported_as_red_with_its_annotation",
+        "the_paginated_recording_reports_the_same_commit",
+        "the_job_that_stalled_before_anything_of_ours_ran_says_so_through_this_binary",
+        "a_check_no_actions_job_is_behind_is_said_so_rather_than_asked_about"
+      ]
     },
     {
       "name": "a-check-that-has-not-concluded-is-called-a-failure",
@@ -90,11 +99,14 @@
       "edits": [
         {
           "file": "tools/ci-state/src/lib.rs",
-          "from": "        .is_some_and(|conclusion| FAILING.contains(&conclusion))",
-          "to": "        .is_none_or(|conclusion| FAILING.contains(&conclusion))"
+          "from": "    conclusion.is_some_and(|conclusion| FAILING.contains(&conclusion))",
+          "to": "    conclusion.is_none_or(|conclusion| FAILING.contains(&conclusion))"
         }
       ],
-      "expect_red": ["a_commit_still_running_is_neither_red_nor_clear"]
+      "expect_red": [
+        "a_commit_still_running_is_neither_red_nor_clear",
+        "a_conclusion_sent_as_null_is_a_check_that_has_not_concluded"
+      ]
     },
     {
       "name": "the-conclusion-this-reporter-treats-as-routine-is-misspelled",
@@ -161,6 +173,95 @@
         }
       ],
       "expect_red": ["more_annotations_than_are_shown_are_counted_rather_than_dropped"]
+    },
+    {
+      "name": "only-the-word-failure-gets-its-step-named",
+      "why": "R1236's own red was `cancelled` and not `failure`, and a reporter that named the step for one of the four words in FAILING would have been silent on exactly the run that made this round. That silence reads as a job with nothing to say about itself",
+      "edits": [
+        {
+          "file": "tools/ci-state/src/main.rs",
+          "from": "    for check in checks.iter().filter(|check| is_failing(check)) {",
+          "to": "    for check in checks.iter().filter(|check| check.conclusion.as_deref() == Some(\"failure\")) {"
+        }
+      ],
+      "expect_red": [
+        "the_job_that_stalled_before_anything_of_ours_ran_says_so_through_this_binary"
+      ]
+    },
+    {
+      "name": "no-failing-check-is-asked-what-step-ended-it",
+      "why": "the state this repository was in until R1236: a conclusion, a job name, and nothing that says whether the change being pushed was ever reached. It cost an afternoon of reading `cancelled` as `our change hung it`",
+      "edits": [
+        {
+          "file": "tools/ci-state/src/main.rs",
+          "from": "        lines.extend(steps_of(root, check));",
+          "to": "        let _ = steps_of(root, check);"
+        }
+      ],
+      "expect_red": [
+        "the_recorded_red_commit_is_reported_as_red_with_its_annotation",
+        "the_job_that_stalled_before_anything_of_ours_ran_says_so_through_this_binary",
+        "a_check_no_actions_job_is_behind_is_said_so_rather_than_asked_about"
+      ]
+    },
+    {
+      "name": "the-last-failing-step-is-named-instead-of-the-first",
+      "why": "the recorded cancelled job carries a SECOND failure eight steps after the one that stalled — an artifact upload that found nothing to upload because nothing had been built. Naming that one sends a reader to repair the consequence, and the recording is what makes this a real choice rather than a distinction with one candidate",
+      "edits": [
+        {
+          "file": "tools/ci-state/src/lib.rs",
+          "from": "        .position(|step| ended_it(step.conclusion.as_deref()))?;",
+          "to": "        .rposition(|step| ended_it(step.conclusion.as_deref()))?;"
+        }
+      ],
+      "expect_red": [
+        "the_stalled_job_names_the_step_that_ate_it_and_what_never_ran",
+        "the_job_that_stalled_before_anything_of_ours_ran_says_so_through_this_binary"
+      ]
+    },
+    {
+      "name": "steps-that-never-ran-are-counted-as-having-run",
+      "why": "the count of steps that never ran is the half that says whether this repository's own clippy, suite and wrapper were reached at all. Inverted, a job that stopped before any of them reports that everything behind it ran, which is the reading this round exists to make impossible",
+      "edits": [
+        {
+          "file": "tools/ci-state/src/lib.rs",
+          "from": "            .filter(|step| step.conclusion.as_deref() == Some(NEVER_RAN))",
+          "to": "            .filter(|step| step.conclusion.as_deref() != Some(NEVER_RAN))"
+        }
+      ],
+      "expect_red": [
+        "the_stalled_job_names_the_step_that_ate_it_and_what_never_ran",
+        "a_job_that_failed_and_carried_on_is_not_reported_as_one_that_stopped_everything",
+        "the_job_that_stalled_before_anything_of_ours_ran_says_so_through_this_binary"
+      ]
+    },
+    {
+      "name": "a-step-conclusion-github-stops-sending-reads-as-a-step-still-running",
+      "why": "the same drift as the check-level one above, one level down and with the same silence: serde treats a derived `Option` as OPTIONAL, so a `steps` body that stopped carrying `conclusion` would deserialize to steps that all look unfinished, and a job that stopped somewhere would report that no step in it ended it",
+      "edits": [
+        {
+          "file": "tools/ci-state/src/lib.rs",
+          "from": "    #[serde(deserialize_with = \"present_but_nullable\")]\n    pub conclusion: Option<String>,\n    pub started_at: Option<String>,",
+          "to": "    pub conclusion: Option<String>,\n    pub started_at: Option<String>,"
+        }
+      ],
+      "expect_red": [
+        "a_step_field_this_reporter_cannot_find_is_a_refusal"
+      ]
+    },
+    {
+      "name": "the-job-is-taken-from-the-checks-own-id",
+      "why": "for GitHub Actions the check id and the job id are the same integer, so on this repository's own data reading `details_url` and taking `id` are indistinguishable — which is exactly why the easy spelling would survive review. It stops being indistinguishable at the first check no Actions job is behind, where `id` names somebody else's numbering and the steps that come back get printed as this check's",
+      "edits": [
+        {
+          "file": "tools/ci-state/src/main.rs",
+          "from": "    let Some(job) = job_of(&check.details_url) else {",
+          "to": "    let Some(job) = job_of(&check.details_url).or(Some(check.id)) else {"
+        }
+      ],
+      "expect_red": [
+        "a_check_no_actions_job_is_behind_is_said_so_rather_than_asked_about"
+      ]
     },
     {
       "name": "a-message-is-cut-by-bytes-instead-of-characters",
