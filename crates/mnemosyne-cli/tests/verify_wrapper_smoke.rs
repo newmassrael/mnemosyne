@@ -50,15 +50,48 @@ struct Tree {
 
 impl Tree {
     fn new() -> Self {
+        Self::with_cargo("cargo-always-succeeds")
+    }
+
+    /// A tree whose `cargo` RECORDS every call it is given rather than merely
+    /// succeeding. It is the only way to ask whether a branch of the script
+    /// actually ran one: the succeeding stand-in prints nothing, so a branch that
+    /// announced a `cargo clean` and ran none looks exactly like one that did.
+    fn recording() -> Self {
+        Self::with_cargo("cargo-records-the-order")
+    }
+
+    fn with_cargo(stub: &str) -> Self {
         let dir = TempDir::new().expect("tempdir");
         let shim = dir.path().join("shim");
-        link_stub("cargo-always-succeeds", &shim.join("cargo"));
+        link_stub(stub, &shim.join("cargo"));
         let path = format!(
             "{}:{}",
             shim.to_str().expect("the shim path is utf-8"),
             std::env::var("PATH").unwrap_or_default()
         );
         Self { dir, path }
+    }
+
+    /// Where the recording stand-in appends the calls it was given, one per line.
+    fn cargo_log(&self) -> PathBuf {
+        self.dir.path().join("cargo-calls.log")
+    }
+
+    /// `git`, in this tree, refusing to continue when it fails — a fixture built
+    /// on a repository that was not created is one whose assertions are about
+    /// nothing.
+    fn git(&self, args: &[&str]) {
+        let out = Command::new("git")
+            .args(args)
+            .current_dir(self.dir.path())
+            .output()
+            .expect("git, which the wrapper itself asks what changed");
+        assert!(
+            out.status.success(),
+            "git {args:?} failed in the fixture: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
     }
 
     fn lock(&self) -> String {
@@ -75,12 +108,25 @@ impl Tree {
     /// non-waiting form, so a case that watches the wrapper while it runs cannot
     /// be watching a differently-configured one.
     fn invocation(&self, locks_held: Option<&str>, command: &[&str]) -> Command {
+        self.invocation_with(&["--no-fresh"], locks_held, command)
+    }
+
+    /// The same builder with the leading flags left to the caller, because one
+    /// case is about the flag every other case turns OFF.
+    fn invocation_with(
+        &self,
+        flags: &[&str],
+        locks_held: Option<&str>,
+        command: &[&str],
+    ) -> Command {
         let mut invocation = Command::new(wrapper());
         invocation
-            .args(["--no-fresh", "--label", "a-case", "--"])
+            .args(flags)
+            .args(["--label", "a-case", "--"])
             .args(command)
             .current_dir(self.dir.path())
-            .env("PATH", &self.path);
+            .env("PATH", &self.path)
+            .env("SIDE_GATE_CARGO_LOG", self.cargo_log());
         match locks_held {
             Some(value) => invocation.env("VERIFY_LOCKS_HELD", value),
             None => invocation.env_remove("VERIFY_LOCKS_HELD"),
@@ -91,6 +137,14 @@ impl Tree {
     /// Run the wrapper here and wait for it.
     fn run(&self, locks_held: Option<&str>, command: &[&str]) -> Output {
         self.invocation(locks_held, command)
+            .output()
+            .expect("the wrapper runs")
+    }
+
+    /// Run it with NO freshness flag at all, which is how every caller that does
+    /// not think about it runs: `--fresh` is the default.
+    fn run_at_the_default(&self, command: &[&str]) -> Output {
+        self.invocation_with(&[], None, command)
             .output()
             .expect("the wrapper runs")
     }
@@ -464,6 +518,76 @@ fn everything_the_wrapped_command_wrote_reaches_both_the_log_and_the_caller() {
              repository keeps of the run is not the run:\n{recorded}"
         );
     }
+}
+
+#[test]
+fn a_fresh_run_cleans_the_crates_git_says_changed() {
+    // THE DEFAULT PATH, AND THE ONE THAT HAD NO READER. `--fresh` is what this
+    // script does when nobody says otherwise, and every case in this file passes
+    // `--no-fresh` — so the branch that runs `cargo clean` for each crate with
+    // uncommitted changes was reached by no test at all. R1239 rewrote it twice
+    // over: moved BEHIND the header, so the header can record what was cleaned,
+    // and put through the same plumbing as everything else this script runs.
+    // Nothing but a person's reading said it still worked. It is not a dead
+    // branch — a past run's kept log holds `[verify] fresh: cargo clean -p
+    // mnemosyne-cli`, which is what a round with uncommitted crate changes does.
+    //
+    // THREE THINGS, AND THE MIDDLE ONE IS WHY THE CARGO HERE RECORDS. A branch
+    // that ANNOUNCES a clean and runs none prints the same line as one that
+    // cleans, so the announcement cannot be the evidence; the recording stand-in
+    // is asked what it was actually called with. And the header's record is the
+    // third, because it is what makes the reordering visible: the question "which
+    // crates changed" now has to be answered BEFORE the log is opened, and a
+    // version that asked it after would write `cleaned=[]` and still clean.
+    let tree = Tree::recording();
+    tree.git(&["init", "-q", "."]);
+    tree.git(&["config", "user.email", "wrapper@test"]);
+    tree.git(&["config", "user.name", "wrapper test"]);
+    tree.git(&["config", "commit.gpgsign", "false"]);
+    let changed = tree.dir.path().join("crates/a-crate/src/lib.rs");
+    std::fs::create_dir_all(changed.parent().expect("the fixture crate has a src/"))
+        .expect("the fixture crate");
+    std::fs::write(&changed, "// what HEAD holds\n").expect("the committed state");
+    tree.git(&["add", "-A"]);
+    tree.git(&["commit", "-qm", "the state a fresh run compares against"]);
+    std::fs::write(&changed, "// and what the working tree holds\n")
+        .expect("the uncommitted change a fresh run is about");
+
+    let out = tree.run_at_the_default(&["bash", "-c", "exit 0"]);
+    let words = said(&out);
+    assert!(
+        out.status.success(),
+        "the default path has to RUN before anything else here is about it:\n{words}"
+    );
+    assert!(
+        words.contains("[verify] fresh: cargo clean -p a-crate"),
+        "a fresh run did not say it was cleaning the crate git reports changed, so \
+         either the question was not asked or its answer was not read:\n{words}"
+    );
+
+    let calls = std::fs::read_to_string(tree.cargo_log())
+        .expect("the recording cargo wrote down what the wrapper asked it");
+    assert!(
+        calls
+            .lines()
+            .any(|line| line.starts_with("clean -p a-crate")),
+        "the wrapper SAID it was cleaning and no cargo was ever asked to. The \
+         announcement is one line and the clean is another, so this is what a \
+         stale artifact surviving a fresh run looks like from outside — the R743 \
+         corruption this script exists to prevent, silently. Calls: {calls:?}"
+    );
+
+    let named = words
+        .lines()
+        .find_map(|line| line.strip_prefix("[verify] log: "))
+        .expect("the wrapper names the log it is writing");
+    let recorded = std::fs::read_to_string(tree.dir.path().join(named))
+        .expect("the log the wrapper named exists");
+    assert!(
+        recorded.contains("cleaned=[a-crate"),
+        "the log's own header does not record what this run cleaned, which is the \
+         whole reason the question is asked before the log is opened:\n{recorded}"
+    );
 }
 
 #[test]

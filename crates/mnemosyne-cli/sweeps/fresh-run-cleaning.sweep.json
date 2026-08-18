@@ -1,0 +1,80 @@
+{
+  "_": [
+    "THE SWEEP THAT SAYS R1240's CONTRACT IS NOT VACUOUS — run it from the",
+    "repository root:",
+    "    cargo run -q --manifest-path tools/injection-harness/Cargo.toml -- \\",
+    "        crates/mnemosyne-cli/sweeps/fresh-run-cleaning.sweep.json",
+    "",
+    "WHAT THE CONTRACT IS. `--fresh` is what `scripts/verify.sh` does when nobody",
+    "says otherwise: for every crate git reports changed against HEAD it runs",
+    "`cargo clean -p <crate>`, so no artifact of the code under test can survive",
+    "into the run that judges it. That is the second half of the R743 repair — the",
+    "lock stops two cargos racing, this stops a stale binary from a race that",
+    "already happened — and until R1240 no test reached the branch at all,",
+    "because every case in the file passes `--no-fresh`.",
+    "",
+    "SO THE THREE INJECTIONS ARE THE THREE WAYS A FRESH RUN STOPS BEING ONE, and",
+    "each is silent in the direction that reads as a working run. The clean is",
+    "announced and not run; the population it works from is empty, so the run says",
+    "there was nothing to clean; the header stops recording what was cleaned, which",
+    "is the only place the answer is kept after the run. None of them is red",
+    "anywhere else, and none of them prints an error.",
+    "",
+    "RUN IT LOCALLY. The harness edits this tree and writes the firing record",
+    "beside this file, so a run sent to a build machine leaves its evidence on a",
+    "throwaway copy (R1205's carry, and the `writes` line in the declaration)."
+  ],
+  "repo": "../../..",
+  "test_command": [
+    "cargo",
+    "test",
+    "-p",
+    "mnemosyne-cli",
+    "--test",
+    "all",
+    "--locked",
+    "--no-fail-fast",
+    "verify_wrapper_smoke::"
+  ],
+  "red_set": "exhaustive",
+  "logs": "../../../target/injection-logs",
+  "min_free_mb": 8000,
+  "injections": [
+    {
+      "name": "the-clean-is-announced-and-not-run",
+      "why": "the announcement and the clean are two lines, and only one of them is what a reader sees. A run that prints `fresh: cargo clean -p x` and cleans nothing is indistinguishable from a working one — and what it leaves behind is exactly the stale artifact this script was written after: a deterministic regression that reads as a flake",
+      "edits": [
+        {
+          "file": "scripts/verify.sh",
+          "from": "      run_into_log -- cargo clean -p \"$c\" --locked >/dev/null || true",
+          "to": "      true"
+        }
+      ],
+      "expect_red": ["a_fresh_run_cleans_the_crates_git_says_changed"]
+    },
+    {
+      "name": "the-population-of-changed-crates-is-never-asked-for",
+      "why": "the quiet direction of the whole branch. With nothing to iterate the run reports `no uncommitted crate changes; nothing to clean` and carries on — a true-sounding sentence about a tree that has them — so a fresh run becomes a `--no-fresh` run everywhere at once, and the only sign is that a rebuild did not happen",
+      "edits": [
+        {
+          "file": "scripts/verify.sh",
+          "from": "  changed_crates=\"$(git diff --name-only HEAD -- crates/ 2>/dev/null \\\n    | sed -n 's#^crates/\\([^/]*\\)/.*#\\1#p' | sort -u | tr '\\n' ' ')\"",
+          "to": "  changed_crates=\"\""
+        }
+      ],
+      "expect_red": ["a_fresh_run_cleans_the_crates_git_says_changed"]
+    },
+    {
+      "name": "the-header-forgets-what-a-fresh-run-cleaned",
+      "why": "the record rather than the act, and it is the reason the question is asked before the log is opened. The header is the only place a run's answer to `which crates were cleaned` survives, and a log that has stopped carrying it looks complete: the run is green, the cleaning happened, and a later reader diagnosing a rebuild has nothing to read",
+      "edits": [
+        {
+          "file": "scripts/verify.sh",
+          "from": "  echo \"# fresh=$fresh cleaned=[${changed_crates}]\"",
+          "to": "  echo \"# fresh=$fresh\""
+        }
+      ],
+      "expect_red": ["a_fresh_run_cleans_the_crates_git_says_changed"]
+    }
+  ]
+}

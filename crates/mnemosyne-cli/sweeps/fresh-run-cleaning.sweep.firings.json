@@ -1,0 +1,54 @@
+{
+  "_": [
+    "Machine-written by tools/injection-harness. Do not edit by hand: a row somebody typed is evidence of nothing, and the law over this file is worth exactly what its being unforgeable is worth.",
+    "Each row is one injection that WAS RUN and DID redden what it names, kept beside the definition it was proven against — edit the injection and the gate says the evidence is about a different one."
+  ],
+  "complete": true,
+  "fired": {
+    "the-clean-is-announced-and-not-run": {
+      "edits": [
+        {
+          "file": "scripts/verify.sh",
+          "from": "      run_into_log -- cargo clean -p \"$c\" --locked >/dev/null || true",
+          "to": "      true"
+        }
+      ],
+      "expect_red": [
+        "a_fresh_run_cleans_the_crates_git_says_changed"
+      ],
+      "tests": [
+        "verify_wrapper_smoke::a_fresh_run_cleans_the_crates_git_says_changed"
+      ]
+    },
+    "the-header-forgets-what-a-fresh-run-cleaned": {
+      "edits": [
+        {
+          "file": "scripts/verify.sh",
+          "from": "  echo \"# fresh=$fresh cleaned=[${changed_crates}]\"",
+          "to": "  echo \"# fresh=$fresh\""
+        }
+      ],
+      "expect_red": [
+        "a_fresh_run_cleans_the_crates_git_says_changed"
+      ],
+      "tests": [
+        "verify_wrapper_smoke::a_fresh_run_cleans_the_crates_git_says_changed"
+      ]
+    },
+    "the-population-of-changed-crates-is-never-asked-for": {
+      "edits": [
+        {
+          "file": "scripts/verify.sh",
+          "from": "  changed_crates=\"$(git diff --name-only HEAD -- crates/ 2>/dev/null \\\n    | sed -n 's#^crates/\\([^/]*\\)/.*#\\1#p' | sort -u | tr '\\n' ' ')\"",
+          "to": "  changed_crates=\"\""
+        }
+      ],
+      "expect_red": [
+        "a_fresh_run_cleans_the_crates_git_says_changed"
+      ],
+      "tests": [
+        "verify_wrapper_smoke::a_fresh_run_cleans_the_crates_git_says_changed"
+      ]
+    }
+  }
+}
