@@ -40,6 +40,18 @@
 # build never compiles it, and `scripts/check-side-workspaces.sh` finds it by
 # walking for manifests that carry their own `[workspace]`, so there is no list
 # to update.
+#
+# ⚠ R1237 MADE IT A ROOT MEMBER FOR ONE COMMIT AND PUT IT BACK, measured rather
+# than reasoned. A law in the root suite needed the installer vocabulary this
+# crate owned, and cargo will not let a dev-dependency carry its own
+# `[workspace]` (`error: multiple workspace roots found in the same workspace`).
+# Membership compiled — and then `tool_pin_smoke`, which is a law over every
+# binary of the ROOT workspace, correctly demanded that this gate's binary
+# answer `--version` and either open a workspace or be declared as not doing so.
+# That is a protocol this crate has no reason to carry, dragged in by where a
+# TEST wanted to link. The vocabulary moved to `ci-plan` instead, which is a root
+# member already and whose subject it is; this crate re-exports it and stayed
+# where it was.
 [workspace]
 
 [package]

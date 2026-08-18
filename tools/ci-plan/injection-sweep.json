@@ -356,6 +356,34 @@
       "expect_red": ["a_fallback_that_cannot_serve_an_earlier_generation_is_named"]
     },
     {
+      "name": "a-steps-own-bound-is-not-read-at-all",
+      "why": "R1237 — the datum the law over network fetches is built on. With this dropped, every step reads as one nobody bounded, and the law it feeds would report sixteen findings on a repository that had just repaired all of them. The direction that reads as good news is the other injection below",
+      "edits": [
+        {
+          "file": "tools/ci-plan/src/lib.rs",
+          "from": "                    timeout: scalar(&step[\"timeout-minutes\"]),",
+          "to": "                    timeout: None,"
+        }
+      ],
+      "expect_red": [
+        "a_steps_own_bound_and_its_jobs_are_both_read_and_are_told_apart_from_none"
+      ]
+    },
+    {
+      "name": "a-steps-bound-is-taken-for-its-jobs",
+      "why": "and this is the direction that goes QUIET. Reading the step's own number as its job's makes every bound compare equal to itself, so `5 < 5` fails and `90 < 90` fails — but a repository whose steps are all bounded well under their jobs would go red for a reason that is not there, and one whose steps are bounded AT their jobs would agree with itself. A field read from the wrong node is not a smaller answer, it is a different question",
+      "edits": [
+        {
+          "file": "tools/ci-plan/src/lib.rs",
+          "from": "        let job_timeout = scalar(&job[\"timeout-minutes\"]);",
+          "to": "        let job_timeout: Option<String> = None;"
+        }
+      ],
+      "expect_red": [
+        "a_steps_own_bound_and_its_jobs_are_both_read_and_are_told_apart_from_none"
+      ]
+    },
+    {
       "name": "the-two-spellings-of-the-identity-need-not-agree",
       "why": "THE QUIET ONE. A fallback that restores SOMETHING makes every job look warm while every gate here joins on a prefix GitHub is never asked for; both spellings read correctly alone, which is why only comparing them finds it",
       "edits": [

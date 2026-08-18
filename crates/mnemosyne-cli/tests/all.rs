@@ -83,6 +83,9 @@ mod authoring_surface;
 #[path = "blanket_verifies_smoke.rs"]
 mod blanket_verifies_smoke;
 
+#[path = "bounded_fetch_steps.rs"]
+mod bounded_fetch_steps;
+
 #[path = "build_width.rs"]
 mod build_width;
 

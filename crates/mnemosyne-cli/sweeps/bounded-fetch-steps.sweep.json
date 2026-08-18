@@ -1,0 +1,95 @@
+{
+  "_": [
+    "THE SWEEP THAT SAYS R1237's CONTRACT IS NOT VACUOUS — run it from the",
+    "repository root:",
+    "    cargo run -q --manifest-path tools/injection-harness/Cargo.toml -- \\",
+    "        crates/mnemosyne-cli/sweeps/bounded-fetch-steps.sweep.json",
+    "",
+    "WHAT THE CONTRACT IS. A step that waits on somebody else's server declares a",
+    "bound, and that bound is SMALLER THAN ITS JOB'S. On 2026-08-18 two jobs of",
+    "one run stalled in the same `apt-get` for 45m09s and ninety minutes; nothing",
+    "of this repository ran in either.",
+    "",
+    "THE LAW IS ASSERTED AGAINST THE REAL WORKFLOWS, so an injection here edits",
+    "the workflow or the law itself rather than a fixture. Two break the SUBJECT",
+    "(a bound removed; a bound as large as the job it sits in) and two break the",
+    "POPULATION — which is the half that would otherwise rot in silence: the law",
+    "reads `undeclared-requirement`'s installer vocabulary and adds one word of",
+    "its own, and each of those halves can stop covering what it covers today.",
+    "",
+    "RUN IT LOCALLY. The harness edits this tree and writes the firing record",
+    "beside this file (R1205's carry, and the `writes` line in the declaration)."
+  ],
+  "repo": "../../..",
+  "test_command": [
+    "cargo",
+    "test",
+    "-p",
+    "mnemosyne-cli",
+    "--test",
+    "all",
+    "--no-fail-fast",
+    "bounded_fetch_steps::"
+  ],
+  "red_set": "exhaustive",
+  "logs": "../../../target/injection-logs",
+  "min_free_mb": 8000,
+  "injections": [
+    {
+      "name": "a-step-that-fetches-loses-its-bound",
+      "why": "the state every one of the sixteen was in before R1236 and R1237, and the state ten of them were STILL in after R1236 bounded six by hand. A step whose service stops answering then spends its job's entire budget, and every step behind it is skipped — measured, twice in one run",
+      "edits": [
+        {
+          "file": ".github/workflows/mnemosyne-validate.yml",
+          "from": "        timeout-minutes: 5\n        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler strace",
+          "to": "        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler strace"
+        }
+      ],
+      "expect_red": [
+        "every_step_that_installs_over_the_network_is_bounded_and_by_less_than_its_job"
+      ]
+    },
+    {
+      "name": "a-step-is-bounded-by-the-whole-of-its-jobs-budget",
+      "why": "the checkbox version of this law. `timeout-minutes` is filled in, a reader scanning the file sees a bound on every fetch, and nothing is prevented: the step can still spend the ninety minutes its job has. This is why the law compares the two numbers rather than asking whether one exists",
+      "edits": [
+        {
+          "file": ".github/workflows/mnemosyne-validate.yml",
+          "from": "        timeout-minutes: 5\n        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler strace",
+          "to": "        timeout-minutes: 90\n        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler strace"
+        }
+      ],
+      "expect_red": [
+        "every_step_that_installs_over_the_network_is_bounded_and_by_less_than_its_job"
+      ]
+    },
+    {
+      "name": "the-population-drops-back-to-this-laws-own-word",
+      "why": "the first draft of this law, and the reason it was rewritten. A population built on a word list alone stops covering whatever the list stops naming — here the six `apt-get` steps — while staying green, because a law that looks at less finds less. The containment assertion against `undeclared-requirement`'s own reading is what makes that red",
+      "edits": [
+        {
+          "file": "crates/mnemosyne-cli/tests/bounded_fetch_steps.rs",
+          "from": "        if !named_by_shared && !fetches {",
+          "to": "        if !fetches {"
+        }
+      ],
+      "expect_red": [
+        "every_step_that_installs_over_the_network_is_bounded_and_by_less_than_its_job"
+      ]
+    },
+    {
+      "name": "the-word-that-covers-the-rest-stops-matching",
+      "why": "the other half of the same rot, one letter wide. `rustup show` installs a toolchain and no named package, so the shared reading does not name those nine steps and only this word does. A typo here would take nine of sixteen out of the population with nothing to show for it — which is exactly N120's open shape, and why this law asserts the word still matches something",
+      "edits": [
+        {
+          "file": "crates/mnemosyne-cli/tests/bounded_fetch_steps.rs",
+          "from": "const ALSO_FETCHES: &str = \"rustup\";",
+          "to": "const ALSO_FETCHES: &str = \"rustop\";"
+        }
+      ],
+      "expect_red": [
+        "every_step_that_installs_over_the_network_is_bounded_and_by_less_than_its_job"
+      ]
+    }
+  ]
+}

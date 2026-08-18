@@ -1074,6 +1074,58 @@ fn a_step_that_runs_an_action_is_read_on_the_same_coordinate_as_one_that_runs_sh
     );
 }
 
+#[test]
+fn a_steps_own_bound_and_its_jobs_are_both_read_and_are_told_apart_from_none() {
+    // R1237 — the datum R1236's carry named. A step that fetches from a network
+    // service and declares no bound of its own can spend the whole job's budget
+    // on a third party not answering, which is what two jobs of one run did on
+    // 2026-08-18 (45m09s and ninety minutes, in the same `apt-get`). Reading it
+    // is the half a law needs, and the JOB's number is here for the same reason:
+    // a step bounded at exactly its job's budget is bounded and prevents nothing.
+    let doc = parse_workflow(
+        "jobs:\n  build:\n    timeout-minutes: 45\n    steps:\n      \
+         - run: sudo apt-get install -y protoc\n        timeout-minutes: 5\n      \
+         - run: rustup show\n      \
+         - run: echo hi\n        timeout-minutes: \"${{ env.BUDGET }}\"\n  \
+         loose:\n    steps:\n      - run: cargo build\n",
+        "x.yml",
+    );
+    let steps = run_steps(&doc);
+    assert_eq!(steps.len(), 4, "{steps:?}");
+
+    let bounded = &steps[0];
+    assert_eq!(bounded.timeout.as_deref(), Some("5"));
+    assert_eq!(
+        bounded.job_timeout.as_deref(),
+        Some("45"),
+        "and the job's own budget travels with it, so one law can compare them"
+    );
+
+    assert_eq!(
+        steps[1].timeout, None,
+        "a step nobody bounded says so — this is the state ten steps of this \
+         repository were in when the law that reads this was written"
+    );
+    assert_eq!(steps[1].job_timeout.as_deref(), Some("45"));
+
+    // THE THIRD ANSWER, and the reason this field is not a number. GitHub takes
+    // an expression here and that IS a declaration; a reader that parsed to an
+    // integer would report it as `None`, which is the word it uses for a step
+    // with no bound at all — opposite facts, one spelling.
+    assert_eq!(
+        steps[2].timeout.as_deref(),
+        Some("${{ env.BUDGET }}"),
+        "an expression is a bound this reader cannot evaluate, not an absent one"
+    );
+
+    assert_eq!(
+        steps[3].job_timeout, None,
+        "a job that declares no budget says so rather than borrowing another \
+         job's — GitHub's own default (360) is not written in the file, and a \
+         reader that supplied it would be answering for the file"
+    );
+}
+
 /// Build a `CargoCommand` from a line, the way a workflow or a script writes it.
 fn issued(line: &str) -> CargoCommand {
     let mut words: Vec<String> = line.split_whitespace().map(str::to_string).collect();

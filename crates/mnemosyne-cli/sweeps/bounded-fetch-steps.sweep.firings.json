@@ -1,0 +1,69 @@
+{
+  "_": [
+    "Machine-written by tools/injection-harness. Do not edit by hand: a row somebody typed is evidence of nothing, and the law over this file is worth exactly what its being unforgeable is worth.",
+    "Each row is one injection that WAS RUN and DID redden what it names, kept beside the definition it was proven against — edit the injection and the gate says the evidence is about a different one."
+  ],
+  "complete": true,
+  "fired": {
+    "a-step-is-bounded-by-the-whole-of-its-jobs-budget": {
+      "edits": [
+        {
+          "file": ".github/workflows/mnemosyne-validate.yml",
+          "from": "        timeout-minutes: 5\n        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler strace",
+          "to": "        timeout-minutes: 90\n        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler strace"
+        }
+      ],
+      "expect_red": [
+        "every_step_that_installs_over_the_network_is_bounded_and_by_less_than_its_job"
+      ],
+      "tests": [
+        "bounded_fetch_steps::every_step_that_installs_over_the_network_is_bounded_and_by_less_than_its_job"
+      ]
+    },
+    "a-step-that-fetches-loses-its-bound": {
+      "edits": [
+        {
+          "file": ".github/workflows/mnemosyne-validate.yml",
+          "from": "        timeout-minutes: 5\n        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler strace",
+          "to": "        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler strace"
+        }
+      ],
+      "expect_red": [
+        "every_step_that_installs_over_the_network_is_bounded_and_by_less_than_its_job"
+      ],
+      "tests": [
+        "bounded_fetch_steps::every_step_that_installs_over_the_network_is_bounded_and_by_less_than_its_job"
+      ]
+    },
+    "the-population-drops-back-to-this-laws-own-word": {
+      "edits": [
+        {
+          "file": "crates/mnemosyne-cli/tests/bounded_fetch_steps.rs",
+          "from": "        if !named_by_shared && !fetches {",
+          "to": "        if !fetches {"
+        }
+      ],
+      "expect_red": [
+        "every_step_that_installs_over_the_network_is_bounded_and_by_less_than_its_job"
+      ],
+      "tests": [
+        "bounded_fetch_steps::every_step_that_installs_over_the_network_is_bounded_and_by_less_than_its_job"
+      ]
+    },
+    "the-word-that-covers-the-rest-stops-matching": {
+      "edits": [
+        {
+          "file": "crates/mnemosyne-cli/tests/bounded_fetch_steps.rs",
+          "from": "const ALSO_FETCHES: &str = \"rustup\";",
+          "to": "const ALSO_FETCHES: &str = \"rustop\";"
+        }
+      ],
+      "expect_red": [
+        "every_step_that_installs_over_the_network_is_bounded_and_by_less_than_its_job"
+      ],
+      "tests": [
+        "bounded_fetch_steps::every_step_that_installs_over_the_network_is_bounded_and_by_less_than_its_job"
+      ]
+    }
+  }
+}

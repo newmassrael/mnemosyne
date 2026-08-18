@@ -902,6 +902,12 @@ fn step(job: &str, env: &[(&str, &str)]) -> RunStep {
             .iter()
             .map(|(name, value)| (name.to_string(), value.to_string()))
             .collect(),
+        // R1237 added the step's own bound and its job's to this type for the
+        // law over network fetches. Neither is a fact about compilation, which
+        // is what these fixtures are about, so they are absent here — the shape
+        // this type has when nobody wrote a `timeout-minutes`.
+        timeout: None,
+        job_timeout: None,
     }
 }
 

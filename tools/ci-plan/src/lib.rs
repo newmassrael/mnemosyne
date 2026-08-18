@@ -138,6 +138,26 @@ pub struct RunStep {
     /// own precedence, resolved here so no caller has to know there are three
     /// places to look.
     pub env: BTreeMap<String, String>,
+    /// The step's own `timeout-minutes`, VERBATIM, or `None` when it declares
+    /// none (R1236's carry).
+    ///
+    /// KEPT AS WRITTEN AND NOT PARSED TO A NUMBER. GitHub accepts an expression
+    /// here — `${{ env.BUDGET }}` is a declaration — and a reader that parsed to
+    /// an integer would answer `None` for it, which is the same word it answers
+    /// for a step nobody bounded at all. Those are opposite facts: one is a
+    /// bound this reader cannot evaluate, the other is no bound. A caller that
+    /// wants the number asks for it and handles the third answer.
+    pub timeout: Option<String>,
+    /// Its JOB's `timeout-minutes`, verbatim, or `None` when the job declares
+    /// none (GitHub then applies its own 360-minute default).
+    ///
+    /// ON THE STEP, because the only question worth asking about a step's bound
+    /// is whether it is SMALLER THAN THE JOB'S. A step bounded at exactly its
+    /// job's budget is bounded and cannot prevent anything — it is the same
+    /// forty-five minutes spent, with a checkbox ticked. Carrying the job's
+    /// number here is what lets one law ask both halves without a second walk
+    /// that could disagree with this one about which job a step is in.
+    pub job_timeout: Option<String>,
 }
 
 /// How a YAML scalar spells an environment value. `CARGO_INCREMENTAL: 0` is an
@@ -182,6 +202,7 @@ pub fn run_steps(doc: &Yaml) -> Vec<RunStep> {
         };
         let mut job_env = workflow_env.clone();
         job_env.extend(env_at(job));
+        let job_timeout = scalar(&job["timeout-minutes"]);
         for (index, step) in job_steps.iter().enumerate() {
             if let Some(script) = step["run"].as_str() {
                 let mut env = job_env.clone();
@@ -191,11 +212,240 @@ pub fn run_steps(doc: &Yaml) -> Vec<RunStep> {
                     index,
                     script: script.to_string(),
                     env,
+                    // `scalar` AND NOT `as_i64`: `timeout-minutes: 5` is an
+                    // integer to a YAML parser, `"5"` is a string and
+                    // `${{ … }}` is a string too, and all three are the file
+                    // declaring a bound. The same function already carries
+                    // `CARGO_INCREMENTAL: 0` across that distinction one field
+                    // up.
+                    timeout: scalar(&step["timeout-minutes"]),
+                    job_timeout: job_timeout.clone(),
                 });
             }
         }
     }
     steps
+}
+
+// --- what a step installs ---------------------------------------------------
+//
+// MOVED HERE IN R1237, FROM `tools/undeclared-requirement`, AND THE MOVE WAS
+// FORCED TWICE OVER. This crate's subject is "the one answer to what this
+// repository's CI runs", and which package manager a step invokes is exactly
+// that — but the reading grew up next to the law that first needed it, which
+// asks whether a package CI installs is named in the build-machine declaration.
+// R1237 wrote a SECOND law, in the root suite, over the same population: a step
+// that waits on somebody else's server must be bounded. Two readings of "what
+// installs" would have been two vocabularies, and the one nobody read would be
+// the one that silently shrank.
+//
+// AND THE FIRST WAY OF SHARING IT WAS MEASURED AND UNDONE. Making that crate a
+// dev-dependency of `mnemosyne-cli` made it a member of the root workspace —
+// cargo will not have it both ways (`error: multiple workspace roots found in
+// the same workspace`) — and `tool_pin_smoke`, a law over every binary of the
+// root workspace, then correctly demanded that a `tools/` gate answer `--version`
+// and declare how it opens a workspace. A protocol dragged in by where a TEST
+// wanted to link is the wrong reason for a binary to change, so the vocabulary
+// came here instead and that crate re-exports it.
+
+/// Package managers whose install command names its packages in words a reader
+/// can understand in full.
+pub const READ_IN_FULL: &[&str] = &["apt-get", "apt", "aptitude"];
+
+/// Managers recognised as installing something whose package names this does not
+/// read.
+///
+/// They are recognised so they can be COUNTED AND NAMED rather than skipped: a
+/// step a reader does not understand is a hole in its population, and the report
+/// is where a hole belongs. Reading them would mean joining a language's package
+/// names against a declaration written in apt's, which is a table, and a table is
+/// the thing that goes stale silently.
+pub const RECOGNISED_NOT_READ: &[&str] = &[
+    "apk", "brew", "cargo", "choco", "dnf", "gem", "go", "npm", "pacman", "pip", "pip3", "rustup",
+    "snap", "winget", "yum", "zypper",
+];
+
+/// Words in an action's name that say it installs something onto the runner.
+///
+/// A WEAK READING, and it is the strongest one available: an action is somebody
+/// else's program and this repository holds none of its bytes. What the name says
+/// is all there is, so the reading is generous — anything matching refuses rather
+/// than passes — and an action whose name says nothing about installing is a
+/// limit a caller records rather than a claim made here.
+pub const INSTALLING_ACTION_WORDS: &[&str] = &["setup", "install", "toolchain", "apt"];
+
+/// Flags an apt-family install takes that consume no word of their own.
+///
+/// ANY OTHER FLAG IS A REFUSAL. `-t bookworm-backports` takes the next word, and
+/// a reader that did not know it would call that word a package — a name that is
+/// then reported as undeclared, sending somebody to add a release codename to a
+/// list of packages. Guessing which flags take an argument is how a reader starts
+/// answering about things nobody installed.
+pub const VALUELESS_FLAGS: &[&str] = &[
+    "--allow-change-held-packages",
+    "--allow-downgrades",
+    "--assume-yes",
+    "--fix-broken",
+    "--fix-missing",
+    "--install-recommends",
+    "--no-install-recommends",
+    "--only-upgrade",
+    "--quiet",
+    "--reinstall",
+    "--yes",
+    "-f",
+    "-q",
+    "-qq",
+    "-y",
+];
+
+/// Characters that make a word something other than a package name.
+const NOT_A_NAME: &[char] = &[
+    '$', '`', '*', '?', '(', ')', '{', '}', '[', ']', '<', '>', '\\',
+];
+
+/// Strip the words a shell may put in front of a command without changing which
+/// program it runs.
+///
+/// `sudo` and its own flags only. A flag that TAKES a word (`sudo -u root …`)
+/// leaves a word that is not the manager, and the caller's detection then finds
+/// the manager somewhere other than the head and refuses — which is the intended
+/// end of that road.
+fn without_privilege(words: &[String]) -> &[String] {
+    let Some(first) = words.first() else {
+        return words;
+    };
+    if first != "sudo" {
+        return words;
+    }
+    let mut at = 1;
+    while words.get(at).is_some_and(|word| word.starts_with('-')) {
+        at += 1;
+    }
+    &words[at..]
+}
+
+/// What one command of a `run:` step installs.
+///
+/// `InstallCommand` AND NOT `Command`, which is what it was called in the crate
+/// it came from: this one already holds `CargoCommand` and `DeclaredCommand`,
+/// and a bare `Command` beside them would read as the general case of both while
+/// being neither. The crate it moved from keeps its own spelling through a
+/// rename at the re-export.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum InstallCommand {
+    /// Installs nothing.
+    Nothing,
+    /// An install whose packages this read in full.
+    Read {
+        manager: String,
+        packages: Vec<String>,
+    },
+    /// An install this recognised and did not read.
+    Recognised { what: String },
+    /// Install-shaped and unreadable — a refusal, with the reason.
+    Refused { why: String },
+}
+
+/// Read one command's words for the install it performs.
+///
+/// # The order of the questions
+///
+/// The apt family is asked about FIRST and by membership rather than by head
+/// position, so `env … apt-get install x` reaches the refusal instead of falling
+/// through to "installs nothing". The head is then required to be that manager:
+/// everything else is a wrapper this cannot see through.
+#[must_use]
+pub fn read_command(words: &[String]) -> InstallCommand {
+    let body = without_privilege(words);
+    let Some(head) = body.first().map(String::as_str) else {
+        return InstallCommand::Nothing;
+    };
+    let apt_at = body
+        .iter()
+        .position(|word| READ_IN_FULL.contains(&word.as_str()));
+    if let Some(at) = apt_at {
+        // `apt-get update` is not an install, and neither is a bare `apt`.
+        if !body.iter().any(|word| word == "install") {
+            return InstallCommand::Nothing;
+        }
+        if at != 0 {
+            return InstallCommand::Refused {
+                why: format!(
+                    "`{}` installs packages and something else is in front of it, so what it \
+                     installs cannot be read from these words",
+                    body[at]
+                ),
+            };
+        }
+        return read_apt(body);
+    }
+    if RECOGNISED_NOT_READ.contains(&head) && body.iter().any(|word| word == "install") {
+        return InstallCommand::Recognised {
+            what: head.to_owned(),
+        };
+    }
+    InstallCommand::Nothing
+}
+
+/// Read an apt-family install whose head is the manager.
+fn read_apt(body: &[String]) -> InstallCommand {
+    let manager = body[0].clone();
+    let at = body
+        .iter()
+        .position(|word| word == "install")
+        .expect("the caller established that `install` is one of these words");
+    // Everything between the manager and the subcommand must be a flag, or the
+    // command is doing something this reading does not describe.
+    for word in &body[1..at] {
+        if !word.starts_with('-') {
+            return InstallCommand::Refused {
+                why: format!(
+                    "`{word}` sits between `{manager}` and `install`, so this is not the plain \
+                     install form this reads"
+                ),
+            };
+        }
+    }
+    let mut packages = Vec::new();
+    for word in &body[at + 1..] {
+        if word.starts_with('-') {
+            // `--opt=value` carries its value, so it swallows no word.
+            if VALUELESS_FLAGS.contains(&word.as_str()) || word.contains('=') {
+                continue;
+            }
+            return InstallCommand::Refused {
+                why: format!(
+                    "`{word}` is a flag this reader does not know, and a flag that takes the \
+                     next word would make that word look like a package"
+                ),
+            };
+        }
+        if word.contains(NOT_A_NAME) {
+            return InstallCommand::Refused {
+                why: format!(
+                    "`{word}` is not a package name a file can be held against — the shell \
+                     decides what it is at run time"
+                ),
+            };
+        }
+        packages.push(word.clone());
+    }
+    if packages.is_empty() {
+        return InstallCommand::Refused {
+            why: format!("`{manager} install` with no package named is a form this cannot judge"),
+        };
+    }
+    InstallCommand::Read { manager, packages }
+}
+
+/// Whether an action's name says it installs something onto the runner.
+#[must_use]
+pub fn action_installs(action: &str) -> bool {
+    let name = action.to_ascii_lowercase();
+    INSTALLING_ACTION_WORDS
+        .iter()
+        .any(|word| name.contains(word))
 }
 
 // --- caches -----------------------------------------------------------------

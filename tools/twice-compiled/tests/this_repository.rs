@@ -524,6 +524,10 @@ fn a_workflow_that_collects_nothing_owes_no_restore_record_and_is_refused_for_wr
             p = restored::PROGRAM
         ),
         env: std::collections::BTreeMap::new(),
+        // R1237 — see `law.rs`'s fixture: a bound is not a fact about
+        // compilation, and this is the shape when nobody wrote one.
+        timeout: None,
+        job_timeout: None,
     };
     step.env.insert(
         restored::VARIABLE.to_string(),

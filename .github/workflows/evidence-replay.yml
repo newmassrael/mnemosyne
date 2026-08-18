@@ -83,6 +83,11 @@ jobs:
           fetch-depth: 0
 
       - name: Install rust toolchain (rust-toolchain.toml)
+        # R1237 — `rustup show` DOWNLOADS the toolchain when it is not already
+        # there, so this is a network fetch and not a report. See
+        # `mnemosyne-validate.yml`'s copy, and `bounded_fetch_steps.rs` for the
+        # law that holds every workflow in this repository to it.
+        timeout-minutes: 5
         run: rustup show
 
       # Only the registry, not `target`: each replay builds into a throwaway

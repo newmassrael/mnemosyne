@@ -80,6 +80,36 @@
         "a_job_with_no_cache_is_never_asked_for_a_runner_this_reader_must_refuse"
       ]
     },
+    "a-steps-bound-is-taken-for-its-jobs": {
+      "edits": [
+        {
+          "file": "tools/ci-plan/src/lib.rs",
+          "from": "        let job_timeout = scalar(&job[\"timeout-minutes\"]);",
+          "to": "        let job_timeout: Option<String> = None;"
+        }
+      ],
+      "expect_red": [
+        "a_steps_own_bound_and_its_jobs_are_both_read_and_are_told_apart_from_none"
+      ],
+      "tests": [
+        "a_steps_own_bound_and_its_jobs_are_both_read_and_are_told_apart_from_none"
+      ]
+    },
+    "a-steps-own-bound-is-not-read-at-all": {
+      "edits": [
+        {
+          "file": "tools/ci-plan/src/lib.rs",
+          "from": "                    timeout: scalar(&step[\"timeout-minutes\"]),",
+          "to": "                    timeout: None,"
+        }
+      ],
+      "expect_red": [
+        "a_steps_own_bound_and_its_jobs_are_both_read_and_are_told_apart_from_none"
+      ],
+      "tests": [
+        "a_steps_own_bound_and_its_jobs_are_both_read_and_are_told_apart_from_none"
+      ]
+    },
     "a-tail-under-a-variable-need-not-be-qualified": {
       "edits": [
         {

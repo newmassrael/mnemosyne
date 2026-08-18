@@ -169,6 +169,11 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y protobuf-compiler strace
 
       - name: Install rust toolchain (rust-toolchain.toml)
+        # R1237 — `rustup show` DOWNLOADS the toolchain when it is not already
+        # there, so this is a network fetch and not a report. Measured on the
+        # last fully green run: 8 to 10 seconds. See `validate`'s `apt-get` step
+        # for why five minutes, and `bounded_fetch_steps.rs` for the law.
+        timeout-minutes: 5
         run: rustup show
 
       # R1092 — the recorder cannot record its own build: it does not exist yet,
@@ -524,6 +529,11 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
 
       - name: Install rust toolchain (rust-toolchain.toml)
+        # R1237 — `rustup show` DOWNLOADS the toolchain when it is not already
+        # there, so this is a network fetch and not a report. Measured on the
+        # last fully green run: 8 to 10 seconds. See `validate`'s `apt-get` step
+        # for why five minutes, and `bounded_fetch_steps.rs` for the law.
+        timeout-minutes: 5
         run: rustup show
 
       # R1092 — the recorder cannot record its own build: it does not exist yet,
@@ -645,6 +655,11 @@ jobs:
       - uses: actions/checkout@v7
 
       - name: Install rust toolchain (rust-toolchain.toml)
+        # R1237 — `rustup show` DOWNLOADS the toolchain when it is not already
+        # there, so this is a network fetch and not a report. Measured on the
+        # last fully green run: 8 to 10 seconds. See `validate`'s `apt-get` step
+        # for why five minutes, and `bounded_fetch_steps.rs` for the law.
+        timeout-minutes: 5
         run: rustup show
 
       # R1092 — the recorder cannot record its own build: it does not exist yet,
@@ -756,6 +771,11 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
 
       - name: Install rust toolchain (rust-toolchain.toml)
+        # R1237 — `rustup show` DOWNLOADS the toolchain when it is not already
+        # there, so this is a network fetch and not a report. Measured on the
+        # last fully green run: 8 to 10 seconds. See `validate`'s `apt-get` step
+        # for why five minutes, and `bounded_fetch_steps.rs` for the law.
+        timeout-minutes: 5
         run: rustup show
 
       # R1092 — the recorder cannot record its own build: it does not exist yet,
@@ -903,6 +923,11 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
 
       - name: Install rust toolchain (rust-toolchain.toml)
+        # R1237 — `rustup show` DOWNLOADS the toolchain when it is not already
+        # there, so this is a network fetch and not a report. Measured on the
+        # last fully green run: 8 to 10 seconds. See `validate`'s `apt-get` step
+        # for why five minutes, and `bounded_fetch_steps.rs` for the law.
+        timeout-minutes: 5
         run: rustup show
 
       # R1092 — the recorder cannot record its own build: it does not exist yet,
@@ -1118,6 +1143,11 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
 
       - name: Install rust toolchain (rust-toolchain.toml)
+        # R1237 — `rustup show` DOWNLOADS the toolchain when it is not already
+        # there, so this is a network fetch and not a report. Measured on the
+        # last fully green run: 8 to 10 seconds. See `validate`'s `apt-get` step
+        # for why five minutes, and `bounded_fetch_steps.rs` for the law.
+        timeout-minutes: 5
         run: rustup show
 
       # R1092 — the recorder cannot record its own build: it does not exist yet,
@@ -1227,6 +1257,9 @@ jobs:
           echo "version=$(grep -oP 'rust-version\s*=\s*"\K[0-9.]+' Cargo.toml | head -1)" >> "$GITHUB_OUTPUT"
 
       - name: Install MSRV toolchain
+        # R1237 — see `validate`'s toolchain step. This one is the same fetch
+        # said out loud; measured at 10 seconds on the last fully green run.
+        timeout-minutes: 5
         run: rustup toolchain install ${{ steps.msrv.outputs.version }} --profile minimal
 
       # ON THE MSRV TOOLCHAIN, unlike the other jobs' copies of this step: this
@@ -1384,6 +1417,11 @@ jobs:
           fetch-depth: 0
 
       - name: Install rust toolchain (rust-toolchain.toml)
+        # R1237 — `rustup show` DOWNLOADS the toolchain when it is not already
+        # there, so this is a network fetch and not a report. Measured on the
+        # last fully green run: 8 to 10 seconds. See `validate`'s `apt-get` step
+        # for why five minutes, and `bounded_fetch_steps.rs` for the law.
+        timeout-minutes: 5
         run: rustup show
 
       # R1092 — the recorder cannot record its own build: it does not exist yet,
@@ -1493,6 +1531,11 @@ jobs:
       - uses: actions/checkout@v7
 
       - name: Install rust toolchain (rust-toolchain.toml)
+        # R1237 — `rustup show` DOWNLOADS the toolchain when it is not already
+        # there, so this is a network fetch and not a report. Measured on the
+        # last fully green run: 8 to 10 seconds. See `validate`'s `apt-get` step
+        # for why five minutes, and `bounded_fetch_steps.rs` for the law.
+        timeout-minutes: 5
         run: rustup show
 
       # R1092 — the recorder cannot record its own build: it does not exist yet,
