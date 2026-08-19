@@ -16,12 +16,12 @@
       "expect_red": [
         "generations::tests::a_store_at_the_current_generation_crosses_nothing",
         "generations::tests::the_generations_a_store_crosses_are_the_ones_after_it",
-        "generations::tests::the_note_names_the_breaking_generations_and_counts_the_rest"
+        "generations::tests::the_note_names_what_costs_something_and_counts_the_rest"
       ],
       "tests": [
         "generations::tests::a_store_at_the_current_generation_crosses_nothing",
         "generations::tests::the_generations_a_store_crosses_are_the_ones_after_it",
-        "generations::tests::the_note_names_the_breaking_generations_and_counts_the_rest"
+        "generations::tests::the_note_names_what_costs_something_and_counts_the_rest"
       ]
     },
     "load-stops-dispatching-the-ladders-rewrites": {
@@ -59,14 +59,19 @@
           "file": "crates/mnemosyne-atomic/src/generations.rs",
           "from": "        to: 29,\n        cost: Cost::Breaking,",
           "to": "        to: 29,\n        cost: Cost::Additive,"
+        },
+        {
+          "file": "crates/mnemosyne-atomic/src/generations.rs",
+          "from": "        probe: Probe::Pair {\n            retired: r#\"{\"narrative_facts\": {\"f-1\": {\"frame\": \"gt\", \"claim\": \"c\", \"canon_from\": \"s-1\", \"evidence\": [], \"typed\": {\"subject\": \"e-1\", \"predicate\": \"p-1\", \"object\": {\"kind\": \"value\", \"text\": \"free text\"}}}}}\"#,\n            control: r#\"{\"narrative_facts\": {\"f-1\": {\"frame\": \"gt\", \"claim\": \"c\", \"canon_from\": \"s-1\", \"evidence\": []}}}\"#,\n        },",
+          "to": "        probe: Probe::NotBreaking,"
         }
       ],
       "expect_red": [
-        "generations::tests::the_note_names_the_breaking_generations_and_counts_the_rest",
+        "generations::tests::the_note_names_what_costs_something_and_counts_the_rest",
         "tests::every_load_refusal_carries_the_generation_it_read"
       ],
       "tests": [
-        "generations::tests::the_note_names_the_breaking_generations_and_counts_the_rest",
+        "generations::tests::the_note_names_what_costs_something_and_counts_the_rest",
         "tests::every_load_refusal_carries_the_generation_it_read"
       ]
     },

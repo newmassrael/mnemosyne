@@ -1,0 +1,88 @@
+{
+  "_": [
+    "Machine-written by tools/injection-harness. Do not edit by hand: a row somebody typed is evidence of nothing, and the law over this file is worth exactly what its being unforgeable is worth.",
+    "Each row is one injection that WAS RUN and DID redden what it names, kept beside the definition it was proven against — edit the injection and the gate says the evidence is about a different one."
+  ],
+  "complete": true,
+  "fired": {
+    "an-additive-generation-refuses-the-store-below-it": {
+      "edits": [
+        {
+          "file": "crates/mnemosyne-atomic/src/lib.rs",
+          "from": "        if on_disk_version > CURRENT_SCHEMA_VERSION {",
+          "to": "        if on_disk_version > CURRENT_SCHEMA_VERSION || on_disk_version < CURRENT_SCHEMA_VERSION {"
+        }
+      ],
+      "expect_red": [
+        "generations::tests::every_cost_is_one_a_store_exhibits",
+        "tests::every_load_refusal_carries_the_generation_it_read",
+        "tests::load_rejects_removed_value_shape_with_named_worklist",
+        "tests::schema_version_3_clones_audit_into_publishable_on_load",
+        "tests::version_less_store_clones_audit_into_publishable_on_load",
+        "tests::schema_version_4_preserves_publishable_divergence_on_load",
+        "tests::v37_parent_migrates_to_parents_on_load",
+        "tests::v38_first_at_migrates_to_reveal_on_load",
+        "tests::migrate_flat_normative_excerpt_anchor_url_only",
+        "tests::migrate_flat_normative_excerpt_prefers_epub_locator",
+        "tests::migrate_flat_normative_excerpt_edge_url",
+        "tests::evidence_migration_writes_an_empty_affirmation_never_the_live_hash",
+        "tests::kind_migration_report_lists_legacy_bindings_then_none_after_save",
+        "tests::confirmation_events_default_empty_on_legacy_store",
+        "tests::legacy_store_without_narrative_maps_loads_empty",
+        "tests::schema_version_1_store_loads_with_empty_inventory",
+        "tests::schema_version_2_store_loads_with_empty_outline_fields",
+        "tests::the_store_and_manifest_worklists_phrase_one_migration"
+      ],
+      "tests": [
+        "generations::tests::every_cost_is_one_a_store_exhibits",
+        "tests::confirmation_events_default_empty_on_legacy_store",
+        "tests::every_load_refusal_carries_the_generation_it_read",
+        "tests::evidence_migration_writes_an_empty_affirmation_never_the_live_hash",
+        "tests::kind_migration_report_lists_legacy_bindings_then_none_after_save",
+        "tests::legacy_store_without_narrative_maps_loads_empty",
+        "tests::load_rejects_removed_value_shape_with_named_worklist",
+        "tests::migrate_flat_normative_excerpt_anchor_url_only",
+        "tests::migrate_flat_normative_excerpt_edge_url",
+        "tests::migrate_flat_normative_excerpt_prefers_epub_locator",
+        "tests::schema_version_1_store_loads_with_empty_inventory",
+        "tests::schema_version_2_store_loads_with_empty_outline_fields",
+        "tests::schema_version_3_clones_audit_into_publishable_on_load",
+        "tests::schema_version_4_preserves_publishable_divergence_on_load",
+        "tests::the_store_and_manifest_worklists_phrase_one_migration",
+        "tests::v37_parent_migrates_to_parents_on_load",
+        "tests::v38_first_at_migrates_to_reveal_on_load",
+        "tests::version_less_store_clones_audit_into_publishable_on_load"
+      ]
+    },
+    "the-gated-generations-write-is-let-through": {
+      "edits": [
+        {
+          "file": "crates/mnemosyne-atomic/src/generations.rs",
+          "from": "    crate::add_entity(store, sidecar, \"e-2\", \"person\", \"\").is_err()",
+          "to": "    crate::add_entity(store, sidecar, \"e-2\", \"person\", \"\").is_ok()"
+        }
+      ],
+      "expect_red": [
+        "generations::tests::every_cost_is_one_a_store_exhibits"
+      ],
+      "tests": [
+        "generations::tests::every_cost_is_one_a_store_exhibits"
+      ]
+    },
+    "the-probe-keeps-its-refusal-and-loses-its-control": {
+      "edits": [
+        {
+          "file": "crates/mnemosyne-atomic/src/generations.rs",
+          "from": "            control: r#\"{\"narrative_facts\": {\"f-1\": {\"frame\": \"gt\", \"claim\": \"c\", \"canon_from\": \"s-1\", \"evidence\": []}}}\"#,\n        },\n    },\n    // v17→v18 adds",
+          "to": "            control: r#\"{\"narrative_facts\": {\"f-1\": {\"claim\": \"c\"}}}\"#,\n        },\n    },\n    // v17→v18 adds"
+        }
+      ],
+      "expect_red": [
+        "generations::tests::every_cost_is_one_a_store_exhibits"
+      ],
+      "tests": [
+        "generations::tests::every_cost_is_one_a_store_exhibits"
+      ]
+    }
+  }
+}

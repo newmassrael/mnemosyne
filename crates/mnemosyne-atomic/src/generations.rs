@@ -25,6 +25,16 @@
 //!    is [`Cost::Migrated`] exactly when it carries a rewrite. A taxonomy that
 //!    could disagree with the code beside it is a taxonomy nobody can act on.
 //!
+//! # And then the costs were held to a store (Round 1255)
+//!
+//! Writing them down did not make them true: each was read off that
+//! generation's own paragraph, and a row that said `Breaking` about a store this
+//! build opens quite happily produces the confident wrong diagnosis the table
+//! exists to end. Every row that claims an old store costs something now carries
+//! the store that shows it — see [`Probe`] — and the first run of that law found
+//! v24 was one of them. Its answer is [`Cost::Gated`], which the table did not
+//! have.
+//!
 //! # What the paragraphs are
 //!
 //! Each row carries the reasoning that used to sit above `CURRENT_SCHEMA_VERSION`,
@@ -40,9 +50,11 @@ use crate::{
 
 /// What a store written before a generation pays to be read by a build after it.
 ///
-/// THE THREE ARE NOT DEGREES OF ONE THING. They are different answers to "can
-/// this build open that file", which is the only question a reader looking at a
-/// generation distance actually has.
+/// THE FOUR ARE NOT DEGREES OF ONE THING. They are different answers to "can I
+/// work with that file", which is the question a reader looking at a generation
+/// distance actually has — and the fourth exists because a probe found that
+/// "will not open" and "opens, and then refuses" had been recorded as the same
+/// answer (Round 1255).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Cost {
     /// It loads. The new field is absent and serde's default fills it, and a
@@ -55,6 +67,15 @@ pub enum Cost {
     /// "will refuse": several of these are breaking only for a store that
     /// actually carries the retired shape, and the paragraph says which.
     Breaking,
+    /// It OPENS, and then the first write is refused until an author does
+    /// something. A different answer from all three above, and one this table
+    /// did not have until a probe went looking (Round 1255): v24 was recorded
+    /// `Breaking` on the strength of its own paragraph, which says an
+    /// unregistered entity kind is "a boundary REJECT" — and the boundary is
+    /// the WRITE path, so this build opens such a store quite happily. A
+    /// diagnosis that told its holder the file would not open would have been
+    /// confidently wrong, which is the failure this table exists to end.
+    Gated,
 }
 
 /// One generation of the on-disk schema.
@@ -71,6 +92,65 @@ pub struct Generation {
     /// The raw-JSON rewrite `load` runs before the typed parse for a store older
     /// than `to`. `Some` exactly when `cost` is [`Cost::Migrated`].
     pub migrate: Option<fn(&mut Value)>,
+    /// What holds this row's `cost` to something — see [`Probe`].
+    pub probe: Probe,
+}
+
+/// The evidence behind a row's [`Cost`], and the absence of it, said out loud.
+///
+/// ROUND 1255 — WHAT MAKES `Breaking` A MEASUREMENT RATHER THAN A LABEL. When
+/// R1254 built this table the costs were read off each generation's own
+/// paragraph, and nothing held them to it. A row that says `Breaking` about a
+/// store this build opens quite happily produces a confident wrong diagnosis —
+/// which is the failure the table exists to END, one level up. So a breaking row
+/// carries the shape it retired, and a law loads it.
+// NOT `PartialEq`, and the compiler said why: a variant holds a function
+// pointer, and comparing those "does not produce meaningful results since their
+// addresses are not guaranteed to be unique". Nothing here compares probes —
+// every reader of this type MATCHES on it — so the derive was a claim the type
+// could not honour, standing where a reader would take it for one it could.
+#[derive(Debug, Clone, Copy)]
+pub enum Probe {
+    /// Not a breaking generation: there is no refusal to exhibit. What such a
+    /// row claims — that an old store simply loads — is held by the law that
+    /// loads a bare store at every non-breaking generation.
+    NotBreaking,
+    /// A PAIR, and the pair is the whole point. `retired` is a store body
+    /// carrying the shape this generation removed, and `load` must refuse it;
+    /// `control` is the same store with that shape taken out, and `load` must
+    /// ACCEPT it. Without the control a refusal proves only that the fixture was
+    /// unparseable, which every malformed fixture also proves.
+    Pair {
+        retired: &'static str,
+        control: &'static str,
+    },
+    /// A [`Cost::Gated`] generation: `opens` is a store this build READS, and
+    /// `refused_by` is the write that will not go through until an author
+    /// repairs it. Both halves are asserted, because either alone is the
+    /// misreading — "it refuses" without the open is what v24 was recorded as,
+    /// and "it opens" without the refusal is what `Additive` would have said.
+    Boundary {
+        opens: &'static str,
+        refused_by: fn(&mut crate::AtomicStore, &std::path::Path) -> bool,
+    },
+    /// A breaking generation with no fixture, and WHY. A hole somebody can read
+    /// is one somebody can close; a row silently unprobed is a cost nobody
+    /// checked wearing the same face as one that was.
+    Unprobed(&'static str),
+}
+
+/// v23→v24's boundary: registering an entity under a kind the store's registry
+/// does not name.
+///
+/// A NAMED FUNCTION AND NOT A CLOSURE, because a `const` table can hold a plain
+/// `fn` and a closure would have to be built at run time — the same reason
+/// `migrate` holds one. It returns whether the write was REFUSED, so the law
+/// reads as the claim: the boundary refuses.
+fn an_unregistered_kind_is_refused_at_the_write_boundary(
+    store: &mut crate::AtomicStore,
+    sidecar: &std::path::Path,
+) -> bool {
+    crate::add_entity(store, sidecar, "e-2", "person", "").is_err()
 }
 
 /// THE LADDER. Ordered, contiguous, and the source of both
@@ -84,6 +164,7 @@ pub const GENERATIONS: &[Generation] = &[
         round: 273,
         what: "adds AtomicStore.inventory_entries",
         migrate: None,
+        probe: Probe::NotBreaking,
     },
     // Schema version 3 (Round 287): outline lift — adds AtomicSection.title /
     // .parent_doc / .parent_section (title-from-workspace-pending carry
@@ -96,6 +177,7 @@ pub const GENERATIONS: &[Generation] = &[
         round: 287,
         what: "adds AtomicSection.title / .parent_doc / .parent_section",
         migrate: None,
+        probe: Probe::NotBreaking,
     },
     // Schema version 4 (Round 294): publishable / audit body split on
     // AtomicChangelogEntry. Pre-v4 entries deserialize with empty publishable_*
@@ -114,6 +196,7 @@ pub const GENERATIONS: &[Generation] = &[
         round: 294,
         what: "publishable / audit body split on AtomicChangelogEntry",
         migrate: None,
+        probe: Probe::NotBreaking,
     },
     // Schema version 5 (Round 387): Path B `Section.implementations[] = {file,
     // symbol}` became `Section.bindings[] = {file, symbol, kind}` (typed
@@ -134,6 +217,7 @@ pub const GENERATIONS: &[Generation] = &[
         round: 387,
         what: "Section.implementations[] became Section.bindings[] with a typed kind",
         migrate: None,
+        probe: Probe::NotBreaking,
     },
     // v5→v6 (Round 389) adds `AtomicSection.coverage_expectation` (Normative |
     // Informative). Like v4→v5 (and unlike v3→v4's content transform), this is a
@@ -151,6 +235,7 @@ pub const GENERATIONS: &[Generation] = &[
         round: 389,
         what: "adds AtomicSection.coverage_expectation",
         migrate: None,
+        probe: Probe::NotBreaking,
     },
     // v6→v7 adds `AtomicSection.epub_locator` (EPUB-SSOT pointer, R393). Same
     // declarative new-field-default pattern: a pre-v7 store has no
@@ -165,6 +250,7 @@ pub const GENERATIONS: &[Generation] = &[
         round: 393,
         what: "adds AtomicSection.epub_locator",
         migrate: None,
+        probe: Probe::NotBreaking,
     },
     // v7→v8 adds `NormativeExcerpt.text_sha256` (R402). Same declarative
     // new-field-default pattern: a pre-v8 excerpt has no `text_sha256` key,
@@ -181,6 +267,7 @@ pub const GENERATIONS: &[Generation] = &[
         round: 402,
         what: "adds NormativeExcerpt.text_sha256",
         migrate: None,
+        probe: Probe::NotBreaking,
     },
     // v8→v9 adds `AtomicSection.verification_expectation` (Dedicated |
     // ByConstruction, R413). Same declarative new-field-default pattern as v5→v6
@@ -196,6 +283,7 @@ pub const GENERATIONS: &[Generation] = &[
         round: 413,
         what: "adds AtomicSection.verification_expectation",
         migrate: None,
+        probe: Probe::NotBreaking,
     },
     // v9→v10 adds `AtomicStore.confirmation_events` (max-rigor confirmation
     // subsystem, R416) — a top-level append-only collection mirroring
@@ -211,6 +299,7 @@ pub const GENERATIONS: &[Generation] = &[
         round: 416,
         what: "adds AtomicStore.confirmation_events",
         migrate: None,
+        probe: Probe::NotBreaking,
     },
     // v10→v11 widens `AtomicSection.coverage_expectation` from 2-state
     // (Normative | Informative) to 3-state (Normative | OutOfScopeHere |
@@ -227,6 +316,10 @@ pub const GENERATIONS: &[Generation] = &[
         round: 421,
         what: "coverage_expectation widens to 3 states and the `informative` tag is retired",
         migrate: None,
+        probe: Probe::Pair {
+            retired: r#"{"sections": {"s-1": {"skeleton": {}, "coverage_expectation": "informative"}}}"#,
+            control: r#"{"sections": {"s-1": {"skeleton": {}, "coverage_expectation": "informational"}}}"#,
+        },
     },
     // v11→v12 adds `AtomicStore.frames` + `AtomicStore.narrative_facts` (Phase
     // 1A narrative fact entity, Round 430) — two top-level collections mirroring
@@ -242,6 +335,7 @@ pub const GENERATIONS: &[Generation] = &[
         round: 430,
         what: "adds AtomicStore.frames + AtomicStore.narrative_facts",
         migrate: None,
+        probe: Probe::NotBreaking,
     },
     // v12→v13 adds `NarrativeFact.branch` (world-line branch axis, Round 433 —
     // design sec 7.9 axis 2). Declarative serde default: a pre-v13 fact has no
@@ -257,6 +351,7 @@ pub const GENERATIONS: &[Generation] = &[
         round: 433,
         what: "adds NarrativeFact.branch",
         migrate: None,
+        probe: Probe::NotBreaking,
     },
     // v13→v14 adds `AtomicStore.branches` (world-line branch registry, Round
     // 436) — the frames-registry symmetry the R433 minimal pin deferred: branch
@@ -273,6 +368,7 @@ pub const GENERATIONS: &[Generation] = &[
         round: 436,
         what: "adds AtomicStore.branches",
         migrate: None,
+        probe: Probe::NotBreaking,
     },
     // v14→v15 adds `AtomicStore.entities` + `NarrativeFact.entities` (narrative
     // entity axis, Round 437 — design sec 7.10 gap 4, pulled live by the
@@ -288,6 +384,7 @@ pub const GENERATIONS: &[Generation] = &[
         round: 437,
         what: "adds AtomicStore.entities + NarrativeFact.entities",
         migrate: None,
+        probe: Probe::NotBreaking,
     },
     // v15→v16 adds `Branch.forks_from` (world-line fork point, Round 438 — the
     // shared-history half of the branch axis the R433 minimal pin deferred,
@@ -304,6 +401,7 @@ pub const GENERATIONS: &[Generation] = &[
         round: 438,
         what: "adds Branch.forks_from",
         migrate: None,
+        probe: Probe::NotBreaking,
     },
     // v16→v17 changes `NarrativeFact.conflicts_with` from bare target ids to
     // [`ConflictAssertion`] rows pinning the target's claim sha256 at judgment
@@ -322,6 +420,10 @@ pub const GENERATIONS: &[Generation] = &[
         round: 439,
         what: "NarrativeFact.conflicts_with becomes ConflictAssertion rows with a pinned sha256",
         migrate: None,
+        probe: Probe::Pair {
+            retired: r#"{"narrative_facts": {"f-1": {"frame": "gt", "claim": "c", "canon_from": "s-1", "evidence": [], "conflicts_with": ["f-2"]}}}"#,
+            control: r#"{"narrative_facts": {"f-1": {"frame": "gt", "claim": "c", "canon_from": "s-1", "evidence": []}}}"#,
+        },
     },
     // v17→v18 adds `NarrativeFact.payoff_expectation` + `NarrativeFact.pays_off`
     // (setup/payoff coverage, Round 442): an optional expectation on a setup
@@ -341,6 +443,7 @@ pub const GENERATIONS: &[Generation] = &[
         round: 442,
         what: "adds NarrativeFact.payoff_expectation + NarrativeFact.pays_off",
         migrate: None,
+        probe: Probe::NotBreaking,
     },
     // v18→v19 adds `AtomicStore.predicates` (the 4th registry) and
     // `NarrativeFact.typed` (the optional TypedClaim leg, Round 446 — design
@@ -356,6 +459,7 @@ pub const GENERATIONS: &[Generation] = &[
         round: 446,
         what: "adds AtomicStore.predicates and NarrativeFact.typed",
         migrate: None,
+        probe: Probe::NotBreaking,
     },
     // v19→v20 added the `ConfirmationClaim::FactEvidence { fact_id }` variant
     // (the R481 LLM-verdict drift target).
@@ -365,6 +469,7 @@ pub const GENERATIONS: &[Generation] = &[
         round: 481,
         what: "adds the ConfirmationClaim::FactEvidence variant",
         migrate: None,
+        probe: Probe::NotBreaking,
     },
     // v20→v21 REMOVES it (Round 485 — the all-deterministic redesign R484:
     // R483's blind acceptance falsified the LLM-verdict approach, drift moved to
@@ -384,6 +489,10 @@ pub const GENERATIONS: &[Generation] = &[
         round: 485,
         what: "removes the ConfirmationClaim::FactEvidence variant",
         migrate: None,
+        probe: Probe::Pair {
+            retired: r#"{"confirmation_events": {"e-1": {"claim": {"kind": "fact_evidence", "fact_id": "f-1"}, "confirmer": {"kind": "tool", "id": "t", "version": "1"}, "method": "linkage_check", "authoring_run": "a", "confirming_run": "b", "verdict": "confirm", "rationale": "r", "timestamp": "2026-01-01"}}}"#,
+            control: r#"{"confirmation_events": {"e-1": {"claim": {"kind": "section_completeness", "section_id": "s-1"}, "confirmer": {"kind": "tool", "id": "t", "version": "1"}, "method": "linkage_check", "authoring_run": "a", "confirming_run": "b", "verdict": "confirm", "rationale": "r", "timestamp": "2026-01-01"}}}"#,
+        },
     },
     // v21→v22 adds `AtomicStore.disclosure_plans` (the disclosure/discourse
     // layer, Round 506 — design sec 7.24): a top-level registry of named
@@ -401,6 +510,7 @@ pub const GENERATIONS: &[Generation] = &[
         round: 506,
         what: "adds AtomicStore.disclosure_plans",
         migrate: None,
+        probe: Probe::NotBreaking,
     },
     // v22→v23 adds `Branch.converges_from` (Round 532) — the inverse of
     // `forks_from`: a branch may declare two or more parents it converges from,
@@ -418,6 +528,7 @@ pub const GENERATIONS: &[Generation] = &[
         round: 532,
         what: "adds Branch.converges_from",
         migrate: None,
+        probe: Probe::NotBreaking,
     },
     // v23→v24 adds `AtomicStore.entity_kinds` and turns `Entity.kind` from FREE
     // TEXT into a registry ref (Round 661's machine-slot rule reaching the slot
@@ -434,10 +545,14 @@ pub const GENERATIONS: &[Generation] = &[
     // "migrate" a typo into a registered vocabulary and defeat the gate.
     Generation {
         to: 24,
-        cost: Cost::Breaking,
+        cost: Cost::Gated,
         round: 669,
         what: "adds AtomicStore.entity_kinds; Entity.kind becomes a registry ref",
         migrate: None,
+        probe: Probe::Boundary {
+            opens: r#"{"entities": {"e-1": {"entity_id": "e-1", "kind": "person"}}}"#,
+            refused_by: an_unregistered_kind_is_refused_at_the_write_boundary,
+        },
     },
     // v24→v25 adds `Predicate.subject_kind` / `Predicate.object_entity_kind`
     // (Round 701 — the spatial-map G1 endpoint-kind gate declared on the
@@ -458,6 +573,7 @@ pub const GENERATIONS: &[Generation] = &[
         round: 701,
         what: "adds Predicate.subject_kind / Predicate.object_entity_kind",
         migrate: None,
+        probe: Probe::NotBreaking,
     },
     // v25→v26 adds `Predicate.object_tokens` (Round 705 — the closed token
     // vocabulary for `object_kind=token`). Same declarative pattern: `BTreeSet`,
@@ -476,6 +592,7 @@ pub const GENERATIONS: &[Generation] = &[
         round: 705,
         what: "adds Predicate.object_tokens",
         migrate: None,
+        probe: Probe::NotBreaking,
     },
     // v26→v27 adds `AtomicStore.units` (Round 706 — the unit registry) and the
     // `TypedObject::Quantity { n, unit }` object shape (`object_kind=quantity`).
@@ -492,6 +609,7 @@ pub const GENERATIONS: &[Generation] = &[
         round: 706,
         what: "adds AtomicStore.units and the TypedObject::Quantity object shape",
         migrate: None,
+        probe: Probe::NotBreaking,
     },
     // v27→v28 adds the `TypedObject::Fact { id }` object shape
     // (`object_kind=fact`). No new top-level field — a Fact object is a
@@ -505,6 +623,7 @@ pub const GENERATIONS: &[Generation] = &[
         round: 707,
         what: "adds the TypedObject::Fact object shape",
         migrate: None,
+        probe: Probe::NotBreaking,
     },
     // v28→v29 REMOVES the free-text `TypedObject::Value` shape +
     // `object_kind=scalar` (Round 708 — the object-shape-closure arc's terminus:
@@ -524,6 +643,10 @@ pub const GENERATIONS: &[Generation] = &[
         round: 708,
         what: "removes the TypedObject::Value / object_kind=scalar free-text shape",
         migrate: None,
+        probe: Probe::Pair {
+            retired: r#"{"narrative_facts": {"f-1": {"frame": "gt", "claim": "c", "canon_from": "s-1", "evidence": [], "typed": {"subject": "e-1", "predicate": "p-1", "object": {"kind": "value", "text": "free text"}}}}}"#,
+            control: r#"{"narrative_facts": {"f-1": {"frame": "gt", "claim": "c", "canon_from": "s-1", "evidence": []}}}"#,
+        },
     },
     // v29→v30 adds `AtomicStore.edge_costs` (Round 709 design → DEBT-J build —
     // the map edge-cost side-table). Additive: a top-level `BTreeMap` under
@@ -538,6 +661,7 @@ pub const GENERATIONS: &[Generation] = &[
         round: 709,
         what: "adds AtomicStore.edge_costs",
         migrate: None,
+        probe: Probe::NotBreaking,
     },
     // v30→v31 adds `AtomicStore.edge_guards` (Round 717 design → Round 720 build
     // — the map edge-GUARD side-table: a place-access condition on an adjacency
@@ -550,6 +674,7 @@ pub const GENERATIONS: &[Generation] = &[
         round: 720,
         what: "adds AtomicStore.edge_guards",
         migrate: None,
+        probe: Probe::NotBreaking,
     },
     // v31→v32 changes `edge_guards`' VALUE from a single condition `String` to a
     // `BTreeSet<String>` — a SET of required conditions (AND; Round 721 design →
@@ -565,6 +690,10 @@ pub const GENERATIONS: &[Generation] = &[
         round: 722,
         what: "edge_guards' value becomes a set of conditions",
         migrate: None,
+        probe: Probe::Pair {
+            retired: r#"{"edge_guards": {"f-1": "c-1"}}"#,
+            control: r#"{"edge_guards": {"f-1": {"conditions": ["c-1"]}}}"#,
+        },
     },
     // v32→v33 changes `edge_guards`' VALUE from a bare `BTreeSet<String>` to the
     // `EdgeGuard` struct — a condition set PLUS an optional K-of-N `threshold`
@@ -581,6 +710,10 @@ pub const GENERATIONS: &[Generation] = &[
         round: 723,
         what: "edge_guards' value becomes the EdgeGuard struct with a threshold",
         migrate: None,
+        probe: Probe::Pair {
+            retired: r#"{"edge_guards": {"f-1": ["c-1"]}}"#,
+            control: r#"{"edge_guards": {"f-1": {"conditions": ["c-1"]}}}"#,
+        },
     },
     // v33→v34 adds `AtomicStore.parameters` (a numeric-meter registry) +
     // `AtomicStore.parameter_deltas` (a per-beat signed-delta side-table) —
@@ -596,6 +729,7 @@ pub const GENERATIONS: &[Generation] = &[
         round: 729,
         what: "adds AtomicStore.parameters + AtomicStore.parameter_deltas",
         migrate: None,
+        probe: Probe::NotBreaking,
     },
     // v34→v35 adds `AtomicStore.parameter_gates` (a per-choice
     // numeric-threshold gate side-table) — Round 728 design → Round 730 build,
@@ -611,6 +745,7 @@ pub const GENERATIONS: &[Generation] = &[
         round: 730,
         what: "adds AtomicStore.parameter_gates",
         migrate: None,
+        probe: Probe::NotBreaking,
     },
     // v35→v36 adds `AtomicStore.fact_counts` (a per-fact multiset-count
     // side-table) — Round 731 build, DEBT-L (the distinct part of
@@ -627,6 +762,7 @@ pub const GENERATIONS: &[Generation] = &[
         round: 731,
         what: "adds AtomicStore.fact_counts",
         migrate: None,
+        probe: Probe::NotBreaking,
     },
     // v36→v37 adds `EntityKind.parent` (an optional registered-kind ref forming
     // a single-parent kind INHERITANCE TREE) — Round 732 build, DEBT-M
@@ -643,6 +779,7 @@ pub const GENERATIONS: &[Generation] = &[
         round: 732,
         what: "adds EntityKind.parent",
         migrate: None,
+        probe: Probe::NotBreaking,
     },
     // v37→v38 GENERALISES `EntityKind.parent: Option<String>` to `parents:
     // BTreeSet<String>` — Round 738, the R661 kind-tree extension (single-parent
@@ -663,6 +800,7 @@ pub const GENERATIONS: &[Generation] = &[
         round: 738,
         what: "EntityKind.parent generalises to parents (a set)",
         migrate: Some(migrate_entity_kind_parent_to_parents),
+        probe: Probe::NotBreaking,
     },
     // v38→v39 GENERALISES `DisclosureOverride.first_at`'s per-world VALUE from a
     // single ordinal coord (`String`) to a `DisclosureReveal` { coords:
@@ -684,6 +822,7 @@ pub const GENERATIONS: &[Generation] = &[
         round: 752,
         what: "DisclosureOverride.first_at's value becomes a DisclosureReveal",
         migrate: Some(migrate_disclosure_first_at_to_reveal),
+        probe: Probe::NotBreaking,
     },
     // v39→v40 adds `AtomicSection.content_excerpt` (Round 756, P3a) — the
     // store-owned narrative-prose provenance anchor (a Layer-0 `ContentAnchor` +
@@ -700,6 +839,7 @@ pub const GENERATIONS: &[Generation] = &[
         round: 756,
         what: "adds AtomicSection.content_excerpt",
         migrate: None,
+        probe: Probe::NotBreaking,
     },
     // v40→v41 adds `AtomicSection.scene_cast` (Round 757, B0) — the store-owned
     // scene-presence list (who is in a scene + the authored modality/can_answer
@@ -717,6 +857,7 @@ pub const GENERATIONS: &[Generation] = &[
         round: 757,
         what: "adds AtomicSection.scene_cast",
         migrate: None,
+        probe: Probe::NotBreaking,
     },
     // v41→v42 CONVERGES `NormativeExcerpt` onto the one provenance substrate
     // `ContentExcerpt` (Round 759, P3c): the flat `{text, anchor_url,
@@ -740,6 +881,7 @@ pub const GENERATIONS: &[Generation] = &[
         round: 759,
         what: "NormativeExcerpt converges onto the ContentExcerpt substrate",
         migrate: Some(migrate_normative_excerpt_to_wrapped),
+        probe: Probe::NotBreaking,
     },
     // v42→v43 adds `AtomicSection.ladder` (Round 765) — the store-owned
     // interactive ladder: a carrier entity + ordered rungs, each a
@@ -759,6 +901,7 @@ pub const GENERATIONS: &[Generation] = &[
         round: 765,
         what: "adds AtomicSection.ladder",
         migrate: None,
+        probe: Probe::NotBreaking,
     },
     // v43→v44 moves `NarrativeFact.evidence` from `Vec<String>` to
     // `Vec<EvidenceRef>` (Round 806) — each evidence ref now carries the sha256
@@ -775,6 +918,7 @@ pub const GENERATIONS: &[Generation] = &[
         round: 806,
         what: "NarrativeFact.evidence becomes EvidenceRef rows carrying a sha256",
         migrate: Some(migrate_evidence_to_refs),
+        probe: Probe::NotBreaking,
     },
     // v44→v45 adds `AtomicChangelogEntry.population_census` (Round 979 — what
     // the recorded population said at the moment an entry was appended, so a
@@ -793,6 +937,7 @@ pub const GENERATIONS: &[Generation] = &[
         round: 979,
         what: "adds AtomicChangelogEntry.population_census",
         migrate: None,
+        probe: Probe::NotBreaking,
     },
     // v45→v46 adds `AtomicStore.mutation_reasons` (Round 1024) — the reason a
     // mutating primitive was given, kept instead of validated and discarded, so
@@ -811,6 +956,7 @@ pub const GENERATIONS: &[Generation] = &[
         round: 1024,
         what: "adds AtomicStore.mutation_reasons",
         migrate: None,
+        probe: Probe::NotBreaking,
     },
 ];
 
@@ -844,6 +990,24 @@ const fn ladder_holds(g: &[Generation]) -> bool {
         if migrated != g[i].migrate.is_some() {
             return false;
         }
+        // ROUND 1255 — and the same pairing on the costs that claim an old
+        // store is not simply carried. A `Breaking` or `Gated` row must exhibit
+        // that, or say why it does not; a row that claims neither must not
+        // carry a probe, because a probe beside `Additive` is a refusal nothing
+        // in the table is asserting.
+        let costs_work = matches!(g[i].cost, Cost::Breaking | Cost::Gated);
+        if costs_work == matches!(g[i].probe, Probe::NotBreaking) {
+            return false;
+        }
+        // AND THE TWO SHAPES OF PROBE ARE NOT INTERCHANGEABLE. `Boundary` says
+        // the store OPENS and a write is refused; `Pair` says the store does
+        // not open. Reading one as the other is exactly the misclassification
+        // v24 carried, so the pairing is held here rather than left to a
+        // reader.
+        let gated = matches!(g[i].cost, Cost::Gated);
+        if gated != matches!(g[i].probe, Probe::Boundary { .. }) {
+            return false;
+        }
         i += 1;
     }
     true
@@ -851,7 +1015,8 @@ const fn ladder_holds(g: &[Generation]) -> bool {
 
 const _: () = assert!(
     ladder_holds(GENERATIONS),
-    "the schema ladder must be contiguous from 2 and every Migrated row must carry its rewrite"
+    "the schema ladder must be contiguous from 2, every Migrated row must carry its rewrite, \
+     and every Breaking row must carry a probe or say why it has none"
 );
 
 /// The generations a store written at `on_disk` must cross to be read by this
@@ -876,26 +1041,47 @@ pub fn crossing_note(on_disk: u32) -> String {
     if crossing.is_empty() {
         return String::new();
     }
-    let breaking: Vec<&Generation> = crossing
-        .iter()
-        .filter(|g| g.cost == Cost::Breaking)
-        .collect();
-    let migrated = crossing.iter().filter(|g| g.cost == Cost::Migrated).count();
-    let mut note = format!(
-        "; crossing {} generation(s): {} additive, {migrated} migrated on load, {} breaking",
-        crossing.len(),
-        crossing.len() - breaking.len() - migrated,
-        breaking.len()
+    let count = |cost: Cost| crossing.iter().filter(|g| g.cost == cost).count();
+    let (migrated, breaking, gated) = (
+        count(Cost::Migrated),
+        count(Cost::Breaking),
+        count(Cost::Gated),
     );
-    for g in &breaking {
-        note.push_str(&format!(" — v{} (Round {}) {}", g.to, g.round, g.what));
+    let mut note = format!(
+        "; crossing {} generation(s): {} additive, {migrated} migrated on load, \
+         {breaking} that may refuse to open, {gated} that open and refuse the first write",
+        crossing.len(),
+        crossing.len() - migrated - breaking - gated,
+    );
+    // THE ONES THAT COST SOMETHING ARE NAMED, in ladder order, and each says
+    // WHICH of the two ways it bites. The additive and migrated ones are
+    // counted: a holder has nothing to do about either, and naming twenty of
+    // them would bury the four that matter.
+    for g in crossing
+        .iter()
+        .filter(|g| matches!(g.cost, Cost::Breaking | Cost::Gated))
+    {
+        note.push_str(&format!(
+            " — v{} (Round {}) {}{}",
+            g.to,
+            g.round,
+            g.what,
+            if g.cost == Cost::Gated {
+                " [opens; the write is what is refused]"
+            } else {
+                ""
+            }
+        ));
     }
     note
 }
 
 #[cfg(test)]
 mod tests {
+    use tempfile::TempDir;
+
     use super::*;
+    use crate::AtomicStore;
 
     #[test]
     fn the_current_version_is_the_last_rung() {
@@ -930,22 +1116,138 @@ mod tests {
 
     /// THE ANSWER R1247 COULD NOT GIVE. A store at generation 23 is 23
     /// generations behind, and that number is an upper bound: what it actually
-    /// costs is one breaking shape, and this is where a reader learns which.
+    /// costs is four rungs out of twenty-three, and this is where a reader
+    /// learns which — and, since R1255, which of the two ways each one bites.
     #[test]
-    fn the_note_names_the_breaking_generations_and_counts_the_rest() {
+    fn the_note_names_what_costs_something_and_counts_the_rest() {
         let note = crossing_note(23);
         assert!(note.contains("crossing 23 generation(s)"), "{note}");
-        // v24, v29, v32, v33 are the breaking rungs above 23.
-        assert!(note.contains("4 breaking"), "{note}");
-        assert!(note.contains("v24 (Round 669)"), "{note}");
+        // v29, v32 and v33 refuse to open; v24 OPENS and refuses the write,
+        // which is the distinction a probe found rather than a paragraph.
+        assert!(note.contains("3 that may refuse to open"), "{note}");
+        assert!(
+            note.contains("1 that open and refuse the first write"),
+            "{note}"
+        );
         assert!(note.contains("v29 (Round 708)"), "{note}");
         assert!(
             note.contains("removes the TypedObject::Value"),
-            "the breaking rung says what it removed: {note}"
+            "a rung that costs something says what it did: {note}"
+        );
+        assert!(
+            note.contains("v24 (Round 669)")
+                && note.contains("[opens; the write is what is refused]"),
+            "the gated rung must not read as one that will not open: {note}"
         );
         // And the migrated ones are counted rather than named: they cost a
         // person nothing, which is the whole distinction.
         assert!(note.contains("4 migrated on load"), "{note}");
+    }
+
+    /// A store body at `version`, written where `load` will find it.
+    fn store_at(dir: &std::path::Path, version: u32, body: &str) -> std::path::PathBuf {
+        let mut doc: serde_json::Value =
+            serde_json::from_str(body).expect("a probe body is a JSON object");
+        doc["schema_version"] = serde_json::json!(version);
+        let path = dir.join(format!("store-{version}.json"));
+        std::fs::write(&path, serde_json::to_vec_pretty(&doc).expect("serialize")).expect("write");
+        path
+    }
+
+    /// THE LAW N153 ASKED FOR: every row's `cost` is exercised, and the ones
+    /// that are not say so.
+    ///
+    /// A breaking row carries the shape it retired plus the same store without
+    /// it. `load` must REFUSE the first and ACCEPT the second — the control is
+    /// what makes the refusal attributable to the retired shape rather than to
+    /// a fixture nobody could parse, which is the way a probe silently stops
+    /// probing. A non-breaking row claims an old store simply loads, and a bare
+    /// store at the generation below it is that claim.
+    #[test]
+    fn every_cost_is_one_a_store_exhibits() {
+        let tmp = TempDir::new().expect("tempdir");
+        let mut probed = 0usize;
+        let mut unprobed: Vec<(u32, &str)> = Vec::new();
+        for g in GENERATIONS {
+            let before = g.to - 1;
+            match &g.probe {
+                Probe::NotBreaking => {
+                    // The claim is that an old store LOADS. The bare store is
+                    // the weakest form of it and the only one that is true of
+                    // every additive generation at once: what the new field's
+                    // absence does is exactly what a store without it does.
+                    let path = store_at(tmp.path(), before, "{}");
+                    AtomicStore::load(&path).unwrap_or_else(|e| {
+                        panic!(
+                            "v{}: a {:?} generation must open a store from the one below it: {e}",
+                            g.to, g.cost
+                        )
+                    });
+                }
+                Probe::Pair { retired, control } => {
+                    let bad = store_at(tmp.path(), before, retired);
+                    let err = AtomicStore::load(&bad).err().unwrap_or_else(|| {
+                        panic!(
+                            "v{} (Round {}) is recorded Breaking and this build opened a store \
+                             carrying the shape it retired — the cost is wrong, and a refusal \
+                             that names it would be a confident wrong diagnosis",
+                            g.to, g.round
+                        )
+                    });
+                    std::fs::remove_file(&bad).expect("clear the fixture");
+                    let good = store_at(tmp.path(), before, control);
+                    AtomicStore::load(&good).unwrap_or_else(|_| {
+                        panic!(
+                            "v{}: the CONTROL must load, or the refusal above is about a fixture \
+                             nobody could parse rather than about the retired shape. The refusal \
+                             was: {err}",
+                            g.to
+                        )
+                    });
+                    std::fs::remove_file(&good).expect("clear the fixture");
+                    probed += 1;
+                }
+                Probe::Boundary { opens, refused_by } => {
+                    // BOTH HALVES, because either alone is a misreading. The
+                    // store OPENS — v24 was recorded `Breaking` and this is the
+                    // measurement that said otherwise — and the write is what
+                    // does not go through.
+                    let path = store_at(tmp.path(), before, opens);
+                    let mut store = AtomicStore::load(&path).unwrap_or_else(|e| {
+                        panic!(
+                            "v{}: a Gated generation OPENS such a store; if it no longer does, \
+                             the cost is Breaking and the probe is the wrong shape: {e}",
+                            g.to
+                        )
+                    });
+                    assert!(
+                        refused_by(&mut store, &path),
+                        "v{} (Round {}) is recorded Gated and the write went through — the store \
+                         opens and nothing is refused, which is what Additive says",
+                        g.to,
+                        g.round
+                    );
+                    std::fs::remove_file(&path).expect("clear the fixture");
+                    probed += 1;
+                }
+                Probe::Unprobed(why) => unprobed.push((g.to, why)),
+            }
+        }
+        // NON-VACUITY, and the count is printed rather than asserted at a
+        // number: a table where every breaking row had drifted to `Unprobed`
+        // would satisfy every assertion above while exhibiting nothing.
+        assert!(
+            probed > 0,
+            "no breaking generation was exhibited — this test asserted nothing"
+        );
+        println!(
+            "{probed} generation(s) that cost something were exhibited against a real store; \
+             {} recorded a cost nothing here shows",
+            unprobed.len()
+        );
+        for (to, why) in &unprobed {
+            println!("v{to}: a cost this law does not exhibit — {why}");
+        }
     }
 
     #[test]
@@ -956,6 +1258,7 @@ mod tests {
         let mut additive = 0;
         let mut migrated = 0;
         let mut breaking = 0;
+        let mut gated = 0;
         for g in GENERATIONS {
             match g.cost {
                 Cost::Additive => additive += 1,
@@ -968,9 +1271,14 @@ mod tests {
                     );
                 }
                 Cost::Breaking => breaking += 1,
+                Cost::Gated => gated += 1,
             }
         }
-        assert!(additive > 0 && migrated > 0 && breaking > 0);
-        assert_eq!(additive + migrated + breaking, GENERATIONS.len());
+        assert!(additive > 0 && migrated > 0 && breaking > 0 && gated > 0);
+        assert_eq!(
+            additive + migrated + breaking + gated,
+            GENERATIONS.len(),
+            "the match above is the whole population, so a new cost must be counted here"
+        );
     }
 }

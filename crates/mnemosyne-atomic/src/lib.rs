@@ -12464,7 +12464,7 @@ mod tests {
                     // whole point: the shape name and the generation it was
                     // removed in arrive together.
                     assert!(
-                        said.contains("crossing") && said.contains("breaking"),
+                        said.contains("crossing") && said.contains("may refuse to open"),
                         "{name}: the distance came without its contents: `{said}`"
                     );
                     assert!(

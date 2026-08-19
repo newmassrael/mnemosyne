@@ -1,0 +1,95 @@
+{
+  "_": [
+    "THE SWEEP THAT SAYS R1255's CONTRACT IS NOT VACUOUS — run it from the",
+    "repository root:",
+    "    cargo run -q --manifest-path tools/injection-harness/Cargo.toml -- \\",
+    "        crates/mnemosyne-atomic/sweeps/generation-cost.sweep.json",
+    "",
+    "WHAT THE CONTRACT IS. R1254 made the schema ladder data and left every row's",
+    "`cost` a JUDGEMENT read off that generation's own paragraph — which is how a",
+    "row came to say `Breaking` about a store this build opens quite happily.",
+    "Each row that claims an old store costs something now carries the store that",
+    "shows it: a shape `load` refuses PLUS the same store without it, or — for a",
+    "generation that opens and refuses the WRITE — the store and the write.",
+    "",
+    "THE CONTROL IS HALF THE LAW AND THE FIRST INJECTION IS ABOUT IT. A fixture",
+    "nobody can parse refuses too, and it refuses in exactly the same shape as a",
+    "real retired shape. Without a control that must LOAD, a probe stops probing",
+    "the day its fixture rots, and says nothing about it.",
+    "",
+    "ONE INJECTION WAS WRITTEN AND THEN REMOVED, and the removal is the finding.",
+    "Recording v24 as `Breaking` again — the misclassification this round found —",
+    "does not go red: it does not COMPILE, because the const assertion holds",
+    "`Cost::Gated` and `Probe::Boundary` to each other. The harness reported it as",
+    "a run over a different target set rather than a firing, which is right. It",
+    "was proven by hand instead and the compiler's words are in the round entry."
+  ],
+  "repo": "../../..",
+  "test_command": [
+    "cargo",
+    "test",
+    "-p",
+    "mnemosyne-atomic",
+    "--no-fail-fast"
+  ],
+  "red_set": "exhaustive",
+  "logs": "../../../target/injection-logs",
+  "min_free_mb": 8000,
+  "injections": [
+    {
+      "name": "the-probe-keeps-its-refusal-and-loses-its-control",
+      "why": "the way a probe stops probing without saying so. A malformed fixture refuses exactly as a retired shape does, so a probe whose control is not held to loading proves only that something went wrong. This makes one control unparseable: the retired half still refuses, and only the control catches it",
+      "edits": [
+        {
+          "file": "crates/mnemosyne-atomic/src/generations.rs",
+          "from": "            control: r#\"{\"narrative_facts\": {\"f-1\": {\"frame\": \"gt\", \"claim\": \"c\", \"canon_from\": \"s-1\", \"evidence\": []}}}\"#,\n        },\n    },\n    // v17→v18 adds",
+          "to": "            control: r#\"{\"narrative_facts\": {\"f-1\": {\"claim\": \"c\"}}}\"#,\n        },\n    },\n    // v17→v18 adds"
+        }
+      ],
+      "expect_red": ["generations::tests::every_cost_is_one_a_store_exhibits"]
+    },
+    {
+      "name": "the-gated-generations-write-is-let-through",
+      "why": "the other half of `Gated`, and the half that separates it from `Additive`. A store that opens and whose first write goes through costs its holder nothing, which is what `Additive` says — so the boundary refusing is the whole of the claim",
+      "edits": [
+        {
+          "file": "crates/mnemosyne-atomic/src/generations.rs",
+          "from": "    crate::add_entity(store, sidecar, \"e-2\", \"person\", \"\").is_err()",
+          "to": "    crate::add_entity(store, sidecar, \"e-2\", \"person\", \"\").is_ok()"
+        }
+      ],
+      "expect_red": ["generations::tests::every_cost_is_one_a_store_exhibits"]
+    },
+    {
+      "name": "an-additive-generation-refuses-the-store-below-it",
+      "why": "the claim every non-breaking row makes and the one nothing used to check: that an old store simply LOADS. Retiring a shape without recording it as breaking is exactly how a store stops opening while the ladder still reads as free — here the seed store's schema field is refused outright, so every additive row's claim fails at once",
+      "edits": [
+        {
+          "file": "crates/mnemosyne-atomic/src/lib.rs",
+          "from": "        if on_disk_version > CURRENT_SCHEMA_VERSION {",
+          "to": "        if on_disk_version > CURRENT_SCHEMA_VERSION || on_disk_version < CURRENT_SCHEMA_VERSION {"
+        }
+      ],
+      "expect_red": [
+        "generations::tests::every_cost_is_one_a_store_exhibits",
+        "tests::every_load_refusal_carries_the_generation_it_read",
+        "tests::load_rejects_removed_value_shape_with_named_worklist",
+        "tests::schema_version_3_clones_audit_into_publishable_on_load",
+        "tests::version_less_store_clones_audit_into_publishable_on_load",
+        "tests::schema_version_4_preserves_publishable_divergence_on_load",
+        "tests::v37_parent_migrates_to_parents_on_load",
+        "tests::v38_first_at_migrates_to_reveal_on_load",
+        "tests::migrate_flat_normative_excerpt_anchor_url_only",
+        "tests::migrate_flat_normative_excerpt_prefers_epub_locator",
+        "tests::migrate_flat_normative_excerpt_edge_url",
+        "tests::evidence_migration_writes_an_empty_affirmation_never_the_live_hash",
+        "tests::kind_migration_report_lists_legacy_bindings_then_none_after_save",
+        "tests::confirmation_events_default_empty_on_legacy_store",
+        "tests::legacy_store_without_narrative_maps_loads_empty",
+        "tests::schema_version_1_store_loads_with_empty_inventory",
+        "tests::schema_version_2_store_loads_with_empty_outline_fields",
+        "tests::the_store_and_manifest_worklists_phrase_one_migration"
+      ]
+    }
+  ]
+}
