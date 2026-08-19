@@ -262,29 +262,20 @@ fn declared_paths(unit: &str, doc: &serde_json::Value) -> HResult<Vec<String>> {
 /// requires each path to be declared exactly once, and re-declaring it here
 /// would break that in the act of trying to satisfy it.
 pub fn run(records: &[String]) -> HResult<Declared> {
-    let root_raw = Command::new("git")
-        .args(["rev-parse", "--show-toplevel"])
-        .output()
-        .map_err(|e| format!("git rev-parse: {e}"))?;
-    if !root_raw.status.success() {
-        return Err("not inside a git work tree".to_string());
-    }
-    let root = Path::new(
-        std::str::from_utf8(&root_raw.stdout)
-            .map_err(|e| format!("repo root is not utf-8: {e}"))?
-            .trim(),
-    )
-    .to_path_buf();
+    // Round 1248 — ONE answer to "which repository am I in" (`open::repo_root`).
+    // This function held two copies of it and the reader that resolves a kit's
+    // revision would have been a third.
+    let root = crate::open::repo_root()?;
 
     let tracked: Vec<String> = git(&root, &["ls-files", "claudedocs/phase1-*"])?
         .lines()
         .map(str::to_string)
         .collect();
-    let units: BTreeSet<String> = tracked
-        .iter()
-        .filter(|f| f.ends_with("/replay.json"))
-        .map(|f| f.trim_end_matches("/replay.json").to_string())
-        .collect();
+    // Round 1248 — ONE rule for what a kit unit is (`open::kit_units`). This
+    // file spelled it twice and the reader that resolves a kit's revision would
+    // have been a third; a nested kit is exactly where three spellings get to
+    // disagree.
+    let units: BTreeSet<String> = crate::open::kit_units(&tracked).into_iter().collect();
     if units.is_empty() {
         return Err("no tracked kit records found — nothing to declare into".to_string());
     }
@@ -382,29 +373,18 @@ pub fn run(records: &[String]) -> HResult<Declared> {
 /// told to create, and validates no role name: there is one home for that
 /// vocabulary and it is the gate.
 pub fn declare_evidence(record: &str, role: &str, paths: &[String]) -> HResult<Declared> {
-    let root_raw = Command::new("git")
-        .args(["rev-parse", "--show-toplevel"])
-        .output()
-        .map_err(|e| format!("git rev-parse: {e}"))?;
-    if !root_raw.status.success() {
-        return Err("not inside a git work tree".to_string());
-    }
-    let root = Path::new(
-        std::str::from_utf8(&root_raw.stdout)
-            .map_err(|e| format!("repo root is not utf-8: {e}"))?
-            .trim(),
-    )
-    .to_path_buf();
+    // Round 1248 — ONE answer to "which repository am I in" (`open::repo_root`).
+    // This function held two copies of it and the reader that resolves a kit's
+    // revision would have been a third.
+    let root = crate::open::repo_root()?;
 
     let tracked: BTreeSet<String> = git(&root, &["ls-files", "claudedocs/phase1-*"])?
         .lines()
         .map(str::to_string)
         .collect();
-    let units: BTreeSet<String> = tracked
-        .iter()
-        .filter(|f| f.ends_with("/replay.json"))
-        .map(|f| f.trim_end_matches("/replay.json").to_string())
-        .collect();
+    // Round 1248 — the same one rule, and this was the second of the two
+    // spellings this file carried.
+    let units: BTreeSet<String> = crate::open::kit_units(&tracked).into_iter().collect();
 
     let unit = Path::new(record)
         .parent()

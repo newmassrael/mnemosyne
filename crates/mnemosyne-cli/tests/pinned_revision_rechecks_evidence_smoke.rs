@@ -131,64 +131,58 @@ fn an_old_revision_still_builds_and_still_reads_its_own_evidence() {
     let rev = authoring_revision(&facts_rel);
     println!("derived authoring revision: {rev}");
 
-    // Extract that revision with `git archive` — NOT a worktree, which would
-    // register state in `.git` and leak if this test panicked.
-    let tree = TempDir::new().expect("tempdir");
-    let archive = Command::new("git")
-        .args(["archive", &rev])
+    // Round 1248 — the extract and the build are `experiment-harness open-kit`,
+    // which is the one place in this repository that turns a revision into the
+    // binary that reads its evidence. This test carried its own copy and so did
+    // the replay runner: two implementations of one mechanism, either free to
+    // build with a cargo the other did not. The cargo is passed through for the
+    // reason R1190 recorded — a failed build here is reported as a finding about
+    // the REVISION, so a machine whose PATH cargo is a different channel would
+    // have that sentence printed about this repository.
+    let into = TempDir::new().expect("tempdir");
+    let cargo = std::env::var("CARGO").unwrap_or_else(|_| "cargo".to_string());
+    let opened = Command::new(&cargo)
+        .args([
+            "run",
+            "-q",
+            "--manifest-path",
+            "tools/experiment-harness/Cargo.toml",
+            "--",
+            "open-kit",
+            "--revision",
+            &rev,
+            "--into",
+            into.path().to_str().expect("utf-8 path"),
+            "--cargo",
+            &cargo,
+            "--json",
+        ])
         .current_dir(&root)
         .output()
-        .expect("git archive");
-    assert!(archive.status.success(), "git archive {rev} failed");
-    let mut tar = Command::new("tar")
-        .args(["-x", "-C", tree.path().to_str().expect("utf-8 path")])
-        .stdin(std::process::Stdio::piped())
-        .spawn()
-        .expect("tar spawn");
-    use std::io::Write;
-    tar.stdin
-        .as_mut()
-        .expect("tar stdin")
-        .write_all(&archive.stdout)
-        .expect("write archive");
+        .expect("experiment-harness exec");
     assert!(
-        tar.wait().expect("tar wait").success(),
-        "tar extract failed"
+        opened.status.success(),
+        "the authoring revision could not be opened — THIS is the finding, and it \
+         kills the pin-the-revision design:\n{}",
+        String::from_utf8_lossy(&opened.stderr)
     );
+    let said: serde_json::Value =
+        serde_json::from_slice(&opened.stdout).expect("open-kit --json prints json");
+    let tree = PathBuf::from(said["tree"].as_str().expect("open-kit reports a tree"));
+    let old_cli = PathBuf::from(said["cli"].as_str().expect("open-kit reports a cli"));
+    assert!(old_cli.is_file(), "no binary at {}", old_cli.display());
 
     // The record has not moved since it was authored. If this ever fails, the
     // test below would be reading something other than the original, and every
     // conclusion drawn from it would be about the wrong bytes.
     for rel in [&sections_rel, &facts_rel] {
-        let then = fs::read(tree.path().join(rel)).expect("manifest at the authoring revision");
+        let then = fs::read(tree.join(rel)).expect("manifest at the authoring revision");
         let now = fs::read(root.join(rel)).expect("manifest today");
         assert_eq!(
             then, now,
             "{rel} differs between {rev} and today — this test is not reading the original"
         );
     }
-
-    // Build the CLI at that revision, into its own target dir so it can never
-    // touch this workspace's.
-    let target = TempDir::new().expect("target tempdir");
-    // THE CARGO THAT IS RUNNING THIS TEST, not whichever one PATH answers with:
-    // the assertion below calls a failed build the finding, so on a machine
-    // whose PATH cargo is a different channel it would say that about the
-    // revision when the difference is the toolchain (R1190).
-    let build = Command::new(std::env::var("CARGO").unwrap_or_else(|_| "cargo".to_string()))
-        .args(["build", "--bin", "mnemosyne-cli"])
-        .current_dir(tree.path())
-        .env("CARGO_TARGET_DIR", target.path())
-        .output()
-        .expect("cargo exec");
-    assert!(
-        build.status.success(),
-        "the authoring revision no longer builds — THIS is the finding, and it \
-         kills the pin-the-revision design:\n{}",
-        String::from_utf8_lossy(&build.stderr)
-    );
-    let old_cli = target.path().join("debug/mnemosyne-cli");
-    assert!(old_cli.is_file(), "no binary at {}", old_cli.display());
 
     // HALF ONE — the authoring revision reads its own evidence, unmodified.
     let ws = TempDir::new().expect("ws tempdir");

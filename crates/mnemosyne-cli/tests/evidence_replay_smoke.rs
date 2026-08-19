@@ -2214,7 +2214,6 @@ fn every_step_cites_only_what_an_earlier_step_created() {
 // cargo test -p mnemosyne-cli --test evidence_replay_smoke -- --ignored --nocapture
 // ```
 
-use std::io::Write;
 use tempfile::TempDir;
 
 /// Which flag each verb takes its input under. A small closed map, and the
@@ -2243,52 +2242,62 @@ fn seed_workspace(ws: &Path) {
     .expect("seed store");
 }
 
-/// Extract a revision with `git archive` — NOT a worktree, which would register
-/// state in `.git` and leak if this panicked — and build its CLI into a target
-/// directory of its own.
-fn build_revision(root: &Path, rev: &str) -> (TempDir, TempDir, PathBuf) {
-    let tree = TempDir::new().expect("tempdir");
-    let archive = Command::new("git")
-        .args(["archive", rev])
+/// The tree and CLI of one revision, materialised by the tool that owns that
+/// job (Round 1248) — `experiment-harness open-kit`.
+///
+/// It used to be done here, and byte-similarly again in
+/// `pinned_revision_rechecks_evidence_smoke.rs`, which is two implementations of
+/// "produce the build that reads this evidence". The reason to have none of them
+/// here is not tidiness: a reader outside a test needs this too — thirty of the
+/// thirty-two kits name a revision and nothing but these tests could turn one
+/// into a binary — and a capability that exists only inside an `#[ignore]`d test
+/// is one nobody can use.
+///
+/// THE CARGO THAT IS RUNNING THIS TEST is passed through rather than left to
+/// the tool's default, for the reason R1190 recorded: a failed build here is
+/// reported as a finding about the REVISION, so a machine whose PATH cargo is a
+/// different channel would have that sentence printed about this repository.
+///
+/// The returned `TempDir` owns both directories; the paths point inside it.
+fn build_revision(root: &Path, rev: &str) -> (TempDir, PathBuf, PathBuf) {
+    let into = TempDir::new().expect("tempdir");
+    let cargo = std::env::var("CARGO").unwrap_or_else(|_| "cargo".to_string());
+    let out = Command::new(&cargo)
+        .args([
+            "run",
+            "-q",
+            "--manifest-path",
+            "tools/experiment-harness/Cargo.toml",
+            "--",
+            "open-kit",
+            "--revision",
+            rev,
+            "--into",
+            into.path().to_str().expect("utf-8 path"),
+            "--cargo",
+            &cargo,
+            "--json",
+        ])
         .current_dir(root)
         .output()
-        .expect("git archive");
-    assert!(archive.status.success(), "git archive {rev} failed");
-    let mut tar = Command::new("tar")
-        .args(["-x", "-C", tree.path().to_str().expect("utf-8 path")])
-        .stdin(std::process::Stdio::piped())
-        .spawn()
-        .expect("tar spawn");
-    tar.stdin
-        .as_mut()
-        .expect("tar stdin")
-        .write_all(&archive.stdout)
-        .expect("write archive");
+        .expect("experiment-harness exec");
     assert!(
-        tar.wait().expect("tar wait").success(),
-        "tar extract failed"
+        out.status.success(),
+        "open-kit could not produce the build for {rev}:\n{}",
+        String::from_utf8_lossy(&out.stderr)
     );
-
-    let target = TempDir::new().expect("target tempdir");
-    // THE CARGO THAT IS RUNNING THIS TEST, not whichever one PATH answers with.
-    // The assertion below calls a failed build "THIS is the finding" about the
-    // revision — so a machine whose PATH cargo is a different channel would have
-    // that sentence printed about this repository (R1190).
-    let build = Command::new(std::env::var("CARGO").unwrap_or_else(|_| "cargo".to_string()))
-        .args(["build", "--bin", "mnemosyne-cli"])
-        .current_dir(tree.path())
-        .env("CARGO_TARGET_DIR", target.path())
-        .output()
-        .expect("cargo exec");
-    assert!(
-        build.status.success(),
-        "revision {rev} no longer builds — THIS is the finding, and it kills \
-         the pin-the-revision design for every replay that names it:\n{}",
-        String::from_utf8_lossy(&build.stderr)
-    );
-    let cli = target.path().join("debug/mnemosyne-cli");
+    let said: serde_json::Value = serde_json::from_slice(&out.stdout)
+        .unwrap_or_else(|e| panic!("open-kit --json did not print json: {e}"));
+    let path = |k: &str| {
+        PathBuf::from(
+            said.get(k)
+                .and_then(|v| v.as_str())
+                .unwrap_or_else(|| panic!("open-kit --json has no `{k}`")),
+        )
+    };
+    let (tree, cli) = (path("tree"), path("cli"));
     assert!(cli.is_file(), "no binary at {}", cli.display());
-    (tree, target, cli)
+    (into, tree, cli)
 }
 
 /// Run one replay to completion against `cli`, returning the sha256 of the
@@ -2500,14 +2509,14 @@ fn every_replay_rebuilds_the_store_its_record_says_it_does() {
     let mut undeclared: Vec<(String, String)> = Vec::new();
     let mut wrong: Vec<String> = Vec::new();
     for rev in &revisions {
-        let (tree, _target, cli) = build_revision(&root, rev);
+        let (_into, tree, cli) = build_revision(&root, rev);
 
         // THE ROLE IS DISCHARGED HERE, not by anything that reads the file's
         // text: the command runs at the revision the record pins, and its
         // stdout is compared byte for byte against the sha the seal carries.
         // A storeless verb needs nothing but the extracted tree.
         for i in storeless.get(rev).into_iter().flatten() {
-            match check_transcript(&cli, tree.path(), &root, tree.path(), i, rev) {
+            match check_transcript(&cli, &tree, &root, &tree, i, rev) {
                 Ok(()) => reproduced += 1,
                 Err(why) => wrong.push(why),
             }
@@ -2515,7 +2524,7 @@ fn every_replay_rebuilds_the_store_its_record_says_it_does() {
 
         for r in d.replays.iter().filter(|r| &r.revision == rev) {
             let name = format!("{}/{}", r.unit, r.name);
-            let first = run_replay(&cli, &root, tree.path(), r);
+            let first = run_replay(&cli, &root, &tree, r);
             match (&r.blocked, first) {
                 (Some(_), Err(why)) => {
                     println!(
@@ -2533,7 +2542,7 @@ fn every_replay_rebuilds_the_store_its_record_says_it_does() {
                     // Determinism is measured here, not inherited from R881's
                     // sample: a digest from a single run could pin a hash map's
                     // iteration order and reject the same evidence tomorrow.
-                    let (again, ws) = run_replay(&cli, &root, tree.path(), r)
+                    let (again, ws) = run_replay(&cli, &root, &tree, r)
                         .expect("the same replay failed on its second run");
                     // The transcripts this replay's store is behind, checked in
                     // the SECOND workspace — the one whose digest was just
@@ -2543,7 +2552,7 @@ fn every_replay_rebuilds_the_store_its_record_says_it_does() {
                         .into_iter()
                         .flatten()
                     {
-                        match check_transcript(&cli, ws.path(), &root, tree.path(), i, rev) {
+                        match check_transcript(&cli, ws.path(), &root, &tree, i, rev) {
                             Ok(()) => reproduced += 1,
                             Err(why) => wrong.push(why),
                         }

@@ -1,0 +1,88 @@
+{
+  "_": [
+    "Machine-written by tools/injection-harness. Do not edit by hand: a row somebody typed is evidence of nothing, and the law over this file is worth exactly what its being unforgeable is worth.",
+    "Each row is one injection that WAS RUN and DID redden what it names, kept beside the definition it was proven against — edit the injection and the gate says the evidence is about a different one."
+  ],
+  "complete": true,
+  "fired": {
+    "a-kit-that-names-two-revisions-gets-the-first": {
+      "edits": [
+        {
+          "file": "tools/experiment-harness/src/open.rs",
+          "from": "    if pinned.iter().all(|p| p.revision == first) {",
+          "to": "    if true {"
+        }
+      ],
+      "expect_red": [
+        "a_record_says_which_build_reads_it_or_says_why_none_does",
+        "two_revisions_are_refused_until_a_replay_is_named",
+        "the_listing_leaves_no_kit_out_and_says_which_kind_each_is"
+      ],
+      "tests": [
+        "open::tests::a_record_says_which_build_reads_it_or_says_why_none_does",
+        "open::tests::the_listing_leaves_no_kit_out_and_says_which_kind_each_is",
+        "open::tests::two_revisions_are_refused_until_a_replay_is_named"
+      ]
+    },
+    "a-record-that-never-said-why-answers-anyway": {
+      "edits": [
+        {
+          "file": "tools/experiment-harness/src/open.rs",
+          "from": "            .ok_or_else(|| {\n                format!(\"{unit}/replay.json declares no replay and no `no_replay_reason`\")\n            })?;",
+          "to": ".unwrap_or(\"unrecorded\");"
+        }
+      ],
+      "expect_red": [
+        "a_silent_empty_record_is_an_error_and_not_an_answer"
+      ],
+      "tests": [
+        "open::tests::a_silent_empty_record_is_an_error_and_not_an_answer"
+      ]
+    },
+    "a-revision-this-clone-lacks-is-blamed-on-the-revision": {
+      "edits": [
+        {
+          "file": "tools/experiment-harness/src/open.rs",
+          "from": "    if !archive.status.success() {",
+          "to": "    if false {"
+        }
+      ],
+      "expect_red": [
+        "a_revision_this_clone_does_not_hold_says_so_and_does_not_build"
+      ],
+      "tests": [
+        "open::tests::a_revision_this_clone_does_not_hold_says_so_and_does_not_build"
+      ]
+    },
+    "the-cargo-the-caller-named-is-not-the-one-that-runs": {
+      "edits": [
+        {
+          "file": "tools/experiment-harness/src/open.rs",
+          "from": "    let build = Command::new(cargo)",
+          "to": "    let build = Command::new(\"cargo\")"
+        }
+      ],
+      "expect_red": [
+        "the_cargo_the_caller_named_is_the_one_that_builds"
+      ],
+      "tests": [
+        "open::tests::the_cargo_the_caller_named_is_the_one_that_builds"
+      ]
+    },
+    "the-listing-drops-the-kits-with-no-revision": {
+      "edits": [
+        {
+          "file": "tools/experiment-harness/src/open.rs",
+          "from": "            Reads::NoReplay { reason, .. } => {\n                out.push(format!(\"{unit}\\t-\\t-\\tno replay: {reason}\"))\n            }",
+          "to": "            Reads::NoReplay { .. } => {}"
+        }
+      ],
+      "expect_red": [
+        "the_listing_leaves_no_kit_out_and_says_which_kind_each_is"
+      ],
+      "tests": [
+        "open::tests::the_listing_leaves_no_kit_out_and_says_which_kind_each_is"
+      ]
+    }
+  }
+}

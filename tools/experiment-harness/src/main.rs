@@ -13,6 +13,7 @@
 mod assemble;
 mod carry;
 mod declare;
+mod open;
 mod playthrough;
 mod seal;
 mod shuffle;
@@ -21,6 +22,7 @@ mod story;
 mod sustain;
 mod util;
 
+use std::path::Path;
 use std::process::ExitCode;
 
 use util::{write_file, HResult};
@@ -39,6 +41,8 @@ USAGE:
   experiment-harness carry-run-artifact --record <replay.json> --into <unit>/run/<dir> --from <path> [--from <path>...]
   experiment-harness set-input-role --record <replay.json> --path <p> [--path <p>...] --role <r> [--after <replay>] [--with <p>...] [--exit <n>] [--unreproducible <why>] [--surplus <id>...] [-- <verb> <arg>...]
   experiment-harness set-replay-config --record <replay.json> --replay <name> --config <unit-relative toml>
+  experiment-harness open-kit (--unit <kit> [--replay <name>] | --revision <rev>) --into <dir> [--cargo <path>] [--json]
+  experiment-harness open-kit --list
 
 assemble
   Render a world's scenes, in playthrough order, into a blind reading copy.
@@ -136,6 +140,31 @@ set-replay-config
   store it rebuilds. Measured before it was built: seeding the author's config
   alongside the manifests does not move the store digest, so declaring it leaves
   every expected_store_sha256 standing.
+
+open-kit
+  Produce the build that can READ a kit's evidence, and say which one it is.
+  A kit is a workspace validated by ONE revision (R878/R880): today's binary
+  refuses 31 of 35 tracked manifests, re-typing them is barred by the
+  contamination bound, and the answer is to move the tool instead. Thirty of the
+  thirty-two kits declare that revision in their `replay.json` and not one kit
+  `mnemosyne.toml` declares a `[tool] pin` — nor can it, being sealed by a
+  sha256 the record holds and unparseable to a pre-`[tool]` binary. So the
+  revision is read from the record here.
+  --unit resolves through the record; --replay picks one when a kit's replays
+  name more than one revision, which is refused rather than defaulted. A kit
+  that declares NO replay refuses in its own recorded words: that is an answer.
+  --revision skips the record for a caller that already has the sha.
+  --list builds nothing and answers about EVERY tracked kit: unit, revision and
+  the replays that name it, one line each, and the recorded reason for a kit
+  that declares no replay — an absence a listing hides reads as a kit nobody
+  recorded.
+  The revision is extracted into <dir>/tree with `git archive` (never a
+  worktree, which would leave state in .git) and built into <dir>/target.
+  --cargo names the cargo to build with, defaults to `cargo`, and is PRINTED
+  either way: a machine whose PATH cargo is a different channel would otherwise
+  have the verdict reported about a toolchain nobody named (R1190). It reads no
+  `$CARGO` — a program that changes behaviour with a variable its callers never
+  mention runs differently on two machines for no stated reason.
 ";
 
 fn main() -> ExitCode {
@@ -166,6 +195,7 @@ fn run(args: &[String]) -> HResult<ExitCode> {
         "declare-evidence" => cmd_declare_evidence(&args[1..]),
         "set-input-role" => cmd_set_input_role(&args[1..]),
         "set-replay-config" => cmd_set_replay_config(&args[1..]),
+        "open-kit" => cmd_open_kit(&args[1..]),
         "-h" | "--help" | "help" => {
             print!("{USAGE}");
             Ok(ExitCode::SUCCESS)
@@ -379,6 +409,87 @@ fn cmd_set_replay_config(args: &[String]) -> HResult<ExitCode> {
     Ok(ExitCode::SUCCESS)
 }
 
+/// Round 1248 — hand back the build that reads a kit, and say which one it is.
+///
+/// The repository root is `git rev-parse --show-toplevel` and not this binary's
+/// location: the tool is invoked from a side workspace, from a test's temporary
+/// directory, and by hand, and only the caller's tree can say which repository
+/// the kit lives in.
+fn cmd_open_kit(args: &[String]) -> HResult<ExitCode> {
+    let mut p = Flags::new(args);
+    let unit = p.optional("--unit")?;
+    let replay = p.optional("--replay")?;
+    let revision = p.optional("--revision")?;
+    let into = p.optional("--into")?;
+    let cargo = p.optional("--cargo")?;
+    let list = p.flag("--list");
+    let as_json = p.flag("--json");
+    p.finish()?;
+
+    let root = open::repo_root()?;
+
+    // THE OVERVIEW, and it builds nothing: what a reader asks before naming a
+    // kit is which kits there are and what reads each. A kit that declares no
+    // replay is listed with its recorded reason rather than skipped — an
+    // absence a listing hides reads as a kit nobody recorded.
+    if list {
+        if unit.is_some() || revision.is_some() || into.is_some() {
+            return Err("--list answers about every kit, so it takes none of \
+                        --unit / --revision / --into"
+                .to_string());
+        }
+        for line in open::list_lines(&root)? {
+            println!("{line}");
+        }
+        return Ok(ExitCode::SUCCESS);
+    }
+
+    let into = match into {
+        Some(into) => into,
+        None => return Err("missing required flag `--into`".to_string()),
+    };
+    if unit.is_some() == revision.is_some() {
+        return Err("open-kit takes exactly one of --unit and --revision".to_string());
+    }
+    if revision.is_some() && replay.is_some() {
+        return Err("--replay names a replay of a kit, so it needs --unit".to_string());
+    }
+
+    let revision = match (&unit, revision) {
+        (Some(unit), None) => open::revision_of(&root, unit, replay.as_deref())?,
+        (None, Some(rev)) => rev,
+        _ => unreachable!("the pairing is checked above"),
+    };
+    // THE CARGO IS NAMED OR IT IS `cargo`, and there is deliberately no read of
+    // `$CARGO` here. A draft had one — cargo sets it for anything it runs, so a
+    // delegating test would have inherited its own toolchain for free — and
+    // this repository's `named-environment` gate refused it: a program whose
+    // behaviour depends on a variable its callers never mention runs one way on
+    // a machine where it is set and another where it is not. Both callers that
+    // care pass `--cargo`, so the fallback bought nothing and hid an input.
+    let cargo = cargo.unwrap_or_else(|| "cargo".to_string());
+
+    let m = open::materialise(&root, &revision, Path::new(&into), &cargo)?;
+    if as_json {
+        println!(
+            "{}",
+            serde_json::json!({
+                "revision": m.revision,
+                "tree": m.tree.to_string_lossy(),
+                "cli": m.cli.to_string_lossy(),
+                "cargo": m.cargo,
+                "unit": unit,
+            })
+        );
+    } else {
+        println!("revision: {}", m.revision);
+        println!("tree: {}", m.tree.display());
+        println!("cli: {}", m.cli.display());
+        println!("cargo: {}", m.cargo);
+    }
+    Ok(ExitCode::SUCCESS)
+}
+
 fn cmd_cast_sustainment(args: &[String]) -> HResult<ExitCode> {
     let mut p = Flags::new(args);
     let facts = p.require("--facts")?;
@@ -547,6 +658,18 @@ impl Flags {
             return Err(format!("flag `{name}` is missing its value"));
         }
         Ok(self.take(name))
+    }
+
+    /// A value-less switch (`--json`). Consumed here, so `finish` does not
+    /// report it as unexpected; absent is false and there is no spelling that
+    /// carries a value — `--json yes` is left for `finish` to refuse rather
+    /// than being read as the switch plus a word nobody asked for.
+    fn flag(&mut self, name: &str) -> bool {
+        if let Some(pos) = self.unconsumed_flags.iter().position(|n| n == name) {
+            self.unconsumed_flags.remove(pos);
+            return true;
+        }
+        false
     }
 
     fn positionals(&mut self) -> Vec<String> {

@@ -15758,6 +15758,270 @@
         "A LOAD THAT SUCCEEDS STILL SAYS NOTHING, and that is a decision this round did not revisit rather than a hole it left. `save` stamps the current generation, and the monotone guard is what makes an older binary refuse the result LOUDLY instead of dropping fields it does not know — so an old store that loads is carried forward visibly, by refusal, at the next binary that is behind it"
       ]
     },
+    "Round 1248 — the build that reads a kit's evidence": {
+      "decision_summary": "R1248 (BUILD — the build that reads a kit's evidence is a verb now). R1247 made a store that will not open say how far back it is; this is the other half of that sentence, which is what to DO about it. A kit is a workspace validated by ONE revision — that is not a preference but the decision R878/R880 reached and R1084 put on a clock — and until now nothing in this repository turned that declaration into the binary it names. `experiment-harness open-kit` does: it reads the revision from the kit's own record, extracts it with `git archive`, builds its CLI, and prints the tree, the binary and the cargo that built it. Measured end to end on the kit whose store R1247 was written about: today's build refuses it with Round 708, and the build this verb produces lists its 28 facts.\n\nWHAT MADE IT A VERB RATHER THAN A NOTE IS A COUNT. Thirty of the thirty-two tracked kits declare a revision in their `replay.json` — the law added here prints the split, 29 naming one revision, 1 naming several, 2 declaring no replay and saying why. Not one of the thirty-seven tracked kit `mnemosyne.toml` files declares a `[tool] pin`, so a reader who stands in a kit workspace gets today's build and a shape error. THE PIN CANNOT GO IN THOSE FILES: each is sealed by a sha256 its kit's record holds, and a pre-`[tool]` binary dies at TOML parse on the table — declaring it would break the replay it was meant to serve. So the revision is read where kits keep it.\n\nAND IT REMOVED TWO COPIES RATHER THAN ADDING A THIRD. `git archive` plus `cargo build` existed twice, in `evidence_replay_smoke.rs` and again in `pinned_revision_rechecks_evidence_smoke.rs` — one mechanism, two implementations, either free to build with a toolchain the other did not. Both now call the verb. That direction matters: a capability that lives only inside an `#[ignore]`d test is one nobody can use, and the whole finding behind this round is that thirty kits of recorded evidence were reachable only by hand-assembling what those tests already knew how to do.\n\nA KIT THAT NAMES TWO REVISIONS IS A QUESTION, NOT A DEFAULT. One does — `continuity-stress/v1` — and which revision reads a given artifact depends on which replay built it. So `--replay` decides, and without it the refusal lists both pairs, because a caller cannot choose from a message that hides what there was to choose between. A confident wrong revision arrives looking exactly like a right one, which is the shape R1245 named one axis over.\n\nA KIT THAT DECLARES NO REPLAY REFUSES IN ITS OWN RECORDED WORDS, and that is an answer rather than a gap: `built-outside-this-repository` means no revision of this repository ever ran that import, so there is none to pin. A record with an empty `replays` and NO stated reason is a different thing — an unfinished record — and it is an error here, because answering \"no revision\" about it would read as a decision somebody made.\n\nTHE CARGO IS PASSED THROUGH AND PRINTED, which is R1190 at the seam the delegation created. Both delegating tests report a failed build as a finding about the REVISION; a build that silently used whatever PATH answers with would print that sentence about a channel difference instead. The test asking that question uses a stub cargo that RECORDS being called, because an assertion that merely watched the build succeed would pass either way.",
+      "changes_bullets": [
+        "`experiment-harness open-kit` turns a kit's declared revision into the binary that reads its evidence, and says which revision, which cargo, and where",
+        "the two tests that each carried their own `git archive` + `cargo build` now call it, so the mechanism has one implementation instead of two",
+        "a law over every tracked kit: each record resolves to one revision, to several a `--replay` must choose between, or to a stated reason why none exists"
+      ],
+      "verification_bullets": [
+        "END TO END ON THE KIT R1247 WAS WRITTEN ABOUT. Today's build refuses `phase1-unattended-loop-experiment/v1`'s store with Round 708 and `schema generation 23; this build is 46`. `open-kit --unit <that kit>` reports revision `f488298a`, and the binary it builds lists the store's sections and runs `validate-continuity` over its 28 facts, exit 0",
+        "THE COUNT THAT MADE IT A VERB IS THE LAW'S OWN OUTPUT, printed rather than typed: `32 tracked kit(s): 29 name one revision, 1 name several, 2 declare no replay`. How many kits exist is the repository's number, so the law asserts the shape and prints the split — adding a kit is not a red build",
+        "THE DELEGATION WAS RUN, NOT ASSUMED, and both proofs are the expensive `#[ignore]`d ones. `pinned_revision_rechecks_evidence_smoke` passes in 24s at the derived authoring revision; the whole replay passes in 828s over 23 revisions — 49 replays reproduced their declared digest, 2 blocked as declared, 65 transcripts regenerated at their pinned revision",
+        "FOUR INJECTIONS, red set EXHAUSTIVE: a kit that names two revisions collapsed to the first, a record that never said why it has no replay answered anyway, a revision this clone lacks blamed on the revision, and the cargo the caller named quietly not the one that runs. Control 60 passed / 0 failed, every arm `0 unnamed, 0 missing, 0 extra`",
+        "THE CARGO QUESTION IS ASKED WITH A STUB THAT RECORDS BEING CALLED, because an assertion that watched the build succeed would pass whichever toolchain ran. The stub reports success and produces nothing — the exact shape of a silently-wrong toolchain — and that must be a refusal rather than a returned path",
+        "root workspace suite through `scripts/verify.sh`, every separate in-repo workspace through `scripts/check-side-workspaces.sh`, `scripts/fmt.sh`, and `mnemosyne-cli validate-workspace` clean",
+        "AND THE LEDGER ENTRY WAS APPENDED BEFORE THAT FINAL VERIFICATION, for the second round running"
+      ],
+      "impact_refs": [
+        "atomic-store-mutate-api"
+      ],
+      "carry_forward_bullets": [
+        "THE STORE THE VERB OPENS IS THE ONE THIS MACHINE HAS. A kit's `docs/.atomic/workspace.atomic.json` is gitignored: the run wrote it here and a fresh clone has the manifests without it. So `open-kit` hands back a binary, and on this machine that binary reads the original store, while on any other it reads whatever the reader rebuilds from the tracked manifests. Rebuilding is `run_replay`, which is still inside the replay test — moving it out is the same shape this round did for the builder, and it is registered as its own item rather than carried as though nobody had noticed",
+        "A KIT'S WORKSPACE DIRECTORY IS NOT AN ADDRESS. Seventeen of the fifty-one tracked replays declare the `mnemosyne.toml` their run worked under; the other thirty-four ran in a seeded default workspace that exists nowhere on disk. So the question this verb answers is `--unit` and `--replay`, never `--path`, and a directory-shaped question would have no answer for two thirds of the record",
+        "THIS CLONE HAS TO HOLD THE REVISION. `git archive` reads the object database, so a shallow checkout answers \"does not hold that revision\" — named as its own refusal precisely so it is not read as the revision no longer building. The replay workflow already carries `fetch-depth: 0` for the same reason, and nothing here can supply history a clone does not have"
+      ],
+      "population_census": [
+        {
+          "axis": "transition rules by `undirected`",
+          "left_label": "undirected",
+          "left": 10,
+          "right_label": "directed",
+          "right": 29
+        },
+        {
+          "axis": "map corpora by leg-kind declaration",
+          "left_label": "omitted",
+          "left": 6,
+          "right_label": "declared",
+          "right": 24
+        },
+        {
+          "axis": "cost-carrying corpora by direction-dependent pricing",
+          "left_label": "prices a way by direction",
+          "left": 4,
+          "right_label": "prices no way by direction",
+          "right": 6
+        },
+        {
+          "axis": "run trees by authoring mode",
+          "left_label": "hand script",
+          "left": 10,
+          "right_label": "file-only",
+          "right": 256
+        },
+        {
+          "axis": "map corpora by declared boundary crossing",
+          "left_label": "declares an exit",
+          "left": 6,
+          "right_label": "declares none",
+          "right": 24
+        },
+        {
+          "axis": "authored submissions by map and telling",
+          "left_label": "carries both",
+          "left": 10,
+          "right_label": "carries one",
+          "right": 24
+        }
+      ],
+      "publishable_decision_summary": "R1248 (BUILD — the build that reads a kit's evidence is a verb now). R1247 made a store that will not open say how far back it is; this is the other half of that sentence, which is what to DO about it. A kit is a workspace validated by ONE revision — that is not a preference but the decision R878/R880 reached and R1084 put on a clock — and until now nothing in this repository turned that declaration into the binary it names. `experiment-harness open-kit` does: it reads the revision from the kit's own record, extracts it with `git archive`, builds its CLI, and prints the tree, the binary and the cargo that built it. Measured end to end on the kit whose store R1247 was written about: today's build refuses it with Round 708, and the build this verb produces lists its 28 facts.\n\nWHAT MADE IT A VERB RATHER THAN A NOTE IS A COUNT. Thirty of the thirty-two tracked kits declare a revision in their `replay.json` — the law added here prints the split, 29 naming one revision, 1 naming several, 2 declaring no replay and saying why. Not one of the thirty-seven tracked kit `mnemosyne.toml` files declares a `[tool] pin`, so a reader who stands in a kit workspace gets today's build and a shape error. THE PIN CANNOT GO IN THOSE FILES: each is sealed by a sha256 its kit's record holds, and a pre-`[tool]` binary dies at TOML parse on the table — declaring it would break the replay it was meant to serve. So the revision is read where kits keep it.\n\nAND IT REMOVED TWO COPIES RATHER THAN ADDING A THIRD. `git archive` plus `cargo build` existed twice, in `evidence_replay_smoke.rs` and again in `pinned_revision_rechecks_evidence_smoke.rs` — one mechanism, two implementations, either free to build with a toolchain the other did not. Both now call the verb. That direction matters: a capability that lives only inside an `#[ignore]`d test is one nobody can use, and the whole finding behind this round is that thirty kits of recorded evidence were reachable only by hand-assembling what those tests already knew how to do.\n\nA KIT THAT NAMES TWO REVISIONS IS A QUESTION, NOT A DEFAULT. One does — `continuity-stress/v1` — and which revision reads a given artifact depends on which replay built it. So `--replay` decides, and without it the refusal lists both pairs, because a caller cannot choose from a message that hides what there was to choose between. A confident wrong revision arrives looking exactly like a right one, which is the shape R1245 named one axis over.\n\nA KIT THAT DECLARES NO REPLAY REFUSES IN ITS OWN RECORDED WORDS, and that is an answer rather than a gap: `built-outside-this-repository` means no revision of this repository ever ran that import, so there is none to pin. A record with an empty `replays` and NO stated reason is a different thing — an unfinished record — and it is an error here, because answering \"no revision\" about it would read as a decision somebody made.\n\nTHE CARGO IS PASSED THROUGH AND PRINTED, which is R1190 at the seam the delegation created. Both delegating tests report a failed build as a finding about the REVISION; a build that silently used whatever PATH answers with would print that sentence about a channel difference instead. The test asking that question uses a stub cargo that RECORDS being called, because an assertion that merely watched the build succeed would pass either way.",
+      "publishable_changes_bullets": [
+        "`experiment-harness open-kit` turns a kit's declared revision into the binary that reads its evidence, and says which revision, which cargo, and where",
+        "the two tests that each carried their own `git archive` + `cargo build` now call it, so the mechanism has one implementation instead of two",
+        "a law over every tracked kit: each record resolves to one revision, to several a `--replay` must choose between, or to a stated reason why none exists"
+      ],
+      "publishable_verification_bullets": [
+        "END TO END ON THE KIT R1247 WAS WRITTEN ABOUT. Today's build refuses `phase1-unattended-loop-experiment/v1`'s store with Round 708 and `schema generation 23; this build is 46`. `open-kit --unit <that kit>` reports revision `f488298a`, and the binary it builds lists the store's sections and runs `validate-continuity` over its 28 facts, exit 0",
+        "THE COUNT THAT MADE IT A VERB IS THE LAW'S OWN OUTPUT, printed rather than typed: `32 tracked kit(s): 29 name one revision, 1 name several, 2 declare no replay`. How many kits exist is the repository's number, so the law asserts the shape and prints the split — adding a kit is not a red build",
+        "THE DELEGATION WAS RUN, NOT ASSUMED, and both proofs are the expensive `#[ignore]`d ones. `pinned_revision_rechecks_evidence_smoke` passes in 24s at the derived authoring revision; the whole replay passes in 828s over 23 revisions — 49 replays reproduced their declared digest, 2 blocked as declared, 65 transcripts regenerated at their pinned revision",
+        "FOUR INJECTIONS, red set EXHAUSTIVE: a kit that names two revisions collapsed to the first, a record that never said why it has no replay answered anyway, a revision this clone lacks blamed on the revision, and the cargo the caller named quietly not the one that runs. Control 60 passed / 0 failed, every arm `0 unnamed, 0 missing, 0 extra`",
+        "THE CARGO QUESTION IS ASKED WITH A STUB THAT RECORDS BEING CALLED, because an assertion that watched the build succeed would pass whichever toolchain ran. The stub reports success and produces nothing — the exact shape of a silently-wrong toolchain — and that must be a refusal rather than a returned path",
+        "root workspace suite through `scripts/verify.sh`, every separate in-repo workspace through `scripts/check-side-workspaces.sh`, `scripts/fmt.sh`, and `mnemosyne-cli validate-workspace` clean",
+        "AND THE LEDGER ENTRY WAS APPENDED BEFORE THAT FINAL VERIFICATION, for the second round running"
+      ],
+      "publishable_impact_refs": [
+        "atomic-store-mutate-api"
+      ],
+      "publishable_carry_forward_bullets": [
+        "THE STORE THE VERB OPENS IS THE ONE THIS MACHINE HAS. A kit's `docs/.atomic/workspace.atomic.json` is gitignored: the run wrote it here and a fresh clone has the manifests without it. So `open-kit` hands back a binary, and on this machine that binary reads the original store, while on any other it reads whatever the reader rebuilds from the tracked manifests. Rebuilding is `run_replay`, which is still inside the replay test — moving it out is the same shape this round did for the builder, and it is registered as its own item rather than carried as though nobody had noticed",
+        "A KIT'S WORKSPACE DIRECTORY IS NOT AN ADDRESS. Seventeen of the fifty-one tracked replays declare the `mnemosyne.toml` their run worked under; the other thirty-four ran in a seeded default workspace that exists nowhere on disk. So the question this verb answers is `--unit` and `--replay`, never `--path`, and a directory-shaped question would have no answer for two thirds of the record",
+        "THIS CLONE HAS TO HOLD THE REVISION. `git archive` reads the object database, so a shallow checkout answers \"does not hold that revision\" — named as its own refusal precisely so it is not read as the revision no longer building. The replay workflow already carries `fetch-depth: 0` for the same reason, and nothing here can supply history a clone does not have"
+      ]
+    },
+    "Round 1249 — the overview, and a number an entry understates": {
+      "decision_summary": "R1249 (DEBT — the overview, and the count R1248's own entry understates). R1248's entry was appended before its final verification, which is the rule that keeps the verified tree and the committed tree the same tree; the round then grew by three things, and the entry cannot grow with it because the ledger is append-only. So the correction is here: R1248 ships FIVE injections and not four, and its control is 61 passing and not 60. A number nobody corrects is a number a later round trusts.\n\nWHAT GREW, AND WHY IT IS NOT SCOPE CREEP. `tracked_kits` had exactly one consumer — the law — and clippy called it dead. The cheap answer was `#[cfg(test)]`, which would have been a lie about what the function is for: the thing a reader asks BEFORE naming a kit is which kits there are and what reads each, and nothing answered that either. So `open-kit --list` gives it a production consumer, builds nothing, and prints one line per (kit, revision) plus one for each kit that declares no replay, carrying its recorded reason. A listing that skipped that last kind would read as a tree where every kit has a revision, which is the assumption R1248 exists to stop.\n\nAND THE DEAD-CODE WARNING SURFACED A THIRD SPELLING. \"A kit is the directory holding a `replay.json`\" was written twice in `declare` and once again in the new reader, and a nested kit is exactly where three spellings get to disagree. It is now `open::kit_units`, pure so a caller holding a tracked-file listing does not pay for a second one, and both `declare` sites call it. Same for \"which repository am I in\", which `declare` held twice.\n\nTHE HARNESS CAUGHT THE WIDENING RATHER THAN LETTING IT PASS. Adding the listing law made an existing injection redden one more test — collapsing a kit's two revisions into one also breaks the listing, which is the law working — and the sweep refused the stale evidence in those words: `was proven against a different definition — that evidence is void and this run re-proves it`. The red set was widened rather than the injection re-aimed, because what moved is the tree around it.",
+      "changes_bullets": [
+        "`open-kit --list` answers about every tracked kit without building anything, and lists the kits that declare no replay with the reason they record",
+        "`open::kit_units` is the one rule for what a kit unit is; `declare` spelled it twice and held two copies of the repository-root question besides",
+        "CORRECTION to R1248's entry, which was appended before this landed: five injections, not four, and a control of 61 rather than 60"
+      ],
+      "verification_bullets": [
+        "THE LISTING WAS RUN AND EVERY KIT IS IN IT: 32 tracked kits, 33 lines — the one kit whose replays name two revisions takes two, each marked `(--replay decides)`, and the two that declare no replay carry `nothing-a-verb-takes` and `built-outside-this-repository`",
+        "FIVE INJECTIONS, red set EXHAUSTIVE, control 61 passed / 0 failed, every arm `0 unnamed, 0 missing, 0 extra`. THIS IS THE NUMBER R1248's ENTRY UNDERSTATES as four and sixty",
+        "THE SWEEP REFUSED ITS OWN STALE EVIDENCE before it was widened: `a-kit-that-names-two-revisions-gets-the-first` reddened one test more than its record named, and the harness said so rather than passing — `was proven against a different definition — that evidence is void and this run re-proves it`",
+        "`cargo clippy --all-targets -- -D warnings` clean on the side workspace, which is what named the dead function that started this",
+        "root workspace suite through `scripts/verify.sh`, every separate in-repo workspace through `scripts/check-side-workspaces.sh`, `scripts/fmt.sh`, `mnemosyne-cli validate-workspace` clean, and the expensive `#[ignore]`d replay re-run on the settled tree"
+      ],
+      "impact_refs": [
+        "atomic-store-mutate-api"
+      ],
+      "carry_forward_bullets": [
+        "APPENDING THE ENTRY BEFORE THE FINAL VERIFICATION IS WHAT PRODUCED THIS CORRECTION, and the rule is still right. The alternative — verify, then append, then commit — makes the tree that was verified a different tree from the one committed, which cost five root-suite runs across two rounds when it was tried the other way round. What the rule cannot do is stop a round from growing after the entry lands; the ledger is append-only, so the answer is a later entry that states the number, which is this one",
+        "THE LISTING IS A TABLE AND NOT A JUDGEMENT. It says which revision a kit's record names; it does not say that revision still builds, which only `open-kit --into` finds out, one kit at a time. Asking it of all thirty-two at once is the replay job's twelve minutes, and there is no cheaper question that would answer it"
+      ],
+      "population_census": [
+        {
+          "axis": "transition rules by `undirected`",
+          "left_label": "undirected",
+          "left": 10,
+          "right_label": "directed",
+          "right": 29
+        },
+        {
+          "axis": "map corpora by leg-kind declaration",
+          "left_label": "omitted",
+          "left": 6,
+          "right_label": "declared",
+          "right": 24
+        },
+        {
+          "axis": "cost-carrying corpora by direction-dependent pricing",
+          "left_label": "prices a way by direction",
+          "left": 4,
+          "right_label": "prices no way by direction",
+          "right": 6
+        },
+        {
+          "axis": "run trees by authoring mode",
+          "left_label": "hand script",
+          "left": 10,
+          "right_label": "file-only",
+          "right": 256
+        },
+        {
+          "axis": "map corpora by declared boundary crossing",
+          "left_label": "declares an exit",
+          "left": 6,
+          "right_label": "declares none",
+          "right": 24
+        },
+        {
+          "axis": "authored submissions by map and telling",
+          "left_label": "carries both",
+          "left": 10,
+          "right_label": "carries one",
+          "right": 24
+        }
+      ],
+      "publishable_decision_summary": "R1249 (DEBT — the overview, and the count R1248's own entry understates). R1248's entry was appended before its final verification, which is the rule that keeps the verified tree and the committed tree the same tree; the round then grew by three things, and the entry cannot grow with it because the ledger is append-only. So the correction is here: R1248 ships FIVE injections and not four, and its control is 61 passing and not 60. A number nobody corrects is a number a later round trusts.\n\nWHAT GREW, AND WHY IT IS NOT SCOPE CREEP. `tracked_kits` had exactly one consumer — the law — and clippy called it dead. The cheap answer was `#[cfg(test)]`, which would have been a lie about what the function is for: the thing a reader asks BEFORE naming a kit is which kits there are and what reads each, and nothing answered that either. So `open-kit --list` gives it a production consumer, builds nothing, and prints one line per (kit, revision) plus one for each kit that declares no replay, carrying its recorded reason. A listing that skipped that last kind would read as a tree where every kit has a revision, which is the assumption R1248 exists to stop.\n\nAND THE DEAD-CODE WARNING SURFACED A THIRD SPELLING. \"A kit is the directory holding a `replay.json`\" was written twice in `declare` and once again in the new reader, and a nested kit is exactly where three spellings get to disagree. It is now `open::kit_units`, pure so a caller holding a tracked-file listing does not pay for a second one, and both `declare` sites call it. Same for \"which repository am I in\", which `declare` held twice.\n\nTHE HARNESS CAUGHT THE WIDENING RATHER THAN LETTING IT PASS. Adding the listing law made an existing injection redden one more test — collapsing a kit's two revisions into one also breaks the listing, which is the law working — and the sweep refused the stale evidence in those words: `was proven against a different definition — that evidence is void and this run re-proves it`. The red set was widened rather than the injection re-aimed, because what moved is the tree around it.",
+      "publishable_changes_bullets": [
+        "`open-kit --list` answers about every tracked kit without building anything, and lists the kits that declare no replay with the reason they record",
+        "`open::kit_units` is the one rule for what a kit unit is; `declare` spelled it twice and held two copies of the repository-root question besides",
+        "CORRECTION to R1248's entry, which was appended before this landed: five injections, not four, and a control of 61 rather than 60"
+      ],
+      "publishable_verification_bullets": [
+        "THE LISTING WAS RUN AND EVERY KIT IS IN IT: 32 tracked kits, 33 lines — the one kit whose replays name two revisions takes two, each marked `(--replay decides)`, and the two that declare no replay carry `nothing-a-verb-takes` and `built-outside-this-repository`",
+        "FIVE INJECTIONS, red set EXHAUSTIVE, control 61 passed / 0 failed, every arm `0 unnamed, 0 missing, 0 extra`. THIS IS THE NUMBER R1248's ENTRY UNDERSTATES as four and sixty",
+        "THE SWEEP REFUSED ITS OWN STALE EVIDENCE before it was widened: `a-kit-that-names-two-revisions-gets-the-first` reddened one test more than its record named, and the harness said so rather than passing — `was proven against a different definition — that evidence is void and this run re-proves it`",
+        "`cargo clippy --all-targets -- -D warnings` clean on the side workspace, which is what named the dead function that started this",
+        "root workspace suite through `scripts/verify.sh`, every separate in-repo workspace through `scripts/check-side-workspaces.sh`, `scripts/fmt.sh`, `mnemosyne-cli validate-workspace` clean, and the expensive `#[ignore]`d replay re-run on the settled tree"
+      ],
+      "publishable_impact_refs": [
+        "atomic-store-mutate-api"
+      ],
+      "publishable_carry_forward_bullets": [
+        "APPENDING THE ENTRY BEFORE THE FINAL VERIFICATION IS WHAT PRODUCED THIS CORRECTION, and the rule is still right. The alternative — verify, then append, then commit — makes the tree that was verified a different tree from the one committed, which cost five root-suite runs across two rounds when it was tried the other way round. What the rule cannot do is stop a round from growing after the entry lands; the ledger is append-only, so the answer is a later entry that states the number, which is this one",
+        "THE LISTING IS A TABLE AND NOT A JUDGEMENT. It says which revision a kit's record names; it does not say that revision still builds, which only `open-kit --into` finds out, one kit at a time. Asking it of all thirty-two at once is the replay job's twelve minutes, and there is no cheaper question that would answer it"
+      ]
+    },
+    "Round 1250 — what the side gates found in the new reader": {
+      "decision_summary": "R1250 (DEBT — what the side gates found in R1248's own new code, and why the entry before this one could not say so). The final verification of R1248 was not a formality: two of this repository's side-workspace gates each refused something the new reader had just introduced, and neither the root suite nor clippy on the root workspace had anything to say about either. That is the fifth and sixth time a side gate has caught what the root missed.\n\n`written-executable` REFUSED THE FIRST SPELLING OF THE CARGO TEST. It wrote a shell script, chmodded it to 0o755 and spawned it in the same function — and the gate's sentence is the mechanism, not a style note: `exec` on a file some process still holds open for writing fails with ETXTBSY, and the holder is another test's fork rather than this thread, so the failure arrives in a crate that did nothing, only while something else is running. The repair took the gate's own advice and asked the question with programs that already exist: a cargo path that is NOT THERE, whose refusal must name it — which is the only way the test can tell \"the one the caller named\" from \"whatever PATH answers with\" — and `/bin/true`, which succeeds and builds nothing, the exact shape of a silently wrong toolchain, and must be a refusal rather than a returned path.\n\n`named-environment` REFUSED A FALLBACK THAT LOOKED LIKE A CONVENIENCE. The draft read `$CARGO` when `--cargo` was absent, on the reasoning that cargo sets it for anything it runs, so a delegating test would inherit its own toolchain for free. The gate found that `cli_smoke` spawns this binary and never mentions the variable, which means that test runs one program on a machine where `CARGO` is set and another where it is not. THE FALLBACK WAS REMOVED RATHER THAN THE TEST ANNOTATED: both callers that care pass `--cargo` explicitly, so it bought nothing and hid an input. The default is `cargo`, and what ran is printed either way.\n\nAND THE STRUCTURAL NOTE, because this is the second round running. The rule that the ledger entry is appended BEFORE the final verification is what keeps the tree that was verified and the tree that was committed the same tree; it also guarantees that an entry cannot describe what that verification finds. R1249 corrected R1248's injection count for exactly this reason, and this entry records what R1249's own final verification then turned up. The chain is not a defect in either round — it is the shape of the trade, and the alternative costs whole root-suite runs. What makes it safe is that each entry states the correction plainly instead of leaving the earlier number standing.",
+      "changes_bullets": [
+        "the cargo test writes no program: a path that is not there must be NAMED in the refusal, and `/bin/true` must not pass as a build",
+        "`open-kit` reads no `$CARGO`; the flag names the cargo, the default is `cargo`, and what ran is printed",
+        "both were found by side-workspace gates on the final verification, which the root suite and root clippy had passed"
+      ],
+      "verification_bullets": [
+        "BOTH REFUSALS WERE READ FROM THE GATES THEMSELVES, not inferred: `written-executable` printed `DEFECT the_cargo_the_caller_named_is_the_one_that_builds applies mode 0o755, which is executable and spawns a program in the same function`, and `named-environment` printed `DEFECT test cli_smoke spawns experiment-harness, which reads CARGO, and never mentions it`",
+        "AND BOTH WERE RE-RUN AFTER THE REPAIR: `scripts/check-side-workspaces.sh` over all 23 separate workspaces, in two halves, exit 0 each",
+        "FIVE INJECTIONS RE-PROVEN ON THE REPAIRED SOURCE, red set EXHAUSTIVE, control 61 passed / 0 failed, `0 unnamed, 0 missing, 0 extra` on every arm — the cargo injection still reddens, now through the refusal that must name the path it was given",
+        "root workspace suite through `scripts/verify.sh` (57 test targets compiled, 57 reported a result), `scripts/fmt.sh`, `mnemosyne-cli validate-workspace` clean",
+        "AND THE TWO EXPENSIVE `#[ignore]`d PROOFS RE-RUN ON THE SETTLED TREE, which is what makes this entry the last thing written before the commit: 49 replays reproduced their declared digest, 2 blocked as declared, 65 transcripts regenerated, and the pinned-revision recheck green beside them"
+      ],
+      "impact_refs": [
+        "atomic-store-mutate-api"
+      ],
+      "carry_forward_bullets": [
+        "THE ROOT SUITE CANNOT SEE THIS CLASS, and that is a property of the split rather than a gap to close here. `written-executable` and `named-environment` are separate workspaces precisely so the root gates never compile them, which is also why `cargo test --workspace` cannot run them over a side workspace's sources; `scripts/check-side-workspaces.sh` is the one thing that does, and it is a round's own responsibility to run it. Six times now it has been the only thing that spoke",
+        "WHAT THIS ROUND DID NOT MEASURE IS THE ETXTBSY ITSELF. The gate's mechanism is stated and believed, not reproduced: making it fire would mean racing a fork against an exec on purpose, and a test that has to lose a race to pass is one that passes on a fast machine for the wrong reason. The gate is the enforcement, and its own suite is where that claim belongs"
+      ],
+      "population_census": [
+        {
+          "axis": "transition rules by `undirected`",
+          "left_label": "undirected",
+          "left": 10,
+          "right_label": "directed",
+          "right": 29
+        },
+        {
+          "axis": "map corpora by leg-kind declaration",
+          "left_label": "omitted",
+          "left": 6,
+          "right_label": "declared",
+          "right": 24
+        },
+        {
+          "axis": "cost-carrying corpora by direction-dependent pricing",
+          "left_label": "prices a way by direction",
+          "left": 4,
+          "right_label": "prices no way by direction",
+          "right": 6
+        },
+        {
+          "axis": "run trees by authoring mode",
+          "left_label": "hand script",
+          "left": 10,
+          "right_label": "file-only",
+          "right": 256
+        },
+        {
+          "axis": "map corpora by declared boundary crossing",
+          "left_label": "declares an exit",
+          "left": 6,
+          "right_label": "declares none",
+          "right": 24
+        },
+        {
+          "axis": "authored submissions by map and telling",
+          "left_label": "carries both",
+          "left": 10,
+          "right_label": "carries one",
+          "right": 24
+        }
+      ],
+      "publishable_decision_summary": "R1250 (DEBT — what the side gates found in R1248's own new code, and why the entry before this one could not say so). The final verification of R1248 was not a formality: two of this repository's side-workspace gates each refused something the new reader had just introduced, and neither the root suite nor clippy on the root workspace had anything to say about either. That is the fifth and sixth time a side gate has caught what the root missed.\n\n`written-executable` REFUSED THE FIRST SPELLING OF THE CARGO TEST. It wrote a shell script, chmodded it to 0o755 and spawned it in the same function — and the gate's sentence is the mechanism, not a style note: `exec` on a file some process still holds open for writing fails with ETXTBSY, and the holder is another test's fork rather than this thread, so the failure arrives in a crate that did nothing, only while something else is running. The repair took the gate's own advice and asked the question with programs that already exist: a cargo path that is NOT THERE, whose refusal must name it — which is the only way the test can tell \"the one the caller named\" from \"whatever PATH answers with\" — and `/bin/true`, which succeeds and builds nothing, the exact shape of a silently wrong toolchain, and must be a refusal rather than a returned path.\n\n`named-environment` REFUSED A FALLBACK THAT LOOKED LIKE A CONVENIENCE. The draft read `$CARGO` when `--cargo` was absent, on the reasoning that cargo sets it for anything it runs, so a delegating test would inherit its own toolchain for free. The gate found that `cli_smoke` spawns this binary and never mentions the variable, which means that test runs one program on a machine where `CARGO` is set and another where it is not. THE FALLBACK WAS REMOVED RATHER THAN THE TEST ANNOTATED: both callers that care pass `--cargo` explicitly, so it bought nothing and hid an input. The default is `cargo`, and what ran is printed either way.\n\nAND THE STRUCTURAL NOTE, because this is the second round running. The rule that the ledger entry is appended BEFORE the final verification is what keeps the tree that was verified and the tree that was committed the same tree; it also guarantees that an entry cannot describe what that verification finds. R1249 corrected R1248's injection count for exactly this reason, and this entry records what R1249's own final verification then turned up. The chain is not a defect in either round — it is the shape of the trade, and the alternative costs whole root-suite runs. What makes it safe is that each entry states the correction plainly instead of leaving the earlier number standing.",
+      "publishable_changes_bullets": [
+        "the cargo test writes no program: a path that is not there must be NAMED in the refusal, and `/bin/true` must not pass as a build",
+        "`open-kit` reads no `$CARGO`; the flag names the cargo, the default is `cargo`, and what ran is printed",
+        "both were found by side-workspace gates on the final verification, which the root suite and root clippy had passed"
+      ],
+      "publishable_verification_bullets": [
+        "BOTH REFUSALS WERE READ FROM THE GATES THEMSELVES, not inferred: `written-executable` printed `DEFECT the_cargo_the_caller_named_is_the_one_that_builds applies mode 0o755, which is executable and spawns a program in the same function`, and `named-environment` printed `DEFECT test cli_smoke spawns experiment-harness, which reads CARGO, and never mentions it`",
+        "AND BOTH WERE RE-RUN AFTER THE REPAIR: `scripts/check-side-workspaces.sh` over all 23 separate workspaces, in two halves, exit 0 each",
+        "FIVE INJECTIONS RE-PROVEN ON THE REPAIRED SOURCE, red set EXHAUSTIVE, control 61 passed / 0 failed, `0 unnamed, 0 missing, 0 extra` on every arm — the cargo injection still reddens, now through the refusal that must name the path it was given",
+        "root workspace suite through `scripts/verify.sh` (57 test targets compiled, 57 reported a result), `scripts/fmt.sh`, `mnemosyne-cli validate-workspace` clean",
+        "AND THE TWO EXPENSIVE `#[ignore]`d PROOFS RE-RUN ON THE SETTLED TREE, which is what makes this entry the last thing written before the commit: 49 replays reproduced their declared digest, 2 blocked as declared, 65 transcripts regenerated, and the pinned-revision recheck green beside them"
+      ],
+      "publishable_impact_refs": [
+        "atomic-store-mutate-api"
+      ],
+      "publishable_carry_forward_bullets": [
+        "THE ROOT SUITE CANNOT SEE THIS CLASS, and that is a property of the split rather than a gap to close here. `written-executable` and `named-environment` are separate workspaces precisely so the root gates never compile them, which is also why `cargo test --workspace` cannot run them over a side workspace's sources; `scripts/check-side-workspaces.sh` is the one thing that does, and it is a round's own responsibility to run it. Six times now it has been the only thing that spoke",
+        "WHAT THIS ROUND DID NOT MEASURE IS THE ETXTBSY ITSELF. The gate's mechanism is stated and believed, not reproduced: making it fire would mean racing a fork against an exec on purpose, and a test that has to lose a race to pass is one that passes on a fast machine for the wrong reason. The gate is the enforcement, and its own suite is where that claim belongs"
+      ]
+    },
     "Round 252": {
       "decision_summary": "Parser CommonMark conformance — recognize indented fenced code blocks (§98) and require whitespace after ATX hash sequence (§62)",
       "changes_bullets": [
